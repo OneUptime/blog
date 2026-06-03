@@ -225,12 +225,18 @@ kind: Deployment
 metadata:
   name: redis
 spec:
+  selector:
+    matchLabels:
+      app: redis
   template:
+    metadata:
+      labels:
+        app: redis
     spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
-        fsGroup: 999
+        fsGroup: 1000
       containers:
       - name: redis
         image: redis:7-alpine
@@ -287,10 +293,16 @@ kind: StatefulSet
 metadata:
   name: elasticsearch
 spec:
+  serviceName: elasticsearch
+  selector:
+    matchLabels:
+      app: elasticsearch
   template:
+    metadata:
+      labels:
+        app: elasticsearch
     spec:
       securityContext:
-        runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
       initContainers:
@@ -325,7 +337,7 @@ spec:
           storage: 10Gi
 ```
 
-The initContainer runs as root to fix permissions, then the main container runs as non-root. Pod-level runAsNonRoot is false since the init container needs root, but the main container's securityContext enforces runAsNonRoot.
+The initContainer runs as root to fix permissions, then the main container runs as non-root. Pod-level runAsNonRoot is not set since the init container needs root, but the main container's securityContext enforces runAsNonRoot.
 
 ## NetworkPolicies with non-root containers
 
@@ -336,13 +348,15 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: webserver
+  labels:
+    app: webserver
 spec:
   securityContext:
     runAsNonRoot: true
     runAsUser: 1000
   containers:
   - name: web
-    image: nginx:alpine
+    image: webserver:v1.0
     ports:
     - containerPort: 8080  # Non-privileged port
 ```
@@ -384,40 +398,21 @@ The restricted profile requires runAsNonRoot, preventing any root containers fro
 Track rootless container adoption:
 
 ```bash
-# Find pods running as root
+# Find containers configured as root or lacking non-root enforcement
 kubectl get pods -A -o json | \
-  jq -r '.items[] |
-    select(.spec.securityContext.runAsUser == 0 or
-           (.spec.securityContext.runAsUser == null and
-            .spec.securityContext.runAsNonRoot != true)) |
-    "\(.metadata.namespace)/\(.metadata.name)"'
+  jq -r '.items[] as $pod |
+    [($pod.spec.initContainers // []),
+     ($pod.spec.containers // []),
+     ($pod.spec.ephemeralContainers // [])] | add[] as $container |
+    ($pod.spec.securityContext // {}) as $podContext |
+    ($container.securityContext // {}) as $containerContext |
+    (if $containerContext | has("runAsUser") then $containerContext.runAsUser else $podContext.runAsUser end) as $runAsUser |
+    (if $containerContext | has("runAsNonRoot") then $containerContext.runAsNonRoot else $podContext.runAsNonRoot end) as $runAsNonRoot |
+    select($runAsUser == 0 or ($runAsUser == null and $runAsNonRoot != true)) |
+    "\($pod.metadata.namespace)/\($pod.metadata.name):\($container.name)"'
 ```
 
-Create alerts for root container violations:
-
-```yaml
-# PrometheusRule
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: security-alerts
-spec:
-  groups:
-  - name: container-security
-    rules:
-    - alert: RootContainerDetected
-      expr: |
-        kube_pod_container_status_running{
-          container!~"istio-proxy|linkerd-proxy"
-        } * on(namespace,pod,container)
-        kube_pod_container_info{
-          container_id!="",
-          container!~"istio-proxy|linkerd-proxy"
-        } unless on(namespace,pod,container)
-        kube_pod_spec_securitycontext_runasnonroot == 1
-      annotations:
-        summary: "Container running without runAsNonRoot"
-```
+For Prometheus-based alerting, export the same check from a policy engine or custom compliance exporter. kube-state-metrics exposes pod and container state, but it does not expose runAsNonRoot fields as default pod metrics.
 
 ## Best practices for rootless containers
 
