@@ -61,9 +61,9 @@ resource "aws_efs_file_system" "main" {
 
 A few decisions here worth explaining:
 
-- **`generalPurpose`** performance mode works for most workloads. Switch to `maxIO` only if you've got thousands of concurrent connections and can tolerate slightly higher latency.
-- **`bursting`** throughput mode gives you a baseline throughput that scales with the size of your file system, plus burst credits. If your workloads are spiky and unpredictable, `elastic` mode charges per-request but doesn't require you to provision throughput.
-- **Lifecycle policies** save money by automatically moving infrequently accessed files to the IA storage class, which costs about 92% less than standard storage.
+- **`generalPurpose`** performance mode works for most workloads. Switch to `maxIO` only if you've got thousands of concurrent connections and can tolerate slightly higher latency, and you're not using Elastic throughput.
+- **`bursting`** throughput mode gives you a baseline throughput that scales with the size of your file system, plus burst credits. If your workloads are spiky and unpredictable, `elastic` mode charges based on the amount of data and metadata read or written and doesn't require you to provision throughput.
+- **Lifecycle policies** save money by automatically moving infrequently accessed files to the IA storage class, which costs up to 94% less than standard storage.
 
 ## Setting Up Security Groups
 
@@ -112,7 +112,7 @@ resource "aws_security_group" "application" {
 
 ## Creating Mount Targets
 
-You need one mount target per AZ. Using `for_each` over your subnets keeps this clean.
+For Regional file systems, create one mount target in each AZ where your workloads run. Using `for_each` over your subnets keeps this clean.
 
 This creates a mount target in each private subnet:
 
@@ -388,4 +388,4 @@ output "access_point_ids" {
 
 ## Wrapping Up
 
-A production EFS setup involves more than just the file system resource. You need mount targets in every AZ, security groups scoped to NFS traffic, access points for multi-tenant isolation, a resource policy for encryption enforcement, and monitoring to catch performance issues before they affect your applications. The Terraform configuration in this guide covers all of these pieces and should give you a solid starting point for your own deployment.
+A production EFS setup involves more than just the file system resource. You need mount targets in the AZs where your workloads run, security groups scoped to NFS traffic, access points for multi-tenant isolation, a resource policy for encryption enforcement, and monitoring to catch performance issues before they affect your applications. The Terraform configuration in this guide covers all of these pieces and should give you a solid starting point for your own deployment.
