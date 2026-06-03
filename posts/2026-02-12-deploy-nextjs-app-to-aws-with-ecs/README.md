@@ -25,7 +25,7 @@ FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 FROM node:20-alpine AS builder
 WORKDIR /app
@@ -236,7 +236,8 @@ Define how your container should run. This task definition allocates 512 CPU uni
 # Create the cluster
 aws ecs create-cluster --cluster-name nextjs-cluster
 
-# Register the task definition
+# Create the CloudWatch log group if it doesn't already exist, then register the task definition
+aws logs create-log-group --log-group-name /ecs/nextjs-app --region us-east-1
 aws ecs register-task-definition --cli-input-json file://task-definition.json
 
 # Create the service
@@ -315,7 +316,9 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t $ECR_REGISTRY/nextjs-app:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/nextjs-app:$IMAGE_TAG $ECR_REGISTRY/nextjs-app:latest
           docker push $ECR_REGISTRY/nextjs-app:$IMAGE_TAG
+          docker push $ECR_REGISTRY/nextjs-app:latest
 
       - name: Update ECS service
         run: |
