@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Signer, Code Signing, Security, Lambda
 
-Description: Set up AWS Signer to cryptographically sign your code artifacts and enforce signature verification for Lambda deployments and container images.
+Description: Set up AWS Signer to cryptographically sign your code artifacts, enforce signature verification for Lambda deployments, and sign container images.
 
 ---
 
 Deploying unsigned code is a trust problem. How do you know that the Lambda function code running in production is the same code your CI/CD pipeline built? How do you verify that a container image hasn't been tampered with between build and deploy? Without code signing, you're essentially running on faith.
 
-AWS Signer provides managed code signing for your deployment artifacts. You sign your code during the build process, and AWS verifies the signature before allowing deployment. If someone modifies the artifact after signing - whether it's an attacker, a misconfigured pipeline, or an accidental overwrite - the deployment gets rejected.
+AWS Signer provides managed code signing for your deployment artifacts. You sign your code during the build process, and Lambda verifies the signature before allowing deployment when code signing is enforced. If someone modifies the artifact after signing - whether it's an attacker, a misconfigured pipeline, or an accidental overwrite - the Lambda deployment gets rejected.
 
 ## What Can You Sign?
 
@@ -46,7 +46,7 @@ List available platforms:
 
 ```bash
 aws signer list-signing-platforms \
-  --query 'Platforms[].{Id:PlatformId,Target:Target,Category:Category}'
+  --query 'platforms[].{Id:platformId,Target:target,Category:category}'
 ```
 
 ### View Your Signing Profile
@@ -60,11 +60,16 @@ aws signer get-signing-profile \
 
 ### Step 1: Upload Your Code to S3
 
-Your unsigned code needs to be in S3 for Signer to access it:
+Your unsigned code needs to be in a versioned S3 bucket for Signer to access it:
 
 ```bash
 # Upload the unsigned Lambda deployment package
-aws s3 cp function.zip s3://my-deploy-bucket/unsigned/function.zip
+VERSION_ID=$(aws s3api put-object \
+  --bucket my-deploy-bucket \
+  --key unsigned/function.zip \
+  --body function.zip \
+  --query VersionId \
+  --output text)
 ```
 
 ### Step 2: Start a Signing Job
@@ -78,7 +83,7 @@ aws signer start-signing-job \
     "s3": {
       "bucketName": "my-deploy-bucket",
       "key": "unsigned/function.zip",
-      "version": "abc123"
+      "version": "'"$VERSION_ID"'"
     }
   }' \
   --destination '{
@@ -103,10 +108,15 @@ Once signed, deploy to Lambda:
 
 ```bash
 # Deploy the signed code to Lambda
+SIGNED_KEY=$(aws signer describe-signing-job \
+  --job-id abc123-def456 \
+  --query 'signedObject.s3.key' \
+  --output text)
+
 aws lambda update-function-code \
   --function-name my-function \
   --s3-bucket my-deploy-bucket \
-  --s3-key signed/abc123def456.zip
+  --s3-key "$SIGNED_KEY"
 ```
 
 ## Enforcing Code Signing on Lambda
@@ -123,7 +133,7 @@ aws lambda create-code-signing-config \
   --description "Production code signing policy" \
   --allowed-publishers '{
     "SigningProfileVersionArns": [
-      "arn:aws:signer:us-east-1:111111111111:/signing-profiles/LambdaProductionProfile/abc123"
+      "arn:aws:signer:us-east-1:111111111111:/signing-profiles/LambdaProductionProfile/abc123def4"
     ]
   }' \
   --code-signing-policies '{
@@ -143,7 +153,7 @@ Attach the code signing config to your functions:
 # Attach code signing config to a function
 aws lambda put-function-code-signing-config \
   --function-name my-function \
-  --code-signing-config-arn arn:aws:lambda:us-east-1:111111111111:code-signing-config:csc-abc123
+  --code-signing-config-arn arn:aws:lambda:us-east-1:111111111111:code-signing-config:csc-abc12345678901234
 ```
 
 Now any attempt to deploy unsigned code to this function will fail:
@@ -182,14 +192,20 @@ jobs:
           zip function.zip lambda_function.py
 
       - name: Upload unsigned artifact
+        id: upload
         run: |
-          aws s3 cp function.zip s3://my-deploy-bucket/unsigned/function-${{ github.sha }}.zip
+          VERSION_ID=$(aws s3api put-object \
+            --bucket my-deploy-bucket \
+            --key unsigned/function-${{ github.sha }}.zip \
+            --body function.zip \
+            --query VersionId --output text)
+          echo "version_id=$VERSION_ID" >> $GITHUB_OUTPUT
 
       - name: Sign the artifact
         id: sign
         run: |
           JOB_ID=$(aws signer start-signing-job \
-            --source '{"s3":{"bucketName":"my-deploy-bucket","key":"unsigned/function-${{ github.sha }}.zip"}}' \
+            --source '{"s3":{"bucketName":"my-deploy-bucket","key":"unsigned/function-${{ github.sha }}.zip","version":"${{ steps.upload.outputs.version_id }}"}}' \
             --destination '{"s3":{"bucketName":"my-deploy-bucket","prefix":"signed/"}}' \
             --profile-name LambdaProductionProfile \
             --query 'jobId' --output text)
@@ -266,12 +282,12 @@ If a signing profile is compromised or you need to invalidate previously signed 
 # Revoke a specific signing profile version
 aws signer revoke-signing-profile \
   --profile-name LambdaProductionProfile \
-  --profile-version abc123 \
+  --profile-version abc123def4 \
   --reason "Key compromise" \
   --effective-time "2026-02-12T00:00:00Z"
 ```
 
-Revoking a profile version makes all code signed with it invalid. Functions already deployed continue running, but new deployments using revoked signatures will be rejected.
+Revoking a profile version makes signatures generated at or after the effective time untrusted. Functions already deployed continue running, but new deployments using revoked signatures will be rejected.
 
 ## Monitoring Signing Activity
 
@@ -281,7 +297,7 @@ Track all signing operations for audit purposes:
 # List recent signing jobs
 aws signer list-signing-jobs \
   --status Succeeded \
-  --query 'Jobs[].{JobId:JobId,Profile:ProfileName,Created:CreatedAt,Source:Source.S3.Key}'
+  --query 'jobs[].{JobId:jobId,Profile:profileName,Created:createdAt,Source:source.s3.key}'
 ```
 
 CloudTrail logs all Signer API calls, making it easy to audit who signed what and when.
