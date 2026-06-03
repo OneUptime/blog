@@ -72,6 +72,8 @@ data:
         type: kubernetes_logs
         auto_partial_merge: true
         self_node_name: "${VECTOR_SELF_NODE_NAME}"
+      internal_metrics:
+        type: internal_metrics
 
     # Transforms
     transforms:
@@ -85,7 +87,6 @@ data:
             parsed, err = parse_json(.message)
             if err == null {
               . = merge(., parsed)
-              del(.message)
             }
           }
 
@@ -121,7 +122,7 @@ data:
         inputs: ["enrich_k8s"]
         condition: |
           .kubernetes.container_name != "istio-proxy" ||
-          !includes(string!(.message), "/health")
+          !includes(string(.message) ?? "", "/health")
 
       # Sample debug logs
       sample_debug:
@@ -129,8 +130,8 @@ data:
         inputs: ["filter_health_checks"]
         rate: 10
         key_field: "kubernetes.pod_name"
-        condition: |
-          .level == "debug"
+        exclude: |
+          .level != "debug"
 
     # Sinks
     sinks:
@@ -142,7 +143,7 @@ data:
         encoding:
           codec: json
         labels:
-          namespace: "{{ kubernetes.namespace_name }}"
+          namespace: "{{ kubernetes.pod_namespace }}"
           pod: "{{ kubernetes.pod_name }}"
           container: "{{ kubernetes.container_name }}"
           level: "{{ level }}"
@@ -158,14 +159,12 @@ data:
       opensearch:
         type: elasticsearch
         inputs: ["sample_debug"]
-        endpoint: "https://opensearch.logging.svc.cluster.local:9200"
+        endpoints: ["https://opensearch.logging.svc.cluster.local:9200"]
         mode: data_stream
         data_stream:
           type: logs
           dataset: kubernetes
           namespace: production
-        bulk:
-          index: "kubernetes-logs"
         batch:
           max_events: 1000
           timeout_secs: 5
@@ -176,7 +175,7 @@ data:
       # Export metrics
       prometheus_exporter:
         type: prometheus_exporter
-        inputs: []
+        inputs: ["internal_metrics"]
         address: "0.0.0.0:9090"
 ---
 apiVersion: apps/v1
@@ -336,15 +335,24 @@ transforms:
         }
       }
 
-  # Aggregate error counts
-  aggregate_errors:
-    type: aggregate
+  # Convert error logs to metrics
+  filter_errors:
+    type: filter
     inputs: ["calculate_duration"]
-    interval_ms: 60000  # 1 minute
-    group_by:
-      - "kubernetes.namespace_name"
-      - "kubernetes.pod_name"
-      - "level"
+    condition: '.level == "error" || .level == "fatal"'
+
+  error_counts:
+    type: log_to_metric
+    inputs: ["filter_errors"]
+    metrics:
+      - type: counter
+        field: level
+        name: error_logs_total
+        namespace: kubernetes
+        tags:
+          namespace: "{{ kubernetes.pod_namespace }}"
+          pod: "{{ kubernetes.pod_name }}"
+          level: "{{ level }}"
 ```
 
 ## Routing to Multiple Destinations
@@ -368,9 +376,9 @@ transforms:
     type: route
     inputs: ["enrich_k8s"]
     route:
-      production: '.kubernetes.namespace_name == "production"'
-      staging: '.kubernetes.namespace_name == "staging"'
-      development: '!includes(["production", "staging"], .kubernetes.namespace_name)'
+      production: '.kubernetes.pod_namespace == "production"'
+      staging: '.kubernetes.pod_namespace == "staging"'
+      development: '.kubernetes.pod_namespace != "production" && .kubernetes.pod_namespace != "staging"'
 
 sinks:
   # Critical logs to PagerDuty
@@ -456,16 +464,16 @@ Key metrics to monitor:
 
 ```promql
 # Events processed per second
-rate(vector_events_processed_total[5m])
+rate(vector_component_received_events_total[5m])
 
 # Events dropped
-rate(vector_events_discarded_total[5m])
+rate(vector_component_discarded_events_total[5m])
 
 # Buffer usage
-vector_buffer_byte_size / vector_buffer_max_size
+vector_buffer_size_bytes
 
 # Processing latency
-histogram_quantile(0.95, rate(vector_event_processing_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, rate(vector_component_latency_seconds_bucket[5m]))
 ```
 
 ## Conclusion
