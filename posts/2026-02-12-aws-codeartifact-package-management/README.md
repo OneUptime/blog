@@ -57,7 +57,7 @@ To use a custom KMS key:
 # Create domain with custom KMS key
 aws codeartifact create-domain \
   --domain my-org \
-  --encryption-key arn:aws:kms:us-east-1:123456789:key/abc-123
+  --encryption-key arn:aws:kms:us-east-1:123456789012:key/abc-123
 ```
 
 ## Step 2: Create an Upstream Repository
@@ -153,6 +153,7 @@ aws codeartifact put-repository-permissions-policy \
           "codeartifact:ListPackages",
           "codeartifact:ListPackageVersions",
           "codeartifact:ListPackageVersionAssets",
+          "codeartifact:ListPackageVersionDependencies",
           "codeartifact:ReadFromRepository"
         ],
         "Resource": "*"
@@ -166,7 +167,7 @@ aws codeartifact put-repository-permissions-policy \
           "codeartifact:PublishPackageVersion",
           "codeartifact:PutPackageMetadata"
         ],
-        "Resource": "*"
+        "Resource": "arn:aws:codeartifact:us-east-1:123456789012:package/my-org/my-packages/*"
       }
     ]
   }'
@@ -201,6 +202,8 @@ aws codeartifact put-domain-permissions-policy \
   }'
 ```
 
+The other account also needs an identity-based policy that allows these actions, including `sts:GetServiceBearerToken` for authentication.
+
 ## Authenticating with CodeArtifact
 
 CodeArtifact uses temporary auth tokens that last up to 12 hours:
@@ -216,6 +219,8 @@ export CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
 
 echo "Token valid for 12 hours"
 ```
+
+The IAM user or role that calls this must have both `codeartifact:GetAuthorizationToken` and `sts:GetServiceBearerToken`.
 
 Each package manager has its own way of using this token. For details, see our dedicated guides:
 
@@ -277,8 +282,9 @@ aws codeartifact delete-package-versions \
 CodeArtifact pricing is based on:
 - Storage: $0.05 per GB per month
 - Requests: $0.05 per 10,000 requests
+- Data transfer out of an AWS Region
 
-For most teams, the cost is minimal - usually under $10/month. The caching alone can save you from outages caused by public registry downtime.
+For most teams, the cost is minimal, but check the current AWS pricing page for your Region and usage. The caching alone can save you from outages caused by public registry downtime.
 
 ## Monitoring
 
