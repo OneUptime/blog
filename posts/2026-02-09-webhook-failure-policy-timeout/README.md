@@ -118,11 +118,11 @@ package main
 
 import (
     "context"
-    "encoding/json"
     "net/http"
     "time"
 
     admissionv1 "k8s.io/api/admission/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func (ws *WebhookServer) serve(w http.ResponseWriter, r *http.Request) {
@@ -236,8 +236,7 @@ spec:
               matchLabels:
                 app: critical-webhook
             topologyKey: kubernetes.io/hostname
-        # Prefer different availability zones
-        podAntiAffinity:
+          # Prefer different availability zones
           preferredDuringSchedulingIgnoredDuringExecution:
           - weight: 100
             podAffinityTerm:
@@ -365,17 +364,17 @@ spec:
 
     - alert: WebhookTimeout
       expr: |
-        rate(apiserver_admission_webhook_request_total{result="timeout"}[5m]) > 0
+        rate(apiserver_admission_webhook_rejection_count{error_type="calling_webhook_error"}[5m]) > 0
       for: 2m
       labels:
         severity: critical
       annotations:
-        summary: "Webhook {{ $labels.name }} timing out"
+        summary: "Webhook {{ $labels.name }} has calling errors"
 ```
 
 ## Best Practices
 
-Use Fail for security-critical policies like image validation, pod security policies, and resource quotas. These should never be bypassed.
+Use Fail for security-critical policies like image validation, Pod Security standard enforcement in a custom webhook, and required compliance checks. These should never be bypassed.
 
 Use Ignore for optional features like adding labels, injecting documentation annotations, or logging. These enhance operations but shouldn't block them.
 
