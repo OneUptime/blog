@@ -35,8 +35,8 @@ data:
 
   managed-service.txt: |
     Cloud provider handles:
-    - Control plane management (free/low cost)
-    - Automatic Kubernetes upgrades
+    - Control plane management (included or billed separately)
+    - Managed upgrade workflows and optional automatic upgrades
     - etcd backup and HA
     - Certificate management
     - Control plane scaling
@@ -61,17 +61,17 @@ Select the appropriate managed Kubernetes provider.
 echo "AWS EKS:"
 echo "  - Best AWS integration"
 echo "  - Fargate for serverless pods"
-echo "  - Cost: $0.10/hour per cluster + node costs"
+echo "  - Cost: $0.10/hour per cluster for standard support + node costs"
 
 echo "Google GKE:"
 echo "  - Most Kubernetes-native (Google invented K8s)"
 echo "  - Autopilot mode (fully managed)"
-echo "  - Cost: Free control plane + node costs"
+echo "  - Cost: Cluster management fee with monthly free-tier credit + node or Autopilot workload costs"
 
 echo "Azure AKS:"
 echo "  - Best Azure integration"
 echo "  - Virtual nodes (serverless)"
-echo "  - Cost: Free control plane + node costs"
+echo "  - Cost: Free tier for non-production; Standard/Premium cluster management billed separately + node costs"
 
 # Assess current infrastructure
 kubectl get nodes -o wide
@@ -91,7 +91,7 @@ Create the managed Kubernetes cluster.
 eksctl create cluster \
   --name production-managed \
   --region us-east-1 \
-  --version 1.28 \
+  --version 1.35 \
   --nodegroup-name standard-workers \
   --node-type t3.xlarge \
   --nodes 5 \
@@ -119,25 +119,73 @@ Deploy essential components to the managed cluster.
 
 # AWS Load Balancer Controller
 helm repo add eks https://aws.github.io/eks-charts
+helm repo update eks
+eksctl utils associate-iam-oidc-provider \
+  --cluster production-managed \
+  --region us-east-1 \
+  --approve
+
+# Requires the AWSLoadBalancerControllerIAMPolicy to exist in the account
+eksctl create iamserviceaccount \
+  --cluster production-managed \
+  --region us-east-1 \
+  --namespace kube-system \
+  --name aws-load-balancer-controller \
+  --attach-policy-arn arn:aws:iam::ACCOUNT_ID:policy/AWSLoadBalancerControllerIAMPolicy \
+  --override-existing-serviceaccounts \
+  --approve
+
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n kube-system \
-  --set clusterName=production-managed
+  --set clusterName=production-managed \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=aws-load-balancer-controller
 
 # EBS CSI Driver
+helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+helm repo update aws-ebs-csi-driver
+eksctl create iamserviceaccount \
+  --cluster production-managed \
+  --region us-east-1 \
+  --namespace kube-system \
+  --name ebs-csi-controller-sa \
+  --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
+  --override-existing-serviceaccounts \
+  --approve
+
 helm install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver \
-  -n kube-system
+  -n kube-system \
+  --set controller.serviceAccount.create=false \
+  --set controller.serviceAccount.name=ebs-csi-controller-sa
 
 # Cluster Autoscaler
+helm repo add autoscaler https://kubernetes.github.io/autoscaler
+helm repo update autoscaler
+# Requires a ClusterAutoscalerPolicy scoped to this cluster's node groups
+eksctl create iamserviceaccount \
+  --cluster production-managed \
+  --region us-east-1 \
+  --namespace kube-system \
+  --name cluster-autoscaler \
+  --attach-policy-arn arn:aws:iam::ACCOUNT_ID:policy/ClusterAutoscalerPolicy \
+  --override-existing-serviceaccounts \
+  --approve
+
 helm install cluster-autoscaler autoscaler/cluster-autoscaler \
   -n kube-system \
-  --set autoDiscovery.clusterName=production-managed
+  --set autoDiscovery.clusterName=production-managed \
+  --set awsRegion=us-east-1 \
+  --set rbac.serviceAccount.create=false \
+  --set rbac.serviceAccount.name=cluster-autoscaler
 
 # Install Velero for migration
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket migration-backup \
-  --backup-location-config region=us-east-1
+  --backup-location-config region=us-east-1 \
+  --snapshot-location-config region=us-east-1 \
+  --no-secret
 ```
 
 Add-ons provide cloud-native functionality.
@@ -187,10 +235,15 @@ kind: Service
 metadata:
   name: web
   annotations:
-    metallb.universe.tf/address-pool: production-pool
+    metallb.io/address-pool: production-pool
+    metallb.io/loadBalancerIPs: 10.0.1.100
 spec:
   type: LoadBalancer
-  loadBalancerIP: 10.0.1.100
+  selector:
+    app: web
+  ports:
+  - port: 80
+    targetPort: 8080
 ---
 # Managed cluster uses cloud load balancer
 apiVersion: v1
@@ -198,10 +251,16 @@ kind: Service
 metadata:
   name: web
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: nlb
-    service.beta.kubernetes.io/aws-load-balancer-internal: "false"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 spec:
   type: LoadBalancer
+  selector:
+    app: web
+  ports:
+  - port: 80
+    targetPort: 8080
 ```
 
 Update service annotations for cloud providers.
@@ -234,7 +293,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       serviceAccountName: app-sa
       containers:
@@ -254,16 +319,17 @@ Ensure external access works correctly.
 # Validate networking
 
 # Get load balancer endpoints
-kubectl get svc -A --field-selector spec.type=LoadBalancer
+kubectl get svc -A -o json | jq -r '.items[] | select(.spec.type=="LoadBalancer") | [.metadata.namespace, .metadata.name, (.status.loadBalancer.ingress[0].hostname // .status.loadBalancer.ingress[0].ip // "pending")] | @tsv'
 
 # Test external access
-for LB in $(kubectl get svc -A --field-selector spec.type=LoadBalancer -o jsonpath='{.items[*].status.loadBalancer.ingress[0].hostname}'); do
+for LB in $(kubectl get svc -A -o json | jq -r '.items[] | select(.spec.type=="LoadBalancer") | (.status.loadBalancer.ingress[0].hostname // .status.loadBalancer.ingress[0].ip // empty)'); do
   echo "Testing $LB..."
   curl -I http://$LB/health
 done
 
 # Update DNS records
 # Point domain to new load balancer
+NEW_LB_HOSTNAME=$(kubectl get svc -n production web -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 aws route53 change-resource-record-sets \
   --hosted-zone-id Z123456 \
   --change-batch '{
@@ -285,32 +351,25 @@ Verify external connectivity before DNS cutover.
 
 Set up observability for the new cluster.
 
-```yaml
+```bash
+#!/bin/bash
 # CloudWatch Container Insights (EKS)
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: cloudwatch-agent
-  namespace: amazon-cloudwatch
----
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: cloudwatch-agent
-  namespace: amazon-cloudwatch
-spec:
-  selector:
-    matchLabels:
-      name: cloudwatch-agent
-  template:
-    spec:
-      serviceAccountName: cloudwatch-agent
-      containers:
-      - name: cloudwatch-agent
-        image: amazon/cloudwatch-agent:latest
-        env:
-        - name: CLUSTER_NAME
-          value: production-managed
+eksctl create iamserviceaccount \
+  --name cloudwatch-agent \
+  --namespace amazon-cloudwatch \
+  --cluster production-managed \
+  --region us-east-1 \
+  --role-name AmazonEKS_Observability_Role \
+  --role-only \
+  --attach-policy-arn arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess \
+  --attach-policy-arn arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy \
+  --approve
+
+aws eks create-addon \
+  --cluster-name production-managed \
+  --addon-name amazon-cloudwatch-observability \
+  --service-account-role-arn arn:aws:iam::ACCOUNT_ID:role/AmazonEKS_Observability_Role \
+  --region us-east-1
 ```
 
 Use cloud-native monitoring solutions.
