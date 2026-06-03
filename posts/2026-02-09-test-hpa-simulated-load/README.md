@@ -174,7 +174,8 @@ spec:
     spec:
       containers:
       - name: app
-        image: hpa-test-app:latest
+        image: hpa-test-app:test
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
         resources:
@@ -259,6 +260,7 @@ import subprocess
 import requests
 import time
 import json
+import socket
 from datetime import datetime
 from typing import Dict, List
 
@@ -293,23 +295,57 @@ class HPATestRunner:
 
     def set_cpu_load(self, percentage: float):
         """Set CPU load for all pods."""
-        pods = self.get_pod_ips()
-        for pod_ip in pods:
-            try:
-                requests.post(
-                    f"http://{pod_ip}:8080/load?cpu={percentage}",
-                    timeout=5
-                )
-            except Exception as e:
-                print(f"Warning: Failed to set load for {pod_ip}: {e}")
+        pods = self.get_pod_names()
+        for pod_name in pods:
+            self.set_pod_cpu_load(pod_name, percentage)
 
-    def get_pod_ips(self) -> List[str]:
-        """Get IPs of all pods."""
+    def set_pod_cpu_load(self, pod_name: str, percentage: float):
+        """Set CPU load on one pod through kubectl port-forward."""
+        port = self.get_free_port()
+        cmd = [
+            'kubectl', 'port-forward',
+            '-n', self.namespace,
+            f'pod/{pod_name}',
+            f'{port}:8080'
+        ]
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        try:
+            for _ in range(20):
+                try:
+                    response = requests.post(
+                        f"http://127.0.0.1:{port}/load?cpu={percentage}",
+                        timeout=2
+                    )
+                    response.raise_for_status()
+                    return
+                except requests.RequestException:
+                    time.sleep(0.25)
+            print(f"Warning: Failed to set load for {pod_name}: port-forward timed out")
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+    def get_free_port(self) -> int:
+        """Find an available local TCP port."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('', 0))
+            return s.getsockname()[1]
+
+    def get_pod_names(self) -> List[str]:
+        """Get names of all pods."""
         cmd = [
             'kubectl', 'get', 'pods',
             '-n', self.namespace,
             '-l', f'app={self.deployment}',
-            '-o', 'jsonpath={.items[*].status.podIP}'
+            '-o', 'jsonpath={.items[*].metadata.name}'
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
         return result.stdout.strip().split()
@@ -542,17 +578,17 @@ def analyze_scale_up_response(events: List[Dict]) -> Dict:
         return {}
 
     initial_pods = events[0]['pod_count']
-    final_pods = events[-1]['pod_count_after']
+    final_pods = events[-1].get('pod_count_after', events[-1]['pod_count'])
 
     # Find time to first scale
     time_to_first_scale = None
     for i, event in enumerate(events):
         if event.get('pod_count_after', event['pod_count']) > initial_pods:
-            time_to_first_scale = i * 60  # Assuming 60s intervals
+            time_to_first_scale = event.get('elapsed_seconds', i * 60)
             break
 
     # Calculate scale rate
-    total_time = len(events) * 60
+    total_time = events[-1].get('elapsed_seconds', len(events) * 60)
     pods_added = final_pods - initial_pods
     scale_rate = pods_added / (total_time / 60) if total_time > 0 else 0
 
@@ -562,7 +598,7 @@ def analyze_scale_up_response(events: List[Dict]) -> Dict:
         'pods_added': pods_added,
         'time_to_first_scale_seconds': time_to_first_scale,
         'scale_rate_pods_per_minute': round(scale_rate, 2),
-        'assessment': 'Good' if time_to_first_scale and time_to_first_scale < 120 else 'Slow'
+        'assessment': 'Good' if time_to_first_scale is not None and time_to_first_scale < 120 else 'Slow'
     }
 
 def analyze_oscillation(events: List[Dict]) -> Dict:
@@ -642,15 +678,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
 
     - name: Set up kubectl
-      uses: azure/setup-kubectl@v3
+      uses: azure/setup-kubectl@v4
+
+    - name: Install kind
+      run: |
+        curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
+        chmod +x ./kind
+        sudo mv ./kind /usr/local/bin/kind
 
     - name: Create test cluster
       run: |
         kind create cluster --name hpa-test
         kubectl cluster-info
+
+    - name: Build and load test image
+      run: |
+        docker build -t hpa-test-app:test .
+        kind load docker-image hpa-test-app:test --name hpa-test
 
     - name: Install metrics server
       run: |
@@ -658,6 +705,7 @@ jobs:
         kubectl patch deployment metrics-server -n kube-system \
           --type='json' \
           -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+        kubectl rollout status deployment/metrics-server -n kube-system --timeout=300s
 
     - name: Deploy test application
       run: |
@@ -668,6 +716,7 @@ jobs:
 
     - name: Run HPA tests
       run: |
+        python3 -m pip install requests
         python3 hpa_test_runner.py
 
     - name: Analyze results
