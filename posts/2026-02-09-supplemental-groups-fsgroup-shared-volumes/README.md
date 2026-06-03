@@ -8,13 +8,13 @@ Description: Learn how to use supplementalGroups and fsGroup in Kubernetes to ma
 
 ---
 
-When multiple containers in a pod need to share files, or when pods need to access persistent volumes with specific permissions, configuring Linux group IDs becomes essential. The `fsGroup` and `supplementalGroups` fields in the pod security context control which group owns files on volumes and which additional groups containers run with, enabling secure shared access patterns.
+When multiple containers in a pod need to share files, or when pods need to access persistent volumes with specific permissions, configuring Linux group IDs becomes essential. The `fsGroup` and `supplementalGroups` fields in the pod security context control which group owns supported volume files and which additional groups containers run with, enabling secure shared access patterns.
 
 These settings are critical for applications that need shared storage, multi-container pods, and any workload dealing with file permissions on persistent volumes.
 
 ## Understanding fsGroup
 
-The `fsGroup` field sets the group ID that owns volume files and runs the container processes with that group:
+The `fsGroup` field sets the group ID that owns supported volume files and adds that group as a supplementary group for the container processes:
 
 ```yaml
 apiVersion: v1
@@ -50,7 +50,7 @@ kubectl exec fsgroup-demo -- ls -la /data
 # Shows: drwxrwsrwx  2 root 2000 ...
 
 kubectl exec fsgroup-demo -- id
-# Shows: uid=0(root) gid=0(root) groups=2000
+# Shows: uid=0(root) gid=0(root) groups=0(root),2000
 
 ```
 
@@ -134,17 +134,6 @@ Both containers can read and write to the shared volume because they're in group
 PostgreSQL example with proper permissions:
 
 ```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-pvc
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
----
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -205,6 +194,7 @@ metadata:
 spec:
   securityContext:
     fsGroup: 2000
+  shareProcessNamespace: true
   initContainers:
   - name: config-generator
     image: config-generator:1.0
@@ -239,6 +229,10 @@ spec:
   - name: config-reloader
     image: config-reloader:1.0
     command: ["/bin/sh"]
+    securityContext:
+      capabilities:
+        add:
+        - SYS_PTRACE
     args:
     - -c
     - |
@@ -246,7 +240,7 @@ spec:
       while true; do
         inotifywait -e modify /etc/app/app.yaml
         echo "Config changed, reloading..."
-        # Send SIGHUP to app container
+        # Send SIGHUP to the app container.
         pkill -HUP -f start.sh
       done
     volumeMounts:
@@ -286,6 +280,8 @@ metadata:
 spec:
   accessModes:
   - ReadWriteMany
+  storageClassName: ""
+  volumeName: nfs-pv
   resources:
     requests:
       storage: 100Gi
@@ -319,7 +315,7 @@ spec:
           claimName: nfs-pvc
 ```
 
-All replicas can access the shared NFS volume with proper permissions.
+All replicas can access the shared NFS volume if the export and directory permissions allow the configured groups.
 
 ## Debugging Permission Issues
 
