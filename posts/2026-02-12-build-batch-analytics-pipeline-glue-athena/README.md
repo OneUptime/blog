@@ -104,7 +104,7 @@ aws glue create-crawler \
   }' \
   --recrawl-policy '{"RecrawlBehavior": "CRAWL_NEW_FOLDERS_ONLY"}' \
   --schema-change-policy '{
-    "UpdateBehavior": "UPDATE_IN_DATABASE",
+    "UpdateBehavior": "LOG",
     "DeleteBehavior": "LOG"
   }'
 
@@ -351,7 +351,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-name glue-etl-failure \
   --namespace "Glue" \
   --metric-name "glue.driver.aggregate.numFailedTasks" \
-  --dimensions Name=JobName,Value=events-etl Name=JobRunId,Value=ALL \
+  --dimensions Name=JobName,Value=events-etl Name=JobRunId,Value=ALL Name=Type,Value=count \
   --statistic Sum \
   --period 300 \
   --evaluation-periods 1 \
