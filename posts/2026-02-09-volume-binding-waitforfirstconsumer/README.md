@@ -12,15 +12,15 @@ The volume binding mode controls when Kubernetes provisions and binds a persiste
 
 ## The Immediate Binding Problem
 
-With Immediate binding mode (the default), Kubernetes provisions a volume as soon as you create a PVC, before any pod uses it. The volume gets created in a randomly selected zone. Later, when you schedule a pod that uses this PVC, the pod might land on a node in a different zone from the volume.
+With Immediate binding mode (the default), Kubernetes provisions a volume as soon as you create a PVC, before any pod uses it. For topology-constrained storage, the volume gets created without knowing the pod's scheduling requirements. Later, when you schedule a pod that uses this PVC, the pod might land on a node in a different zone from the volume.
 
-This creates a problem: many storage backends only work within a single zone. An AWS EBS volume in us-east-1a cannot attach to an EC2 instance in us-east-1b. Your pod gets stuck in ContainerCreating state with errors like "Volume is already exclusively attached to one node and cannot be attached to another."
+This creates a problem: many storage backends only work within a single zone. An AWS EBS volume in us-east-1a cannot attach to an EC2 instance in us-east-1b. Your pod can remain unschedulable with errors like "had volume node affinity conflict."
 
 ## How WaitForFirstConsumer Solves This
 
 WaitForFirstConsumer delays volume provisioning until a pod using the PVC is scheduled. The scheduler first selects a node for the pod based on resource requirements, affinity rules, and taints. Only after node selection does Kubernetes provision the volume in the same topology (zone/region) as the selected node.
 
-This approach guarantees topology alignment between pod and volume, eliminating scheduling failures caused by zone mismatches.
+This approach aligns pod and volume topology when the scheduler and provisioner can satisfy the constraints, eliminating scheduling failures caused by zone mismatches.
 
 ## Configuring WaitForFirstConsumer Mode
 
@@ -155,16 +155,15 @@ metadata:
   name: regional-ssd
 provisioner: pd.csi.storage.gke.io
 parameters:
-  type: pd-ssd
+  type: pd-balanced
   replication-type: regional-pd
 volumeBindingMode: WaitForFirstConsumer
 allowedTopologies:
 - matchLabelExpressions:
-  - key: topology.kubernetes.io/zone
+  - key: topology.gke.io/zone
     values:
     - us-central1-a
     - us-central1-b
-    - us-central1-c
 ```
 
 Deploy a StatefulSet across zones:
@@ -212,7 +211,7 @@ spec:
           storage: 10Gi
 ```
 
-Each pod gets scheduled to a different zone, and its volume provisions in the matching zone automatically.
+Pods are spread across zones when the cluster has enough eligible nodes, and each regional volume is provisioned with one replica in the pod's zone and another replica in the allowed topology.
 
 ## Allowed Topologies
 
@@ -229,13 +228,10 @@ parameters:
 volumeBindingMode: WaitForFirstConsumer
 allowedTopologies:
 - matchLabelExpressions:
-  - key: topology.kubernetes.io/zone
+  - key: topology.ebs.csi.aws.com/zone
     values:
     - us-east-1a
     - us-east-1b
-  - key: topology.kubernetes.io/region
-    values:
-    - us-east-1
 ```
 
 This configuration only provisions volumes in us-east-1a or us-east-1b zones.
@@ -403,8 +399,9 @@ allowVolumeExpansion: true
 reclaimPolicy: Delete
 EOF
 
-# Update deployments to use new storage class
-kubectl patch pvc app-data -p '{"spec":{"storageClassName":"fast-ssd-waitforfirstconsumer"}}'
+# Existing PVCs cannot be patched to use a different storageClassName.
+# Create replacement PVCs with storageClassName: fast-ssd-waitforfirstconsumer,
+# migrate data, then update workloads to reference the new claim names.
 ```
 
 Note: Changing the storage class of an existing bound PVC doesn't work. You need to create new PVCs with the new storage class and migrate data.
@@ -415,25 +412,30 @@ Track volume topology distribution:
 
 ```bash
 # Show PV topology
-kubectl get pv -o custom-columns=\
-NAME:.metadata.name,\
-ZONE:.spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0].values[0],\
-CAPACITY:.spec.capacity.storage
+kubectl get pv -o json | jq -r '
+  ["NAME","ZONE","CAPACITY"],
+  (.items[] | [
+    .metadata.name,
+    ([.spec.nodeAffinity.required.nodeSelectorTerms[]?.matchExpressions[]? |
+      select(.key | test("(^|/)zone$")) | .values[]] | join(",")),
+    .spec.capacity.storage
+  ]) | @tsv
+'
 
 # Count volumes per zone
 kubectl get pv -o json | jq -r '
   .items[].spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[] |
-  select(.key == "topology.kubernetes.io/zone") |
+  select(.key | test("(^|/)zone$")) |
   .values[]
 ' | sort | uniq -c
 ```
 
-Create Prometheus metrics:
+Create Prometheus metrics if PV topology is copied into labels and kube-state-metrics exposes those labels:
 
 ```promql
 # Volumes per zone
-count by (topology_kubernetes_io_zone) (
-  kube_persistentvolume_labels
+count by (label_topology_kubernetes_io_zone) (
+  kube_persistentvolume_labels{label_topology_kubernetes_io_zone!=""}
 )
 
 # Unbound PVCs waiting for consumer
