@@ -49,11 +49,11 @@ Configure the backend as usual:
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "myorg-terraform-state"
-    key            = "kubernetes/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-state-locks"
+    bucket       = "myorg-terraform-state"
+    key          = "kubernetes/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 ```
@@ -115,7 +115,7 @@ Now you can reference `local.env` throughout your configuration:
 resource "aws_eks_cluster" "main" {
   name     = local.env.cluster_name
   role_arn = aws_iam_role.cluster.arn
-  version  = "1.29"
+  version  = "1.35"
 
   vpc_config {
     subnet_ids              = var.subnet_ids
@@ -160,18 +160,19 @@ resource "helm_release" "ingress_nginx" {
 
   create_namespace = true
 
-  set {
-    name  = "controller.replicaCount"
-    value = local.env.ingress_replicas
-  }
-
-  set {
-    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-ssl-cert"
-    value = var.acm_certificate_arns[terraform.workspace]
-  }
+  set = [
+    {
+      name  = "controller.replicaCount"
+      value = tostring(local.env.ingress_replicas)
+    },
+    {
+      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-ssl-cert"
+      value = var.acm_certificate_arns[terraform.workspace]
+    }
+  ]
 }
 
-resource "kubernetes_resource_quota" "default" {
+resource "kubernetes_resource_quota_v1" "default" {
   metadata {
     name      = "default-quota"
     namespace = "default"
@@ -222,7 +223,7 @@ resource "helm_release" "debug_tools" {
 }
 
 # Stricter network policies only in production
-resource "kubernetes_network_policy" "strict_default_deny" {
+resource "kubernetes_network_policy_v1" "strict_default_deny" {
   count = terraform.workspace == "production" ? 1 : 0
 
   metadata {
@@ -282,15 +283,16 @@ stages:
   - apply
 
 .terraform_template: &terraform_template
-  image: hashicorp/terraform:1.7
+  image: hashicorp/terraform:1.15
   before_script:
-    - terraform init
+    - terraform init -input=false
 
 plan:dev:
   <<: *terraform_template
   stage: plan
+  variables:
+    TF_WORKSPACE: dev
   script:
-    - terraform workspace select dev
     - terraform plan -var-file="environments/dev.tfvars" -out=plan.tfplan
   artifacts:
     paths:
@@ -301,8 +303,9 @@ plan:dev:
 apply:dev:
   <<: *terraform_template
   stage: apply
+  variables:
+    TF_WORKSPACE: dev
   script:
-    - terraform workspace select dev
     - terraform apply -auto-approve -var-file="environments/dev.tfvars"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
@@ -312,8 +315,9 @@ apply:dev:
 apply:production:
   <<: *terraform_template
   stage: apply
+  variables:
+    TF_WORKSPACE: production
   script:
-    - terraform workspace select production
     - terraform apply -auto-approve -var-file="environments/production.tfvars"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
@@ -333,11 +337,14 @@ variable "confirm_environment" {
   default     = ""
 }
 
-resource "null_resource" "workspace_guard" {
-  count = terraform.workspace == "production" && var.confirm_environment != "production" ? 1 : 0
+resource "terraform_data" "workspace_guard" {
+  input = terraform.workspace
 
-  provisioner "local-exec" {
-    command = "echo 'ERROR: Set confirm_environment=production for production changes' && exit 1"
+  lifecycle {
+    precondition {
+      condition     = terraform.workspace != "production" || var.confirm_environment == "production"
+      error_message = "Set confirm_environment=production for production changes."
+    }
   }
 }
 ```
