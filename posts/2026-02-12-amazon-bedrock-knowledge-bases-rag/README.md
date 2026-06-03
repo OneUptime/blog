@@ -305,16 +305,25 @@ You can filter retrieval results based on document metadata. This is useful when
 metadata = {
     'metadataAttributes': {
         'department': {
-            'value': 'engineering',
-            'type': 'STRING'
+            'value': {
+                'type': 'STRING',
+                'stringValue': 'engineering'
+            },
+            'includeForEmbedding': True
         },
         'document_type': {
-            'value': 'policy',
-            'type': 'STRING'
+            'value': {
+                'type': 'STRING',
+                'stringValue': 'policy'
+            },
+            'includeForEmbedding': True
         },
         'year': {
-            'value': 2026,
-            'type': 'NUMBER'
+            'value': {
+                'type': 'NUMBER',
+                'numberValue': 2026
+            },
+            'includeForEmbedding': False
         }
     }
 }
@@ -464,26 +473,34 @@ print(f"\nAnswer: {result['answer']}")
 
 ## Monitoring RAG Performance
 
-Track your knowledge base usage and quality through CloudWatch, and set up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for comprehensive observability across your AI infrastructure.
+Track your knowledge base ingestion quality through CloudWatch Logs, and set up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) for comprehensive observability across your AI infrastructure.
 
 ```python
-cloudwatch = boto3.client('cloudwatch')
+import time
 
-# Monitor retrieval latency
-response = cloudwatch.get_metric_statistics(
-    Namespace='AWS/Bedrock',
-    MetricName='Retrieve.Latency',
-    Dimensions=[
-        {'Name': 'KnowledgeBaseId', 'Value': knowledge_base_id}
-    ],
-    StartTime='2026-02-11T00:00:00Z',
-    EndTime='2026-02-12T00:00:00Z',
-    Period=3600,
-    Statistics=['Average', 'p99']
+logs = boto3.client('logs', region_name='us-east-1')
+
+# Query recent knowledge base ingestion failures
+query = logs.start_query(
+    logGroupName='/aws/bedrock/knowledge-bases/company-docs',
+    startTime=int(time.time()) - 24 * 60 * 60,
+    endTime=int(time.time()),
+    queryString="""
+fields @timestamp, event.ingestion_job_id, event.document_location.s3_location.uri, event.status, event.status_reasons
+| filter level = "ERROR" or event.status = "FAILED"
+| sort @timestamp desc
+| limit 20
+"""
 )
 
-for dp in sorted(response['Datapoints'], key=lambda x: x['Timestamp']):
-    print(f"{dp['Timestamp'].strftime('%H:%M')}: avg={dp['Average']:.0f}ms")
+while True:
+    results = logs.get_query_results(queryId=query['queryId'])
+    if results['status'] in ['Complete', 'Failed', 'Cancelled']:
+        break
+    time.sleep(1)
+
+for row in results.get('results', []):
+    print({field['field']: field['value'] for field in row})
 ```
 
 ## Wrapping Up
