@@ -14,11 +14,11 @@ DynamoDB gives you two ways to pay for throughput: on-demand and provisioned. Pi
 
 ### On-Demand Mode
 
-On-demand is the pay-per-request model. You don't set any capacity limits. DynamoDB serves whatever traffic comes in and bills you per read and write request.
+On-demand is the pay-per-request model. You don't set any capacity limits. DynamoDB automatically scales with your traffic and bills you per read and write request.
 
 The pricing (in us-east-1 as of 2026):
-- Write request unit: $1.25 per million
-- Read request unit: $0.25 per million
+- Write request unit: $0.625 per million
+- Read request unit: $0.125 per million
 
 There's no minimum charge beyond the actual requests. If your table gets zero traffic for a week, you pay nothing for throughput (you still pay for storage).
 
@@ -38,9 +38,9 @@ Let's do the math with a real example. Say your app does 10 million writes and 5
 
 **On-Demand cost:**
 ```text
-Writes: 10M x $1.25 / 1M = $12.50
-Reads:  50M x $0.25 / 1M = $12.50
-Total:  $25.00/month
+Writes: 10M x $0.625 / 1M = $6.25
+Reads:  50M x $0.125 / 1M = $6.25
+Total:  $12.50/month
 ```
 
 **Provisioned cost (steady workload, ~3.86 writes/sec, ~19.3 reads/sec):**
@@ -53,7 +53,7 @@ RCU cost: 20 x $0.00013 x 730 hours = $1.90
 Total: $3.80/month
 ```
 
-That's a 6.5x cost difference. Provisioned mode wins decisively for steady, predictable workloads.
+That's about a 3.3x cost difference. Provisioned mode wins decisively for steady, predictable workloads.
 
 But now consider a spiky workload - an e-commerce site with flash sales:
 
@@ -62,7 +62,7 @@ Normal: 5 writes/sec, 25 reads/sec
 Flash sale: 500 writes/sec, 2,500 reads/sec (10-minute spikes, 3x/month)
 ```
 
-With provisioned mode, you'd need to provision for peak or use auto scaling (which has a delay). With on-demand, you just pay for what you use without worrying about throttling during spikes.
+With provisioned mode, you'd need to provision for peak or use auto scaling (which has a delay). With on-demand, you just pay for what you use, and DynamoDB can instantly handle up to double the previous peak traffic your table has reached. If a spike exceeds that, especially within 30 minutes of the previous peak, you can still see throttling.
 
 ## When to Choose On-Demand
 
@@ -74,7 +74,7 @@ On-demand is the right choice when:
 - **Development environments** - traffic is low and sporadic
 - **Infrequent access** - tables that go hours or days without traffic
 
-The key advantage is simplicity. No capacity planning, no auto scaling configuration, no risk of throttling from under-provisioning.
+The key advantage is simplicity. No capacity planning, no auto scaling configuration, and much lower risk of throttling from under-provisioning.
 
 ## When to Choose Provisioned
 
@@ -89,8 +89,8 @@ Provisioned mode makes sense when:
 With reserved capacity, the savings are even more dramatic:
 
 ```text
-1-year reserved: ~40% savings over regular provisioned pricing
-3-year reserved: ~60% savings over regular provisioned pricing
+1-year reserved: up to ~54% savings over regular provisioned pricing
+3-year reserved: up to ~77% savings over regular provisioned pricing
 ```
 
 ## Auto Scaling with Provisioned Mode
@@ -98,8 +98,14 @@ With reserved capacity, the savings are even more dramatic:
 You don't have to pick a fixed capacity. Auto scaling adjusts your provisioned capacity based on actual usage:
 
 ```javascript
-// AWS SDK - configure auto scaling for a DynamoDB table
-const applicationAutoScaling = new AWS.ApplicationAutoScaling();
+import {
+  ApplicationAutoScalingClient,
+  PutScalingPolicyCommand,
+  RegisterScalableTargetCommand
+} from "@aws-sdk/client-application-auto-scaling";
+
+// AWS SDK for JavaScript v3 - configure auto scaling for a DynamoDB table
+const applicationAutoScaling = new ApplicationAutoScalingClient({});
 
 // Register the table as a scalable target
 const registerParams = {
@@ -110,7 +116,7 @@ const registerParams = {
   MaxCapacity: 500
 };
 
-await applicationAutoScaling.registerScalableTarget(registerParams).promise();
+await applicationAutoScaling.send(new RegisterScalableTargetCommand(registerParams));
 
 // Define the scaling policy
 const policyParams = {
@@ -129,7 +135,7 @@ const policyParams = {
   }
 };
 
-await applicationAutoScaling.putScalingPolicy(policyParams).promise();
+await applicationAutoScaling.send(new PutScalingPolicyCommand(policyParams));
 ```
 
 Auto scaling has a catch though: it reacts to traffic changes, it doesn't predict them. There's a delay of a minute or two between the traffic spike and the capacity increase. During that gap, you might see throttling.
@@ -138,7 +144,7 @@ Auto scaling has a catch though: it reacts to traffic changes, it doesn't predic
 
 You can switch between on-demand and provisioned mode, but there are limits:
 
-- You can switch once every 24 hours
+- You can switch from provisioned to on-demand up to four times in a rolling 24-hour period; switching back to provisioned is allowed once during that same window
 - Switching to provisioned requires you to set initial capacity values
 - Switching to on-demand takes effect immediately
 
@@ -154,7 +160,7 @@ Here's how to check your table's current mode and switch:
 # Check current capacity mode
 
 aws dynamodb describe-table --table-name Orders \
-  --query "Table.BillingModeSummary.BillingMode"
+  --query "Table.BillingModeSummary.BillingMode || 'PROVISIONED'"
 
 # Switch to provisioned mode
 aws dynamodb update-table \
@@ -184,23 +190,25 @@ Here's a quick analysis approach:
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 cloudwatch = boto3.client('cloudwatch')
+period_seconds = 3600
 
 # Get consumed write capacity for the last 7 days
 response = cloudwatch.get_metric_statistics(
     Namespace='AWS/DynamoDB',
     MetricName='ConsumedWriteCapacityUnits',
     Dimensions=[{'Name': 'TableName', 'Value': 'Orders'}],
-    StartTime=datetime.utcnow() - timedelta(days=7),
-    EndTime=datetime.utcnow(),
-    Period=3600,  # 1-hour intervals
-    Statistics=['Average', 'Maximum']
+    StartTime=datetime.now(timezone.utc) - timedelta(days=7),
+    EndTime=datetime.now(timezone.utc),
+    Period=period_seconds,  # 1-hour intervals
+    Statistics=['Sum']
 )
 
 for datapoint in sorted(response['Datapoints'], key=lambda x: x['Timestamp']):
-    print(f"{datapoint['Timestamp']}: avg={datapoint['Average']:.1f}, max={datapoint['Maximum']:.1f}")
+    units_per_second = datapoint['Sum'] / period_seconds
+    print(f"{datapoint['Timestamp']}: avg_units_per_second={units_per_second:.1f}")
 ```
 
 Provision for your peak, add a 20-30% buffer, and set auto scaling to handle anything beyond that.
