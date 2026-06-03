@@ -16,13 +16,13 @@ RDS Storage Auto Scaling solves this by automatically increasing your allocated 
 
 When enabled, RDS monitors your free storage space. If available space drops below 10% of allocated storage and stays low for at least 5 minutes, RDS automatically increases the storage. The increase is the greater of:
 
-- 5 GB
+- 10 GiB
 - 10% of currently allocated storage
-- The storage increase predicted to be needed based on the rate of consumption over the past hour
+- The storage increase predicted to be needed over the next 7 hours based on the rate of consumption over the past hour
 
 The scaling happens in the background with zero downtime. Your application continues reading and writing normally throughout the process.
 
-There's one important limit: you set a **maximum storage threshold** when enabling auto scaling. RDS will never grow beyond this limit. This prevents runaway growth from a data leak, log explosion, or application bug that writes endless data.
+There's one important limit: you set a **maximum storage threshold** when enabling auto scaling. RDS will never grow beyond this limit. This value must be at least 10% higher than the currently allocated storage, and AWS recommends setting it at least 26% higher to avoid threshold warning events. This prevents runaway growth from a data leak, log explosion, or application bug that writes endless data.
 
 ## Enabling Storage Auto Scaling on a New Instance
 
@@ -77,8 +77,8 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
   --metric-name FreeStorageSpace \
   --dimensions Name=DBInstanceIdentifier,Value=my-database \
-  --start-time $(date -u -v-30d +%Y-%m-%dT%H:%M:%S) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --period 86400 \
   --statistics Average \
   --output table
@@ -96,16 +96,13 @@ For most production databases, I'd recommend setting the max to at least 3x your
 
 There are a few things to be aware of:
 
-**Cooldown period**: After a storage auto scaling event, RDS won't scale again for at least 6 hours. This is to prevent rapid successive increases. It means you need enough headroom for 6 hours of growth in each scaling increment.
+**Cooldown period**: After a storage modification, RDS won't scale again for at least 6 hours, or until storage optimization has completed on the instance, whichever is longer. This is to prevent rapid successive increases. It means you need enough headroom for that window of growth in each scaling increment.
 
 **Cannot scale down**: Storage auto scaling only goes up, never down. Once RDS increases your storage, you're paying for that larger amount even if you free up space. There's no automatic shrinking.
 
-**Maximum size limits**: Different storage types have different maximums:
-- gp2/gp3: 64 TB
-- io1/io2: 64 TB
-- Magnetic: 3 TB
+**Maximum size limits**: The maximum storage threshold can't exceed the maximum allocated storage for the database engine, storage type, and DB instance class. Many gp2, gp3, io1, and io2 configurations can scale up to 64 TiB, while some engines and editions have lower limits. Magnetic storage does not support storage auto scaling.
 
-**Aurora is different**: Aurora handles storage completely differently. It auto-scales by design and doesn't use this feature. Aurora storage grows in 10 GB increments up to 128 TB without any configuration.
+**Aurora is different**: Aurora handles storage completely differently. It auto-scales by design and doesn't use this feature. Aurora storage grows in 10 GiB increments, with a maximum cluster volume size that depends on the engine version. Many versions support 128 TiB, and newer Aurora MySQL and Aurora PostgreSQL versions support up to 256 TiB.
 
 ## Monitoring Storage Auto Scaling Events
 
@@ -145,6 +142,34 @@ If you want to enable storage auto scaling on every RDS instance in your account
 
 ```python
 import boto3
+from botocore.exceptions import ClientError
+
+def get_storage_autoscaling_limit(rds, instance_id, storage_type):
+    """Return the max supported storage size for this instance, or None."""
+    try:
+        response = rds.describe_valid_db_instance_modifications(
+            DBInstanceIdentifier=instance_id
+        )
+    except ClientError as exc:
+        print(f"Skipping {instance_id} (could not check valid modifications: {exc})")
+        return None
+
+    storage_options = response['ValidDBInstanceModificationsMessage'].get('Storage', [])
+    for option in storage_options:
+        if option.get('StorageType') != storage_type:
+            continue
+
+        if not option.get('SupportsStorageAutoscaling'):
+            return None
+
+        max_sizes = [
+            size['To']
+            for size in option.get('StorageSize', [])
+            if 'To' in size
+        ]
+        return max(max_sizes) if max_sizes else None
+
+    return None
 
 def enable_auto_scaling_all_instances(multiplier=3):
     """Enable storage auto scaling on all RDS instances.
@@ -153,37 +178,49 @@ def enable_auto_scaling_all_instances(multiplier=3):
     """
     rds = boto3.client('rds')
 
-    instances = rds.describe_db_instances()['DBInstances']
+    paginator = rds.get_paginator('describe_db_instances')
 
-    for instance in instances:
-        instance_id = instance['DBInstanceIdentifier']
-        current_storage = instance['AllocatedStorage']
-        current_max = instance.get('MaxAllocatedStorage')
-        engine = instance['Engine']
+    for page in paginator.paginate():
+        for instance in page['DBInstances']:
+            instance_id = instance['DBInstanceIdentifier']
+            current_storage = instance['AllocatedStorage']
+            current_max = instance.get('MaxAllocatedStorage')
+            engine = instance['Engine']
+            storage_type = instance['StorageType']
 
-        # Skip Aurora instances (they handle storage differently)
-        if 'aurora' in engine:
-            print(f"Skipping {instance_id} (Aurora handles storage automatically)")
-            continue
+            # Skip Aurora instances (they handle storage differently)
+            if 'aurora' in engine:
+                print(f"Skipping {instance_id} (Aurora handles storage automatically)")
+                continue
 
-        # Calculate the target max storage
-        target_max = current_storage * multiplier
+            max_supported = get_storage_autoscaling_limit(
+                rds,
+                instance_id,
+                storage_type
+            )
+            if max_supported is None:
+                print(f"Skipping {instance_id} (storage auto scaling unsupported)")
+                continue
 
-        # Cap at 64TB for gp2/gp3/io1
-        target_max = min(target_max, 65536)
+            # Calculate the target max storage
+            target_max = min(current_storage * multiplier, max_supported)
 
-        if current_max and current_max >= target_max:
-            print(f"Skipping {instance_id} (already has max {current_max}GB)")
-            continue
+            if target_max <= current_storage:
+                print(f"Skipping {instance_id} (already at max supported storage)")
+                continue
 
-        print(f"Enabling auto scaling on {instance_id}: "
-              f"current={current_storage}GB, max={target_max}GB")
+            if current_max and current_max >= target_max:
+                print(f"Skipping {instance_id} (already has max {current_max}GB)")
+                continue
 
-        rds.modify_db_instance(
-            DBInstanceIdentifier=instance_id,
-            MaxAllocatedStorage=target_max,
-            ApplyImmediately=True
-        )
+            print(f"Enabling auto scaling on {instance_id}: "
+                  f"current={current_storage}GB, max={target_max}GB")
+
+            rds.modify_db_instance(
+                DBInstanceIdentifier=instance_id,
+                MaxAllocatedStorage=target_max,
+                ApplyImmediately=True
+            )
 
 enable_auto_scaling_all_instances()
 ```
