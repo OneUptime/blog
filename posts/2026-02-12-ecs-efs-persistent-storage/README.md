@@ -10,7 +10,7 @@ Description: A complete guide to mounting Amazon EFS file systems in ECS tasks f
 
 Containers are ephemeral by design. When a task stops, any data written to the container's filesystem disappears. That's usually fine for stateless applications, but some workloads need persistent storage - file uploads, shared configuration, machine learning models, or CMS content. Amazon EFS gives you a network file system that multiple ECS tasks can mount simultaneously, and the data persists regardless of task lifecycle.
 
-EFS works with both Fargate and EC2 launch types. Tasks mount the file system like any NFS share, and your application reads and writes files as if they were local. Let's set this up.
+EFS works with both EC2 launch type tasks and Fargate tasks on Linux platform version 1.4.0 or later. Tasks mount the file system like any NFS share, and your application reads and writes files as if they were local. Let's set this up.
 
 ## Creating an EFS File System
 
@@ -26,7 +26,7 @@ resource "aws_efs_file_system" "app_data" {
   # Performance mode: generalPurpose (default) or maxIO
   performance_mode = "generalPurpose"
 
-  # Throughput mode: bursting (default) or provisioned
+  # Throughput mode: bursting (Terraform default), provisioned, or elastic
   throughput_mode = "bursting"
 
   lifecycle_policy {
@@ -124,7 +124,7 @@ Now mount the EFS file system in your task definition. You define the volume at 
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
   "memory": "1024",
-  "executionRoleArn": "arn:aws:iam::123456789:role/ecsTaskExecutionRole",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
   "volumes": [
     {
       "name": "uploads",
@@ -142,7 +142,7 @@ Now mount the EFS file system in your task definition. You define the volume at 
   "containerDefinitions": [
     {
       "name": "app",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/app:latest",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/app:latest",
       "essential": true,
       "portMappings": [
         { "containerPort": 8080, "protocol": "tcp" }
@@ -225,7 +225,7 @@ When using IAM authorization (which you should for security), the task role need
 ```hcl
 resource "aws_iam_role_policy" "efs_access" {
   name = "efs-access"
-  role = aws_iam_role.task_role.id
+  role = aws_iam_role.task.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -249,7 +249,7 @@ resource "aws_iam_role_policy" "efs_access" {
 }
 ```
 
-You also need an EFS file system policy to allow IAM-based access.
+You can also add an EFS file system policy to restrict IAM-based access at the file system.
 
 ```hcl
 resource "aws_efs_file_system_policy" "app_data" {
@@ -261,7 +261,7 @@ resource "aws_efs_file_system_policy" "app_data" {
       {
         Effect = "Allow"
         Principal = {
-          AWS = aws_iam_role.task_role.arn
+          AWS = aws_iam_role.task.arn
         }
         Action = [
           "elasticfilesystem:ClientMount",
@@ -287,13 +287,31 @@ One of EFS's biggest strengths is that multiple tasks can mount the same file sy
 # Multiple services sharing the same EFS volume
 resource "aws_ecs_service" "web" {
   name            = "web-frontend"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 3
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets         = var.private_subnet_ids
+    security_groups = [aws_security_group.ecs_tasks.id]
+  }
+
   # All 3 tasks mount the same EFS uploads directory
 }
 
 resource "aws_ecs_service" "processor" {
   name            = "image-processor"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.processor.arn
   desired_count   = 2
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets         = var.private_subnet_ids
+    security_groups = [aws_security_group.ecs_tasks.id]
+  }
+
   # These 2 tasks also mount the same EFS uploads directory
   # They process files uploaded by the web service
 }
@@ -301,13 +319,15 @@ resource "aws_ecs_service" "processor" {
 
 ## Performance Considerations
 
-EFS performance depends on the mode you choose:
+EFS performance depends on the throughput and performance modes you choose:
 
-**Bursting throughput** - Free tier. Throughput scales with file system size. A 1 TB file system gets about 50 MB/s baseline with bursting up to 100 MB/s.
+**Elastic throughput** - AWS's recommended default for spiky or unpredictable workloads. Throughput scales automatically with workload activity, and you pay for the amount of data read and written.
+
+**Bursting throughput** - No separate throughput charge. Throughput scales with file system size. A 1 TiB file system gets about 50 MiB/s baseline write throughput with bursting up to 100 MiB/s write throughput.
 
 **Provisioned throughput** - You pay for a specific throughput level regardless of storage size. Use this for workloads with predictable I/O needs.
 
-**Max I/O performance mode** - Higher aggregate throughput but slightly higher latency. Good for highly parallelized workloads with many tasks.
+**Max I/O performance mode** - A previous-generation performance type with higher per-operation latency than General Purpose. AWS recommends General Purpose for all file systems, and Max I/O is not supported with Elastic throughput.
 
 ```hcl
 # EFS with provisioned throughput for predictable performance
@@ -317,12 +337,12 @@ resource "aws_efs_file_system" "high_throughput" {
   performance_mode = "generalPurpose"
   throughput_mode  = "provisioned"
 
-  # 100 MB/s provisioned throughput
+  # 100 MiB/s provisioned throughput
   provisioned_throughput_in_mibps = 100
 }
 ```
 
-For most ECS workloads, bursting mode is fine. If you're doing heavy I/O (like serving many large files or processing lots of uploads), consider provisioned throughput.
+For many ECS workloads, Elastic throughput is a good default. If you're doing heavy, predictable I/O (like serving many large files or processing lots of uploads), consider provisioned throughput.
 
 ## Read-Only Mounts
 
