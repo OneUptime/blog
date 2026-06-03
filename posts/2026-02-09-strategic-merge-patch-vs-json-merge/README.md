@@ -33,6 +33,7 @@ import (
     "context"
 
     corev1 "k8s.io/api/core/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/types"
     "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -54,7 +55,13 @@ func strategicMergePatch(ctx context.Context, k8sClient client.Client) error {
         }
     }`)
 
-    pod := &corev1.Pod{}
+    pod := &corev1.Pod{
+        ObjectMeta: metav1.ObjectMeta{
+            Name:      "mypod",
+            Namespace: "default",
+        },
+    }
+
     return k8sClient.Patch(ctx, pod, client.RawPatch(types.StrategicMergePatchType, patch))
 }
 ```
@@ -89,7 +96,13 @@ func jsonMergePatch(ctx context.Context, k8sClient client.Client) error {
         }
     }`)
 
-    pod := &corev1.Pod{}
+    pod := &corev1.Pod{
+        ObjectMeta: metav1.ObjectMeta{
+            Name:      "mypod",
+            Namespace: "default",
+        },
+    }
+
     return k8sClient.Patch(ctx, pod, client.RawPatch(types.MergePatchType, patch))
 }
 ```
@@ -341,7 +354,7 @@ func addEnvVar(ctx context.Context, k8sClient client.Client) error {
 }
 ```
 
-**Working with built-in Kubernetes resources**: They have merge key annotations.
+**Working with built-in Kubernetes resources**: Many built-in resource fields define patch strategies and merge keys.
 
 ## When to Use JSON Merge Patch
 
@@ -377,7 +390,7 @@ func replaceEntireContainerList(ctx context.Context, k8sClient client.Client) er
 }
 ```
 
-**Updating CRDs without merge annotations**: Custom resources without strategic merge directives.
+**Updating CRDs**: Strategic merge patch is not supported for custom resources, so use JSON merge patch or JSON Patch.
 
 **Simple map updates**: When you only need to update maps, not arrays.
 
