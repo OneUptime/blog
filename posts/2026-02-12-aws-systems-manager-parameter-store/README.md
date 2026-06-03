@@ -250,15 +250,16 @@ ssm = boto3.client('ssm')
 # Load config at cold start (cached across invocations)
 def load_config():
     env = os.environ.get('ENVIRONMENT', 'staging')
-    response = ssm.get_parameters_by_path(
+    config = {}
+    paginator = ssm.get_paginator('get_parameters_by_path')
+    for page in paginator.paginate(
         Path=f'/myapp/{env}',
         Recursive=True,
         WithDecryption=True
-    )
-    config = {}
-    for param in response['Parameters']:
-        key = param['Name'].split('/')[-1]
-        config[key] = param['Value']
+    ):
+        for param in page['Parameters']:
+            key = param['Name'].split('/')[-1]
+            config[key] = param['Value']
     return config
 
 CONFIG = load_config()
@@ -278,15 +279,15 @@ For ECS tasks, you can inject parameters directly into container environment var
   "containerDefinitions": [
     {
       "name": "myapp",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:latest",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest",
       "secrets": [
         {
           "name": "DB_HOST",
-          "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/myapp/production/database-host"
+          "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/production/database-host"
         },
         {
           "name": "DB_PASSWORD",
-          "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/myapp/production/database-password"
+          "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/production/database-password"
         }
       ]
     }
@@ -294,7 +295,7 @@ For ECS tasks, you can inject parameters directly into container environment var
 }
 ```
 
-The ECS task execution role needs `ssm:GetParameters` permission plus `kms:Decrypt` if using SecureString.
+The ECS task execution role needs `ssm:GetParameters` permission plus `kms:Decrypt` if the parameter uses a customer managed KMS key.
 
 ## Updating Parameters
 
@@ -317,14 +318,14 @@ aws ssm get-parameter-history \
 Advanced-tier parameters support policies for automatic expiration and notification:
 
 ```bash
-# Create a parameter that expires in 30 days
+# Create a parameter with an expiration policy
 aws ssm put-parameter \
   --name "/myapp/temp/api-key" \
   --type SecureString \
   --value "temp-key-123" \
   --tier Advanced \
   --policies '[
-    {"Type":"Expiration","Version":"1.0","Attributes":{"Timestamp":"2026-03-15T00:00:00.000Z"}},
+    {"Type":"Expiration","Version":"1.0","Attributes":{"Timestamp":"2026-07-03T00:00:00.000Z"}},
     {"Type":"ExpirationNotification","Version":"1.0","Attributes":{"Before":"15","Unit":"Days"}}
   ]'
 ```
