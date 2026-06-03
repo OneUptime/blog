@@ -95,12 +95,12 @@ The critical fields:
 
 | Field | Meaning |
 |---|---|
-| `Action` | Add, Modify, or Remove |
+| `Action` | What CloudFormation will do, such as Add, Modify, Remove, Import, Dynamic, or SyncWithActual |
 | `Replacement` | True, False, or Conditional |
 | `LogicalResourceId` | Which resource is affected |
 | `Details` | What specifically is changing |
 
-**Pay close attention to Replacement.** When `Replacement` is `True`, CloudFormation will delete the existing resource and create a new one. For an EC2 instance, that means a new instance with a new IP. For an RDS database, that means data loss unless you have backups.
+**Pay close attention to Replacement.** When `Replacement` is `True`, CloudFormation will create a replacement resource and then remove the old one unless an update replace policy retains or snapshots it. For an EC2 instance, that means a new instance with a new IP. For an RDS database, that means a data-loss risk unless you retain, snapshot, or restore the data.
 
 ## A Friendlier View
 
@@ -189,7 +189,7 @@ aws cloudformation deploy \
 # 4. wait stack-update-complete
 ```
 
-The difference is that `deploy` doesn't give you a chance to review before executing. For production updates, creating change sets manually is safer.
+By default, `deploy` doesn't give you a chance to review before executing. You can add `--no-execute-changeset` to make `deploy` create the change set and stop before execution. For production updates, creating and reviewing change sets before execution is safer.
 
 ## Change Set Scenarios
 
@@ -204,7 +204,7 @@ BucketName: my-app-data-v1
 BucketName: my-app-data-v2
 ```
 
-The change set will show `Replacement: True`. This means the old bucket (and all its contents) will be deleted and a new empty bucket created. You probably don't want this.
+The change set will show `Replacement: True`. This means CloudFormation will create a new empty bucket and try to delete the old bucket unless an update replace policy retains it. S3 bucket deletion only succeeds when the bucket is empty, so a bucket with contents can cause the update to fail. You probably don't want this.
 
 ### Scenario 2: Adding a new resource
 
