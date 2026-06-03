@@ -8,7 +8,7 @@ Description: Implement the Cognito Post Authentication Lambda trigger to track s
 
 ---
 
-The Post Authentication trigger fires after Cognito successfully validates a user's credentials - the password was correct, MFA passed, and the user is now authenticated. This is where you record successful sign-ins, update user profiles, detect unusual patterns, and synchronize data. Since authentication already succeeded, this trigger can't block sign-in, but it can log, update, and notify.
+The Post Authentication trigger fires after Cognito successfully validates a user's credentials - the password was correct, MFA passed, and the user is now authenticated. This is where you record successful sign-ins, update user profiles, detect unusual patterns, and synchronize data. Cognito invokes this trigger before returning tokens to the client, so the trigger should return the event successfully and quickly.
 
 ## When the Trigger Fires
 
@@ -27,8 +27,8 @@ resource "aws_lambda_function" "post_auth" {
   function_name    = "cognito-post-authentication"
   role             = aws_iam_role.post_auth_role.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
-  timeout          = 10
+  runtime          = "nodejs22.x"
+  timeout          = 5
 
   environment {
     variables = {
@@ -147,7 +147,7 @@ async function updateLastLogin(userId, timestamp) {
 
 ## Use Case 2: New Device Detection
 
-Alert users when they sign in from a new device:
+Alert users when they sign in from a new device. Cognito only sets `newDeviceUsed` when remembered devices are configured as `Always` or `User Opt-In` on the user pool:
 
 ```javascript
 // new-device-alert.mjs
@@ -378,7 +378,7 @@ export const handler = async (event) => {
 
 ## Performance Notes
 
-Post Authentication runs after the user is already authenticated, so it doesn't affect the perceived sign-in speed as much as Pre Authentication. However, the Cognito API waits for the Lambda to complete before returning tokens to the client. Keep it under 10 seconds.
+Post Authentication runs after the user is already authenticated, so it doesn't affect the perceived sign-in speed as much as Pre Authentication. However, the Cognito API waits for the Lambda to complete before returning tokens to the client. Cognito requires the Lambda trigger to respond within 5 seconds, and you can't change this timeout value.
 
 For actions that can tolerate some delay (like analytics), consider writing to an SQS queue and processing asynchronously:
 
@@ -406,4 +406,4 @@ For the trigger that fires before authentication, see [Cognito Lambda triggers f
 
 ## Summary
 
-Post Authentication is your observability point for successful sign-ins. Track login activity, detect new devices, sync user data, feed analytics pipelines, and reset security counters. Since it can't block authentication (the user is already signed in), focus on making it fast and resilient - use parallel execution, don't throw errors, and offload heavy processing to queues. Combined with Pre Authentication for security gates, you get a complete picture of who's signing in, when, and from where.
+Post Authentication is your observability point for successful sign-ins. Track login activity, detect new devices, sync user data, feed analytics pipelines, and reset security counters. Because Cognito is still waiting for this trigger before returning tokens, focus on making it fast and resilient - use parallel execution, don't throw errors, and offload heavy processing to queues. Combined with Pre Authentication for security gates, you get a complete picture of who's signing in, when, and from where.
