@@ -212,9 +212,13 @@ rules:
 - apiGroups: [""]
   resources:
     - configmaps
-  verbs: ["get", "list", "watch", "create", "update", "patch"]
+  verbs: ["get", "update", "patch"]
   resourceNames:
     - application-operator-leader  # Specific ConfigMap name
+- apiGroups: [""]
+  resources:
+    - configmaps
+  verbs: ["create"]  # Create cannot be restricted by resourceNames
 ```
 
 Alternatively, grant access to all ConfigMaps if the operator creates the ConfigMap dynamically:
@@ -257,7 +261,7 @@ Leader election still occurs in `operator-system` namespace only.
 
 ## Implementing Leader Election Health Checks
 
-Add readiness probe to expose leader status:
+Add a readiness probe for the operator health endpoint:
 
 ```yaml
 containers:
@@ -274,7 +278,7 @@ containers:
     periodSeconds: 10
 ```
 
-The operator's health endpoint should report ready only when it has acquired the lease or when leader election is disabled.
+The operator's health endpoint should report the process ready when its dependencies are initialized. Use a separate health check or metric to expose whether this replica currently holds the lease.
 
 ## Handling Leader Election Failures
 
@@ -311,6 +315,7 @@ Simulate leader failure to verify failover:
 # Get current leader pod
 LEADER_POD=$(kubectl get lease application-operator -n operator-system \
   -o jsonpath='{.spec.holderIdentity}')
+LEADER_POD=${LEADER_POD%%_*}
 
 echo "Current leader: $LEADER_POD"
 
@@ -346,18 +351,18 @@ spec:
 Query leader election metrics:
 
 ```promql
-# Time since last leader election transition
-time() - controller_runtime_leader_election_transition_seconds
+# Slow-path leader election renewals
+rate(leader_election_slowpath_total[5m])
 
 # Leader status (1 = leader, 0 = follower)
-controller_runtime_leader_election_is_leader
+leader_election_master_status
 ```
 
 Alert on leader election failures:
 
 ```yaml
 - alert: OperatorLeaderElectionFailed
-  expr: controller_runtime_leader_election_is_leader == 0
+  expr: max by (name) (leader_election_master_status) == 0
   for: 5m
   labels:
     severity: warning
