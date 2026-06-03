@@ -18,7 +18,7 @@ Before jumping into code, let's get clear on the components:
 
 - **Connection**: The physical link between your data center and an AWS Direct Connect location
 - **Virtual Interface (VIF)**: A logical interface on top of the connection. There are three types - private (for VPC access), public (for AWS public services), and transit (for Transit Gateway)
-- **Direct Connect Gateway**: A globally available gateway that lets you connect VIFs to VPCs in any region
+- **Direct Connect Gateway**: A globally available gateway that lets you connect VIFs to VPCs in supported regions
 - **LAG (Link Aggregation Group)**: Bundles multiple connections for redundancy and increased bandwidth
 
 ## Creating the Direct Connect Connection
@@ -40,7 +40,7 @@ resource "aws_dx_connection" "main" {
 }
 ```
 
-The `location` code corresponds to a specific AWS Direct Connect location. You can find the list in the AWS console or via the CLI with `aws directconnect describe-locations`. Common bandwidth options are 1Gbps and 10Gbps for dedicated connections, or 50Mbps to 500Mbps for hosted connections.
+The `location` code corresponds to a specific AWS Direct Connect location. You can find the list in the AWS console or via the CLI with `aws directconnect describe-locations`. Dedicated connections support 1Gbps, 10Gbps, 100Gbps, and 400Gbps ports. Hosted connection speeds are provided by Direct Connect Partners and range from 50Mbps through 25Gbps, depending on the partner and location.
 
 ## Setting Up a Link Aggregation Group
 
@@ -52,7 +52,6 @@ resource "aws_dx_lag" "main" {
   name                  = "primary-lag"
   connections_bandwidth = "1Gbps"
   location              = "EqDC2"
-  number_of_connections = 2
   force_destroy         = false
 
   tags = {
@@ -60,9 +59,26 @@ resource "aws_dx_lag" "main" {
   }
 }
 
-# Associate an existing connection with the LAG
+# Create another connection for the LAG
+resource "aws_dx_connection" "secondary" {
+  name      = "dc-to-aws-secondary"
+  bandwidth = "1Gbps"
+  location  = "EqDC2"
+
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
+
+# Associate existing connections with the LAG
 resource "aws_dx_connection_association" "main" {
   connection_id = aws_dx_connection.main.id
+  lag_id        = aws_dx_lag.main.id
+}
+
+resource "aws_dx_connection_association" "secondary" {
+  connection_id = aws_dx_connection.secondary.id
   lag_id        = aws_dx_lag.main.id
 }
 ```
@@ -120,12 +136,12 @@ resource "aws_dx_public_virtual_interface" "main" {
   address_family = "ipv4"
   bgp_asn        = 65000
 
-  # Public VIFs require public IP prefixes
-  amazon_address   = "175.45.176.1/30"
-  customer_address = "175.45.176.2/30"
+  # Public VIFs require public IP addresses for the BGP peering session
+  amazon_address   = "203.0.113.1/30"
+  customer_address = "203.0.113.2/30"
 
   route_filter_prefixes = [
-    "54.239.0.0/16",   # example AWS prefix
+    "203.0.113.0/30",  # example customer prefix to advertise
   ]
 
   tags = {
@@ -134,11 +150,19 @@ resource "aws_dx_public_virtual_interface" "main" {
 }
 ```
 
+The `route_filter_prefixes` are the public prefixes you will advertise to AWS over BGP, not the AWS service prefixes you want to receive. In production, use public IP prefixes that you own or that AWS has provided for this purpose.
+
 ## Transit Virtual Interface
 
 If you're using AWS Transit Gateway (and you probably should be for multi-VPC architectures), transit VIFs connect your Direct Connect to the Transit Gateway:
 
 ```hcl
+# Create a separate DX Gateway for transit connectivity
+resource "aws_dx_gateway" "transit" {
+  name            = "transit-dx-gateway"
+  amazon_side_asn = "64513"
+}
+
 # Create a transit virtual interface
 resource "aws_dx_transit_virtual_interface" "main" {
   connection_id = aws_dx_connection.main.id
@@ -147,7 +171,7 @@ resource "aws_dx_transit_virtual_interface" "main" {
   vlan           = 300
   address_family = "ipv4"
   bgp_asn        = 65000
-  dx_gateway_id  = aws_dx_gateway.main.id
+  dx_gateway_id  = aws_dx_gateway.transit.id
 
   tags = {
     Name = "primary-transit-vif"
@@ -156,7 +180,7 @@ resource "aws_dx_transit_virtual_interface" "main" {
 
 # Associate DX Gateway with Transit Gateway
 resource "aws_dx_gateway_association" "transit" {
-  dx_gateway_id         = aws_dx_gateway.main.id
+  dx_gateway_id         = aws_dx_gateway.transit.id
   associated_gateway_id = aws_ec2_transit_gateway.main.id
 
   allowed_prefixes = [
@@ -165,6 +189,8 @@ resource "aws_dx_gateway_association" "transit" {
   ]
 }
 ```
+
+Use a separate Direct Connect Gateway for transit gateway associations if your existing gateway is attached to a private VIF or associated with virtual private gateways. AWS does not allow attaching a Direct Connect Gateway to a transit gateway when that gateway is already associated with a virtual private gateway or attached to a private VIF.
 
 ## Associating with VPCs
 
