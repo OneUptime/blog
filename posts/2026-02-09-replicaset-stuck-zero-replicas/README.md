@@ -14,7 +14,7 @@ This guide walks through diagnosing ReplicaSet availability problems, identifyin
 
 ## Understanding ReplicaSet Replica Management
 
-Deployments create ReplicaSets that manage pod replicas. The ReplicaSet controller creates pods matching the desired count and monitors their status. Available replicas are pods that are Running and pass readiness checks. When the available count stays at zero, either pods aren't being created, they're failing to start, or they're failing readiness checks.
+Deployments create ReplicaSets that manage pod replicas. The ReplicaSet controller creates pods matching the desired count and monitors their status. Available replicas are pods that are Ready for at least the Deployment's `minReadySeconds` value. When the available count stays at zero, either pods aren't being created, they're failing to start, or they're failing readiness checks.
 
 Multiple layers can block replica availability. Scheduling failures prevent pods from being placed on nodes. Image pull errors stop containers from starting. Resource constraints cause OOMKills. Readiness probe failures mark running pods as unavailable. Each requires different diagnostic approaches.
 
@@ -166,7 +166,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
       - name: app
@@ -214,7 +220,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
       - name: app
@@ -273,7 +285,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
       - name: app
@@ -313,7 +331,7 @@ Fix PVC issues before pods can start.
 # Create missing StorageClass
 kubectl apply -f storageclass.yaml
 
-# Or update Deployment to use existing StorageClass
+# Or update Deployment to use an existing bound PVC
 kubectl patch deployment myapp -n default -p \
   '{"spec":{"template":{"spec":{"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"app-data-fixed"}}]}}}}'
 ```
@@ -337,8 +355,10 @@ fi
 echo "Checking Deployment: $NAMESPACE/$DEPLOYMENT"
 
 # Get desired vs available replicas
-DESIRED=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o jsonpath='{.spec.replicas}')
-AVAILABLE=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o jsonpath='{.status.availableReplicas}')
+DESIRED=$(kubectl get deployment "$DEPLOYMENT" -n "$NAMESPACE" -o jsonpath='{.spec.replicas}')
+AVAILABLE=$(kubectl get deployment "$DEPLOYMENT" -n "$NAMESPACE" -o jsonpath='{.status.availableReplicas}')
+SELECTOR=$(kubectl get deployment "$DEPLOYMENT" -n "$NAMESPACE" -o json | \
+  jq -r '.spec.selector.matchLabels | to_entries | map("\(.key)=\(.value)") | join(",")')
 
 echo "Desired: $DESIRED, Available: ${AVAILABLE:-0}"
 
@@ -346,34 +366,34 @@ if [ "${AVAILABLE:-0}" -eq 0 ]; then
   echo "⚠️  Zero replicas available!"
 
   # Check pods
-  echo "\nPod Status:"
-  kubectl get pods -n $NAMESPACE -l app=$DEPLOYMENT
+  printf "\nPod Status:\n"
+  kubectl get pods -n "$NAMESPACE" -l "$SELECTOR"
 
   # Check for scheduling issues
-  PENDING=$(kubectl get pods -n $NAMESPACE -l app=$DEPLOYMENT -o json | \
+  PENDING=$(kubectl get pods -n "$NAMESPACE" -l "$SELECTOR" -o json | \
     jq -r '.items[] | select(.status.phase=="Pending") | .metadata.name' | wc -l)
 
   if [ $PENDING -gt 0 ]; then
-    echo "\n⚠️  $PENDING pods pending - checking scheduling..."
-    kubectl describe pods -n $NAMESPACE -l app=$DEPLOYMENT | \
+    printf "\n⚠️  %s pods pending - checking scheduling...\n" "$PENDING"
+    kubectl describe pods -n "$NAMESPACE" -l "$SELECTOR" | \
       grep -A 5 "Events:" | grep "FailedScheduling"
   fi
 
   # Check for image pull errors
-  IMAGEPULL=$(kubectl get pods -n $NAMESPACE -l app=$DEPLOYMENT -o json | \
+  IMAGEPULL=$(kubectl get pods -n "$NAMESPACE" -l "$SELECTOR" -o json | \
     jq -r '.items[] | select(.status.containerStatuses[0].state.waiting.reason=="ImagePullBackOff") | .metadata.name' | wc -l)
 
   if [ $IMAGEPULL -gt 0 ]; then
-    echo "\n⚠️  $IMAGEPULL pods with image pull errors"
+    printf "\n⚠️  %s pods with image pull errors\n" "$IMAGEPULL"
   fi
 
   # Check for crashes
-  CRASHES=$(kubectl get pods -n $NAMESPACE -l app=$DEPLOYMENT -o json | \
+  CRASHES=$(kubectl get pods -n "$NAMESPACE" -l "$SELECTOR" -o json | \
     jq -r '.items[] | select(.status.containerStatuses[0].state.waiting.reason=="CrashLoopBackOff") | .metadata.name' | wc -l)
 
   if [ $CRASHES -gt 0 ]; then
-    echo "\n⚠️  $CRASHES pods crashing"
-    kubectl logs -n $NAMESPACE -l app=$DEPLOYMENT --tail=20
+    printf "\n⚠️  %s pods crashing\n" "$CRASHES"
+    kubectl logs -n "$NAMESPACE" -l "$SELECTOR" --tail=20
   fi
 fi
 ```
