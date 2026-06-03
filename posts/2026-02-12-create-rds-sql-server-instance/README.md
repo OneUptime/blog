@@ -17,18 +17,17 @@ AWS offers four editions of SQL Server on RDS:
 - **SQL Server Express**: Free edition with a 10 GB database size limit. Good for small apps and testing.
 - **SQL Server Web**: Licensed for public-facing web workloads only. Cheaper than Standard.
 - **SQL Server Standard**: Full-featured edition for most production workloads.
-- **SQL Server Enterprise**: All features including Always On availability groups and advanced security. Most expensive.
+- **SQL Server Enterprise**: Highest-feature edition with advanced SQL Server capabilities. Most expensive.
 
 The edition you choose affects pricing significantly. Express is included in the instance cost. Web is roughly 50% cheaper than Standard. Enterprise can be 4-5x the cost of Standard.
 
 ## Licensing Options
 
-RDS SQL Server supports two licensing models:
+Standard Amazon RDS for SQL Server uses License Included licensing:
 
 - **License Included**: AWS includes the SQL Server license in the hourly instance cost. This is the default and simplest option.
-- **Bring Your Own License (BYOL)**: Use your existing SQL Server licenses. This requires Software Assurance and involves license mobility through Microsoft.
 
-For most teams, License Included is the way to go. BYOL only makes sense if you have existing Enterprise licenses with Software Assurance that would otherwise go unused.
+RDS Custom for SQL Server supports License Included and Bring Your Own Media (BYOM), where you provide your own SQL Server installation media and licensing. For most teams creating a standard RDS SQL Server instance, License Included is the way to go.
 
 ## Creating the Instance - Console
 
@@ -40,9 +39,9 @@ In the RDS console, click "Create database," choose Standard create, and select 
 
 SQL Server on RDS has some specific constraints:
 
-- Minimum instance size varies by edition (Express can use db.t3.micro, Enterprise needs at least db.r5.large)
-- Multi-AZ uses SQL Server Database Mirroring or Always On (depending on edition)
-- Storage sizes have minimums: 20 GB for Express/Web/Standard, 200 GB for Enterprise
+- Minimum instance size varies by edition (Express can use db.t3.micro, Enterprise generally needs an xlarge class or larger)
+- Multi-AZ uses SQL Server Database Mirroring, Always On availability groups, or block-level replication, depending on version and edition
+- Storage sizes have minimums: 20 GiB for Express, Web, Standard, and Enterprise
 
 Pick your instance class based on workload.
 
@@ -51,8 +50,8 @@ Edition     | Min Instance    | Typical Production
 ------------|-----------------|-------------------
 Express     | db.t3.micro     | db.t3.medium
 Web         | db.t3.small     | db.m6i.large
-Standard    | db.t3.small     | db.r6i.xlarge
-Enterprise  | db.r5.large     | db.r6i.2xlarge
+Standard    | db.r6i.large    | db.r6i.xlarge
+Enterprise  | db.r6i.xlarge   | db.r6i.2xlarge
 ```
 
 ### Settings
@@ -67,7 +66,7 @@ Set up identifiers and credentials:
 
 SQL Server workloads often have high I/O demands, especially for OLTP. Consider gp3 for most workloads and io1 for heavy transactional systems.
 
-One important note: SQL Server on RDS uses a single EBS volume for both data and log files. You can't separate them onto different volumes like you might on a self-managed instance. This makes choosing the right IOPS configuration especially important.
+One important note: SQL Server on RDS uses EBS volumes for database and log storage. By default, data and log files use the default data volume, but supported configurations can add extra storage volumes and place data and log files on different drive letters. This makes choosing the right IOPS configuration especially important.
 
 ### Connectivity
 
@@ -84,7 +83,7 @@ Source: sg-your-app-security-group
 
 ### Windows Authentication
 
-If you need Windows Authentication, you can integrate RDS SQL Server with AWS Managed Microsoft AD. This is configured in the "Microsoft SQL Server Windows authentication" section during creation. You'll need an existing Managed AD directory.
+If you need Windows Authentication, you can integrate RDS SQL Server with AWS Managed Microsoft AD or a self-managed Active Directory domain. This is configured in the "Microsoft SQL Server Windows authentication" section during creation. You'll need an existing directory.
 
 ## Creating via CLI
 
@@ -95,7 +94,7 @@ aws rds create-db-instance \
   --db-instance-identifier my-app-sqlserver \
   --db-instance-class db.r6i.large \
   --engine sqlserver-se \
-  --engine-version 16.00.4135.4.v1 \
+  --engine-version 16.00.4245.2.v1 \
   --license-model license-included \
   --master-username admin \
   --master-user-password 'YourStrongPassword123!' \
@@ -200,11 +199,11 @@ aws rds add-option-to-option-group \
 
 ### Transparent Data Encryption (TDE)
 
-Enterprise edition supports TDE for encrypting data files at the database level. This is on top of the EBS-level encryption that all RDS instances support.
+SQL Server 2022 Standard and Enterprise editions support TDE for encrypting data files at the database level. Older supported versions have edition-specific TDE support, so check the RDS option group documentation for your version. This is on top of the storage-level encryption that RDS supports.
 
 ### SQL Server Agent
 
-RDS includes SQL Server Agent for scheduling jobs. You can use it for maintenance tasks, ETL processes, and scheduled scripts.
+RDS includes SQL Server Agent for Enterprise, Standard, and Web editions. You can use it for maintenance tasks, ETL processes, and scheduled scripts.
 
 ## Performance Considerations
 
