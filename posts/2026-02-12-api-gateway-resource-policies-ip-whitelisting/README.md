@@ -8,11 +8,11 @@ Description: Learn how to use API Gateway resource policies to restrict API acce
 
 ---
 
-Sometimes you need to lock down an API to specific IP addresses - internal office networks, partner systems, or known infrastructure IPs. API Gateway resource policies let you do this at the gateway level, before any authorizer or Lambda function runs. It's the first line of defense and the most efficient way to block unwanted traffic.
+Sometimes you need to lock down an API to specific IP addresses - internal office networks, partner systems, or known infrastructure IPs. API Gateway resource policies let you do this at the gateway level, so unwanted traffic can be denied before it reaches your Lambda function or backend integration. It's the first line of defense and the most efficient way to block unwanted traffic.
 
 ## What Resource Policies Are
 
-Resource policies are JSON policy documents attached to your API Gateway REST API. They work like S3 bucket policies or SQS queue policies - they define who can invoke the API and under what conditions. The policy gets evaluated before any other authorization mechanism.
+Resource policies are JSON policy documents attached to your API Gateway REST API. They work like S3 bucket policies or SQS queue policies - they define who can invoke the API and under what conditions. How the policy is evaluated depends on the authorization type configured on the method.
 
 You can use resource policies to:
 - Allow or deny access based on source IP addresses
@@ -40,7 +40,7 @@ Here's a policy that allows access only from specific IPs:
           "aws:SourceIp": [
             "203.0.113.0/24",
             "198.51.100.42/32",
-            "10.0.0.0/8"
+            "2001:db8:1234::/48"
           ]
         }
       }
@@ -116,7 +116,7 @@ You can restrict your API to only be accessible from specific VPCs through VPC e
       "Resource": "arn:aws:execute-api:us-east-1:123456789012:abc123api/*",
       "Condition": {
         "StringNotEquals": {
-          "aws:sourceVpc": "vpc-0abc123def456"
+          "aws:SourceVpc": "vpc-0abc123def456"
         }
       }
     },
@@ -143,7 +143,7 @@ Or restrict to a specific VPC endpoint:
       "Resource": "arn:aws:execute-api:us-east-1:123456789012:abc123api/*",
       "Condition": {
         "StringNotEquals": {
-          "aws:sourceVpce": "vpce-0abc123def456"
+          "aws:SourceVpce": "vpce-0abc123def456"
         }
       }
     },
@@ -184,7 +184,7 @@ The calling account also needs an IAM policy that allows `execute-api:Invoke` on
 
 ## Combining Conditions
 
-You can combine multiple conditions for more granular control. This policy allows access only from specific IPs AND only during business hours:
+You can combine multiple conditions for more granular control. This policy allows access only from specific IPs AND only between two UTC timestamps:
 
 ```json
 {
@@ -374,11 +374,11 @@ When your resource policy isn't working as expected:
 1. **Always redeploy** after changing the policy. Changes don't take effect without a new deployment.
 2. **Check the resource ARN format** - it's `arn:aws:execute-api:region:account:api-id/stage/method/path`.
 3. **Test from the right IP** - use `curl ifconfig.me` to verify your public IP.
-4. **Watch for CloudFront** - if your API is behind CloudFront, the source IP is CloudFront's IP, not the client's.
+4. **Watch for CloudFront** - if you put your own CloudFront distribution in front of API Gateway, make sure you understand which IP address API Gateway receives and test the policy through that path.
 5. **Check logs** - enable execution logging temporarily to see policy evaluation results.
 
 For ongoing monitoring of blocked requests and security events on your APIs, see our post on [API monitoring best practices](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 
-Resource policies are the most efficient way to restrict API access by IP. They evaluate before any other authorization, which means blocked requests never touch your authorizers or backend. The main thing to remember is the redeployment requirement - without it, your policy changes sit idle. For VPC-internal APIs, combine resource policies with VPC endpoints for the strongest isolation. And always test your policy from an IP that should be blocked to make sure the deny is working.
+Resource policies are the most efficient way to restrict API access by IP. Explicit denies can stop blocked requests before they touch your authorizers or backend. The main thing to remember is the redeployment requirement - without it, your policy changes sit idle. For VPC-internal APIs, combine resource policies with VPC endpoints for the strongest isolation. And always test your policy from an IP that should be blocked to make sure the deny is working.
