@@ -18,7 +18,7 @@ FSx for Windows File Server provides:
 
 - **Native SMB protocol** (SMB 2.0 through 3.1.1)
 - **Active Directory integration** (AWS Managed AD or self-managed)
-- **DFS namespaces and replication** support
+- **DFS namespaces** support (DFS replication is supported on Single-AZ 1)
 - **Shadow copies** (Windows Previous Versions)
 - **Data deduplication** for storage efficiency
 - **Automatic backups** with configurable retention
@@ -29,7 +29,7 @@ FSx for Windows File Server provides:
 
 **Single-AZ**: One file server in one AZ. Cheaper, but no automatic failover. Good for development and non-critical workloads.
 
-**Multi-AZ**: Active and standby file servers in different AZs with automatic failover. DNS-based failover is transparent to clients. Required for production workloads.
+**Multi-AZ**: Active and standby file servers in different AZs with automatic failover. DNS-based failover is transparent to Windows clients. Recommended for most production workloads.
 
 ## Prerequisites
 
@@ -115,13 +115,13 @@ aws fsx create-file-system \
 
 Key parameters:
 
-- **ThroughputCapacity**: MB/s of throughput. Options: 8, 16, 32, 64, 128, 256, 512, 1024, 2048. This also determines the number of IOPS.
+- **ThroughputCapacity**: MB/s of throughput. Options: 8, 16, 32, 64, 128, 256, 512, 1024, 2048. SSD IOPS are provisioned separately, with automatic provisioning at 3 IOPS per GiB by default.
 - **DeploymentType**: `SINGLE_AZ_2` for single-AZ, `MULTI_AZ_1` for multi-AZ
 - **AuditLogConfiguration**: Send file access audit logs to CloudWatch Logs
 
 ## Security Group Configuration
 
-FSx for Windows needs several ports open:
+FSx for Windows needs several ports open. Allow SMB and WinRM from clients and administrators, and allow the required Active Directory traffic between FSx and your domain controllers:
 
 ```bash
 # Create security group for FSx
@@ -157,13 +157,55 @@ aws ec2 authorize-security-group-ingress \
   --source-group "sg-0ad-servers"
 
 aws ec2 authorize-security-group-ingress \
+  --group-id "$FSX_SG" --protocol udp --port 88 \
+  --source-group "sg-0ad-servers"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "$FSX_SG" --protocol tcp --port 464 \
+  --source-group "sg-0ad-servers"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "$FSX_SG" --protocol udp --port 464 \
+  --source-group "sg-0ad-servers"
+
+aws ec2 authorize-security-group-ingress \
   --group-id "$FSX_SG" --protocol tcp --port 389 \
+  --source-group "sg-0ad-servers"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "$FSX_SG" --protocol udp --port 389 \
   --source-group "sg-0ad-servers"
 
 aws ec2 authorize-security-group-ingress \
   --group-id "$FSX_SG" --protocol tcp --port 636 \
   --source-group "sg-0ad-servers"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "$FSX_SG" --protocol udp --port 123 \
+  --source-group "sg-0ad-servers"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "$FSX_SG" --protocol tcp --port 135 \
+  --source-group "sg-0ad-servers"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "$FSX_SG" --protocol tcp --port 3268 \
+  --source-group "sg-0ad-servers"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "$FSX_SG" --protocol tcp --port 3269 \
+  --source-group "sg-0ad-servers"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "$FSX_SG" --protocol tcp --port 9389 \
+  --source-group "sg-0ad-servers"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "$FSX_SG" --protocol tcp --port 49152-65535 \
+  --source-group "sg-0ad-servers"
 ```
+
+Mirror these rules on the security groups and firewalls for your domain controllers, DNS servers, FSx clients, and FSx administrators. For `SINGLE_AZ_2` and `MULTI_AZ_1`, outbound TCP 9389 from FSx is required.
 
 ## Mapping the Drive on Windows Instances
 
@@ -194,17 +236,17 @@ FSx creates a default share called `share`. You can create additional shares usi
 
 ```powershell
 # Connect to the FSx file system's remote PowerShell endpoint
-$FSxDns = "amznfsxabc123.corp.example.com"
+$FSxRemoteEndpoint = "amznfsxctlyaa1k.corp.example.com"
 
 # Create a new file share
-Invoke-Command -ComputerName $FSxDns -ConfigurationName FSxRemoteAdmin -ScriptBlock {
+Invoke-Command -ComputerName $FSxRemoteEndpoint -ConfigurationName FSxRemoteAdmin -ScriptBlock {
     New-FSxSmbShare -Name "Engineering" -Path "D:\Engineering" `
         -Description "Engineering team file share" `
         -FolderEnumerationMode AccessBased
 }
 
 # Create another share with specific permissions
-Invoke-Command -ComputerName $FSxDns -ConfigurationName FSxRemoteAdmin -ScriptBlock {
+Invoke-Command -ComputerName $FSxRemoteEndpoint -ConfigurationName FSxRemoteAdmin -ScriptBlock {
     New-FSxSmbShare -Name "Finance" -Path "D:\Finance" `
         -Description "Finance team file share" `
         -FolderEnumerationMode AccessBased
@@ -225,13 +267,18 @@ Shadow copies let users restore previous versions of files directly from Windows
 
 ```powershell
 # Enable shadow copies via FSx remote administration
-Invoke-Command -ComputerName $FSxDns -ConfigurationName FSxRemoteAdmin -ScriptBlock {
+Invoke-Command -ComputerName $FSxRemoteEndpoint -ConfigurationName FSxRemoteAdmin -ScriptBlock {
     # Set shadow copy storage (max 10% of volume)
-    Set-FSxShadowStorage -MaxSize "10%"
+    Set-FSxShadowStorage -Default
+}
 
-    # Create a shadow copy schedule
-    Set-FSxShadowCopySchedule -Type Custom `
-        -SchedulePattern "Mon,Tue,Wed,Thu,Fri:07:00,12:00,17:00"
+# Create shadow copy schedule triggers on the client
+$Trigger1 = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At 07:00
+$Trigger2 = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At 12:00
+$Trigger3 = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At 17:00
+
+Invoke-Command -ComputerName $FSxRemoteEndpoint -ConfigurationName FSxRemoteAdmin -ScriptBlock {
+    Set-FSxShadowCopySchedule -ScheduledTaskTriggers $Using:Trigger1,$Using:Trigger2,$Using:Trigger3 -Confirm:$false
 }
 ```
 
@@ -240,7 +287,7 @@ Invoke-Command -ComputerName $FSxDns -ConfigurationName FSxRemoteAdmin -ScriptBl
 For file shares with lots of duplicate data (like user home directories or shared document libraries), deduplication can save significant storage:
 
 ```powershell
-Invoke-Command -ComputerName $FSxDns -ConfigurationName FSxRemoteAdmin -ScriptBlock {
+Invoke-Command -ComputerName $FSxRemoteEndpoint -ConfigurationName FSxRemoteAdmin -ScriptBlock {
     # Enable deduplication
     Enable-FSxDedup
 
@@ -306,6 +353,14 @@ resource "aws_security_group" "fsx" {
     protocol        = "tcp"
     security_groups = [var.client_security_group_id]
     description     = "WinRM"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = [var.vpc_cidr_block]
+    description = "Allow FSx outbound traffic to clients, DNS, and Active Directory"
   }
 }
 ```
