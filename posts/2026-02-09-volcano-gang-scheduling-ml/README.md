@@ -8,7 +8,7 @@ Description: Configure Volcano batch scheduler on Kubernetes for gang scheduling
 
 ---
 
-Distributed ML training requires all worker pods to start simultaneously. If only some workers start, they waste resources waiting for others that may never come due to insufficient cluster capacity. Gang scheduling solves this by ensuring all pods in a job start together or none start at all. Volcano provides production-grade gang scheduling for Kubernetes workloads.
+Many distributed ML training jobs require all worker pods to start together. If only some workers start, they waste resources waiting for others that may never come due to insufficient cluster capacity. Gang scheduling solves this by ensuring the required number of pods in a job start together or none start at all. Volcano provides production-grade gang scheduling for Kubernetes workloads.
 
 This guide shows you how to deploy Volcano and use it for ML training jobs.
 
@@ -22,7 +22,7 @@ Traditional Kubernetes scheduling can lead to deadlocks:
 4. Cluster is deadlocked
 
 Gang scheduling prevents this by:
-- Scheduling all pods of a job together atomically
+- Scheduling the required pods of a job together atomically
 - Releasing resources if the full gang can't be scheduled
 - Supporting preemption for higher-priority jobs
 
@@ -80,7 +80,7 @@ spec:
     memory: "800Gi"
     nvidia.com/gpu: "32"
 
-  # Reclaim resources from lower priority jobs
+  # Allow other queues to reclaim this queue's extra resources
   reclaimable: true
 
   # Resource reservation
@@ -191,7 +191,7 @@ spec:
               nvidia.com/gpu: 1
           env:
           - name: MASTER_ADDR
-            value: "pytorch-distributed-training-master-0"
+            value: "pytorch-distributed-training-master-0.pytorch-distributed-training"
           - name: MASTER_PORT
             value: "23456"
 
@@ -208,9 +208,9 @@ spec:
         - name: pytorch
           image: pytorch/pytorch:2.0.1-cuda11.8-cudnn8-runtime
           command:
-          - python
-          - /workspace/train.py
-          - --role=worker
+          - sh
+          - -c
+          - python /workspace/train.py --role=worker --world-size=4 --rank=$((VC_TASK_INDEX + 1))
           resources:
             requests:
               cpu: "4"
@@ -222,7 +222,7 @@ spec:
               nvidia.com/gpu: 1
           env:
           - name: MASTER_ADDR
-            value: "pytorch-distributed-training-master-0"
+            value: "pytorch-distributed-training-master-0.pytorch-distributed-training"
           - name: MASTER_PORT
             value: "23456"
 ```
@@ -340,6 +340,9 @@ spec:
   minAvailable: 5  # 1 chief + 4 workers
   schedulerName: volcano
   queue: ml-training
+  plugins:
+    env: []
+    svc: []
 
   tasks:
   - name: chief
@@ -351,21 +354,13 @@ spec:
         - name: tensorflow
           image: tensorflow/tensorflow:2.14.0-gpu
           command:
-          - python
-          - /workspace/train.py
-          env:
-          - name: TF_CONFIG
-            value: |
-              {
-                "cluster": {
-                  "chief": ["tensorflow-distributed-chief-0:2222"],
-                  "worker": ["tensorflow-distributed-worker-0:2222",
-                            "tensorflow-distributed-worker-1:2222",
-                            "tensorflow-distributed-worker-2:2222",
-                            "tensorflow-distributed-worker-3:2222"]
-                },
-                "task": {"type": "chief", "index": 0}
-              }
+          - sh
+          - -c
+          - |
+            CHIEF_HOST=`cat /etc/volcano/chief.host | sed 's/$/&:2222/g' | sed 's/^/"/;s/$/"/' | tr "\n" ","`;
+            WORKER_HOST=`cat /etc/volcano/worker.host | sed 's/$/&:2222/g' | sed 's/^/"/;s/$/"/' | tr "\n" ","`;
+            export TF_CONFIG={\"cluster\":{\"chief\":[${CHIEF_HOST}],\"worker\":[${WORKER_HOST}]},\"task\":{\"type\":\"chief\",\"index\":${VC_TASK_INDEX}}};
+            python /workspace/train.py
           resources:
             limits:
               nvidia.com/gpu: 1
@@ -381,8 +376,13 @@ spec:
         - name: tensorflow
           image: tensorflow/tensorflow:2.14.0-gpu
           command:
-          - python
-          - /workspace/train.py
+          - sh
+          - -c
+          - |
+            CHIEF_HOST=`cat /etc/volcano/chief.host | sed 's/$/&:2222/g' | sed 's/^/"/;s/$/"/' | tr "\n" ","`;
+            WORKER_HOST=`cat /etc/volcano/worker.host | sed 's/$/&:2222/g' | sed 's/^/"/;s/$/"/' | tr "\n" ","`;
+            export TF_CONFIG={\"cluster\":{\"chief\":[${CHIEF_HOST}],\"worker\":[${WORKER_HOST}]},\"task\":{\"type\":\"worker\",\"index\":${VC_TASK_INDEX}}};
+            python /workspace/train.py
           resources:
             limits:
               nvidia.com/gpu: 1
@@ -417,13 +417,6 @@ spec:
 
   # Allow resource borrowing from other queues
   reclaimable: true
-
-  # Reclaim policy when exceeding guarantee
-  deserved:
-    resource:
-      cpu: "100"
-      memory: "400Gi"
-      nvidia.com/gpu: "16"
 ```
 
 ## Monitoring Volcano Scheduler
@@ -432,13 +425,14 @@ Query Volcano metrics:
 
 ```promql
 # Pending jobs
-volcano_queue_job_pending
+volcano_queue_pod_group_pending_count
 
 # Running jobs
-volcano_queue_job_running
+volcano_queue_pod_group_running_count
 
 # Queue allocated resources
-volcano_queue_allocated{resource="nvidia.com/gpu"}
+volcano_queue_allocated_milli_cpu
+volcano_queue_allocated_memory_bytes
 
 # Scheduling latency
 volcano_e2e_scheduling_latency_milliseconds
