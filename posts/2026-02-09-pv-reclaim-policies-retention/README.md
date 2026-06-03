@@ -31,7 +31,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-delete
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   encrypted: "true"
@@ -44,7 +44,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-retain
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   encrypted: "true"
@@ -223,7 +223,7 @@ spec:
 
           while true; do
             # Get all bound PVCs
-            kubectl get pvc -A -o json | jq -r '.items[] |
+            kubectl get pvc -A -o json | jq -c '.items[] |
               select(.status.phase=="Bound") |
               {
                 namespace: .metadata.namespace,
@@ -237,8 +237,8 @@ spec:
               PV=$(echo $pvc | jq -r '.pv')
 
               # Check for retention label
-              RETENTION=$(kubectl get pvc -n $NAMESPACE $NAME -o jsonpath='{.metadata.labels.retention}')
-              ENVIRONMENT=$(kubectl get pvc -n $NAMESPACE $NAME -o jsonpath='{.metadata.labels.environment}')
+              RETENTION=$(kubectl get pvc -n "$NAMESPACE" "$NAME" -o jsonpath='{.metadata.labels.retention}')
+              ENVIRONMENT=$(kubectl get pvc -n "$NAMESPACE" "$NAME" -o jsonpath='{.metadata.labels.environment}')
 
               DESIRED_POLICY="Delete"
 
@@ -247,12 +247,12 @@ spec:
               fi
 
               # Get current policy
-              CURRENT_POLICY=$(kubectl get pv $PV -o jsonpath='{.spec.persistentVolumeReclaimPolicy}')
+              CURRENT_POLICY=$(kubectl get pv "$PV" -o jsonpath='{.spec.persistentVolumeReclaimPolicy}')
 
               # Update if different
               if [ "$CURRENT_POLICY" != "$DESIRED_POLICY" ]; then
                 echo "Updating PV $PV from $CURRENT_POLICY to $DESIRED_POLICY"
-                kubectl patch pv $PV -p "{\"spec\":{\"persistentVolumeReclaimPolicy\":\"$DESIRED_POLICY\"}}"
+                kubectl patch pv "$PV" -p "{\"spec\":{\"persistentVolumeReclaimPolicy\":\"$DESIRED_POLICY\"}}"
               fi
             done
 
@@ -311,13 +311,13 @@ kubectl apply -f reclaim-controller-rbac.yaml
 kubectl apply -f reclaim-controller-deployment.yaml
 
 # Test with labeled PVCs
-kubectl label pvc postgres-data retention=critical
+kubectl label pvc postgres-data-recovered retention=critical
 kubectl logs -n storage-system deployment/reclaim-policy-controller
 ```
 
 ## Implementing Backup-Before-Delete Policies
 
-For Delete policy volumes, implement backup verification before deletion using finalizers.
+For Delete policy volumes, implement backup verification before deletion using a validating admission webhook.
 
 ```yaml
 # backup-finalizer-webhook.yaml
@@ -374,7 +374,7 @@ kubectl get pvc -A -l environment=production -o json | \
     {pv: .metadata.name, policy: .spec.persistentVolumeReclaimPolicy}'
 ```
 
-Create Prometheus alerts for policy violations.
+Create Prometheus alerts for policy violations. This example assumes kube-state-metrics is configured to expose PVC labels.
 
 ```yaml
 # prometheus-alerts.yaml
@@ -389,9 +389,14 @@ spec:
     rules:
     - alert: ProductionPVWithDeletePolicy
       expr: |
-        kube_persistentvolume_claim_ref{label_environment="production"}
+        label_replace(
+          kube_persistentvolumeclaim_labels{label_environment="production"}
+          * on(namespace, persistentvolumeclaim) group_left(volumename)
+          kube_persistentvolumeclaim_info,
+          "persistentvolume", "$1", "volumename", "(.+)"
+        )
         * on(persistentvolume) group_left()
-        (kube_persistentvolume_reclaim_policy{policy="Delete"} == 1)
+        kube_persistentvolume_info{reclaim_policy="Delete"}
       for: 5m
       labels:
         severity: warning
