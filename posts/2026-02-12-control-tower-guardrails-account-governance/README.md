@@ -16,7 +16,7 @@ AWS has been rebranding guardrails as "controls," but most people still call the
 
 There are three categories of guardrails:
 
-**Preventive guardrails** stop actions before they happen. They're implemented as Service Control Policies (SCPs) in AWS Organizations. If a preventive guardrail says "don't delete CloudTrail logs," then nobody in that OU can delete those logs, period - not even account administrators.
+**Preventive guardrails** stop actions before they happen. They're implemented as Service Control Policies (SCPs), Resource Control Policies (RCPs), or declarative policies in AWS Organizations. If a preventive guardrail says "don't delete CloudTrail logs," then nobody in that OU can delete those logs, period - not even account administrators.
 
 **Detective guardrails** don't block anything. Instead, they monitor for violations and flag them. They're implemented as AWS Config rules. If a detective guardrail checks for encrypted S3 buckets and finds an unencrypted one, it marks it as non-compliant.
 
@@ -26,7 +26,7 @@ There are three categories of guardrails:
 
 Beyond the mechanism, guardrails are also categorized by purpose:
 
-- **Mandatory** - Always enabled, can't be turned off. These are the absolute basics.
+- **Mandatory** - Protect AWS Control Tower-deployed resources. They can't be changed through the control APIs, but in landing zone version 4.0 and later, mandatory controls are no longer applied by default.
 - **Strongly recommended** - AWS strongly suggests enabling these. They cover common security best practices.
 - **Elective** - Optional controls for specific use cases.
 
@@ -35,9 +35,8 @@ Beyond the mechanism, guardrails are also categorized by purpose:
 You can list all available controls through the CLI:
 
 ```bash
-# List all available controls in Control Tower
-
-aws controltower list-baselines
+# List all available controls in Control Tower Control Catalog
+aws controlcatalog list-controls --region us-east-1
 
 # List controls enabled on a specific OU
 aws controltower list-enabled-controls \
@@ -57,17 +56,24 @@ There are over 400 controls available, covering areas like:
 
 Let's enable some commonly needed guardrails. First, find the control identifier for what you want.
 
+AWS recommends using the global `arn:aws:controlcatalog:::control/...` identifier returned by the Control Catalog APIs, although older regional `arn:aws:controltower:REGION::control/...` identifiers are still supported for legacy controls.
+
 This command enables a guardrail that detects whether S3 buckets have server-side encryption:
 
 ```bash
-# Enable the S3 encryption detection guardrail
+# Find the current global identifier for the S3 encryption control
+aws controlcatalog list-controls \
+  --region us-east-1 \
+  --query "Controls[?contains(Name, 'S3') && contains(Name, 'encryption')].[Arn,Name]"
+
+# Enable the S3 encryption control with the ARN returned above
 aws controltower enable-control \
-  --control-identifier "arn:aws:controltower:us-east-1::control/AWS-GR_S3_BUCKET_DEFAULT_ENCRYPTION_ENABLED" \
+  --control-identifier "arn:aws:controlcatalog:::control/REPLACE_WITH_CONTROL_ID" \
   --target-identifier "arn:aws:organizations::123456789012:ou/o-abc123/ou-abc1-23456789"
 
 # Check the operation status
 aws controltower get-control-operation \
-  --operation-identifier "op-abc123"
+  --operation-identifier "7691fc5a-de87-4540-8c95-b0aabd56382c"
 ```
 
 Here are some other high-value guardrails worth enabling:
@@ -78,9 +84,9 @@ aws controltower enable-control \
   --control-identifier "arn:aws:controltower:us-east-1::control/AWS-GR_S3_ACCOUNT_LEVEL_PUBLIC_ACCESS_BLOCKS_PERIODIC" \
   --target-identifier "arn:aws:organizations::123456789012:ou/o-abc123/ou-abc1-23456789"
 
-# Prevent IAM users from having console access without MFA
+# Detect IAM users with console access but no MFA
 aws controltower enable-control \
-  --control-identifier "arn:aws:controltower:us-east-1::control/AWS-GR_IAM_USER_MFA_ENABLED" \
+  --control-identifier "arn:aws:controltower:us-east-1::control/AWS-GR_MFA_ENABLED_FOR_IAM_CONSOLE_ACCESS" \
   --target-identifier "arn:aws:organizations::123456789012:ou/o-abc123/ou-abc1-23456789"
 
 # Detect unencrypted EBS volumes
@@ -218,9 +224,9 @@ Proactive guardrails are the newest addition. They use CloudFormation hooks to c
 For example, a proactive guardrail can ensure that every RDS instance must be encrypted. If someone tries to deploy an unencrypted RDS instance through CloudFormation, the deployment fails before the resource is created.
 
 ```bash
-# Enable a proactive control for RDS encryption
+# Enable a proactive control for RDS DB instance encryption
 aws controltower enable-control \
-  --control-identifier "arn:aws:controltower:us-east-1::control/CT.RDS.PR.1" \
+  --control-identifier "arn:aws:controltower:us-east-1::control/CT.RDS.PR.30" \
   --target-identifier "arn:aws:organizations::123456789012:ou/o-abc123/ou-abc1-23456789"
 ```
 
@@ -230,7 +236,7 @@ The limitation is that proactive guardrails only work with CloudFormation. Resou
 
 Don't enable every guardrail at once. Here's a practical rollout strategy:
 
-1. **Start with mandatory guardrails** - These are already enabled by default
+1. **Start with mandatory guardrails** - Review which ones apply to your landing zone version and configuration
 2. **Add strongly recommended guardrails to production OUs** - Focus on encryption, logging, and access controls
 3. **Test elective guardrails in sandbox first** - Some elective guardrails can break workflows if you're not prepared
 4. **Roll out gradually** - Enable guardrails on one OU at a time
@@ -239,19 +245,26 @@ Also, be aware that preventive guardrails apply immediately and can break things
 
 ## Monitoring Guardrail Compliance
 
-Set up EventBridge rules to get notified when guardrails detect non-compliance:
+For detective control compliance changes, subscribe an email address, Lambda function, or another supported endpoint to the `aws-controltower-AggregateSecurityNotifications` SNS topic in the audit account:
+
+```json
+{
+  "TopicArn": "arn:aws:sns:us-east-1:123456789012:aws-controltower-AggregateSecurityNotifications",
+  "Protocol": "lambda",
+  "Endpoint": "arn:aws:lambda:us-east-1:123456789012:function:handle-controltower-compliance"
+}
+```
+
+For landing zone drift notifications on landing zone version 4.0 or later, use EventBridge with the `Drift Detected` detail type:
 
 ```json
 {
   "source": ["aws.controltower"],
-  "detail-type": ["AWS Control Tower Guardrail Non-Compliance"],
-  "detail": {
-    "guardrailBehavior": ["DETECTIVE"]
-  }
+  "detail-type": ["Drift Detected"]
 }
 ```
 
-Wire this to SNS or a Lambda function that posts to your team's Slack channel.
+Wire the SNS subscription or EventBridge rule to a Lambda function that posts to your team's Slack channel.
 
 ## Wrapping Up
 
