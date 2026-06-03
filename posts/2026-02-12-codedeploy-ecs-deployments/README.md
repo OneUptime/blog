@@ -72,19 +72,19 @@ Create the listeners:
 ```bash
 # Production listener on port 443
 aws elbv2 create-listener \
-  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789:loadbalancer/app/myapp-alb/abc123 \
+  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/myapp-alb/abc123 \
   --protocol HTTPS \
   --port 443 \
-  --certificates CertificateArn=arn:aws:acm:us-east-1:123456789:certificate/abc123 \
-  --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/myapp-tg-blue/abc123
+  --certificates CertificateArn=arn:aws:acm:us-east-1:123456789012:certificate/abc123 \
+  --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/myapp-tg-blue/abc123
 
 # Test listener on port 8443
 aws elbv2 create-listener \
-  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789:loadbalancer/app/myapp-alb/abc123 \
+  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/myapp-alb/abc123 \
   --protocol HTTPS \
   --port 8443 \
-  --certificates CertificateArn=arn:aws:acm:us-east-1:123456789:certificate/abc123 \
-  --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/myapp-tg-green/abc123
+  --certificates CertificateArn=arn:aws:acm:us-east-1:123456789012:certificate/abc123 \
+  --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/myapp-tg-green/abc123
 ```
 
 ## Step 2: Configure the ECS Service
@@ -99,7 +99,7 @@ aws ecs create-service \
   --task-definition myapp:1 \
   --desired-count 3 \
   --deployment-controller type=CODE_DEPLOY \
-  --load-balancers "targetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/myapp-tg-blue/abc123,containerName=myapp,containerPort=8080" \
+  --load-balancers "targetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/myapp-tg-blue/abc123,containerName=myapp,containerPort=8080" \
   --network-configuration "awsvpcConfiguration={subnets=[subnet-abc,subnet-def],securityGroups=[sg-123],assignPublicIp=ENABLED}"
 ```
 
@@ -132,10 +132,10 @@ aws deploy create-deployment-group \
           {"name": "myapp-tg-green"}
         ],
         "prodTrafficRoute": {
-          "listenerArns": ["arn:aws:elasticloadbalancing:us-east-1:123456789:listener/app/myapp-alb/abc123/prod123"]
+          "listenerArns": ["arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/myapp-alb/abc123/prod123"]
         },
         "testTrafficRoute": {
-          "listenerArns": ["arn:aws:elasticloadbalancing:us-east-1:123456789:listener/app/myapp-alb/abc123/test123"]
+          "listenerArns": ["arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/myapp-alb/abc123/test123"]
         }
       }
     ]
@@ -167,7 +167,7 @@ Resources:
   - TargetService:
       Type: AWS::ECS::Service
       Properties:
-        TaskDefinition: "arn:aws:ecs:us-east-1:123456789:task-definition/myapp:2"
+        TaskDefinition: "arn:aws:ecs:us-east-1:123456789012:task-definition/myapp:2"
         LoadBalancerInfo:
           ContainerName: "myapp"
           ContainerPort: 8080
@@ -191,7 +191,7 @@ aws deploy create-deployment \
   --revision '{
     "revisionType": "AppSpecContent",
     "appSpecContent": {
-      "content": "{\"version\":0.0,\"Resources\":[{\"TargetService\":{\"Type\":\"AWS::ECS::Service\",\"Properties\":{\"TaskDefinition\":\"arn:aws:ecs:us-east-1:123456789:task-definition/myapp:2\",\"LoadBalancerInfo\":{\"ContainerName\":\"myapp\",\"ContainerPort\":8080},\"PlatformVersion\":\"LATEST\"}}}]}"
+      "content": "{\"version\":0.0,\"Resources\":[{\"TargetService\":{\"Type\":\"AWS::ECS::Service\",\"Properties\":{\"TaskDefinition\":\"arn:aws:ecs:us-east-1:123456789012:task-definition/myapp:2\",\"LoadBalancerInfo\":{\"ContainerName\":\"myapp\",\"ContainerPort\":8080},\"PlatformVersion\":\"LATEST\"}}}]}"
     }
   }'
 ```
@@ -233,17 +233,17 @@ Resources:
   - TargetService:
       Type: AWS::ECS::Service
       Properties:
-        TaskDefinition: "arn:aws:ecs:us-east-1:123456789:task-definition/myapp:2"
+        TaskDefinition: "arn:aws:ecs:us-east-1:123456789012:task-definition/myapp:2"
         LoadBalancerInfo:
           ContainerName: "myapp"
           ContainerPort: 8080
 
 Hooks:
-  - BeforeInstall: "arn:aws:lambda:us-east-1:123456789:function:validate-before-deploy"
-  - AfterInstall: "arn:aws:lambda:us-east-1:123456789:function:smoke-test"
-  - AfterAllowTestTraffic: "arn:aws:lambda:us-east-1:123456789:function:integration-tests"
-  - BeforeAllowTraffic: "arn:aws:lambda:us-east-1:123456789:function:final-validation"
-  - AfterAllowTraffic: "arn:aws:lambda:us-east-1:123456789:function:post-deploy-checks"
+  - BeforeInstall: "arn:aws:lambda:us-east-1:123456789012:function:validate-before-deploy"
+  - AfterInstall: "arn:aws:lambda:us-east-1:123456789012:function:smoke-test"
+  - AfterAllowTestTraffic: "arn:aws:lambda:us-east-1:123456789012:function:integration-tests"
+  - BeforeAllowTraffic: "arn:aws:lambda:us-east-1:123456789012:function:final-validation"
+  - AfterAllowTraffic: "arn:aws:lambda:us-east-1:123456789012:function:post-deploy-checks"
 ```
 
 ## Rolling Back
