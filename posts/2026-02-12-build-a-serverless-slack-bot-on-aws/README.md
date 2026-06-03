@@ -65,6 +65,7 @@ import hmac
 import time
 import os
 import urllib.parse
+import base64
 
 secrets_client = boto3.client('secretsmanager')
 
@@ -78,13 +79,20 @@ def get_credentials():
         _credentials = json.loads(response['SecretString'])
     return _credentials
 
+def get_raw_body(event):
+    """Return the exact request body Slack signed."""
+    body = event.get('body', '')
+    if event.get('isBase64Encoded'):
+        return base64.b64decode(body).decode('utf-8')
+    return body
+
 def handler(event, context):
     # Verify the request is from Slack
     if not verify_slack_signature(event):
         return {'statusCode': 401, 'body': 'Invalid signature'}
 
     # Parse the slash command payload
-    body = urllib.parse.parse_qs(event.get('body', ''))
+    body = urllib.parse.parse_qs(get_raw_body(event))
     command = body.get('command', [''])[0]
     text = body.get('text', [''])[0]
     response_url = body.get('response_url', [''])[0]
@@ -108,16 +116,21 @@ def verify_slack_signature(event):
     creds = get_credentials()
     signing_secret = creds['signing_secret']
 
-    headers = event.get('headers', {})
-    timestamp = headers.get('X-Slack-Request-Timestamp', '')
-    signature = headers.get('X-Slack-Signature', '')
+    headers = {k.lower(): v for k, v in event.get('headers', {}).items()}
+    timestamp = headers.get('x-slack-request-timestamp', '')
+    signature = headers.get('x-slack-signature', '')
+
+    try:
+        request_ts = int(timestamp)
+    except ValueError:
+        return False
 
     # Reject requests older than 5 minutes
-    if abs(time.time() - int(timestamp)) > 300:
+    if abs(time.time() - request_ts) > 300:
         return False
 
     # Compute the expected signature
-    sig_basestring = f"v0:{timestamp}:{event.get('body', '')}"
+    sig_basestring = f"v0:{timestamp}:{get_raw_body(event)}"
     expected = 'v0=' + hmac.new(
         signing_secret.encode(),
         sig_basestring.encode(),
@@ -227,8 +240,11 @@ import json
 import urllib.parse
 
 def handle_interaction(event, context):
+    if not verify_slack_signature(event):
+        return {'statusCode': 401, 'body': 'Invalid signature'}
+
     # Interaction payloads are URL-encoded JSON
-    body = urllib.parse.parse_qs(event['body'])
+    body = urllib.parse.parse_qs(get_raw_body(event))
     payload = json.loads(body['payload'][0])
 
     interaction_type = payload['type']
@@ -312,9 +328,13 @@ For responding to messages, reactions, and other events, enable the Events API.
 ```python
 # Handle Slack Events API webhook
 import json
+import requests
 
 def handle_event(event, context):
-    body = json.loads(event['body'])
+    if not verify_slack_signature(event):
+        return {'statusCode': 401, 'body': 'Invalid signature'}
+
+    body = json.loads(get_raw_body(event))
 
     # Slack sends a challenge for URL verification
     if body.get('type') == 'url_verification':
@@ -385,10 +405,28 @@ SLACK_ID=$(aws apigateway create-resource \
   --query 'id' --output text)
 
 # Create /slack/commands
-aws apigateway create-resource \
+COMMANDS_ID=$(aws apigateway create-resource \
   --rest-api-id $API_ID \
   --parent-id $SLACK_ID \
-  --path-part commands
+  --path-part commands \
+  --query 'id' --output text)
+
+# Create /slack/interactions
+INTERACTIONS_ID=$(aws apigateway create-resource \
+  --rest-api-id $API_ID \
+  --parent-id $SLACK_ID \
+  --path-part interactions \
+  --query 'id' --output text)
+
+# Create /slack/events
+EVENTS_ID=$(aws apigateway create-resource \
+  --rest-api-id $API_ID \
+  --parent-id $SLACK_ID \
+  --path-part events \
+  --query 'id' --output text)
+
+# Next, add POST methods, Lambda proxy integrations, Lambda invoke permissions,
+# and deploy the API stage for each resource.
 ```
 
 ## Handling the 3-Second Timeout
