@@ -33,6 +33,7 @@ spec:
     metadata:
       labels:
         app: example
+        sidecar.istio.io/inject: "true"
     spec:
       containers:
       - name: app
@@ -79,6 +80,7 @@ spec:
     metadata:
       labels:
         app: advanced
+        sidecar.istio.io/inject: "true"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9090"
@@ -271,7 +273,7 @@ This pattern is used across many production environments to solve common operati
 
 Financial services companies use this pattern to ensure compliance and security requirements are met without modifying application code. Healthcare organizations leverage it to maintain HIPAA compliance while keeping applications flexible.
 
-E-commerce platforms implement this pattern to handle traffic spikes during peak shopping periods. The separation of concerns allows them to scale components independently.
+E-commerce platforms implement this pattern to handle traffic spikes during peak shopping periods. The separation of concerns allows them to scale services independently while keeping traffic management behavior consistent.
 
 ## Integration with CI/CD
 
