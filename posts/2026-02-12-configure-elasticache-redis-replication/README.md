@@ -14,7 +14,7 @@ Let's look at how to set up replication for both cluster mode disabled and clust
 
 ## Replication Architecture
 
-ElastiCache Redis uses asynchronous replication. The primary node handles all writes and replicates changes to up to 5 read replicas. If the primary fails, ElastiCache automatically promotes a replica to become the new primary (when Multi-AZ is enabled).
+ElastiCache Redis uses asynchronous replication. In a single shard, the primary node handles all writes and replicates changes to up to 5 read replicas. With cluster mode enabled, each shard has its own primary and up to 5 read replicas. If a primary fails, ElastiCache automatically promotes a replica to become the new primary when automatic failover is enabled.
 
 ```mermaid
 graph TD
@@ -198,7 +198,7 @@ aws elasticache increase-replica-count \
   --apply-immediately
 ```
 
-For cluster mode enabled, you can add replicas to specific shards:
+For cluster mode enabled, you can set the same replica count across all shards:
 
 ```bash
 # Add a replica to each shard in a cluster mode enabled group
@@ -229,7 +229,7 @@ aws elasticache describe-events \
   --duration 30
 ```
 
-Failover typically completes within 15-30 seconds. During that time, writes will fail. Your application should have retry logic to handle this. See the guide on [connecting to ElastiCache Redis from an application](https://oneuptime.com/blog/post/2026-02-12-connect-to-elasticache-redis-from-an-application/view) for retry patterns.
+Failover usually takes just a few seconds, though recovery time can vary. During that time, writes will fail. Your application should have retry logic to handle this. See the guide on [connecting to ElastiCache Redis from an application](https://oneuptime.com/blog/post/2026-02-12-connect-to-elasticache-redis-from-an-application/view) for retry patterns.
 
 ## Monitoring Replication
 
@@ -240,7 +240,7 @@ Keep an eye on replication health:
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache \
   --metric-name ReplicationLag \
-  --dimensions Name=CacheClusterId,Value=my-redis-repl-002 \
+  --dimensions Name=CacheClusterId,Value=my-redis-repl-002 Name=CacheNodeId,Value=0001 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
@@ -259,7 +259,7 @@ aws cloudwatch put-metric-alarm \
   --period 60 \
   --threshold 1 \
   --comparison-operator GreaterThanThreshold \
-  --dimensions Name=CacheClusterId,Value=my-redis-repl-002 \
+  --dimensions Name=CacheClusterId,Value=my-redis-repl-002 Name=CacheNodeId,Value=0001 \
   --evaluation-periods 3 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:redis-alerts
 ```
@@ -270,7 +270,7 @@ aws cloudwatch put-metric-alarm \
 
 **Match replica instance types to primary.** If a smaller replica gets promoted, you'll have degraded performance.
 
-**Use reader endpoints for reads.** The reader endpoint load-balances across replicas, spreading read traffic. Don't point everything at the primary.
+**Use reader endpoints for reads in cluster mode disabled.** The reader endpoint evenly splits incoming connections across replicas, spreading read traffic. For cluster mode enabled, use the configuration endpoint with a cluster-aware client. Don't point everything at the primary.
 
 **Set appropriate maxmemory-policy.** `allkeys-lru` is a safe default that evicts the least recently used keys when memory is full.
 
