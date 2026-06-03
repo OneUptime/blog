@@ -19,7 +19,7 @@ First, quantify the failure rate and pattern:
 ```bash
 # Run continuous connectivity tests
 
-kubectl run test-pod --rm -it --image=curlimages/curl -- sh
+kubectl run test-pod --rm -it --image=curlimages/curl --command -- sh
 
 # Inside the pod, run loop
 while true; do
@@ -38,13 +38,14 @@ done
 
 This establishes failure frequency and whether failures cluster at specific times.
 
-## Checking Service Endpoints
+## Checking Service EndpointSlices
 
 Intermittent failures often result from unhealthy backend pods:
 
 ```bash
-# Watch service endpoints
-kubectl get endpoints my-service -n my-namespace --watch
+# Watch service EndpointSlices
+kubectl get endpointslices -n my-namespace \
+  -l kubernetes.io/service-name=my-service --watch
 
 # Monitor for endpoints being added/removed
 # Endpoints changing frequently indicate pod restarts
@@ -58,7 +59,7 @@ kubectl get pods -n my-namespace -l app=my-app --watch
 # - Ready status flapping between 0/1 and 1/1
 ```
 
-Requests sent to pods during restart or termination timeout.
+Requests can time out if traffic reaches pods that are not yet ready, are overloaded, or are terminating before endpoints have updated.
 
 ## Analyzing DNS Resolution Timing
 
@@ -171,7 +172,7 @@ Resource throttling causes intermittent performance issues:
 
 ```bash
 # Monitor pod resource usage
-kubectl top pods -n my-namespace -l app=my-app --watch
+watch -n 2 'kubectl top pod -n my-namespace -l app=my-app'
 
 # Check for:
 # - CPU usage hitting limits (throttling)
@@ -188,7 +189,7 @@ Pods hitting CPU limits get throttled, causing request delays and timeouts.
 
 ## Testing Network Policies
 
-NetworkPolicies can cause intermittent failures:
+NetworkPolicies that change during rollouts, select the wrong pods, or differ across namespaces can make failures appear intermittent:
 
 ```bash
 # Check NetworkPolicies
@@ -204,7 +205,7 @@ kubectl delete networkpolicy test-policy -n my-namespace
 kubectl describe networkpolicy -n my-namespace
 ```
 
-Overly restrictive NetworkPolicies intermittently block legitimate traffic.
+Overly restrictive or misapplied NetworkPolicies can block legitimate traffic.
 
 ## Analyzing TCP Connection States
 
@@ -259,8 +260,9 @@ Capture network traffic during failures:
 
 ```bash
 # Start packet capture
-kubectl debug -it pod/my-pod --image=nicolaka/netshoot --target=my-pod-container
-tcpdump -i any -w /tmp/capture.pcap
+kubectl debug -it pod/my-pod --image=nicolaka/netshoot \
+  --target=my-pod-container -c debugger -- \
+  tcpdump -i any -w /tmp/capture.pcap
 
 # In another terminal, run continuous tests
 kubectl exec test-pod -- sh -c \
@@ -268,7 +270,7 @@ kubectl exec test-pod -- sh -c \
 
 # Let it run until you capture failures
 # Stop tcpdump and analyze
-kubectl cp my-pod:/tmp/capture.pcap ./capture.pcap
+kubectl cp my-pod:/tmp/capture.pcap ./capture.pcap -c debugger
 
 # Analyze with Wireshark, filtering failed connections
 ```
@@ -280,11 +282,9 @@ Packet captures show exactly what happens during failures.
 Reproduce issues more reliably with load testing:
 
 ```bash
-# Install load testing tool
-kubectl run load-test --rm -it --image=williamyeh/hey -- sh
-
 # Run load test
-hey -z 60s -c 10 http://my-service:8080/
+kubectl run load-test --rm -it --image=ricoli/hey -- \
+  -z 60s -c 10 http://my-service:8080/
 
 # Watch for:
 # - Success rate
@@ -292,7 +292,8 @@ hey -z 60s -c 10 http://my-service:8080/
 # - Timeout errors
 
 # Increase concurrency to stress test
-hey -z 60s -c 50 http://my-service:8080/
+kubectl run load-test --rm -it --image=ricoli/hey -- \
+  -z 60s -c 50 http://my-service:8080/
 ```
 
 Load testing often triggers intermittent issues more consistently.
@@ -305,8 +306,9 @@ Verify backend service responds consistently:
 # Test backend pods directly
 for pod in $(kubectl get pods -l app=my-app -o name); do
   echo "Testing $pod:"
+  POD_IP=$(kubectl get "$pod" -o jsonpath='{.status.podIP}')
   kubectl exec test-pod -- sh -c \
-    "for i in {1..10}; do curl -s --max-time 2 http://$(kubectl get $pod -o jsonpath='{.status.podIP}'):8080/ && echo OK || echo FAIL; done"
+    "i=0; while [ \$i -lt 10 ]; do i=\$((i + 1)); curl -s --max-time 2 http://$POD_IP:8080/ && echo OK || echo FAIL; done"
 done
 
 # Pods failing intermittently indicate application issues
