@@ -25,7 +25,7 @@ sequenceDiagram
     participant DB as User Database
 
     Client->>TF: Connect with username/password
-    TF->>APIGW: POST /servers/{serverId}/users/{username}/config
+    TF->>APIGW: GET /servers/{serverId}/users/{username}/config
     APIGW->>Lambda: Invoke with auth details
     Lambda->>DB: Validate credentials
     DB-->>Lambda: User found
@@ -73,8 +73,9 @@ def lambda_handler(event, context):
     password = event.get('password', '')
     server_id = event.get('serverId', '')
     source_ip = event.get('sourceIp', '')
+    protocol = event.get('protocol', '')
 
-    print(f"Auth request: user={username}, server={server_id}, ip={source_ip}")
+    print(f"Auth request: user={username}, server={server_id}, protocol={protocol}, ip={source_ip}")
 
     # Look up the user in DynamoDB
     try:
@@ -203,12 +204,19 @@ aws apigateway put-method \
   --http-method GET \
   --authorization-type AWS_IAM \
   --request-parameters '{
-    "method.request.header.Password": false,
+    "method.request.header.PasswordBase64": false,
     "method.request.querystring.protocol": false,
     "method.request.querystring.sourceIp": false
   }'
 
 # Create Lambda integration
+REQUEST_TEMPLATE=$(cat <<'EOF'
+{
+  "application/json": "{\"username\": \"$input.params('username')\", \"password\": \"$util.escapeJavaScript($util.base64Decode($input.params('PasswordBase64'))).replaceAll(\"\\'\", \"'\")\", \"serverId\": \"$input.params('serverId')\", \"protocol\": \"$input.params('protocol')\", \"sourceIp\": \"$input.params('sourceIp')\"}"
+}
+EOF
+)
+
 aws apigateway put-integration \
   --rest-api-id "$API_ID" \
   --resource-id "$CONFIG_RES" \
@@ -216,9 +224,29 @@ aws apigateway put-integration \
   --type AWS \
   --integration-http-method POST \
   --uri "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:TransferFamilyAuthenticator/invocations" \
-  --request-templates '{
-    "application/json": "{\"username\": \"$input.params('"'"'username'"'"')\", \"password\": \"$util.urlDecode($input.params('"'"'Password'"'"'))\", \"serverId\": \"$input.params('"'"'serverId'"'"')\", \"sourceIp\": \"$input.params('"'"'sourceIp'"'"')\"}"
-  }'
+  --request-templates "$REQUEST_TEMPLATE"
+
+# Allow API Gateway to invoke the Lambda function
+aws lambda add-permission \
+  --function-name TransferFamilyAuthenticator \
+  --statement-id TransferFamilyApiGatewayInvoke \
+  --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:us-east-1:123456789012:$API_ID/*/GET/servers/*/users/*/config"
+
+# Configure the successful method and integration responses
+aws apigateway put-method-response \
+  --rest-api-id "$API_ID" \
+  --resource-id "$CONFIG_RES" \
+  --http-method GET \
+  --status-code 200 \
+  --response-models '{"application/json": "Empty"}'
+
+aws apigateway put-integration-response \
+  --rest-api-id "$API_ID" \
+  --resource-id "$CONFIG_RES" \
+  --http-method GET \
+  --status-code 200
 
 # Deploy the API
 aws apigateway create-deployment \
@@ -236,8 +264,9 @@ aws transfer create-server \
   --protocols SFTP \
   --identity-provider-type API_GATEWAY \
   --identity-provider-details '{
-    "Url": "https://API_ID.execute-api.us-east-1.amazonaws.com/prod",
-    "InvocationRole": "arn:aws:iam::123456789012:role/TransferApiGatewayRole"
+    "Url": "https://'"$API_ID"'.execute-api.us-east-1.amazonaws.com/prod",
+    "InvocationRole": "arn:aws:iam::123456789012:role/TransferApiGatewayRole",
+    "SftpAuthenticationMethods": "PASSWORD"
   }' \
   --endpoint-type PUBLIC \
   --logging-role "arn:aws:iam::123456789012:role/TransferFamilyLoggingRole"
@@ -247,17 +276,27 @@ Alternatively, for a simpler setup, you can use direct Lambda integration (no AP
 
 ```bash
 # Create server with direct Lambda identity provider
-aws transfer create-server \
+SERVER_ID=$(aws transfer create-server \
   --protocols SFTP \
   --identity-provider-type AWS_LAMBDA \
   --identity-provider-details '{
-    "Function": "arn:aws:lambda:us-east-1:123456789012:function:TransferFamilyAuthenticator"
+    "Function": "arn:aws:lambda:us-east-1:123456789012:function:TransferFamilyAuthenticator",
+    "SftpAuthenticationMethods": "PASSWORD"
   }' \
   --endpoint-type PUBLIC \
-  --logging-role "arn:aws:iam::123456789012:role/TransferFamilyLoggingRole"
+  --logging-role "arn:aws:iam::123456789012:role/TransferFamilyLoggingRole" \
+  --query 'ServerId' --output text)
+
+# Allow Transfer Family to invoke the Lambda function
+aws lambda add-permission \
+  --function-name TransferFamilyAuthenticator \
+  --statement-id "TransferFamilyInvoke-$SERVER_ID" \
+  --action lambda:InvokeFunction \
+  --principal transfer.amazonaws.com \
+  --source-arn "arn:aws:transfer:us-east-1:123456789012:server/$SERVER_ID"
 ```
 
-The Lambda option is simpler and has lower latency. Use API Gateway when you need request throttling, caching, or WAF integration.
+The Lambda option is simpler and has lower latency. Use API Gateway when you need request throttling, a RESTful API, or WAF integration. Don't enable API Gateway caching for authentication requests.
 
 ## Step 4: Add Users to DynamoDB
 
@@ -280,7 +319,7 @@ aws dynamodb put-item \
 
 ## Step 5: Add Scope-Down Policies
 
-Scope-down policies let you further restrict what a user can do beyond their IAM role:
+Scope-down policies let you further restrict what a user can do beyond their IAM role. Because this example uses logical home directories, use explicit bucket and prefix values in the session policy:
 
 ```bash
 # Add a user with a scope-down policy
@@ -292,10 +331,10 @@ POLICY=$(cat <<'POLICY_EOF'
       "Sid": "AllowListingOfUserFolder",
       "Effect": "Allow",
       "Action": "s3:ListBucket",
-      "Resource": "arn:aws:s3:::${transfer:HomeBucket}",
+      "Resource": "arn:aws:s3:::sftp-files-bucket",
       "Condition": {
         "StringLike": {
-          "s3:prefix": ["${transfer:HomeFolder}/*", "${transfer:HomeFolder}"]
+          "s3:prefix": ["vendor-limited/*", "vendor-limited"]
         }
       }
     },
@@ -303,23 +342,31 @@ POLICY=$(cat <<'POLICY_EOF'
       "Sid": "AllowReadWriteInUserFolder",
       "Effect": "Allow",
       "Action": ["s3:PutObject", "s3:GetObject"],
-      "Resource": "arn:aws:s3:::${transfer:HomeBucket}/${transfer:HomeFolder}/*"
+      "Resource": "arn:aws:s3:::sftp-files-bucket/vendor-limited/*"
     }
   ]
 }
 POLICY_EOF
 )
 
+POLICY_JSON=$(printf '%s' "$POLICY" | jq -c .)
+POLICY_ATTRIBUTE=$(printf '%s' "$POLICY_JSON" | jq -Rs .)
+
+ITEM=$(cat <<EOF
+{
+  "username": {"S": "vendor-limited"},
+  "password_hash": {"S": "$PASSWORD_HASH"},
+  "role_arn": {"S": "arn:aws:iam::123456789012:role/TransferFamilyUserRole"},
+  "bucket": {"S": "sftp-files-bucket"},
+  "enabled": {"BOOL": true},
+  "scope_down_policy": {"S": $POLICY_ATTRIBUTE}
+}
+EOF
+)
+
 aws dynamodb put-item \
   --table-name TransferFamilyUsers \
-  --item '{
-    "username": {"S": "vendor-limited"},
-    "password_hash": {"S": "'$PASSWORD_HASH'"},
-    "role_arn": {"S": "arn:aws:iam::123456789012:role/TransferFamilyUserRole"},
-    "bucket": {"S": "sftp-files-bucket"},
-    "enabled": {"BOOL": true},
-    "scope_down_policy": {"S": "'"$(echo $POLICY | tr -d '\n')"'"
-  }'
+  --item "$ITEM"
 ```
 
 ## Testing the Setup
@@ -330,10 +377,12 @@ Test the custom identity provider end-to-end:
 # Test the Lambda function directly
 aws lambda invoke \
   --function-name TransferFamilyAuthenticator \
+  --cli-binary-format raw-in-base64-out \
   --payload '{
     "username": "partner-acme",
     "password": "SecurePass123!",
     "serverId": "s-0123456789abcdef0",
+    "protocol": "SFTP",
     "sourceIp": "203.0.113.1"
   }' \
   output.json
