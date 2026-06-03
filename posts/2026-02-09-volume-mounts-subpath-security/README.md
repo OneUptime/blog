@@ -121,9 +121,9 @@ spec:
 
 Attackers who can modify the volume can create symlinks that escape the intended directory.
 
-## Safer Alternative: subPathExpr
+## Dynamic Alternative: subPathExpr
 
-Use subPathExpr with downward API to avoid static paths:
+Use subPathExpr with downward API when you need dynamic paths:
 
 ```yaml
 apiVersion: v1
@@ -153,7 +153,7 @@ spec:
       claimName: app-logs
 ```
 
-SubPathExpr resolves environment variables, enabling dynamic paths.
+SubPathExpr resolves environment variables, enabling dynamic paths. It behaves similarly to subPath, so apply the same security controls.
 
 ## Read-Only Mounts with subPath
 
@@ -171,7 +171,7 @@ spec:
   initContainers:
   - name: setup
     image: busybox
-    command: ["sh", "-c", "echo 'config' > /data/config/app.conf"]
+    command: ["sh", "-c", "mkdir -p /data/config && echo 'config' > /data/config/app.conf"]
     volumeMounts:
     - name: data
       mountPath: /data
@@ -244,14 +244,16 @@ Audit subPath configurations:
 # Find all pods using subPath
 kubectl get pods --all-namespaces -o json | \
   jq -r '.items[] |
-    select(.spec.containers[].volumeMounts[]?.subPath != null) |
+    select(any((.spec.initContainers[]?, .spec.containers[]?, .spec.ephemeralContainers[]?)
+      | .volumeMounts[]?; .subPath != null or .subPathExpr != null)) |
     "\(.metadata.namespace)/\(.metadata.name)"'
 
 # Check for writable subPath mounts
 kubectl get pods --all-namespaces -o json | \
   jq -r '.items[] |
-    select(.spec.containers[].volumeMounts[] |
-      .subPath != null and .readOnly != true) |
+    select(any((.spec.initContainers[]?, .spec.containers[]?, .spec.ephemeralContainers[]?)
+      | .volumeMounts[]?;
+        (.subPath != null or .subPathExpr != null) and .readOnly != true))) |
     "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
@@ -357,7 +359,7 @@ spec:
     - name: logs
       mountPath: /app/logs
       subPathExpr: $(POD_NAME)
-      # Use subPathExpr instead of subPath
+      # Use subPathExpr when paths should be derived from pod metadata
       # Mount read-only when possible
       # Document why subPath is necessary
     - name: tmp
@@ -397,8 +399,9 @@ spec:
       ls -la /app/data
       pwd
 
-      # Verify cannot access parent
-      cd /app/data/..  # Should fail or show isolation
+      # Verify the mount does not expose the volume root
+      cd /app/data/..
+      ls -la
 
       # Verify path is what we expect
       realpath /app/data
@@ -413,7 +416,7 @@ spec:
     emptyDir: {}
 ```
 
-Ensure subPath isolation works as expected.
+Ensure the mounted path is limited to the selected subdirectory; `/app/data/..` is the parent directory in the container filesystem, not the volume root.
 
 ## Migration Away from subPath
 
@@ -441,4 +444,4 @@ Separate volumes provide better security and clearer intent.
 
 ## Conclusion
 
-While subPath enables useful volume sharing patterns, it introduces security risks including potential symlink attacks and container escape vectors. Use subPath only when necessary and prefer alternatives like separate volumes, projected volumes, or mounting entire volumes with application-level path management. When subPath is required, use subPathExpr instead of static subPath, mount as read-only whenever possible, and ensure strong isolation through security context settings. Regularly audit subPath usage and document justification for each use. Combine subPath mounts with other security measures like running as non-root, read-only root filesystems, and seccomp profiles. The safest approach is avoiding subPath entirely for security-critical data and using separate volumes to achieve isolation without the risks inherent in subPath resolution.
+While subPath enables useful volume sharing patterns, it introduces security risks including potential symlink attacks and container escape vectors. Use subPath only when necessary and prefer alternatives like separate volumes, projected volumes, or mounting entire volumes with application-level path management. When subPath is required, use subPathExpr for dynamic per-pod paths, mount as read-only whenever possible, and ensure strong isolation through security context settings. Regularly audit subPath usage and document justification for each use. Combine subPath mounts with other security measures like running as non-root, read-only root filesystems, and seccomp profiles. The safest approach is avoiding subPath entirely for security-critical data and using separate volumes to achieve isolation without the risks inherent in subPath resolution.
