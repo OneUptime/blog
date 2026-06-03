@@ -41,18 +41,23 @@ class RequestTracer {
   }
 
   // Create tracing headers
-  createHeaders(existingTraceId = null) {
-    const traceId = existingTraceId || this.generateTraceId();
+  createHeaders(existingContext = {}) {
+    const traceId = existingContext.traceId || this.generateTraceId();
     const spanId = uuidv4();
 
-    return {
+    const headers = {
       'X-Trace-Id': traceId,
       'X-Span-Id': spanId,
-      'X-Parent-Span-Id': existingTraceId ? spanId : null,
       'X-Service-Name': this.serviceName,
       'X-Timestamp': Date.now().toString(),
       'X-Source': 'local-dev'
     };
+
+    if (existingContext.spanId) {
+      headers['X-Parent-Span-Id'] = existingContext.spanId;
+    }
+
+    return headers;
   }
 
   // Extract trace context from incoming request
@@ -91,16 +96,10 @@ function tracingMiddleware(req, res, next) {
   // Extract or create trace context
   const context = tracer.extractContext(req);
 
-  if (!context.traceId) {
-    // New request chain, generate trace ID
-    const headers = tracer.createHeaders();
-    req.traceId = headers['X-Trace-Id'];
-    req.spanId = headers['X-Span-Id'];
-  } else {
-    // Continue existing trace
-    req.traceId = context.traceId;
-    req.spanId = context.spanId;
-  }
+  const headers = tracer.createHeaders(context);
+  req.traceId = headers['X-Trace-Id'];
+  req.spanId = headers['X-Span-Id'];
+  req.parentSpanId = headers['X-Parent-Span-Id'];
 
   // Add trace ID to response headers
   res.setHeader('X-Trace-Id', req.traceId);
@@ -138,20 +137,20 @@ app.get('/api/users/:id', async (req, res) => {
       spanId: req.spanId
     };
 
-    const headers = tracer.propagateContext(context);
-
     // Call staging user service
+    const userHeaders = tracer.propagateContext(context);
     const userResponse = await fetch(
       `https://user-service.staging.k8s.company.com/users/${userId}`,
-      { headers }
+      { headers: userHeaders }
     );
 
     const user = await userResponse.json();
 
     // Call staging orders service
+    const ordersHeaders = tracer.propagateContext(context);
     const ordersResponse = await fetch(
       `https://orders-service.staging.k8s.company.com/users/${userId}/orders`,
-      { headers }
+      { headers: ordersHeaders }
     );
 
     const orders = await ordersResponse.json();
@@ -174,48 +173,37 @@ Implement standardized tracing with OpenTelemetry:
 
 ```javascript
 // otel-config.js
-const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
-const { registerInstrumentations } = require('@opentelemetry/instrumentation');
-const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
-const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
-const { JaegerExporter } = require('@opentelemetry/exporter-jaeger');
-const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
+const { NodeSDK } = require('@opentelemetry/sdk-node');
+const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 function initializeTracing() {
-  const provider = new NodeTracerProvider({
-    resource: new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: 'local-dev',
-      [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'development',
+  const traceExporter = new OTLPTraceExporter({
+    url: 'http://jaeger-collector.staging.k8s.company.com:4318/v1/traces',
+    headers: {}
+  });
+
+  const sdk = new NodeSDK({
+    traceExporter,
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: 'local-dev',
+      'deployment.environment.name': 'development',
       'dev.local': true
     }),
-  });
-
-  // Export to Jaeger running in staging cluster
-  const jaegerExporter = new JaegerExporter({
-    endpoint: 'http://jaeger-collector.staging.k8s.company.com:14268/api/traces',
-    tags: {
-      'source': 'local-dev',
-      'developer': process.env.USER
-    }
-  });
-
-  provider.addSpanProcessor(new BatchSpanProcessor(jaegerExporter));
-  provider.register();
-
-  // Auto-instrument HTTP and Express
-  registerInstrumentations({
     instrumentations: [
-      new HttpInstrumentation({
-        requestHook: (span, request) => {
-          span.setAttribute('http.target', request.path);
-          span.setAttribute('dev.local', true);
+      getNodeAutoInstrumentations({
+        '@opentelemetry/instrumentation-http': {
+          requestHook: (span) => {
+            span.setAttribute('dev.local', true);
+          }
         }
-      }),
-      new ExpressInstrumentation()
+      })
     ],
   });
+
+  sdk.start();
 
   console.log('OpenTelemetry tracing initialized');
 }
@@ -283,7 +271,16 @@ Create a simple CLI tool to follow traces:
 ```javascript
 // trace-viewer.js
 const axios = require('axios');
-const chalk = require('chalk');
+
+const color = (text) => text;
+const chalk = {
+  bold: color,
+  gray: color,
+  cyan: color,
+  green: color,
+  red: color,
+  yellow: color
+};
 
 class TraceViewer {
   constructor(jaegerUrl = 'http://localhost:16686') {
@@ -318,15 +315,29 @@ class TraceViewer {
     console.log(chalk.gray('='.repeat(80)));
 
     // Sort spans by start time
-    const sortedSpans = trace.spans.sort((a, b) => a.startTime - b.startTime);
+    const sortedSpans = [...trace.spans].sort((a, b) => a.startTime - b.startTime);
+    const spanById = new Map(trace.spans.map(span => [span.spanID, span]));
+    const depthById = new Map();
+    const getDepth = (span) => {
+      if (depthById.has(span.spanID)) {
+        return depthById.get(span.spanID);
+      }
+
+      const parentRef = span.references.find(r => r.refType === 'CHILD_OF');
+      const parent = parentRef ? spanById.get(parentRef.spanID) : null;
+      const depth = parent ? getDepth(parent) + 1 : 0;
+      depthById.set(span.spanID, depth);
+      return depth;
+    };
+    const traceStartTime = sortedSpans[0].startTime;
 
     sortedSpans.forEach(span => {
-      this.printSpan(span, trace.spans[0].startTime);
+      this.printSpan(span, traceStartTime, getDepth(span));
     });
   }
 
-  printSpan(span, traceStartTime) {
-    const indent = '  '.repeat(this.getSpanDepth(span));
+  printSpan(span, traceStartTime, depth) {
+    const indent = '  '.repeat(depth);
     const duration = span.duration / 1000; // Convert to ms
     const offset = (span.startTime - traceStartTime) / 1000;
 
@@ -350,11 +361,6 @@ class TraceViewer {
     importantTags.forEach(tag => {
       console.log(`${indent}  ${chalk.gray(tag.key)}: ${tag.value}`);
     });
-  }
-
-  getSpanDepth(span) {
-    // Count number of parent references
-    return span.references.filter(r => r.refType === 'CHILD_OF').length;
   }
 
   getTraceDuration(trace) {
@@ -445,23 +451,24 @@ const logger = winston.createLogger({
   ]
 });
 
-function setTraceContext(traceId, spanId) {
-  asyncLocalStorage.enterWith({ traceId, spanId });
+function runWithTraceContext(traceId, spanId, callback) {
+  asyncLocalStorage.run({ traceId, spanId }, callback);
 }
 
-module.exports = { logger, setTraceContext };
+module.exports = { logger, runWithTraceContext };
 ```
 
 Middleware to set context:
 
 ```javascript
 // middleware/logging.js
-const { setTraceContext, logger } = require('../logger');
+const { runWithTraceContext, logger } = require('../logger');
 
 function loggingMiddleware(req, res, next) {
-  setTraceContext(req.traceId, req.spanId);
-  logger.info(`Incoming ${req.method} ${req.path}`);
-  next();
+  runWithTraceContext(req.traceId, req.spanId, () => {
+    logger.info(`Incoming ${req.method} ${req.path}`);
+    next();
+  });
 }
 
 module.exports = loggingMiddleware;
