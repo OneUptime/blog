@@ -117,9 +117,9 @@ TELEMETRY_TOPIC = f"devices/{DEVICE_ID}/telemetry"
 STATUS_TOPIC = f"devices/{DEVICE_ID}/status"
 COMMANDS_TOPIC = f"devices/{DEVICE_ID}/commands"
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, reason_code, properties):
     """Called when device connects to IoT Core."""
-    print(f"Connected with result code {rc}")
+    print(f"Connected with reason code {reason_code}")
     # Subscribe to commands from the cloud
     client.subscribe(COMMANDS_TOPIC)
     # Report online status
@@ -149,7 +149,10 @@ def read_sensor_data():
     }
 
 # Set up MQTT client with TLS
-client = mqtt_client.Client(client_id=DEVICE_ID)
+client = mqtt_client.Client(
+    callback_api_version=mqtt_client.CallbackAPIVersion.VERSION2,
+    client_id=DEVICE_ID,
+)
 client.tls_set(
     ca_certs=CA_PATH,
     certfile=CERT_PATH,
@@ -237,9 +240,11 @@ The Lambda stream processor transforms and enriches IoT data before storing it:
 ```javascript
 // stream-processor/handler.js - Process IoT telemetry from Kinesis
 const { TimestreamWriteClient, WriteRecordsCommand } = require('@aws-sdk/client-timestream-write');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
 const timestream = new TimestreamWriteClient({});
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 exports.handler = async (event) => {
   const timestreamRecords = [];
@@ -267,6 +272,7 @@ exports.handler = async (event) => {
     // Track latest device state for quick access
     deviceUpdates[deviceId] = {
       ...data,
+      status: 'active',
       lastSeen: new Date(timestamp).toISOString(),
     };
   }
@@ -286,10 +292,15 @@ exports.handler = async (event) => {
     await docClient.send(new UpdateCommand({
       TableName: process.env.DEVICE_TABLE,
       Key: { PK: `DEVICE#${deviceId}`, SK: 'STATE' },
-      UpdateExpression: 'SET #data = :data, lastSeen = :lastSeen',
-      ExpressionAttributeNames: { '#data': 'data' },
+      UpdateExpression: 'SET #data = :data, #status = :status, GSI1PK = :gsi1pk, lastSeen = :lastSeen',
+      ExpressionAttributeNames: {
+        '#data': 'data',
+        '#status': 'status',
+      },
       ExpressionAttributeValues: {
         ':data': state,
+        ':status': state.status,
+        ':gsi1pk': `STATUS#${state.status}`,
         ':lastSeen': state.lastSeen,
       },
     }));
@@ -389,6 +400,11 @@ Expose device state through an API for management applications:
 
 ```javascript
 // device-api/handler.js - Device management endpoints
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+
 exports.getDeviceStatus = async (event) => {
   const { deviceId } = event.pathParameters;
 
