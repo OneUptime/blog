@@ -56,7 +56,7 @@ phases:
       nodejs: 20
     commands:
       - echo "Cache status:"
-      - ls -la node_modules/ 2>/dev/null && echo "Cache hit!" || echo "Cache miss"
+      - du -sh /root/.npm 2>/dev/null && echo "Cache restored!" || echo "Cache miss"
       - npm ci
 
   build:
@@ -66,9 +66,7 @@ phases:
 
 cache:
   paths:
-    # Node.js dependencies
-    - "node_modules/**/*"
-    # npm cache directory
+    # npm package cache
     - "/root/.npm/**/*"
 ```
 
@@ -139,6 +137,8 @@ The three local cache modes:
 - **LOCAL_SOURCE_CACHE**: Caches the Git source. Speeds up large repository clones.
 - **LOCAL_CUSTOM_CACHE**: Caches the paths you specify in the buildspec `cache` section.
 
+If you use `LOCAL_DOCKER_LAYER_CACHE`, your CodeBuild project must use a Linux environment with privileged mode enabled so Docker has the permissions it needs.
+
 When using local caching, you still need the `cache` section in your buildspec for `LOCAL_CUSTOM_CACHE`.
 
 ```yaml
@@ -157,7 +157,6 @@ phases:
 # These paths are cached locally between builds
 cache:
   paths:
-    - "node_modules/**/*"
     - "/root/.npm/**/*"
 ```
 
@@ -176,7 +175,7 @@ For most projects, I'd recommend starting with local caching and falling back to
 
 ## Optimizing npm/Yarn Caching
 
-For JavaScript projects, the biggest gain comes from caching `node_modules` properly.
+For JavaScript projects that use `npm ci`, the biggest gain comes from caching npm's package cache properly. `npm ci` removes `node_modules` before it installs, so caching `node_modules` does not help with that command.
 
 ```yaml
 version: 0.2
@@ -187,7 +186,6 @@ phases:
       nodejs: 20
     commands:
       # Use npm ci instead of npm install for deterministic builds
-      # npm ci is faster when node_modules exists and matches the lockfile
       - npm ci --prefer-offline
 
   build:
@@ -196,8 +194,7 @@ phases:
 
 cache:
   paths:
-    - "node_modules/**/*"
-    # Cache the npm global cache too
+    # Cache npm's package cache
     - "/root/.npm/**/*"
 ```
 
@@ -251,7 +248,7 @@ phases:
       - docker push $ECR_REGISTRY/my-app:latest
 ```
 
-Combined with `LOCAL_DOCKER_LAYER_CACHE`, this gives you two levels of caching: local Docker layer cache for back-to-back builds, and remote cache-from for when you land on a fresh host.
+Combined with `LOCAL_DOCKER_LAYER_CACHE` on a Linux build project with privileged mode enabled, this gives you two levels of caching: local Docker layer cache for back-to-back builds, and remote cache-from for when you land on a fresh host.
 
 ## Optimizing Maven Caching
 
@@ -310,9 +307,9 @@ A good caching setup should show the install phase dropping from minutes to seco
 
 When caching doesn't seem to work:
 
-- **Check the cache path glob syntax.** It must be `node_modules/**/*`, not `node_modules/`.
+- **Check the cache path glob syntax.** Use recursive globs such as `/root/.npm/**/*` or `target/**/*`, not just a bare directory like `/root/.npm/`.
 - **Check S3 permissions.** The CodeBuild role needs `s3:GetObject` and `s3:PutObject` on the cache bucket.
-- **Watch for lockfile changes.** If `package-lock.json` changes, `npm ci` will blow away `node_modules` anyway. That's correct behavior, but it means the cache provides no benefit when dependencies change.
+- **Watch for lockfile changes.** If `package-lock.json` changes, `npm ci` has to install the changed dependencies. That's correct behavior, but it means the cache helps most with packages that are already present in npm's package cache.
 - **Check build logs for cache messages.** CodeBuild logs whether the cache was restored or not at the beginning of the build.
 
 ```yaml
@@ -321,7 +318,7 @@ phases:
   install:
     commands:
       - echo "Checking cache..."
-      - du -sh node_modules 2>/dev/null || echo "No node_modules cache"
+      - du -sh /root/.npm 2>/dev/null || echo "No npm cache"
       - ls -la /root/.m2/repository 2>/dev/null | head -5 || echo "No Maven cache"
 ```
 
