@@ -16,7 +16,7 @@ The console workflow for PostgreSQL is similar to MySQL but with some PostgreSQL
 
 ### Choose Engine and Version
 
-In the RDS console, click "Create database," select **Standard create**, then choose **PostgreSQL** as the engine. For the version, go with the latest PostgreSQL 16.x unless you have compatibility constraints. AWS defaults to a well-tested version, so the default is usually a safe bet.
+In the RDS console, click "Create database," select **Standard create**, then choose **PostgreSQL** as the engine. For the version, go with the latest RDS-supported PostgreSQL major version unless you have compatibility constraints. AWS defaults to a well-tested version, so the default is usually a safe bet.
 
 ### Templates and Instance Configuration
 
@@ -34,7 +34,7 @@ Set your DB instance identifier, master username (default is `postgres`), and pa
 
 ### Storage Configuration
 
-PostgreSQL workloads often benefit from gp3 storage, which lets you independently scale IOPS and throughput.
+PostgreSQL workloads often benefit from gp3 storage, which lets you independently scale IOPS and throughput once the allocated storage is 400 GiB or higher.
 
 Here's a reasonable starting configuration for different environments.
 
@@ -42,7 +42,7 @@ Here's a reasonable starting configuration for different environments.
 Environment  | Storage | Type | IOPS  | Throughput
 -------------|---------|------|-------|----------
 Dev/Test     | 20 GB   | gp3  | 3,000 | 125 MiB/s
-Staging      | 100 GB  | gp3  | 6,000 | 250 MiB/s
+Staging      | 100 GB  | gp3  | 3,000 | 125 MiB/s
 Production   | 500 GB  | gp3  | 12,000| 500 MiB/s
 ```
 
@@ -85,13 +85,13 @@ aws rds create-db-instance \
   --db-instance-identifier my-app-postgres \
   --db-instance-class db.r6g.large \
   --engine postgres \
-  --engine-version 16.4 \
+  --engine-version 18.4 \
   --master-username postgres \
   --master-user-password 'YourStrongPassword123!' \
-  --allocated-storage 100 \
+  --allocated-storage 500 \
   --storage-type gp3 \
-  --iops 6000 \
-  --storage-throughput 250 \
+  --iops 12000 \
+  --storage-throughput 500 \
   --multi-az \
   --db-name myappdb \
   --vpc-security-group-ids sg-0abc123def456789 \
@@ -149,8 +149,11 @@ CREATE ROLE myapp_role;
 GRANT CONNECT ON DATABASE myappdb TO myapp_role;
 GRANT USAGE ON SCHEMA public TO myapp_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO myapp_role;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO myapp_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO myapp_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT USAGE ON SEQUENCES TO myapp_role;
 
 -- Create the application user
 CREATE USER myapp_user WITH PASSWORD 'app_strong_password';
@@ -161,8 +164,11 @@ CREATE ROLE readonly_role;
 GRANT CONNECT ON DATABASE myappdb TO readonly_role;
 GRANT USAGE ON SCHEMA public TO readonly_role;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly_role;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO readonly_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT ON TABLES TO readonly_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT ON SEQUENCES TO readonly_role;
 
 CREATE USER reporting_user WITH PASSWORD 'reporting_strong_password';
 GRANT readonly_role TO reporting_user;
@@ -203,10 +209,10 @@ For a more comprehensive monitoring setup, check out [monitoring AWS infrastruct
 
 If you need even better performance, consider Aurora PostgreSQL. It offers:
 
-- Up to 5x throughput over standard PostgreSQL on RDS
-- Storage that auto-scales up to 128 TB
-- Up to 15 read replicas with sub-10ms replica lag
-- Automatic failover in under 30 seconds
+- Up to 3x throughput over standard PostgreSQL on similar hardware
+- Storage that auto-scales up to 256 TiB
+- Up to 15 read replicas with low replica lag, often around 10-20ms
+- Automatic failover that typically completes within 30 seconds
 
 The trade-off is cost - Aurora is more expensive, especially for small workloads. Standard RDS PostgreSQL is perfect for most applications, and you can migrate to Aurora later if needed.
 
