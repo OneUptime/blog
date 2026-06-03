@@ -97,6 +97,8 @@ Here's the biggest gotcha with role chaining: **chained role sessions are limite
 
 If the HubRole has `MaxSessionDuration` of 12 hours, and you chain to ProductionRole which also has 12 hours, the ProductionRole session still maxes out at one hour.
 
+AWS documents an exception for applications running on EC2 instances using instance profiles. In that case, the role assumption from the instance profile credentials is not subject to this role chaining session-duration limit.
+
 ```bash
 # This will fail if duration is over 3600 for a chained session
 aws sts assume-role \
@@ -195,6 +197,8 @@ buckets = s3_client.list_buckets()
 
 Session tags from the first role don't automatically carry over to the second role. If you need tags in the final session, you have two options:
 
+The target role's trust policy must also allow `sts:TagSession` for the principal passing session tags. Without that permission, the `AssumeRole` request fails when you include `--tags` or mark tags as transitive.
+
 **Pass them explicitly** at each hop:
 
 ```bash
@@ -226,6 +230,8 @@ Each role assumption in the chain creates a separate CloudTrail event. This mean
 2. `AssumeRole` event in Account C's trail showing HubRole from Account B assumed ProductionRole
 
 The `sourceIdentity` field can help tie these together. Set it on the first assumption and it persists through the chain:
+
+To set source identity, the caller must be allowed to use `sts:SetSourceIdentity`, and the target role trust policy must allow it. In a role chain, later target roles also need to allow `sts:SetSourceIdentity` for the source identity to persist into the next session.
 
 ```bash
 # Set source identity to track the original user through the chain
