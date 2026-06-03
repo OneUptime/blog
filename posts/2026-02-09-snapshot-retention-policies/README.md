@@ -10,6 +10,8 @@ Description: Learn how to implement effective retention policies for Kubernetes 
 
 Retention policies determine how long snapshots are kept before deletion. Well-designed policies balance recovery needs, compliance requirements, and storage costs by automatically managing snapshot lifecycle.
 
+These examples assume your cluster has the VolumeSnapshot CRDs, snapshot controller, validating webhook, and a CSI driver with snapshot support installed, and that the `csi-snapshot-class` VolumeSnapshotClass exists.
+
 ## Understanding Retention Strategies
 
 Common retention strategies include:
@@ -189,7 +191,7 @@ spec:
 
               # Get all unique PVC names from snapshots
               kubectl get volumesnapshot -o json | \
-                jq -r '[.items[].metadata.labels."pvc-name"] | unique | .[]' | \
+                jq -r '[.items[].metadata.labels."pvc-name" | select(. != null)] | unique | .[]' | \
                 while read PVC; do
 
                 echo "Processing snapshots for PVC: $PVC"
@@ -334,19 +336,19 @@ spec:
 
               echo "=== Compliance-Driven Retention ==="
 
-              # GDPR: 7 years for financial data
-              echo "Applying GDPR retention..."
+              # GDPR-related records: use your documented retention period (example: 7 years)
+              echo "Applying GDPR-related retention..."
               kubectl get volumesnapshot -l compliance-policy=gdpr -o json | \
                 jq -r '.items[] |
                   select(.metadata.creationTimestamp |
                     fromdateiso8601 < (now - (7 * 365 * 86400))) |
                   .metadata.name' | \
                 while read snapshot; do
-                  echo "Deleting GDPR snapshot: $snapshot (>7 years)"
+                  echo "Deleting GDPR-related snapshot: $snapshot (>7 years)"
                   kubectl delete volumesnapshot $snapshot
                 done
 
-              # HIPAA: 6 years for healthcare data
+              # HIPAA documentation: 6 years
               echo "Applying HIPAA retention..."
               kubectl get volumesnapshot -l compliance-policy=hipaa -o json | \
                 jq -r '.items[] |
@@ -388,7 +390,12 @@ echo
 # Total snapshot count and storage
 TOTAL_SNAPSHOTS=$(kubectl get volumesnapshot --no-headers | wc -l)
 TOTAL_STORAGE=$(kubectl get volumesnapshot -o json | \
-  jq '[.items[].status.restoreSize | rtrimstr("Gi") | tonumber] | add')
+  jq '[.items[].status.restoreSize? | select(. != null) |
+    if test("Gi$") then rtrimstr("Gi") | tonumber
+    elif test("Mi$") then (rtrimstr("Mi") | tonumber / 1024)
+    elif test("Ti$") then (rtrimstr("Ti") | tonumber * 1024)
+    else (tonumber / 1073741824)
+    end] | add // 0')
 
 echo "Total Snapshots: $TOTAL_SNAPSHOTS"
 echo "Total Storage: ${TOTAL_STORAGE}Gi"
@@ -413,16 +420,21 @@ echo "By Environment:"
 for ENV in production staging development; do
   COUNT=$(kubectl get volumesnapshot -l environment=$ENV --no-headers | wc -l)
   STORAGE=$(kubectl get volumesnapshot -l environment=$ENV -o json | \
-    jq '[.items[].status.restoreSize | rtrimstr("Gi") | tonumber] | add // 0')
+    jq '[.items[].status.restoreSize? | select(. != null) |
+      if test("Gi$") then rtrimstr("Gi") | tonumber
+      elif test("Mi$") then (rtrimstr("Mi") | tonumber / 1024)
+      elif test("Ti$") then (rtrimstr("Ti") | tonumber * 1024)
+      else (tonumber / 1073741824)
+      end] | add // 0')
   echo "  $ENV: $COUNT snapshots (${STORAGE}Gi)"
 done
 
 echo
 echo "Snapshots Expiring Soon (7 days):"
-EXPIRY_DATE=$(date -d "7 days ago" +%s)
 
 kubectl get volumesnapshot -o json | \
   jq -r '.items[] |
+    select(.metadata.labels."retention-days" != null) |
     {
       name: .metadata.name,
       created: .metadata.creationTimestamp,
@@ -451,7 +463,12 @@ echo
 
 # Current cost
 CURRENT_GB=$(kubectl get volumesnapshot -o json | \
-  jq '[.items[].status.restoreSize | rtrimstr("Gi") | tonumber] | add')
+  jq '[.items[].status.restoreSize? | select(. != null) |
+    if test("Gi$") then rtrimstr("Gi") | tonumber
+    elif test("Mi$") then (rtrimstr("Mi") | tonumber / 1024)
+    elif test("Ti$") then (rtrimstr("Ti") | tonumber * 1024)
+    else (tonumber / 1073741824)
+    end] | add // 0')
 CURRENT_COST=$(echo "scale=2; $CURRENT_GB * $COST_PER_GB_MONTH" | bc)
 
 echo "Current Snapshot Storage: ${CURRENT_GB}Gi"
