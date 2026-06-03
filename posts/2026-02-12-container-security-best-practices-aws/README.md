@@ -30,7 +30,7 @@ WORKDIR /app
 
 # Copy package files first for better layer caching
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Second stage - minimal runtime image
 FROM node:20.11-alpine3.19
@@ -58,7 +58,7 @@ USER appuser
 CMD ["node", "server.js"]
 ```
 
-Multi-stage builds keep your final image small, and running as a non-root user prevents container escape attacks from gaining root on the host.
+Multi-stage builds keep your final image small, and running as a non-root user reduces the risk of a container compromise gaining root-level access.
 
 ## ECR Image Scanning
 
@@ -67,6 +67,11 @@ Amazon ECR has built-in vulnerability scanning. Enable it and block deployments 
 This Terraform configuration sets up ECR with scanning and lifecycle policies.
 
 ```hcl
+resource "aws_kms_key" "ecr" {
+  description         = "KMS key for ECR repository encryption"
+  enable_key_rotation = true
+}
+
 resource "aws_ecr_repository" "app" {
   name                 = "my-application"
   image_tag_mutability = "IMMUTABLE"  # Prevent tag overwriting
@@ -173,11 +178,11 @@ When running containers on ECS, the task definition is where most security decis
 }
 ```
 
-Key security settings in this task definition: `readonlyRootFilesystem` prevents the container from writing to its filesystem. Dropping all Linux capabilities removes privileges the container doesn't need. Using Secrets Manager instead of environment variables keeps credentials out of your task definition and CloudWatch logs.
+Key security settings in this task definition: `readonlyRootFilesystem` prevents the container from writing to its filesystem. Dropping all Linux capabilities removes privileges the container doesn't need. Using the `secrets` field for Secrets Manager values keeps plaintext credentials out of your task definition, though they are still injected into the container as environment variables and can be exposed if your application logs them.
 
 ## EKS Pod Security
 
-On EKS, Kubernetes pod security standards give you fine-grained control over what containers can do.
+On EKS, Kubernetes security context settings give you fine-grained control over what containers can do.
 
 This pod spec enforces security best practices.
 
@@ -281,6 +286,10 @@ On EKS, use IAM Roles for Service Accounts instead of node-level IAM roles. This
 # Create an OIDC provider for the EKS cluster
 data "aws_eks_cluster" "cluster" {
   name = var.cluster_name
+}
+
+data "tls_certificate" "eks" {
+  url = data.aws_eks_cluster.cluster.identity[0].oidc[0].issuer
 }
 
 resource "aws_iam_openid_connect_provider" "eks" {
