@@ -219,7 +219,7 @@ Access a service directly:
 kubectl get --raw /api/v1/namespaces/default/services/my-service/proxy/
 
 # With path
-kubectl get --raw /api/v1/namespaces/default/services/my-service:8080/proxy/health
+kubectl get --raw /api/v1/namespaces/default/services/my-service:http/proxy/health
 ```
 
 Most applications should not need this capability. Reserve it for debugging or specific integration patterns.
@@ -274,11 +274,17 @@ rules:
 - apiGroups: [""]
   resources:
     - pods
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources:
     - pods/log
+  verbs: ["get"]
+- apiGroups: [""]
+  resources:
     - pods/exec
     - pods/portforward
     - pods/attach
-  verbs: ["get", "list", "create"]
+  verbs: ["create"]
 ```
 
 ```yaml
@@ -389,11 +395,12 @@ Set up alerts for suspicious patterns:
 # Prometheus alert
 - alert: ExcessiveExecOperations
   expr: |
-    sum(rate(apiserver_audit_event_total{
+    sum(rate(apiserver_request_total{
+      resource="pods",
       subresource="exec"
-    }[5m])) by (user) > 10
+    }[5m])) > 10
   annotations:
-    summary: "User {{ $labels.user }} is executing commands frequently"
+    summary: "Exec operations are occurring frequently"
 ```
 
 ## Implementing Break-Glass Access
@@ -419,7 +426,7 @@ rules:
 
 Store the binding manifest but do not apply it:
 
-```bash
+```yaml
 # break-glass-binding.yaml
 # DO NOT APPLY - Use only in emergencies
 apiVersion: rbac.authorization.k8s.io/v1
