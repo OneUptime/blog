@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Vault, High Availability, Performance Standbys, Kubernetes, Enterprise
 
-Description: Learn how to deploy and configure HashiCorp Vault Enterprise performance standby nodes in Kubernetes for improved read scalability and disaster recovery capabilities.
+Description: Learn how to deploy and configure HashiCorp Vault Enterprise performance standby nodes in Kubernetes for improved read scalability and high availability.
 
 ---
 
-HashiCorp Vault Enterprise performance standby nodes provide read scalability while maintaining high availability. Unlike traditional standby nodes that remain idle, performance standbys can serve read requests and handle lease renewals, significantly improving cluster capacity. This guide covers deploying and configuring performance standby nodes in Kubernetes environments.
+HashiCorp Vault Enterprise performance standby nodes provide read scalability while maintaining high availability. Unlike traditional standby nodes that forward requests to the active node, performance standbys can serve most read-only requests locally, significantly improving cluster capacity. This guide covers deploying and configuring performance standby nodes in Kubernetes environments.
 
 ## Understanding Performance Standbys
 
-In a standard Vault cluster, only the active node handles all requests. Standby nodes simply wait to take over if the active node fails. Performance standbys change this model by enabling standby nodes to handle read-only operations, reducing load on the active node.
+In a standard Vault cluster, only the active node handles all requests directly. Standby nodes forward requests to the active node and wait to take over if the active node fails. Performance standbys change this model by enabling standby nodes to handle read-only operations, reducing load on the active node.
 
-Performance standbys maintain up-to-date replicas of Vault's data through streaming replication from the active node. They can serve token lookups, secret reads, and lease renewals without forwarding requests to the active node. Write operations still route to the active node.
+Performance standbys maintain replicas of Vault's data through replication from the active node. They can serve token lookups, secret reads, and other read-only requests without forwarding requests to the active node. Write operations still route to the active node.
 
 This architecture provides several benefits. Read throughput scales with the number of performance standbys. Applications can connect to any node, improving availability. Failover is faster because standbys are already processing requests.
 
@@ -30,20 +30,14 @@ Performance standbys work with Integrated Storage (Raft). Configure Raft for hig
 ui = true
 
 listener "tcp" {
-  address     = "0.0.0.0:8200"
-  tls_cert_file = "/vault/tls/tls.crt"
-  tls_key_file  = "/vault/tls/tls.key"
-}
-
-listener "tcp" {
-  address     = "0.0.0.0:8201"
-  tls_cert_file = "/vault/tls/tls.crt"
-  tls_key_file  = "/vault/tls/tls.key"
+  address         = "0.0.0.0:8200"
+  cluster_address = "0.0.0.0:8201"
+  tls_cert_file   = "/vault/tls/tls.crt"
+  tls_key_file    = "/vault/tls/tls.key"
 }
 
 storage "raft" {
-  path    = "/vault/data"
-  node_id = "NODE_ID"
+  path = "/vault/data"
 
   retry_join {
     leader_api_addr = "https://vault-0.vault-internal:8200"
@@ -66,8 +60,7 @@ seal "awskms" {
   kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/abc-123"
 }
 
-api_addr = "https://HOSTNAME:8200"
-cluster_addr = "https://HOSTNAME:8201"
+# Set VAULT_API_ADDR, VAULT_CLUSTER_ADDR, and VAULT_RAFT_NODE_ID per pod in Kubernetes.
 
 license_path = "/vault/license/license.hclic"
 ```
@@ -82,8 +75,6 @@ kind: Service
 metadata:
   name: vault-internal
   namespace: vault-system
-  annotations:
-    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
 spec:
   publishNotReadyAddresses: true
   clusterIP: None
@@ -110,7 +101,6 @@ spec:
     targetPort: 8200
   selector:
     app: vault
-    vault-active: "true"
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -138,7 +128,7 @@ spec:
             topologyKey: kubernetes.io/hostname
       containers:
       - name: vault
-        image: hashicorp/vault-enterprise:1.15
+        image: hashicorp/vault-enterprise:1.21
         env:
         - name: HOSTNAME
           valueFrom:
@@ -152,10 +142,14 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        - name: NODE_ID
+        - name: VAULT_RAFT_NODE_ID
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
+        - name: VAULT_API_ADDR
+          value: "https://$(HOSTNAME).vault-internal.$(VAULT_K8S_NAMESPACE).svc.cluster.local:8200"
+        - name: VAULT_CLUSTER_ADDR
+          value: "https://$(HOSTNAME).vault-internal.$(VAULT_K8S_NAMESPACE).svc.cluster.local:8201"
         args:
         - "server"
         - "-config=/vault/config/vault.hcl"
@@ -166,14 +160,14 @@ spec:
           name: cluster
         readinessProbe:
           httpGet:
-            path: /v1/sys/health?perfstandbyok=true
+            path: /v1/sys/health?standbyok=true&perfstandbyok=true
             port: 8200
             scheme: HTTPS
           initialDelaySeconds: 10
           periodSeconds: 5
         livenessProbe:
           httpGet:
-            path: /v1/sys/health?perfstandbyok=true
+            path: /v1/sys/health?standbyok=true&perfstandbyok=true
             port: 8200
             scheme: HTTPS
           initialDelaySeconds: 60
@@ -215,7 +209,7 @@ spec:
           storage: 10Gi
 ```
 
-Note the health check endpoint uses `perfstandbyok=true` to consider performance standbys healthy.
+Note the health check endpoint uses `standbyok=true&perfstandbyok=true` to consider standby and performance standby nodes healthy.
 
 ## Initializing the Vault Cluster
 
@@ -232,12 +226,7 @@ kubectl exec -n vault-system vault-0 -- vault operator init \
 # Verify status
 kubectl exec -n vault-system vault-0 -- vault status
 
-# Join remaining nodes to Raft cluster
-for i in {1..4}; do
-    kubectl exec -n vault-system vault-$i -- vault operator raft join \
-        https://vault-0.vault-internal:8200
-done
-
+# The retry_join stanzas add the remaining nodes after the first node is initialized.
 # Check cluster members
 kubectl exec -n vault-system vault-0 -- vault operator raft list-peers
 ```
@@ -250,16 +239,19 @@ Check which nodes are performance standbys:
 # Check status of each node
 for i in {0..4}; do
     echo "Node vault-$i:"
-    kubectl exec -n vault-system vault-$i -- vault status | grep "HA Mode"
+    kubectl exec -n vault-system vault-$i -- vault status | grep -E "HA Mode|Performance Standby Node"
 done
 
 # Output shows:
 # Node vault-0:
 # HA Mode             active
+# Performance Standby Node    false
 # Node vault-1:
-# HA Mode             performance standby
+# HA Mode             standby
+# Performance Standby Node    true
 # Node vault-2:
-# HA Mode             performance standby
+# HA Mode             standby
+# Performance Standby Node    true
 ```
 
 Query detailed information:
@@ -268,7 +260,7 @@ Query detailed information:
 # Get detailed cluster info (requires admin token)
 kubectl exec -n vault-system vault-0 -- vault read sys/leader
 
-# Check replication status
+# Check enterprise replication status, if performance or DR replication is enabled
 kubectl exec -n vault-system vault-0 -- vault read -format=json sys/replication/status
 ```
 
@@ -414,7 +406,7 @@ data:
     - name: vault-performance-standbys
       rules:
       - record: vault_performance_standby_count
-        expr: count(vault_core_active{mode="performance_standby"})
+        expr: sum(vault_core_performance_standby)
 
       - alert: PerformanceStandbyDown
         expr: vault_performance_standby_count < 2
@@ -425,20 +417,20 @@ data:
           summary: "Insufficient performance standbys available"
 
       - alert: PerformanceStandbyReplicationLag
-        expr: vault_replication_merkle_reindex_duration_seconds > 60
+        expr: vault_ha_rpc_client_echo_sum / vault_ha_rpc_client_echo_count > 1000
         labels:
           severity: warning
         annotations:
-          summary: "Performance standby replication lag detected"
+          summary: "Performance standby active-node echo latency is high"
 
       - record: vault_read_request_distribution
         expr: |
-          sum by (instance) (rate(vault_core_handle_request{type="read"}[5m]))
+          sum by (instance) (rate(vault_core_handle_request_count[5m]))
 ```
 
 ## Handling Failover and Recovery
 
-Performance standbys automatically take over when the active node fails:
+Voting standby nodes automatically take over when the active node fails:
 
 ```bash
 # Simulate active node failure
@@ -456,12 +448,10 @@ Configure fast failover detection:
 
 ```hcl
 storage "raft" {
-  path    = "/vault/data"
-  node_id = "NODE_ID"
+  path = "/vault/data"
 
-  # Reduce heartbeat timeout for faster failover
-  heartbeat_timeout = "2s"
-  leader_lease_timeout = "1s"
+  # Lower values detect leader failures faster at the cost of more network and CPU usage.
+  performance_multiplier = 1
 }
 ```
 
@@ -477,12 +467,7 @@ kubectl scale statefulset vault -n vault-system --replicas=7
 kubectl wait --for=condition=ready pod/vault-5 -n vault-system --timeout=300s
 kubectl wait --for=condition=ready pod/vault-6 -n vault-system --timeout=300s
 
-# Join new nodes to cluster
-kubectl exec -n vault-system vault-5 -- vault operator raft join \
-    https://vault-0.vault-internal:8200
-
-kubectl exec -n vault-system vault-6 -- vault operator raft join \
-    https://vault-0.vault-internal:8200
+# The retry_join stanzas add the new pods to the cluster.
 
 # Verify cluster membership
 kubectl exec -n vault-system vault-0 -- vault operator raft list-peers
