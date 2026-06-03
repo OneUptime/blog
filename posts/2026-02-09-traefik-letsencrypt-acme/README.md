@@ -27,7 +27,7 @@ metadata:
   name: example-ingress
   namespace: production
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
     - host: app.example.com
       http:
@@ -49,7 +49,7 @@ Configure these features using annotations or custom resource definitions depend
 
 ## Security Considerations
 
-Always enable TLS encryption for production traffic. Use cert-manager to automate certificate management. Implement rate limiting and authentication to protect backend services from abuse.
+Always enable TLS encryption for production traffic. Use Traefik ACME certificate resolvers for a single Traefik instance, or cert-manager to automate certificate management in highly available Kubernetes deployments. Implement rate limiting and authentication to protect backend services from abuse.
 
 Configure security headers, enable CORS policies, and implement Web Application Firewall rules to protect against common attacks. Regular security audits ensure configurations remain secure as threats evolve.
 
