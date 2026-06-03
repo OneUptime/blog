@@ -47,7 +47,7 @@ kubectl get pods -n kubescape
 kubectl logs -n kubescape deployment/kubescape-operator
 ```
 
-The operator deploys several components including the scanner, storage, and gateway for receiving scan results.
+The operator deploys several components including the Kubescape scanner, Kubevuln vulnerability scanner, storage, and synchronizer for exposing and exporting scan results.
 
 ## Running Your First Vulnerability Scan
 
@@ -59,11 +59,13 @@ curl -s https://raw.githubusercontent.com/kubescape/kubescape/master/install.sh 
 
 # Scan a specific namespace for vulnerabilities
 kubescape scan --format json --output results.json \
-  --include-namespaces production
+  --include-namespaces production \
+  --scan-images
 
 # View summary of findings
 kubescape scan --format pretty-printer \
-  --include-namespaces production | less
+  --include-namespaces production \
+  --scan-images | less
 ```
 
 The scan examines all container images in running pods, analyzing them for known CVEs. Results show vulnerability severity, affected packages, and available fixes.
@@ -75,14 +77,17 @@ Kubescape categorizes vulnerabilities by severity:
 ```bash
 # Scan and filter by severity
 kubescape scan --severity-threshold critical \
-  --include-namespaces production
+  --include-namespaces production \
+  --scan-images
 
 # Export detailed CVE report
 kubescape scan --format json --output cve-report.json \
-  --include-namespaces production
+  --include-namespaces production \
+  --scan-images
 
-# Parse critical CVEs from JSON report
-jq '.results[] | select(.severity == "Critical")' cve-report.json
+# View critical vulnerability summaries from operator results
+kubectl get vulnerabilitymanifestsummaries -n production -o json | \
+  jq '.items[] | select(.spec.severities.critical.all > 0) | {name: .metadata.name, critical: .spec.severities.critical.all}'
 ```
 
 Each vulnerability includes:
@@ -90,42 +95,34 @@ Each vulnerability includes:
 - Affected package and version
 - Fixed version (if available)
 - CVSS score
-- Exploit availability
+- Link to the full vulnerability manifest
 
 ## Configuring Continuous Scanning
 
 Set up scheduled scans that run automatically:
 
-```yaml
-# Create scan schedule ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubescape-scheduler
-  namespace: kubescape
-data:
-  config.json: |
-    {
-      "scan": {
-        "scanSchedule": "0 2 * * *",
-        "namespaces": ["production", "staging"],
-        "frameworks": ["NSA", "MITRE"],
-        "vulnerabilityScan": {
-          "enabled": true,
-          "schedule": "0 */6 * * *"
-        }
-      }
-    }
+```bash
+# Configure recurring image vulnerability scanning
+helm upgrade kubescape kubescape/kubescape-operator \
+  --namespace kubescape \
+  --reuse-values \
+  --set kubevulnScheduler.scanSchedule="0 */6 * * *"
+
+# Keep continuous configuration scanning enabled
+helm upgrade kubescape kubescape/kubescape-operator \
+  --namespace kubescape \
+  --reuse-values \
+  --set capabilities.continuousScan=enable
 ```
 
-This configuration runs vulnerability scans every 6 hours and full security scans daily at 2 AM. Apply the configuration:
+This configuration runs recurring vulnerability scans every 6 hours and keeps continuous configuration scanning enabled. Confirm the configuration:
 
 ```bash
-kubectl apply -f kubescape-scheduler.yaml
+# Confirm the vulnerability scanner schedule
+kubectl get cronjob -n kubescape kubevuln-scheduler
 
-# Trigger immediate scan
-kubectl exec -n kubescape deployment/kubescape-operator -- \
-  kubescape scan --enable-host-scan --verbose
+# Run an immediate CLI scan when you need an on-demand result
+kubescape scan --include-namespaces production --scan-images --verbose
 ```
 
 ## Scanning Specific Workloads
@@ -136,53 +133,51 @@ Target individual deployments, daemonsets, or statefulsets:
 # Scan a specific deployment
 kubescape scan workload deployment/web-app -n production
 
-# Scan all workloads with a label
-kubescape scan --include-labels app=frontend
+# Scan all workloads in a namespace
+kubescape scan --include-namespaces production --scan-images
 
-# Scan only images from specific registry
-kubescape scan --include-image-registry gcr.io/myproject
+# Scan a specific image from a registry
+kubescape scan image gcr.io/myproject/web-app:1.2.3
 ```
 
 This focused scanning helps when investigating specific security concerns or validating fixes.
 
 ## Excluding Known False Positives
 
-Not all CVEs are exploitable in your environment. Create exceptions for false positives:
+Not all findings are exploitable in your environment. Create exceptions for accepted posture risks:
 
-```yaml
-# exceptions.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubescape-exceptions
-  namespace: kubescape
-data:
-  exceptions.json: |
-    {
-      "exceptions": [
-        {
-          "name": "CVE-2023-12345-false-positive",
-          "policyName": "C-0050",
-          "resources": [
-            {
-              "kind": "Deployment",
-              "name": "web-app",
-              "namespace": "production"
-            }
-          ],
-          "justification": "Package not used in production code path"
+```json
+[
+  {
+    "name": "accepted-risk-web-app-control",
+    "policyType": "postureExceptionPolicy",
+    "actions": [
+      "alertOnly"
+    ],
+    "resources": [
+      {
+        "designatorType": "Attributes",
+        "attributes": {
+          "kind": "Deployment",
+          "name": "web-app",
+          "namespace": "production"
         }
-      ]
-    }
+      }
+    ],
+    "posturePolicies": [
+      {
+        "controlID": "C-0050"
+      }
+    ]
+  }
+]
 ```
 
-Apply exceptions:
+Use exceptions during a CLI scan:
 
 ```bash
-kubectl apply -f exceptions.yaml
-
-# Verify exceptions are loaded
-kubectl get configmap kubescape-exceptions -n kubescape -o yaml
+kubescape scan --exceptions exceptions.json \
+  --include-namespaces production
 ```
 
 ## Integrating with CI/CD Pipelines
@@ -198,7 +193,7 @@ jobs:
   kubescape-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Install Kubescape
         run: |
@@ -208,10 +203,12 @@ jobs:
         run: |
           kubescape scan *.yaml \
             --severity-threshold high \
-            --fail-threshold 0
+            --scan-images \
+            --format json \
+            --output results.json
 
       - name: Upload scan results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: kubescape-results
           path: results.json
@@ -221,36 +218,29 @@ This prevents deploying workloads with critical vulnerabilities.
 
 ## Setting Up Alerting
 
-Configure alerts for newly discovered CVEs:
+Configure alerts for newly discovered CVEs from the Prometheus metrics produced by the Kubescape exporter:
 
 ```yaml
-# Alert configuration
-apiVersion: v1
-kind: ConfigMap
+# PrometheusRule example for Kubescape vulnerability metrics
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
 metadata:
-  name: kubescape-alerts
-  namespace: kubescape
-data:
-  alerts.json: |
-    {
-      "alerts": {
-        "vulnerabilities": {
-          "enabled": true,
-          "severity": ["Critical", "High"],
-          "webhooks": [
-            {
-              "url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
-              "headers": {
-                "Content-Type": "application/json"
-              }
-            }
-          ]
-        }
-      }
-    }
+  name: kubescape-vulnerability-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: kubescape-vulnerabilities
+      rules:
+        - alert: KubescapeCriticalVulnerabilities
+          expr: kubescape_vulnerabilities_total_cluster_critical > 0
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: Critical vulnerabilities detected by Kubescape
 ```
 
-You'll receive notifications when scans detect new critical or high-severity CVEs in running workloads.
+Route the alert through Alertmanager to Slack, PagerDuty, or your existing incident channel.
 
 ## Generating Compliance Reports
 
@@ -258,7 +248,7 @@ Create reports showing CVE status across your cluster:
 
 ```bash
 # Generate PDF compliance report
-kubescape scan --format pdf --output security-report.pdf \
+kubescape scan framework NSA --format pdf --output security-report.pdf \
   --compliance-threshold 80
 
 # Generate SARIF format for GitHub Security tab
@@ -276,20 +266,21 @@ Track vulnerability trends over time:
 
 ```bash
 # Query Kubescape storage for historical scans
-kubectl exec -n kubescape deployment/kubescape-storage -- \
-  curl -s http://localhost:8080/v1/scans | jq '.scans[] | {date, criticalCount}'
+kubectl get vulnerabilitymanifestsummaries -A -o json | \
+  jq '.items[] | {namespace: .metadata.namespace, name: .metadata.name, critical: .spec.severities.critical.all, high: .spec.severities.high.all}'
 
 # Export metrics to Prometheus
 helm upgrade kubescape kubescape/kubescape-operator \
   --namespace kubescape \
   --reuse-values \
-  --set prometheus.enabled=true
+  --set capabilities.prometheusExporter=enable
 ```
 
 Monitor these Prometheus metrics:
-- `kubescape_vulnerabilities_total` - Total CVEs by severity
-- `kubescape_vulnerability_age_days` - How long CVEs have existed
-- `kubescape_fixable_vulnerabilities` - CVEs with available patches
+- `kubescape_vulnerabilities_total_cluster_critical` - Total critical CVEs in the cluster
+- `kubescape_vulnerabilities_total_namespace_high` - Total high CVEs by namespace
+- `kubescape_vulnerabilities_total_workload_critical` - Total critical CVEs by workload
+- Node-agent metrics such as `node_agent_alert_counter` when runtime detection is enabled
 
 ## Remediating Vulnerabilities
 
@@ -297,12 +288,12 @@ When scans find CVEs, follow this workflow:
 
 ```bash
 # Get detailed CVE information
-kubescape scan deployment/web-app -n production --format json | \
-  jq '.results[] | select(.severity == "Critical") | {cve, package, fixVersion}'
+kubescape scan workload deployment/web-app -n production --format json | \
+  jq '.. | objects | select(.severity? == "Critical") | {id: .id, package: .package, fixVersion: .fixVersion}'
 
 # Example output:
 # {
-#   "cve": "CVE-2023-45678",
+#   "id": "CVE-2023-45678",
 #   "package": "openssl",
 #   "fixVersion": "1.1.1w"
 # }
@@ -311,15 +302,15 @@ kubescape scan deployment/web-app -n production --format json | \
 # Rebuild and redeploy the image
 
 # Verify fix with new scan
-kubescape scan deployment/web-app -n production --format json | \
-  jq '.results[] | select(.cve == "CVE-2023-45678")'
+kubescape scan workload deployment/web-app -n production --format json | \
+  jq '.. | objects | select(.id? == "CVE-2023-45678")'
 ```
 
 Prioritize fixing critical and high-severity CVEs with known exploits. Track remediation progress with tickets linked to CVE identifiers.
 
 ## Scanning Node Host Systems
 
-Kubescape can also scan the host OS running your Kubernetes nodes:
+Kubescape can also run host-scanner-backed controls that inspect node and kubelet configuration:
 
 ```bash
 # Enable host scanning
@@ -329,10 +320,10 @@ helm upgrade kubescape kubescape/kubescape-operator \
   --set capabilities.nodeScan=enable
 
 # Trigger host scan
-kubescape scan --enable-host-scan --format json
+kubescape scan --format json --output node-controls.json
 ```
 
-This detects vulnerabilities in the node's operating system, kernel, and system packages that could affect container security.
+This supports controls that require node-level data, such as kubelet configuration checks.
 
 ## Best Practices for CVE Scanning
 
@@ -347,18 +338,14 @@ Document exceptions thoroughly with business justification for why certain CVEs 
 Vulnerability scanning is resource-intensive. Consider these optimization strategies:
 
 ```bash
-# Limit concurrent scans to reduce cluster load
+# Reduce cluster load by spacing out recurring vulnerability scans
 helm upgrade kubescape kubescape/kubescape-operator \
   --namespace kubescape \
   --reuse-values \
-  --set scanner.maxConcurrentScans=3
+  --set kubevulnScheduler.scanSchedule="0 2 * * *"
 
-# Cache image layers to speed up repeated scans
-helm upgrade kubescape kubescape/kubescape-operator \
-  --namespace kubescape \
-  --reuse-values \
-  --set scanner.cacheEnabled=true \
-  --set scanner.cacheSize=10Gi
+# Bound long-running CLI scans
+kubescape scan --scan-timeout 30m --scan-images
 ```
 
 Schedule heavy scans during off-peak hours to minimize impact on production workloads.
