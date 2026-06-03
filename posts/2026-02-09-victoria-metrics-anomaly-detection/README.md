@@ -8,18 +8,18 @@ Description: Discover how to leverage VictoriaMetrics anomaly detection capabili
 
 ---
 
-Static threshold alerts create a constant tension in Kubernetes monitoring. Set thresholds too low and you drown in false positives. Set them too high and you miss real issues. VictoriaMetrics anomaly detection solves this by learning normal behavior patterns and alerting only when metrics deviate significantly from historical norms.
+Static threshold alerts create a constant tension in Kubernetes monitoring. Set thresholds too low and you drown in false positives. Set them too high and you miss real issues. VictoriaMetrics anomaly-style queries solve this by comparing current values against historical baselines and alerting only when metrics deviate significantly from normal ranges.
 
-This guide walks through implementing VictoriaMetrics anomaly detection for Kubernetes workloads, from basic setup to advanced forecasting and seasonal pattern recognition.
+This guide walks through implementing VictoriaMetrics anomaly detection for Kubernetes workloads, from basic setup to forecasting and trend smoothing.
 
 ## Understanding VictoriaMetrics Anomaly Detection
 
-VictoriaMetrics provides built-in MetricsQL functions for anomaly detection that go beyond simple threshold alerts:
+VictoriaMetrics provides built-in MetricsQL functions for anomaly detection patterns that go beyond simple threshold alerts:
 
 - `mad_over_time()` - Median Absolute Deviation for outlier detection
-- `outlier_iqr()` - Interquartile Range based outlier detection
+- `outlier_iqr_over_time()` - Interquartile Range based outlier detection over a lookbehind window
 - `predict_linear()` - Linear regression forecasting
-- `holt_winters()` - Exponential smoothing for seasonal patterns
+- `holt_winters()` - Double exponential smoothing for trend detection
 - `range_normalize()` - Normalize metrics to detect relative changes
 
 These functions enable sophisticated anomaly detection without external machine learning systems.
@@ -47,10 +47,10 @@ spec:
     spec:
       containers:
       - name: victoria-metrics
-        image: victoriametrics/victoria-metrics:v1.95.1
+        image: victoriametrics/victoria-metrics:v1.144.0
         args:
         - -storageDataPath=/victoria-metrics-data
-        - -retentionPeriod=90d  # 90 days for pattern learning
+        - -retentionPeriod=90d  # 90 days for historical baselines
         - -search.maxQueryDuration=30m  # Allow longer queries for analysis
         - -search.maxSeries=1000000
         - -memory.allowedPercent=80
@@ -90,15 +90,17 @@ spec:
     name: http
 ```
 
-The extended retention period is essential for learning seasonal patterns and baseline behavior.
+The extended retention period is essential for comparing current metrics with longer historical baselines.
 
 ## Basic Anomaly Detection with MAD
 
 Median Absolute Deviation (MAD) detects outliers by measuring how far values deviate from the median:
 
+The alert examples below use `VMRule`, which is consumed by `VMAlert` from the VictoriaMetrics Operator.
+
 ```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
 metadata:
   name: victoria-metrics-anomaly-alerts
   namespace: monitoring
@@ -180,12 +182,12 @@ Predict when disk space will run out using linear regression:
 
 This alert provides early warning before disk space exhaustion actually occurs.
 
-## Seasonal Pattern Detection with Holt-Winters
+## Trend Smoothing with Holt-Winters
 
-For metrics with daily or weekly patterns, use Holt-Winters forecasting:
+For metrics with smooth upward or downward trends, use Holt-Winters forecasting:
 
 ```promql
-# Detect deviations from seasonal patterns for request rates
+# Detect deviations from a smoothed request-rate trend
 abs(
   rate(http_requests_total[5m])
   -
@@ -195,7 +197,7 @@ abs(
 3 * stddev_over_time(rate(http_requests_total[5m])[7d:5m])
 ```
 
-Holt-Winters learns daily and weekly patterns, making it perfect for traffic that varies predictably throughout the week.
+VictoriaMetrics' `holt_winters()` implements double exponential smoothing, so it is useful for trend-aware baselines but does not model daily or weekly seasonality by itself.
 
 ## Multi-Dimensional Anomaly Detection
 
@@ -237,14 +239,18 @@ Use range normalization to detect relative changes regardless of absolute values
 # Detect unusual relative changes in request latency
 abs(
   range_normalize(
-    0, 1,
-    histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+    histogram_quantile(
+      0.95,
+      sum by (le, service) (rate(http_request_duration_seconds_bucket[5m]))
+    )
   )
   -
   range_normalize(
-    0, 1,
     median_over_time(
-      histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))[1h:5m]
+      histogram_quantile(
+        0.95,
+        sum by (le, service) (rate(http_request_duration_seconds_bucket[5m]))
+      )[1h:5m]
     )
   )
 ) > 0.3
@@ -262,15 +268,15 @@ Account for expected variations throughout the day:
     rate(http_requests_total[5m])
     >
     1.5 * (
-      # Average for this hour over past 7 days
+      # Average at this time of day over the past 7 days
       avg_over_time(
-        rate(http_requests_total[5m])[7d:5m] offset 0h
+        rate(http_requests_total[5m])[7d:1d]
       )
     )
   for: 15m
   annotations:
     summary: "Unusual traffic volume for current time"
-    description: "Traffic is {{ $value | humanizePercentage }} above normal for this time of day"
+    description: "Traffic rate is {{ $value | humanize }} requests per second, which is above normal for this time of day"
 ```
 
 ## Creating Anomaly Severity Scores
@@ -330,12 +336,16 @@ Implement dynamic thresholds that adjust based on recent patterns:
 avg_over_time(rate(container_cpu_usage_seconds_total[5m])[1h:5m])
 +
 (
-  # Use larger multiplier during high variance periods
-  (
-    stddev_over_time(rate(container_cpu_usage_seconds_total[5m])[1h:5m])
-    /
-    avg_over_time(rate(container_cpu_usage_seconds_total[5m])[1h:5m])
-  ) * 3
+  stddev_over_time(rate(container_cpu_usage_seconds_total[5m])[1h:5m])
+  *
+  clamp_max(
+    3 + (
+      stddev_over_time(rate(container_cpu_usage_seconds_total[5m])[1h:5m])
+      /
+      (avg_over_time(rate(container_cpu_usage_seconds_total[5m])[1h:5m]) + 0.001)
+    ),
+    6
+  )
 )
 ```
 
@@ -344,8 +354,8 @@ avg_over_time(rate(container_cpu_usage_seconds_total[5m])[1h:5m])
 Anomaly detection queries can be expensive. Optimize with recording rules:
 
 ```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
 metadata:
   name: anomaly-recording-rules
   namespace: monitoring
@@ -379,7 +389,7 @@ Recording rules pre-compute expensive calculations, making alerts evaluate faste
 
 ## Handling Sparse Metrics
 
-For metrics with gaps, use interpolation:
+For metrics with gaps, use short-window smoothing:
 
 ```promql
 # Detect anomalies in sparse metrics
@@ -394,10 +404,10 @@ abs(
 3 * mad_over_time(avg_over_time(metric_name[5m])[1h:5m])
 ```
 
-The nested aggregation smooths out gaps before anomaly detection.
+The nested aggregation smooths short gaps before anomaly detection.
 
 ## Conclusion
 
-VictoriaMetrics anomaly detection transforms Kubernetes monitoring from reactive threshold alerts to proactive pattern recognition. By learning normal behavior patterns, you catch unusual situations that static thresholds would miss while avoiding false alarms from expected variations.
+VictoriaMetrics anomaly detection transforms Kubernetes monitoring from reactive threshold alerts to proactive pattern recognition. By comparing current signals with historical baselines, you catch unusual situations that static thresholds would miss while avoiding false alarms from expected variations.
 
-Start with simple MAD-based detection for CPU and memory, then expand to forecasting for capacity planning and Holt-Winters for seasonal patterns. Use recording rules to optimize query performance, and combine multiple signals for robust anomaly detection. This approach dramatically improves signal-to-noise ratio in your alerting, letting you focus on actual issues rather than tuning thresholds.
+Start with simple MAD-based detection for CPU and memory, then expand to forecasting for capacity planning and Holt-Winters for trend-aware baselines. Use recording rules to optimize query performance, and combine multiple signals for robust anomaly detection. This approach dramatically improves signal-to-noise ratio in your alerting, letting you focus on actual issues rather than tuning thresholds.
