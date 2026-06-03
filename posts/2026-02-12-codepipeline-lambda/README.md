@@ -142,17 +142,15 @@ phases:
       - npm install -g aws-sam-cli
   pre_build:
     commands:
-      - cd src && npm ci
-      - cd ../tests && npm ci
+      - npm ci --prefix src
+      - npm ci --prefix tests
       - echo "Running unit tests..."
-      - npm test
+      - npm test --prefix tests
   build:
     commands:
       - echo "Packaging SAM application..."
       - sam build
-      - sam package \
-          --output-template-file packaged.yml \
-          --s3-bucket my-sam-artifacts
+      - sam package --output-template-file packaged.yml --s3-bucket my-sam-artifacts
 
 artifacts:
   files:
@@ -267,9 +265,9 @@ artifacts:
 }
 ```
 
-## Approach 2: Direct Lambda Deploy Action
+## Approach 2: Lambda Invoke Action
 
-For simpler setups where you don't need SAM, you can use CodePipeline's Lambda deploy action:
+For simpler setups where you don't need SAM, you can use CodePipeline's Lambda invoke action to run a custom deployer function:
 
 ```json
 {
@@ -284,7 +282,7 @@ For simpler setups where you don't need SAM, you can use CodePipeline's Lambda d
     },
     "configuration": {
       "FunctionName": "deploy-lambda-function",
-      "UserParameters": "{\"targetFunction\": \"my-app-function\", \"s3Bucket\": \"my-artifacts\", \"s3Key\": \"function.zip\"}"
+      "UserParameters": "{\"targetFunction\": \"my-app-function\", \"artifactFile\": \"function.zip\"}"
     },
     "inputArtifacts": [{"name": "BuildOutput"}]
   }]
@@ -302,29 +300,39 @@ import io
 
 lambda_client = boto3.client('lambda')
 codepipeline = boto3.client('codepipeline')
-s3 = boto3.client('s3')
 
 def handler(event, context):
-    job_id = event['CodePipeline.job']['id']
+    job = event['CodePipeline.job']
+    job_id = job['id']
 
     try:
         params = json.loads(
-            event['CodePipeline.job']['data']['actionConfiguration']['configuration']['UserParameters']
+            job['data']['actionConfiguration']['configuration']['UserParameters']
         )
 
-        # Get the artifact from S3
-        artifact = event['CodePipeline.job']['data']['inputArtifacts'][0]
+        credentials = job['data']['artifactCredentials']
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=credentials['accessKeyId'],
+            aws_secret_access_key=credentials['secretAccessKey'],
+            aws_session_token=credentials['sessionToken']
+        )
+
+        # Download the CodePipeline artifact from S3
+        artifact = job['data']['inputArtifacts'][0]
         bucket = artifact['location']['s3Location']['bucketName']
         key = artifact['location']['s3Location']['objectKey']
-
-        # Download and extract the function code
         response = s3.get_object(Bucket=bucket, Key=key)
         artifact_zip = response['Body'].read()
+
+        # Extract the Lambda deployment package from the pipeline artifact
+        with zipfile.ZipFile(io.BytesIO(artifact_zip)) as archive:
+            function_zip = archive.read(params['artifactFile'])
 
         # Update the Lambda function code
         lambda_client.update_function_code(
             FunctionName=params['targetFunction'],
-            ZipFile=artifact_zip
+            ZipFile=function_zip
         )
 
         # Report success
