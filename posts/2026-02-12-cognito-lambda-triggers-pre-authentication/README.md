@@ -8,7 +8,7 @@ Description: Implement the Cognito Pre Authentication Lambda trigger to add cust
 
 ---
 
-The Pre Authentication trigger fires every time a user attempts to sign in, right before Cognito validates their credentials. It gives you a chance to block the authentication attempt, log it, check custom conditions, or run security validations. Unlike Pre Sign-Up which fires once per user, Pre Authentication fires on every single sign-in attempt.
+The Pre Authentication trigger fires when a user attempts to sign in, right before Cognito validates their credentials. It gives you a chance to block the authentication attempt, log it, check custom conditions, or run security validations. Unlike Pre Sign-Up which fires once per user, Pre Authentication fires on sign-in attempts, except for cases like existing-session renewal.
 
 ## When the Trigger Fires
 
@@ -27,7 +27,7 @@ resource "aws_lambda_function" "pre_auth" {
   function_name    = "cognito-pre-authentication"
   role             = aws_iam_role.pre_auth_role.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs24.x"
   timeout          = 5
 
   environment {
@@ -84,16 +84,15 @@ resource "aws_cognito_user_pool" "main" {
 
 ## Use Case 1: Account Lockout After Failed Attempts
 
-Cognito doesn't have built-in account lockout beyond its basic throttling. Implement your own:
+Cognito has built-in temporary lockouts for repeated failed passwords, but you can add your own longer or policy-specific lockout:
 
 ```javascript
 // account-lockout.mjs
-import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, GetItemCommand } from '@aws-sdk/client-dynamodb';
 
 const dynamodb = new DynamoDBClient({});
 const TABLE_NAME = process.env.AUTH_LOG_TABLE;
 const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_MINUTES = 15;
 
 export const handler = async (event) => {
   const userId = event.request.userAttributes.sub;
@@ -130,7 +129,7 @@ export const handler = async (event) => {
 };
 ```
 
-You'll also need to track failed attempts in a Post Authentication trigger or CloudWatch Logs.
+You'll also need to track failed attempts outside this trigger, such as in the backend that calls Cognito and records failed `InitiateAuth` or `AdminInitiateAuth` responses. Post Authentication only runs after successful authentication, so it can reset counters after a successful sign-in but can't count failed password attempts.
 
 ## Use Case 2: IP-Based Access Control
 
@@ -149,9 +148,8 @@ const ALLOWED_CIDRS = [
 ];
 
 export const handler = async (event) => {
-  // IP is passed via clientMetadata from your app
-  const sourceIp = event.request.validationData?.sourceIp ||
-                   event.request.clientMetadata?.sourceIp;
+  // ClientMetadata from InitiateAuth/AdminInitiateAuth is passed as validationData
+  const sourceIp = event.request.validationData?.sourceIp;
 
   if (!sourceIp) {
     // If no IP provided, allow (or block, depending on your policy)
@@ -211,6 +209,8 @@ async function loginWithMetadata(email, password) {
 }
 ```
 
+For security-sensitive IP checks, set this metadata from a trusted backend or edge layer. Client-supplied metadata is useful context, but users can tamper with it.
+
 ## Use Case 3: Business Hours Restriction
 
 Limit sign-ins to business hours for certain user types:
@@ -266,8 +266,8 @@ export const handler = async (event) => {
     triggerSource: { S: event.triggerSource },
     clientId: { S: event.callerContext.clientId },
     region: { S: event.region },
-    sourceIp: { S: event.request.clientMetadata?.sourceIp || 'unknown' },
-    userAgent: { S: event.request.clientMetadata?.userAgent || 'unknown' },
+    sourceIp: { S: event.request.validationData?.sourceIp || 'unknown' },
+    userAgent: { S: event.request.validationData?.userAgent || 'unknown' },
     // TTL for auto-cleanup (90 days)
     ttl: { N: String(Math.floor(now.getTime() / 1000) + (90 * 86400)) }
   };
@@ -306,7 +306,7 @@ export const handler = async (event) => {
   const now = Date.now();
 
   // Cache the parameter for 60 seconds
-  if (!cachedMaintenanceMode || now > cacheExpiry) {
+  if (cachedMaintenanceMode === null || now > cacheExpiry) {
     const command = new GetParameterCommand({
       Name: '/myapp/maintenance-mode'
     });
@@ -349,11 +349,20 @@ Since Pre Authentication fires on every sign-in, performance matters:
 # Provisioned concurrency for consistent performance
 
 resource "aws_lambda_provisioned_concurrency_config" "pre_auth" {
-  function_name                  = aws_lambda_function.pre_auth.function_name
+  function_name                     = aws_lambda_function.pre_auth.function_name
   provisioned_concurrent_executions = 5
-  qualifier                      = aws_lambda_function.pre_auth.version
+  qualifier                         = aws_lambda_alias.pre_auth.name
+}
+
+resource "aws_lambda_alias" "pre_auth" {
+  name             = "live"
+  description      = "Live pre-authentication trigger"
+  function_name    = aws_lambda_function.pre_auth.function_name
+  function_version = aws_lambda_function.pre_auth.version
 }
 ```
+
+Set `publish = true` on the Lambda function and point the Cognito trigger at the alias ARN. Provisioned concurrency applies to a published version or alias, not `$LATEST`.
 
 For the trigger that fires after successful authentication, see [Cognito Lambda triggers for post authentication](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-post-authentication/view).
 
