@@ -14,19 +14,19 @@ If you've never built a Lambda function before, this guide will get you from zer
 
 ## What Lambda Actually Is
 
-Lambda is a compute service. You give it a function (a piece of code), tell it what triggers the function (an event), and Lambda runs your code whenever that event occurs. Your code runs in a container managed by AWS, and the container is destroyed after the function finishes (or after a period of inactivity).
+Lambda is a compute service. You give it a function (a piece of code), tell it what triggers the function (an event), and Lambda runs your code whenever that event occurs. Your code runs in an execution environment managed by AWS. After an invocation finishes, Lambda can freeze and reuse that environment for later invocations, or shut it down after a period of inactivity.
 
 Think of it like this: instead of renting a server 24/7, you're renting compute time measured in milliseconds.
 
-Lambda supports several runtimes:
+Lambda supports several managed runtimes:
 
-- Python 3.9, 3.10, 3.11, 3.12, 3.13
-- Node.js 18.x, 20.x, 22.x
-- Java 11, 17, 21
-- .NET 6, 8
+- Python 3.10, 3.11, 3.12, 3.13, 3.14
+- Node.js 22.x, 24.x
+- Java 8, 11, 17, 21, 25
+- .NET 8, 10
 - Go (via provided runtime)
-- Ruby 3.2, 3.3
-- Custom runtimes via Amazon Linux 2
+- Ruby 3.3, 3.4, 4.0
+- Custom runtimes via Amazon Linux 2023 or Amazon Linux 2 OS-only runtimes
 
 ## The Anatomy of a Lambda Function
 
@@ -71,7 +71,7 @@ First, write the function code:
 ```python
 # lambda_function.py
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 def lambda_handler(event, context):
     # Extract the name from the event
@@ -86,7 +86,7 @@ def lambda_handler(event, context):
         name = event.get('name', 'World')
 
     # Get the current time
-    current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+    current_time = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
 
     # Build the response
     response = {
@@ -231,7 +231,7 @@ The event object is different depending on what triggers your function. Here are
 
 ## Adding an API Gateway Trigger
 
-To make your function accessible via HTTP, add an API Gateway trigger. The quickest way is with a Lambda Function URL:
+To make your function accessible via HTTP, you can add API Gateway, or use the quickest option: a Lambda Function URL.
 
 ```bash
 # Create a function URL (simple HTTP endpoint)
@@ -246,6 +246,13 @@ aws lambda add-permission \
   --action lambda:InvokeFunctionUrl \
   --principal "*" \
   --function-url-auth-type NONE
+
+aws lambda add-permission \
+  --function-name my-first-function \
+  --statement-id FunctionURLInvokeAllowPublicAccess \
+  --action lambda:InvokeFunction \
+  --principal "*" \
+  --invoked-via-function-url
 ```
 
 This gives you a URL like `https://abc123.lambda-url.us-east-1.on.aws/` that you can call from anywhere.
