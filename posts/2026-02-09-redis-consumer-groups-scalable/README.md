@@ -8,7 +8,7 @@ Description: Learn how to implement Redis consumer groups for scalable message p
 
 ---
 
-Redis Streams consumer groups enable multiple consumers to cooperatively process messages from a stream. Unlike simple Pub/Sub, consumer groups provide message persistence, automatic load balancing, and the ability to track which messages have been processed. This makes them suitable for building scalable, reliable message processing systems.
+Redis Streams consumer groups enable multiple consumers to cooperatively process messages from a stream. Unlike simple Pub/Sub, streams provide message persistence, automatic load balancing within a consumer group, and the ability to track which messages have been delivered but not acknowledged. This makes them suitable for building scalable, reliable message processing systems.
 
 In this guide, you'll learn how to create and manage consumer groups, implement scalable consumers, handle pending messages, and build fault-tolerant processing pipelines using Redis Streams on Kubernetes.
 
@@ -17,7 +17,7 @@ In this guide, you'll learn how to create and manage consumer groups, implement 
 Consumer groups provide:
 
 - **Load balancing** - Messages automatically distributed among consumers
-- **Message persistence** - Messages remain until acknowledged
+- **Message persistence** - Messages remain in the stream until deleted or trimmed; acknowledgements remove them from the group's pending list
 - **Delivery guarantees** - Track pending and acknowledged messages
 - **Multiple groups** - Different consumer groups can process the same stream
 - **Consumer tracking** - Monitor individual consumer progress
@@ -35,13 +35,13 @@ Create a stream and consumer group:
 ```bash
 # Create stream
 
-redis-cli XADD orders * order_id 123 amount 99.99
+redis-cli XADD orders '*' order_id 123 amount 99.99
 
 # Create consumer group starting from beginning
 redis-cli XGROUP CREATE orders processing_group 0 MKSTREAM
 
 # Create consumer group starting from latest
-redis-cli XGROUP CREATE orders analytics_group $ MKSTREAM
+redis-cli XGROUP CREATE orders analytics_group '$' MKSTREAM
 ```
 
 Using Python:
@@ -69,7 +69,7 @@ package main
 
 import (
     "context"
-    "github.com/go-redis/redis/v8"
+    "github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -213,7 +213,7 @@ import (
     "log"
     "os"
     "time"
-    "github.com/go-redis/redis/v8"
+    "github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -298,7 +298,7 @@ def process_pending_messages(self):
 Automatic recovery in Go:
 
 ```go
-func processPendingMessages(ctx context.Context, rdb *redis.Client) {
+func processPendingMessages(ctx context.Context, rdb *redis.Client, streamKey, groupName, consumerName string) {
     ticker := time.NewTicker(30 * time.Second)
     defer ticker.Stop()
 
@@ -339,7 +339,7 @@ func processPendingMessages(ctx context.Context, rdb *redis.Client) {
 
 ## Implementing Autoscaling
 
-Use HPA with Redis metrics:
+Use HPA with Redis metrics exposed through the Kubernetes external metrics API:
 
 ```yaml
 apiVersion: v1
@@ -374,6 +374,8 @@ spec:
         env:
         - name: REDIS_ADDR
           value: redis.default.svc.cluster.local:6379
+        - name: REDIS_EXPORTER_CHECK_SINGLE_STREAMS
+          value: orders
         ports:
         - containerPort: 9121
 ---
@@ -390,10 +392,14 @@ spec:
   minReplicas: 2
   maxReplicas: 20
   metrics:
-  - type: Pods
-    pods:
+  - type: External
+    external:
       metric:
-        name: redis_stream_pending_messages
+        name: redis_stream_group_messages_pending
+        selector:
+          matchLabels:
+            stream: orders
+            group: processing_group
       target:
         type: AverageValue
         averageValue: "100"
@@ -427,7 +433,7 @@ spec:
     rules:
     - alert: RedisConsumerGroupLagging
       expr: |
-        redis_stream_length - redis_consumer_group_last_delivered_id > 1000
+        redis_stream_group_lag{stream="orders",group="processing_group"} > 1000
       for: 10m
       labels:
         severity: warning
@@ -436,7 +442,7 @@ spec:
 
     - alert: RedisConsumerGroupPendingHigh
       expr: |
-        redis_consumer_group_pending > 500
+        redis_stream_group_messages_pending{stream="orders",group="processing_group"} > 500
       for: 5m
       labels:
         severity: warning
