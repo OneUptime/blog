@@ -305,11 +305,11 @@ spec:
             cpu: "2000m"
         startupProbe:
           httpGet:
-            path: /actuator/health/startup
+            path: /actuator/health/liveness
             port: 8080
           initialDelaySeconds: 30
           periodSeconds: 10
-          failureThreshold: 36  # 6 minutes total
+          failureThreshold: 36  # 6 minutes after the initial delay
           successThreshold: 1
         livenessProbe:
           httpGet:
@@ -329,7 +329,7 @@ spec:
           successThreshold: 1
 ```
 
-Spring Boot Actuator provides built-in health endpoints for startup, liveness, and readiness. Enable them in `application.properties`:
+Spring Boot Actuator provides built-in health endpoints for liveness and readiness. Use the liveness endpoint for the startup probe so Kubernetes gives the application time to finish starting before normal liveness checks can restart it. Enable the probe endpoints in `application.properties`:
 
 ```properties
 management.endpoint.health.probes.enabled=true
@@ -476,7 +476,7 @@ livenessProbe:
   periodSeconds: 10  # Faster checks after startup
 ```
 
-This provides the same startup tolerance but much faster failure detection after initialization.
+This replaces the long liveness delay with a dedicated startup window and provides much faster failure detection after initialization.
 
 Roll out the change gradually:
 
@@ -536,15 +536,21 @@ Alert on unusually long startup times:
 
 ```yaml
 # PrometheusRule
-groups:
-- name: startup-alerts
-  rules:
-  - alert: SlowStartup
-    expr: |
-      time() - kube_pod_start_time{pod=~"my-app-.*"} > 300
-    for: 5m
-    annotations:
-      summary: "Pod {{ $labels.pod }} taking too long to start"
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: startup-alerts
+spec:
+  groups:
+  - name: startup-alerts
+    rules:
+    - alert: SlowStartup
+      expr: |
+        (time() - kube_pod_start_time{pod=~"my-app-.*"} > 300)
+        and on(namespace, pod) kube_pod_status_ready{condition="false"} == 1
+      for: 5m
+      annotations:
+        summary: "Pod {{ $labels.pod }} taking too long to start"
 ```
 
 ## Conclusion
