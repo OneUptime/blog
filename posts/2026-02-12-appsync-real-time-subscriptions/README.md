@@ -12,7 +12,7 @@ Polling is wasteful. Your client asks "anything new?" every few seconds, and the
 
 ## How Subscriptions Work
 
-AppSync subscriptions are tied to mutations. When a mutation fires, any client subscribed to that mutation's result receives the updated data in real time. Under the hood, AppSync manages a pool of WebSocket connections and handles all the pub/sub routing.
+AppSync subscriptions are tied to mutations. When a mutation fires, any client subscribed to that mutation's result receives the fields selected by the mutation and subscription in real time. Under the hood, AppSync manages a pool of WebSocket connections and handles all the pub/sub routing.
 
 ```mermaid
 sequenceDiagram
@@ -67,7 +67,7 @@ type Subscription {
     @aws_subscribe(mutations: ["deleteProduct"])
 
   # Triggered by both create and update
-  onProductChange: Product
+  onProductChange(category: String, maxPrice: Float): Product
     @aws_subscribe(mutations: ["createProduct", "updateProduct"])
 }
 
@@ -85,7 +85,7 @@ input UpdateProductInput {
 }
 ```
 
-The `@aws_subscribe` directive links subscriptions to mutations. When the `createProduct` mutation runs, any client subscribed to `onCreateProduct` receives the mutation's return value.
+The `@aws_subscribe` directive links subscriptions to mutations. When the `createProduct` mutation runs, any client subscribed to `onCreateProduct` receives fields from the mutation selection set that also appear in the subscription selection set.
 
 ## Subscription Filtering
 
@@ -106,7 +106,7 @@ subscription {
 }
 ```
 
-For more complex filtering, use enhanced subscription filters. These let you filter on any field in the subscription payload.
+For more complex filtering, use enhanced subscription filters. These let you filter on additional fields and operators in the subscription payload.
 
 This resolver code adds enhanced filtering:
 
@@ -115,33 +115,25 @@ This resolver code adds enhanced filtering:
 import { util, extensions } from '@aws-appsync/utils';
 
 export function request(ctx) {
-  // Set up enhanced subscription filter
-  extensions.setSubscriptionFilter(
-    util.transform.toSubscriptionFilter({
-      filterGroup: [
-        {
-          filters: [
-            {
-              fieldName: 'category',
-              operator: 'eq',
-              value: ctx.args.category
-            },
-            {
-              fieldName: 'price',
-              operator: 'le',
-              value: ctx.args.maxPrice || 999999
-            }
-          ]
-        }
-      ]
-    })
-  );
-
   return { payload: null };
 }
 
 export function response(ctx) {
-  return util.toJson(null);
+  const filter = {};
+
+  if (ctx.args.category) {
+    filter.category = { eq: ctx.args.category };
+  }
+
+  if (ctx.args.maxPrice !== undefined && ctx.args.maxPrice !== null) {
+    filter.price = { le: ctx.args.maxPrice };
+  }
+
+  if (Object.keys(filter).length > 0) {
+    extensions.setSubscriptionFilter(util.transform.toSubscriptionFilter(filter));
+  }
+
+  return null;
 }
 ```
 
@@ -171,7 +163,9 @@ This React component subscribes to real-time product updates:
 import { useEffect, useState } from 'react';
 import { Amplify } from 'aws-amplify';
 import { generateClient } from 'aws-amplify/api';
+import config from './amplifyconfiguration.json';
 
+Amplify.configure(config);
 const client = generateClient();
 
 // GraphQL operations
@@ -307,7 +301,7 @@ function createSubscription(query) {
         id: '1',
         type: 'start',
         payload: {
-          data: JSON.stringify({ query }),
+          data: JSON.stringify({ query, variables: {} }),
           extensions: {
             authorization: {
               'x-api-key': API_KEY,
@@ -366,7 +360,7 @@ For overall GraphQL API monitoring, check out our post on [authenticating AppSyn
 
 ## Performance Considerations
 
-Each AppSync API supports up to 10,000 concurrent WebSocket connections by default (you can request an increase). Subscription broadcasts scale linearly - if 1,000 clients are subscribed to `onCreateProduct` and you create a product, AppSync delivers 1,000 messages. Keep your subscription payloads small by selecting only the fields clients need.
+AppSync applies quotas to real-time traffic, including connection request rate, inbound message rate, outbound message rate, subscriptions per client connection, and subscription payload size. Subscription broadcasts scale with the number of subscribed clients - if 1,000 clients are subscribed to `onCreateProduct` and you create a product, AppSync delivers 1,000 messages. Keep your subscription payloads small by selecting only the fields clients need.
 
 ## Wrapping Up
 
