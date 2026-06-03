@@ -74,7 +74,7 @@ export class CloudFrontStack extends cdk.Stack {
 
 The `S3BucketOrigin.withOriginAccessControl` method is the modern way to give CloudFront access to your bucket. It replaces the older Origin Access Identity (OAI) approach. CDK automatically creates the bucket policy that allows CloudFront to read objects.
 
-The error responses section is important for single-page applications (React, Vue, Angular). When someone navigates directly to a deep route like `/dashboard/settings`, S3 returns a 404 because there's no corresponding file. The error response redirects to `index.html` and lets the client-side router handle it.
+The error responses section is important for single-page applications (React, Vue, Angular). When someone navigates directly to a deep route like `/dashboard/settings`, a private S3 origin can return a 403 for a missing object unless CloudFront has list permission; with list permission, it returns a 404. The error responses route both cases to `index.html` and let the client-side router handle it.
 
 ## Custom Domain with SSL
 
@@ -111,6 +111,13 @@ const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
 new route53.ARecord(this, 'SiteAlias', {
   zone: hostedZone,
   recordName: 'www',
+  target: route53.RecordTarget.fromAlias(
+    new route53targets.CloudFrontTarget(distribution)
+  ),
+});
+
+new route53.ARecord(this, 'ApexAlias', {
+  zone: hostedZone,
   target: route53.RecordTarget.fromAlias(
     new route53targets.CloudFrontTarget(distribution)
   ),
