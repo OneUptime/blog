@@ -73,7 +73,7 @@ from awsglue.context import GlueContext
 from awsglue.job import Job
 from pyspark.context import SparkContext
 from pyspark.sql import functions as F
-from pyspark.sql.types import DateType, DoubleType
+from pyspark.sql.types import DoubleType
 
 args = getResolvedOptions(sys.argv, ['JOB_NAME', 'input_path', 'output_path'])
 
@@ -113,8 +113,8 @@ cleaned_df.write \
     .option("compression", "snappy") \
     .parquet(output_path)
 
-# Update the Glue Data Catalog
-glueContext.purge_s3_path(output_path, options={"retentionPeriod": 0})
+# Spark writes the Parquet files; update the Glue Data Catalog with a crawler
+# or an external table definition after the job completes.
 
 job.commit()
 ```
@@ -133,7 +133,7 @@ aws glue start-job-run \
 
 ## Method 3: Lambda for Small Files
 
-For small CSV files (under 500 MB), a Lambda function is a lightweight option:
+For small CSV files that fit comfortably in Lambda memory and finish within the 15-minute timeout, a Lambda function is a lightweight option:
 
 ```python
 # Lambda function to convert individual CSV files to Parquet
@@ -143,13 +143,14 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 from io import BytesIO, StringIO
+from urllib.parse import unquote_plus
 
 s3 = boto3.client('s3')
 
 def lambda_handler(event, context):
     # Get the uploaded CSV file details
     source_bucket = event['Records'][0]['s3']['bucket']['name']
-    source_key = event['Records'][0]['s3']['object']['key']
+    source_key = unquote_plus(event['Records'][0]['s3']['object']['key'])
 
     # Only process CSV files
     if not source_key.endswith('.csv'):
@@ -157,7 +158,8 @@ def lambda_handler(event, context):
 
     # Read the CSV from S3
     response = s3.get_object(Bucket=source_bucket, Key=source_key)
-    csv_content = response['Body'].read().decode('utf-8')
+    csv_bytes = response['Body'].read()
+    csv_content = csv_bytes.decode('utf-8')
 
     # Parse CSV with pandas
     df = pd.read_csv(StringIO(csv_content))
@@ -178,14 +180,16 @@ def lambda_handler(event, context):
     pq.write_table(table, parquet_buffer, compression='snappy')
 
     # Generate the output key (same path but .parquet extension)
-    output_key = source_key.replace('/raw/', '/parquet/').replace('.csv', '.parquet')
+    output_key = source_key.replace('raw/', 'parquet/', 1).rsplit('.', 1)[0] + '.parquet'
+    parquet_size_bytes = len(parquet_buffer.getvalue())
 
     # Write Parquet to S3
     parquet_buffer.seek(0)
+    parquet_bytes = parquet_buffer.getvalue()
     s3.put_object(
         Bucket=source_bucket,
         Key=output_key,
-        Body=parquet_buffer.getvalue()
+        Body=parquet_bytes
     )
 
     return {
@@ -193,14 +197,23 @@ def lambda_handler(event, context):
         'source': f's3://{source_bucket}/{source_key}',
         'destination': f's3://{source_bucket}/{output_key}',
         'rows': len(df),
-        'csv_size_bytes': len(csv_content),
-        'parquet_size_bytes': parquet_buffer.tell()
+        'csv_size_bytes': len(csv_bytes),
+        'parquet_size_bytes': parquet_size_bytes
     }
 ```
 
 Set up the S3 trigger:
 
 ```bash
+# Allow S3 to invoke the Lambda function
+aws lambda add-permission \
+    --function-name "csv-to-parquet" \
+    --principal s3.amazonaws.com \
+    --statement-id "s3invoke-csv-to-parquet" \
+    --action "lambda:InvokeFunction" \
+    --source-arn "arn:aws:s3:::my-data-lake" \
+    --source-account "123456789012"
+
 # Add S3 event notification to trigger Lambda on CSV uploads
 aws s3api put-bucket-notification-configuration \
     --bucket my-data-lake \
@@ -231,9 +244,9 @@ Parquet supports several compression codecs:
 | Snappy | Good | Fast | Fast | General purpose (default choice) |
 | GZIP | Better | Slower | Slower | Archive data, maximum compression |
 | ZSTD | Best | Fast | Medium | Best balance of compression and speed |
-| LZO | Moderate | Very fast | Very fast | Real-time processing |
+| LZO | Moderate | Very fast | Very fast | Legacy/Hadoop read scenarios; Athena can read but not write LZO Parquet |
 
-For most Athena workloads, Snappy is the right choice. It gives good compression with the fastest read speed.
+For most Athena workloads, Snappy is the right choice. It gives good compression with fast read speed.
 
 ## Verifying the Conversion
 
