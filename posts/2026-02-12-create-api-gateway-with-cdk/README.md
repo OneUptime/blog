@@ -75,7 +75,7 @@ export class ApiGatewayStack extends cdk.Stack {
 
 Each API endpoint needs a handler. Let's define Lambda functions for our CRUD operations.
 
-Create a `lambda` directory at the project root, then add this to your stack:
+Add this to your stack:
 
 ```typescript
 // Lambda function for listing items
@@ -91,14 +91,19 @@ const listItemsHandler = new lambda.Function(this, 'ListItemsHandler', {
       ];
       return {
         statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
         body: JSON.stringify({ items }),
       };
     };
   `),
   timeout: cdk.Duration.seconds(10),
   memorySize: 128,
-  logRetention: logs.RetentionDays.ONE_WEEK,
+  logGroup: new logs.LogGroup(this, 'ListItemsLogGroup', {
+    retention: logs.RetentionDays.ONE_WEEK,
+  }),
 });
 
 // Lambda function for creating an item
@@ -109,23 +114,32 @@ const createItemHandler = new lambda.Function(this, 'CreateItemHandler', {
     exports.handler = async (event) => {
       const body = JSON.parse(event.body || '{}');
       // Validate the incoming data
-      if (!body.name || !body.price) {
+      if (!body.name || body.price === undefined) {
         return {
           statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
           body: JSON.stringify({ error: 'name and price are required' }),
         };
       }
       // In production, save to DynamoDB here
       return {
         statusCode: 201,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
         body: JSON.stringify({ id: Date.now().toString(), ...body }),
       };
     };
   `),
   timeout: cdk.Duration.seconds(10),
   memorySize: 128,
-  logRetention: logs.RetentionDays.ONE_WEEK,
+  logGroup: new logs.LogGroup(this, 'CreateItemLogGroup', {
+    retention: logs.RetentionDays.ONE_WEEK,
+  }),
 });
 
 // Lambda for getting a single item by ID
@@ -138,7 +152,10 @@ const getItemHandler = new lambda.Function(this, 'GetItemHandler', {
       // In production, fetch from DynamoDB
       return {
         statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
         body: JSON.stringify({ id, name: 'Widget', price: 9.99 }),
       };
     };
@@ -159,11 +176,6 @@ const items = api.root.addResource('items');
 // GET /items - list all items
 items.addMethod('GET', new apigateway.LambdaIntegration(listItemsHandler, {
   proxy: true, // Pass the full request to Lambda
-}));
-
-// POST /items - create a new item
-items.addMethod('POST', new apigateway.LambdaIntegration(createItemHandler, {
-  proxy: true,
 }));
 
 // Create /items/{id} resource for single-item operations
@@ -204,8 +216,10 @@ const validator = new apigateway.RequestValidator(this, 'ItemValidator', {
   validateRequestParameters: false,
 });
 
-// Apply validation to the POST method
-items.addMethod('POST', new apigateway.LambdaIntegration(createItemHandler), {
+// Add the POST method with validation
+items.addMethod('POST', new apigateway.LambdaIntegration(createItemHandler, {
+  proxy: true,
+}), {
   requestValidator: validator,
   requestModels: {
     'application/json': itemModel,
@@ -220,6 +234,9 @@ When a request fails validation, API Gateway returns a 400 error before your Lam
 If you need rate limiting or want to track usage per client, API keys and usage plans are the way to go.
 
 ```typescript
+// Set apiKeyRequired: true in the MethodOptions for each method you want covered by the usage plan.
+// For example, add { apiKeyRequired: true } as the third argument when creating GET /items.
+
 // Create an API key for a client
 const apiKey = api.addApiKey('ClientApiKey', {
   apiKeyName: 'mobile-client-key',
@@ -253,7 +270,10 @@ usagePlan.addApiStage({
 For production APIs, you'll want a custom domain instead of the auto-generated API Gateway URL.
 
 ```typescript
-// Assumes you have a certificate in ACM and a hosted zone in Route 53
+// Add this import at the top of the file:
+// import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+
+// Assumes you have a certificate in ACM. For EDGE domains, the certificate must be in us-east-1.
 // const certificate = acm.Certificate.fromCertificateArn(this, 'Cert', 'arn:...');
 
 // const domainName = new apigateway.DomainName(this, 'CustomDomain', {
@@ -265,6 +285,8 @@ For production APIs, you'll want a custom domain instead of the auto-generated A
 // domainName.addBasePathMapping(api, {
 //   basePath: 'v1', // Maps api.example.com/v1 to this API
 // });
+
+// Create a Route 53 alias record for api.example.com separately.
 ```
 
 ## Stack Outputs
