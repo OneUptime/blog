@@ -14,7 +14,7 @@ But EIPs come with some quirks and costs that catch people off guard. Let's dig 
 
 ## Allocating an Elastic IP
 
-Allocating an EIP reserves a public IP address in your account. It doesn't cost anything while it's associated with a running instance - but it does cost money if it's allocated and not associated, or associated with a stopped instance.
+Allocating an EIP reserves a public IP address in your account. AWS charges for all Elastic IP addresses, whether they're associated with a running resource or sitting idle in your account.
 
 ```bash
 # Allocate an Elastic IP address
@@ -63,12 +63,12 @@ aws ec2 associate-address \
 
 AWS charges for EIPs in a few scenarios:
 
-1. **An EIP that's allocated but not associated** - You pay an hourly fee. AWS does this to discourage hoarding scarce IPv4 addresses.
-2. **An EIP associated with a stopped instance** - Same hourly fee.
-3. **Additional EIPs on a running instance** - The first EIP on a running instance is free, but each additional one costs money.
+1. **An EIP that's allocated but not associated** - You pay the idle public IPv4 hourly fee. AWS does this to discourage hoarding scarce IPv4 addresses.
+2. **An EIP associated with a stopped instance** - Same idle public IPv4 hourly fee.
+3. **EIPs associated with running resources** - You pay the in-use public IPv4 hourly fee for each EIP.
 4. **Data transfer** - Standard data transfer charges apply to traffic through an EIP, same as any other public IP.
 
-Starting in February 2024, AWS also charges for all public IPv4 addresses, including EIPs associated with running instances. This changed the economics significantly.
+Since February 1, 2024, AWS charges for all public IPv4 addresses, including EIPs associated with running instances. This changed the economics significantly.
 
 ```bash
 # Check your current EIP allocations
@@ -98,7 +98,7 @@ This operation takes a few seconds, during which the IP is briefly not routable.
 
 ## Using EIPs with NAT Gateways
 
-NAT gateways require an Elastic IP. This is one of the cases where you can't avoid using an EIP.
+Public NAT gateways require an Elastic IP. This is one of the cases where you can't avoid using an EIP if you need internet-bound NAT traffic to leave from a predictable public IPv4 address.
 
 ```bash
 # Allocate an EIP for the NAT gateway
