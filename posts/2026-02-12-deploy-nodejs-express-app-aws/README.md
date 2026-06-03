@@ -25,7 +25,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Health check endpoint (required by most AWS services)
+// Health check endpoint (used by load balancers and container services)
 app.get('/health', (req, res) => {
     res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
@@ -41,9 +41,11 @@ app.get('/api/users', (req, res) => {
     ]);
 });
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+}
 
 export default app;
 ```
@@ -60,7 +62,7 @@ Make sure your `package.json` has the right start script.
     "dev": "node --watch app.js"
   },
   "dependencies": {
-    "express": "^4.18.2"
+    "express": "^5.2.1"
   }
 }
 ```
@@ -78,9 +80,9 @@ First, launch an EC2 instance with Amazon Linux 2023 and SSH into it.
 
 ssh -i my-key.pem ec2-user@your-ec2-public-ip
 
-# Install Node.js
-curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
-sudo yum install -y nodejs
+# Install Node.js 24 from Amazon Linux 2023 packages
+sudo dnf install -y nodejs24 nodejs24-npm
+sudo alternatives --set node /usr/bin/node-24
 
 # Verify installation
 node --version
@@ -96,7 +98,7 @@ cd /home/ec2-user/app
 
 # Option A: Clone from git
 git clone https://github.com/your-org/your-app.git .
-npm install --production
+npm install --omit=dev
 
 # Option B: Upload with SCP (from your local machine)
 # scp -i my-key.pem -r ./app/* ec2-user@your-ec2-ip:/home/ec2-user/app/
@@ -190,10 +192,8 @@ eb ssh
 Create a `.ebextensions` directory for custom configuration.
 
 ```yaml
-# .ebextensions/nodecommand.config
+# .ebextensions/environment.config
 option_settings:
-  aws:elasticbeanstalk:container:nodejs:
-    NodeCommand: "npm start"
   aws:elasticbeanstalk:application:environment:
     NODE_ENV: production
     PORT: 8080
@@ -214,13 +214,13 @@ Fargate runs your Docker containers without managing servers.
 
 ```dockerfile
 # Dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
 # Copy package files first for better caching
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -303,6 +303,7 @@ docker push \
 
 ```bash
 # Register the task definition
+aws logs create-log-group --log-group-name /ecs/express-app --region us-east-1
 aws ecs register-task-definition --cli-input-json file://task-definition.json
 
 # Create a cluster
@@ -347,7 +348,7 @@ Transform: AWS::Serverless-2016-10-31
 Globals:
   Function:
     Timeout: 30
-    Runtime: nodejs20.x
+    Runtime: nodejs24.x
     MemorySize: 256
 
 Resources:
@@ -393,7 +394,7 @@ sam deploy --guided
 
 ## Best Practices for All Options
 
-- **Always include a health check endpoint.** Every AWS service uses health checks to manage your application.
+- **Always include a health check endpoint.** Load balancers and container services use health checks to manage your application.
 - **Use environment variables** for configuration. Never hardcode secrets, database URLs, or API keys.
 - **Set up logging properly.** Use CloudWatch for centralized log management.
 - **Enable HTTPS.** Use ACM (AWS Certificate Manager) for free SSL certificates with ALB or CloudFront.
