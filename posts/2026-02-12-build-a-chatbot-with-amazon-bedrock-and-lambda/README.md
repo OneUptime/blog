@@ -47,6 +47,8 @@ Resources:
           AttributeType: S
         - AttributeName: userId
           AttributeType: S
+        - AttributeName: updatedAt
+          AttributeType: S
       KeySchema:
         - AttributeName: conversationId
           KeyType: HASH
@@ -55,6 +57,8 @@ Resources:
           KeySchema:
             - AttributeName: userId
               KeyType: HASH
+            - AttributeName: updatedAt
+              KeyType: RANGE
           Projection:
             ProjectionType: ALL
       TimeToLiveSpecification:
@@ -64,7 +68,7 @@ Resources:
 
 ## The Chat Handler with Conversation History
 
-The key to a good chatbot is maintaining conversation context. Each message includes the full conversation history so the model understands the context:
+The key to a good chatbot is maintaining conversation context. Each request includes recent conversation history so the model understands the context:
 
 ```python
 # Lambda - Chat message handler with conversation history
@@ -72,7 +76,7 @@ import boto3
 import json
 import uuid
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 bedrock = boto3.client('bedrock-runtime')
 dynamodb = boto3.resource('dynamodb')
@@ -98,7 +102,7 @@ def handler(event, context):
     user_message = body['message']
     conversation_id = body.get('conversationId', str(uuid.uuid4()))
     user_id = body.get('userId', 'anonymous')
-    model_id = body.get('modelId', 'anthropic.claude-3-sonnet-20240229-v1:0')
+    model_id = body.get('modelId', 'anthropic.claude-sonnet-4-5-20250929-v1:0')
 
     # Load conversation history
     conversation = load_conversation(conversation_id)
@@ -109,14 +113,14 @@ def handler(event, context):
             'conversationId': conversation_id,
             'userId': user_id,
             'messages': [],
-            'createdAt': datetime.utcnow().isoformat()
+            'createdAt': datetime.now(timezone.utc).isoformat()
         }
 
     # Add user message to history
     conversation['messages'].append({
         'role': 'user',
         'content': user_message,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     })
 
     # Trim history to last N messages to stay within token limits
@@ -155,7 +159,7 @@ def handler(event, context):
     conversation['messages'].append({
         'role': 'assistant',
         'content': assistant_message,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     })
 
     # Save conversation
@@ -180,14 +184,14 @@ def load_conversation(conversation_id):
 def save_conversation(conversation):
     """Save conversation to DynamoDB with TTL."""
     conversation['ttl'] = int(time.time()) + (30 * 86400)  # 30 day TTL
-    conversation['updatedAt'] = datetime.utcnow().isoformat()
+    conversation['updatedAt'] = datetime.now(timezone.utc).isoformat()
     conversation['messageCount'] = len(conversation['messages'])
     conversations_table.put_item(Item=conversation)
 ```
 
 ## Streaming Responses
 
-For a better user experience, stream the response token by token instead of waiting for the full response:
+For a better user experience, stream the response chunk by chunk instead of waiting for the full response:
 
 ```python
 # Lambda for streaming chat responses via WebSocket
@@ -209,7 +213,7 @@ def stream_handler(event, context):
 
     # Use streaming API
     response = bedrock.invoke_model_with_response_stream(
-        modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+        modelId='anthropic.claude-sonnet-4-5-20250929-v1:0',
         contentType='application/json',
         accept='application/json',
         body=json.dumps({
