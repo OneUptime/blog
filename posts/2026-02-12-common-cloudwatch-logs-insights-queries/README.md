@@ -31,8 +31,8 @@ filter level = "ERROR"
 Great for spotting when errors started spiking:
 
 ```text
-stats sum(level = "ERROR") as errors, count(*) as total,
-      sum(level = "ERROR") / count(*) * 100 as errorRate
+stats sum(case(level = "ERROR", 1, 0)) as errors, count(*) as total,
+      sum(case(level = "ERROR", 1, 0)) / count(*) * 100 as errorRate
 by bin(5m)
 ```
 
@@ -187,10 +187,10 @@ filter statusCode >= 500
 Visualize the mix of success vs error responses:
 
 ```text
-stats sum(statusCode >= 200 and statusCode < 300) as success2xx,
-      sum(statusCode >= 300 and statusCode < 400) as redirect3xx,
-      sum(statusCode >= 400 and statusCode < 500) as clientError4xx,
-      sum(statusCode >= 500) as serverError5xx
+stats sum(case(statusCode >= 200 and statusCode < 300, 1, 0)) as success2xx,
+      sum(case(statusCode >= 300 and statusCode < 400, 1, 0)) as redirect3xx,
+      sum(case(statusCode >= 400 and statusCode < 500, 1, 0)) as clientError4xx,
+      sum(case(statusCode >= 500, 1, 0)) as serverError5xx
 by bin(5m)
 ```
 
@@ -258,9 +258,9 @@ Track cache effectiveness:
 
 ```text
 filter ispresent(cacheResult)
-| stats sum(cacheResult = "hit") as hits,
-        sum(cacheResult = "miss") as misses,
-        sum(cacheResult = "hit") / count(*) * 100 as hitRate
+| stats sum(case(cacheResult = "hit", 1, 0)) as hits,
+        sum(case(cacheResult = "miss", 1, 0)) as misses,
+        sum(case(cacheResult = "hit", 1, 0)) / count(*) * 100 as hitRate
 by bin(5m)
 ```
 
@@ -290,7 +290,7 @@ filter requestId = "req-abc123def456"
 Get context before and after a specific error occurred:
 
 ```text
-filter @timestamp > "2026-02-12T10:00:00" and @timestamp < "2026-02-12T10:05:00"
+filter toMillis(@timestamp) > 1770890400000 and toMillis(@timestamp) < 1770890700000
 | filter @logStream = "specific-log-stream-name"
 | fields @timestamp, level, @message
 | sort @timestamp asc
