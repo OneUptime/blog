@@ -24,9 +24,9 @@ Key advantages:
 - 7-10x less RAM than Prometheus
 - 7x less storage due to better compression
 - Native long-term storage (years of retention)
-- Full PromQL compatibility
+- PromQL-compatible querying through MetricsQL
 - Prometheus remote_write support
-- Built-in de-duplication and downsampling
+- Built-in de-duplication and Enterprise downsampling support
 
 ## Deploying Single-Node VictoriaMetrics
 
@@ -56,7 +56,7 @@ spec:
     spec:
       containers:
       - name: victoriametrics
-        image: victoriametrics/victoria-metrics:v1.96.0
+        image: victoriametrics/victoria-metrics:v1.144.0
         args:
           - -storageDataPath=/storage
           - -retentionPeriod=12  # 12 months
@@ -205,7 +205,7 @@ spec:
       serviceAccountName: vmagent
       containers:
       - name: vmagent
-        image: victoriametrics/vmagent:v1.96.0
+        image: victoriametrics/vmagent:v1.144.0
         args:
           - -promscrape.config=/config/prometheus.yml
           - -remoteWrite.url=http://victoriametrics:8428/api/v1/write
@@ -308,7 +308,7 @@ spec:
     spec:
       containers:
       - name: vmstorage
-        image: victoriametrics/vmstorage:v1.96.0-cluster
+        image: victoriametrics/vmstorage:v1.144.0-cluster
         args:
           - -storageDataPath=/storage
           - -retentionPeriod=12
@@ -352,7 +352,7 @@ spec:
     spec:
       containers:
       - name: vminsert
-        image: victoriametrics/vminsert:v1.96.0-cluster
+        image: victoriametrics/vminsert:v1.144.0-cluster
         args:
           - -storageNode=vmstorage-0.vmstorage:8400,vmstorage-1.vmstorage:8400,vmstorage-2.vmstorage:8400
           - -httpListenAddr=:8480
@@ -379,7 +379,7 @@ spec:
     spec:
       containers:
       - name: vmselect
-        image: victoriametrics/vmselect:v1.96.0-cluster
+        image: victoriametrics/vmselect:v1.144.0-cluster
         args:
           - -storageNode=vmstorage-0.vmstorage:8401,vmstorage-1.vmstorage:8401,vmstorage-2.vmstorage:8401
           - -httpListenAddr=:8481
@@ -428,11 +428,11 @@ spec:
     name: http
 ```
 
-In cluster mode, use vminsert URL for writing and vmselect URL for querying.
+In cluster mode, use the vminsert URL for writing, such as `http://vminsert:8480/insert/0/prometheus/api/v1/write`, and the vmselect URL for querying, such as `http://vmselect:8481/select/0/prometheus`.
 
 ## Enabling Downsampling
 
-VictoriaMetrics automatically downsamples old data to save storage:
+VictoriaMetrics Enterprise can downsample old data during background merges to save storage:
 
 ```yaml
 args:
@@ -441,11 +441,11 @@ args:
   - -downsampling.period=30d:5m,90d:1h
 ```
 
-This keeps full resolution for 30 days, 5-minute resolution for 30-90 days, and 1-hour resolution beyond 90 days.
+This keeps full resolution for 30 days, 5-minute resolution from 30 days onward, and 1-hour resolution beyond 90 days.
 
 ## Configuring De-duplication
 
-VictoriaMetrics automatically de-duplicates data from multiple Prometheus instances:
+VictoriaMetrics de-duplicates data from multiple Prometheus instances when de-duplication is enabled:
 
 ```yaml
 args:
@@ -479,16 +479,17 @@ process_resident_memory_bytes
 
 To migrate existing Prometheus data:
 
-1. Export data from Prometheus:
+1. Create a Prometheus TSDB snapshot. The Prometheus admin API must be enabled with `--web.enable-admin-api`:
 
 ```bash
-kubectl exec -n monitoring prometheus-0 -- promtool tsdb dump /prometheus > prometheus-data.txt
+kubectl port-forward -n monitoring pod/prometheus-0 9090:9090 &
+curl -XPOST http://localhost:9090/api/v1/admin/tsdb/snapshot
 ```
 
 2. Import to VictoriaMetrics:
 
 ```bash
-vmctl prometheus --prom-snapshot=/path/to/prometheus-data.txt \
+vmctl prometheus --prom-snapshot=/path/to/prometheus/snapshots/<snapshot-name> \
   --vm-addr=http://victoriametrics:8428
 ```
 
@@ -497,9 +498,9 @@ vmctl prometheus --prom-snapshot=/path/to/prometheus-data.txt \
 VictoriaMetrics supports efficient backfill:
 
 ```bash
-# Import from OpenMetrics format
+# Import JSON line data exported from VictoriaMetrics
 curl -X POST http://victoriametrics:8428/api/v1/import \
-  -T metrics.txt
+  -T exported_data.jsonl
 ```
 
 VictoriaMetrics provides a production-ready, resource-efficient alternative to Prometheus with better compression, lower resource usage, and simpler operations at scale.
