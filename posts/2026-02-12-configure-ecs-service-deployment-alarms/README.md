@@ -41,16 +41,16 @@ sequenceDiagram
 
 First, create the alarms that will monitor your deployment health. Common metrics to watch include HTTP error rates, response latency, and ECS task health.
 
-### HTTP 5xx Error Rate Alarm
+### HTTP 5xx Error Count Alarm
 
 This alarm fires if your application starts returning too many server errors.
 
 ```bash
-# Alarm for high HTTP 5xx error rate on ALB
+# Alarm for high HTTP 5xx error count on ALB
 
 aws cloudwatch put-metric-alarm \
   --alarm-name my-service-5xx-rate \
-  --alarm-description "HTTP 5xx error rate exceeds 5% during deployment" \
+  --alarm-description "HTTP 5xx error count exceeds threshold during deployment" \
   --namespace AWS/ApplicationELB \
   --metric-name HTTPCode_Target_5XX_Count \
   --dimensions \
@@ -234,6 +234,8 @@ MyService:
 ```typescript
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as cdk from 'aws-cdk-lib';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 
 // Create the alarms
 const errorAlarm = new cloudwatch.Alarm(this, 'ErrorAlarm', {
