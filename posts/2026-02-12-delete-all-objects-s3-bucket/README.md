@@ -165,7 +165,7 @@ This is significantly faster because it sends 1,000 deletions per API call inste
 
 For buckets with millions or billions of objects, even the batch approach can take a very long time. A smarter approach is to let S3 do the work asynchronously using lifecycle rules.
 
-Set up a lifecycle rule that expires all objects immediately.
+Set up a lifecycle rule that expires all objects after one day, which is the shortest object expiration period S3 Lifecycle supports.
 
 ```bash
 # Create a lifecycle rule to expire all current versions
@@ -191,7 +191,7 @@ aws s3api put-bucket-lifecycle-configuration \
   }'
 ```
 
-S3 processes lifecycle rules asynchronously, so it might take a day or two for all objects to be deleted. But you don't have to babysit it and it doesn't cost you anything in API calls.
+S3 processes lifecycle rules asynchronously, so it might take a day or two after objects become eligible for all objects to be deleted. But you don't have to babysit it and it doesn't cost you anything in API calls.
 
 After everything is deleted, remember to remove the lifecycle rule.
 
@@ -202,7 +202,7 @@ aws s3api delete-bucket-lifecycle --bucket my-bucket
 
 ## Using S3 Batch Operations
 
-For really large-scale deletions where you need more control, S3 Batch Operations can process billions of objects. You provide a manifest (object list) and S3 executes the delete operation across all of them.
+For really large-scale deletions where you need more control, S3 Batch Operations can process billions of objects. S3 Batch Operations doesn't have a native delete-object operation, but you can provide a manifest (object list) and invoke a Lambda function that deletes each listed object or version.
 
 First, generate an inventory report for the bucket.
 
@@ -227,13 +227,17 @@ aws s3api put-bucket-inventory-configuration \
   }'
 ```
 
-After the inventory is generated (takes up to 48 hours for the first report), create a batch job.
+After the inventory is generated (takes up to 48 hours for the first report), create a batch job. The Lambda function should call `DeleteObject` with the object key and, for versioned buckets, the version ID from the Batch Operations event.
 
 ```bash
-# Create a batch delete job using the inventory as manifest
+# Create a batch job that invokes a delete Lambda using the inventory as manifest
 aws s3control create-job \
   --account-id 123456789012 \
-  --operation '{"S3DeleteObjectTagging": {}}' \
+  --operation '{
+    "LambdaInvoke": {
+      "FunctionArn": "arn:aws:lambda:us-east-1:123456789012:function:delete-s3-object"
+    }
+  }' \
   --manifest '{
     "Spec": {"Format": "S3InventoryReport_CSV_20161130"},
     "Location": {
