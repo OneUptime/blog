@@ -8,7 +8,7 @@ Description: Learn how to expand persistent volumes while they're in use by runn
 
 ---
 
-Volume expansion allows you to increase the size of persistent volumes without downtime. This capability is essential for growing databases and applications that need more storage without service interruption.
+Volume expansion allows you to increase the size of persistent volumes, often without downtime when the CSI driver and filesystem support online expansion. This capability is essential for growing databases and applications that need more storage with minimal service interruption.
 
 ## Understanding Volume Expansion
 
@@ -136,7 +136,7 @@ Monitor the expansion:
 kubectl describe pvc mysql-data
 
 # Look for these conditions:
-# - FileSystemResizePending: False (means expansion complete)
+# - No FileSystemResizePending condition (usually means filesystem resize is complete)
 # - Resizing: The volume is being expanded
 # - FileSystemResizePending: Waiting for pod to pick up changes
 
@@ -158,7 +158,7 @@ status:
     status: "True"
     lastTransitionTime: "2026-02-09T10:00:00Z"
   - type: FileSystemResizePending
-    status: "False"
+    status: "True"
     lastTransitionTime: "2026-02-09T10:01:00Z"
 ```
 
@@ -190,12 +190,17 @@ Create a script to safely expand volumes:
 
 set -e
 
-PVC_NAME="${1}"
-NAMESPACE="${2:-default}"
-NEW_SIZE="${3}"
-
-if [ -z "$PVC_NAME" ] || [ -z "$NEW_SIZE" ]; then
+if [ "$#" -eq 2 ]; then
+    PVC_NAME="${1}"
+    NAMESPACE="default"
+    NEW_SIZE="${2}"
+elif [ "$#" -eq 3 ]; then
+    PVC_NAME="${1}"
+    NAMESPACE="${2}"
+    NEW_SIZE="${3}"
+else
     echo "Usage: $0 <pvc-name> [namespace] <new-size>"
+    echo "Example: $0 mysql-data 50Gi"
     echo "Example: $0 mysql-data default 50Gi"
     exit 1
 fi
@@ -285,6 +290,8 @@ spec:
   volumeClaimTemplates:
   - metadata:
       name: data
+      labels:
+        app: postgres
     spec:
       accessModes: [ "ReadWriteOnce" ]
       storageClassName: expandable-storage
@@ -349,7 +356,7 @@ allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 ```
 
-Note: You can expand gp3 volumes up to 16TB and increase IOPS/throughput.
+Note: You can expand gp3 volumes up to 64 TiB and increase IOPS/throughput.
 
 ### GCP Persistent Disk
 
@@ -368,11 +375,11 @@ allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 ```
 
-Limitations: Can expand every 6 hours, maximum size depends on disk type.
+Limitations: Extreme Persistent Disk can be resized only once every 6 hours, and maximum size depends on disk type.
 
 ### Azure Disk
 
-Azure requires pod restart for filesystem resize:
+Azure Disk CSI supports resizing persistent volumes without downtime:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -381,12 +388,12 @@ metadata:
   name: azure-disk-expandable
 provisioner: disk.csi.azure.com
 parameters:
-  storageaccounttype: Premium_LRS
+  skuName: Premium_LRS
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 ```
 
-Always restart pods after expanding Azure disks.
+Confirm the new filesystem size in the pod after expanding Azure disks.
 
 ## Monitoring Volume Expansion
 
@@ -424,7 +431,7 @@ kubectl get resourcequota
 # Error: "requested size exceeds maximum volume size"
 
 # Solution: Check provider limits
-# AWS EBS gp3: 16TB max
+# AWS EBS gp3: 64 TiB max
 # GCP PD SSD: 64TB max
 # Azure Premium SSD: 32TB max
 
