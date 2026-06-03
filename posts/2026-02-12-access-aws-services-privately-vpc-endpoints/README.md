@@ -8,17 +8,17 @@ Description: A comprehensive guide to accessing AWS services privately from your
 
 ---
 
-By default, every call from your VPC to an AWS service leaves the VPC. Even `aws s3 ls` from a private EC2 instance routes through a NAT gateway, hits the internet, and comes back to the S3 endpoint. The data stays on AWS infrastructure, but it technically traverses a public path. For many compliance frameworks and security postures, that's not acceptable.
+Without a VPC endpoint, calls from your VPC to public AWS service endpoints use your normal egress path. For example, `aws s3 ls` from a private EC2 instance needs a NAT gateway or another egress path; otherwise it fails. The data stays on AWS infrastructure when routed through an internet gateway, but it still traverses the public service endpoint path. For many compliance frameworks and security postures, that's not acceptable.
 
 VPC endpoints let you access AWS services without leaving the Amazon network. Your traffic never touches the internet. There's no NAT gateway in the path, no internet gateway needed, and no public IP required on your resources. It's private access to public services.
 
 ## Two Types of Endpoints
 
-AWS offers two types of VPC endpoints, and knowing when to use each one saves you money and configuration headaches.
+For private access to AWS services, you'll mostly use two VPC endpoint types, and knowing when to use each one saves you money and configuration headaches.
 
 **Gateway Endpoints**: Free, route-table based. Available only for S3 and DynamoDB. They add a prefix list route to your route tables, directing service traffic through the endpoint instead of the NAT gateway.
 
-**Interface Endpoints (PrivateLink)**: Paid, ENI-based. Available for most AWS services (200+). They create elastic network interfaces in your subnets with private IP addresses. DNS resolves the service endpoint to these private IPs.
+**Interface Endpoints (PrivateLink)**: Paid, ENI-based. Available for most AWS services, including interface endpoint options for S3 and DynamoDB. They create elastic network interfaces in your subnets with private IP addresses. DNS resolves the service endpoint to these private IPs.
 
 ```mermaid
 graph TB
@@ -60,13 +60,15 @@ Don't create endpoints for every AWS service. Start by figuring out which servic
 ```bash
 # Check VPC Flow Logs for traffic going to AWS service IPs
 
-# First, enable flow logs if you haven't
+# First, enable flow logs if you haven't.
+# The CloudWatch Logs log group and IAM role must exist first.
 aws ec2 create-flow-logs \
   --resource-type VPC \
   --resource-ids $VPC_ID \
   --traffic-type ALL \
   --log-destination-type cloud-watch-logs \
-  --log-group-name /vpc/flow-logs
+  --log-group-name /vpc/flow-logs \
+  --deliver-logs-permission-arn arn:aws:iam::$ACCOUNT_ID:role/flow-logs-role
 
 # Then query for traffic going through the NAT gateway
 # Look at destination IPs and match them to AWS service IP ranges
@@ -80,20 +82,20 @@ Here's what different workloads typically need:
 
 **ECS/Fargate tasks:**
 ```bash
-# Required endpoints for Fargate tasks
+# Common endpoints for Fargate tasks
 SERVICES=(
   "com.amazonaws.us-east-1.ecr.api"       # Pull container images
   "com.amazonaws.us-east-1.ecr.dkr"       # Docker registry
   "com.amazonaws.us-east-1.s3"            # ECR stores layers in S3 (use gateway)
   "com.amazonaws.us-east-1.logs"          # CloudWatch Logs
-  "com.amazonaws.us-east-1.sts"           # IAM role assumption
+  "com.amazonaws.us-east-1.sts"           # If the task calls STS
   "com.amazonaws.us-east-1.secretsmanager" # If using secrets
 )
 ```
 
 **Lambda functions (in VPC):**
 ```bash
-# Lambda in VPC needs these to call AWS services
+# Lambda in VPC needs endpoints for the AWS services it calls
 SERVICES=(
   "com.amazonaws.us-east-1.s3"            # Gateway endpoint
   "com.amazonaws.us-east-1.dynamodb"      # Gateway endpoint
@@ -111,7 +113,7 @@ SERVICES=(
   "com.amazonaws.us-east-1.ssm"
   "com.amazonaws.us-east-1.ssmmessages"
   "com.amazonaws.us-east-1.ec2messages"
-  "com.amazonaws.us-east-1.s3"            # Gateway - for SSM patch baselines
+  "com.amazonaws.us-east-1.s3"            # Gateway - for SSM Agent updates and S3-backed SSM features
 )
 ```
 
@@ -187,13 +189,13 @@ for SERVICE in logs monitoring kms secretsmanager sqs sts ecr.api ecr.dkr ssm ss
     --service-name com.amazonaws.${REGION}.${SERVICE} \
     --subnet-ids $SUBNET_1 $SUBNET_2 \
     --security-group-ids $EP_SG \
-    --private-dns-enabled true
+    --private-dns-enabled
 done
 
-echo "Done. This VPC has no internet access but full AWS service access."
+echo "Done. This VPC has no internet access but can reach the AWS services listed above."
 ```
 
-This VPC has no internet gateway, no NAT gateway, and no public subnets. It's completely isolated from the internet. But resources inside it can still call S3, DynamoDB, SQS, KMS, CloudWatch, ECR, Secrets Manager, and SSM - all through private endpoints.
+This VPC has no internet gateway, no NAT gateway, and no public subnets. It's completely isolated from the internet. But resources inside it can still call S3, DynamoDB, SQS, KMS, CloudWatch, ECR, Secrets Manager, and SSM - all through private endpoints. Calls to AWS services not covered by endpoints, or to third-party internet services, still won't work without another egress path.
 
 ## DNS Considerations
 
@@ -228,14 +230,14 @@ aws ec2 describe-vpc-endpoint-services \
 
 ## Cost Optimization
 
-Interface endpoints cost ~$7.20/month per AZ. With 10 endpoints across 2 AZs, that's $144/month. Here's how to optimize:
+In many US regions, interface endpoints cost about $7.20/month per AZ before data processing charges. With 10 endpoints across 2 AZs, that's about $144/month before data processing charges. Here's how to optimize:
 
 1. **Use gateway endpoints for S3 and DynamoDB** - they're free
 2. **Only create endpoints for services you use** - don't speculatively create endpoints
 3. **Use fewer AZs for non-critical endpoints** - one AZ is fine for dev environments
 4. **Consider using a NAT gateway instead** if you only make occasional calls to many different services
 
-The break-even point: if your NAT gateway processes more than $14.40 of data for a specific service per month (~320 GB at $0.045/GB), an interface endpoint is cheaper.
+The rough data-processing break-even point: if your NAT gateway processes more than $14.40 of data for a specific service per month (~320 GB at $0.045/GB), a two-AZ interface endpoint can be cheaper for that service. Include NAT gateway hourly charges, endpoint data processing charges, and cross-AZ data transfer in the real calculation.
 
 ## Monitoring Endpoint Usage
 
@@ -253,4 +255,4 @@ For detailed reference on specific endpoint types, see [setting up VPC gateway e
 
 ## Wrapping Up
 
-VPC endpoints are the clean way to access AWS services from private subnets. Gateway endpoints for S3 and DynamoDB are free and should always be created. Interface endpoints for everything else cost money but provide genuine security and sometimes cost benefits over NAT gateways. Start with the endpoints your workload actually needs, verify DNS resolution works, and expand from there. For the strictest security postures, you can build a VPC with zero internet connectivity that still has full access to AWS services through endpoints alone.
+VPC endpoints are the clean way to access AWS services from private subnets. Gateway endpoints for S3 and DynamoDB are free and are usually worth creating when workloads in the VPC use those services. Interface endpoints for other supported services cost money but provide genuine security and sometimes cost benefits over NAT gateways. Start with the endpoints your workload actually needs, verify DNS resolution works, and expand from there. For the strictest security postures, you can build a VPC with zero internet connectivity that still has access to supported AWS services through endpoints alone.
