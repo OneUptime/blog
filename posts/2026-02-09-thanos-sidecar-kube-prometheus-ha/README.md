@@ -91,20 +91,21 @@ prometheus:
     externalLabels:
       cluster: production
       region: us-east-1
-      replica: $(POD_NAME)
+    replicaExternalLabelName: prometheus_replica
 
     # Enable Thanos sidecar
     thanos:
       # Thanos sidecar image
-      image: quay.io/thanos/thanos:v0.34.0
+      image: quay.io/thanos/thanos:v0.41.0
 
       # Sidecar version
-      version: v0.34.0
+      version: v0.41.0
 
       # Object storage configuration
       objectStorageConfig:
-        name: thanos-objstore-config
-        key: objstore.yml
+        existingSecret:
+          name: thanos-objstore-config
+          key: objstore.yml
 
       # Resource limits
       resources:
@@ -115,17 +116,12 @@ prometheus:
           cpu: 500m
           memory: 512Mi
 
-      # Volume for shared data
-      volumeMounts:
-        - name: prometheus-data
-          mountPath: /prometheus
-
     # Prometheus settings for Thanos
     retention: 2d  # Local retention (Thanos keeps long-term)
     walCompression: true
 
-    # Enable TSDB blocks
-    disableCompaction: false
+    # Disable local compaction so Thanos can upload uncompacted blocks
+    disableCompaction: true
 
     # Replicas for HA
     replicas: 2
@@ -183,7 +179,7 @@ spec:
     spec:
       containers:
         - name: thanos-query
-          image: quay.io/thanos/thanos:v0.34.0
+          image: quay.io/thanos/thanos:v0.41.0
           args:
             - query
             - --http-address=0.0.0.0:10902
@@ -193,7 +189,7 @@ spec:
             - --query.replica-label=replica
             - --query.replica-label=prometheus_replica
             # Auto-discover Prometheus sidecars
-            - --endpoint=dnssrv+_grpc._tcp.prometheus-operated.monitoring.svc.cluster.local
+            - --endpoint=dnssrv+_grpc._tcp.prometheus-stack-kube-prom-thanos-discovery.monitoring.svc.cluster.local
             # Optionally add Store Gateway
             - --endpoint=thanos-store.monitoring.svc.cluster.local:10901
           ports:
@@ -225,6 +221,8 @@ kind: Service
 metadata:
   name: thanos-query
   namespace: monitoring
+  labels:
+    app: thanos-query
 spec:
   selector:
     app: thanos-query
@@ -267,7 +265,7 @@ spec:
     spec:
       containers:
         - name: thanos-store
-          image: quay.io/thanos/thanos:v0.34.0
+          image: quay.io/thanos/thanos:v0.41.0
           args:
             - store
             - --data-dir=/var/thanos/store
@@ -315,6 +313,8 @@ kind: Service
 metadata:
   name: thanos-store
   namespace: monitoring
+  labels:
+    app: thanos-store
 spec:
   selector:
     app: thanos-store
@@ -357,7 +357,7 @@ spec:
     spec:
       containers:
         - name: thanos-compactor
-          image: quay.io/thanos/thanos:v0.34.0
+          image: quay.io/thanos/thanos:v0.41.0
           args:
             - compact
             - --data-dir=/var/thanos/compactor
@@ -400,6 +400,22 @@ spec:
         resources:
           requests:
             storage: 100Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-compactor
+  namespace: monitoring
+  labels:
+    app: thanos-compactor
+spec:
+  selector:
+    app: thanos-compactor
+  ports:
+    - name: http
+      port: 10902
+      targetPort: 10902
 ```
 
 Deploy:
@@ -477,6 +493,7 @@ metadata:
   name: thanos-query
   namespace: monitoring
 spec:
+  jobLabel: app
   selector:
     matchLabels:
       app: thanos-query
@@ -491,6 +508,7 @@ metadata:
   name: thanos-store
   namespace: monitoring
 spec:
+  jobLabel: app
   selector:
     matchLabels:
       app: thanos-store
@@ -505,6 +523,7 @@ metadata:
   name: thanos-compactor
   namespace: monitoring
 spec:
+  jobLabel: app
   selector:
     matchLabels:
       app: thanos-compactor
@@ -528,7 +547,7 @@ spec:
       interval: 30s
       rules:
         - alert: ThanosSidecarDown
-          expr: up{job="prometheus-thanos-sidecar"} == 0
+          expr: up{job=~".*thanos-sidecar.*"} == 0
           for: 5m
           labels:
             severity: critical
