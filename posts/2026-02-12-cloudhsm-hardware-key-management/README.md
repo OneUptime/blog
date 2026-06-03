@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudHSM, Encryption, Key Management, Security
 
-Description: Deploy and configure AWS CloudHSM to manage cryptographic keys in dedicated FIPS 140-2 Level 3 validated hardware security modules.
+Description: Deploy and configure AWS CloudHSM to manage cryptographic keys in dedicated FIPS 140-3 Level 3 validated hardware security modules.
 
 ---
 
-KMS handles encryption for most workloads just fine. But when you need FIPS 140-2 Level 3 validation, full control over key material, or compliance with regulations that demand dedicated hardware security modules, KMS isn't enough. That's where CloudHSM comes in.
+KMS handles encryption for most workloads just fine. But when you need dedicated single-tenant HSMs, direct control over key material, or compliance with regulations that demand hardware security modules you administer, KMS isn't enough. That's where CloudHSM comes in.
 
 CloudHSM gives you dedicated HSM appliances running in your VPC. You control the keys, AWS manages the hardware. Nobody - not even AWS - can access your key material. This is the level of control that financial institutions, healthcare organizations, and government agencies need. It's also more complex and expensive than KMS, so make sure you actually need it before diving in.
 
@@ -20,9 +20,9 @@ Use **KMS** when you need:
 - Cost-effective encryption at scale
 
 Use **CloudHSM** when you need:
-- FIPS 140-2 Level 3 compliance (KMS is Level 2)
+- Dedicated HSMs with FIPS 140-3 Level 3 validation
 - Full control over key material
-- Support for asymmetric keys and custom algorithms
+- Support for asymmetric keys and application-managed cryptographic operations
 - TLS/SSL offloading
 - Certificate authority operations
 - Integration with applications that require PKCS#11, JCE, or CNG interfaces
@@ -58,8 +58,10 @@ This creates a CloudHSM cluster in your VPC:
 # Create the CloudHSM cluster
 
 aws cloudhsmv2 create-cluster \
-  --hsm-type hsm1.medium \
+  --hsm-type hsm2m.medium \
   --subnet-ids subnet-aaa111 subnet-bbb222 \
+  --mode FIPS \
+  --network-type IPV4 \
   --tags Key=Environment,Value=Production Key=Name,Value=prod-hsm-cluster
 ```
 
@@ -141,26 +143,27 @@ aws cloudhsmv2 describe-clusters \
   --query 'Clusters[0].State'
 ```
 
-## Step 4: Install the CloudHSM Client
+## Step 4: Install the CloudHSM Tools
 
-Install the CloudHSM client software on the EC2 instance that will interact with the HSMs.
+Install the CloudHSM CLI and PKCS #11 library on the EC2 instance that will interact with the HSMs.
 
 For Amazon Linux 2 / RHEL:
 
 ```bash
-# Download and install CloudHSM client
-wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-client-latest.el7.x86_64.rpm
-sudo yum install -y ./cloudhsm-client-latest.el7.x86_64.rpm
+# Download and install CloudHSM CLI
+wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-cli-latest.el7.x86_64.rpm
+sudo yum install -y ./cloudhsm-cli-latest.el7.x86_64.rpm
 
 # Install PKCS#11 library
 wget https://s3.amazonaws.com/cloudhsmv2-software/CloudHsmClient/EL7/cloudhsm-pkcs11-latest.el7.x86_64.rpm
 sudo yum install -y ./cloudhsm-pkcs11-latest.el7.x86_64.rpm
 
-# Configure the client with the HSM IP
-sudo /opt/cloudhsm/bin/configure -a <HSM_IP_ADDRESS>
-
 # Copy the CA certificate
 sudo cp ca-cert.pem /opt/cloudhsm/etc/customerCA.crt
+
+# Configure CloudHSM CLI and PKCS#11 with the HSM IP
+sudo /opt/cloudhsm/bin/configure-cli -a <HSM_IP_ADDRESS>
+sudo /opt/cloudhsm/bin/configure-pkcs11 -a <HSM_IP_ADDRESS>
 ```
 
 ## Step 5: Activate the Cluster
@@ -168,27 +171,24 @@ sudo cp ca-cert.pem /opt/cloudhsm/etc/customerCA.crt
 Connect to the HSM and set up the crypto officer (CO) account.
 
 ```bash
-# Start the CloudHSM client
-sudo start cloudhsm-client
-
-# Use the management utility
-/opt/cloudhsm/bin/cloudhsm_mgmt_util /opt/cloudhsm/etc/cloudhsm_mgmt_util.cfg
+# Use the CloudHSM CLI
+/opt/cloudhsm/bin/cloudhsm-cli interactive
 ```
 
-Inside the management utility:
+Inside the CloudHSM CLI:
 
 ```text
-# Login as the pre-crypto officer (PRECO)
-loginHSM PRECO admin password
+# Activate the cluster and set the initial admin password
+cluster activate
 
-# Change the CO password
-changePswd CO admin <new-strong-password>
+# Login as the admin
+login --username admin --role admin
 
 # Create a crypto user for your applications
-createUser CU app_user <app-password>
+user create --username app_user --role crypto-user
 
 # Logout
-logoutHSM
+logout
 quit
 ```
 
@@ -215,14 +215,14 @@ This generates an AES-256 key on the HSM:
 
 ```python
 import pkcs11
-from pkcs11 import Mechanism, KeyType, Attribute
+from pkcs11 import Mechanism, KeyType, Attribute, MechanismFlag
 
 # Load the CloudHSM PKCS#11 library
 lib = pkcs11.lib('/opt/cloudhsm/lib/libcloudhsm_pkcs11.so')
 
 # Open a session
 token = lib.get_token()
-session = token.open(user_pin='app_user:app-password')
+session = token.open(user_pin='app_user:app-password', rw=True)
 
 # Generate an AES-256 key
 key = session.generate_key(
@@ -230,7 +230,7 @@ key = session.generate_key(
     256,
     label='my-encryption-key',
     store=True,  # Persist on HSM
-    capabilities=Attribute.ENCRYPT | Attribute.DECRYPT
+    capabilities=MechanismFlag.ENCRYPT | MechanismFlag.DECRYPT
 )
 
 print(f"Key generated: {key.label}")
@@ -241,7 +241,12 @@ print(f"Key generated: {key.label}")
 ```python
 # Encrypt data
 plaintext = b"sensitive data that needs protection"
-iv, ciphertext = key.encrypt(plaintext, mechanism=Mechanism.AES_CBC_PAD)
+iv = session.generate_random(128)
+ciphertext = key.encrypt(
+    plaintext,
+    mechanism=Mechanism.AES_CBC_PAD,
+    mechanism_param=iv
+)
 
 print(f"Encrypted: {ciphertext.hex()}")
 
@@ -288,6 +293,14 @@ You can use CloudHSM as a backing store for KMS, getting the AWS service integra
 
 This creates a KMS custom key store backed by your CloudHSM cluster:
 
+Create a `kmsuser` crypto user in CloudHSM CLI first:
+
+```text
+login --username admin --role admin
+user create --username kmsuser --role crypto-user
+logout
+```
+
 ```bash
 # Create custom key store
 aws kms create-custom-key-store \
@@ -329,7 +342,7 @@ aws cloudwatch get-metric-statistics \
 
 ## Cost Considerations
 
-CloudHSM is not cheap. Each HSM instance runs about $1.50 per hour (roughly $1,100/month). You need at least two for HA, so budget $2,200/month minimum. Compare that to KMS at $1/key/month plus usage charges.
+CloudHSM is not cheap. In us-east-1, each new CloudHSM hsm2m instance runs about $1.60 per hour (roughly $1,170/month). You need at least two for HA, so budget roughly $2,300/month minimum. Compare that to KMS at $1/key/month plus usage charges.
 
 ## Best Practices
 
