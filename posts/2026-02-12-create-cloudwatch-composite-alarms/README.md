@@ -28,7 +28,7 @@ graph TD
     G -->|"P99 OR P95"| I[Alert Channel]
 ```
 
-The composite alarm evaluates its rule expression whenever any of its child alarms change state. It then transitions to ALARM, OK, or INSUFFICIENT_DATA based on the result.
+The composite alarm evaluates its rule expression whenever any of its child alarms change state. It goes to ALARM when the rule evaluates to true, and OK when the rule evaluates to false. A composite alarm is only in INSUFFICIENT_DATA immediately after creation, before CloudWatch evaluates it for the first time.
 
 ## Creating Your First Composite Alarm
 
@@ -103,6 +103,7 @@ The rule language supports these operators:
 | AND | Logical AND | `ALARM("a") AND ALARM("b")` |
 | OR | Logical OR | `ALARM("a") OR ALARM("b")` |
 | NOT | Logical NOT | `NOT ALARM("a")` |
+| AT_LEAST() | True when a minimum number or percentage of alarms are in the required state | `AT_LEAST(2, ALARM, (a, b, c))` |
 | TRUE | Always true | Used for testing |
 | FALSE | Always false | Used for testing |
 
@@ -210,7 +211,7 @@ aws cloudwatch put-composite-alarm \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:pagerduty"
 ```
 
-Before starting maintenance, push a metric value of 1 to the `MaintenanceMode` metric. This suppresses the critical alerts. When maintenance is done, the metric naturally returns to 0 (or treat-missing-data handles it), and alerting resumes.
+Before starting maintenance, push a metric value of 1 to the `MaintenanceMode` metric. This suppresses the critical alerts. When maintenance is done, push a metric value of 0, or stop publishing the metric and let `treat-missing-data` move the alarm back to OK after the evaluation period. Alerting then resumes.
 
 ## Nesting Composite Alarms
 
@@ -233,7 +234,7 @@ aws cloudwatch put-composite-alarm \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:leadership-alerts"
 ```
 
-The nesting limit is 5 levels deep, which is more than enough for most architectures.
+Each composite alarm can monitor up to 100 underlying alarms, and each alarm can be referenced by up to 150 composite alarms. Avoid creating dependency cycles between composite alarms, because CloudWatch stops evaluation when it detects a cycle.
 
 ## CloudFormation Example
 
@@ -279,9 +280,9 @@ Resources:
       AlarmName: api-service-degraded
       AlarmRule: !Sub 'ALARM("${CPUAlarm}") AND ALARM("${ErrorAlarm}")'
       AlarmActions:
-        - !Ref AlertTopic
+        - arn:aws:sns:us-east-1:123456789012:critical-alerts
       OKActions:
-        - !Ref AlertTopic
+        - arn:aws:sns:us-east-1:123456789012:critical-alerts
 ```
 
 ## Best Practices
