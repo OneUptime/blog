@@ -16,7 +16,7 @@ AWS IAM Identity Center (formerly AWS SSO) solves this with permission sets - re
 
 A permission set is essentially a template for IAM roles. When you assign a permission set to a user for a specific account, IAM Identity Center creates a corresponding IAM role in that account. The user can then assume that role through the SSO portal without needing separate credentials.
 
-Think of it this way: instead of creating `DevOpsAdmin` roles manually in 20 accounts, you create one permission set and assign it where needed. Changes propagate automatically.
+Think of it this way: instead of creating `DevOpsAdmin` roles manually in 20 accounts, you create one permission set and assign it where needed. Access assignments provision the roles for you, and policy updates can be pushed out by reprovisioning the permission set.
 
 ```mermaid
 graph TD
@@ -73,7 +73,7 @@ aws sso-admin attach-managed-policy-to-permission-set \
   --managed-policy-arn arn:aws:iam::aws:policy/PowerUserAccess
 ```
 
-For more granular control, use an inline policy. This example grants full EC2 and S3 access but restricts everything else:
+For more granular control, use an inline policy. This example grants full EC2, S3, CloudWatch, and CloudWatch Logs access but restricts everything else:
 
 ```json
 {
@@ -185,15 +185,28 @@ If you're using Infrastructure as Code (and you should be), here's the Terraform
 This Terraform configuration creates a permission set, attaches a managed policy, and assigns it to a group across two accounts:
 
 ```hcl
+data "aws_ssoadmin_instances" "main" {}
+
+data "aws_identitystore_group" "devops" {
+  identity_store_id = tolist(data.aws_ssoadmin_instances.main.identity_store_ids)[0]
+
+  alternate_identifier {
+    unique_attribute {
+      attribute_path  = "DisplayName"
+      attribute_value = "DevOps"
+    }
+  }
+}
+
 resource "aws_ssoadmin_permission_set" "devops" {
   name             = "DevOpsEngineer"
   description      = "DevOps team access"
-  instance_arn     = data.aws_ssoadmin_instances.main.arns[0]
+  instance_arn     = tolist(data.aws_ssoadmin_instances.main.arns)[0]
   session_duration = "PT4H"
 }
 
 resource "aws_ssoadmin_managed_policy_attachment" "devops_power" {
-  instance_arn       = data.aws_ssoadmin_instances.main.arns[0]
+  instance_arn       = tolist(data.aws_ssoadmin_instances.main.arns)[0]
   managed_policy_arn = "arn:aws:iam::aws:policy/PowerUserAccess"
   permission_set_arn = aws_ssoadmin_permission_set.devops.arn
 }
@@ -209,9 +222,9 @@ locals {
 resource "aws_ssoadmin_account_assignment" "devops" {
   for_each = local.account_assignments
 
-  instance_arn       = data.aws_ssoadmin_instances.main.arns[0]
+  instance_arn       = tolist(data.aws_ssoadmin_instances.main.arns)[0]
   permission_set_arn = aws_ssoadmin_permission_set.devops.arn
-  principal_id       = aws_identitystore_group.devops.group_id
+  principal_id       = data.aws_identitystore_group.devops.group_id
   principal_type     = "GROUP"
   target_id          = each.value
   target_type        = "AWS_ACCOUNT"
