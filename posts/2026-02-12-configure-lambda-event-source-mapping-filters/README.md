@@ -8,7 +8,7 @@ Description: Learn how to use Lambda event source mapping filters to reduce invo
 
 ---
 
-Every Lambda invocation costs money. When your function is consuming from a busy SQS queue, Kinesis stream, or DynamoDB stream, a large percentage of those events might be irrelevant to your function's purpose. Maybe you only care about order events above $100, or only insert operations on a DynamoDB table, or only messages with a specific attribute.
+Every Lambda invocation costs money. When your function is consuming from a busy SQS queue, Kinesis stream, or DynamoDB stream, a large percentage of those events might be irrelevant to your function's purpose. Maybe you only care about order events above $100, records with a specific DynamoDB attribute, or SQS messages with a specific field in the body.
 
 Lambda event source mapping filters let you define criteria that records must match before Lambda even invokes your function. Records that do not match are silently discarded. This means fewer invocations, lower costs, and simpler function code because you do not need to write filtering logic inside your handler.
 
