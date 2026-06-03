@@ -21,17 +21,23 @@ Without proper handling, spot interruptions can cause service disruptions and fa
 Deploy using Helm:
 
 ```bash
-# Add EKS charts repository
+# Authenticate Helm to the public ECR chart registry
+aws ecr-public get-login-password \
+  --region us-east-1 | helm registry login \
+  --username AWS \
+  --password-stdin public.ecr.aws
 
-helm repo add eks https://aws.github.io/eks-charts
-helm repo update
+CHART_VERSION="1.25.6"
 
 # Install Node Termination Handler
-helm install aws-node-termination-handler eks/aws-node-termination-handler \
+helm upgrade --install aws-node-termination-handler \
   --namespace kube-system \
   --set enableSpotInterruptionDraining=true \
   --set enableRebalanceMonitoring=true \
-  --set enableScheduledEventDraining=true
+  --set enableScheduledEventDraining=true \
+  --set enablePrometheusServer=true \
+  oci://public.ecr.aws/aws-ec2/helm/aws-node-termination-handler \
+  --version "$CHART_VERSION"
 
 # Verify installation
 kubectl get daemonset -n kube-system aws-node-termination-handler
@@ -41,12 +47,12 @@ The handler runs as a DaemonSet on every node, monitoring for termination events
 
 ## Configuring Node Selectors for Spot Nodes
 
-Label spot instance nodes:
+Check spot instance node labels:
 
 ```bash
-# Label spot nodes (usually done automatically by cluster autoscaler or Karpenter)
-kubectl label nodes ip-10-0-1-123.ec2.internal \
-  node.kubernetes.io/instance-type=spot
+# EKS managed node groups use eks.amazonaws.com/capacityType.
+# Karpenter nodes use karpenter.sh/capacity-type.
+kubectl get nodes -L eks.amazonaws.com/capacityType,karpenter.sh/capacity-type
 ```
 
 Configure workloads to use spot instances:
@@ -68,7 +74,7 @@ spec:
         app: batch-processor
     spec:
       nodeSelector:
-        node.kubernetes.io/instance-type: spot
+        eks.amazonaws.com/capacityType: SPOT
       tolerations:
       - key: "spot"
         operator: "Equal"
@@ -93,6 +99,8 @@ package main
 
 import (
     "context"
+    "errors"
+    "log"
     "net/http"
     "os"
     "os/signal"
@@ -102,12 +110,14 @@ import (
 
 func main() {
     server := &http.Server{Addr: ":8080"}
+    shutdownComplete := make(chan struct{})
 
     // Handle termination signals
     sigChan := make(chan os.Signal, 1)
     signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
     go func() {
+        defer close(shutdownComplete)
         <-sigChan
         log.Println("Received termination signal, draining connections...")
 
@@ -123,7 +133,11 @@ func main() {
         }
     }()
 
-    server.ListenAndServe()
+    if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+        log.Fatalf("Server failed: %v", err)
+    }
+
+    <-shutdownComplete
 }
 ```
 
@@ -147,18 +161,22 @@ spec:
 Track interruption metrics:
 
 ```yaml
-# servicemonitor-nth.yaml
+# podmonitor-nth.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: node-termination-handler
   namespace: kube-system
 spec:
+  namespaceSelector:
+    matchNames:
+    - kube-system
   selector:
     matchLabels:
       app.kubernetes.io/name: aws-node-termination-handler
-  endpoints:
-  - port: metrics
+  podMetricsEndpoints:
+  - port: http-metrics
+    path: /metrics
 ```
 
 Create alerts for high interruption rates:
@@ -174,7 +192,7 @@ spec:
   - name: spot
     rules:
     - alert: HighSpotInterruptionRate
-      expr: rate(node_termination_handler_actions_total[1h]) > 0.1
+      expr: rate(actions_total{node_status="success"}[1h]) > 0.1
       for: 5m
       annotations:
         summary: "High spot instance interruption rate"
@@ -184,10 +202,10 @@ Query interruption history:
 
 ```promql
 # Interruptions in last 24 hours
-increase(node_termination_handler_actions_total{action_taken="true"}[24h])
+increase(actions_total{node_status="success"}[24h])
 
 # Interruption rate
-rate(node_termination_handler_actions_total{action_taken="true"}[1h])
+rate(actions_total{node_status="success"}[1h])
 ```
 
 ## Mixed Instance Strategy
@@ -216,17 +234,17 @@ spec:
           - weight: 100
             preference:
               matchExpressions:
-              - key: node.kubernetes.io/instance-type
+              - key: eks.amazonaws.com/capacityType
                 operator: In
                 values:
-                - on-demand
+                - ON_DEMAND
           - weight: 50
             preference:
               matchExpressions:
-              - key: node.kubernetes.io/instance-type
+              - key: eks.amazonaws.com/capacityType
                 operator: In
                 values:
-                - spot
+                - SPOT
 ```
 
 Use PodDisruptionBudget to ensure minimum availability:
@@ -248,32 +266,40 @@ spec:
 
 Use multiple instance types to reduce interruption impact:
 
-```bash
-# Karpenter provisioner with spot diversification
-apiVersion: karpenter.sh/v1alpha5
-kind: Provisioner
+```yaml
+# Karpenter NodePool with spot diversification
+apiVersion: karpenter.sh/v1
+kind: NodePool
 metadata:
   name: spot-diversified
 spec:
-  requirements:
-  - key: karpenter.sh/capacity-type
-    operator: In
-    values: ["spot"]
-  - key: node.kubernetes.io/instance-type
-    operator: In
-    values:
-    - "m5.xlarge"
-    - "m5a.xlarge"
-    - "m5n.xlarge"
-    - "m6i.xlarge"
-    - "m6a.xlarge"
-  - key: topology.kubernetes.io/zone
-    operator: In
-    values:
-    - "us-east-1a"
-    - "us-east-1b"
-    - "us-east-1c"
-  ttlSecondsAfterEmpty: 30
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: default
+      requirements:
+      - key: karpenter.sh/capacity-type
+        operator: In
+        values: ["spot"]
+      - key: node.kubernetes.io/instance-type
+        operator: In
+        values:
+        - "m5.xlarge"
+        - "m5a.xlarge"
+        - "m5n.xlarge"
+        - "m6i.xlarge"
+        - "m6a.xlarge"
+      - key: topology.kubernetes.io/zone
+        operator: In
+        values:
+        - "us-east-1a"
+        - "us-east-1b"
+        - "us-east-1c"
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 30s
 ```
 
 ## Testing Spot Interruptions
@@ -311,9 +337,42 @@ Calculate actual savings:
 # spot-savings-calculator.py
 
 import boto3
-from datetime import datetime, timedelta
+import json
+from datetime import datetime, timezone
 
 ec2 = boto3.client('ec2', region_name='us-east-1')
+pricing = boto3.client('pricing', region_name='us-east-1')
+REGION_LOCATION = 'US East (N. Virginia)'
+HOURS_PER_MONTH = 730
+
+def get_spot_price(instance_type, availability_zone):
+    response = ec2.describe_spot_price_history(
+        InstanceTypes=[instance_type],
+        ProductDescriptions=['Linux/UNIX'],
+        AvailabilityZone=availability_zone,
+        StartTime=datetime.now(timezone.utc),
+        MaxResults=1
+    )
+    return float(response['SpotPriceHistory'][0]['SpotPrice']) * HOURS_PER_MONTH
+
+def get_on_demand_price(instance_type):
+    response = pricing.get_products(
+        ServiceCode='AmazonEC2',
+        Filters=[
+            {'Type': 'TERM_MATCH', 'Field': 'instanceType', 'Value': instance_type},
+            {'Type': 'TERM_MATCH', 'Field': 'location', 'Value': REGION_LOCATION},
+            {'Type': 'TERM_MATCH', 'Field': 'operatingSystem', 'Value': 'Linux'},
+            {'Type': 'TERM_MATCH', 'Field': 'tenancy', 'Value': 'Shared'},
+            {'Type': 'TERM_MATCH', 'Field': 'preInstalledSw', 'Value': 'NA'},
+            {'Type': 'TERM_MATCH', 'Field': 'capacitystatus', 'Value': 'Used'},
+        ],
+        MaxResults=1
+    )
+    product = json.loads(response['PriceList'][0])
+    on_demand_terms = product['terms']['OnDemand']
+    price_dimensions = next(iter(on_demand_terms.values()))['priceDimensions']
+    hourly_price = float(next(iter(price_dimensions.values()))['pricePerUnit']['USD'])
+    return hourly_price * HOURS_PER_MONTH
 
 def calculate_spot_savings():
     """Calculate spot instance savings"""
@@ -332,15 +391,21 @@ def calculate_spot_savings():
         for instance in reservation['Instances']:
             instance_type = instance['InstanceType']
             lifecycle = instance.get('InstanceLifecycle', 'normal')
+            availability_zone = instance['Placement']['AvailabilityZone']
+            on_demand_price = get_on_demand_price(instance_type)
 
-            # Get pricing (simplified - use AWS Pricing API in production)
+            # Get current spot and on-demand pricing
             if lifecycle == 'spot':
-                spot_cost += get_spot_price(instance_type)
+                spot_cost += get_spot_price(instance_type, availability_zone)
             else:
-                on_demand_cost += get_on_demand_price(instance_type)
+                on_demand_cost += on_demand_price
 
     total_cost = spot_cost + on_demand_cost
-    equivalent_on_demand = (spot_cost / 0.3) + on_demand_cost  # Assume 70% discount
+    equivalent_on_demand = 0
+
+    for reservation in response['Reservations']:
+        for instance in reservation['Instances']:
+            equivalent_on_demand += get_on_demand_price(instance['InstanceType'])
 
     savings = equivalent_on_demand - total_cost
     savings_pct = (savings / equivalent_on_demand * 100)
