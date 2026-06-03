@@ -8,7 +8,7 @@ Description: Practical strategies for implementing the Cost Optimization pillar 
 
 ---
 
-The Cost Optimization pillar isn't about spending less - it's about spending smarter. Running lean on AWS doesn't mean cutting corners on reliability or performance. It means eliminating waste, choosing the right pricing models, and making cost a first-class concern in your architecture decisions. Most organizations are overspending on AWS by 30-40%, and the fixes are often straightforward once you know where to look.
+The Cost Optimization pillar isn't about spending less - it's about spending smarter. Running lean on AWS doesn't mean cutting corners on reliability or performance. It means eliminating waste, choosing the right pricing models, and making cost a first-class concern in your architecture decisions. Many organizations overspend on AWS, and the fixes are often straightforward once you know where to look.
 
 Let's go through the practical strategies for optimizing costs on AWS.
 
@@ -100,7 +100,7 @@ For details on setting up consistent tagging, check out our guide on [managing A
 
 ## Right-Sizing
 
-The most common waste on AWS is oversized resources. Most EC2 instances run at under 20% CPU utilization.
+The most common waste on AWS is oversized resources. Many EC2 instances run with consistently low CPU utilization.
 
 **Use Compute Optimizer data to inform instance selection:**
 
@@ -150,7 +150,7 @@ resource "aws_autoscaling_group" "app" {
 }
 ```
 
-This configuration uses spot instances for 90%+ of capacity with multiple instance types for better availability. One on-demand instance ensures you always have baseline capacity.
+This configuration keeps one on-demand instance for baseline capacity and uses Spot for capacity above that baseline. At the maximum capacity of 10 instances, 90% of the group can run on Spot, with multiple instance types for better availability.
 
 ## Pricing Models
 
@@ -159,8 +159,9 @@ This configuration uses spot instances for 90%+ of capacity with multiple instan
 Savings Plans provide up to 72% discount in exchange for a commitment to a consistent amount of usage:
 
 ```hcl
-# While you can't create Savings Plans directly with Terraform,
-# you can use Cost Explorer data to inform your commitment.
+# Terraform can create Savings Plans, but they are financial commitments
+# that cannot be canceled once active. Use Cost Explorer data to inform
+# and approve your commitment before automating a purchase.
 
 # Monitor your on-demand spend to determine the right commitment level
 resource "aws_ce_anomaly_monitor" "service_monitor" {
@@ -199,36 +200,38 @@ The anomaly detection catches unexpected cost spikes, which could indicate a mis
 Spot instances offer up to 90% discount for interruptible workloads:
 
 ```hcl
-# Spot Fleet for batch processing
-resource "aws_spot_fleet_request" "batch" {
-  iam_fleet_role  = aws_iam_role.spot_fleet.arn
-  target_capacity = 10
+# EC2 Fleet for batch processing
+resource "aws_ec2_fleet" "batch" {
+  type = "maintain"
 
-  allocation_strategy = "priceCapacityOptimized"
+  launch_template_config {
+    launch_template_specification {
+      launch_template_id = aws_launch_template.batch.id
+      version            = "$Latest"
+    }
 
-  launch_specification {
-    instance_type = "c6g.2xlarge"
-    ami           = var.ami_id
-    subnet_id     = var.private_subnet_ids[0]
+    override {
+      instance_type = "c6g.2xlarge"
+      subnet_id     = var.private_subnet_ids[0]
+    }
 
-    tags = {
-      Name = "batch-spot"
+    override {
+      instance_type = "c6g.xlarge"
+      subnet_id     = var.private_subnet_ids[1]
     }
   }
 
-  launch_specification {
-    instance_type = "c6g.xlarge"
-    ami           = var.ami_id
-    subnet_id     = var.private_subnet_ids[0]
+  spot_options {
+    allocation_strategy = "price-capacity-optimized"
+  }
 
-    tags = {
-      Name = "batch-spot"
-    }
+  target_capacity_specification {
+    default_target_capacity_type = "spot"
+    total_target_capacity        = 10
   }
 
   # Handle interruptions gracefully
   terminate_instances_with_expiration = true
-  excess_capacity_termination_policy  = "Default"
 }
 ```
 
@@ -342,7 +345,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
 
 ### Use Serverless Where Appropriate
 
-Serverless services charge per use, meaning zero cost when idle:
+Serverless services charge for usage instead of idle server capacity, though storage, running tasks, and optional features can still incur charges:
 
 ```hcl
 # DynamoDB on-demand - pay per request instead of provisioned capacity
@@ -380,7 +383,7 @@ Data transfer is the hidden cost killer on AWS. A few strategies to reduce it:
 - Keep compute and storage in the same region
 - Use CloudFront for frequently accessed content
 - Compress data before transfer
-- Use S3 Transfer Acceleration for cross-region uploads
+- Avoid unnecessary cross-region uploads; use S3 Transfer Acceleration only when the faster transfer path justifies its additional charge
 
 ## Summary
 
