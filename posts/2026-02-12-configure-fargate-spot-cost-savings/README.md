@@ -8,7 +8,7 @@ Description: A practical guide to configuring AWS Fargate Spot to cut your ECS c
 
 ---
 
-Running containers on Fargate is convenient, but the cost adds up fast. If you're spending more than you'd like on ECS compute, Fargate Spot is one of the quickest wins available. It uses spare AWS capacity at a steep discount - typically 50-70% less than regular Fargate pricing. The catch? AWS can reclaim your tasks with a 2-minute warning when it needs that capacity back.
+Running containers on Fargate is convenient, but the cost adds up fast. If you're spending more than you'd like on ECS compute, Fargate Spot is one of the quickest wins available. It uses spare AWS capacity at a steep discount - up to 70% less than regular Fargate pricing. The catch? AWS can reclaim your tasks with a 2-minute warning when it needs that capacity back.
 
 That sounds scary, but for many workloads it's completely fine. Let's dig into how to set it up properly and which workloads make sense.
 
@@ -23,7 +23,7 @@ Your tasks need to handle this gracefully. That means:
 
 ## Setting Up Fargate Spot
 
-The simplest way to use Fargate Spot is through a capacity provider strategy on your ECS service. You don't need to create any custom capacity providers - `FARGATE_SPOT` comes built into every ECS cluster.
+The simplest way to use Fargate Spot is through a capacity provider strategy on your ECS service. You don't need to create any custom capacity providers - `FARGATE` and `FARGATE_SPOT` are predefined capacity providers, but they must be associated with your ECS cluster before you use them in a strategy.
 
 Here's a basic CloudFormation example that runs a service primarily on Fargate Spot.
 
@@ -31,8 +31,23 @@ Here's a basic CloudFormation example that runs a service primarily on Fargate S
 # CloudFormation service definition using Fargate Spot
 
 Resources:
+  ECSClusterCapacityProviders:
+    Type: AWS::ECS::ClusterCapacityProviderAssociations
+    Properties:
+      Cluster: !Ref ECSCluster
+      CapacityProviders:
+        - FARGATE
+        - FARGATE_SPOT
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Base: 2
+          Weight: 1
+        - CapacityProvider: FARGATE_SPOT
+          Weight: 4
+
   WorkerService:
     Type: AWS::ECS::Service
+    DependsOn: ECSClusterCapacityProviders
     Properties:
       ServiceName: worker-service
       Cluster: !Ref ECSCluster
@@ -252,20 +267,30 @@ That's a **63% reduction** in compute costs. Not bad for what amounts to a confi
 You'll want to track how Fargate Spot is behaving in your cluster. Set up CloudWatch alarms for these scenarios.
 
 ```bash
-# Check how many tasks are running on each capacity provider
-aws ecs describe-services \
+# Check which capacity provider each running task is using
+TASKS=$(aws ecs list-tasks \
   --cluster production-cluster \
-  --services worker-service \
-  --query 'services[0].capacityProviderStrategy'
+  --service-name worker-service \
+  --desired-status RUNNING \
+  --query 'taskArns[]' \
+  --output text)
+
+aws ecs describe-tasks \
+  --cluster production-cluster \
+  --tasks $TASKS \
+  --query 'tasks[].{task:taskArn,capacityProvider:capacityProviderName,lastStatus:lastStatus}'
 
 # Look at task stop reasons to catch Spot interruptions
 aws ecs list-tasks \
   --cluster production-cluster \
-  --desired-status STOPPED | \
+  --service-name worker-service \
+  --desired-status STOPPED \
+  --query 'taskArns[]' \
+  --output text | \
   xargs -I {} aws ecs describe-tasks \
     --cluster production-cluster \
     --tasks {} \
-    --query 'tasks[?stoppedReason==`Your task was stopped because a Spot interruption occurred.`]'
+    --query 'tasks[?stopCode==`SpotInterruption` || stoppedReason==`Your Spot Task was interrupted.`].{task:taskArn,stopCode:stopCode,stoppedReason:stoppedReason}'
 ```
 
 For comprehensive monitoring of your ECS services, including tracking Spot interruptions and their impact on availability, check out our post on [monitoring container workloads](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
