@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Ruby On Rail, Deployment, ECS, Elastic Beanstalk
+Tags: AWS, Ruby on Rails, Deployment, ECS, Elastic Beanstalk
 
-Description: A comprehensive guide to deploying Ruby on Rails applications on AWS using Elastic Beanstalk, ECS, and EC2 with database, caching, and background job configurations.
+Description: A comprehensive guide to deploying Ruby on Rails applications on AWS using Elastic Beanstalk and ECS with database, caching, and background job configurations.
 
 ---
 
@@ -27,7 +27,7 @@ group :production do
 end
 ```
 
-Configure Puma for production use. This config sets up workers based on available CPU cores:
+Configure Puma for production use. This config sets up workers and threads from environment variables, with sensible defaults:
 
 ```ruby
 # config/puma.rb
@@ -75,7 +75,7 @@ packages:
     git: []
 ```
 
-Set up environment properties and run migrations on deploy:
+Set up environment properties:
 
 ```yaml
 # .ebextensions/02_environment.config
@@ -177,7 +177,7 @@ docker tag rails-app:latest ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/rails-app
 docker push ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/rails-app:latest
 ```
 
-ECS task definition with web server and background worker:
+ECS task definition with the web server:
 
 ```json
 {
@@ -186,6 +186,7 @@ ECS task definition with web server and background worker:
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "1024",
   "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "web",
@@ -268,6 +269,7 @@ Create a separate task definition for the worker:
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
   "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "worker",
