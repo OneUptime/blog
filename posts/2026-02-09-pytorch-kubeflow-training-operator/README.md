@@ -20,8 +20,7 @@ Install using kubectl:
 
 ```bash
 # Install the Training Operator
-
-kubectl apply -k "github.com/kubeflow/training-operator/manifests/overlays/standalone?ref=v1.7.0"
+kubectl apply --server-side -k "github.com/kubeflow/training-operator.git/manifests/overlays/standalone?ref=v1.8.1"
 
 # Verify installation
 kubectl get pods -n kubeflow
@@ -34,22 +33,7 @@ kubectl get crd | grep kubeflow.org
 # Should see: pytorchjobs.kubeflow.org
 ```
 
-Alternatively, install with Helm:
-
-```bash
-# Add Kubeflow Helm repo
-helm repo add kubeflow https://kubeflow.github.io/training-operator
-helm repo update
-
-# Install Training Operator
-helm install training-operator kubeflow/training-operator \
-  --namespace kubeflow \
-  --create-namespace \
-  --set pytorch.enabled=true
-
-# Verify
-helm list -n kubeflow
-```
+Training Operator v1 is the legacy API for `PyTorchJob`. For new deployments, also review the Kubeflow Trainer v2 documentation.
 
 ## Creating a Simple PyTorch Training Job
 
@@ -196,10 +180,14 @@ spec:
             volumeMounts:
             - name: training-code
               mountPath: /workspace
+            - name: checkpoints
+              mountPath: /checkpoints
           volumes:
           - name: training-code
             configMap:
               name: training-script
+          - name: checkpoints
+            emptyDir: {}
 
     # Worker replicas (rank 1, 2, 3)
     Worker:
@@ -354,14 +342,16 @@ def train():
                 print(f"Epoch {epoch}, Batch {batch_idx}, Loss: {loss.item():.4f}")
 
         # Aggregate loss across all ranks
-        avg_loss = epoch_loss / len(dataloader)
+        loss_tensor = torch.tensor(epoch_loss / len(dataloader), device=local_rank)
+        dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
+        avg_loss = loss_tensor.item() / world_size
 
         if rank == 0:
             print(f"Epoch {epoch} completed. Average Loss: {avg_loss:.4f}")
 
     # Save model (only from rank 0)
     if rank == 0:
-        torch.save(model.module.state_dict(), "/workspace/model.pt")
+        torch.save(model.module.state_dict(), "/checkpoints/model.pt")
         print("Model saved successfully!")
 
     # Cleanup
@@ -431,11 +421,9 @@ spec:
           - name: pytorch
             image: pytorch/pytorch:2.0.1-cuda11.8-cudnn8-runtime
             command:
-            - torchrun
-            - --nnodes=2:4  # Min 2, max 4 nodes
-            - --nproc_per_node=1
-            - --rdzv_backend=c10d
-            - --rdzv_endpoint=$(MASTER_ADDR):$(MASTER_PORT)
+            - python
+            - -m
+            - torch.distributed.run
             - /workspace/train_elastic.py
             resources:
               requests:
@@ -534,22 +522,14 @@ spec:
 
 ## Monitoring Training Jobs
 
-Create a ServiceMonitor for Prometheus:
+The Training Operator exposes Prometheus metrics from the operator deployment:
 
-```yaml
-# pytorch-servicemonitor.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: pytorch-training
-  namespace: training
-spec:
-  selector:
-    matchLabels:
-      training.kubeflow.org/job-role: master
-  endpoints:
-  - port: metrics
-    interval: 30s
+```bash
+# Port-forward the operator metrics endpoint
+kubectl port-forward -n kubeflow deployment/training-operator 8080:8080
+
+# In another terminal, query metrics
+curl http://localhost:8080/metrics | grep training_operator
 ```
 
 Query training metrics:
@@ -574,8 +554,9 @@ Set TTL for completed jobs:
 
 ```yaml
 spec:
-  # Automatically delete job after 1 hour of completion
-  ttlSecondsAfterFinished: 3600
+  runPolicy:
+    # Automatically delete job after 1 hour of completion
+    ttlSecondsAfterFinished: 3600
 ```
 
 Create resource quotas:
