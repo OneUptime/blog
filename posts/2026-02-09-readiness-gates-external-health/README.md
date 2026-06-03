@@ -238,7 +238,7 @@ for POD in $PODS; do
   echo "Approving $POD_NAME..."
 
   # Update readiness gate condition
-  kubectl patch pod $POD_NAME -n $NAMESPACE --subresource=status --type=merge -p '{
+  kubectl patch pod $POD_NAME -n $NAMESPACE --subresource=status --type=strategic -p '{
     "status": {
       "conditions": [{
         "type": "approval.example.com/manual-approval",
@@ -289,7 +289,7 @@ class MonitoringIntegration:
             pod = self.v1.read_namespaced_pod(pod_name, namespace)
 
             condition = client.V1PodCondition(
-                type="monitoring.example.com/external-health",
+                type="example.com/external-monitor-healthy",
                 status="True" if ready else "False",
                 last_probe_time=datetime.now(),
                 last_transition_time=datetime.now()
