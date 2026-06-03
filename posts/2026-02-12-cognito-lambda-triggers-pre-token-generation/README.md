@@ -8,13 +8,13 @@ Description: Learn how to use AWS Cognito Pre Token Generation Lambda triggers t
 
 ---
 
-AWS Cognito gives you a solid authentication system out of the box, but sometimes you need more control over what goes into those JWT tokens. That's where the Pre Token Generation Lambda trigger comes in. It lets you intercept the token generation process and inject custom claims, suppress existing ones, or modify the token's structure before it reaches your application.
+AWS Cognito gives you a solid authentication system out of the box, but sometimes you need more control over what goes into those JWT tokens. That's where the Pre Token Generation Lambda trigger comes in. It lets you intercept the token generation process and add custom claims, suppress existing ones, or adjust group and role claims before the token reaches your application.
 
 If you've ever needed to add user roles, permission flags, or tenant-specific data to your tokens without hitting a database on every API call, this trigger is exactly what you're looking for.
 
 ## What Is the Pre Token Generation Trigger?
 
-The Pre Token Generation trigger fires right before Cognito issues ID and access tokens to a user. Your Lambda function receives the token payload, gets a chance to modify it, and returns the updated version. Cognito then signs and delivers the modified token.
+The Pre Token Generation trigger fires right before Cognito issues tokens to a user. With the default `V1_0` trigger event, your Lambda function can customize the ID token and group-related claims. With `V2_0` or `V3_0`, it can also customize access token claims and scopes. Cognito sends your function an event with user attributes and token-generation context, your function returns the requested overrides, and Cognito signs and delivers the resulting token.
 
 This is different from other Cognito triggers like Pre Authentication or Post Confirmation. Those handle events earlier in the flow. Pre Token Generation is the last stop before the token leaves Cognito's hands.
 
@@ -42,7 +42,7 @@ Create the Lambda function with the proper handler signature:
 exports.handler = async (event) => {
     console.log('Pre Token Generation event:', JSON.stringify(event, null, 2));
 
-    // The event contains user attributes, group info, and token claims
+    // The event contains user attributes, group info, and token-generation context
     const { userName, request, response } = event;
     const userAttributes = request.userAttributes;
     const groupConfiguration = request.groupConfiguration;
@@ -50,8 +50,7 @@ exports.handler = async (event) => {
     // Initialize the claims override structure
     response.claimsOverrideDetails = {
         claimsToAddOrOverride: {},
-        claimsToSuppress: [],
-        groupOverrideDetails: null
+        claimsToSuppress: []
     };
 
     return event;
@@ -86,7 +85,7 @@ exports.handler = async (event) => {
 };
 ```
 
-One thing to watch out for: claim names that start with `custom:` are treated as custom claims by Cognito. You can't override standard OIDC claims like `sub`, `iss`, or `aud` - Cognito will ignore those.
+One thing to watch out for: Cognito user-pool custom attributes use names that start with `custom:`. You can also add claims that aren't in the user-pool token schema. Some standard claims can be overridden, but protected claims like `sub`, `iss`, and the ID token `aud` claim can't be changed.
 
 ## Dynamic Claims Based on External Data
 
@@ -161,7 +160,7 @@ exports.handler = async (event) => {
 };
 ```
 
-Note that you can't suppress the `sub` claim - Cognito requires it in every token. Also, suppressing claims only affects the ID token, not the access token.
+Note that you can't suppress the `sub` claim - Cognito requires it in every token. With the default `V1_0` trigger event, claim suppression affects the ID token. To suppress supported access-token claims, configure the trigger for `V2_0` or `V3_0` and use `claimsAndScopeOverrideDetails`.
 
 ## Working with Groups
 
@@ -171,15 +170,22 @@ Here's how to override group information in the token:
 
 ```javascript
 exports.handler = async (event) => {
-    const groups = event.request.groupConfiguration.groupsToOverride || [];
+    const groupConfiguration = event.request.groupConfiguration || {};
+    const groups = groupConfiguration.groupsToOverride || [];
 
     // Filter out internal-only groups from the token
     const publicGroups = groups.filter(g => !g.startsWith('internal-'));
+    const groupOverrideDetails = {
+        groupsToOverride: publicGroups,
+        iamRolesToOverride: groupConfiguration.iamRolesToOverride || []
+    };
+
+    if (groupConfiguration.preferredRole) {
+        groupOverrideDetails.preferredRole = groupConfiguration.preferredRole;
+    }
 
     event.response.claimsOverrideDetails = {
-        groupOverrideDetails: {
-            groupsToOverride: publicGroups
-        }
+        groupOverrideDetails
     };
 
     return event;
@@ -190,12 +196,12 @@ exports.handler = async (event) => {
 
 You can attach the trigger through the AWS Console, CLI, or infrastructure-as-code. Here's the CLI approach.
 
-Run this command to set the Lambda trigger on your user pool:
+Run this command to set the Lambda trigger on your user pool. When you use `update-user-pool`, include the rest of your existing user-pool configuration in the request so Cognito doesn't reset omitted settings to their defaults.
 
 ```bash
 aws cognito-idp update-user-pool \
     --user-pool-id us-east-1_XXXXXXXXX \
-    --lambda-config PreTokenGeneration=arn:aws:lambda:us-east-1:123456789012:function:pre-token-generation
+    --lambda-config 'PreTokenGenerationConfig={LambdaVersion=V1_0,LambdaArn=arn:aws:lambda:us-east-1:123456789012:function:pre-token-generation}'
 ```
 
 Don't forget to grant Cognito permission to invoke the Lambda:
@@ -213,7 +219,7 @@ If you're managing infrastructure with Terraform, check out the [Cognito Terrafo
 
 ## Token Size Limits
 
-There's a practical limit to keep in mind. JWTs aren't meant to carry huge amounts of data. Cognito enforces a 10,000-character limit on token claims, but even before hitting that, large tokens can cause issues with HTTP headers and browser cookies.
+There's a practical limit to keep in mind. JWTs aren't meant to carry huge amounts of data. Cognito has a quota for the total combined changes from a Pre Token Generation trigger, and large tokens can cause issues with HTTP headers and browser cookies even before you run into service quotas.
 
 Stick to essential claims. If you need to store complex permission structures, consider storing a permissions hash or version number in the token and keeping the full permission set server-side.
 
@@ -229,8 +235,7 @@ You can test the Lambda locally by simulating the event structure that Cognito s
 
 Use this test event to validate your function logic:
 
-```javascript
-// test-event.json
+```json
 {
     "version": "1",
     "triggerSource": "TokenGeneration_HostedAuth",
@@ -259,15 +264,12 @@ Use this test event to validate your function logic:
 }
 ```
 
-Then invoke it locally:
+Then invoke the handler locally:
 
 ```bash
 # Test the Lambda function with the sample event
 
-aws lambda invoke \
-    --function-name pre-token-generation \
-    --payload file://test-event.json \
-    output.json && cat output.json | jq .
+node -e "const { handler } = require('./index'); const event = require('./test-event.json'); handler(event).then(result => console.log(JSON.stringify(result, null, 2))).catch(error => { console.error(error); process.exit(1); });"
 ```
 
 ## Wrapping Up
