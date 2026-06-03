@@ -14,7 +14,7 @@ vcluster creates fully functional virtual Kubernetes clusters that run inside na
 
 ## Understanding Virtual Clusters vs Regular Namespaces
 
-Regular namespaces share the API server, which means namespace administrators can list all namespaces, see cluster-wide resources, and potentially access data from other tenants through misconfigured RBAC. Virtual clusters provide complete API isolation. Each tenant gets their own API endpoint and cannot see resources from other virtual clusters or the host cluster.
+Regular namespaces share the API server, which means users with overly broad cluster-scoped RBAC can list all namespaces, see cluster-wide resources, and potentially access data from other tenants through misconfigured permissions. Virtual clusters provide API-level isolation. Each tenant gets their own API endpoint and cannot see resources from other virtual clusters or the host cluster unless those resources are explicitly synced or exposed.
 
 This makes vcluster ideal for development environments where developers need cluster-admin privileges, multi-tenant SaaS platforms, CI/CD pipeline isolation, and testing cluster upgrades or different Kubernetes versions.
 
@@ -23,13 +23,9 @@ This makes vcluster ideal for development environments where developers need clu
 Install the vcluster CLI:
 
 ```bash
-# Install vcluster CLI
-
-curl -s -L "https://github.com/loft-sh/vcluster/releases/latest" | \
-  sed -nE 's!.*"([^"]*vcluster-linux-amd64)".*!https://github.com\1!p' | \
-  xargs -n 1 curl -L -o vcluster && \
-  chmod +x vcluster && \
-  sudo mv vcluster /usr/local/bin
+curl -L -o vcluster "https://github.com/loft-sh/vcluster/releases/latest/download/vcluster-linux-amd64" && \
+  sudo install -c -m 0755 vcluster /usr/local/bin && \
+  rm -f vcluster
 
 # Verify installation
 vcluster --version
@@ -57,40 +53,33 @@ Create a virtual cluster with custom configuration:
 
 ```yaml
 # vcluster-values.yaml
-syncer:
-  # Resources to sync from virtual to host cluster
-  extraArgs:
-  - --out-kube-config-server=https://vcluster-dev-team-1.example.com
-  - --tls-san=vcluster-dev-team-1.example.com
-
-# Enable pod security standards
-  env:
-  - name: ENFORCE_POD_SECURITY_STANDARD
-    value: "restricted"
-
-# Resource limits for the virtual cluster
-vcluster:
-  resources:
-    limits:
-      cpu: "2"
-      memory: "4Gi"
-    requests:
-      cpu: "200m"
-      memory: "512Mi"
-
-  # Persistent storage for etcd
-  storage:
-    persistence: true
-    size: 10Gi
-
-# Enable CoreDNS
-coredns:
-  enabled: true
-  replicas: 2
+controlPlane:
+  endpoint: https://vcluster-dev-team-1.example.com
+  proxy:
+    extraSANs:
+    - vcluster-dev-team-1.example.com
+  statefulSet:
+    # Resource limits for the virtual cluster control plane
+    resources:
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+    # Persistent storage for the control plane data
+    persistence:
+      volumeClaim:
+        enabled: true
+        size: 10Gi
+  # Enable CoreDNS
+  coredns:
+    enabled: true
+    deployment:
+      replicas: 2
 
 # Isolate workloads
-isolation:
-  enabled: true
+policies:
   podSecurityStandard: restricted
   resourceQuota:
     enabled: true
@@ -106,19 +95,18 @@ isolation:
     defaultRequest:
       cpu: "100m"
       memory: "128Mi"
-
-# Network policies
-networkPolicies:
-  enabled: true
+  networkPolicy:
+    enabled: true
 
 # Enable service sync
 sync:
-  services:
-    enabled: true
-  ingresses:
-    enabled: true
-  persistentvolumeclaims:
-    enabled: true
+  toHost:
+    services:
+      enabled: true
+    ingresses:
+      enabled: true
+    persistentVolumeClaims:
+      enabled: true
 ```
 
 Deploy with custom values:
@@ -192,7 +180,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
   egress:
   # Allow to same namespace
   - to:
@@ -201,13 +189,20 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
       port: 53
+    - protocol: TCP
+      port: 53
   # Allow to external services
   - to:
-    - namespaceSelector: {}
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
     ports:
     - protocol: TCP
       port: 443
