@@ -10,7 +10,7 @@ Description: A comprehensive reference for CloudWatch Logs Insights query syntax
 
 CloudWatch Logs Insights is AWS's query language for searching and analyzing log data. If you've used SQL before, you'll find the syntax familiar - it's a pipeline of commands that filter, parse, aggregate, and sort your log data. But unlike SQL, it's designed specifically for log analysis, with built-in support for extracting fields from unstructured text, computing statistics, and visualizing results.
 
-This post is a complete reference for the query syntax. We'll go through every command, show practical examples, and cover the gotchas that aren't obvious from the documentation.
+This post is a practical reference for the query syntax. We'll go through the most common commands, show practical examples, and cover the gotchas that aren't obvious from the documentation.
 
 ## Query Structure
 
@@ -23,7 +23,7 @@ fields @timestamp, @message
 | limit 20
 ```
 
-The available commands are:
+The common commands are:
 
 - `fields` - select which fields to display
 - `filter` - keep only events matching a condition
@@ -35,15 +35,15 @@ The available commands are:
 
 ## The fields Command
 
-`fields` selects which fields to show in results. Every log event has these built-in fields:
+`fields` selects which fields to show in results. Core built-in fields include:
 
 - `@timestamp` - when the event was logged
 - `@message` - the full log message
 - `@logStream` - the log stream name
-- `@log` - the log group and stream combined
+- `@log` - the log group identifier in the form `account-id:log-group-name`
 - `@ingestionTime` - when CloudWatch received the event
 
-For JSON-formatted logs, CloudWatch automatically discovers fields. If your log line is `{"level": "ERROR", "service": "api", "duration": 234}`, you can reference `level`, `service`, and `duration` directly:
+For JSON-formatted logs in Standard class log groups, CloudWatch automatically discovers fields. If your log line is `{"level": "ERROR", "service": "api", "duration": 234}`, you can reference `level`, `service`, and `duration` directly:
 
 ```text
 fields @timestamp, level, service, duration
@@ -173,8 +173,8 @@ stats pct(duration, 50) as p50, pct(duration, 95) as p95, pct(duration, 99) as p
 stats count_distinct(userId) as uniqueUsers
 
 # Time-bucketed aggregation (creates timeline charts)
-stats count(*) as errorCount by bin(5m)
-| filter level = "ERROR"
+filter level = "ERROR"
+| stats count(*) as errorCount by bin(5m)
 ```
 
 The `bin()` function is especially powerful for creating time-series visualizations:
@@ -206,7 +206,7 @@ sort level asc, @timestamp desc
 
 ## The limit Command
 
-`limit` caps the number of results returned. The default is 1000, and the maximum is 10000:
+`limit` caps the number of results returned. The default is 10000, and the maximum for the query command is 100000:
 
 ```text
 # Show only the top 10
@@ -243,10 +243,10 @@ fields abs(offset) as absoluteOffset
 
 # Date/time functions
 fields datefloor(@timestamp, 1h) as hourBucket
-fields fromMillis(@timestamp) as readableTime
+fields toMillis(@timestamp) as timestampMs
 
 # IP functions
-filter isValidIpv4(sourceIp)
+filter isValidIpV4(sourceIp)
 
 # Coalesce (first non-null value)
 fields coalesce(userId, "anonymous") as user
@@ -268,7 +268,7 @@ filter level = "ERROR"
 Compute error rate over time:
 
 ```text
-stats sum(level = "ERROR") / count(*) * 100 as errorRate by bin(5m)
+stats sum(case(level = "ERROR", 1, 0)) / count(*) * 100 as errorRate by bin(5m)
 ```
 
 Find the slowest endpoints:
@@ -298,7 +298,7 @@ stats count_distinct(userId) as uniqueUsers by bin(1h)
 
 ## Query Limits and Performance
 
-A few things to keep in mind for performance. Queries scan up to 10,000 log groups, and the maximum query runtime is 60 minutes. Results are capped at 10,000 rows. For large datasets, narrower time ranges and specific log groups improve performance significantly.
+A few things to keep in mind for performance. When you specify log groups through the `StartQuery` API parameters, you can include up to 50 log groups. The maximum query runtime is 60 minutes. The `limit` command defaults to 10,000 events and can specify up to 100,000. For large datasets, narrower time ranges and specific log groups improve performance significantly.
 
 Also, `filter` commands should come as early as possible in your pipeline to reduce the data processed by subsequent commands. A query with `filter` first and `stats` second is much faster than the reverse.
 
