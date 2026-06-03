@@ -25,7 +25,13 @@ metadata:
   name: api-service
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: api-service
   template:
+    metadata:
+      labels:
+        app: api-service
     spec:
       containers:
       - name: api
@@ -55,7 +61,7 @@ kubectl top pods -n production
 # View detailed metrics for specific pod
 kubectl top pod api-pod-abc123 -n production --containers
 
-# Get historical usage from metrics server
+# Get current usage directly from the Metrics API
 kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/production/pods/api-pod-abc123
 ```
 
@@ -63,15 +69,13 @@ Use Prometheus to analyze usage patterns:
 
 ```promql
 # Average CPU usage per pod
-avg_over_time(container_cpu_usage_seconds_total[24h])
+avg_over_time(rate(container_cpu_usage_seconds_total[5m])[24h:5m])
 
 # Maximum memory usage per pod
 max_over_time(container_memory_working_set_bytes[24h])
 
 # 95th percentile CPU usage
-histogram_quantile(0.95,
-  rate(container_cpu_usage_seconds_total[24h])
-)
+quantile_over_time(0.95, rate(container_cpu_usage_seconds_total[5m])[24h:5m])
 ```
 
 Set requests based on typical usage with headroom for spikes:
@@ -100,7 +104,13 @@ kind: Deployment
 metadata:
   name: stable-service
 spec:
+  selector:
+    matchLabels:
+      app: stable-service
   template:
+    metadata:
+      labels:
+        app: stable-service
     spec:
       containers:
       - name: app
@@ -123,7 +133,13 @@ kind: Deployment
 metadata:
   name: burstable-worker
 spec:
+  selector:
+    matchLabels:
+      app: burstable-worker
   template:
+    metadata:
+      labels:
+        app: burstable-worker
     spec:
       containers:
       - name: worker
@@ -148,6 +164,7 @@ metadata:
 spec:
   template:
     spec:
+      restartPolicy: Never
       containers:
       - name: job
         resources:
@@ -175,7 +192,13 @@ metadata:
   namespace: production
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: critical-api
   template:
+    metadata:
+      labels:
+        app: critical-api
     spec:
       priorityClassName: high-priority
       containers:
@@ -224,7 +247,7 @@ spec:
     kind: Deployment
     name: api-service
   updatePolicy:
-    updateMode: "Auto"  # Automatically apply recommendations
+    updateMode: "Recreate"  # Automatically apply recommendations by recreating pods
   resourcePolicy:
     containerPolicies:
     - containerName: api
@@ -236,7 +259,7 @@ spec:
         memory: 2Gi
 ```
 
-VPA monitors usage and adjusts requests automatically. Use `updateMode: "Recommender"` initially to review recommendations before enabling automatic updates.
+VPA monitors usage and adjusts requests automatically. Use `updateMode: "Off"` initially to review recommendations before enabling automatic updates.
 
 View VPA recommendations:
 
@@ -264,12 +287,14 @@ Track how well requests match actual usage:
 
 ```promql
 # Pods using significantly more CPU than requested
-(rate(container_cpu_usage_seconds_total[5m]) /
- container_spec_cpu_quota * 100) > 80
+sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total[5m]))
+/
+sum by (namespace, pod, container) (kube_pod_container_resource_requests{resource="cpu"}) > 0.8
 
 # Memory usage vs requests
-container_memory_working_set_bytes /
-container_spec_memory_request_bytes
+sum by (namespace, pod, container) (container_memory_working_set_bytes)
+/
+sum by (namespace, pod, container) (kube_pod_container_resource_requests{resource="memory"})
 
 # Pods hitting CPU limits (being throttled)
 rate(container_cpu_cfs_throttled_seconds_total[5m]) > 0.1
@@ -292,8 +317,9 @@ groups:
 
   - alert: PodMemoryPressure
     expr: |
-      container_memory_working_set_bytes /
-      container_spec_memory_request_bytes > 0.9
+      sum by (namespace, pod, container) (container_memory_working_set_bytes)
+      /
+      sum by (namespace, pod, container) (kube_pod_container_resource_requests{resource="memory"}) > 0.9
     for: 5m
     labels:
       severity: warning
@@ -323,7 +349,10 @@ kubectl run load-generator --image=williamyeh/wrk --rm -it --restart=Never -- \
   -t 10 -c 100 -d 300s http://api-service.$NAMESPACE.svc.cluster.local
 
 # Monitor resource usage during load test
-kubectl top pods -n $NAMESPACE -l app=$DEPLOYMENT --watch
+while true; do
+  kubectl top pods -n $NAMESPACE -l app=$DEPLOYMENT
+  sleep 5
+done
 ```
 
 Accurate resource requests are fundamental to reliable Kubernetes operations. By measuring actual usage, configuring appropriate requests and limits, and continuously monitoring resource consumption, you enable consistent pod scheduling that prevents contention while efficiently utilizing cluster capacity.
