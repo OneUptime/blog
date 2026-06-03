@@ -14,7 +14,7 @@ Static database credentials create security risks when stolen or exposed. Vault'
 
 Dynamic credentials are generated when requested and automatically expire after a configured TTL. Vault creates a new database user for each credential request, sets appropriate permissions, and revokes the user when the lease expires. This ensures credentials are short-lived and unique per consumer.
 
-The workflow operates like this: application requests database credentials from Vault, Vault creates a new database user with configured privileges, application receives username and password with lease information, application uses credentials to connect to database, Vault automatically renews the lease if the application is still running, and when lease expires or is revoked, Vault deletes the database user.
+The workflow operates like this: application requests database credentials from Vault, Vault creates a new database user with configured privileges, application receives username and password with lease information, application uses credentials to connect to database, the application or Vault Agent renews or refreshes the credentials while they are still needed, and when the lease expires or is revoked, Vault deletes the database user.
 
 ## Enabling the Database Secrets Engine
 
@@ -37,12 +37,12 @@ Set up Vault to connect to your PostgreSQL database:
 # Configure PostgreSQL connection
 vault write database/config/postgres \
   plugin_name=postgresql-database-plugin \
-  allowed_roles="app-role,readonly-role" \
+  allowed_roles="app-role,readonly-role,admin-role" \
   connection_url="postgresql://{{username}}:{{password}}@postgres.default.svc.cluster.local:5432/myapp?sslmode=disable" \
   username="vault" \
   password="vault-password"
 
-# Test the connection
+# Rotate the root credentials after configuration
 vault write -f database/rotate-root/postgres
 ```
 
@@ -144,8 +144,8 @@ package main
 import (
     "database/sql"
     "fmt"
-    "io/ioutil"
     "log"
+    "os"
     "time"
 
     vault "github.com/hashicorp/vault/api"
@@ -162,7 +162,7 @@ type DBConfig struct {
 
 func (c *DBConfig) authenticate() error {
     // Read service account token
-    jwt, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+    jwt, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
     if err != nil {
         return err
     }
@@ -389,7 +389,7 @@ spec:
           exec /app/start
 ```
 
-The Vault Agent sidecar automatically renews the database credentials and updates the file.
+The Vault Agent sidecar automatically renews or refreshes the database credentials and updates the file. The application must reload the rendered file or be restarted to use newly rendered credentials.
 
 ## Configuring MySQL Connection
 
