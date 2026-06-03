@@ -48,7 +48,7 @@ The `x`, `y`, `width`, and `height` values control the layout. The dashboard gri
 
 ## Widget Types
 
-CloudWatch supports several widget types. Here's each one in Terraform:
+CloudWatch supports several widget types. Here are common ones in Terraform:
 
 ### Time Series (Line Chart)
 
@@ -373,9 +373,9 @@ Metrics Math works in dashboard widgets too:
 
 For more on Metrics Math, see our guide on [CloudWatch Metrics Math expressions](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-metrics-math-expressions/view).
 
-## Dynamic Dashboards with Template Variables
+## Dynamic Dashboards with Terraform Variables
 
-While CloudWatch doesn't have template variables like Grafana, you can use Terraform variables to make dashboards dynamic:
+CloudWatch has dashboard variables for switching values while viewing a dashboard, and you can also use Terraform variables to generate environment-specific dashboard definitions:
 
 ```hcl
 # Variables for dashboard configuration
