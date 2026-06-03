@@ -118,23 +118,29 @@ vault kv put -cas=$VERSION secret/app/config \
 Implement in Go:
 
 ```go
-func UpdateSecretSafely(client *vault.Client, path string, data map[string]interface{}) error {
+package main
+
+import (
+    "fmt"
+    "strconv"
+
+    vault "github.com/hashicorp/vault/api"
+)
+
+func UpdateSecretSafely(client *vault.Client, mount, secretPath string, data map[string]interface{}) error {
     // Get current version
-    metadata, err := client.Logical().Read(path + "/metadata")
+    metadata, err := client.Logical().Read(mount + "/metadata/" + secretPath)
     if err != nil {
         return err
     }
 
-    currentVersion := metadata.Data["current_version"].(json.Number)
-    version, _ := currentVersion.Int64()
-
-    // Prepare data with CAS
-    data["options"] = map[string]interface{}{
-        "cas": version,
+    version, err := strconv.ParseInt(fmt.Sprint(metadata.Data["current_version"]), 10, 64)
+    if err != nil {
+        return err
     }
 
     // Attempt update
-    _, err = client.Logical().Write(path + "/data", map[string]interface{}{
+    _, err = client.Logical().Write(mount+"/data/"+secretPath, map[string]interface{}{
         "data":    data,
         "options": map[string]interface{}{"cas": version},
     })
@@ -155,10 +161,8 @@ Restore previous secret versions:
 # View version 1 content
 vault kv get -version=1 secret/app/config
 
-# Rollback by writing version 1 data as new version
-vault kv get -version=1 -format=json secret/app/config | \
-  jq -r '.data.data' | \
-  vault kv put secret/app/config -
+# Rollback by writing version 1 data as a new current version
+vault kv rollback -version=1 secret/app/config
 
 # Or use patch to rollback specific fields
 OLD_KEY=$(vault kv get -version=1 -field=api_key secret/app/config)
@@ -179,17 +183,11 @@ if [ -z "$SECRET_PATH" ] || [ -z "$TARGET_VERSION" ]; then
   exit 1
 fi
 
-# Get data from target version
-DATA=$(vault kv get -version=$TARGET_VERSION -format=json $SECRET_PATH | \
-  jq -r '.data.data')
-
-if [ $? -ne 0 ]; then
-  echo "Failed to get version $TARGET_VERSION"
+# Write target version as new current version
+if ! vault kv rollback -version="$TARGET_VERSION" "$SECRET_PATH"; then
+  echo "Failed to roll back to version $TARGET_VERSION"
   exit 1
 fi
-
-# Write as new version
-echo "$DATA" | vault kv put $SECRET_PATH -
 
 NEW_VERSION=$(vault kv metadata get -format=json $SECRET_PATH | \
   jq -r '.data.current_version')
@@ -242,12 +240,12 @@ Control how many versions to retain:
 # Set maximum versions to keep
 vault kv metadata put -max-versions=5 secret/app/config
 
-# Older versions auto-delete when limit exceeded
+# Oldest versions are permanently deleted when the limit is exceeded
 
 # Configure delete version after period
 vault kv metadata put -delete-version-after=720h secret/app/config
 
-# Versions older than 30 days auto-delete
+# New versions are automatically soft-deleted after 30 days
 
 # Combine both settings
 vault kv metadata put \
@@ -256,20 +254,15 @@ vault kv metadata put \
   secret/app/config
 ```
 
-## Creating Policies for Version Access
+## Creating Policies for Version Management
 
-Control who can access which versions:
+Control who can read secrets and manage version operations. Vault policies cannot distinguish reads of the current version from reads of older versions because the version is selected with a query parameter on the same `secret/data/...` path.
 
 ```bash
-vault policy write app-current-only - <<EOF
-# Allow reading current version only
+vault policy write app-reader-writer - <<EOF
+# Allow reading and updating secret data
 path "secret/data/app/*" {
-  capabilities = ["read"]
-}
-
-# Allow updating (creates new versions)
-path "secret/data/app/*" {
-  capabilities = ["create", "update"]
+  capabilities = ["create", "read", "update"]
 }
 EOF
 
@@ -309,17 +302,27 @@ Read specific versions in applications:
 package main
 
 import (
-    "fmt"
+    "strconv"
+
     vault "github.com/hashicorp/vault/api"
 )
 
 type VersionedSecret struct {
     client *vault.Client
+    mount  string
     path   string
 }
 
+func (vs *VersionedSecret) dataPath() string {
+    return vs.mount + "/data/" + vs.path
+}
+
+func (vs *VersionedSecret) metadataPath() string {
+    return vs.mount + "/metadata/" + vs.path
+}
+
 func (vs *VersionedSecret) GetCurrent() (map[string]interface{}, error) {
-    secret, err := vs.client.Logical().Read(vs.path + "/data")
+    secret, err := vs.client.Logical().Read(vs.dataPath())
     if err != nil {
         return nil, err
     }
@@ -328,11 +331,11 @@ func (vs *VersionedSecret) GetCurrent() (map[string]interface{}, error) {
 }
 
 func (vs *VersionedSecret) GetVersion(version int) (map[string]interface{}, error) {
-    params := map[string]interface{}{
-        "version": version,
+    params := map[string][]string{
+        "version": {strconv.Itoa(version)},
     }
 
-    secret, err := vs.client.Logical().ReadWithData(vs.path+"/data", params)
+    secret, err := vs.client.Logical().ReadWithData(vs.dataPath(), params)
     if err != nil {
         return nil, err
     }
@@ -341,7 +344,7 @@ func (vs *VersionedSecret) GetVersion(version int) (map[string]interface{}, erro
 }
 
 func (vs *VersionedSecret) GetHistory() ([]VersionInfo, error) {
-    metadata, err := vs.client.Logical().Read(vs.path + "/metadata")
+    metadata, err := vs.client.Logical().Read(vs.metadataPath())
     if err != nil {
         return nil, err
     }
@@ -370,7 +373,7 @@ func (vs *VersionedSecret) Rollback(targetVersion int) error {
     }
 
     // Write as new version
-    _, err = vs.client.Logical().Write(vs.path+"/data", map[string]interface{}{
+    _, err = vs.client.Logical().Write(vs.dataPath(), map[string]interface{}{
         "data": data,
     })
 
@@ -448,7 +451,7 @@ spec:
                 OLD_VERSIONS=$(vault kv metadata get -format=json secret/$secret | \
                   jq -r '.data.versions | to_entries[] |
                     select(.value.created_time | fromdateiso8601 < (now - 7776000)) |
-                    .key')
+                    .key' | paste -sd, -)
 
                 if [ -n "$OLD_VERSIONS" ]; then
                   echo "Destroying versions: $OLD_VERSIONS"
