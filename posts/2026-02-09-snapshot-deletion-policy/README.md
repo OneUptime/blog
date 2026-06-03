@@ -66,12 +66,19 @@ kubectl apply -f dev-snapshot.yaml
 # Check snapshot status
 kubectl get volumesnapshot dev-snapshot
 
+# Get the storage snapshot ID before deleting
+CONTENT_NAME=$(kubectl get volumesnapshot dev-snapshot \
+  -o jsonpath='{.status.boundVolumeSnapshotContentName}')
+SNAPSHOT_ID=$(kubectl get volumesnapshotcontent $CONTENT_NAME \
+  -o jsonpath='{.status.snapshotHandle}')
+
 # Delete the snapshot - removes both K8s resource and storage snapshot
 kubectl delete volumesnapshot dev-snapshot
 
 # Verify snapshot is gone from storage backend
 # For AWS EBS:
-aws ec2 describe-snapshots --owner-ids self | grep "dev-snapshot"
+aws ec2 describe-snapshots --owner-ids self \
+  --query "Snapshots[?SnapshotId=='$SNAPSHOT_ID']"
 ```
 
 ## Retain Policy Configuration
@@ -88,8 +95,8 @@ deletionPolicy: Retain
 parameters:
   encrypted: "true"
   # Tag snapshots for tracking
-  tagSpecification_1: "Name=Environment|Value=Production"
-  tagSpecification_2: "Name=Retention|Value=Long-term"
+  tagSpecification_1: "Environment=Production"
+  tagSpecification_2: "Retention=Long-term"
 ```
 
 This policy is critical for:
@@ -125,6 +132,8 @@ kubectl apply -f prod-snapshot.yaml
 # Get the VolumeSnapshotContent name
 CONTENT_NAME=$(kubectl get volumesnapshot prod-snapshot-20260209 \
   -o jsonpath='{.status.boundVolumeSnapshotContentName}')
+SNAPSHOT_ID=$(kubectl get volumesnapshotcontent $CONTENT_NAME \
+  -o jsonpath='{.status.snapshotHandle}')
 
 echo "Snapshot content: $CONTENT_NAME"
 
@@ -136,7 +145,7 @@ kubectl get volumesnapshotcontent $CONTENT_NAME
 
 # The underlying storage snapshot still exists
 # For AWS EBS:
-aws ec2 describe-snapshots --snapshot-ids <snapshot-id>
+aws ec2 describe-snapshots --snapshot-ids "$SNAPSHOT_ID"
 ```
 
 ## Managing Retained Snapshots
@@ -157,8 +166,13 @@ echo "Finding retained snapshot contents..."
 kubectl get volumesnapshotcontent -o json | \
   jq -r '.items[] |
     select(.spec.deletionPolicy == "Retain") |
-    select(.spec.volumeSnapshotRef.name == null or .spec.volumeSnapshotRef.name == "") |
-    .metadata.name' | while read content_name; do
+    [.metadata.name, .spec.volumeSnapshotRef.namespace, .spec.volumeSnapshotRef.name] |
+    @tsv' | while IFS=$'\t' read -r content_name snapshot_namespace snapshot_name; do
+
+  if kubectl get volumesnapshot "$snapshot_name" -n "$snapshot_namespace" >/dev/null 2>&1; then
+    echo "Skipping active snapshot content: $content_name"
+    continue
+  fi
 
   echo "Processing: $content_name"
 
@@ -208,7 +222,7 @@ driver: ebs.csi.aws.com
 deletionPolicy: Delete
 parameters:
   encrypted: "false"
-  tagSpecification_1: "Name=Tier|Value=Development"
+  tagSpecification_1: "Tier=Development"
 ---
 # Tier 2: Staging - Retain for 30 days
 apiVersion: snapshot.storage.k8s.io/v1
@@ -221,8 +235,8 @@ driver: ebs.csi.aws.com
 deletionPolicy: Retain
 parameters:
   encrypted: "true"
-  tagSpecification_1: "Name=Tier|Value=Staging"
-  tagSpecification_2: "Name=RetentionDays|Value=30"
+  tagSpecification_1: "Tier=Staging"
+  tagSpecification_2: "RetentionDays=30"
 ---
 # Tier 3: Production - Retain for 7 years
 apiVersion: snapshot.storage.k8s.io/v1
@@ -235,9 +249,9 @@ driver: ebs.csi.aws.com
 deletionPolicy: Retain
 parameters:
   encrypted: "true"
-  tagSpecification_1: "Name=Tier|Value=Production"
-  tagSpecification_2: "Name=RetentionYears|Value=7"
-  tagSpecification_3: "Name=Compliance|Value=Required"
+  tagSpecification_1: "Tier=Production"
+  tagSpecification_2: "RetentionYears=7"
+  tagSpecification_3: "Compliance=Required"
 ```
 
 ## Automated Retention Management
@@ -259,32 +273,43 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: manager
-            image: amazon/aws-cli:latest
+            image: alpine:3.20
             command:
-            - /bin/bash
+            - /bin/sh
             - -c
             - |
               set -e
 
               echo "Starting snapshot lifecycle management"
 
-              # Install kubectl
+              # Install kubectl, AWS CLI, and jq
+              apk add --no-cache aws-cli curl jq
               curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
               chmod +x kubectl
               mv kubectl /usr/local/bin/
 
               # Process staging snapshots (30-day retention)
-              kubectl get volumesnapshotcontent -l tier=staging -o json | \
-                jq -r '.items[] |
+              kubectl get volumesnapshotcontent -o json | \
+                jq -c '.items[] |
                   select(.spec.deletionPolicy == "Retain") |
+                  select(.spec.volumeSnapshotClassName == "staging-snapshots") |
                   {name: .metadata.name,
                    created: .metadata.creationTimestamp,
-                   handle: .status.snapshotHandle}' | \
+                   handle: .status.snapshotHandle,
+                   snapshotNamespace: .spec.volumeSnapshotRef.namespace,
+                   snapshotName: .spec.volumeSnapshotRef.name}' | \
                 while read -r item; do
 
-                NAME=$(echo $item | jq -r '.name')
-                CREATED=$(echo $item | jq -r '.created')
-                HANDLE=$(echo $item | jq -r '.handle')
+                NAME=$(echo "$item" | jq -r '.name')
+                CREATED=$(echo "$item" | jq -r '.created')
+                HANDLE=$(echo "$item" | jq -r '.handle')
+                SNAPSHOT_NAMESPACE=$(echo "$item" | jq -r '.snapshotNamespace')
+                SNAPSHOT_NAME=$(echo "$item" | jq -r '.snapshotName')
+
+                if kubectl get volumesnapshot "$SNAPSHOT_NAME" -n "$SNAPSHOT_NAMESPACE" >/dev/null 2>&1; then
+                  echo "Skipping active snapshot content: $NAME"
+                  continue
+                fi
 
                 AGE_DAYS=$(( ($(date +%s) - $(date -d "$CREATED" +%s)) / 86400 ))
 
@@ -369,14 +394,17 @@ kubectl get volumesnapshotcontent -o json | \
 
 echo
 
-# List retained snapshots without VolumeSnapshot reference (orphaned)
+# List retained snapshots whose referenced VolumeSnapshot no longer exists
 echo "Orphaned Retained Snapshots:"
 kubectl get volumesnapshotcontent -o json | \
   jq -r '.items[] |
     select(.spec.deletionPolicy == "Retain") |
-    select(.spec.volumeSnapshotRef.name == null or .spec.volumeSnapshotRef.name == "") |
-    "\(.metadata.name)\t\(.metadata.creationTimestamp)"' | \
-  column -t
+    [.metadata.name, .metadata.creationTimestamp, .spec.volumeSnapshotRef.namespace, .spec.volumeSnapshotRef.name] |
+    @tsv' | while IFS=$'\t' read -r content_name created snapshot_namespace snapshot_name; do
+    if ! kubectl get volumesnapshot "$snapshot_name" -n "$snapshot_namespace" >/dev/null 2>&1; then
+      printf "%s\t%s\t%s/%s\n" "$content_name" "$created" "$snapshot_namespace" "$snapshot_name"
+    fi
+  done | column -t
 
 echo
 
@@ -384,7 +412,7 @@ echo
 echo "Estimated Monthly Cost (AWS EBS at $0.05/GB-month):"
 TOTAL_GB=$(kubectl get volumesnapshotcontent -o json | \
   jq '[.items[].status.restoreSize |
-    rtrimstr("Gi") | tonumber] | add')
+    rtrimstr("Gi") | tonumber] | add // 0')
 
 COST=$(echo "scale=2; $TOTAL_GB * 0.05" | bc)
 echo "$TOTAL_GB GB = \$$COST/month"
@@ -406,16 +434,14 @@ echo "$TOTAL_GB GB = \$$COST/month"
 If you accidentally delete a VolumeSnapshot with Delete policy, recovery depends on cloud provider features:
 
 ```bash
-# AWS EBS: Check recycle bin (if enabled)
-aws ec2 describe-snapshots \
-  --owner-ids self \
-  --filters "Name=status,Values=pending,completed" \
-  --query "Snapshots[?StartTime>='2026-02-09']"
+# AWS EBS: Check Recycle Bin (if a retention rule matched the snapshot)
+aws ec2 list-snapshots-in-recycle-bin \
+  --snapshot-ids <snapshot-id>
 
-# GCP: Snapshots in trash (if enabled)
-gcloud compute snapshots list --filter="status:DELETED"
+# GCP: Deleted Compute Engine snapshots cannot be recovered
+gcloud compute snapshots list --filter="creationTimestamp>='2026-02-09'"
 
-# Azure: Soft-deleted snapshots
+# Azure: Check for existing snapshots created after the incident date
 az snapshot list --query "[?timeCreated>='2026-02-09']"
 ```
 
