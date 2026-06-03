@@ -18,7 +18,7 @@ A properly secured API has multiple layers of protection.
 
 ```mermaid
 graph LR
-    A[Client] --> B[CloudFront + WAF]
+    A[Client] --> B[AWS WAF]
     B --> C[API Gateway]
     C --> D[Authorizer - Cognito/Lambda]
     D --> E[Request Validation]
@@ -61,10 +61,19 @@ resource "aws_cognito_user_pool" "api_users" {
     }
   }
 
-  # Prevent user enumeration
+  # Threat protection (requires a Cognito Plus feature plan)
   user_pool_add_ons {
     advanced_security_mode = "ENFORCED"
   }
+}
+
+# App client for API callers
+resource "aws_cognito_user_pool_client" "api_client" {
+  name         = "api-client"
+  user_pool_id = aws_cognito_user_pool.api_users.id
+
+  # Prevent user enumeration in authentication and recovery flows
+  prevent_user_existence_errors = "ENABLED"
 }
 
 # API Gateway with Cognito authorizer
@@ -139,7 +148,7 @@ def generate_policy(principal_id, roles, method_arn):
         statements.append({
             'Action': 'execute-api:Invoke',
             'Effect': 'Allow',
-            'Resource': f'arn:aws:execute-api:{region}:{account_id}:{api_id}/{stage}/*'
+            'Resource': f'arn:aws:execute-api:{region}:{account_id}:{api_id}/{stage}/*/*'
         })
     elif 'user' in roles:
         # Regular users can only GET and POST
@@ -156,6 +165,13 @@ def generate_policy(principal_id, roles, method_arn):
             'Action': 'execute-api:Invoke',
             'Effect': 'Deny',
             'Resource': f'arn:aws:execute-api:{region}:{account_id}:{api_id}/{stage}/*/admin/*'
+        })
+    else:
+        # Default deny for users without a recognized role
+        statements.append({
+            'Action': 'execute-api:Invoke',
+            'Effect': 'Deny',
+            'Resource': method_arn
         })
 
     return {
@@ -224,6 +240,20 @@ resource "aws_api_gateway_request_validator" "validate" {
   rest_api_id                 = aws_api_gateway_rest_api.api.id
   validate_request_body       = true
   validate_request_parameters = true
+}
+
+# Apply the model and validator to a method
+resource "aws_api_gateway_method" "create_order" {
+  rest_api_id          = aws_api_gateway_rest_api.api.id
+  resource_id          = aws_api_gateway_resource.orders.id
+  http_method          = "POST"
+  authorization        = "COGNITO_USER_POOLS"
+  authorizer_id        = aws_api_gateway_authorizer.cognito.id
+  request_validator_id = aws_api_gateway_request_validator.validate.id
+
+  request_models = {
+    "application/json" = aws_api_gateway_model.create_order.name
+  }
 }
 ```
 
@@ -349,6 +379,12 @@ resource "aws_wafv2_web_acl" "api" {
       managed_rule_group_statement {
         vendor_name = "AWS"
         name        = "AWSManagedRulesBotControlRuleSet"
+
+        managed_rule_group_configs {
+          aws_managed_rules_bot_control_rule_set {
+            inspection_level = "COMMON"
+          }
+        }
       }
     }
     visibility_config {
@@ -377,7 +413,9 @@ resource "aws_wafv2_web_acl_association" "api" {
 Don't leak internal details in your API responses. Configure proper response headers and error handling.
 
 ```python
-def create_error_response(status_code, message):
+import json
+
+def create_error_response(status_code, context=None):
     """Create a safe error response that doesn't leak internals."""
     # Map internal errors to safe external messages
     safe_messages = {
@@ -397,12 +435,10 @@ def create_error_response(status_code, message):
             'X-Frame-Options': 'DENY',
             'Cache-Control': 'no-store',
             'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-            # Don't expose server information
-            'Server': 'API',
         },
         'body': json.dumps({
             'error': safe_messages.get(status_code, "An error occurred"),
-            'requestId': context.aws_request_id if status_code >= 500 else None
+            'requestId': context.aws_request_id if status_code >= 500 and context else None
         })
     }
 ```
