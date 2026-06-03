@@ -192,17 +192,17 @@ For more details on S3 CORS troubleshooting, see our guide on [fixing S3 CORS er
 
 ## Granting Permissions
 
-CDK's grant methods are one of its best features. Instead of writing IAM policies by hand, you tell CDK what access pattern you need:
+CDK's grant helpers are one of its best features. Instead of writing IAM policies by hand, you tell CDK what access pattern you need:
 
 ```typescript
 // Grant read access to an IAM role or Lambda function
-uploadBucket.grantRead(processorFunction);
+uploadBucket.grants.read(processorFunction);
 
 // Grant read/write access
-uploadBucket.grantReadWrite(someOtherRole);
+uploadBucket.grants.readWrite(someOtherRole);
 
 // Grant only put access for a specific prefix
-uploadBucket.grantPut(uploadRole, 'uploads/*');
+uploadBucket.grants.put(uploadRole, 'uploads/*');
 ```
 
 Behind the scenes, CDK generates the minimal IAM policy needed. It's less error-prone than writing policies manually and easier to review in code review.
@@ -287,4 +287,4 @@ Always run `cdk diff` first. It shows you exactly what CloudFormation changes wi
 
 ## Wrapping Up
 
-CDK brings real programming power to S3 bucket management. You get type checking, IDE support, and the ability to build abstractions that enforce your organization's standards. The grant methods alone save significant time compared to writing IAM policies by hand. Start with simple buckets, add encryption and lifecycle rules, and build reusable constructs as your patterns stabilize. If you're also managing buckets with Terraform, check out our guide on [managing S3 buckets with Terraform](https://oneuptime.com/blog/post/2026-02-12-manage-s3-buckets-with-terraform/view) for a comparison.
+CDK brings real programming power to S3 bucket management. You get type checking, IDE support, and the ability to build abstractions that enforce your organization's standards. The grant helpers alone save significant time compared to writing IAM policies by hand. Start with simple buckets, add encryption and lifecycle rules, and build reusable constructs as your patterns stabilize. If you're also managing buckets with Terraform, check out our guide on [managing S3 buckets with Terraform](https://oneuptime.com/blog/post/2026-02-12-manage-s3-buckets-with-terraform/view) for a comparison.
