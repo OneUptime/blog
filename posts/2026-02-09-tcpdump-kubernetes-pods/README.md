@@ -47,13 +47,13 @@ Add tcpdump to containers:
 ```bash
 # Debian/Ubuntu
 
-kubectl exec -it my-pod -- apt-get update && apt-get install -y tcpdump
+kubectl exec -it my-pod -- sh -c 'apt-get update && apt-get install -y tcpdump'
 
 # Alpine Linux
 kubectl exec -it my-pod -- apk add --no-cache tcpdump
 
 # Using ephemeral container with tcpdump pre-installed
-kubectl debug my-pod -it --image=nicolaka/netshoot --target=my-pod
+kubectl debug my-pod -it --image=nicolaka/netshoot --target=app --profile=netadmin
 
 # Verify installation
 kubectl exec my-pod -- tcpdump --version
@@ -163,13 +163,13 @@ kubectl exec my-pod -- tcpdump -i any 'tcp[tcpflags] & (tcp-syn|tcp-ack) == (tcp
 # TCP RST packets (connection resets)
 kubectl exec my-pod -- tcpdump -i any 'tcp[tcpflags] & (tcp-rst) != 0'
 
-# HTTP GET requests
+# HTTP packets with payload
 kubectl exec my-pod -- tcpdump -i any -A 'tcp port 80 and (((ip[2:2] - ((ip[0]&0xf)<<2)) - ((tcp[12]&0xf0)>>2)) != 0)'
 
 # Packets with specific payload
 kubectl exec my-pod -- tcpdump -i any 'tcp[((tcp[12:1] & 0xf0) >> 2):4] = 0x47455420'
 
-# Large packets (> 1500 bytes)
+# Packets at least 1500 bytes
 kubectl exec my-pod -- tcpdump -i any 'greater 1500'
 ```
 
@@ -230,7 +230,7 @@ kubectl exec my-pod -- tcpdump -i any -vv
 # Extra verbose with hex/ASCII dump
 kubectl exec my-pod -- tcpdump -i any -XX
 
-# Monitor packet rate
+# Count captured packets
 kubectl exec my-pod -- tcpdump -i any -c 1000 -q | wc -l
 ```
 
@@ -243,7 +243,7 @@ Create rotating capture files:
 kubectl exec my-pod -- tcpdump -i any -w /tmp/capture.pcap -C 100 -W 5
 
 # Rotate files every 60 seconds, keep 10 files
-kubectl exec my-pod -- tcpdump -i any -w /tmp/capture.pcap -G 60 -W 10
+kubectl exec my-pod -- tcpdump -i any -w '/tmp/capture-%Y%m%d-%H%M%S.pcap' -G 60 -W 10
 
 # Name files with timestamps
 kubectl exec my-pod -- tcpdump -i any -w '/tmp/capture-%Y%m%d-%H%M%S.pcap' -G 3600
@@ -326,8 +326,8 @@ tcpdump -n -r capture.pcap | awk '{print $3}' | cut -d. -f1-4 | sort | uniq -c |
 # Extract HTTP hosts
 tcpdump -n -A -r capture.pcap | grep -oP 'Host: \K.*' | sort | uniq -c
 
-# Find retransmissions
-tcpdump -n -r capture.pcap | grep retransmission
+# Find retransmissions with tshark
+tshark -r capture.pcap -Y 'tcp.analysis.retransmission'
 
 # Show only errors
 tcpdump -n -r capture.pcap | grep -E 'RST|ICMP'
@@ -355,7 +355,7 @@ echo "Capturing traffic from pod: $POD_NAME for $DURATION seconds..."
 # Check if tcpdump is available
 if ! kubectl exec "$POD_NAME" -- which tcpdump &>/dev/null; then
     echo "Installing tcpdump..."
-    kubectl exec "$POD_NAME" -- sh -c "apk add --no-cache tcpdump || apt-get update && apt-get install -y tcpdump"
+    kubectl exec "$POD_NAME" -- sh -c 'apk add --no-cache tcpdump || (apt-get update && apt-get install -y tcpdump)'
 fi
 
 # Capture traffic
@@ -383,7 +383,7 @@ tcpdump -n -r "$OUTPUT_FILE" 2>/dev/null | awk '{print $5}' | cut -d. -f1-4 | so
 
 echo ""
 echo "Protocol distribution:"
-tcpdump -n -r "$OUTPUT_FILE" 2>/dev/null | awk '{print $7}' | sort | uniq -c | sort -rn
+tcpdump -n -r "$OUTPUT_FILE" 2>/dev/null | awk '{print $2}' | sort | uniq -c | sort -rn
 ```
 
 ## Best Practices
