@@ -10,7 +10,7 @@ Description: Build sentiment analysis pipelines with Amazon Comprehend to analyz
 
 Understanding how your customers feel about your product, service, or brand is worth its weight in gold. Manually reading through thousands of reviews, support tickets, and social media posts isn't realistic. Amazon Comprehend's sentiment analysis takes care of this at scale - feed it text, and it tells you whether the sentiment is positive, negative, neutral, or mixed, complete with confidence scores.
 
-The best part is there's nothing to train. Comprehend's sentiment models work out of the box across dozens of languages. You call an API, you get results. Let's look at how to build real sentiment analysis pipelines with it.
+The best part is there's nothing to train. Comprehend's sentiment models work out of the box across the primary languages supported by Amazon Comprehend. You call an API, you get results. Let's look at how to build real sentiment analysis pipelines with it.
 
 ## Basic Sentiment Detection
 
@@ -122,8 +122,8 @@ def analyze_sentiment_trends(feedback_items):
     # Group by week
     weekly_data = defaultdict(lambda: {'positive': 0, 'negative': 0, 'neutral': 0, 'mixed': 0, 'total': 0})
 
-    for i, result in enumerate(sentiments):
-        date = feedback_items[i]['date']
+    for result in sentiments:
+        date = feedback_items[result['index']]['date']
         # Get the week start (Monday)
         week_start = date - timedelta(days=date.weekday())
         week_key = week_start.strftime('%Y-%m-%d')
@@ -168,8 +168,10 @@ class SentimentMonitor:
 
     def process_message(self, message, source='unknown'):
         """Analyze a single message and trigger alerts if needed."""
+        text = message.encode('utf-8')[:5000].decode('utf-8', errors='ignore')
+
         result = self.comprehend.detect_sentiment(
-            Text=message[:5000],  # Comprehend has a 5000 byte limit
+            Text=text,
             LanguageCode='en'
         )
 
@@ -227,14 +229,14 @@ print(f"\n{monitor.get_summary()}")
 
 ## Targeted Sentiment Analysis
 
-Standard sentiment analysis gives you the overall sentiment of a document. Targeted sentiment goes further - it identifies sentiment for specific entities mentioned in the text.
+Standard sentiment analysis gives you the overall sentiment of a document. Targeted sentiment goes further - it identifies sentiment for specific entities mentioned in the text. Amazon Comprehend currently supports targeted sentiment for English text.
 
 ```python
-def targeted_sentiment(text, language='en'):
+def targeted_sentiment(text):
     """Analyze sentiment targeted at specific entities in the text."""
     response = comprehend.detect_targeted_sentiment(
         Text=text,
-        LanguageCode=language
+        LanguageCode='en'
     )
 
     entities = response['Entities']
@@ -338,7 +340,7 @@ def generate_sentiment_report(results):
 
 ## Tips for Better Results
 
-Keep input text under 5,000 bytes - Comprehend truncates anything longer. For long documents, consider breaking them into paragraphs and analyzing each one separately to get more granular sentiment data.
+Keep synchronous input text under the 5 KB API limit. Comprehend returns a text-size error for oversized input, so for long documents, consider breaking them into paragraphs and analyzing each one separately to get more granular sentiment data.
 
 Pre-process your text to remove HTML, URLs, and special characters. These don't contribute to sentiment but add noise.
 
