@@ -32,8 +32,7 @@ kubectl get csidriver -o yaml | grep -A 5 storageCapacity
 # Verify scheduler configuration supports capacity tracking
 kubectl get configmap -n kube-system kube-scheduler -o yaml
 
-# Check for CSIStorageCapacity CRD
-kubectl get crd csistoragecapacities.storage.k8s.io
+# Check for the built-in CSIStorageCapacity API resource
 kubectl api-resources | grep csistoragecapacity
 ```
 
@@ -69,7 +68,7 @@ func (cs *ControllerServer) GetCapacity(
 
     // If topology specified, verify it matches this node
     if topology != nil {
-        if nodeID, ok := topology.Segments["topology.kubernetes.io/hostname"]; ok {
+        if nodeID, ok := topology.Segments["kubernetes.io/hostname"]; ok {
             if nodeID != cs.nodeID {
                 return nil, status.Error(codes.InvalidArgument,
                     "topology does not match this node")
@@ -128,6 +127,15 @@ spec:
         - --capacity-ownerref-level=2
         - --capacity-poll-interval=5m
         - --capacity-for-immediate-binding=false
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         volumeMounts:
         - name: socket-dir
           mountPath: /csi
@@ -174,10 +182,13 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["persistentvolumes"]
-  verbs: ["get", "list", "watch", "create", "delete"]
+  verbs: ["get", "list", "watch", "create", "patch", "delete"]
 - apiGroups: [""]
   resources: ["persistentvolumeclaims"]
   verbs: ["get", "list", "watch", "update"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["list", "watch", "create", "update", "patch"]
 - apiGroups: ["storage.k8s.io"]
   resources: ["storageclasses"]
   verbs: ["get", "list", "watch"]
@@ -190,6 +201,12 @@ rules:
 - apiGroups: [""]
   resources: ["nodes"]
   verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get"]
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -249,7 +266,7 @@ kubectl get csistoragecapacities -A
 
 # View detailed capacity for specific driver
 kubectl get csistoragecapacities -A -o json | \
-  jq '.items[] | select(.spec.storageClassName=="local-storage") | {
+  jq '.items[] | select(.storageClassName=="local-storage") | {
     name: .metadata.name,
     node: .nodeTopology.matchLabels["kubernetes.io/hostname"],
     capacity: .capacity
@@ -268,13 +285,14 @@ metadata:
   name: local.csi.example.com-worker01-abc123
   namespace: csi-system
   ownerReferences:
-  - apiVersion: storage.k8s.io/v1
-    kind: StorageClass
-    name: local-storage
+  - apiVersion: apps/v1
+    kind: Deployment
+    name: csi-controller
+    uid: 12345678-1234-1234-1234-123456789abc
 storageClassName: local-storage
 nodeTopology:
   matchLabels:
-    topology.kubernetes.io/hostname: worker01
+    kubernetes.io/hostname: worker01
 capacity: "500Gi"
 maximumVolumeSize: "100Gi"
 ```
@@ -359,7 +377,7 @@ kubectl get pod capacity-test -o wide
 NODE=$(kubectl get pod capacity-test -o jsonpath='{.spec.nodeName}')
 kubectl get csistoragecapacities -A -o json | \
   jq -r --arg node "$NODE" '.items[] |
-    select(.nodeTopology.matchLabels["topology.kubernetes.io/hostname"] == $node) |
+    select(.nodeTopology.matchLabels["kubernetes.io/hostname"] == $node) |
     {name: .metadata.name, capacity: .capacity}'
 ```
 
@@ -373,7 +391,7 @@ kubectl describe pod <pod-name> | grep "didn't have enough capacity"
 
 # List capacity across all nodes
 kubectl get csistoragecapacities -A -o custom-columns=\
-NODE:.nodeTopology.matchLabels."topology\.kubernetes\.io/hostname",\
+NODE:.nodeTopology.matchLabels."kubernetes\.io/hostname",\
 CLASS:.storageClassName,\
 CAPACITY:.capacity
 
@@ -412,9 +430,9 @@ spec:
     - alert: StorageCapacityLow
       expr: |
         (
-          max by (node, storage_class) (
+          max by (namespace, persistentvolumeclaim) (
             kubelet_volume_stats_available_bytes
-          ) / max by (node, storage_class) (
+          ) / max by (namespace, persistentvolumeclaim) (
             kubelet_volume_stats_capacity_bytes
           )
         ) < 0.15
@@ -422,15 +440,15 @@ spec:
       labels:
         severity: warning
       annotations:
-        summary: "Storage capacity low on {{ $labels.node }}"
-        description: "Storage capacity for {{ $labels.storage_class }} on {{ $labels.node }} is below 15%"
+        summary: "Storage capacity low for {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }}"
+        description: "Available capacity for {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is below 15%"
 
     - alert: StorageCapacityCritical
       expr: |
         (
-          max by (node, storage_class) (
+          max by (namespace, persistentvolumeclaim) (
             kubelet_volume_stats_available_bytes
-          ) / max by (node, storage_class) (
+          ) / max by (namespace, persistentvolumeclaim) (
             kubelet_volume_stats_capacity_bytes
           )
         ) < 0.05
@@ -438,10 +456,10 @@ spec:
       labels:
         severity: critical
       annotations:
-        summary: "Storage capacity critical on {{ $labels.node }}"
-        description: "Storage capacity for {{ $labels.storage_class }} on {{ $labels.node }} is below 5%"
+        summary: "Storage capacity critical for {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }}"
+        description: "Available capacity for {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is below 5%"
 ```
 
-Deploy capacity monitoring dashboards that visualize available storage per node and storage class.
+Deploy capacity monitoring dashboards that visualize available storage per persistent volume claim.
 
 CSI storage capacity tracking transforms the scheduler into a storage-aware orchestrator that prevents provisioning failures through intelligent placement decisions. By implementing capacity reporting in your CSI drivers and enabling tracking in the external-provisioner, you ensure pods are scheduled only on nodes with sufficient storage resources. This capability becomes essential as clusters scale and storage resources become increasingly heterogeneous.
