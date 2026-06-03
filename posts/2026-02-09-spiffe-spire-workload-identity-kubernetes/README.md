@@ -8,7 +8,7 @@ Description: Learn how to implement SPIFFE and SPIRE for cryptographic workload 
 
 ---
 
-Traditional Kubernetes authentication relies on service account tokens that are long-lived and difficult to rotate. SPIFFE (Secure Production Identity Framework For Everyone) and SPIRE (the SPIFFE Runtime Environment) provide short-lived cryptographic identities for workloads, enabling zero-trust security architectures and automatic credential rotation.
+Traditional Kubernetes authentication relies on bearer service account tokens, and legacy secret-backed tokens can be long-lived and difficult to rotate. SPIFFE (Secure Production Identity Framework For Everyone) and SPIRE (the SPIFFE Runtime Environment) provide short-lived cryptographic identities for workloads, enabling zero-trust security architectures and automatic credential rotation.
 
 This guide demonstrates how to deploy and configure SPIFFE and SPIRE in Kubernetes for workload identity management.
 
@@ -29,7 +29,7 @@ Ensure you have:
 
 - Kubernetes cluster (1.24+)
 - kubectl with cluster admin access
-- Helm 3.x installed
+- Helm 3.x installed if you use Helm charts instead of raw manifests
 - Understanding of mTLS concepts
 
 ## Installing SPIRE Server
@@ -48,17 +48,60 @@ metadata:
   name: spire-server
   namespace: spire
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-bundle
+  namespace: spire
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spire-server-configmap-role
+  namespace: spire
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spire-server-configmap-role-binding
+  namespace: spire
+subjects:
+- kind: ServiceAccount
+  name: spire-server
+  namespace: spire
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: spire-server-configmap-role
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: spire-server-cluster-role
 rules:
 - apiGroups: [""]
-  resources: ["nodes"]
+  resources: ["pods", "nodes"]
   verbs: ["get"]
 - apiGroups: ["authentication.k8s.io"]
   resources: ["tokenreviews"]
   verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-server-cluster-role-binding
+subjects:
+- kind: ServiceAccount
+  name: spire-server
+  namespace: spire
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: spire-server-cluster-role
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -107,6 +150,20 @@ data:
         }
       }
     }
+
+    health_checks {
+      listener_enabled = true
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+      live_path = "/live"
+      ready_path = "/ready"
+    }
+
+    telemetry {
+      Prometheus {
+        port = 9988
+      }
+    }
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -134,6 +191,10 @@ spec:
         ports:
         - containerPort: 8081
           name: grpc
+        - containerPort: 8080
+          name: health
+        - containerPort: 9988
+          name: metrics
         volumeMounts:
         - name: spire-config
           mountPath: /run/spire/config
@@ -143,6 +204,12 @@ spec:
         livenessProbe:
           httpGet:
             path: /live
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /ready
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
@@ -193,6 +260,28 @@ metadata:
   name: spire-agent
   namespace: spire
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-agent-cluster-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes", "nodes/proxy"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-agent-cluster-role-binding
+subjects:
+- kind: ServiceAccount
+  name: spire-agent
+  namespace: spire
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: spire-agent-cluster-role
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -224,8 +313,17 @@ data:
       WorkloadAttestor "k8s" {
         plugin_data {
           skip_kubelet_verification = true
+          node_name_env = "MY_NODE_NAME"
         }
       }
+    }
+
+    health_checks {
+      listener_enabled = true
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+      live_path = "/live"
+      ready_path = "/ready"
     }
 ---
 apiVersion: apps/v1
@@ -259,6 +357,14 @@ spec:
         args:
         - -config
         - /run/spire/config/agent.conf
+        env:
+        - name: MY_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        ports:
+        - containerPort: 8080
+          name: health
         volumeMounts:
         - name: spire-config
           mountPath: /run/spire/config
@@ -267,8 +373,22 @@ spec:
           mountPath: /run/spire/bundle
         - name: spire-agent-socket
           mountPath: /run/spire/sockets
+        - name: spire-token
+          mountPath: /var/run/secrets/tokens
         securityContext:
           privileged: true
+        livenessProbe:
+          httpGet:
+            path: /live
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 60
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
       volumes:
       - name: spire-config
         configMap:
@@ -280,6 +400,13 @@ spec:
         hostPath:
           path: /run/spire/sockets
           type: DirectoryOrCreate
+      - name: spire-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: spire-agent
+              expirationSeconds: 7200
+              audience: spire-server
 ```
 
 ## Creating Registration Entries
@@ -290,6 +417,15 @@ Register workloads to receive SPIFFE IDs:
 # Exec into SPIRE server pod
 
 SERVER_POD=$(kubectl get pod -n spire -l app=spire-server -o jsonpath='{.items[0].metadata.name}')
+
+# Create node registration entry for SPIRE agents
+kubectl exec -n spire $SERVER_POD -- \
+  /opt/spire/bin/spire-server entry create \
+  -spiffeID spiffe://example.org/ns/spire/sa/spire-agent \
+  -selector k8s_psat:cluster:demo-cluster \
+  -selector k8s_psat:agent_ns:spire \
+  -selector k8s_psat:agent_sa:spire-agent \
+  -node
 
 # Create registration entry for a workload
 kubectl exec -n spire $SERVER_POD -- \
@@ -357,7 +493,6 @@ package main
 
 import (
     "context"
-    "crypto/tls"
     "log"
     "net/http"
 
@@ -392,7 +527,7 @@ func main() {
 
 ## Integrating with Service Mesh
 
-Configure Istio to use SPIFFE for workload identity:
+Configure Istio with the same trust domain, then follow Istio's SPIRE SDS integration steps so Envoy fetches workload identities from SPIRE:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -403,17 +538,6 @@ metadata:
 spec:
   meshConfig:
     trustDomain: example.org
-    caCertificates:
-    - pem: |
-        -----BEGIN CERTIFICATE-----
-        <SPIRE trust bundle>
-        -----END CERTIFICATE-----
-  components:
-    pilot:
-      k8s:
-        env:
-        - name: SPIFFE_BUNDLE_ENDPOINT
-          value: "https://spire-server.spire:8081/bundle.crt"
 ```
 
 ## Monitoring SPIRE
@@ -426,6 +550,8 @@ kind: Service
 metadata:
   name: spire-server-metrics
   namespace: spire
+  labels:
+    app: spire-server
 spec:
   selector:
     app: spire-server
