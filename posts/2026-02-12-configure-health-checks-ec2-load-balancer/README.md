@@ -44,12 +44,12 @@ Every health check has these configurable parameters:
 |-----------|-------------|-------------|-------------|
 | Protocol | HTTP, HTTPS, or TCP | HTTP | TCP |
 | Port | Port to check | traffic-port | traffic-port |
-| Path | URL path (HTTP/HTTPS only) | / | N/A |
+| Path | URL path (HTTP/HTTPS only) | / | / for HTTP/HTTPS; N/A for TCP |
 | Interval | Seconds between checks | 30 | 30 |
-| Timeout | Seconds to wait for response | 5 | 10 |
+| Timeout | Seconds to wait for response | 5 | 10 for TCP/HTTPS; 6 for HTTP |
 | Healthy threshold | Consecutive successes to mark healthy | 5 | 5 |
 | Unhealthy threshold | Consecutive failures to mark unhealthy | 2 | 2 |
-| Matcher | HTTP status codes for success | 200 | N/A |
+| Matcher | HTTP status codes for success | 200 | 200-399 for HTTP/HTTPS; N/A for TCP |
 
 ## Configuring ALB Health Checks
 
@@ -99,7 +99,11 @@ Here's a well-designed health check endpoint in Node.js:
 const express = require('express');
 const app = express();
 
-let isReady = false;
+let isReady = true;
+
+process.on('SIGTERM', () => {
+  isReady = false;
+});
 
 // Readiness check - verify all dependencies
 app.get('/health', async (req, res) => {
@@ -230,21 +234,21 @@ The timing parameters determine how quickly the load balancer detects failures a
 - Interval: 5 seconds
 - Timeout: 2 seconds
 - Unhealthy threshold: 2
-- Time to detect failure: 10 seconds
+- Approximate time to detect failure: about 10 seconds
 
 **Standard detection** (balanced):
 - Interval: 15 seconds
 - Timeout: 5 seconds
 - Unhealthy threshold: 3
-- Time to detect failure: 45 seconds
+- Approximate time to detect failure: about 45 seconds
 
 **Conservative detection** (avoid false positives):
 - Interval: 30 seconds
 - Timeout: 10 seconds
 - Unhealthy threshold: 5
-- Time to detect failure: 150 seconds
+- Approximate time to detect failure: about 150 seconds
 
-The formula for failure detection time: `interval * unhealthy_threshold`
+The rule of thumb for failure detection time is `interval * unhealthy_threshold`, with extra time possible depending on where the failure occurs in the check cycle and whether checks wait for the timeout.
 
 Choose based on your tolerance for routing traffic to failed instances vs the risk of false positives pulling healthy instances out.
 
