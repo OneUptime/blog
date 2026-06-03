@@ -120,7 +120,7 @@ type Mutation {
 
   # Only admins can delete products
   deleteProduct(id: ID!): Product
-    @aws_auth(cognito_groups: ["admin"])
+    @aws_cognito_user_pools(cognito_groups: ["admin"])
 
   # Only the product owner can update
   updateProduct(id: ID!, input: UpdateProductInput!): Product
@@ -136,7 +136,7 @@ type Product @aws_api_key @aws_cognito_user_pools {
   # Only authenticated users can see the cost
   costPrice: Float @aws_cognito_user_pools
   # Only admins can see internal notes
-  internalNotes: String @aws_auth(cognito_groups: ["admin"])
+  internalNotes: String @aws_cognito_user_pools(cognito_groups: ["admin"])
 }
 
 type Order @aws_cognito_user_pools {
@@ -152,7 +152,7 @@ Notice how `Product` is accessible via both API key and Cognito, but specific fi
 
 ## Group-Based Authorization
 
-Cognito groups let you implement role-based access control. Create groups in your user pool and use `@aws_auth` to restrict access.
+Cognito groups let you implement role-based access control. Create groups in your user pool and use `@aws_cognito_user_pools` to restrict access when your API uses multiple authorization modes.
 
 Create groups in Cognito:
 
@@ -182,15 +182,15 @@ Use group-based directives in your schema:
 type Mutation {
   # Admins and editors can create
   createProduct(input: CreateProductInput!): Product
-    @aws_auth(cognito_groups: ["admin", "editor"])
+    @aws_cognito_user_pools(cognito_groups: ["admin", "editor"])
 
   # Only admins can delete
   deleteProduct(id: ID!): Product
-    @aws_auth(cognito_groups: ["admin"])
+    @aws_cognito_user_pools(cognito_groups: ["admin"])
 
   # Editors can update but not delete
   updateProduct(id: ID!, input: UpdateProductInput!): Product
-    @aws_auth(cognito_groups: ["admin", "editor"])
+    @aws_cognito_user_pools(cognito_groups: ["admin", "editor"])
 }
 ```
 
@@ -198,39 +198,60 @@ type Mutation {
 
 Sometimes you need to ensure users can only access or modify their own data. Handle this in your resolver logic.
 
-This resolver checks that the requesting user owns the resource:
+This resolver updates the product only when the requesting user owns the resource. Admins can update any product:
 
 ```javascript
 // updateProduct resolver with owner check
 import { util } from '@aws-appsync/utils';
 
 export function request(ctx) {
-  // Get the authenticated user's identity
   const userId = ctx.identity.sub; // Cognito user ID
   const groups = ctx.identity.groups || [];
+  const now = util.time.nowISO8601();
 
-  return {
-    operation: 'GetItem',
-    key: util.dynamodb.toMapValues({ id: ctx.args.id })
+  const values = {
+    ...ctx.args.input,
+    updatedAt: now
   };
+  const sets = [];
+  const expressionNames = {};
+  const expressionValues = {};
+
+  for (const [key, value] of Object.entries(values)) {
+    expressionNames[`#${key}`] = key;
+    sets.push(`#${key} = :${key}`);
+    expressionValues[`:${key}`] = value;
+  }
+
+  const request = {
+    operation: 'UpdateItem',
+    key: util.dynamodb.toMapValues({ id: ctx.args.id }),
+    update: {
+      expression: `SET ${sets.join(', ')}`,
+      expressionNames,
+      expressionValues: util.dynamodb.toMapValues(expressionValues)
+    }
+  };
+
+  // Regular users can only update their own products
+  if (!groups.includes('admin')) {
+    request.condition = {
+      expression: 'ownerId = :ownerId',
+      expressionValues: util.dynamodb.toMapValues({ ':ownerId': userId })
+    };
+  }
+
+  return request;
 }
 
 export function response(ctx) {
-  const product = ctx.result;
-  const userId = ctx.identity.sub;
-  const groups = ctx.identity.groups || [];
-
-  // Admins can update anything
-  if (groups.includes('admin')) {
-    return product;
-  }
-
-  // Regular users can only update their own products
-  if (product.ownerId !== userId) {
+  if (ctx.error && ctx.error.type === 'DynamoDB:ConditionalCheckFailedException') {
     util.unauthorized();
   }
-
-  return product;
+  if (ctx.error) {
+    util.error(ctx.error.message, ctx.error.type);
+  }
+  return ctx.result;
 }
 ```
 
@@ -248,16 +269,17 @@ export function request(ctx) {
     id: id,
     ...ctx.args.input,
     ownerId: ctx.identity.sub, // Automatically set owner
-    ownerEmail: ctx.identity.claims.email,
+    ownerEmail: ctx.identity.claims.email || ctx.identity.username,
     inStock: true,
     createdAt: now,
     updatedAt: now
   };
+  const { id: productId, ...attributeValues } = item;
 
   return {
     operation: 'PutItem',
-    key: util.dynamodb.toMapValues({ id }),
-    attributeValues: util.dynamodb.toMapValues(item)
+    key: util.dynamodb.toMapValues({ id: productId }),
+    attributeValues: util.dynamodb.toMapValues(attributeValues)
   };
 }
 
@@ -278,7 +300,7 @@ This shows the sign-in flow and authenticated API calls:
 ```javascript
 // auth.js - Client-side authentication with Cognito and AppSync
 import { Amplify } from 'aws-amplify';
-import { signIn, signUp, getCurrentUser } from 'aws-amplify/auth';
+import { signIn, signUp } from 'aws-amplify/auth';
 import { generateClient } from 'aws-amplify/api';
 
 // Configure Amplify
@@ -292,7 +314,9 @@ Amplify.configure({
   API: {
     GraphQL: {
       endpoint: 'https://YOUR_API_ID.appsync-api.us-east-1.amazonaws.com/graphql',
-      defaultAuthMode: 'userPool'
+      region: 'us-east-1',
+      defaultAuthMode: 'userPool',
+      apiKey: 'YOUR_API_KEY'
     }
   }
 });
