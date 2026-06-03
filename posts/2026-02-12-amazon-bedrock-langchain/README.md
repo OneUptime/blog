@@ -19,7 +19,7 @@ First, install the required packages. The Bedrock integration lives in the `lang
 ```bash
 # Install LangChain and the AWS integration
 
-pip install langchain langchain-aws boto3
+pip install langchain langchain-aws boto3 langchain-community langchain-text-splitters faiss-cpu
 ```
 
 Make sure your AWS credentials are configured. LangChain's Bedrock integration uses boto3 under the hood, so any method that works for boto3 - environment variables, AWS profiles, IAM roles - works here too.
@@ -130,7 +130,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Initialize Bedrock embeddings
 embeddings = BedrockEmbeddings(
