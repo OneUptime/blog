@@ -36,7 +36,7 @@ Deploy RabbitMQ clusters in different regions or namespaces:
 # Cluster in region us-east
 
 apiVersion: rabbitmq.com/v1beta1
-kind: RabbitMQCluster
+kind: RabbitmqCluster
 metadata:
   name: rabbitmq-us-east
   namespace: rabbitmq-us-east
@@ -54,7 +54,7 @@ spec:
 ---
 # Cluster in region eu-west
 apiVersion: rabbitmq.com/v1beta1
-kind: RabbitMQCluster
+kind: RabbitmqCluster
 metadata:
   name: rabbitmq-eu-west
   namespace: rabbitmq-eu-west
@@ -81,8 +81,8 @@ kubectl apply -f rabbitmq-us-east.yaml
 kubectl apply -f rabbitmq-eu-west.yaml
 
 # Wait for clusters to be ready
-kubectl wait --for=condition=ready rabbitmqcluster/rabbitmq-us-east -n rabbitmq-us-east --timeout=300s
-kubectl wait --for=condition=ready rabbitmqcluster/rabbitmq-eu-west -n rabbitmq-eu-west --timeout=300s
+kubectl wait --for=condition=AllReplicasReady rabbitmqcluster/rabbitmq-us-east -n rabbitmq-us-east --timeout=300s
+kubectl wait --for=condition=AllReplicasReady rabbitmqcluster/rabbitmq-eu-west -n rabbitmq-eu-west --timeout=300s
 ```
 
 ## Configuring Federation Upstream
@@ -199,7 +199,7 @@ curl -u ${EU_WEST_USER}:${EU_WEST_PASS} -X PUT \
   }'
 ```
 
-Now messages published to the `events` exchange in the US cluster will be forwarded to the EU cluster.
+Now messages published to the `events` exchange in the US cluster can be forwarded to queues bound to the federated `events` exchange in the EU cluster.
 
 ## Configuring Queue Federation
 
@@ -274,7 +274,7 @@ us_channel.basic_publish(
 
 ## Filtering Federated Messages
 
-Use headers to control which messages cross cluster boundaries:
+Use upstream exchange names and downstream bindings to control which messages cross cluster boundaries:
 
 ```bash
 # Configure selective federation
@@ -286,7 +286,6 @@ curl -u ${EU_WEST_USER}:${EU_WEST_PASS} -X PUT \
       "uri": "amqp://user:pass@us-east-host:5672",
       "trust-user-id": false,
       "exchange": "events",
-      "queue": "",
       "consumer-tag": "eu-west-consumer",
       "prefetch-count": 1000,
       "reconnect-delay": 5,
@@ -297,10 +296,17 @@ curl -u ${EU_WEST_USER}:${EU_WEST_PASS} -X PUT \
   }'
 ```
 
-Publish with routing keys to filter:
+Bind local queues with routing keys to filter the messages the federated exchange retrieves:
 
 ```python
-# Only route high-priority messages
+channel.queue_declare(queue='high-priority-events', durable=True)
+channel.queue_bind(
+    queue='high-priority-events',
+    exchange='events',
+    routing_key='high-priority'
+)
+
+# Messages with this routing key can be retrieved by the federated exchange
 channel.basic_publish(
     exchange='events',
     routing_key='high-priority',
@@ -310,7 +316,7 @@ channel.basic_publish(
 
 ## Monitoring Federation Links
 
-Deploy monitoring for federation health:
+Deploy monitoring for federation health by exporting the management API's federation link status to Prometheus:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -324,7 +330,8 @@ spec:
     rules:
     - alert: FederationLinkDown
       expr: |
-        rabbitmq_federation_links_up == 0
+        # Example metric emitted by an exporter that reads /api/federation-links
+        rabbitmq_federation_link_up == 0
       for: 5m
       labels:
         severity: warning
@@ -332,14 +339,14 @@ spec:
         summary: "Federation link down"
         description: "Federation link to {{ $labels.upstream }} is down"
 
-    - alert: FederationHighLatency
+    - alert: FederationLinkMissing
       expr: |
-        rabbitmq_federation_link_latency_seconds > 1
+        absent(rabbitmq_federation_link_up)
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "Federation link high latency"
+        summary: "Federation link metrics missing"
 ```
 
 Check federation status:
@@ -347,7 +354,7 @@ Check federation status:
 ```bash
 # View federation links
 kubectl exec -n rabbitmq-eu-west rabbitmq-eu-west-server-0 -- \
-  rabbitmqctl eval 'rabbit_federation_status:status().'
+  rabbitmqctl federation_status
 
 # Check federation link status via API
 curl -u ${EU_WEST_USER}:${EU_WEST_PASS} \
@@ -462,7 +469,7 @@ kubectl exec -n rabbitmq-eu-west rabbitmq-eu-west-server-0 -- \
 
 # Test upstream connectivity
 kubectl exec -n rabbitmq-eu-west rabbitmq-eu-west-server-0 -- \
-  rabbitmqctl eval 'rabbit_federation_upstream:test_connection("us-east").'
+  rabbitmq-diagnostics list_parameters --formatter=pretty_table
 
 # Check federation exchange bindings
 curl -u ${EU_WEST_USER}:${EU_WEST_PASS} \
