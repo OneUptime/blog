@@ -42,14 +42,14 @@ spec:
         ports:
         - containerPort: 8080
 
-        # Allow up to 10 minutes for migrations
+        # Allow up to 10 minutes for migrations after the initial delay
         startupProbe:
           httpGet:
             path: /startup
             port: 8080
           initialDelaySeconds: 10
           periodSeconds: 10
-          failureThreshold: 60  # 10 minutes total
+          failureThreshold: 60  # 60 * 10s = 10 minutes
 
         livenessProbe:
           httpGet:
@@ -77,7 +77,6 @@ import (
     "encoding/json"
     "net/http"
     "sync/atomic"
-    "time"
 )
 
 var (
@@ -116,12 +115,25 @@ func startupHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Return 200 during startup to show progress
-    w.WriteHeader(http.StatusOK)
+    // Return a failure status until startup is complete.
+    w.WriteHeader(http.StatusServiceUnavailable)
     json.NewEncoder(w).Encode(map[string]interface{}{
         "status": "initializing",
         "phase":  phaseName(phase),
     })
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(http.StatusOK)
+}
+
+func readyHandler(w http.ResponseWriter, r *http.Request) {
+    if atomic.LoadInt32(&startupComplete) == 1 {
+        w.WriteHeader(http.StatusOK)
+        return
+    }
+
+    w.WriteHeader(http.StatusServiceUnavailable)
 }
 
 func runStartupTasks() {
@@ -152,11 +164,23 @@ func phaseName(phase int32) string {
         return "unknown"
     }
 }
+
+func connectToDatabase() {
+    // Connect to the application database.
+}
+
+func runMigrations() {
+    // Apply schema migrations.
+}
+
+func seedData() {
+    // Load required seed data.
+}
 ```
 
 ## Using Init Containers for Migrations
 
-Run migrations in init containers:
+Run migrations in init containers when migrations are idempotent and safe to run for each pod:
 
 ```yaml
 apiVersion: apps/v1
@@ -221,8 +245,6 @@ spec:
 Detect and report migration errors:
 
 ```python
-import sys
-import time
 from flask import Flask, jsonify
 
 app = Flask(__name__)
@@ -252,8 +274,6 @@ def run_migrations():
     except Exception as e:
         migration_status['phase'] = 'failed'
         migration_status['error'] = str(e)
-        # Exit with error code so container restarts
-        sys.exit(1)
 
 @app.route('/startup')
 def startup():
@@ -274,7 +294,19 @@ def startup():
     return jsonify({
         'status': 'initializing',
         'phase': migration_status['phase']
-    }), 200
+    }), 503
+
+def connect_to_database():
+    # Connect to the application database.
+    pass
+
+def apply_migrations():
+    # Apply schema migrations.
+    pass
+
+def create_indexes():
+    # Create required indexes.
+    pass
 
 if __name__ == '__main__':
     import threading
@@ -285,7 +317,7 @@ if __name__ == '__main__':
 ## Best Practices
 
 ```yaml
-# DO: Use init containers for migrations when possible
+# DO: Use init containers only for idempotent, per-pod-safe migrations
 
 initContainers:
 - name: migrations
@@ -297,8 +329,8 @@ startupProbe:
   periodSeconds: 15
   failureThreshold: 40  # 10 minutes for large migrations
 
-# DON'T: Run migrations in every pod
-# Use init containers or dedicated migration jobs
+# DON'T: Run non-idempotent migrations in every pod
+# Use dedicated migration jobs
 
 # DO: Track migration progress
 # Return detailed status from startup endpoint
@@ -309,4 +341,4 @@ startupProbe:
 
 ## Conclusion
 
-Startup probes with appropriate timeouts protect applications that run database migrations from premature restarts. Use init containers when possible, track migration progress in startup endpoints, handle failures gracefully, and set realistic timeouts based on actual migration duration in production.
+Startup probes with appropriate timeouts protect applications that run database migrations from premature restarts. Use init containers only for migrations that are safe to run per pod, track migration progress in startup endpoints, handle failures gracefully, and set realistic timeouts based on actual migration duration in production.
