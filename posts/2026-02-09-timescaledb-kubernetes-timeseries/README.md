@@ -14,11 +14,11 @@ TimescaleDB extends PostgreSQL with specialized capabilities for time-series dat
 
 TimescaleDB has a unique advantage over purpose-built time-series databases: it is full PostgreSQL. This means your team can use familiar SQL syntax, existing PostgreSQL tools and libraries, and the entire PostgreSQL ecosystem of extensions. You do not need to learn a new query language or maintain a separate database technology stack.
 
-Running it on Kubernetes adds operational benefits. StatefulSets handle pod identity and ordered deployment. PersistentVolumeClaims manage storage lifecycle. Kubernetes services provide stable networking. And operators like the CloudNativePG operator or the TimescaleDB Helm chart automate complex tasks like replication and failover.
+Running it on Kubernetes adds operational benefits. StatefulSets handle pod identity and ordered deployment. PersistentVolumeClaims manage storage lifecycle. Kubernetes services provide stable networking. And operators like the CloudNativePG operator or the TimescaleDB Helm chart can automate complex tasks like replication and failover.
 
 ## Deploying with the Official Helm Chart
 
-The recommended approach is the official TimescaleDB Helm chart:
+One common approach is the TimescaleDB Helm chart. The Timescale Helm chart repository is no longer actively maintained, so validate chart compatibility with your Kubernetes version before using it in production:
 
 ```bash
 helm repo add timescale https://charts.timescale.com/
@@ -34,12 +34,16 @@ replicaCount: 3
 
 image:
   repository: timescale/timescaledb-ha
-  tag: pg16-ts2.14-latest
+  tag: pg16.2-ts2.14.2-all
 
-credentials:
-  superuser: postgres
-  admin: tsdbadmin
-  standby: standby
+secrets:
+  credentials:
+    PATRONI_SUPERUSER_PASSWORD: "replace-with-a-generated-secret"
+    PATRONI_REPLICATION_PASSWORD: "replace-with-a-generated-secret"
+    PATRONI_admin_PASSWORD: "replace-with-a-generated-secret"
+  pgbackrest:
+    PGBACKREST_REPO1_S3_KEY: "replace-with-access-key"
+    PGBACKREST_REPO1_S3_KEY_SECRET: "replace-with-secret-key"
 
 persistentVolumes:
   data:
@@ -84,10 +88,6 @@ backup:
     repo1-s3-endpoint: s3.amazonaws.com
     repo1-retention-full: "7"
     repo1-retention-diff: "14"
-
-podDisruptionBudget:
-  enabled: true
-  minAvailable: 2
 
 affinity:
   podAntiAffinity:
@@ -234,7 +234,7 @@ WHERE proc_name IN ('policy_compression', 'policy_retention');
 
 ## High Availability with Patroni
 
-The TimescaleDB Helm chart uses Patroni for high availability. Patroni manages PostgreSQL replication and automatic failover. With a 3-replica deployment, you get one primary and two synchronous standbys.
+The TimescaleDB Helm chart uses Patroni for high availability. Patroni manages PostgreSQL replication and automatic failover. With a 3-replica deployment, you get one primary and two replicas; configure synchronous replication explicitly if your recovery requirements need synchronous standbys.
 
 Check the cluster status:
 
@@ -284,8 +284,19 @@ spec:
               value: timescaledb.databases.svc.cluster.local
             - name: POSTGRESQL_PORT
               value: "5432"
+            - name: POSTGRESQL_USERNAME
+              value: postgres
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: timescaledb-credentials
+                  key: PATRONI_SUPERUSER_PASSWORD
             - name: PGBOUNCER_DATABASE
               value: "*"
+            - name: PGBOUNCER_AUTH_TYPE
+              value: md5
+            - name: PGBOUNCER_IGNORE_STARTUP_PARAMETERS
+              value: extra_float_digits
             - name: PGBOUNCER_POOL_MODE
               value: transaction
             - name: PGBOUNCER_MAX_CLIENT_CONN
@@ -331,22 +342,30 @@ FROM timescaledb_information.hypertables;
 
 -- Compression statistics
 SELECT
-    hypertable_name,
-    before_compression_total_bytes,
-    after_compression_total_bytes,
-    round((1 - after_compression_total_bytes::numeric / before_compression_total_bytes) * 100, 1) AS compression_ratio
-FROM timescaledb_information.compression_settings cs
-JOIN hypertable_compression_stats(cs.hypertable_name) ON true;
+    h.hypertable_name,
+    s.before_compression_total_bytes,
+    s.after_compression_total_bytes,
+    round((1 - s.after_compression_total_bytes::numeric / s.before_compression_total_bytes) * 100, 1) AS compression_ratio
+FROM timescaledb_information.hypertables h
+CROSS JOIN LATERAL hypertable_compression_stats(
+    format('%I.%I', h.hypertable_schema, h.hypertable_name)::regclass
+) s
+WHERE s.before_compression_total_bytes IS NOT NULL
+  AND s.before_compression_total_bytes > 0;
 
 -- Chunk information
 SELECT
-    hypertable_name,
-    chunk_name,
-    is_compressed,
-    pg_size_pretty(before_compression_total_bytes) AS uncompressed,
-    pg_size_pretty(after_compression_total_bytes) AS compressed
-FROM timescaledb_information.chunks
-ORDER BY hypertable_name, range_start DESC
+    c.hypertable_name,
+    c.chunk_name,
+    c.is_compressed,
+    pg_size_pretty(s.before_compression_total_bytes) AS uncompressed,
+    pg_size_pretty(s.after_compression_total_bytes) AS compressed
+FROM timescaledb_information.chunks c
+LEFT JOIN LATERAL chunk_compression_stats(
+    format('%I.%I', c.hypertable_schema, c.hypertable_name)::regclass
+) s ON s.chunk_schema = c.chunk_schema
+   AND s.chunk_name = c.chunk_name
+ORDER BY c.hypertable_name, c.range_start DESC
 LIMIT 20;
 ```
 
@@ -364,6 +383,9 @@ spec:
     matchLabels:
       app: postgres-exporter
   template:
+    metadata:
+      labels:
+        app: postgres-exporter
     spec:
       containers:
         - name: exporter
@@ -373,6 +395,11 @@ spec:
               value: "timescaledb.databases.svc:5432/postgres?sslmode=require"
             - name: DATA_SOURCE_USER
               value: "postgres"
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: timescaledb-credentials
+                  key: PATRONI_SUPERUSER_PASSWORD
           ports:
             - containerPort: 9187
 ```
@@ -385,7 +412,7 @@ The Helm chart's built-in pgBackRest integration handles backups. Verify backup 
 kubectl exec -it timescaledb-0 -n databases -- pgbackrest info
 ```
 
-To restore from a backup to a specific point in time:
+For an offline restore to a specific point in time, run `pgbackrest restore` after stopping PostgreSQL and preparing the target data directory:
 
 ```bash
 kubectl exec -it timescaledb-0 -n databases -- pgbackrest restore \
