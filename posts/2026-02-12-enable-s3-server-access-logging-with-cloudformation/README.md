@@ -8,13 +8,13 @@ Description: Step-by-step guide to enabling S3 server access logging using AWS C
 
 ---
 
-S3 server access logs record every request made to your bucket - who accessed what, when, from which IP, and whether it succeeded. They're essential for security audits, troubleshooting access issues, and understanding usage patterns. But setting them up correctly with CloudFormation has a few gotchas that trip people up.
+S3 server access logs provide detailed records for requests made to your bucket - who accessed what, when, from which IP, and whether it succeeded. They're essential for security audits, troubleshooting access issues, and understanding usage patterns. But setting them up correctly with CloudFormation has a few gotchas that trip people up.
 
 Let's walk through the entire setup, from creating the logging bucket to analyzing the logs.
 
 ## How S3 Access Logging Works
 
-When you enable access logging on a bucket (the "source bucket"), S3 writes log records to another bucket (the "target bucket"). Each log record contains details about a single request: the requester, bucket name, request time, action, response status, and error code if applicable.
+When you enable access logging on a bucket (the "source bucket"), S3 writes log records to another bucket in the same AWS account and Region (the "target bucket"). Each log record contains details about a single request: the requester, bucket name, request time, action, response status, and error code if applicable.
 
 Here's the high-level flow:
 
@@ -92,7 +92,7 @@ S3 needs permission to write logs to your logging bucket. This is done through a
                 'aws:SourceAccount': !Ref 'AWS::AccountId'
 ```
 
-The `Condition` block is important for security. It ensures that only your specific bucket in your specific account can write logs here. Without it, anyone who knows your logging bucket name could potentially write to it.
+The `Condition` block is important for security. It ensures that only your specific bucket in your specific account can write logs here. Without it, another bucket in the account could be configured to deliver logs to the same destination.
 
 ## Enabling Logging on the Source Bucket
 
@@ -233,10 +233,10 @@ aws cloudformation deploy \
 S3 access logs are delivered as space-delimited text files. Each line represents one request. Here's what a log entry looks like:
 
 ```text
-79a59df900b949e55d96a1e698fbacedfd6e09d98eacf8f8d5218e7cd47ef2be my-bucket [06/Feb/2026:00:00:38 +0000] 192.0.2.3 79a59df900b949e55d96a1e698fbacedfd6e09d98eacf8f8d5218e7cd47ef2be 3E57427F3EXAMPLE REST.GET.OBJECT key.json "GET /key.json HTTP/1.1" 200 - 1234 1234 15 10 "-" "aws-sdk-java/1.11.0" - DHixKFIoh9GToG/123abc= SigV4 ECDHE-RSA-AES128-GCM-SHA256 AuthHeader my-bucket.s3.amazonaws.com TLSv1.2
+79a59df900b949e55d96a1e698fbacedfd6e09d98eacf8f8d5218e7cd47ef2be my-bucket [06/Feb/2026:00:00:38 +0000] 192.0.2.3 79a59df900b949e55d96a1e698fbacedfd6e09d98eacf8f8d5218e7cd47ef2be 3E57427F3EXAMPLE REST.GET.OBJECT key.json "GET /key.json HTTP/1.1" 200 - 1234 1234 15 10 "-" "aws-sdk-java/1.11.0" - DHixKFIoh9GToG/123abc= SigV4 ECDHE-RSA-AES128-GCM-SHA256 AuthHeader my-bucket.s3.amazonaws.com TLSv1.2 - - us-east-1
 ```
 
-The key fields are: requester identity, bucket name, timestamp, remote IP, operation, key, HTTP status, and bytes transferred.
+The key fields are: requester identity, bucket name, timestamp, remote IP, operation, key, HTTP status, bytes transferred, and the source Region when S3 can determine it.
 
 ## Querying Logs with Athena
 
@@ -268,12 +268,14 @@ CREATE EXTERNAL TABLE s3_access_logs (
   ciphersuite STRING,
   authtype STRING,
   endpoint STRING,
-  tlsversion STRING
+  tlsversion STRING,
+  accesspointarn STRING,
+  aclrequired STRING,
+  sourceregion STRING
 )
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
 WITH SERDEPROPERTIES (
-  'serialization.format' = '1',
-  'input.regex' = '([^ ]*) ([^ ]*) \\[(.*?)\\] ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\"[^\"]*\"|-) (-|[0-9]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\"[^\"]*\"|-) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*)'
+  'input.regex' = '([^ ]*) ([^ ]*) \\[(.*?)\\] ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\"[^\"]*\"|-) (-|[0-9]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\"[^\"]*\"|-) ([^ ]*)(?: ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*))?.*$'
 )
 LOCATION 's3://YOUR-LOG-BUCKET/YOUR-PREFIX/';
 ```
@@ -296,7 +298,7 @@ LIMIT 10;
 
 **Circular logging**: Never log a bucket to itself. This creates an infinite loop where each log write generates another log entry, which generates another log entry, and so on. Your costs will explode.
 
-**Permissions errors**: If you see "Access Denied" in CloudFormation, make sure the bucket policy for the logging bucket was applied before enabling logging on the source bucket. Use `DependsOn` if needed.
+**Permissions errors**: If you see "Access Denied" in CloudFormation, make sure the stack execution role has permission to configure bucket logging and that the destination bucket policy grants `s3:PutObject` to `logging.s3.amazonaws.com`. If you split the logging bucket and source bucket into separate stacks, deploy the logging bucket policy before enabling logging on the source bucket.
 
 ## Wrapping Up
 
