@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, VPA, Resource Optimization, Automation, Right-Sizing
 
-Description: Implement automated resource request right-sizing using VPA in recommendation mode with custom controllers to continuously optimize pod resource requests based on actual usage patterns.
+Description: Implement automated resource request right-sizing using VPA in recommendation mode with custom controllers to periodically optimize pod resource requests based on actual usage patterns.
 
 ---
 
@@ -57,26 +57,31 @@ Create a controller that applies VPA recommendations:
 #!/usr/bin/env python3
 # vpa-rightsizing-controller.py
 
-import subprocess
-import json
+import os
 import time
+from decimal import Decimal, ROUND_UP
 from kubernetes import client, config
+from kubernetes.utils.quantity import parse_quantity
 
 config.load_incluster_config()
-v1 = client.CoreV1Api()
+custom_api = client.CustomObjectsApi()
 apps_v1 = client.AppsV1Api()
 
-UTILIZATION_THRESHOLD = 0.8  # Only apply if recommendation differs by 20%+
+MIN_CHANGE_RATIO = Decimal(os.getenv("MIN_CHANGE_RATIO", "0.20"))  # Only apply if recommendation differs by 20%+
+UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", "3600"))
+VPA_GROUP = "autoscaling.k8s.io"
+VPA_VERSION = "v1"
+VPA_PLURAL = "verticalpodautoscalers"
 
 def get_vpa_recommendation(namespace, vpa_name):
     """Get VPA recommendation"""
-    cmd = f"kubectl get vpa {vpa_name} -n {namespace} -o json"
-    result = subprocess.run(cmd.split(), capture_output=True, text=True)
-
-    if result.returncode != 0:
-        return None
-
-    vpa_data = json.loads(result.stdout)
+    vpa_data = custom_api.get_namespaced_custom_object(
+        VPA_GROUP,
+        VPA_VERSION,
+        namespace,
+        VPA_PLURAL,
+        vpa_name,
+    )
     recommendation = vpa_data.get('status', {}).get('recommendation', {})
 
     if not recommendation:
@@ -85,33 +90,49 @@ def get_vpa_recommendation(namespace, vpa_name):
     container_recs = recommendation.get('containerRecommendations', [])
     return container_recs
 
-def parse_resource(resource_str):
-    """Convert resource string to numeric value"""
-    if resource_str.endswith('m'):
-        return float(resource_str[:-1]) / 1000
-    elif resource_str.endswith('Mi'):
-        return float(resource_str[:-2])
-    elif resource_str.endswith('Gi'):
-        return float(resource_str[:-2]) * 1024
-    return float(resource_str)
+def quantity(resource_str):
+    """Convert a Kubernetes resource quantity to Decimal."""
+    return parse_quantity(resource_str or "0")
 
-def should_update_deployment(current_requests, recommendations):
+def doubled_cpu_millicores(cpu_quantity):
+    """Return a CPU limit string equal to 2x the requested CPU."""
+    millicores = (quantity(cpu_quantity) * Decimal(2000)).quantize(Decimal("1"), rounding=ROUND_UP)
+    return f"{millicores}m"
+
+def doubled_memory_mi(memory_quantity):
+    """Return a memory limit string equal to 2x the requested memory."""
+    mebibytes = (quantity(memory_quantity) * Decimal(2) / Decimal(1024 * 1024)).quantize(Decimal("1"), rounding=ROUND_UP)
+    return f"{mebibytes}Mi"
+
+def get_current_requests_by_container(deployment):
+    """Get current resource requests keyed by container name."""
+    requests_by_container = {}
+    for container in deployment.spec.template.spec.containers:
+        resources = container.resources
+        requests_by_container[container.name] = resources.requests if resources and resources.requests else {}
+    return requests_by_container
+
+def should_update_deployment(current_requests_by_container, recommendations):
     """Determine if update is warranted"""
     for container_rec in recommendations:
         container_name = container_rec['containerName']
         target = container_rec['target']
+        current_requests = current_requests_by_container.get(container_name, {})
 
-        current_cpu = parse_resource(current_requests.get('cpu', '0'))
-        recommended_cpu = parse_resource(target.get('cpu', '0'))
+        if not current_requests:
+            return True
 
-        current_mem = parse_resource(current_requests.get('memory', '0'))
-        recommended_mem = parse_resource(target.get('memory', '0'))
+        current_cpu = quantity(current_requests.get('cpu'))
+        recommended_cpu = quantity(target.get('cpu'))
+
+        current_mem = quantity(current_requests.get('memory'))
+        recommended_mem = quantity(target.get('memory'))
 
         # Check if difference exceeds threshold
-        cpu_diff = abs(current_cpu - recommended_cpu) / current_cpu if current_cpu > 0 else 0
-        mem_diff = abs(current_mem - recommended_mem) / current_mem if current_mem > 0 else 0
+        cpu_diff = abs(current_cpu - recommended_cpu) / current_cpu if current_cpu > 0 else Decimal(0)
+        mem_diff = abs(current_mem - recommended_mem) / current_mem if current_mem > 0 else Decimal(0)
 
-        if cpu_diff > (1 - UTILIZATION_THRESHOLD) or mem_diff > (1 - UTILIZATION_THRESHOLD):
+        if cpu_diff > MIN_CHANGE_RATIO or mem_diff > MIN_CHANGE_RATIO:
             return True
 
     return False
@@ -119,52 +140,70 @@ def should_update_deployment(current_requests, recommendations):
 def update_deployment_resources(namespace, deployment_name, recommendations):
     """Update deployment with recommended resources"""
     deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
+    recommendation_by_container = {
+        rec['containerName']: rec
+        for rec in recommendations
+    }
+    container_patches = []
 
     for container in deployment.spec.template.spec.containers:
-        for rec in recommendations:
-            if rec['containerName'] == container.name or rec['containerName'] == '*':
-                target = rec['target']
+        rec = recommendation_by_container.get(container.name)
+        if not rec:
+            continue
 
-                # Update requests
-                if not container.resources:
-                    container.resources = client.V1ResourceRequirements()
+        target = rec['target']
+        requests = {
+            'cpu': target.get('cpu'),
+            'memory': target.get('memory'),
+        }
+        limits = {
+            'cpu': doubled_cpu_millicores(target.get('cpu')),
+            'memory': doubled_memory_mi(target.get('memory')),
+        }
+        container_patches.append({
+            'name': container.name,
+            'resources': {
+                'requests': requests,
+                'limits': limits,
+            },
+        })
 
-                if not container.resources.requests:
-                    container.resources.requests = {}
-
-                container.resources.requests['cpu'] = target.get('cpu')
-                container.resources.requests['memory'] = target.get('memory')
-
-                # Set limits to 2x requests
-                if not container.resources.limits:
-                    container.resources.limits = {}
-
-                cpu_cores = parse_resource(target.get('cpu'))
-                mem_mi = parse_resource(target.get('memory'))
-
-                container.resources.limits['cpu'] = f"{int(cpu_cores * 2000)}m"
-                container.resources.limits['memory'] = f"{int(mem_mi * 2)}Mi"
-
-                print(f"Updated {container.name} to CPU: {target.get('cpu')}, Memory: {target.get('memory')}")
+        print(f"Updated {container.name} to CPU: {target.get('cpu')}, Memory: {target.get('memory')}")
 
     # Apply update
-    apps_v1.patch_namespaced_deployment(deployment_name, namespace, deployment)
+    if container_patches:
+        apps_v1.patch_namespaced_deployment(
+            deployment_name,
+            namespace,
+            {'spec': {'template': {'spec': {'containers': container_patches}}}},
+        )
 
 def process_vpa_recommendations():
     """Main controller loop"""
     while True:
         try:
             # Get all VPA objects
-            cmd = "kubectl get vpa --all-namespaces -o json"
-            result = subprocess.run(cmd.split(), capture_output=True, text=True)
-            vpas = json.loads(result.stdout)
+            vpas = custom_api.list_cluster_custom_object(
+                VPA_GROUP,
+                VPA_VERSION,
+                VPA_PLURAL,
+            )
 
             for vpa in vpas.get('items', []):
                 metadata = vpa.get('metadata', {})
                 namespace = metadata.get('namespace')
                 name = metadata.get('name')
+                annotations = metadata.get('annotations', {})
+
+                if annotations.get('vpa.rightsizing.io/exclude') == 'true':
+                    print(f"Skipping {namespace}/{name} - excluded by annotation")
+                    continue
 
                 target_ref = vpa.get('spec', {}).get('targetRef', {})
+                if target_ref.get('apiVersion') != 'apps/v1' or target_ref.get('kind') != 'Deployment':
+                    print(f"Skipping {namespace}/{name} - only apps/v1 Deployments are supported")
+                    continue
+
                 deployment_name = target_ref.get('name')
 
                 recommendations = get_vpa_recommendation(namespace, name)
@@ -172,7 +211,7 @@ def process_vpa_recommendations():
                 if recommendations:
                     # Get current deployment resources
                     deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
-                    current_requests = deployment.spec.template.spec.containers[0].resources.requests
+                    current_requests = get_current_requests_by_container(deployment)
 
                     if should_update_deployment(current_requests, recommendations):
                         print(f"Applying recommendations to {namespace}/{deployment_name}")
@@ -183,7 +222,7 @@ def process_vpa_recommendations():
         except Exception as e:
             print(f"Error: {e}")
 
-        time.sleep(3600)  # Run every hour
+        time.sleep(UPDATE_INTERVAL)  # Run every hour by default
 
 if __name__ == '__main__':
     process_vpa_recommendations()
@@ -193,6 +232,37 @@ Deploy as a Kubernetes Deployment:
 
 ```yaml
 # rightsizing-controller.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vpa-controller
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vpa-rightsizing-controller
+rules:
+- apiGroups: ["autoscaling.k8s.io"]
+  resources: ["verticalpodautoscalers"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vpa-rightsizing-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vpa-rightsizing-controller
+subjects:
+- kind: ServiceAccount
+  name: vpa-controller
+  namespace: kube-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -213,8 +283,8 @@ spec:
       - name: controller
         image: vpa-rightsizing-controller:v1.0
         env:
-        - name: UTILIZATION_THRESHOLD
-          value: "0.8"
+        - name: MIN_CHANGE_RATIO
+          value: "0.20"
         - name: UPDATE_INTERVAL
           value: "3600"
 ```
@@ -227,7 +297,7 @@ Implement phased adoption:
 # Phase 1: Dry-run mode
 DRY_RUN = True
 
-if should_update_deployment(current, recommendations):
+if should_update_deployment(current_requests, recommendations):
     if DRY_RUN:
         print(f"DRY RUN: Would update {deployment_name}")
     else:
@@ -248,15 +318,15 @@ if namespace == 'production':
 Track savings from automated right-sizing:
 
 ```promql
-# Cost reduction from rightsizing
+# Cost reduction from rightsizing, using your own recorded before/after request metrics
 sum(
-  (kube_pod_container_resource_requests_before - kube_pod_container_resource_requests_after)
+  (workload_cpu_requests_before - workload_cpu_requests_after)
   * cost_per_core
 )
 
 # Resource request efficiency
-sum(container_cpu_usage_seconds_total) /
-sum(kube_pod_container_resource_requests{resource="cpu"})
+sum(rate(container_cpu_usage_seconds_total{container!="",pod!=""}[5m])) /
+sum(kube_pod_container_resource_requests{resource="cpu",unit="core"})
 ```
 
 ## Safety Guardrails
@@ -287,4 +357,4 @@ metadata:
 
 ## Conclusion
 
-Automated resource request right-sizing using VPA recommendations eliminates manual tuning overhead while continuously optimizing pod resource allocations. Custom controllers enable gradual, controlled adoption with safety guardrails, typically achieving 20-30% cost reduction from more accurate resource requests.
+Automated resource request right-sizing using VPA recommendations reduces manual tuning overhead while periodically optimizing pod resource allocations. Custom controllers enable gradual, controlled adoption with safety guardrails, and can reduce cost when workloads are consistently over-requested.
