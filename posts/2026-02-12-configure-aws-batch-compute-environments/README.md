@@ -12,7 +12,7 @@ The compute environment is where the rubber meets the road in AWS Batch. It cont
 
 ## Types of Compute Environments
 
-AWS Batch supports three compute environment types:
+AWS Batch supports managed and unmanaged compute environments. For ECS-backed workloads, the common options are:
 
 - **Managed EC2** - Batch manages EC2 instances for you
 - **Managed Fargate** - Serverless containers, no instances to manage
@@ -72,7 +72,7 @@ aws batch create-compute-environment \
   --state ENABLED \
   --compute-resources '{
     "type": "SPOT",
-    "allocationStrategy": "SPOT_CAPACITY_OPTIMIZED",
+    "allocationStrategy": "SPOT_PRICE_CAPACITY_OPTIMIZED",
     "minvCpus": 0,
     "maxvCpus": 1024,
     "desiredvCpus": 0,
@@ -91,15 +91,14 @@ aws batch create-compute-environment \
     ],
     "securityGroupIds": ["sg-abc123"],
     "instanceRole": "arn:aws:iam::123456789012:instance-profile/ecsInstanceRole",
-    "bidPercentage": 100,
     "spotIamFleetRole": "arn:aws:iam::123456789012:role/AmazonEC2SpotFleetRole"
   }'
 ```
 
 Key Spot settings explained:
-- `SPOT_CAPACITY_OPTIMIZED` picks instance types from pools with the most available capacity, reducing interruptions
+- `SPOT_PRICE_CAPACITY_OPTIMIZED` balances price and capacity, reducing interruptions while keeping costs low
 - Include many instance types and families to maximize the chance of getting capacity
-- `bidPercentage: 100` means you'll pay up to the on-demand price (but usually pay much less)
+- Omitting `bidPercentage` uses the default maximum of 100% of the on-demand price; AWS recommends leaving it empty for most use cases
 - Multiple subnets across AZs increase the pool of available Spot capacity
 
 ## Allocation Strategies
@@ -110,9 +109,9 @@ The allocation strategy determines how Batch picks instance types for your jobs.
 
 **BEST_FIT**: Picks the cheapest instance that fits. Can lead to longer wait times if that instance type isn't available.
 
-**SPOT_CAPACITY_OPTIMIZED** (recommended for Spot): Picks from Spot pools with the most available capacity. Reduces interruption rates.
+**SPOT_CAPACITY_OPTIMIZED**: Picks from Spot pools with the most available capacity. Reduces interruption rates.
 
-**SPOT_PRICE_CAPACITY_OPTIMIZED**: Balances price and availability. Good compromise for Spot.
+**SPOT_PRICE_CAPACITY_OPTIMIZED** (recommended for most Spot workloads): Balances price and availability.
 
 ## GPU Compute Environment
 
@@ -131,24 +130,24 @@ aws batch create-compute-environment \
     "maxvCpus": 128,
     "desiredvCpus": 0,
     "instanceTypes": [
-      "p3.2xlarge",
-      "p3.8xlarge",
       "g4dn.xlarge",
       "g4dn.2xlarge",
-      "g4dn.4xlarge"
+      "g4dn.4xlarge",
+      "g5.xlarge",
+      "g5.2xlarge"
     ],
     "subnets": ["subnet-abc123", "subnet-def456"],
     "securityGroupIds": ["sg-abc123"],
     "instanceRole": "arn:aws:iam::123456789012:instance-profile/ecsInstanceRole",
     "ec2Configuration": [
       {
-        "imageType": "ECS_AL2_NVIDIA"
+        "imageType": "ECS_AL2023_NVIDIA"
       }
     ]
   }'
 ```
 
-The `ECS_AL2_NVIDIA` AMI image type includes NVIDIA drivers pre-installed.
+The `ECS_AL2023_NVIDIA` AMI image type includes NVIDIA drivers pre-installed.
 
 ## Custom AMI Configuration
 
@@ -171,7 +170,7 @@ aws batch create-compute-environment \
     "instanceRole": "arn:aws:iam::123456789012:instance-profile/ecsInstanceRole",
     "ec2Configuration": [
       {
-        "imageType": "ECS_AL2",
+        "imageType": "ECS_AL2023",
         "imageIdOverride": "ami-0abc123def456"
       }
     ]
@@ -198,8 +197,8 @@ aws batch update-compute-environment \
 Settings to consider:
 - **minvCpus: 0** scales down completely when no jobs are running (saves money)
 - **minvCpus: 16** keeps some instances warm for faster job startup (costs more)
-- **maxvCpus** sets the ceiling for total compute
-- **desiredvCpus** is a hint; Batch adjusts based on job demand
+- **maxvCpus** sets the ceiling for total compute, though Batch can exceed it by up to one instance for some allocation strategies
+- **desiredvCpus** is managed by Batch based on job demand; avoid using it to scale down an existing environment
 
 ## Launch Template Integration
 
