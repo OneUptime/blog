@@ -10,7 +10,7 @@ Description: Learn how to configure Spin WebAssembly runtime in Kubernetes to ru
 
 WebAssembly is transforming cloud-native computing by offering near-native performance with significantly smaller footprints than traditional containers. Spin, developed by Fermyon, provides a WebAssembly runtime specifically designed for microservices and serverless workloads. Running Spin applications in Kubernetes combines the orchestration benefits of Kubernetes with the efficiency of WebAssembly.
 
-This guide demonstrates how to configure the containerd-wasm-shim to run Spin applications in Kubernetes, deploy WASM workloads, and integrate them with your existing infrastructure.
+This guide demonstrates how to configure the containerd-shim-spin runtime to run Spin applications in Kubernetes, deploy WASM workloads, and integrate them with your existing infrastructure.
 
 ## Understanding Spin and WebAssembly Benefits
 
@@ -20,28 +20,28 @@ Startup times improve dramatically. While traditional containers take hundreds o
 
 Memory usage drops proportionally. A dozen Spin instances might consume less memory than a single traditional container running the same application logic. This density improvement allows more workloads per node.
 
-## Installing containerd-wasm-shim
+## Installing containerd-shim-spin
 
-The containerd-wasm-shim provides the bridge between containerd and WebAssembly runtimes. Install it on each Kubernetes node that will run WASM workloads.
+The containerd-shim-spin provides the bridge between containerd and Spin applications. Install it on each Kubernetes node that will run Spin workloads.
 
 ```bash
-# Install containerd-wasm-shim
+# Install containerd-shim-spin
 
-curl -fsSL https://github.com/containerd/runwasi/releases/download/v0.3.0/containerd-wasm-shim-v0.3.0-linux-x86_64.tar.gz \
-  -o containerd-wasm-shim.tar.gz
+curl -fsSL https://github.com/spinframework/containerd-shim-spin/releases/download/v0.24.0/containerd-shim-spin-v2-linux-x86_64.tar.gz \
+  -o containerd-shim-spin.tar.gz
 
 # Extract binaries
-sudo tar -C /usr/local/bin -xzf containerd-wasm-shim.tar.gz
+sudo tar -C /usr/local/bin -xzf containerd-shim-spin.tar.gz
 
 # Verify installation
-containerd-shim-spin-v1 --version
+containerd-shim-spin-v2 --version
 ```
 
-The shim includes support for multiple WASM runtimes. We'll focus on the Spin runtime, but the same approach works for other WebAssembly engines like Wasmtime or WasmEdge.
+Runwasi-based shims are available for multiple WASM runtimes. We'll focus on the Spin runtime, but the same Kubernetes RuntimeClass pattern works for other WebAssembly engines like Wasmtime or WasmEdge when their own shims are installed.
 
 ## Configuring containerd for Spin Runtime
 
-Update containerd configuration to register the Spin runtime handler. Edit `/etc/containerd/config.toml` to add the new runtime.
+Update containerd configuration to register the Spin runtime handler. On containerd 1.x, edit `/etc/containerd/config.toml` to add the new runtime.
 
 ```toml
 version = 2
@@ -53,9 +53,18 @@ version = 2
   runtime_type = "io.containerd.runc.v2"
 
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.spin]
-  runtime_type = "io.containerd.spin.v1"
+  runtime_type = "io.containerd.spin.v2"
   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.spin.options]
-    BinaryName = "/usr/local/bin/containerd-shim-spin-v1"
+    SystemdCgroup = true
+```
+
+On containerd 2.x, use the updated CRI plugin path.
+
+```toml
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.spin]
+  runtime_type = "io.containerd.spin.v2"
+  [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.spin.options]
+    SystemdCgroup = true
 ```
 
 Restart containerd to load the new runtime configuration.
@@ -77,7 +86,7 @@ Define a RuntimeClass resource that Kubernetes workloads can reference to use th
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
-  name: wasmtime-spin
+  name: wasmtime-spin-v2
 handler: spin
 scheduling:
   nodeSelector:
@@ -94,7 +103,7 @@ kubectl label nodes worker-1 wasm-enabled=true
 kubectl label nodes worker-2 wasm-enabled=true
 
 # Verify RuntimeClass
-kubectl get runtimeclass wasmtime-spin
+kubectl get runtimeclass wasmtime-spin-v2
 ```
 
 The nodeSelector ensures pods only schedule on nodes with the WASM shim installed.
@@ -105,30 +114,26 @@ Create a simple HTTP service with Spin. Install the Spin CLI first if you haven'
 
 ```bash
 # Install Spin CLI
-curl -fsSL https://developer.fermyon.com/downloads/install.sh | bash
+curl -fsSL https://spinframework.dev/downloads/install.sh | bash
 sudo mv spin /usr/local/bin/
 
 # Create a new Spin application
-spin new http-rust my-spin-app
+spin new -t http-rust my-spin-app
 cd my-spin-app
 ```
 
 This generates a basic Rust HTTP handler. Modify `src/lib.rs` to implement your application logic.
 
 ```rust
-use spin_sdk::{
-    http::{Request, Response},
-    http_component,
-};
+use spin_sdk::http::{IntoResponse, Request, Response};
+use spin_sdk::http_service;
 
-#[http_component]
-fn handle_request(req: Request) -> Result<Response> {
-    Ok(http::Response::builder()
+#[http_service]
+async fn handle_request(_req: Request) -> anyhow::Result<impl IntoResponse> {
+    Ok(Response::builder()
         .status(200)
         .header("content-type", "application/json")
-        .body(Some(
-            r#"{"message": "Hello from Spin on Kubernetes!", "version": "1.0"}"#.into()
-        ))?)
+        .body(r#"{"message": "Hello from Spin on Kubernetes!", "version": "1.0"}"#.to_string()))
 }
 ```
 
@@ -148,11 +153,11 @@ curl http://localhost:3000
 
 ## Packaging Spin Applications as OCI Images
 
-Spin applications must be packaged as OCI-compatible container images to run in Kubernetes. Use the Spin registry plugin to push to your container registry.
+Spin applications must be packaged as OCI-compatible artifacts to run in Kubernetes. Use the Spin registry commands to push to your container registry.
 
 ```bash
-# Install the registry plugin
-spin plugins install registry
+# Log in if your registry requires authentication
+spin registry login myregistry.io
 
 # Build and push to registry
 spin registry push myregistry.io/my-spin-app:v1.0
@@ -161,13 +166,12 @@ spin registry push myregistry.io/my-spin-app:v1.0
 spin registry pull myregistry.io/my-spin-app:v1.0
 ```
 
-The resulting OCI image contains the WASM binary and Spin manifest. Notice the image size compared to traditional containers.
+The resulting OCI artifact contains the WASM binary and Spin manifest. Notice the artifact size compared to traditional containers.
 
 ```bash
 # Check image size
-docker images myregistry.io/my-spin-app:v1.0
-# REPOSITORY                    TAG    SIZE
-# myregistry.io/my-spin-app     v1.0   4.2MB
+crane manifest myregistry.io/my-spin-app:v1.0 | jq '.layers[].size'
+# 4382712
 ```
 
 ## Deploying Spin Applications to Kubernetes
@@ -189,10 +193,11 @@ spec:
       labels:
         app: spin-hello
     spec:
-      runtimeClassName: wasmtime-spin
+      runtimeClassName: wasmtime-spin-v2
       containers:
       - name: spin-app
         image: myregistry.io/my-spin-app:v1.0
+        command: ["/"]
         ports:
         - containerPort: 80
           name: http
@@ -208,6 +213,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: spin-hello
+  labels:
+    app: spin-hello
 spec:
   selector:
     app: spin-hello
@@ -357,10 +364,10 @@ The traditional container calls the Spin service for operations that benefit fro
 
 ## Monitoring Spin Application Performance
 
-Track key metrics for your WASM workloads. Spin applications expose metrics through standard Kubernetes mechanisms.
+Track key metrics for your WASM workloads. If your Spin application exposes a Prometheus metrics endpoint, a ServiceMonitor can scrape it through the Kubernetes Service.
 
 ```yaml
-apiVersion: v1
+apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: spin-metrics
@@ -381,4 +388,4 @@ Create a Grafana dashboard to visualize startup times, request latency, and memo
 kubectl get pods -l app=spin-hello -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.startTime}{"\t"}{.status.conditions[?(@.type=="Ready")].lastTransitionTime}{"\n"}{end}'
 ```
 
-Spin and WebAssembly bring significant efficiency improvements to Kubernetes workloads. The combination of microsecond startup times, minimal memory footprint, and compatibility with standard Kubernetes tooling makes WASM an excellent choice for microservices, edge computing, and serverless-style architectures. By running Spin alongside traditional containers, you can optimize resource utilization while maintaining flexibility for workloads that require full OS capabilities.
+Spin and WebAssembly bring significant efficiency improvements to Kubernetes workloads. The combination of millisecond-scale startup times, minimal memory footprint, and compatibility with standard Kubernetes tooling makes WASM an excellent choice for microservices, edge computing, and serverless-style architectures. By running Spin alongside traditional containers, you can optimize resource utilization while maintaining flexibility for workloads that require full OS capabilities.
