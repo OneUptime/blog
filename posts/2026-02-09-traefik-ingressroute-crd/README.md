@@ -14,38 +14,34 @@ This guide covers advanced ingress controller configuration for Kubernetes envir
 
 Modern ingress controllers act as the entry point for external traffic into Kubernetes clusters. They provide Layer 7 load balancing, SSL termination, and advanced routing based on hostnames, paths, headers, and other request attributes.
 
-The ingress controller watches Ingress resources and translates them into native configuration for the underlying proxy. This abstraction allows teams to use Kubernetes-native resources while leveraging battle-tested load balancing technologies.
+The Traefik ingress controller watches Kubernetes Ingress resources and Traefik custom resources such as IngressRoute, then translates them into native configuration for the underlying proxy. This abstraction allows teams to use Kubernetes-native resources while leveraging battle-tested load balancing technologies.
 
 ## Basic Configuration
 
-Deploy the ingress controller and create basic routing:
+Deploy the Traefik ingress controller with its CRDs and create basic routing:
 
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
 metadata:
-  name: example-ingress
+  name: example-ingressroute
   namespace: production
 spec:
-  ingressClassName: nginx
-  rules:
-    - host: app.example.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: app-service
-                port:
-                  number: 80
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`app.example.com`) && PathPrefix(`/`)
+      kind: Rule
+      services:
+        - name: app-service
+          port: 80
 ```
 
 ## Advanced Features
 
 The ingress controller supports sophisticated traffic management patterns including weighted routing, header-based routing, rate limiting, authentication, and custom middleware chains.
 
-Configure these features using annotations or custom resource definitions depending on your ingress controller choice. Each controller provides unique capabilities tailored to specific use cases.
+Configure these features using Traefik custom resources such as IngressRoute, Middleware, and TraefikService. Each controller provides unique capabilities tailored to specific use cases.
 
 ## Security Considerations
 
