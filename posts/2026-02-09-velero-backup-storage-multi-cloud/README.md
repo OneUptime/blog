@@ -8,11 +8,11 @@ Description: Learn how to configure Velero with multiple cloud provider storage 
 
 ---
 
-Multi-cloud backup strategies protect against vendor-specific outages and provide geographic redundancy across cloud providers. Velero supports configuring multiple backup storage locations simultaneously, allowing you to store backups in AWS S3, Azure Blob Storage, Google Cloud Storage, and on-premises object storage within a single cluster. This capability ensures your backup data remains accessible even if one cloud provider experiences regional failures or service disruptions.
+Multi-cloud backup strategies protect against vendor-specific outages and provide geographic redundancy across cloud providers. Velero supports configuring multiple backup storage locations simultaneously, allowing you to store backups in AWS S3, Azure Blob Storage, Google Cloud Storage, and on-premises object storage within a single cluster. This setup helps keep your backup data accessible even if one cloud provider experiences regional failures or service disruptions.
 
 ## Understanding Multi-Cloud Backup Architecture
 
-Velero's backup storage location abstraction allows you to define multiple storage backends. Each backup can target a specific location, or you can configure automatic replication across locations. This flexibility enables diverse backup strategies including primary/secondary configurations, geographic distribution, and compliance-driven data sovereignty requirements.
+Velero's backup storage location abstraction allows you to define multiple storage backends. Each backup can target a specific location. To keep copies in more than one location, create separate backups or schedules per location, or use provider-side bucket replication. This flexibility enables diverse backup strategies including primary/secondary configurations, geographic distribution, and compliance-driven data sovereignty requirements.
 
 When you configure multiple storage locations, Velero treats each as an independent backup repository. You can restore backups from any configured location, providing failover capabilities if your primary storage becomes unavailable.
 
@@ -23,7 +23,7 @@ Start by installing Velero with AWS S3 as the primary storage:
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.1 \
   --bucket velero-backups-primary \
   --backup-location-config region=us-east-1 \
   --use-node-agent \
@@ -39,7 +39,7 @@ Install the Azure plugin and configure an additional storage location:
 ```bash
 # Install Azure plugin
 
-velero plugin add velero/velero-plugin-for-microsoft-azure:v1.9.0
+velero plugin add velero/velero-plugin-for-microsoft-azure:v1.14.1
 
 # Create Azure credentials secret
 kubectl create secret generic azure-credentials \
@@ -56,13 +56,14 @@ metadata:
   name: azure-secondary
   namespace: velero
 spec:
-  provider: azure
+  provider: velero.io/azure
   objectStorage:
     bucket: velero-backups
   config:
     resourceGroup: velero-backups-rg
     storageAccount: velerobackupstorage
     subscriptionId: your-subscription-id
+    useAAD: "true"
   credential:
     name: azure-credentials
     key: cloud
@@ -83,7 +84,7 @@ Configure GCP storage as an additional backup location:
 
 ```bash
 # Install GCP plugin
-velero plugin add velero/velero-plugin-for-gcp:v1.9.0
+velero plugin add velero/velero-plugin-for-gcp:v1.14.1
 
 # Create GCP credentials secret
 kubectl create secret generic gcp-credentials \
@@ -100,12 +101,10 @@ metadata:
   name: gcp-tertiary
   namespace: velero
 spec:
-  provider: gcp
+  provider: velero.io/gcp
   objectStorage:
     bucket: velero-backups-gcp
     prefix: cluster-backups
-  config:
-    serviceAccount: velero-backup@project-id.iam.gserviceaccount.com
   credential:
     name: gcp-credentials
     key: cloud
@@ -143,7 +142,7 @@ Each backup stores in its specified location independently.
 
 ## Implementing Automated Multi-Location Backups
 
-Create schedules that backup to multiple locations:
+Create separate schedules that back up to different locations:
 
 ```yaml
 ---
@@ -160,9 +159,10 @@ spec:
     - production
     storageLocation: default
     snapshotVolumes: true
-    labels:
-      location: aws
-      frequency: hourly
+    metadata:
+      labels:
+        location: aws
+        frequency: hourly
 
 ---
 apiVersion: velero.io/v1
@@ -178,9 +178,10 @@ spec:
     - production
     storageLocation: azure-secondary
     defaultVolumesToFsBackup: true
-    labels:
-      location: azure
-      frequency: daily
+    metadata:
+      labels:
+        location: azure
+        frequency: daily
 
 ---
 apiVersion: velero.io/v1
@@ -196,9 +197,10 @@ spec:
     - production
     storageLocation: gcp-tertiary
     defaultVolumesToFsBackup: true
-    labels:
-      location: gcp
-      frequency: weekly
+    metadata:
+      labels:
+        location: gcp
+        frequency: weekly
 ```
 
 This configuration creates hourly backups in AWS, daily in Azure, and weekly in GCP.
@@ -214,7 +216,7 @@ metadata:
   name: aws-read-only
   namespace: velero
 spec:
-  provider: aws
+  provider: velero.io/aws
   objectStorage:
     bucket: velero-backups-archive
   config:
@@ -227,7 +229,7 @@ Use `ReadWrite` for primary backup locations and `ReadOnly` for secondary/disast
 
 ## Implementing Cross-Region Replication
 
-Configure replication between storage locations for additional redundancy:
+Configure provider-side replication for additional redundancy:
 
 **AWS S3 Cross-Region Replication:**
 
@@ -264,6 +266,14 @@ Configure replication between storage locations for additional redundancy:
 Apply replication configuration:
 
 ```bash
+aws s3api put-bucket-versioning \
+  --bucket velero-backups-primary \
+  --versioning-configuration Status=Enabled
+
+aws s3api put-bucket-versioning \
+  --bucket velero-backups-replica \
+  --versioning-configuration Status=Enabled
+
 aws s3api put-bucket-replication \
   --bucket velero-backups-primary \
   --replication-configuration file://replication.json
@@ -377,17 +387,17 @@ spec:
     rules:
     - alert: VeleroStorageLocationUnavailable
       expr: |
-        velero_backup_storage_location_available == 0
+        velero_backup_location_status_gauge == 0
       for: 15m
       labels:
         severity: critical
       annotations:
         summary: "Velero storage location unavailable"
-        description: "Storage location {{ $labels.storage_location }} has been unavailable for 15 minutes"
+        description: "Storage location {{ $labels.backup_location_name }} has been unavailable for 15 minutes"
 
     - alert: VeleroMultipleStorageLocationsFailed
       expr: |
-        count(velero_backup_storage_location_available == 0) > 1
+        count(velero_backup_location_status_gauge == 0) > 1
       for: 5m
       labels:
         severity: critical
@@ -430,9 +440,10 @@ spec:
     storageLocation: default
     includedNamespaces:
     - production
-    labels:
-      tier: hot
-      retention: short
+    metadata:
+      labels:
+        tier: hot
+        retention: short
 
 ---
 apiVersion: velero.io/v1
@@ -447,9 +458,10 @@ spec:
     storageLocation: azure-secondary
     includedNamespaces:
     - production
-    labels:
-      tier: warm
-      retention: medium
+    metadata:
+      labels:
+        tier: warm
+        retention: medium
 
 ---
 apiVersion: velero.io/v1
@@ -464,59 +476,39 @@ spec:
     storageLocation: gcp-tertiary
     includedNamespaces:
     - production
-    labels:
-      tier: cold
-      retention: long
+    metadata:
+      labels:
+        tier: cold
+        retention: long
 ```
 
 This creates a hot/warm/cold backup tier system across multiple cloud providers.
 
 ## Cost Optimization Across Providers
 
-Balance costs by leveraging different storage classes:
+Balance costs by configuring storage classes on the backing buckets or storage accounts:
 
-```yaml
-# AWS with Intelligent-Tiering
-apiVersion: velero.io/v1
-kind: BackupStorageLocation
-metadata:
-  name: aws-optimized
-  namespace: velero
-spec:
-  provider: aws
-  objectStorage:
-    bucket: velero-backups
-  config:
-    region: us-east-1
-    s3StorageClass: INTELLIGENT_TIERING
+```bash
+# AWS: transition older Velero objects to Intelligent-Tiering
+aws s3api put-bucket-lifecycle-configuration \
+  --bucket velero-backups \
+  --lifecycle-configuration '{
+    "Rules": [{
+      "ID": "velero-intelligent-tiering",
+      "Status": "Enabled",
+      "Filter": {"Prefix": ""},
+      "Transitions": [{"Days": 30, "StorageClass": "INTELLIGENT_TIERING"}]
+    }]
+  }'
 
-# Azure with Cool tier
-apiVersion: velero.io/v1
-kind: BackupStorageLocation
-metadata:
-  name: azure-cool
-  namespace: velero
-spec:
-  provider: azure
-  objectStorage:
-    bucket: velero-backups
-  config:
-    storageAccount: velerobackups
-    resourceGroup: velero-rg
-    storageAccountAccessTier: Cool
+# Azure: set the storage account access tier to Cool
+az storage account update \
+  --name velerobackups \
+  --resource-group velero-rg \
+  --access-tier Cool
 
-# GCP with Nearline storage
-apiVersion: velero.io/v1
-kind: BackupStorageLocation
-metadata:
-  name: gcp-nearline
-  namespace: velero
-spec:
-  provider: gcp
-  objectStorage:
-    bucket: velero-backups-nearline
-  config:
-    storageClass: NEARLINE
+# GCP: set the bucket's default storage class to Nearline
+gsutil defstorageclass set NEARLINE gs://velero-backups-nearline
 ```
 
 ## Conclusion
