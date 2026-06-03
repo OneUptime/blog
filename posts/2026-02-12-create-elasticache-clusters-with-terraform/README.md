@@ -42,6 +42,14 @@ resource "aws_security_group" "cache" {
     description     = "Redis from application"
   }
 
+  ingress {
+    from_port       = 11211
+    to_port         = 11211
+    protocol        = "tcp"
+    security_groups = [var.app_security_group_id]
+    description     = "Memcached from application"
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -261,7 +269,7 @@ resource "aws_elasticache_cluster" "memcached" {
 }
 ```
 
-Memcached doesn't support replication, persistence, or encryption at rest. Each node is independent - if a node dies, the cached data on that node is gone. This is fine for pure caching where the source of truth is your database.
+Node-based Memcached clusters don't support replication, persistence, or encryption at rest. Each node is independent - if a node dies, the cached data on that node is gone. This is fine for pure caching where the source of truth is your database.
 
 ## ElastiCache Serverless
 
