@@ -34,7 +34,7 @@ You access values using the `Fn::FindInMap` intrinsic function (or `!FindInMap` 
 
 ## The Classic Use Case: Region-Specific AMI IDs
 
-Every AWS region has different AMI IDs for the same operating system image. This is the most common reason people reach for mappings:
+Every AWS region has different AMI IDs for the same operating system image. This is the most common reason people reach for mappings. Replace the example AMI IDs with current IDs for the regions you plan to support:
 
 ```yaml
 # Map AMI IDs per region so the template works everywhere
@@ -64,7 +64,7 @@ Resources:
       InstanceType: t3.micro
 ```
 
-The `!Ref 'AWS::Region'` pseudo parameter returns whatever region the stack is being deployed to. CloudFormation plugs that into the lookup and gets the right AMI automatically. You deploy the same template to `us-east-1` or `ap-southeast-1` and it just works.
+The `!Ref 'AWS::Region'` pseudo parameter returns whatever region the stack is being deployed to. CloudFormation plugs that into the lookup and gets the right AMI automatically. You deploy the same template to `us-east-1` or `ap-southeast-1` and it works as long as the mapping includes that region.
 
 ## Environment-Based Mappings
 
@@ -221,22 +221,24 @@ Resources:
 
 Mappings have some constraints you should know about:
 
-1. **Values must be static.** You can't compute mapping values - they're literal strings, lists, or integers defined at template authoring time.
+1. **Values must be static.** You can't compute mapping values - they're literal strings or lists defined at template authoring time. You also can't include parameters, pseudo parameters, or intrinsic functions in the `Mappings` section itself.
 
 2. **Only two levels of keys.** You get a top-level key and a second-level key. That's it. No deeper nesting.
 
-3. **No dynamic keys in FindInMap.** The keys must resolve to actual keys in the mapping. Prior to the `Fn::FindInMap` enhancement with a default value (added in 2023), you couldn't handle missing keys gracefully.
+3. **Missing keys fail unless you use a default.** Standard `Fn::FindInMap` supports `Ref` and nested `Fn::FindInMap` values for lookup keys, but the keys still need to resolve to entries in the mapping. To handle missing keys gracefully or use a wider range of intrinsic functions, enable the `AWS::LanguageExtensions` transform.
 
-4. **All values are strings.** Even numbers need to be quoted. CloudFormation coerces them where needed, but be aware.
+4. **Scalar values are best treated as strings.** Mapping values can be strings or lists. Quote numbers and booleans when you use them as scalar mapping values so YAML doesn't parse them as another type.
 
 If you need more complex lookups or dynamic data, consider using SSM Parameter Store or [CloudFormation macros](https://oneuptime.com/blog/post/2026-02-12-cloudformation-macros-transforms/view).
 
 ## FindInMap with Default Values
 
-AWS added support for a default value in `Fn::FindInMap`, which is handy when you're not sure a key exists:
+AWS added support for a default value in `Fn::FindInMap` through the `AWS::LanguageExtensions` transform, which is handy when you're not sure a key exists:
 
 ```yaml
 # FindInMap with a default fallback value
+Transform: AWS::LanguageExtensions
+
 Resources:
   Instance:
     Type: AWS::EC2::Instance
