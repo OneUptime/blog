@@ -8,7 +8,7 @@ Description: A complete guide to setting up AWS Audit Manager for automated comp
 
 ---
 
-Compliance auditing is one of those tasks that nobody loves but everyone needs. Whether you're dealing with SOC 2, PCI DSS, HIPAA, or GDPR, the process of gathering evidence and proving compliance eats up enormous amounts of time. AWS Audit Manager automates a big chunk of that work by continuously collecting evidence from your AWS environment and mapping it to compliance framework controls.
+Compliance auditing is one of those tasks that nobody loves but everyone needs. Whether you're dealing with SOC 2, PCI DSS, HIPAA, or GDPR, the process of gathering evidence and proving compliance eats up enormous amounts of time. AWS Audit Manager automates a big chunk of that work by collecting evidence from your AWS environment on an ongoing basis and mapping it to compliance framework controls.
 
 Let's walk through setting it up properly.
 
@@ -16,7 +16,7 @@ Let's walk through setting it up properly.
 
 At its core, Audit Manager does three things:
 
-1. Collects evidence automatically from AWS services like CloudTrail, Config, and Security Hub
+1. Collects evidence automatically from AWS services like CloudTrail, Config, and Security Hub CSPM
 2. Maps that evidence to specific controls in compliance frameworks
 3. Organizes everything so you can hand it to auditors without scrambling
 
@@ -24,12 +24,12 @@ It doesn't replace your auditor. It just makes their job (and yours) significant
 
 ## Enabling Audit Manager
 
-Getting started is straightforward. You can enable it from the console or CLI.
+Audit Manager is no longer open to new customers as of April 30, 2026. Existing customers can continue to use the service in accounts and Regions where they already set it up, including creating new assessments. If you're an existing customer, you can enable it from the console or CLI.
 
-This command enables Audit Manager in your account with a specified S3 bucket for evidence storage:
+This command enables Audit Manager in your account. If you're using AWS Organizations, you can specify the delegated administrator account:
 
 ```bash
-# Enable Audit Manager with an evidence destination
+# Enable Audit Manager
 
 aws auditmanager register-account \
   --delegated-admin-account 123456789012
@@ -124,16 +124,17 @@ aws auditmanager create-assessment \
 
 ## Evidence Types
 
-Audit Manager collects four types of evidence:
+Audit Manager collects two main types of evidence: automated evidence and manual evidence.
 
-**Automated evidence** comes from three sources:
-- **AWS Config** - Configuration snapshots and compliance checks
-- **CloudTrail** - API activity logs
-- **Security Hub** - Security findings and checks
+**Automated evidence** comes from data sources like:
+- **AWS Config** - Compliance checks based on Config rule evaluations
+- **CloudTrail** - User activity logs
+- **Security Hub CSPM** - Security findings and checks
+- **AWS API calls** - Configuration snapshots collected directly from AWS services
 
 **Manual evidence** is anything you upload yourself - screenshots, policy documents, meeting notes, etc.
 
-The automated evidence collection runs continuously. Once an assessment is active, Audit Manager starts gathering data immediately. You'll typically see evidence start appearing within 24 hours.
+The automated evidence collection is ongoing, but the collection frequency depends on the data source. CloudTrail evidence is collected continually, Config and Security Hub CSPM evidence follows the evaluation schedule of those services, and AWS API call evidence is collected daily, weekly, or monthly. Once an assessment is active, Audit Manager starts gathering data. You'll typically see evidence start appearing within 24 hours.
 
 ## Creating a Custom Framework
 
@@ -152,7 +153,7 @@ aws auditmanager create-control \
       "sourceType": "AWS_Config",
       "sourceKeyword": {
         "keywordInputType": "SELECT_FROM_LIST",
-        "keywordValue": "iam-user-mfa-enabled"
+        "keywordValue": "IAM_USER_MFA_ENABLED"
       }
     }
   ]'
@@ -181,7 +182,7 @@ In larger organizations, different teams own different controls. Audit Manager l
 ```bash
 # Delegate a control set to another team member
 aws auditmanager batch-create-delegation-by-assessment \
-  --assessment-id "assessment-abc123" \
+  --assessment-id "a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
   --create-delegation-requests '[
     {
       "controlSetId": "access-management",
@@ -202,23 +203,20 @@ When audit time comes, you can generate a comprehensive report:
 # Generate the assessment report
 aws auditmanager create-assessment-report \
   --name "SOC2-Q1-2026-Final" \
-  --assessment-id "assessment-abc123" \
+  --assessment-id "a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
   --description "Final SOC 2 report for Q1 2026"
 ```
 
-The report lands in your S3 bucket as a PDF. It includes all the evidence collected, organized by control set and control, with timestamps and source information.
+The report lands in your S3 bucket as a zip folder. It includes an assessment report summary PDF plus related evidence files organized by control set, control, data source, and collection date.
 
 ## Setting Up Notifications
 
-You'll want to know when controls go out of compliance. Set up an EventBridge rule to catch Audit Manager events:
+You'll want to know when assessment and control review activity happens. Set up an EventBridge rule to catch Audit Manager events:
 
 ```json
 {
   "source": ["aws.auditmanager"],
-  "detail-type": ["AWS Audit Manager Assessment Change"],
-  "detail": {
-    "eventName": ["UpdateAssessmentControl"]
-  }
+  "detail-type": ["Assessment Control Reviewed"]
 }
 ```
 
@@ -240,12 +238,12 @@ Audit Manager works best when AWS Config is properly configured. Make sure you'r
 
 ## Costs
 
-Audit Manager charges per resource assessment per month. A resource assessment happens when evidence is collected for a specific resource against a specific control. The first 10,000 resource assessments per month are free, after which it's $1.25 per 1,000 assessments.
+Audit Manager charges per resource assessment. A resource assessment is the process that collects, stores, and manages one piece of evidence for an individual resource. AWS's pricing page lists a first-time customer free tier of 35,000 resource assessments per month for two calendar months, with usage beyond the free tier priced at $1.25 per 1,000 resource assessments.
 
-For most small to mid-size organizations, the free tier is plenty. Larger environments with hundreds of accounts and thousands of resources will see costs scale up, but it's still far cheaper than manual compliance work.
+Larger environments with hundreds of accounts and thousands of resources will see costs scale up, especially if you collect multiple evidence types frequently. Also account for normal S3 charges for assessment reports and evidence storage, plus any AWS Config, Security Hub CSPM, or CloudTrail Lake charges for optional integrations you enable.
 
 ## Wrapping Up
 
-AWS Audit Manager won't make compliance fun, but it takes away a lot of the manual drudgery. Automated evidence collection means you're not scrambling at audit time, and the continuous nature of the collection means you catch compliance drift early rather than discovering problems when the auditor shows up.
+AWS Audit Manager won't make compliance fun, but it takes away a lot of the manual drudgery. Automated evidence collection means you're not scrambling at audit time, and the ongoing nature of the collection helps you catch compliance drift early rather than discovering problems when the auditor shows up.
 
 Start with a standard framework that matches your compliance needs, let evidence accumulate for a month, and then review what you've got. You'll likely find that 70-80% of the evidence you need is collected automatically, leaving you to focus on the manual controls that genuinely need human attention.
