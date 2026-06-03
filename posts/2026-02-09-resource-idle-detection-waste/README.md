@@ -28,14 +28,21 @@ Each category requires different detection strategies.
 
 ## Detecting Zero-Replica Workloads
 
-Find deployments and statefulsets scaled to zero that still hold resources:
+Find deployments and statefulsets scaled to zero that may still hold resources:
 
 ```bash
 # Find zero-replica deployments with PVCs
 
 kubectl get deploy --all-namespaces -o json | \
   jq -r '.items[] |
-    select(.spec.replicas == 0) |
+    select((.spec.replicas // 1) == 0) |
+    [.metadata.namespace, .metadata.name, .spec.replicas] |
+    @tsv'
+
+# Find zero-replica statefulsets
+kubectl get statefulset --all-namespaces -o json | \
+  jq -r '.items[] |
+    select((.spec.replicas // 1) == 0) |
     [.metadata.namespace, .metadata.name, .spec.replicas] |
     @tsv'
 
@@ -52,11 +59,11 @@ Cross-reference these lists to find zero-replica workloads with active PVCs.
 Create a monitoring query:
 
 ```promql
-# Deployments at zero replicas with PVCs
+# Zero-replica deployments in namespaces that still have PVCs
 count by (namespace, deployment) (
-  kube_deployment_spec_replicas{replicas="0"} *
+  (kube_deployment_spec_replicas == bool 0)
   on(namespace) group_left
-  kube_persistentvolumeclaim_info
+  count by (namespace) (kube_persistentvolumeclaim_info)
 )
 ```
 
@@ -73,14 +80,18 @@ kubectl get pvc --all-namespaces -o json > /tmp/pvcs.json
 
 # Get all mounted volumes
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[].spec.volumes[]?.persistentVolumeClaim.claimName' | \
+  jq -r '.items[] as $pod |
+    $pod.spec.volumes[]? |
+    select(.persistentVolumeClaim.claimName != null) |
+    [$pod.metadata.namespace, .persistentVolumeClaim.claimName] |
+    @tsv' | \
   sort -u > /tmp/mounted-pvcs.txt
 
 # Find unattached PVCs
 jq -r '.items[] | [.metadata.namespace, .metadata.name] | @tsv' /tmp/pvcs.json | \
   while read namespace pvc; do
-    if ! grep -q "^$pvc$" /tmp/mounted-pvcs.txt; then
-      size=$(kubectl get pvc -n $namespace $pvc -o jsonpath='{.spec.resources.requests.storage}')
+    if ! grep -q "^${namespace}[[:space:]]${pvc}$" /tmp/mounted-pvcs.txt; then
+      size=$(kubectl get pvc -n "$namespace" "$pvc" -o jsonpath='{.spec.resources.requests.storage}')
       echo "$namespace/$pvc - $size - UNATTACHED"
     fi
   done
@@ -94,7 +105,7 @@ For automated detection:
 # PVCs not mounted by any pod
 (
   count by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_info)
-  unless
+  unless on (namespace, persistentvolumeclaim)
   count by (namespace, persistentvolumeclaim) (kube_pod_spec_volumes_persistentvolumeclaims_info)
 )
 ```
@@ -105,11 +116,23 @@ LoadBalancer services without backing pods waste money on cloud load balancer ch
 
 ```bash
 # Find LoadBalancer services
-kubectl get svc --all-namespaces --field-selector spec.type=LoadBalancer -o json | \
-  jq -r '.items[] | [.metadata.namespace, .metadata.name, .spec.selector] | @tsv' | \
+kubectl get svc --all-namespaces -o json | \
+  jq -r '.items[] |
+    select(.spec.type == "LoadBalancer") |
+    [
+      .metadata.namespace,
+      .metadata.name,
+      ((.spec.selector // {}) | to_entries | map("\(.key)=\(.value)") | join(","))
+    ] |
+    @tsv' | \
   while read namespace svc selector; do
+    if [ -z "$selector" ]; then
+      echo "$namespace/$svc has no selector; check EndpointSlices or manually managed Endpoints"
+      continue
+    fi
+
     # Check if any pods match the selector
-    pod_count=$(kubectl get pods -n $namespace -l "$selector" --no-headers | wc -l)
+    pod_count=$(kubectl get pods -n "$namespace" -l "$selector" --no-headers 2>/dev/null | wc -l)
     if [ $pod_count -eq 0 ]; then
       echo "$namespace/$svc has no backend pods"
     fi
@@ -121,9 +144,12 @@ Monitor with Prometheus:
 ```promql
 # LoadBalancer services with zero endpoints
 (
-  count by (namespace, service) (kube_service_info{type="LoadBalancer"})
-  unless
-  count by (namespace, service) (kube_endpoint_address_available > 0)
+  count by (namespace, service) (kube_service_spec_type{type="LoadBalancer"} == 1)
+  unless on (namespace, service)
+  label_replace(
+    count by (namespace, endpoint) (kube_endpoint_address{ready="true"}),
+    "service", "$1", "endpoint", "(.*)"
+  )
 )
 ```
 
@@ -152,7 +178,8 @@ Find pods that have not restarted in months:
 ```bash
 kubectl get pods --all-namespaces -o json | \
   jq -r '.items[] |
-    select(.status.containerStatuses[0].restartCount == 0) |
+    select([.status.containerStatuses[]?.restartCount] | all(. == 0)) |
+    select(.status.startTime != null) |
     select(.status.startTime | fromdateiso8601 < (now - (90 * 86400))) |
     [.metadata.namespace, .metadata.name, .status.startTime] |
     @tsv'
@@ -177,7 +204,7 @@ for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
 
   # Check recent events
   recent_events=$(kubectl get events -n $ns --field-selector type=Normal \
-    --sort-by='.lastTimestamp' 2>/dev/null | \
+    --sort-by='.metadata.creationTimestamp' 2>/dev/null | \
     grep -v "LAST SEEN" | head -1)
 
   if [ $pod_count -eq 0 ] && [ $pvc_count -gt 0 ]; then
@@ -194,16 +221,17 @@ Combine multiple signals for confidence:
 
 ## Automated Cleanup Policies
 
-Implement policies to automatically clean up idle resources. Use Kyverno for policy enforcement:
+Implement policies to flag idle resources before cleanup. Use Kyverno for policy reporting and enforcement:
 
 ```yaml
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: delete-idle-pvcs
+  name: report-idle-pvcs
 spec:
+  background: true
   rules:
-  - name: cleanup-unattached-pvcs
+  - name: report-unattached-pvcs
     match:
       resources:
         kinds:
@@ -219,19 +247,20 @@ spec:
         urlPath: "/api/v1/namespaces/{{request.namespace}}/pods"
         jmesPath: "items[?spec.volumes[?persistentVolumeClaim.claimName=='{{request.object.metadata.name}}']].metadata.name | length(@)"
     validate:
-      message: "PVC has been unattached for 30+ days and will be deleted"
+      failureAction: Audit
+      message: "PVC appears to be bound, older than 30 days, and not mounted by any pod"
       deny:
         conditions:
           all:
           - key: "{{podCount}}"
             operator: Equals
             value: 0
-          - key: "{{ time_since('', '{{request.object.metadata.creationTimestamp}}', '') }}"
-            operator: GreaterThan
-            value: 2592000  # 30 days in seconds
+          - key: "{{ time_diff('{{request.object.metadata.creationTimestamp}}', '{{time_now_utc()}}') }}"
+            operator: DurationGreaterThan
+            value: 720h  # 30 days
 ```
 
-This policy marks PVCs unattached for 30+ days for deletion.
+This policy reports PVCs that appear unattached for review. Use a dedicated cleanup controller or a reviewed deletion workflow for destructive actions.
 
 For safer automation, label resources for review instead of deleting:
 
@@ -247,12 +276,25 @@ spec:
       resources:
         kinds:
         - PersistentVolumeClaim
+    context:
+    - name: podCount
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods"
+        jmesPath: "items[?spec.volumes[?persistentVolumeClaim.claimName=='{{request.object.metadata.name}}']].metadata.name | length(@)"
+    preconditions:
+      all:
+      - key: "{{ request.object.status.phase }}"
+        operator: Equals
+        value: "Bound"
+      - key: "{{podCount}}"
+        operator: Equals
+        value: 0
     mutate:
       patchStrategicMerge:
         metadata:
           labels:
             resource-status: potentially-idle
-            last-check: "{{time_now_utc}}"
+            last-check: "{{time_now_utc()}}"
 ```
 
 Review labeled resources manually before deletion.
@@ -267,22 +309,26 @@ sum(
   kube_persistentvolumeclaim_resource_requests_storage_bytes{} *
   on(persistentvolumeclaim, namespace) group_left
   (
-    count(kube_persistentvolumeclaim_info) unless
-    count(kube_pod_spec_volumes_persistentvolumeclaims_info)
+    count by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_info)
+    unless on (namespace, persistentvolumeclaim)
+    count by (namespace, persistentvolumeclaim) (kube_pod_spec_volumes_persistentvolumeclaims_info)
   )
 ) * $storage_cost_per_gb_month / (1024^3)
 
 # Idle LoadBalancer costs
 count(
   (
-    count by (namespace, service) (kube_service_info{type="LoadBalancer"})
-    unless
-    count by (namespace, service) (kube_endpoint_address_available > 0)
+    count by (namespace, service) (kube_service_spec_type{type="LoadBalancer"} == 1)
+    unless on (namespace, service)
+    label_replace(
+      count by (namespace, endpoint) (kube_endpoint_address{ready="true"}),
+      "service", "$1", "endpoint", "(.*)"
+    )
   )
 ) * $lb_monthly_cost
 
 # Zero-replica deployment costs
-count(kube_deployment_spec_replicas{replicas="0"}) * $avg_deployment_overhead_cost
+count(kube_deployment_spec_replicas == 0) * $avg_deployment_overhead_cost
 ```
 
 Display monthly waste amounts prominently to drive cleanup efforts.
