@@ -19,7 +19,7 @@ Good tasks are focused, parameterized, and composable. Each task should do one t
 Create a Kaniko-based build task:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: build-image
@@ -61,13 +61,28 @@ spec:
 
   steps:
     - name: build-and-push
-      image: gcr.io/kaniko-project/executor:latest
-      args:
-        - --dockerfile=$(params.DOCKERFILE)
-        - --context=$(workspaces.source.path)/$(params.CONTEXT)
-        - --destination=$(params.IMAGE)
-        - --digest-file=/tekton/results/IMAGE_DIGEST
-        - $(params.EXTRA_ARGS)
+      image: gcr.io/kaniko-project/executor:debug
+      script: |
+        #!/busybox/sh
+        set -e
+
+        BUILD_ARG_FLAGS=""
+        if [ -n "$(params.BUILD_ARGS)" ]; then
+          OLD_IFS="$IFS"
+          IFS=","
+          for BUILD_ARG in $(params.BUILD_ARGS); do
+            BUILD_ARG_FLAGS="$BUILD_ARG_FLAGS --build-arg=$BUILD_ARG"
+          done
+          IFS="$OLD_IFS"
+        fi
+
+        /kaniko/executor \
+          --dockerfile=$(params.DOCKERFILE) \
+          --context=$(workspaces.source.path)/$(params.CONTEXT) \
+          --destination=$(params.IMAGE) \
+          --digest-file=$(results.IMAGE_DIGEST.path) \
+          $BUILD_ARG_FLAGS \
+          $(params.EXTRA_ARGS)
       env:
         - name: DOCKER_CONFIG
           value: /tekton/home/.docker
@@ -84,7 +99,7 @@ spec:
 Build a flexible test execution task:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: run-tests
@@ -147,7 +162,7 @@ spec:
 Build a Kubernetes deployment task:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: deploy-to-kubernetes
@@ -165,6 +180,9 @@ spec:
       type: string
     - name: DEPLOYMENT_NAME
       description: Deployment name
+      type: string
+    - name: CONTAINER_NAME
+      description: Container name within the deployment
       type: string
     - name: IMAGE
       description: Container image to deploy
@@ -188,7 +206,7 @@ spec:
         set -e
 
         kubectl set image deployment/$(params.DEPLOYMENT_NAME) \
-          $(params.DEPLOYMENT_NAME)=$(params.IMAGE) \
+          $(params.CONTAINER_NAME)=$(params.IMAGE) \
           -n $(params.NAMESPACE)
 
     - name: wait-rollout
@@ -197,7 +215,7 @@ spec:
         #!/bin/bash
         set -e
 
-        if [ "$(params.WAIT_FOR_ROLLOUT)" == "true" ]; then
+        if [ "$(params.WAIT_FOR_ROLLOUT)" = "true" ]; then
           kubectl rollout status deployment/$(params.DEPLOYMENT_NAME) \
             -n $(params.NAMESPACE) \
             --timeout=$(params.TIMEOUT)
@@ -213,7 +231,7 @@ spec:
 Build a vulnerability scanning task:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: scan-image
@@ -251,18 +269,24 @@ spec:
         #!/bin/sh
         set -e
 
+        SKIP_DIR_FLAGS=""
+        if [ -n "$(params.SKIP_DIRS)" ]; then
+          SKIP_DIR_FLAGS="--skip-dirs $(params.SKIP_DIRS)"
+        fi
+
         trivy image \
           --severity $(params.SEVERITY) \
           --format json \
           --output scan-results.json \
+          $SKIP_DIR_FLAGS \
           $(params.IMAGE)
 
-        VULNS=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL" or .Severity=="HIGH")] | length' scan-results.json)
+        VULNS=$(jq '[.Results[].Vulnerabilities[]?] | length' scan-results.json)
         echo -n "$VULNS" > $(results.VULNERABILITIES_FOUND.path)
 
         if [ "$VULNS" -gt 0 ]; then
           echo "Found $VULNS vulnerabilities"
-          trivy image --severity $(params.FAIL_ON_SEVERITY) --exit-code 1 $(params.IMAGE)
+          trivy image --severity $(params.FAIL_ON_SEVERITY) --exit-code 1 $SKIP_DIR_FLAGS $(params.IMAGE)
           echo -n "failed" > $(results.SCAN_STATUS.path)
           exit 1
         else
@@ -275,7 +299,7 @@ spec:
 Build a notification task:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: send-notification
@@ -381,7 +405,7 @@ kubectl apply -R -f tekton-catalog/tasks/
 Reference catalog tasks:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: complete-pipeline
@@ -390,6 +414,8 @@ spec:
     - name: repo-url
     - name: image-name
     - name: namespace
+    - name: deployment-name
+    - name: container-name
 
   workspaces:
     - name: shared-workspace
@@ -439,6 +465,10 @@ spec:
       params:
         - name: NAMESPACE
           value: $(params.namespace)
+        - name: DEPLOYMENT_NAME
+          value: $(params.deployment-name)
+        - name: CONTAINER_NAME
+          value: $(params.container-name)
         - name: IMAGE
           value: $(params.image-name)
 ```
@@ -448,7 +478,7 @@ spec:
 Add proper documentation:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: build-image
@@ -479,22 +509,22 @@ spec:
     - IMAGE_URL: Full image URL
 
     ## Examples
-    ```yaml
+    ~~~yaml
     - name: build
       taskRef:
         name: build-image
       params:
         - name: IMAGE
           value: registry.example.com/myapp:v1.0.0
-    ```bash
-```text
+    ~~~
+```
 
 ## Testing Catalog Tasks
 
 Create test pipelines:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: test-build-task
@@ -511,11 +541,17 @@ spec:
           - name: create-dockerfile
             image: bash:latest
             script: |
+              #!/bin/bash
+              set -e
+
               cd $(workspaces.output.path)
-              cat > Dockerfile <<EOF
+              cat > Dockerfile <<'EOF'
               FROM alpine:latest
               CMD ["echo", "test"]
               EOF
+      workspaces:
+        - name: output
+          workspace: test-workspace
 
     - name: test-build
       runAfter: [setup-test-code]
