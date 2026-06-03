@@ -1,22 +1,22 @@
-# How to Configure Secret Store CSI Driver with Auto Rotation for Vault Secrets
+# How to Configure Secrets Store CSI Driver with Auto Rotation for Vault Secrets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Vault, CSI
 
-Description: Learn how to use the Secret Store CSI Driver to mount Vault secrets directly into pods with automatic rotation, eliminating the need for Kubernetes Secrets entirely.
+Description: Learn how to use the Secrets Store CSI Driver to mount Vault secrets directly into pods with automatic rotation, eliminating the need for Kubernetes Secrets for file-based secret consumption.
 
 ---
 
 Traditional secret management in Kubernetes involves syncing secrets from external stores into Kubernetes Secrets, then mounting them in pods. This creates a delay between secret updates and pod availability, requires additional operators, and stores secrets redundantly.
 
-The Secret Store CSI Driver eliminates this by mounting secrets directly from external stores like Vault into pod volumes. Secrets stay in Vault, never touch etcd, and can automatically rotate without pod restarts. This reduces attack surface and simplifies secret lifecycle management.
+The Secrets Store CSI Driver eliminates this by mounting secrets directly from external stores like Vault into pod volumes. Secrets stay in Vault, do not need to be stored in etcd, and can automatically rotate without pod restarts. This reduces attack surface and simplifies secret lifecycle management.
 
 In this guide, you'll learn how to install the CSI Driver, configure it with HashiCorp Vault, implement automatic rotation, and handle dynamic secrets with short TTLs.
 
 ## Understanding CSI Driver Architecture
 
-The Secret Store CSI Driver works differently from traditional approaches:
+The Secrets Store CSI Driver works differently from traditional approaches:
 
 Traditional flow:
 1. External Secrets Operator syncs from Vault
@@ -27,15 +27,15 @@ CSI Driver flow:
 1. Pod starts with CSI volume definition
 2. CSI Driver fetches secret directly from Vault
 3. Mounts secret into pod without touching etcd
-4. Periodically refreshes secret content
+4. Periodically refreshes secret content when rotation is enabled
 
 Benefits:
 - Secrets never stored in etcd
-- No intermediate Kubernetes Secrets
+- No intermediate Kubernetes Secrets unless you enable optional secret sync
 - Automatic rotation without pod restarts
 - Direct integration with external secret stores
 
-## Installing Secret Store CSI Driver
+## Installing Secrets Store CSI Driver
 
 Install using Helm:
 
@@ -63,7 +63,7 @@ kubectl get csidriver
 
 ## Installing Vault CSI Provider
 
-Install the Vault-specific CSI provider:
+Install the Vault-specific CSI provider with the official HashiCorp Vault Helm chart:
 
 ```bash
 # Add HashiCorp Helm repository
@@ -71,15 +71,18 @@ helm repo add hashicorp https://helm.releases.hashicorp.com
 helm repo update
 
 # Install Vault CSI Provider
-helm install vault-csi-provider hashicorp/vault-csi-provider \
-  --namespace kube-system \
-  --set vault.address="https://vault.example.com:8200"
+helm install vault hashicorp/vault \
+  --namespace vault \
+  --create-namespace \
+  --set "global.externalVaultAddr=https://vault.example.com:8200" \
+  --set "injector.enabled=false" \
+  --set "csi.enabled=true"
 ```
 
 Verify:
 
 ```bash
-kubectl get pods -n kube-system -l app.kubernetes.io/name=vault-csi-provider
+kubectl get pods -n vault -l app.kubernetes.io/name=vault-csi-provider
 ```
 
 ## Configuring Vault
@@ -208,10 +211,10 @@ spec:
           mountPath: "/mnt/secrets"
           readOnly: true
         env:
-        # Read secrets from mounted files
-        - name: DB_USERNAME
+        # Pass file paths; the application reads the mounted files.
+        - name: DB_USERNAME_FILE
           value: "/mnt/secrets/db-username"
-        - name: DB_PASSWORD
+        - name: DB_PASSWORD_FILE
           value: "/mnt/secrets/db-password"
       volumes:
       - name: secrets-store
@@ -247,8 +250,8 @@ Configure rotation in the CSI Driver:
 ```
 
 The CSI Driver automatically:
-1. Polls Vault every 60 seconds
-2. Detects changed secrets
+1. Re-fetches secrets after the configured rotation interval
+2. Detects changed mounted content
 3. Updates mounted files
 4. Application reads new values
 
@@ -303,7 +306,7 @@ spec:
         secretKey: "password"
 ```
 
-This creates a Kubernetes Secret that applications can use:
+This creates a Kubernetes Secret that applications can use after a pod mounts the SecretProviderClass:
 
 ```yaml
 env:
@@ -370,7 +373,7 @@ spec:
         secretKey: "password"
 ```
 
-The CSI Driver automatically requests new credentials before expiration.
+When the provider is installed with Vault Agent caching, Vault Agent can cache and renew dynamic leases. The CSI Driver rotation loop then refreshes the mounted files after the configured rotation interval.
 
 ## Handling Multiple Secret Paths
 
@@ -432,7 +435,7 @@ Check CSI Driver logs:
 kubectl logs -n kube-system -l app.kubernetes.io/name=secrets-store-csi-driver
 
 # Provider logs
-kubectl logs -n kube-system -l app.kubernetes.io/name=vault-csi-provider
+kubectl logs -n vault -l app.kubernetes.io/name=vault-csi-provider
 ```
 
 Verify secrets are mounted:
@@ -469,4 +472,4 @@ kubectl describe secretproviderclass vault-database-creds -n production
 
 8. **Back up Vault**: CSI Driver depends on Vault availability.
 
-The Secret Store CSI Driver provides direct integration between Vault and Kubernetes without storing secrets in etcd. Combined with automatic rotation, it creates a secure, efficient secret management solution that keeps sensitive data in your secret manager while making it seamlessly available to applications.
+The Secrets Store CSI Driver provides direct integration between Vault and Kubernetes without storing secrets in etcd unless you opt into Kubernetes Secret sync. Combined with automatic rotation, it creates a secure, efficient secret management solution that keeps sensitive data in your secret manager while making it seamlessly available to applications.
