@@ -37,7 +37,7 @@ aws securityhub enable-security-hub \
   --no-enable-default-standards
 ```
 
-The `--enable-default-standards` flag automatically enables the CIS AWS Foundations Benchmark and the AWS Foundational Security Best Practices standard. If you want to be selective about which standards to enable, use `--no-enable-default-standards`.
+The `--enable-default-standards` flag automatically enables CIS AWS Foundations Benchmark v1.2.0 and the AWS Foundational Security Best Practices standard. If you want to be selective about which standards to enable, use `--no-enable-default-standards`.
 
 Verify it's enabled.
 
@@ -77,7 +77,7 @@ For more details on compliance standards, see [using Security Hub compliance sta
 
 ## Enabling Product Integrations
 
-Enable integrations with other AWS services to start receiving their findings.
+For most AWS service integrations, Security Hub starts receiving findings automatically after both Security Hub and the other service are enabled. If an integration's finding import was disabled, you can re-enable it with the product ARN.
 
 ```bash
 # Enable GuardDuty integration
@@ -109,8 +109,12 @@ aws securityhub describe-products --query 'Products[].{Name:ProductName,ARN:Prod
 Here's the complete Terraform setup for Security Hub.
 
 ```hcl
+data "aws_region" "current" {}
+
 # Enable Security Hub
-resource "aws_securityhub_account" "main" {}
+resource "aws_securityhub_account" "main" {
+  enable_default_standards = false
+}
 
 # Enable CIS Benchmark
 resource "aws_securityhub_standards_subscription" "cis" {
@@ -120,25 +124,25 @@ resource "aws_securityhub_standards_subscription" "cis" {
 
 # Enable AWS Foundational Security Best Practices
 resource "aws_securityhub_standards_subscription" "aws_best_practices" {
-  standards_arn = "arn:aws:securityhub:${data.aws_region.current.name}::standards/aws-foundational-security-best-practices/v/1.0.0"
+  standards_arn = "arn:aws:securityhub:${data.aws_region.current.id}::standards/aws-foundational-security-best-practices/v/1.0.0"
   depends_on    = [aws_securityhub_account.main]
 }
 
 # Enable PCI DSS
 resource "aws_securityhub_standards_subscription" "pci" {
-  standards_arn = "arn:aws:securityhub:${data.aws_region.current.name}::standards/pci-dss/v/3.2.1"
+  standards_arn = "arn:aws:securityhub:${data.aws_region.current.id}::standards/pci-dss/v/3.2.1"
   depends_on    = [aws_securityhub_account.main]
 }
 
 # Enable GuardDuty integration
 resource "aws_securityhub_product_subscription" "guardduty" {
-  product_arn = "arn:aws:securityhub:${data.aws_region.current.name}::product/aws/guardduty"
+  product_arn = "arn:aws:securityhub:${data.aws_region.current.id}::product/aws/guardduty"
   depends_on  = [aws_securityhub_account.main]
 }
 
 # Enable Inspector integration
 resource "aws_securityhub_product_subscription" "inspector" {
-  product_arn = "arn:aws:securityhub:${data.aws_region.current.name}::product/aws/inspector"
+  product_arn = "arn:aws:securityhub:${data.aws_region.current.id}::product/aws/inspector"
   depends_on  = [aws_securityhub_account.main]
 }
 ```
@@ -177,7 +181,7 @@ aws securityhub get-findings \
 aws securityhub get-findings \
   --filters '{
     "ComplianceStatus": [{"Value": "FAILED", "Comparison": "EQUALS"}],
-    "ProductName": [{"Value": "Security Hub", "Comparison": "EQUALS"}]
+    "ProductName": [{"Value": "Security Hub CSPM", "Comparison": "EQUALS"}]
   }'
 ```
 
@@ -229,9 +233,9 @@ aws securityhub update-standards-control \
 
 ## Understanding the Security Score
 
-Security Hub calculates a security score (0-100%) for each standard based on the ratio of passing to failing controls. The score appears on the Security Hub dashboard.
+Security Hub calculates a security score (0-100%) for each standard based on the proportion of passed controls to enabled controls with evaluation data. The score appears on the Security Hub dashboard.
 
-A 100% score means all enabled controls are passing. It doesn't mean you're perfectly secure - just that you're meeting the checks in the enabled standards.
+A 100% score means all enabled controls with evaluation data are passing. It doesn't mean you're perfectly secure - just that you're meeting the checks in the enabled standards.
 
 To improve your score:
 1. Fix the failing controls (start with critical and high severity)
@@ -242,9 +246,9 @@ To improve your score:
 
 Security Hub charges per finding ingested and per compliance check run:
 - Finding ingestion: First 10,000 findings per account per region per month are free, then $0.00003 per finding
-- Security checks: First 1,000 checks per account per region per month are free, then $0.0010 per check
+- Security checks: First 100,000 checks per account per region per month are $0.0010 per check, with lower per-check rates at higher volumes
 
-For most accounts, Security Hub costs $10-50/month. The value of centralized security visibility far outweighs this cost.
+Security Hub CSPM includes a 30-day free trial for new accounts. After that, cost depends on your finding volume, number of security checks, enabled Regions, and any automation rule evaluations.
 
 ## What's Next
 
