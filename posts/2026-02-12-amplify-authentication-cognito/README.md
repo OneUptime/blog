@@ -8,7 +8,7 @@ Description: Learn how to implement authentication in your application using AWS
 
 ---
 
-Amplify's Auth module is a higher-level wrapper around Cognito that simplifies common authentication tasks. Instead of working with the Cognito SDK directly - managing token refresh, handling challenge flows, and dealing with JWKS validation - you get clean, promise-based APIs that handle the complexity for you.
+Amplify's Auth module is a higher-level wrapper around Cognito that simplifies common authentication tasks. Instead of working with the Cognito SDK directly - managing token refresh, handling challenge flows, and retrieving tokens - you get clean, promise-based APIs that handle the complexity for you.
 
 If you've set up Cognito the manual way before (and dealt with all the token management headaches), Amplify Auth will feel like a breath of fresh air. Let's implement a complete auth system.
 
@@ -35,7 +35,7 @@ amplify push
 Install the client libraries:
 
 ```bash
-npm install aws-amplify
+npm install aws-amplify @aws-amplify/ui-react
 ```
 
 Configure Amplify in your app entry point:
@@ -90,13 +90,13 @@ async function handleSignUp(email, password, name) {
 
 async function handleConfirmSignUp(email, code) {
     try {
-        const { isSignUpComplete } = await confirmSignUp({
+        const { isSignUpComplete, nextStep } = await confirmSignUp({
             username: email,
             confirmationCode: code,
         });
 
-        if (isSignUpComplete) {
-            // If autoSignIn was enabled, call autoSignIn
+        if (nextStep.signUpStep === 'COMPLETE_AUTO_SIGN_IN') {
+            // If autoSignIn was enabled, call autoSignIn when prompted
             const signInResult = await autoSignIn();
             console.log('Auto sign-in complete:', signInResult);
         }
@@ -143,11 +143,23 @@ async function handleSignIn(email, password) {
             case 'CONFIRM_SIGN_IN_WITH_SMS_CODE':
                 return { challenge: 'SMS', message: 'Enter the code sent to your phone' };
 
+            case 'CONFIRM_SIGN_IN_WITH_EMAIL_CODE':
+                return { challenge: 'EMAIL', message: 'Enter the code sent to your email' };
+
             case 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED':
                 return { challenge: 'NEW_PASSWORD', message: 'Please set a new password' };
 
             case 'CONFIRM_SIGN_IN_WITH_CUSTOM_CHALLENGE':
                 return { challenge: 'CUSTOM', message: 'Complete the custom challenge' };
+
+            case 'CONTINUE_SIGN_IN_WITH_MFA_SELECTION':
+                return { challenge: 'MFA_SELECTION', allowedMFATypes: nextStep.allowedMFATypes };
+
+            case 'RESET_PASSWORD':
+                return { challenge: 'RESET_PASSWORD', message: 'Please reset your password' };
+
+            case 'CONFIRM_SIGN_UP':
+                return { challenge: 'CONFIRM_SIGN_UP', message: 'Please verify your email first' };
 
             default:
                 throw new Error(`Unexpected sign-in step: ${nextStep.signInStep}`);
@@ -289,8 +301,8 @@ Configure social providers:
 ```bash
 amplify update auth
 
-# Select: Apply head-to-head changes
-# Add social providers: Google, Facebook, Apple
+# Select: Default configuration with Social Provider (Federation)
+# Select social providers: Google, Facebook, Apple
 # Provide OAuth credentials for each provider
 amplify push
 ```
@@ -359,7 +371,8 @@ Build a React context for app-wide auth state:
 
 ```jsx
 import { createContext, useContext, useEffect, useState } from 'react';
-import { getCurrentUser, fetchUserAttributes, Hub } from 'aws-amplify/auth';
+import { getCurrentUser, fetchUserAttributes } from 'aws-amplify/auth';
+import { Hub } from 'aws-amplify/utils';
 
 const AuthContext = createContext(null);
 
