@@ -57,34 +57,65 @@ Resources from namespaces not in the mapping are restored to their original name
 
 ## Storage Class Mapping
 
-When restoring to a cluster with different storage classes, map the old storage class names to new ones:
+When restoring to a cluster with different storage classes, map the old storage class names to new ones by creating a Velero plugin configuration ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: change-storage-class-config
+  namespace: velero
+  labels:
+    velero.io/plugin-config: ""
+    velero.io/change-storage-class: RestoreItemAction
+data:
+  gp2: gp3
+  standard: premium-rwo
+```
+
+Apply the ConfigMap before starting the restore:
 
 ```bash
-# Map storage classes during restore
+kubectl apply -f change-storage-class-config.yaml
+
 velero restore create storage-migration \
-  --from-backup production-backup \
-  --storage-class-mappings gp2:gp3,standard:premium-rwo
+  --from-backup production-backup
 ```
 
 This changes any PersistentVolumeClaim using the gp2 storage class to use gp3 instead, and standard to premium-rwo.
 
 ## Combined Namespace and Storage Mapping
 
-Combine both types of mapping for complex scenarios:
+Combine namespace mapping with a storage class mapping ConfigMap for complex scenarios:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: change-storage-class-config
+  namespace: velero
+  labels:
+    velero.io/plugin-config: ""
+    velero.io/change-storage-class: RestoreItemAction
+data:
+  gp2: gp3
+  io1: io2
+```
 
 ```bash
 # Restore with both namespace and storage class mapping
+kubectl apply -f change-storage-class-config.yaml
+
 velero restore create complex-restore \
   --from-backup production-full \
-  --namespace-mappings production:staging,monitoring:monitoring-test \
-  --storage-class-mappings gp2:gp3,io1:io2
+  --namespace-mappings production:staging,monitoring:monitoring-test
 ```
 
 This gives you complete control over where and how resources are restored.
 
-## Using ConfigMaps for Complex Mappings
+## Using Restore Manifests for Complex Mappings
 
-For complex restore scenarios, create a restore configuration file:
+For complex namespace restore scenarios, create a restore configuration file:
 
 ```yaml
 apiVersion: velero.io/v1
@@ -102,10 +133,6 @@ spec:
     production: test-env-1
     database: test-env-1-db
     cache: test-env-1-cache
-  storageClassMapping:
-    gp2: gp3
-    io1: io2
-    premium-ssd: standard-ssd
   restorePVs: true
 ```
 
@@ -152,7 +179,6 @@ kubectl create namespace ${TEST_ENV_NAME}
 velero restore create ${TEST_ENV_NAME}-restore \
   --from-backup ${BACKUP_NAME} \
   --namespace-mappings production:${TEST_ENV_NAME} \
-  --storage-class-mappings gp2:gp3 \
   --wait
 
 # Update ingress hostnames to avoid conflicts
@@ -181,6 +207,19 @@ spec:
   - databases
   storageLocation: migration-bucket
 ---
+# Target cluster storage-class mapping
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: change-storage-class-config
+  namespace: velero
+  labels:
+    velero.io/plugin-config: ""
+    velero.io/change-storage-class: RestoreItemAction
+data:
+  aws-gp2: azure-standard
+  aws-io1: azure-premium
+---
 # Target cluster restore with mapping
 apiVersion: velero.io/v1
 kind: Restore
@@ -192,9 +231,6 @@ spec:
   namespaceMapping:
     applications: apps
     databases: data
-  storageClassMapping:
-    aws-gp2: azure-standard
-    aws-io1: azure-premium
   excludedResources:
   - nodes
   - events
@@ -216,23 +252,17 @@ kubectl get configmap -n staging -o yaml | \
   kubectl apply -f -
 ```
 
-For more automated handling, use a post-restore hook:
+For more automated handling, run the update step after waiting for the restore to complete:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: post-restore-hook
-  namespace: velero
-  labels:
-    velero.io/restore-name: app-restore
-data:
-  script: |
-    #!/bin/bash
-    # Update all service references to new namespace
-    kubectl get cm,deploy,sts -n staging -o yaml | \
-      sed 's/production\.svc/staging.svc/g' | \
-      kubectl apply -f -
+```bash
+velero restore create app-restore \
+  --from-backup production-backup \
+  --namespace-mappings production:staging \
+  --wait
+
+kubectl get cm,deploy,sts -n staging -o yaml | \
+  sed 's/production\.svc/staging.svc/g' | \
+  kubectl apply -f -
 ```
 
 ## Validating Restore Mappings
@@ -240,11 +270,11 @@ data:
 Before restoring to production, validate mappings in a test namespace:
 
 ```bash
-# Dry-run restore to see what would happen
+# Test restore to validate the mappings
 velero restore create validation-restore \
   --from-backup production-backup \
   --namespace-mappings production:validation-test \
-  --storage-class-mappings gp2:gp3
+  --wait
 
 # Check the restored resources
 kubectl get all -n validation-test
@@ -310,20 +340,36 @@ Create reusable scripts for common mapping scenarios:
 
 import subprocess
 import json
-import sys
 
 def create_restore(backup_name, source_ns, target_ns, storage_mapping):
     """Create a Velero restore with namespace and storage mapping."""
+
+    if storage_mapping:
+        configmap = {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {
+                "name": "change-storage-class-config",
+                "namespace": "velero",
+                "labels": {
+                    "velero.io/plugin-config": "",
+                    "velero.io/change-storage-class": "RestoreItemAction",
+                },
+            },
+            "data": storage_mapping,
+        }
+        subprocess.run(
+            ["kubectl", "apply", "-f", "-"],
+            input=json.dumps(configmap),
+            text=True,
+            check=True,
+        )
 
     cmd = [
         "velero", "restore", "create", f"{target_ns}-restore",
         "--from-backup", backup_name,
         "--namespace-mappings", f"{source_ns}:{target_ns}",
     ]
-
-    if storage_mapping:
-        mappings = ",".join([f"{k}:{v}" for k, v in storage_mapping.items()])
-        cmd.extend(["--storage-class-mappings", mappings])
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     print(result.stdout)
