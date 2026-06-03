@@ -68,10 +68,22 @@ metadata:
   name: ceph-csi
 ---
 apiVersion: v1
-kind: ServiceAccount
+kind: ConfigMap
 metadata:
-  name: cephfs-csi-provisioner
+  name: ceph-csi-config
   namespace: ceph-csi
+data:
+  config.json: |-
+    [
+      {
+        "clusterID": "b9127830-b0cc-4e34-aa47-9d1a2e9949a8",
+        "monitors": [
+          "10.0.0.10:6789",
+          "10.0.0.11:6789",
+          "10.0.0.12:6789"
+        ]
+      }
+    ]
 ---
 apiVersion: v1
 kind: Secret
@@ -79,12 +91,9 @@ metadata:
   name: csi-cephfs-secret
   namespace: ceph-csi
 stringData:
-  # Get from: ceph auth get-key client.admin
+  # userID must not include the "client." prefix.
   userID: admin
-  userKey: AQD1ixZg7SRKCxAAqZ0PJqLXFpZ4w5rSl/FYrQ==
-  # Optional: additional user for node plugin
-  adminID: admin
-  adminKey: AQD1ixZg7SRKCxAAqZ0PJqLXFpZ4w5rSl/FYrQ==
+  userKey: <key-from-ceph-auth-get-key-client-admin>
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -101,20 +110,23 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: ceph-csi
   csi.storage.k8s.io/controller-expand-secret-name: csi-cephfs-secret
   csi.storage.k8s.io/controller-expand-secret-namespace: ceph-csi
+  csi.storage.k8s.io/controller-publish-secret-name: csi-cephfs-secret
+  csi.storage.k8s.io/controller-publish-secret-namespace: ceph-csi
   csi.storage.k8s.io/node-stage-secret-name: csi-cephfs-secret
   csi.storage.k8s.io/node-stage-secret-namespace: ceph-csi
 
 reclaimPolicy: Delete
 allowVolumeExpansion: true
-mountOptions:
-  - debug
 ```
 
-Get your cluster ID and auth key:
+Get your cluster ID, monitor endpoints, and auth key:
 
 ```bash
 # Get cluster ID (fsid)
 ceph fsid
+
+# Get monitor endpoints for the ceph-csi-config ConfigMap
+ceph mon dump
 
 # Get admin key
 ceph auth get-key client.admin
@@ -124,12 +136,14 @@ ceph auth get-key client.admin
 
 Apply the complete CSI driver deployment:
 
-```yaml
+```bash
 # Download and apply official Ceph CSI manifests
-kubectl apply -f https://raw.githubusercontent.com/ceph/ceph-csi/master/deploy/cephfs/kubernetes/csi-provisioner-rbac.yaml
-kubectl apply -f https://raw.githubusercontent.com/ceph/ceph-csi/master/deploy/cephfs/kubernetes/csi-nodeplugin-rbac.yaml
-kubectl apply -f https://raw.githubusercontent.com/ceph/ceph-csi/master/deploy/cephfs/kubernetes/csi-cephfsplugin-provisioner.yaml
-kubectl apply -f https://raw.githubusercontent.com/ceph/ceph-csi/master/deploy/cephfs/kubernetes/csi-cephfsplugin.yaml
+kubectl apply -f https://raw.githubusercontent.com/ceph/ceph-csi/devel/deploy/cephfs/kubernetes/csidriver.yaml
+kubectl apply -n ceph-csi -f https://raw.githubusercontent.com/ceph/ceph-csi/devel/deploy/cephfs/kubernetes/csi-provisioner-rbac.yaml
+kubectl apply -n ceph-csi -f https://raw.githubusercontent.com/ceph/ceph-csi/devel/deploy/cephfs/kubernetes/csi-nodeplugin-rbac.yaml
+kubectl apply -n ceph-csi -f https://raw.githubusercontent.com/ceph/ceph-csi/devel/deploy/ceph-conf.yaml
+kubectl apply -n ceph-csi -f https://raw.githubusercontent.com/ceph/ceph-csi/devel/deploy/cephfs/kubernetes/csi-cephfsplugin-provisioner.yaml
+kubectl apply -n ceph-csi -f https://raw.githubusercontent.com/ceph/ceph-csi/devel/deploy/cephfs/kubernetes/csi-cephfsplugin.yaml
 ```
 
 Verify the driver is running:
@@ -301,24 +315,22 @@ parameters:
   clusterID: b9127830-b0cc-4e34-aa47-9d1a2e9949a8
   fsName: cephfs
   pool: cephfs_data
+  mounter: kernel
+  # Comma-separated options passed to the CephFS kernel client
+  kernelMountOptions: rasize=16384,noatime
   csi.storage.k8s.io/provisioner-secret-name: csi-cephfs-secret
   csi.storage.k8s.io/provisioner-secret-namespace: ceph-csi
+  csi.storage.k8s.io/controller-expand-secret-name: csi-cephfs-secret
+  csi.storage.k8s.io/controller-expand-secret-namespace: ceph-csi
+  csi.storage.k8s.io/controller-publish-secret-name: csi-cephfs-secret
+  csi.storage.k8s.io/controller-publish-secret-namespace: ceph-csi
   csi.storage.k8s.io/node-stage-secret-name: csi-cephfs-secret
   csi.storage.k8s.io/node-stage-secret-namespace: ceph-csi
 reclaimPolicy: Delete
 allowVolumeExpansion: true
-mountOptions:
-  # Increase read-ahead for better sequential read performance
-  - rasize=16384
-  # Cache directory information
-  - dcache
-  # Disable access time updates for better performance
-  - noatime
-  # Optimize for small files
-  - inline_data
 ```
 
-These mount options improve performance for different workload types.
+These mount options increase read-ahead for sequential reads and disable access time updates.
 
 ## Monitoring CephFS Performance
 
@@ -329,13 +341,13 @@ Check filesystem usage and performance:
 ceph fs status cephfs
 
 # Monitor client connections
-ceph tell mds.cephfs client ls
+ceph tell mds.0 client ls
 
 # Check filesystem capacity
 ceph df
 
 # Monitor MDS performance
-ceph daemonperf mds.cephfs
+ceph daemonperf mds.0
 
 # Check pool statistics
 ceph osd pool stats cephfs_data
@@ -365,10 +377,10 @@ Key metrics to monitor:
 
 ```promql
 # MDS latency
-ceph_mds_request_latency_sum / ceph_mds_request_latency_count
+rate(ceph_mds_reply_latency_sum[30s]) / rate(ceph_mds_reply_latency_count[30s])
 
 # Client session count
-ceph_mds_sessions
+ceph_mds_sessions_session_count
 
 # Metadata pool usage
 ceph_pool_stored{pool="cephfs_metadata"}
@@ -405,8 +417,9 @@ For permission issues:
 # Create dedicated CephFS user with limited permissions
 ceph auth get-or-create client.kubernetes \
   mon 'allow r' \
+  mgr 'allow rw' \
   mds 'allow rw' \
-  osd 'allow rw pool=cephfs_data, allow rw pool=cephfs_metadata'
+  osd 'allow rw tag cephfs data=cephfs'
 
 # Get the key
 ceph auth get-key client.kubernetes
@@ -428,24 +441,35 @@ getfattr -n ceph.quota.max_bytes /mnt/cephfs/project-a
 getfattr -n ceph.quota.max_files /mnt/cephfs/project-a
 ```
 
-Implement quotas in Kubernetes using subvolume groups:
+Implement quotas in Kubernetes using subvolume groups. First create the group in CephFS:
+
+```bash
+ceph fs subvolumegroup create cephfs kubernetes
+```
+
+Then set the group in the Ceph CSI configuration:
 
 ```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: cephfs-quota
-provisioner: cephfs.csi.ceph.com
-parameters:
-  clusterID: b9127830-b0cc-4e34-aa47-9d1a2e9949a8
-  fsName: cephfs
-  pool: cephfs_data
-  # Create isolated subvolumes with quotas
-  subvolumeGroup: kubernetes
-  csi.storage.k8s.io/provisioner-secret-name: csi-cephfs-secret
-  csi.storage.k8s.io/provisioner-secret-namespace: ceph-csi
-  csi.storage.k8s.io/node-stage-secret-name: csi-cephfs-secret
-  csi.storage.k8s.io/node-stage-secret-namespace: ceph-csi
+  name: ceph-csi-config
+  namespace: ceph-csi
+data:
+  config.json: |-
+    [
+      {
+        "clusterID": "b9127830-b0cc-4e34-aa47-9d1a2e9949a8",
+        "monitors": [
+          "10.0.0.10:6789",
+          "10.0.0.11:6789",
+          "10.0.0.12:6789"
+        ],
+        "cephFS": {
+          "subvolumeGroup": "kubernetes"
+        }
+      }
+    ]
 ```
 
 ## Snapshot Support
