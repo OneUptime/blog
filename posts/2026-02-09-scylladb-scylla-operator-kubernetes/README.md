@@ -22,14 +22,17 @@ Deploy the Scylla Operator to manage cluster lifecycle:
 
 ```bash
 # Install cert-manager (required by Scylla Operator)
-
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply --server-side -f=https://raw.githubusercontent.com/scylladb/scylla-operator/v1.21/examples/third-party/cert-manager.yaml
 
 # Wait for cert-manager to be ready
-kubectl wait --for=condition=ready pod -l app=cert-manager -n cert-manager --timeout=300s
+kubectl wait --for='condition=established' --timeout=60s crd/certificates.cert-manager.io crd/issuers.cert-manager.io
+for deploy in cert-manager cert-manager-cainjector cert-manager-webhook; do
+  kubectl -n=cert-manager rollout status --timeout=10m deployment.apps/"${deploy}"
+done
 
 # Install Scylla Operator
-kubectl apply -f https://github.com/scylladb/scylla-operator/releases/latest/download/install.yaml
+kubectl create namespace scylla-operator
+kubectl -n=scylla-operator apply --server-side -f=https://raw.githubusercontent.com/scylladb/scylla-operator/v1.21/deploy/operator.yaml
 
 # Create namespace for Scylla cluster
 kubectl create namespace scylla
@@ -102,14 +105,10 @@ spec:
   # Network configuration
   network:
     hostNetworking: false
-    dnsPolicy: ClusterFirstWithHostNet
+    dnsPolicy: ClusterFirst
 
-  # Resources for init containers
+  # Additional ScyllaDB startup arguments
   scyllaArgs: "--smp 4 --memory 14G --reserve-memory 2G --overprovisioned"
-
-  # Monitoring integration
-  monitoring:
-    enabled: true
 ```
 
 Deploy the cluster:
@@ -212,12 +211,6 @@ spec:
     --smp 8
     --memory 28G
     --reserve-memory 4G
-    --io-properties-file=/etc/scylla.d/io_properties.yaml
-    --max-io-requests 128
-    --api-address 0.0.0.0
-    --rpc-address 0.0.0.0
-    --listen-address $(POD_IP)
-    --prometheus-address 0.0.0.0:9180
 ```
 
 Create I/O configuration for NVMe SSDs:
@@ -241,7 +234,25 @@ data:
 
 This configures ScyllaDB to maximize throughput from fast storage.
 
-## Implementing Multi-Datacenter Replication
+Mount the ConfigMap into each rack so the operator sidecar can pass `--io-setup=0 --io-properties-file=/etc/scylla.d/io_properties.yaml` when ScyllaDB starts:
+
+```yaml
+spec:
+  datacenter:
+    racks:
+      - name: us-west-2a
+        volumes:
+          - name: io-properties
+            configMap:
+              name: scylla-io-properties
+        volumeMounts:
+          - name: io-properties
+            mountPath: /etc/scylla.d/io_properties.yaml
+            subPath: io_properties.yaml
+            readOnly: true
+```
+
+## Implementing Multi-AZ Replication
 
 Add additional racks for multi-AZ deployment:
 
@@ -279,34 +290,40 @@ spec:
                         - us-west-2c
 ```
 
-ScyllaDB automatically distributes replicas across racks for high availability.
+ScyllaDB uses rack-aware replica placement within the datacenter for high availability.
 
 ## Monitoring ScyllaDB Performance
 
-Deploy Prometheus monitoring:
+Deploy ScyllaDB monitoring with the `ScyllaDBMonitoring` custom resource:
 
 ```yaml
-# servicemonitor.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+# scylladbmonitoring.yaml
+apiVersion: scylla.scylladb.com/v1alpha1
+kind: ScyllaDBMonitoring
 metadata:
-  name: scylla-monitor
+  name: scylla-cluster-monitoring
   namespace: scylla
 spec:
-  selector:
+  endpointsSelector:
     matchLabels:
       app.kubernetes.io/name: scylla
-  endpoints:
-    - port: prometheus
-      interval: 30s
-      path: /metrics
+      scylla-operator.scylladb.com/scylla-service-type: member
+      scylla/cluster: scylla-cluster
+  components:
+    prometheus:
+      mode: External
+    grafana:
+      datasources:
+        - name: prometheus
+          type: Prometheus
+          url: http://prometheus.scylla.svc.cluster.local:9090
+          prometheusOptions: {}
 ```
 
 Key metrics to monitor:
 
-- Read latency: `scylla_storage_proxy_coordinator_read_latency_sum`
-- Write latency: `scylla_storage_proxy_coordinator_write_latency_sum`
-- Cache hit ratio: `scylla_cache_row_hits / scylla_cache_row_misses`
+- Read and write latency: use the ScyllaDB Monitoring dashboards or `nodetool proxyhistograms`
+- Cache hit ratio: `scylla_cache_row_hits / (scylla_cache_row_hits + scylla_cache_row_misses)`
 - Compaction backlog: `scylla_compaction_manager_pending_compactions`
 
 ScyllaDB typically delivers p99 read latencies under 1ms with proper tuning.
@@ -335,7 +352,7 @@ Configure automated backups using Scylla Manager:
 
 ```yaml
 # scylla-manager.yaml
-apiVersion: scylla.scylladb.com/v1alpha1
+apiVersion: scylla.scylladb.com/v1
 kind: ScyllaCluster
 metadata:
   name: scylla-cluster
@@ -350,29 +367,28 @@ spec:
       location:
         - s3:scylla-backups/cluster-backups
       rateLimit:
-        - 100  # MB/s
-      retention: 7  # days
-      schedule:
-        cron: "0 2 * * *"
+        - "100"  # MiB/s
+      retention: 7  # number of backups to retain
+      cron: "0 2 * * *"
       snapshotParallel:
-        - dc: 2
+        - "us-west-2:2"
       uploadParallel:
-        - dc: 2
+        - "us-west-2:2"
 ```
 
 Restore from backup:
 
 ```bash
 # List available backups
-kubectl exec -it -n scylla scylla-cluster-us-west-2-us-west-2a-0 -- \
-  scylla-manager-cli backup list
+kubectl -n scylla-manager exec -it deployment.apps/scylla-manager -- \
+  sctool backup list -c scylla/scylla-cluster --all-clusters -L s3:scylla-backups/cluster-backups
 
-# Restore specific backup
-kubectl exec -it -n scylla scylla-cluster-us-west-2-us-west-2a-0 -- \
-  scylla-manager-cli backup restore \
-  --cluster scylla-cluster \
-  --snapshot-tag <snapshot-id> \
-  --location s3:scylla-backups/cluster-backups
+# Restore schema, then table data
+kubectl -n scylla-manager exec -it deployment.apps/scylla-manager -- \
+  sctool restore -c scylla/scylla-cluster -L s3:scylla-backups/cluster-backups -T <snapshot-tag> --restore-schema
+
+kubectl -n scylla-manager exec -it deployment.apps/scylla-manager -- \
+  sctool restore -c scylla/scylla-cluster -L s3:scylla-backups/cluster-backups -T <snapshot-tag> --restore-tables
 ```
 
 ## Tuning for Specific Workloads
@@ -408,15 +424,14 @@ Configure consistency levels for data integrity:
 
 ```sql
 -- Strong consistency reads
-SELECT * FROM events WHERE event_id = ? USING CONSISTENCY QUORUM;
+CONSISTENCY QUORUM;
+SELECT * FROM events WHERE event_id = ?;
 
 -- Eventual consistency reads (faster)
-SELECT * FROM events WHERE event_id = ? USING CONSISTENCY ONE;
+CONSISTENCY ONE;
+SELECT * FROM events WHERE event_id = ?;
 
--- Enable read repair
-ALTER TABLE myapp.events
-WITH read_repair_chance = 0.1
-AND dclocal_read_repair_chance = 0.1;
+-- Run repairs regularly, or schedule repairs with ScyllaDB Manager
 ```
 
 ## Conclusion
