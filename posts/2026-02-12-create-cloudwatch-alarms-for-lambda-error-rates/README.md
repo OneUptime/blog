@@ -26,9 +26,11 @@ For error rate monitoring, you care most about **Errors** and the ratio of error
 ```mermaid
 flowchart TD
     INVOKE[Lambda Invocation] --> SUCCESS{Success?}
-    SUCCESS -->|Yes| OK[Invocations metric +1]
+    INVOKE --> COUNT[Invocations metric +1]
+    SUCCESS -->|Yes| OK[Success]
     SUCCESS -->|No| ERROR[Errors metric +1]
-    ERROR --> ALARM{Alarm threshold?}
+    COUNT --> ALARM{Alarm threshold?}
+    ERROR --> ALARM
     ALARM -->|Exceeded| NOTIFY[SNS Notification]
     ALARM -->|Normal| CONTINUE[Continue monitoring]
 ```
@@ -157,7 +159,7 @@ aws cloudwatch put-metric-alarm \
     },
     {
       "Id": "error_rate",
-      "Expression": "IF(invocations > 100, (errors / invocations) * 100, 0)",
+      "Expression": "IF(invocations >= 100, (errors / invocations) * 100, 0)",
       "Label": "Error Rate (guarded)",
       "ReturnData": true
     }
@@ -169,7 +171,7 @@ aws cloudwatch put-metric-alarm \
   --treat-missing-data "notBreaching"
 ```
 
-The `IF(invocations > 100, ...)` expression returns 0 when invocation count is too low, preventing the alarm from firing on small samples.
+The `IF(invocations >= 100, ...)` expression returns 0 when invocation count is too low, preventing the alarm from firing on small samples.
 
 ## Step 4: Create Anomaly Detection Alarms
 
@@ -192,7 +194,7 @@ aws cloudwatch put-metric-alarm \
         "Period": 300,
         "Stat": "Sum"
       },
-      "ReturnData": true
+      "ReturnData": false
     },
     {
       "Id": "ad1",
