@@ -17,10 +17,10 @@ Flow Logs don't capture packet contents - they record connection-level metadata 
 Each flow log record contains fields like the source address, destination address, source port, destination port, protocol number, number of packets, number of bytes, and the action taken (ACCEPT or REJECT). Here's what a typical record looks like:
 
 ```text
-2 123456789012 eni-abc123de 10.0.1.5 10.0.2.15 443 49152 6 25 5000 1620140661 1620140720 ACCEPT OK
+2 123456789012 eni-abc123de 10.0.1.5 10.0.2.15 49152 443 6 25 5000 1620140661 1620140720 ACCEPT OK
 ```
 
-Breaking that down: account ID, network interface ID, source IP, destination IP, destination port, source port, protocol (6 = TCP), packets, bytes, start time, end time, action, and log status.
+Breaking that down: account ID, network interface ID, source IP, destination IP, source port, destination port, protocol (6 = TCP), packets, bytes, start time, end time, action, and log status.
 
 ## Enabling Flow Logs at Different Levels
 
@@ -147,10 +147,17 @@ CREATE EXTERNAL TABLE vpc_flow_logs (
   action string,
   log_status string
 )
-PARTITIONED BY (dt string)
+PARTITIONED BY (day string)
 ROW FORMAT DELIMITED FIELDS TERMINATED BY ' '
 LOCATION 's3://my-flow-logs-bucket/vpc-logs/AWSLogs/123456789012/vpcflowlogs/us-east-1/'
-TBLPROPERTIES ("skip.header.line.count"="1");
+TBLPROPERTIES (
+  'skip.header.line.count'='1',
+  'projection.enabled'='true',
+  'projection.day.type'='date',
+  'projection.day.range'='2026/02/12,NOW',
+  'projection.day.format'='yyyy/MM/dd',
+  'storage.location.template'='s3://my-flow-logs-bucket/vpc-logs/AWSLogs/123456789012/vpcflowlogs/us-east-1/${day}'
+);
 ```
 
 Now you can run queries to find rejected traffic, top talkers, or suspicious patterns.
@@ -160,7 +167,7 @@ Now you can run queries to find rejected traffic, top talkers, or suspicious pat
 SELECT srcaddr, COUNT(*) as reject_count
 FROM vpc_flow_logs
 WHERE action = 'REJECT'
-  AND dt = '2026/02/12'
+  AND day = '2026/02/12'
 GROUP BY srcaddr
 ORDER BY reject_count DESC
 LIMIT 10;
@@ -212,6 +219,6 @@ A few ways to reduce costs: filter by REJECT only if that's all you need, use a 
 
 ## Monitoring Flow Logs
 
-You should also set up monitoring to make sure your flow logs are actually being delivered. CloudWatch metrics for flow logs include `DeliverLogsSuccess` and `DeliverLogsError`. If the IAM role permissions get changed or the S3 bucket policy breaks, you'll want to know about it right away. Consider integrating this with your existing monitoring stack - tools like OneUptime can alert you when log delivery fails so you're never flying blind during an incident.
+You should also set up monitoring to make sure your flow logs are actually being delivered. Check the flow log status in the VPC console or use `aws ec2 describe-flow-logs` and look at fields like `DeliverLogsErrorMessage`. If the IAM role permissions get changed or the S3 bucket policy breaks, you'll want to know about it right away. Consider integrating this with your existing monitoring stack - tools like OneUptime can alert you when log delivery fails so you're never flying blind during an incident.
 
 VPC Flow Logs aren't glamorous, but they're one of those foundational pieces that saves you hours when things go wrong. Enable them early, set up your Athena table, and you'll thank yourself the next time a deployment breaks network connectivity.
