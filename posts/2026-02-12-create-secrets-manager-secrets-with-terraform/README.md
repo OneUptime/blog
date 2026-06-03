@@ -8,7 +8,7 @@ Description: Learn how to create and manage AWS Secrets Manager secrets with Ter
 
 ---
 
-Hardcoded passwords and API keys in your codebase are a security incident waiting to happen. AWS Secrets Manager solves this by giving you a secure, centralized place to store and retrieve secrets. Your applications fetch secrets at runtime, secrets rotate automatically, and everything is encrypted with KMS.
+Hardcoded passwords and API keys in your codebase are a security incident waiting to happen. AWS Secrets Manager solves this by giving you a secure, centralized place to store and retrieve secrets. Your applications fetch secrets at runtime, secrets can rotate automatically, and everything is encrypted with KMS.
 
 Terraform can create and configure Secrets Manager secrets, but there's an important nuance: you usually don't want to put the actual secret value in your Terraform code. Let's explore how to handle that properly.
 
@@ -75,7 +75,7 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
 }
 ```
 
-Your application can then parse the JSON and extract individual fields. Most AWS SDKs have built-in support for this.
+Your application can then retrieve the secret string with an AWS SDK and parse the JSON to extract individual fields.
 
 ## KMS Encryption
 
@@ -101,7 +101,7 @@ For creating KMS keys, see our post on [creating KMS keys with Terraform](https:
 
 One of Secrets Manager's best features is automatic rotation. You provide a Lambda function that generates new credentials, and Secrets Manager calls it on a schedule.
 
-For RDS databases, AWS provides built-in rotation Lambda functions:
+For RDS databases, AWS provides rotation Lambda templates that you can deploy and use:
 
 ```hcl
 # Secret with automatic rotation
@@ -134,7 +134,7 @@ resource "aws_secretsmanager_secret_rotation" "rds_password" {
 }
 ```
 
-The rotation Lambda function needs specific IAM permissions to update the secret and the database credentials. AWS provides managed rotation functions for RDS, Redshift, and DocumentDB.
+The rotation Lambda function needs specific IAM permissions to update the secret and the database credentials. AWS provides rotation function templates for RDS, Redshift, and DocumentDB.
 
 ## Custom Rotation Lambda
 
@@ -198,7 +198,7 @@ resource "aws_iam_role_policy" "rotator" {
           "secretsmanager:PutSecretValue",
           "secretsmanager:UpdateSecretVersionStage"
         ]
-        Resource = aws_secretsmanager_secret.rds_password.arn
+        Resource = aws_secretsmanager_secret.api_key.arn
       },
       {
         Effect   = "Allow"
@@ -212,7 +212,7 @@ resource "aws_iam_role_policy" "rotator" {
 
 Resource Policy for Cross-Account Access
 
-Allow another AWS account to retrieve your secrets:
+Allow another AWS account to retrieve your secrets. For cross-account access, the secret needs a resource policy and the principal in the other account also needs an identity-based policy that allows the same access. If the secret uses a customer-managed KMS key, the other account also needs permission to use that key.
 
 ```hcl
 # Resource policy for cross-account access
