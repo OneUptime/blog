@@ -10,7 +10,7 @@ Description: Complete guide to configuring AWS Elastic Fabric Adapter for low-la
 
 When you are running tightly coupled HPC workloads on AWS - think MPI-based simulations, distributed deep learning, or anything where nodes need to exchange data at high speed - standard TCP networking introduces too much latency. Elastic Fabric Adapter (EFA) is an AWS network interface that provides OS-bypass capabilities, letting your applications communicate directly with the network hardware without going through the kernel networking stack.
 
-This means latency drops from microseconds to single-digit microseconds, and bandwidth gets close to the theoretical maximum of the instance type. For MPI workloads, the difference can be night and day.
+This means latency becomes lower and more consistent than standard TCP transport, and bandwidth gets close to the theoretical maximum of the instance type. For MPI workloads, the difference can be night and day.
 
 ## What Is EFA?
 
@@ -58,11 +58,17 @@ EFA_SG=$(aws ec2 create-security-group \
   --vpc-id vpc-0abc123 \
   --query 'GroupId' --output text)
 
-# Allow all traffic from instances in the same security group
+# Allow all inbound traffic from instances in the same security group
 aws ec2 authorize-security-group-ingress \
   --group-id $EFA_SG \
   --protocol -1 \
   --source-group $EFA_SG
+
+# Allow all outbound traffic to instances in the same security group
+aws ec2 authorize-security-group-egress \
+  --group-id $EFA_SG \
+  --protocol -1 \
+  --destination-group $EFA_SG
 
 # Allow SSH from your IP
 aws ec2 authorize-security-group-ingress \
@@ -74,7 +80,7 @@ aws ec2 authorize-security-group-ingress \
 echo "EFA Security Group: $EFA_SG"
 ```
 
-The key rule is `--protocol -1 --source-group $EFA_SG` which allows all traffic between members of the security group. Without this, EFA communication between instances will fail.
+The key rules are `--protocol -1 --source-group $EFA_SG` for inbound traffic and `--protocol -1 --destination-group $EFA_SG` for outbound traffic. Together, they allow all traffic between members of the security group. Without these, EFA communication between instances will fail.
 
 ## Step 2: Create a Placement Group
 
@@ -168,13 +174,22 @@ cat > hostfile << EOF
 10.0.1.13 slots=96
 EOF
 
+# Build OSU Micro-Benchmarks with the EFA-enabled Open MPI compiler
+curl -O https://mvapich.cse.ohio-state.edu/download/mvapich/osu-micro-benchmarks-7.5.tar.gz
+tar -xf osu-micro-benchmarks-7.5.tar.gz
+cd osu-micro-benchmarks-7.5
+./configure CC=/opt/amazon/openmpi/bin/mpicc --prefix=$HOME/osu-micro-benchmarks
+make -j
+make install
+cd ..
+
 # Run the OSU MPI latency benchmark
 mpirun --hostfile hostfile \
   -np 2 \
   --map-by ppr:1:node \
   -x FI_PROVIDER=efa \
   -x FI_EFA_USE_DEVICE_RDMA=1 \
-  /opt/amazon/openmpi/tests/osu-micro-benchmarks/mpi/pt2pt/osu_latency
+  $HOME/osu-micro-benchmarks/libexec/osu-micro-benchmarks/mpi/pt2pt/osu_latency
 
 # Run the bandwidth benchmark
 mpirun --hostfile hostfile \
@@ -182,7 +197,7 @@ mpirun --hostfile hostfile \
   --map-by ppr:1:node \
   -x FI_PROVIDER=efa \
   -x FI_EFA_USE_DEVICE_RDMA=1 \
-  /opt/amazon/openmpi/tests/osu-micro-benchmarks/mpi/pt2pt/osu_bw
+  $HOME/osu-micro-benchmarks/libexec/osu-micro-benchmarks/mpi/pt2pt/osu_bw
 ```
 
 Expected results for hpc6a.48xlarge:
