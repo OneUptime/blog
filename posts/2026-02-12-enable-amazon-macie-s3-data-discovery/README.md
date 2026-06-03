@@ -16,7 +16,7 @@ Amazon Macie uses machine learning and pattern matching to automatically discove
 
 Macie performs two main functions:
 
-**Inventory and security posture assessment.** It catalogs all your S3 buckets and evaluates their security settings - public access, encryption, shared access, replication status. This is the free part.
+**Inventory and security posture assessment.** It catalogs all your S3 buckets and evaluates their security settings - public access, encryption, shared access, replication status. This is included in the 30-day free trial, then billed per monitored bucket.
 
 **Sensitive data discovery.** It scans the actual contents of objects in your S3 buckets looking for patterns that match sensitive data types - PII, financial data, credentials, and more. This is the part that costs money.
 
@@ -43,7 +43,7 @@ aws macie2 enable-macie
 aws macie2 get-macie-session
 ```
 
-After enabling, Macie automatically inventories all S3 buckets in the region and starts evaluating their security posture. This happens within minutes and doesn't cost anything.
+After enabling, Macie automatically inventories all S3 buckets in the region and starts evaluating their security posture. This is included in the 30-day free trial, then billed based on the number of general purpose buckets Macie monitors.
 
 To check the bucket inventory:
 
@@ -131,7 +131,7 @@ aws macie2 list-findings \
     }
   }' \
   --sort-criteria '{"attributeName": "updatedAt", "orderBy": "DESC"}' \
-  --max-results 20
+  --max-items 20
 ```
 
 ## Terraform Configuration
@@ -169,16 +169,9 @@ resource "aws_macie2_classification_job" "production" {
     }
   }
 
-  schedule_frequency_details {
+  schedule_frequency {
     weekly_schedule = "MONDAY"
   }
-
-  depends_on = [aws_macie2_account.main]
-}
-
-# Enable automated discovery
-resource "aws_macie2_automated_discovery_configuration" "main" {
-  status = "ENABLED"
 
   depends_on = [aws_macie2_account.main]
 }
@@ -210,7 +203,7 @@ aws macie2 create-custom-data-identifier \
   --keywords '["account", "customer", "acct"]'
 ```
 
-Custom identifiers are automatically included in all subsequent discovery jobs.
+Custom identifiers are available to discovery jobs, but you need to select them when you create a job by passing their IDs with `--custom-data-identifier-ids`. For automated discovery, add them to the sensitivity inspection template.
 
 ## Multi-Account Setup
 
@@ -280,12 +273,12 @@ resource "aws_cloudwatch_event_target" "macie_alert" {
 
 ## Cost Management
 
-Macie charges based on the amount of data scanned. As of early 2026:
+Macie charges based on the number of buckets monitored, the number of objects monitored for automated discovery, and the amount of data inspected. As of June 2026 in US East (N. Virginia):
 
-- First 1 GB/month: $1.00 per GB
-- Next 49,999 GB: $0.10 per GB
-- 50TB+: $0.04 per GB
-- Automated discovery: $0.012 per evaluated object
+- Bucket inventory and monitoring: $0.10 per S3 bucket/month after the 30-day free trial
+- Automated discovery object monitoring: $0.01 per 100,000 objects
+- Automated sensitive data discovery: $1.00 per GB inspected, with 1 GB/month included
+- Targeted sensitive data discovery jobs: $1.00 per GB inspected
 
 To control costs:
 
@@ -300,7 +293,7 @@ aws macie2 get-usage-totals
 
 # Get usage by account in a multi-account setup
 aws macie2 get-usage-statistics \
-  --sort-by '{"attributeName": "totalEstimatedCost", "orderBy": "DESC"}'
+  --sort-by '{"key": "total", "orderBy": "DESC"}'
 ```
 
 For more on what Macie can find, check out our guide on [using Macie to find PII in S3](https://oneuptime.com/blog/post/2026-02-12-macie-find-pii-s3-buckets/view).
