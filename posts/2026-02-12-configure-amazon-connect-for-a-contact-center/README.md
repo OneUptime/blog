@@ -42,15 +42,14 @@ Once your instance is ready, claim a phone number.
 ```bash
 # List available phone numbers
 aws connect search-available-phone-numbers \
-  --target-arn arn:aws:connect:us-east-1:123456789:instance/INSTANCE_ID \
+  --target-arn arn:aws:connect:us-east-1:123456789012:instance/INSTANCE_ID \
   --phone-number-country-code US \
   --phone-number-type TOLL_FREE
 
 # Claim a number
 aws connect claim-phone-number \
-  --target-arn arn:aws:connect:us-east-1:123456789:instance/INSTANCE_ID \
-  --phone-number-country-code US \
-  --phone-number-type TOLL_FREE
+  --target-arn arn:aws:connect:us-east-1:123456789012:instance/INSTANCE_ID \
+  --phone-number +18005550199
 ```
 
 You can get toll-free numbers, DID (direct inward dialing) numbers, or port existing numbers from another provider.
@@ -173,7 +172,7 @@ Here's a simplified flow structure.
       "Type": "GetParticipantInput",
       "Parameters": {
         "Text": "Please make your selection.",
-        "Timeout": "5"
+        "InputTimeLimitSeconds": "5"
       },
       "Transitions": {
         "NextAction": "default-queue",
@@ -181,19 +180,27 @@ Here's a simplified flow structure.
           {
             "NextAction": "route-support",
             "Condition": {
-              "Operand": "1",
-              "Operator": "Equals"
+              "Operator": "Equals",
+              "Operands": ["1"]
             }
           },
           {
             "NextAction": "route-billing",
             "Condition": {
-              "Operand": "2",
-              "Operator": "Equals"
+              "Operator": "Equals",
+              "Operands": ["2"]
             }
           }
         ],
         "Errors": [
+          {
+            "NextAction": "default-queue",
+            "ErrorType": "NoMatchingCondition"
+          },
+          {
+            "NextAction": "default-queue",
+            "ErrorType": "InputTimeLimitExceeded"
+          },
           {
             "NextAction": "default-queue",
             "ErrorType": "NoMatchingError"
@@ -203,22 +210,68 @@ Here's a simplified flow structure.
     },
     {
       "Identifier": "route-support",
-      "Type": "TransferToQueue",
+      "Type": "UpdateContactTargetQueue",
       "Parameters": {
         "QueueId": "SUPPORT_QUEUE_ARN"
       },
       "Transitions": {
-        "NextAction": "disconnect"
+        "NextAction": "transfer-to-queue",
+        "Errors": [
+          {
+            "NextAction": "default-queue",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
       }
     },
     {
       "Identifier": "route-billing",
-      "Type": "TransferToQueue",
+      "Type": "UpdateContactTargetQueue",
       "Parameters": {
         "QueueId": "BILLING_QUEUE_ARN"
       },
       "Transitions": {
-        "NextAction": "disconnect"
+        "NextAction": "transfer-to-queue",
+        "Errors": [
+          {
+            "NextAction": "default-queue",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "default-queue",
+      "Type": "UpdateContactTargetQueue",
+      "Parameters": {
+        "QueueId": "SUPPORT_QUEUE_ARN"
+      },
+      "Transitions": {
+        "NextAction": "transfer-to-queue",
+        "Errors": [
+          {
+            "NextAction": "disconnect",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "transfer-to-queue",
+      "Type": "TransferContactToQueue",
+      "Parameters": {},
+      "Transitions": {
+        "NextAction": "",
+        "Errors": [
+          {
+            "NextAction": "disconnect",
+            "ErrorType": "QueueAtCapacity"
+          },
+          {
+            "NextAction": "disconnect",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
       }
     },
     {
@@ -304,15 +357,14 @@ def lookup_customer(phone):
     return response.get('Item')
 ```
 
-The Lambda return values become contact attributes that you can use in subsequent steps of the contact flow - for example, routing VIP customers to a priority queue.
+The Lambda return values can be used by subsequent flow blocks or copied into contact attributes with a Set contact attributes block - for example, routing VIP customers to a priority queue.
 
 ## Enabling Call Recording
 
 Call recording is built in and stores to S3.
 
 ```bash
-# Recordings are configured at the instance level
-# Enable through the console or API
+# Update an existing recording storage configuration
 aws connect update-instance-storage-config \
   --instance-id INSTANCE_ID \
   --resource-type CALL_RECORDINGS \
