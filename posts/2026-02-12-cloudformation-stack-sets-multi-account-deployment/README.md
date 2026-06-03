@@ -52,7 +52,7 @@ If you're using AWS Organizations, enable trusted access first:
 # Enable trusted access for StackSets in AWS Organizations
 
 aws organizations enable-aws-service-access \
-  --service-principal member.org.stacksets.cloudformation.amazonaws.com
+  --service-principal stacksets.cloudformation.amazonaws.com
 ```
 
 Then you can target accounts by Organizational Unit (OU) instead of listing individual account IDs.
@@ -131,12 +131,13 @@ Resources:
   # Enable CloudTrail
   CloudTrail:
     Type: AWS::CloudTrail::Trail
+    DependsOn: TrailBucketPolicy
     Properties:
-      TrailName: organization-trail
+      TrailName: !Sub 'security-baseline-${AWS::Region}'
       IsLogging: true
       S3BucketName: !Ref TrailBucket
       EnableLogFileValidation: true
-      IsMultiRegionTrail: true
+      IsMultiRegionTrail: false
 
   TrailBucket:
     Type: AWS::S3::Bucket
@@ -162,27 +163,19 @@ Resources:
               Service: cloudtrail.amazonaws.com
             Action: s3:GetBucketAcl
             Resource: !GetAtt TrailBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/security-baseline-${AWS::Region}'
           - Sid: AWSCloudTrailWrite
             Effect: Allow
             Principal:
               Service: cloudtrail.amazonaws.com
             Action: s3:PutObject
-            Resource: !Sub '${TrailBucket.Arn}/*'
+            Resource: !Sub '${TrailBucket.Arn}/AWSLogs/${AWS::AccountId}/*'
             Condition:
               StringEquals:
                 s3:x-amz-acl: bucket-owner-full-control
-
-  # Password policy
-  PasswordPolicy:
-    Type: AWS::IAM::AccountPasswordPolicy
-    Properties:
-      MinimumPasswordLength: 14
-      RequireSymbols: true
-      RequireNumbers: true
-      RequireUppercaseCharacters: true
-      RequireLowercaseCharacters: true
-      MaxPasswordAge: 90
-      PasswordReusePrevention: 12
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/security-baseline-${AWS::Region}'
 ```
 
 Create the StackSet:
@@ -258,11 +251,11 @@ aws cloudformation update-stack-set \
   --stack-set-name security-baseline \
   --template-body file://security-baseline-v2.yaml \
   --operation-preferences \
-    MaxConcurrentPercentage=25,FailureTolerancePercentage=10 \
+    MaxConcurrentPercentage=10,FailureTolerancePercentage=10 \
   --capabilities CAPABILITY_IAM
 ```
 
-The `MaxConcurrentPercentage` controls how many accounts update simultaneously. `FailureTolerancePercentage` sets how many failures are acceptable before the operation stops.
+The `MaxConcurrentPercentage` controls how many accounts update simultaneously per region. `FailureTolerancePercentage` sets how many failures are acceptable per region before the operation stops.
 
 ## Handling Failures
 
