@@ -8,15 +8,15 @@ Description: A practical guide to using EC2 Spot Instances effectively to cut yo
 
 ---
 
-Spot Instances are one of AWS's best-kept secrets for slashing your compute bill. They let you bid on unused EC2 capacity at discounts of up to 90% compared to On-Demand pricing. The catch? AWS can reclaim them with a 2-minute warning when it needs the capacity back. But with the right architecture and strategies, that trade-off is absolutely worth it.
+Spot Instances are one of AWS's best-kept secrets for slashing your compute bill. They let you request unused EC2 capacity at discounts of up to 90% compared to On-Demand pricing. The catch? AWS can reclaim them with a 2-minute warning when it needs the capacity back. But with the right architecture and strategies, that trade-off is absolutely worth it.
 
 Let's dig into how Spot Instances work, when to use them, and how to set them up properly.
 
 ## How Spot Pricing Works
 
-Unlike On-Demand instances where you pay a fixed hourly rate, Spot Instance prices fluctuate based on supply and demand in each Availability Zone. AWS doesn't use a traditional auction anymore - instead, prices adjust gradually and you pay the current Spot price at the time of launch, not a bid.
+Unlike On-Demand instances where you pay a fixed hourly rate, Spot Instance prices fluctuate based on supply and demand in each Availability Zone. AWS doesn't use a traditional auction anymore - instead, prices adjust gradually and you pay the Spot price that's in effect while your instances are running, not a bid.
 
-You can set a maximum price you're willing to pay. If the Spot price exceeds your max, your instance gets interrupted. But in practice, most people set their max to the On-Demand price and let the savings come naturally.
+You can set a maximum price you're willing to pay. If the Spot price exceeds your max, your instance gets interrupted. But in practice, AWS recommends using no maximum price, which caps Spot at the On-Demand price and lets the savings come naturally.
 
 Here's a quick comparison of pricing for common instance types (prices vary by region):
 
@@ -65,13 +65,13 @@ aws ec2 run-instances \
   }'
 ```
 
-Setting `MaxPrice` to the On-Demand price means your instance only runs when there's a discount. You'll never pay more than On-Demand.
+Setting `MaxPrice` to the On-Demand price keeps your Spot price capped at On-Demand, but AWS generally recommends omitting `MaxPrice` and using the default On-Demand cap unless you have a specific price limit.
 
 ## Using Launch Templates with Spot
 
-The recommended approach is to use Launch Templates, which give you more flexibility. You can specify multiple instance types and let AWS pick the cheapest available one.
+The recommended approach is to use Launch Templates with Auto Scaling groups, EC2 Fleet, or Spot Fleet, which gives you more flexibility. You can specify multiple instance types and let AWS choose capacity using an allocation strategy.
 
-This Launch Template configuration supports both Spot and On-Demand requests:
+This Launch Template configuration stores Spot settings for requests that use the template:
 
 ```bash
 # Create a Launch Template for Spot
@@ -101,7 +101,7 @@ aws ec2 create-launch-template \
   }'
 ```
 
-Notice the `InstanceInterruptionBehavior` set to `stop` instead of `terminate`. For persistent Spot requests, AWS will stop the instance when interrupted and restart it when capacity becomes available again. This is useful if your instance has data on EBS volumes you don't want to lose.
+Notice the `InstanceInterruptionBehavior` set to `stop` instead of `terminate`. For persistent Spot requests with EBS-backed instances, AWS will stop the instance when interrupted and restart it when capacity becomes available again in the same Availability Zone and instance type. This is useful if your instance has data on EBS volumes you don't want to lose.
 
 ## Diversifying Instance Types
 
@@ -121,7 +121,7 @@ resource "aws_autoscaling_group" "spot_workers" {
     instances_distribution {
       on_demand_base_capacity                  = 0
       on_demand_percentage_above_base_capacity = 0
-      spot_allocation_strategy                 = "capacity-optimized"
+      spot_allocation_strategy                 = "price-capacity-optimized"
     }
 
     launch_template {
@@ -154,7 +154,7 @@ resource "aws_autoscaling_group" "spot_workers" {
 }
 ```
 
-The `capacity-optimized` allocation strategy is key here. Instead of just picking the cheapest option, it launches instances from the pool with the most available capacity, which means fewer interruptions.
+The `price-capacity-optimized` allocation strategy is key here. Instead of just picking the cheapest option, it launches instances from pools that balance low interruption risk with low price.
 
 ## Checking Spot Price History
 
@@ -209,9 +209,9 @@ You can also use EC2 Instance Metadata Service v2 (IMDSv2) for better security, 
 
 Here's a quick summary of best practices that'll keep your Spot workloads running smoothly:
 
-1. **Use at least 6 instance types** across 3 or more AZs
-2. **Use capacity-optimized allocation** instead of lowest-price
-3. **Set max price to On-Demand** - don't try to optimize your bid
+1. **Use at least 10 instance types** across 3 or more AZs
+2. **Use price-capacity-optimized allocation** instead of lowest-price
+3. **Use the default On-Demand max price cap** - don't try to optimize your price cap
 4. **Build for interruption** - assume instances can disappear at any time
 5. **Use Auto Scaling groups** rather than standalone Spot requests
 6. **Monitor your Spot usage** with CloudWatch metrics and billing alerts
@@ -225,4 +225,4 @@ Setting up proper monitoring for your Spot fleet is critical. You need to track 
 
 ## Summary
 
-EC2 Spot Instances are a powerful tool for cutting compute costs dramatically. The key to success is designing for interruption, diversifying your instance types and AZs, and using capacity-optimized allocation strategies. Start with non-critical workloads like CI/CD or batch processing, get comfortable with the model, and then expand to more workloads over time. The savings are real and substantial.
+EC2 Spot Instances are a powerful tool for cutting compute costs dramatically. The key to success is designing for interruption, diversifying your instance types and AZs, and using price-capacity-optimized allocation strategies. Start with non-critical workloads like CI/CD or batch processing, get comfortable with the model, and then expand to more workloads over time. The savings are real and substantial.
