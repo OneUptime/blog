@@ -18,7 +18,7 @@ EKS supports three combinations of public and private endpoint access:
 
 ### 1. Public Only (Default)
 
-The API server is accessible from the internet. All traffic from nodes to the API server goes through the public endpoint.
+The API server is accessible from the internet. Traffic from nodes to the API server uses the public endpoint and leaves the VPC, but stays on Amazon's network.
 
 ```text
 Public Access:  Enabled
@@ -53,7 +53,7 @@ Maximum security, but requires VPN, Direct Connect, or a bastion host to access 
 flowchart TB
     subgraph Public Only
         DEV1[Developer] -->|Internet| API1[Public Endpoint]
-        NODE1[Worker Node] -->|Internet| API1
+        NODE1[Worker Node] -->|Amazon network| API1
     end
     subgraph Public + Private
         DEV2[Developer] -->|Internet| API2[Public Endpoint]
@@ -129,7 +129,7 @@ Apply the configuration:
 
 ```bash
 # Update endpoint access with eksctl
-eksctl utils update-cluster-endpoints \
+eksctl utils update-cluster-vpc-config \
   --cluster my-cluster \
   --public-access=true \
   --private-access=true \
@@ -186,11 +186,11 @@ The endpoint access configuration affects how worker nodes communicate with the 
 
 | Configuration | Node-to-API Path | Impact |
 |---|---|---|
-| Public only | Through internet/NAT | Higher latency, NAT costs |
+| Public only | Public endpoint via public IP or NAT gateway | Data transfer charges, and possible NAT costs |
 | Public + Private | Through VPC (private) | Lower latency, no NAT costs for API traffic |
 | Private only | Through VPC (private) | Lowest latency, no NAT needed for API traffic |
 
-Enabling private access reduces NAT gateway costs because node-to-API traffic no longer goes through the NAT. For clusters with many nodes making frequent API calls, this can save meaningful money. See our [cost optimization guide](https://oneuptime.com/blog/post/2026-02-12-monitor-eks-costs-and-optimize-spending/view).
+Enabling private access can reduce NAT gateway costs because node-to-API traffic no longer needs the NAT path. For clusters with many private nodes making frequent API calls, this can save meaningful money. See our [cost optimization guide](https://oneuptime.com/blog/post/2026-02-12-monitor-eks-costs-and-optimize-spending/view).
 
 ## Security Considerations
 
@@ -207,7 +207,8 @@ aws ec2 create-flow-logs \
   --resource-ids vpc-0abc123 \
   --traffic-type ALL \
   --log-destination-type cloud-watch-logs \
-  --log-group-name /vpc/eks-cluster-flow-logs
+  --log-group-name /vpc/eks-cluster-flow-logs \
+  --deliver-logs-permission-arn arn:aws:iam::123456789012:role/publishFlowLogs
 ```
 
 **Audit API access** by enabling the [audit log type in control plane logging](https://oneuptime.com/blog/post/2026-02-12-configure-eks-cluster-logging/view).
