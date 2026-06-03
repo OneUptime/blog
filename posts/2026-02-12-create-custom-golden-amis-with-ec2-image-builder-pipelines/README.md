@@ -81,7 +81,7 @@ phases:
               sed -i 's/#ClientAliveInterval 0/ClientAliveInterval 300/' /etc/ssh/sshd_config
               sed -i 's/#ClientAliveCountMax 3/ClientAliveCountMax 2/' /etc/ssh/sshd_config
 
-              echo "Protocol 2" >> /etc/ssh/sshd_config
+              sshd -t
 
       - name: ConfigureAuditd
         action: ExecuteBash
@@ -245,9 +245,9 @@ aws imagebuilder create-image-recipe \
   --parent-image "arn:aws:imagebuilder:us-east-1:aws:image/amazon-linux-2023-x86/x.x.x" \
   --components '[
     {"componentArn": "arn:aws:imagebuilder:us-east-1:aws:component/update-linux/x.x.x"},
-    {"componentArn": "arn:aws:imagebuilder:us-east-1:123456789:component/cis-hardening/1.0.0"},
-    {"componentArn": "arn:aws:imagebuilder:us-east-1:123456789:component/monitoring-agents/1.0.0"},
-    {"componentArn": "arn:aws:imagebuilder:us-east-1:123456789:component/standard-tools/1.0.0"}
+    {"componentArn": "arn:aws:imagebuilder:us-east-1:123456789012:component/cis-hardening/1.0.0"},
+    {"componentArn": "arn:aws:imagebuilder:us-east-1:123456789012:component/monitoring-agents/1.0.0"},
+    {"componentArn": "arn:aws:imagebuilder:us-east-1:123456789012:component/standard-tools/1.0.0"}
   ]' \
   --block-device-mappings '[
     {
@@ -256,7 +256,7 @@ aws imagebuilder create-image-recipe \
         "volumeSize": 30,
         "volumeType": "gp3",
         "encrypted": true,
-        "kmsKeyId": "arn:aws:kms:us-east-1:123456789:key/my-key-id",
+        "kmsKeyId": "arn:aws:kms:us-east-1:123456789012:key/my-key-id",
         "deleteOnTermination": true
       }
     }
@@ -294,7 +294,7 @@ phases:
           commands:
             - |
               # Check that CloudWatch agent is installed
-              which amazon-cloudwatch-agent-ctl || exit 1
+              test -x /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl || exit 1
               # Check that SSM agent is enabled
               systemctl is-enabled amazon-ssm-agent || exit 1
               echo "Monitoring agents validated"
@@ -359,7 +359,7 @@ aws imagebuilder create-distribution-configuration \
           "OS": "amazon-linux-2023"
         },
         "launchPermission": {
-          "organizationArns": ["arn:aws:organizations::123456789:organization/o-abc123"]
+          "organizationArns": ["arn:aws:organizations::123456789012:organization/o-a1b2c3d4e5"]
         }
       }
     },
@@ -373,7 +373,7 @@ aws imagebuilder create-distribution-configuration \
           "OS": "amazon-linux-2023"
         },
         "launchPermission": {
-          "organizationArns": ["arn:aws:organizations::123456789:organization/o-abc123"]
+          "organizationArns": ["arn:aws:organizations::123456789012:organization/o-a1b2c3d4e5"]
         }
       }
     }
@@ -395,7 +395,7 @@ Having a golden AMI doesn't help if teams can launch instances from whatever ima
       "Resource": "arn:aws:ec2:*::image/ami-*",
       "Condition": {
         "StringNotEquals": {
-          "ec2:ImageTag/Type": "golden-ami"
+          "aws:ResourceTag/Type": "golden-ami"
         }
       }
     }
@@ -403,7 +403,7 @@ Having a golden AMI doesn't help if teams can launch instances from whatever ima
 }
 ```
 
-This policy denies `RunInstances` unless the AMI has the tag `Type: golden-ami`.
+This policy denies `RunInstances` unless the AMI resource has the tag `Type: golden-ami`.
 
 ## Lifecycle Management
 
@@ -413,18 +413,31 @@ Golden AMIs pile up fast if you don't clean them up. Set up an Image Lifecycle P
 # Create a lifecycle policy that keeps only the last 3 golden AMIs
 aws imagebuilder create-lifecycle-policy \
   --name "golden-ami-cleanup" \
-  --execution-role "arn:aws:iam::123456789:role/ImageBuilderLifecycleRole" \
+  --execution-role "arn:aws:iam::123456789012:role/ImageBuilderLifecycleRole" \
   --resource-type "AMI_IMAGE" \
   --policy-details '[
     {
-      "action": {"type": "DELETE"},
+      "action": {
+        "type": "DELETE",
+        "includeResources": {
+          "amis": true,
+          "snapshots": true
+        }
+      },
       "filter": {
         "type": "COUNT",
-        "value": 3,
-        "retainAtLeast": 3
+        "value": 3
       }
     }
-  ]'
+  ]' \
+  --resource-selection '{
+    "recipes": [
+      {
+        "name": "golden-ami-linux",
+        "semanticVersion": "1.0.0"
+      }
+    ]
+  }'
 ```
 
 ## Keeping Your AMIs Fresh
