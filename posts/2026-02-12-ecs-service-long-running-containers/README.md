@@ -56,11 +56,11 @@ The deployment configuration controls how updates happen:
 - `maximumPercent: 200` means ECS can temporarily run up to 6 tasks (double the desired count) during a deployment
 - `minimumHealthyPercent: 100` means ECS won't stop any old tasks until new ones are healthy
 
-This ensures zero-downtime deployments.
+This helps support zero-downtime deployments, assuming the new tasks become healthy and your cluster or capacity provider has room to run the temporary extra tasks.
 
 ## Deployment Strategies
 
-ECS supports different deployment controllers.
+ECS supports rolling deployments and safety features that control how deployments proceed.
 
 ### Rolling Update (Default)
 
@@ -151,7 +151,7 @@ aws ecs create-service \
   --health-check-grace-period-seconds 60
 ```
 
-The `health-check-grace-period-seconds` gives your container time to start before the ALB health check begins marking it unhealthy. Without this, slow-starting applications might get killed before they finish booting.
+The `health-check-grace-period-seconds` gives your container time to start by telling ECS to ignore load balancer health checks for the specified period after the task starts. Without this, slow-starting applications might get stopped before they finish booting.
 
 ## Service Discovery
 
@@ -220,7 +220,7 @@ aws ecs describe-services \
   --query 'services[0].deployments[*].{Status:status,Running:runningCount,Desired:desiredCount,TaskDef:taskDefinition}'
 ```
 
-You'll see both the old (PRIMARY) and new deployment running simultaneously until the rollout completes.
+You'll see both the new `PRIMARY` deployment and the previous deployment running simultaneously until the rollout completes.
 
 ## Scaling the Service
 
