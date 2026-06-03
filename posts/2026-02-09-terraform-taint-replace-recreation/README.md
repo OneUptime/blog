@@ -73,7 +73,7 @@ terraform apply
 terraform apply -replace="kubernetes_stateful_set.database"
 
 # Restore data
-kubectl exec postgres-0 -n production -- psql mydb < backup.sql
+kubectl exec -i postgres-0 -n production -- psql mydb < backup.sql
 ```
 
 ## Selective Pod Recreation
@@ -125,14 +125,23 @@ resource "kubernetes_deployment" "app" {
   metadata {
     name = "app"
     namespace = "production"
-    annotations = {
-      # Force recreation when config changes
-      config_hash = sha256(jsonencode(kubernetes_config_map.app_config.data))
-    }
   }
-  # ... rest of configuration
+
+  spec {
+    template {
+      metadata {
+        annotations = {
+          # Force pod rollout when config changes
+          config_hash = sha256(jsonencode(kubernetes_config_map.app_config.data))
+        }
+      }
+    }
+    # ... rest of configuration
+  }
 }
 ```
+
+Changing the pod template triggers a new Deployment rollout.
 
 Or manually replace:
 
@@ -142,14 +151,14 @@ terraform apply -replace="kubernetes_deployment.app"
 
 ## Replacing with Dependencies
 
-When replacing resources with dependencies, Terraform handles order:
+When replacing resources with dependencies, Terraform handles ordering:
 
 ```bash
-# Replaces service and dependent ingress
+# Replaces the service
 terraform apply -replace="kubernetes_service.api"
 ```
 
-Terraform recreates dependents automatically.
+Terraform updates or replaces dependent resources only when their own planned changes require it.
 
 ## Partial Resource Updates
 
@@ -158,12 +167,12 @@ Some resource changes require recreation. Terraform detects these:
 ```hcl
 resource "kubernetes_service" "app" {
   metadata {
-    name      = "app-service"
+    name      = "app-service"  # Changing this forces recreation
     namespace = "production"
   }
 
   spec {
-    type = "LoadBalancer"  # Changing this forces recreation
+    type = "LoadBalancer"
     
     selector = {
       app = "app"
@@ -177,7 +186,7 @@ resource "kubernetes_service" "app" {
 }
 ```
 
-Changing service type from ClusterIP to LoadBalancer forces replacement automatically.
+Changing a Kubernetes Service name forces replacement automatically.
 
 ## Testing with Replace
 
@@ -234,6 +243,6 @@ Use with caution in production.
 3. **Test replace operations in non-production first**
 4. **Consider kubectl restart instead of terraform replace for pods**
 5. **Document why manual replacement was needed**
-6. **Use -target with replace to limit blast radius**
+6. **Use -target only in exceptional recovery cases**
 
 The terraform replace command provides controlled recreation of Kubernetes resources when in-place updates aren't sufficient, enabling recovery from stuck states and testing disaster recovery procedures.
