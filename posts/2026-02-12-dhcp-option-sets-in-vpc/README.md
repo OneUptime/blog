@@ -10,17 +10,18 @@ Description: Learn how to create and configure DHCP option sets in AWS VPCs to c
 
 When an EC2 instance boots up, it uses DHCP to get its network configuration - IP address, DNS servers, domain name, and more. AWS handles the DHCP process automatically, but the settings it pushes to your instances are controlled by something called a DHCP option set. Most people never touch these because the defaults work fine, but there are real scenarios where customizing them is necessary.
 
-Every VPC has exactly one DHCP option set associated with it at any given time. When you create a VPC, AWS automatically creates and associates a default option set that points to the Amazon-provided DNS server and uses a default domain name. You can replace that with your own.
+Every VPC has at most one DHCP option set associated with it at any given time. Each Region has a default option set, and a VPC uses that default unless you associate a custom option set or configure the VPC with no DHCP option set. You can replace the default with your own.
 
 ## What Can You Configure?
 
-DHCP option sets support five parameters:
+DHCP option sets support six parameters:
 
 - **domain-name** - The domain name that instances use for DNS resolution of unqualified hostnames
-- **domain-name-servers** - Up to four DNS server IP addresses (or "AmazonProvidedDNS")
-- **ntp-servers** - Up to four NTP server IP addresses
+- **domain-name-servers** - Up to eight DNS server values: up to four IPv4 servers (or up to three IPv4 servers and "AmazonProvidedDNS") plus four IPv6 servers
+- **ntp-servers** - Up to eight NTP server IP addresses: four IPv4 addresses and four IPv6 addresses
 - **netbios-name-servers** - Up to four NetBIOS name server IP addresses
 - **netbios-node-type** - The NetBIOS node type (1, 2, 4, or 8)
+- **ipv6-address-preferred-lease-time** - How frequently instances with IPv6 addresses renew their DHCPv6 leases
 
 In practice, you'll mostly use domain-name and domain-name-servers. The NetBIOS options are relevant only if you're running Windows workloads that depend on NetBIOS name resolution.
 
@@ -67,15 +68,15 @@ aws ec2 associate-dhcp-options \
   --vpc-id vpc-0abc123def456789
 ```
 
-Here's the catch: existing instances don't immediately pick up the new DHCP settings. They'll use the new settings the next time they renew their DHCP lease, which happens when you stop and start the instance, or when the lease naturally expires. Running instances will continue using the old settings until renewal.
+Here's the catch: existing instances don't immediately pick up the new DHCP settings. They'll use the new settings the next time they renew their DHCP lease, which usually happens automatically within a few hours. Running instances can continue using the old settings until renewal.
 
-If you need the change to take effect immediately across all instances, you'll have to stop and start them. A reboot alone won't trigger a DHCP renewal on most Linux AMIs.
+If you need the change to take effect sooner, explicitly renew the DHCP lease from the operating system on each instance.
 
 ## Using Amazon DNS Alongside Custom DNS
 
-A common pattern is wanting to use both the Amazon-provided DNS (for resolving AWS service endpoints and private hosted zones) and your own DNS servers (for resolving your internal domains). You might think you can just list both in domain-name-servers, but there's a limitation - you can't put "AmazonProvidedDNS" alongside specific IP addresses in the same option set.
+A common pattern is wanting to use both the Amazon-provided DNS (for resolving AWS service endpoints and private hosted zones) and your own DNS servers (for resolving your internal domains). AWS allows you to list AmazonProvidedDNS alongside custom IPv4 DNS servers, but recommends using either AmazonProvidedDNS or custom DNS servers because mixing them can cause unexpected resolver behavior.
 
-The workaround is to use Route 53 Resolver endpoints. Set your DHCP option set to use AmazonProvidedDNS, and then create outbound resolver rules to forward specific domains to your custom DNS servers.
+The cleaner approach is to use Route 53 Resolver endpoints. Set your DHCP option set to use AmazonProvidedDNS, and then create outbound resolver rules to forward specific domains to your custom DNS servers.
 
 ```bash
 # Use AmazonProvidedDNS in the DHCP option set
@@ -123,7 +124,7 @@ There are several things you can't do with DHCP option sets that catch people of
 
 **You can't have different DHCP settings per subnet.** The option set is VPC-wide. If you need different DNS servers for different subnets, you'll need to handle that at the instance level (by configuring /etc/resolv.conf directly or using cloud-init scripts).
 
-**Maximum of four DNS servers.** You can specify up to four IP addresses for domain-name-servers. If you need failover across more servers, you'll need to use a DNS forwarder.
+**DNS server limits.** You can specify up to four IPv4 DNS server values (or up to three IPv4 values plus AmazonProvidedDNS) and up to four IPv6 DNS server addresses. Some operating systems impose lower limits, so if you need broader failover, use a DNS forwarder.
 
 **Domain search list behavior varies by OS.** The domain-name parameter behavior depends on the operating system. Amazon Linux and most modern distributions will use it as the search domain in /etc/resolv.conf, but the behavior with multiple domain names can vary.
 
