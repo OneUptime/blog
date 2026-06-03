@@ -8,7 +8,7 @@ Description: A practical guide to creating and managing AWS KMS encryption keys 
 
 ---
 
-AWS Key Management Service (KMS) is the foundation of encryption on AWS. Every time you encrypt an S3 object, an RDS database, an EBS volume, or a Secrets Manager secret, KMS is handling the encryption keys behind the scenes. Most of the time you can use AWS-managed keys and not think about it. But when you need fine-grained control over key policies, rotation, or cross-account access, you need customer-managed keys.
+AWS Key Management Service (KMS) is the foundation of encryption on AWS. Many AWS encryption features use KMS behind the scenes, including SSE-KMS for S3 objects, encrypted RDS databases, encrypted EBS volumes, and Secrets Manager secrets. Most of the time you can use AWS-managed keys and not think about it. But when you need fine-grained control over key policies, rotation, or cross-account access, you need customer-managed keys.
 
 This post covers creating and managing KMS keys with Terraform, including key policies, aliases, automatic rotation, and multi-region setups.
 
@@ -84,7 +84,8 @@ resource "aws_kms_key" "app_data" {
           "kms:TagResource",
           "kms:UntagResource",
           "kms:ScheduleKeyDeletion",
-          "kms:CancelKeyDeletion"
+          "kms:CancelKeyDeletion",
+          "kms:RotateKeyOnDemand"
         ]
         Resource = "*"
       },
@@ -340,7 +341,7 @@ output "kms_alias_arn" {
 
 ## Common Mistakes
 
-**Locking yourself out.** If you remove the root account access from the key policy, you can't modify the key anymore. The only way to recover is to contact AWS support.
+**Locking yourself out.** If you remove the root account access from the key policy and no remaining principal can update the policy, you can't modify the key anymore. The only way to recover is to contact AWS support.
 
 **Forgetting grants.** Some AWS services (like EBS and RDS) use grants instead of direct key policies. Make sure the roles that interact with these services have `kms:CreateGrant` permission.
 
