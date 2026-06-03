@@ -19,7 +19,7 @@ Here are the most common scenarios where multiple target groups come in handy:
 - **Multiple ports on one container**: Your app serves HTTP traffic on one port and health/metrics on another
 - **Internal and external access**: Route public traffic through an internet-facing ALB and internal traffic through a private ALB
 - **Blue/green deployments**: CodeDeploy uses two target groups to shift traffic between old and new task sets
-- **Different routing rules**: Serve different path patterns to different target groups for independent scaling
+- **Different routing rules**: Send different path patterns or listener rules to different target groups on the same service
 
 ## Architecture Overview
 
@@ -78,8 +78,8 @@ aws ecs create-service \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[subnet-aaa,subnet-bbb],securityGroups=[sg-123],assignPublicIp=ENABLED}" \
   --load-balancers \
-    "targetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/api-targets/abc123,containerName=app,containerPort=8080" \
-    "targetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/metrics-targets/def456,containerName=app,containerPort=9090"
+    "targetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/api-targets/abc123,containerName=app,containerPort=8080" \
+    "targetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/metrics-targets/def456,containerName=app,containerPort=9090"
 ```
 
 ## Task Definition with Multiple Port Mappings
@@ -96,7 +96,7 @@ Your task definition needs to expose all the ports that your target groups will 
   "containerDefinitions": [
     {
       "name": "app",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/my-app:latest",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest",
       "essential": true,
       "portMappings": [
         {
@@ -189,7 +189,11 @@ const service = new ecs.FargateService(this, 'Service', {
 });
 
 // Register with the first target group (API on port 8080)
-const apiListener = externalAlb.addListener('ApiListener', { port: 443 });
+const apiListener = externalAlb.addListener('ApiListener', {
+  port: 443,
+  protocol: elbv2.ApplicationProtocol.HTTPS,
+  certificates: [certificate],
+});
 apiListener.addTargets('ApiTarget', {
   port: 8080,
   targets: [
@@ -244,7 +248,11 @@ const service = new ecs.FargateService(this, 'Service', {
 });
 
 // Public traffic goes to port 8080
-publicAlb.addListener('Public', { port: 443 }).addTargets('PublicTarget', {
+publicAlb.addListener('Public', {
+  port: 443,
+  protocol: elbv2.ApplicationProtocol.HTTPS,
+  certificates: [certificate],
+}).addTargets('PublicTarget', {
   port: 8080,
   targets: [service.loadBalancerTarget({ containerName: 'app', containerPort: 8080 })],
 });
@@ -260,7 +268,7 @@ internalAlb.addListener('Internal', { port: 80 }).addTargets('InternalTarget', {
 
 **Maximum target groups**: An ECS service can be associated with up to 5 target groups. If you need more, you will need to split into separate services.
 
-**Cannot modify after creation**: You cannot change the load balancer configuration of an existing ECS service. To change target groups, you must delete and recreate the service. Plan your target group setup carefully.
+**Updating target groups**: You can change the load balancer configuration of an existing ECS service with `UpdateService` when the service uses rolling deployments. ECS starts new tasks with the updated load balancer configuration and stops the old tasks after the new ones are running. For CodeDeploy blue/green deployments, update target groups through CodeDeploy instead.
 
 **Health checks matter**: Each target group has its own health check. If any target group marks a task as unhealthy, ECS may stop that task and launch a replacement. Make sure all your health check paths actually work on their respective ports.
 
@@ -274,4 +282,4 @@ For comprehensive ECS monitoring, refer to our guide on [setting up CloudWatch C
 
 ## Wrapping Up
 
-Multiple target groups on an ECS service give you flexibility in how traffic reaches your containers. Whether you need to expose multiple ports, support both internal and external access, or set up blue/green deployments, the pattern is the same: define multiple port mappings in your task definition, create separate target groups, and attach them all to your ECS service. Just remember the 5 target group limit and the fact that you cannot change them after service creation.
+Multiple target groups on an ECS service give you flexibility in how traffic reaches your containers. Whether you need to expose multiple ports, support both internal and external access, or set up blue/green deployments, the pattern is the same: define multiple port mappings in your task definition, create separate target groups, and attach them all to your ECS service. Just remember the 5 target group limit and use the right update path for your deployment type when you need to change the load balancer configuration.
