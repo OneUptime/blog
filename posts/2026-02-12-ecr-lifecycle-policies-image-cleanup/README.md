@@ -14,12 +14,12 @@ ECR lifecycle policies automate image cleanup. You define rules about which imag
 
 ## How Lifecycle Policies Work
 
-A lifecycle policy is a set of rules that ECR evaluates periodically. Each rule targets images based on their tag, age, or count, and the action is always "expire" (delete). Rules are evaluated by priority number - lower numbers run first.
+A lifecycle policy is a set of rules that ECR evaluates periodically. Each rule targets images based on their tag, age, or count. For image cleanup, the action is "expire" (delete). ECR also supports "transition" for moving images to archive storage. Rules are applied by priority number - lower numbers have higher priority.
 
 When ECR evaluates a policy:
-1. It processes rules in priority order
-2. Each rule selects a set of images
-3. Selected images are marked for deletion
+1. It evaluates all rules at the same time
+2. Each rule identifies a set of matching images
+3. The evaluator applies the rules by priority
 4. Images matched by a higher-priority rule are protected from lower-priority rules
 
 ## Basic Cleanup Policy
@@ -132,7 +132,7 @@ ECR lifecycle rules can select images in two ways:
 
 ## Tag-Based Rules
 
-You can target images by their tag prefix. This lets you treat different image categories differently.
+You can target images by their tag prefix. This lets you treat different image categories differently. If you specify multiple prefixes in one rule, an image must have tags matching all of them. For "release-" OR "dev-" style matching, use separate rules.
 
 ```json
 {
@@ -222,7 +222,19 @@ resource "aws_ecr_lifecycle_policy" "production" {
         description  = "Delete feature branch images after 14 days"
         selection = {
           tagStatus     = "tagged"
-          tagPrefixList = ["feature-", "pr-"]
+          tagPrefixList = ["feature-"]
+          countType     = "sinceImagePushed"
+          countUnit     = "days"
+          countNumber   = 14
+        }
+        action = { type = "expire" }
+      },
+      {
+        rulePriority = 4
+        description  = "Delete pull request images after 14 days"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["pr-"]
           countType     = "sinceImagePushed"
           countUnit     = "days"
           countNumber   = 14
@@ -271,7 +283,7 @@ This is incredibly useful when you're setting up policies for existing repositor
 
 ## Understanding Rule Priority
 
-Rule priority determines the order of evaluation. Lower numbers run first. Here's the key thing to understand: once a rule matches an image, that image is excluded from subsequent rules.
+Rule priority determines the order in which rule results are applied. Lower numbers have higher priority. Here's the key thing to understand: once a higher-priority rule matches an image, that image can't be expired by a lower-priority rule.
 
 Example:
 
@@ -291,7 +303,7 @@ Example:
     },
     {
       "rulePriority": 2,
-      "description": "Keep any tagged image pushed in last 30 days",
+      "description": "Delete any image older than 30 days",
       "selection": {
         "tagStatus": "any",
         "countType": "sinceImagePushed",
@@ -304,7 +316,7 @@ Example:
 }
 ```
 
-Rule 1 keeps the 5 most recent release images and marks older ones for expiry. Rule 2 then operates on the remaining images (excluding those already handled by rule 1) and expires anything older than 30 days.
+Rule 1 keeps the 5 most recent release images and marks older release images for expiry. Rule 2 identifies any image older than 30 days, but it can't expire images already matched by rule 1.
 
 ## Applying Policies Across All Repositories
 
@@ -324,7 +336,7 @@ locals {
     rules = [
       {
         rulePriority = 1
-        description  = "Keep last 30 tagged images"
+        description  = "Keep last 30 images"
         selection = {
           tagStatus   = "any"
           countType   = "imageCountMoreThan"
@@ -368,7 +380,7 @@ That's a 94% reduction in ECR storage costs. Not life-changing amounts of money,
 
 ## Common Gotchas
 
-**Images in use by ECS**: ECR won't delete an image that's referenced by a running ECS task definition. However, it CAN delete images referenced by old task definition revisions that aren't currently deployed. If you need to roll back to an old version, make sure your retention policy keeps enough images.
+**Images in use by ECS**: ECR lifecycle policies don't check ECS task definitions before expiring images. A running task that already pulled the image can keep running, but a new task or rollback can fail to pull the image if the tag or digest was deleted. If you need to roll back to an old version, make sure your retention policy keeps enough images.
 
 **Untagged images from multi-tag pushes**: When you push a new image with a tag that already exists (if mutability is enabled), the old image becomes untagged. Your lifecycle policy should clean these up.
 
