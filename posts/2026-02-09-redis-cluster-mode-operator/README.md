@@ -41,7 +41,8 @@ helm repo update
 helm install redis-operator redis-operator/redis-operator \
   --namespace redis-operator \
   --create-namespace \
-  --set redisOperator.image.tag=v0.15.0
+  --version 0.15.0 \
+  --set redisOperator.imageTag=v0.15.0
 
 # Verify operator is running
 kubectl get pods -n redis-operator
@@ -50,14 +51,13 @@ kubectl get pods -n redis-operator
 Alternatively, install using manifests:
 
 ```bash
-# Clone operator repository
-git clone https://github.com/OT-CONTAINER-KIT/redis-operator.git
-cd redis-operator
-
-# Deploy CRDs and operator
-kubectl apply -f config/crd/bases/
-kubectl apply -f config/rbac/
-kubectl apply -f config/manager/
+# Deploy CRDs and operator from the v0.15.0 manifests
+kubectl apply -f https://raw.githubusercontent.com/OT-CONTAINER-KIT/redis-operator/v0.15.0/config/crd/bases/redis.redis.opstreelabs.in_redis.yaml
+kubectl apply -f https://raw.githubusercontent.com/OT-CONTAINER-KIT/redis-operator/v0.15.0/config/crd/bases/redis.redis.opstreelabs.in_redisclusters.yaml
+kubectl apply -f https://raw.githubusercontent.com/OT-CONTAINER-KIT/redis-operator/v0.15.0/config/rbac/serviceaccount.yaml
+kubectl apply -f https://raw.githubusercontent.com/OT-CONTAINER-KIT/redis-operator/v0.15.0/config/rbac/role.yaml
+kubectl apply -f https://raw.githubusercontent.com/OT-CONTAINER-KIT/redis-operator/v0.15.0/config/rbac/role_binding.yaml
+kubectl apply -f https://raw.githubusercontent.com/OT-CONTAINER-KIT/redis-operator/v0.15.0/config/manager/manager.yaml
 
 # Verify installation
 kubectl get crd | grep redis
@@ -69,6 +69,21 @@ Create a Redis Cluster with 6 nodes (3 masters, 3 replicas):
 
 ```yaml
 # redis-cluster.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-cluster-config
+  namespace: redis
+data:
+  redis-additional.conf: |
+    cluster-node-timeout 5000
+    cluster-require-full-coverage yes
+    maxmemory 3gb
+    maxmemory-policy allkeys-lru
+    tcp-backlog 511
+    timeout 300
+    tcp-keepalive 300
+---
 apiVersion: redis.redis.opstreelabs.in/v1beta1
 kind: RedisCluster
 metadata:
@@ -77,6 +92,7 @@ metadata:
 spec:
   clusterSize: 3
   clusterVersion: v7
+  persistenceEnabled: true
 
   kubernetesConfig:
     image: quay.io/opstree/redis:v7.0.12
@@ -114,37 +130,54 @@ spec:
         resources:
           requests:
             storage: 50Gi
+    nodeConfVolumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        storageClassName: fast-ssd
+        resources:
+          requests:
+            storage: 1Gi
 
   # Cluster configuration
-  redisConfig:
-    cluster-enabled: "yes"
-    cluster-node-timeout: "5000"
-    cluster-require-full-coverage: "yes"
-    maxmemory: "3gb"
-    maxmemory-policy: "allkeys-lru"
-    tcp-backlog: "511"
-    timeout: "300"
-    tcp-keepalive: "300"
+  redisLeader:
+    redisConfig:
+      additionalRedisConfig: redis-cluster-config
+    pdb:
+      enabled: true
+      minAvailable: 2
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - redis-cluster-leader
+          topologyKey: kubernetes.io/hostname
+
+  redisFollower:
+    redisConfig:
+      additionalRedisConfig: redis-cluster-config
+    pdb:
+      enabled: true
+      minAvailable: 2
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - redis-cluster-follower
+          topologyKey: kubernetes.io/hostname
 
   # Security settings
-  securityContext:
+  podSecurityContext:
     runAsUser: 1000
     fsGroup: 1000
-
-  # Pod distribution
-  podDisruptionBudget:
-    maxUnavailable: 1
-
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-      - labelSelector:
-          matchExpressions:
-          - key: app
-            operator: In
-            values:
-            - redis-cluster
-        topologyKey: kubernetes.io/hostname
 ```
 
 Create the Redis password secret:
@@ -181,14 +214,44 @@ Deploy with advanced configuration for production workloads:
 
 ```yaml
 # redis-cluster-production.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-prod-config
+  namespace: redis
+data:
+  redis-additional.conf: |
+    cluster-node-timeout 15000
+    cluster-require-full-coverage no
+    cluster-replica-validity-factor 10
+    cluster-migration-barrier 1
+    maxmemory 12gb
+    maxmemory-policy allkeys-lru
+    maxmemory-samples 5
+    save 900 1 300 10 60 10000
+    rdbcompression yes
+    rdbchecksum yes
+    appendonly yes
+    appendfsync everysec
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    tcp-backlog 2048
+    timeout 300
+    tcp-keepalive 300
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+    latency-monitor-threshold 100
+    maxclients 50000
+---
 apiVersion: redis.redis.opstreelabs.in/v1beta1
 kind: RedisCluster
 metadata:
   name: redis-prod
   namespace: redis
 spec:
-  clusterSize: 6  # 6 masters for better distribution
+  clusterSize: 6  # 6 leaders and 6 followers by default
   clusterVersion: v7
+  persistenceEnabled: true
 
   kubernetesConfig:
     image: quay.io/opstree/redis:v7.0.12
@@ -208,7 +271,7 @@ spec:
 
     # Service configuration
     service:
-      type: ClusterIP
+      serviceType: ClusterIP
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9121"
@@ -235,95 +298,107 @@ spec:
         resources:
           requests:
             storage: 200Gi
+    nodeConfVolumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        storageClassName: fast-ssd
+        resources:
+          requests:
+            storage: 1Gi
 
   # Advanced Redis configuration
-  redisConfig:
-    # Cluster settings
-    cluster-enabled: "yes"
-    cluster-node-timeout: "15000"
-    cluster-require-full-coverage: "no"  # Allow partial operations during failures
-    cluster-replica-validity-factor: "10"
-    cluster-migration-barrier: "1"
+  redisLeader:
+    redisConfig:
+      additionalRedisConfig: redis-prod-config
+    pdb:
+      enabled: true
+      minAvailable: 5
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - redis-prod-leader
+          topologyKey: kubernetes.io/hostname
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+            - key: workload
+              operator: In
+              values:
+              - redis
+    tolerations:
+    - key: "redis"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+    livenessProbe:
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      successThreshold: 1
+      failureThreshold: 3
+    readinessProbe:
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 3
+      successThreshold: 1
+      failureThreshold: 3
 
-    # Memory management
-    maxmemory: "12gb"
-    maxmemory-policy: "allkeys-lru"
-    maxmemory-samples: "5"
-
-    # Persistence
-    save: "900 1 300 10 60 10000"
-    rdbcompression: "yes"
-    rdbchecksum: "yes"
-    appendonly: "yes"
-    appendfsync: "everysec"
-    auto-aof-rewrite-percentage: "100"
-    auto-aof-rewrite-min-size: "64mb"
-
-    # Network
-    tcp-backlog: "2048"
-    timeout: "300"
-    tcp-keepalive: "300"
-
-    # Performance
-    slowlog-log-slower-than: "10000"
-    slowlog-max-len: "128"
-    latency-monitor-threshold: "100"
-
-    # Client connections
-    maxclients: "50000"
+  redisFollower:
+    redisConfig:
+      additionalRedisConfig: redis-prod-config
+    pdb:
+      enabled: true
+      minAvailable: 5
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - redis-prod-follower
+          topologyKey: kubernetes.io/hostname
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+            - key: workload
+              operator: In
+              values:
+              - redis
+    tolerations:
+    - key: "redis"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+    livenessProbe:
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      successThreshold: 1
+      failureThreshold: 3
+    readinessProbe:
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 3
+      successThreshold: 1
+      failureThreshold: 3
 
   # Security
-  securityContext:
+  podSecurityContext:
     runAsUser: 1000
     runAsNonRoot: true
     fsGroup: 1000
-
-  # High availability
-  podDisruptionBudget:
-    maxUnavailable: 1
-
-  # Spread across nodes and zones
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-      - labelSelector:
-          matchExpressions:
-          - key: app
-            operator: In
-            values:
-            - redis-prod
-        topologyKey: kubernetes.io/hostname
-    nodeAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-      - weight: 100
-        preference:
-          matchExpressions:
-          - key: workload
-            operator: In
-            values:
-            - redis
-
-  # Node tolerations for dedicated nodes
-  tolerations:
-  - key: "redis"
-    operator: "Equal"
-    value: "true"
-    effect: "NoSchedule"
-
-  # Monitoring probes
-  livenessProbe:
-    initialDelaySeconds: 30
-    periodSeconds: 10
-    timeoutSeconds: 5
-    successThreshold: 1
-    failureThreshold: 3
-
-  readinessProbe:
-    initialDelaySeconds: 10
-    periodSeconds: 5
-    timeoutSeconds: 3
-    successThreshold: 1
-    failureThreshold: 3
 ```
 
 ## Connecting Applications to Redis Cluster
@@ -339,15 +414,15 @@ const Redis = require('ioredis');
 // Create cluster client
 const cluster = new Redis.Cluster([
   {
-    host: 'redis-prod-leader-0.redis-prod.redis.svc.cluster.local',
+    host: 'redis-prod-leader-0.redis-prod-leader-headless.redis.svc.cluster.local',
     port: 6379
   },
   {
-    host: 'redis-prod-leader-1.redis-prod.redis.svc.cluster.local',
+    host: 'redis-prod-leader-1.redis-prod-leader-headless.redis.svc.cluster.local',
     port: 6379
   },
   {
-    host: 'redis-prod-leader-2.redis-prod.redis.svc.cluster.local',
+    host: 'redis-prod-leader-2.redis-prod-leader-headless.redis.svc.cluster.local',
     port: 6379
   }
 ], {
@@ -403,9 +478,9 @@ import os
 
 # Define cluster nodes
 startup_nodes = [
-    ClusterNode('redis-prod-leader-0.redis-prod.redis.svc.cluster.local', 6379),
-    ClusterNode('redis-prod-leader-1.redis-prod.redis.svc.cluster.local', 6379),
-    ClusterNode('redis-prod-leader-2.redis-prod.redis.svc.cluster.local', 6379),
+    ClusterNode('redis-prod-leader-0.redis-prod-leader-headless.redis.svc.cluster.local', 6379),
+    ClusterNode('redis-prod-leader-1.redis-prod-leader-headless.redis.svc.cluster.local', 6379),
+    ClusterNode('redis-prod-leader-2.redis-prod-leader-headless.redis.svc.cluster.local', 6379),
 ]
 
 # Create cluster client
@@ -447,7 +522,7 @@ if __name__ == '__main__':
 
 ### Adding Nodes
 
-Scale the cluster by adding masters:
+Scale the cluster by adding leaders and followers:
 
 ```bash
 # Update cluster size
@@ -475,7 +550,7 @@ kubectl exec -it redis-prod-leader-0 -n redis -- \
 # Rebalance (use redis-cli from any pod)
 kubectl exec -it redis-prod-leader-0 -n redis -- \
   redis-cli -a $REDIS_PASSWORD --cluster rebalance \
-  redis-prod-leader-0.redis-prod.redis.svc.cluster.local:6379 \
+  redis-prod-leader-0.redis-prod-leader-headless.redis.svc.cluster.local:6379 \
   --cluster-use-empty-masters
 ```
 
@@ -510,7 +585,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: redis-cluster
+      redis_setup_type: cluster
   endpoints:
   - port: redis-exporter
     interval: 30s
@@ -555,7 +630,7 @@ BACKUP_DIR="/backup"
 S3_BUCKET="redis-backups"
 
 # Get all master nodes
-MASTERS=$(kubectl get pods -n $NAMESPACE -l app=$CLUSTER_NAME -o name | grep leader)
+MASTERS=$(kubectl get pods -n $NAMESPACE -l app=${CLUSTER_NAME}-leader -o name)
 
 for MASTER in $MASTERS; do
     POD_NAME=$(basename $MASTER)
