@@ -14,9 +14,9 @@ If you're putting your database in a public subnet, this post is for you.
 
 ## Why Separate Public and Private?
 
-It comes down to attack surface. Every resource in a public subnet gets a public IP address and is directly reachable from the internet (subject to security group rules). That's fine for a load balancer. It's not fine for your PostgreSQL database.
+It comes down to attack surface. A public subnet has a route to an internet gateway, and resources with public IP addresses can be directly reachable from the internet (subject to security group rules). That's fine for a load balancer. It's not fine for your PostgreSQL database.
 
-Private subnets have no direct internet access. Resources in private subnets can only be reached from within the VPC or through specific, controlled pathways. If an attacker compromises a public-facing web server, they still can't directly reach your database server because there's no route from the internet to the private subnet.
+Private subnets have no direct route to an internet gateway. Resources in private subnets can only be reached from within the VPC or through specific, controlled pathways, and they use a NAT gateway when they need outbound internet access. If an attacker compromises a public-facing web server, they still can't directly reach your database server because there's no inbound route from the internet to the private subnet.
 
 ## The Architecture
 
@@ -40,7 +40,7 @@ graph TB
     PrivSub2 --> DB2[Database - Standby]
 ```
 
-Two public subnets across two availability zones for the load balancer and NAT gateway. Two private subnets for application servers and databases. Simple, resilient, and secure.
+Two public subnets across two availability zones for the load balancer and NAT gateway. Two private subnets for application servers and databases. Simple and secure. For production resiliency, deploy a NAT gateway in each availability zone.
 
 ## CIDR Block Planning
 
@@ -305,18 +305,47 @@ This creates a chain: Internet -> ALB -> App -> Database. Each layer can only ta
 Security groups are stateful and operate at the instance level. NACLs (Network Access Control Lists) are stateless and operate at the subnet level. Use both for defense in depth:
 
 ```bash
-# Create a NACL for private subnets that blocks all direct internet traffic
+# Create a NACL for private subnets
 NACL_ID=$(aws ec2 create-network-acl \
   --vpc-id $VPC_ID \
   --query 'NetworkAcl.NetworkAclId' \
   --output text)
 
-# Allow inbound traffic from VPC CIDR only
+# Associate it with each private subnet
+aws ec2 associate-network-acl \
+  --network-acl-id $NACL_ID \
+  --subnet-id $PRIVATE_SUBNET_1_ID
+
+aws ec2 associate-network-acl \
+  --network-acl-id $NACL_ID \
+  --subnet-id $PRIVATE_SUBNET_2_ID
+
+# Allow inbound traffic from VPC CIDR
 aws ec2 create-network-acl-entry \
   --network-acl-id $NACL_ID \
   --rule-number 100 \
   --protocol -1 \
   --cidr-block 10.0.0.0/16 \
+  --rule-action allow \
+  --ingress
+
+# Allow return traffic for outbound TCP connections through the NAT gateway
+aws ec2 create-network-acl-entry \
+  --network-acl-id $NACL_ID \
+  --rule-number 110 \
+  --protocol tcp \
+  --port-range From=1024,To=65535 \
+  --cidr-block 0.0.0.0/0 \
+  --rule-action allow \
+  --ingress
+
+# Allow return traffic for outbound UDP connections through the NAT gateway
+aws ec2 create-network-acl-entry \
+  --network-acl-id $NACL_ID \
+  --rule-number 120 \
+  --protocol udp \
+  --port-range From=1024,To=65535 \
+  --cidr-block 0.0.0.0/0 \
   --rule-action allow \
   --ingress
 
