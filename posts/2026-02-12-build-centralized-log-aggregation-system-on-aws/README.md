@@ -19,7 +19,7 @@ There are two main approaches on AWS:
 1. **CloudWatch-centric** - Keep logs in CloudWatch, use cross-account sharing and Logs Insights
 2. **OpenSearch-centric** - Stream logs to OpenSearch for richer search and visualization
 
-The right choice depends on your scale and query needs. CloudWatch is simpler and cheaper for small to medium setups. OpenSearch gives you more powerful search and Kibana dashboards for larger environments.
+The right choice depends on your scale and query needs. CloudWatch is simpler and cheaper for small to medium setups. OpenSearch gives you more powerful search and OpenSearch Dashboards for larger environments.
 
 ```mermaid
 graph TD
@@ -47,6 +47,7 @@ import * as kinesis from 'aws-cdk-lib/aws-kinesis';
 import * as firehose from 'aws-cdk-lib/aws-kinesisfirehose';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as opensearch from 'aws-cdk-lib/aws-opensearchservice';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 
 export class CentralLoggingStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string) {
@@ -119,6 +120,20 @@ const deliveryStream = new firehose.CfnDeliveryStream(this, 'LogDeliveryStream',
     retryOptions: {
       durationInSeconds: 300,
     },
+    processingConfiguration: {
+      enabled: true,
+      processors: [
+        {
+          type: 'Lambda',
+          parameters: [
+            {
+              parameterName: 'LambdaArn',
+              parameterValue: logProcessor.functionArn,
+            },
+          ],
+        },
+      ],
+    },
     s3BackupMode: 'AllDocuments', // Also send to S3
     s3Configuration: {
       bucketArn: logBucket.bucketArn,
@@ -139,18 +154,26 @@ const deliveryStream = new firehose.CfnDeliveryStream(this, 'LogDeliveryStream',
 Each service sends its CloudWatch logs to the central Kinesis stream using subscription filters.
 
 ```typescript
-// In each service's stack - subscribe logs to central stream
+// In the central logging stack - create a cross-account destination
 import * as logs from 'aws-cdk-lib/aws-logs';
-import * as logsDestinations from 'aws-cdk-lib/aws-logs-destinations';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
-// Cross-account destination (if logs go to a different account)
 const destination = new logs.CrossAccountDestination(this, 'CentralLogDestination', {
   destinationName: 'central-logs',
   targetArn: 'arn:aws:kinesis:us-east-1:CENTRAL_ACCOUNT:stream/central-log-stream',
   role: destinationRole,
 });
 
-// Subscribe all service log groups
+destination.addToPolicy(new iam.PolicyStatement({
+  principals: [
+    new iam.AccountPrincipal('111111111111'),
+    new iam.AccountPrincipal('222222222222'),
+  ],
+  actions: ['logs:PutSubscriptionFilter'],
+  resources: [destination.destinationArn],
+}));
+
+// In each service's stack - subscribe logs to the destination ARN
 const serviceLogGroups = [
   '/aws/lambda/order-service',
   '/aws/lambda/payment-service',
@@ -159,12 +182,10 @@ const serviceLogGroups = [
 ];
 
 serviceLogGroups.forEach((logGroupName, index) => {
-  const logGroup = logs.LogGroup.fromLogGroupName(this, `LogGroup${index}`, logGroupName);
-
-  new logs.SubscriptionFilter(this, `Sub${index}`, {
-    logGroup,
-    destination: new logsDestinations.KinesisDestination(centralStream),
-    filterPattern: logs.FilterPattern.allEvents(), // Send everything
+  new logs.CfnSubscriptionFilter(this, `Sub${index}`, {
+    logGroupName,
+    destinationArn: 'arn:aws:logs:us-east-1:CENTRAL_ACCOUNT:destination:central-logs',
+    filterPattern: '', // Send everything
   });
 });
 ```
@@ -245,9 +266,7 @@ Define a proper index template for log data in OpenSearch.
   "template": {
     "settings": {
       "number_of_shards": 2,
-      "number_of_replicas": 1,
-      "index.lifecycle.name": "log-retention-policy",
-      "index.lifecycle.rollover_alias": "logs"
+      "number_of_replicas": 1
     },
     "mappings": {
       "properties": {
@@ -270,37 +289,45 @@ Define a proper index template for log data in OpenSearch.
 
 ## Index Lifecycle Management
 
-Logs grow fast. Set up index lifecycle policies to manage storage costs.
+Logs grow fast. Set up Index State Management (ISM) policies to manage storage costs.
 
 ```json
 {
   "policy": {
-    "phases": {
-      "hot": {
-        "actions": {
-          "rollover": {
-            "max_size": "30gb",
-            "max_age": "1d"
+    "description": "Delete log indexes after 30 days",
+    "default_state": "hot",
+    "states": [
+      {
+        "name": "hot",
+        "actions": [],
+        "transitions": [
+          {
+            "state_name": "delete",
+            "conditions": {
+              "min_index_age": "30d"
+            }
           }
-        }
+        ]
       },
-      "warm": {
-        "min_age": "7d",
-        "actions": {
-          "shrink": { "number_of_shards": 1 },
-          "forcemerge": { "max_num_segments": 1 }
-        }
-      },
-      "delete": {
-        "min_age": "30d",
-        "actions": {
-          "delete": {}
-        }
+      {
+        "name": "delete",
+        "actions": [
+          {
+            "delete": {}
+          }
+        ],
+        "transitions": []
       }
+    ],
+    "ism_template": {
+      "index_patterns": ["logs-*"],
+      "priority": 100
     }
   }
 }
 ```
+
+Create it with the ISM API path `_plugins/_ism/policies/log-retention-policy`. With Firehose's daily index rotation, this deletes old `logs-*` indexes without requiring a rollover alias.
 
 ## Real-Time Alerting
 
@@ -359,11 +386,22 @@ exports.handler = async (event) => {
 For simpler setups, CloudWatch's built-in cross-account observability might be enough.
 
 ```bash
-# Enable cross-account observability in the monitoring account
+# In the monitoring account, create a sink and allow source accounts
 
-aws cloudwatch put-metric-data-account-policy \
-  --policy-name "CrossAccountSharing" \
-  --policy-document '{"Statement":[{"Effect":"Allow","Principal":{"AWS":["111111111111","222222222222"]},"Action":["cloudwatch:PutMetricData"],"Resource":"*"}]}'
+SINK_ARN=$(aws oam create-sink \
+  --name CentralObservability \
+  --query Arn \
+  --output text)
+
+aws oam put-sink-policy \
+  --sink-identifier "$SINK_ARN" \
+  --policy '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["arn:aws:iam::111111111111:root","arn:aws:iam::222222222222:root"]},"Action":["oam:CreateLink","oam:UpdateLink"],"Resource":"*","Condition":{"ForAllValues:StringEquals":{"oam:ResourceTypes":["AWS::Logs::LogGroup","AWS::CloudWatch::Metric"]}}}]}'
+
+# In each source account, link to the monitoring account sink
+aws oam create-link \
+  --label-template '$AccountName' \
+  --resource-types AWS::Logs::LogGroup AWS::CloudWatch::Metric \
+  --sink-identifier "$SINK_ARN"
 ```
 
 ## Cost Management
