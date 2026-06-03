@@ -202,7 +202,7 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-**Read Replicas** - Offload read traffic and serve as failover targets:
+**Read Replicas** - Offload read traffic and provide manual promotion targets:
 
 ```hcl
 resource "aws_db_instance" "read_replica" {
@@ -292,7 +292,7 @@ The deployment circuit breaker automatically rolls back failed deployments, prev
 Choose your DR strategy based on RTO (Recovery Time Objective) and RPO (Recovery Point Objective):
 
 1. **Backup and Restore** (hours RTO, hours RPO) - cheapest, slowest recovery
-2. **Pilot Light** (minutes RTO, seconds RPO) - minimal infrastructure always running in DR region
+2. **Pilot Light** (tens of minutes RTO, minutes RPO) - minimal infrastructure always running in DR region
 3. **Warm Standby** (minutes RTO, seconds RPO) - scaled-down version running in DR region
 4. **Active-Active** (near-zero RTO and RPO) - full capacity in multiple regions
 
@@ -303,19 +303,26 @@ For most applications, Pilot Light or Warm Standby provides a good balance of co
 **Backup Testing** - Regularly restore from backups to verify they work:
 
 ```hcl
-# AWS Backup with a restore testing plan
-resource "aws_backup_plan" "main" {
-  name = "reliability-backup-plan"
+# AWS Backup restore testing plan
+resource "aws_backup_restore_testing_plan" "main" {
+  name = "reliability_restore_testing_plan"
 
-  rule {
-    rule_name         = "daily"
-    target_vault_name = aws_backup_vault.main.name
-    schedule          = "cron(0 3 * * ? *)"
-
-    lifecycle {
-      delete_after = 30
-    }
+  recovery_point_selection {
+    algorithm             = "LATEST_WITHIN_WINDOW"
+    include_vaults        = [aws_backup_vault.main.arn]
+    recovery_point_types  = ["SNAPSHOT"]
+    selection_window_days = 7
   }
+
+  schedule_expression = "cron(0 3 ? * * *)"
+}
+
+resource "aws_backup_restore_testing_selection" "rds" {
+  name                      = "rds_restore_test"
+  restore_testing_plan_name = aws_backup_restore_testing_plan.main.name
+  protected_resource_type   = "RDS"
+  iam_role_arn              = aws_iam_role.backup_restore_testing.arn
+  protected_resource_arns   = ["*"]
 }
 ```
 
