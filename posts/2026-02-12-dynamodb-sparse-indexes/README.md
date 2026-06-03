@@ -8,7 +8,7 @@ Description: Learn how to leverage DynamoDB sparse indexes to efficiently query 
 
 ---
 
-A sparse index is a Global Secondary Index (GSI) where the partition key attribute only exists on some items in your table. DynamoDB only copies items into a GSI when the index's key attributes are present. If an item doesn't have the GSI's partition key attribute, it's excluded from the index entirely.
+A sparse index is a Global Secondary Index (GSI) where the index key attributes only exist on some items in your table. DynamoDB only copies items into a GSI when the index's key attributes are present. If an item doesn't have the GSI's partition key attribute, or the sort key attribute for an index that defines one, it's excluded from the index entirely.
 
 This is incredibly useful. It means you can create an index that contains only the items you care about, rather than indexing everything.
 
@@ -43,12 +43,19 @@ Instead of creating a GSI on `status` (which would index all 1 million items), y
 The trick is to only set the GSI's partition key attribute on items that should appear in the index:
 
 ```javascript
-const AWS = require('aws-sdk');
-const docClient = new AWS.DynamoDB.DocumentClient();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const {
+  DynamoDBDocumentClient,
+  PutCommand,
+  QueryCommand,
+  UpdateCommand
+} = require('@aws-sdk/lib-dynamodb');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // When creating an order that needs attention, include the flag attribute
 async function createPendingOrder(orderId, customerId, amount) {
-  await docClient.put({
+  await docClient.send(new PutCommand({
     TableName: 'Orders',
     Item: {
       orderId: orderId,
@@ -59,12 +66,12 @@ async function createPendingOrder(orderId, customerId, amount) {
       // This attribute triggers inclusion in the sparse index
       needsAttention: 'PENDING'
     }
-  }).promise();
+  }));
 }
 
 // When the order is completed, remove the flag attribute
 async function completeOrder(orderId) {
-  await docClient.update({
+  await docClient.send(new UpdateCommand({
     TableName: 'Orders',
     Key: { orderId },
     UpdateExpression: 'SET #status = :completed, completedAt = :now REMOVE needsAttention',
@@ -73,7 +80,7 @@ async function completeOrder(orderId) {
       ':completed': 'completed',
       ':now': new Date().toISOString()
     }
-  }).promise();
+  }));
   // Removing needsAttention removes this item from the sparse index
 }
 ```
@@ -120,7 +127,7 @@ async function getOrdersNeedingAttention() {
     ExpressionAttributeValues: { ':val': 'PENDING' }
   };
 
-  return (await docClient.query(params).promise()).Items;
+  return (await docClient.send(new QueryCommand(params))).Items;
 }
 ```
 
@@ -131,7 +138,7 @@ Many apps need to query only active items while keeping inactive ones in the tab
 ```javascript
 // Only active users have the 'isActive' attribute
 async function activateUser(userId) {
-  await docClient.update({
+  await docClient.send(new UpdateCommand({
     TableName: 'Users',
     Key: { userId },
     UpdateExpression: 'SET isActive = :val, activatedAt = :now',
@@ -139,18 +146,18 @@ async function activateUser(userId) {
       ':val': 'ACTIVE',
       ':now': new Date().toISOString()
     }
-  }).promise();
+  }));
 }
 
 async function deactivateUser(userId) {
-  await docClient.update({
+  await docClient.send(new UpdateCommand({
     TableName: 'Users',
     Key: { userId },
     UpdateExpression: 'REMOVE isActive SET deactivatedAt = :now',
     ExpressionAttributeValues: {
       ':now': new Date().toISOString()
     }
-  }).promise();
+  }));
 }
 
 // Query only active users from the sparse index
@@ -162,7 +169,7 @@ async function getActiveUsers() {
     ExpressionAttributeValues: { ':active': 'ACTIVE' }
   };
 
-  return (await docClient.query(params).promise()).Items;
+  return (await docClient.send(new QueryCommand(params))).Items;
 }
 ```
 
@@ -173,7 +180,7 @@ Use sparse indexes to create work queues:
 ```javascript
 // Flag an item for background processing
 async function flagForProcessing(itemId, processingType) {
-  await docClient.update({
+  await docClient.send(new UpdateCommand({
     TableName: 'Items',
     Key: { itemId },
     UpdateExpression: 'SET processingQueue = :queue, queuedAt = :now',
@@ -181,30 +188,30 @@ async function flagForProcessing(itemId, processingType) {
       ':queue': processingType,
       ':now': new Date().toISOString()
     }
-  }).promise();
+  }));
 }
 
 // Process items from the queue
 async function processQueue(processingType) {
   // Fetch items from the sparse index
-  const result = await docClient.query({
+  const result = await docClient.send(new QueryCommand({
     TableName: 'Items',
     IndexName: 'processing-queue-index',
     KeyConditionExpression: 'processingQueue = :queue',
     ExpressionAttributeValues: { ':queue': processingType },
     Limit: 10
-  }).promise();
+  }));
 
   for (const item of result.Items) {
     await processItem(item);
 
     // Remove from queue by removing the flag attribute
-    await docClient.update({
+    await docClient.send(new UpdateCommand({
       TableName: 'Items',
       Key: { itemId: item.itemId },
       UpdateExpression: 'REMOVE processingQueue, queuedAt SET processedAt = :now',
       ExpressionAttributeValues: { ':now': new Date().toISOString() }
-    }).promise();
+    }));
   }
 }
 ```
@@ -216,7 +223,7 @@ Track items that have an expiration date without scanning the whole table:
 ```javascript
 // Set an expiration on an item
 async function setExpiration(itemId, expirationDate) {
-  await docClient.update({
+  await docClient.send(new UpdateCommand({
     TableName: 'Items',
     Key: { itemId },
     UpdateExpression: 'SET expiringFlag = :flag, expirationDate = :date',
@@ -224,7 +231,7 @@ async function setExpiration(itemId, expirationDate) {
       ':flag': 'EXPIRING',
       ':date': expirationDate
     }
-  }).promise();
+  }));
 }
 
 // Find items expiring soon
@@ -240,7 +247,7 @@ async function getExpiringItems(beforeDate) {
     }
   };
 
-  return (await docClient.query(params).promise()).Items;
+  return (await docClient.send(new QueryCommand(params))).Items;
 }
 ```
 
@@ -256,7 +263,7 @@ async function updateOrderStatus(orderId, newStatus) {
     : undefined;               // Exclude from sparse index
 
   if (flagValue) {
-    await docClient.update({
+    await docClient.send(new UpdateCommand({
       TableName: 'Orders',
       Key: { orderId },
       UpdateExpression: 'SET #status = :status, attentionFlag = :flag',
@@ -265,26 +272,26 @@ async function updateOrderStatus(orderId, newStatus) {
         ':status': newStatus,
         ':flag': flagValue
       }
-    }).promise();
+    }));
   } else {
-    await docClient.update({
+    await docClient.send(new UpdateCommand({
       TableName: 'Orders',
       Key: { orderId },
       UpdateExpression: 'SET #status = :status REMOVE attentionFlag',
       ExpressionAttributeNames: { '#status': 'status' },
       ExpressionAttributeValues: { ':status': newStatus }
-    }).promise();
+    }));
   }
 }
 
 // Query only failed orders
 async function getFailedOrders() {
-  return (await docClient.query({
+  return (await docClient.send(new QueryCommand({
     TableName: 'Orders',
     IndexName: 'attention-index',
     KeyConditionExpression: 'attentionFlag = :flag',
     ExpressionAttributeValues: { ':flag': 'FAILED' }
-  }).promise()).Items;
+  }))).Items;
 }
 ```
 
@@ -303,21 +310,21 @@ Full GSI on status:
 Sparse index:
   - Storage: 10,000 items indexed (1000x less)
   - Write cost: only 10,000 items trigger GSI writes
-  - Read cost: query scans a tiny index
+  - Read cost: query reads from a tiny index
 ```
 
 Storage for the sparse index is 1000x smaller. Write costs are dramatically lower because 99.9% of writes don't touch the index.
 
 ## Combining Sparse Indexes with TTL
 
-DynamoDB's Time to Live (TTL) automatically deletes expired items. Combine this with sparse indexes for temporary flags:
+DynamoDB's Time to Live (TTL) automatically deletes expired items. After you enable TTL on the table with the TTL attribute used below, you can combine this with sparse indexes for temporary flags on items that should expire:
 
 ```javascript
-// Create a temporary flag that auto-expires
+// Create a temporary flag on an item that should auto-expire
 async function flagTemporarily(itemId, flagType, durationSeconds) {
   const expiresAt = Math.floor(Date.now() / 1000) + durationSeconds;
 
-  await docClient.update({
+  await docClient.send(new UpdateCommand({
     TableName: 'Items',
     Key: { itemId },
     UpdateExpression: 'SET tempFlag = :flag, tempFlagTTL = :ttl',
@@ -325,11 +332,11 @@ async function flagTemporarily(itemId, flagType, durationSeconds) {
       ':flag': flagType,
       ':ttl': expiresAt  // DynamoDB TTL attribute
     }
-  }).promise();
+  }));
 }
 ```
 
-When the TTL expires, DynamoDB removes the item attributes, which also removes it from the sparse index.
+When the TTL expires, DynamoDB deletes the item, which also removes it from the sparse index. Use this pattern only when the whole item should expire, not just the temporary flag.
 
 ## Monitoring Sparse Index Usage
 
