@@ -32,15 +32,15 @@ graph TB
 Before you start, you'll need:
 
 - An AWS account with Ground Station access (you may need to request access)
-- A satellite - yes, you need an actual satellite registered with AWS Ground Station, or you can use publicly accessible satellites for testing
+- A satellite - yes, you need an actual satellite onboarded with AWS Ground Station, or you can use AWS's public broadcast satellite examples for testing
 - An EC2 instance in a supported region for data delivery
 - Mission profiles configured for your satellite's frequency and data format
 
-The supported regions for Ground Station data delivery currently include US East (Ohio), US West (Oregon), EU (Stockholm), Asia Pacific (Sydney), and several others near ground station locations.
+The supported Ground Station locations currently include Ohio, Oregon, Alaska, Hawaii, Ireland, Stockholm, Bahrain, Cape Town, Dubbo, Seoul, Singapore, and Punta Arenas. You can configure contacts and data delivery from supported AWS Regions, including the Region associated with the ground station location.
 
 ## Step 1: Register Your Satellite
 
-If you operate your own satellite, you register it with AWS Ground Station by providing its NORAD ID (the catalog number assigned by the US Space Command).
+If you operate your own satellite, you onboard it with AWS Ground Station by providing satellite details, including its NORAD ID when it has one (the catalog number assigned by the US Space Command).
 
 ```bash
 # List satellites already available in your account
@@ -50,7 +50,7 @@ aws groundstation list-satellites \
   --output table
 ```
 
-For testing purposes, AWS has pre-configured public broadcast satellites that you can practice with. These are great for validating your setup before your own satellite is in orbit.
+For testing purposes, AWS documents public broadcast satellite examples, such as Aqua, that you can practice with. You can also use the AWS Ground Station digital twin feature to test scheduling and configuration flows without using production antenna capacity, although digital twin contacts do not deliver data.
 
 ## Step 2: Create a Mission Profile
 
@@ -72,12 +72,26 @@ aws groundstation create-dataflow-endpoint-group \
         }
       },
       "securityDetails": {
-        "subnetIds": ["subnet-abc123"],
-        "securityGroupIds": ["sg-def456"],
-        "roleArn": "arn:aws:iam::123456789:role/GroundStationDataDelivery"
+        "subnetIds": ["subnet-0abc123def4567890"],
+        "securityGroupIds": ["sg-0def456abc1237890"],
+        "roleArn": "arn:aws:iam::123456789012:role/GroundStationDataDelivery"
       }
     }
   ]'
+```
+
+You also need a dataflow endpoint config whose `dataflowEndpointName` matches the endpoint name in the group.
+
+```bash
+# Create the dataflow endpoint config referenced by the mission profile
+aws groundstation create-config \
+  --name "my-data-endpoint-config" \
+  --config-data '{
+    "dataflowEndpointConfig": {
+      "dataflowEndpointName": "my-data-endpoint",
+      "dataflowEndpointRegion": "us-east-2"
+    }
+  }'
 ```
 
 Then create the mission profile.
@@ -87,12 +101,12 @@ Then create the mission profile.
 aws groundstation create-mission-profile \
   --name "earth-observation-mission" \
   --minimum-viable-contact-duration-seconds 180 \
-  --tracking-config-arn "arn:aws:groundstation:us-east-2:123456789:config/tracking/auto-track" \
+  --tracking-config-arn "arn:aws:groundstation:us-east-2:123456789012:config/tracking/11111111-1111-1111-1111-111111111111" \
   --dataflow-edges '[
-    {
-      "source": "arn:aws:groundstation:us-east-2:123456789:config/antenna-downlink/my-config",
-      "destination": "arn:aws:groundstation:us-east-2:123456789:dataflow-endpoint-group/my-endpoint-group"
-    }
+    [
+      "arn:aws:groundstation:us-east-2:123456789012:config/antenna-downlink/22222222-2222-2222-2222-222222222222",
+      "arn:aws:groundstation:us-east-2:123456789012:config/dataflow-endpoint/33333333-3333-3333-3333-333333333333"
+    ]
   ]'
 ```
 
@@ -105,11 +119,13 @@ Now you can see when your satellite will be visible from available ground statio
 ```bash
 # List available contacts for the next 24 hours
 aws groundstation list-contacts \
-  --status "AVAILABLE" \
-  --satellite-arn "arn:aws:groundstation:us-east-2:123456789:satellite/my-sat" \
+  --status-list "AVAILABLE" \
+  --satellite-arn "arn:aws:groundstation:us-east-2:123456789012:satellite/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" \
+  --mission-profile-arn "arn:aws:groundstation:us-east-2:123456789012:mission-profile/bbbbbbbb-cccc-dddd-eeee-ffffffffffff" \
+  --ground-station "Ohio 1" \
   --start-time "2026-02-12T00:00:00Z" \
   --end-time "2026-02-13T00:00:00Z" \
-  --query "contactList[].{Start:startTime, End:endTime, MaxElevation:maximumElevation, GroundStation:groundStationId}" \
+  --query "contactList[].{Start:startTime, End:endTime, MaxElevation:maximumElevation.value, GroundStation:groundStation}" \
   --output table
 ```
 
@@ -120,11 +136,11 @@ Reserve a contact.
 ```bash
 # Reserve a specific contact window
 aws groundstation reserve-contact \
-  --satellite-arn "arn:aws:groundstation:us-east-2:123456789:satellite/my-sat" \
+  --satellite-arn "arn:aws:groundstation:us-east-2:123456789012:satellite/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" \
   --start-time "2026-02-12T14:30:00Z" \
   --end-time "2026-02-12T14:38:00Z" \
-  --ground-station "us-east-2-1" \
-  --mission-profile-arn "arn:aws:groundstation:us-east-2:123456789:mission-profile/earth-observation-mission"
+  --ground-station "Ohio 1" \
+  --mission-profile-arn "arn:aws:groundstation:us-east-2:123456789012:mission-profile/bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
 ```
 
 ## Step 4: Receive and Process Data
@@ -135,7 +151,6 @@ Here's a basic Python script that receives data on the EC2 instance.
 
 ```python
 import socket
-import struct
 import datetime
 import boto3
 
@@ -189,6 +204,7 @@ if __name__ == '__main__':
 Raw satellite data usually needs significant processing. For Earth observation, you're dealing with imagery that needs decompression, georeferencing, and atmospheric correction. A common pipeline looks like this:
 
 ```python
+import json
 import boto3
 
 # Set up a processing pipeline using Step Functions or Lambda
@@ -228,15 +244,15 @@ Ground Station integrates with CloudWatch for monitoring contact status, signal 
 ```bash
 # Describe a completed contact
 aws groundstation describe-contact \
-  --contact-id "contact-abc123" \
-  --query "{Status:contactStatus, Start:startTime, End:endTime, MaxElevation:maximumElevation}"
+  --contact-id "cccccccc-dddd-eeee-ffff-000000000000" \
+  --query "{Status:contactStatus, Start:startTime, End:endTime, MaxElevation:maximumElevation.value}"
 ```
 
 For broader infrastructure monitoring that ties together your Ground Station contacts with the rest of your processing pipeline, consider tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to get visibility across services.
 
 ## Cost Structure
 
-AWS Ground Station charges per minute of antenna time. The exact rate depends on the antenna band (S-band, X-band, etc.) and ranges from roughly $3 to $10 per minute. A typical 8-minute LEO satellite pass might cost $24-80.
+AWS Ground Station charges per minute of antenna time. The exact rate depends on whether you're using On-Demand or Reserved scheduling and whether the pass is narrowband or wideband, so use the AWS pricing page or AWS Pricing Calculator for a current estimate before reserving production contacts.
 
 That might sound steep, but compare it to building and maintaining your own ground station infrastructure. A single antenna site runs $1-5 million to build, plus ongoing staffing and maintenance. If you're doing fewer than a few hundred contacts per month, AWS Ground Station is almost certainly cheaper.
 
