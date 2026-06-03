@@ -8,13 +8,13 @@ Description: Configure session affinity based on client IP addresses in Kubernet
 
 ---
 
-Session affinity makes Kubernetes services sticky. Instead of load balancing each request randomly across pods, session affinity ensures requests from the same client always hit the same backend pod. This matters for stateful applications, shopping carts, WebSocket connections, and any scenario where maintaining state on the backend simplifies your architecture.
+Session affinity makes Kubernetes services sticky. Instead of load balancing each new connection randomly across pods, session affinity ensures connections from the same client IP hit the same backend pod during the affinity timeout. This matters for stateful applications, shopping carts, WebSocket connections, and any scenario where maintaining state on the backend simplifies your architecture.
 
 ## Understanding Session Affinity
 
-By default, Kubernetes services distribute traffic randomly across healthy pods. Every request gets load balanced independently. This works great for stateless applications but breaks stateful ones that store session data in memory.
+By default, Kubernetes services distribute new connections across healthy pods. This works great for stateless applications but breaks stateful ones that store session data in memory.
 
-Session affinity changes this behavior. When enabled with clientIP, Kubernetes uses the client's IP address as a sticky key. Requests from the same IP always route to the same pod, as long as that pod remains healthy.
+Session affinity changes this behavior. When enabled with `ClientIP`, Kubernetes uses the client's IP address as a sticky key. Connections from the same IP route to the same pod during the configured timeout, as long as that pod remains available.
 
 ## Enabling Session Affinity
 
@@ -51,15 +51,15 @@ Apply this configuration:
 kubectl apply -f stateful-app-service.yaml
 ```
 
-Now all requests from the same client IP hit the same pod for 3 hours.
+Now new connections from the same client IP hit the same pod for up to 3 hours.
 
 ## How It Works Under the Hood
 
-Session affinity implementation depends on your kube-proxy mode.
+Session affinity implementation depends on your kube-proxy mode. Common Linux modes include iptables, nftables, and IPVS.
 
 ### iptables Mode
 
-In iptables mode, kube-proxy creates rules with the `--probability` parameter and uses connection tracking. When a client connects, iptables selects a backend using the probability chain, then marks that connection. Subsequent packets from the same source IP within the timeout window match the existing conntrack entry and route to the same backend.
+In iptables mode, kube-proxy uses the `recent` match module for ClientIP affinity. When a client first connects, iptables selects a backend using the normal service rules, which commonly include statistic rules with `--probability`. The selected endpoint chain records the source IP with `--set`, and later new connections from that source IP within the timeout window match `--rcheck --seconds <timeout>` and jump back to the same endpoint chain. Conntrack still keeps packets for an established connection on the selected NAT path.
 
 Check the iptables rules:
 
@@ -71,6 +71,10 @@ sudo iptables-save | grep stateful-app
 
 You'll see complex chains managing the sticky routing.
 
+### nftables Mode
+
+In nftables mode, kube-proxy configures service forwarding rules through the kernel nftables API. It is the stable successor to the iptables API in Kubernetes and can also honor Service session affinity.
+
 ### IPVS Mode
 
 In IPVS mode, session affinity uses IPVS's native persistence feature. When you configure clientIP affinity, kube-proxy sets the persistent timeout in IPVS:
@@ -81,6 +85,8 @@ sudo ipvsadm -L -n
 ```
 
 Look for the `persistent` flag with the timeout value.
+
+IPVS proxy mode is deprecated in current Kubernetes releases. Prefer nftables where your nodes and network plugin support it, or iptables on older Linux systems.
 
 ## Testing Session Affinity
 
@@ -142,13 +148,13 @@ kubectl apply -f affinity-test.yaml
 kubectl run test-client --image=curlimages/curl -it --rm -- sh
 
 # Inside the pod, make multiple requests
-for i in {1..10}; do
+for i in 1 2 3 4 5 6 7 8 9 10; do
   curl http://affinity-test.default.svc.cluster.local
   sleep 1
 done
 ```
 
-You should see the same pod name in all responses. Without session affinity, you'd see different pod names.
+You should see the same pod name in all responses. Without session affinity, new connections may go to different pod names.
 
 ## Use Cases for Session Affinity
 
@@ -264,7 +270,13 @@ metadata:
   name: stateless-app
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: stateless-app
   template:
+    metadata:
+      labels:
+        app: stateless-app
     spec:
       containers:
       - name: app
@@ -384,7 +396,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       containers:
       - name: app
