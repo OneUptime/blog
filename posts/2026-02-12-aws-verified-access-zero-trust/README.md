@@ -55,7 +55,7 @@ aws ec2 create-verified-access-trust-provider \
   }' \
   --policy-reference-name "okta" \
   --description "Okta Identity Provider" \
-  --tags Key=Type,Value=Identity
+  --tag-specifications 'ResourceType=verified-access-trust-provider,Tags=[{Key=Type,Value=Identity}]'
 ```
 
 Create a device trust provider:
@@ -70,7 +70,7 @@ aws ec2 create-verified-access-trust-provider \
   }' \
   --policy-reference-name "crowdstrike" \
   --description "CrowdStrike Device Trust" \
-  --tags Key=Type,Value=Device
+  --tag-specifications 'ResourceType=verified-access-trust-provider,Tags=[{Key=Type,Value=Device}]'
 ```
 
 ## Creating the Verified Access Instance
@@ -83,7 +83,7 @@ Create the instance and attach trust providers:
 # Create the Verified Access instance
 aws ec2 create-verified-access-instance \
   --description "Production Verified Access" \
-  --tags Key=Environment,Value=Production
+  --tag-specifications 'ResourceType=verified-access-instance,Tags=[{Key=Environment,Value=Production}]'
 
 # Attach the identity trust provider
 aws ec2 attach-verified-access-trust-provider \
@@ -107,7 +107,7 @@ Create a group with a Cedar policy:
 aws ec2 create-verified-access-group \
   --verified-access-instance-id vai-abc123 \
   --description "Engineering Internal Tools" \
-  --tags Key=Team,Value=Engineering
+  --tag-specifications 'ResourceType=verified-access-group,Tags=[{Key=Team,Value=Engineering}]'
 
 # Set the access policy using Cedar
 aws ec2 modify-verified-access-group-policy \
@@ -116,9 +116,9 @@ aws ec2 modify-verified-access-group-policy \
   --policy-document '
     permit(principal, action, resource)
     when {
-      context.okta.groups has "engineering" &&
+      context.okta.groups.contains("engineering") &&
       context.okta.email_verified == true &&
-      context.crowdstrike.overall_assessment == "pass"
+      context.crowdstrike.assessment.overall > 50
     };
   '
 ```
@@ -126,27 +126,29 @@ aws ec2 modify-verified-access-group-policy \
 This policy allows access only when:
 1. The user belongs to the "engineering" group in Okta.
 2. The user's email is verified.
-3. CrowdStrike reports the device as passing its security assessment.
+3. CrowdStrike reports an overall device assessment score above 50.
 
 More complex policies:
 
 ```bash
-# Policy requiring specific group AND manager approval for sensitive apps
+# Policy requiring a specific group and stronger CrowdStrike assessment for sensitive apps
 aws ec2 modify-verified-access-group-policy \
   --verified-access-group-id vag-sensitive123 \
   --policy-enabled \
   --policy-document '
     permit(principal, action, resource)
     when {
-      context.okta.groups has "security-team" &&
+      context.okta.groups.contains("security-team") &&
       context.okta.email like "*@example.com" &&
-      context.crowdstrike.overall_assessment == "pass" &&
-      context.crowdstrike.os_version >= "14.0"
+      context.crowdstrike.assessment.overall > 80 &&
+      context.crowdstrike.assessment.os > 70 &&
+      context.crowdstrike.assessment.sensor_config > 70
     };
 
     forbid(principal, action, resource)
     when {
-      context.crowdstrike.sensor_status != "active"
+      context has "crowdstrike" &&
+      context.crowdstrike.assessment.sensor_config < 50
     };
   '
 ```
@@ -173,7 +175,7 @@ aws ec2 create-verified-access-endpoint \
     "SubnetIds": ["subnet-abc", "subnet-def"]
   }' \
   --security-group-ids sg-verified123 \
-  --tags Key=Application,Value=InternalTools
+  --tag-specifications 'ResourceType=verified-access-endpoint,Tags=[{Key=Application,Value=InternalTools}]'
 ```
 
 Create an endpoint for a network interface target (EC2 instance):
@@ -205,7 +207,7 @@ aws ec2 describe-verified-access-endpoints \
   --verified-access-endpoint-ids vae-abc123 \
   --query 'VerifiedAccessEndpoints[0].EndpointDomain'
 
-# Returns something like: tools.vai-abc123.va.us-east-1.amazonaws.com
+# Returns something like: tools.edge-abc123.vai-abc123.prod.verified-access.us-east-1.amazonaws.com
 
 # Create the CNAME in Route 53
 aws route53 change-resource-record-sets \
@@ -217,7 +219,7 @@ aws route53 change-resource-record-sets \
         "Name": "internal-tools.example.com",
         "Type": "CNAME",
         "TTL": 300,
-        "ResourceRecords": [{"Value": "tools.vai-abc123.va.us-east-1.amazonaws.com"}]
+        "ResourceRecords": [{"Value": "tools.edge-abc123.vai-abc123.prod.verified-access.us-east-1.amazonaws.com"}]
       }
     }]
   }'
@@ -279,7 +281,7 @@ Resources:
       PolicyDocument: |
         permit(principal, action, resource)
         when {
-          context.okta.groups has "engineering"
+          context.okta.groups.contains("engineering")
         };
 
   AppEndpoint:
