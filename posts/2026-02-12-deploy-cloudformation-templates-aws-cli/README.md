@@ -296,10 +296,10 @@ Run it like:
 
 A few flags worth knowing:
 
-- `--no-fail-on-empty-changeset`: Prevents `deploy` from returning an error when there's nothing to update
+- `--no-fail-on-empty-changeset`: Ensures `deploy` returns a zero exit code when there's nothing to update
 - `--disable-rollback`: Keeps failed resources around for debugging (don't use in production)
 - `--role-arn`: Specify an IAM role for CloudFormation to assume
 - `--notification-arns`: Send stack events to an SNS topic
-- `--tags`: Apply tags to all resources in the stack
+- `--tags`: Apply stack-level tags, which CloudFormation propagates to supported resources
 
 The CLI gives you full control over CloudFormation. Combined with shell scripts or CI/CD tools, it's the foundation for automated infrastructure deployment. For the next step, look into [CloudFormation parameters](https://oneuptime.com/blog/post/2026-02-12-cloudformation-parameters-reusable-templates/view) to make your templates work across environments without modification.
