@@ -12,19 +12,19 @@ IP address management in AWS gets messy as your environment grows. You create a 
 
 ## What Are Subnet CIDR Reservations?
 
-A subnet CIDR reservation carves out a portion of a subnet's IP range and restricts how those addresses can be allocated. You can reserve IP addresses so they are only assigned:
+A subnet CIDR reservation carves out a portion of a subnet's IP range and restricts how those addresses can be allocated. You can reserve IP addresses so they are assigned:
 
-- **Explicitly**: Only when a resource specifically requests an IP from that range
-- **Not at all**: The range is reserved and cannot be used by automatic allocation
+- **Explicitly**: Only when a network interface specifically requests an individual IP from that range
+- **As prefixes**: Only when AWS assigns prefixes to network interfaces for prefix delegation
 
 This is useful when you need to guarantee IP ranges for specific workloads, integrate with on-premises systems that expect certain IP ranges, or prevent automatic allocation from consuming IPs you have plans for.
 
 ```mermaid
 graph TD
-    A["Subnet 10.0.1.0/24 (254 usable IPs)"] --> B["Reserved: 10.0.1.10-10.0.1.50 (Explicit only)"]
-    A --> C["Reserved: 10.0.1.200-10.0.1.250 (Prefix delegation)"]
-    A --> D["Unreserved: 10.0.1.51-10.0.1.199 (Auto-assignable)"]
-    B --> E[Load Balancers]
+    A["Subnet 10.0.1.0/24 (251 usable IPs in AWS)"] --> B["Reserved: 10.0.1.16/28 (Explicit only)"]
+    A --> C["Reserved: 10.0.1.192/26 (Prefix delegation)"]
+    A --> D["Unreserved ranges (Auto-assignable)"]
+    B --> E[Internal NLBs]
     B --> F[Database Instances]
     C --> G[Container Networking]
     D --> H[EC2 Instances - auto-assigned]
@@ -49,21 +49,21 @@ There are several scenarios where reservations become essential:
 ```bash
 # Reserve a range for explicit-only assignment
 
-# Only resources that specifically request an IP in this range will get one
+# Only network interfaces that specifically request an IP in this range will get one
 aws ec2 create-subnet-cidr-reservation \
     --subnet-id subnet-0123456789abcdef0 \
-    --cidr 10.0.1.10/28 \
+    --cidr 10.0.1.16/28 \
     --reservation-type explicit \
     --description "Reserved for database instances"
 ```
 
-The `/28` gives you 16 IP addresses (10.0.1.0 through 10.0.1.15, with 10.0.1.10 through 10.0.1.25 in this case). These addresses will not be automatically assigned to new ENIs or instances unless explicitly requested.
+The `/28` gives you 16 IP addresses (10.0.1.16 through 10.0.1.31 in this case). These addresses will not be automatically assigned to new ENIs or instances unless explicitly requested.
 
 ```bash
 # Reserve a range for prefix delegation (used by EKS/container networking)
 aws ec2 create-subnet-cidr-reservation \
     --subnet-id subnet-0123456789abcdef0 \
-    --cidr 10.0.1.200/26 \
+    --cidr 10.0.1.192/26 \
     --reservation-type prefix \
     --description "Reserved for EKS pod networking"
 ```
@@ -97,7 +97,7 @@ aws ec2 run-instances \
     --image-id ami-0abcdef1234567890 \
     --instance-type m5.large \
     --subnet-id subnet-0123456789abcdef0 \
-    --private-ip-address 10.0.1.10 \
+    --private-ip-address 10.0.1.16 \
     --security-group-ids sg-0123456789abcdef0 \
     --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=db-primary}]'
 ```
@@ -106,7 +106,7 @@ aws ec2 run-instances \
 # Create an ENI with a specific IP from the reserved range
 aws ec2 create-network-interface \
     --subnet-id subnet-0123456789abcdef0 \
-    --private-ip-address 10.0.1.11 \
+    --private-ip-address 10.0.1.17 \
     --groups sg-0123456789abcdef0 \
     --description "Database secondary ENI"
 ```
@@ -147,20 +147,19 @@ aws ec2 delete-subnet-cidr-reservation \
 A well-planned subnet uses CIDR reservations to create a predictable IP layout.
 
 ```text
-Subnet: 10.0.1.0/24 (254 usable IPs)
+Subnet: 10.0.1.0/24 (251 usable IPs in AWS)
 ========================================
 10.0.1.0     - AWS reserved (network address)
 10.0.1.1     - AWS reserved (VPC router)
 10.0.1.2     - AWS reserved (DNS)
 10.0.1.3     - AWS reserved (future use)
-10.0.1.4-9   - Unreserved (auto-assign for misc)
-10.0.1.10-25 - RESERVED: Database instances (explicit)
-10.0.1.26-41 - RESERVED: Cache instances (explicit)
-10.0.1.42-99 - Unreserved (auto-assign for app instances)
-10.0.1.100-127 - RESERVED: Load balancer ENIs (explicit)
+10.0.1.4-15  - Unreserved (auto-assign for misc)
+10.0.1.16-31 - RESERVED: Database instances (explicit)
+10.0.1.32-47 - RESERVED: Cache instances (explicit)
+10.0.1.48-95 - Unreserved (auto-assign for app instances)
+10.0.1.96-127 - RESERVED: Internal NLB addresses (explicit)
 10.0.1.128-191 - Unreserved (auto-assign for future growth)
-10.0.1.192-254 - RESERVED: Container networking (prefix)
-10.0.1.255   - AWS reserved (broadcast)
+10.0.1.192-255 - RESERVED: Container networking (prefix; .255 remains AWS-reserved broadcast)
 ```
 
 This layout ensures that database IPs are always in a known range, container networking has dedicated space, and there is still room for general-purpose instances.
@@ -170,7 +169,8 @@ This layout ensures that database IPs are always in a known range, container net
 One of the most practical uses of CIDR reservations is managing IP space in EKS clusters. Without reservations, pods can consume your entire subnet's IP space.
 
 ```bash
-# Reserve a /26 (64 IPs) in each subnet for EKS prefix delegation
+# Reserve the upper /26 in each /24 subnet for EKS prefix delegation
+# This example assumes each subnet is a /24.
 for SUBNET_ID in subnet-1a subnet-1b subnet-1c; do
     # Get the subnet CIDR
     SUBNET_CIDR=$(aws ec2 describe-subnets \
@@ -197,7 +197,7 @@ done
 
 **Do not over-reserve**: Leave enough unreserved space for auto-assignment. If 80% of your subnet is reserved, new resources may fail to launch because there are no available IPs.
 
-**Use consistent patterns across subnets**: If database IPs are in the .10-.25 range in subnet A, use the same range in subnet B. Consistency makes troubleshooting easier.
+**Use consistent patterns across subnets**: If database IPs are in the .16-.31 range in subnet A, use the same range in subnet B. Consistency makes troubleshooting easier.
 
 **Consider future growth**: Reserve slightly more than you need today. Adding reservations later is easy, but if the IPs you want are already allocated to running instances, you will have a harder time.
 
