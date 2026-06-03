@@ -71,7 +71,7 @@ module "eks" {
   version = "~> 19.0"
 
   cluster_name    = "my-cluster"
-  cluster_version = "1.28"
+  cluster_version = "1.33"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -240,7 +240,7 @@ Terraform manages the deployment lifecycle, updating resources when you change c
 
 ## Managing ConfigMaps and Secrets
 
-Store configuration securely:
+Store configuration and secret values:
 
 ```hcl
 # config.tf
@@ -273,9 +273,9 @@ resource "kubernetes_secret" "db_credentials" {
   type = "Opaque"
 
   data = {
-    username = base64encode("dbuser")
-    password = base64encode(var.db_password)
-    url      = base64encode("postgres://db:5432/app")
+    username = "dbuser"
+    password = var.db_password
+    url      = "postgres://db:5432/app"
   }
 }
 
@@ -344,7 +344,6 @@ resource "kubernetes_ingress_v1" "app" {
     name      = "app-ingress"
     namespace = kubernetes_namespace.app.metadata[0].name
     annotations = {
-      "kubernetes.io/ingress.class"                = "nginx"
       "cert-manager.io/cluster-issuer"             = "letsencrypt-prod"
       "nginx.ingress.kubernetes.io/ssl-redirect"   = "true"
       "nginx.ingress.kubernetes.io/force-ssl-redirect" = "true"
@@ -352,6 +351,8 @@ resource "kubernetes_ingress_v1" "app" {
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     tls {
       hosts = ["app.example.com"]
       secret_name = "app-tls"
@@ -405,7 +406,7 @@ resource "kubernetes_storage_class_v1" "fast" {
     name = "fast-ssd"
   }
 
-  storage_provisioner = "kubernetes.io/aws-ebs"
+  storage_provisioner = "ebs.csi.aws.com"
   reclaim_policy      = "Retain"
   volume_binding_mode = "WaitForFirstConsumer"
 
