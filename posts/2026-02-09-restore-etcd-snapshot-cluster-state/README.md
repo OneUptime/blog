@@ -31,7 +31,7 @@ Verify snapshot integrity before restoration:
 ```bash
 # Check snapshot status
 
-ETCDCTL_API=3 etcdctl snapshot status snapshot.db -w table
+etcdutl snapshot status snapshot.db -w table
 
 # Output shows:
 # +----------+----------+------------+------------+
@@ -62,7 +62,7 @@ Wait for pods to stop:
 
 ```bash
 # Check that control plane pods are gone
-docker ps | grep -E "kube-apiserver|kube-controller|kube-scheduler"
+crictl ps | grep -E "kube-apiserver|kube-controller|kube-scheduler"
 
 # Should return no results
 ```
@@ -89,16 +89,15 @@ This backup allows rollback if restoration fails.
 For single-node clusters or single control plane setups:
 
 ```bash
-# Set required environment variables
-export ETCDCTL_API=3
-
 # Restore from snapshot
-etcdctl snapshot restore snapshot.db \
+etcdutl snapshot restore snapshot.db \
   --name=master-1 \
+  --data-dir=/var/lib/etcd \
   --initial-cluster=master-1=https://192.168.1.10:2380 \
   --initial-cluster-token=etcd-cluster-1 \
   --initial-advertise-peer-urls=https://192.168.1.10:2380 \
-  --data-dir=/var/lib/etcd
+  --bump-revision=1000000000 \
+  --mark-compacted
 
 # Verify restore created new data directory
 ls -lh /var/lib/etcd
@@ -109,6 +108,7 @@ chmod -R 700 /var/lib/etcd
 ```
 
 The restore creates a new etcd data directory with snapshot contents.
+The revision bump and compaction flags prevent Kubernetes watchers and informer caches from observing a lower etcd revision after restore.
 
 ## Starting etcd After Restore
 
@@ -140,28 +140,34 @@ For multi-node etcd clusters, restore requires coordination across all members:
 
 ```bash
 # On first control plane node (192.168.1.10)
-etcdctl snapshot restore snapshot.db \
+etcdutl snapshot restore snapshot.db \
   --name=master-1 \
+  --data-dir=/var/lib/etcd \
   --initial-cluster=master-1=https://192.168.1.10:2380,master-2=https://192.168.1.11:2380,master-3=https://192.168.1.12:2380 \
   --initial-cluster-token=etcd-cluster-restored \
   --initial-advertise-peer-urls=https://192.168.1.10:2380 \
-  --data-dir=/var/lib/etcd
+  --bump-revision=1000000000 \
+  --mark-compacted
 
 # On second control plane node (192.168.1.11)
-etcdctl snapshot restore snapshot.db \
+etcdutl snapshot restore snapshot.db \
   --name=master-2 \
+  --data-dir=/var/lib/etcd \
   --initial-cluster=master-1=https://192.168.1.10:2380,master-2=https://192.168.1.11:2380,master-3=https://192.168.1.12:2380 \
   --initial-cluster-token=etcd-cluster-restored \
   --initial-advertise-peer-urls=https://192.168.1.11:2380 \
-  --data-dir=/var/lib/etcd
+  --bump-revision=1000000000 \
+  --mark-compacted
 
 # On third control plane node (192.168.1.12)
-etcdctl snapshot restore snapshot.db \
+etcdutl snapshot restore snapshot.db \
   --name=master-3 \
+  --data-dir=/var/lib/etcd \
   --initial-cluster=master-1=https://192.168.1.10:2380,master-2=https://192.168.1.11:2380,master-3=https://192.168.1.12:2380 \
   --initial-cluster-token=etcd-cluster-restored \
   --initial-advertise-peer-urls=https://192.168.1.12:2380 \
-  --data-dir=/var/lib/etcd
+  --bump-revision=1000000000 \
+  --mark-compacted
 ```
 
 Use the same snapshot file on all nodes and ensure initial-cluster lists all members.
@@ -317,7 +323,7 @@ echo "Starting etcd restore from: $SNAPSHOT_FILE"
 
 # Verify snapshot
 echo "Verifying snapshot integrity..."
-ETCDCTL_API=3 etcdctl snapshot status $SNAPSHOT_FILE -w table
+etcdutl snapshot status "$SNAPSHOT_FILE" -w table
 
 # Stop control plane
 echo "Stopping control plane components..."
@@ -328,16 +334,18 @@ systemctl stop etcd
 
 # Backup current data
 echo "Backing up current etcd data..."
-mv /var/lib/etcd $BACKUP_DIR
+mv /var/lib/etcd "$BACKUP_DIR"
 
 # Restore from snapshot
 echo "Restoring from snapshot..."
-ETCDCTL_API=3 etcdctl snapshot restore $SNAPSHOT_FILE \
+etcdutl snapshot restore "$SNAPSHOT_FILE" \
   --name=master-1 \
+  --data-dir=/var/lib/etcd \
   --initial-cluster=master-1=https://192.168.1.10:2380 \
   --initial-cluster-token=etcd-cluster-restored-$(date +%s) \
   --initial-advertise-peer-urls=https://192.168.1.10:2380 \
-  --data-dir=/var/lib/etcd
+  --bump-revision=1000000000 \
+  --mark-compacted
 
 # Set permissions
 chown -R etcd:etcd /var/lib/etcd
@@ -361,7 +369,9 @@ else
   # Rollback
   systemctl stop etcd
   rm -rf /var/lib/etcd
-  mv $BACKUP_DIR /var/lib/etcd
+  mv "$BACKUP_DIR" /var/lib/etcd
+  mv /etc/kubernetes/manifests.backup /etc/kubernetes/manifests
+  systemctl start etcd
   exit 1
 fi
 
@@ -421,7 +431,7 @@ Schedule monthly restore tests to ensure procedures remain current.
 
 Maintain clear documentation:
 
-```markdown
+````markdown
 # etcd Restore Runbook
 
 ## Prerequisites
@@ -435,23 +445,23 @@ Maintain clear documentation:
 1. Download latest snapshot:
    ```bash
    aws s3 cp s3://backups/etcd-snapshot-latest.db /root/snapshot.db
-   ```bash
+   ```
 
 2. Verify snapshot:
    ```bash
-   etcdctl snapshot status /root/snapshot.db -w table
-   ```bash
+   etcdutl snapshot status /root/snapshot.db -w table
+   ```
 
 3. Execute restore script:
    ```bash
    ./etcd-restore.sh /root/snapshot.db
-   ```bash
+   ```
 
 4. Verify cluster health:
    ```bash
    kubectl get nodes
    kubectl get pods --all-namespaces
-   ```bash
+   ```
 
 ## Rollback Procedure
 If restore fails, rollback to backup:
@@ -460,16 +470,13 @@ systemctl stop etcd
 rm -rf /var/lib/etcd
 mv /var/lib/etcd.backup-TIMESTAMP /var/lib/etcd
 systemctl start etcd
-```bash
+```
 
 ## Contacts
 - On-call: +1-555-0100
 - Slack: #incident-response
-```text
+````
 
 ## Conclusion
 
 Mastering etcd restoration ensures you can recover your Kubernetes cluster from catastrophic failures. Understand the restore process thoroughly, including stopping dependencies, performing the restore, and validating cluster state. Automate restoration procedures through scripts, test regularly in non-production environments, and maintain clear documentation for incident response. Combined with regular automated backups, a well-practiced restore process provides the confidence and capability to recover quickly from cluster failures, protecting your applications and maintaining service availability even during disasters.
-
-```bash
-```
