@@ -17,13 +17,11 @@ The catch? It's not full Cassandra. There are some CQL features it doesn't suppo
 Keyspaces supports Cassandra Query Language (CQL) and the Apache 2.0 open-source Cassandra driver protocol. Most of your existing CQL queries will work. However, there are differences.
 
 Keyspaces doesn't support:
-- Lightweight transactions (LWT) with `IF NOT EXISTS` on some operations
-- User-defined types (UDTs)
 - User-defined functions and aggregates
 - Materialized views
-- Secondary indexes (but it supports custom indexes)
-- BATCH statements across multiple tables
-- Tunable consistency - you get `LOCAL_QUORUM` for writes and `LOCAL_ONE` or `LOCAL_QUORUM` for reads
+- Secondary indexes, including custom indexes
+- Some schema operations such as `ALTER TYPE` and `TRUNCATE`
+- Fully tunable consistency - writes use `LOCAL_QUORUM`, and reads support `ONE`, `LOCAL_ONE`, or `LOCAL_QUORUM`
 
 The big win is that you never worry about node management, replication factor, or capacity planning. Keyspaces handles all of that automatically.
 
@@ -89,11 +87,15 @@ This gives you a username and password that work with standard Cassandra drivers
 
 This is the recommended approach for production since it uses your IAM credentials.
 
-First, download the Starfield certificate that Keyspaces requires for TLS.
+First, download the Amazon root certificates that Keyspaces requires for TLS. The Starfield certificate is optional for backward compatibility.
 
 ```bash
-# Download the TLS certificate required for Keyspaces connections
-curl https://certs.secureserver.net/repository/sf-class2-root.crt -O
+# Download the TLS certificates required for Keyspaces connections
+curl -O https://www.amazontrust.com/repository/AmazonRootCA1.pem
+curl -O https://www.amazontrust.com/repository/AmazonRootCA2.pem
+curl -O https://www.amazontrust.com/repository/AmazonRootCA3.pem
+curl -O https://www.amazontrust.com/repository/AmazonRootCA4.pem
+cat AmazonRootCA*.pem > keyspaces-bundle.pem
 ```
 
 Here's how to connect from Python using the SigV4 plugin.
@@ -101,14 +103,12 @@ Here's how to connect from Python using the SigV4 plugin.
 ```python
 # Install dependencies: pip install cassandra-driver cassandra-sigv4
 from cassandra.cluster import Cluster
-from ssl import SSLContext, PROTOCOL_TLSv1_2, CERT_REQUIRED
+from ssl import create_default_context
 from cassandra_sigv4.auth import SigV4AuthProvider
 import boto3
 
 # Set up TLS - Keyspaces requires encrypted connections
-ssl_context = SSLContext(PROTOCOL_TLSv1_2)
-ssl_context.load_verify_locations('sf-class2-root.crt')
-ssl_context.verify_mode = CERT_REQUIRED
+ssl_context = create_default_context(cafile='keyspaces-bundle.pem')
 
 # Use SigV4 authentication with your AWS credentials
 boto_session = boto3.Session(region_name='us-east-1')
@@ -214,7 +214,7 @@ aws keyspaces create-table \
       {"name": "data", "type": "text"}
     ],
     "partitionKeys": [{"name": "partition_key"}],
-    "clusteringKeys": [{"name": "sort_key", "order": "DESC"}]
+    "clusteringKeys": [{"name": "sort_key", "orderBy": "DESC"}]
   }' \
   --capacity-specification '{
     "throughputMode": "PROVISIONED",
@@ -255,27 +255,27 @@ Keyspaces publishes metrics to CloudWatch under the `AWS/Cassandra` namespace.
 # Set up an alarm for throttled requests
 aws cloudwatch put-metric-alarm \
   --alarm-name keyspaces-throttling \
-  --metric-name ThrottledRequests \
+  --metric-name WriteThrottleEvents \
   --namespace AWS/Cassandra \
   --statistic Sum \
   --period 60 \
   --threshold 10 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 3 \
-  --dimensions Name=Keyspace,Value=my_application Name=TableName,Value=events \
+  --dimensions Name=Keyspace,Value=my_application Name=TableName,Value=events Name=Operation,Value=INSERT \
   --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
 ```
 
-Key metrics to watch: `SuccessfulRequestCount`, `ThrottledRequests`, `SystemErrors`, `ConsumedReadCapacityUnits`, and `ConsumedWriteCapacityUnits`.
+Key metrics to watch: `SuccessfulRequestCount`, `ReadThrottleEvents`, `WriteThrottleEvents`, `SystemErrors`, `ConsumedReadCapacityUnits`, and `ConsumedWriteCapacityUnits`.
 
 ## Data Modeling Tips
 
 Keyspaces follows the same data modeling principles as Cassandra. Design your tables around your query patterns, not around entity relationships.
 
-Keep partition sizes under 1 GB for best performance. If you're storing time-series data, include a date component in the partition key to bound partition growth.
+Distribute read and write activity evenly across partitions for best performance. If you're storing time-series data, include a date component or sharding column in the partition key to avoid concentrating traffic in one partition.
 
 Avoid large IN clauses - they cause multiple partition reads behind the scenes. Instead, issue individual queries and let the driver handle parallelism.
 
 ## Wrapping Up
 
-Amazon Keyspaces removes the operational complexity of running Cassandra while keeping the CQL interface your team already knows. The setup is dramatically simpler than provisioning a Cassandra cluster, but you need to be aware of the feature gaps. Test your application against Keyspaces before committing, particularly if you use lightweight transactions, UDTs, or materialized views.
+Amazon Keyspaces removes the operational complexity of running Cassandra while keeping the CQL interface your team already knows. The setup is dramatically simpler than provisioning a Cassandra cluster, but you need to be aware of the feature gaps. Test your application against Keyspaces before committing, particularly if you use custom indexes, user-defined functions, or materialized views.
