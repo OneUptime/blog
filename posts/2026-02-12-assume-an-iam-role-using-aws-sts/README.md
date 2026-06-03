@@ -144,7 +144,7 @@ aws sts assume-role \
 
 ## Session Duration
 
-By default, temporary credentials last one hour. You can request up to the role's maximum session duration (default 1 hour, configurable up to 12 hours):
+By default, temporary credentials last one hour. You can request up to the role's maximum session duration (default 1 hour, configurable up to 12 hours), unless you're using role chaining, which limits the new session to one hour:
 
 ```bash
 # Request credentials valid for 4 hours
@@ -253,7 +253,7 @@ const objects = await s3Client.send(
 
 ## Tagging Sessions
 
-You can pass session tags when assuming a role. These tags are available as condition keys in the role's policies:
+You can pass session tags when assuming a role, as long as your caller has permission to use `sts:TagSession`. These tags are available as condition keys in the role's policies:
 
 ```bash
 # Assume a role with session tags
@@ -263,7 +263,7 @@ aws sts assume-role \
   --tags Key=Project,Value=migration Key=Department,Value=engineering
 ```
 
-Session tags enable dynamic policies without changing the role itself. The role's policy can reference `${aws:PrincipalTag/Project}` to make access decisions based on the session tags.
+Session tags enable dynamic policies without changing the role itself. The role's policy can reference `aws:PrincipalTag/Project` in a condition to make access decisions based on the session tags.
 
 ## Verifying Your Identity
 
@@ -274,7 +274,7 @@ To check which identity you're currently using:
 aws sts get-caller-identity
 ```
 
-This returns your account, user ARN, and user ID. When you've assumed a role, it shows the assumed role ARN and session name.
+This returns your account ID, ARN, and user ID. When you've assumed a role, it shows the assumed role ARN and session name.
 
 ## Wrapping Up
 
