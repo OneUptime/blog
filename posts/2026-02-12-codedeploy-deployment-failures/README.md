@@ -27,7 +27,10 @@ aws deploy get-deployment \
 Deployment statuses you'll see:
 
 - **Created** - Deployment is queued
+- **Queued** - Deployment is waiting to start
 - **InProgress** - Currently deploying
+- **Baking** - Waiting during the bake time for blue/green deployments
+- **Ready** - Ready for traffic rerouting in some blue/green deployments
 - **Succeeded** - Everything worked
 - **Failed** - Something went wrong
 - **Stopped** - Manually stopped or auto-rolled back
@@ -164,7 +167,7 @@ sed -i 's/\r$//' scripts/*.sh
 hooks:
   AfterInstall:
     - location: scripts/install_deps.sh
-      timeout: 900  # 15 minutes instead of default 5
+      timeout: 900  # 15 minutes; default is 3600 seconds
       runas: root
 ```
 
@@ -197,7 +200,7 @@ yamllint appspec.yml
 
 ### 5. File Already Exists at Destination
 
-By default, CodeDeploy won't overwrite existing files. If a file exists at the destination from a previous deployment (or was manually placed there), the Install event fails.
+By default, CodeDeploy won't overwrite existing files that weren't part of the previous successful deployment. If a file exists at the destination from a manual change or another source, the Install event fails.
 
 Fix this with the `file_exists_behavior` parameter:
 
@@ -232,7 +235,10 @@ If CodeDeploy can't download your artifact from S3:
 aws s3 ls s3://my-deployment-bucket/
 
 # If that fails, check the instance profile
-curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/iam/security-credentials/
 ```
 
 Also verify the bucket is in the same region as your deployment, or that cross-region access is properly configured.
