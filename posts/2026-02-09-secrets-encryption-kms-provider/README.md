@@ -14,43 +14,37 @@ KMS provider integration delegates encryption key management to enterprise-grade
 
 ## Understanding KMS Provider Architecture
 
-Kubernetes API server encryption works through a provider plugin model. When secrets are written, the API server calls a KMS plugin via Unix socket to encrypt the data encryption key (DEK). The KMS plugin uses a cloud KMS service to encrypt the DEK with a key encryption key (KEK). Only the encrypted DEK stores in etcd alongside the encrypted secret.
+Kubernetes API server encryption works through a provider plugin model. With the current KMS v2 provider, the API server calls a KMS plugin via Unix socket to encrypt a DEK seed with a key encryption key (KEK). The API server caches the encrypted seed and derives single-use data encryption keys (DEKs) to encrypt individual resources before storing them in etcd.
 
-When reading secrets, the process reverses: the API server retrieves the encrypted DEK from etcd, calls the KMS plugin to decrypt it, then uses the decrypted DEK to decrypt the secret data. This envelope encryption approach means the KEK never leaves the KMS service, providing stronger security guarantees.
+When reading secrets, the process reverses: the API server decrypts the cached encrypted seed through the KMS plugin when needed, derives the DEK, and decrypts the secret data. This envelope encryption approach means the KEK never leaves the KMS service, providing stronger security guarantees.
 
 ## Installing AWS KMS Provider Plugin
 
-Start by deploying the AWS KMS encryption provider for EKS or self-managed clusters:
+Start by deploying the AWS KMS encryption provider on each API server node for self-managed clusters. For EKS clusters, use the managed EKS encryption configuration shown later instead of deploying a provider pod yourself:
 
 ```bash
-# Install AWS encryption provider
-
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-encryption-provider/master/deploy/aws-encryption-provider.yaml
-
 # Create KMS key in AWS
-aws kms create-key \
+export KMS_KEY_ID=$(aws kms create-key \
   --description "Kubernetes secrets encryption" \
-  --tags TagKey=Purpose,TagValue=K8sSecretsEncryption
-
-# Get key ID
-export KMS_KEY_ID=$(aws kms describe-key \
-  --key-id alias/kubernetes-secrets \
+  --tags TagKey=Purpose,TagValue=K8sSecretsEncryption \
   --query 'KeyMetadata.KeyId' \
   --output text)
-
-echo "KMS Key ID: $KMS_KEY_ID"
 
 # Create key alias
 aws kms create-alias \
   --alias-name alias/kubernetes-secrets \
-  --target-key-id $KMS_KEY_ID
+  --target-key-id "$KMS_KEY_ID"
+
+echo "KMS Key ID: $KMS_KEY_ID"
 
 # Grant API server permission to use the key
 aws kms create-grant \
-  --key-id $KMS_KEY_ID \
+  --key-id "$KMS_KEY_ID" \
   --grantee-principal arn:aws:iam::ACCOUNT_ID:role/K8sAPIServerRole \
   --operations Encrypt Decrypt DescribeKey
 ```
+
+Then run the provider as a static pod on every API server node. Use the image you build or publish for the `kubernetes-sigs/aws-encryption-provider` binary, and make sure the `--listen` socket path matches the endpoint in the Kubernetes `EncryptionConfiguration`.
 
 ## Configuring API Server Encryption with KMS
 
@@ -66,9 +60,9 @@ resources:
     providers:
       # KMS provider for new secrets
       - kms:
+          apiVersion: v2
           name: aws-kms-provider
           endpoint: unix:///var/run/kmsplugin/socket.sock
-          cachesize: 1000
           timeout: 3s
 
       # Identity provider for reading old unencrypted secrets during migration
@@ -127,9 +121,11 @@ aws eks describe-cluster \
   --query 'cluster.encryptionConfig'
 ```
 
+EKS clusters running Kubernetes 1.28 or later already use default KMS v2 envelope encryption for all Kubernetes API data with an AWS-owned key. Use `associate-encryption-config` when you need to associate a customer managed AWS KMS key for secrets encryption.
+
 ## Migrating Existing Secrets to Encrypted Storage
 
-After enabling KMS encryption, existing secrets remain unencrypted in etcd until rewritten:
+After enabling KMS encryption on a self-managed cluster, existing secrets remain unencrypted in etcd until rewritten:
 
 ```bash
 # migrate-secrets-encryption.sh
@@ -137,29 +133,8 @@ After enabling KMS encryption, existing secrets remain unencrypted in etcd until
 
 echo "Starting secrets encryption migration..."
 
-# Get all secrets
-SECRETS=$(kubectl get secrets --all-namespaces -o json)
-
-# Count total secrets
-TOTAL=$(echo "$SECRETS" | jq '.items | length')
-echo "Found $TOTAL secrets to migrate"
-
-COUNTER=0
-
-# Rewrite each secret to trigger encryption
-echo "$SECRETS" | jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
-while read NAMESPACE NAME; do
-  COUNTER=$((COUNTER + 1))
-  echo "[$COUNTER/$TOTAL] Migrating $NAMESPACE/$NAME"
-
-  # Get secret, modify annotation, and apply
-  kubectl get secret "$NAME" -n "$NAMESPACE" -o json | \
-    jq '.metadata.annotations["encrypted-at"] = now | tostring' | \
-    kubectl apply -f -
-
-  # Small delay to avoid overwhelming API server
-  sleep 0.1
-done
+# Rewrite all secrets to trigger encryption. Retry if a conflicting write occurs.
+kubectl get secrets --all-namespaces -o json | kubectl replace -f -
 
 echo "Migration complete!"
 ```
@@ -187,73 +162,7 @@ ETCDCTL_API=3 etcdctl \
 
 ## Implementing Azure Key Vault Provider
 
-For AKS clusters, configure Azure Key Vault integration:
-
-```yaml
-# azure-kms-provider.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: azure-kms-provider-config
-  namespace: kube-system
-data:
-  encryption-config.yaml: |
-    apiVersion: apiserver.config.k8s.io/v1
-    kind: EncryptionConfiguration
-    resources:
-      - resources:
-          - secrets
-        providers:
-          - kms:
-              name: azurekmsprovider
-              endpoint: unix:///opt/azurekms.socket
-              cachesize: 1000
-              timeout: 3s
-          - identity: {}
-
----
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: azure-kms-provider
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      app: azure-kms-provider
-  template:
-    metadata:
-      labels:
-        app: azure-kms-provider
-    spec:
-      hostNetwork: true
-      containers:
-      - name: azure-kms-provider
-        image: mcr.microsoft.com/k8s/kms/keyvault:latest
-        imagePullPolicy: IfNotPresent
-        env:
-        - name: AZURE_TENANT_ID
-          value: "your-tenant-id"
-        - name: AZURE_CLIENT_ID
-          value: "your-client-id"
-        - name: AZURE_CLIENT_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: azure-kms-credentials
-              key: client-secret
-        - name: KEY_VAULT_NAME
-          value: "your-keyvault-name"
-        - name: KEY_NAME
-          value: "k8s-encryption-key"
-        volumeMounts:
-        - name: socket
-          mountPath: /opt
-      volumes:
-      - name: socket
-        hostPath:
-          path: /opt
-          type: DirectoryOrCreate
-```
+For AKS clusters, configure Azure Key Vault integration through the AKS control plane. On Kubernetes 1.33 and later, the newer AKS KMS data encryption experience uses `--kms-infrastructure-encryption Enabled`; the legacy provider configuration below is still used for older supported AKS clusters.
 
 Create the Azure Key Vault key:
 
@@ -269,13 +178,33 @@ az keyvault key create \
   --vault-name k8s-secrets-kv \
   --name k8s-encryption-key \
   --protection hsm \
+  --kty RSA-HSM \
   --size 2048
 
-# Grant AKS service principal access
+# Get the key ID for the AKS command
+KEY_ID=$(az keyvault key show \
+  --vault-name k8s-secrets-kv \
+  --name k8s-encryption-key \
+  --query key.kid \
+  --output tsv)
+KEY_ID_NO_VERSION=$(echo "$KEY_ID" | sed 's|/[^/]*$||')
+
+# Grant the AKS identity access
 az keyvault set-policy \
   --name k8s-secrets-kv \
-  --object-id <aks-sp-object-id> \
+  --object-id <aks-identity-object-id> \
   --key-permissions encrypt decrypt
+```
+
+Enable KMS etcd encryption on an existing AKS cluster:
+
+```bash
+az aks update \
+  --name my-aks-cluster \
+  --resource-group k8s-rg \
+  --enable-azure-keyvault-kms \
+  --azure-keyvault-kms-key-id "$KEY_ID_NO_VERSION" \
+  --azure-keyvault-kms-key-vault-network-access Public
 ```
 
 ## Implementing Google Cloud KMS Provider
@@ -342,37 +271,29 @@ NEW_KEY_ID=$(aws kms create-key \
 
 echo "New key created: $NEW_KEY_ID"
 
-# Update encryption config to use new key
-cat > /etc/kubernetes/encryption-config-new.yaml <<EOF
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-  - resources:
-      - secrets
-    providers:
-      # New key for new writes
-      - kms:
-          name: aws-kms-provider-new
-          endpoint: unix:///var/run/kmsplugin/socket.sock
-          cachesize: 1000
-          timeout: 3s
-
-      # Old key for reading existing secrets
-      - kms:
-          name: aws-kms-provider-old
-          endpoint: unix:///var/run/kmsplugin/socket.sock
-          cachesize: 1000
-          timeout: 3s
-
-      - identity: {}
-EOF
-
-# Reload API server config
-kubectl apply -f /etc/kubernetes/encryption-config-new.yaml
+# Run a second AWS encryption provider instance with the new key on a different socket.
+# Then update /etc/kubernetes/encryption-config.yaml on every API server node so the
+# new provider is first and the old provider remains below it for reads:
+#
+# providers:
+#   - kms:
+#       apiVersion: v2
+#       name: aws-kms-provider-new
+#       endpoint: unix:///var/run/kmsplugin/socket2.sock
+#       timeout: 3s
+#   - kms:
+#       apiVersion: v2
+#       name: aws-kms-provider-old
+#       endpoint: unix:///var/run/kmsplugin/socket.sock
+#       timeout: 3s
+#   - identity: {}
+#
+# With --encryption-provider-config-automatic-reload=true, the API server polls
+# the file for changes. Otherwise, restart each API server after updating it.
 
 # Re-encrypt all secrets with new key
 kubectl get secrets --all-namespaces -o json | \
-  kubectl apply -f -
+  kubectl replace -f -
 
 echo "Key rotation complete"
 ```
@@ -403,7 +324,7 @@ spec:
         description: "Secrets cannot be encrypted/decrypted"
 
     - alert: KMSEncryptionFailures
-      expr: rate(apiserver_storage_envelope_transformation_errors_total[5m]) > 0.01
+      expr: sum(rate(apiserver_storage_transformation_operations_total{transformation_type="to_storage",status!="OK"}[5m])) > 0.01
       for: 2m
       labels:
         severity: warning
@@ -412,7 +333,7 @@ spec:
         description: "{{ $value }} encryption operations failing per second"
 
     - alert: KMSHighLatency
-      expr: histogram_quantile(0.99, rate(apiserver_storage_envelope_transformation_duration_seconds_bucket[5m])) > 1
+      expr: histogram_quantile(0.99, sum by (le) (rate(apiserver_envelope_encryption_kms_operations_latency_seconds_bucket[5m]))) > 1
       for: 10m
       labels:
         severity: warning
@@ -433,21 +354,14 @@ echo "=== Secrets Encryption Compliance Check ==="
 echo "Date: $(date)"
 echo
 
-# Check if encryption is enabled
-echo "1. Checking encryption configuration..."
-kubectl get --raw /api/v1/namespaces/kube-system/configmaps/extension-apiserver-authentication -o json | \
-  jq -r '.data.requestheader-client-ca-file' > /dev/null && \
-  echo "✓ Encryption configuration present" || \
-  echo "✗ Encryption configuration missing"
-
 # Sample test secret
-echo "2. Testing secret encryption..."
+echo "1. Testing secret encryption..."
 kubectl create secret generic encryption-test \
   --from-literal=data="test-$(date +%s)" \
   -n default 2>/dev/null
 
 # Check in etcd
-if ETCDCTL_API=3 etcdctl get /registry/secrets/default/encryption-test 2>/dev/null | grep -q "k8s:enc:kms"; then
+if ETCDCTL_API=3 etcdctl get /registry/secrets/default/encryption-test 2>/dev/null | grep -q "k8s:enc:kms:v2"; then
   echo "✓ Secrets are encrypted with KMS"
 else
   echo "✗ Secrets are not properly encrypted"
@@ -457,7 +371,7 @@ fi
 kubectl delete secret encryption-test -n default 2>/dev/null
 
 # Count encrypted vs unencrypted secrets
-echo "3. Analyzing existing secrets..."
+echo "2. Analyzing existing secrets..."
 # This requires etcd access
 echo "  (Manual etcd inspection required)"
 
