@@ -35,6 +35,8 @@ This Terraform configuration enables Macie for automated data discovery.
 ```hcl
 resource "aws_macie2_account" "main" {}
 
+data "aws_caller_identity" "current" {}
+
 resource "aws_macie2_classification_job" "pii_scan" {
   depends_on = [aws_macie2_account.main]
 
@@ -63,7 +65,7 @@ resource "aws_macie2_classification_job" "pii_scan" {
     }
   }
 
-  schedule_frequency_details {
+  schedule_frequency {
     weekly_schedule = "MONDAY"
   }
 
@@ -196,12 +198,15 @@ S3 is the most common data store on AWS, and it needs multiple layers of protect
 ```hcl
 # Secure S3 bucket for confidential data
 resource "aws_s3_bucket" "confidential_data" {
-  bucket = "${var.account_id}-confidential-data"
+  bucket              = "${var.account_id}-confidential-data"
+  object_lock_enabled = true
 }
 
 # Versioning for data recovery
 resource "aws_s3_bucket_versioning" "confidential_data" {
   bucket = aws_s3_bucket.confidential_data.id
+  mfa    = var.mfa_delete_auth # Format: "<MFA device ARN or serial> <code>"
+
   versioning_configuration {
     status     = "Enabled"
     mfa_delete = "Enabled"  # Require MFA to delete versions
@@ -250,6 +255,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "confidential_data" {
   rule {
     id     = "transition-to-ia"
     status = "Enabled"
+
+    filter {}
 
     transition {
       days          = 90
@@ -329,6 +336,7 @@ Prevent sensitive data from leaving your environment through unauthorized channe
 ```python
 import boto3
 import json
+import os
 
 def check_s3_data_exfiltration(event, context):
     """Monitor for potential data exfiltration from S3."""
@@ -352,15 +360,28 @@ def check_s3_data_exfiltration(event, context):
     # Detect attempts to make bucket public
     if action in ['PutBucketAcl', 'PutBucketPolicy']:
         s3 = boto3.client('s3')
-        # Check if the new policy allows public access
+
         try:
-            policy = s3.get_bucket_policy(Bucket=bucket)
-            policy_doc = json.loads(policy['Policy'])
-            for statement in policy_doc.get('Statement', []):
-                principal = statement.get('Principal', '')
-                if principal == '*' or principal == {'AWS': '*'}:
-                    suspicious = True
-                    reason = f"Attempt to make {bucket} public via {action}"
+            if action == 'PutBucketPolicy':
+                policy = s3.get_bucket_policy(Bucket=bucket)
+                policy_doc = json.loads(policy['Policy'])
+                for statement in policy_doc.get('Statement', []):
+                    statement_principal = statement.get('Principal', '')
+                    if statement_principal == '*' or statement_principal == {'AWS': '*'}:
+                        suspicious = True
+                        reason = f"Attempt to make {bucket} public via {action}"
+
+            if action == 'PutBucketAcl':
+                acl = s3.get_bucket_acl(Bucket=bucket)
+                public_grantees = {
+                    'http://acs.amazonaws.com/groups/global/AllUsers',
+                    'http://acs.amazonaws.com/groups/global/AuthenticatedUsers'
+                }
+                for grant in acl.get('Grants', []):
+                    grantee_uri = grant.get('Grantee', {}).get('URI')
+                    if grantee_uri in public_grantees:
+                        suspicious = True
+                        reason = f"Attempt to make {bucket} public via {action}"
         except Exception:
             pass
 
