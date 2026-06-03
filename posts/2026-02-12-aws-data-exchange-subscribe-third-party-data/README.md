@@ -14,25 +14,14 @@ It's essentially an app store for data. You browse the catalog, subscribe to a p
 
 ## Finding Data Products
 
-You can browse the Data Exchange catalog through the console or the AWS Marketplace. Here's how to search programmatically:
+You can browse the Data Exchange catalog through the console or the AWS Marketplace. The AWS Data Exchange API lists data sets that you own or are entitled to after a subscription:
 
 ```bash
-# List available data sets from the Data Exchange catalog
-
+# List data sets that are entitled to your account through subscriptions
 aws dataexchange list-data-sets \
+    --origin "ENTITLED" \
     --query "DataSets[?OriginDetails.ProductId!=null]" \
     --output table
-
-# Search for specific types of data products on AWS Marketplace
-aws marketplace-catalog list-entities \
-    --catalog "AWSMarketplace" \
-    --entity-type "DataProduct" \
-    --filter-list '[
-        {
-            "Name": "DataProduct.CategoryId",
-            "Values": ["financial-services"]
-        }
-    ]'
 ```
 
 In practice, most people browse the Data Exchange console or the AWS Marketplace website to find products. The catalog includes data from providers like Reuters, Foursquare, Dun & Bradstreet, and hundreds of others.
@@ -41,22 +30,7 @@ In practice, most people browse the Data Exchange console or the AWS Marketplace
 
 Once you've found a product you want, subscribe to it. Some products are free, others have monthly or annual fees, and some charge based on usage.
 
-```bash
-# Create a subscription request (after finding the product ID)
-# Free products are auto-approved; paid products may require provider approval
-aws marketplace-catalog start-change-set \
-    --catalog "AWSMarketplace" \
-    --change-set '[
-        {
-            "ChangeType": "CreateSubscription",
-            "Entity": {
-                "Type": "DataProduct",
-                "Identifier": "prod-abc123def456"
-            },
-            "Details": "{\"TermId\": \"term-monthly-basic\"}"
-        }
-    ]'
-```
+Use the AWS Data Exchange console or AWS Marketplace product page to review the offer terms and submit the subscription request. Some products require subscription verification, and paid subscriptions are billed through AWS Marketplace.
 
 After subscribing, you'll see the data sets associated with the product in your Data Exchange console.
 
@@ -70,13 +44,13 @@ aws dataexchange list-data-sets --output json
 
 # List revisions (versions) for a specific data set
 aws dataexchange list-data-set-revisions \
-    --data-set-id "ds-abc123" \
+    --data-set-id "8d494cba5e4720e5f6072e280daf70a8" \
     --output json
 
 # List the assets (files) in a revision
 aws dataexchange list-revision-assets \
-    --data-set-id "ds-abc123" \
-    --revision-id "rev-def456" \
+    --data-set-id "8d494cba5e4720e5f6072e280daf70a8" \
+    --revision-id "b655d5be3da04fcbdca21a5a2932d789" \
     --output json
 
 # Export the revision assets to your S3 bucket
@@ -84,10 +58,10 @@ aws dataexchange create-job \
     --type "EXPORT_REVISIONS_TO_S3" \
     --details '{
         "ExportRevisionsToS3": {
-            "DataSetId": "ds-abc123",
+            "DataSetId": "8d494cba5e4720e5f6072e280daf70a8",
             "RevisionDestinations": [
                 {
-                    "RevisionId": "rev-def456",
+                    "RevisionId": "b655d5be3da04fcbdca21a5a2932d789",
                     "Bucket": "my-data-lake-bucket",
                     "KeyPattern": "third-party-data/weather/${Revision.CreatedAt.Year}/${Revision.CreatedAt.Month}/${Asset.Name}"
                 }
@@ -96,7 +70,7 @@ aws dataexchange create-job \
     }'
 
 # Start the export job
-aws dataexchange start-job --job-id "job-xyz789"
+aws dataexchange start-job --job-id "6cEXAMPLE818f7c7a23b3d0EXAMPLE1c"
 ```
 
 The key pattern supports variables that organize files in your S3 bucket. Using the revision creation date as a partition key makes it easy to query with Athena later.
@@ -112,7 +86,7 @@ aws events put-rule \
     --event-pattern '{
         "source": ["aws.dataexchange"],
         "detail-type": ["Revision Published To Data Set"],
-        "resources": ["arn:aws:dataexchange:us-east-1:123456789012:data-sets/ds-abc123"]
+        "resources": ["8d494cba5e4720e5f6072e280daf70a8"]
     }' \
     --state "ENABLED"
 
@@ -125,10 +99,10 @@ aws events put-targets \
             "Arn": "arn:aws:lambda:us-east-1:123456789012:function/export-data-exchange",
             "InputTransformer": {
                 "InputPathsMap": {
-                    "dataSetId": "$.detail.DataSetId",
-                    "revisionId": "$.detail.RevisionId"
+                    "dataSetId": "$.resources[0]",
+                    "revisionId": "$.detail.RevisionIds[0]"
                 },
-                "InputTemplate": "{\"dataSetId\": <dataSetId>, \"revisionId\": <revisionId>}"
+                "InputTemplate": "{\"dataSetId\": \"<dataSetId>\", \"revisionId\": \"<revisionId>\"}"
             }
         }
     ]'
@@ -179,7 +153,7 @@ def lambda_handler(event, context):
         if state == 'COMPLETED':
             print(f"Export completed: {job_id}")
             return {'status': 'SUCCESS', 'jobId': job_id}
-        elif state in ['ERROR', 'CANCELLED']:
+        elif state in ['ERROR', 'CANCELLED', 'TIMED_OUT']:
             print(f"Export failed: {job_id} - {job.get('Errors', [])}")
             raise Exception(f"Export job failed: {state}")
 
@@ -193,15 +167,15 @@ Some Data Exchange products deliver data through APIs instead of file-based expo
 ```bash
 # List API assets in a revision
 aws dataexchange list-revision-assets \
-    --data-set-id "ds-api-product" \
-    --revision-id "rev-latest" \
+    --data-set-id "8d494cba5e4720e5f6072e280daf70a8" \
+    --revision-id "b655d5be3da04fcbdca21a5a2932d789" \
     --query "Assets[?AssetType=='API_GATEWAY_API']"
 
 # Send a request to an API-based data product
 aws dataexchange send-api-asset \
-    --data-set-id "ds-api-product" \
-    --revision-id "rev-latest" \
-    --asset-id "asset-api123" \
+    --data-set-id "8d494cba5e4720e5f6072e280daf70a8" \
+    --revision-id "b655d5be3da04fcbdca21a5a2932d789" \
+    --asset-id "8550cfab16b444a794402f2c3f11eae1" \
     --method "GET" \
     --path "/v1/market-data/AAPL" \
     --query-string-parameters '{"date": "2026-02-12"}'
@@ -260,9 +234,9 @@ ORDER BY s.sale_date DESC;
 Data Exchange products can have various pricing models:
 
 - **Free** - No cost to subscribe
-- **Monthly/Annual subscriptions** - Fixed fee regardless of usage
-- **Per-query** - Charged each time you access the API
-- **Per-revision** - Charged when new data is published
+- **Subscription-based products** - Billed upfront or on the provider's billing schedule
+- **Pay-as-you-go products** - Billed for usage during the calendar month
+- **AWS service costs** - S3, Athena, API Gateway, or data transfer costs for storing, querying, or moving the data
 
 Monitor your spending:
 
