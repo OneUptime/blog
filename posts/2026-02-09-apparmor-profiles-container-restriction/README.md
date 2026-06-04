@@ -24,7 +24,7 @@ AppArmor profiles operate in several modes:
 
 Most production containers should run in enforce mode with appropriate profiles.
 
-## Using default Docker AppArmor profile
+## Using default runtime AppArmor profile
 
 Kubernetes uses the container runtime's default AppArmor profile when available:
 
@@ -33,15 +33,16 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: webapp
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/webapp: runtime/default
 spec:
   containers:
   - name: webapp
     image: webapp:v1.0
+    securityContext:
+      appArmorProfile:
+        type: RuntimeDefault
 ```
 
-The annotation specifies the profile for each container. The `runtime/default` profile provides basic restrictions suitable for most applications.
+The `appArmorProfile` field specifies the profile for the container. The `RuntimeDefault` profile provides basic restrictions suitable for most applications.
 
 ## Checking AppArmor availability
 
@@ -56,7 +57,7 @@ sudo aa-status
 sudo apparmor_status
 ```
 
-If AppArmor is not available, the annotations are ignored and containers run unconfined.
+If AppArmor is not available and `appArmorProfile` is explicitly set, Kubernetes rejects the pod. If no AppArmor profile is specified, Kubernetes applies the runtime default only on nodes where AppArmor is enabled.
 
 ## Creating custom AppArmor profiles
 
@@ -122,20 +123,21 @@ For production, automate profile distribution across nodes using DaemonSets or c
 
 ## Using custom profiles in pods
 
-Reference custom profiles in pod annotations:
+Reference custom profiles in pod security contexts:
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
   name: secure-webapp
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/webapp: localhost/webapp-restricted
 spec:
   containers:
   - name: webapp
     image: webapp:v1.0
     securityContext:
+      appArmorProfile:
+        type: Localhost
+        localhostProfile: webapp-restricted
       runAsNonRoot: true
       runAsUser: 1000
       capabilities:
@@ -143,7 +145,7 @@ spec:
         - ALL
 ```
 
-The `localhost/` prefix indicates a custom profile loaded on the host.
+The `Localhost` type indicates a custom profile loaded on the host, and `localhostProfile` names that profile.
 
 ## Building profiles in complain mode
 
@@ -338,12 +340,14 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: postgres
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/postgres: localhost/postgres-secure
 spec:
   containers:
   - name: postgres
     image: postgres:15
+    securityContext:
+      appArmorProfile:
+        type: Localhost
+        localhostProfile: postgres-secure
 ```
 
 ## Web server AppArmor profiles
@@ -490,6 +494,8 @@ metadata:
   name: apparmor-validator
 webhooks:
 - name: validate.apparmor.security
+  admissionReviewVersions: ["v1"]
+  sideEffects: None
   rules:
   - apiGroups: [""]
     apiVersions: ["v1"]
@@ -506,7 +512,7 @@ The webhook ensures all pods specify AppArmor profiles, blocking those that don'
 
 ## Monitoring AppArmor enforcement
 
-Track AppArmor status and violations:
+Track AppArmor status and violations with node or audit exporters that expose AppArmor metrics:
 
 ```yaml
 # PrometheusRule
@@ -520,8 +526,8 @@ spec:
     rules:
     - alert: AppArmorProfileNotLoaded
       expr: |
-        kube_pod_annotations{annotation_container_apparmor_security_beta_kubernetes_io_container!=""}
-        unless on(namespace,pod)
+        apparmor_profile_required == 1
+        unless on(node, profile)
         apparmor_profile_loaded == 1
       annotations:
         summary: "Pod using AppArmor profile that is not loaded"
@@ -535,7 +541,7 @@ spec:
 
 ## Best practices for AppArmor
 
-Start with runtime/default profile for all containers. It provides baseline protection with broad compatibility.
+Start with the `RuntimeDefault` profile for all containers. It provides baseline protection with broad compatibility.
 
 Develop custom profiles in complain mode first, reviewing logs to identify necessary permissions.
 
@@ -553,4 +559,4 @@ Regularly review and tighten profiles as applications evolve.
 
 AppArmor provides mandatory access control that restricts container capabilities at the kernel level. By defining explicit profiles that control file access, network operations, and process execution, you create strong security boundaries that protect against compromised containers.
 
-The runtime/default profile offers immediate security benefits with minimal effort, while custom profiles enable fine-grained control for security-sensitive workloads. When combined with other security mechanisms like seccomp, capabilities, and Pod Security Standards, AppArmor forms part of a comprehensive defense-in-depth strategy that makes Kubernetes environments significantly more secure.
+The `RuntimeDefault` profile offers immediate security benefits with minimal effort, while custom profiles enable fine-grained control for security-sensitive workloads. When combined with other security mechanisms like seccomp, capabilities, and Pod Security Standards, AppArmor forms part of a comprehensive defense-in-depth strategy that makes Kubernetes environments significantly more secure.
