@@ -10,7 +10,7 @@ Description: Learn how to configure Tekton Affinity Assistant to ensure pipeline
 
 When running Tekton pipelines, you often need to share data between tasks. A common pattern is using a PersistentVolumeClaim as a workspace. But there's a catch: if your PVC uses ReadWriteOnce access mode, it can only be mounted on one node at a time.
 
-If task A writes files to the workspace on node-1, and task B tries to read those files but gets scheduled on node-2, the pipeline fails. The Affinity Assistant solves this by ensuring all tasks using the same workspace run on the same node.
+If task A writes files to the workspace on node-1, and task B tries to read those files but gets scheduled on node-2, the pipeline can fail or be delayed by volume attach and node-affinity constraints. The Affinity Assistant solves this by ensuring tasks using the same workspace run on the same node.
 
 ## Understanding the Problem
 
@@ -30,10 +30,10 @@ spec:
   storageClassName: standard
 ```
 
-Without affinity assistant, this pipeline might fail:
+Without affinity assistant, this pipeline might fail or wait for the volume to move:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: build-and-test
@@ -57,11 +57,11 @@ spec:
       workspace: source-code  # Needs to be on same node as fetch-source
 ```
 
-If `fetch-source` runs on node-1 and `run-tests` runs on node-2, the volume can't be mounted on node-2, and the pipeline fails.
+If `fetch-source` runs on node-1 and `run-tests` runs on node-2, the volume may need to detach and reattach or may be blocked by volume node-affinity constraints.
 
 ## Enabling Affinity Assistant
 
-The Affinity Assistant is a feature in Tekton that creates a temporary pod to establish node affinity for all tasks in a pipeline run. Enable it in the Tekton config:
+The Affinity Assistant is a feature in Tekton that creates a temporary pod to establish node affinity for tasks that share a PVC-backed workspace. Enable it in the Tekton config:
 
 ```yaml
 apiVersion: v1
@@ -70,8 +70,8 @@ metadata:
   name: feature-flags
   namespace: tekton-pipelines
 data:
-  # Enable affinity assistant (enabled by default in recent versions)
-  disable-affinity-assistant: "false"
+  # Enable workspace-based affinity assistant behavior (the default)
+  coschedule: "workspaces"
 ```
 
 Apply this configuration:
@@ -84,7 +84,7 @@ kubectl get configmap feature-flags -n tekton-pipelines -o yaml
 # Update if needed
 kubectl patch configmap feature-flags -n tekton-pipelines \
   --type merge \
-  -p '{"data":{"disable-affinity-assistant":"false"}}'
+  -p '{"data":{"coschedule":"workspaces"}}'
 ```
 
 ## How Affinity Assistant Works
@@ -93,7 +93,7 @@ When you create a PipelineRun with a workspace backed by ReadWriteOnce PVC, Tekt
 
 1. Creates a dummy "affinity assistant" pod
 2. Mounts the PVC to this pod
-3. Uses pod affinity to schedule all pipeline tasks on the same node as the affinity assistant
+3. Uses pod affinity to schedule tasks sharing that workspace on the same node as the affinity assistant
 
 This ensures all tasks can access the volume.
 
@@ -111,7 +111,7 @@ spec:
     requests:
       storage: 5Gi
 ---
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: ci-pipeline
@@ -145,7 +145,7 @@ spec:
     - name: source
       workspace: workspace
 ---
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: ci-run-1
@@ -179,31 +179,25 @@ All task pods should be scheduled on the same node as the affinity assistant pod
 
 ## Configuring Affinity Assistant Behavior
 
-You can customize how the affinity assistant behaves. Add annotations to your PipelineRun:
+You can customize how the affinity assistant behaves with the `coschedule` feature flag:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
-kind: PipelineRun
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: ci-run-2
-  annotations:
-    # Control affinity assistant behavior
-    tekton.dev/affinity-assistant: "true"  # Explicitly enable (default)
-spec:
-  pipelineRef:
-    name: ci-pipeline
-  workspaces:
-  - name: workspace
-    persistentVolumeClaim:
-      claimName: shared-workspace
+  name: feature-flags
+  namespace: tekton-pipelines
+data:
+  # Options: workspaces, pipelineruns, isolate-pipelinerun, disabled
+  coschedule: "workspaces"
 ```
 
 ## Handling Multiple Workspaces
 
-If your pipeline uses multiple ReadWriteOnce PVCs, Tekton creates separate affinity assistants for each workspace:
+If your pipeline uses multiple ReadWriteOnce PVCs, each TaskRun can mount only one PVC-backed workspace when `coschedule` is set to `workspaces`. If a single task needs multiple PVC-backed workspaces, use `coschedule: "pipelineruns"` so all TaskRun pods in the PipelineRun are scheduled together:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: multi-workspace-pipeline
@@ -221,7 +215,7 @@ spec:
     - name: maven-cache
       workspace: cache
 ---
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: multi-ws-run-1
@@ -237,7 +231,7 @@ spec:
       claimName: cache-pvc
 ```
 
-This creates two affinity assistants, and tasks must satisfy both affinity constraints. This can lead to scheduling conflicts if nodes don't have both volumes available.
+With `coschedule: "pipelineruns"`, tasks must satisfy the placement constraints for all of the PVCs used by the PipelineRun. This can lead to scheduling conflicts if nodes don't have both volumes available.
 
 ## Avoiding Affinity Assistant Conflicts
 
@@ -248,7 +242,7 @@ When using multiple workspaces, you might encounter scheduling issues. Here are 
 Create unique PVCs for each run:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   generateName: ci-run-
@@ -290,10 +284,10 @@ With ReadWriteMany, the affinity assistant isn't needed, but your storage must s
 
 ### Strategy 3: Use EmptyDir for Temporary Data
 
-For data that doesn't need to persist beyond the pipeline run:
+For data that doesn't need to be shared between separate tasks:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: ci-run-3
@@ -302,10 +296,10 @@ spec:
     name: ci-pipeline
   workspaces:
   - name: workspace
-    emptyDir: {}  # Uses node's local storage
+    emptyDir: {}  # Uses storage tied to the TaskRun pod
 ```
 
-EmptyDir volumes are created on the node where the first task runs, and subsequent tasks naturally get scheduled there.
+EmptyDir volumes are created for the Pod that uses them. They work well for sharing data between steps in a single TaskRun, but they are not suitable for sharing data among separate tasks in a Pipeline.
 
 ## Monitoring Affinity Assistant
 
@@ -368,19 +362,27 @@ kubectl delete pods -l tekton.dev/pipelineRun=<run-name>
 kubectl delete pipelinerun <run-name>
 ```
 
-Configure automatic cleanup:
+Configure automatic PVC cleanup for `volumeClaimTemplate` workspaces:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: tekton.dev/v1
+kind: PipelineRun
 metadata:
-  name: config-defaults
-  namespace: tekton-pipelines
-data:
-  # Clean up completed runs after 1 hour
-  default-timeout-minutes: "60"
-  # Keep only last 3 completed runs
-  default-max-matrix-combinations-count: "3"
+  name: ci-run-5
+  annotations:
+    tekton.dev/auto-cleanup-pvc: "true"
+spec:
+  pipelineRef:
+    name: ci-pipeline
+  workspaces:
+  - name: workspace
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
 ```
 
 ## Best Practices
@@ -397,32 +399,26 @@ Follow these guidelines when using affinity assistant:
 
 ## Advanced Configuration
 
-For complex scenarios, you can influence affinity assistant placement with node affinity:
+For complex scenarios, you can influence affinity assistant placement with node selection:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: ci-run-4
 spec:
   pipelineRef:
     name: ci-pipeline
-  podTemplate:
-    affinity:
-      nodeAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          nodeSelectorTerms:
-          - matchExpressions:
-            - key: workload-type
-              operator: In
-              values:
-              - pipeline
+  taskRunTemplate:
+    podTemplate:
+      nodeSelector:
+        workload-type: pipeline
   workspaces:
   - name: workspace
     persistentVolumeClaim:
       claimName: shared-workspace
 ```
 
-This ensures the affinity assistant (and thus all tasks) run on nodes labeled for pipeline workloads.
+The PipelineRun pod template applies selected fields to affinity assistant pods, including `nodeSelector`, so this ensures the affinity assistant (and thus all tasks) run on nodes labeled for pipeline workloads.
 
 The Affinity Assistant is a smart solution to a common problem in CI/CD pipelines. By understanding how it works and following best practices, you can build reliable pipelines that efficiently share data between tasks without manual node management.
