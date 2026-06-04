@@ -23,8 +23,6 @@ A well-structured E2E test environment has three layers: the application service
 ```yaml
 # docker-compose.test.yml - Complete E2E testing environment
 
-version: "3.8"
-
 services:
   # Infrastructure layer
   postgres:
@@ -112,7 +110,6 @@ services:
         condition: service_healthy
     volumes:
       - ./e2e/results:/app/results
-      - ./e2e/screenshots:/app/screenshots
 ```
 
 ## Managing Service Startup Order
@@ -165,7 +162,7 @@ Playwright is excellent for E2E testing because it supports multiple browsers an
 
 ```dockerfile
 # e2e/Dockerfile - Playwright test runner
-FROM mcr.microsoft.com/playwright:v1.42.0-jammy
+FROM mcr.microsoft.com/playwright:v1.60.0-noble
 
 WORKDIR /app
 
@@ -230,6 +227,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
+  outputDir: 'results/test-results',
   timeout: 30000,
   retries: 2,
   use: {
@@ -300,7 +298,7 @@ set -e
 
 # Drop and recreate the test database
 docker compose -f docker-compose.test.yml exec -T postgres \
-  psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS testdb;"
+  psql -U testuser -d postgres -c "DROP DATABASE IF EXISTS testdb WITH (FORCE);"
 docker compose -f docker-compose.test.yml exec -T postgres \
   psql -U testuser -d postgres -c "CREATE DATABASE testdb;"
 
@@ -342,7 +340,6 @@ jobs:
           name: e2e-results
           path: |
             e2e/results/
-            e2e/screenshots/
 
       - name: Cleanup
         if: always()
@@ -355,7 +352,8 @@ When E2E tests fail, you need visibility into what went wrong. Playwright's trac
 
 ```bash
 # After a failure, download the trace and open it locally
-npx playwright show-trace e2e/results/trace.zip
+TRACE=$(find e2e/results/test-results -name trace.zip | head -n 1)
+npx playwright show-trace "$TRACE"
 ```
 
 For live debugging, run the environment without the test runner and execute tests interactively.
