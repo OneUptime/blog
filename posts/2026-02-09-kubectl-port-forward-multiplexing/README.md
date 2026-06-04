@@ -14,9 +14,9 @@ In this guide, you'll learn how to implement efficient port-forward multiplexing
 
 ## Understanding Port-Forward Multiplexing
 
-Port-forward multiplexing manages multiple kubectl port-forward processes through a centralized system. Instead of manually running and tracking individual port-forward commands, a multiplexer handles process lifecycle, port allocation, automatic reconnection, and connection monitoring.
+Port-forward multiplexing manages multiple kubectl port-forward processes through a centralized system. Instead of manually running and tracking individual port-forward commands, a multiplexer handles process lifecycle, configured port allocation, automatic reconnection, and connection monitoring.
 
-The benefits include simplified management of multiple forwards, automatic port conflict resolution, persistent connections that survive network interruptions, and easy enable/disable of individual forwards without affecting others.
+The benefits include simplified management of multiple forwards, predictable local port assignments, automatic restart after a forwarding process exits, and easy enable/disable of individual forwards without affecting others. Tools like kubefwd can also reduce port conflicts by assigning services to unique loopback IP addresses.
 
 ## Building a Basic Port-Forward Multiplexer Script
 
@@ -284,48 +284,44 @@ Install and use kubefwd for DNS-based service access:
 ```bash
 # Install kubefwd
 # For macOS
-brew install txn2/tap/kubefwd
+brew install kubefwd
 
 # For Linux
-wget https://github.com/txn2/kubefwd/releases/download/v1.22.4/kubefwd_Linux_x86_64.tar.gz
+wget https://github.com/txn2/kubefwd/releases/latest/download/kubefwd_Linux_x86_64.tar.gz
 tar -xzf kubefwd_Linux_x86_64.tar.gz
 sudo mv kubefwd /usr/local/bin/
+sudo chmod +x /usr/local/bin/kubefwd
 
 # Forward all services in a namespace
-sudo kubefwd svc -n default
+sudo -E kubefwd svc -n default
 
 # Forward multiple namespaces
-sudo kubefwd svc -n default,monitoring,messaging
+sudo -E kubefwd svc -n default,monitoring,messaging
 
 # Use custom domain
-sudo kubefwd svc -n default -d dev.local
+sudo -E kubefwd svc -n default -d dev.local
 
 # With selector
-sudo kubefwd svc -n default -l app=backend
+sudo -E kubefwd svc -n default -l app=backend
 ```
 
 Create a kubefwd configuration file:
 
 ```yaml
 # kubefwd-config.yaml
-namespaces:
-  - default
-  - monitoring
-  - messaging
-
-domain: k8s.local
-
-portForwards:
-  - name: api-server
+reservations:
+  - service: api-server
     namespace: default
-    service: api-server
-    localPort: 8080
+    ip: 127.3.3.1
 
-  - name: grafana
+  - service: grafana
     namespace: monitoring
-    service: grafana
-    localPort: 3000
+    ip: 127.3.3.2
+
+baseIP: 127.3.3.1
 ```
+
+Use the configuration file with `sudo -E kubefwd svc -n default,monitoring -z kubefwd-config.yaml`.
 
 ## Building a Python-Based Port-Forward Manager
 
@@ -340,13 +336,16 @@ import json
 import time
 import signal
 import sys
-from typing import Dict, List
+import os
 from pathlib import Path
 
 class PortForwardManager:
     def __init__(self, config_file: str):
         self.config_file = config_file
-        self.processes: Dict[str, subprocess.Popen] = {}
+        self.pid_dir = Path('/tmp/kubectl-pf-pids')
+        self.log_dir = Path('/tmp/kubectl-pf-logs')
+        self.pid_dir.mkdir(exist_ok=True)
+        self.log_dir.mkdir(exist_ok=True)
         self.load_config()
 
     def load_config(self):
@@ -354,9 +353,40 @@ class PortForwardManager:
         with open(self.config_file, 'r') as f:
             self.config = json.load(f)
 
+    def pid_file(self, name: str) -> Path:
+        return self.pid_dir / f'{name}.pid'
+
+    def log_file(self, name: str) -> Path:
+        return self.log_dir / f'{name}.log'
+
+    def get_pid(self, name: str):
+        pid_file = self.pid_file(name)
+        if not pid_file.exists():
+            return None
+
+        try:
+            return int(pid_file.read_text().strip())
+        except ValueError:
+            pid_file.unlink(missing_ok=True)
+            return None
+
+    def is_running(self, name: str) -> bool:
+        pid = self.get_pid(name)
+        if pid is None:
+            return False
+
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            self.pid_file(name).unlink(missing_ok=True)
+            return False
+        except PermissionError:
+            return True
+
     def start_forward(self, name: str, forward_config: dict) -> bool:
         """Start a single port forward."""
-        if name in self.processes and self.processes[name].poll() is None:
+        if self.is_running(name):
             print(f"⚠️  {name} is already running")
             return False
 
@@ -373,21 +403,21 @@ class PortForwardManager:
         ]
 
         try:
+            log_file = open(self.log_file(name), 'a')
             process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True
             )
 
             # Wait briefly to check if process started successfully
             time.sleep(1)
             if process.poll() is not None:
-                _, stderr = process.communicate()
-                print(f"❌ Failed to start {name}: {stderr}")
+                print(f"❌ Failed to start {name}. Check log: {self.log_file(name)}")
                 return False
 
-            self.processes[name] = process
+            self.pid_file(name).write_text(str(process.pid))
             print(f"✅ Started {name}: localhost:{local_port} -> {resource}:{remote_port}")
             return True
 
@@ -397,19 +427,20 @@ class PortForwardManager:
 
     def stop_forward(self, name: str):
         """Stop a single port forward."""
-        if name not in self.processes:
+        pid = self.get_pid(name)
+        if pid is None:
             print(f"⚠️  {name} is not running")
             return
 
-        process = self.processes[name]
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
+        try:
+            os.killpg(pid, signal.SIGTERM)
+            time.sleep(1)
+            os.kill(pid, 0)
+            os.killpg(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
-        del self.processes[name]
+        self.pid_file(name).unlink(missing_ok=True)
         print(f"🛑 Stopped {name}")
 
     def start_all(self):
@@ -421,7 +452,7 @@ class PortForwardManager:
     def stop_all(self):
         """Stop all running port forwards."""
         print("🛑 Stopping all port forwards...")
-        for name in list(self.processes.keys()):
+        for name in self.config['forwards'].keys():
             self.stop_forward(name)
 
     def status(self):
@@ -430,7 +461,7 @@ class PortForwardManager:
         print("=" * 50)
 
         for name, config in self.config['forwards'].items():
-            if name in self.processes and self.processes[name].poll() is None:
+            if self.is_running(name):
                 local_port = config['local_port']
                 print(f"✅ {name:20s} localhost:{local_port}")
             else:
@@ -448,7 +479,7 @@ class PortForwardManager:
                 time.sleep(5)
 
                 for name, config in self.config['forwards'].items():
-                    if name not in self.processes or self.processes[name].poll() is not None:
+                    if not self.is_running(name):
                         print(f"⚠️  {name} died, restarting...")
                         self.start_forward(name, config)
 
@@ -587,17 +618,20 @@ Create a Docker Compose setup for managed forwards:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   port-forward-manager:
-    image: bitnami/kubectl:latest
+    image: python:3.12-slim
     volumes:
-      - ~/.kube:/root/.kube:ro
+      - ${HOME}/.kube:/root/.kube:ro
       - ./pf_manager.py:/app/pf_manager.py
       - ./config.json:/app/config.json
     working_dir: /app
-    command: python3 pf_manager.py config.json monitor
+    command: >
+      sh -c "apt-get update &&
+        apt-get install -y --no-install-recommends ca-certificates curl &&
+        curl -L -o /usr/local/bin/kubectl https://dl.k8s.io/release/$$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl &&
+        chmod +x /usr/local/bin/kubectl &&
+        python3 pf_manager.py config.json monitor"
     network_mode: host
     restart: unless-stopped
 
