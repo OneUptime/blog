@@ -19,8 +19,6 @@ In Docker Compose, set `pid: "host"` on a service:
 ```yaml
 # docker-compose.yml - basic host PID mode
 
-version: "3.8"
-
 services:
   debug-tools:
     image: alpine
@@ -42,11 +40,9 @@ The output includes processes from the host, other containers, and the Docker da
 A monitoring container that watches all processes on the host:
 
 ```yaml
-version: "3.8"
-
 services:
   process-monitor:
-    image: alpine
+    image: ubuntu:24.04
     pid: "host"
     read_only: true
     volumes:
@@ -55,7 +51,7 @@ services:
     command: >
       sh -c "
         while true; do
-          echo '--- Process Check $(date) ---'
+          echo \"--- Process Check $$(date) ---\"
           ps aux --sort=-%cpu | head -20
           sleep 60
         done
@@ -73,8 +69,6 @@ services:
 When a container is misbehaving, you can use host PID mode to inspect its processes with tools the application container does not have installed:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: myapp:latest
@@ -121,13 +115,11 @@ cat /proc/12345/environ | tr '\0' '\n'
 With host PID mode, you can use `nsenter` to enter another container's namespaces. This is powerful for debugging containers that lack a shell:
 
 ```yaml
-version: "3.8"
-
 services:
   toolbox:
     image: nicolaka/netshoot
     pid: "host"
-    privileged: true    # Required for nsenter
+    privileged: true    # Simplest option for namespace debugging
     profiles:
       - debug
     command: sleep infinity
@@ -155,8 +147,6 @@ docker compose exec toolbox nsenter -t $TARGET_PID -a sh
 The Prometheus node exporter needs host PID access to collect accurate process metrics:
 
 ```yaml
-version: "3.8"
-
 services:
   node-exporter:
     image: prom/node-exporter:latest
@@ -193,8 +183,6 @@ volumes:
 With host PID mode, a container can send signals to host processes. This is useful for management containers that need to trigger log rotation or config reloads:
 
 ```yaml
-version: "3.8"
-
 services:
   nginx-reloader:
     image: alpine
@@ -205,7 +193,7 @@ services:
         NGINX_PID=$$(pgrep -f 'nginx: master')
         if [ -n \"$$NGINX_PID\" ]; then
           kill -HUP $$NGINX_PID
-          echo 'Sent reload signal to nginx (PID $$NGINX_PID)'
+          echo \"Sent reload signal to nginx (PID $$NGINX_PID)\"
         else
           echo 'nginx master process not found'
           exit 1
@@ -278,8 +266,6 @@ This gives you access to process information through `/proc` without full PID na
 Instead of sharing with the host, you can share PID namespace between specific containers:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: myapp:latest
