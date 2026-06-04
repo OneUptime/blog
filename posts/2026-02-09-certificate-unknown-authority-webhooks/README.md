@@ -8,13 +8,13 @@ Description: Learn how to diagnose and fix certificate signed by unknown authori
 
 ---
 
-Certificate signed by unknown authority errors block admission webhooks from functioning, preventing the API server from validating or mutating resources. When the API server can't verify webhook TLS certificates, it rejects webhook calls, causing resource creation and updates to fail. Properly configuring CA bundles and managing webhook certificates ensures admission webhooks work reliably.
+Certificate signed by unknown authority errors block admission webhooks from functioning, preventing the API server from validating or mutating resources. When the API server can't verify webhook TLS certificates, it rejects webhook calls, causing resource creation and updates to fail when the webhook uses the default `failurePolicy: Fail`. Properly configuring CA bundles and managing webhook certificates ensures admission webhooks work reliably.
 
 This guide covers diagnosing certificate trust issues, configuring CA bundles correctly, implementing certificate management, and preventing certificate-related webhook failures.
 
 ## Understanding Webhook Certificate Validation
 
-Kubernetes API server calls admission webhooks over HTTPS. The API server validates webhook server certificates using a CA bundle specified in the webhook configuration. When the certificate chain doesn't match the provided CA bundle, validation fails with "certificate signed by unknown authority" errors.
+Kubernetes API server calls admission webhooks over HTTPS. The API server validates webhook server certificates using the CA bundle specified in the webhook configuration, or the API server's system trust roots when a URL-based webhook omits `caBundle`. When the certificate chain doesn't match the configured trust, validation fails with "certificate signed by unknown authority" errors.
 
 This security measure prevents man-in-the-middle attacks and ensures the API server communicates with legitimate webhook endpoints. However, misconfigured CA bundles, expired certificates, or self-signed certificates without proper trust configuration cause legitimate webhooks to fail.
 
@@ -72,7 +72,7 @@ kubectl get service webhook -n default
 kubectl port-forward -n default service/webhook 8443:443
 
 # Check certificate
-openssl s_client -connect localhost:8443 -showcerts
+openssl s_client -connect localhost:8443 -servername webhook.default.svc -showcerts
 
 # Look at certificate chain and issuer
 # Issuer: CN=My CA
@@ -165,15 +165,13 @@ Install cert-manager to automate webhook certificate management.
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Verify installation
 kubectl get pods -n cert-manager
 
-# Wait for pods to be ready
-kubectl wait --for=condition=available deployment/cert-manager -n cert-manager --timeout=300s
-kubectl wait --for=condition=available deployment/cert-manager-webhook -n cert-manager --timeout=300s
-kubectl wait --for=condition=available deployment/cert-manager-cainjector -n cert-manager --timeout=300s
+# Wait for the cert-manager API to be ready (requires cmctl)
+cmctl check api --wait=2m
 ```
 
 Create a self-signed CA issuer.
@@ -245,7 +243,13 @@ metadata:
   name: webhook
   namespace: default
 spec:
+  selector:
+    matchLabels:
+      app: webhook
   template:
+    metadata:
+      labels:
+        app: webhook
     spec:
       containers:
       - name: webhook
@@ -293,45 +297,17 @@ Cert-manager's CA injector watches for this annotation and automatically populat
 
 ## Implementing Webhook Certificate Rotation
 
-Create a CronJob that rotates webhook certificates before expiration.
+Cert-manager automatically renews certificates before expiration based on `duration` and `renewBefore`. If you need to force renewal before the scheduled renewal time, trigger a manual renewal with `cmctl` instead of deleting the Certificate resource.
 
-```yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: webhook-cert-rotation
-  namespace: default
-spec:
-  schedule: "0 0 */30 * *"  # Every 30 days
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          serviceAccountName: cert-rotator
-          containers:
-          - name: cert-rotator
-            image: bitnami/kubectl:latest
-            command:
-            - /bin/bash
-            - -c
-            - |
-              # Delete old certificate to trigger renewal
-              kubectl delete certificate webhook-server-cert -n default
-              kubectl apply -f /config/certificate.yaml
+```bash
+# Manually trigger renewal when needed
+cmctl renew webhook-server-cert -n default
 
-              # Wait for new certificate
-              kubectl wait --for=condition=ready certificate/webhook-server-cert -n default --timeout=300s
+# Wait for cert-manager to issue the renewed certificate
+kubectl wait --for=condition=Ready certificate/webhook-server-cert -n default --timeout=300s
 
-              # Restart webhook deployment to use new certificate
-              kubectl rollout restart deployment webhook -n default
-            volumeMounts:
-            - name: config
-              mountPath: /config
-          volumes:
-          - name: config
-            configMap:
-              name: cert-config
-          restartPolicy: OnFailure
+# Restart webhook deployment if the webhook process does not reload TLS files automatically
+kubectl rollout restart deployment webhook -n default
 ```
 
 ## Testing Webhook Certificate Configuration
@@ -401,14 +377,14 @@ data:
         annotations:
           summary: "Webhook certificate {{ $labels.name }} is not ready"
 
-      - alert: WebhookCallFailures
+      - alert: WebhookRejections
         expr: |
-          rate(apiserver_admission_webhook_admission_duration_seconds_count{type="validating",rejected="true"}[5m]) > 0.1
+          rate(apiserver_admission_webhook_admission_duration_seconds_count{type="validate",rejected="true"}[5m]) > 0.1
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "High webhook call failure rate"
+          summary: "High validating webhook rejection rate"
 ```
 
 Certificate signed by unknown authority errors in webhook calls prevent admission control from functioning. By properly configuring CA bundles in webhook configurations, using cert-manager for automated certificate management, implementing certificate rotation, and monitoring certificate health, you ensure webhooks validate API requests reliably. Combined with automatic CA injection and proper testing, these practices create robust admission webhook infrastructure that enhances cluster security without operational overhead.
