@@ -8,7 +8,7 @@ Description: Learn how to use kubectl proxy to create a secure local tunnel to t
 
 ---
 
-Direct Kubernetes API access requires certificate authentication and HTTPS handling. kubectl proxy simplifies this by creating a local HTTP server that forwards requests to the API server with proper authentication. This enables browser access, curl commands, and custom tooling without certificate management.
+Direct Kubernetes API access requires HTTPS handling and valid authentication credentials, such as certificates or bearer tokens. kubectl proxy simplifies this by creating a local HTTP server that forwards requests to the API server with proper authentication. This enables browser access, curl commands, and custom tooling without certificate management.
 
 ## What kubectl proxy Does
 
@@ -141,20 +141,20 @@ This tunnels through the API server to reach cluster services without port-forwa
 
 ## Dashboard Access
 
-Access Kubernetes Dashboard through the proxy:
+Access older Kubernetes Dashboard deployments through the proxy:
 
 ```bash
 # Start proxy
 kubectl proxy
 
-# Access dashboard (if installed)
+# Access dashboard if it exposes a Service named kubernetes-dashboard
 # http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/
 
-# Alternative dashboard URL format
+# Alternative HTTP dashboard URL format
 # http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/kubernetes-dashboard/proxy/
 ```
 
-This provides secure dashboard access without exposing it externally.
+This provides dashboard access without exposing it externally. Current Kubernetes Dashboard Helm installs use a different service name and are commonly accessed with kubectl port-forward instead.
 
 ## API Discovery
 
@@ -310,7 +310,7 @@ kubectl proxy
 kubectl proxy --address='0.0.0.0' --accept-hosts='.*'
 # Accessible from any IP - use with extreme caution
 
-# Accept from specific hosts
+# Accept only specific Host headers
 kubectl proxy --address='0.0.0.0' --accept-hosts='^localhost$,^127\.0\.0\.1$'
 ```
 
@@ -322,13 +322,13 @@ Restrict which API paths the proxy serves:
 
 ```bash
 # Only serve specific paths
-kubectl proxy --reject-paths="^/api/v1/secrets"
+kubectl proxy --reject-paths="^/api/v1/(namespaces/[^/]+/)?secrets"
 
 # Reject multiple paths
-kubectl proxy --reject-paths="^/api/v1/secrets,^/api/v1/configmaps"
+kubectl proxy --reject-paths="^/api/v1/(namespaces/[^/]+/)?secrets,^/api/v1/(namespaces/[^/]+/)?configmaps"
 
 # Accept only specific paths
-kubectl proxy --accept-paths="^/api/v1/pods"
+kubectl proxy --accept-paths="^/api/v1/(namespaces/[^/]+/)?pods"
 ```
 
 Path filtering adds basic access control to the proxy.
@@ -341,14 +341,14 @@ Use the proxy to debug how kubectl interacts with the API:
 # Start proxy
 kubectl proxy -v=8
 
-# In another terminal, run kubectl commands
-kubectl get pods
+# In another terminal, send requests through the proxy
+curl http://localhost:8001/api/v1/namespaces/default/pods
 
-# Watch proxy terminal to see API calls kubectl makes
+# Watch proxy terminal to see proxied API calls
 # Shows full HTTP requests and responses
 ```
 
-Verbose mode reveals exact API requests kubectl generates.
+Verbose mode reveals details for requests sent through the proxy.
 
 ## Testing API Changes
 
