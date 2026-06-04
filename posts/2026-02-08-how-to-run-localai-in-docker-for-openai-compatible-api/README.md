@@ -8,7 +8,7 @@ Description: Deploy LocalAI in Docker to run a self-hosted OpenAI-compatible API
 
 ---
 
-LocalAI is an open-source project that provides an OpenAI-compatible API you can run on your own hardware. It supports text generation, embeddings, image generation, text-to-speech, and speech-to-text. Since it implements the same API contract as OpenAI, you can point any application that uses the OpenAI SDK at LocalAI and it works without code changes. Running it in Docker makes deployment clean and reproducible.
+LocalAI is an open-source project that provides an OpenAI-compatible API you can run on your own hardware. It supports text generation, embeddings, image generation, text-to-speech, and speech-to-text. Since it implements OpenAI-compatible endpoints, you can point applications that use the OpenAI SDK at LocalAI with minimal configuration changes. Running it in Docker makes deployment clean and reproducible.
 
 ## Why LocalAI?
 
@@ -30,7 +30,7 @@ The simplest way to start LocalAI is with a single Docker command.
 docker run -d \
   --name localai \
   -p 8080:8080 \
-  -v localai_models:/build/models \
+  -v localai_models:/models \
   localai/localai:latest-cpu
 ```
 
@@ -41,7 +41,7 @@ For GPU support:
 docker run -d \
   --name localai \
   -p 8080:8080 \
-  -v localai_models:/build/models \
+  -v localai_models:/models \
   --gpus all \
   localai/localai:latest-gpu-nvidia-cuda-12
 ```
@@ -63,8 +63,6 @@ A Docker Compose configuration gives you more control over the deployment.
 ```yaml
 # docker-compose.yml
 # LocalAI deployment with persistent storage and configuration
-version: "3.8"
-
 services:
   localai:
     image: localai/localai:latest-cpu
@@ -73,18 +71,16 @@ services:
       - "8080:8080"
     volumes:
       # Persist downloaded models
-      - localai_models:/build/models
-      # Mount custom model configurations
-      - ./model-configs:/build/models
+      - ./models:/models
     environment:
       # Number of threads for model inference
       - THREADS=4
-      # Enable debug logging for troubleshooting
-      - DEBUG=false
+      # Set log level for troubleshooting
+      - LOCALAI_LOG_LEVEL=info
       # Set the default context size
       - CONTEXT_SIZE=512
       # Preload specific models at startup
-      - PRELOAD_MODELS=[{"url": "github:mudler/LocalAI/gallery/llama3.1-8b-instruct.yaml", "name": "llama3.1"}]
+      - PRELOAD_MODELS=[{"id": "llama-3.2-1b-instruct:q4_k_m"}]
     restart: unless-stopped
     # Resource limits to prevent runaway memory usage
     deploy:
@@ -92,8 +88,6 @@ services:
         limits:
           memory: 8G
 
-volumes:
-  localai_models:
 ```
 
 Start the service:
@@ -117,10 +111,10 @@ curl http://localhost:8080/models/available | python3 -m json.tool | head -50
 # Install a model from the gallery
 curl -X POST http://localhost:8080/models/apply \
   -H "Content-Type: application/json" \
-  -d '{"id": "llama3.1-8b-instruct"}'
+  -d '{"id": "llama-3.2-1b-instruct:q4_k_m"}'
 
-# Check installation progress
-curl http://localhost:8080/models/jobs | python3 -m json.tool
+# Check installation progress using the uuid returned by /models/apply
+curl http://localhost:8080/models/jobs/<JOB_ID> | python3 -m json.tool
 
 # Once installed, verify the model is available
 curl http://localhost:8080/v1/models | python3 -m json.tool
@@ -130,13 +124,13 @@ You can also manually place GGUF model files in the models directory:
 
 ```bash
 # Download a model manually (example: Phi-3 Mini GGUF)
-wget -P ./model-configs/ https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf
+wget -P ./models/ https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf
 ```
 
 Then create a configuration file for it:
 
 ```yaml
-# ./model-configs/phi3.yaml
+# ./models/phi3.yaml
 # Model configuration for Phi-3 Mini
 name: phi3
 backend: llama-cpp
@@ -144,7 +138,7 @@ parameters:
   model: Phi-3-mini-4k-instruct-q4.gguf
   temperature: 0.7
   top_p: 0.9
-  context_size: 4096
+context_size: 4096
 ```
 
 ## Using the OpenAI-Compatible API
@@ -158,7 +152,7 @@ LocalAI implements the same endpoints as OpenAI. Here is how to use them.
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "llama3.1",
+    "model": "llama-3.2-1b-instruct:q4_k_m",
     "messages": [
       {"role": "system", "content": "You are a helpful assistant."},
       {"role": "user", "content": "Explain Docker volumes in two sentences."}
@@ -170,6 +164,11 @@ curl http://localhost:8080/v1/chat/completions \
 ### Text Embeddings
 
 ```bash
+# Install an embeddings model with the OpenAI-compatible model name
+curl -X POST http://localhost:8080/models/apply \
+  -H "Content-Type: application/json" \
+  -d '{"id": "bert-embeddings", "name": "text-embedding-ada-002"}'
+
 # Generate text embeddings for semantic search
 curl http://localhost:8080/v1/embeddings \
   -H "Content-Type: application/json" \
@@ -186,7 +185,7 @@ curl http://localhost:8080/v1/embeddings \
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "llama3.1",
+    "model": "llama-3.2-1b-instruct:q4_k_m",
     "messages": [{"role": "user", "content": "Write a haiku about containers."}],
     "stream": true
   }'
@@ -208,7 +207,7 @@ client = OpenAI(
 
 # Chat completion - identical code to using OpenAI
 response = client.chat.completions.create(
-    model="llama3.1",
+    model="llama-3.2-1b-instruct:q4_k_m",
     messages=[
         {"role": "system", "content": "You are a helpful DevOps engineer."},
         {"role": "user", "content": "How do I optimize a Docker image for production?"}
@@ -236,8 +235,6 @@ For significantly faster inference, enable GPU support.
 
 ```yaml
 # docker-compose.yml with GPU support
-version: "3.8"
-
 services:
   localai:
     image: localai/localai:latest-gpu-nvidia-cuda-12
@@ -245,7 +242,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - localai_models:/build/models
+      - localai_models:/models
     environment:
       - THREADS=4
       - CONTEXT_SIZE=2048
@@ -262,11 +259,11 @@ volumes:
   localai_models:
 ```
 
-Verify GPU usage:
+Verify GPU access:
 
 ```bash
-# Check that LocalAI detects the GPU
-docker exec localai nvidia-smi
+# Check that Docker can access the GPU
+docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
 
 # Monitor GPU usage during inference
 watch -n 1 nvidia-smi
@@ -280,7 +277,7 @@ LocalAI supports image generation using Stable Diffusion backends.
 # Install a Stable Diffusion model
 curl -X POST http://localhost:8080/models/apply \
   -H "Content-Type: application/json" \
-  -d '{"id": "stablediffusion"}'
+  -d '{"url": "github:mudler/LocalAI/gallery/stablediffusion.yaml@master"}'
 
 # Generate an image using the OpenAI-compatible endpoint
 curl http://localhost:8080/v1/images/generations \
@@ -300,7 +297,7 @@ LocalAI includes Whisper support for audio transcription.
 # Install the Whisper model
 curl -X POST http://localhost:8080/models/apply \
   -H "Content-Type: application/json" \
-  -d '{"id": "whisper-1"}'
+  -d '{"url": "github:mudler/LocalAI/gallery/whisper-base.yaml@master", "name": "whisper-1"}'
 
 # Transcribe an audio file
 curl http://localhost:8080/v1/audio/transcriptions \
@@ -310,20 +307,24 @@ curl http://localhost:8080/v1/audio/transcriptions \
 
 ## Performance Tuning
 
-Optimize LocalAI performance through environment variables.
+Optimize LocalAI performance through environment variables and per-model settings.
 
 ```yaml
-# Key performance-related environment variables
+# docker-compose.yml excerpt
+services:
   localai:
     environment:
       # Match the number of CPU cores available
       - THREADS=8
-      # Increase context size for longer conversations
+      # Set the default context size for models
       - CONTEXT_SIZE=4096
-      # Enable memory mapping for faster model loading
-      - MMAP=true
-      # Set the number of GPU layers to offload (if using GPU)
-      - GPU_LAYERS=35
+```
+
+```yaml
+# In an individual model YAML file
+context_size: 4096
+mmap: true
+gpu_layers: 35
 ```
 
 ## Monitoring and Health Checks
