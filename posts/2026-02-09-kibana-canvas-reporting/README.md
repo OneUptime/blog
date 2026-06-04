@@ -77,11 +77,12 @@ Add dynamic elements that display live log data. Create a metric showing total e
 ```bash
 # Click Add element > Metric
 # In the expression editor, enter:
-filters
-| essql query="SELECT COUNT(*) as error_count FROM \"application-logs-*\" WHERE log.level='ERROR' AND @timestamp > NOW() - INTERVAL 7 DAYS"
+kibana
+| selectFilter
+| essql query="SELECT COUNT(*) AS error_count FROM \"application-logs-*\" WHERE \"log.level\"='ERROR' AND \"@timestamp\" > NOW() - INTERVAL 7 DAYS"
 | math "error_count"
 | metric "Total Errors (7d)"
-font={font size=48 family="Arial" color="#E74C3C" align="center"}
+  metricFont={font size=48 family="Arial" color="#E74C3C" align="center"}
 
 # Position the metric element in your layout
 ```
@@ -95,11 +96,12 @@ Create a line chart showing error trends over time:
 ```bash
 # Click Add element > Area chart
 # Configure the data source expression:
-filters
+kibana
+| selectFilter
 | essql
-  query="SELECT DATE_HISTOGRAM(@timestamp, INTERVAL 1 DAY) as day, COUNT(*) as errors FROM \"application-logs-*\" WHERE log.level='ERROR' AND @timestamp > NOW() - INTERVAL 30 DAYS GROUP BY day"
-| pointseries x="day" y="errors" color="#E74C3C"
-| plot defaultStyle={seriesStyle lines=3 fill=0.3}
+  query="SELECT HISTOGRAM(\"@timestamp\", INTERVAL 1 DAY) AS day, COUNT(*) AS errors FROM \"application-logs-*\" WHERE \"log.level\"='ERROR' AND \"@timestamp\" > NOW() - INTERVAL 30 DAYS GROUP BY day"
+| pointseries x="day" y="sum(errors)"
+| plot defaultStyle={seriesStyle lines=3 fill=0.3 color="#E74C3C"}
   legend=false
   xaxis={axisConfig position="bottom"}
   yaxis={axisConfig position="left"}
@@ -117,9 +119,10 @@ Display detailed log information in tables:
 ```bash
 # Click Add element > Data table
 # Configure the expression:
-filters
+kibana
+| selectFilter
 | essql
-  query="SELECT @timestamp, service.name, message FROM \"application-logs-*\" WHERE log.level='ERROR' ORDER BY @timestamp DESC LIMIT 10"
+  query="SELECT \"@timestamp\", \"service.name\", message FROM \"application-logs-*\" WHERE \"log.level\"='ERROR' ORDER BY \"@timestamp\" DESC LIMIT 10"
 | table
   font={font size=12 family="Arial"}
   paginate=true
@@ -166,9 +169,11 @@ Create visual indicators for SLO compliance:
 ```bash
 # Add Progress element
 # Configure expression:
-filters
+kibana
+| selectFilter
 | essql
-  query="SELECT (COUNT(*) FILTER (WHERE http.response.status_code < 500) * 100.0 / COUNT(*)) as success_rate FROM \"application-logs-*\" WHERE @timestamp > NOW() - INTERVAL 7 DAYS"
+  query="SELECT (SUM(CASE WHEN \"http.response.status_code\" < 500 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) AS success_rate FROM \"application-logs-*\" WHERE \"@timestamp\" > NOW() - INTERVAL 7 DAYS"
+| math "success_rate"
 | progress shape="gauge"
   label="Availability SLO"
   font={font size=24 family="Arial"}
@@ -178,7 +183,7 @@ filters
 # Position below key metrics
 ```
 
-Gauges provide immediate visual feedback on whether targets are being met. The color changes based on the value, making status clear at a glance.
+Gauges provide immediate visual feedback on whether targets are being met. The `valueColor` setting makes status clear at a glance, and you can use conditional expressions when the color should change based on the value.
 
 ## Creating Multi-Page Reports
 
@@ -225,14 +230,16 @@ Make reports interactive with time range controls:
 # Set default to "Last 7 days"
 
 # Update data expressions to use the time filter:
-filters timefilter=true
+kibana
+| selectFilter
 | essql
-  query="SELECT COUNT(*) FROM \"application-logs-*\" WHERE log.level='ERROR'"
-| math "value"
+  query="SELECT COUNT(*) AS error_count FROM \"application-logs-*\" WHERE \"log.level\"='ERROR'"
+  timeField="@timestamp"
+| math "error_count"
 | metric "Current Period Errors"
 ```
 
-The timefilter parameter links the expression to the time control, letting users adjust the reporting period without editing the workpad.
+The time filter control and `selectFilter` pipeline pass the selected time range into `essql`, letting users adjust the reporting period without editing the workpad.
 
 ## Styling and Branding
 
@@ -246,21 +253,11 @@ Success: #27AE60 (green)
 Warning: #F39C12 (orange)
 Error: #E74C3C (red)
 
-# Use CSS in markdown elements for advanced styling:
-<style>
-.metric-box {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 20px;
-  border-radius: 8px;
-  color: white;
-  text-align: center;
-}
-</style>
-
-<div class="metric-box">
-  <h2>99.9%</h2>
-  <p>Uptime This Month</p>
-</div>
+# Use Canvas expression styling for a custom metric block:
+markdown "## 99.9%\n\nUptime This Month"
+  font={font size=24 family="Arial" color="white" align="center"}
+| render
+  containerStyle={containerStyle backgroundColor="#667eea" padding="20px" borderRadius="8px"}
 ```
 
 Consistent styling makes reports look professional and reinforces brand identity.
@@ -270,24 +267,10 @@ Consistent styling makes reports look professional and reinforces brand identity
 Schedule Canvas workpad exports for automated reporting:
 
 ```bash
-# Create a reporting job using Kibana Reporting API
-curl -X POST "http://kibana:5601/api/reporting/generate/canvas" \
+# Copy the POST URL from Share > PDF Reports > Advanced options
+curl -X POST "http://kibana:5601/api/reporting/generate/printablePdfV2?jobParams=..." \
   -H "kbn-xsrf: true" \
-  -H "Content-Type: application/json" \
-  -u elastic:password \
-  -d '{
-    "workpad": {
-      "id": "workpad-12345",
-      "name": "Weekly Log Report"
-    },
-    "layout": {
-      "id": "canvas",
-      "dimensions": {
-        "width": 1920,
-        "height": 1080
-      }
-    }
-  }'
+  -u elastic:password
 ```
 
 Integrate with cron for scheduled generation:
@@ -296,23 +279,19 @@ Integrate with cron for scheduled generation:
 #!/bin/bash
 # generate-weekly-report.sh
 
-WORKPAD_ID="workpad-12345"
 KIBANA_URL="http://kibana:5601"
+REPORTING_POST_URL="${KIBANA_URL}/api/reporting/generate/printablePdfV2?jobParams=..."
 
 # Generate PDF report
-REPORT_JOB=$(curl -X POST "${KIBANA_URL}/api/reporting/generate/canvas" \
+REPORT_PATH=$(curl -s -X POST "${REPORTING_POST_URL}" \
   -H "kbn-xsrf: true" \
-  -H "Content-Type: application/json" \
-  -u elastic:password \
-  -d "{
-    \"workpad\": {\"id\": \"${WORKPAD_ID}\"}
-  }" | jq -r '.job.id')
+  -u elastic:password | jq -r '.path')
 
 # Wait for generation
 sleep 30
 
 # Download report
-curl -X GET "${KIBANA_URL}/api/reporting/jobs/download/${REPORT_JOB}" \
+curl -X GET "${KIBANA_URL}${REPORT_PATH}" \
   -u elastic:password \
   -o "weekly-report-$(date +%Y%m%d).pdf"
 
@@ -336,11 +315,14 @@ Use complex expressions for calculated metrics:
 
 ```bash
 # Calculate week-over-week error rate change
-filters
+kibana
+| selectFilter
 | essql
   query="SELECT
-    (SELECT COUNT(*) FROM \"logs-*\" WHERE level='ERROR' AND @timestamp > NOW() - INTERVAL 7 DAYS) as current_week,
-    (SELECT COUNT(*) FROM \"logs-*\" WHERE level='ERROR' AND @timestamp BETWEEN NOW() - INTERVAL 14 DAYS AND NOW() - INTERVAL 7 DAYS) as previous_week"
+    COUNT(CASE WHEN \"@timestamp\" > NOW() - INTERVAL 7 DAYS THEN 1 ELSE NULL END) AS current_week,
+    COUNT(CASE WHEN \"@timestamp\" BETWEEN NOW() - INTERVAL 14 DAYS AND NOW() - INTERVAL 7 DAYS THEN 1 ELSE NULL END) AS previous_week
+  FROM \"logs-*\"
+  WHERE level='ERROR' AND \"@timestamp\" > NOW() - INTERVAL 14 DAYS"
 | math "((current_week - previous_week) / previous_week) * 100"
 | formatnumber "0.0"
 | metric "Week-over-Week Change (%)"
@@ -351,15 +333,16 @@ Combine multiple data sources:
 
 ```bash
 # Compare error rates across environments
-filters
+kibana
+| selectFilter
 | essql
   query="SELECT
     environment,
-    COUNT(*) as error_count
+    COUNT(*) AS error_count
   FROM \"logs-*\"
   WHERE level='ERROR'
   GROUP BY environment"
-| pointseries x="environment" y="error_count" color="environment"
+| pointseries x="environment" y="sum(error_count)" color="environment"
 | plot
 ```
 
