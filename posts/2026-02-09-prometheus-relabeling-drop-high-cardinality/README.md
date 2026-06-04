@@ -31,10 +31,14 @@ A cluster with 1,000 pods and 5 containers per pod can generate millions of time
 Find labels contributing to cardinality explosions:
 
 ```promql
-# Count unique values per label
+# Count unique pod_uid values
+count(
+  count by (pod_uid) ({pod_uid!=""})
+)
 
-count by (__name__, label_name) (
-  {__name__=~".+"}
+# Count unique container_id values
+count(
+  count by (container_id) ({container_id!=""})
 )
 
 # Top metrics by series count
@@ -102,24 +106,22 @@ This is more efficient than multiple labeldrop rules.
 
 ## Conditional Label Dropping
 
-Drop labels only for specific metrics where they're not needed:
+Use conditional rules when you want to drop entire series for specific metrics. The `labeldrop` action matches label names, so it cannot be scoped by `sourceLabels` in a single rule:
 
 ```yaml
 metricRelabelings:
-# Drop pod label only for node-level metrics
-- sourceLabels: [__name__]
-  regex: 'node_.*'
-  action: labeldrop
-  regex: pod
+# Drop node metrics that unexpectedly include pod labels
+- sourceLabels: [__name__, pod]
+  regex: 'node_.*;.+'
+  action: drop
 
-# Drop container label for cluster-wide metrics
+# Drop kube_pod_info samples for the pause container
 - sourceLabels: [__name__, container]
   regex: 'kube_pod_info;POD'
-  action: labeldrop
-  regex: container
+  action: drop
 ```
 
-This preserves labels where they're useful while dropping them from irrelevant metrics.
+If you need to drop a label only for a subset of metrics, put those metrics in a separate scrape config, ServiceMonitor, or PodMonitor with its own `metricRelabelings`.
 
 ## Simplifying Image Labels
 
@@ -172,14 +174,12 @@ This creates a stable workload label that doesn't change with pod restarts.
 
 ## Dropping Labels for Specific Namespaces
 
-Some namespaces (like kube-system) may not need detailed labels:
+Some namespaces (like kube-system) may not need detailed labels. Use a separate ServiceMonitor or PodMonitor scoped to those namespaces, then apply label dropping to that scrape configuration:
 
 ```yaml
 metricRelabelings:
-# Drop detailed labels for kube-system metrics
-- sourceLabels: [namespace]
-  regex: 'kube-system|kube-public|kube-node-lease'
-  action: labeldrop
+# Drop detailed labels for this namespace-scoped scrape
+- action: labeldrop
   regex: '(pod|container|image)'
 ```
 
@@ -191,21 +191,14 @@ The container label often has low value, especially for single-container pods:
 
 ```yaml
 metricRelabelings:
-# Drop container label when it matches pod name
-- sourceLabels: [pod, container]
-  regex: '(.*);.*'
-  targetLabel: __tmp_pod
-  replacement: '$1'
-
-- sourceLabels: [__tmp_pod, container]
-  regex: '(.*);\\1'
-  action: labeldrop
-  regex: container
-
-# Drop POD container (pause container)
+# Drop empty container label values and pause container metrics
 - sourceLabels: [container]
-  regex: 'POD|'
+  regex: '^$|^POD$'
   action: drop
+
+# If the container label is redundant for this endpoint, drop it for all samples
+- action: labeldrop
+  regex: '^container$'
 ```
 
 ## Reducing Endpoint Labels
@@ -279,11 +272,6 @@ spec:
       regex: 'test-.*|tmp-.*'
       action: drop
 
-    # For kube-system, drop detailed labels
-    - sourceLabels: [namespace]
-      regex: 'kube-system'
-      action: labeldrop
-      regex: '(pod|container|image|workload)'
 ```
 
 This configuration typically reduces cardinality by 60-80 percent.
@@ -388,9 +376,9 @@ groups:
       summary: "Cardinality growing rapidly"
 ```
 
-## Global Relabeling Configuration
+## Shared Relabeling Configuration
 
-For Prometheus Operator, set global relabeling for all scrapes:
+For Prometheus Operator, use a default ScrapeClass to share metric relabeling across ServiceMonitors, PodMonitors, Probes, and ScrapeConfigs that don't set a different scrape class:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -399,24 +387,12 @@ metadata:
   name: k8s
   namespace: monitoring
 spec:
-  # Apply to all scrape configs
-  additionalScrapeConfigs:
-    name: additional-scrape-configs
-    key: prometheus-additional.yaml
-
-# ConfigMap with global relabeling
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: additional-scrape-configs
-  namespace: monitoring
-data:
-  prometheus-additional.yaml: |
-    - job_name: 'global-relabeling'
-      metric_relabel_configs:
-      - action: labeldrop
-        regex: '(pod_uid|container_id|id)'
+  scrapeClasses:
+  - name: default-cardinality
+    default: true
+    metricRelabelings:
+    - action: labeldrop
+      regex: '(pod_uid|container_id|id)'
 ```
 
 Strategic label dropping is the most effective way to control Prometheus cardinality and maintain performance as your Kubernetes cluster scales.
