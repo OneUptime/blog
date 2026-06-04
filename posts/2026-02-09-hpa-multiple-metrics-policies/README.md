@@ -14,7 +14,7 @@ When you configure multiple metrics, HPA calculates the desired replica count fo
 
 ## Understanding Multi-Metric Scaling
 
-HPA evaluates each metric separately using the same formula: desired replicas equals current replicas multiplied by current metric value divided by target value. For three metrics returning desired replica counts of 10, 15, and 12, HPA scales to 15 to satisfy all metrics.
+HPA evaluates each metric separately using the same formula: desired replicas equals the ceiling of current replicas multiplied by current metric value divided by target value. For three metrics returning desired replica counts of 10, 15, and 12, HPA scales to 15 to satisfy all metrics.
 
 This maximum selection strategy prevents under-provisioning. If CPU suggests 10 replicas but memory suggests 15, running only 10 would leave memory over-utilized even though CPU looks fine. Scaling to 15 ensures both CPU and memory stay within target thresholds.
 
@@ -75,7 +75,7 @@ This HPA scales when either CPU exceeds 70% or memory exceeds 75%, ensuring neit
 
 ## Adding Custom Application Metrics
 
-Combine resource metrics with application-specific metrics from Prometheus.
+Combine resource metrics with application-specific metrics from Prometheus through a custom metrics adapter.
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -310,13 +310,8 @@ spec:
         value: 10
         periodSeconds: 30
 
-      # For medium deployments, scale by percentage
+      # For larger deployments, scale by percentage
       - type: Percent
-        value: 50
-        periodSeconds: 60
-
-      # For large deployments, cap maximum growth
-      - type: Pods
         value: 50
         periodSeconds: 60
 
@@ -339,7 +334,7 @@ spec:
       selectPolicy: Min  # Use most conservative for scale-down
 ```
 
-Multiple policies let HPA adapt to deployment size. Small deployments scale by absolute pod count, while large deployments scale by percentage.
+Multiple policies let HPA adapt to deployment size. With `selectPolicy: Max`, small deployments scale by absolute pod count, while large deployments scale by percentage.
 
 ## Weighted Metric Priorities
 
@@ -417,7 +412,7 @@ kubectl describe hpa comprehensive-hpa | grep -A 5 Conditions
 kubectl get hpa comprehensive-hpa -o yaml | grep -A 20 currentMetrics
 ```
 
-If a metric shows `<unknown>`, HPA ignores it and scales based on remaining metrics. This fail-open behavior prevents scaling paralysis but means you should monitor metric availability.
+If a metric shows `<unknown>`, HPA can still scale up when another available metric recommends more replicas. If an unavailable metric cannot be converted into a desired replica count and the available metrics recommend scaling down, HPA skips the scale-down action. Monitor metric availability so missing metrics do not block expected downscaling.
 
 Set up alerts for metric failures.
 
