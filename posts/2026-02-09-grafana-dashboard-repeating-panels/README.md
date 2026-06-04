@@ -64,13 +64,13 @@ Within a row, create panels that repeat horizontally:
 ```json
 {
   "title": "CPU Usage - $namespace",
-  "type": "graph",
+  "type": "timeseries",
   "repeat": "namespace",
   "repeatDirection": "h",
   "maxPerRow": 4,
   "targets": [
     {
-      "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\"}[5m]))",
+      "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\"}[$__rate_interval]))",
       "legendFormat": "CPU Usage"
     }
   ]
@@ -109,18 +109,18 @@ Here's a full dashboard JSON with repeating panels for namespace monitoring:
         "panels": [
           {
             "title": "CPU Usage",
-            "type": "graph",
+            "type": "timeseries",
             "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
             "targets": [
               {
-                "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\"}[5m]))",
+                "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\"}[$__rate_interval]))",
                 "legendFormat": "CPU Cores"
               }
             ]
           },
           {
             "title": "Memory Usage",
-            "type": "graph",
+            "type": "timeseries",
             "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
             "targets": [
               {
@@ -131,15 +131,15 @@ Here's a full dashboard JSON with repeating panels for namespace monitoring:
           },
           {
             "title": "Network Traffic",
-            "type": "graph",
+            "type": "timeseries",
             "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
             "targets": [
               {
-                "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"$namespace\"}[5m])) / 1024 / 1024",
+                "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"$namespace\"}[$__rate_interval])) / 1024 / 1024",
                 "legendFormat": "Receive (MB/s)"
               },
               {
-                "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"$namespace\"}[5m])) / 1024 / 1024",
+                "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"$namespace\"}[$__rate_interval])) / 1024 / 1024",
                 "legendFormat": "Transmit (MB/s)"
               }
             ]
@@ -171,14 +171,14 @@ For compact dashboards, repeat panels horizontally in a single row:
 ```json
 {
   "title": "CPU Usage per Namespace",
-  "type": "graph",
+  "type": "timeseries",
   "repeat": "namespace",
   "repeatDirection": "h",
   "maxPerRow": 3,
   "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
   "targets": [
     {
-      "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\"}[5m]))"
+      "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\"}[$__rate_interval]))"
     }
   ]
 }
@@ -228,7 +228,7 @@ Create hierarchical variables for namespace → deployment → pod filtering:
       },
       {
         "name": "pod",
-        "query": "label_values(kube_pod_info{namespace=\"$namespace\"}, pod)",
+        "query": "label_values(kube_pod_info{namespace=\"$namespace\", pod=~\"$deployment-[a-z0-9]+-[a-z0-9]+\"}, pod)",
         "multi": true
       }
     ]
@@ -344,7 +344,7 @@ Tables can show detailed per-namespace metrics:
   "repeat": "namespace",
   "targets": [
     {
-      "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\"}[5m]))",
+      "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\"}[$__rate_interval]))",
       "format": "table",
       "instant": true
     },
@@ -391,7 +391,7 @@ data:
           {
             "type": "row",
             "repeat": "namespace",
-            "panels": [...]
+            "panels": []
           }
         ]
       }
@@ -403,8 +403,8 @@ data:
 Repeating panels can create many queries. Optimize with:
 
 1. Use recording rules for complex queries
-2. Limit maxPerRow to reasonable values (3-6)
-3. Use caching for variable queries
+2. Avoid repeating over high-cardinality variables such as individual pods
+3. Set variable refresh only as often as needed
 4. Filter variables with regex to reduce panel count
 5. Consider using single panels with `$namespace` variable instead of repeating
 
@@ -414,7 +414,7 @@ Example with variable instead of repeat:
 {
   "targets": [
     {
-      "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\"}[5m]))",
+      "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\"}[$__rate_interval]))",
       "legendFormat": "{{namespace}}"
     }
   ]
