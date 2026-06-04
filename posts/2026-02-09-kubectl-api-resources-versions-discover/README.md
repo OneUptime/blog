@@ -15,7 +15,7 @@ Kubernetes clusters vary in capabilities. CRDs add custom resources, different v
 API resources represent the types of objects you can create in Kubernetes. Each resource has properties like its API group, namespaced status, short names, and kind:
 
 ```bash
-# List all available resources
+# List supported namespaced resources
 
 kubectl api-resources
 
@@ -23,7 +23,7 @@ kubectl api-resources
 # NAME, SHORTNAMES, APIVERSION, NAMESPACED, KIND
 ```
 
-This command shows every resource type the API server recognizes, including built-in resources and custom resources from CRDs.
+This command shows supported namespaced resource types the API server recognizes, including built-in resources and custom resources from CRDs. Use `--namespaced=false` to list cluster-scoped resources.
 
 ## Filtering Resources by API Group
 
@@ -61,11 +61,11 @@ kubectl api-resources --namespaced=false
 
 # Find if a specific resource is namespaced
 kubectl api-resources | grep configmaps
-# configmaps, cm, v1, true, ConfigMap
+# configmaps   cm   v1   true   ConfigMap
 
 # Check if nodes are namespaced
-kubectl api-resources | grep nodes
-# nodes, no, v1, false, Node
+kubectl api-resources --namespaced=false | grep '^nodes'
+# nodes   no   v1   false   Node
 ```
 
 This determines whether to use `-n namespace` when working with resources.
@@ -77,13 +77,13 @@ Short names save typing in kubectl commands:
 ```bash
 # Find short names for common resources
 kubectl api-resources | grep -E "NAME|^pods"
-# pods, po, v1, true, Pod
+# pods   po   v1   true   Pod
 
 kubectl api-resources | grep -E "NAME|^services"
-# services, svc, v1, true, Service
+# services   svc   v1   true   Service
 
 kubectl api-resources | grep -E "NAME|^deployments"
-# deployments, deploy, apps/v1, true, Deployment
+# deployments   deploy   apps/v1   true   Deployment
 
 # Use short names in commands
 kubectl get po  # Instead of kubectl get pods
@@ -230,11 +230,15 @@ Compare API resources across clusters to identify differences:
 
 # Save resources from cluster 1
 kubectl config use-context cluster1
-kubectl api-resources -o name | sort > cluster1-resources.txt
+kubectl api-resources --namespaced=true -o name > cluster1-resources.txt
+kubectl api-resources --namespaced=false -o name >> cluster1-resources.txt
+sort -o cluster1-resources.txt cluster1-resources.txt
 
 # Save resources from cluster 2
 kubectl config use-context cluster2
-kubectl api-resources -o name | sort > cluster2-resources.txt
+kubectl api-resources --namespaced=true -o name > cluster2-resources.txt
+kubectl api-resources --namespaced=false -o name >> cluster2-resources.txt
+sort -o cluster2-resources.txt cluster2-resources.txt
 
 # Compare
 diff cluster1-resources.txt cluster2-resources.txt
@@ -268,12 +272,12 @@ Match API resources to Kubernetes versions:
 
 ```bash
 # Check cluster version
-kubectl version --short
+kubectl version
 
 # List all API versions
 kubectl api-versions
 
-# Check for deprecated API versions
+# Check for beta API versions to review for deprecation risk
 kubectl api-versions | grep beta
 
 # Verify GA versions are available
@@ -284,21 +288,21 @@ Newer Kubernetes versions deprecate old API versions and introduce new ones.
 
 ## Discovering Webhook Resources
 
-Admission webhooks register as API resources:
+Admission webhook configuration types are API resources:
 
 ```bash
 # Find mutating webhook configurations
-kubectl api-resources | grep mutatingwebhook
+kubectl api-resources --namespaced=false | grep mutatingwebhook
 
 # Find validating webhook configurations
-kubectl api-resources | grep validatingwebhook
+kubectl api-resources --namespaced=false | grep validatingwebhook
 
 # List webhook configurations
 kubectl get mutatingwebhookconfigurations
 kubectl get validatingwebhookconfigurations
 ```
 
-This reveals what admission controllers are active in the cluster.
+This reveals webhook configuration objects registered in the cluster. To confirm which admission plugins are enabled on the API server, check the API server configuration.
 
 ## Finding Metrics Resources
 
@@ -335,11 +339,12 @@ else
     kubectl apply -f hpa-v1.yaml
 fi
 
-# Check if CronJob is available (older clusters use batch/v1beta1)
+# Check if CronJob is available in the current stable API
 if kubectl api-resources | grep -q "cronjobs.*batch/v1"; then
     apiVersion="batch/v1"
 else
-    apiVersion="batch/v1beta1"
+    echo "CronJob batch/v1 is not available on this cluster"
+    exit 1
 fi
 
 sed "s/API_VERSION/$apiVersion/" cronjob-template.yaml | kubectl apply -f -
@@ -353,7 +358,8 @@ Storage resources vary significantly between clusters:
 
 ```bash
 # Find storage-related resources
-kubectl api-resources --api-group=storage.k8s.io
+kubectl api-resources --namespaced=true --api-group=storage.k8s.io
+kubectl api-resources --namespaced=false --api-group=storage.k8s.io
 
 # List available storage classes
 kubectl get storageclasses
@@ -373,7 +379,8 @@ Understand RBAC resource types:
 
 ```bash
 # Show all RBAC resources
-kubectl api-resources --api-group=rbac.authorization.k8s.io
+kubectl api-resources --namespaced=true --api-group=rbac.authorization.k8s.io
+kubectl api-resources --namespaced=false --api-group=rbac.authorization.k8s.io
 
 # List roles and bindings
 kubectl get roles --all-namespaces
@@ -386,14 +393,14 @@ This reveals the RBAC resources available for access control.
 
 ## Finding Policy Resources
 
-Policy resources like PodSecurityPolicy or PodSecurityStandards:
+Policy resources like PodSecurityPolicy or ValidatingAdmissionPolicy:
 
 ```bash
 # Check for PodSecurityPolicy (deprecated)
-kubectl api-resources | grep podsecuritypolicies
+kubectl api-resources --namespaced=false | grep podsecuritypolicies
 
 # Check for admission policy resources
-kubectl api-resources | grep -i policy
+kubectl api-resources --namespaced=false | grep -i policy
 
 # List network policies
 kubectl get networkpolicies --all-namespaces
