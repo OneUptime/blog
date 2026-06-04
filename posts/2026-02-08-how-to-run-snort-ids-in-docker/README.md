@@ -10,7 +10,7 @@ Description: Deploy Snort intrusion detection system in Docker for real-time net
 
 Snort is one of the most widely deployed intrusion detection systems in the world. Created by Martin Roesch in 1998, it has evolved into a powerful network security tool that performs real-time traffic analysis, protocol inspection, and content matching to detect attacks, probes, and policy violations. Snort can identify port scans, buffer overflow attempts, CGI attacks, SMB probes, and thousands of other threat patterns.
 
-Running Snort in Docker isolates the IDS from the host system and simplifies deployment across multiple network segments. This guide covers deploying Snort 3 in Docker for network intrusion detection, configuring rules, and integrating with log management systems.
+Running Snort in Docker isolates the IDS from the host system and simplifies deployment across multiple network segments. This guide covers deploying the Ubuntu-packaged Snort 2.9 release in Docker for network intrusion detection, configuring rules, and integrating with log management systems.
 
 ## Snort Modes of Operation
 
@@ -44,28 +44,22 @@ Running Snort for IDS requires access to network traffic. You need either:
 - The host network interface in promiscuous mode
 - Docker's host networking mode for the Snort container
 
-## Building a Snort 3 Docker Image
+## Building a Snort Docker Image
 
-Snort 3 is a complete rewrite with improved performance and a modern architecture. Build a Docker image with the latest version.
+Ubuntu 22.04 packages Snort 2.9, which uses the classic `snort.conf` format shown in this guide. Build a Docker image with the packaged version.
 
 ```dockerfile
-# Dockerfile - Snort 3 IDS
+# Dockerfile - Snort IDS
 
-# Builds Snort 3 from packages on Ubuntu
+# Builds Snort from packages on Ubuntu
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Snort 3 and dependencies
+# Install Snort and common troubleshooting tools
 RUN apt-get update && apt-get install -y \
     snort \
-    libdaq3 \
-    libdnet \
-    libhwloc-dev \
-    libluajit-5.1-dev \
-    libpcap-dev \
-    libpcre3-dev \
-    zlib1g-dev \
+    snort-rules-default \
     curl \
     wget \
     net-tools \
@@ -79,7 +73,7 @@ RUN mkdir -p /etc/snort/rules \
 
 # Copy the default configuration
 COPY snort.conf /etc/snort/snort.conf
-COPY local.rules /etc/snort/rules/local.rules
+COPY rules/local.rules /etc/snort/rules/local.rules
 
 # Set up the log directory
 VOLUME ["/var/log/snort", "/etc/snort/rules"]
@@ -117,7 +111,6 @@ services:
       -i eth0
       -A full
       -l /var/log/snort
-      --daq-dir /usr/lib/daq
     deploy:
       resources:
         limits:
@@ -157,8 +150,12 @@ portvar SSH_PORTS [22]
 portvar DNS_PORTS [53]
 
 # Paths
-var RULE_PATH /etc/snort/rules
+var RULE_PATH rules
 var LOG_DIR /var/log/snort
+
+# Metadata used by rule references and classtype values
+include /etc/snort/reference.config
+include /etc/snort/classification.config
 
 # Configure the detection engine
 config detection: search-method ac-bnfa
@@ -167,7 +164,7 @@ config event_queue: max_queue 8 log 5 order_events content_length
 # Preprocessor settings
 # Stream reassembly for TCP
 preprocessor stream5_global: track_tcp yes, track_udp yes, track_icmp yes
-preprocessor stream5_tcp: policy balanced, detect_anomalies
+preprocessor stream5_tcp: policy linux, detect_anomalies
 
 # HTTP inspection
 preprocessor http_inspect: global iis_unicode_map unicode.map 1252
@@ -182,7 +179,8 @@ preprocessor arpspoof_detect_host: 192.168.1.1 aa:bb:cc:dd:ee:ff
 
 # Include rule files
 include $RULE_PATH/local.rules
-include $RULE_PATH/community-rules.rules
+# Uncomment after extracting the community rules archive
+# include $RULE_PATH/community-rules/community.rules
 
 # Output plugins
 output alert_fast: /var/log/snort/alert.fast
@@ -201,7 +199,7 @@ Snort rules define what traffic patterns to detect and alert on.
 alert tcp $EXTERNAL_NET any -> $SSH_SERVERS $SSH_PORTS \
     (msg:"Potential SSH brute force"; \
     flow:to_server,established; \
-    threshold: type both, track by_src, count 5, seconds 60; \
+    detection_filter: track by_src, count 5, seconds 60; \
     classtype:attempted-admin; \
     sid:1000001; rev:1;)
 
@@ -235,7 +233,7 @@ alert udp $HOME_NET any -> $EXTERNAL_NET $DNS_PORTS \
 # Detect ICMP flood (ping flood DDoS)
 alert icmp $EXTERNAL_NET any -> $HOME_NET any \
     (msg:"ICMP flood detected"; \
-    threshold: type both, track by_src, count 100, seconds 10; \
+    detection_filter: track by_src, count 100, seconds 10; \
     classtype:attempted-dos; \
     sid:1000005; rev:1;)
 
@@ -260,8 +258,11 @@ wget https://www.snort.org/downloads/community/community-rules.tar.gz
 # Extract the rules to the rules directory
 tar xzf community-rules.tar.gz -C ./rules/
 
+# Enable the community rules include in snort.conf after extraction
+
 # For registered users, download subscriber rules (requires oinkcode)
-# wget "https://www.snort.org/rules/snortrules-snapshot-31000.tar.gz?oinkcode=YOUR_OINKCODE" \
+# Use a Snort 2.9 rules snapshot that matches your installed Snort version
+# wget "https://www.snort.org/rules/snortrules-snapshot-29171.tar.gz?oinkcode=YOUR_OINKCODE" \
 #   -O snort-rules.tar.gz
 
 # Verify the rules are readable by Snort
@@ -281,7 +282,7 @@ docker exec -it snort-ids snort -c /etc/snort/snort.conf -i eth0 -A console
 ping -f target-ip
 
 # Test HTTP-based rules with curl
-curl "http://target-ip/index.php?id=1' OR '1'='1"
+curl "http://target-ip/search.php?q=SELECT+password+FROM+users+WHERE+id=1"
 
 # Check the alert log for detections
 docker exec snort-ids cat /var/log/snort/alert.fast
@@ -324,8 +325,8 @@ Send Snort alerts to your centralized logging system.
 Snort needs tuning to handle high-bandwidth networks without dropping packets.
 
 ```bash
-# Check for dropped packets (indicates Snort cannot keep up)
-docker exec snort-ids snort --pcap-show-stats
+# Check recent Snort statistics for dropped packets
+docker logs --tail 100 snort-ids | grep -i dropped
 
 # Increase the packet buffer on the host
 sysctl -w net.core.rmem_max=16777216
