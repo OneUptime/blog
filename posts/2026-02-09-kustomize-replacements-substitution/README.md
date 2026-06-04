@@ -8,13 +8,13 @@ Description: Learn how to use Kustomize replacements to dynamically substitute v
 
 ---
 
-Kustomize replacements provide advanced field substitution capabilities that go beyond simple patches. They allow you to copy values from one resource to another, extract parts of fields, and perform transformations. This enables dynamic configuration where values flow between resources without hardcoding.
+Kustomize replacements provide advanced field substitution capabilities that go beyond simple patches. They allow you to copy values from one resource to another and replace parts of scalar fields with delimiter-based options. This enables dynamic configuration where values flow between resources without hardcoding.
 
 ## Understanding replacements
 
 Replacements use a source and target pattern. The source specifies where to get a value, and targets specify where to put it. This is more powerful than vars, which are deprecated, and allows for complex value propagation across your Kubernetes manifests.
 
-Replacements can extract values from metadata, spec fields, or even computed values. They work during the kustomize build process, substituting values before sending manifests to the cluster.
+Replacements can extract values from metadata, spec fields, or transformed resource names. They work during the kustomize build process, substituting values before sending manifests to the cluster.
 
 ## Basic replacement example
 
@@ -68,6 +68,10 @@ replacements:
       name: web-app
     fieldPaths:
     - spec.template.metadata.labels.version
+  - select:
+      kind: Deployment
+      name: web-app
+    fieldPaths:
     - spec.template.spec.containers.0.image
     options:
       delimiter: ':'
@@ -97,14 +101,20 @@ replacements:
       kind: Deployment
     fieldPaths:
     - metadata.namespace
+    options:
+      create: true
   - select:
       kind: Service
     fieldPaths:
     - metadata.namespace
+    options:
+      create: true
   - select:
       kind: ConfigMap
     fieldPaths:
     - metadata.namespace
+    options:
+      create: true
 ```
 
 ## Using service name in ingress
@@ -161,7 +171,7 @@ replacements:
 
 ## Extracting and transforming values
 
-Extract port numbers from services:
+Copy named service ports into related resources:
 
 ```yaml
 # base/service.yaml
@@ -210,6 +220,9 @@ replacements:
 Use generated ConfigMap names:
 
 ```yaml
+resources:
+- deployment.yaml
+
 configMapGenerator:
 - name: app-config
   literals:
@@ -227,7 +240,7 @@ replacements:
     - spec.template.spec.containers.0.envFrom.0.configMapRef.name
 ```
 
-This automatically uses the hash-suffixed ConfigMap name.
+This copies the generated ConfigMap name, including its hash suffix, into the target field.
 
 ## Cross-resource label propagation
 
@@ -235,9 +248,11 @@ Propagate labels consistently:
 
 ```yaml
 # base/kustomization.yaml
-commonLabels:
-  app: myapp
-  team: platform
+labels:
+- pairs:
+    app: myapp
+    team: platform
+  includeSelectors: true
 
 replacements:
 - source:
@@ -278,9 +293,9 @@ replacements:
     - spec.jobTemplate.spec.template.spec.containers.0.image
 ```
 
-## Conditional replacements
+## Replacing selected resources
 
-Replace only in specific conditions:
+Replace only specific resources:
 
 ```yaml
 replacements:
@@ -292,7 +307,6 @@ replacements:
   - select:
       kind: Deployment
       name: web-app
-      annotationSelector: feature.enabled=true
     fieldPaths:
     - spec.template.spec.containers.0.env.[name=FEATURE_ENABLED].value
 ```
@@ -346,10 +360,14 @@ replacements:
       kind: Deployment
     fieldPaths:
     - spec.template.spec.nodeSelector.[node-pool]
+    options:
+      create: true
   - select:
       kind: StatefulSet
     fieldPaths:
     - spec.template.spec.nodeSelector.[node-pool]
+    options:
+      create: true
 ```
 
 Resource request propagation
@@ -376,6 +394,8 @@ replacements:
       kind: Deployment
     fieldPaths:
     - spec.template.spec.containers.[name=app].resources.limits.memory
+    options:
+      create: true
 
 - source:
     kind: ConfigMap
@@ -386,6 +406,8 @@ replacements:
       kind: Deployment
     fieldPaths:
     - spec.template.spec.containers.[name=app].resources.limits.cpu
+    options:
+      create: true
 ```
 
 ## Delimiter-based splitting
@@ -399,19 +421,21 @@ replacements:
     kind: ConfigMap
     name: app-config
     fieldPath: data.full_version
+    options:
+      delimiter: '.'
+      index: 0  # Extract major version
   targets:
   - select:
       kind: Deployment
     fieldPaths:
     - metadata.labels.version
     options:
-      delimiter: '.'
-      index: 0  # Extract major version
+      create: true
 ```
 
-## Regular expression replacements
+## Delimiter-based partial replacements
 
-Transform values using regex patterns:
+Replace part of an existing delimited value:
 
 ```yaml
 replacements:
@@ -439,12 +463,12 @@ replacements:
 - source:
     kind: ConfigMap
     name: prod-config
-    fieldPath: data.replicas
+    fieldPath: data.log_level
   targets:
   - select:
       kind: Deployment
     fieldPaths:
-    - spec.replicas
+    - spec.template.spec.containers.[name=app].env.[name=LOG_LEVEL].value
     options:
       create: true
 ```
@@ -488,7 +512,7 @@ kustomize build base/ | yq eval 'select(.metadata.name == "app-config")' -
 kustomize build base/ | yq eval 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image' -
 ```
 
-Enable verbose output:
+If your kustomization uses alpha plugins, enable them explicitly:
 
 ```bash
 kustomize build --enable-alpha-plugins base/
