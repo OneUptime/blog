@@ -19,13 +19,13 @@ In this guide, we'll write comprehensive unit tests for Rego policies using OPA'
 
 package kubernetes.admission
 
-deny[msg] {
+deny contains msg if {
   input.request.kind.kind == "Pod"
   not input.request.object.spec.securityContext.runAsNonRoot
   msg := "Pods must run as non-root"
 }
 
-deny[msg] {
+deny contains msg if {
   input.request.kind.kind == "Pod"
   container := input.request.object.spec.containers[_]
   not container.resources.limits
@@ -39,7 +39,7 @@ deny[msg] {
 # policy_test.rego
 package kubernetes.admission
 
-test_pod_without_security_context {
+test_pod_without_security_context if {
   deny["Pods must run as non-root"] with input as {
     "request": {
       "kind": {"kind": "Pod"},
@@ -48,8 +48,8 @@ test_pod_without_security_context {
   }
 }
 
-test_pod_with_security_context {
-  not deny[_] with input as {
+test_pod_with_security_context if {
+  count(deny) == 0 with input as {
     "request": {
       "kind": {"kind": "Pod"},
       "object": {
@@ -73,7 +73,7 @@ test_pod_with_security_context {
 opa test . -v
 
 # Run specific test file
-opa test policy_test.rego
+opa test policy.rego policy_test.rego
 
 # Generate coverage report
 opa test . --coverage
