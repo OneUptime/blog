@@ -73,7 +73,7 @@ data:
           exporters: [otlp]
         metrics:
           receivers: [otlp, hostmetrics, kubeletstats]
-          processors: [memory_limiter, batch, resourcedetection]
+          processors: [memory_limiter, resourcedetection, batch]
           exporters: [otlp]
 ---
 apiVersion: apps/v1
@@ -93,7 +93,7 @@ spec:
       serviceAccountName: otel-agent
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-k8s:0.91.0
+        image: otel/opentelemetry-collector-k8s:0.153.0
         args:
         - --config=/conf/otel-agent-config.yaml
         env:
@@ -227,27 +227,29 @@ data:
           insecure: true
       prometheusremotewrite:
         endpoint: http://prometheus:9090/api/v1/write
-      otlp/oneuptime:
-        endpoint: oneuptime.com:443
+      otlphttp/oneuptime:
+        endpoint: https://oneuptime.com/otlp
         headers:
-          "x-oneuptime-api-key": "${env:ONEUPTIME_API_KEY}"
+          "x-oneuptime-token": "${env:ONEUPTIME_TOKEN}"
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [memory_limiter, k8sattributes, batch, resource]
-          exporters: [otlp/jaeger, otlp/oneuptime]
+          processors: [memory_limiter, k8sattributes, resource, batch]
+          exporters: [otlp/jaeger, otlphttp/oneuptime]
         metrics:
           receivers: [otlp]
-          processors: [memory_limiter, k8sattributes, batch, resource]
-          exporters: [prometheusremotewrite, otlp/oneuptime]
+          processors: [memory_limiter, k8sattributes, resource, batch]
+          exporters: [prometheusremotewrite, otlphttp/oneuptime]
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-collector-gateway
   namespace: observability
+  labels:
+    app: otel-gateway
 spec:
   replicas: 3
   selector:
@@ -261,15 +263,15 @@ spec:
       serviceAccountName: otel-gateway
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.91.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
         - --config=/conf/otel-gateway-config.yaml
         env:
-        - name: ONEUPTIME_API_KEY
+        - name: ONEUPTIME_TOKEN
           valueFrom:
             secretKeyRef:
               name: otel-secrets
-              key: oneuptime-api-key
+              key: oneuptime-token
         ports:
         - containerPort: 4317
           name: otlp-grpc
@@ -297,6 +299,8 @@ kind: Service
 metadata:
   name: otel-collector-gateway
   namespace: observability
+  labels:
+    app: otel-gateway
 spec:
   type: ClusterIP
   selector:
@@ -351,7 +355,7 @@ Create secrets for API keys:
 
 ```bash
 kubectl create secret generic otel-secrets -n observability \
-  --from-literal=oneuptime-api-key='your-api-key-here'
+  --from-literal=oneuptime-token='your-telemetry-ingestion-token-here'
 
 kubectl apply -f otel-gateway-deployment.yaml
 ```
@@ -447,7 +451,7 @@ kubectl logs -n observability -l app=otel-gateway --tail=100
 
 # Verify configuration is valid
 kubectl exec -n observability deployment/otel-collector-gateway -- \
-  otelcol validate --config=/conf/otel-gateway-config.yaml
+  otelcol-contrib validate --config=/conf/otel-gateway-config.yaml
 
 # Test connectivity to backends
 kubectl exec -n observability deployment/otel-collector-gateway -- \
