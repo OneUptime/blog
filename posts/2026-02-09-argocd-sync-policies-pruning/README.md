@@ -160,7 +160,7 @@ This annotation prevents ArgoCD from deleting the resource even when it disappea
 
 ## Sync Policy at Project Level
 
-Define default sync policies at the AppProject level for consistency across multiple applications:
+Use sync windows at the AppProject level to control when syncs are allowed across multiple applications:
 
 ```yaml
 # project-with-defaults.yaml
@@ -179,7 +179,7 @@ spec:
   clusterResourceWhitelist:
     - group: '*'
       kind: '*'
-  # Default sync policy for all apps in this project
+  # Sync window for all apps in this project
   syncWindows:
     - kind: allow
       schedule: '0 0 * * *'
@@ -226,7 +226,7 @@ This configuration retries failed syncs with exponential backoff, handling tempo
 
 ## Selective Resource Management
 
-Use resource tracking methods to control which resources ArgoCD manages:
+Use diff customization to control which fields ArgoCD treats as drift:
 
 ```yaml
 # application-with-tracking.yaml
@@ -250,6 +250,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - RespectIgnoreDifferences=true
   # Ignore differences in specific fields
   ignoreDifferences:
     - group: apps
@@ -258,7 +259,7 @@ spec:
         - /spec/replicas  # Don't sync replica counts (allow HPA to manage)
 ```
 
-The `ignoreDifferences` configuration prevents self-healing for specific fields, allowing external controllers like HPA to manage those values.
+The `ignoreDifferences` configuration tells ArgoCD to ignore drift for specific fields. The `RespectIgnoreDifferences=true` sync option also prevents those ignored fields from being overwritten during syncs, allowing external controllers like HPA to manage those values.
 
 ## Monitoring Sync Policy Behavior
 
