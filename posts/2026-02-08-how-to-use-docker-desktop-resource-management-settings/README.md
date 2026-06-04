@@ -8,7 +8,7 @@ Description: Master Docker Desktop resource management settings to optimize CPU,
 
 ---
 
-Docker Desktop runs containers inside a lightweight virtual machine on macOS and Windows. That VM has fixed resource limits, and the defaults are not always right for your workload. A developer running a single Nginx container needs different settings than someone building multi-service applications with databases and build pipelines.
+Docker Desktop runs containers inside a lightweight virtual machine on macOS, Linux, and Windows. That VM has resource limits, and the defaults are not always right for your workload. A developer running a single Nginx container needs different settings than someone building multi-service applications with databases and build pipelines.
 
 Getting resource management right prevents two categories of problems: containers crashing because they cannot get enough memory, and your host system slowing to a crawl because Docker consumes too many resources. This guide explains every resource setting in Docker Desktop and how to tune them for common development scenarios.
 
@@ -20,9 +20,9 @@ On Linux with Docker Desktop, the settings are in the same location. If you are 
 
 ## CPU Allocation
 
-The CPU slider controls how many of your host's CPU cores the Docker VM can use. Docker Desktop defaults to half of your available cores.
+The CPU slider controls how many of your host's CPU cores the Docker VM can use. Docker Desktop's default depends on the platform and version.
 
-For a machine with 8 cores, the default allocation is 4 cores for Docker. This works well for most development tasks. If you are building large images with parallel compilation steps or running multiple containers simultaneously, bump this up.
+For a machine with 8 cores, an allocation of 4 cores for Docker works well for most development tasks. If you are building large images with parallel compilation steps or running multiple containers simultaneously, bump this up.
 
 ```bash
 # Check how many CPUs Docker sees inside the VM
@@ -44,7 +44,7 @@ Guidelines for CPU allocation:
 
 ## Memory Allocation
 
-Memory is the setting that causes the most problems when misconfigured. The default is typically 2 GB, which is too low for anything beyond trivial containers.
+Memory is the setting that causes the most problems when misconfigured. Docker Desktop currently defaults the Docker VM memory limit to 50% of your host's memory on platforms that expose this setting.
 
 A PostgreSQL database container alone wants at least 256 MB. Add a Node.js application, Redis, and an Elasticsearch instance, and you can easily need 6-8 GB.
 
@@ -69,7 +69,7 @@ When a container exceeds its memory limit, Docker kills it with an OOM (Out of M
 # Check if a container was killed due to OOM
 docker inspect <container_id> --format '{{.State.OOMKilled}}'
 
-# View container exit code (137 indicates OOM kill)
+# View container exit code (137 often indicates SIGKILL; confirm OOM with OOMKilled)
 docker inspect <container_id> --format '{{.State.ExitCode}}'
 ```
 
@@ -77,14 +77,14 @@ docker inspect <container_id> --format '{{.State.ExitCode}}'
 
 Swap provides overflow memory that spills to disk when physical memory runs out. Docker Desktop defaults to 1 GB of swap.
 
-Swap prevents OOM kills at the cost of performance. When containers start using swap, they slow down significantly because disk I/O is orders of magnitude slower than RAM. Use swap as a safety net, not as a primary memory source.
+Swap can help prevent OOM kills at the cost of performance. When containers start using swap, they slow down significantly because disk I/O is orders of magnitude slower than RAM. Use swap as a safety net, not as a primary memory source.
 
 ```bash
-# Check swap usage in Docker's VM
+# Check whether the daemon supports container swap limits
 docker info --format '{{.SwapLimit}}'
 
-# Monitor if containers are using swap
-docker stats --no-stream
+# Check total and free swap reported by the Docker VM kernel
+docker run --rm alpine sh -c "grep -E 'SwapTotal|SwapFree' /proc/meminfo"
 ```
 
 Set swap to 1-2 GB for most workloads. If you frequently see containers using swap, increase your memory allocation instead of adding more swap.
@@ -134,23 +134,23 @@ Switch to VirtioFS under Docker Desktop Settings > General > "Choose file sharin
 
 ## Configuring Settings via JSON
 
-You can also edit Docker Desktop settings directly through the `settings.json` file for scripted configuration.
+You can also inspect or edit Docker Desktop settings directly through the `settings-store.json` file for scripted configuration.
 
 On macOS, the settings file lives at:
 
 ```bash
 # View Docker Desktop settings on macOS
-cat ~/Library/Group\ Containers/group.com.docker/settings.json | python3 -m json.tool
+cat ~/Library/Group\ Containers/group.com.docker/settings-store.json | python3 -m json.tool
 ```
 
 On Windows:
 
 ```powershell
 # View Docker Desktop settings on Windows
-Get-Content "$env:APPDATA\Docker\settings.json" | ConvertFrom-Json
+Get-Content "$env:APPDATA\Docker\settings-store.json" | ConvertFrom-Json
 ```
 
-Key fields for resource management:
+Common resource fields include:
 
 ```json
 {
