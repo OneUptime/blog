@@ -86,10 +86,10 @@ spec:
     configmaps: "100"
     secrets: "100"
     replicationcontrollers: "20"
-    deployments.apps: "30"
-    statefulsets.apps: "10"
-    jobs.batch: "50"
-    cronjobs.batch: "20"
+    count/deployments.apps: "30"
+    count/statefulsets.apps: "10"
+    count/jobs.batch: "50"
+    count/cronjobs.batch: "20"
 ---
 apiVersion: v1
 kind: LimitRange
@@ -138,22 +138,28 @@ metadata:
   name: tenant-admin
   namespace: tenant-acme
 rules:
-- apiGroups: ["", "apps", "batch", "extensions"]
+- apiGroups: [""]
   resources:
   - pods
   - pods/log
   - pods/exec
   - services
-  - deployments
-  - replicasets
-  - statefulsets
-  - daemonsets
-  - jobs
-  - cronjobs
   - configmaps
   - secrets
   - persistentvolumeclaims
   - serviceaccounts
+  verbs: ["*"]
+- apiGroups: ["apps"]
+  resources:
+  - deployments
+  - replicasets
+  - statefulsets
+  - daemonsets
+  verbs: ["*"]
+- apiGroups: ["batch"]
+  resources:
+  - jobs
+  - cronjobs
   verbs: ["*"]
 - apiGroups: ["networking.k8s.io"]
   resources:
@@ -181,14 +187,17 @@ metadata:
   name: tenant-developer
   namespace: tenant-acme
 rules:
-- apiGroups: ["", "apps"]
+- apiGroups: [""]
   resources:
   - pods
   - pods/log
   - services
+  - configmaps
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources:
   - deployments
   - replicasets
-  - configmaps
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources:
@@ -255,9 +264,11 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
+      port: 53
+    - protocol: TCP
       port: 53
 ---
 apiVersion: networking.k8s.io/v1
@@ -275,7 +286,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
     ports:
     - protocol: TCP
       port: 8080
@@ -296,7 +307,7 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
 ```
 
-Create a Pod Security Policy (if using older Kubernetes versions):
+Create a Pod Security Policy (if using Kubernetes versions before v1.25 with the PodSecurityPolicy admission controller enabled):
 
 ```yaml
 apiVersion: policy/v1beta1
@@ -396,9 +407,11 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: web
-        image: nginx:1.25-alpine
+        image: nginxinc/nginx-unprivileged:1.25-alpine
         ports:
         - containerPort: 8080
         resources:
@@ -412,7 +425,7 @@ spec:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
           runAsNonRoot: true
-          runAsUser: 1000
+          runAsUser: 101
           capabilities:
             drop:
             - ALL
@@ -421,10 +434,14 @@ spec:
           mountPath: /var/cache/nginx
         - name: run
           mountPath: /var/run
+        - name: tmp
+          mountPath: /tmp
       volumes:
       - name: cache
         emptyDir: {}
       - name: run
+        emptyDir: {}
+      - name: tmp
         emptyDir: {}
 ```
 
@@ -447,7 +464,7 @@ spec:
       expr: |
         (
           kube_resourcequota{type="used"}
-          /
+          / ignoring(type)
           kube_resourcequota{type="hard"}
         ) > 0.9
       for: 5m
@@ -479,7 +496,7 @@ sum(rate(container_cpu_usage_seconds_total{namespace=~"tenant-.*"}[5m])) by (nam
 sum(container_memory_working_set_bytes{namespace=~"tenant-.*"}) by (namespace)
 
 # Quota utilization by tenant
-(kube_resourcequota{type="used"} / kube_resourcequota{type="hard"}) * 100
+(kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"}) * 100
 ```
 
 ## Implementing Tenant Onboarding Automation
