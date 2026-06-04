@@ -193,17 +193,17 @@ docker run -w /tmp myimage pwd
 
 ### WORKDIR and USER
 
-WORKDIR creates directories as root, regardless of the USER instruction. If you switch to a non-root user before WORKDIR, the directory is still created with root ownership:
+USER affects subsequent build and runtime instructions. If you switch to a non-root user before WORKDIR, Docker creates a missing WORKDIR path for that user:
 
 ```dockerfile
-# The directory is created with root ownership
+# The directory is created for appuser
 RUN useradd -m appuser
 USER appuser
 WORKDIR /app/data
-# /app/data is owned by root, not appuser
+# /app/data is owned by appuser
 ```
 
-To fix this, set permissions explicitly:
+If you create the application directory before switching users, or if you copy files as root, set ownership explicitly:
 
 ```dockerfile
 FROM python:3.11-slim
@@ -218,7 +218,7 @@ RUN chown appuser:appuser /app
 # Now switch to the non-root user
 USER appuser
 
-# Subsequent files will be created by appuser
+# Copied files are owned by appuser
 COPY --chown=appuser:appuser . .
 ```
 
