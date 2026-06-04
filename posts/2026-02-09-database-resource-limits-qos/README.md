@@ -12,9 +12,9 @@ Proper resource management ensures databases get the resources they need while p
 
 ## Understanding Kubernetes QoS Classes
 
-Kubernetes assigns Quality of Service classes based on resource specifications. Guaranteed QoS provides the highest priority, ensuring pods are not evicted except under extreme conditions. Burstable QoS allows pods to use more than requested resources when available. BestEffort QoS has no guarantees and faces eviction first during resource pressure.
+Kubernetes assigns Quality of Service classes based on resource specifications. Guaranteed QoS provides the strongest eviction protection, ensuring pods are least likely to be evicted under node pressure. Burstable QoS allows pods to use more than requested resources when available. BestEffort QoS has no guarantees and faces eviction first during resource pressure.
 
-For production databases, always use Guaranteed QoS. Set requests equal to limits for both CPU and memory. This prevents the kubelet from evicting database pods and ensures consistent performance. Databases are sensitive to resource fluctuations that can cause query timeouts or connection failures.
+For production databases, prefer Guaranteed QoS when predictable resource isolation is more important than CPU bursting. Set requests equal to limits for both CPU and memory. This makes database pods the last candidates for node-pressure eviction when their usage stays within requests and helps ensure consistent performance. Databases are sensitive to resource fluctuations that can cause query timeouts or connection failures.
 
 CPU throttling occurs when a pod exceeds its CPU limit. The kernel restricts the pod's CPU usage, causing increased query latency. Memory limits are hard boundaries. When exceeded, the kernel kills the process with an OOM error, forcing pod restart and potential data loss.
 
@@ -168,7 +168,7 @@ volumes:
   - name: postgres-config
     configMap:
       name: postgres-tuned-config
-command:
+args:
   - postgres
   - -c
   - config_file=/etc/postgresql/postgresql.conf
@@ -272,18 +272,45 @@ Deploy metrics collection to track resource consumption:
 ```yaml
 # resource-monitor.yaml
 apiVersion: v1
-kind: ConfigMap
+kind: ServiceAccount
 metadata:
-  name: resource-monitor-script
+  name: resource-monitor
   namespace: databases
-data:
-  monitor.sh: |
-    #!/bin/bash
-    while true; do
-      kubectl top pods -n databases --containers
-      echo "---"
-      sleep 30
-    done
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: resource-monitor
+  namespace: databases
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+  - apiGroups:
+      - metrics.k8s.io
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: resource-monitor
+  namespace: databases
+subjects:
+  - kind: ServiceAccount
+    name: resource-monitor
+    namespace: databases
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: resource-monitor
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -371,12 +398,12 @@ spec:
     - name: oom
       rules:
         - alert: DatabaseOOMKill
-          expr: increase(kube_pod_container_status_restarts_total{namespace="databases"}[5m]) > 0
+          expr: kube_pod_container_status_last_terminated_reason{namespace="databases",reason="OOMKilled"} == 1
           labels:
             severity: critical
           annotations:
-            summary: "Database pod restarted"
-            description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted, possibly due to OOM"
+            summary: "Database container was OOM killed"
+            description: "Container {{ $labels.container }} in pod {{ $labels.pod }} was last terminated because it exceeded its memory limit"
         
         - alert: DatabaseHighMemoryUsage
           expr: container_memory_working_set_bytes{namespace="databases"} / container_spec_memory_limit_bytes{namespace="databases"} > 0.9
