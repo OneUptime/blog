@@ -10,14 +10,14 @@ Description: Learn how to use Kong's Kubernetes CRDs to configure rate limiting 
 
 Kong for Kubernetes integrates deeply with Kubernetes through Custom Resource Definitions that represent Kong entities as native Kubernetes objects. The KongPlugin CRD allows you to configure Kong plugins declaratively, managing rate limiting, transformations, authentication, and other API policies using standard kubectl commands and GitOps workflows.
 
-## Understanding Kong Kubernetes CRDs
+## Understanding Kong Kubernetes Resources
 
-Kong provides several CRDs that map to its core concepts:
+Kong provides several Kubernetes resources that map to its core concepts:
 
 **Ingress** - Standard Kubernetes Ingress with Kong-specific annotations
 **KongPlugin** - Configures Kong plugins (rate-limiting, CORS, transformations)
 **KongConsumer** - Defines API consumers for authentication
-**KongCredential** - Stores credentials (API keys, JWT secrets)
+**Secret** - Stores credentials (API keys, JWT secrets) referenced by KongConsumer
 **KongClusterPlugin** - Cluster-wide plugin configuration
 
 These CRDs transform Kong configuration from imperative Admin API calls into declarative Kubernetes manifests, enabling infrastructure-as-code practices and GitOps deployment models.
@@ -33,12 +33,9 @@ helm repo add kong https://charts.konghq.com
 helm repo update
 
 # Install Kong Ingress Controller
-helm install kong kong/kong \
+helm install kong kong/ingress \
   --namespace kong \
-  --create-namespace \
-  --set ingressController.enabled=true \
-  --set ingressController.installCRDs=true \
-  --set proxy.type=LoadBalancer
+  --create-namespace
 ```
 
 Verify the CRDs are installed:
@@ -167,7 +164,6 @@ spec:
             name: public-api
             port:
               number: 8080
-        pathType: Prefix
       # Premium endpoints: relaxed limits
       - path: /premium
         pathType: Prefix
@@ -224,18 +220,18 @@ metadata:
 config:
   add:
     headers:
-    - "X-Internal-Auth: secret-token"
-    - "X-Request-ID: $(uuid)"
+    - "X-Internal-Auth:secret-token"
+    - "X-Original-Request-ID:$(headers[\"X-Request-ID\"])"
   remove:
     headers:
-    - "X-Forwarded-For"
+    - "X-Debug"
   replace:
     headers:
-    - "Host: internal-backend.local"
+    - "Host:internal-backend.local"
 plugin: request-transformer
 ```
 
-Transform request paths:
+Transform request metadata:
 
 ```yaml
 # path-transformer-plugin.yaml
@@ -296,17 +292,16 @@ metadata:
 config:
   add:
     headers:
-    - "X-API-Version: 2.0"
-    - "X-Response-Time: $(latency)"
+    - "X-API-Version:2.0"
     json:
-    - "api_version: 2.0"
+    - "api_version:2.0"
   remove:
     headers:
     - "Server"
     - "X-Powered-By"
   replace:
     headers:
-    - "Cache-Control: no-cache, no-store, must-revalidate"
+    - "Cache-Control:no-cache, no-store, must-revalidate"
 plugin: response-transformer
 ```
 
@@ -343,18 +338,22 @@ spec:
               number: 8080
 ```
 
-Define custom execution priority (Kong Enterprise):
+Define custom execution ordering (Kong Enterprise):
 
 ```yaml
 apiVersion: configuration.konghq.com/v1
 kind: KongPlugin
 metadata:
-  name: custom-priority-plugin
+  name: rate-limit-before-auth
   namespace: default
 config:
-  # Plugin-specific configuration
-plugin: custom-plugin
-priority: 1000  # Higher priority executes first
+  minute: 100
+  policy: local
+plugin: rate-limiting
+ordering:
+  before:
+    access:
+    - key-auth
 ```
 
 ## Using KongClusterPlugin for Global Policies
@@ -367,6 +366,8 @@ apiVersion: configuration.konghq.com/v1
 kind: KongClusterPlugin
 metadata:
   name: global-cors
+  annotations:
+    kubernetes.io/ingress.class: kong
   labels:
     global: "true"
 config:
@@ -392,23 +393,11 @@ config:
 plugin: cors
 ```
 
-Apply globally by adding annotation to KongIngress:
+The `global: "true"` label applies the plugin globally, and the ingress class annotation ensures the Kong Ingress Controller reconciles it.
 
-```yaml
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
-metadata:
-  name: global-settings
-  annotations:
-    kubernetes.io/ingress.class: kong
-proxy:
-  plugins:
-  - global-cors
-```
+## Header-Based Rate Limiting
 
-## Conditional Plugin Execution
-
-Enable plugins based on headers or paths using Kong's advanced routing:
+Rate limit using a specific request header as the identifier:
 
 ```yaml
 # conditional-rate-limit.yaml
@@ -422,7 +411,7 @@ config:
   policy: local
   limit_by: header
   header_name: X-API-Key
-  # Only rate limit if X-API-Key header is present
+  # Use the X-API-Key header value as the rate limiting key
 plugin: rate-limiting
 ```
 
@@ -441,7 +430,7 @@ type: Opaque
 stringData:
   host: redis.default.svc.cluster.local
   port: "6379"
-  password: "redispassword"
+  password: '"redispassword"'
 ---
 # rate-limit-with-secret.yaml
 apiVersion: configuration.konghq.com/v1
@@ -455,11 +444,12 @@ config:
   redis:
     host: redis.default.svc.cluster.local
     port: 6379
-    password:
-      valueFrom:
-        secretKeyRef:
-          name: redis-credentials
-          key: password
+configPatches:
+  - path: /redis/password
+    valueFrom:
+      secretKeyRef:
+        name: redis-credentials
+        key: password
 plugin: rate-limiting
 ```
 
@@ -498,8 +488,15 @@ apiVersion: configuration.konghq.com/v1
 kind: KongClusterPlugin
 metadata:
   name: prometheus
+  annotations:
+    kubernetes.io/ingress.class: kong
+  labels:
+    global: "true"
 config:
-  per_consumer: true
+  status_code_metrics: true
+  bandwidth_metrics: true
+  latency_metrics: true
+  per_consumer: false
 plugin: prometheus
 ```
 
@@ -507,8 +504,8 @@ Query Kong metrics:
 
 ```bash
 # Get Prometheus metrics
-kubectl port-forward -n kong svc/kong-proxy 8100:8100
-curl http://localhost:8100/metrics
+kubectl port-forward -n kong svc/kong-gateway-admin 8001:8001
+curl http://localhost:8001/metrics
 ```
 
 ## Best Practices
