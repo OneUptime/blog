@@ -38,14 +38,14 @@ docker buildx ls
 # linux/amd64, linux/arm64, linux/arm/v7, etc.
 ```
 
-Install QEMU for cross-platform emulation:
+Install QEMU manually if your BuildKit setup does not already provide emulation:
 
 ```bash
 # Install QEMU static binaries
-docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+docker run --privileged --rm tonistiigi/binfmt --install all
 
 # Verify QEMU registration
-docker buildx imagetools inspect multiarch/qemu-user-static
+docker run --privileged --rm tonistiigi/binfmt
 
 # Check available formats
 cat /proc/sys/fs/binfmt_misc/qemu-*
@@ -57,7 +57,7 @@ Create Dockerfiles optimized for multi-architecture builds.
 
 ```dockerfile
 # Dockerfile with multi-arch support
-FROM --platform=$BUILDPLATFORM golang:1.21-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 # Build arguments for target platform
 ARG TARGETPLATFORM
@@ -79,7 +79,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -ldflags="-w -s" -o /app/server ./cmd/server
 
 # Runtime stage
-FROM alpine:3.18
+FROM alpine:3.23
 
 # Install runtime dependencies if needed
 RUN apk add --no-cache ca-certificates
@@ -121,31 +121,37 @@ Use cross-compilation instead of emulation for faster builds.
 
 ```dockerfile
 # Dockerfile with optimized cross-compilation
-FROM --platform=$BUILDPLATFORM rust:1.75 AS builder
+FROM --platform=$BUILDPLATFORM rust:1.95-slim AS builder
 
 ARG TARGETARCH
 
 WORKDIR /app
 
-# Install cross-compilation toolchain
-RUN case "$TARGETARCH" in \
-      amd64) TARGET="x86_64-unknown-linux-musl" ;; \
-      arm64) TARGET="aarch64-unknown-linux-musl" ;; \
-      arm) TARGET="armv7-unknown-linux-musleabihf" ;; \
-      *) echo "Unsupported arch: $TARGETARCH" && exit 1 ;; \
-    esac && \
-    rustup target add $TARGET && \
-    echo $TARGET > /tmp/target
+# Install cross-compilation toolchains
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc-aarch64-linux-gnu \
+    gcc-arm-linux-gnueabihf \
+    libc6-dev-arm64-cross \
+    libc6-dev-armhf-cross \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy source
 COPY . .
 
 # Build with cross-compilation
-RUN TARGET=$(cat /tmp/target) && \
+RUN case "$TARGETARCH" in \
+      amd64) TARGET="x86_64-unknown-linux-gnu" ;; \
+      arm64) TARGET="aarch64-unknown-linux-gnu"; \
+        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc ;; \
+      arm) TARGET="armv7-unknown-linux-gnueabihf"; \
+        export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc ;; \
+      *) echo "Unsupported arch: $TARGETARCH" && exit 1 ;; \
+    esac && \
+    rustup target add $TARGET && \
     cargo build --release --target $TARGET && \
     cp target/$TARGET/release/app /app/binary
 
-FROM alpine:3.18
+FROM debian:bookworm-slim
 COPY --from=builder /app/binary /app
 ENTRYPOINT ["/app"]
 ```
@@ -153,15 +159,13 @@ ENTRYPOINT ["/app"]
 For Node.js applications:
 
 ```dockerfile
-FROM --platform=$BUILDPLATFORM node:18-alpine AS builder
-
-ARG TARGETARCH
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy source
 COPY . .
@@ -170,7 +174,7 @@ COPY . .
 RUN npm run build
 
 # Runtime stage with architecture-specific base
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -201,23 +205,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
 
     - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
+      uses: docker/setup-qemu-action@v4
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@v4
 
     - name: Login to Docker Hub
-      uses: docker/login-action@v2
+      uses: docker/login-action@v4
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
     - name: Extract metadata
       id: meta
-      uses: docker/metadata-action@v4
+      uses: docker/metadata-action@v6
       with:
         images: mycompany/app
         tags: |
@@ -227,7 +231,7 @@ jobs:
           type=sha
 
     - name: Build and push
-      uses: docker/build-push-action@v4
+      uses: docker/build-push-action@v7
       with:
         context: .
         platforms: linux/amd64,linux/arm64
@@ -244,11 +248,11 @@ GitLab CI configuration:
 # .gitlab-ci.yml
 build-multi-arch:
   stage: build
-  image: docker:24
+  image: docker:29
   services:
-    - docker:24-dind
+    - docker:29-dind
   before_script:
-    - docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+    - docker run --privileged --rm tonistiigi/binfmt --install all
     - docker buildx create --use --name multiarch
     - docker buildx inspect --bootstrap
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
@@ -282,7 +286,7 @@ spec:
       labels:
         app: multi-arch-app
     spec:
-      # Kubernetes automatically selects the right image variant
+      # The container runtime pulls the variant matching the node architecture
       containers:
       - name: app
         image: mycompany/app:v1.0.0
@@ -346,16 +350,17 @@ docker buildx imagetools inspect mycompany/app:v1.0.0
 
 # Expected output:
 # Name:      mycompany/app:v1.0.0
-# MediaType: application/vnd.docker.distribution.manifest.list.v2+json
+# MediaType: application/vnd.oci.image.index.v1+json
+# or: application/vnd.docker.distribution.manifest.list.v2+json
 # Digest:    sha256:abc123...
 #
 # Manifests:
 #   Name:      mycompany/app:v1.0.0@sha256:def456...
-#   MediaType: application/vnd.docker.distribution.manifest.v2+json
+#   MediaType: application/vnd.oci.image.manifest.v1+json
 #   Platform:  linux/amd64
 #
 #   Name:      mycompany/app:v1.0.0@sha256:ghi789...
-#   MediaType: application/vnd.docker.distribution.manifest.v2+json
+#   MediaType: application/vnd.oci.image.manifest.v1+json
 #   Platform:  linux/arm64
 
 # Verify specific platform
@@ -379,7 +384,7 @@ Manage dependencies that vary by architecture.
 
 ```dockerfile
 # Dockerfile with architecture-specific logic
-FROM --platform=$BUILDPLATFORM node:18-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
 
 ARG TARGETARCH
 
@@ -390,17 +395,17 @@ COPY package*.json ./
 # Install architecture-specific native modules
 RUN case "$TARGETARCH" in \
       amd64) \
-        npm install --platform=linux --arch=x64 ;; \
+        npm ci --omit=dev --platform=linux --arch=x64 ;; \
       arm64) \
-        npm install --platform=linux --arch=arm64 ;; \
+        npm ci --omit=dev --platform=linux --arch=arm64 ;; \
       *) \
-        npm install ;; \
+        npm ci --omit=dev ;; \
     esac
 
 COPY . .
 RUN npm run build
 
-FROM node:18-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
@@ -416,12 +421,6 @@ ARG TARGETARCH
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    make
-
 # Copy requirements
 COPY requirements.txt .
 
@@ -429,12 +428,14 @@ COPY requirements.txt .
 RUN case "$TARGETARCH" in \
       amd64) PLATFORM="manylinux_2_17_x86_64" ;; \
       arm64) PLATFORM="manylinux_2_17_aarch64" ;; \
+      *) echo "Unsupported arch: $TARGETARCH" && exit 1 ;; \
     esac && \
-    pip install --platform $PLATFORM --only-binary=:all: -r requirements.txt
+    pip install --platform $PLATFORM --only-binary=:all: \
+      --target /deps -r requirements.txt
 
 FROM python:3.11-slim
 WORKDIR /app
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /deps /usr/local/lib/python3.11/site-packages
 COPY . .
 CMD ["python", "app.py"]
 ```
@@ -515,7 +516,7 @@ Debug common issues with multi-architecture builds.
 
 ```bash
 # Check QEMU registration
-docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+docker run --privileged --rm tonistiigi/binfmt --install all
 ls -la /proc/sys/fs/binfmt_misc/
 
 # Test cross-platform execution
