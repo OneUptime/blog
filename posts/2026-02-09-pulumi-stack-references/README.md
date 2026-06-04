@@ -77,7 +77,6 @@ Reference networking outputs:
 ```typescript
 // infrastructure/cluster/index.ts
 import * as pulumi from "@pulumi/pulumi";
-import * as aws from "@pulumi/aws";
 import * as eks from "@pulumi/eks";
 
 const config = new pulumi.Config();
@@ -105,10 +104,10 @@ const cluster = new eks.Cluster("main", {
 
 // Export cluster outputs
 export const clusterName = cluster.eksCluster.name;
-export const kubeconfig = cluster.kubeconfig;
+export const kubeconfig = cluster.kubeconfigJson;
 export const clusterEndpoint = cluster.eksCluster.endpoint;
-export const clusterOidcProvider = cluster.core.oidcProvider?.url;
-export const clusterOidcProviderArn = cluster.core.oidcProvider?.arn;
+export const clusterOidcProvider = cluster.oidcProviderUrl;
+export const clusterOidcProviderArn = cluster.oidcProviderArn;
 ```
 
 Configure the stack reference:
@@ -142,6 +141,7 @@ const networkingStack = new pulumi.StackReference(
 
 // Get cluster configuration
 const kubeconfig = clusterStack.getOutput("kubeconfig");
+const clusterOidcProvider = clusterStack.getOutput("clusterOidcProvider");
 const clusterOidcProviderArn = clusterStack.getOutput("clusterOidcProviderArn");
 
 // Configure Kubernetes provider
@@ -154,6 +154,31 @@ const namespace = new k8s.core.v1.Namespace("myapp", {
   metadata: { name: "myapp" }
 }, { provider });
 
+// Create IAM role for service account
+const iamRole = new aws.iam.Role("myapp-role", {
+  assumeRolePolicy: pulumi.all([clusterOidcProvider, clusterOidcProviderArn])
+  .apply(([oidcUrl, oidcArn]) => {
+    const oidcProvider = oidcUrl.replace("https://", "");
+
+    return JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [{
+        Effect: "Allow",
+        Principal: {
+          Federated: oidcArn
+        },
+        Action: "sts:AssumeRoleWithWebIdentity",
+        Condition: {
+          StringEquals: {
+            [`${oidcProvider}:aud`]: "sts.amazonaws.com",
+            [`${oidcProvider}:sub`]: "system:serviceaccount:myapp:myapp-sa"
+          }
+        }
+      }]
+    });
+  })
+});
+
 // Create service account with IRSA
 const serviceAccount = new k8s.core.v1.ServiceAccount("myapp-sa", {
   metadata: {
@@ -164,28 +189,6 @@ const serviceAccount = new k8s.core.v1.ServiceAccount("myapp-sa", {
     }
   }
 }, { provider });
-
-// Create IAM role for service account
-const iamRole = new aws.iam.Role("myapp-role", {
-  assumeRolePolicy: pulumi.all([clusterOidcProviderArn]).apply(([oidcArn]) =>
-    JSON.stringify({
-      Version: "2012-10-17",
-      Statement: [{
-        Effect: "Allow",
-        Principal: {
-          Federated: oidcArn
-        },
-        Action: "sts:AssumeRoleWithWebIdentity",
-        Condition: {
-          StringEquals: {
-            [`${oidcArn.replace("arn:aws:iam::", "").replace(":oidc-provider/", "")}:sub`]:
-              `system:serviceaccount:myapp:myapp-sa`
-          }
-        }
-      }]
-    })
-  )
-});
 
 // Deploy application
 const deployment = new k8s.apps.v1.Deployment("myapp", {
@@ -230,7 +233,10 @@ const networkingStack = new pulumi.StackReference(
 );
 
 // Environment-specific configuration
-const environmentConfig = {
+const environmentConfig: Record<string, {
+  replicas: number;
+  resources: { cpu: string; memory: string };
+}> = {
   dev: {
     replicas: 1,
     resources: {
@@ -278,7 +284,9 @@ const backendServiceUrl = backendStack.getOutput("serviceUrl");
 
 const deployment = new k8s.apps.v1.Deployment("frontend", {
   spec: {
+    selector: { matchLabels: { app: "frontend" } },
     template: {
+      metadata: { labels: { app: "frontend" } },
       spec: {
         containers: [{
           name: "frontend",
@@ -291,7 +299,7 @@ const deployment = new k8s.apps.v1.Deployment("frontend", {
       }
     }
   }
-}, { provider });
+});
 ```
 
 ## Implementing Cross-Region References
@@ -345,25 +353,27 @@ Add error handling:
 
 ```typescript
 // Safe stack reference with fallbacks
-async function getStackOutput<T>(
+function getStackOutput<T>(
   stackName: string,
   outputName: string,
   defaultValue: T
-): Promise<pulumi.Output<T>> {
-  try {
-    const stack = new pulumi.StackReference(stackName);
-    return stack.getOutput(outputName);
-  } catch (error) {
-    pulumi.log.warn(
-      `Failed to get ${outputName} from ${stackName}, using default`,
-      stack
-    );
-    return pulumi.output(defaultValue);
-  }
+): pulumi.Output<T> {
+  const stack = new pulumi.StackReference(stackName);
+
+  return stack.getOutput(outputName).apply(value => {
+    if (value === undefined) {
+      pulumi.log.warn(
+        `Output ${outputName} was not found in ${stackName}, using default`
+      );
+      return defaultValue;
+    }
+
+    return value as T;
+  });
 }
 
 // Usage
-const vpcId = await getStackOutput(
+const vpcId = getStackOutput(
   "organization/networking/prod",
   "vpcId",
   "vpc-default"
@@ -382,10 +392,10 @@ export const vpcId = vpc.id;
 
 // Consumer checks version
 const networkingStack = new pulumi.StackReference("org/networking/prod");
-const stackVersion = networkingStack.getOutput("version");
+const stackVersion = networkingStack.requireOutput("version");
 
 stackVersion.apply(version => {
-  const [major] = version.split(".");
+  const [major] = version.replace(/^v/, "").split(".");
   if (parseInt(major) < 1) {
     throw new Error(`Incompatible networking stack version: ${version}`);
   }
