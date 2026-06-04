@@ -30,6 +30,25 @@ kind: Namespace
 metadata:
   name: keda
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-credentials
+  namespace: workers
+stringData:
+  host: amqp://guest:guest@rabbitmq.default.svc.cluster.local:5672/
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: rabbitmq-trigger-auth
+  namespace: workers
+spec:
+  secretTargetRef:
+  - parameter: host
+    name: rabbitmq-credentials
+    key: host
+---
 # KEDA with RabbitMQ scaler
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -51,7 +70,8 @@ spec:
       queueName: tasks
       mode: QueueLength
       value: "20"  # Target 20 messages per pod
-      host: amqp://guest:guest@rabbitmq.default.svc.cluster.local:5672/
+    authenticationRef:
+      name: rabbitmq-trigger-auth
 ```
 
 KEDA includes pre-built scalers for RabbitMQ, Kafka, Azure Service Bus, AWS SQS, Redis, PostgreSQL, and many others.
@@ -61,13 +81,14 @@ KEDA includes pre-built scalers for RabbitMQ, Kafka, Azure Service Bus, AWS SQS,
 Build a custom adapter for specialized metrics.
 
 ```python
-# Python custom metrics adapter using kubernetes-custom-metrics library
-from flask import Flask, jsonify
-from kubernetes import client, config
+# Python custom metrics adapter using Flask
+from datetime import datetime, timezone
+from flask import Flask, Response, jsonify
+from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
 import redis
-import time
 
 app = Flask(__name__)
+metric_requests = Counter('custom_metrics_requests_total', 'Custom metrics API requests')
 
 # Redis connection for custom metrics
 redis_client = redis.Redis(host='redis-metrics.default.svc.cluster.local')
@@ -79,20 +100,18 @@ def get_pod_metric(namespace, pod_name, metric_name):
         key = f"pod:{pod_name}:in_flight"
         return int(redis_client.get(key) or 0)
     elif metric_name == 'processing_rate_per_minute':
-        # Calculate processing rate
-        key = f"pod:{pod_name}:processed"
-        current = int(redis_client.get(key) or 0)
-        time.sleep(60)
-        after = int(redis_client.get(key) or 0)
-        return after - current
+        # Read a rate that the worker updates periodically
+        key = f"pod:{pod_name}:processed_per_minute"
+        return int(redis_client.get(key) or 0)
     return 0
 
-@app.route('/apis/custom.metrics.k8s.io/v1beta1/namespaces/<namespace>/pods/<pod>/queue_items_in_flight')
+@app.route('/apis/custom.metrics.k8s.io/v1beta2/namespaces/<namespace>/pods/<pod>/queue_items_in_flight')
 def pod_metric(namespace, pod):
+    metric_requests.inc()
     value = get_pod_metric(namespace, pod, 'queue_items_in_flight')
     return jsonify({
         'kind': 'MetricValueList',
-        'apiVersion': 'custom.metrics.k8s.io/v1beta1',
+        'apiVersion': 'custom.metrics.k8s.io/v1beta2',
         'metadata': {},
         'items': [{
             'describedObject': {
@@ -101,14 +120,21 @@ def pod_metric(namespace, pod):
                 'name': pod,
                 'apiVersion': 'v1'
             },
-            'metricName': 'queue_items_in_flight',
-            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'metric': {
+                'name': 'queue_items_in_flight'
+            },
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'windowSeconds': 0,
             'value': f'{value}'
         }]
     })
 
+@app.route('/metrics')
+def metrics():
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=6443)
+    app.run(host='0.0.0.0', port=6443, ssl_context=('/tls/tls.crt', '/tls/tls.key'))
 ```
 
 Deploy the custom adapter.
@@ -134,18 +160,30 @@ spec:
         image: custom-metrics-adapter:v1.0
         ports:
         - containerPort: 6443
+          name: https
         env:
         - name: REDIS_HOST
           value: redis-metrics.default.svc.cluster.local
+        volumeMounts:
+        - name: adapter-tls
+          mountPath: /tls
+          readOnly: true
+      volumes:
+      - name: adapter-tls
+        secret:
+          secretName: custom-metrics-adapter-tls
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: custom-metrics-apiserver
   namespace: monitoring
+  labels:
+    app: custom-metrics-adapter
 spec:
   ports:
-  - port: 443
+  - name: https
+    port: 443
     targetPort: 6443
   selector:
     app: custom-metrics-adapter
@@ -153,13 +191,13 @@ spec:
 apiVersion: apiregistration.k8s.io/v1
 kind: APIService
 metadata:
-  name: v1beta1.custom.metrics.k8s.io
+  name: v1beta2.custom.metrics.k8s.io
 spec:
   service:
     name: custom-metrics-apiserver
     namespace: monitoring
   group: custom.metrics.k8s.io
-  version: v1beta1
+  version: v1beta2
   insecureSkipTLSVerify: true
   groupPriorityMinimum: 100
   versionPriority: 100
@@ -231,6 +269,7 @@ metadata:
   name: db-workload-hpa
 spec:
   scaleTargetRef:
+    apiVersion: apps/v1
     kind: Deployment
     name: api-backend
   minReplicas: 10
@@ -309,6 +348,7 @@ metadata:
   name: cloudwatch-hpa
 spec:
   scaleTargetRef:
+    apiVersion: apps/v1
     kind: Deployment
     name: event-processor
   minReplicas: 5
@@ -338,7 +378,7 @@ kubectl get pods -n monitoring -l app=custom-metrics-adapter
 kubectl get apiservices | grep metrics
 
 # Test metric availability
-kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1" | jq .
+kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta2" | jq .
 
 # Check adapter logs for errors
 kubectl logs -n monitoring -l app=custom-metrics-adapter --tail=100
@@ -361,7 +401,11 @@ spec:
     matchLabels:
       app: custom-metrics-adapter
   endpoints:
-  - port: metrics
+  - port: https
+    scheme: https
+    path: /metrics
+    tlsConfig:
+      insecureSkipVerify: true
     interval: 30s
 ```
 
