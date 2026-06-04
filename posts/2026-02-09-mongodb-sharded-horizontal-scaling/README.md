@@ -8,15 +8,15 @@ Description: Learn how to deploy and configure MongoDB sharded clusters on Kuber
 
 ---
 
-As your data grows beyond what a single server can handle, horizontal scaling becomes necessary. MongoDB sharding distributes data across multiple servers, allowing you to scale storage and throughput linearly. Running sharded clusters on Kubernetes combines MongoDB's distributed architecture with container orchestration for truly scalable database infrastructure.
+As your data grows beyond what a single server can handle, horizontal scaling becomes necessary. MongoDB sharding distributes data across multiple servers, allowing you to scale storage and throughput horizontally. Running sharded clusters on Kubernetes combines MongoDB's distributed architecture with container orchestration for scalable database infrastructure.
 
-In this guide, we'll build a production-ready MongoDB sharded cluster on Kubernetes. We'll cover shard deployment, config servers, mongos routers, and strategies for choosing effective shard keys.
+In this guide, we'll build an operator-managed MongoDB sharded cluster on Kubernetes. We'll cover shard deployment, config servers, mongos routers, and strategies for choosing effective shard keys.
 
 ## Understanding MongoDB Sharding Architecture
 
 A MongoDB sharded cluster consists of three components:
 
-- **Shards**: Store subset of data, each shard is a replica set
+- **Shards**: Store subsets of data, each shard is typically a replica set
 - **Config Servers**: Store cluster metadata and configuration
 - **Mongos Routers**: Query routers that direct operations to appropriate shards
 
@@ -24,383 +24,113 @@ Data is partitioned into chunks based on a shard key. MongoDB automatically bala
 
 ## Deploying Config Server Replica Set
 
-Config servers must be deployed as a replica set for high availability:
+Config servers must be deployed as a replica set for high availability. With MongoDB Controllers for Kubernetes, config servers are part of a single `MongoDB` resource with `type: ShardedCluster`. The operator requires an Ops Manager or Cloud Manager connection configuration and credentials.
 
 ```yaml
-# config-servers.yaml
-
-apiVersion: mongodbcommunity.mongodb.com/v1
-kind: MongoDBCommunity
+# sharded-cluster.yaml
+apiVersion: mongodb.com/v1
+kind: MongoDB
 metadata:
-  name: mongodb-config
+  name: mongodb-sharded
   namespace: mongodb
 spec:
-  members: 3
-  type: ReplicaSet
+  type: ShardedCluster
   version: "6.0.5"
+  persistent: true
 
-  security:
-    authentication:
-      modes: ["SCRAM"]
+  shardCount: 2
+  mongodsPerShardCount: 3
+  configServerCount: 3
+  mongosCount: 3
 
-  users:
-    - name: admin-user
-      db: admin
-      passwordSecretRef:
-        name: mongodb-admin-password
-      roles:
-        - name: clusterAdmin
-          db: admin
-        - name: userAdminAnyDatabase
-          db: admin
-      scramCredentialsSecretName: mongodb-config-admin-scram
-
-  additionalMongodConfig:
-    sharding:
-      clusterRole: configsvr
-    replication:
-      oplogSizeMB: 2048
-    storage:
-      wiredTiger:
-        engineConfig:
-          cacheSizeGB: 1
-
-  statefulSet:
-    spec:
-      template:
-        spec:
-          affinity:
-            podAntiAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                - labelSelector:
-                    matchExpressions:
-                      - key: app
-                        operator: In
-                        values:
-                          - mongodb-config-svc
-                  topologyKey: kubernetes.io/hostname
-
-          containers:
-            - name: mongod
-              resources:
-                requests:
-                  cpu: "1000m"
-                  memory: "2Gi"
-                limits:
-                  cpu: "2000m"
-                  memory: "4Gi"
-
-      volumeClaimTemplates:
-        - metadata:
-            name: data-volume
-          spec:
-            accessModes: ["ReadWriteOnce"]
-            storageClassName: fast-ssd
-            resources:
-              requests:
-                storage: 50Gi
+  opsManager:
+    configMapRef:
+      name: mongodb-ops-manager
+  credentials: mongodb-ops-manager-credentials
 ```
 
-Deploy config servers:
+Deploy the sharded cluster:
 
 ```bash
-kubectl apply -f config-servers.yaml
+kubectl apply -f sharded-cluster.yaml
 
-# Wait for config servers to be ready
-kubectl wait --for=condition=ready pod -l app=mongodb-config-svc -n mongodb --timeout=300s
+# Watch the MongoDB resource while the operator creates config servers, shards, and mongos routers
+kubectl get mongodb mongodb-sharded -n mongodb -w
 ```
 
 ## Deploying Shard Replica Sets
 
-Deploy multiple shard replica sets. Each shard is a standalone replica set:
+Deploy multiple shard replica sets by setting `shardCount` and `mongodsPerShardCount`. Each shard is deployed as a replica set:
 
 ```yaml
-# shard-1.yaml
-apiVersion: mongodbcommunity.mongodb.com/v1
-kind: MongoDBCommunity
-metadata:
-  name: mongodb-shard-1
-  namespace: mongodb
+# shard settings inside sharded-cluster.yaml
 spec:
-  members: 3
-  type: ReplicaSet
-  version: "6.0.5"
-
-  security:
-    authentication:
-      modes: ["SCRAM"]
-
-  users:
-    - name: admin-user
-      db: admin
-      passwordSecretRef:
-        name: mongodb-admin-password
-      roles:
-        - name: clusterAdmin
-          db: admin
-        - name: userAdminAnyDatabase
-          db: admin
-      scramCredentialsSecretName: mongodb-shard-1-admin-scram
-
-  additionalMongodConfig:
-    sharding:
-      clusterRole: shardsvr
-    replication:
-      oplogSizeMB: 10240
-    storage:
-      wiredTiger:
-        engineConfig:
-          cacheSizeGB: 4
-
-  statefulSet:
-    spec:
-      template:
-        spec:
-          affinity:
-            podAntiAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                - labelSelector:
-                    matchExpressions:
-                      - key: app
-                        operator: In
-                        values:
-                          - mongodb-shard-1-svc
-                  topologyKey: kubernetes.io/hostname
-
-          containers:
-            - name: mongod
-              resources:
-                requests:
-                  cpu: "4000m"
-                  memory: "8Gi"
-                limits:
-                  cpu: "8000m"
-                  memory: "16Gi"
-
-      volumeClaimTemplates:
-        - metadata:
-            name: data-volume
-          spec:
-            accessModes: ["ReadWriteOnce"]
-            storageClassName: fast-ssd
-            resources:
-              requests:
-                storage: 500Gi
----
-# shard-2.yaml
-apiVersion: mongodbcommunity.mongodb.com/v1
-kind: MongoDBCommunity
-metadata:
-  name: mongodb-shard-2
-  namespace: mongodb
-spec:
-  members: 3
-  type: ReplicaSet
-  version: "6.0.5"
-
-  security:
-    authentication:
-      modes: ["SCRAM"]
-
-  users:
-    - name: admin-user
-      db: admin
-      passwordSecretRef:
-        name: mongodb-admin-password
-      roles:
-        - name: clusterAdmin
-          db: admin
-        - name: userAdminAnyDatabase
-          db: admin
-      scramCredentialsSecretName: mongodb-shard-2-admin-scram
-
-  additionalMongodConfig:
-    sharding:
-      clusterRole: shardsvr
-    replication:
-      oplogSizeMB: 10240
-    storage:
-      wiredTiger:
-        engineConfig:
-          cacheSizeGB: 4
-
-  statefulSet:
-    spec:
-      template:
-        spec:
-          affinity:
-            podAntiAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                - labelSelector:
-                    matchExpressions:
-                      - key: app
-                        operator: In
-                        values:
-                          - mongodb-shard-2-svc
-                  topologyKey: kubernetes.io/hostname
-
-          containers:
-            - name: mongod
-              resources:
-                requests:
-                  cpu: "4000m"
-                  memory: "8Gi"
-                limits:
-                  cpu: "8000m"
-                  memory: "16Gi"
-
-      volumeClaimTemplates:
-        - metadata:
-            name: data-volume
-          spec:
-            accessModes: ["ReadWriteOnce"]
-            storageClassName: fast-ssd
-            resources:
-              requests:
-                storage: 500Gi
+  type: ShardedCluster
+  shardCount: 2
+  mongodsPerShardCount: 3
 ```
 
-Deploy the shards:
+Apply the updated cluster resource:
 
 ```bash
-kubectl apply -f shard-1.yaml
-kubectl apply -f shard-2.yaml
+kubectl apply -f sharded-cluster.yaml
 
-# Wait for shards to be ready
-kubectl wait --for=condition=ready pod -l app=mongodb-shard-1-svc -n mongodb --timeout=300s
-kubectl wait --for=condition=ready pod -l app=mongodb-shard-2-svc -n mongodb --timeout=300s
+# Verify the operator-created workloads
+kubectl get pods -n mongodb
+kubectl get statefulsets -n mongodb
 ```
 
 ## Deploying Mongos Query Routers
 
-Mongos routers are stateless and can be deployed as a standard Deployment:
+Mongos routers are stateless. With the Kubernetes operator, configure the number of routers with `mongosCount`:
 
 ```yaml
-# mongos-deployment.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mongos-config
-  namespace: mongodb
-data:
-  mongos.conf: |
-    sharding:
-      configDB: mongodb-config/mongodb-config-0.mongodb-config-svc.mongodb.svc.cluster.local:27017,mongodb-config-1.mongodb-config-svc.mongodb.svc.cluster.local:27017,mongodb-config-2.mongodb-config-svc.mongodb.svc.cluster.local:27017
-    net:
-      port: 27017
-      maxIncomingConnections: 50000
-    security:
-      authorization: enabled
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mongos
-  namespace: mongodb
+# mongos settings inside sharded-cluster.yaml
 spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: mongos
-  template:
-    metadata:
-      labels:
-        app: mongos
-    spec:
-      containers:
-      - name: mongos
-        image: mongo:6.0
-        command:
-          - mongos
-          - --config
-          - /etc/mongos/mongos.conf
-        ports:
-        - containerPort: 27017
-          name: mongos
-        volumeMounts:
-        - name: mongos-config
-          mountPath: /etc/mongos
-        resources:
-          requests:
-            cpu: "2000m"
-            memory: "2Gi"
-          limits:
-            cpu: "4000m"
-            memory: "4Gi"
-        livenessProbe:
-          exec:
-            command:
-              - mongo
-              - --eval
-              - "db.adminCommand('ping')"
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          exec:
-            command:
-              - mongo
-              - --eval
-              - "db.adminCommand('ping')"
-          initialDelaySeconds: 10
-          periodSeconds: 5
-      volumes:
-      - name: mongos-config
-        configMap:
-          name: mongos-config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mongos
-  namespace: mongodb
-spec:
-  selector:
-    app: mongos
-  ports:
-  - port: 27017
-    targetPort: 27017
-  type: ClusterIP
+  type: ShardedCluster
+  mongosCount: 3
 ```
 
 Deploy mongos routers:
 
 ```bash
-kubectl apply -f mongos-deployment.yaml
+kubectl apply -f sharded-cluster.yaml
 
 # Verify mongos pods are running
-kubectl get pods -l app=mongos -n mongodb
+kubectl get pods -n mongodb | grep mongos
 ```
 
 ## Initializing the Sharded Cluster
 
-Connect to a mongos router and add shards:
+The operator initializes the sharded cluster and registers shards. Connect to a mongos router with a database user created in Ops Manager or Cloud Manager to verify the cluster:
 
 ```bash
-# Connect to mongos
-kubectl exec -it $(kubectl get pod -l app=mongos -n mongodb -o jsonpath='{.items[0].metadata.name}') -n mongodb -- mongo -u admin-user -p SecureAdminPassword123! admin
+# Connect to a mongos pod
+MONGODB_USERNAME="admin-user"
+MONGODB_PASSWORD="SecureAdminPassword123!"
+kubectl exec -it $(kubectl get pod -n mongodb -o name | grep mongos | head -n 1) -n mongodb -- \
+  mongosh -u "$MONGODB_USERNAME" -p "$MONGODB_PASSWORD" --authenticationDatabase admin
+```
 
-# Add shards to the cluster
-sh.addShard("mongodb-shard-1/mongodb-shard-1-0.mongodb-shard-1-svc.mongodb.svc.cluster.local:27017,mongodb-shard-1-1.mongodb-shard-1-svc.mongodb.svc.cluster.local:27017,mongodb-shard-1-2.mongodb-shard-1-svc.mongodb.svc.cluster.local:27017")
-
-sh.addShard("mongodb-shard-2/mongodb-shard-2-0.mongodb-shard-2-svc.mongodb.svc.cluster.local:27017,mongodb-shard-2-1.mongodb-shard-2-svc.mongodb.svc.cluster.local:27017,mongodb-shard-2-2.mongodb-shard-2-svc.mongodb.svc.cluster.local:27017")
-
-# Verify shards
+```javascript
+// Verify shards
 sh.status()
+db.adminCommand({ listShards: 1 })
 ```
 
 ## Enabling Sharding and Choosing Shard Keys
 
-Enable sharding on a database and collection:
+Shard collections from a `mongosh` session connected to a mongos router. Starting in MongoDB 6.0, `sh.enableSharding()` is not required before sharding a collection, though it can still be used to explicitly create the database.
 
 ```javascript
 // Connect to mongos
 use admin
-db.auth("admin-user", "SecureAdminPassword123!")
+db.auth("admin-user", passwordPrompt())
 
-// Enable sharding on database
+// Optional in MongoDB 6.0 and later
 sh.enableSharding("myapp")
 
-// Create index on shard key
+// Create index on shard key for a non-empty collection
 use myapp
 db.users.createIndex({ "user_id": 1 })
 
@@ -418,17 +148,13 @@ sh.shardCollection("myapp.logs", { "log_id": "hashed" })
 
 ## Managing Chunk Distribution
 
-Monitor and manage chunk distribution:
+Monitor and manage chunk distribution from a mongos router:
 
 ```javascript
-// Check chunk distribution
-use config
-db.chunks.aggregate([
-  { $group: { _id: "$shard", count: { $sum: 1 } } }
-])
-
-// View balancer status
+// Check sharded cluster status and balancer state
+sh.status()
 sh.getBalancerState()
+sh.isBalancerRunning()
 
 // Stop balancer (for maintenance)
 sh.stopBalancer()
@@ -438,7 +164,7 @@ sh.startBalancer()
 
 // Set balancing window
 use config
-db.settings.update(
+db.settings.updateOne(
   { _id: "balancer" },
   {
     $set: {
@@ -455,7 +181,7 @@ db.settings.update(
 sh.moveChunk(
   "myapp.users",
   { user_id: 1000 },
-  "mongodb-shard-2"
+  "<target-shard-name-from-sh.status()>"
 )
 ```
 
@@ -473,7 +199,12 @@ PASSWORD="SecureAppPassword123!"
 DATABASE="myapp"
 
 # Get mongos pod IPs
-MONGOS_PODS=$(kubectl get pods -l app=mongos -n $NAMESPACE -o jsonpath='{.items[*].status.podIP}')
+MONGOS_POD_NAMES=$(kubectl get pods -n "$NAMESPACE" --no-headers | awk '/mongos/ {print $1}')
+MONGOS_PODS=""
+for POD in $MONGOS_POD_NAMES; do
+  IP=$(kubectl get pod "$POD" -n "$NAMESPACE" -o jsonpath='{.status.podIP}')
+  MONGOS_PODS="$MONGOS_PODS $IP"
+done
 
 # Build connection string
 HOSTS=""
@@ -490,8 +221,9 @@ CONNECTION_STRING="mongodb://${USERNAME}:${PASSWORD}@${HOSTS}/${DATABASE}?authSo
 echo "Connection String:"
 echo "$CONNECTION_STRING"
 
-# For service-based connection
-SERVICE_CONNECTION="mongodb://${USERNAME}:${PASSWORD}@mongos.${NAMESPACE}.svc.cluster.local:27017/${DATABASE}?authSource=admin"
+# For service-based connection, use the mongos Service name created by your operator configuration
+MONGOS_SERVICE=$(kubectl get svc -n "$NAMESPACE" --no-headers | awk '/mongos/ {print $1; exit}')
+SERVICE_CONNECTION="mongodb://${USERNAME}:${PASSWORD}@${MONGOS_SERVICE}.${NAMESPACE}.svc.cluster.local:27017/${DATABASE}?authSource=admin"
 echo ""
 echo "Service Connection String (recommended):"
 echo "$SERVICE_CONNECTION"
@@ -499,22 +231,42 @@ echo "$SERVICE_CONNECTION"
 
 ## Adding Additional Shards
 
-Scale horizontally by adding more shards:
+Scale horizontally by increasing `shardCount` in the sharded cluster resource:
+
+```yaml
+# sharded-cluster.yaml
+apiVersion: mongodb.com/v1
+kind: MongoDB
+metadata:
+  name: mongodb-sharded
+  namespace: mongodb
+spec:
+  type: ShardedCluster
+  version: "6.0.5"
+  persistent: true
+
+  shardCount: 3
+  mongodsPerShardCount: 3
+  configServerCount: 3
+  mongosCount: 3
+
+  opsManager:
+    configMapRef:
+      name: mongodb-ops-manager
+  credentials: mongodb-ops-manager-credentials
+```
+
+Apply the updated resource and verify the new shard:
 
 ```bash
-# Deploy shard-3
-kubectl apply -f shard-3.yaml
+kubectl apply -f sharded-cluster.yaml
+kubectl get mongodb mongodb-sharded -n mongodb -w
 
-# Wait for it to be ready
-kubectl wait --for=condition=ready pod -l app=mongodb-shard-3-svc -n mongodb --timeout=300s
-
-# Add to cluster via mongos
-kubectl exec -it $(kubectl get pod -l app=mongos -n mongodb -o jsonpath='{.items[0].metadata.name}') -n mongodb -- mongo -u admin-user -p SecureAdminPassword123! admin --eval '
-sh.addShard("mongodb-shard-3/mongodb-shard-3-0.mongodb-shard-3-svc.mongodb.svc.cluster.local:27017,mongodb-shard-3-1.mongodb-shard-3-svc.mongodb.svc.cluster.local:27017,mongodb-shard-3-2.mongodb-shard-3-svc.mongodb.svc.cluster.local:27017")
-'
-
-# Verify the new shard
-kubectl exec -it $(kubectl get pod -l app=mongos -n mongodb -o jsonpath='{.items[0].metadata.name}') -n mongodb -- mongo -u admin-user -p SecureAdminPassword123! admin --eval 'sh.status()'
+# Verify through mongos
+MONGODB_USERNAME="admin-user"
+MONGODB_PASSWORD="SecureAdminPassword123!"
+kubectl exec -it $(kubectl get pod -n mongodb -o name | grep mongos | head -n 1) -n mongodb -- \
+  mongosh -u "$MONGODB_USERNAME" -p "$MONGODB_PASSWORD" --authenticationDatabase admin --eval 'sh.status()'
 ```
 
 ## Monitoring Sharded Cluster Performance
@@ -537,13 +289,13 @@ db.chunks.find({ jumbo: true })
 // Monitor active operations
 db.currentOp()
 
-// Check connection pool stats
+// Check connection stats
 db.serverStatus().connections
 ```
 
 ## Conclusion
 
-MongoDB sharded clusters on Kubernetes provide the foundation for scaling databases to petabyte-scale workloads. The combination of Kubernetes orchestration with MongoDB's distributed architecture enables automatic failover, elastic scaling, and operational simplicity.
+MongoDB sharded clusters on Kubernetes provide the foundation for scaling databases to very large workloads. The combination of Kubernetes orchestration with MongoDB's distributed architecture enables automatic failover, elastic scaling, and operational simplicity.
 
 Key considerations for production:
 
