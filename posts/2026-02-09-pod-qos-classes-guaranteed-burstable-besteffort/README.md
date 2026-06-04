@@ -54,7 +54,7 @@ kubectl get pod guaranteed-pod -o jsonpath='{.status.qosClass}'
 
 Output: `Guaranteed`
 
-This pod will never be evicted due to resource pressure unless all pods have Guaranteed QoS and this pod is using more resources than its limits.
+This pod is least likely to be evicted due to resource pressure. Guaranteed pods are guaranteed not to be killed until they exceed their limits or there are no lower-priority pods that can be evicted from the node.
 
 For multi-container pods, all containers must follow the same rule:
 
@@ -297,18 +297,17 @@ spec:
 
 During memory pressure, the kubelet evicts pods to reclaim resources. Understanding eviction order helps you plan for resource constraints.
 
-Eviction happens in phases:
+Eviction is influenced by QoS class, but the kubelet ranks pods by whether usage exceeds requests, Pod Priority, and usage relative to requests. In practice:
 
-1. BestEffort pods are evicted first, starting with those using the most memory
-2. Burstable pods are evicted next, prioritizing those exceeding their requests most
-3. Guaranteed pods are evicted last, only if absolutely necessary
+1. BestEffort pods and Burstable pods exceeding their requests are evicted first, ordered by Pod Priority and then by how much usage exceeds requests
+2. Burstable pods that are below their requests and Guaranteed pods are evicted last, ordered by Pod Priority
 
-Within each QoS class, pods that exceed their requests more significantly are evicted first.
+QoS class is a useful way to estimate eviction behavior for memory pressure, but it is not the only input the kubelet uses.
 
 Example eviction scenario:
 
 ```yaml
-# This pod will be evicted first (BestEffort)
+# This pod is likely to be evicted first (BestEffort)
 
 apiVersion: v1
 kind: Pod
@@ -320,7 +319,7 @@ spec:
     image: nginx
 
 ---
-# This pod will be evicted second (Burstable, using more than request)
+# This pod is likely to be evicted after BestEffort pods (Burstable, if using more than request)
 apiVersion: v1
 kind: Pod
 metadata:
@@ -336,7 +335,7 @@ spec:
         memory: "1Gi"
 
 ---
-# This pod will be evicted last (Guaranteed)
+# This pod is likely to be evicted last (Guaranteed)
 apiVersion: v1
 kind: Pod
 metadata:
@@ -385,7 +384,7 @@ groups:
   rules:
   - alert: CriticalPodNotGuaranteed
     expr: |
-      kube_pod_status_qos_class{pod=~"critical-.*",qos_class!="guaranteed"} > 0
+      kube_pod_status_qos_class{pod=~"critical-.*",qos_class!="Guaranteed"} == 1
     annotations:
       summary: "Critical pod {{ $labels.pod }} does not have Guaranteed QoS"
 ```
@@ -595,19 +594,51 @@ Monitor which pods get evicted:
 kubectl get events --sort-by='.lastTimestamp' | grep Evicted
 ```
 
-You will see BestEffort pods evicted first, followed by Burstable.
+You will usually see BestEffort pods evicted before Burstable pods, depending on Pod Priority and current resource usage.
 
 Create test pods with different QoS classes:
 
 ```bash
-# BestEffort
-kubectl run test-besteffort --image=nginx
-
-# Burstable
-kubectl run test-burstable --image=nginx --requests=memory=128Mi --limits=memory=256Mi
-
-# Guaranteed
-kubectl run test-guaranteed --image=nginx --requests=memory=256Mi,cpu=250m --limits=memory=256Mi,cpu=250m
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-besteffort
+spec:
+  containers:
+  - name: app
+    image: nginx
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-burstable
+spec:
+  containers:
+  - name: app
+    image: nginx
+    resources:
+      requests:
+        memory: "128Mi"
+      limits:
+        memory: "256Mi"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-guaranteed
+spec:
+  containers:
+  - name: app
+    image: nginx
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "256Mi"
+        cpu: "250m"
+EOF
 ```
 
 Verify QoS assignments:
