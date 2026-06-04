@@ -119,6 +119,7 @@ import random
 # Connect to EMQX broker
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="sensor-001")
 client.connect("localhost", 1883, 60)
+client.loop_start()
 
 # Publish simulated temperature readings every 2 seconds
 while True:
@@ -128,7 +129,8 @@ while True:
         "humidity": round(random.uniform(40.0, 80.0), 1),
         "timestamp": time.time()
     })
-    client.publish("sensors/room1/data", payload, qos=1)
+    result = client.publish("sensors/room1/data", payload, qos=1)
+    result.wait_for_publish()
     print(f"Published: {payload}")
     time.sleep(2)
 ```
@@ -138,8 +140,8 @@ while True:
 import paho.mqtt.client as mqtt
 import json
 
-def on_connect(client, userdata, flags, rc, properties):
-    print(f"Connected with result code {rc}")
+def on_connect(client, userdata, flags, reason_code, properties):
+    print(f"Connected with result code {reason_code}")
     # Subscribe to all sensor topics using a wildcard
     client.subscribe("sensors/#", qos=1)
 
@@ -176,8 +178,12 @@ services:
       - emqx_data:/opt/emqx/data
     environment:
       EMQX_NAME: emqx
-      # Disable anonymous access
-      EMQX_ALLOW_ANONYMOUS: "false"
+      # Enable built-in database authentication
+      EMQX_AUTHENTICATION__1__MECHANISM: password_based
+      EMQX_AUTHENTICATION__1__BACKEND: built_in_database
+      EMQX_AUTHENTICATION__1__USER_ID_TYPE: username
+      EMQX_AUTHENTICATION__1__PASSWORD_HASH_ALGORITHM__NAME: sha256
+      EMQX_AUTHENTICATION__1__PASSWORD_HASH_ALGORITHM__SALT_POSITION: suffix
       EMQX_DASHBOARD__DEFAULT_PASSWORD: "admin_password"
     restart: unless-stopped
 
@@ -188,24 +194,18 @@ volumes:
 After starting, use the REST API to add users:
 
 ```bash
-# Add an MQTT user via the EMQX REST API
-curl -s -X POST http://localhost:18083/api/v5/authentication \
-  -H "Content-Type: application/json" \
-  -u "admin:admin_password" \
-  -d '{
-    "mechanism": "password_based",
-    "backend": "built_in_database",
-    "user_id_type": "username",
-    "password_hash_algorithm": {
-      "name": "sha256",
-      "salt_position": "suffix"
-    }
-  }'
+# Create a REST API key and secret, then use the returned values below
+docker compose exec emqx emqx ctl api_keys add \
+  --name auth-setup \
+  --role administrator \
+  --valid-days infinity
+export EMQX_API_KEY="<api_key_from_output>"
+export EMQX_API_SECRET="<api_secret_from_output>"
 
 # Add a user to the built-in database
-curl -s -X POST http://localhost:18083/api/v5/authentication/password_based:built_in_database/users \
+curl -s -X POST http://localhost:18083/api/v5/authentication/password_based%3Abuilt_in_database/users \
   -H "Content-Type: application/json" \
-  -u "admin:admin_password" \
+  -u "$EMQX_API_KEY:$EMQX_API_SECRET" \
   -d '{
     "user_id": "device001",
     "password": "device_secret"
@@ -282,10 +282,10 @@ docker compose exec emqx1 emqx ctl cluster status
 
 ## EMQX with Data Integration
 
-EMQX has a built-in rule engine that can forward MQTT messages to databases and other services. Here is an example with PostgreSQL:
+EMQX has a built-in rule engine that can forward MQTT messages to databases and other services. Here is a Docker Compose foundation with PostgreSQL; after it starts, configure a PostgreSQL connector, action, and rule in EMQX to write messages to the database:
 
 ```yaml
-# docker-compose.yml - EMQX with PostgreSQL for data persistence
+# docker-compose.yml - EMQX with PostgreSQL ready for data persistence
 version: "3.8"
 
 services:
@@ -353,7 +353,7 @@ docker compose exec emqx emqx ctl clients list
 docker compose exec emqx emqx ctl subscriptions list
 
 # View broker metrics
-docker compose exec emqx emqx ctl metrics
+docker compose exec emqx emqx ctl broker metrics
 
 # View topic statistics
 docker compose exec emqx emqx ctl topics list
