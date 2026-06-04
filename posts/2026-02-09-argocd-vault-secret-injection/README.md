@@ -26,7 +26,7 @@ Each approach has different trade-offs in complexity, security, and flexibility.
 
 ## Installing argocd-vault-plugin
 
-The argocd-vault-plugin (AVP) is the most common integration method. Install it by modifying the argocd-repo-server:
+The argocd-vault-plugin (AVP) is the most common integration method. For current ArgoCD versions, install it as a config management plugin sidecar on the argocd-repo-server:
 
 ```yaml
 # argocd-repo-server-patch.yaml
@@ -39,9 +39,53 @@ metadata:
 spec:
   template:
     spec:
-      containers:
-        - name: argocd-repo-server
+      automountServiceAccountToken: true
+      volumes:
+        - name: cmp-plugin
+          configMap:
+            name: argocd-vault-plugin-cmp
+        - name: custom-tools
+          emptyDir: {}
+        - name: var-files
+          emptyDir: {}
+        - name: plugins
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+      initContainers:
+        - name: download-tools
+          image: alpine:3.20
+          env:
+            - name: AVP_VERSION
+              value: "1.18.0"
+          command:
+            - sh
+            - -c
+            - |
+              wget -O argocd-vault-plugin https://github.com/argoproj-labs/argocd-vault-plugin/releases/download/v${AVP_VERSION}/argocd-vault-plugin_${AVP_VERSION}_linux_amd64
+              chmod +x argocd-vault-plugin
+              mv argocd-vault-plugin /custom-tools/
           volumeMounts:
+            - name: custom-tools
+              mountPath: /custom-tools
+      containers:
+        - name: avp
+          image: quay.io/argoproj/argocd:<your-argocd-version>
+          command:
+            - /var/run/argocd/argocd-cmp-server
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+          volumeMounts:
+            - name: var-files
+              mountPath: /var/run/argocd
+            - name: plugins
+              mountPath: /home/argocd/cmp-server/plugins
+            - name: tmp
+              mountPath: /tmp
+            - name: cmp-plugin
+              mountPath: /home/argocd/cmp-server/config/plugin.yaml
+              subPath: plugin.yaml
             - name: custom-tools
               mountPath: /usr/local/bin/argocd-vault-plugin
               subPath: argocd-vault-plugin
@@ -54,27 +98,12 @@ spec:
               value: argocd
             - name: VAULT_ADDR
               value: http://vault.vault.svc:8200
-      initContainers:
-        - name: download-tools
-          image: alpine:3.18
-          command:
-            - sh
-            - -c
-            - |
-              wget -O argocd-vault-plugin https://github.com/argoproj-labs/argocd-vault-plugin/releases/download/v1.17.0/argocd-vault-plugin_1.17.0_linux_amd64
-              chmod +x argocd-vault-plugin
-              mv argocd-vault-plugin /custom-tools/
-          volumeMounts:
-            - name: custom-tools
-              mountPath: /custom-tools
-      volumes:
-        - name: custom-tools
-          emptyDir: {}
 ```
 
 Apply the patch:
 
 ```bash
+kubectl apply -f argocd-vault-plugin-cmp.yaml
 kubectl patch deployment argocd-repo-server -n argocd --patch-file argocd-repo-server-patch.yaml
 ```
 
@@ -106,6 +135,20 @@ EOF
 vault write auth/kubernetes/role/argocd \
   bound_service_account_names=argocd-repo-server \
   bound_service_account_namespaces=argocd \
+  policies=argocd \
+  ttl=1h
+
+# Create a role for application pods that use Vault Agent or CSI
+vault write auth/kubernetes/role/app \
+  bound_service_account_names=app-sa \
+  bound_service_account_namespaces=production \
+  policies=argocd \
+  ttl=1h
+
+# Create a role for External Secrets Operator
+vault write auth/kubernetes/role/external-secrets \
+  bound_service_account_names=external-secrets \
+  bound_service_account_namespaces=production \
   policies=argocd \
   ttl=1h
 ```
@@ -146,6 +189,8 @@ kind: Secret
 metadata:
   name: database-credentials
   namespace: production
+  annotations:
+    avp.kubernetes.io/path: secret/data/argocd/database
 type: Opaque
 stringData:
   username: <username>
@@ -171,11 +216,6 @@ spec:
     path: k8s
     plugin:
       name: argocd-vault-plugin
-      env:
-        - name: AVP_SECRET_NAME
-          value: database-credentials
-        - name: AVP_PATH_PREFIX
-          value: secret/data/argocd
   destination:
     server: https://kubernetes.default.svc
     namespace: production
@@ -185,17 +225,21 @@ spec:
       selfHeal: true
 ```
 
-Register the plugin in argocd-cm ConfigMap:
+Register the plugin with the sidecar ConfigMap:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-vault-plugin-cmp
   namespace: argocd
 data:
-  configManagementPlugins: |
-    - name: argocd-vault-plugin
+  plugin.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ConfigManagementPlugin
+    metadata:
+      name: argocd-vault-plugin
+    spec:
       generate:
         command: ["argocd-vault-plugin"]
         args: ["generate", "./"]
@@ -251,11 +295,17 @@ helm repo add external-secrets https://charts.external-secrets.io
 helm install external-secrets external-secrets/external-secrets -n external-secrets-system --create-namespace
 ```
 
-Create a SecretStore for Vault:
+Create a service account and SecretStore for Vault:
 
 ```yaml
 # vault-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: external-secrets
+  namespace: production
+---
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -269,7 +319,7 @@ spec:
       auth:
         kubernetes:
           mountPath: kubernetes
-          role: argocd
+          role: external-secrets
           serviceAccountRef:
             name: external-secrets
 ```
@@ -278,7 +328,7 @@ Create ExternalSecret resources:
 
 ```yaml
 # external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -345,7 +395,7 @@ spec:
         app: myapp
       annotations:
         vault.hashicorp.com/agent-inject: "true"
-        vault.hashicorp.com/role: "argocd"
+        vault.hashicorp.com/role: "app"
         vault.hashicorp.com/agent-inject-secret-database: "secret/data/argocd/database"
         vault.hashicorp.com/agent-inject-template-database: |
           {{- with secret "secret/data/argocd/database" -}}
@@ -372,10 +422,13 @@ The Vault Agent handles authentication and secret retrieval automatically.
 
 For mounting secrets as files, use Vault CSI Provider:
 
-```yaml
-# Install Vault CSI Provider
+```bash
+# Install the Secrets Store CSI driver and Vault CSI Provider
+helm repo add secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
+helm install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver -n kube-system
+
 helm repo add hashicorp https://helm.releases.hashicorp.com
-helm install vault-csi-provider hashicorp/vault-csi-provider -n vault-system --create-namespace
+helm install vault hashicorp/vault -n vault-system --create-namespace --set="csi.enabled=true"
 ```
 
 Create SecretProviderClass:
@@ -389,9 +442,17 @@ metadata:
   namespace: production
 spec:
   provider: vault
+  secretObjects:
+    - secretName: database-credentials
+      type: Opaque
+      data:
+        - objectName: username
+          key: username
+        - objectName: password
+          key: password
   parameters:
     vaultAddress: http://vault.vault.svc:8200
-    roleName: argocd
+    roleName: app
     objects: |
       - objectName: "username"
         secretPath: "secret/data/argocd/database"
@@ -449,7 +510,7 @@ Implement automatic secret rotation:
 
 ```yaml
 # external-secret-with-rotation.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: rotating-credentials
@@ -520,7 +581,7 @@ groups:
     rules:
       - alert: ExternalSecretSyncFailed
         expr: |
-          external_secrets_sync_calls_error > 0
+          externalsecret_sync_calls_error > 0
         for: 5m
         labels:
           severity: warning
