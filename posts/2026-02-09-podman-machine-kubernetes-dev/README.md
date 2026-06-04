@@ -8,7 +8,7 @@ Description: Learn how to use Podman Machine as a Docker Desktop alternative for
 
 ---
 
-Docker Desktop requires licensing for commercial use and runs with elevated privileges. Podman Machine provides a free, open-source alternative for local Kubernetes development. Podman runs containers rootlessly by default and integrates seamlessly with Kind and Minikube for local clusters. This guide shows you how to set up Podman Machine for Kubernetes development workflows.
+Docker Desktop requires a paid subscription for commercial use in larger organizations and uses privileged helper processes for some host integration features. Podman Machine provides a free, open-source alternative for local Kubernetes development. Podman runs containers rootlessly by default and integrates seamlessly with Kind and Minikube for local clusters. This guide shows you how to set up Podman Machine for Kubernetes development workflows.
 
 ## Understanding Podman Architecture
 
@@ -18,7 +18,7 @@ For Kubernetes development, Podman Machine provides the container runtime needed
 
 ## Installing Podman Machine
 
-Install Podman Desktop which includes Podman Machine.
+Install Podman, which includes Podman Machine on macOS and Windows. Podman Desktop can also create and manage Podman machines.
 
 ```bash
 # macOS installation
@@ -44,9 +44,12 @@ On Linux, install Podman directly:
 ```bash
 # Ubuntu/Debian
 sudo apt-get update
-sudo apt-get install -y podman
+sudo apt-get install -y podman uidmap
 
-# Configure for rootless operation
+# Configure subordinate IDs for rootless operation
+sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$USER"
+
+# Apply rootless configuration changes
 podman system migrate
 
 # Enable socket for Docker compatibility
@@ -59,10 +62,10 @@ Configure the Docker-compatible socket for Kubernetes tools.
 
 ```bash
 # Set Docker environment variables to use Podman
-export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+export DOCKER_HOST=unix://${XDG_RUNTIME_DIR}/podman/podman.sock
 
 # Add to shell profile for persistence
-echo 'export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock' >> ~/.bashrc
+echo 'export DOCKER_HOST=unix://${XDG_RUNTIME_DIR}/podman/podman.sock' >> ~/.bashrc
 
 # Create Docker CLI alias (optional)
 alias docker=podman
@@ -72,13 +75,19 @@ podman system connection list
 docker ps  # Should work with Podman
 ```
 
+On macOS with Podman Machine, get the socket path from the machine connection and use that value for `DOCKER_HOST`:
+
+```bash
+export DOCKER_HOST=unix://$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}')
+```
+
 ## Setting Up Kind with Podman
 
 Use Kind (Kubernetes in Docker) with Podman as the runtime.
 
 ```bash
 # Install Kind
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
 chmod +x ./kind
 sudo mv ./kind /usr/local/bin/kind
 
@@ -115,15 +124,16 @@ KIND_EXPERIMENTAL_PROVIDER=podman kind create cluster --config kind-config.yaml
 
 ## Using Minikube with Podman
 
-Configure Minikube to use Podman as the container runtime.
+Configure Minikube to use Podman as the container driver.
 
 ```bash
 # Install Minikube
 curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
 sudo install minikube-linux-amd64 /usr/local/bin/minikube
 
-# Start Minikube with Podman driver
-minikube start --driver=podman --container-runtime=cri-o
+# Start Minikube with the rootless Podman driver
+minikube config set rootless true
+minikube start --driver=podman
 
 # Verify
 minikube status
@@ -136,11 +146,10 @@ Configure Minikube resources:
 # Start with specific resources
 minikube start \
   --driver=podman \
-  --container-runtime=cri-o \
   --cpus=4 \
   --memory=8192 \
   --disk-size=40g \
-  --kubernetes-version=v1.28.0
+  --kubernetes-version=stable
 ```
 
 ## Building Images with Podman
@@ -152,7 +161,7 @@ Build container images locally with Podman for Kubernetes deployment.
 podman build -t myapp:dev .
 
 # Load image into Kind cluster
-kind load docker-image myapp:dev --name dev-cluster
+KIND_EXPERIMENTAL_PROVIDER=podman kind load docker-image myapp:dev --name dev-cluster
 
 # Or for Minikube
 minikube image load myapp:dev
@@ -164,12 +173,12 @@ kubectl run test --image=myapp:dev --image-pull-policy=Never
 Multi-stage build example:
 
 ```dockerfile
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN go build -o server .
 
-FROM alpine:3.18
+FROM alpine:3.23
 COPY --from=builder /app/server /server
 CMD ["/server"]
 ```
@@ -178,7 +187,7 @@ Build and deploy:
 
 ```bash
 podman build -t myapp:latest .
-kind load docker-image myapp:latest
+KIND_EXPERIMENTAL_PROVIDER=podman kind load docker-image myapp:latest
 kubectl apply -f deployment.yaml
 ```
 
@@ -188,25 +197,36 @@ Create a local registry with Podman for faster development loops.
 
 ```bash
 # Start local registry
-podman run -d \
-  --name registry \
-  -p 5000:5000 \
+podman run -d --restart=always \
+  --name kind-registry \
+  -p 127.0.0.1:5001:5000 \
   -v registry-data:/var/lib/registry \
-  registry:2
+  registry:3
 
 # Tag and push images
-podman tag myapp:dev localhost:5000/myapp:dev
-podman push localhost:5000/myapp:dev
+podman tag myapp:dev localhost:5001/myapp:dev
+podman push localhost:5001/myapp:dev
 
 # Configure Kind to use local registry
-cat <<EOF | kind create cluster --config=-
+cat <<EOF | KIND_EXPERIMENTAL_PROVIDER=podman kind create cluster --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 containerdConfigPatches:
 - |-
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5000"]
-    endpoint = ["http://$(podman inspect registry --format '{{.NetworkSettings.IPAddress}}'):5000"]
+  [plugins."io.containerd.grpc.v1.cri".registry]
+    config_path = "/etc/containerd/certs.d"
 EOF
+
+# Connect the registry to the Kind network
+podman network connect kind kind-registry
+
+# Tell each Kind node how to reach the registry
+for node in $(KIND_EXPERIMENTAL_PROVIDER=podman kind get nodes); do
+  podman exec "${node}" mkdir -p /etc/containerd/certs.d/localhost:5001
+  cat <<EOF | podman exec -i "${node}" cp /dev/stdin /etc/containerd/certs.d/localhost:5001/hosts.toml
+[host."http://kind-registry:5000"]
+EOF
+done
 ```
 
 ## Implementing Development Workflows
@@ -226,7 +246,7 @@ podman build -t ${APP_NAME}:${IMAGE_TAG} .
 
 # Load into cluster
 echo "Loading image into cluster..."
-kind load docker-image ${APP_NAME}:${IMAGE_TAG}
+KIND_EXPERIMENTAL_PROVIDER=podman kind load docker-image ${APP_NAME}:${IMAGE_TAG}
 
 # Delete existing pods to force recreation
 echo "Restarting pods..."
@@ -281,7 +301,7 @@ Monitor and manage Podman Machine resources.
 podman machine list
 
 # View resource usage
-podman machine ssh podman top
+podman machine ssh top
 
 # Increase resources
 podman machine stop
@@ -312,10 +332,10 @@ Debug Podman and local Kubernetes problems.
 
 ```bash
 # Check Podman Machine logs
-podman machine ssh journalctl -u podman
+podman machine ssh journalctl --user -u podman.socket -u podman.service --no-pager -n 50
 
 # Debug socket connection
-ls -la $DOCKER_HOST
+ls -la "${DOCKER_HOST#unix://}"
 podman system connection list
 
 # Reset Podman Machine
@@ -325,8 +345,8 @@ podman machine init --cpus 4 --memory 8192
 podman machine start
 
 # Kind troubleshooting
-kind get clusters
-kind export logs --name dev-cluster
+KIND_EXPERIMENTAL_PROVIDER=podman kind get clusters
+KIND_EXPERIMENTAL_PROVIDER=podman kind export logs --name dev-cluster
 
 # Minikube troubleshooting
 minikube logs
