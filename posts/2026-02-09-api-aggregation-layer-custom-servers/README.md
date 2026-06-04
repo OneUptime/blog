@@ -37,7 +37,7 @@ Let's build a simple custom API server that serves a custom resource type. We'll
 First, install apiserver-builder.
 
 ```bash
-go install sigs.k8s.io/apiserver-builder-alpha/cmd/apiserver-boot@latest
+go install sigs.k8s.io/apiserver-builder-alpha/cmd/apiserver-boot@v1.23.0
 ```
 
 Create a new API server project.
@@ -209,9 +209,11 @@ spec:
       - name: apiserver
         image: registry.example.com/custom-apiserver:v1.0.0
         args:
+        # Replace this with the Service or endpoint for your dedicated etcd instance.
         - --etcd-servers=http://etcd:2379
         - --secure-port=6443
-        - --cert-dir=/var/run/apiserver
+        - --tls-cert-file=/var/run/apiserver/tls.crt
+        - --tls-private-key-file=/var/run/apiserver/tls.key
         - --v=4
         ports:
         - containerPort: 6443
@@ -239,6 +241,38 @@ spec:
     app: custom-apiserver
 ```
 
+Grant the API server permission to delegate authentication and authorization decisions.
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: custom-apiserver-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: custom-apiserver
+  namespace: custom-apiserver
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: custom-apiserver-authentication-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: custom-apiserver
+  namespace: custom-apiserver
+```
+
 ## Generating TLS Certificates
 
 The API server needs TLS certificates for secure communication.
@@ -250,10 +284,16 @@ openssl req -x509 -new -nodes -key ca.key -days 365 -out ca.crt -subj "/CN=custo
 
 # Generate server certificate
 openssl genrsa -out server.key 2048
-openssl req -new -key server.key -out server.csr -subj "/CN=custom-apiserver.custom-apiserver.svc"
+openssl req -new -key server.key -out server.csr \
+  -subj "/CN=custom-apiserver.custom-apiserver.svc" \
+  -addext "subjectAltName=DNS:custom-apiserver.custom-apiserver.svc,DNS:custom-apiserver.custom-apiserver.svc.cluster.local"
 
 # Sign server certificate
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 365
+cat > server.ext <<EOF
+subjectAltName=DNS:custom-apiserver.custom-apiserver.svc,DNS:custom-apiserver.custom-apiserver.svc.cluster.local
+extendedKeyUsage=serverAuth
+EOF
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 365 -extfile server.ext
 
 # Create Kubernetes secret
 kubectl create secret generic custom-apiserver-certs \
@@ -357,6 +397,7 @@ package storage
 import (
     "context"
 
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
     "k8s.io/apiserver/pkg/registry/rest"
 
@@ -425,7 +466,7 @@ Use high availability deployment with multiple replicas. API servers should be r
 
 Implement proper authentication and authorization. Integrate with Kubernetes RBAC for consistent access control.
 
-Version your APIs properly. Support multiple versions with conversion webhooks when making breaking changes.
+Version your APIs properly. Support multiple versions with explicit conversion logic when making breaking changes.
 
 Monitor performance and set appropriate resource limits. API servers can become bottlenecks if not properly sized.
 
