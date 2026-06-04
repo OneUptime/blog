@@ -27,7 +27,7 @@ FROM python:3.12-slim
 
 # Install DuckDB and useful analytics libraries
 RUN pip install --no-cache-dir \
-    duckdb==1.1.0 \
+    duckdb==1.5.3 \
     pandas \
     pyarrow \
     httpx
@@ -58,10 +58,9 @@ Use the DuckDB CLI inside a container for interactive exploration.
 ```bash
 # Run DuckDB CLI interactively with data mounted
 docker run -it --rm \
-  -v $(pwd)/data:/data \
-  -v $(pwd)/output:/output \
-  python:3.12-slim \
-  bash -c "pip install duckdb && python -c \"import duckdb; duckdb.cli()\""
+  -v "$(pwd)/data:/data" \
+  -v "$(pwd)/output:/output" \
+  duckdb/duckdb:1.5.3
 ```
 
 A simpler approach uses the official DuckDB binary directly.
@@ -71,7 +70,7 @@ A simpler approach uses the official DuckDB binary directly.
 FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y wget unzip && \
-    wget https://github.com/duckdb/duckdb/releases/download/v1.1.0/duckdb_cli-linux-amd64.zip && \
+    wget https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-linux-amd64.zip && \
     unzip duckdb_cli-linux-amd64.zip -d /usr/local/bin/ && \
     chmod +x /usr/local/bin/duckdb && \
     rm duckdb_cli-linux-amd64.zip && \
@@ -197,8 +196,8 @@ Run the pipeline.
 ```bash
 # Execute the analysis with data and output directories mounted
 docker run --rm \
-  -v $(pwd)/data:/data \
-  -v $(pwd)/output:/output \
+  -v "$(pwd)/data:/data" \
+  -v "$(pwd)/output:/output" \
   duckdb-analytics
 ```
 
@@ -208,8 +207,6 @@ Chain multiple DuckDB steps together in a pipeline.
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   # Step 1: Clean and transform raw data
   transform:
@@ -224,7 +221,7 @@ services:
     build: .
     command: python scripts/analyze.py
     volumes:
-      - pipeline_data:/data/input:ro
+      - pipeline_data:/data:ro
       - ./output:/output
     depends_on:
       transform:
@@ -249,9 +246,13 @@ SELECT COUNT(*), AVG(value)
 FROM read_parquet('https://example.com/data/metrics.parquet');
 
 -- Query from S3 (set credentials first)
-SET s3_access_key_id = 'your-key';
-SET s3_secret_access_key = 'your-secret';
-SET s3_region = 'us-east-1';
+CREATE OR REPLACE SECRET s3_credentials (
+    TYPE s3,
+    PROVIDER config,
+    KEY_ID 'your-key',
+    SECRET 'your-secret',
+    REGION 'us-east-1'
+);
 
 SELECT * FROM read_parquet('s3://my-bucket/data/events/*.parquet')
 WHERE event_date = CURRENT_DATE;
