@@ -107,6 +107,10 @@ spec:
         - name: etc-fs
           mountPath: /host/etc
           readOnly: true
+        - name: falco-rules
+          mountPath: /etc/falco/rules.d/custom_rules.yaml
+          subPath: custom_rules.yaml
+          readOnly: true
         env:
         - name: FALCO_BPF_PROBE
           value: ""
@@ -142,6 +146,9 @@ spec:
       - name: etc-fs
         hostPath:
           path: /etc
+      - name: falco-rules
+        configMap:
+          name: falco-rules
       tolerations:
       - operator: Exists
 ```
@@ -156,6 +163,9 @@ metadata:
   namespace: security
 data:
   custom_rules.yaml: |
+    - list: allowed_processes
+      items: [nginx, apache2, httpd, node, python, java]
+
     - rule: Unauthorized Process in Container
       desc: Detect suspicious process execution
       condition: >
@@ -182,7 +192,7 @@ data:
 
 ## Deploying Trivy for Vulnerability Scanning
 
-Trivy scans container images for vulnerabilities:
+Trivy scans node filesystems for vulnerabilities:
 
 ```yaml
 apiVersion: apps/v1
@@ -205,10 +215,10 @@ spec:
         image: aquasec/trivy:0.47.0
         command:
         - trivy
-        - image
-        - --download-db-only
         - --cache-dir
         - /var/lib/trivy
+        - image
+        - --download-db-only
         volumeMounts:
         - name: cache
           mountPath: /var/lib/trivy
@@ -220,20 +230,16 @@ spec:
         - -c
         - |
           while true; do
-            echo "Scanning containers on $(hostname)..."
+            echo "Scanning node filesystem on $(hostname)..."
 
-            # Get running containers
-            for container_id in $(crictl ps -q); do
-              IMAGE=$(crictl inspect $container_id | jq -r '.info.config.image.image')
-
-              echo "Scanning $IMAGE..."
-              trivy image \
-                --cache-dir /var/lib/trivy \
-                --severity HIGH,CRITICAL \
-                --format json \
-                --output /scan-results/${container_id}.json \
-                $IMAGE
-            done
+            trivy rootfs \
+              --cache-dir /var/lib/trivy \
+              --scanners vuln \
+              --severity HIGH,CRITICAL \
+              --format json \
+              --output /scan-results/$(hostname).json \
+              --skip-dirs /host/proc,/host/sys,/host/dev,/host/run \
+              /host
 
             sleep 3600  # Scan hourly
           done
@@ -242,8 +248,9 @@ spec:
           mountPath: /var/lib/trivy
         - name: scan-results
           mountPath: /scan-results
-        - name: containerd-socket
-          mountPath: /run/containerd/containerd.sock
+        - name: host-root
+          mountPath: /host
+          readOnly: true
         env:
         - name: TRIVY_CACHE_DIR
           value: /var/lib/trivy
@@ -263,9 +270,9 @@ spec:
         hostPath:
           path: /var/log/trivy-scans
           type: DirectoryOrCreate
-      - name: containerd-socket
+      - name: host-root
         hostPath:
-          path: /run/containerd/containerd.sock
+          path: /
       tolerations:
       - operator: Exists
 ```
@@ -293,7 +300,14 @@ spec:
       containers:
       - name: kube-bench
         image: aquasec/kube-bench:latest
-        command: ["kube-bench", "run", "--targets", "node", "--json"]
+        command:
+        - sh
+        - -c
+        - |
+          while true; do
+            kube-bench run --targets node --json
+            sleep 21600
+          done
         volumeMounts:
         - name: var-lib-etcd
           mountPath: /var/lib/etcd
@@ -384,15 +398,27 @@ spec:
         - |
           apt-get update && apt-get install -y aide
 
+          cat > /tmp/aide-host.conf <<'EOF'
+          database=file:/var/lib/aide/aide.db
+          database_out=file:/var/lib/aide/aide.db.new
+          gzip_dbout=no
+          NORMAL = p+i+n+u+g+s+m+c+sha256
+          /host/etc NORMAL
+          /host/bin NORMAL
+          /host/sbin NORMAL
+          /host/usr/bin NORMAL
+          /host/usr/sbin NORMAL
+          EOF
+
           # Initialize database
-          if [ ! -f /host/var/lib/aide/aide.db ]; then
-            aideinit
-            cp /var/lib/aide/aide.db.new /host/var/lib/aide/aide.db
+          if [ ! -f /var/lib/aide/aide.db ]; then
+            aide --config /tmp/aide-host.conf --init
+            mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
           fi
 
           # Run checks hourly
           while true; do
-            aide --check
+            aide --config /tmp/aide-host.conf --check
             sleep 3600
           done
         volumeMounts:
