@@ -151,6 +151,7 @@ spec:
             properties:
               services:
                 type: array
+                maxItems: 100
                 items:
                   type: object
                   properties:
@@ -160,11 +161,12 @@ spec:
                       type: integer
               environment:
                 type: object
+                maxProperties: 100
                 additionalProperties:
                   type: string
             x-kubernetes-validations:
             # Ensure all service names are unique
-            - rule: "self.services.all(s1, self.services.all(s2, s1.name != s2.name || s1 == s2))"
+            - rule: "self.services.all(s, self.services.exists_one(t, t.name == s.name))"
               message: "Service names must be unique"
             # Ensure at least one service is defined
             - rule: "size(self.services) > 0"
@@ -232,7 +234,7 @@ x-kubernetes-validations:
 - rule: "size(self.description) <= 500"
   message: "Description cannot exceed 500 characters"
 
-# Numeric functions
+# Quantity-like string validation
 - rule: "self.cpu.matches('^[0-9]+m$') || self.cpu.matches('^[0-9]+$')"
   message: "CPU must be in millicores (e.g., 500m) or cores (e.g., 2)"
 
@@ -240,9 +242,9 @@ x-kubernetes-validations:
 - rule: "!(self.enableCache && self.enablePersistence) || self.storageClass != ''"
   message: "Persistent cache requires a storage class"
 
-# Type checking
-- rule: "type(self.timeout) == duration"
-  message: "Timeout must be a duration value"
+# Duration comparisons
+- rule: "self.timeout > duration('0s')"
+  message: "Timeout must be greater than zero"
 ```
 
 ## Complex Example: Validating a ClusterConfig CRD
@@ -279,6 +281,7 @@ spec:
                 minimum: 1
               nodePools:
                 type: array
+                maxItems: 100
                 items:
                   type: object
                   properties:
@@ -321,7 +324,7 @@ spec:
               message: "Sum of minimum nodes across pools cannot exceed total node count"
 
             # Node pool names must be unique
-            - rule: "self.nodePools.all(p1, self.nodePools.all(p2, p1.name != p2.name || p1 == p2))"
+            - rule: "self.nodePools.all(p, self.nodePools.exists_one(q, q.name == p.name))"
               message: "Node pool names must be unique"
 ```
 
@@ -341,7 +344,7 @@ x-kubernetes-validations:
 
 # Good message
 - rule: "self.replicas > 0"
-  message: "spec.replicas must be a positive integer (got: %d)"
+  message: "spec.replicas must be a positive integer"
   messageExpression: "'spec.replicas must be a positive integer (got: ' + string(self.replicas) + ')'"
 ```
 
@@ -349,12 +352,12 @@ The `messageExpression` field allows dynamic error messages using CEL.
 
 ## Performance Considerations
 
-CEL validation runs on every create and update operation. Keep these guidelines in mind:
+CEL validation runs on create and update operations. Transition rules that use `oldSelf` run only on updates where Kubernetes can compare the old and new values. Keep these guidelines in mind:
 
 1. Avoid expensive operations in validation rules
 2. Use early termination with logical operators (`&&`, `||`)
-3. Limit list iterations for large arrays
-4. Cache complex calculations when possible
+3. Set `maxItems`, `maxProperties`, and `maxLength` on lists, maps, and strings used by validation rules
+4. Split complex validation into simpler rules when possible
 
 ## Testing CEL Validation Rules
 
@@ -369,8 +372,8 @@ kubectl apply -f invalid-resource.yaml
 
 # You should see your custom error message
 # Error from server (Invalid): error when creating "invalid-resource.yaml":
-# admission webhook denied the request:
-# spec.replicas must be a positive integer (got: 0)
+# Database.example.com "invalid" is invalid:
+# spec.replicas: Invalid value: 0: spec.replicas must be a positive integer (got: 0)
 ```
 
 ## Conclusion
