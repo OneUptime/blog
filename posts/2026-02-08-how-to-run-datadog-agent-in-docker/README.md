@@ -38,6 +38,7 @@ docker run -d \
   -e DD_API_KEY=${DD_API_KEY} \
   -e DD_SITE="datadoghq.com" \
   -e DD_APM_ENABLED=true \
+  -e DD_APM_NON_LOCAL_TRAFFIC=true \
   -e DD_LOGS_ENABLED=true \
   -e DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true \
   -e DD_CONTAINER_EXCLUDE="name:datadog-agent" \
@@ -81,7 +82,7 @@ services:
       # Set tags for this host
       - DD_TAGS=env:docker-local team:engineering
       # Exclude the agent's own logs to reduce noise
-      - DD_CONTAINER_EXCLUDE="name:datadog-agent"
+      - DD_CONTAINER_EXCLUDE=name:datadog-agent
       # Enable DogStatsD for custom metrics
       - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
     volumes:
@@ -127,10 +128,7 @@ services:
     image: redis:7-alpine
     labels:
       # Autodiscovery configuration for the Redis integration
-      com.datadoghq.ad.check_names: '["redisdb"]'
-      com.datadoghq.ad.init_configs: '[{}]'
-      com.datadoghq.ad.instances: '[{"host":"%%host%%","port":"6379"}]'
-      com.datadoghq.ad.logs: '[{"source":"redis","service":"redis"}]'
+      com.datadoghq.ad.checks: '{"redisdb":{"init_config":{},"instances":[{"host":"%%host%%","port":6379}],"logs":[{"source":"redis","service":"redis"}]}}'
     networks:
       - monitored
 
@@ -143,10 +141,7 @@ services:
       - ./nginx-status.conf:/etc/nginx/conf.d/status.conf
     labels:
       # Autodiscovery for Nginx metrics
-      com.datadoghq.ad.check_names: '["nginx"]'
-      com.datadoghq.ad.init_configs: '[{}]'
-      com.datadoghq.ad.instances: '[{"nginx_status_url":"http://%%host%%:80/nginx_status"}]'
-      com.datadoghq.ad.logs: '[{"source":"nginx","service":"nginx"}]'
+      com.datadoghq.ad.checks: '{"nginx":{"init_config":{},"instances":[{"nginx_status_url":"http://%%host%%:80/nginx_status"}],"logs":[{"source":"nginx","service":"nginx"}]}}'
     networks:
       - monitored
 
@@ -163,8 +158,8 @@ server {
     listen 80;
 
     location /nginx_status {
-        stub_status on;
-        # Only allow the Datadog agent to access this endpoint
+        stub_status;
+        # Allow the Datadog Agent container to access this endpoint
         allow all;
     }
 }
@@ -181,17 +176,13 @@ Here are more autodiscovery label examples for common services.
 postgres:
   image: postgres:16-alpine
   labels:
-    com.datadoghq.ad.check_names: '["postgres"]'
-    com.datadoghq.ad.init_configs: '[{}]'
-    com.datadoghq.ad.instances: '[{"host":"%%host%%","port":5432,"username":"datadog","password":"datadog_password","dbname":"postgres"}]'
+    com.datadoghq.ad.checks: '{"postgres":{"init_config":{},"instances":[{"host":"%%host%%","port":5432,"username":"datadog","password":"datadog_password","dbname":"postgres"}]}}'
 
 # MongoDB autodiscovery labels
 mongo:
   image: mongo:7
   labels:
-    com.datadoghq.ad.check_names: '["mongo"]'
-    com.datadoghq.ad.init_configs: '[{}]'
-    com.datadoghq.ad.instances: '[{"hosts":["%%host%%:27017"]}]'
+    com.datadoghq.ad.checks: '{"mongo":{"init_config":{},"instances":[{"hosts":["%%host%%:27017"]}]}}'
 ```
 
 ## Sending Custom Metrics
