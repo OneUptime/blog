@@ -12,9 +12,9 @@ Crossplane Compositions use patches to transform input parameters into cloud res
 
 ## Understanding Composition Functions
 
-Composition Functions run as containerized services that receive composition requests and return modified resources. Crossplane invokes functions in pipeline order, passing the result of each function to the next. Functions can add resources, modify existing ones, validate inputs, or call external APIs.
+Composition Functions run as gRPC services that receive composition requests and return desired state. Crossplane invokes functions in pipeline order, passing the desired state accumulated by each function to the next. Functions can add or update desired composed resources, update composite resource status, validate inputs, or call external APIs.
 
-Unlike patches which use declarative transformations, functions execute arbitrary code. This enables implementing business logic, performing calculations, querying databases, or integrating with external systems. Functions receive the complete composition context including all resources and can make decisions based on complex criteria.
+Unlike patches which use declarative transformations, functions execute arbitrary code. This enables implementing business logic, performing calculations, querying databases, or integrating with external systems. Functions receive the observed composite resource, observed composed resources, desired state, pipeline context, and optional input. They can make decisions based on complex criteria, but they must return any desired state they want Crossplane to keep.
 
 ## Setting Up the Function Pipeline
 
@@ -108,73 +108,84 @@ package main
 import (
     "context"
     "fmt"
+    "regexp"
 
-    "github.com/crossplane/crossplane-runtime/pkg/logging"
-    fnv1beta1 "github.com/crossplane/function-sdk-go/proto/v1beta1"
+    function "github.com/crossplane/function-sdk-go"
+    "github.com/crossplane/function-sdk-go/errors"
+    "github.com/crossplane/function-sdk-go/logging"
+    fnv1 "github.com/crossplane/function-sdk-go/proto/v1"
     "github.com/crossplane/function-sdk-go/request"
-    "github.com/crossplane/function-sdk-go/resource"
     "github.com/crossplane/function-sdk-go/response"
 )
 
 type Function struct {
+    fnv1.UnimplementedFunctionRunnerServiceServer
     log logging.Logger
 }
 
-func (f *Function) RunFunction(ctx context.Context, req *fnv1beta1.RunFunctionRequest) (*fnv1beta1.RunFunctionResponse, error) {
+func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest) (*fnv1.RunFunctionResponse, error) {
     log := f.log.WithValues("tag", req.GetMeta().GetTag())
     log.Info("Running validation function")
+
+    rsp := response.To(req, response.DefaultTTL)
 
     // Get the composite resource
     xr, err := request.GetObservedCompositeResource(req)
     if err != nil {
-        response.Fatal(rsp, err)
+        response.Fatal(rsp, errors.Wrapf(err, "cannot get observed composite resource from %T", req))
         return rsp, nil
     }
 
     // Extract parameters
     size, err := xr.Resource.GetString("spec.parameters.size")
     if err != nil {
-        return response.Fatal(rsp, fmt.Errorf("missing required field: spec.parameters.size"))
+        response.Fatal(rsp, fmt.Errorf("missing required field: spec.parameters.size"))
+        return rsp, nil
     }
 
     region, err := xr.Resource.GetString("spec.parameters.region")
     if err != nil {
-        return response.Fatal(rsp, fmt.Errorf("missing required field: spec.parameters.region"))
+        response.Fatal(rsp, fmt.Errorf("missing required field: spec.parameters.region"))
+        return rsp, nil
     }
 
     // Validate size
     validSizes := map[string]bool{"small": true, "medium": true, "large": true}
     if !validSizes[size] {
-        return response.Fatal(rsp, fmt.Errorf("invalid size: %s. Must be small, medium, or large", size))
+        response.Fatal(rsp, fmt.Errorf("invalid size: %s. Must be small, medium, or large", size))
+        return rsp, nil
     }
 
     // Validate region format
     if !isValidRegion(region) {
-        return response.Fatal(rsp, fmt.Errorf("invalid region format: %s", region))
+        response.Fatal(rsp, fmt.Errorf("invalid region format: %s", region))
+        return rsp, nil
     }
 
     // Add default values if not specified
-    if _, err := xr.Resource.GetBool("spec.parameters.backupEnabled"); err != nil {
-        xr.Resource.SetValue("spec.parameters.backupEnabled", true)
-        log.Info("Set default backupEnabled=true")
+    backupEnabled, err := xr.Resource.GetBool("spec.parameters.backupEnabled")
+    if err != nil {
+        backupEnabled = true
+        log.Info("Using default backupEnabled=true")
     }
 
-    // Add metadata annotation
-    annotations := xr.Resource.GetAnnotations()
-    annotations["validated-by"] = "function-validator"
-    annotations["validation-timestamp"] = time.Now().Format(time.RFC3339)
-    xr.Resource.SetAnnotations(annotations)
-
-    // Store enriched resource
-    if err := response.SetDesiredCompositeResource(rsp, xr); err != nil {
-        return response.Fatal(rsp, err)
+    // Functions can update the desired composite resource status, but not its spec or metadata.
+    dxr, err := request.GetDesiredCompositeResource(req)
+    if err != nil {
+        response.Fatal(rsp, errors.Wrapf(err, "cannot get desired composite resource from %T", req))
+        return rsp, nil
     }
 
-    // Add result for next function in pipeline
-    rsp.Results = append(rsp.Results, &fnv1beta1.Result{
-        Severity: fnv1beta1.Severity_SEVERITY_NORMAL,
-        Message:  "Validation passed successfully",
-    })
+    dxr.Resource.SetBool("status.effectiveBackupEnabled", backupEnabled)
+    dxr.Resource.SetString("status.validationState", "Passed")
+
+    // Store the desired composite status
+    if err := response.SetDesiredCompositeResource(rsp, dxr); err != nil {
+        response.Fatal(rsp, errors.Wrap(err, "cannot set desired composite resource"))
+        return rsp, nil
+    }
+
+    response.Normal(rsp, "Validation passed successfully").TargetComposite()
 
     return rsp, nil
 }
@@ -186,32 +197,43 @@ func isValidRegion(region string) bool {
 }
 
 func main() {
-    log := logging.NewLogrLogger(logging.Config{Debug: true})
-    runner := &Function{log: log}
+    log, err := function.NewLogger(true)
+    if err != nil {
+        panic(err)
+    }
 
-    if err := fn.Serve(runner, fn.WithLogger(log)); err != nil {
-        log.Fatal(err, "cannot serve function")
+    if err := function.Serve(&Function{log: log}); err != nil {
+        panic(err)
     }
 }
 ```
 
-Package this as a container and deploy it to your cluster for Crossplane to invoke.
+Package this as a Crossplane Function package and install it in your cluster for Crossplane to invoke.
 
 ## Implementing Resource Calculation Logic
 
 Build a function that performs complex calculations based on input parameters.
 
 ```python
-# function-calculator/main.py
+# function-calculator/function/fn.py
 import json
 import math
 from typing import Dict, Any
-from crossplane.function import Function, RunFunctionRequest, RunFunctionResponse
-from crossplane.function import resource
+import grpc
+from crossplane.function import logging, resource, response
+from crossplane.function.proto.v1 import run_function_pb2 as fnv1
+from crossplane.function.proto.v1 import run_function_pb2_grpc as grpcv1
 
-class ResourceCalculator(Function):
-    def run_function(self, req: RunFunctionRequest) -> RunFunctionResponse:
+class FunctionRunner(grpcv1.FunctionRunnerService):
+    def __init__(self):
+        self.log = logging.get_logger()
+
+    async def RunFunction(
+        self, req: fnv1.RunFunctionRequest, _: grpc.aio.ServicerContext
+    ) -> fnv1.RunFunctionResponse:
         """Calculate resource specifications based on size parameter"""
+
+        rsp = response.to(req)
 
         # Get observed composite resource
         xr = req.observed.composite.resource
@@ -228,23 +250,18 @@ class ResourceCalculator(Function):
         specs = self._calculate_specs(size, size_multiplier, base_storage)
 
         # Store calculated values in status for use by subsequent functions
-        if "status" not in xr:
-            xr["status"] = {}
-
-        xr["status"]["calculatedStorage"] = specs["storage"]
-        xr["status"]["calculatedMemory"] = specs["memory"]
-        xr["status"]["calculatedCpu"] = specs["cpu"]
-        xr["status"]["calculatedIops"] = specs["iops"]
-
-        # Set the modified resource
-        rsp = RunFunctionResponse()
-        rsp.desired.composite.resource = xr
+        resource.update_status(
+            rsp.desired.composite,
+            {
+                "calculatedStorage": specs["storage"],
+                "calculatedMemory": specs["memory"],
+                "calculatedCpu": specs["cpu"],
+                "calculatedIops": specs["iops"],
+            },
+        )
 
         # Add informational result
-        rsp.results.append({
-            "severity": "NORMAL",
-            "message": f"Calculated resources for {size} tier: {json.dumps(specs)}"
-        })
+        response.normal(rsp, f"Calculated resources for {size} tier: {json.dumps(specs)}")
 
         return rsp
 
@@ -266,9 +283,6 @@ class ResourceCalculator(Function):
             "cpu": tier["cpu"],
             "iops": int(math.ceil(base * tier["factor"] * 50))  # 50 IOPS per GB
         }
-
-if __name__ == "__main__":
-    ResourceCalculator().serve()
 ```
 
 This function performs calculations that would be impossible with simple patches.
@@ -277,106 +291,65 @@ This function performs calculations that would be impossible with simple patches
 
 Build functions that integrate with external systems during composition.
 
-```typescript
-// function-registry/src/index.ts
-import { Function, RunFunctionRequest, RunFunctionResponse } from "@crossplane/function-sdk";
-import axios from "axios";
-
-interface RegistryConfig {
-  endpoint: string;
-  apiKey: string;
-  registerOnCreate: boolean;
+```go
+// function-registry/fn.go
+type Registration struct {
+    ID        string
+    Timestamp string
 }
 
-class DatabaseRegistryFunction extends Function {
-  async runFunction(req: RunFunctionRequest): Promise<RunFunctionResponse> {
-    const config: RegistryConfig = req.input as RegistryConfig;
-    const xr = req.observed.composite.resource;
+func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest) (*fnv1.RunFunctionResponse, error) {
+    rsp := response.To(req, response.DefaultTTL)
 
-    // Extract database details
-    const databaseName = xr.metadata.name;
-    const environment = xr.metadata.labels?.environment || "unknown";
-    const team = xr.metadata.labels?.team || "unknown";
-
-    // Check if database was just created
-    const isNewDatabase = !xr.status?.registrationId;
-
-    if (config.registerOnCreate && isNewDatabase) {
-      try {
-        // Register database in external system
-        const registration = await this.registerDatabase(
-          config.endpoint,
-          config.apiKey,
-          {
-            name: databaseName,
-            environment: environment,
-            team: team,
-            createdAt: new Date().toISOString(),
-          }
-        );
-
-        // Store registration ID in status
-        if (!xr.status) {
-          xr.status = {};
-        }
-        xr.status.registrationId = registration.id;
-        xr.status.registeredAt = registration.timestamp;
-
-        // Add annotation with registry URL
-        const annotations = xr.metadata.annotations || {};
-        annotations["registry-url"] = `${config.endpoint}/databases/${registration.id}`;
-        xr.metadata.annotations = annotations;
-
-        const rsp = new RunFunctionResponse();
-        rsp.desired.composite.resource = xr;
-
-        rsp.results.push({
-          severity: "NORMAL",
-          message: `Registered database in external registry: ${registration.id}`
-        });
-
-        return rsp;
-      } catch (error) {
-        const rsp = new RunFunctionResponse();
-        rsp.results.push({
-          severity: "WARNING",
-          message: `Failed to register database: ${error.message}`
-        });
-        return rsp;
-      }
+    xr, err := request.GetObservedCompositeResource(req)
+    if err != nil {
+        response.Fatal(rsp, errors.Wrapf(err, "cannot get observed composite resource from %T", req))
+        return rsp, nil
     }
 
-    // No action needed
-    const rsp = new RunFunctionResponse();
-    rsp.desired.composite.resource = xr;
-    return rsp;
-  }
+    endpoint, err := xr.Resource.GetString("spec.parameters.registryEndpoint")
+    if err != nil {
+        response.Warning(rsp, errors.Wrap(err, "registry endpoint not configured"))
+        return rsp, nil
+    }
 
-  private async registerDatabase(
-    endpoint: string,
-    apiKey: string,
-    data: any
-  ): Promise<{ id: string; timestamp: string }> {
-    const response = await axios.post(
-      `${endpoint}/api/databases`,
-      data,
-      {
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
+    // Avoid repeating the external side effect on every reconcile.
+    if _, err := xr.Resource.GetString("status.registrationId"); err == nil {
+        return rsp, nil
+    }
 
-    return response.data;
-  }
+    databaseName := xr.Resource.GetName()
+    registration, err := registerDatabase(ctx, endpoint, databaseName)
+    if err != nil {
+        response.Warning(rsp, errors.Wrap(err, "cannot register database"))
+        return rsp, nil
+    }
+
+    dxr, err := request.GetDesiredCompositeResource(req)
+    if err != nil {
+        response.Fatal(rsp, errors.Wrapf(err, "cannot get desired composite resource from %T", req))
+        return rsp, nil
+    }
+
+    dxr.Resource.SetString("status.registrationId", registration.ID)
+    dxr.Resource.SetString("status.registeredAt", registration.Timestamp)
+
+    if err := response.SetDesiredCompositeResource(rsp, dxr); err != nil {
+        response.Fatal(rsp, errors.Wrap(err, "cannot set desired composite resource"))
+        return rsp, nil
+    }
+
+    response.Normalf(rsp, "Registered database in external registry: %s", registration.ID).TargetComposite()
+    return rsp, nil
 }
 
-// Start the function server
-new DatabaseRegistryFunction().serve();
+func registerDatabase(ctx context.Context, endpoint, databaseName string) (*Registration, error) {
+    // Use an HTTP client here to call an idempotent create-or-get endpoint.
+    return &Registration{ID: databaseName, Timestamp: time.Now().Format(time.RFC3339)}, nil
+}
 ```
 
-This function calls external APIs, enabling integration with systems outside Kubernetes.
+This function calls an external API and records the result in composite resource status. External integrations should be idempotent because Crossplane may call a function repeatedly during reconciliation.
 
 ## Handling Conditional Resource Creation
 
@@ -384,18 +357,20 @@ Use functions to conditionally create resources based on complex logic.
 
 ```go
 // function-conditional-resources/main.go
-func (f *Function) RunFunction(ctx context.Context, req *fnv1beta1.RunFunctionRequest) (*fnv1beta1.RunFunctionResponse, error) {
+func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest) (*fnv1.RunFunctionResponse, error) {
     rsp := response.To(req, response.DefaultTTL)
 
     xr, err := request.GetObservedCompositeResource(req)
     if err != nil {
-        return response.Fatal(rsp, err)
+        response.Fatal(rsp, err)
+        return rsp, nil
     }
 
     // Get existing desired resources
     desired, err := request.GetDesiredComposedResources(req)
     if err != nil {
-        return response.Fatal(rsp, err)
+        response.Fatal(rsp, err)
+        return rsp, nil
     }
 
     // Get parameters
@@ -405,7 +380,7 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1beta1.RunFunctionRe
 
     // Conditionally add read replica for HA
     if highAvailability {
-        replica := resource.NewDesiredComposed()
+        replica := &resource.DesiredComposed{Resource: composed.New()}
         replica.Resource.SetAPIVersion("rds.aws.upbound.io/v1beta1")
         replica.Resource.SetKind("Instance")
         replica.Resource.SetName("read-replica")
@@ -419,14 +394,14 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1beta1.RunFunctionRe
         }
         replica.Resource.Object["spec"] = spec
 
-        desired["read-replica"] = replica
+        desired[resource.Name("read-replica")] = replica
 
         f.log.Info("Added read replica for high availability")
     }
 
     // Conditionally add CloudWatch alarms for production
     if enableMonitoring && environment == "production" {
-        alarm := resource.NewDesiredComposed()
+        alarm := &resource.DesiredComposed{Resource: composed.New()}
         alarm.Resource.SetAPIVersion("cloudwatch.aws.upbound.io/v1beta1")
         alarm.Resource.SetKind("MetricAlarm")
         alarm.Resource.SetName("cpu-alarm")
@@ -445,14 +420,15 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1beta1.RunFunctionRe
         }
         alarm.Resource.Object["spec"] = spec
 
-        desired["cpu-alarm"] = alarm
+        desired[resource.Name("cpu-alarm")] = alarm
 
         f.log.Info("Added CloudWatch alarm for production environment")
     }
 
     // Set all desired resources
     if err := response.SetDesiredComposedResources(rsp, desired); err != nil {
-        return response.Fatal(rsp, err)
+        response.Fatal(rsp, err)
+        return rsp, nil
     }
 
     return rsp, nil
@@ -467,7 +443,7 @@ Package and deploy functions so Crossplane can invoke them.
 
 ```dockerfile
 # Dockerfile for function
-FROM golang:1.21 as builder
+FROM golang:1.26 as builder
 WORKDIR /app
 COPY . .
 RUN CGO_ENABLED=0 go build -o function .
@@ -478,58 +454,22 @@ EXPOSE 9443
 ENTRYPOINT ["/function"]
 ```
 
-Deploy the function as a Kubernetes Deployment:
+Build a function package, push it to a package registry, then install it with a Crossplane `Function` object:
+
+```bash
+docker build . --tag=runtime
+crossplane xpkg build --package-root=package --embed-runtime-image=runtime --package-file=function-validator.xpkg
+crossplane xpkg push --package-files=function-validator.xpkg xpkg.example.com/mycompany/function-validator:v1.0.0
+```
 
 ```yaml
-# function-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: function-validator
-  namespace: crossplane-system
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      function: validator
-  template:
-    metadata:
-      labels:
-        function: validator
-    spec:
-      containers:
-      - name: function
-        image: mycompany/function-validator:v1.0.0
-        ports:
-        - containerPort: 9443
-          name: grpc
-        resources:
-          limits:
-            cpu: 500m
-            memory: 512Mi
-          requests:
-            cpu: 100m
-            memory: 128Mi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: function-validator
-  namespace: crossplane-system
-spec:
-  selector:
-    function: validator
-  ports:
-  - port: 9443
-    targetPort: 9443
-    protocol: TCP
----
-apiVersion: pkg.crossplane.io/v1beta1
+# function.yaml
+apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
   name: function-validator
 spec:
-  package: mycompany/function-validator:v1.0.0
+  package: xpkg.example.com/mycompany/function-validator:v1.0.0
 ```
 
 Crossplane discovers and invokes functions automatically when referenced in Compositions.
@@ -553,8 +493,7 @@ spec:
 EOF
 
 # Run function locally for testing
-crossplane beta render test-input.yaml composition-with-functions.yaml \
-  --observed-resources=observed.yaml \
+crossplane composition render test-input.yaml composition-with-functions.yaml functions.yaml \
   --include-function-results
 
 # This shows the complete pipeline output
@@ -570,7 +509,6 @@ Track function performance and errors using metrics and logs.
 // Add metrics to function
 import (
     "github.com/prometheus/client_golang/prometheus"
-    "github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -591,7 +529,7 @@ var (
     )
 )
 
-func (f *Function) RunFunction(ctx context.Context, req *fnv1beta1.RunFunctionRequest) (*fnv1beta1.RunFunctionResponse, error) {
+func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest) (*fnv1.RunFunctionResponse, error) {
     start := time.Now()
 
     rsp, err := f.runFunctionInternal(ctx, req)
