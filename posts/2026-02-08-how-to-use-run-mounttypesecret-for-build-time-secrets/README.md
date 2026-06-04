@@ -8,9 +8,9 @@ Description: Securely pass secrets like API keys and SSH keys during Docker buil
 
 ---
 
-Passing secrets to Docker builds has always been tricky. You need credentials during the build to pull private packages, access private repositories, or authenticate with APIs. But anything you put in a Dockerfile through ARG or ENV instructions gets baked into the image layers. Anyone who pulls your image can extract those secrets.
+Passing secrets to Docker builds has always been tricky. You need credentials during the build to pull private packages, access private repositories, or authenticate with APIs. But anything you put in a Dockerfile through ARG or ENV instructions can persist in image metadata, history, layers, or build provenance. Anyone who pulls your image may be able to extract those secrets.
 
-The `RUN --mount=type=secret` feature in BuildKit solves this problem cleanly. It makes secrets available during a single RUN instruction without writing them to any layer. Once the instruction finishes, the secret disappears from the build context entirely.
+The `RUN --mount=type=secret` feature in BuildKit solves this problem cleanly. It makes secrets available during a single RUN instruction without writing the mounted secret file to any layer. Once the instruction finishes, the secret disappears from the build container.
 
 ## The Problem with Traditional Approaches
 
@@ -52,7 +52,7 @@ COPY --from=builder /app/node_modules /app/node_modules
 
 ## How Secret Mounts Work
 
-A secret mount makes a file available inside the build container at a temporary path. The file exists only during the execution of the RUN instruction that mounts it. It never appears in any image layer, not even in intermediate layers or build cache.
+A secret mount makes a file available inside the build container at a temporary path. The file exists only during the execution of the RUN instruction that mounts it. The mounted secret itself never appears in any image layer, not even in intermediate layers or build cache.
 
 The basic flow:
 
@@ -77,7 +77,7 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Mount the secret and use it during pip install
-# The secret is available at /run/secrets/pip_conf during this RUN only
+# The secret is available at /etc/pip.conf during this RUN only
 RUN --mount=type=secret,id=pip_conf,target=/etc/pip.conf \
     pip install -r requirements.txt
 
@@ -90,10 +90,10 @@ Build the image, passing the secret file:
 ```bash
 # Create the secret file
 echo "[global]
-index-url = https://user:token@private.pypi.org/simple/" > pip.conf
+index-url = https://user:token@private.pypi.org/simple/" > /tmp/pip.conf
 
 # Pass the secret during build
-docker build --secret id=pip_conf,src=pip.conf -t myapp .
+docker build --secret id=pip_conf,src=/tmp/pip.conf -t myapp .
 
 # The secret does not exist in the final image
 docker run --rm myapp cat /etc/pip.conf
@@ -126,10 +126,10 @@ Build with the npm credentials:
 
 ```bash
 # Create .npmrc with your private registry token
-echo "//registry.npmjs.org/:_authToken=your-token-here" > .npmrc
+echo "//registry.npmjs.org/:_authToken=your-token-here" > /tmp/npmrc
 
 # Build with the secret
-docker build --secret id=npmrc,src=.npmrc -t myapp .
+docker build --secret id=npmrc,src=/tmp/npmrc -t myapp .
 ```
 
 ## SSH Key for Private Git Repositories
@@ -175,7 +175,7 @@ RUN apt-get update && \
 RUN --mount=type=secret,id=ssh_key \
     mkdir -p /root/.ssh && \
     ssh-keyscan github.com >> /root/.ssh/known_hosts && \
-    GIT_SSH_COMMAND="ssh -i /run/secrets/ssh_key -o StrictHostKeyChecking=no" \
+    GIT_SSH_COMMAND="ssh -i /run/secrets/ssh_key -o UserKnownHostsFile=/root/.ssh/known_hosts" \
     pip install git+ssh://git@github.com/company/private-package.git && \
     rm -rf /root/.ssh
 
@@ -249,8 +249,8 @@ Pass all secrets during the build:
 
 ```bash
 docker build \
-    --secret id=npmrc,src=.npmrc \
-    --secret id=github_token,src=github_token.txt \
+    --secret id=npmrc,src=/tmp/npmrc \
+    --secret id=github_token,src=/tmp/github_token.txt \
     -t myapp .
 ```
 
@@ -298,7 +298,7 @@ services:
 
 secrets:
   npmrc:
-    file: .npmrc
+    file: /tmp/npmrc
   api_key:
     environment: API_KEY
 ```
@@ -347,13 +347,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build with secrets
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
