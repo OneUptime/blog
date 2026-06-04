@@ -14,6 +14,12 @@ Labels and annotations provide essential metadata for Kubernetes resources, enab
 
 Require specific labels on all namespaces:
 
+Install the required labels template from the Gatekeeper Library first:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper-library/master/library/general/requiredlabels/template.yaml
+```
+
 ```yaml
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sRequiredLabels
@@ -26,9 +32,9 @@ spec:
         kinds: ["Namespace"]
   parameters:
     labels:
-      - "team"
-      - "environment"
-      - "cost-center"
+      - key: team
+      - key: environment
+      - key: cost-center
 ```
 
 Test the constraint:
@@ -39,8 +45,9 @@ Test the constraint:
 kubectl create namespace test
 
 # Succeeds
-kubectl create namespace test \
-  --labels=team=platform,environment=dev,cost-center=engineering
+kubectl create namespace test --dry-run=client -o yaml \
+  | kubectl label --local -f - team=platform environment=dev cost-center=engineering -o yaml \
+  | kubectl apply -f -
 ```
 
 ## Deployment Labels
@@ -59,9 +66,9 @@ spec:
         kinds: ["Deployment"]
   parameters:
     labels:
-      - "app"
-      - "version"
-      - "owner"
+      - key: app
+      - key: version
+      - key: owner
 ```
 
 Example compliant deployment:
@@ -163,8 +170,8 @@ spec:
         kinds: ["Service"]
   parameters:
     labels:
-      - "app"
-      - "service-type"
+      - key: app
+      - key: service-type
 
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
@@ -184,7 +191,7 @@ spec:
 
 ## Label Value Validation
 
-Validate label values match allowed patterns:
+Validate label values match allowed values:
 
 ```yaml
 apiVersion: templates.gatekeeper.sh/v1
@@ -210,6 +217,12 @@ spec:
     - target: admission.k8s.gatekeeper.sh
       rego: |
         package k8sallowedlabelvalues
+
+        violation[{"msg": msg}] {
+          label_key := input.parameters.label
+          not input.review.object.metadata.labels[label_key]
+          msg := sprintf("Missing required label %v", [label_key])
+        }
 
         violation[{"msg": msg}] {
           label_key := input.parameters.label
@@ -265,8 +278,8 @@ spec:
       - kube-node-lease
   parameters:
     labels:
-      - "app"
-      - "version"
+      - key: app
+      - key: version
 ```
 
 ## Audit Existing Resources
