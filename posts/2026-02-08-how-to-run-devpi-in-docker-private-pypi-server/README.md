@@ -49,7 +49,7 @@ services:
       - DEVPI_PASSWORD=admin_password
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3141/+api"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3141/+api', timeout=5).read()"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -85,16 +85,10 @@ RUN pip install --no-cache-dir \
 # Create data directory
 RUN mkdir -p /data
 
-# Initialize the server data directory
-RUN devpi-init --serverdir /data
-
 EXPOSE 3141
 
-# Start devpi-server
-CMD ["devpi-server", \
-     "--serverdir", "/data", \
-     "--host", "0.0.0.0", \
-     "--port", "3141"]
+# Initialize the mounted data directory on first run, then start devpi-server
+CMD ["sh", "-c", "test -f /data/.serverversion || devpi-init --serverdir /data --root-passwd \"$DEVPI_PASSWORD\"; exec devpi-server --serverdir /data --host 0.0.0.0 --port 3141"]
 ```
 
 Build and run:
@@ -107,6 +101,7 @@ docker run -d \
   --name devpi \
   -p 3141:3141 \
   -v devpi-data:/data \
+  -e DEVPI_PASSWORD=admin_password \
   devpi-custom
 ```
 
@@ -185,7 +180,7 @@ my-internal-lib/
 # pyproject.toml - package metadata
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "my-internal-lib"
@@ -299,8 +294,8 @@ Build with the Devpi network:
 ```bash
 # Build using Devpi for package caching
 docker build \
-  --build-arg PIP_INDEX_URL=http://devpi:3141/myteam/stable/+simple/ \
-  --build-arg PIP_TRUSTED_HOST=devpi \
+  --build-arg PIP_INDEX_URL=http://localhost:3141/myteam/stable/+simple/ \
+  --build-arg PIP_TRUSTED_HOST=localhost \
   --network=host \
   -t my-app .
 ```
