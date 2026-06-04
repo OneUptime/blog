@@ -8,7 +8,7 @@ Description: Learn how to deploy and configure Kafka Connect on Kubernetes with 
 
 ---
 
-Kafka Connect is a powerful framework for building scalable, reliable data pipelines between Apache Kafka and external systems. Running Kafka Connect on Kubernetes provides additional benefits like automatic scaling, self-healing, and simplified deployment management. This guide covers everything you need to deploy Kafka Connect in distributed mode on Kubernetes with proper configuration for production workloads.
+Kafka Connect is a powerful framework for building scalable, reliable data pipelines between Apache Kafka and external systems. Running Kafka Connect on Kubernetes provides additional benefits like horizontal scaling, self-healing, and simplified deployment management. This guide covers everything you need to deploy Kafka Connect in distributed mode on Kubernetes with proper configuration for production workloads.
 
 ## Understanding Kafka Connect Architecture
 
@@ -66,7 +66,7 @@ docker push myregistry.io/kafka-connect:v1.0.0
 
 ## Configuring Kubernetes Resources
 
-Create a ConfigMap for Kafka Connect worker configuration:
+Create a ConfigMap for Kafka Connect worker configuration. The Confluent Kafka Connect Docker image reads these settings from `CONNECT_*` environment variables:
 
 ```yaml
 apiVersion: v1
@@ -75,58 +75,32 @@ metadata:
   name: kafka-connect-config
   namespace: kafka
 data:
-  connect-distributed.properties: |
-    # Bootstrap servers
-    bootstrap.servers=kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092
-
-    # Group ID for this cluster
-    group.id=kafka-connect-cluster
-
-    # Topic names for storing connector and task configurations
-    config.storage.topic=connect-configs
-    config.storage.replication.factor=3
-
-    # Topic for storing offsets
-    offset.storage.topic=connect-offsets
-    offset.storage.replication.factor=3
-    offset.storage.partitions=25
-
-    # Topic for storing connector and task status
-    status.storage.topic=connect-status
-    status.storage.replication.factor=3
-    status.storage.partitions=5
-
-    # Converter settings
-    key.converter=org.apache.kafka.connect.json.JsonConverter
-    value.converter=org.apache.kafka.connect.json.JsonConverter
-    key.converter.schemas.enable=true
-    value.converter.schemas.enable=true
-
-    # Internal converter settings
-    internal.key.converter=org.apache.kafka.connect.json.JsonConverter
-    internal.value.converter=org.apache.kafka.connect.json.JsonConverter
-    internal.key.converter.schemas.enable=false
-    internal.value.converter.schemas.enable=false
-
-    # REST API configuration
-    rest.port=8083
-    rest.advertised.host.name=kafka-connect
-    rest.advertised.port=8083
-
-    # Plugin path
-    plugin.path=/usr/share/java,/usr/share/confluent-hub-components
-
-    # Connect worker settings
-    offset.flush.interval.ms=10000
-    offset.flush.timeout.ms=5000
-
-    # Task settings
-    task.shutdown.graceful.timeout.ms=30000
-
-    # Producer and consumer overrides for high throughput
-    producer.compression.type=snappy
-    producer.max.request.size=1048576
-    consumer.max.poll.records=500
+  CONNECT_BOOTSTRAP_SERVERS: "kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092"
+  CONNECT_GROUP_ID: "kafka-connect-cluster"
+  CONNECT_CONFIG_STORAGE_TOPIC: "connect-configs"
+  CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: "3"
+  CONNECT_OFFSET_STORAGE_TOPIC: "connect-offsets"
+  CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: "3"
+  CONNECT_OFFSET_STORAGE_PARTITIONS: "25"
+  CONNECT_STATUS_STORAGE_TOPIC: "connect-status"
+  CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: "3"
+  CONNECT_STATUS_STORAGE_PARTITIONS: "5"
+  CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+  CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+  CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "true"
+  CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "true"
+  CONNECT_CONFIG_PROVIDERS: "file"
+  CONNECT_CONFIG_PROVIDERS_FILE_CLASS: "org.apache.kafka.common.config.provider.FileConfigProvider"
+  CONNECT_CONFIG_PROVIDERS_FILE_PARAM_ALLOWED_PATHS: "/etc/kafka-connect/secrets"
+  CONNECT_REST_PORT: "8083"
+  CONNECT_REST_ADVERTISED_PORT: "8083"
+  CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
+  CONNECT_OFFSET_FLUSH_INTERVAL_MS: "10000"
+  CONNECT_OFFSET_FLUSH_TIMEOUT_MS: "5000"
+  CONNECT_TASK_SHUTDOWN_GRACEFUL_TIMEOUT_MS: "30000"
+  CONNECT_PRODUCER_COMPRESSION_TYPE: "snappy"
+  CONNECT_PRODUCER_MAX_REQUEST_SIZE: "1048576"
+  CONNECT_CONSUMER_MAX_POLL_RECORDS: "500"
 ```
 
 ## Deploying Kafka Connect as a StatefulSet
@@ -158,6 +132,9 @@ spec:
           name: rest-api
         - containerPort: 9999
           name: jmx
+        envFrom:
+        - configMapRef:
+            name: kafka-connect-config
         env:
         - name: KAFKA_HEAP_OPTS
           value: "-Xms2G -Xmx2G"
@@ -172,8 +149,6 @@ spec:
             fieldRef:
               fieldPath: status.podIP
         volumeMounts:
-        - name: config
-          mountPath: /etc/kafka-connect
         - name: secrets
           mountPath: /etc/kafka-connect/secrets
           readOnly: true
@@ -205,9 +180,6 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
       volumes:
-      - name: config
-        configMap:
-          name: kafka-connect-config
       - name: secrets
         secret:
           secretName: kafka-connect-secrets
@@ -246,7 +218,7 @@ spec:
 
 ## Creating Connector Configurations
 
-Deploy a JDBC source connector to stream database changes to Kafka:
+Deploy a JDBC source connector to stream new rows from database tables to Kafka:
 
 ```yaml
 apiVersion: v1
@@ -298,7 +270,6 @@ data:
         "connection.url": "http://elasticsearch:9200",
         "connection.username": "${file:/etc/kafka-connect/secrets/es-credentials.properties:username}",
         "connection.password": "${file:/etc/kafka-connect/secrets/es-credentials.properties:password}",
-        "type.name": "_doc",
         "key.ignore": "false",
         "schema.ignore": "true",
         "behavior.on.malformed.documents": "warn",
@@ -455,9 +426,10 @@ metadata:
   namespace: kafka
 data:
   jmx-exporter.yml: |
+    hostPort: 127.0.0.1:9999
     lowercaseOutputName: true
     lowercaseOutputLabelNames: true
-    whitelistObjectNames:
+    includeObjectNames:
     - kafka.connect:type=connect-worker-metrics
     - kafka.connect:type=connect-worker-rebalance-metrics
     - kafka.connect:type=connector-metrics,connector=*
@@ -483,7 +455,7 @@ Add JMX exporter as a sidecar:
 
 ## Handling Failures and Recovery
 
-Implement error handling configuration:
+Add error handling to sink connector configurations:
 
 ```properties
 # Dead letter queue for failed records
@@ -502,12 +474,12 @@ Configure connector-specific error handling:
   "errors.tolerance": "all",
   "errors.retry.timeout": "300000",
   "errors.retry.delay.max.ms": "60000",
-  "errors.deadletterqueue.topic.name": "jdbc-source-dlq"
+  "errors.deadletterqueue.topic.name": "elasticsearch-sink-dlq"
 }
 ```
 
 ## Conclusion
 
-Deploying Kafka Connect on Kubernetes provides a robust, scalable foundation for building data pipelines. The distributed mode architecture ensures high availability, while Kubernetes handles orchestration and scaling automatically. By properly configuring worker settings, monitoring with JMX and Prometheus, and implementing error handling with dead letter queues, you can build production-ready data integration pipelines that reliably move data between Kafka and external systems.
+Deploying Kafka Connect on Kubernetes provides a robust, scalable foundation for building data pipelines. The distributed mode architecture ensures high availability, while Kubernetes handles orchestration and gives you the primitives to scale workers horizontally. By properly configuring worker settings, monitoring with JMX and Prometheus, and implementing error handling with dead letter queues, you can build production-ready data integration pipelines that reliably move data between Kafka and external systems.
 
 Key best practices include using custom Docker images with required connectors, deploying as StatefulSets for stable identities, configuring proper resource limits, implementing comprehensive monitoring, and using external configuration management for sensitive credentials.
