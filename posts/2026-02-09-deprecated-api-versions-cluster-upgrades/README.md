@@ -8,11 +8,11 @@ Description: Learn how to identify deprecated Kubernetes API versions in your cl
 
 ---
 
-Kubernetes evolves rapidly, introducing new API versions and deprecating old ones. When you upgrade clusters, resources using deprecated APIs may fail to function. Understanding the deprecation policy, identifying affected resources, and migrating them to current API versions before upgrading prevents service disruptions and failed deployments.
+Kubernetes evolves rapidly, introducing new API versions and deprecating old ones. When you upgrade clusters, clients, manifests, and controllers that still call removed API endpoints may fail. Understanding the deprecation policy, identifying affected resources, and migrating them to current API versions before upgrading prevents service disruptions and failed deployments.
 
 ## Understanding Kubernetes API Deprecation Policy
 
-Kubernetes follows a strict deprecation policy. API versions go through alpha, beta, and stable stages. Alpha APIs may be removed without notice. Beta APIs are deprecated but supported for at least 9 months or 3 releases. Stable APIs must be supported for 12 months or 3 releases after deprecation.
+Kubernetes follows a strict deprecation policy. API versions go through alpha, beta, and stable stages. Alpha APIs may be removed without notice. Beta APIs are deprecated no sooner than 9 months or 3 minor releases after introduction, and are no longer served no sooner than 9 months or 3 minor releases after deprecation. GA API versions can be marked deprecated, but Kubernetes does not remove them within a major version.
 
 Common deprecation patterns:
 
@@ -27,27 +27,26 @@ Check the Kubernetes release notes for your target version to see which APIs are
 Find deprecated APIs currently in use:
 
 ```bash
-# Check for deprecated API requests in the last hour
-
+# Check for deprecated API requests recorded by the API server
 kubectl get --raw /metrics | \
   grep apiserver_requested_deprecated_apis
 
-# View API server audit logs for deprecated API usage
-kubectl logs -n kube-system kube-apiserver-<node> | \
-  grep -i deprecated
+# Search API audit logs for deprecated API usage if audit logging is enabled
+grep '"k8s.io/deprecated":"true"' /var/log/kubernetes/audit.log
 
-# Use kubectl-convert plugin to find conversion candidates
+# Check last-applied manifests stored by kubectl for v1beta APIs
 kubectl get all --all-namespaces -o json | \
-  jq -r '.items[] | select(.apiVersion | contains("v1beta"))' | \
-  jq '.kind, .apiVersion'
+  jq -r '.items[]
+    | select(.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration" // "" | contains("v1beta"))
+    | "\(.kind) \(.metadata.namespace // "default")/\(.metadata.name)"'
 ```
 
 Install pluto to scan for deprecated APIs:
 
 ```bash
 # Install pluto
-wget https://github.com/FairwindsOps/pluto/releases/download/v5.19.0/pluto_5.19.0_linux_amd64.tar.gz
-tar xzf pluto_5.19.0_linux_amd64.tar.gz
+wget https://github.com/FairwindsOps/pluto/releases/download/v5.24.0/pluto_5.24.0_linux_amd64.tar.gz
+tar xzf pluto_5.24.0_linux_amd64.tar.gz
 sudo mv pluto /usr/local/bin/
 
 # Scan cluster for deprecated APIs
@@ -70,7 +69,7 @@ sh -c "$(curl -sSL https://git.io/install-kubent)"
 kubent
 
 # Example output shows resources using deprecated APIs:
-# 5:25PM INF >>> Deprecated APIs removed in 1.29 <<<
+# 5:25PM INF >>> Deprecated APIs removed in 1.25 <<<
 # 5:25PM INF PodDisruptionBudget found
 #         ├─ API: policy/v1beta1
 #         ├─ Deprecated In: v1.21
@@ -83,13 +82,12 @@ kubent
 One of the most common migrations is from extensions/v1beta1 to apps/v1:
 
 ```bash
-# Find Deployments using old API
-kubectl get deployments --all-namespaces -o json | \
+# Find Deployments using the old API while the old endpoint is still served
+kubectl get deployments.v1beta1.extensions --all-namespaces -o json | \
   jq -r '.items[] | select(.apiVersion == "extensions/v1beta1") | "\(.metadata.namespace)/\(.metadata.name)"'
 
-# Export with old API
-kubectl get deployment old-deployment -n production \
-  -o yaml > deployment.yaml
+# Convert the source manifest that still uses the old API
+cp /path/to/manifests/deployment.yaml deployment.yaml
 
 # Convert using kubectl-convert
 kubectl-convert -f deployment.yaml --output-version apps/v1 > deployment-v1.yaml
@@ -148,7 +146,7 @@ spec:
 PodSecurityPolicy was removed in v1.25. Migrate to Pod Security Standards:
 
 ```bash
-# Audit existing PSPs
+# Audit existing PSPs before upgrading to v1.25
 kubectl get psp
 
 # Map PSP to Pod Security Standards levels
@@ -207,13 +205,15 @@ Label namespaces with security levels:
 kubectl label namespace production \
   pod-security.kubernetes.io/enforce=baseline \
   pod-security.kubernetes.io/audit=baseline \
-  pod-security.kubernetes.io/warn=baseline
+  pod-security.kubernetes.io/warn=baseline \
+  --overwrite
 
 # Set namespace to restricted
 kubectl label namespace critical-apps \
   pod-security.kubernetes.io/enforce=restricted \
   pod-security.kubernetes.io/audit=restricted \
-  pod-security.kubernetes.io/warn=restricted
+  pod-security.kubernetes.io/warn=restricted \
+  --overwrite
 ```
 
 ## Migrating Ingress from networking.k8s.io/v1beta1
@@ -262,15 +262,18 @@ Batch convert Ingress resources:
 # migrate-ingress.sh
 
 kubectl get ingress --all-namespaces -o json | \
-  jq -r '.items[] | select(.apiVersion == "networking.k8s.io/v1beta1") | "\(.metadata.namespace) \(.metadata.name)"' | \
+  jq -r '.items[]
+    | select(.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration" // "" | contains("networking.k8s.io/v1beta1"))
+    | "\(.metadata.namespace) \(.metadata.name)"' | \
   while read namespace name; do
     echo "Converting ingress: $namespace/$name"
 
-    # Export current
-    kubectl get ingress $name -n $namespace -o yaml > /tmp/ingress-old.yaml
+    # Write the original last-applied manifest
+    kubectl get ingress $name -n $namespace -o json | \
+      jq -r '.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration"' > /tmp/ingress-old.json
 
     # Convert
-    kubectl-convert -f /tmp/ingress-old.yaml \
+    kubectl-convert -f /tmp/ingress-old.json \
       --output-version networking.k8s.io/v1 > /tmp/ingress-new.yaml
 
     # Apply converted version
@@ -326,12 +329,12 @@ spec:
 
 ## Migrating Storage API Versions
 
-Update PersistentVolume and StorageClass resources:
+Update deprecated storage.k8s.io resources:
 
 ```bash
 # Find deprecated storage resources
-kubectl get pv,pvc,storageclass --all-namespaces -o json | \
-  jq -r '.items[] | select(.apiVersion | contains("v1beta"))' | \
+kubectl get csidrivers.v1beta1.storage.k8s.io,csinodes.v1beta1.storage.k8s.io,storageclasses.v1beta1.storage.k8s.io,volumeattachments.v1beta1.storage.k8s.io -o json | \
+  jq -r '.items[] | select(.apiVersion | contains("v1beta1"))' | \
   jq '{kind: .kind, name: .metadata.name, apiVersion: .apiVersion}'
 ```
 
@@ -361,9 +364,12 @@ kubectl get all --all-namespaces -o yaml > /backup/pre-migration-backup.yaml
 # 3. Migrate Deployments
 echo "Migrating Deployments..."
 kubectl get deployments --all-namespaces -o json | \
-  jq -r '.items[] | select(.apiVersion != "apps/v1") | "\(.metadata.namespace) \(.metadata.name)"' | \
+  jq -r '.items[]
+    | select(.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration" // "" | contains("extensions/v1beta1"))
+    | "\(.metadata.namespace) \(.metadata.name)"' | \
   while read ns name; do
-    kubectl get deployment $name -n $ns -o yaml | \
+    kubectl get deployment $name -n $ns -o json | \
+      jq -r '.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration"' | \
       kubectl-convert -f - --output-version apps/v1 | \
       kubectl apply -f -
   done
@@ -371,9 +377,12 @@ kubectl get deployments --all-namespaces -o json | \
 # 4. Migrate Ingress
 echo "Migrating Ingress resources..."
 kubectl get ingress --all-namespaces -o json | \
-  jq -r '.items[] | select(.apiVersion != "networking.k8s.io/v1") | "\(.metadata.namespace) \(.metadata.name)"' | \
+  jq -r '.items[]
+    | select(.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration" // "" | contains("networking.k8s.io/v1beta1"))
+    | "\(.metadata.namespace) \(.metadata.name)"' | \
   while read ns name; do
-    kubectl get ingress $name -n $ns -o yaml | \
+    kubectl get ingress $name -n $ns -o json | \
+      jq -r '.metadata.annotations."kubectl.kubernetes.io/last-applied-configuration"' | \
       kubectl-convert -f - --output-version networking.k8s.io/v1 | \
       kubectl apply -f -
   done
@@ -421,11 +430,11 @@ helm list --all-namespaces -o json | \
 helm repo update
 helm upgrade <release> <chart> -n <namespace> --version <new-version>
 
-# If chart hasn't been updated, patch manually
+# If the chart hasn't been updated, vendor or fork the chart and update its templates
 helm get values <release> -n <namespace> > values.yaml
-helm get manifest <release> -n <namespace> > manifest.yaml
-# Edit manifest.yaml to update API versions
-kubectl apply -f manifest.yaml
+helm pull <chart> --untar
+# Edit the chart templates to update API versions, then upgrade from the local chart
+helm upgrade <release> ./<chart-directory> -n <namespace> -f values.yaml
 ```
 
 ## Creating API Version Migration Documentation
@@ -438,8 +447,8 @@ Document your migrations:
 ## Kubernetes Upgrade: v1.27 -> v1.29
 
 ### Deprecated APIs Removed in v1.29
-- PodSecurityPolicy (policy/v1beta1) - Removed
-- CronJob (batch/v1beta1) - Use batch/v1
+- FlowSchema (flowcontrol.apiserver.k8s.io/v1beta2) - Use flowcontrol.apiserver.k8s.io/v1
+- PriorityLevelConfiguration (flowcontrol.apiserver.k8s.io/v1beta2) - Use flowcontrol.apiserver.k8s.io/v1
 
 ### Migration Actions Taken
 
