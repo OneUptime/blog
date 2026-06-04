@@ -12,7 +12,7 @@ Kong Gateway offers two distinct deployment models: traditional database-backed 
 
 ## Database Mode vs DB-less Mode
 
-**Database mode** stores all configuration in PostgreSQL or Cassandra. Kong nodes read configuration from the database and cache it in memory. When you update routes or plugins via the Admin API, changes are written to the database and propagated to all nodes.
+**Database mode** stores all configuration in PostgreSQL. Kong nodes read configuration from the database and cache it in memory. When you update routes or plugins via the Admin API, changes are written to the database and propagated to all nodes.
 
 Advantages:
 - Dynamic configuration via Admin API and UI
@@ -34,7 +34,7 @@ Advantages:
 - Better for containerized environments
 
 Disadvantages:
-- No Admin API for runtime changes
+- Admin API entity endpoints are read-only for runtime changes
 - Configuration size limited by memory
 - Some plugins unavailable (rate-limiting with clustering)
 - Manual coordination for updates
@@ -135,7 +135,7 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: kong-migrations
-        image: kong:3.5
+        image: kong:3.9
         command: ["kong", "migrations", "bootstrap"]
         env:
         - name: KONG_DATABASE
@@ -175,6 +175,7 @@ data:
   KONG_PROXY_ERROR_LOG: /dev/stderr
   KONG_ADMIN_ERROR_LOG: /dev/stderr
   KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+  KONG_STATUS_LISTEN: "0.0.0.0:8100"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -193,7 +194,7 @@ spec:
     spec:
       containers:
       - name: kong
-        image: kong:3.5
+        image: kong:3.9
         ports:
         - containerPort: 8000
           name: proxy
@@ -203,6 +204,8 @@ spec:
           name: admin
         - containerPort: 8444
           name: admin-ssl
+        - containerPort: 8100
+          name: status
         env:
         - name: KONG_PG_PASSWORD
           valueFrom:
@@ -215,13 +218,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /status
-            port: 8001
+            port: 8100
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /status
-            port: 8001
+            path: /status/ready
+            port: 8100
           initialDelaySeconds: 10
           periodSeconds: 5
 ---
@@ -347,12 +350,14 @@ spec:
     spec:
       containers:
       - name: kong
-        image: kong:3.5
+        image: kong:3.9
         ports:
         - containerPort: 8000
           name: proxy
         - containerPort: 8443
           name: proxy-ssl
+        - containerPort: 8100
+          name: status
         env:
         - name: KONG_DATABASE
           value: "off"
@@ -363,26 +368,22 @@ spec:
         - name: KONG_PROXY_ERROR_LOG
           value: /dev/stderr
         - name: KONG_ADMIN_LISTEN
-          value: "off"  # Admin API disabled in DB-less mode
+          value: "off"
+        - name: KONG_STATUS_LISTEN
+          value: "0.0.0.0:8100"
         volumeMounts:
         - name: config
           mountPath: /config
         livenessProbe:
           httpGet:
             path: /status
-            port: 8000
-            httpHeaders:
-            - name: Host
-              value: localhost
+            port: 8100
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /status
-            port: 8000
-            httpHeaders:
-            - name: Host
-              value: localhost
+            path: /status/ready
+            port: 8100
           initialDelaySeconds: 10
           periodSeconds: 5
       volumes:
@@ -426,11 +427,6 @@ Database mode with Helm:
 # kong-values-db.yaml
 env:
   database: postgres
-  pg_host: postgres-kong
-  pg_port: 5432
-  pg_user: kong
-  pg_password: kongpassword
-  pg_database: kong
 
 postgresql:
   enabled: true
@@ -442,6 +438,10 @@ postgresql:
 admin:
   enabled: true
   type: ClusterIP
+  http:
+    enabled: true
+  tls:
+    enabled: false
 
 proxy:
   type: LoadBalancer
@@ -465,6 +465,9 @@ DB-less mode with Helm:
 env:
   database: "off"
   declarative_config: /kong_dbless/kong.yml
+
+ingressController:
+  enabled: false
 
 dblessConfig:
   configMap: kong-declarative-config
@@ -513,6 +516,7 @@ spec:
     repoURL: https://github.com/myorg/kong-config
     path: kong/dbless
   destination:
+    server: https://kubernetes.default.svc
     namespace: kong
   syncPolicy:
     automated:
@@ -541,17 +545,17 @@ Use **DB-less mode** when:
 For enterprise scenarios, consider hybrid deployments:
 
 **Control plane** - Database-backed Kong for centralized management
-**Data planes** - DB-less Kong nodes that receive config from control plane
+**Data planes** - Kong nodes without their own database that receive config from control plane
 
 This provides the best of both worlds: centralized control with distributed stateless data planes.
 
 ## Testing Kong Gateway
 
-Verify the deployment by creating a test request:
+Verify the DB-less deployment by creating a test request:
 
 ```bash
 # Get LoadBalancer IP
-KONG_PROXY=$(kubectl get svc kong-proxy -n kong \
+KONG_PROXY=$(kubectl get svc kong-proxy-dbless -n kong \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 # Test the route
@@ -569,10 +573,22 @@ kubectl port-forward svc/kong-admin -n kong 8001:8001 &
 # List services
 curl http://localhost:8001/services
 
+# Add a new service
+curl -i -X POST http://localhost:8001/services \
+  --data 'name=example-service' \
+  --data 'url=http://httpbin.org'
+
 # Add a new route
 curl -i -X POST http://localhost:8001/services/example-service/routes \
   --data 'name=test-route' \
   --data 'paths[]=/test'
+
+# Get LoadBalancer IP
+KONG_PROXY=$(kubectl get svc kong-proxy -n kong \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+# Test the route
+curl -i http://${KONG_PROXY}/test
 ```
 
 ## Conclusion
