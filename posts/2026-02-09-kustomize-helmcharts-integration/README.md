@@ -20,7 +20,7 @@ This approach keeps your configurations DRY (Don't Repeat Yourself) while mainta
 
 ## Basic helmCharts configuration
 
-The helmCharts field in kustomization.yaml lets you specify Helm charts to inflate during the build process. Here's a basic example that deploys the nginx-ingress chart:
+The helmCharts field in kustomization.yaml lets you specify Helm charts to inflate during the build process. Here's a basic example that deploys the ingress-nginx chart:
 
 ```yaml
 # kustomization.yaml
@@ -40,7 +40,7 @@ helmCharts:
         type: LoadBalancer
 ```
 
-When you run `kustomize build`, Kustomize downloads the chart, renders it with the provided values, and includes the resulting manifests in the output. This happens automatically without requiring a separate Helm installation.
+When you run `kustomize build --enable-helm`, Kustomize downloads the chart, renders it with the provided values, and includes the resulting manifests in the output. Helm v3 must be installed and available to Kustomize, because Kustomize runs Helm as a subprocess for chart inflation.
 
 ## Using values files with helmCharts
 
@@ -58,6 +58,11 @@ helmCharts:
   releaseName: prometheus
   namespace: monitoring
   valuesFile: prometheus-values.yaml
+  additionalValuesFiles:
+  - prometheus-production-values.yaml
+  valuesInline:
+    server:
+      replicaCount: 2
 ```
 
 ```yaml
@@ -74,7 +79,7 @@ alertmanager:
     size: 10Gi
 ```
 
-You can also combine multiple values files or mix files with inline values. Kustomize merges them in order, with later values overriding earlier ones.
+You can also combine multiple values files or mix files with inline values by using `additionalValuesFiles` and `valuesInline`. Values files are passed to Helm in order, and inline values are combined according to Kustomize's `valuesMerge` setting, which defaults to `override`.
 
 ## Applying patches to Helm-generated resources
 
@@ -94,7 +99,7 @@ helmCharts:
 
 patches:
 - target:
-    kind: Deployment
+    kind: StatefulSet
     name: redis-cache-master
   patch: |-
     - op: add
@@ -108,20 +113,22 @@ patches:
           cpu: "500m"
 ```
 
-This example inflates the Redis chart and then patches the master deployment to add specific resource limits. The patch runs after chart rendering, so you can customize any aspect of the generated manifests without forking the chart.
+This example inflates the Redis chart and then patches the master StatefulSet to add specific resource limits. The patch runs after chart rendering, so you can customize any aspect of the generated manifests without forking the chart.
 
-## Using local chart archives
+## Using local charts
 
-You can also reference local Helm chart archives instead of remote repositories. This is useful for charts that aren't published publicly or when you need to work offline:
+You can also reference local Helm charts instead of remote repositories. This is useful for charts that aren't published publicly or when you need to work offline:
 
 ```yaml
 # kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+helmGlobals:
+  chartHome: ./charts  # Directory containing unpacked chart directories
+
 helmCharts:
 - name: myapp
-  chartHome: ./charts  # Directory containing chart archives
   releaseName: myapp-prod
   namespace: production
   valuesInline:
@@ -130,11 +137,11 @@ helmCharts:
       tag: v2.1.0
 ```
 
-Place your chart archive (myapp-1.0.0.tgz) in the charts directory. Kustomize will extract and render it just like it would with a remote chart.
+Place the unpacked chart in `charts/myapp`. Kustomize will render it just like it would with a chart that it had pulled from a remote repository.
 
 ## Managing multiple environments with helmCharts
 
-A common pattern uses base and overlay directories to manage environment-specific configurations. The base defines the chart reference while overlays customize it:
+A common pattern uses base and overlay directories to manage environment-specific configurations. The base defines the chart reference while overlays patch the rendered output:
 
 ```yaml
 # base/kustomization.yaml
@@ -155,20 +162,26 @@ helmCharts:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
-helmCharts:
-- name: postgresql
-  valuesInline:
-    primary:
-      persistence:
-        size: 500Gi
-    readReplicas:
-      replicaCount: 3
+patches:
+- target:
+    kind: StatefulSet
+    labelSelector: app.kubernetes.io/instance=postgres,app.kubernetes.io/component=primary
+  patch: |-
+    - op: add
+      path: /spec/template/spec/containers/0/resources
+      value:
+        requests:
+          memory: "512Mi"
+          cpu: "250m"
+        limits:
+          memory: "1Gi"
+          cpu: "1"
 ```
 
-The production overlay inherits the base chart configuration but overrides specific values. This keeps your configurations consistent across environments while allowing necessary differences.
+The production overlay inherits the rendered chart output from the base and then applies production-specific patches. Kustomize does not merge partial `helmCharts` entries from overlays into a chart definition in a base, so use patches for post-render changes or provide a complete chart entry in each overlay that needs different Helm values.
 
 ## Combining multiple charts
 
@@ -198,8 +211,10 @@ helmCharts:
   releaseName: cache
   namespace: backend
 
-commonLabels:
-  app.kubernetes.io/part-of: myapp
+labels:
+- pairs:
+    app.kubernetes.io/part-of: myapp
+  includeSelectors: true
 ```
 
 All charts render during the same build, and you can apply common transformations like labels or namespace changes across all generated resources.
@@ -231,9 +246,9 @@ This reduces repetition when managing multiple charts with similar configuration
 
 If Kustomize cannot find your chart, verify that the repository URL is accessible and the version exists. Use `helm search repo` to confirm chart availability.
 
-When patches don't apply correctly, remember that Kustomize uses the post-rendered resource names. If the chart uses name templates, you may need to check the rendered output first with `kustomize build` to identify the correct target names.
+When patches don't apply correctly, remember that Kustomize uses the post-rendered resource names. If the chart uses name templates, you may need to check the rendered output first with `kustomize build --enable-helm` to identify the correct target names.
 
-For performance issues with large charts, consider caching chart downloads or using local archives. Kustomize re-downloads charts on every build unless they're locally available.
+For performance issues with large charts, consider keeping pulled charts locally or using local chart directories. Kustomize pulls charts only when they are not already available under the configured chart home.
 
 ## Conclusion
 
