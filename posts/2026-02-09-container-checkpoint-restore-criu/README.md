@@ -16,7 +16,7 @@ In Kubernetes environments, checkpoint and restore improves workload mobility, r
 
 CRIU captures everything about a running process including memory contents, open files, network connections, and process tree structure. The checkpoint creates a collection of image files representing the complete container state at a specific moment.
 
-Unlike traditional container stop and start operations that reinitialize applications from scratch, restore brings containers back to their exact previous state. Applications continue from the instruction they were executing when checkpointed. Open database connections remain valid, in-flight transactions continue, and cached data persists in memory.
+Unlike traditional container stop and start operations that reinitialize applications from scratch, restore brings containers back to their exact previous state. Applications continue from the instruction they were executing when checkpointed. Cached data persists in memory, and local file handles can be restored when the same files are available. Network connections require special runtime and CRIU options and may still need application-level reconnection logic.
 
 This fundamentally changes how you think about container lifecycle management. Instead of stateless containers that must reinitialize on every restart, you gain the ability to pause and resume containers like virtual machines.
 
@@ -35,7 +35,7 @@ sudo yum install -y criu
 
 # Verify installation and kernel support
 sudo criu check
-sudo criu check --all
+sudo criu check --extra
 ```
 
 The check command validates that your kernel includes the necessary features for checkpointing. If checks fail, you may need to upgrade your kernel or enable specific kernel options.
@@ -50,14 +50,9 @@ grep CONFIG_CHECKPOINT_RESTORE /boot/config-$(uname -r)
 
 ## Configuring containerd for Checkpoint Support
 
-Containerd needs explicit configuration to enable checkpoint and restore functionality. Edit `/etc/containerd/config.toml` to add checkpoint support.
+Containerd's CRI plugin must be backed by a runtime that implements checkpoint operations, such as a recent runc or crun build with CRIU installed on the node. There is no separate `enable_checkpoint` switch in containerd's CRI configuration, but you should verify that Kubernetes is using the expected OCI runtime.
 
 ```toml
-version = 2
-
-[plugins."io.containerd.grpc.v1.cri"]
-  enable_cdi = true
-
 [plugins."io.containerd.grpc.v1.cri".containerd]
   default_runtime_name = "runc"
 
@@ -81,50 +76,40 @@ sudo systemctl restart containerd
 
 ## Performing Manual Container Checkpoints
 
-Before implementing Kubernetes automation, understand the basic checkpoint and restore workflow using crictl and runc directly.
+Before implementing Kubernetes automation, understand the basic checkpoint and restore workflow using containerd directly. These `ctr` commands are useful for node-level testing, but `ctr` is an administrative/debug client and restored containers are not automatically managed as Kubernetes Pods.
 
 ```bash
-# List running containers
-sudo crictl ps
+# List containerd containers in the Kubernetes namespace
+sudo ctr --namespace k8s.io containers list
 
-# Get container ID for checkpoint
-CONTAINER_ID=$(sudo crictl ps --name nginx -q)
+# Pick the containerd container ID for the workload
+CONTAINER_ID="your-containerd-container-id"
 
-# Create checkpoint directory
-sudo mkdir -p /var/lib/containerd/checkpoints
+# Checkpoint the container and its writable layer
+sudo ctr --namespace k8s.io containers checkpoint \
+  --rw --task ${CONTAINER_ID} checkpoint/${CONTAINER_ID}:cr-1
 
-# Checkpoint the container
-sudo runc --root /run/containerd/runc/k8s.io checkpoint \
-  --image-path /var/lib/containerd/checkpoints/${CONTAINER_ID} \
-  ${CONTAINER_ID}
-
-# Verify checkpoint files were created
-ls -lh /var/lib/containerd/checkpoints/${CONTAINER_ID}/
-# Should see files like: core.img, pagemap.img, pages.img, etc.
+# Verify the checkpoint image was registered
+sudo ctr --namespace k8s.io images list 'name==checkpoint/'${CONTAINER_ID}':cr-1'
 ```
 
-The checkpoint captures all container state. Memory pages go into pages.img, while metadata about open files and network sockets goes into descriptors and other files.
+The checkpoint captures the process state and, with `--rw`, the container's writable filesystem changes. The image content includes CRIU data such as memory pages and metadata for files, namespaces, and other process resources.
 
 ## Restoring Containers from Checkpoints
 
-Restoring a container brings it back to the exact state it was in when checkpointed.
+Restoring a checkpoint creates a new container from the checkpoint image. When you restore through containerd directly, Kubernetes does not know about the restored container, so use this flow for controlled tests or tooling that also updates scheduling, networking, and ownership.
 
 ```bash
-# Stop the original container first
-sudo crictl stop ${CONTAINER_ID}
-sudo crictl rm ${CONTAINER_ID}
-
-# Restore from checkpoint
-sudo runc --root /run/containerd/runc/k8s.io restore \
-  --image-path /var/lib/containerd/checkpoints/${CONTAINER_ID} \
-  --bundle /run/containerd/io.containerd.runtime.v2.task/k8s.io/${CONTAINER_ID} \
-  ${CONTAINER_ID}
+# Restore from checkpoint with a new container ID
+RESTORED_ID="${CONTAINER_ID}-restored"
+sudo ctr --namespace k8s.io containers restore \
+  --rw --live ${RESTORED_ID} checkpoint/${CONTAINER_ID}:cr-1
 
 # Verify container is running
-sudo crictl ps | grep ${CONTAINER_ID}
+sudo ctr --namespace k8s.io tasks list | grep ${RESTORED_ID}
 ```
 
-Applications resume execution from where they were checkpointed. Network connections and file handles remain open, and memory contents are exactly as they were.
+Applications resume execution from where they were checkpointed. Memory contents are restored, and file handles can be restored when the same backing files are available. Established network connections require the runtime to use CRIU's TCP restore options and are still fragile across node moves.
 
 ## Implementing Kubernetes Checkpoint Automation
 
@@ -154,9 +139,9 @@ spec:
         - /bin/sh
         - -c
         - |
-          apk add --no-cache criu
+          apk add --no-cache curl
           while true; do
-            # Checkpoint logic here
+            # Call the kubelet checkpoint API for selected Pods on this node
             sleep 300
           done
         securityContext:
@@ -164,27 +149,28 @@ spec:
         volumeMounts:
         - name: containerd-root
           mountPath: /run/containerd
-        - name: checkpoints
-          mountPath: /var/lib/containerd/checkpoints
-        - name: runc-root
-          mountPath: /run/runc
+        - name: kubelet-checkpoints
+          mountPath: /var/lib/kubelet/checkpoints
+        - name: kubelet-pki
+          mountPath: /var/lib/kubelet/pki
+          readOnly: true
       volumes:
       - name: containerd-root
         hostPath:
           path: /run/containerd
-      - name: checkpoints
+      - name: kubelet-checkpoints
         hostPath:
-          path: /var/lib/containerd/checkpoints
-      - name: runc-root
+          path: /var/lib/kubelet/checkpoints
+      - name: kubelet-pki
         hostPath:
-          path: /run/runc
+          path: /var/lib/kubelet/pki
 ```
 
 ## Using Kubernetes Forensic Container Checkpointing
 
-Kubernetes 1.25 introduced built-in forensic container checkpointing as an alpha feature. This enables checkpoint creation via kubectl without manual runc commands.
+Kubernetes 1.25 introduced built-in forensic container checkpointing as an alpha feature. In Kubernetes 1.30 and later, the `ContainerCheckpoint` feature gate is beta and enabled by default. The kubelet exposes this through its checkpoint API; upstream Kubernetes does not provide a built-in `kubectl checkpoint` command.
 
-Enable the feature gate on your cluster. For kubeadm clusters, add to the kubelet configuration.
+For Kubernetes 1.25 through 1.29, enable the feature gate on your cluster. For kubeadm clusters, add it to the kubelet configuration.
 
 ```yaml
 # /var/lib/kubelet/config.yaml
@@ -200,23 +186,29 @@ Restart kubelet on all nodes.
 sudo systemctl restart kubelet
 ```
 
-Create a checkpoint using kubectl.
+Create a checkpoint by calling the kubelet checkpoint endpoint on the node that runs the Pod. Use kubelet credentials that are authorized for this endpoint.
 
 ```bash
 # Checkpoint a container
-kubectl checkpoint create pod-name container-name
+NAMESPACE="default"
+POD_NAME="pod-name"
+CONTAINER_NAME="container-name"
+sudo curl --cert /path/to/kubelet-client.crt \
+  --key /path/to/kubelet-client.key \
+  -k -X POST \
+  "https://127.0.0.1:10250/checkpoint/${NAMESPACE}/${POD_NAME}/${CONTAINER_NAME}?timeout=60"
 
 # Checkpoints are stored at /var/lib/kubelet/checkpoints/ by default
 sudo ls -lh /var/lib/kubelet/checkpoints/
 
 # Copy checkpoint to another node for restore
-sudo scp -r /var/lib/kubelet/checkpoints/checkpoint-pod-name_container-name_* \
+sudo scp /var/lib/kubelet/checkpoints/checkpoint-${POD_NAME}_${NAMESPACE}-${CONTAINER_NAME}-*.tar \
   node-2:/var/lib/kubelet/checkpoints/
 ```
 
 ## Implementing Pre-Initialized Container Images
 
-One powerful use case for CRIU is creating pre-initialized container images. Instead of running initialization code on every container start, initialize once, checkpoint, and restore from that state.
+One powerful use case for CRIU is creating pre-initialized container state. Instead of running initialization code on every container start, initialize once, checkpoint, and restore from that state. The checkpoint must be restored by a runtime that understands the checkpoint format; copying checkpoint files into a Docker image does not make the image start from that state by itself.
 
 ```bash
 # Start a container with expensive initialization
@@ -226,47 +218,38 @@ docker run -d --name init-demo myapp:latest
 sleep 30
 
 # Checkpoint the initialized container
-sudo runc checkpoint --image-path /tmp/init-checkpoint init-demo
+docker checkpoint create init-demo initialized
 
-# Create a new container image including the checkpoint
-cat > Dockerfile.checkpoint <<EOF
-FROM myapp:latest
-COPY init-checkpoint /var/lib/checkpoint/
-EOF
-
-docker build -t myapp:pre-initialized -f Dockerfile.checkpoint .
-
-# Push to registry
-docker push myregistry.io/myapp:pre-initialized
+# Restore from that checkpoint on the same Docker host
+docker start --checkpoint initialized init-demo
 ```
 
-Containers using the pre-initialized image start in milliseconds instead of waiting for initialization code to run.
+Containers restored from a pre-initialized checkpoint can skip application initialization, but the exact startup time depends on checkpoint size, storage speed, and runtime support.
 
 ## Migrating Containers Between Nodes
 
-Live migration moves running containers between nodes without stopping applications. This enables zero-downtime node maintenance.
+Checkpoint-based migration moves container state between nodes with a short pause while the checkpoint is created, transferred, and restored. It is not zero-downtime by itself; production migration also needs orchestration for Pod scheduling, IP address changes, Service endpoints, and storage.
 
 ```bash
-# On source node, checkpoint the container
+# On source node, checkpoint the container through the kubelet API
 SOURCE_NODE="node-1"
 TARGET_NODE="node-2"
+NAMESPACE="default"
 POD_NAME="my-app-xyz"
-CONTAINER_ID=$(ssh ${SOURCE_NODE} "sudo crictl ps --name ${POD_NAME} -q")
+CONTAINER_NAME="app"
 
 # Create checkpoint
-ssh ${SOURCE_NODE} "sudo runc checkpoint \
-  --image-path /tmp/migration-${CONTAINER_ID} ${CONTAINER_ID}"
+ssh ${SOURCE_NODE} "sudo curl --cert /path/to/kubelet-client.crt \
+  --key /path/to/kubelet-client.key \
+  -k -X POST \
+  https://127.0.0.1:10250/checkpoint/${NAMESPACE}/${POD_NAME}/${CONTAINER_NAME}?timeout=60"
 
 # Transfer checkpoint to target node
-ssh ${SOURCE_NODE} "sudo tar -czf /tmp/checkpoint.tar.gz /tmp/migration-${CONTAINER_ID}"
-scp ${SOURCE_NODE}:/tmp/checkpoint.tar.gz ${TARGET_NODE}:/tmp/
-ssh ${TARGET_NODE} "sudo tar -xzf /tmp/checkpoint.tar.gz -C /"
+CHECKPOINT=$(ssh ${SOURCE_NODE} "sudo ls -t /var/lib/kubelet/checkpoints/checkpoint-${POD_NAME}_${NAMESPACE}-${CONTAINER_NAME}-*.tar | head -n 1")
+scp ${SOURCE_NODE}:${CHECKPOINT} ${TARGET_NODE}:/var/lib/kubelet/checkpoints/
 
-# Restore on target node
-ssh ${TARGET_NODE} "sudo runc restore \
-  --image-path /tmp/migration-${CONTAINER_ID} \
-  --bundle /run/containerd/io.containerd.runtime.v2.task/k8s.io/${CONTAINER_ID} \
-  ${CONTAINER_ID}"
+# Restore on the target node with runtime-specific tooling or an operator
+# that can recreate the Pod sandbox, networking, and storage.
 ```
 
 For production migrations, use tools like Kubernetes operators that handle pod scheduling, network reconfiguration, and storage migration automatically.
@@ -276,17 +259,18 @@ For production migrations, use tools like Kubernetes operators that handle pod s
 CRIU cannot checkpoint all container states. Certain system resources don't serialize cleanly.
 
 ```bash
-# Check if a container is checkpointable
-sudo criu check --pid $(pidof process-name)
+# Check host kernel support
+sudo criu check
+sudo criu check --extra
 
 # Common limitations:
-# - External network connections (TCP sockets to external hosts)
+# - Established TCP connections unless the runtime uses CRIU's TCP options
 # - GPU resources
 # - Hardware devices
 # - Time-sensitive operations
 ```
 
-For containers with external connections, implement application-level session management that can handle connection re-establishment after restore.
+For containers with external connections, implement application-level session management that can handle connection re-establishment after restore. The annotation below is an application convention, not a Kubernetes built-in.
 
 ```yaml
 apiVersion: v1
@@ -318,10 +302,10 @@ time sudo runc checkpoint --image-path /tmp/checkpoint ${CONTAINER_ID}
 du -sh /tmp/checkpoint
 
 # Benchmark restore time
-time sudo runc restore --image-path /tmp/checkpoint ${CONTAINER_ID}
+time sudo runc restore --image-path /tmp/checkpoint --bundle /path/to/oci-bundle ${CONTAINER_ID}
 ```
 
-Checkpoint time correlates with container memory usage. A container using 1GB of RAM typically checkpoints in 1-2 seconds, while restore takes slightly less time.
+Checkpoint time correlates with container memory usage, storage throughput, dirty page rate, and the resources CRIU must serialize. Benchmark with your own workload instead of assuming a fixed time per gigabyte.
 
 For large containers, implement incremental checkpoints that only save changed memory pages.
 
