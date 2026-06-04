@@ -14,9 +14,9 @@ This pattern is perfect for scenarios like processing specific files from a list
 
 ## Understanding Indexed Jobs
 
-When you create an indexed job, Kubernetes automatically assigns each pod a completion index through environment variables and annotations. Your application reads this index and determines which specific work item to process.
+When you create an indexed job, Kubernetes automatically assigns each pod a completion index through environment variables, annotations, labels, and the pod hostname. Your application reads this index and determines which specific work item to process.
 
-The completion index is exposed in two ways. First, through the `JOB_COMPLETION_INDEX` environment variable available inside the pod. Second, through the `batch.kubernetes.io/job-completion-index` annotation on the pod itself.
+The completion index is exposed in several ways. First, through the `JOB_COMPLETION_INDEX` environment variable available inside the pod. Second, through the `batch.kubernetes.io/job-completion-index` annotation on the pod itself. Kubernetes v1.28 and later also add the `batch.kubernetes.io/job-completion-index` pod label by default, and indexed Job pods use deterministic hostnames in the form `$(job-name)-$(index)`.
 
 ## Creating a Basic Indexed Job
 
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     main()
 ```
 
-This approach ensures each file gets processed exactly once, with no overlap between pods. You know upfront how many files you have, so you set completions to match.
+This approach assigns one file to each completion index, with no intentional overlap between pods. In rare failure scenarios, Kubernetes can start more than one pod for the same index, so the processing should be idempotent. You know upfront how many files you have, so you set completions to match.
 
 ## Database Partition Processing
 
@@ -281,14 +281,14 @@ You can track which indexes have completed and which are still running:
 kubectl get job data-processor
 
 # See which pods have completed
-kubectl get pods -l job-name=data-processor \
+kubectl get pods -l batch.kubernetes.io/job-name=data-processor \
   --sort-by=.metadata.annotations.batch\.kubernetes\.io/job-completion-index
 
-# Check logs for a specific index
-kubectl logs -l job-name=data-processor,batch.kubernetes.io/job-completion-index=5
+# Check logs for a specific index on Kubernetes v1.28 and later
+kubectl logs -l batch.kubernetes.io/job-name=data-processor,batch.kubernetes.io/job-completion-index=5
 
 # Get detailed status of all indexes
-kubectl get pods -l job-name=data-processor -o json | \
+kubectl get pods -l batch.kubernetes.io/job-name=data-processor -o json | \
   jq -r '.items[] | "\(.metadata.annotations["batch.kubernetes.io/job-completion-index"]): \(.status.phase)"'
 ```
 
@@ -329,4 +329,4 @@ spec:
           ./process.sh "$WORK_ITEM"
 ```
 
-Indexed jobs give you precise control over parallel processing when you know exactly how many work items you have. Each pod gets a unique assignment, making it perfect for data parallelization, batch processing, and distributed computations where static work assignment makes sense.
+Indexed jobs give you precise control over parallel processing when you know exactly how many work items you have. Each completion index gets a unique assignment, making it perfect for data parallelization, batch processing, and distributed computations where static work assignment makes sense.
