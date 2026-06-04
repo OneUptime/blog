@@ -8,7 +8,7 @@ Description: Deploy CephFS shared filesystem with Rook operator for ReadWriteMan
 
 ---
 
-CephFS provides a POSIX-compliant shared filesystem built on Ceph's distributed object storage. Unlike Ceph RBD which only supports ReadWriteOnce access, CephFS enables ReadWriteMany mode where multiple pods across different nodes can simultaneously read and write to the same volume. This makes CephFS ideal for shared configuration, log aggregation, and content management workloads.
+CephFS provides a POSIX-compliant shared filesystem built on Ceph's distributed object storage. Unlike typical filesystem-backed Ceph RBD volumes, which are optimized for ReadWriteOnce pod access, CephFS enables ReadWriteMany mode where multiple pods across different nodes can simultaneously read and write to the same volume. This makes CephFS ideal for shared configuration, log aggregation, and content management workloads.
 
 ## CephFS Architecture
 
@@ -218,13 +218,14 @@ Set quotas on CephFS directories to limit storage consumption.
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- bash
 
 # Set quota on a directory (10GB limit)
-ceph fs set max_bytes /volumes/csi/csi-vol-123 10737418240
+setfattr -n ceph.quota.max_bytes -v 10737418240 /volumes/csi/csi-vol-123
 
 # Set file count quota
-ceph fs set max_files /volumes/csi/csi-vol-123 100000
+setfattr -n ceph.quota.max_files -v 100000 /volumes/csi/csi-vol-123
 
 # View quotas
-ceph fs get myfs
+getfattr -n ceph.quota.max_bytes /volumes/csi/csi-vol-123
+getfattr -n ceph.quota.max_files /volumes/csi/csi-vol-123
 ```
 
 ## Subvolume Groups
@@ -253,7 +254,7 @@ parameters:
   clusterID: rook-ceph
   fsName: myfs
   pool: myfs-data0
-  subvolumGroup: app-group
+  subvolumeGroup: app-group
   # ... other parameters ...
 ```
 
@@ -324,16 +325,16 @@ Prometheus metrics for CephFS:
 
 ```promql
 # MDS daemon count
-ceph_mds_up
+count(ceph_mds_metadata)
 
 # Client count
-ceph_mds_sessions
+ceph_mds_sessions_session_count
 
 # Metadata pool usage
-ceph_pool_used_bytes{pool="myfs-metadata"}
+ceph_pool_bytes_used * on(pool_id) group_left(name) ceph_pool_metadata{name="myfs-metadata"}
 
 # Data pool usage
-ceph_pool_used_bytes{pool="myfs-data0"}
+ceph_pool_bytes_used * on(pool_id) group_left(name) ceph_pool_metadata{name="myfs-data0"}
 ```
 
 ## Backup and Recovery
@@ -386,7 +387,7 @@ kubectl logs -n rook-ceph -l app=rook-ceph-mds
 # Verify filesystem health
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph fs status
 
-# Check for degraded MDSsudo
+# Check for degraded MDS
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph mds stat
 
 # View client issues
