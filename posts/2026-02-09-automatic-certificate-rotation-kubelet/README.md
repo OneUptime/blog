@@ -17,7 +17,7 @@ This guide demonstrates how to enable and configure automatic certificate rotati
 The kubelet uses two types of certificates:
 
 1. **Client certificate**: Authenticates kubelet to API server (rotates automatically)
-2. **Server certificate**: Authenticates API connections to kubelet (manual rotation)
+2. **Server certificate**: Authenticates API connections to kubelet (can rotate with `serverTLSBootstrap`, but serving CSRs require manual approval or a custom approver)
 
 Client certificate workflow:
 - kubelet requests certificate from API server
@@ -47,7 +47,7 @@ Enable rotation during cluster initialization:
 
 ```yaml
 # kubeadm-config.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 ---
 apiVersion: kubelet.config.k8s.io/v1beta1
@@ -74,10 +74,10 @@ sudo systemctl restart kubelet
 
 ## Enabling Certificate Approval
 
-The API server must approve certificate requests. Enable automatic approval:
+The API server must authenticate bootstrap tokens, and the controller manager handles CSR approval and signing when the correct RBAC permissions are in place. Enable bootstrap token authentication if you are not using kubeadm defaults:
 
 ```yaml
-# Enable auto-approval in API server
+# Enable bootstrap token authentication in API server
 # /etc/kubernetes/manifests/kube-apiserver.yaml
 spec:
   containers:
@@ -87,13 +87,10 @@ spec:
     # ... other flags
 ```
 
-Deploy certificate approver controller:
+Check the certificate approving controller:
 
 ```bash
-# Check if auto-approver is running
-kubectl get pods -n kube-system | grep certificate
-
-# The controller manager handles approval by default
+# The controller manager includes the CSR approving controller by default
 kubectl get pods -n kube-system -l component=kube-controller-manager
 ```
 
@@ -105,7 +102,7 @@ Check kubelet configuration:
 # View current kubelet config
 cat /var/lib/kubelet/config.yaml | grep rotateCertificates
 
-# Check kubelet process
+# Check kubelet process if rotation was configured via the deprecated flag
 ps aux | grep kubelet | grep rotate-certificates
 
 # View kubelet logs
@@ -135,7 +132,7 @@ Track CSRs in the cluster:
 kubectl get csr
 
 # Filter for kubelet client certificates
-kubectl get csr | grep kubelet-client
+kubectl get csr -o wide | grep kubernetes.io/kube-apiserver-client-kubelet
 
 # View details of a specific CSR
 kubectl describe csr <csr-name>
@@ -170,8 +167,10 @@ kubectl certificate deny <csr-name>
 Approve all pending kubelet CSRs:
 
 ```bash
-# Approve all pending node CSRs
-kubectl get csr | grep Pending | awk '{print $1}' | xargs kubectl certificate approve
+# Approve pending kubelet client CSRs
+kubectl get csr -o jsonpath='{range .items[?(@.spec.signerName=="kubernetes.io/kube-apiserver-client-kubelet")]}{.metadata.name}{"\t"}{.status.conditions[*].type}{"\n"}{end}' \
+  | awk '$2 == "" {print $1}' \
+  | xargs -r kubectl certificate approve
 ```
 
 ## Setting Up Automatic Approval
@@ -186,7 +185,7 @@ metadata:
   name: auto-approve-csrs-for-group
 subjects:
 - kind: Group
-  name: system:nodes
+  name: system:bootstrappers
   apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
@@ -266,45 +265,46 @@ data:
       rules:
       - alert: KubeletCertificateExpiringSoon
         expr: |
-          (kubelet_certificate_manager_client_expiration_seconds - time()) / 86400 < 30
+          kubelet_certificate_manager_client_ttl_seconds < 30 * 24 * 60 * 60
         for: 1h
         labels:
           severity: warning
         annotations:
           summary: "kubelet certificate expiring soon"
-          description: "kubelet client certificate on node {{ $labels.node }} expires in {{ $value | humanizeDuration }}"
+          description: "kubelet client certificate on {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
 
       - alert: KubeletCertificateExpiringCritical
         expr: |
-          (kubelet_certificate_manager_client_expiration_seconds - time()) / 86400 < 7
+          kubelet_certificate_manager_client_ttl_seconds < 7 * 24 * 60 * 60
         for: 1h
         labels:
           severity: critical
         annotations:
           summary: "kubelet certificate expiring very soon"
-          description: "kubelet client certificate on node {{ $labels.node }} expires in {{ $value | humanizeDuration }}"
+          description: "kubelet client certificate on {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
 ```
 
 Query metrics:
 
 ```promql
 # Days until certificate expiration
-(kubelet_certificate_manager_client_expiration_seconds - time()) / 86400
+kubelet_certificate_manager_client_ttl_seconds / 86400
 
 # Certificates expiring within 30 days
-(kubelet_certificate_manager_client_expiration_seconds - time()) / 86400 < 30
+kubelet_certificate_manager_client_ttl_seconds < 30 * 24 * 60 * 60
 ```
 
 ## Testing Certificate Rotation
 
-Force certificate rotation for testing:
+Force certificate rotation for testing on a non-production node that still has a valid bootstrap kubeconfig:
 
 ```bash
-# Backup current certificate
-sudo cp /var/lib/kubelet/pki/kubelet-client-current.pem /tmp/kubelet-client-backup.pem
+# Confirm bootstrap credentials are available before removing the active client certificate
+test -f /etc/kubernetes/bootstrap-kubelet.conf || test -f /var/lib/kubelet/bootstrap-kubeconfig
 
-# Delete current certificate to force rotation
-sudo rm /var/lib/kubelet/pki/kubelet-client-current.pem
+# Backup and move current certificate to force bootstrap/rotation
+sudo cp /var/lib/kubelet/pki/kubelet-client-current.pem /tmp/kubelet-client-backup.pem
+sudo mv /var/lib/kubelet/pki/kubelet-client-current.pem /tmp/kubelet-client-current.pem
 
 # Restart kubelet to trigger rotation
 sudo systemctl restart kubelet
@@ -370,22 +370,22 @@ sudo journalctl -u kubelet | grep -i rotate
 
 ## Certificate Rotation Timeline
 
-Rotation occurs at 80% of certificate lifetime:
+Rotation can occur when 30% to 10% of the certificate lifetime remains:
 
 ```text
 Certificate lifetime: 1 year (8760 hours)
-Rotation trigger: 80% = 7008 hours = 292 days
-Days before expiry: 73 days
+Rotation window: 70% to 90% elapsed = 6132 to 7884 hours
+Days before expiry: 109 to 36 days
 ```
 
-Custom certificate duration (requires API server configuration):
+Custom certificate duration (requires controller manager configuration):
 
 ```yaml
-# /etc/kubernetes/manifests/kube-apiserver.yaml
+# /etc/kubernetes/manifests/kube-controller-manager.yaml
 spec:
   containers:
   - command:
-    - kube-apiserver
+    - kube-controller-manager
     - --cluster-signing-duration=17520h  # 2 years
 ```
 
@@ -413,7 +413,7 @@ apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 # Enable automatic client certificate rotation
 rotateCertificates: true
-# Server certificate rotation (requires manual approval)
+# Server certificate rotation (requires manual approval or a custom approver)
 serverTLSBootstrap: false
 # Authentication
 authentication:
