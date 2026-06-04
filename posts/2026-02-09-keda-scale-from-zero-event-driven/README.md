@@ -14,9 +14,9 @@ Scale-to-zero is perfect for event-driven architectures where work arrives unpre
 
 ## Understanding Scale-to-Zero
 
-When a deployment scales to zero, all pods are removed and consume no cluster resources. KEDA continues monitoring the event source. When events arrive, KEDA immediately creates pods to handle them. The activation threshold determines when to scale from zero to one or more replicas.
+When a deployment scales to zero, all pods are removed and consume no cluster resources. KEDA continues monitoring the event source. When events arrive and the scaler reports activity, KEDA creates pods to handle them. The activation threshold determines when to scale from zero to one or more replicas.
 
-This differs from traditional HPA, which requires at least one pod to collect metrics. KEDA monitors external event sources directly, enabling true zero-replica operation.
+This differs from traditional resource-based HPA, which needs pod metrics from running pods. KEDA monitors external event sources directly, enabling true zero-replica operation.
 
 ## Basic Scale-to-Zero Configuration
 
@@ -45,10 +45,10 @@ spec:
       queueURL: https://sqs.us-east-1.amazonaws.com/123456789/work-queue
       queueLength: "10"
       awsRegion: us-east-1
-      activationQueueLength: "1"  # Scale from zero when any message exists
+      activationQueueLength: "0"  # Scale from zero when any message exists
 ```
 
-With minReplicaCount at 0, the deployment scales to zero when the queue is empty for 5 minutes (cooldownPeriod), and scales up immediately when a message appears.
+With minReplicaCount at 0, the deployment scales to zero when the queue is empty for 5 minutes (cooldownPeriod), and scales up on the next polling interval when a message appears.
 
 ## Configuring Activation Thresholds
 
@@ -74,7 +74,7 @@ spec:
       queueName: batch-jobs
       messageCount: "20"  # Target 20 messages per pod when active
       namespace: production
-      activationMessageCount: "5"  # Activate from zero when 5+ messages exist
+      activationMessageCount: "4"  # Activate from zero when 5+ messages exist
 ```
 
 This configuration keeps the deployment at zero until at least 5 messages are in the queue. Once activated, it scales to maintain 20 messages per pod.
@@ -109,7 +109,7 @@ spec:
       offsetResetPolicy: latest
 ```
 
-When no lag exists for 10 minutes, consumers scale to zero. When lag appears, KEDA immediately creates consumer pods.
+When no lag exists for 10 minutes, consumers scale to zero. When lag exceeds the activation threshold, KEDA creates consumer pods.
 
 ## HTTP Request-Based Scaling
 
@@ -118,33 +118,50 @@ Use KEDA HTTP Add-on to scale web services from zero based on incoming requests.
 ```bash
 # Install KEDA HTTP Add-on
 
-helm install http-add-on kedacore/keda-add-on-http \
+helm install http-add-on kedacore/keda-add-ons-http \
   --namespace keda \
-  --set interceptor.replicas=2
+  --set interceptor.replicas.min=2 \
+  --set interceptor.replicas.max=10
 ```
 
-Configure HTTPScaledObject for scale-to-zero HTTP handling.
+Configure an InterceptorRoute and ScaledObject for scale-to-zero HTTP handling.
 
 ```yaml
-apiVersion: http.keda.sh/v1alpha1
-kind: HTTPScaledObject
+apiVersion: http.keda.sh/v1beta1
+kind: InterceptorRoute
+metadata:
+  name: web-service
+  namespace: services
+spec:
+  target:
+    service: web-service
+    port: 8080
+  rules:
+  - hosts:
+    - web-service.example.com
+  scalingMetric:
+    requestRate:
+      targetValue: 100  # Target 100 requests per second per pod
+      window: 1m
+      granularity: 1s
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
 metadata:
   name: web-service-scaler
   namespace: services
 spec:
   scaleTargetRef:
     name: web-service
-    service: web-service
-    port: 8080
   minReplicaCount: 0
   maxReplicaCount: 30
+  cooldownPeriod: 300
 
-  replicas: 3  # Scale to 3 replicas on activation
-
-  scalingMetric:
-    requestRate:
-      targetValue: 100  # Target 100 requests per second per pod
-      granularity: 1s
+  triggers:
+  - type: external-push
+    metadata:
+      scalerAddress: keda-add-ons-http-external-scaler.keda:9090
+      interceptorRoute: web-service
 ```
 
 The HTTP interceptor queues requests while pods start, ensuring no requests are lost during scale-from-zero.
@@ -203,7 +220,7 @@ spec:
       queueURL: https://sqs.us-east-1.amazonaws.com/123456789/urgent-queue
       queueLength: "10"
       awsRegion: us-east-1
-      activationQueueLength: "1"
+      activationQueueLength: "0"
 
   advanced:
     horizontalPodAutoscalerConfig:
@@ -292,7 +309,7 @@ spec:
       queueURL: https://sqs.us-east-1.amazonaws.com/123456789/queue1
       queueLength: "20"
       awsRegion: us-east-1
-      activationQueueLength: "1"
+      activationQueueLength: "0"
 
   # Trigger 2: Azure Queue
   - type: azure-queue
@@ -302,10 +319,10 @@ spec:
       queueName: queue2
       queueLength: "20"
       accountName: storageaccount
-      activationQueueLength: "1"
+      activationQueueLength: "0"
 ```
 
-The deployment activates from zero when either event source has pending work, and scales based on the combined workload.
+The deployment activates from zero when either event source has pending work, and scales based on the trigger that requires the most replicas.
 
 ## Monitoring Scale-to-Zero Behavior
 
@@ -323,7 +340,7 @@ kubectl get events -n workers \
   --field-selector involvedObject.name=queue-worker-scaler \
   --sort-by='.lastTimestamp'
 
-# Check time at zero replicas
+# Check ScaledObject readiness condition
 kubectl get scaledobject queue-worker-scaler -n workers -o json | \
   jq '.status.conditions[] | select(.type=="Ready")'
 ```
@@ -343,10 +360,10 @@ kubectl describe hpa keda-hpa-queue-worker-scaler -n workers
 Calculate cost savings from scale-to-zero.
 
 ```bash
+#!/bin/bash
 # Track pod uptime vs downtime
 # This script estimates cost savings
 
-#!/bin/bash
 NAMESPACE="workers"
 DEPLOYMENT="queue-worker"
 
@@ -388,11 +405,9 @@ metadata:
 spec:
   scaleTargetRef:
     name: cache-worker
-  minReplicaCount: 0
+  idleReplicaCount: 0  # Scale down to zero when idle
+  minReplicaCount: 5   # Scale to at least 5 pods when active
   maxReplicaCount: 50
-
-  # Initial scale
-  initialReplicaCount: 5  # Start with multiple pods to handle initial burst
 
   triggers:
   - type: aws-sqs-queue
@@ -402,10 +417,10 @@ spec:
       queueURL: https://sqs.us-east-1.amazonaws.com/123456789/cache-jobs
       queueLength: "10"
       awsRegion: us-east-1
-      activationQueueLength: "1"
+      activationQueueLength: "0"
 ```
 
-Setting initialReplicaCount creates multiple pods immediately when activating from zero, providing better initial capacity.
+Setting `idleReplicaCount: 0` with a higher `minReplicaCount` scales down to zero when idle and creates multiple pods when activating from zero, providing better initial capacity.
 
 ## Conclusion
 
