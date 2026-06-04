@@ -16,7 +16,7 @@ Istio uses SPIFFE (Secure Production Identity Framework For Everyone) identities
 
 By default, Istio CA (istiod) signs certificates with a self-signed root. Certificates have a 24-hour lifetime and rotate automatically before expiry. This works well for development but production environments often require integration with enterprise CAs.
 
-Three integration approaches exist: using Kubernetes CA, plugging in an external CA like cert-manager, or using a custom CA plugin. This guide covers all three.
+Three integration approaches exist: plugging in CA certificates through the `cacerts` secret, using a custom CA through the Kubernetes CSR API, or delegating workload signing to cert-manager's `istio-csr` agent. This guide covers all three.
 
 ## Prerequisites
 
@@ -27,49 +27,79 @@ istioctl version
 kubectl get configmap istio-ca-root-cert -n istio-system -o yaml
 ```
 
-The configmap contains the root certificate that workloads trust. You'll replace this when integrating a custom CA.
+The configmap contains the root certificate that workloads trust. Istio normally updates this from the configured CA material; do not edit it directly except as part of a planned root transition.
 
-## Using Kubernetes Built-in CA
+## Using Kubernetes CSR API
 
-The simplest integration uses Kubernetes' built-in CA. Configure Istio to request certificates from the Kubernetes API:
+The Kubernetes CSR integration lets Istio request workload certificates through the Kubernetes certificates API. A signer such as cert-manager must be configured to approve and sign CSRs for the signer name you choose:
 
 ```yaml
-# istio-k8s-ca.yaml
+# istio-k8s-csr-ca.yaml
 
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 metadata:
-  name: istio-k8s-ca
+  name: istio-k8s-csr-ca
   namespace: istio-system
 spec:
-  meshConfig:
-    # Use Kubernetes CA for cert signing
-    ca:
-      address: kubernetes.default:443
   values:
-    global:
-      # Enable CA integration
-      pilotCertProvider: kubernetes
+    pilot:
+      env:
+        # Forward workload CSRs to the Kubernetes certificates API
+        EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API
+  components:
+    pilot:
+      k8s:
+        env:
+        - name: CERT_SIGNER_DOMAIN
+          value: clusterissuers.cert-manager.io
+        - name: PILOT_CERT_PROVIDER
+          value: k8s.io/clusterissuers.cert-manager.io/istio-system
+        overlays:
+        - kind: ClusterRole
+          name: istiod-clusterrole-istio-system
+          patches:
+          - path: rules[-1]
+            value: |
+              apiGroups:
+              - certificates.k8s.io
+              resourceNames:
+              - clusterissuers.cert-manager.io/istio-system
+              resources:
+              - signers
+              verbs:
+              - approve
+  meshConfig:
+    defaultConfig:
+      proxyMetadata:
+        ISTIO_META_CERT_SIGNER: istio-system
+    caCertificates:
+    - pem: |
+        -----BEGIN CERTIFICATE-----
+        <root certificate for the istio-system signer>
+        -----END CERTIFICATE-----
+      certSigners:
+      - clusterissuers.cert-manager.io/istio-system
 ```
 
 ```bash
-istioctl install -f istio-k8s-ca.yaml
+istioctl install -f istio-k8s-csr-ca.yaml
 ```
 
-Verify certificates come from Kubernetes CA:
+Verify certificates come from the configured signer:
 
 ```bash
 kubectl exec <pod-name> -c istio-proxy -- openssl s_client -showcerts -connect backend:8080 < /dev/null 2>&1 | openssl x509 -text -noout | grep Issuer
 ```
 
-The issuer should show Kubernetes' cluster CA.
+The issuer should match the CA behind the Kubernetes CSR signer.
 
 ## Integrating with cert-manager
 
-cert-manager provides a robust certificate management solution. First, install cert-manager:
+cert-manager provides a robust certificate management solution. For Istio workload certificates, use the `istio-csr` agent so Envoy sidecars request certificates from cert-manager. First, install cert-manager:
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 Create a ClusterIssuer for your organization's CA:
@@ -109,10 +139,10 @@ Configure cert-manager to issue certificates for Istio:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: cacerts
+  name: istio-ca
   namespace: istio-system
 spec:
-  secretName: cacerts
+  secretName: istio-ca
   duration: 720h # 30 days
   renewBefore: 168h # Renew 7 days before expiry
   commonName: istio-ca
@@ -132,7 +162,25 @@ spec:
 kubectl apply -f istio-cert-manager.yaml
 ```
 
-Update Istio to use cert-manager certificates:
+Install `istio-csr` and update Istio to send workload CSRs to it:
+
+```bash
+kubectl get -n istio-system secret istio-ca -o go-template='{{index .data "tls.crt"}}' | base64 -d > ca.pem
+kubectl create secret generic -n cert-manager istio-root-ca --from-file=ca.pem=ca.pem
+
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
+  --install \
+  --namespace cert-manager \
+  --wait \
+  --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem" \
+  --set "app.certmanager.issuer.name=istio-ca" \
+  --set "app.certmanager.issuer.kind=ClusterIssuer" \
+  --set "app.certmanager.issuer.group=cert-manager.io" \
+  --set "volumeMounts[0].name=root-ca" \
+  --set "volumeMounts[0].mountPath=/var/run/secrets/istio-csr" \
+  --set "volumes[0].name=root-ca" \
+  --set "volumes[0].secret.secretName=istio-root-ca"
+```
 
 ```yaml
 # istio-external-ca.yaml
@@ -142,17 +190,16 @@ metadata:
   name: istio-external-ca
   namespace: istio-system
 spec:
-  meshConfig:
-    # Configure certificate options
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_CERT_SIGNER: cert-manager
+  values:
+    global:
+      # Send workload CSR requests to cert-manager istio-csr
+      caAddress: cert-manager-istio-csr.cert-manager.svc:443
   components:
     pilot:
       k8s:
         env:
-        # Tell istiod to read CA from secret
-        - name: CITADEL_ENABLE_CA_SERVER
+        # Disable istiod's built-in CA server
+        - name: ENABLE_CA_SERVER
           value: "false"
 ```
 
@@ -160,7 +207,7 @@ spec:
 istioctl install -f istio-external-ca.yaml
 ```
 
-Istiod now reads certificates from the cacerts secret that cert-manager maintains.
+Istio agents now request workload certificates from `istio-csr`, which signs them through cert-manager.
 
 ## Configuring Certificate Lifetime and Rotation
 
@@ -174,27 +221,21 @@ metadata:
   name: istio-cert-rotation
   namespace: istio-system
 spec:
-  meshConfig:
-    # Set default certificate TTL
-    defaultConfig:
-      # Certificate lifetime in seconds (1 hour)
-      secretTtl: 3600s
   values:
-    pilot:
-      env:
-      # Grace period for certificate rotation (25% of TTL)
-      - name: SECRET_GRACE_PERIOD_RATIO
-        value: "0.25"
-      # Maximum certificate lifetime (24 hours)
-      - name: SECRET_TTL
-        value: "86400s"
+    global:
+      proxy:
+        env:
+          # Certificate lifetime requested by istio-agent (1 hour)
+          SECRET_TTL: 1h
+          # Grace period for certificate rotation (25% of TTL)
+          SECRET_GRACE_PERIOD_RATIO: "0.25"
 ```
 
 ```bash
 istioctl install -f istio-cert-rotation.yaml
 ```
 
-With a 1-hour TTL and 25% grace period, certificates rotate every 45 minutes. The old certificate remains valid during the grace period for zero-downtime rotation.
+With a 1-hour TTL and 25% grace period, istio-agent starts renewal when about 15 minutes remain. The previous certificate remains valid until its normal expiry, so existing connections can continue while new certificates are fetched.
 
 ## Verifying Automatic Certificate Rotation
 
@@ -209,14 +250,14 @@ Wait past the rotation time and check again. The expiry time should update, indi
 Monitor certificate rotation events:
 
 ```bash
-kubectl logs -n istio-system -l app=istiod --tail=100 | grep "CSR signed"
+kubectl get certificaterequests.cert-manager.io -n istio-system -w
 ```
 
-You'll see log entries as istiod signs new certificate requests from workload proxies.
+When using `istio-csr`, you'll see CertificateRequest resources as workload proxies request new certificates.
 
 ## Integrating with Vault PKI
 
-HashiCorp Vault provides enterprise-grade certificate management. Configure Vault as Istio's CA.
+HashiCorp Vault provides enterprise-grade certificate management. Istio does not consume Vault PKI directly through `VAULT_*` environment variables; integrate Vault through cert-manager's Vault issuer and then use `istio-csr` as shown above.
 
 First, enable Vault's PKI secrets engine:
 
@@ -241,36 +282,65 @@ vault write pki/config/urls \
 vault write pki/roles/istio-ca \
   allowed_domains="istio-system.svc,cluster.local" \
   allow_subdomains=true \
+  allowed_uri_sans="spiffe://cluster.local/*" \
+  require_cn=false \
+  use_csr_sans=true \
   max_ttl=72h
 ```
 
-Configure Istio to use Vault:
+Create a cert-manager issuer that signs through Vault:
 
 ```yaml
-# istio-vault-ca.yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+# vault-issuer.yaml
+apiVersion: cert-manager.io/v1
+kind: Issuer
 metadata:
-  name: istio-vault
+  name: vault-issuer
   namespace: istio-system
 spec:
-  components:
-    pilot:
-      k8s:
-        env:
-        - name: VAULT_ADDR
-          value: "http://vault.vault.svc:8200"
-        - name: VAULT_ROLE
-          value: "istio-ca"
-        - name: VAULT_AUTH_PATH
-          value: "auth/kubernetes"
-        - name: VAULT_SIGN_CSR_PATH
-          value: "pki/sign/istio-ca"
+  vault:
+    server: http://vault.vault.svc:8200
+    path: pki/sign/istio-ca
+    auth:
+      kubernetes:
+        role: vault-issuer
+        mountPath: /v1/auth/kubernetes
+        serviceAccountRef:
+          name: vault-issuer
 ```
 
-Set up Vault Kubernetes auth so istiod can authenticate:
+Set up Vault Kubernetes auth so cert-manager can authenticate:
 
 ```bash
+kubectl create serviceaccount vault-issuer -n istio-system
+
+kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-issuer
+  namespace: istio-system
+rules:
+- apiGroups: [""]
+  resources: ["serviceaccounts/token"]
+  resourceNames: ["vault-issuer"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-issuer
+  namespace: istio-system
+subjects:
+- kind: ServiceAccount
+  name: cert-manager
+  namespace: cert-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-issuer
+EOF
+
 # Enable Kubernetes auth in Vault
 vault auth enable kubernetes
 
@@ -280,20 +350,23 @@ vault write auth/kubernetes/config \
   kubernetes_host="https://kubernetes.default.svc" \
   kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
-# Create policy for istiod
-vault policy write istio-ca - <<EOF
+# Create policy for cert-manager-issued Istio certificates
+vault policy write vault-issuer - <<EOF
 path "pki/sign/istio-ca" {
   capabilities = ["create", "update"]
 }
 EOF
 
-# Bind policy to istiod service account
-vault write auth/kubernetes/role/istio-ca \
-  bound_service_account_names=istiod \
+# Bind policy to the issuer service account
+vault write auth/kubernetes/role/vault-issuer \
+  bound_service_account_names=vault-issuer \
   bound_service_account_namespaces=istio-system \
-  policies=istio-ca \
+  audience="vault://istio-system/vault-issuer" \
+  policies=vault-issuer \
   ttl=1h
 ```
+
+Use this `vault-issuer` in the cert-manager `Certificate` or `istio-csr` issuer configuration.
 
 ## Monitoring Certificate Health
 
@@ -320,17 +393,17 @@ data:
       rules:
       - alert: IstioCertificateExpiringSoon
         expr: |
-          istio_certificate_expiration_timestamp - time() < 86400
+          citadel_server_root_cert_expiry_timestamp - time() < 86400
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "Istio certificate expiring soon"
-          description: "Certificate for {{ $labels.workload }} expires in less than 24 hours"
+          description: "The Istio root certificate expires in less than 24 hours"
 
       - alert: IstioCertificateRotationFailed
         expr: |
-          increase(pilot_xds_cds_reject[5m]) > 0
+          increase(pilot_sds_certificate_errors_total[5m]) > 0
         labels:
           severity: critical
         annotations:
@@ -340,7 +413,7 @@ data:
 
 ## Implementing Certificate Pinning
 
-For critical services, pin certificates to specific CAs:
+For external services or custom TLS origination, pin certificates to specific CAs:
 
 ```yaml
 # destinationrule-cert-pinning.yaml
@@ -353,12 +426,14 @@ spec:
   host: payment-service
   trafficPolicy:
     tls:
-      mode: ISTIO_MUTUAL
+      mode: MUTUAL
       # Pin to specific CA certificate
       caCertificates: /etc/certs/custom-ca.crt
+      clientCertificate: /etc/certs/client.crt
+      privateKey: /etc/certs/client.key
 ```
 
-Mount the CA certificate in pods:
+Mount the client certificate, key, and CA certificate in pods:
 
 ```yaml
 volumeMounts:
@@ -367,8 +442,8 @@ volumeMounts:
   readOnly: true
 volumes:
 - name: custom-ca
-  configMap:
-    name: custom-ca-cert
+  secret:
+    secretName: payment-service-client-certs
 ```
 
 ## Handling Certificate Rotation Failures
@@ -401,7 +476,8 @@ Simulate rotation during high traffic to ensure zero downtime:
 kubectl run load-generator --image=busybox --restart=Never -- /bin/sh -c "while true; do wget -q -O- http://frontend:8080/health; done"
 
 # Force certificate rotation by reducing TTL
-kubectl patch istiooperator istio -n istio-system --type=json -p='[{"op": "replace", "path": "/spec/meshConfig/defaultConfig/secretTtl", "value": "60s"}]'
+istioctl install -f istio-cert-rotation.yaml --set values.global.proxy.env.SECRET_TTL=10m
+kubectl rollout restart deployment -n default
 
 # Monitor for errors during rotation
 kubectl logs -n istio-system -l app=istiod -f | grep -i error
@@ -419,10 +495,12 @@ Rotating the root CA is more complex because all workloads must trust the new ro
 4. Remove old root from trust bundle
 
 ```bash
-# Create trust bundle with both roots
-kubectl create configmap istio-ca-root-cert \
+# Create a cacerts secret with the new intermediate and both roots
+kubectl create secret generic cacerts -n istio-system \
+  --from-file=ca-cert.pem=new-ca/ca-cert.pem \
+  --from-file=ca-key.pem=new-ca/ca-key.pem \
   --from-file=root-cert.pem=combined-roots.pem \
-  -n istio-system \
+  --from-file=cert-chain.pem=new-ca/cert-chain.pem \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Restart workloads to pick up new trust bundle
@@ -431,7 +509,7 @@ kubectl rollout restart deployment -n default
 
 ## Conclusion
 
-Automating certificate rotation in Istio ensures continuous mTLS security without manual intervention. Integrate with your organization's CA infrastructure using Kubernetes CA, cert-manager, or Vault for centralized certificate management.
+Automating certificate rotation in Istio ensures continuous mTLS security without manual intervention. Integrate with your organization's CA infrastructure using the Kubernetes CSR API, cert-manager, or Vault for centralized certificate management.
 
 Configure appropriate certificate lifetimes balancing security and rotation overhead. Short-lived certificates are more secure but rotate frequently. Monitor certificate health and set up alerts for expiry or rotation failures.
 
