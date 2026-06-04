@@ -1,14 +1,14 @@
-# How to Handle Large ConfigMaps That Exceed the 1MB etcd Size Limit
+# How to Handle Large ConfigMaps That Exceed the Kubernetes 1MiB Size Limit
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ConfigMap, Performance
 
-Description: Learn strategies for managing large configuration data in Kubernetes when ConfigMaps exceed the 1MB etcd size limit, including splitting, compression, and alternative storage approaches.
+Description: Learn strategies for managing large configuration data in Kubernetes when ConfigMaps exceed the Kubernetes 1MiB size limit, including splitting, compression, and alternative storage approaches.
 
 ---
 
-Kubernetes stores ConfigMaps in etcd, which has a default size limit of 1MB per object. When you try to store large configuration files, ML models, or bundled assets in ConfigMaps, you hit this limit. The error message is cryptic, and the solution isn't obvious.
+Kubernetes stores ConfigMaps as API objects, and ConfigMap data cannot exceed 1 MiB. When you try to store large configuration files, ML models, or bundled assets in ConfigMaps, you hit this limit. The error message is cryptic, and the solution isn't obvious.
 
 Large configurations require different approaches. You can split ConfigMaps into smaller pieces, compress data, use volume mounts from external storage, or leverage init containers to fetch configuration at runtime. Each approach has tradeoffs.
 
@@ -16,13 +16,13 @@ In this guide, you'll learn how to detect size issues, implement workarounds, an
 
 ## Understanding the Limit
 
-etcd enforces a 1MB limit on individual objects. The actual usable space is less because:
+Kubernetes enforces a 1 MiB limit on ConfigMap data. The actual usable space in a YAML manifest can be less because:
 
-- Base64 encoding increases size by ~33%
+- `binaryData` values are base64-encoded in the manifest, which increases size by ~33%
 - Kubernetes adds metadata overhead
 - YAML formatting adds whitespace
 
-Practical limit for ConfigMap data: ~750KB
+Practical limit for base64-encoded ConfigMap binary data in a manifest: ~750KB
 
 Check ConfigMap size:
 
@@ -92,7 +92,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       containers:
       - name: app
@@ -229,13 +235,20 @@ spec:
   - name: config
     persistentVolumeClaim:
       claimName: config-pvc
+  restartPolicy: OnFailure
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       containers:
       - name: app
@@ -259,7 +272,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       initContainers:
       - name: download-config
@@ -324,10 +343,10 @@ kind: ConfigMap
 metadata:
   name: model-references
 data:
-  model-url: "https://storage.googleapis.com/models/v2/model.bin"
-  weights-url: "https://storage.googleapis.com/models/v2/weights.bin"
-  config-url: "https://storage.googleapis.com/models/v2/config.json"
-  checksum-sha256: "abc123def456..."
+  MODEL_URL: "https://storage.googleapis.com/models/v2/model.bin"
+  WEIGHTS_URL: "https://storage.googleapis.com/models/v2/weights.bin"
+  CONFIG_URL: "https://storage.googleapis.com/models/v2/config.json"
+  MODEL_CHECKSUM: "abc123def456..."
 ```
 
 Application downloads on startup:
@@ -343,6 +362,7 @@ def download_model():
 
     # Download
     response = requests.get(model_url)
+    response.raise_for_status()
 
     # Verify checksum
     if hashlib.sha256(response.content).hexdigest() != checksum:
@@ -386,7 +406,13 @@ kind: Deployment
 metadata:
   name: ml-inference
 spec:
+  selector:
+    matchLabels:
+      app: ml-inference
   template:
+    metadata:
+      labels:
+        app: ml-inference
     spec:
       initContainers:
       - name: download-model
@@ -396,17 +422,18 @@ spec:
         - -c
         - |
           # Parse model info
-          MODEL_URL=$(cat /metadata/model-info.json | jq -r '.files.model')
-          VOCAB_URL=$(cat /metadata/model-info.json | jq -r '.files.vocab')
-          CONFIG_URL=$(cat /metadata/model-info.json | jq -r '.files.config')
+          MODEL_URL=$(python3 -c 'import json; print(json.load(open("/metadata/model-info.json"))["files"]["model"])')
+          VOCAB_URL=$(python3 -c 'import json; print(json.load(open("/metadata/model-info.json"))["files"]["vocab"])')
+          CONFIG_URL=$(python3 -c 'import json; print(json.load(open("/metadata/model-info.json"))["files"]["config"])')
 
           # Download files
-          gsutil cp $MODEL_URL /model/model.pb
-          gsutil cp $VOCAB_URL /model/vocab.txt
-          gsutil cp $CONFIG_URL /model/config.json
+          gsutil cp "$MODEL_URL" /model/model.pb
+          gsutil cp "$VOCAB_URL" /model/vocab.txt
+          gsutil cp "$CONFIG_URL" /model/config.json
 
           # Verify checksums
-          echo "$(cat /metadata/model-info.json | jq -r '.checksums.model' | cut -d: -f2) /model/model.pb" | sha256sum -c -
+          MODEL_SHA=$(python3 -c 'import json; print(json.load(open("/metadata/model-info.json"))["checksums"]["model"].split(":", 1)[1])')
+          echo "$MODEL_SHA  /model/model.pb" | sha256sum -c -
         volumeMounts:
         - name: metadata
           mountPath: /metadata
@@ -431,27 +458,62 @@ spec:
 
 ## Monitoring ConfigMap Sizes
 
-Create alerts for large ConfigMaps:
+Create scheduled checks for large ConfigMaps:
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: ServiceAccount
 metadata:
-  name: prometheus-rules
-data:
-  configmap-size.yml: |
-    groups:
-    - name: configmap-size
-      rules:
-      - alert: ConfigMapNearSizeLimit
-        expr: |
-          (kube_configmap_info{} * on (namespace,configmap) group_left
-          kube_configmap_metadata_resource_version) > 900000
-        labels:
-          severity: warning
-        annotations:
-          summary: "ConfigMap approaching size limit"
-          description: "ConfigMap {{ $labels.configmap }} in {{ $labels.namespace }} is close to 1MB limit"
+  name: configmap-size-checker
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: configmap-size-checker
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: configmap-size-checker
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: configmap-size-checker
+subjects:
+- kind: ServiceAccount
+  name: configmap-size-checker
+  namespace: default
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: configmap-size-check
+spec:
+  schedule: "*/15 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: configmap-size-checker
+          restartPolicy: OnFailure
+          containers:
+          - name: check
+            image: bitnami/kubectl:latest
+            command:
+            - sh
+            - -c
+            - |
+              kubectl get configmaps --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\n"}{end}' |
+              while read -r namespace name; do
+                size=$(kubectl get configmap "$name" -n "$namespace" -o yaml | wc -c)
+                if [ "$size" -gt 900000 ]; then
+                  echo "ConfigMap $namespace/$name is near the 1MiB limit: $size bytes"
+                fi
+              done
 ```
 
 ## Best Practices
@@ -466,10 +528,10 @@ data:
 
 5. **Verify checksums**: Always verify integrity of downloaded files.
 
-6. **Monitor sizes**: Set up alerts before hitting the 1MB limit.
+6. **Monitor sizes**: Set up alerts before hitting the 1MiB limit.
 
 7. **Document splits**: Comment your manifests explaining why configs are split.
 
 8. **Consider alternatives**: For truly large configs, question whether ConfigMaps are the right tool.
 
-While Kubernetes ConfigMaps have a 1MB size limit, multiple strategies exist for handling larger configurations. Choose splitting for moderate overages, compression for text data, and external storage with init containers for truly large files like ML models and datasets. Each approach has its place depending on your specific requirements.
+While Kubernetes ConfigMaps have a 1MiB size limit, multiple strategies exist for handling larger configurations. Choose splitting for moderate overages, compression for text data, and external storage with init containers for truly large files like ML models and datasets. Each approach has its place depending on your specific requirements.
