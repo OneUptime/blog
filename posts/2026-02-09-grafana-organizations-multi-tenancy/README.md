@@ -34,7 +34,7 @@ curl -X GET http://admin:admin@localhost:3000/api/orgs \
   -H "Content-Type: application/json"
 ```
 
-When you create an organization, the user who creates it automatically becomes an admin. You'll need to add other users and assign appropriate roles afterward.
+Grafana adds the default admin user to new organizations automatically. If you create organizations through the Admin Organizations API, make sure the admin account you use is a member of the new organization before switching context or creating organization-scoped resources. You'll need to add other users and assign appropriate roles afterward.
 
 ```bash
 # Add user to organization
@@ -54,14 +54,15 @@ Each organization can have its own preferences including home dashboard, timezon
 # Update organization preferences
 curl -X PUT http://admin:admin@localhost:3000/api/org/preferences \
   -H "Content-Type: application/json" \
+  -H "X-Grafana-Org-Id: 2" \
   -d '{
     "theme": "dark",
-    "homeDashboardId": 0,
+    "homeDashboardUID": "home-dashboard",
     "timezone": "utc"
   }'
 ```
 
-You can also set a specific dashboard as the home dashboard for an organization, which is useful for providing a consistent landing page for all users.
+You can also set a specific dashboard UID as the home dashboard for an organization, which is useful for providing a consistent landing page for all users.
 
 ## Managing Data Sources Per Organization
 
@@ -130,7 +131,7 @@ terraform {
   required_providers {
     grafana = {
       source  = "grafana/grafana"
-      version = "~> 1.40"
+      version = "~> 4.0"
     }
   }
 }
@@ -142,22 +143,16 @@ provider "grafana" {
 
 # Create organizations
 resource "grafana_organization" "engineering" {
-  name = "Engineering Team"
+  name    = "Engineering Team"
+  editors = ["engineer@example.com"]
 }
 
 resource "grafana_organization" "operations" {
   name = "Operations Team"
 }
 
-# Add users to organizations
-resource "grafana_organization_user" "eng_user" {
-  org_id       = grafana_organization.engineering.id
-  login_or_email = "engineer@example.com"
-  role         = "Editor"
-}
-
 resource "grafana_data_source" "prometheus_eng" {
-  org_id = grafana_organization.engineering.id
+  org_id = grafana_organization.engineering.org_id
   type   = "prometheus"
   name   = "Prometheus"
   url    = "http://prometheus:9090"
@@ -182,15 +177,16 @@ name = OAuth
 allow_sign_up = true
 client_id = YOUR_CLIENT_ID
 client_secret = YOUR_CLIENT_SECRET
-scopes = user:email,read:org
+scopes = openid profile email
 auth_url = https://oauth.provider.com/authorize
 token_url = https://oauth.provider.com/token
 api_url = https://oauth.provider.com/api/user
-allowed_organizations = org1,org2
+org_attribute_path = groups
+org_mapping = org1:2:Viewer org2:3:Editor
 role_attribute_path = contains(groups[*], 'admin') && 'Admin' || 'Viewer'
 ```
 
-This configuration automatically assigns users to organizations and roles based on OAuth claims, reducing manual user management overhead.
+This configuration maps external organization or group claims to Grafana organization IDs and roles. Replace `org1`, `org2`, and the Grafana organization IDs with values from your identity provider and Grafana instance.
 
 ## Monitoring Organization Usage
 
