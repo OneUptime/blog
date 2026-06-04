@@ -43,10 +43,10 @@ import (
 
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/client-go/informers"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
     "k8s.io/client-go/tools/cache"
-    "k8s.io/client-go/informers"
 )
 
 const (
@@ -79,8 +79,12 @@ func (c *NamespaceCleanupController) Run(ctx context.Context) error {
     factory := informers.NewSharedInformerFactory(c.clientset, time.Minute*5)
     nsInformer := factory.Core().V1().Namespaces()
 
-    // Add event handler for namespace updates
+    // Add event handler for namespace add and update events
     nsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+        AddFunc: func(obj interface{}) {
+            ns := obj.(*corev1.Namespace)
+            c.handleNamespaceUpdate(ctx, ns)
+        },
         UpdateFunc: func(old, new interface{}) {
             ns := new.(*corev1.Namespace)
             c.handleNamespaceUpdate(ctx, ns)
@@ -94,12 +98,14 @@ func (c *NamespaceCleanupController) Run(ctx context.Context) error {
     return nil
 }
 
-// handleNamespaceUpdate processes namespace update events
+// handleNamespaceUpdate processes namespace add and update events
 func (c *NamespaceCleanupController) handleNamespaceUpdate(ctx context.Context, ns *corev1.Namespace) {
     // Check if namespace is being deleted
     if ns.DeletionTimestamp.IsZero() {
         // Namespace is not being deleted, ensure our finalizer is present
-        c.ensureFinalizerPresent(ctx, ns)
+        if err := c.ensureFinalizerPresent(ctx, ns); err != nil {
+            fmt.Printf("Failed to add finalizer to namespace %s: %v\n", ns.Name, err)
+        }
         return
     }
 
@@ -115,7 +121,9 @@ func (c *NamespaceCleanupController) handleNamespaceUpdate(ctx context.Context, 
     }
 
     // Remove our finalizer to allow deletion to proceed
-    c.removeFinalizer(ctx, ns)
+    if err := c.removeFinalizer(ctx, ns); err != nil {
+        fmt.Printf("Failed to remove finalizer from namespace %s: %v\n", ns.Name, err)
+    }
 }
 
 // ensureFinalizerPresent adds our finalizer if it's not already present
@@ -341,8 +349,13 @@ func (c *NamespaceCleanupController) performCleanup(ctx context.Context, ns *cor
 
     // Wait for all tasks to complete
     for i := 0; i < 3; i++ {
-        if err := <-errChan; err != nil {
-            return fmt.Errorf("cleanup task failed: %w", err)
+        select {
+        case err := <-errChan:
+            if err != nil {
+                return fmt.Errorf("cleanup task failed: %w", err)
+            }
+        case <-cleanupCtx.Done():
+            return fmt.Errorf("cleanup timed out: %w", cleanupCtx.Err())
         }
     }
 
@@ -371,11 +384,14 @@ Use leader election if running multiple replicas of your controller to prevent d
 If a namespace gets stuck in Terminating state due to finalizer issues:
 
 ```bash
-# View all finalizers on the namespace
-kubectl get namespace stuck-namespace -o json | jq '.metadata.finalizers'
+# View metadata finalizers, namespace spec finalizers, and namespace conditions
+kubectl get namespace stuck-namespace -o json | jq '{metadataFinalizers: .metadata.finalizers, specFinalizers: .spec.finalizers, conditions: .status.conditions}'
 
-# Manually remove finalizers (use with caution in production)
+# Manually remove metadata finalizers (use with caution in production)
 kubectl patch namespace stuck-namespace -p '{"metadata":{"finalizers":[]}}' --type=merge
+
+# If namespace spec finalizers remain after all namespaced resources are gone, use the finalize subresource
+kubectl get namespace stuck-namespace -o json | jq '.spec.finalizers=[]' | kubectl replace --raw "/api/v1/namespaces/stuck-namespace/finalize" -f -
 
 # Check for resources that might be blocking deletion
 kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get --show-kind --ignore-not-found -n stuck-namespace
