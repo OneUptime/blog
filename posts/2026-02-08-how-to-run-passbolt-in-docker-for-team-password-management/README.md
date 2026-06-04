@@ -37,21 +37,27 @@ Passbolt requires a GPG key pair for server-side operations. Generate one before
 
 ```bash
 # Generate a GPG key pair for the Passbolt server
-docker run --rm -v ~/passbolt/gpg:/gpg \
-  passbolt/passbolt:latest \
-  gpg --batch --gen-key <<EOF
+mkdir -p /tmp/passbolt-gpg
+gpg --homedir /tmp/passbolt-gpg --batch --no-tty --gen-key <<EOF
 Key-Type: RSA
 Key-Length: 3072
+Key-Usage: sign,cert
 Subkey-Type: RSA
 Subkey-Length: 3072
+Subkey-Usage: encrypt
 Name-Real: Passbolt Server
 Name-Email: passbolt@your-domain.com
 Expire-Date: 0
 %no-protection
+%commit
 EOF
+
+gpg --homedir /tmp/passbolt-gpg --armor --export passbolt@your-domain.com > ~/passbolt/gpg/serverkey.asc
+gpg --homedir /tmp/passbolt-gpg --armor --export-secret-key passbolt@your-domain.com > ~/passbolt/gpg/serverkey_private.asc
+gpg --show-keys ~/passbolt/gpg/serverkey.asc | grep -Ev "^(pub|sub|uid|$)" | tr -d ' '
 ```
 
-Alternatively, you can let the container generate keys automatically on first run by setting the appropriate environment variables.
+Use the fingerprint printed by the final command for `PASSBOLT_GPG_SERVER_KEY_FINGERPRINT`. Alternatively, you can let the container generate keys automatically on first run and then read the generated fingerprint from inside the container.
 
 ## Docker Compose Configuration
 
@@ -63,7 +69,7 @@ version: "3.8"
 
 services:
   db:
-    image: mariadb:11
+    image: mariadb:10.11
     container_name: passbolt-db
     restart: unless-stopped
     environment:
@@ -117,7 +123,17 @@ services:
       # JWT authentication keys
       - ./jwt:/etc/passbolt/jwt
       # SSL certificates
-      - ./certs:/etc/ssl/certs/passbolt
+      - ./certs/cert.pem:/etc/ssl/certs/certificate.crt:ro
+      - ./certs/key.pem:/etc/ssl/certs/certificate.key:ro
+    command:
+      [
+        "/usr/bin/wait-for.sh",
+        "-t",
+        "0",
+        "db:3306",
+        "--",
+        "/docker-entrypoint.sh",
+      ]
     networks:
       - passbolt-net
 
@@ -144,7 +160,7 @@ Watch the logs to monitor the setup process:
 docker compose logs -f passbolt
 ```
 
-The first startup takes several minutes as Passbolt runs database migrations and generates encryption keys.
+The first startup takes several minutes as Passbolt waits for the database, runs migrations, and generates missing application keys.
 
 ## Creating the Admin User
 
@@ -192,28 +208,28 @@ Passbolt uses folders and tags to organize credentials:
 - **Groups** - Create groups like "Engineering," "DevOps," "Marketing" and share folders with entire groups
 
 ```bash
-# You can also manage resources via the Passbolt CLI
+# You can also run maintenance commands via the Passbolt Cake CLI
 docker exec -it passbolt su -m -c \
   "/usr/share/php/passbolt/bin/cake passbolt healthcheck" -s /bin/sh www-data
 ```
 
 ## Audit Logging
 
-Passbolt tracks every action on shared credentials. The audit log records who accessed, modified, or shared each password and when. This is critical for compliance and incident response. View audit logs through the web interface or query them via the API.
+Passbolt stores action logs for user activity in the database, and can also write action logs to files or syslog when configured. These records are useful for compliance and incident response.
 
 ## API Access
 
 Passbolt has a REST API for automation. You can integrate it with your CI/CD pipelines to retrieve secrets programmatically:
 
 ```bash
-# Example: retrieve a resource using the Passbolt API
-# First, you need to authenticate with your GPG key
-curl -X GET "https://pass.your-domain.com/resources.json" \
+# Example: retrieve your encrypted secret for a resource using the Passbolt API
+# First, authenticate and provide a valid JWT access token
+curl -X GET "https://pass.your-domain.com/secrets/resource/RESOURCE_UUID.json" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_AUTH_TOKEN"
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
-For more advanced automation, use the official Passbolt CLI tool or community SDKs.
+The API returns encrypted secret data, so your automation still needs to decrypt it with the user's private key. For more advanced automation, use the official Passbolt CLI tool or community SDKs.
 
 ## Health Check
 
@@ -229,18 +245,20 @@ This checks the database connection, GPG configuration, email settings, SSL stat
 
 ## Backup Strategy
 
-Back up three things: the database, GPG keys, and JWT keys:
+Back up the database, server GPG keys, application configuration, and JWT keys:
 
 ```bash
 # Dump the database
-docker exec passbolt-db mysqldump -u passbolt -pdb_password_change_me passbolt > ~/passbolt-backup/db_$(date +%Y%m%d).sql
+docker exec passbolt-db mariadb-dump -u passbolt -pdb_password_change_me passbolt > ~/passbolt-backup/db_$(date +%Y%m%d).sql
 
-# Back up GPG and JWT keys
-cp -r ~/passbolt/gpg ~/passbolt-backup/gpg_$(date +%Y%m%d)
+# Back up GPG keys, JWT keys, and Docker Compose configuration
+cp ~/passbolt/gpg/serverkey.asc ~/passbolt-backup/serverkey_$(date +%Y%m%d).asc
+cp ~/passbolt/gpg/serverkey_private.asc ~/passbolt-backup/serverkey_private_$(date +%Y%m%d).asc
 cp -r ~/passbolt/jwt ~/passbolt-backup/jwt_$(date +%Y%m%d)
+cp ~/passbolt/docker-compose.yml ~/passbolt-backup/docker-compose_$(date +%Y%m%d).yml
 ```
 
-Without the GPG server key, encrypted data cannot be recovered. Treat key backups with the same care as the database.
+Without the database and users' private keys, encrypted secrets cannot be recovered. Without the GPG server key, you cannot restore the same Passbolt server identity. Treat key backups with the same care as the database.
 
 ## Updating Passbolt
 
