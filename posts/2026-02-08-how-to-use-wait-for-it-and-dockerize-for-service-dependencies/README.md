@@ -28,6 +28,8 @@ services:
       - postgres
   postgres:
     image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: example
 ```
 
 Docker starts PostgreSQL first, then starts the app. But "starts" means Docker has created the container and begun running its entrypoint. PostgreSQL's entrypoint needs to initialize the database, run recovery, and begin listening on port 5432. That takes time. Your app container launches, tries to connect, and fails.
@@ -43,8 +45,10 @@ services:
         condition: service_healthy
   postgres:
     image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: example
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -160,7 +164,7 @@ services:
 # Install dockerize from GitHub releases
 FROM python:3.11-slim
 
-ENV DOCKERIZE_VERSION=v0.7.0
+ENV DOCKERIZE_VERSION=v0.12.0
 RUN apt-get update && apt-get install -y --no-install-recommends wget && \
     wget -q "https://github.com/jwilder/dockerize/releases/download/${DOCKERIZE_VERSION}/dockerize-linux-amd64-${DOCKERIZE_VERSION}.tar.gz" && \
     tar -C /usr/local/bin -xzvf "dockerize-linux-amd64-${DOCKERIZE_VERSION}.tar.gz" && \
@@ -245,14 +249,14 @@ The template uses Go's text/template syntax:
 | Feature | wait-for-it | dockerize |
 |---------|-------------|-----------|
 | Size | ~5 KB (bash script) | ~10 MB (Go binary) |
-| Dependencies | bash, nc | None (static binary) |
+| Dependencies | bash | None (static binary) |
 | TCP wait | Yes | Yes |
 | HTTP wait | No | Yes |
 | Template rendering | No | Yes |
 | Multiple waits | Chained | Single command |
-| Alpine compatible | Needs bash | Works out of the box |
+| Alpine compatible | Needs bash | Use Alpine archive |
 
-Use wait-for-it when you only need TCP checks and want a minimal footprint. Use dockerize when you need HTTP health checks, template rendering, or work with Alpine images that lack bash.
+Use wait-for-it when you only need TCP checks and want a minimal footprint. Use dockerize when you need HTTP health checks, template rendering, or work with Alpine images that lack bash. For Alpine, use dockerize's Alpine release archive.
 
 ## Writing Your Own Wait Script
 
@@ -271,7 +275,7 @@ ELAPSED=0
 
 echo "Waiting for PostgreSQL at $HOST:$PORT..."
 
-while ! PGPASSWORD="$DB_PASSWORD" psql -h "$HOST" -p "$PORT" -U "$USER" -c "SELECT 1" > /dev/null 2>&1; do
+while ! PGPASSWORD="${DB_PASSWORD:-}" psql -h "$HOST" -p "$PORT" -U "$USER" -c "SELECT 1" > /dev/null 2>&1; do
     ELAPSED=$((ELAPSED + 1))
     if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
         echo "ERROR: PostgreSQL not ready after ${TIMEOUT}s" >&2
@@ -303,6 +307,10 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: example
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
       interval: 5s
@@ -353,4 +361,4 @@ exec "$@"
 
 ## Summary
 
-Service readiness is a real problem in containerized environments. `wait-for-it` gives you a lightweight TCP check with zero dependencies beyond bash. `dockerize` adds HTTP checks, template rendering, and works everywhere including Alpine. Docker Compose V2 health checks handle most cases natively. For production systems, combining health checks at the infrastructure level with application-level retry logic gives you the most reliable startup sequence.
+Service readiness is a real problem in containerized environments. `wait-for-it` gives you a lightweight TCP check with zero dependencies beyond bash. `dockerize` adds HTTP checks, template rendering, and release archives for Alpine. Docker Compose V2 health checks handle most cases natively. For production systems, combining health checks at the infrastructure level with application-level retry logic gives you the most reliable startup sequence.
