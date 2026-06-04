@@ -44,8 +44,6 @@ Start with a compose file that runs the CrowdSec agent and LAPI.
 
 ```yaml
 # docker-compose.yml - CrowdSec intrusion detection
-version: "3.8"
-
 services:
   crowdsec:
     image: crowdsecurity/crowdsec:latest
@@ -53,8 +51,8 @@ services:
     restart: unless-stopped
     environment:
       # Collections to install on first run
-      COLLECTIONS: "crowdsecurity/linux crowdsecurity/sshd crowdsecurity/nginx crowdsecurity/http-cve"
-      # Register with the CrowdSec Central API for community blocklists
+      COLLECTIONS: "crowdsecurity/linux crowdsecurity/sshd crowdsecurity/nginx crowdsecurity/traefik crowdsecurity/http-cve"
+      # Group ID used by the container when reading mounted log files
       GID: "1000"
     volumes:
       # CrowdSec configuration persistence
@@ -67,7 +65,7 @@ services:
       - traefik-logs:/var/log/traefik:ro
     ports:
       # Local API port for bouncers to connect
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     networks:
       - crowdsec
 
@@ -147,7 +145,7 @@ curl -s https://install.crowdsec.net | sudo bash
 sudo apt install crowdsec-firewall-bouncer-iptables
 
 # Register the bouncer with CrowdSec's LAPI
-docker exec crowdsec cscli bouncers add firewall-bouncer
+docker exec crowdsec cscli bouncers add --name firewall-bouncer
 
 # Copy the API key from the output and add it to the bouncer config
 sudo nano /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
@@ -177,7 +175,7 @@ docker exec crowdsec cscli bouncers list
 
 ## Using the Traefik Bouncer
 
-If you run Traefik as your reverse proxy, you can use the Traefik bouncer plugin instead of the firewall bouncer. This blocks malicious requests at the application layer before they reach your services.
+If you run Traefik as your reverse proxy, you can use a Traefik ForwardAuth bouncer service instead of the firewall bouncer. This blocks malicious requests at the application layer before they reach your services.
 
 ```yaml
 # Add the Traefik bouncer as a service in your compose file
@@ -221,17 +219,17 @@ The metrics command shows you how many log lines were parsed, how many matched a
 
 ## Custom Scenarios
 
-CrowdSec comes with community-maintained scenarios for common attacks, but you can write your own. Here is a simple scenario that triggers when an IP makes more than 100 requests in 10 seconds.
+CrowdSec comes with community-maintained scenarios for common attacks, but you can write your own. Here is a simple scenario that triggers when an IP makes more than 100 HTTP requests in 10 seconds.
 
 ```yaml
 # /etc/crowdsec/scenarios/high-request-rate.yaml
 type: leaky
 name: custom/high-request-rate
 description: "Detect high request rate from a single IP"
-filter: "evt.Meta.log_type == 'nginx' || evt.Meta.log_type == 'traefik'"
+filter: "evt.Meta.service == 'http' && evt.Meta.log_type == 'http_access-log'"
 groupby: evt.Meta.source_ip
 capacity: 100
-leakspeed: 100ms
+leakspeed: "10s"
 blackhole: 5m
 labels:
   remediation: true
@@ -254,7 +252,7 @@ name: custom/whitelist
 description: "Whitelist trusted IPs"
 whitelist:
   reason: "Trusted local network and monitoring"
-  ip:
+  cidr:
     - "192.168.1.0/24"
     - "10.0.0.0/8"
   # You can also whitelist by expression
