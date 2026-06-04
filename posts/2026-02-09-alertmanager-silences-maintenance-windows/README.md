@@ -30,9 +30,9 @@ The amtool CLI provides the simplest way to create silences:
 ```bash
 # Install amtool
 
-wget https://github.com/prometheus/alertmanager/releases/download/v0.26.0/alertmanager-0.26.0.linux-amd64.tar.gz
-tar xvf alertmanager-0.26.0.linux-amd64.tar.gz
-sudo cp alertmanager-0.26.0.linux-amd64/amtool /usr/local/bin/
+wget https://github.com/prometheus/alertmanager/releases/download/v0.32.1/alertmanager-0.32.1.linux-amd64.tar.gz
+tar xvf alertmanager-0.32.1.linux-amd64.tar.gz
+sudo cp alertmanager-0.32.1.linux-amd64/amtool /usr/local/bin/
 
 # Create a silence for namespace maintenance
 amtool silence add \
@@ -126,8 +126,7 @@ SILENCE_ID=$(amtool silence add \
   --author="automation" \
   --comment="Draining node $NODE for maintenance" \
   --duration=$DURATION \
-  node=$NODE \
-  --output=json | jq -r '.silenceID')
+  node="$NODE")
 
 echo "Created silence: $SILENCE_ID"
 
@@ -172,7 +171,7 @@ spec:
           serviceAccountName: alertmanager-silence-creator
           containers:
           - name: create-silence
-            image: prom/alertmanager:v0.26.0
+            image: prom/alertmanager:v0.32.1
             command:
             - /bin/sh
             - -c
@@ -319,21 +318,15 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 Extend maintenance windows that run longer than expected:
 
 ```bash
-# Get existing silence ID
-SILENCE_ID=$(amtool silence query --alertmanager.url=http://alertmanager:9093 \
-  namespace=team-a --output=json | jq -r '.[0].id')
-
 # Get current silence and extend it
 amtool silence query --alertmanager.url=http://alertmanager:9093 \
-  --output=json | jq -r '.[0]' > current_silence.json
+  namespace=team-a --output=json | jq -r '.[0]' > current_silence.json
 
 # Update endsAt time
 jq '.endsAt = "'$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%S.000Z)'"' \
   current_silence.json > extended_silence.json
 
-# Update silence (requires deleting old and creating new)
-amtool silence expire --alertmanager.url=http://alertmanager:9093 $SILENCE_ID
-
+# Update silence
 curl -X POST \
   -H "Content-Type: application/json" \
   -d @extended_silence.json \
@@ -342,14 +335,14 @@ curl -X POST \
 
 ## Monitoring Silence Usage
 
-Track silence creation and expiration:
+Track active silences and count changes:
 
 ```promql
 # Active silences
-alertmanager_silences
+alertmanager_silences{state="active"}
 
-# Silences created per hour
-increase(alertmanager_silences_active[1h])
+# Active silence count changes per hour
+changes(alertmanager_silences{state="active"}[1h])
 ```
 
 Create alerts for unexpected silences:
@@ -359,7 +352,7 @@ groups:
 - name: silence_monitoring
   rules:
   - alert: TooManySilences
-    expr: alertmanager_silences > 10
+    expr: alertmanager_silences{state="active"} > 10
     for: 5m
     labels:
       severity: warning
@@ -367,14 +360,13 @@ groups:
       summary: "Many active silences"
       description: "{{ $value }} silences active"
 
-  - alert: LongRunningSilence
-    expr: |
-      (alertmanager_silence_end_time - time()) > 86400
-    for: 1h
+  - alert: UnexpectedActiveSilence
+    expr: alertmanager_silences{state="active"} > 0
+    for: 24h
     labels:
       severity: warning
     annotations:
-      summary: "Silence active for > 24h"
+      summary: "Silence has been active for > 24h"
 ```
 
 ## Best Practices for Silence Management
