@@ -16,7 +16,7 @@ Deletion policies control whether managed resources get deleted or orphaned when
 
 Crossplane supports two deletion policies:
 
-**Delete** removes the cloud resource when you delete the Kubernetes object. The RDS database gets destroyed. The S3 bucket and its contents disappear. The VPC and all its networking vanishes.
+**Delete** removes the cloud resource when you delete the Kubernetes object. The RDS database gets destroyed. The VPC and all its networking vanishes. S3 bucket deletion can fail if the bucket is not empty unless the bucket is configured with `forceDestroy`.
 
 **Orphan** preserves the cloud resource. Crossplane stops managing it but leaves it running. The database keeps serving traffic. The bucket retains all data. The VPC stays intact.
 
@@ -64,15 +64,17 @@ spec:
   deletionPolicy: Delete
   forProvider:
     region: us-west-2
+    forceDestroy: true
     tags:
       Environment: test
 ```
 
-Deleting this resource destroys the actual bucket.
+Deleting this resource destroys the actual bucket and its objects.
 
 ## Deletion Policies in Compositions
 
 Set deletion policies for all resources in a composition.
+Install the Patch and Transform function as `function-patch-and-transform` before applying these examples.
 
 ```yaml
 # composition-database.yaml
@@ -84,47 +86,55 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: PostgreSQLInstance
-  resources:
-    # RDS instance should be orphaned
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        metadata:
-          annotations:
-            crossplane.io/external-name: prod-postgres-db
-        spec:
-          deletionPolicy: Orphan
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.r5.large
-            allocatedStorage: 500
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          # RDS instance should be orphaned
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              metadata:
+                annotations:
+                  crossplane.io/external-name: prod-postgres-db
+              spec:
+                deletionPolicy: Orphan
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.r5.large
+                  allocatedStorage: 500
 
-    # Security groups can be deleted
-    - name: security-group
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: SecurityGroup
-        spec:
-          deletionPolicy: Delete
-          forProvider:
-            region: us-west-2
-            description: PostgreSQL access
+          # Security groups can be deleted
+          - name: security-group
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: SecurityGroup
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: us-west-2
+                  description: PostgreSQL access
 
-    # Subnet group can be deleted
-    - name: subnet-group
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: SubnetGroup
-        spec:
-          deletionPolicy: Delete
-          forProvider:
-            region: us-west-2
-            subnetIds:
-              - subnet-abc123
-              - subnet-def456
+          # Subnet group can be deleted
+          - name: subnet-group
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: SubnetGroup
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: us-west-2
+                  subnetIds:
+                    - subnet-abc123
+                    - subnet-def456
 ```
 
 Critical data resources use Orphan. Supporting infrastructure uses Delete.
@@ -145,20 +155,28 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: PostgreSQLInstance
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          # Development databases can be deleted
-          deletionPolicy: Delete
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.small
-            allocatedStorage: 20
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                # Development databases can be deleted
+                deletionPolicy: Delete
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.small
+                  allocatedStorage: 20
 ---
 # composition-prod-database.yaml
 apiVersion: apiextensions.crossplane.io/v1
@@ -171,20 +189,28 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: PostgreSQLInstance
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          # Production databases must be orphaned
-          deletionPolicy: Orphan
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.r5.xlarge
-            allocatedStorage: 1000
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                # Production databases must be orphaned
+                deletionPolicy: Orphan
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.r5.xlarge
+                  allocatedStorage: 1000
 ```
 
 Claims select the appropriate composition based on environment.
@@ -192,7 +218,7 @@ Claims select the appropriate composition based on environment.
 ```yaml
 # database-claim-prod.yaml
 apiVersion: database.example.com/v1alpha1
-kind: PostgreSQLInstance
+kind: PostgreSQLInstanceClaim
 metadata:
   name: app-database
   namespace: production
@@ -220,24 +246,32 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: PostgreSQLInstance
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          # Default to Delete
-          deletionPolicy: Delete
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-      patches:
-        # Allow overriding deletion policy from claim
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.deletionPolicy
-          toFieldPath: spec.deletionPolicy
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                # Default to Delete
+                deletionPolicy: Delete
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
+            patches:
+              # Allow overriding deletion policy from claim
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
 ```
 
 Update the XRD to accept deletion policy parameter.
@@ -302,7 +336,7 @@ Use finalizers to add extra protection.
 ```yaml
 # database-with-finalizer.yaml
 apiVersion: database.example.com/v1alpha1
-kind: PostgreSQLInstance
+kind: PostgreSQLInstanceClaim
 metadata:
   name: protected-database
   namespace: production
@@ -322,10 +356,10 @@ Attempting to delete this resource will hang until you remove the finalizer.
 
 ```bash
 # This will hang waiting for finalizer removal
-kubectl delete postgresqlinstance protected-database -n production
+kubectl delete postgresqlinstanceclaim protected-database -n production
 
 # Remove the finalizer to allow deletion
-kubectl patch postgresqlinstance protected-database -n production \
+kubectl patch postgresqlinstanceclaim protected-database -n production \
   --type json -p '[{"op":"remove","path":"/metadata/finalizers"}]'
 ```
 
@@ -361,9 +395,12 @@ The webhook can reject resources that don't have appropriate deletion policies.
 Import orphaned resources back into Crossplane management.
 
 ```bash
-# List orphaned resources in AWS
+# List RDS instances and inspect tags for candidates to import
 aws rds describe-db-instances \
-  --query 'DBInstances[?TagList[?Key==`Managed` && Value==`crossplane`]].DBInstanceIdentifier'
+  --query 'DBInstances[].{Identifier:DBInstanceIdentifier,Arn:DBInstanceArn}'
+
+aws rds list-tags-for-resource \
+  --resource-name arn:aws:rds:us-west-2:123456789012:db:prod-postgres-db
 ```
 
 Create a new managed resource pointing to the orphaned infrastructure.
@@ -386,10 +423,10 @@ spec:
     engineVersion: "15.4"
     instanceClass: db.r5.large
     allocatedStorage: 500
-  managementPolicy: ObserveOnly
+  managementPolicies: ["Observe"]
 ```
 
-Crossplane imports the existing resource without modifying it.
+Crossplane observes the existing resource without modifying it. Add `Create`, `Update`, `Delete`, and `LateInitialize` to `managementPolicies` only when you want Crossplane to manage those actions.
 
 ## Cascading Deletion Behavior
 
@@ -401,12 +438,7 @@ apiVersion: database.example.com/v1alpha1
 kind: PostgreSQLInstance
 metadata:
   name: cascade-test
-  namespace: production
-  # Prevent cascading deletion
-  finalizers:
-    - compositeresourcedefinition.apiextensions.crossplane.io
 spec:
-  deletionPolicy: Orphan
   parameters:
     size: medium
   compositionRef:
@@ -415,7 +447,7 @@ spec:
     name: cascade-test-connection
 ```
 
-When you delete the composite resource, its deletion policy controls what happens to child managed resources.
+When you delete the composite resource, Crossplane deletes the composed Kubernetes resources it created. Each child managed resource's `deletionPolicy` or `managementPolicies` controls what happens to the external cloud resource.
 
 ## Deletion Policy for Stateful Resources
 
@@ -431,68 +463,78 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: StatefulApplication
-  resources:
-    # Database - NEVER auto-delete
-    - name: database
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          deletionPolicy: Orphan
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            skipFinalSnapshot: false
-            finalSnapshotIdentifier: ""
-      patches:
-        # Ensure final snapshot is always created
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: metadata.name
-            strategy: string
-            string:
-              fmt: "%s-final-snapshot"
-          toFieldPath: spec.forProvider.finalSnapshotIdentifier
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          # Database - NEVER auto-delete
+          - name: database
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                deletionPolicy: Orphan
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  skipFinalSnapshot: false
+                  finalSnapshotIdentifier: ""
+            patches:
+              # Set the final snapshot name in case this is later changed to Delete
+              - type: CombineFromComposite
+                combine:
+                  variables:
+                    - fromFieldPath: metadata.name
+                  strategy: string
+                  string:
+                    fmt: "%s-final-snapshot"
+                toFieldPath: spec.forProvider.finalSnapshotIdentifier
 
-    # S3 bucket - Orphan with versioning enabled
-    - name: storage
-      base:
-        apiVersion: s3.aws.upbound.io/v1beta1
-        kind: Bucket
-        spec:
-          deletionPolicy: Orphan
-          forProvider:
-            region: us-west-2
+          # S3 bucket - Orphan with versioning enabled
+          - name: storage
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: Bucket
+              spec:
+                deletionPolicy: Orphan
+                forProvider:
+                  region: us-west-2
 
-    - name: bucket-versioning
-      base:
-        apiVersion: s3.aws.upbound.io/v1beta1
-        kind: BucketVersioning
-        spec:
-          deletionPolicy: Delete
-          forProvider:
-            region: us-west-2
-            versioningConfiguration:
-              - status: Enabled
+          - name: bucket-versioning
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: BucketVersioning
+              spec:
+                deletionPolicy: Orphan
+                forProvider:
+                  region: us-west-2
+                  bucketSelector:
+                    matchControllerRef: true
+                  versioningConfiguration:
+                    - status: Enabled
 
-    # Load balancer - can be deleted
-    - name: load-balancer
-      base:
-        apiVersion: elbv2.aws.upbound.io/v1beta1
-        kind: LB
-        spec:
-          deletionPolicy: Delete
-          forProvider:
-            region: us-west-2
-            loadBalancerType: application
+          # Load balancer - can be deleted
+          - name: load-balancer
+            base:
+              apiVersion: elbv2.aws.upbound.io/v1beta1
+              kind: LB
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  region: us-west-2
+                  loadBalancerType: application
 ```
 
 Stateful resources get Orphan policy. Stateless infrastructure gets Delete.
 
 ## Monitoring Deletion Policy Configuration
 
-Track deletion policies across your infrastructure.
+Track deletion policies across your infrastructure with kube-state-metrics custom resource state metrics or another inventory exporter. Crossplane provider metrics report managed resource existence, readiness, sync state, and deletion timing, but they don't expose a built-in `deletion_policy` label.
 
 ```yaml
 # prometheus-rules.yaml
@@ -510,7 +552,7 @@ data:
           # Alert on production resources without Orphan policy
           - alert: ProductionResourceDeletable
             expr: |
-              crossplane_managed_resource_info{
+              kube_customresource_deletion_policy{
                 namespace="production",
                 deletion_policy!="Orphan"
               } > 0
@@ -524,7 +566,7 @@ data:
           # Track orphaned resources
           - record: crossplane_orphaned_resources_total
             expr: |
-              count(crossplane_managed_resource_info{deletion_policy="Orphan"})
+              count(kube_customresource_deletion_policy{deletion_policy="Orphan"})
 ```
 
 Query deletion policies across resources.
@@ -537,9 +579,9 @@ NAMESPACE:.metadata.namespace,\
 KIND:.kind,\
 DELETION_POLICY:.spec.deletionPolicy
 
-# Find resources with Delete policy in production
-kubectl get managed -n production -o json | \
-  jq -r '.items[] | select(.spec.deletionPolicy=="Delete") | .metadata.name'
+# Find tagged production resources with Delete policy
+kubectl get managed -o json | \
+  jq -r '.items[] | select(.spec.forProvider.tags.Environment=="production" and .spec.deletionPolicy=="Delete") | .metadata.name'
 
 # Count resources by deletion policy
 kubectl get managed -A -o json | \
