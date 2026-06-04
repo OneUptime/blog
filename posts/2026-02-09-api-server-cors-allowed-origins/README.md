@@ -41,7 +41,7 @@ spec:
   - command:
     - kube-apiserver
     # Add CORS allowed origins
-    - --cors-allowed-origins=https://dashboard.example.com,https://monitoring.example.com
+    - --cors-allowed-origins=^https://dashboard\.example\.com(:|$),^https://monitoring\.example\.com(:|$)
     # Existing flags
     - --etcd-servers=https://127.0.0.1:2379
     - --tls-cert-file=/etc/kubernetes/pki/apiserver.crt
@@ -69,10 +69,12 @@ curl -H "Origin: https://dashboard.example.com" \
 Expected response headers:
 
 ```text
-< HTTP/1.1 200 OK
+< HTTP/1.1 204 No Content
 < Access-Control-Allow-Origin: https://dashboard.example.com
-< Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS
-< Access-Control-Allow-Headers: Authorization, Content-Type
+< Access-Control-Allow-Methods: POST, GET, OPTIONS, PUT, DELETE, PATCH
+< Access-Control-Allow-Headers: Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Requested-With, If-Modified-Since
+< Access-Control-Allow-Credentials: true
+< Access-Control-Expose-Headers: Date
 ```
 
 ## Wildcard and Pattern-Based Origins
@@ -96,7 +98,7 @@ spec:
   - command:
     - kube-apiserver
     # Production: explicit origins only
-    - --cors-allowed-origins=https://dashboard.prod.example.com,https://grafana.prod.example.com,https://lens.prod.example.com
+    - --cors-allowed-origins=^https://dashboard\.prod\.example\.com(:|$),^https://grafana\.prod\.example\.com(:|$),^https://lens\.prod\.example\.com(:|$)
 ```
 
 Use regex patterns for multiple subdomains:
@@ -107,29 +109,34 @@ spec:
   - command:
     - kube-apiserver
     # Allow all subdomains of example.com
-    - --cors-allowed-origins=https://.*\.example\.com
+    - --cors-allowed-origins=^https://([a-z0-9-]+\.)+example\.com(:|$)
 ```
 
 ## Configuring for Kubernetes Dashboard
 
-The Kubernetes Dashboard requires CORS configuration if accessed through a browser:
+The Kubernetes Dashboard does not require API server CORS configuration when accessed through its own service or proxy. Current Kubernetes documentation recommends installing Dashboard with Helm:
 
 ```bash
-# Deploy Kubernetes Dashboard
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
+# Add the Kubernetes Dashboard Helm repository
+helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/
 
-# Get the dashboard service URL
-kubectl get svc -n kubernetes-dashboard
+# Deploy Kubernetes Dashboard
+helm upgrade --install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard \
+  --create-namespace \
+  --namespace kubernetes-dashboard
+
+# Access Dashboard locally
+kubectl -n kubernetes-dashboard port-forward svc/kubernetes-dashboard-kong-proxy 8443:443
 ```
 
-Update API server CORS settings:
+If you host a separate browser application that calls the API server directly, update API server CORS settings for that application's origin:
 
 ```yaml
 spec:
   containers:
   - command:
     - kube-apiserver
-    - --cors-allowed-origins=https://dashboard.example.com
+    - --cors-allowed-origins=^https://dashboard\.example\.com(:|$)
 ```
 
 Create an Ingress for the dashboard:
@@ -158,7 +165,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: kubernetes-dashboard
+            name: kubernetes-dashboard-kong-proxy
             port:
               number: 443
 ```
@@ -208,7 +215,7 @@ spec:
   containers:
   - command:
     - kube-apiserver
-    - --cors-allowed-origins=https://app.example.com
+    - --cors-allowed-origins=^https://app\.example\.com(:|$)
 ```
 
 ## Implementing Reverse Proxy for CORS
@@ -232,6 +239,10 @@ server {
 
     # Handle preflight requests
     if ($request_method = 'OPTIONS') {
+        add_header 'Access-Control-Allow-Origin' 'https://app.example.com' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type' always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
         add_header 'Access-Control-Max-Age' 1728000;
         add_header 'Content-Type' 'text/plain charset=UTF-8';
         add_header 'Content-Length' 0;
@@ -317,7 +328,7 @@ spec:
   - command:
     - kube-apiserver
     # Only allow specific origins
-    - --cors-allowed-origins=https://readonly-dashboard.example.com
+    - --cors-allowed-origins=^https://readonly-dashboard\.example\.com(:|$)
     # In your reverse proxy, restrict to GET only
 ```
 
@@ -339,16 +350,14 @@ location / {
 Track CORS requests and potential security issues:
 
 ```bash
-# Check API server logs for CORS-related activity
-kubectl logs -n kube-system kube-apiserver-<node> | \
-  grep -i "cors\|origin"
+# Check API server logs for OPTIONS requests
+kubectl logs -n kube-system kube-apiserver-<node> | grep OPTIONS
 
-# Monitor for unauthorized origin attempts
-kubectl logs -n kube-system kube-apiserver-<node> | \
-  grep "origin not allowed"
+# API server CORS rejections are normally visible to browsers as missing CORS headers,
+# not as an "origin not allowed" log message.
 ```
 
-Create alerts for suspicious CORS activity:
+Create alerts for unusual rejected OPTIONS activity:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -360,7 +369,7 @@ spec:
   groups:
   - name: api-server-cors
     rules:
-    - alert: UnauthorizedCORSAttempts
+    - alert: HighRejectedOptionsRequests
       expr: |
         rate(apiserver_request_total{
           verb="OPTIONS",
@@ -370,8 +379,8 @@ spec:
       labels:
         severity: warning
       annotations:
-        summary: "High rate of unauthorized CORS attempts"
-        description: "Detect potential CORS scanning or attacks"
+        summary: "High rate of rejected OPTIONS requests"
+        description: "Investigate browser preflight failures or unexpected OPTIONS traffic"
 ```
 
 ## Testing CORS Configuration
@@ -386,7 +395,7 @@ curl -H "Origin: https://dashboard.example.com" \
   -k https://api.kubernetes.example.com:6443/api/v1/namespaces \
   -v
 
-# Test from disallowed origin (should fail)
+# Test from disallowed origin (curl will show that CORS response headers are absent)
 curl -H "Origin: https://malicious.com" \
   -H "Access-Control-Request-Method: GET" \
   -X OPTIONS \
@@ -448,19 +457,19 @@ Follow these guidelines for secure CORS configuration:
 - --cors-allowed-origins=.*
 
 # DO: Explicitly list production origins
-- --cors-allowed-origins=https://dashboard.prod.example.com,https://grafana.prod.example.com
+- --cors-allowed-origins=^https://dashboard\.prod\.example\.com(:|$),^https://grafana\.prod\.example\.com(:|$)
 
 # DON'T: Use HTTP origins
-- --cors-allowed-origins=http://dashboard.example.com
+- --cors-allowed-origins=^http://dashboard\.example\.com(:|$)
 
 # DO: Use HTTPS only
-- --cors-allowed-origins=https://dashboard.example.com
+- --cors-allowed-origins=^https://dashboard\.example\.com(:|$)
 
 # DON'T: Use wildcards in production
-- --cors-allowed-origins=https://*
+- --cors-allowed-origins=^https://.*
 
 # DO: Use specific domains
-- --cors-allowed-origins=https://dashboard.example.com
+- --cors-allowed-origins=^https://dashboard\.example\.com(:|$)
 ```
 
 ## Troubleshooting CORS Issues
@@ -469,12 +478,16 @@ Common problems and solutions:
 
 ```bash
 # Issue: Preflight request fails
-# Check: Ensure OPTIONS method is allowed
-kubectl logs -n kube-system kube-apiserver-<node> | grep OPTIONS
+# Check: Verify that the request origin matches an anchored allowed-origin regex
+curl -H "Origin: https://app.example.com" \
+  -H "Access-Control-Request-Method: GET" \
+  -X OPTIONS \
+  -k https://api.kubernetes.example.com:6443/api/v1/namespaces \
+  -v
 
-# Issue: Credentials not sent
-# Fix: Add Access-Control-Allow-Credentials header
-# In your fetch request:
+# Issue: Cookie-based credentials not sent
+# Fix: Use credentials: 'include' in fetch and ensure the server returns
+# Access-Control-Allow-Credentials: true for that origin.
 fetch(url, {
   credentials: 'include'
 })
