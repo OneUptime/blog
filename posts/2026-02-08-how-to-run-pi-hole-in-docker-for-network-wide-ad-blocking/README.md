@@ -44,11 +44,10 @@ docker run -d \
   -p 53:53/udp \
   -p 80:80 \
   -e TZ=America/New_York \
-  -e WEBPASSWORD=your_admin_password \
+  -e FTLCONF_webserver_api_password=your_admin_password \
+  -e FTLCONF_dns_listeningMode=all \
   -v pihole-etc:/etc/pihole \
   -v pihole-dnsmasq:/etc/dnsmasq.d \
-  --dns 127.0.0.1 \
-  --dns 8.8.8.8 \
   --restart unless-stopped \
   pihole/pihole:latest
 ```
@@ -61,8 +60,6 @@ For a more maintainable deployment:
 
 ```yaml
 # docker-compose.yml - Pi-hole with persistent configuration
-version: "3.8"
-
 services:
   pihole:
     image: pihole/pihole:latest
@@ -77,13 +74,15 @@ services:
       # Set your timezone
       TZ: America/New_York
       # Admin interface password
-      WEBPASSWORD: your_secure_password
+      FTLCONF_webserver_api_password: your_secure_password
       # Upstream DNS servers (Cloudflare and Google)
-      PIHOLE_DNS_: "1.1.1.1;8.8.8.8"
+      FTLCONF_dns_upstreams: "1.1.1.1;8.8.8.8"
       # Interface to listen on (all interfaces)
-      DNSMASQ_LISTENING: all
+      FTLCONF_dns_listeningMode: all
       # Enable query logging
-      QUERY_LOGGING: "true"
+      FTLCONF_dns_queryLogging: "true"
+      # Read custom dnsmasq files from /etc/dnsmasq.d
+      FTLCONF_misc_etc_dnsmasq_d: "true"
     volumes:
       # Persist Pi-hole configuration and blocklists
       - pihole-etc:/etc/pihole
@@ -147,11 +146,11 @@ Pi-hole can replace your router's DHCP server, giving it complete control over D
 # Add to your docker-compose.yml environment
 environment:
   # Enable DHCP server
-  DHCP_ACTIVE: "true"
-  DHCP_START: "192.168.1.100"
-  DHCP_END: "192.168.1.250"
-  DHCP_ROUTER: "192.168.1.1"
-  PIHOLE_DOMAIN: "lan"
+  FTLCONF_dhcp_active: "true"
+  FTLCONF_dhcp_start: "192.168.1.100"
+  FTLCONF_dhcp_end: "192.168.1.250"
+  FTLCONF_dhcp_router: "192.168.1.1"
+  FTLCONF_dns_domain: "lan"
 ```
 
 If you enable DHCP, you must use host networking:
@@ -182,10 +181,19 @@ Pi-hole comes with a default blocklist. Add more through the web interface or th
 
 ```bash
 # Add a popular blocklist
-docker exec pihole pihole -a adlist add https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+SID=$(curl -s -X POST http://localhost/api/auth \
+  --data '{"password":"your_secure_password"}' | jq -r '.session.sid')
+
+curl -X POST "http://localhost/api/lists?type=block" \
+  -H "X-FTL-SID: $SID" \
+  -H "Content-Type: application/json" \
+  --data '{"address":"https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts","groups":[0],"enabled":true}'
 
 # Add a malware blocklist
-docker exec pihole pihole -a adlist add https://urlhaus.abuse.ch/downloads/hostfile/
+curl -X POST "http://localhost/api/lists?type=block" \
+  -H "X-FTL-SID: $SID" \
+  -H "Content-Type: application/json" \
+  --data '{"address":"https://urlhaus.abuse.ch/downloads/hostfile/","groups":[0],"enabled":true}'
 
 # Update the blocklists (gravity)
 docker exec pihole pihole -g
@@ -205,13 +213,13 @@ Sometimes Pi-hole blocks a domain you need. Whitelist it:
 
 ```bash
 # Whitelist a specific domain
-docker exec pihole pihole -w example.com
+docker exec pihole pihole allow example.com
 
 # Whitelist with regex (useful for CDN domains)
-docker exec pihole pihole --white-regex '(.*)\.example\.com$'
+docker exec pihole pihole --allow-regex '(.*)\.example\.com$'
 
 # View the current whitelist
-docker exec pihole pihole -w -l
+docker exec pihole pihole allow --list
 ```
 
 ## Custom DNS Records
@@ -220,15 +228,14 @@ Pi-hole can serve as a local DNS for your home lab:
 
 ```bash
 # Add a custom DNS entry
-docker exec pihole pihole -a addcustomdns 192.168.1.50 nas.local
-docker exec pihole pihole -a addcustomdns 192.168.1.51 plex.local
-docker exec pihole pihole -a addcustomdns 192.168.1.52 homeassistant.local
+docker exec pihole pihole-FTL --config misc.dnsmasq_lines \
+  '["address=/nas.local/192.168.1.50","address=/plex.local/192.168.1.51","address=/homeassistant.local/192.168.1.52"]'
 ```
 
 Or add them to a dnsmasq configuration file:
 
 ```text
-# custom-dns.conf - mount this in /etc/dnsmasq.d/
+# custom-dns.conf - mount this in /etc/dnsmasq.d/ and set FTLCONF_misc_etc_dnsmasq_d=true
 address=/nas.local/192.168.1.50
 address=/plex.local/192.168.1.51
 address=/homeassistant.local/192.168.1.52
@@ -236,23 +243,12 @@ address=/homeassistant.local/192.168.1.52
 
 ## DNS over HTTPS (DoH)
 
-For privacy, configure Pi-hole to use DNS over HTTPS for upstream queries using cloudflared:
-
-```yaml
-# Add cloudflared to docker-compose.yml
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    command: proxy-dns --port 5053 --upstream https://1.1.1.1/dns-query --upstream https://1.0.0.1/dns-query
-    restart: unless-stopped
-```
-
-Update Pi-hole to use cloudflared as its upstream:
+For privacy, configure Pi-hole to use DNS over HTTPS for upstream queries using dnscrypt-proxy. Install and configure dnscrypt-proxy to listen on port 5053 on the same Docker network, then update Pi-hole to use it as its upstream:
 
 ```yaml
 # In the pihole service environment
 environment:
-  PIHOLE_DNS_: "cloudflared#5053"
+  FTLCONF_dns_upstreams: "dnscrypt-proxy#5053"
 ```
 
 ## Monitoring and Statistics
@@ -260,14 +256,18 @@ environment:
 The Pi-hole dashboard shows real-time and historical DNS statistics. You can also query them from the API:
 
 ```bash
+# Authenticate and save the session ID
+SID=$(curl -s -X POST http://localhost/api/auth \
+  --data '{"password":"your_secure_password"}' | jq -r '.session.sid')
+
 # Get summary statistics
-curl http://localhost/admin/api.php?summary
+curl -H "X-FTL-SID: $SID" http://localhost/api/stats/summary
 
 # Get top blocked domains
-curl http://localhost/admin/api.php?topItems=10
+curl -H "X-FTL-SID: $SID" "http://localhost/api/stats/top_domains?blocked=true&count=10"
 
 # Get recent queries
-curl "http://localhost/admin/api.php?getAllQueries&auth=your_api_token"
+curl -H "X-FTL-SID: $SID" "http://localhost/api/queries?length=10"
 ```
 
 ## Updating Pi-hole
@@ -292,24 +292,20 @@ Your configuration, blocklists, and query history persist across updates because
 Pi-hole includes a built-in backup tool called Teleporter:
 
 ```bash
-# Create a backup through the CLI
-docker exec pihole pihole -a teleporter
+# Create a backup through the API
+SID=$(curl -s -X POST http://localhost/api/auth \
+  --data '{"password":"your_secure_password"}' | jq -r '.session.sid')
 
-# The backup file is created in /etc/pihole/
-docker cp pihole:/etc/pihole/pi-hole-teleporter_*.tar.gz ./backups/
+curl -H "X-FTL-SID: $SID" \
+  http://localhost/api/teleporter \
+  -o ./backups/pi-hole-teleporter.zip
 ```
 
 You can also create backups through the web interface at Settings > Teleporter.
 
 Restore from backup:
 
-```bash
-# Copy the backup into the container
-docker cp ./backups/pi-hole-teleporter_backup.tar.gz pihole:/tmp/
-
-# Restore through the web interface or CLI
-docker exec pihole pihole -a teleporter /tmp/pi-hole-teleporter_backup.tar.gz
-```
+Upload the Teleporter backup through the web interface at Settings > Teleporter.
 
 ## Conclusion
 
