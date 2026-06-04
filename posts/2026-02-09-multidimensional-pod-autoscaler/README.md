@@ -8,22 +8,22 @@ Description: Learn how to implement multidimensional pod autoscaling that consid
 
 ---
 
-Standard Horizontal Pod Autoscaler (HPA) in Kubernetes scales based on a single metric or uses the maximum value when multiple metrics are configured. This approach misses workloads that need balanced CPU and memory scaling. The Multidimensional Pod Autoscaler (MPA), part of the KEDA project and available as an enhanced HPA strategy, evaluates multiple resource dimensions together.
+Standard Horizontal Pod Autoscaler (HPA) in Kubernetes scales based on a single metric or uses the maximum desired replica count when multiple metrics are configured. This approach misses workloads that need balanced CPU and memory scaling. KEDA can help by feeding HPA custom metrics, including composite metrics from Prometheus queries or KEDA scaling modifiers, so multiple resource dimensions can be evaluated together.
 
 ## Why Multidimensional Autoscaling Matters
 
-Consider a caching service that uses memory for cache storage and CPU for request processing. During traffic spikes, both metrics rise together. With standard HPA using max logic:
+Consider a caching service that uses memory for cache storage and CPU for request processing. During traffic spikes, both metrics rise together. With an HPA that only tracks CPU:
 
 - If CPU reaches 80% but memory is at 40%, HPA scales up based on CPU
 - New pods come online but don't help much because the bottleneck shifts to memory
 - Memory climbs to 75% while CPU drops to 50%
-- HPA might scale down due to low CPU, worsening the memory pressure
+- HPA might scale down due to lower CPU, worsening the memory pressure
 
 Multidimensional autoscaling solves this by considering resource utilization patterns across dimensions.
 
 ## Installing KEDA for Advanced Scaling
 
-KEDA extends Kubernetes with event-driven autoscaling capabilities including multidimensional scaling:
+KEDA extends Kubernetes with event-driven autoscaling capabilities and can expose custom metrics to HPA:
 
 ```bash
 # Add KEDA Helm repository
@@ -45,9 +45,9 @@ Verify KEDA is running:
 kubectl get pods -n keda
 ```
 
-## Configuring Multidimensional ScaledObject
+## Configuring a Multi-Metric ScaledObject
 
-KEDA uses ScaledObject resources to define autoscaling behavior. Here's a multidimensional configuration for a web application:
+KEDA uses ScaledObject resources to define autoscaling behavior. Here's a multi-metric configuration for a web application:
 
 ```yaml
 apiVersion: keda.sh/v1alpha1
@@ -109,19 +109,19 @@ spec:
       query: |
         avg(
           (
-            rate(container_cpu_usage_seconds_total{pod=~"api-.*"}[2m]) /
-            on(pod) group_left() kube_pod_container_resource_limits{resource="cpu",pod=~"api-.*"}
+            sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="production",pod=~"api-.*",container!="",image!=""}[2m])) /
+            sum by (pod) (kube_pod_container_resource_requests{namespace="production",pod=~"api-.*",resource="cpu",unit="core"})
           ) +
           (
-            container_memory_working_set_bytes{pod=~"api-.*"} /
-            on(pod) group_left() kube_pod_container_resource_limits{resource="memory",pod=~"api-.*"}
+            sum by (pod) (container_memory_working_set_bytes{namespace="production",pod=~"api-.*",container!="",image!=""}) /
+            sum by (pod) (kube_pod_container_resource_requests{namespace="production",pod=~"api-.*",resource="memory",unit="byte"})
           )
         ) / 2
       threshold: "0.7"  # Scale when average utilization crosses 70%
       activationThreshold: "0.5"  # Activate scaling at 50%
 ```
 
-This query computes the average of CPU and memory utilization ratios. Both dimensions contribute equally to scaling decisions.
+This query returns one value: the average of per-pod CPU and memory utilization ratios against resource requests. Both dimensions contribute equally to scaling decisions.
 
 ## Weighted Multidimensional Scaling
 
@@ -144,16 +144,18 @@ spec:
       serverAddress: http://prometheus.monitoring:9090
       # Weighted: 30% CPU, 70% memory (memory matters more for cache)
       query: |
-        (
-          0.3 * (
-            rate(container_cpu_usage_seconds_total{pod=~"redis-cache-.*"}[2m]) /
-            on(pod) group_left() kube_pod_container_resource_limits{resource="cpu",pod=~"redis-cache-.*"}
-          )
-        ) +
-        (
-          0.7 * (
-            container_memory_working_set_bytes{pod=~"redis-cache-.*"} /
-            on(pod) group_left() kube_pod_container_resource_limits{resource="memory",pod=~"redis-cache-.*"}
+        avg(
+          (
+            0.3 * (
+              sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="production",pod=~"redis-cache-.*",container!="",image!=""}[2m])) /
+              sum by (pod) (kube_pod_container_resource_requests{namespace="production",pod=~"redis-cache-.*",resource="cpu",unit="core"})
+            )
+          ) +
+          (
+            0.7 * (
+              sum by (pod) (container_memory_working_set_bytes{namespace="production",pod=~"redis-cache-.*",container!="",image!=""}) /
+              sum by (pod) (kube_pod_container_resource_requests{namespace="production",pod=~"redis-cache-.*",resource="memory",unit="byte"})
+            )
           )
         )
       threshold: "0.75"
@@ -162,7 +164,7 @@ spec:
 
 ## Using Native HPA with Multiple Metrics
 
-Kubernetes HPA v2 supports multiple metrics with different combination strategies. Configure behavior using the metricType field:
+Kubernetes HPA v2 supports multiple metrics, but it does not support custom combination strategies between them. The `behavior` field controls scale-up and scale-down rate limits and stabilization, while HPA still calculates desired replicas for each metric independently and chooses the maximum:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -224,70 +226,34 @@ HPA computes desired replicas for each metric independently, then takes the maxi
 
 ## Building Custom Multidimensional Logic
 
-For true multidimensional control, create a custom metrics adapter:
+For true multidimensional control through native HPA, expose a composite metric through the Kubernetes Custom Metrics API. A plain HTTP service is not enough; HPA reads custom metrics from an aggregated API such as `custom.metrics.k8s.io`, commonly served by Prometheus Adapter:
 
-```python
-# multidim_metrics_server.py
-from kubernetes import client, config
-import prometheus_api_client
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import json
-
-class MetricsHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        # Parse request for pod metrics
-        namespace = self.parse_namespace()
-        pod_selector = self.parse_selector()
-
-        # Query Prometheus for CPU and memory
-        prom = prometheus_api_client.PrometheusConnect(url="http://prometheus:9090")
-
-        cpu_query = f'rate(container_cpu_usage_seconds_total{{namespace="{namespace}",pod=~"{pod_selector}"}}[2m])'
-        mem_query = f'container_memory_working_set_bytes{{namespace="{namespace}",pod=~"{pod_selector}"}}'
-
-        cpu_data = prom.custom_query(cpu_query)
-        mem_data = prom.custom_query(mem_query)
-
-        # Compute multidimensional score
-        score = self.compute_multidim_score(cpu_data, mem_data)
-
-        # Return custom metric
-        response = {
-            "kind": "MetricValueList",
-            "apiVersion": "custom.metrics.k8s.io/v1beta1",
-            "metadata": {},
-            "items": [{
-                "describedObject": {
-                    "kind": "Pod",
-                    "namespace": namespace,
-                    "name": pod_selector
-                },
-                "metricName": "multidimensional_utilization",
-                "value": f"{score}"
-            }]
-        }
-
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps(response).encode())
-
-    def compute_multidim_score(self, cpu_data, mem_data):
-        # Normalize both metrics to 0-1 range
-        cpu_normalized = self.normalize_cpu(cpu_data)
-        mem_normalized = self.normalize_memory(mem_data)
-
-        # Combine using geometric mean (prevents overscaling if one dimension is low)
-        score = (cpu_normalized * mem_normalized) ** 0.5
-
-        return score
-
-# Start server
-server = HTTPServer(('', 8080), MetricsHandler)
-server.serve_forever()
+```yaml
+rules:
+- seriesQuery: 'container_cpu_usage_seconds_total{namespace!="",pod!="",container!="",image!=""}'
+  resources:
+    overrides:
+      namespace:
+        resource: namespace
+      pod:
+        resource: pod
+  name:
+    as: "multidimensional_utilization"
+  metricsQuery: |
+    sqrt(
+      (
+        sum by (<<.GroupBy>>) (rate(container_cpu_usage_seconds_total{<<.LabelMatchers>>,container!="",image!=""}[2m])) /
+        sum by (<<.GroupBy>>) (kube_pod_container_resource_requests{<<.LabelMatchers>>,resource="cpu",unit="core"})
+      )
+      *
+      (
+        sum by (<<.GroupBy>>) (container_memory_working_set_bytes{<<.LabelMatchers>>,container!="",image!=""}) /
+        sum by (<<.GroupBy>>) (kube_pod_container_resource_requests{<<.LabelMatchers>>,resource="memory",unit="byte"})
+      )
+    )
 ```
 
-Deploy this as a service and configure HPA to use it:
+Deploy the adapter and configure HPA to use the exposed pod metric:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -320,10 +286,10 @@ Track scaling decisions and their triggers:
 kubectl get hpa -w
 
 # Check KEDA ScaledObject status
-kubectl describe scaledobject webapp-scaler
+kubectl describe scaledobject webapp-scaler -n production
 
 # View scaling events
-kubectl get events --field-selector involvedObject.name=webapp-deployment --sort-by='.lastTimestamp'
+kubectl get events -n production --field-selector involvedObject.name=webapp-deployment --sort-by='.lastTimestamp'
 ```
 
 Create a Prometheus alert for scaling anomalies:
@@ -334,11 +300,11 @@ groups:
   rules:
   - alert: FrequentMultidimensionalScaling
     expr: |
-      rate(keda_scaledobject_scaling_total[10m]) > 0.5
+      changes(kube_deployment_status_replicas{namespace="production",deployment="webapp-deployment"}[10m]) > 5
     for: 15m
     annotations:
-      summary: "ScaledObject {{ $labels.scaledobject }} scaling too frequently"
-      description: "Multidimensional autoscaler triggering more than 5 times per 10 minutes"
+      summary: "Deployment {{ $labels.deployment }} scaling too frequently"
+      description: "Deployment replica count changed more than 5 times in 10 minutes"
 ```
 
 ## Best Practices
