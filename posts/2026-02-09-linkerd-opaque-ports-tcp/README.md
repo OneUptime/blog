@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linkerd, Kubernetes, TCP, Service Mesh, Protocol
 
-Description: Learn how to configure Linkerd opaque ports to handle non-HTTP TCP protocols like databases, message queues, and custom protocols while maintaining mTLS encryption and connection-level metrics.
+Description: Learn how to configure Linkerd opaque ports to handle non-HTTP TCP protocols like databases, message queues, and custom protocols while maintaining mTLS encryption and transport-level metrics.
 
 ---
 
-Linkerd excels at HTTP traffic with per-request metrics and advanced routing, but many applications use raw TCP protocols. Databases, message queues, and custom protocols don't speak HTTP. Linkerd's opaque ports feature handles these TCP protocols with mTLS encryption and connection-level observability without requiring HTTP.
+Linkerd excels at HTTP traffic with per-request metrics and advanced routing, but many applications use raw TCP protocols. Databases, message queues, and custom protocols don't speak HTTP. Linkerd's opaque ports feature handles these TCP protocols with mTLS encryption and byte-level observability without requiring HTTP.
 
 ## Understanding Opaque Ports
 
-By default, Linkerd assumes traffic is HTTP and tries to parse it for per-request metrics. When non-HTTP protocols flow through HTTP-configured ports, Linkerd logs errors and metrics become inaccurate. Opaque ports tell Linkerd to treat traffic as raw TCP without HTTP parsing.
+By default, Linkerd uses protocol detection to determine whether traffic is HTTP, HTTP/2, or gRPC. If Linkerd cannot detect HTTP, it proxies the connection as plain TCP without HTTP metrics or routing. Some server-first or idle TCP protocols can wait up to the protocol detection timeout before Linkerd falls back to TCP. Opaque ports tell Linkerd to treat traffic as raw TCP without waiting for protocol detection.
 
-Opaque port traffic still gets mTLS encryption and connection-level metrics like bytes transferred and connection duration. You lose per-request metrics but gain compatibility with any TCP protocol. This is essential for database connections, gRPC with custom framing, and proprietary protocols.
+Opaque port traffic still gets mTLS encryption and transport-level metrics like open connections and bytes transferred. You lose per-request metrics but gain compatibility with any TCP protocol. This is essential for database connections, server-first protocols, and proprietary protocols.
 
 Linkerd automatically marks some ports as opaque based on well-known conventions, but you can configure additional ports explicitly.
 
@@ -25,6 +25,7 @@ You need a Kubernetes cluster with Linkerd installed:
 ```bash
 linkerd version
 linkerd check
+linkerd viz check
 ```
 
 Deploy a sample TCP service like MySQL:
@@ -69,6 +70,7 @@ spec:
   ports:
   - port: 3306
     targetPort: 3306
+    appProtocol: linkerd.io/opaque
 ```
 
 ```bash
@@ -77,7 +79,7 @@ kubectl apply -f mysql-deployment.yaml
 
 ## Configuring Opaque Ports via Annotations
 
-Mark ports as opaque using pod annotations:
+Mark ports as opaque using annotations on the destination Service and workload. In many Kubernetes Service-based cases, setting `appProtocol: linkerd.io/opaque` on the Service port is the preferred way to skip protocol detection; annotations are required for cases such as unmeshed clients, direct pod traffic, headless Services, and egress configuration.
 
 ```yaml
 # mysql-opaque.yaml
@@ -108,13 +110,28 @@ spec:
         env:
         - name: MYSQL_ROOT_PASSWORD
           value: "password"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: default
+  annotations:
+    config.linkerd.io/opaque-ports: "3306"
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+    appProtocol: linkerd.io/opaque
 ```
 
 ```bash
 kubectl apply -f mysql-opaque.yaml
 ```
 
-Linkerd now treats traffic on port 3306 as raw TCP without HTTP parsing.
+Linkerd now treats traffic to port 3306 as raw TCP without protocol detection.
 
 ## Verifying Opaque Port Configuration
 
@@ -130,13 +147,13 @@ Test connectivity:
 kubectl run mysql-client --image=mysql:8.0 --rm -it -- mysql -h mysql -u root -ppassword
 ```
 
-The connection should work without errors. Check Linkerd metrics:
+The connection should work without errors. This quick client pod is unmeshed; use an injected client workload when you want Linkerd mTLS on the client-to-server connection. Check Linkerd metrics:
 
 ```bash
-linkerd stat deploy/mysql
+linkerd viz stat deploy/mysql
 ```
 
-You'll see TCP-level metrics like success rate and connection count, but not per-request latency since Linkerd treats this as opaque TCP.
+For opaque TCP traffic, use the Linkerd proxy metrics for TCP-level details such as open connections and bytes transferred. You won't get per-request latency since Linkerd treats this as opaque TCP.
 
 ## Configuring Multiple Opaque Ports
 
@@ -148,11 +165,11 @@ annotations:
   config.linkerd.io/opaque-ports: "3306,5432,6379"
 ```
 
-This marks MySQL (3306), PostgreSQL (5432), and Redis (6379) as opaque. Use this for deployments running multiple database services.
+This marks MySQL (3306), PostgreSQL (5432), and Redis (6379) as opaque. When you provide this annotation, the values replace Linkerd's default opaque port list rather than adding to it, so include every default opaque port you still need.
 
 ## Handling gRPC on Opaque Ports
 
-gRPC uses HTTP/2 by default and works with Linkerd's standard protocol detection. However, custom gRPC implementations or gRPC-Web may need opaque ports:
+gRPC uses HTTP/2 by default and works with Linkerd's standard protocol detection. However, application-level TLS or nonstandard TCP framing around an RPC protocol may need opaque ports:
 
 ```yaml
 # grpc-service.yaml
@@ -172,7 +189,7 @@ spec:
         app: grpc-service
       annotations:
         linkerd.io/inject: enabled
-        # Mark as opaque if using custom framing
+        # Mark as opaque if using application-level TLS or nonstandard framing
         config.linkerd.io/opaque-ports: "50051"
     spec:
       containers:
@@ -182,11 +199,11 @@ spec:
         - containerPort: 50051
 ```
 
-Standard gRPC usually doesn't need opaque ports, but some edge cases require it.
+Standard unencrypted gRPC usually doesn't need opaque ports, but some edge cases require it.
 
 ## Configuring Opaque Ports for Redis
 
-Redis uses the RESP protocol over TCP. While Linkerd usually detects Redis automatically, explicitly mark it as opaque for consistency:
+Redis uses the RESP protocol over TCP and is in Linkerd's default opaque port list when it runs on port 6379. Explicitly mark it as opaque when you want to make the configuration visible or when Redis runs on a non-standard port:
 
 ```yaml
 # redis-deployment.yaml
@@ -213,6 +230,19 @@ spec:
         image: redis:7-alpine
         ports:
         - containerPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: default
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+    appProtocol: linkerd.io/opaque
 ```
 
 ```bash
@@ -264,20 +294,23 @@ Linkerd encrypts traffic with mTLS without trying to parse it as HTTP.
 Query TCP-level metrics for opaque ports:
 
 ```bash
-linkerd stat deploy/mysql --to deploy/mysql-client
+linkerd viz stat deploy/mysql
 ```
 
-You'll see:
+For opaque TCP traffic, Prometheus metrics provide the detailed transport-level view:
 
-- Success rate (connection establishment success)
-- RPS (connections per second)
-- Latency (connection establishment time)
+- Open connections
+- Connection open and close counts
+- Bytes sent and received
 
 Query Prometheus for detailed metrics:
 
 ```promql
-# TCP connections to MySQL
-sum(rate(tcp_open_connections{deployment="mysql"}[5m]))
+# Currently open TCP connections to MySQL
+sum(tcp_open_connections{deployment="mysql"})
+
+# TCP connections opened per second
+sum(rate(tcp_open_total{deployment="mysql"}[5m]))
 
 # TCP bytes sent
 sum(rate(tcp_write_bytes_total{deployment="mysql"}[5m]))
@@ -304,7 +337,7 @@ kubectl logs deploy/mysql -c linkerd-proxy | grep -i error
 
 Common issues:
 
-- Port mismatch: Ensure annotation matches actual container port
+- Port mismatch: Ensure annotation matches the destination Service and workload port
 - Protocol detection: If Linkerd still tries HTTP parsing, the annotation may not be applied
 - mTLS issues: Verify both client and server pods have Linkerd injection
 
@@ -330,7 +363,7 @@ spec:
         app: app-server
       annotations:
         linkerd.io/inject: enabled
-        # Port 8080 is HTTP (default), 3306 is opaque
+        # Port 8080 is detected as HTTP, 3306 is opaque
         config.linkerd.io/opaque-ports: "3306"
     spec:
       containers:
@@ -339,9 +372,26 @@ spec:
         ports:
         - containerPort: 8080  # HTTP API
         - containerPort: 3306  # Internal database
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-server
+  namespace: default
+spec:
+  selector:
+    app: app-server
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  - name: mysql
+    port: 3306
+    targetPort: 3306
+    appProtocol: linkerd.io/opaque
 ```
 
-Linkerd provides HTTP metrics for port 8080 and TCP metrics for port 3306.
+Linkerd provides HTTP metrics for port 8080 and transport-level TCP metrics for port 3306.
 
 ## Configuring Skip Ports
 
@@ -354,17 +404,17 @@ annotations:
   config.linkerd.io/skip-outbound-ports: "3306"  # Direct database access
 ```
 
-Skip ports bypass Linkerd entirely, while opaque ports use Linkerd with TCP handling. Use skip for local communication and opaque for remote TCP services.
+Skip ports bypass Linkerd entirely, while opaque ports use Linkerd with TCP handling. Use skip only when traffic should bypass the proxy; skip-outbound-ports is set on the source workload, while opaque-ports is set on the destination.
 
 ## Performance Considerations
 
-Opaque ports have lower overhead than HTTP protocol detection:
+Opaque ports avoid protocol detection and HTTP parsing:
 
 - No HTTP parsing overhead
 - No per-request metrics collection
 - Simpler proxy logic
 
-For high-throughput TCP connections like database queries, opaque ports can improve performance by reducing proxy processing.
+For high-throughput TCP connections like database queries, opaque ports can reduce proxy processing.
 
 Monitor proxy resource usage:
 
@@ -389,8 +439,8 @@ You don't need to configure these explicitly unless you're using non-standard po
 
 ## Conclusion
 
-Linkerd opaque ports enable service mesh features for non-HTTP TCP protocols. Mark database ports, message queue ports, and custom protocol ports as opaque using the config.linkerd.io/opaque-ports annotation.
+Linkerd opaque ports enable service mesh features for non-HTTP TCP protocols. Mark database ports, message queue ports, and custom protocol ports as opaque using the Service port's `appProtocol: linkerd.io/opaque` field or the `config.linkerd.io/opaque-ports` annotation when an annotation is required.
 
-Opaque traffic maintains mTLS encryption and connection-level observability without HTTP parsing overhead. This gives you secure, observable TCP connections for databases, message queues, and proprietary protocols.
+Opaque traffic maintains mTLS encryption and transport-level observability without HTTP parsing overhead. This gives you secure, observable TCP connections for databases, message queues, and proprietary protocols.
 
 Configure opaque ports explicitly for custom ports or non-standard protocol ports. Monitor TCP-level metrics and verify mTLS is active. This extends Linkerd's benefits beyond HTTP to your entire application stack.
