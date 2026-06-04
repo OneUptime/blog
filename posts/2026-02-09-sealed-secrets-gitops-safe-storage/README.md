@@ -19,12 +19,12 @@ In this guide, you'll learn how to install Sealed Secrets, encrypt secrets for G
 Sealed Secrets uses asymmetric cryptography:
 
 1. The controller generates a key pair (private key stays in the cluster)
-2. You encrypt secrets using the public key (can be done anywhere)
+2. You encrypt secrets using the public certificate (can be done anywhere)
 3. Encrypted SealedSecrets are safe to commit to Git
 4. When applied, the controller decrypts them using the private key
 5. Regular Kubernetes Secrets are created for pods to use
 
-The private key never leaves the cluster, ensuring only that cluster can decrypt the secrets.
+The private key stays in the cluster by default, ensuring only that cluster can decrypt the secrets.
 
 ## Installing Sealed Secrets
 
@@ -33,23 +33,24 @@ Install the Sealed Secrets controller:
 ```bash
 # Install using kubectl
 
-kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.24.0/controller.yaml
+kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.36.6/controller.yaml
 
 # Or using Helm
 helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
 helm install sealed-secrets sealed-secrets/sealed-secrets \
   --namespace kube-system \
-  --create-namespace
+  --create-namespace \
+  --set-string fullnameOverride=sealed-secrets-controller
 ```
 
 Verify installation:
 
 ```bash
-# Check controller pod is running
-kubectl get pods -n kube-system | grep sealed-secrets
+# Check controller deployment is running
+kubectl get deployment sealed-secrets-controller -n kube-system
 
 # View controller logs
-kubectl logs -n kube-system -l name=sealed-secrets-controller
+kubectl logs -n kube-system deployment/sealed-secrets-controller
 ```
 
 Install the kubeseal CLI tool:
@@ -59,8 +60,8 @@ Install the kubeseal CLI tool:
 brew install kubeseal
 
 # Linux
-wget https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.24.0/kubeseal-0.24.0-linux-amd64.tar.gz
-tar xfz kubeseal-0.24.0-linux-amd64.tar.gz
+curl -OL https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.36.6/kubeseal-0.36.6-linux-amd64.tar.gz
+tar -xvzf kubeseal-0.36.6-linux-amd64.tar.gz kubeseal
 sudo install -m 755 kubeseal /usr/local/bin/kubeseal
 
 # Verify installation
@@ -286,15 +287,15 @@ spec:
 
 Flux syncs SealedSecrets from Git, and the controller handles decryption.
 
-## Key Rotation and Management
+## Key Renewal and Management
 
-Sealed Secrets automatically rotates keys every 30 days by default. Old keys are retained for decryption.
+Sealed Secrets automatically renews sealing keys every 30 days by default. Old keys are retained for decryption.
 
-View current keys:
+View sealing keys:
 
 ```bash
 kubectl get secret -n kube-system \
-  -l sealedsecrets.bitnami.com/sealed-secrets-key=active
+  -l sealedsecrets.bitnami.com/sealed-secrets-key
 ```
 
 Manually back up encryption keys:
@@ -302,7 +303,7 @@ Manually back up encryption keys:
 ```bash
 # Back up keys
 kubectl get secret -n kube-system \
-  -l sealedsecrets.bitnami.com/sealed-secrets-key=active \
+  -l sealedsecrets.bitnami.com/sealed-secrets-key \
   -o yaml > sealed-secrets-keys-backup.yaml
 
 # Store safely (encrypted) outside the cluster
@@ -311,9 +312,9 @@ kubectl get secret -n kube-system \
 Restore keys to a new cluster:
 
 ```bash
-# Delete default key
+# Delete generated keys
 kubectl delete secret -n kube-system \
-  -l sealedsecrets.bitnami.com/sealed-secrets-key=active
+  -l sealedsecrets.bitnami.com/sealed-secrets-key
 
 # Restore backed up keys
 kubectl apply -f sealed-secrets-keys-backup.yaml
@@ -322,9 +323,9 @@ kubectl apply -f sealed-secrets-keys-backup.yaml
 kubectl rollout restart deployment sealed-secrets-controller -n kube-system
 ```
 
-## Re-encrypting All Secrets After Key Rotation
+## Re-encrypting All Secrets After Key Renewal
 
-When rotating to a new key, re-encrypt all SealedSecrets:
+After renewing the sealing key, re-encrypt all SealedSecrets:
 
 ```bash
 #!/bin/bash
@@ -332,15 +333,12 @@ When rotating to a new key, re-encrypt all SealedSecrets:
 
 for file in $(find . -name "*sealed*.yaml"); do
   echo "Re-encrypting $file..."
-  # Extract the original secret
-  kubectl create --dry-run=client -o yaml \
-    -f $file | \
-    kubeseal --format yaml > ${file}.new
-  mv ${file}.new $file
+  kubeseal --re-encrypt --format yaml < "$file" > "${file}.new"
+  mv "${file}.new" "$file"
 done
 
 git add .
-git commit -m "Re-encrypt all sealed secrets with new key"
+git commit -m "Re-encrypt all sealed secrets after key renewal"
 git push
 ```
 
@@ -422,7 +420,7 @@ The controller updates the underlying Secret automatically.
 
 3. **Use appropriate scopes**: Choose strict scope for production secrets, cluster-wide for shared credentials.
 
-4. **Automate re-encryption**: Set up automated re-encryption after key rotation.
+4. **Automate re-encryption**: Set up automated re-encryption after key renewal.
 
 5. **Monitor controller logs**: Watch for decryption failures or key issues.
 
@@ -430,6 +428,6 @@ The controller updates the underlying Secret automatically.
 
 7. **Use separate keys per environment**: Don't share encryption keys between prod and non-prod clusters.
 
-8. **Document key rotation schedule**: Know when keys will rotate and plan re-encryption.
+8. **Document key renewal schedule**: Know when keys will renew and plan re-encryption.
 
 Sealed Secrets enables true GitOps by making it safe to store encrypted secrets in Git repositories. Your entire cluster configuration, including sensitive data, can be version controlled and deployed through automated pipelines without security compromises.
