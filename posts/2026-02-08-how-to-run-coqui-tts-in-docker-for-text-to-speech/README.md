@@ -32,9 +32,9 @@ docker run -d \
   --name coqui-tts \
   -p 5002:5002 \
   -v tts_models:/root/.local/share/tts \
-  ghcr.io/coqui-ai/tts \
-  --model_name tts_models/en/ljspeech/vits \
-  --server
+  --entrypoint /bin/bash \
+  ghcr.io/idiap/coqui-tts-cpu \
+  -c "tts-server --model_name tts_models/en/ljspeech/vits"
 ```
 
 Wait for the model to download and the server to start, then test it:
@@ -61,7 +61,7 @@ version: "3.8"
 
 services:
   coqui-tts:
-    image: ghcr.io/coqui-ai/tts
+    image: ghcr.io/idiap/coqui-tts-cpu
     container_name: coqui-tts
     ports:
       # TTS API and web interface
@@ -73,9 +73,8 @@ services:
       - ./voice_samples:/voice_samples
       # Mount output directory
       - ./output:/output
-    command: >
-      --model_name tts_models/en/ljspeech/vits
-      --server
+    entrypoint: /bin/bash
+    command: -c "tts-server --model_name tts_models/en/ljspeech/vits"
     # Uncomment for GPU support
     # deploy:
     #   resources:
@@ -107,7 +106,7 @@ Coqui TTS ships with many pre-trained models. List them to find the one that sui
 
 ```bash
 # List all available TTS models
-docker run --rm ghcr.io/coqui-ai/tts --list_models
+docker run --rm ghcr.io/idiap/coqui-tts-cpu --list_models
 
 # The output is organized by category:
 # tts_models/<language>/<dataset>/<model_name>
@@ -116,12 +115,12 @@ docker run --rm ghcr.io/coqui-ai/tts --list_models
 
 Popular model choices include:
 
-| Model | Quality | Speed | Size | Languages |
+| Model | Quality | Speed | Approx. Size | Languages |
 |-------|---------|-------|------|-----------|
-| tts_models/en/ljspeech/vits | Good | Fast | 100 MB | English |
-| tts_models/en/ljspeech/tacotron2-DDC | Good | Medium | 200 MB | English |
+| tts_models/en/ljspeech/vits | Good | Fast | 146 MB | English |
+| tts_models/en/ljspeech/tacotron2-DDC | Good | Medium | 113 MB | English |
 | tts_models/multilingual/multi-dataset/xtts_v2 | Excellent | Slow | 1.8 GB | 17 languages |
-| tts_models/en/ljspeech/glow-tts | Good | Fast | 100 MB | English |
+| tts_models/en/ljspeech/glow-tts | Good | Fast | 344 MB | English |
 
 ## Using the XTTS Model for Multi-Language Support
 
@@ -134,16 +133,15 @@ version: "3.8"
 
 services:
   coqui-tts:
-    image: ghcr.io/coqui-ai/tts
+    image: ghcr.io/idiap/coqui-tts
     container_name: coqui-xtts
     ports:
       - "5002:5002"
     volumes:
       - tts_models:/root/.local/share/tts
       - ./voice_samples:/voice_samples
-    command: >
-      --model_name tts_models/multilingual/multi-dataset/xtts_v2
-      --server
+    entrypoint: /bin/bash
+    command: -c "tts-server --model_name tts_models/multilingual/multi-dataset/xtts_v2 --use_cuda"
     deploy:
       resources:
         reservations:
@@ -181,13 +179,11 @@ XTTS supports voice cloning from a short audio sample (6-30 seconds of clean spe
 # The sample should be a WAV file with clear speech, minimal background noise
 
 # Clone a voice and generate speech
-curl -X POST "http://localhost:5002/api/tts" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "This is generated speech using a cloned voice from Docker.",
-    "language_id": "en",
-    "speaker_wav": "/voice_samples/reference_voice.wav"
-  }' -o cloned_voice.wav
+curl -G "http://localhost:5002/api/tts" \
+  --data-urlencode "text=This is generated speech using a cloned voice from Docker." \
+  --data-urlencode "language_id=en" \
+  --data-urlencode "speaker_wav=/voice_samples/reference_voice.wav" \
+  -o cloned_voice.wav
 ```
 
 ## Building a Custom TTS API
@@ -204,8 +200,8 @@ RUN apt-get update && apt-get install -y \
     ffmpeg libsndfile1 espeak-ng \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Coqui TTS
-RUN pip install --no-cache-dir TTS fastapi uvicorn python-multipart
+# Install PyTorch and Coqui TTS
+RUN pip install --no-cache-dir torch torchaudio coqui-tts fastapi uvicorn python-multipart
 
 WORKDIR /app
 COPY tts_server.py /app/
@@ -222,7 +218,7 @@ import io
 import os
 import tempfile
 from TTS.api import TTS
-from fastapi import FastAPI, Query, UploadFile, File
+from fastapi import FastAPI, Query, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 
 app = FastAPI(title="Coqui TTS API")
@@ -234,6 +230,17 @@ tts = TTS(model_name=MODEL_NAME)
 print("Model loaded successfully")
 
 
+def build_tts_kwargs(text, file_path, language="en", speaker_wav=None, speed=1.0):
+    kwargs = {"text": text, "file_path": file_path}
+    if tts.is_multi_lingual:
+        kwargs["language"] = language
+    if speaker_wav:
+        kwargs["speaker_wav"] = speaker_wav
+    if "xtts" in MODEL_NAME.lower():
+        kwargs["speed"] = speed
+    return kwargs
+
+
 @app.get("/api/tts")
 async def text_to_speech(
     text: str = Query(..., description="Text to synthesize"),
@@ -242,12 +249,7 @@ async def text_to_speech(
 ):
     """Generate speech from text and return WAV audio."""
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        tts.tts_to_file(
-            text=text,
-            file_path=tmp.name,
-            language=language,
-            speed=speed
-        )
+        tts.tts_to_file(**build_tts_kwargs(text, tmp.name, language, speed=speed))
         tmp.seek(0)
         audio_data = open(tmp.name, "rb").read()
         os.unlink(tmp.name)
@@ -266,6 +268,9 @@ async def clone_voice(
     speaker_wav: UploadFile = File(...)
 ):
     """Generate speech using a cloned voice from an uploaded audio sample."""
+    if not tts.is_multi_speaker:
+        raise HTTPException(status_code=400, detail="The loaded model does not support voice cloning")
+
     # Save the uploaded voice sample temporarily
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as ref_tmp:
         content = await speaker_wav.read()
@@ -273,12 +278,7 @@ async def clone_voice(
         ref_path = ref_tmp.name
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as out_tmp:
-        tts.tts_to_file(
-            text=text,
-            file_path=out_tmp.name,
-            speaker_wav=ref_path,
-            language=language
-        )
+        tts.tts_to_file(**build_tts_kwargs(text, out_tmp.name, language, speaker_wav=ref_path))
         audio_data = open(out_tmp.name, "rb").read()
         os.unlink(out_tmp.name)
         os.unlink(ref_path)
@@ -358,13 +358,14 @@ version: "3.8"
 
 services:
   tts:
-    image: ghcr.io/coqui-ai/tts
+    image: ghcr.io/idiap/coqui-tts-cpu
     container_name: tts
     ports:
       - "5002:5002"
     volumes:
       - tts_models:/root/.local/share/tts
-    command: --model_name tts_models/en/ljspeech/vits --server
+    entrypoint: /bin/bash
+    command: -c "tts-server --model_name tts_models/en/ljspeech/vits"
     restart: unless-stopped
 
   stt:
@@ -376,6 +377,7 @@ services:
       - whisper_models:/root/.cache/whisper
     environment:
       - ASR_MODEL=base
+      - ASR_ENGINE=openai_whisper
     restart: unless-stopped
 
 volumes:
