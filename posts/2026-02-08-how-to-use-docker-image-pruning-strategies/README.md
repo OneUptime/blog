@@ -16,7 +16,7 @@ This guide covers pruning strategies from simple one-liners to automated policie
 
 Docker distinguishes between several categories of images. Knowing the differences is essential before pruning anything.
 
-**Dangling images** have no tag and no relationship to any tagged image. They result from rebuilding an image with the same tag, which orphans the previous version.
+**Dangling images** have no tag. They often result from rebuilding an image with the same tag, which leaves the previous version untagged.
 
 **Unused images** are tagged images not referenced by any container, running or stopped.
 
@@ -30,7 +30,7 @@ docker system df -v | head -40
 
 ## Strategy 1: Prune Dangling Images Only
 
-This is the safest pruning operation. Dangling images serve no purpose and can always be removed.
+This is the safest pruning operation. Docker only removes dangling images that are not associated with a container.
 
 ```bash
 # Remove all dangling images (safe operation)
@@ -124,7 +124,7 @@ When disk space is critically low, a full system prune removes images, container
 # Nuclear option: remove everything unused
 docker system prune -a -f
 
-# Include volumes too (WARNING: this destroys data)
+# Include anonymous volumes too (WARNING: this can destroy data)
 docker system prune -a --volumes -f
 ```
 
@@ -141,21 +141,21 @@ Keep only images that match your production registry. Remove everything else.
 
 REGISTRY=$1
 
-docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | while read name id; do
+docker images --filter "dangling=false" --format '{{.Repository}}:{{.Tag}}' | while IFS= read -r name; do
     # Skip images from the trusted registry
     if [[ "$name" == "${REGISTRY}"* ]]; then
         echo "KEEP: $name"
         continue
     fi
 
-    # Skip images used by running containers
-    if docker ps --format '{{.Image}}' | grep -q "$name"; then
+    # Skip images used by existing containers
+    if docker ps -a --format '{{.Image}}' | grep -Fxq "$name"; then
         echo "ACTIVE: $name"
         continue
     fi
 
     echo "REMOVE: $name"
-    docker rmi "$id" 2>/dev/null
+    docker rmi "$name" 2>/dev/null
 done
 ```
 
@@ -195,8 +195,8 @@ Build cache can grow larger than the images themselves. Prune it separately.
 # Show build cache usage
 docker buildx du
 
-# Remove all build cache
-docker builder prune -f
+# Remove all unused build cache
+docker builder prune -a -f
 
 # Remove build cache older than 7 days
 docker builder prune --filter "until=168h" -f
@@ -275,7 +275,7 @@ jobs:
       - name: Prune Docker images
         run: |
           docker image prune -a --filter "until=168h" -f
-          docker builder prune -f
+          docker builder prune -a -f
 ```
 
 ## Monitoring Before and After
