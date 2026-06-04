@@ -188,8 +188,8 @@ Check that the Service exists and has endpoints.
 # Verify Service exists
 kubectl get service kubernetes -n default
 
-# Check endpoints
-kubectl get endpoints kubernetes -n default
+# Check endpoint slices
+kubectl get endpointslice -n default -l kubernetes.io/service-name=kubernetes
 ```
 
 ## Fixing DNS Timeout Issues
@@ -232,7 +232,7 @@ data:
            max_concurrent 1000
            policy sequential  # Try servers in order
            health_check 5s    # Check upstream health
-           expire 10s         # How long to wait for response
+           expire 10s         # Expire cached upstream connections
         }
 
         # Increase cache size and duration
@@ -268,21 +268,30 @@ kubectl autoscale deployment coredns -n kube-system \
 Enable the autopath plugin to reduce query load.
 
 ```yaml
-kubernetes cluster.local in-addr.arpa ip6.arpa {
-   pods insecure
-   fallthrough in-addr.arpa ip6.arpa
-   ttl 30
+.:53 {
+   # Reduces searches by resolving names in one query
+   autopath @kubernetes
+   kubernetes cluster.local in-addr.arpa ip6.arpa {
+      pods verified
+      fallthrough in-addr.arpa ip6.arpa
+      ttl 30
+   }
 }
-
-# Reduces searches by resolving names in one query
-autopath @kubernetes
 ```
 
 ## Implementing NodeLocal DNSCache
 
 Deploy NodeLocal DNSCache to improve DNS performance and reduce CoreDNS load.
 
+This example uses the default `cluster.local` domain and `169.254.20.10` as the node-local address. Replace the placeholders before applying the manifest.
+
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-local-dns
+  namespace: kube-system
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -364,6 +373,10 @@ spec:
       containers:
       - name: node-cache
         image: registry.k8s.io/dns/k8s-dns-node-cache:1.22.20
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
         args:
         - -localip
         - 169.254.20.10
@@ -386,10 +399,10 @@ spec:
 
 ## Monitoring CoreDNS Performance
 
-Deploy ServiceMonitor for CoreDNS metrics.
+Deploy ServiceMonitor for CoreDNS metrics when using Prometheus Operator.
 
 ```yaml
-apiVersion: v1
+apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: coredns
@@ -403,47 +416,47 @@ spec:
     interval: 30s
 ```
 
-Create alerts for DNS issues.
+Create alerts for DNS issues when using Prometheus Operator.
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
 metadata:
   name: prometheus-alerts
   namespace: monitoring
-data:
-  alerts.yaml: |
-    groups:
-    - name: coredns
-      rules:
-      - alert: CoreDNSDown
-        expr: |
-          absent(up{job="kube-dns"}) or up{job="kube-dns"} == 0
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "CoreDNS is down"
+spec:
+  groups:
+  - name: coredns
+    rules:
+    - alert: CoreDNSDown
+      expr: |
+        absent(up{job="kube-dns"}) or up{job="kube-dns"} == 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "CoreDNS is down"
 
-      - alert: CoreDNSHighErrorRate
-        expr: |
-          rate(coredns_dns_responses_total{rcode="SERVFAIL"}[5m]) > 0.05
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "CoreDNS error rate above 5%"
+    - alert: CoreDNSHighErrorRate
+      expr: |
+        sum(rate(coredns_dns_responses_total{rcode="SERVFAIL"}[5m]))
+          / sum(rate(coredns_dns_responses_total[5m])) > 0.05
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "CoreDNS error rate above 5%"
 
-      - alert: CoreDNSHighLatency
-        expr: |
-          histogram_quantile(0.99,
-            rate(coredns_dns_request_duration_seconds_bucket[5m])
-          ) > 0.1
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "CoreDNS P99 latency above 100ms"
+    - alert: CoreDNSHighLatency
+      expr: |
+        histogram_quantile(0.99,
+          sum by (le) (rate(coredns_dns_request_duration_seconds_bucket[5m]))
+        ) > 0.1
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "CoreDNS P99 latency above 100ms"
 ```
 
 ## Testing DNS Resolution End-to-End
@@ -451,7 +464,7 @@ data:
 Create comprehensive DNS tests.
 
 ```bash
-#!/bin/bash
+#!/bin/sh
 # test-dns.sh
 
 echo "Testing Kubernetes DNS..."
@@ -484,6 +497,31 @@ time nslookup kubernetes.default.svc.cluster.local
 Run as a CronJob for continuous validation.
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dns-test-scripts
+  namespace: kube-system
+data:
+  test-dns.sh: |
+    #!/bin/sh
+
+    echo "Testing Kubernetes DNS..."
+
+    if nslookup kubernetes.default.svc.cluster.local > /dev/null; then
+      echo "Cluster DNS resolution working"
+    else
+      echo "Cluster DNS resolution failed"
+      exit 1
+    fi
+
+    if nslookup google.com > /dev/null; then
+      echo "External DNS resolution working"
+    else
+      echo "External DNS resolution failed"
+      exit 1
+    fi
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
