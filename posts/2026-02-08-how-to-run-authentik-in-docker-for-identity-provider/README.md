@@ -15,8 +15,8 @@ This guide covers deploying Authentik, configuring it as an identity provider, i
 ## Prerequisites
 
 Authentik requires:
-- Docker Engine 24.0+ and Docker Compose V2
-- At least 2 GB of RAM
+- Docker or Podman with Docker Compose V2
+- At least 2 CPU cores and 2 GB of RAM
 - A domain name (for production deployments)
 
 Generate the required secret key before starting:
@@ -24,10 +24,10 @@ Generate the required secret key before starting:
 ```bash
 # Generate a secret key for Authentik
 
-echo "AUTHENTIK_SECRET_KEY=$(openssl rand -base64 36)" >> .env
+echo "AUTHENTIK_SECRET_KEY=$(openssl rand -base64 60 | tr -d '\n')" >> .env
 
 # Generate a PostgreSQL password
-echo "PG_PASS=$(openssl rand -base64 36)" >> .env
+echo "PG_PASS=$(openssl rand -base64 36 | tr -d '\n')" >> .env
 ```
 
 ## Docker Compose Deployment
@@ -36,95 +36,83 @@ Here is the complete Docker Compose configuration:
 
 ```yaml
 # docker-compose.yml - Authentik full deployment
-version: "3.8"
-
 services:
   postgresql:
-    image: postgres:16-alpine
+    image: docker.io/library/postgres:16-alpine
     container_name: authentik-db
+    env_file:
+      - .env
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - database:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: authentik
-      POSTGRES_USER: authentik
-      POSTGRES_PASSWORD: ${PG_PASS}
+      POSTGRES_DB: ${PG_DB:-authentik}
+      POSTGRES_USER: ${PG_USER:-authentik}
+      POSTGRES_PASSWORD: ${PG_PASS:?database password required}
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "authentik"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 30s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    container_name: authentik-redis
-    command: redis-server --save 60 1 --loglevel warning
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   server:
-    image: ghcr.io/goauthentik/server:2024.8
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.2}
     container_name: authentik-server
     command: server
     ports:
-      - "9000:9000"    # HTTP
-      - "9443:9443"    # HTTPS
+      - "${COMPOSE_PORT_HTTP:-9000}:9000"    # HTTP
+      - "${COMPOSE_PORT_HTTPS:-9443}:9443"   # HTTPS
+    env_file:
+      - .env
     environment:
-      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
-      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?secret key required}
       AUTHENTIK_POSTGRESQL__HOST: postgresql
-      AUTHENTIK_POSTGRESQL__USER: authentik
-      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
     volumes:
-      - authentik-media:/media
-      - authentik-templates:/templates
+      - ./data:/data
+      - ./custom-templates:/templates
     depends_on:
       postgresql:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     restart: unless-stopped
+    shm_size: 512mb
 
   worker:
-    image: ghcr.io/goauthentik/server:2024.8
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.2}
     container_name: authentik-worker
     command: worker
+    env_file:
+      - .env
     environment:
-      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
-      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?secret key required}
       AUTHENTIK_POSTGRESQL__HOST: postgresql
-      AUTHENTIK_POSTGRESQL__USER: authentik
-      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
     volumes:
-      - authentik-media:/media
-      - authentik-templates:/templates
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/data
+      - ./certs:/certs
+      - ./custom-templates:/templates
     depends_on:
       postgresql:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     restart: unless-stopped
+    shm_size: 512mb
+    user: root
 
 volumes:
-  postgres-data:
-  redis-data:
-  authentik-media:
-  authentik-templates:
+  database:
 ```
 
 Start Authentik:
 
 ```bash
 # Launch all Authentik services
+docker compose pull
 docker compose up -d
 
 # Monitor startup
@@ -147,20 +135,43 @@ Open http://localhost:9000/if/flow/initial-setup/ in your browser. Create the ad
 Set up Authentik as an OAuth2 provider for your applications. This is done through the admin interface, but here is the API approach:
 
 ```bash
-# Create an OAuth2 provider via the API
+# Create an OAuth2 provider via the API.
+# Replace the UUIDs with flow IDs from your Authentik instance.
 curl -X POST http://localhost:9000/api/v3/providers/oauth2/ \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "My Web App",
-    "authorization_flow": "default-provider-authorization-explicit-consent",
+    "authorization_flow": "AUTHORIZATION_FLOW_UUID",
+    "invalidation_flow": "INVALIDATION_FLOW_UUID",
     "client_type": "confidential",
     "client_id": "my-web-app",
     "client_secret": "my-client-secret",
-    "redirect_uris": "http://localhost:3000/callback\nhttp://localhost:3000/silent-renew",
+    "redirect_uris": [
+      {
+        "matching_mode": "strict",
+        "url": "http://localhost:3000/callback"
+      },
+      {
+        "matching_mode": "strict",
+        "url": "http://localhost:3000/silent-renew"
+      }
+    ],
     "signing_key": null,
     "access_token_validity": "hours=1",
     "refresh_token_validity": "days=30"
+  }'
+
+# Link the provider to an application slug used by the OIDC discovery URL
+# Replace the provider value with the pk returned by the provider API call.
+curl -X POST http://localhost:9000/api/v3/core/applications/ \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Web App",
+    "slug": "my-web-app",
+    "provider": 1,
+    "policy_engine_mode": "all"
   }'
 ```
 
@@ -170,35 +181,36 @@ Here is how to integrate a Node.js application with Authentik using OpenID Conne
 
 ```javascript
 // app.js - Express app with Authentik OIDC authentication
-const express = require("express");
-const { Issuer, Strategy } = require("openid-client");
-const passport = require("passport");
-const session = require("express-session");
+import express from "express";
+import cookieParser from "cookie-parser";
+import session from "express-session";
+import passport from "passport";
+import * as client from "openid-client";
+import { Strategy } from "openid-client/passport";
 
 const app = express();
 
+app.use(cookieParser());
 app.use(session({
   secret: "session-secret",
   resave: false,
   saveUninitialized: false,
 }));
-app.use(passport.initialize());
-app.use(passport.session());
+app.use(passport.authenticate("session"));
 
 async function setupAuth() {
   // Discover Authentik's OIDC configuration
-  const issuer = await Issuer.discover("http://localhost:9000/application/o/my-web-app/");
+  const config = await client.discovery(
+    new URL("http://localhost:9000/application/o/my-web-app/"),
+    "my-web-app",
+    "my-client-secret",
+  );
 
-  const client = new issuer.Client({
-    client_id: "my-web-app",
-    client_secret: "my-client-secret",
-    redirect_uris: ["http://localhost:3000/callback"],
-    response_types: ["code"],
-  });
-
-  passport.use("oidc", new Strategy({ client }, (tokenSet, userinfo, done) => {
-    return done(null, userinfo);
-  }));
+  passport.use("oidc", new Strategy({
+    config,
+    scope: "openid email profile",
+    callbackURL: new URL("http://localhost:3000/callback"),
+  }, (tokens, done) => done(null, tokens.claims())));
 
   passport.serializeUser((user, done) => done(null, user));
   passport.deserializeUser((user, done) => done(null, user));
@@ -224,12 +236,12 @@ setupAuth().then(() => app.listen(3000));
 
 ## Proxy Authentication
 
-Authentik can act as an authentication proxy in front of applications that do not support OIDC natively. Use the embedded outpost:
+Authentik can act as an authentication proxy in front of applications that do not support OIDC natively. Authentik includes an embedded outpost for proxy providers, or you can deploy a separate proxy outpost:
 
 ```yaml
 # Add to docker-compose.yml for proxy authentication
   authentik-proxy:
-    image: ghcr.io/goauthentik/proxy:2024.8
+    image: ghcr.io/goauthentik/proxy:2026.5.2
     container_name: authentik-proxy
     ports:
       - "4180:9000"
@@ -250,11 +262,11 @@ Authentik can also serve as an LDAP server for applications that only support LD
 ```yaml
 # Add LDAP outpost to docker-compose.yml
   authentik-ldap:
-    image: ghcr.io/goauthentik/ldap:2024.8
+    image: ghcr.io/goauthentik/ldap:2026.5.2
     container_name: authentik-ldap
     ports:
-      - "3389:3389"    # LDAP
-      - "6636:6636"    # LDAPS
+      - "389:3389"    # LDAP
+      - "636:6636"    # LDAPS
     environment:
       AUTHENTIK_HOST: http://server:9000
       AUTHENTIK_INSECURE: "true"
@@ -268,7 +280,7 @@ Test LDAP connectivity:
 
 ```bash
 # Test LDAP search against Authentik
-ldapsearch -x -H ldap://localhost:3389 \
+ldapsearch -x -H ldap://localhost:389 \
   -D "cn=ldapservice,ou=users,dc=ldap,dc=goauthentik,dc=io" \
   -w "service-account-password" \
   -b "ou=users,dc=ldap,dc=goauthentik,dc=io" \
@@ -301,15 +313,15 @@ environment:
 
 ## Backup
 
-Back up the PostgreSQL database and media files:
+Back up the PostgreSQL database and data files:
 
 ```bash
 # Backup the database
 docker exec authentik-db pg_dump -U authentik authentik > authentik-backup.sql
 
-# Backup media files (custom branding, etc.)
-docker run --rm -v authentik-media:/data -v $(pwd)/backups:/backup \
-  alpine tar czf /backup/authentik-media.tar.gz /data
+# Backup data files (custom branding, uploaded media, etc.)
+mkdir -p backups
+tar czf backups/authentik-data.tar.gz data
 ```
 
 ## Conclusion
