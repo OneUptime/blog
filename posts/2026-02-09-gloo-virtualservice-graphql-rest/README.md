@@ -8,7 +8,7 @@ Description: Learn how to configure Gloo VirtualService resources to route both 
 
 ---
 
-Gloo's VirtualService resource provides unified configuration for routing GraphQL and REST APIs through a single gateway. This enables teams to expose both API styles to consumers while managing authentication, rate limiting, and transformations consistently. Gloo supports GraphQL schema stitching, allowing you to combine multiple GraphQL backends into a unified API surface.
+Gloo's VirtualService resource provides unified configuration for routing GraphQL and REST APIs through a single gateway. This enables teams to expose both API styles to consumers while managing authentication, rate limiting, and transformations consistently. In Gloo Gateway Enterprise 1.19.x and earlier, Gloo supports GraphQL schema stitching with the `GraphQLApi` resource, allowing you to combine multiple GraphQL APIs into a unified API surface.
 
 ## Understanding VirtualService
 
@@ -64,21 +64,22 @@ spec:
 
 ## GraphQL Upstream Configuration
 
-Define a GraphQL upstream:
+Define a GraphQL API that delegates execution to an existing GraphQL upstream:
 
 ```yaml
-# graphql-upstream.yaml
-apiVersion: gloo.solo.io/v1
-kind: Upstream
+# graphql-api.yaml
+apiVersion: graphql.gloo.solo.io/v1beta1
+kind: GraphQLApi
 metadata:
   name: graphql-backend
   namespace: gloo-system
 spec:
-  kube:
-    serviceName: graphql-service
-    serviceNamespace: default
-    servicePort: 4000
-  graphql:
+  executableSchema:
+    executor:
+      remote:
+        upstreamRef:
+          name: graphql-service
+          namespace: gloo-system
     schemaDefinition: |
       type Query {
         user(id: ID!): User
@@ -127,11 +128,9 @@ spec:
       - prefix: /graphql
         methods:
         - POST
-      routeAction:
-        single:
-          upstream:
-            name: graphql-backend
-            namespace: gloo-system
+      graphqlApiRef:
+        name: graphql-backend
+        namespace: gloo-system
 ```
 
 ## Mixed REST and GraphQL Routing
@@ -155,11 +154,9 @@ spec:
       - prefix: /graphql
         methods:
         - POST
-      routeAction:
-        single:
-          upstream:
-            name: graphql-backend
-            namespace: gloo-system
+      graphqlApiRef:
+        name: graphql-backend
+        namespace: gloo-system
 
     # REST endpoints
     - matchers:
@@ -179,57 +176,26 @@ spec:
             namespace: gloo-system
 ```
 
-## GraphQL Query-Based Routing
+## GraphQL API Routing
 
-Route based on GraphQL query content:
+Route a GraphQL endpoint to the `GraphQLApi` resource:
 
 ```yaml
 apiVersion: gateway.solo.io/v1
 kind: VirtualService
 metadata:
-  name: query-based-routing
+  name: graphql-routing
   namespace: gloo-system
 spec:
   virtualHost:
     domains:
     - '*'
     routes:
-    # Route user queries to dedicated upstream
     - matchers:
       - prefix: /graphql
-      graphqlSchemaFilter:
-        requestMatchers:
-        - queryMatcher:
-            queryName: user
-            queryType: QUERY
-      routeAction:
-        single:
-          upstream:
-            name: user-graphql-service
-            namespace: gloo-system
-
-    # Route order queries to different upstream
-    - matchers:
-      - prefix: /graphql
-      graphqlSchemaFilter:
-        requestMatchers:
-        - queryMatcher:
-            queryName: orders
-            queryType: QUERY
-      routeAction:
-        single:
-          upstream:
-            name: order-graphql-service
-            namespace: gloo-system
-
-    # Default GraphQL route
-    - matchers:
-      - prefix: /graphql
-      routeAction:
-        single:
-          upstream:
-            name: default-graphql-backend
-            namespace: gloo-system
+      graphqlApiRef:
+        name: graphql-backend
+        namespace: gloo-system
 ```
 
 ## GraphQL Schema Stitching
@@ -238,37 +204,31 @@ Combine multiple GraphQL services:
 
 ```yaml
 # stitched-schema-upstream.yaml
-apiVersion: gloo.solo.io/v1
-kind: Upstream
+apiVersion: graphql.gloo.solo.io/v1beta1
+kind: GraphQLApi
 metadata:
   name: stitched-graphql
   namespace: gloo-system
 spec:
-  graphqlStitched:
-    subgraphs:
-    - name: users
+  stitchedSchema:
+    subschemas:
+    - name: user-graphql-service
       namespace: gloo-system
-      upstream:
-        name: user-graphql-service
-        namespace: gloo-system
       typeMerge:
-      - typeName: User
-        selectionSet: "{ id }"
-        fieldName: user
-        args:
-          id: "$. id"
+        User:
+          selectionSet: "{ id }"
+          queryName: user
+          args:
+            id: id
 
-    - name: orders
+    - name: order-graphql-service
       namespace: gloo-system
-      upstream:
-        name: order-graphql-service
-        namespace: gloo-system
       typeMerge:
-      - typeName: Order
-        selectionSet: "{ id }"
-        fieldName: order
-        args:
-          id: "$.id"
+        Order:
+          selectionSet: "{ id }"
+          queryName: order
+          args:
+            id: id
 ```
 
 Route to stitched schema:
@@ -286,11 +246,9 @@ spec:
     routes:
     - matchers:
       - prefix: /graphql
-      routeAction:
-        single:
-          upstream:
-            name: stitched-graphql
-            namespace: gloo-system
+      graphqlApiRef:
+        name: stitched-graphql
+        namespace: gloo-system
 ```
 
 ## REST to GraphQL Transformation
@@ -309,7 +267,7 @@ spec:
     - 'api.example.com'
     routes:
     - matchers:
-      - exact: /users/{id}
+      - regex: /users/[^/]+
         methods:
         - GET
       routeAction:
@@ -323,6 +281,11 @@ spec:
             requestTransforms:
             - requestTransformation:
                 transformationTemplate:
+                  extractors:
+                    id:
+                      header: :path
+                      regex: /users/([^/]+)
+                      subgroup: 1
                   headers:
                     :method:
                       text: POST
@@ -335,14 +298,14 @@ spec:
                       {
                         "query": "query GetUser($id: ID!) { user(id: $id) { id name email } }",
                         "variables": {
-                          "id": "{{ extraction("id") }}"
+                          "id": "{{ id }}"
                         }
                       }
 ```
 
 ## Rate Limiting for GraphQL
 
-Apply rate limits to GraphQL queries:
+Apply rate limits to the GraphQL endpoint:
 
 ```yaml
 apiVersion: ratelimit.solo.io/v1alpha1
@@ -353,16 +316,15 @@ metadata:
 spec:
   raw:
     descriptors:
-    - key: graphql_query
-      value: user
+    - key: generic_key
+      value: graphql
       rateLimit:
         requestsPerUnit: 100
         unit: MINUTE
-    - key: graphql_query
-      value: orders
-      rateLimit:
-        requestsPerUnit: 50
-        unit: MINUTE
+    rateLimits:
+    - actions:
+      - genericKey:
+          descriptorValue: graphql
 ---
 apiVersion: gateway.solo.io/v1
 kind: VirtualService
@@ -381,6 +343,31 @@ spec:
           upstream:
             name: graphql-backend
             namespace: gloo-system
+      options:
+        rateLimitConfigs:
+          refs:
+          - name: graphql-rate-limits
+            namespace: gloo-system
+```
+
+For Gloo Gateway Enterprise 1.19.x GraphQL APIs, reference the `GraphQLApi` resource instead of an upstream:
+
+```yaml
+apiVersion: gateway.solo.io/v1
+kind: VirtualService
+metadata:
+  name: rate-limited-graphql
+  namespace: gloo-system
+spec:
+  virtualHost:
+    domains:
+    - '*'
+    routes:
+    - matchers:
+      - prefix: /graphql
+      graphqlApiRef:
+        name: graphql-backend
+        namespace: gloo-system
       options:
         rateLimitConfigs:
           refs:
@@ -411,11 +398,9 @@ spec:
     # GraphQL with auth
     - matchers:
       - prefix: /graphql
-      routeAction:
-        single:
-          upstream:
-            name: graphql-backend
-            namespace: gloo-system
+      graphqlApiRef:
+        name: graphql-backend
+        namespace: gloo-system
 
     # REST with auth
     - matchers:
@@ -473,7 +458,7 @@ curl -X POST http://${GLOO_PROXY}/graphql \
 
 **Implement query complexity limits** - Prevent expensive queries from overloading backends.
 
-**Cache GraphQL responses** - Use Gloo's caching for frequently accessed data.
+**Cache GraphQL responses** - Use GraphQL cache-control settings or gateway caching for frequently accessed data.
 
 **Monitor query performance** - Track slow queries and optimize resolvers.
 
@@ -481,8 +466,8 @@ curl -X POST http://${GLOO_PROXY}/graphql \
 
 **Implement field-level authorization** - Control access to sensitive GraphQL fields.
 
-**Enable GraphQL playground** - Provide interactive docs for developers in non-production environments.
+**Use the GraphQL UI** - Provide an interactive GraphiQL experience for developers in non-production environments.
 
 ## Conclusion
 
-Gloo's VirtualService enables unified management of GraphQL and REST APIs through a single gateway. By supporting schema stitching, query-based routing, and seamless transformations between REST and GraphQL, Gloo provides flexibility for teams transitioning between API styles or supporting both simultaneously. This unified approach simplifies operations, enables consistent security policies, and provides a cohesive API experience to consumers regardless of backend implementation details.
+Gloo's VirtualService enables unified management of GraphQL and REST APIs through a single gateway. By supporting schema stitching, GraphQL API routing, and seamless transformations between REST and GraphQL, Gloo provides flexibility for teams transitioning between API styles or supporting both simultaneously. This unified approach simplifies operations, enables consistent security policies, and provides a cohesive API experience to consumers regardless of backend implementation details.
