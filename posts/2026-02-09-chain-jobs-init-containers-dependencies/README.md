@@ -47,7 +47,11 @@ spec:
         - -c
         - |
           echo "Waiting for step-1-extract to complete..."
-          until kubectl wait --for=condition=complete --timeout=1h job/step-1-extract; do
+          until kubectl wait --for=condition=complete --timeout=10s job/step-1-extract; do
+            if kubectl wait --for=condition=failed --timeout=0s job/step-1-extract 2>/dev/null; then
+              echo "Prerequisite job failed"
+              exit 1
+            fi
             echo "Job not complete yet, waiting..."
             sleep 10
           done
@@ -73,7 +77,14 @@ spec:
         - /bin/bash
         - -c
         - |
-          kubectl wait --for=condition=complete --timeout=1h job/step-2-transform
+          until kubectl wait --for=condition=complete --timeout=10s job/step-2-transform; do
+            if kubectl wait --for=condition=failed --timeout=0s job/step-2-transform 2>/dev/null; then
+              echo "Prerequisite job failed"
+              exit 1
+            fi
+            echo "Job not complete yet, waiting..."
+            sleep 10
+          done
       containers:
       - name: loader
         image: data-loader:latest
@@ -115,11 +126,26 @@ Build a simple controller that creates jobs one at a time:
 ```python
 #!/usr/bin/env python3
 from kubernetes import client, config
+from kubernetes.config.config_exception import ConfigException
 import time
+
+def load_kubernetes_config():
+    """Use in-cluster config when running as a Job, or local kubeconfig otherwise"""
+    try:
+        config.load_incluster_config()
+    except ConfigException:
+        config.load_kube_config()
+
+def job_condition(job, condition_type):
+    """Return True if the Job has the named terminal condition"""
+    return any(
+        condition.type == condition_type and condition.status == "True"
+        for condition in (job.status.conditions or [])
+    )
 
 def wait_for_job_completion(job_name, namespace='default', timeout=3600):
     """Wait for a job to complete successfully"""
-    config.load_kube_config()
+    load_kubernetes_config()
     batch_v1 = client.BatchV1Api()
 
     start_time = time.time()
@@ -130,11 +156,11 @@ def wait_for_job_completion(job_name, namespace='default', timeout=3600):
 
         job = batch_v1.read_namespaced_job(job_name, namespace)
 
-        if job.status.succeeded and job.status.succeeded > 0:
+        if job_condition(job, "Complete"):
             print(f"Job {job_name} completed successfully")
             return True
 
-        if job.status.failed and job.status.failed >= job.spec.backoff_limit:
+        if job_condition(job, "Failed"):
             raise Exception(f"Job {job_name} failed")
 
         print(f"Waiting for {job_name}...")
@@ -142,7 +168,7 @@ def wait_for_job_completion(job_name, namespace='default', timeout=3600):
 
 def create_job(name, image, command, namespace='default'):
     """Create a Kubernetes Job"""
-    config.load_kube_config()
+    load_kubernetes_config()
     batch_v1 = client.BatchV1Api()
 
     job = client.V1Job(
@@ -237,20 +263,21 @@ while true; do
   fi
 
   # Check job status
+  COMPLETE_CONDITION=$(kubectl get job $JOB_NAME -n $NAMESPACE -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')
+  FAILED_CONDITION=$(kubectl get job $JOB_NAME -n $NAMESPACE -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}')
   SUCCEEDED=$(kubectl get job $JOB_NAME -n $NAMESPACE -o jsonpath='{.status.succeeded}')
   FAILED=$(kubectl get job $JOB_NAME -n $NAMESPACE -o jsonpath='{.status.failed}')
-  BACKOFF_LIMIT=$(kubectl get job $JOB_NAME -n $NAMESPACE -o jsonpath='{.spec.backoffLimit}')
+  SUCCEEDED=${SUCCEEDED:-0}
+  FAILED=${FAILED:-0}
 
-  if [ "$SUCCEEDED" == "1" ] || [ "$SUCCEEDED" -gt 0 ]; then
+  if [ "$COMPLETE_CONDITION" = "True" ]; then
     echo "Job $JOB_NAME completed successfully"
     exit 0
   fi
 
-  if [ ! -z "$FAILED" ] && [ ! -z "$BACKOFF_LIMIT" ]; then
-    if [ "$FAILED" -ge "$BACKOFF_LIMIT" ]; then
-      echo "Job $JOB_NAME failed (attempts exhausted)"
-      exit 1
-    fi
+  if [ "$FAILED_CONDITION" = "True" ]; then
+    echo "Job $JOB_NAME failed"
+    exit 1
   fi
 
   echo "Job status: succeeded=$SUCCEEDED, failed=$FAILED (elapsed: ${ELAPSED}s)"
@@ -395,11 +422,19 @@ Handle failures with pipeline-level retries:
 ```python
 #!/usr/bin/env python3
 from kubernetes import client, config
+from kubernetes.config.config_exception import ConfigException
 import time
+
+def load_kubernetes_config():
+    """Use in-cluster config when running as a Job, or local kubeconfig otherwise"""
+    try:
+        config.load_incluster_config()
+    except ConfigException:
+        config.load_kube_config()
 
 def run_job_with_retry(job_name, image, command, max_retries=3):
     """Create and run a job with retry logic"""
-    config.load_kube_config()
+    load_kubernetes_config()
     batch_v1 = client.BatchV1Api()
 
     for attempt in range(max_retries):
