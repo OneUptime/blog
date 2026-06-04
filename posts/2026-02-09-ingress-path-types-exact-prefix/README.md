@@ -209,7 +209,7 @@ ImplementationSpecific delegates matching to the Ingress controller. Different c
 
 ### NGINX Ingress Controller
 
-For NGINX Ingress, ImplementationSpecific uses regex matching:
+For NGINX Ingress, ImplementationSpecific can be used with regex matching when regex support is enabled:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -314,11 +314,11 @@ spec:
               number: 80
 ```
 
-Processing order:
+Matching precedence:
 
-1. Exact matches are evaluated first
-2. Then Prefix matches (longest first)
-3. Finally ImplementationSpecific
+1. The longest matching path wins
+2. If two paths match with the same length, Exact wins over Prefix
+3. ImplementationSpecific matching depends on the Ingress controller
 
 ## Common Patterns and Best Practices
 
@@ -435,6 +435,7 @@ kind: Ingress
 metadata:
   name: path-rewrite
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   ingressClassName: nginx
@@ -499,7 +500,7 @@ curl -I http://app.example.com/api-docs  # Should NOT match /api prefix
 curl -v http://app.example.com/api/users 2>&1 | grep -i server
 
 # View NGINX configuration
-kubectl exec -n ingress-nginx nginx-ingress-controller-xxxxx -- cat /etc/nginx/nginx.conf | grep -A 10 "app.example.com"
+kubectl exec -n ingress-nginx deploy/ingress-nginx-controller -- cat /etc/nginx/nginx.conf | grep -A 10 "app.example.com"
 ```
 
 ## Debugging Path Matching Issues
@@ -508,7 +509,7 @@ kubectl exec -n ingress-nginx nginx-ingress-controller-xxxxx -- cat /etc/nginx/n
 
 ```bash
 # For NGINX Ingress
-kubectl edit configmap nginx-configuration -n ingress-nginx
+kubectl edit configmap ingress-nginx-controller -n ingress-nginx
 ```
 
 Add:
@@ -521,7 +522,7 @@ data:
 View logs:
 
 ```bash
-kubectl logs -n ingress-nginx nginx-ingress-controller-xxxxx -f | grep -i "path\|match"
+kubectl logs -n ingress-nginx deploy/ingress-nginx-controller -f | grep -i "path\|match"
 ```
 
 ### Common Issues
@@ -540,7 +541,7 @@ kubectl get ingress my-ingress -o yaml
 List all paths in order of priority:
 
 ```bash
-kubectl get ingress -A -o custom-columns=NAME:.metadata.name,HOST:.spec.rules[0].host,PATH:.spec.rules[0].http.paths[*].path,TYPE:.spec.rules[0].http.paths[*].pathType
+kubectl get ingress -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{range .spec.rules[*]}{"  host: "}{.host}{"\n"}{range .http.paths[*]}{"    "}{.path}{" ("}{.pathType}{")\n"}{end}{end}{end}'
 ```
 
 **Issue: Regex not working**
