@@ -61,7 +61,7 @@ WORKDIR /app
 ONBUILD COPY package.json package-lock.json ./
 
 # Install dependencies in the child build
-ONBUILD RUN npm ci --only=production
+ONBUILD RUN npm ci --omit=dev
 
 # Copy the rest of the application code
 ONBUILD COPY . .
@@ -92,7 +92,7 @@ FROM myorg/node-base:20
 That's it. A single line. When this Dockerfile is built, the ONBUILD instructions from the base image execute in order:
 
 1. `COPY package.json package-lock.json ./` copies the child project's package files
-2. `RUN npm ci --only=production` installs the child project's dependencies
+2. `RUN npm ci --omit=dev` installs the child project's production dependencies
 3. `COPY . .` copies the child project's source code
 4. `EXPOSE 3000` documents the port
 
@@ -155,9 +155,9 @@ ONBUILD is particularly useful for Java projects where the build process is comp
 
 ```dockerfile
 # Dockerfile.base - Template for Maven-based Java services
-FROM maven:3.9-eclipse-temurin-17 AS builder
+FROM maven:3.9-eclipse-temurin-17
 
-WORKDIR /build
+WORKDIR /app
 
 # Child builds: copy the POM file first for dependency caching
 ONBUILD COPY pom.xml .
@@ -165,21 +165,13 @@ ONBUILD RUN mvn dependency:go-offline -B
 
 # Child builds: copy source and build
 ONBUILD COPY src/ src/
-ONBUILD RUN mvn package -DskipTests -B
-
-# Runtime image
-FROM eclipse-temurin:17-jre
-
-WORKDIR /app
-
-# Note: ONBUILD doesn't work across stages in multi-stage builds
-# You would need a different approach for multi-stage templates
+ONBUILD RUN mvn package -DskipTests -B && cp target/*.jar /app/app.jar
 
 EXPOSE 8080
-CMD ["java", "-jar", "app.jar"]
+CMD ["java", "-jar", "/app/app.jar"]
 ```
 
-Note the limitation here: ONBUILD triggers only fire in the stage where FROM references the base image. They do not propagate across multi-stage builds. This limits the usefulness of ONBUILD with multi-stage Dockerfiles.
+Note the limitation here: ONBUILD triggers only fire in the stage where FROM references the base image. If you put ONBUILD instructions in an earlier stage of a multi-stage Dockerfile and tag the final stage, those triggers will not be present in the tagged image. This limits the usefulness of ONBUILD with multi-stage Dockerfiles.
 
 ## Viewing ONBUILD Triggers
 
@@ -195,7 +187,7 @@ Output:
 ```json
 [
     "COPY package.json package-lock.json ./",
-    "RUN npm ci --only=production",
+    "RUN npm ci --omit=dev",
     "COPY . .",
     "EXPOSE 3000"
 ]
@@ -220,7 +212,7 @@ The effective build order is:
 
 1. FROM myorg/node-base:20
 2. ONBUILD COPY package.json package-lock.json ./
-3. ONBUILD RUN npm ci --only=production
+3. ONBUILD RUN npm ci --omit=dev
 4. ONBUILD COPY . .
 5. ONBUILD EXPOSE 3000
 6. RUN echo "This runs after ONBUILD instructions"
@@ -296,7 +288,7 @@ For many use cases, a well-documented Dockerfile template or a shared build scri
 FROM node:20-alpine
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 EXPOSE 3000
 CMD ["npm", "start"]
