@@ -35,7 +35,13 @@ kind: Deployment
 metadata:
   name: {{ .Release.Name }}
 spec:
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
   template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
     spec:
       containers:
       - name: app
@@ -79,8 +85,13 @@ kind: Deployment
 metadata:
   name: {{ .Release.Name }}
 spec:
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
   template:
     metadata:
+      labels:
+        app: {{ .Release.Name }}
       annotations:
         config-hash: {{ $configHash }}  # Triggers restart on change
     spec:
@@ -140,7 +151,13 @@ kind: Deployment
 metadata:
   name: {{ .Release.Name }}
 spec:
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
   template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
     spec:
       volumes:
       - name: config
@@ -198,7 +215,13 @@ kind: Deployment
 metadata:
   name: {{ .Release.Name }}
 spec:
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
   template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
     spec:
       containers:
       - name: app
@@ -218,7 +241,7 @@ spec:
 
 ## Automatic Cleanup Hook
 
-Clean up old ConfigMaps during helm upgrade:
+Clean up old ConfigMaps after a successful helm upgrade or rollback:
 
 ```yaml
 # templates/cleanup-hook.yaml
@@ -227,8 +250,8 @@ kind: Job
 metadata:
   name: {{ .Release.Name }}-cleanup-{{ now | date "20060102150405" }}
   annotations:
-    "helm.sh/hook": pre-upgrade,pre-rollback
-    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook": post-upgrade,post-rollback
+    "helm.sh/hook-weight": "5"
     "helm.sh/hook-delete-policy": hook-succeeded
 spec:
   template:
@@ -242,16 +265,15 @@ spec:
         - /bin/bash
         - -c
         - |
-          # Current hash
-          CURRENT_HASH="{{ include "mychart.configHash" . }}"
+          # Current ConfigMap name
+          CURRENT_CONFIGMAP="{{ include "mychart.configMapName" . }}"
 
           # Delete old ConfigMaps (keep current + 2 previous versions)
           kubectl get configmap -n {{ .Release.Namespace }} \
             -l app={{ .Release.Name }} \
-            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | \
-            grep "{{ .Release.Name }}-config-" | \
-            grep -v "${CURRENT_HASH}" | \
+            -o jsonpath='{range .items[*]}{.metadata.creationTimestamp}{"\t"}{.metadata.name}{"\n"}{end}' | \
             sort -r | \
+            awk -v current="${CURRENT_CONFIGMAP}" '$2 != current { print $2 }' | \
             tail -n +3 | \
             xargs -r kubectl delete configmap -n {{ .Release.Namespace }}
 ---
