@@ -49,7 +49,7 @@ kubectl exec my-pod -- which bash
 kubectl exec my-pod -- which sh
 
 # List all executables in common shell locations
-kubectl exec my-pod -- ls -la /bin/*sh /usr/bin/*sh 2>/dev/null
+kubectl exec my-pod -- sh -c 'ls -la /bin/*sh /usr/bin/*sh 2>/dev/null'
 
 # Check shell that a process is using
 kubectl exec my-pod -- ps aux | grep -E "bash|sh|zsh"
@@ -78,7 +78,7 @@ kubectl exec my-pod -- bash -c 'arr=(one two three); echo ${arr[1]}'
 kubectl exec my-pod -- bash -c 'diff <(cat file1.txt) <(cat file2.txt)'
 
 # Bash here-documents
-kubectl exec my-pod -- bash <<'EOF'
+kubectl exec -i my-pod -- bash <<'EOF'
 cd /app
 for file in *.log; do
   echo "Processing $file"
@@ -160,7 +160,7 @@ for shell in bash sh ash zsh; do
 done
 
 # Use kubectl debug to attach a shell
-kubectl debug my-pod -it --image=busybox --target=my-pod
+kubectl debug my-pod -it --image=busybox --target=container-name
 
 # Execute specific binaries directly
 kubectl exec my-pod -- /app/my-binary --version
@@ -216,7 +216,7 @@ Execute multi-line scripts:
 
 ```bash
 # Using bash
-kubectl exec my-pod -- bash <<'EOF'
+kubectl exec -i my-pod -- bash <<'EOF'
 #!/bin/bash
 set -e
 
@@ -235,7 +235,7 @@ echo "Diagnostics complete"
 EOF
 
 # Using sh
-kubectl exec my-pod -- sh <<'EOF'
+kubectl exec -i my-pod -- sh <<'EOF'
 echo "Simple diagnostics"
 df -h
 ps aux
@@ -274,7 +274,7 @@ loggrep() {
 }
 
 # Enable tab completion (if available)
-set completion-ignore-case on
+bind 'set completion-ignore-case on'
 
 # Check application logs
 tail -f /var/log/app.log
