@@ -70,6 +70,34 @@ Deploy ExternalDNS:
 
 ```yaml
 # externaldns-deployment.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: external-dns
+rules:
+- apiGroups: [""]
+  resources: ["services", "pods", "nodes"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["extensions", "networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: external-dns-viewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: external-dns
+subjects:
+- kind: ServiceAccount
+  name: external-dns
+  namespace: kube-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -186,12 +214,12 @@ helm repo update
 
 helm install external-dns external-dns/external-dns \
   --namespace kube-system \
-  --set provider=google \
-  --set google.project=PROJECT_ID \
+  --set provider.name=google \
   --set domainFilters[0]=example.com \
   --set policy=sync \
   --set txtOwnerId=gke-cluster \
-  --set serviceAccount.annotations."iam\.gke\.io/gcp-service-account"=external-dns@PROJECT_ID.iam.gserviceaccount.com
+  --set serviceAccount.annotations."iam\.gke\.io/gcp-service-account"=external-dns@PROJECT_ID.iam.gserviceaccount.com \
+  --set extraArgs.google-project=PROJECT_ID
 ```
 
 ## Configuring Multiple DNS Zones
@@ -212,7 +240,7 @@ Or use zone ID filters:
 
 ```yaml
 args:
-- --google-zone-visibility=public
+- --zone-id-filter=example-zone
 - --txt-owner-id=gke-cluster
 ```
 
