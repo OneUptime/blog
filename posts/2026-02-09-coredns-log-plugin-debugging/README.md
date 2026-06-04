@@ -86,7 +86,7 @@ Understanding these fields helps you diagnose specific DNS issues.
 
 ## Configuring Structured Logging
 
-Structured logging formats output as JSON, making it easier to parse logs with external tools:
+Structured logging formats output as key-value fields, making it easier to parse logs with external tools:
 
 ```yaml
 .:53 {
@@ -98,10 +98,9 @@ Structured logging formats output as JSON, making it easier to parse logs with e
         fallthrough in-addr.arpa ip6.arpa
         ttl 30
     }
-    # Structured JSON logging
-    log {
+    # Structured key-value logging
+    log . "remote={remote} port={port} id={>id} type={type} class={class} name={name} proto={proto} size={size} do={>do} bufsize={>bufsize} rcode={rcode} rflags=\"{>rflags}\" rsize={rsize} duration={duration}" {
         class all
-        format "{remote}:{port} - {>id} {type} {class} {name} {proto} {size} {>do} {>bufsize} {rcode} {>rflags} {rsize} {duration}"
     }
     prometheus :9153
     forward . /etc/resolv.conf
@@ -164,7 +163,7 @@ Configure different logging levels for different DNS zones:
 }
 
 # Internal cluster DNS - error logging only
-cluster.local:53 {
+cluster.local:53 in-addr.arpa:53 ip6.arpa:53 {
     errors
     log {
         class denial
@@ -188,7 +187,7 @@ Use log analysis to understand DNS query patterns in your cluster:
 ```bash
 # Find most frequently queried domains
 kubectl logs -n kube-system -l k8s-app=kube-dns --tail=10000 | \
-  grep -o '"[^"]*svc.cluster.local"' | \
+  awk -F'"' '{split($2, q, " "); if (q[3] ~ /svc\.cluster\.local\.$/) print q[3]}' | \
   sort | uniq -c | sort -rn | head -20
 
 # Identify slow queries (over 100ms)
@@ -240,9 +239,9 @@ kubectl logs -n kube-system -l k8s-app=kube-dns --tail=1000 | \
 
 Look for NXDOMAIN responses indicating the service doesn't exist, or SERVFAIL responses indicating CoreDNS errors.
 
-## Logging Cache Hit Rates
+## Estimating Cache Hit Rates
 
-Monitor cache effectiveness through logging:
+Monitor cache effectiveness with CoreDNS cache metrics, and use logs only as a rough signal for query latency:
 
 ```yaml
 .:53 {
@@ -266,7 +265,15 @@ Monitor cache effectiveness through logging:
 }
 ```
 
-Analyze cache performance:
+Analyze cache performance with Prometheus metrics:
+
+```promql
+# Cache hit ratio by cache type
+sum(rate(coredns_cache_hits_total[5m])) by (type) /
+sum(rate(coredns_cache_requests_total[5m]))
+```
+
+You can also use logs for a rough latency-based estimate:
 
 ```bash
 # Count cache hits vs misses (approximate)
@@ -275,7 +282,7 @@ kubectl logs -n kube-system -l k8s-app=kube-dns --tail=10000 | \
   awk '{if ($NF+0 < 0.001) hits++; else misses++} END {print "Hits:", hits, "Misses:", misses}'
 ```
 
-Low cache hit rates indicate you should increase cache size or TTL values.
+Low cache hit rates may indicate you should review cache size or TTL values.
 
 ## Implementing Client-Specific Logging
 
@@ -338,7 +345,7 @@ data:
       key_name log
       <parse>
         @type regexp
-        expression /^(?<client_ip>[^ ]+):(?<client_port>[^ ]+) - (?<query_id>[^ ]+) "(?<query_type>[^ ]+) (?<query_class>[^ ]+) (?<query_name>[^ ]+)/
+        expression /^\[INFO\] (?<client_ip>[^ ]+):(?<client_port>[^ ]+) - (?<query_id>[^ ]+) "(?<query_type>[^ ]+) (?<query_class>[^ ]+) (?<query_name>[^ ]+)/
       </parse>
     </filter>
 
@@ -355,17 +362,25 @@ This Fluentd configuration parses CoreDNS logs and sends them to Elasticsearch f
 
 ## Creating Dashboards from Logs
 
-Build Grafana dashboards using logs stored in Elasticsearch or Loki:
+Build Grafana dashboards using logs stored in Elasticsearch or Loki. For Loki, parse the default CoreDNS common log format before aggregating fields:
 
-```promql
+```logql
 # Query rate by response code
-sum(rate({app="coredns"} |~ "NOERROR|NXDOMAIN|SERVFAIL" | json | __error__="" [5m])) by (rcode)
+sum by (rcode) (
+  rate({app="coredns"} | pattern `<_> <remote> - <id> "<type> <class> <name> <proto> <size> <do> <bufsize>" <rcode> <rflags> <rsize> <duration>` [5m])
+)
 
 # Average query duration
-avg(rate({app="coredns"} | json duration | duration > 0 [5m]))
+avg_over_time(
+  {app="coredns"} | pattern `<_> <remote> - <id> "<type> <class> <name> <proto> <size> <do> <bufsize>" <rcode> <rflags> <rsize> <duration>` | unwrap duration(duration) [5m]
+)
 
 # Top queried domains
-topk(10, sum(rate({app="coredns"} | json name [5m])) by (name))
+topk(10,
+  sum by (name) (
+    count_over_time({app="coredns"} | pattern `<_> <remote> - <id> "<type> <class> <name> <proto> <size> <do> <bufsize>" <rcode> <rflags> <rsize> <duration>` [5m])
+  )
+)
 ```
 
 These queries provide insights into DNS performance and usage patterns.
