@@ -61,13 +61,9 @@ Exec into the pod and inspect what's visible:
 ```bash
 kubectl exec -it proc-test -- bash
 
-# Check for masked paths
-
-ls -la /proc/scsi
-# ls: cannot access '/proc/scsi': No such file or directory
-
-ls -la /proc/keys
-# ls: cannot access '/proc/keys': No such file or directory
+# Check mount entries for masked paths
+awk '$5 ~ "^/proc/(scsi|keys|timer_list|sched_debug)$" {print}' /proc/self/mountinfo
+# Default proc mounts show masked paths as separate mount points
 
 # Check visible information
 cat /proc/version
@@ -93,7 +89,7 @@ kind: Pod
 metadata:
   name: proc-unmasked-demo
 spec:
-  hostPID: true  # Required for Unmasked to work
+  hostUsers: false  # Required for Unmasked in current Kubernetes releases
   containers:
   - name: app
     image: busybox
@@ -102,7 +98,7 @@ spec:
       procMount: Unmasked
 ```
 
-Note that `procMount: Unmasked` requires `hostPID: true`. This combination provides extensive visibility into host processes and kernel information, which is almost always unnecessary and dangerous for application containers.
+Note that `procMount: Unmasked` requires `hostUsers: false` in current Kubernetes releases, which runs the pod in a user namespace. Pods using `hostUsers: false` cannot also set `hostPID: true`, `hostNetwork: true`, or `hostIPC: true`. Unmasked proc mounts provide broader visibility into kernel information and are almost always unnecessary for application containers.
 
 ## Restricted Proc Mount in Pod Security Standards
 
@@ -188,7 +184,7 @@ This configuration layers multiple isolation techniques including masked proc, n
 
 ## Legitimate Use Cases for Unmasked Proc
 
-Very few legitimate use cases exist for `procMount: Unmasked`. System monitoring and debugging tools might need this access:
+Very few legitimate use cases exist for `procMount: Unmasked`. Container-in-container or low-level debugging workloads might need this access:
 
 ```yaml
 apiVersion: v1
@@ -197,18 +193,16 @@ metadata:
   name: system-monitor
   namespace: kube-system
   annotations:
-    security-exception: "Required for system monitoring"
+    security-exception: "Required for container-in-container debugging"
     reviewed-by: "security-team"
     review-date: "2026-02-01"
 spec:
-  hostPID: true
-  hostNetwork: true
+  hostUsers: false
   containers:
   - name: monitor
     image: system-monitor:1.0
     securityContext:
       procMount: Unmasked
-      privileged: true  # Usually required with Unmasked
 ```
 
 Document and justify every use of `procMount: Unmasked`. Regular security reviews should question whether this configuration remains necessary.
@@ -259,34 +253,7 @@ Most applications work fine with masked proc because they don't access sensitive
 
 ## Monitoring for Proc Access Attempts
 
-Monitor containers for attempts to access masked proc paths:
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: monitored-app
-spec:
-  containers:
-  - name: app
-    image: myapp:1.0
-    securityContext:
-      procMount: Default
-      runAsUser: 5000
-      runAsNonRoot: true
-  - name: audit-sidecar
-    image: audit-tool:1.0
-    command: ["sh", "-c"]
-    args:
-    - |
-      # Monitor for attempts to access masked paths
-      inotifywait -m -e access /proc 2>&1 | while read line; do
-        echo "Proc access: $line"
-      done
-    securityContext:
-      runAsUser: 5001
-      runAsNonRoot: true
-```
+Monitor containers for attempts to access masked proc paths with node-level runtime security tooling, eBPF-based monitoring, or audit rules that can observe the target process from the node. A sidecar that watches `/proc` observes its own proc filesystem unless the pod explicitly shares a process namespace, and it will not reliably see another container's failed access attempts.
 
 Frequent attempts to access masked paths might indicate malicious activity or application misconfiguration.
 
@@ -356,24 +323,17 @@ This policy blocks pods from using `procMount: Unmasked`.
 Applications can detect their proc mount configuration:
 
 ```bash
-# Inside a container, check if certain paths are masked
-if [ -e /proc/scsi ]; then
-  echo "Running with Unmasked proc mount"
-else
-  echo "Running with Default (masked) proc mount"
-fi
-
-# Check specific masked paths
+# Inside a container, check whether known masked paths have separate mount entries
 for path in /proc/scsi /proc/keys /proc/timer_list /proc/sched_debug; do
-  if [ -e "$path" ]; then
-    echo "$path: VISIBLE"
+  if awk -v path="$path" '$5 == path {found=1} END {exit !found}' /proc/self/mountinfo; then
+    echo "$path: masked mount present"
   else
-    echo "$path: MASKED"
+    echo "$path: no separate masked mount found"
   fi
 done
 ```
 
-Applications should not rely on masked paths being absent, as the list of masked paths might change across Kubernetes versions.
+Applications should not rely on masked paths being absent, as the paths can still exist as masked mounts and the list of masked paths might change across Kubernetes versions.
 
 ## Conclusion
 
