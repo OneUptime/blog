@@ -8,11 +8,11 @@ Description: Deploy Vaultwarden in Docker as a lightweight, self-hosted Bitwarde
 
 ---
 
-Vaultwarden (formerly known as bitwarden_rs) is a lightweight, self-hosted implementation of the Bitwarden password manager API. It is compatible with all official Bitwarden client apps, browser extensions, and CLI tools, but runs on a fraction of the resources that the official Bitwarden server requires. If you want full control over your password vault without paying for Bitwarden's hosted service, Vaultwarden in Docker is the way to go.
+Vaultwarden (formerly known as bitwarden_rs) is a lightweight, self-hosted implementation of the Bitwarden password manager API. It is designed to work with official Bitwarden client apps, browser extensions, and CLI tools, though Bitwarden does not guarantee support for non-official servers. It runs on a fraction of the resources that the official Bitwarden server requires. If you want full control over your password vault without paying for Bitwarden's hosted service, Vaultwarden in Docker is the way to go.
 
 ## Why Vaultwarden Instead of Official Bitwarden?
 
-The official Bitwarden server is designed for enterprise deployments. It requires multiple containers, a heavy Microsoft SQL Server database, and significant RAM. Vaultwarden, written in Rust, runs as a single container with an embedded SQLite database. It uses about 50 MB of RAM compared to the official server's 2+ GB. Despite being lightweight, it supports nearly all Bitwarden features including organizations, attachments, and two-factor authentication.
+The official Bitwarden server is designed for larger self-hosted deployments. It uses multiple containers, a Microsoft SQL Server database in the standard deployment, and more RAM. Vaultwarden, written in Rust, runs as a single container with an embedded SQLite database by default. It uses far less memory than the official server. Despite being lightweight, it supports many Bitwarden features including organizations, attachments, and two-factor authentication.
 
 ## Prerequisites
 
@@ -36,8 +36,6 @@ cd ~/vaultwarden
 
 ```yaml
 # docker-compose.yml - Vaultwarden Password Manager
-version: "3.8"
-
 services:
   vaultwarden:
     image: vaultwarden/server:latest
@@ -46,17 +44,15 @@ services:
     ports:
       # Web vault UI and API
       - "8080:80"
-      # WebSocket notifications (for real-time sync)
-      - "3012:3012"
     environment:
       # Domain where Vaultwarden is accessible (must be HTTPS)
       DOMAIN: "https://vault.your-domain.com"
-      # Enable WebSocket notifications for live sync
-      WEBSOCKET_ENABLED: "true"
       # Disable new user signups after you create your account
       # SIGNUPS_ALLOWED: "false"
-      # Enable the admin panel (set a strong token)
-      ADMIN_TOKEN: "a_very_long_random_string_change_this"
+      # Enable the admin panel with an Argon2 PHC hash
+      # Generate it with: docker run --rm -it vaultwarden/server:latest /vaultwarden hash
+      # Escape each $ as $$ when pasting the hash directly into docker-compose.yml
+      ADMIN_TOKEN: "$$argon2id$$v=19$$m=65540,t=3,p=4$$replace_with_generated_hash"
       # Invitation organization name
       INVITATION_ORG_NAME: "My Vault"
       # SMTP settings for email notifications and invitations
@@ -69,7 +65,7 @@ services:
       # Log level
       LOG_LEVEL: "warn"
     volumes:
-      # Persist the database, attachments, and encryption keys
+      # Persist the database, attachments, and server files
       - ./data:/data
 ```
 
@@ -87,7 +83,7 @@ Check the logs:
 docker compose logs -f vaultwarden
 ```
 
-At this point, Vaultwarden is running on port 8080, but you cannot use it until you set up HTTPS.
+At this point, Vaultwarden is running on port 8080, but you should not use it from Bitwarden clients until you set up HTTPS.
 
 ## Setting Up HTTPS with Nginx
 
@@ -118,22 +114,13 @@ server {
     # Main Vaultwarden proxy
     location / {
         proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # WebSocket proxy for real-time notifications
-    location /notifications/hub {
-        proxy_pass http://127.0.0.1:3012;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-
-    # WebSocket negotiation endpoint
-    location /notifications/hub/negotiate {
-        proxy_pass http://127.0.0.1:8080;
     }
 }
 
@@ -185,7 +172,7 @@ The browser extension is especially useful because it auto-fills login forms. In
 
 ## Admin Panel
 
-The admin panel provides server management capabilities. Access it at `https://vault.your-domain.com/admin` and enter the `ADMIN_TOKEN` you set in the Compose file.
+The admin panel provides server management capabilities. Access it at `https://vault.your-domain.com/admin` and enter the password you used to generate the `ADMIN_TOKEN` hash.
 
 From the admin panel you can:
 
@@ -220,15 +207,18 @@ Create an organization to share passwords with family or team members:
 Your vault data is the most critical data to protect. Back it up regularly:
 
 ```bash
+# Create a consistent SQLite backup while Vaultwarden is running
+docker exec vaultwarden /vaultwarden backup
+
 # Create a backup of the Vaultwarden data directory
-# This includes the SQLite database, attachments, and RSA keys
+# This includes the SQLite backup, attachments, sends, cached icons, and RSA signing keys
 tar czf ~/vaultwarden-backup-$(date +%Y%m%d).tar.gz ~/vaultwarden/data/
 
 # For extra safety, also export your vault from the web UI
 # Go to Tools > Export Vault (use encrypted JSON format)
 ```
 
-The SQLite database at `data/db.sqlite3` contains all encrypted vault data. The `data/rsa_key*` files are the server's encryption keys. Both are essential for restoring a backup.
+The SQLite database at `data/db.sqlite3` contains almost all Vaultwarden state and encrypted vault data. Attachments and Sends are stored as separate files in the data directory. The `data/rsa_key*` files are used to sign authentication tokens and should be backed up with the rest of the data directory.
 
 ## Automating Backups
 
@@ -236,7 +226,7 @@ Set up a cron job for regular backups:
 
 ```bash
 # Add an automated daily backup at 2 AM
-(crontab -l 2>/dev/null; echo "0 2 * * * tar czf /home/user/backups/vaultwarden-\$(date +\%Y\%m\%d).tar.gz /home/user/vaultwarden/data/") | crontab -
+(crontab -l 2>/dev/null; echo "0 2 * * * docker exec vaultwarden /vaultwarden backup && tar czf /home/user/backups/vaultwarden-\$(date +\%Y\%m\%d).tar.gz /home/user/vaultwarden/data/") | crontab -
 ```
 
 ## Updating Vaultwarden
@@ -255,4 +245,4 @@ Your password manager is critical infrastructure. If it goes down, you and your 
 
 ## Wrapping Up
 
-Vaultwarden gives you all the features of Bitwarden's premium service on your own hardware. It runs on minimal resources, supports all official Bitwarden clients, and keeps your passwords entirely under your control. With proper HTTPS, two-factor authentication, and regular backups, you have a secure, self-hosted password management solution that rivals any commercial offering.
+Vaultwarden gives you many Bitwarden-compatible features on your own hardware. It runs on minimal resources, works with official Bitwarden clients in typical setups, and keeps your passwords entirely under your control. With proper HTTPS, two-factor authentication, and regular backups, you have a secure, self-hosted password management solution that rivals any commercial offering.
