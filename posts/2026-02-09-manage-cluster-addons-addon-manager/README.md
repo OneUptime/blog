@@ -12,12 +12,12 @@ Kubernetes clusters require several addon components to function properly: DNS f
 
 ## Understanding Addon Manager
 
-The addon manager is a Kubernetes component that watches for resources labeled with `addonmanager.kubernetes.io/mode`. It ensures these resources exist in the cluster and reconciles them if they drift from the desired state. The addon manager runs as a pod on control plane nodes and continuously monitors addon resources.
+The addon manager is a Kubernetes component that processes manifest files under `$ADDON_PATH` and selects resources labeled with `addonmanager.kubernetes.io/mode`. It ensures these resources exist in the cluster and reconciles them if they drift from the desired state. The addon manager runs as a pod on control plane nodes and continuously monitors addon resources.
 
 Three management modes control how addon manager handles resources:
 
-- `Reconcile`: Addon manager creates and updates resources but does not delete them
-- `EnsureExists`: Addon manager creates resources if missing but never updates them
+- `Reconcile`: Addon manager creates and updates resources, and deletes them when their manifest is removed from the addon path
+- `EnsureExists`: Addon manager creates resources if missing but never updates them or deletes them when their manifest is removed
 - `Ignore`: Addon manager ignores the resource entirely
 
 ## Enabling Addon Manager
@@ -25,9 +25,8 @@ Three management modes control how addon manager handles resources:
 For kubeadm clusters, addon manager is not enabled by default. Deploy it manually:
 
 ```bash
-# Create addon manager namespace
-
-kubectl create namespace kube-system
+# Ensure addon manager namespace exists
+kubectl create namespace kube-system --dry-run=client -o yaml | kubectl apply -f -
 
 # Deploy addon manager
 cat <<EOF | kubectl apply -f -
@@ -79,10 +78,12 @@ spec:
       serviceAccountName: addon-manager
       containers:
       - name: addon-manager
-        image: registry.k8s.io/kube-addon-manager:v9.1.8
+        image: registry.k8s.io/addon-manager/kube-addon-manager:v9.1.8
         env:
         - name: ADDON_PATH
           value: /etc/kubernetes/addons
+        - name: ADDON_MANAGER_LEADER_ELECTION
+          value: "false"
         volumeMounts:
         - name: addons
           mountPath: /etc/kubernetes/addons
@@ -113,7 +114,7 @@ kubectl logs -n kube-system -l component=addon-manager
 
 ## Creating Addon Manifests
 
-Create addon manifests in `/etc/kubernetes/addons/` on control plane nodes. Each addon needs the appropriate label:
+Create addon manifests in `/etc/kubernetes/addons/` on any control plane node where the addon manager pod might run. Each addon needs the appropriate label:
 
 ```bash
 # Create addons directory
@@ -222,7 +223,7 @@ spec:
       serviceAccountName: coredns
       containers:
       - name: coredns
-        image: registry.k8s.io/coredns/coredns:v1.10.1
+        image: registry.k8s.io/coredns/coredns:v1.14.2
         args: [ "-conf", "/etc/coredns/Corefile" ]
         volumeMounts:
         - name: config-volume
@@ -351,6 +352,22 @@ rules:
   verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: metrics-server-auth-reader
+  namespace: kube-system
+  labels:
+    addonmanager.kubernetes.io/mode: Reconcile
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: metrics-server
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: metrics-server:system:auth-delegator
@@ -401,24 +418,48 @@ spec:
       serviceAccountName: metrics-server
       containers:
       - name: metrics-server
-        image: registry.k8s.io/metrics-server/metrics-server:v0.6.4
+        image: registry.k8s.io/metrics-server/metrics-server:v0.8.1
         args:
         - --cert-dir=/tmp
-        - --secure-port=4443
+        - --secure-port=10250
         - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
         - --kubelet-use-node-status-port
         - --metric-resolution=15s
         ports:
-        - containerPort: 4443
+        - containerPort: 10250
           name: https
           protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: https
+            scheme: HTTPS
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 20
         resources:
           requests:
             cpu: 100m
             memory: 200Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - name: tmp-dir
           mountPath: /tmp
+      nodeSelector:
+        kubernetes.io/os: linux
+      priorityClassName: system-cluster-critical
       volumes:
       - name: tmp-dir
         emptyDir: {}
@@ -435,7 +476,8 @@ spec:
   selector:
     k8s-app: metrics-server
   ports:
-  - port: 443
+  - name: https
+    port: 443
     protocol: TCP
     targetPort: https
 ---
@@ -498,7 +540,7 @@ To update an addon managed in Reconcile mode:
 sudo nano /etc/kubernetes/addons/coredns.yaml
 
 # Change the image version
-# image: registry.k8s.io/coredns/coredns:v1.11.0
+# image: registry.k8s.io/coredns/coredns:<new-version>
 
 # Addon manager will detect and apply the change
 # Watch for the update
@@ -510,16 +552,17 @@ kubectl get deployments -n kube-system coredns -w
 To remove an addon:
 
 ```bash
-# Delete the manifest file
+# Delete resources immediately if needed
+kubectl delete -f /etc/kubernetes/addons/metrics-server.yaml
+
+# Remove the manifest file so addon manager does not recreate them
 sudo rm /etc/kubernetes/addons/metrics-server.yaml
 
-# Addon manager will not delete the resources
-# Delete manually if needed
-kubectl delete deployment metrics-server -n kube-system
-kubectl delete service metrics-server -n kube-system
+# Reconcile resources are pruned automatically when their manifest is removed
+# EnsureExists resources still need manual deletion
 ```
 
-For automatic cleanup, use a custom controller or manual deletion.
+For EnsureExists cleanup, use a custom controller or manual deletion.
 
 ## Monitoring Addon Manager
 
@@ -534,7 +577,7 @@ kubectl logs -n kube-system -l component=addon-manager | grep -i error
 
 # Monitor reconciliation loops
 kubectl logs -n kube-system -l component=addon-manager -f | \
-  grep -E "Creating|Updating|Deleting"
+  grep -E "created|configured|pruned|deleted"
 ```
 
 ## Troubleshooting Addon Issues
