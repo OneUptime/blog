@@ -83,11 +83,10 @@ For cloud provider registries, use service account keys or tokens instead of pas
 
 ```bash
 # AWS ECR - get authentication token
-aws ecr get-login-password --region us-east-1 | \
 kubectl create secret docker-registry ecr-secret \
-  --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
+  --docker-server=123456789012.dkr.ecr.us-east-1.amazonaws.com \
   --docker-username=AWS \
-  --docker-password-stdin \
+  --docker-password="$(aws ecr get-login-password --region us-east-1)" \
   -n default
 
 # Google GCR - use service account JSON key
@@ -201,7 +200,13 @@ metadata:
   name: myapp
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       serviceAccountName: app-deployer
       containers:
@@ -231,7 +236,7 @@ curl -u "${USERNAME}:${PASSWORD}" \
 # Failed auth: 401 Unauthorized
 ```
 
-For cloud provider registries with expiring tokens, automate credential refresh.
+For cloud provider registries with expiring tokens, automate credential refresh. The CronJob container image must include both the cloud provider CLI and `kubectl`, and its service account needs RBAC permissions to delete and create the target Secret.
 
 ```yaml
 apiVersion: batch/v1
@@ -248,7 +253,7 @@ spec:
           serviceAccountName: ecr-token-refresher
           containers:
           - name: refresh-token
-            image: amazon/aws-cli:latest
+            image: myregistry.com/tools/aws-cli-kubectl:latest
             command:
             - /bin/bash
             - -c
@@ -256,7 +261,7 @@ spec:
               TOKEN=$(aws ecr get-login-password --region us-east-1)
               kubectl delete secret ecr-secret -n default --ignore-not-found
               kubectl create secret docker-registry ecr-secret \
-                --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
+                --docker-server=123456789012.dkr.ecr.us-east-1.amazonaws.com \
                 --docker-username=AWS \
                 --docker-password="${TOKEN}" \
                 -n default
@@ -296,7 +301,13 @@ kind: Deployment
 metadata:
   name: multi-registry-app
 spec:
+  selector:
+    matchLabels:
+      app: multi-registry-app
   template:
+    metadata:
+      labels:
+        app: multi-registry-app
     spec:
       containers:
       - name: main-app
@@ -342,16 +353,16 @@ echo "bXl1c2VyOm15cGFzc3dvcmQ=" | base64 -d
 # Should output: myuser:mypassword
 ```
 
-If the registry URL in the secret doesn't exactly match the image URL, authentication fails. Registry URLs are case-sensitive and must match exactly.
+If the registry host or path in the secret doesn't match the image reference, Kubernetes may not select the credentials. Kubernetes supports exact host matches, prefix-matched paths, and glob patterns in Docker config credentials, but the entry still needs to match the image reference Kubernetes is pulling.
 
 ```bash
-# These are all different registries:
+# These may not match the same image references:
 # myregistry.com
 # https://myregistry.com
 # myregistry.com:443
-# MyRegistry.com
+# myregistry.com/team
 
-# Make sure the secret registry URL matches your image URL exactly
+# Make sure the secret registry entry matches the image reference
 ```
 
 ## Implementing Registry Mirrors to Avoid Authentication Issues
@@ -363,17 +374,18 @@ Configure containerd registry mirrors to cache images locally, reducing authenti
 version = 2
 
 [plugins."io.containerd.grpc.v1.cri".registry]
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-      endpoint = ["https://local-mirror.example.com"]
-
-  [plugins."io.containerd.grpc.v1.cri".registry.configs]
-    [plugins."io.containerd.grpc.v1.cri".registry.configs."local-mirror.example.com".auth]
-      username = "mirror-user"
-      password = "mirror-pass"
+  config_path = "/etc/containerd/certs.d"
 ```
 
-The local mirror authenticates once to upstream registries and caches images. Individual pods pull from the mirror without needing upstream registry credentials.
+```toml
+# /etc/containerd/certs.d/docker.io/hosts.toml
+server = "https://registry-1.docker.io"
+
+[host."https://local-mirror.example.com"]
+  capabilities = ["pull"]
+```
+
+A properly configured pull-through cache mirror authenticates to upstream registries and caches images. Individual pods pull through the mirror, reducing the need for direct upstream registry authentication.
 
 ## Monitoring Registry Authentication Failures
 
