@@ -38,10 +38,6 @@ storage:
       path: /tmp/tempo/blocks
     wal:
       path: /tmp/tempo/wal
-
-querier:
-  frontend_worker:
-    frontend_address: tempo:9095
 ```
 
 Run Tempo with Docker.
@@ -53,7 +49,8 @@ docker run -d --name tempo \
   -p 4317:4317 \
   -p 4318:4318 \
   grafana/tempo:latest \
-  -config.file=/etc/tempo.yaml
+  -config.file=/etc/tempo.yaml \
+  -config.expand-env=true
 ```
 
 ## Collector Configuration for Tempo
@@ -92,6 +89,22 @@ Deploy Tempo in Kubernetes with persistent storage.
 
 ```yaml
 # tempo-k8s.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: observability
+spec:
+  selector:
+    app: tempo
+  ports:
+  - port: 3200
+    targetPort: http
+    name: http
+  - port: 4317
+    targetPort: otlp-grpc
+    name: otlp-grpc
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -155,8 +168,8 @@ storage:
       path: /tmp/tempo/wal
     block:
       bloom_filter_false_positive: 0.05
-      index_downsample_bytes: 1000
-      encoding: zstd
+      v2_index_downsample_bytes: 1048576
+      v2_encoding: zstd
 ```
 
 ## Grafana Integration
@@ -173,11 +186,9 @@ datasources:
     url: http://tempo:3200
     jsonData:
       httpMethod: GET
-      tracesToLogs:
+      tracesToLogsV2:
         datasourceUid: loki
-        tags: ['job', 'instance', 'pod', 'namespace']
-        mappedTags: [{ key: 'service.name', value: 'service' }]
-        mapTagNamesEnabled: true
+        tags: [{ key: 'service.name', value: 'service' }, { key: 'job' }, { key: 'instance' }, { key: 'pod' }, { key: 'namespace' }]
         spanStartTimeShift: '1m'
         spanEndTimeShift: '1m'
         filterByTraceID: true
