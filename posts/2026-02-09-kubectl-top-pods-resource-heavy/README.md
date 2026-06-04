@@ -8,7 +8,7 @@ Description: Master kubectl top pods command to monitor resource usage, identify
 
 ---
 
-The kubectl top command provides real-time resource metrics for pods and containers running in your Kubernetes cluster. It's essential for identifying resource-heavy workloads, detecting anomalies, and making informed decisions about resource allocation.
+The kubectl top command provides recent resource metrics for pods and containers running in your Kubernetes cluster. It's essential for identifying resource-heavy workloads, detecting anomalies, and making informed decisions about resource allocation.
 
 ## Prerequisites and Setup
 
@@ -57,15 +57,15 @@ kubectl top pods --namespace=kube-system
 Sort pods by resource usage:
 
 ```bash
-# Sort by CPU (not built-in, use external sort)
-kubectl top pods --no-headers | sort -k2 -rn | head -10
+# Sort by CPU
+kubectl top pods --sort-by=cpu | head -11
 
 # Sort by memory
-kubectl top pods --no-headers | sort -k3 -rn | head -10
+kubectl top pods --sort-by=memory | head -11
 
 # Create helper functions
-alias top-cpu="kubectl top pods --no-headers | sort -k2 -rn | head -10"
-alias top-mem="kubectl top pods --no-headers | sort -k3 -rn | head -10"
+alias top-cpu="kubectl top pods --sort-by=cpu | head -11"
+alias top-mem="kubectl top pods --sort-by=memory | head -11"
 ```
 
 View containers within pods:
@@ -141,7 +141,7 @@ watch -n 2 'kubectl top pods'
 watch -n 2 'kubectl top pods -n production'
 
 # Watch and sort by CPU
-watch -n 2 'kubectl top pods --no-headers | sort -k2 -rn | head -20'
+watch -n 2 'kubectl top pods --sort-by=cpu | head -21'
 ```
 
 Log resource usage for historical analysis:
@@ -168,13 +168,13 @@ Identify pods using more than expected:
 
 ```bash
 # Find pods using > 500m CPU
-kubectl top pods --all-namespaces --no-headers | awk '$2 ~ /[0-9]+m/ && $2+0 > 500'
+kubectl top pods --all-namespaces --no-headers | awk '{cpu=$3; if (cpu ~ /m$/) sub(/m$/, "", cpu); else cpu=cpu*1000; if (cpu > 500) print}'
 
 # Find pods using > 1GB memory
-kubectl top pods --all-namespaces --no-headers | awk '$3 ~ /[0-9]+Mi/ && $3+0 > 1024'
+kubectl top pods --all-namespaces --no-headers | awk '{mem=$4; if (mem ~ /Ki$/) {sub(/Ki$/, "", mem); mem=mem/1024} else if (mem ~ /Mi$/) {sub(/Mi$/, "", mem)} else if (mem ~ /Gi$/) {sub(/Gi$/, "", mem); mem=mem*1024}; if (mem > 1024) print}'
 
 # Find pods using > 1 CPU core
-kubectl top pods --all-namespaces --no-headers | awk '$2 ~ /[0-9]+$/ && $2+0 >= 1'
+kubectl top pods --all-namespaces --no-headers | awk '{cpu=$3; if (cpu ~ /m$/) {sub(/m$/, "", cpu); cpu=cpu/1000}; if (cpu >= 1) print}'
 ```
 
 Create an alert script:
@@ -189,17 +189,17 @@ MEM_THRESHOLD=2048 # Mi
 echo "Checking for resource anomalies..."
 
 kubectl top pods --all-namespaces --no-headers | while read namespace pod cpu mem; do
-  # Remove 'm' suffix and convert to number
-  cpu_num=$(echo $cpu | sed 's/m//')
+  # Convert CPU to millicores
+  cpu_num=$(echo "$cpu" | awk '/m$/ {sub(/m$/, ""); print; next} {print $1 * 1000}')
 
   # Check if CPU exceeds threshold
   if [ "$cpu_num" -gt "$CPU_THRESHOLD" ]; then
     echo "HIGH CPU: $namespace/$pod is using $cpu (threshold: ${CPU_THRESHOLD}m)"
   fi
 
-  # Check memory (simple comparison for Mi values)
-  mem_num=$(echo $mem | sed 's/Mi//')
-  if [ ! -z "$mem_num" ] && [ "$mem_num" -gt "$MEM_THRESHOLD" ]; then
+  # Convert memory to Mi
+  mem_num=$(echo "$mem" | awk '/Ki$/ {sub(/Ki$/, ""); print int($1 / 1024); next} /Mi$/ {sub(/Mi$/, ""); print; next} /Gi$/ {sub(/Gi$/, ""); print $1 * 1024}')
+  if [ -n "$mem_num" ] && [ "$mem_num" -gt "$MEM_THRESHOLD" ]; then
     echo "HIGH MEMORY: $namespace/$pod is using $mem (threshold: ${MEM_THRESHOLD}Mi)"
   fi
 done
@@ -216,6 +216,14 @@ cat > utilization.sh <<'EOF'
 
 echo "Pod,Container,CPU_Used,CPU_Request,CPU_Util%,Mem_Used,Mem_Request,Mem_Util%"
 
+cpu_to_millicores() {
+  awk '/m$/ {sub(/m$/, ""); print; next} /^[0-9.]+$/ {print int($1 * 1000); next} {print 0}' <<< "$1"
+}
+
+mem_to_mi() {
+  awk '/Ki$/ {sub(/Ki$/, ""); print int($1 / 1024); next} /Mi$/ {sub(/Mi$/, ""); print; next} /Gi$/ {sub(/Gi$/, ""); print int($1 * 1024); next} /^[0-9]+$/ {print int($1 / 1048576); next} {print 0}' <<< "$1"
+}
+
 for pod in $(kubectl get pods -o name); do
   POD_NAME=$(basename $pod)
 
@@ -228,28 +236,28 @@ for pod in $(kubectl get pods -o name); do
 
   echo "$USAGE" | while read pod_col container cpu mem; do
     # Get requests
-    REQUESTS=$(kubectl get pod $POD_NAME -o jsonpath="{.spec.containers[?(@.name=='$container')].resources.requests}")
-
-    CPU_REQ=$(echo $REQUESTS | jq -r '.cpu // "0"' | sed 's/m//')
-    MEM_REQ=$(echo $REQUESTS | jq -r '.memory // "0"' | sed 's/Mi//')
+    CPU_REQ_RAW=$(kubectl get pod $POD_NAME -o jsonpath="{.spec.containers[?(@.name=='$container')].resources.requests.cpu}")
+    MEM_REQ_RAW=$(kubectl get pod $POD_NAME -o jsonpath="{.spec.containers[?(@.name=='$container')].resources.requests.memory}")
 
     # Calculate utilization
-    CPU_USED=$(echo $cpu | sed 's/m//')
-    MEM_USED=$(echo $mem | sed 's/Mi//')
+    CPU_USED=$(cpu_to_millicores "$cpu")
+    MEM_USED=$(mem_to_mi "$mem")
+    CPU_REQ=$(cpu_to_millicores "$CPU_REQ_RAW")
+    MEM_REQ=$(mem_to_mi "$MEM_REQ_RAW")
 
-    if [ "$CPU_REQ" != "0" ] && [ ! -z "$CPU_REQ" ]; then
+    if [ "$CPU_REQ" != "0" ] && [ -n "$CPU_REQ" ]; then
       CPU_UTIL=$((CPU_USED * 100 / CPU_REQ))
     else
       CPU_UTIL="N/A"
     fi
 
-    if [ "$MEM_REQ" != "0" ] && [ ! -z "$MEM_REQ" ]; then
+    if [ "$MEM_REQ" != "0" ] && [ -n "$MEM_REQ" ]; then
       MEM_UTIL=$((MEM_USED * 100 / MEM_REQ))
     else
       MEM_UTIL="N/A"
     fi
 
-    echo "$POD_NAME,$container,$cpu,$CPU_REQ,$CPU_UTIL,$mem,$MEM_REQ,$MEM_UTIL"
+    echo "$POD_NAME,$container,$cpu,$CPU_REQ_RAW,$CPU_UTIL,$mem,$MEM_REQ_RAW,$MEM_UTIL"
   done
 done
 EOF
@@ -264,7 +272,7 @@ Investigate CPU-heavy pods:
 
 ```bash
 # Identify high CPU pod
-HIGH_CPU_POD=$(kubectl top pods --no-headers | sort -k2 -rn | head -1 | awk '{print $1}')
+HIGH_CPU_POD=$(kubectl top pods --sort-by=cpu --no-headers | head -1 | awk '{print $1}')
 
 echo "High CPU Pod: $HIGH_CPU_POD"
 
@@ -274,8 +282,8 @@ kubectl describe pod $HIGH_CPU_POD | grep -A 5 "Limits:\|Requests:"
 # Check what processes are running
 kubectl exec $HIGH_CPU_POD -- top -b -n 1 | head -15
 
-# Check for CPU throttling
-kubectl describe pod $HIGH_CPU_POD | grep -i throttl
+# Check recent pod events
+kubectl events --for pod/$HIGH_CPU_POD
 
 # View recent logs
 kubectl logs $HIGH_CPU_POD --tail=50
@@ -285,7 +293,7 @@ Investigate memory-heavy pods:
 
 ```bash
 # Identify high memory pod
-HIGH_MEM_POD=$(kubectl top pods --no-headers | sort -k3 -rn | head -1 | awk '{print $1}')
+HIGH_MEM_POD=$(kubectl top pods --sort-by=memory --no-headers | head -1 | awk '{print $1}')
 
 echo "High Memory Pod: $HIGH_MEM_POD"
 
@@ -318,11 +326,11 @@ while true; do
   echo ""
 
   echo "TOP 10 CPU CONSUMERS:"
-  kubectl top pods --all-namespaces --no-headers | sort -k3 -rn | head -10
+  kubectl top pods --all-namespaces --sort-by=cpu | head -11
 
   echo ""
   echo "TOP 10 MEMORY CONSUMERS:"
-  kubectl top pods --all-namespaces --no-headers | sort -k4 -rn | head -10
+  kubectl top pods --all-namespaces --sort-by=memory | head -11
 
   echo ""
   echo "RESOURCE SUMMARY:"
@@ -418,6 +426,6 @@ Create a monitoring cron job:
 
 ## Conclusion
 
-kubectl top pods is a powerful tool for real-time resource monitoring in Kubernetes. By understanding how to sort, filter, and analyze its output, you can quickly identify resource-heavy containers, detect anomalies, and make data-driven decisions about resource allocation and optimization.
+kubectl top pods is a powerful tool for recent resource monitoring in Kubernetes. By understanding how to sort, filter, and analyze its output, you can quickly identify resource-heavy containers, detect anomalies, and make data-driven decisions about resource allocation and optimization.
 
 Combine kubectl top with describe, logs, and exec commands for comprehensive troubleshooting. Create scripts and dashboards to automate monitoring and establish baselines for your workloads to spot deviations quickly.
