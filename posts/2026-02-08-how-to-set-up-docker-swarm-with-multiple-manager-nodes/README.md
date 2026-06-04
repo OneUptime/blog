@@ -29,7 +29,7 @@ For most production deployments, 3 or 5 managers is the sweet spot. Seven is the
 You need at least three machines (physical or virtual) with:
 
 - Docker Engine installed on each
-- Network connectivity between all nodes on ports 2377 (cluster management), 7946 (node communication), and 4789 (overlay networking)
+- Network connectivity to manager nodes on port 2377 (cluster management), and between all nodes on ports 7946 (node communication) and 4789 (overlay networking)
 - Unique hostnames
 
 For this guide, we will use:
@@ -52,7 +52,7 @@ On the first manager node, initialize the swarm. The `--advertise-addr` flag tel
 docker swarm init --advertise-addr 10.0.1.10
 ```
 
-The output includes two join tokens, one for managers and one for workers. Save both.
+The output includes the worker join command and tells you how to retrieve the manager join command. Save the worker command, then retrieve and save the manager command.
 
 ```text
 Swarm initialized: current node (abc123def456) is now a manager.
@@ -136,7 +136,7 @@ Notice the `MANAGER STATUS` column. One manager is the `Leader` (handles all Raf
 
 ## Step 5: Open Required Firewall Ports
 
-Make sure all required ports are open between nodes. Here is an example using `ufw`:
+Make sure the required ports are open between trusted swarm nodes. Port 2377 is needed on manager nodes for cluster management, while ports 7946 and 4789 are needed between all nodes. Here is an example using `ufw`:
 
 ```bash
 # Allow Docker Swarm cluster management traffic
@@ -263,7 +263,7 @@ docker node update --availability drain manager2
 docker node update --availability drain manager3
 ```
 
-**Monitor manager health.** Check the Raft log and manager status regularly:
+**Monitor manager health.** Check the manager count and manager status regularly:
 
 ```bash
 # Inspect manager status details
