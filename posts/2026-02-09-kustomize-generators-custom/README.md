@@ -8,15 +8,15 @@ Description: Master Kustomize generators to automatically create ConfigMaps, Sec
 
 ---
 
-Generators in Kustomize are powerful tools that create Kubernetes resources dynamically during the build process. Rather than writing static manifest files, you define generation rules in your kustomization.yaml that produce resources from various sources like files, literals, or environment variables. This approach reduces duplication and keeps sensitive data out of version control.
+Generators in Kustomize are powerful tools that create Kubernetes resources dynamically during the build process. Rather than writing static manifest files, you define generation rules in your kustomization.yaml that produce resources from various sources like files, literals, or env files. This approach reduces duplication and keeps sensitive data out of version control.
 
 Understanding how to configure and use generators effectively can dramatically improve your Kubernetes workflow. You can generate ConfigMaps from directories of configuration files, create Secrets from environment files, and even build custom resources using generator plugins.
 
 ## Built-in generator types
 
-Kustomize provides three built-in generators: configMapGenerator, secretGenerator, and generatorOptions. Each serves a specific purpose in creating resources from external data sources.
+Kustomize provides two built-in generators: configMapGenerator and secretGenerator. The generatorOptions field modifies the behavior of generated ConfigMaps and Secrets.
 
-The configMapGenerator creates ConfigMap resources from files, directories, or literal key-value pairs. This is useful for application configuration that changes between environments:
+The configMapGenerator creates ConfigMap resources from files, directories, env files, or literal key-value pairs. This is useful for application configuration that changes between environments:
 
 ```yaml
 # kustomization.yaml
@@ -38,7 +38,7 @@ When you build this kustomization, Kustomize generates a ConfigMap named app-con
 
 ## Generating Secrets securely
 
-The secretGenerator works similarly but creates Secret resources. It can read from files or literals, encoding values in base64 automatically:
+The secretGenerator works similarly but creates Secret resources. It can read from files, env files, or literals, encoding values in base64 automatically:
 
 ```yaml
 # kustomization.yaml
@@ -75,16 +75,14 @@ kind: Kustomization
 configMapGenerator:
 - name: nginx-config
   files:
-  - configs/nginx.conf
-  - configs/mime.types
-  - configs/fastcgi_params
+  - configs
 
 - name: app-properties
   envs:
   - application.env
 ```
 
-The envs option parses environment file format (KEY=value lines) and creates a ConfigMap with each line as a separate key. This works well with dotenv-style configuration.
+When you specify a directory under files, Kustomize includes each named file in that directory whose basename is a valid ConfigMap key. The envs option parses environment file format (KEY=value lines) and creates a ConfigMap with each line as a separate key. This works well with dotenv-style configuration.
 
 ## Controlling generator behavior with options
 
@@ -123,17 +121,21 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 generators:
-- |-
-  apiVersion: someteam.example.com/v1
-  kind: MyResourceGenerator
-  metadata:
-    name: my-generator
-  spec:
-    count: 3
-    prefix: worker
+- my-generator.yaml
 ```
 
-The plugin executable must be in the Kustomize plugin path and follow naming conventions. When Kustomize encounters this generator, it executes the plugin and includes its output in the build.
+```yaml
+# my-generator.yaml
+apiVersion: someteam.example.com/v1
+kind: MyResourceGenerator
+metadata:
+  name: my-generator
+spec:
+  count: 3
+  prefix: worker
+```
+
+The plugin executable must be in the Kustomize plugin path and follow naming conventions. When you run a build with plugins enabled, Kustomize executes the plugin and includes its output in the build.
 
 ## Building a shell-based generator plugin
 
@@ -143,8 +145,8 @@ You can create plugins in any language. Here's a simple bash example that genera
 #!/bin/bash
 # This plugin generates N deployments based on input configuration
 
-# Read input from stdin (the generator configuration)
-CONFIG=$(cat)
+# Read the generator configuration from the file path Kustomize passes as $1
+CONFIG=$(cat "$1")
 
 # Parse configuration (simplified for example)
 COUNT=$(echo "$CONFIG" | grep count | cut -d: -f2 | tr -d ' ')
@@ -177,11 +179,11 @@ EOF
 done
 ```
 
-Place this script in your plugin directory with the correct path structure and make it executable. Kustomize will invoke it during builds.
+Place this script in your plugin directory with the correct path structure and make it executable. Kustomize will invoke it during builds when you enable plugins, for example with `kustomize build --enable-alpha-plugins`.
 
 ## Using environment variables in generators
 
-You can reference environment variables when generating resources. This is useful for injecting build-time information:
+Kustomize does not expand shell variables or command substitutions inside literals. To inject build-time information, create an env file before running the build and reference that file from the generator:
 
 ```yaml
 # kustomization.yaml
@@ -190,13 +192,11 @@ kind: Kustomization
 
 configMapGenerator:
 - name: build-info
-  literals:
-  - BUILD_NUMBER=$(BUILD_NUMBER)
-  - GIT_COMMIT=$(GIT_COMMIT)
-  - BUILD_TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  envs:
+  - build-info.env
 ```
 
-Set these environment variables before running `kustomize build`. This technique integrates well with CI/CD pipelines where build metadata is available as environment variables.
+Have your CI/CD pipeline write values such as BUILD_NUMBER, GIT_COMMIT, and BUILD_TIMESTAMP to build-info.env before running `kustomize build`. This keeps build metadata available to Kustomize in a format the generator understands.
 
 ## Combining multiple generator sources
 
@@ -219,7 +219,7 @@ configMapGenerator:
   - REGION=us-east-1
 ```
 
-The resulting ConfigMap contains all data merged together. If keys conflict, later sources override earlier ones.
+The resulting ConfigMap contains all data merged together. Keep keys unique across envs, literals, and files; Kustomize returns an error if a generated ConfigMap repeats a key.
 
 ## Generator behavior in overlays
 
@@ -242,7 +242,7 @@ configMapGenerator:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 configMapGenerator:
