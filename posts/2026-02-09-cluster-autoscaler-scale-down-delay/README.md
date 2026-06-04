@@ -14,9 +14,9 @@ By tuning these settings, you can prevent premature node removal during temporar
 
 ## Understanding Scale-Down Parameters
 
-The scale-down delay controls how long a node must be underutilized before becoming eligible for removal. The utilization threshold defines what "underutilized" means - nodes with resource requests below this threshold can be removed if they have been underutilized for the delay period.
+The scale-down unneeded time controls how long a node must be unneeded before becoming eligible for removal, while scale-down delay flags pause scale-down evaluation after scale-up, deletion, or failure events. The utilization threshold defines what "underutilized" means - nodes whose CPU and memory request utilization are both below this threshold can be removed if their pods can be moved elsewhere.
 
-These parameters work together to prevent flapping where nodes are repeatedly added and removed. Longer delays and higher thresholds make scale-down more conservative, while shorter delays and lower thresholds enable more aggressive cost optimization.
+These parameters work together to prevent flapping where nodes are repeatedly added and removed. Longer delays and lower thresholds make scale-down more conservative, while shorter delays and higher thresholds enable more aggressive cost optimization.
 
 ## Basic Scale-Down Configuration
 
@@ -41,13 +41,12 @@ spec:
       serviceAccountName: cluster-autoscaler
       containers:
       - name: cluster-autoscaler
-        image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.27.0
+        image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.35.0
         command:
         - ./cluster-autoscaler
         - --v=4
         - --cloud-provider=aws
         - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled
-        - --scale-down-enabled=true
         - --scale-down-delay-after-add=10m
         - --scale-down-unneeded-time=10m
         - --scale-down-utilization-threshold=0.5
@@ -65,12 +64,12 @@ command:
 - ./cluster-autoscaler
 - --scale-down-delay-after-add=15m
 - --scale-down-unneeded-time=30m
-- --scale-down-utilization-threshold=0.6
+- --scale-down-utilization-threshold=0.3
 - --scale-down-delay-after-delete=10m
 - --scale-down-delay-after-failure=5m
 ```
 
-These conservative settings reduce node churn for stable workloads. The 30-minute unneeded time ensures nodes aren't removed during brief utilization dips, and the 60% threshold keeps more capacity available.
+These conservative settings reduce node churn for stable workloads. The 30-minute unneeded time ensures nodes aren't removed during brief utilization dips, and the 30% threshold limits scale-down candidates to very lightly requested nodes.
 
 ## Aggressive Scale-Down for Cost Optimization
 
@@ -81,30 +80,25 @@ command:
 - ./cluster-autoscaler
 - --scale-down-delay-after-add=5m
 - --scale-down-unneeded-time=5m
-- --scale-down-utilization-threshold=0.3
+- --scale-down-utilization-threshold=0.6
 - --scale-down-delay-after-delete=2m
 - --scale-down-delay-after-failure=2m
 - --max-nodes-total=100
 - --max-empty-bulk-delete=10
 ```
 
-These aggressive settings remove underutilized nodes quickly, using a low 30% threshold. This is appropriate for non-production environments or workloads that handle pod rescheduling well.
+These aggressive settings remove underutilized nodes quickly, using a higher 60% threshold. This is appropriate for non-production environments or workloads that handle pod rescheduling well.
 
 ## Different Thresholds for Different Node Types
 
-Use node annotations to configure per-node-group behavior.
+Use cloud-provider node group metadata to configure per-node-group behavior.
 
-```yaml
-# For spot instance node groups
-
-command:
-- ./cluster-autoscaler
-- --scale-down-utilization-threshold=0.4  # More aggressive for spot nodes
-- --scale-down-unneeded-time=5m
-
-# Annotate spot nodes to allow faster scale-down
-kubectl annotate node spot-node-1 \
-  cluster-autoscaler.kubernetes.io/scale-down-disabled=false
+```bash
+# For AWS spot instance Auto Scaling Groups
+aws autoscaling create-or-update-tags \
+  --tags \
+  "ResourceId=spot-asg,ResourceType=auto-scaling-group,Key=k8s.io/cluster-autoscaler/node-template/autoscaling-options/scaledownutilizationthreshold,Value=0.6,PropagateAtLaunch=true" \
+  "ResourceId=spot-asg,ResourceType=auto-scaling-group,Key=k8s.io/cluster-autoscaler/node-template/autoscaling-options/scaledownunneededtime,Value=5m0s,PropagateAtLaunch=true"
 ```
 
 Spot instances can use more aggressive scale-down since they are cheaper and can be reclaimed by the cloud provider anyway.
@@ -114,7 +108,7 @@ Spot instances can use more aggressive scale-down since they are cheaper and can
 Temporarily disable scale-down during critical periods.
 
 ```yaml
-# Disable scale-down entirely
+# Disable scale-down entirely if your Cluster Autoscaler version still supports this deprecated flag
 command:
 - ./cluster-autoscaler
 - --scale-down-enabled=false
@@ -139,10 +133,10 @@ kubectl get events -n kube-system --watch | grep -i scale
 kubectl logs -n kube-system deployment/cluster-autoscaler | \
   grep -i "scale down"
 
-# View node utilization
+# View current node metrics (Cluster Autoscaler uses pod requests for scale-down)
 kubectl top nodes
 
-# Check which nodes are underutilized
+# View allocatable resources used in request-based utilization calculations
 kubectl get nodes -o json | \
   jq '.items[] | {
     name: .metadata.name,
@@ -150,10 +144,10 @@ kubectl get nodes -o json | \
     allocatable_mem: .status.allocatable.memory
   }'
 
-# Check for nodes pending deletion
+# Check nodes with scale-down disabled
 kubectl get nodes -o json | \
   jq '.items[] |
-    select(.metadata.annotations["cluster-autoscaler.kubernetes.io/scale-down-disabled"] != null) |
+    select(.metadata.annotations["cluster-autoscaler.kubernetes.io/scale-down-disabled"] == "true") |
     .metadata.name'
 ```
 
@@ -170,7 +164,7 @@ command:
 - --skip-nodes-with-local-storage=false
 ```
 
-Setting skip-nodes-with-system-pods to false allows removing nodes even if they run system pods like kube-proxy or monitoring agents, as these will be rescheduled automatically.
+Setting skip-nodes-with-system-pods to false allows removing nodes even if they run movable kube-system pods. DaemonSet pods are handled separately, and kube-system pods with restrictive PDBs or other scheduling constraints can still block scale-down.
 
 ## Preventing Premature Scale-Down
 
@@ -206,7 +200,7 @@ metadata:
   name: low-priority
 value: 1000
 globalDefault: false
-description: "Low priority pods can be evicted for scale-down"
+description: "Low priority pods use spare capacity"
 ---
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
@@ -214,10 +208,14 @@ metadata:
   name: high-priority
 value: 10000
 globalDefault: false
-description: "High priority pods block scale-down"
+description: "High priority pods are regular scale-down considerations"
+---
+command:
+- ./cluster-autoscaler
+- --expendable-pods-priority-cutoff=5000
 ```
 
-Nodes with only low-priority pods are more likely to be removed during scale-down.
+Pods below the expendable priority cutoff don't prevent scale-down. Pods at or above the cutoff are considered normally and can still be moved if disruption budgets and scheduling constraints allow it.
 
 ## Configuring Per-Node-Group Settings
 
@@ -227,12 +225,13 @@ Use node group specific configurations on cloud provider side.
 # AWS Auto Scaling Group tags
 aws autoscaling create-or-update-tags \
   --tags \
-  "ResourceId=my-asg,ResourceType=auto-scaling-group,Key=k8s.io/cluster-autoscaler/node-template/label/workload-type,Value=batch,PropagateAtLaunch=true"
+  "ResourceId=my-asg,ResourceType=auto-scaling-group,Key=k8s.io/cluster-autoscaler/node-template/autoscaling-options/scaledownunneededtime,Value=5m0s,PropagateAtLaunch=true" \
+  "ResourceId=my-asg,ResourceType=auto-scaling-group,Key=k8s.io/cluster-autoscaler/node-template/autoscaling-options/scaledownutilizationthreshold,Value=0.6,PropagateAtLaunch=true"
 
-# Configure different scale-down for batch workloads
-command:
-- ./cluster-autoscaler
-- --scale-down-unneeded-time=5m  # Quick scale-down for batch nodes
+# Optional label used by scheduling, not by scale-down tuning
+aws autoscaling create-or-update-tags \
+  --tags \
+  "ResourceId=my-asg,ResourceType=auto-scaling-group,Key=k8s.io/cluster-autoscaler/node-template/label/workload-type,Value=batch,PropagateAtLaunch=true"
 ```
 
 Different node groups can have different characteristics that justify different scale-down behavior.
@@ -275,19 +274,19 @@ command:
 command:
 - --scale-down-delay-after-add=10m
 - --scale-down-unneeded-time=10m
-- --scale-down-utilization-threshold=0.4
+- --scale-down-utilization-threshold=0.5
 
 # For batch processing
 command:
 - --scale-down-delay-after-add=5m
 - --scale-down-unneeded-time=5m
-- --scale-down-utilization-threshold=0.3
+- --scale-down-utilization-threshold=0.6
 
 # For always-on services
 command:
 - --scale-down-delay-after-add=30m
 - --scale-down-unneeded-time=60m
-- --scale-down-utilization-threshold=0.7
+- --scale-down-utilization-threshold=0.3
 ```
 
 Match your configuration to observed traffic and usage patterns.
