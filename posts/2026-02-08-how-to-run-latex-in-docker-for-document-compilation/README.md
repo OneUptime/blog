@@ -25,10 +25,10 @@ Several Docker images provide TeX Live. The most common options are:
 
 docker pull texlive/texlive:latest
 
-# Smaller image with common packages
+# Pandoc image with a minimal LaTeX installation
 docker pull pandoc/latex:latest
 
-# Minimal Alpine-based image
+# Alternative Ubuntu-based LaTeX image
 docker pull blang/latex:ubuntu
 ```
 
@@ -57,6 +57,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-xetex \
     texlive-luatex \
     biber \
+    fonts-dejavu-core \
     latexmk \
     make \
     && apt-get clean \
@@ -65,6 +66,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /doc
 
 ENTRYPOINT ["latexmk"]
+```
+
+Build the image:
+
+```bash
+# Build the custom LaTeX compiler image
+docker build -t latex-compiler .
 ```
 
 The `latexmk` tool is the recommended way to compile LaTeX documents because it automatically runs the correct number of compilation passes (LaTeX, BibTeX, LaTeX again, etc.) to resolve all cross-references and citations.
@@ -258,8 +266,6 @@ For projects with multiple documents or complex build processes:
 
 ```yaml
 # docker-compose.yml - LaTeX compilation environment
-version: "3.8"
-
 services:
   compile:
     build: .
@@ -324,6 +330,7 @@ jobs:
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/doc \
+            -w /doc \
             texlive/texlive:latest \
             latexmk -pdf -interaction=nonstopmode main.tex
 
@@ -347,7 +354,7 @@ Or install packages at runtime (slower, but useful for testing):
 
 ```bash
 # Install a missing package and then compile
-docker run --rm -v $(pwd):/doc texlive/texlive:latest \
+docker run --rm -v $(pwd):/doc -w /doc texlive/texlive:latest \
   bash -c "tlmgr install tcolorbox && latexmk -pdf main.tex"
 ```
 
