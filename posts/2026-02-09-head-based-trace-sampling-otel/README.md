@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Kubernetes, Tracing
 
-Description: Configure head-based sampling in the OpenTelemetry Collector to reduce trace volume in Kubernetes while maintaining observability through probabilistic, rate-limiting, and attribute-based sampling.
+Description: Configure head-based sampling in the OpenTelemetry Collector to reduce trace volume in Kubernetes while maintaining observability through probabilistic, service-specific, and priority-based sampling.
 
 ---
 
-Tracing every request in production generates massive data volumes, overwhelming storage and increasing costs. Head-based sampling makes the sampling decision at trace creation time, reducing data at the source. While simpler than tail-based sampling, head-based strategies can reduce trace volume by 90% or more when configured properly.
+Tracing every request in production generates massive data volumes, overwhelming storage and increasing costs. Head-based sampling makes the sampling decision early, without inspecting the complete trace. When it is configured in application SDKs, it can reduce data at the source; when it is configured in the OpenTelemetry Collector with the probabilistic sampler, it reduces data before export. While simpler than tail-based sampling, head-based strategies can reduce trace volume by 90% or more when configured properly.
 
 This guide covers implementing head-based sampling strategies in the OpenTelemetry Collector for Kubernetes.
 
 ## Understanding Head-Based Sampling
 
-Head-based sampling decides whether to record a trace when it starts, propagating the decision through the entire distributed transaction. The decision is made early (at the "head" of the trace) without seeing the complete trace.
+Head-based sampling decides whether to record or export telemetry early in the trace collection pipeline. The decision is made early (at the "head" of the trace) without seeing the complete trace.
 
 **Advantages**:
 - Low resource overhead
@@ -90,7 +90,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:latest
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
         - --config=/etc/otel/collector.yaml
         ports:
@@ -116,24 +116,20 @@ spec:
 
 ## Rate-Limiting Sampling
 
-Limit traces per second per service:
+The Collector's built-in rate-limiting sampling policy is part of the tail sampling processor, not the probabilistic head sampler. Use it when you need a hard spans-per-second cap, and make sure all spans for a given trace reach the same collector instance:
 
 ```yaml
 processors:
-  # Sample max 100 traces/sec per service
+  # Sample max 100 spans/sec for this collector pipeline
   tail_sampling:
+    decision_wait: 10s
+    num_traces: 100000
     policies:
     - name: rate_limiting
       type: rate_limiting
       rate_limiting:
         spans_per_second: 100
 
-  # Alternative: groupbytrace with rate limiting
-  groupbytrace:
-    wait_duration: 10s
-    num_traces: 100000
-
-  # Rate limiter processor
   memory_limiter:
     check_interval: 1s
     limit_mib: 512
@@ -142,7 +138,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, groupbytrace, tail_sampling, batch]
+      processors: [memory_limiter, tail_sampling, batch]
       exporters: [otlp]
 ```
 
@@ -152,28 +148,23 @@ Sample based on span attributes:
 
 ```yaml
 processors:
-  # Attribute-based sampling rules
-  filter:
-    traces:
-      span:
-        # Always sample errors
-        - 'attributes["http.status_code"] >= 400'
-        # Always sample slow requests (>1s)
-        - 'attributes["http.duration_ms"] > 1000'
-        # Sample specific services at higher rate
-        - 'resource.attributes["service.name"] == "payment-service"'
+  # Raise sampling priority for spans that must be kept
+  transform/sampling_priority:
+    error_mode: ignore
+    trace_statements:
+      - set(span.attributes["sampling.priority"], 1) where span.attributes["http.status_code"] >= 400
+      - set(span.attributes["sampling.priority"], 1) where span.attributes["http.duration_ms"] > 1000
+      - set(span.attributes["sampling.priority"], 1) where resource.attributes["service.name"] == "payment-service"
 
-  # Probabilistic by attribute
   probabilistic_sampler:
     hash_seed: 22
     sampling_percentage: 10.0
-    attribute_source: record  # Use span attributes in sampling decision
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [filter, probabilistic_sampler, batch]
+      processors: [transform/sampling_priority, probabilistic_sampler, batch]
       exporters: [otlp]
 ```
 
@@ -182,19 +173,23 @@ service:
 Configure different rates per service:
 
 ```yaml
-processors:
+connectors:
   # Route by service name
   routing:
-    from_attribute: service.name
+    default_pipelines: [traces/medium]
+    error_mode: ignore
     table:
-      - value: frontend
-        exporters: [otlp/high_sample]
-      - value: payment-service
-        exporters: [otlp/high_sample]
-      - value: worker
-        exporters: [otlp/low_sample]
-      default_exporters: [otlp/medium_sample]
+      - context: resource
+        condition: 'attributes["service.name"] == "frontend"'
+        pipelines: [traces/high]
+      - context: resource
+        condition: 'attributes["service.name"] == "payment-service"'
+        pipelines: [traces/high]
+      - context: resource
+        condition: 'attributes["service.name"] == "worker"'
+        pipelines: [traces/low]
 
+processors:
   probabilistic_sampler/high:
     sampling_percentage: 50.0
 
@@ -203,6 +198,8 @@ processors:
 
   probabilistic_sampler/low:
     sampling_percentage: 5.0
+
+  batch:
 
 exporters:
   otlp/high_sample:
@@ -214,32 +211,35 @@ exporters:
 
 service:
   pipelines:
-    traces/high:
+    traces/in:
       receivers: [otlp]
+      exporters: [routing]
+
+    traces/high:
+      receivers: [routing]
       processors: [probabilistic_sampler/high, batch]
       exporters: [otlp/high_sample]
 
     traces/medium:
-      receivers: [otlp]
+      receivers: [routing]
       processors: [probabilistic_sampler/medium, batch]
       exporters: [otlp/medium_sample]
 
     traces/low:
-      receivers: [otlp]
+      receivers: [routing]
       processors: [probabilistic_sampler/low, batch]
       exporters: [otlp/low_sample]
 ```
 
 ## Parent-Based Sampling
 
-Respect upstream sampling decisions:
+Parent-based sampling is configured in the application SDK, where child spans can inherit the parent span's sampling decision. In the Collector, use deterministic trace-ID sampling with the same `hash_seed` across collectors to keep sampling decisions consistent:
 
 ```yaml
 processors:
-  # Parent-based sampler
+  # Consistent TraceID-based sampler
   probabilistic_sampler:
     sampling_percentage: 10.0
-    # Hash algorithm ensures consistent sampling across distributed trace
     hash_seed: 22
 
   # Attributes processor to add sampling metadata
@@ -263,43 +263,28 @@ Always sample important operations:
 
 ```yaml
 processors:
-  filter/critical:
-    traces:
-      span:
-        # Always sample these critical operations
-        - 'attributes["operation"] == "checkout"'
-        - 'attributes["operation"] == "payment"'
-        - 'attributes["operation"] == "order_placed"'
-        - 'resource.attributes["service.name"] == "auth-service"'
+  transform/critical:
+    error_mode: ignore
+    trace_statements:
+      # Always sample these critical operations
+      - set(span.attributes["sampling.priority"], 1) where span.attributes["operation"] == "checkout"
+      - set(span.attributes["sampling.priority"], 1) where span.attributes["operation"] == "payment"
+      - set(span.attributes["sampling.priority"], 1) where span.attributes["operation"] == "order_placed"
+      - set(span.attributes["sampling.priority"], 1) where resource.attributes["service.name"] == "auth-service"
 
   probabilistic_sampler:
     sampling_percentage: 10.0
 
-  # Route critical and sampled separately
-  routing:
-    from_attribute: critical_path
-    table:
-      - value: "true"
-        exporters: [otlp/critical]
-    default_exporters: [otlp/sampled]
-
 exporters:
-  otlp/critical:
-    endpoint: tempo:4317
-  otlp/sampled:
+  otlp:
     endpoint: tempo:4317
 
 service:
   pipelines:
-    traces/critical:
+    traces:
       receivers: [otlp]
-      processors: [filter/critical, batch]
-      exporters: [otlp/critical]
-
-    traces/sampled:
-      receivers: [otlp]
-      processors: [probabilistic_sampler, batch]
-      exporters: [otlp/sampled]
+      processors: [transform/critical, probabilistic_sampler, batch]
+      exporters: [otlp]
 ```
 
 ## Environment-Based Sampling
@@ -307,13 +292,22 @@ service:
 Different sampling for different environments:
 
 ```yaml
-processors:
-  attributes:
-    actions:
-      - key: environment
-        from_attribute: deployment.environment
-        action: upsert
+connectors:
+  routing:
+    default_pipelines: [traces/dev]
+    error_mode: ignore
+    table:
+      - context: resource
+        condition: 'attributes["deployment.environment"] == "production"'
+        pipelines: [traces/prod]
+      - context: resource
+        condition: 'attributes["deployment.environment"] == "staging"'
+        pipelines: [traces/staging]
+      - context: resource
+        condition: 'attributes["deployment.environment"] == "development"'
+        pipelines: [traces/dev]
 
+processors:
   probabilistic_sampler/production:
     sampling_percentage: 5.0
 
@@ -323,15 +317,7 @@ processors:
   probabilistic_sampler/development:
     sampling_percentage: 100.0
 
-  routing:
-    from_attribute: environment
-    table:
-      - value: production
-        exporters: [otlp/prod]
-      - value: staging
-        exporters: [otlp/staging]
-      - value: development
-        exporters: [otlp/dev]
+  batch:
 
 exporters:
   otlp/prod:
@@ -340,24 +326,45 @@ exporters:
     endpoint: tempo:4317
   otlp/dev:
     endpoint: tempo:4317
+
+service:
+  pipelines:
+    traces/in:
+      receivers: [otlp]
+      exporters: [routing]
+
+    traces/prod:
+      receivers: [routing]
+      processors: [probabilistic_sampler/production, batch]
+      exporters: [otlp/prod]
+
+    traces/staging:
+      receivers: [routing]
+      processors: [probabilistic_sampler/staging, batch]
+      exporters: [otlp/staging]
+
+    traces/dev:
+      receivers: [routing]
+      processors: [probabilistic_sampler/development, batch]
+      exporters: [otlp/dev]
 ```
 
 ## Monitoring Sampling Effectiveness
 
-Track sampling metrics:
+Track sampling metrics. If you scrape the Collector's default Prometheus endpoint, counter metrics usually include the `_total` suffix:
 
 ```promql
 # Traces sampled vs total
 
-rate(otelcol_processor_accepted_spans[5m])
+rate(otelcol_processor_outgoing_items_total{processor="probabilistic_sampler"}[5m])
 /
-rate(otelcol_processor_received_spans[5m])
+rate(otelcol_processor_incoming_items_total{processor="probabilistic_sampler"}[5m])
 
 # Sampling rate by service
-sum by (service_name) (rate(otelcol_processor_accepted_spans[5m]))
+sum by (service_name) (rate(otelcol_exporter_sent_spans_total[5m]))
 
-# Dropped spans
-rate(otelcol_processor_dropped_spans[5m])
+# Export failures
+rate(otelcol_exporter_send_failed_spans_total[5m])
 ```
 
 Create alerts for sampling issues:
@@ -365,24 +372,24 @@ Create alerts for sampling issues:
 ```yaml
 - alert: LowSamplingRate
   expr: |
-    (rate(otelcol_processor_accepted_spans[5m]) /
-     rate(otelcol_processor_received_spans[5m])) < 0.01
+    (rate(otelcol_processor_outgoing_items_total{processor="probabilistic_sampler"}[5m]) /
+     rate(otelcol_processor_incoming_items_total{processor="probabilistic_sampler"}[5m])) < 0.01
   for: 10m
   annotations:
     summary: "Sampling rate below 1%"
 
-- alert: HighDropRate
+- alert: HighExportFailureRate
   expr: |
-    rate(otelcol_processor_dropped_spans[5m]) > 100
+    rate(otelcol_exporter_send_failed_spans_total[5m]) > 100
   for: 5m
   annotations:
-    summary: "High span drop rate detected"
+    summary: "High span export failure rate detected"
 ```
 
 ## Best Practices
 
 1. **Start with conservative rates**: Begin at 10-20% and adjust down
-2. **Always sample errors**: Include 100% of error traces
+2. **Always sample errors**: Use SDK sampling or Collector sampling priority rules if errors are available before sampling; otherwise use tail sampling
 3. **Monitor actual sampling rates**: Verify configuration matches expectations
 4. **Consider user impact**: Sample user-facing services more aggressively
 5. **Document sampling decisions**: Track why certain rates were chosen
