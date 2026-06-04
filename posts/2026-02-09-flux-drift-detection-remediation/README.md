@@ -14,7 +14,7 @@ This guide shows you how to configure Flux to detect drift, alert on unauthorize
 
 ## Understanding Flux Drift Detection
 
-Flux continuously reconciles cluster state with Git. When it detects differences, it either updates the cluster (if Git changed) or alerts and remediates (if someone changed the cluster). The kustomize-controller and helm-controller both support drift detection with different strategies.
+Flux continuously reconciles cluster state with Git. When it detects differences, it either updates the cluster (if Git changed) or remediates in-cluster changes (if someone changed a managed resource). The kustomize-controller and helm-controller both support drift detection with different strategies.
 
 Drift detection works by comparing live cluster resources against the desired state from Git. When discrepancies exist, Flux can either alert, automatically fix, or both depending on your configuration.
 
@@ -38,16 +38,9 @@ spec:
   # Enable self-healing
   wait: true
   timeout: 5m
+  # Re-apply the desired state on every interval
+  # and replace resources only if immutable fields change.
   force: false
-  # Remediate drift automatically
-  patches:
-  - patch: |
-      apiVersion: v1
-      kind: Service
-      metadata:
-        name: api-gateway
-      spec:
-        $patch: replace
 ```
 
 Set reconciliation frequency to detect drift quickly:
@@ -85,7 +78,9 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: ingress-nginx
-  # Drift detection settings
+  # Detect and correct drift from the Helm storage manifest
+  driftDetection:
+    mode: enabled
   install:
     remediation:
       retries: 3
@@ -93,12 +88,11 @@ spec:
     remediation:
       retries: 3
       remediateLastFailure: true
-    # Force recreation on drift
     force: false
     cleanupOnFail: true
 ```
 
-Force helm-controller to detect all changes:
+Use `warn` mode to detect drift and emit events without correcting it:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -114,11 +108,17 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: jetstack
-  # Aggressive drift detection
+  # Alert on drift but do not remediate automatically
+  driftDetection:
+    mode: warn
+    ignore:
+    - paths: ["/spec/replicas"]
+      target:
+        kind: Deployment
   upgrade:
     remediation:
-      retries: -1  # Retry indefinitely
-    force: true  # Force resource updates
+      retries: -1  # Retry failed upgrades indefinitely
+    force: false
     preserveValues: false  # Always use Git values
 ```
 
@@ -127,7 +127,7 @@ spec:
 Create alerts for drift detection:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: drift-alert
@@ -146,7 +146,7 @@ spec:
   exclusionList:
   - "^Dependencies.*"
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -155,13 +155,13 @@ spec:
   type: slack
   channel: gitops-alerts
   secretRef:
-    name: slack-webhook-url
+    name: slack-webhook
 ```
 
 Filter for specific drift events:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: drift-only-alert
@@ -182,7 +182,7 @@ spec:
 
 ## Detecting Drift with Health Checks
 
-Use health checks to catch drift faster:
+Use health checks to catch rollout issues after remediation:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -211,7 +211,7 @@ spec:
   wait: true
 ```
 
-Health checks fail when someone manually scales deployments or modifies containers, triggering remediation.
+Health checks report whether workloads become ready after reconciliation. Manual changes to managed fields are corrected by the next Flux reconciliation; health checks help surface rollout failures after Flux reapplies the desired state.
 
 ## Creating Drift Detection Dashboards
 
@@ -222,11 +222,11 @@ Query Flux metrics for drift:
 
 gotk_reconcile_condition{kind="Kustomization",status="False",type="Ready"}
 
-# Time since last successful reconciliation
-time() - gotk_reconcile_condition_timestamp{kind="Kustomization",status="True",type="Ready"}
+# Current ready status
+gotk_reconcile_condition{kind="Kustomization",status="True",type="Ready"}
 
 # Reconciliation duration (spikes indicate drift remediation)
-gotk_reconcile_duration_seconds{kind="Kustomization"}
+gotk_reconcile_duration_seconds_sum{kind="Kustomization"} / gotk_reconcile_duration_seconds_count{kind="Kustomization"}
 ```
 
 Create Grafana dashboard:
@@ -246,12 +246,12 @@ data:
           "expr": "count(gotk_reconcile_condition{kind=\"Kustomization\",status=\"False\",type=\"Ready\"})"
         },
         {
-          "title": "Drift Remediation Events",
-          "expr": "increase(gotk_reconcile_condition{kind=\"Kustomization\",type=\"Ready\"}[5m])"
+          "title": "Kustomization Reconciliations",
+          "expr": "increase(gotk_reconcile_duration_seconds_count{kind=\"Kustomization\"}[5m])"
         },
         {
-          "title": "Last Successful Sync",
-          "expr": "time() - gotk_reconcile_condition_timestamp{kind=\"Kustomization\",status=\"True\",type=\"Ready\"}"
+          "title": "Ready Kustomizations",
+          "expr": "count(gotk_reconcile_condition{kind=\"Kustomization\",status=\"True\",type=\"Ready\"})"
         }
       ]
     }
@@ -259,7 +259,7 @@ data:
 
 ## Implementing Audit Logging for Manual Changes
 
-Deploy a webhook to log kubectl exec commands:
+Create an audit policy to log manual updates to managed resources:
 
 ```yaml
 apiVersion: v1
@@ -329,7 +329,7 @@ kubectl edit deployment api-gateway -n production
 flux resume kustomization production-apps
 ```
 
-Or use annotations to mark resources as managed manually:
+Or annotate in-cluster resources to pause reconciliation for that resource:
 
 ```yaml
 apiVersion: apps/v1
@@ -383,8 +383,7 @@ spec:
 Intentionally create drift to test:
 
 ```bash
-# Apply configuration via Git
-kubectl apply -f apps/deployment.yaml
+# Commit and push the desired deployment manifest to Git
 
 # Wait for Flux to sync
 flux reconcile kustomization production-apps --with-source
@@ -405,9 +404,9 @@ Expected behavior: Flux detects the change within its reconciliation interval an
 
 Set aggressive reconciliation intervals for critical services. Production infrastructure should reconcile every 1-2 minutes, development every 5-10 minutes.
 
-Always enable prune to remove manually created resources. Without pruning, drift detection only catches modifications, not additions.
+Always enable prune to remove resources that were previously applied by Flux and later removed from Git. Prune does not delete arbitrary resources that were never part of the Kustomization inventory.
 
-Use health checks on critical workloads. They catch functional drift faster than resource comparisons.
+Use health checks on critical workloads. They confirm workloads become ready after Flux reconciles the desired state.
 
 Implement admission controllers in production. Prevention is better than remediation.
 
@@ -415,4 +414,4 @@ Monitor reconciliation metrics and set up alerts. A Kustomization stuck in faile
 
 Document the process for emergency manual changes. Teams need to know when and how to suspend Flux without breaking production.
 
-Flux drift detection ensures your cluster state always matches Git, automatically remediating unauthorized changes and maintaining strict GitOps compliance across your infrastructure.
+Flux drift detection keeps managed cluster resources aligned with Git, automatically remediating unauthorized changes and maintaining GitOps compliance across your infrastructure.
