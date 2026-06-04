@@ -51,7 +51,7 @@ kubectl get gateway http-gateway
 kubectl describe gateway http-gateway
 ```
 
-The Gateway provisions a load balancer and reports its address in the status.
+The Gateway controller provisions the underlying data plane, such as a load balancer or proxy, and reports its address in the status.
 
 ## Configuring HTTPS with TLS Termination
 
@@ -203,25 +203,9 @@ spec:
         namespaces:
           from: All
 
----
-# ReferenceGrant to allow cross-namespace access
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata:
-  name: allow-routes-to-shared-gateway
-  namespace: gateway-system
-spec:
-  from:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      namespace: app-namespace
-  to:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: shared-gateway
 ```
 
-Teams can create HTTPRoutes in their namespaces that attach to the centralized Gateway.
+Teams can create HTTPRoutes in their namespaces that attach to the centralized Gateway. Cross-namespace Route-to-Gateway attachment is allowed by the Gateway listener's `allowedRoutes` setting; ReferenceGrant is used for other cross-namespace references, such as a Route forwarding to a Service in another namespace or a Gateway using a Secret in another namespace.
 
 ## Configuring Multiple Ports and Protocols
 
@@ -312,24 +296,21 @@ Monitor these conditions to ensure your Gateway operates correctly.
 
 ## Implementing Gateway with Service Annotations
 
-Configure cloud-specific load balancer features through Gateway annotations.
+Configure cloud-specific load balancer features through infrastructure annotations.
 
 ```yaml
-# gateway-aws-nlb.yaml
+# gateway-aws-lb.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: aws-nlb-gateway
+  name: aws-lb-gateway
   namespace: default
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
-    service.beta.kubernetes.io/aws-load-balancer-access-log-enabled: "true"
-    service.beta.kubernetes.io/aws-load-balancer-access-log-s3-bucket-name: "my-lb-logs"
 spec:
   gatewayClassName: nginx-gateway
+  infrastructure:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+      service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true,access_logs.s3.enabled=true,access_logs.s3.bucket=my-lb-logs"
   listeners:
     - name: https
       protocol: HTTPS
@@ -340,7 +321,7 @@ spec:
           - name: tls-certificate
 ```
 
-Annotations control cloud provider-specific behavior.
+Infrastructure annotations are applied to resources created for the Gateway when the controller supports them.
 
 ## Setting Up Internal vs External Gateways
 
@@ -355,10 +336,11 @@ metadata:
   namespace: default
   labels:
     scope: external
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 spec:
   gatewayClassName: nginx-gateway
+  infrastructure:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
   listeners:
     - name: https
       protocol: HTTPS
@@ -377,10 +359,11 @@ metadata:
   namespace: default
   labels:
     scope: internal
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
 spec:
   gatewayClassName: nginx-gateway
+  infrastructure:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
   listeners:
     - name: https
       protocol: HTTPS
@@ -404,10 +387,11 @@ kind: Gateway
 metadata:
   name: static-ip-gateway
   namespace: default
-  annotations:
-    service.beta.kubernetes.io/load-balancer-source-ranges: "10.0.0.0/8,172.16.0.0/12"
 spec:
   gatewayClassName: nginx-gateway
+  infrastructure:
+    annotations:
+      service.beta.kubernetes.io/load-balancer-source-ranges: "10.0.0.0/8,172.16.0.0/12"
   addresses:
     - type: IPAddress
       value: "203.0.113.42"
@@ -421,11 +405,11 @@ spec:
           - name: tls-certificate
 ```
 
-This requests a specific IP address from the load balancer provider.
+This requests a specific IP address from the Gateway implementation. Support for specific address values depends on the controller and environment.
 
 ## Scaling Gateway Replicas
 
-Control Gateway instance count through infrastructure parameters.
+Control Gateway instance count through controller-specific infrastructure parameters.
 
 ```yaml
 # gateway-scaled.yaml
@@ -434,13 +418,13 @@ kind: Gateway
 metadata:
   name: scaled-gateway
   namespace: default
-  annotations:
-    # Controller-specific annotations
-    nginx.org/min-replicas: "2"
-    nginx.org/max-replicas: "10"
-    nginx.org/target-cpu-utilization: "80"
 spec:
   gatewayClassName: nginx-gateway
+  infrastructure:
+    parametersRef:
+      group: gateway.nginx.org
+      kind: NginxProxy
+      name: scaled-gateway-config
   listeners:
     - name: https
       protocol: HTTPS
@@ -449,9 +433,20 @@ spec:
         mode: Terminate
         certificateRefs:
           - name: tls-certificate
+
+---
+apiVersion: gateway.nginx.org/v1alpha2
+kind: NginxProxy
+metadata:
+  name: scaled-gateway-config
+  namespace: default
+spec:
+  kubernetes:
+    deployment:
+      replicas: 2
 ```
 
-The controller autoscales Gateway instances based on traffic load.
+The controller applies the referenced infrastructure parameters to the Gateway data plane.
 
 ## Best Practices for Gateway Configuration
 
@@ -465,7 +460,7 @@ Configure appropriate allowedRoutes restrictions to prevent unauthorized route a
 
 Monitor Gateway conditions and addresses to detect provisioning issues quickly.
 
-Use ReferenceGrants judiciously to enable cross-namespace access while maintaining security.
+Use ReferenceGrants judiciously for cross-namespace object references, such as cross-namespace backend Services or certificate Secrets, while maintaining security.
 
 Document Gateway purposes and ownership through labels and annotations.
 
