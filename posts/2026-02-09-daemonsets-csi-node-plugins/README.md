@@ -112,20 +112,38 @@ spec:
       labels:
         app: ebs-csi-node
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: eks.amazonaws.com/compute-type
+                operator: NotIn
+                values:
+                - fargate
+                - auto
+                - hybrid
       nodeSelector:
         kubernetes.io/os: linux
-      hostNetwork: true
+      hostNetwork: false
+      serviceAccountName: ebs-csi-node-sa
       priorityClassName: system-node-critical
       tolerations:
       - operator: Exists
+      securityContext:
+        fsGroup: 0
+        runAsGroup: 0
+        runAsNonRoot: false
+        runAsUser: 0
       containers:
       - name: ebs-plugin
-        image: public.ecr.aws/ebs-csi-driver/aws-ebs-csi-driver:v1.26.0
+        image: public.ecr.aws/ebs-csi-driver/aws-ebs-csi-driver:v1.61.1
         args:
         - node
         - --endpoint=$(CSI_ENDPOINT)
-        - --logtostderr
-        - --v=5
+        - --csi-mount-point-prefix=/var/lib/kubelet/plugins/kubernetes.io/csi/ebs.csi.aws.com/
+        - --logging-format=text
+        - --v=2
         env:
         - name: CSI_ENDPOINT
           value: unix:/csi/csi.sock
@@ -155,24 +173,44 @@ spec:
           timeoutSeconds: 3
           periodSeconds: 10
           failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: healthz
+          timeoutSeconds: 3
+          periodSeconds: 5
+          failureThreshold: 3
       - name: node-driver-registrar
-        image: public.ecr.aws/eks-distro/kubernetes-csi/node-driver-registrar:v2.10.0
+        image: public.ecr.aws/csi-components/csi-node-driver-registrar:v2.17.0-eksbuild.2
         args:
         - --csi-address=$(ADDRESS)
         - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
-        - --v=5
+        - --http-endpoint=0.0.0.0:9809
+        - --v=2
         env:
         - name: ADDRESS
           value: /csi/csi.sock
         - name: DRIVER_REG_SOCK_PATH
           value: /var/lib/kubelet/plugins/ebs.csi.aws.com/csi.sock
+        ports:
+        - name: healthz-ndr
+          containerPort: 9809
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: healthz-ndr
+          initialDelaySeconds: 30
+          periodSeconds: 90
+          timeoutSeconds: 15
         volumeMounts:
         - name: plugin-dir
           mountPath: /csi
         - name: registration-dir
           mountPath: /registration
+        - name: probe-dir
+          mountPath: /var/lib/kubelet/plugins/ebs.csi.aws.com/
       - name: liveness-probe
-        image: public.ecr.aws/eks-distro/kubernetes-csi/livenessprobe:v2.12.0
+        image: public.ecr.aws/csi-components/livenessprobe:v2.19.0-eksbuild.2
         args:
         - --csi-address=/csi/csi.sock
         volumeMounts:
@@ -195,9 +233,11 @@ spec:
         hostPath:
           path: /dev
           type: Directory
+      - name: probe-dir
+        emptyDir: {}
 ```
 
-This configuration includes health checks, proper tolerations to run on all nodes, and the three-container sidecar pattern common in CSI deployments.
+This configuration includes health checks, tolerations plus node affinity for supported EC2 nodes, and the three-container sidecar pattern common in CSI deployments.
 
 ## NFS CSI driver node plugin
 
@@ -245,6 +285,15 @@ spec:
         - name: pods-mount-dir
           mountPath: /var/lib/kubelet/pods
           mountPropagation: Bidirectional
+        livenessProbe:
+          httpGet:
+            host: localhost
+            path: /healthz
+            port: 29653
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+          periodSeconds: 30
+          failureThreshold: 5
       - name: node-driver-registrar
         image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.0
         args:
@@ -261,7 +310,7 @@ spec:
         args:
         - --csi-address=/csi/csi.sock
         - --probe-timeout=3s
-        - --health-port=29653
+        - --http-endpoint=localhost:29653
         volumeMounts:
         - name: plugin-dir
           mountPath: /csi
@@ -331,7 +380,7 @@ securityContext:
     type: "spc_t"
 ```
 
-Always run CSI node plugins in the kube-system namespace with appropriate RBAC permissions to limit potential security risks.
+CSI node plugins are commonly run in the kube-system namespace. Use the narrowest RBAC permissions the driver needs, especially when a node component talks to the Kubernetes API.
 
 ## Monitoring and troubleshooting
 
