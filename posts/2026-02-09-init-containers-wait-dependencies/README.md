@@ -18,7 +18,7 @@ Init containers run sequentially in the order they're defined. Each init contain
 
 This sequential execution makes init containers perfect for dependency checking. Your first init container might wait for a database, the second for a cache, and the third for an external API. Your application only starts when everything is ready.
 
-If an init container fails, Kubernetes restarts the pod, running the init containers again. The main containers never start until all init containers succeed.
+If an init container fails, the kubelet repeatedly restarts that init container until it succeeds. If the Pod's `restartPolicy` is set to `Never`, Kubernetes treats the Pod as failed instead. The main containers never start until all init containers succeed.
 
 ## Basic Dependency Waiting with Init Containers
 
@@ -120,11 +120,22 @@ spec:
         - -c
         - |
           echo "Checking RabbitMQ connection..."
-          until curl -f -s http://rabbitmq-service:15672/api/healthchecks/node; do
+          until curl -f -s -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" http://rabbitmq-service:15672/api/health/checks/is-in-service; do
             echo "RabbitMQ not ready - waiting..."
             sleep 3
           done
           echo "RabbitMQ is ready!"
+        env:
+        - name: RABBITMQ_USER
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-credentials
+              key: username
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-credentials
+              key: password
 
       # Check external API availability
       - name: wait-for-external-api
@@ -293,8 +304,12 @@ spec:
     spec:
       initContainers:
       - name: check-dependencies
-        image: postgres:16-alpine  # Has pg_isready, curl, nc
-        command: ["/bin/sh", "/scripts/check-dependencies.sh"]
+        image: alpine:3.23
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          apk add --no-cache postgresql16-client curl netcat-openbsd
+          /scripts/check-dependencies.sh
         env:
         - name: DB_HOST
           value: "postgres-service"
@@ -369,12 +384,12 @@ func (dc *DependencyChecker) CheckDatabase(host, port, user, password, dbname st
     for attempt := 1; attempt <= dc.maxAttempts; attempt++ {
         db, err := sql.Open("postgres", connStr)
         if err == nil {
-            defer db.Close()
-
             ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-            defer cancel()
+            err = db.PingContext(ctx)
+            cancel()
+            db.Close()
 
-            if err := db.PingContext(ctx); err == nil {
+            if err == nil {
                 fmt.Println("Database is ready!")
                 return nil
             }
@@ -515,14 +530,14 @@ Build and use this checker:
 ```dockerfile
 # Dockerfile for dependency-checker
 
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o dependency-checker .
 
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /build/dependency-checker /usr/local/bin/
 ENTRYPOINT ["/usr/local/bin/dependency-checker"]
