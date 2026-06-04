@@ -36,9 +36,9 @@ spec:
     spec:
       containers:
       - name: app
-        image: myapp:latest
+        image: legacy-app:1.0.0
         ports:
-        - containerPort: 8080
+        - containerPort: 9000
         resources:
           requests:
             memory: "256Mi"
@@ -46,6 +46,22 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+      - name: protocol-adapter
+        image: protocol-adapter:1.0.0
+        ports:
+        - containerPort: 8080
+        env:
+        - name: LEGACY_HOST
+          value: "127.0.0.1"
+        - name: LEGACY_PORT
+          value: "9000"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
 ```
 
 ## Advanced Configuration
@@ -59,12 +75,13 @@ metadata:
   name: app-config
 data:
   config.yaml: |
-    # Application configuration
-    server:
+    # Adapter configuration
+    adapter:
       port: 8080
       timeout: 30s
-    features:
-      enabled: true
+    upstream:
+      host: 127.0.0.1
+      port: 9000
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -86,10 +103,15 @@ spec:
       serviceAccountName: app-service-account
       containers:
       - name: main
-        image: myapp:latest
+        image: legacy-app:1.0.0
+        ports:
+        - containerPort: 9000
+          name: legacy
+      - name: protocol-adapter
+        image: protocol-adapter:1.0.0
         ports:
         - containerPort: 8080
-          name: http
+          name: adapter-http
         volumeMounts:
         - name: config
           mountPath: /etc/config
@@ -110,15 +132,23 @@ Here's a Go implementation example:
 package main
 
 import (
+    "bufio"
     "context"
+    "encoding/json"
     "fmt"
     "log"
+    "net"
     "net/http"
     "os"
     "os/signal"
+    "strings"
     "syscall"
     "time"
 )
+
+type translateRequest struct {
+    Message string `json:"message"`
+}
 
 func main() {
     server := &http.Server{
@@ -148,9 +178,61 @@ func main() {
 
 func setupRoutes() http.Handler {
     mux := http.NewServeMux()
+    mux.HandleFunc("/translate", translateHandler)
     mux.HandleFunc("/health", healthHandler)
     mux.HandleFunc("/ready", readinessHandler)
     return mux
+}
+
+func translateHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
+    var req translateRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, "invalid request body", http.StatusBadRequest)
+        return
+    }
+
+    response, err := sendLegacyMessage(req.Message)
+    if err != nil {
+        http.Error(w, "legacy service unavailable", http.StatusBadGateway)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]string{"response": response})
+}
+
+func sendLegacyMessage(message string) (string, error) {
+    address := net.JoinHostPort(getEnv("LEGACY_HOST", "127.0.0.1"), getEnv("LEGACY_PORT", "9000"))
+    conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+    if err != nil {
+        return "", err
+    }
+    defer conn.Close()
+
+    if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+        return "", err
+    }
+    if _, err := fmt.Fprintf(conn, "%s\n", message); err != nil {
+        return "", err
+    }
+
+    reply, err := bufio.NewReader(conn).ReadString('\n')
+    if err != nil {
+        return "", err
+    }
+    return strings.TrimSpace(reply), nil
+}
+
+func getEnv(name, fallback string) string {
+    if value := os.Getenv(name); value != "" {
+        return value
+    }
+    return fallback
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -169,11 +251,33 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 Python equivalent implementation:
 
 ```python
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
+import os
 import signal
+import socket
 import sys
 
 app = Flask(__name__)
+
+@app.route('/translate', methods=['POST'])
+def translate():
+    payload = request.get_json(silent=True) or {}
+    message = payload.get("message")
+    if not message:
+        return jsonify({"error": "message is required"}), 400
+
+    host = os.getenv("LEGACY_HOST", "127.0.0.1")
+    port = int(os.getenv("LEGACY_PORT", "9000"))
+
+    try:
+        with socket.create_connection((host, port), timeout=5) as conn:
+            conn.settimeout(10)
+            conn.sendall(f"{message}\n".encode("utf-8"))
+            response = conn.recv(4096).decode("utf-8").strip()
+    except OSError:
+        return jsonify({"error": "legacy service unavailable"}), 502
+
+    return jsonify({"response": response}), 200
 
 @app.route('/health')
 def health():
@@ -301,8 +405,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: azure/k8s-set-context@v3
+      - uses: actions/checkout@v6
+      - uses: azure/k8s-set-context@v4
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
@@ -401,7 +505,7 @@ spec:
       type: RuntimeDefault
   containers:
   - name: app
-    image: myapp:latest
+    image: myapp:1.0.0
     securityContext:
       allowPrivilegeEscalation: false
       readOnlyRootFilesystem: true
