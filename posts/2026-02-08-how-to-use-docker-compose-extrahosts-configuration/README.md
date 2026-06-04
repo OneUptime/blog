@@ -19,8 +19,6 @@ This is the Docker Compose equivalent of the `--add-host` flag in `docker run`.
 ```yaml
 # Basic extra_hosts usage
 
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -87,8 +85,6 @@ During development, you often run some services in containers and others directl
 
 ```yaml
 # Development setup where the database runs on the host
-version: "3.8"
-
 services:
   app:
     build: ./app
@@ -133,7 +129,7 @@ networks:
         - subnet: 172.20.0.0/24
 ```
 
-This setup intercepts calls to external services and routes them to your mock server instead. Your application code does not need any changes.
+This setup routes calls for those hostnames to your mock server instead. For HTTPS APIs, your mock server still needs to present a certificate your test environment trusts, or your tests need to use a test TLS configuration.
 
 ### Multi-Environment Configuration
 
@@ -178,12 +174,12 @@ docker compose --env-file .env.development up -d
 docker compose --env-file .env.staging up -d
 ```
 
-### Accessing Services on Other Docker Networks
+### Naming Reachable Services by IP
 
-When services run on separate Docker networks and you cannot merge them, `extra_hosts` provides a workaround.
+When a service is reachable by IP but is not registered in Docker's internal DNS, `extra_hosts` provides a workaround. The IP must already be reachable from the container; `extra_hosts` only adds name resolution and does not bypass Docker network isolation.
 
 ```yaml
-# Connect to a container on another network by its host-mapped IP
+# Connect to a reachable service by a fixed IP
 services:
   app:
     image: my-app:latest
@@ -191,7 +187,7 @@ services:
       - "legacy-api:172.18.0.5"
 ```
 
-To find the IP of the target container:
+To find the IP of a target container:
 
 ```bash
 # Get the IP address of a container on another network
@@ -230,8 +226,6 @@ Here is a production-like setup that demonstrates several `extra_hosts` patterns
 
 ```yaml
 # Full stack with extra_hosts for external service connectivity
-version: "3.8"
-
 services:
   # Web application
   web:
