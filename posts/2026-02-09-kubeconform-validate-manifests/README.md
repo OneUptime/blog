@@ -8,17 +8,17 @@ Description: Learn how to use Kubeconform to validate Kubernetes manifests again
 
 ---
 
-Kubernetes manifests with syntax errors or invalid field values fail during deployment, causing pipeline failures and deployment delays. Kubeconform validates manifests against Kubernetes OpenAPI schemas before deployment, catching errors early and ensuring manifests conform to API specifications.
+Kubernetes manifests with syntax errors or invalid field values fail during deployment, causing pipeline failures and deployment delays. Kubeconform validates manifests against JSON schemas generated from Kubernetes OpenAPI schemas before deployment, catching errors early and ensuring manifests conform to API specifications.
 
 In this guide, we'll integrate Kubeconform into CI/CD pipelines to validate manifests automatically, configure custom schemas for CRDs, and establish validation gates that prevent invalid configurations from reaching clusters.
 
 ## Understanding Kubeconform
 
-Kubeconform validates Kubernetes resource manifests by checking them against OpenAPI schemas that define valid fields, types, and constraints for each resource type. It operates offline without requiring cluster access, making it fast and suitable for CI/CD integration.
+Kubeconform validates Kubernetes resource manifests by checking them against JSON schemas generated from OpenAPI schemas that define valid fields, types, and constraints for each resource type. It does not require cluster access, and it can operate offline when schemas are provided locally or cached, making it fast and suitable for CI/CD integration.
 
-The tool validates standard Kubernetes resources using bundled schemas and supports custom schemas for CRDs. Kubeconform is faster than alternatives like kubeval because it's written in Go and optimized for CI/CD workflows where speed matters.
+The tool validates standard Kubernetes resources using the default Kubernetes schema registry and supports custom schemas for CRDs. Kubeconform is faster than alternatives like kubeval because it's written in Go and optimized for CI/CD workflows where speed matters.
 
-Validation catches common errors including misspelled field names, incorrect value types, required fields that are missing, and fields that don't exist in the API version specified. This prevents manifests from failing during deployment.
+Validation catches common errors including incorrect value types, required fields that are missing, and fields that don't exist in the API version specified. Strict mode also catches misspelled field names by rejecting additional properties. This prevents manifests from failing during deployment.
 
 ## Installing Kubeconform
 
@@ -27,7 +27,7 @@ Install Kubeconform locally for testing:
 ```bash
 # Install on Linux
 
-wget https://github.com/yannh/kubeconform/releases/download/v0.6.3/kubeconform-linux-amd64.tar.gz
+wget https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
 tar -xzf kubeconform-linux-amd64.tar.gz
 sudo mv kubeconform /usr/local/bin/
 
@@ -69,8 +69,8 @@ spec:
 Validate the manifest:
 
 ```bash
-# Validate single file
-kubeconform deployment.yaml
+# Validate single file and print valid resources
+kubeconform -verbose deployment.yaml
 
 # Expected output:
 # deployment.yaml - Deployment nginx is valid
@@ -103,12 +103,11 @@ spec:
 Validation catches the error:
 
 ```bash
-kubeconform invalid-deployment.yaml
+kubeconform -strict invalid-deployment.yaml
 
 # Output shows error:
 # invalid-deployment.yaml - Deployment nginx is invalid:
-# spec.template.spec.containers.0.invalidField:
-# Additional property invalidField is not allowed
+# at '/spec/template/spec/containers/0': additional properties 'invalidField' not allowed
 ```
 
 ## Validating Multiple Files
@@ -120,7 +119,7 @@ Validate all manifests in a directory:
 kubeconform k8s/
 
 # Validate with specific patterns
-kubeconform -summary k8s/**/*.yaml
+find k8s -name '*.yaml' -print0 | xargs -0 kubeconform -summary
 
 # Show only failures
 kubeconform -summary -output json k8s/ | jq '.resources[] | select(.status == "statusInvalid")'
@@ -134,7 +133,7 @@ Validate against specific Kubernetes versions:
 # Validate for Kubernetes 1.28
 kubeconform -kubernetes-version 1.28.0 deployment.yaml
 
-# Validate for minimum version
+# Validate for another exact Kubernetes version
 kubeconform -kubernetes-version 1.26.0 manifests/
 
 # Test compatibility across versions
@@ -181,13 +180,13 @@ spec:
                 minimum: 1
 ```
 
-Extract CRD schema for validation:
+Convert the CRD schema for validation:
 
 ```bash
-# Generate schema from CRD
-kubectl apply -f crd.yaml --dry-run=server -o yaml | \
-  kubeconform -schema-location default \
-  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+# Convert CRD OpenAPI validation schema to JSON schema
+curl -fsSLO https://raw.githubusercontent.com/yannh/kubeconform/master/scripts/openapi2jsonschema.py
+mkdir -p crd-schemas
+(cd crd-schemas && python3 ../openapi2jsonschema.py ../crd.yaml)
 ```
 
 Validate custom resources:
@@ -227,31 +226,31 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v5
 
     - name: Install Kubeconform
       run: |
-        wget https://github.com/yannh/kubeconform/releases/download/v0.6.3/kubeconform-linux-amd64.tar.gz
+        wget https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
         tar -xzf kubeconform-linux-amd64.tar.gz
         sudo mv kubeconform /usr/local/bin/
 
     - name: Validate manifests
       run: |
-        kubeconform -summary -output json k8s/ > validation-results.json
+        kubeconform -strict -summary -output json k8s/ > validation-results.json || true
         cat validation-results.json
 
     - name: Check validation results
       run: |
-        invalid=$(jq '.resources[] | select(.status == "statusInvalid") | .filename' validation-results.json)
+        invalid=$(jq -r '.resources[] | select(.status == "statusInvalid" or .status == "statusError") | .filename' validation-results.json)
         if [ -n "$invalid" ]; then
-          echo "Invalid manifests found:"
+          echo "Invalid manifests or validation errors found:"
           echo "$invalid"
           exit 1
         fi
 
     - name: Upload results
       if: always()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: validation-results
         path: validation-results.json
@@ -266,14 +265,14 @@ validate-k8s:
   image: alpine:latest
   before_script:
     - apk add --no-cache wget tar
-    - wget https://github.com/yannh/kubeconform/releases/download/v0.6.3/kubeconform-linux-amd64.tar.gz
+    - wget https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
     - tar -xzf kubeconform-linux-amd64.tar.gz
     - mv kubeconform /usr/local/bin/
   script:
-    - kubeconform -summary k8s/
-  only:
-    changes:
-      - k8s/**
+    - kubeconform -strict -summary k8s/
+  rules:
+    - changes:
+        - k8s/**/*
 ```
 
 ## Validating Helm Charts
@@ -350,7 +349,7 @@ kubeconform -strict deployment.yaml
 Skip validation for specific resource types:
 
 ```bash
-# Skip validating Secrets (may contain base64 that looks invalid)
+# Skip validating resources that are managed or validated separately
 kubeconform -skip Secret,ConfigMap k8s/
 
 # Skip custom resources without schemas
@@ -376,10 +375,10 @@ Parse JSON results:
 
 ```bash
 # Count valid vs invalid resources
-jq '.resources | group_by(.status) | map({status: .[0].status, count: length})' results.json
+jq '.summary' results.json
 
 # List all invalid resources
-jq '.resources[] | select(.status == "statusInvalid") | {file: .filename, kind: .kind, error: .errors[0]}' results.json
+jq '.resources[] | select(.status == "statusInvalid") | {file: .filename, kind: .kind, error: (.validationErrors[0].msg // .msg)}' results.json
 ```
 
 ## Pre-commit Hook Integration
@@ -434,17 +433,19 @@ echo "Generated: $(date)" >> $OUTPUT_FILE
 echo "" >> $OUTPUT_FILE
 
 # Run validation and capture results
-kubeconform -summary -output json $MANIFEST_DIR > results.json
+kubeconform -summary -output json $MANIFEST_DIR > results.json || true
 
 # Parse results
-valid=$(jq -r '.resources[] | select(.status == "statusValid") | .filename' results.json | wc -l)
-invalid=$(jq -r '.resources[] | select(.status == "statusInvalid") | .filename' results.json | wc -l)
-skipped=$(jq -r '.resources[] | select(.status == "statusSkipped") | .filename' results.json | wc -l)
+valid=$(jq -r '.summary.valid' results.json)
+invalid=$(jq -r '.summary.invalid' results.json)
+errors=$(jq -r '.summary.errors' results.json)
+skipped=$(jq -r '.summary.skipped' results.json)
 
 echo "## Summary" >> $OUTPUT_FILE
 echo "" >> $OUTPUT_FILE
 echo "- Valid: $valid" >> $OUTPUT_FILE
 echo "- Invalid: $invalid" >> $OUTPUT_FILE
+echo "- Errors: $errors" >> $OUTPUT_FILE
 echo "- Skipped: $skipped" >> $OUTPUT_FILE
 echo "" >> $OUTPUT_FILE
 
@@ -452,7 +453,7 @@ echo "" >> $OUTPUT_FILE
 if [ $invalid -gt 0 ]; then
   echo "## Invalid Resources" >> $OUTPUT_FILE
   echo "" >> $OUTPUT_FILE
-  jq -r '.resources[] | select(.status == "statusInvalid") | "### \(.filename)\n\n```\n\(.errors[0])\n```\n"' results.json >> $OUTPUT_FILE
+  jq -r '.resources[] | select(.status == "statusInvalid") | "### \(.filename)\n\n```\n\(.validationErrors[0].msg // .msg)\n```\n"' results.json >> $OUTPUT_FILE
 fi
 
 cat $OUTPUT_FILE
@@ -462,6 +463,6 @@ cat $OUTPUT_FILE
 
 Kubeconform provides fast, reliable validation of Kubernetes manifests against schemas, catching configuration errors before deployment. Integration into CI/CD pipelines creates validation gates that prevent invalid manifests from reaching clusters.
 
-The offline validation approach makes testing fast and doesn't require cluster access, while support for custom CRD schemas ensures comprehensive validation across all resource types. This catches errors early when they're cheapest to fix.
+The cluster-independent validation approach makes testing fast, while support for custom CRD schemas ensures comprehensive validation across all resource types. This catches errors early when they're cheapest to fix.
 
 For production workflows, validate manifests in pull requests before merge, test Helm charts with multiple values files, and generate validation reports that document manifest correctness for compliance and auditing purposes.
