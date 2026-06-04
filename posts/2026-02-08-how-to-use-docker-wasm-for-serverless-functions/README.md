@@ -8,16 +8,16 @@ Description: Deploy serverless functions using Docker and WebAssembly for near-i
 
 ---
 
-Serverless functions promise instant scaling and pay-per-use billing, but traditional implementations have a well-known weakness: cold starts. When a function has not been invoked recently, the platform must spin up a new runtime instance. For container-based serverless (like AWS Lambda with container images), this can take several seconds. WebAssembly changes this completely.
+Serverless functions promise instant scaling and pay-per-use billing, but traditional implementations have a well-known weakness: cold starts. When a function has not been invoked recently, the platform must spin up a new runtime instance. For container-based serverless (like AWS Lambda with container images), this can take several seconds in some cases. WebAssembly can reduce that overhead significantly.
 
-Docker's Wasm support lets you build serverless functions that start in under 5 milliseconds. This guide shows you how to build, package, and deploy serverless functions using Docker and Wasm, with practical examples you can run locally or in production.
+Docker's Wasm support lets you package lightweight functions that can start much faster than full OS containers, although exact startup time depends on the runtime, host, image store, and workload. Docker Desktop Wasm workloads are currently a beta feature and are deprecated by Docker, so treat this as a local experimentation pattern or validate your production runtime carefully. This guide shows you how to build, package, and run serverless-style functions using Docker and Wasm, with practical examples you can run locally or adapt for a dedicated Wasm platform.
 
 ## Why Wasm for Serverless?
 
 Cold start latency is the biggest complaint about serverless platforms. Here is why Wasm makes a difference:
 
-- Wasm modules initialize in microseconds, not seconds
-- Binary sizes stay under 10MB, reducing pull times
+- Wasm modules can initialize in milliseconds or less, depending on the runtime and workload
+- Binary sizes can stay small, reducing pull times
 - Memory consumption is a fraction of container-based functions
 - The Wasm sandbox provides isolation without a full OS kernel
 
@@ -28,9 +28,9 @@ For serverless workloads, where instances spin up and down constantly, these pro
 You need Docker with Wasm support and a language toolchain that targets Wasm:
 
 ```bash
-# Install Rust with the wasm32-wasi target for building functions
+# Install Rust with the WASI preview 1 target for building functions
 
-rustup target add wasm32-wasi
+rustup target add wasm32-wasip1
 
 # Verify Docker Wasm support is available
 docker info --format '{{.Runtimes}}'
@@ -60,7 +60,7 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-base64 = "0.21"
+base64 = "0.22"
 ```
 
 Write the function handler:
@@ -137,10 +137,10 @@ Build the function:
 
 ```bash
 # Compile the serverless function to WebAssembly
-cargo build --target wasm32-wasi --release
+cargo build --target wasm32-wasip1 --release
 
 # Check the binary size - should be very small
-ls -lh target/wasm32-wasi/release/image-resizer.wasm
+ls -lh target/wasm32-wasip1/release/image-resizer.wasm
 ```
 
 ## Packaging as a Docker Image
@@ -150,7 +150,7 @@ Create a minimal Docker image:
 ```dockerfile
 # Dockerfile - Package the serverless function as a Wasm container
 FROM scratch
-COPY target/wasm32-wasi/release/image-resizer.wasm /handler.wasm
+COPY target/wasm32-wasip1/release/image-resizer.wasm /handler.wasm
 ENTRYPOINT ["/handler.wasm"]
 ```
 
@@ -163,12 +163,12 @@ docker buildx build --platform wasi/wasm -t image-resizer:latest --load .
 # Check image size compared to a typical Lambda container
 docker images image-resizer
 # REPOSITORY      TAG      SIZE
-# image-resizer   latest   1.8MB
+# image-resizer   latest   <a few MB or less>
 ```
 
 ## Building a Function Router
 
-Serverless platforms need a router to dispatch requests to the right function. Here is a lightweight function router using Docker Compose:
+Serverless platforms need a router to dispatch requests to the right function. The function above is a one-shot WASI process that reads from stdin, so HTTP routing requires an adapter service that accepts HTTP requests and invokes the Wasm function container. Here is a lightweight router using Docker Compose:
 
 ```yaml
 # docker-compose.yml - Serverless function platform with multiple functions
@@ -181,27 +181,39 @@ services:
     volumes:
       - ./nginx-functions.conf:/etc/nginx/conf.d/default.conf
     depends_on:
-      - image-resizer
-      - text-processor
-      - data-validator
+      - image-resizer-adapter
+      - text-processor-adapter
+      - data-validator-adapter
 
-  # Image resizing function
-  image-resizer:
-    image: image-resizer:latest
-    runtime: io.containerd.wasmtime.v1
-    platform: wasi/wasm
+  # HTTP adapter for the image resizing function
+  image-resizer-adapter:
+    image: function-adapter:latest
+    environment:
+      FUNCTION_IMAGE: image-resizer:latest
+      FUNCTION_RUNTIME: io.containerd.wasmtime.v1
+      FUNCTION_PLATFORM: wasi/wasm
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
-  # Text processing function
-  text-processor:
-    image: text-processor:latest
-    runtime: io.containerd.wasmtime.v1
-    platform: wasi/wasm
+  # HTTP adapter for the text processing function
+  text-processor-adapter:
+    image: function-adapter:latest
+    environment:
+      FUNCTION_IMAGE: text-processor:latest
+      FUNCTION_RUNTIME: io.containerd.wasmtime.v1
+      FUNCTION_PLATFORM: wasi/wasm
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
-  # Data validation function
-  data-validator:
-    image: data-validator:latest
-    runtime: io.containerd.wasmtime.v1
-    platform: wasi/wasm
+  # HTTP adapter for the data validation function
+  data-validator-adapter:
+    image: function-adapter:latest
+    environment:
+      FUNCTION_IMAGE: data-validator:latest
+      FUNCTION_RUNTIME: io.containerd.wasmtime.v1
+      FUNCTION_PLATFORM: wasi/wasm
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 ```
 
 Configure the router:
@@ -212,17 +224,17 @@ server {
     listen 80;
 
     location /functions/image-resize {
-        proxy_pass http://image-resizer:80;
+        proxy_pass http://image-resizer-adapter:8080;
         proxy_set_header Content-Type application/json;
     }
 
     location /functions/text-process {
-        proxy_pass http://text-processor:80;
+        proxy_pass http://text-processor-adapter:8080;
         proxy_set_header Content-Type application/json;
     }
 
     location /functions/validate {
-        proxy_pass http://data-validator:80;
+        proxy_pass http://data-validator-adapter:8080;
         proxy_set_header Content-Type application/json;
     }
 
@@ -260,7 +272,7 @@ ELAPSED=$(( (END - START) / 1000000 ))
 echo "Cold start time: ${ELAPSED}ms"
 ```
 
-For a more realistic test, measure HTTP response time including container creation:
+For a more realistic test of this one-shot function model, measure process startup and invocation latency including container creation:
 
 ```bash
 # Benchmark function invocation latency with hyperfine
@@ -270,12 +282,12 @@ hyperfine --warmup 0 --runs 50 \
 
 ## Scale-to-Zero Pattern
 
-Serverless means not running when idle. Implement scale-to-zero with a proxy that starts functions on demand:
+Serverless means not running when idle. Docker Compose and Traefik can route to running containers, but Traefik does not scale a Compose service from zero by itself. Implement scale-to-zero with a small controller or adapter that receives the request and starts a one-shot function container on demand:
 
 ```yaml
 # docker-compose.yml - Scale-to-zero serverless setup
 services:
-  # Proxy that wakes up functions on demand
+  # Proxy that routes requests to the controller
   function-proxy:
     image: traefik:v3.0
     ports:
@@ -285,15 +297,17 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./traefik.yml:/etc/traefik/traefik.yml
 
-  image-resizer:
-    image: image-resizer:latest
-    runtime: io.containerd.wasmtime.v1
-    platform: wasi/wasm
+  image-resizer-controller:
+    image: function-controller:latest
+    environment:
+      FUNCTION_IMAGE: image-resizer:latest
+      FUNCTION_RUNTIME: io.containerd.wasmtime.v1
+      FUNCTION_PLATFORM: wasi/wasm
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.resizer.rule=PathPrefix(`/resize`)"
-    deploy:
-      replicas: 0  # Start with zero instances
 ```
 
 ## Function Chaining
@@ -310,7 +324,7 @@ curl -s http://localhost:8080/functions/image-resize \
   -d @-
 ```
 
-For more reliable chaining, use an event bus:
+For more reliable chaining, use an event bus. Standard WASI preview 1 programs do not get TCP networking from Rust's standard library, so these functions need a runtime or SDK with the networking support required by your event bus:
 
 ```yaml
 # docker-compose.yml - Function chaining with NATS as the event bus
@@ -372,8 +386,8 @@ When moving Wasm serverless functions to production:
 5. **Version your functions** - Tag images with semantic versions, not just "latest"
 
 ```bash
-# Run a production-ready serverless function with proper constraints
-docker run -d \
+# Run a constrained serverless function invocation
+docker run --rm \
   --name resizer-prod \
   --runtime=io.containerd.wasmtime.v1 \
   --platform wasi/wasm \
@@ -387,4 +401,4 @@ docker run -d \
 
 ## Conclusion
 
-Docker Wasm makes serverless functions practical without the complexity of managed platforms. You get sub-millisecond cold starts, tiny image sizes, and the ability to run the same functions locally and in production. The tooling is straightforward if you already know Docker. Start with a simple function, measure the cold start difference, and build from there.
+Docker Wasm can make serverless-style functions practical without the complexity of managed platforms. You get fast starts, tiny image sizes, and the ability to run the same functions locally and on compatible Wasm runtimes. The tooling is straightforward if you already know Docker, but Docker Desktop's Wasm workload support is deprecated, so validate the runtime path before choosing it for production. Start with a simple function, measure the cold start difference, and build from there.
