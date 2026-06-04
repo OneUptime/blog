@@ -14,7 +14,7 @@ Understanding how to properly order and configure multiple init containers lets 
 
 ## Understanding Sequential Execution
 
-Init containers run in the order they appear in the pod specification. Each init container must complete successfully (exit code 0) before the next one starts. If any init container fails, Kubernetes restarts the entire pod, running all init containers again from the beginning.
+Init containers run in the order they appear in the pod specification. Each init container must complete successfully (exit code 0) before the next one starts. If any init container fails, Kubernetes retries that init container according to the pod's restart policy. If the pod itself restarts, all init containers must execute again from the beginning.
 
 This behavior ensures that all initialization steps complete successfully before your application containers start, but it also means you need to design init containers to be idempotent and handle retries gracefully.
 
@@ -234,7 +234,7 @@ spec:
             > /secrets/vault-secrets.json
 
           # Generate session secret
-          vault write -field=key transit/random/32 \
+          vault write -field=random_bytes transit/random/32 \
             > /secrets/session-secret
 
           # Set permissions
@@ -290,18 +290,19 @@ spec:
 
       # 7. Health check verification
       - name: 07-verify-dependencies
-        image: curlimages/curl:8.5.0
+        image: busybox:1.36
         command:
         - sh
         - -c
         - |
           echo "=== Step 7: Final Verification ==="
 
-          verify_service() {
+          verify_service_port() {
             local service=$1
-            local url=$2
+            local host=$2
+            local port=$3
             echo "Verifying $service..."
-            if curl -f -s --max-time 5 "$url" > /dev/null; then
+            if nc -z -w 5 "$host" "$port"; then
               echo "  ✓ $service is healthy"
               return 0
             else
@@ -310,9 +311,9 @@ spec:
             fi
           }
 
-          verify_service "Database" "http://postgres:5432"
-          verify_service "Redis" "http://redis:6379"
-          verify_service "RabbitMQ" "http://rabbitmq:15672/api/health/checks/alarms"
+          verify_service_port "Database" "postgres" "5432"
+          verify_service_port "Redis" "redis" "6379"
+          verify_service_port "RabbitMQ" "rabbitmq" "5672"
 
           echo "=== Step 7: Complete ==="
           echo ""
