@@ -47,7 +47,7 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 COPY src/ ./src/
 COPY templates/ ./templates/
@@ -162,7 +162,7 @@ async function getBrowser() {
 
   browser = await puppeteer.launch({
     executablePath: CHROMIUM_PATH,
-    headless: 'new',
+    headless: true,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -317,8 +317,6 @@ module.exports = { renderTemplate };
 
 ```yaml
 # docker-compose.yml - PDF generation service
-version: "3.8"
-
 services:
   pdf-service:
     build: .
