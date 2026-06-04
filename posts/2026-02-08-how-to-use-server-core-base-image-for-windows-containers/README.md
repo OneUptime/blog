@@ -8,20 +8,20 @@ Description: Build Windows container images on the Server Core base image for ap
 
 ---
 
-Server Core is the workhorse base image for Windows containers. While Nano Server is lighter, Server Core provides the broad Windows API surface that legacy and enterprise applications demand. It includes the .NET Framework, supports IIS, allows MSI installations, and provides access to most Windows Server roles and features. If your application was built for Windows Server, Server Core is almost certainly the right base image.
+Server Core is the workhorse base image for Windows containers. While Nano Server is lighter, Server Core provides a broader Windows API surface that legacy and enterprise applications often demand. It supports traditional .NET Framework applications, supports IIS, allows MSI installations, and provides access to many Windows Server roles and features. If your application was built for Windows Server, Server Core is often the right base image.
 
-This guide covers using Server Core effectively, installing features and software, optimizing image size, and handling the unique challenges that come with a 1.8 GB base image.
+This guide covers using Server Core effectively, installing features and software, optimizing image size, and handling the unique challenges that come with a large Windows base image.
 
 ## What Server Core Includes
 
 Server Core is a Windows Server installation without the desktop GUI. In container form, it provides:
 
-- Full .NET Framework 3.5 and 4.8 support
+- Traditional .NET Framework application support
 - Windows PowerShell 5.1 (full version)
 - MSI installer support
 - COM/DCOM component registration
-- Windows Server roles and features (installable)
-- Full Windows API surface
+- Many Windows Server roles and features (installable)
+- Broad Windows API surface
 - Windows Registry
 - Windows Event Log
 - Windows Services infrastructure
@@ -70,6 +70,7 @@ docker pull mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
 Server Core lets you install Windows Server features directly in your Dockerfile.
 
 ```dockerfile
+# escape=`
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop';"]
@@ -99,22 +100,23 @@ Combine feature installations into a single RUN command to minimize layers.
 Unlike Nano Server, Server Core supports the Windows Installer service.
 
 ```dockerfile
+# escape=`
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop';"]
 
 # Install the Visual C++ Redistributable (common dependency)
-RUN Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile 'C:\vc_redist.exe'; \
-    Start-Process 'C:\vc_redist.exe' -ArgumentList '/install', '/quiet', '/norestart' -Wait; \
+RUN Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile 'C:\vc_redist.exe'; `
+    Start-Process 'C:\vc_redist.exe' -ArgumentList '/install', '/quiet', '/norestart' -Wait; `
     Remove-Item 'C:\vc_redist.exe' -Force
 
 # Install an application using MSI
-RUN Invoke-WebRequest -Uri 'https://example.com/myapp-installer.msi' -OutFile 'C:\installer.msi'; \
-    Start-Process msiexec.exe -ArgumentList '/i', 'C:\installer.msi', '/quiet', '/norestart' -Wait; \
+RUN Invoke-WebRequest -Uri 'https://example.com/myapp-installer.msi' -OutFile 'C:\installer.msi'; `
+    Start-Process msiexec.exe -ArgumentList '/i', 'C:\installer.msi', '/quiet', '/norestart' -Wait; `
     Remove-Item 'C:\installer.msi' -Force
 
 # Clean up temporary files to reduce layer size
-RUN Remove-Item -Recurse -Force C:\Windows\Temp\*; \
+RUN Remove-Item -Recurse -Force C:\Windows\Temp\*; `
     Remove-Item -Recurse -Force C:\Users\ContainerAdministrator\AppData\Local\Temp\*
 ```
 
@@ -151,15 +153,16 @@ ENTRYPOINT ["MyConsoleApp.exe"]
 ### ASP.NET Web Application
 
 ```dockerfile
+# escape=`
 # Multi-stage build for an ASP.NET application
 FROM mcr.microsoft.com/dotnet/framework/sdk:4.8-windowsservercore-ltsc2022 AS build
 
 WORKDIR C:/src
 COPY . .
 RUN nuget restore
-RUN msbuild MyWebApp/MyWebApp.csproj \
-    /p:Configuration=Release \
-    /p:DeployOnBuild=true \
+RUN msbuild MyWebApp/MyWebApp.csproj `
+    /p:Configuration=Release `
+    /p:DeployOnBuild=true `
     /p:PublishUrl=C:\publish
 
 # Runtime stage with IIS and ASP.NET
@@ -169,10 +172,10 @@ FROM mcr.microsoft.com/dotnet/framework/aspnet:4.8-windowsservercore-ltsc2022
 COPY --from=build C:/publish /inetpub/wwwroot/
 
 # Configure IIS application pool for better performance
-RUN powershell -Command \
-    "Import-Module WebAdministration; \
-     Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name processModel.idleTimeout -Value '00:00:00'; \
-     Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name recycling.periodicRestart.time -Value '00:00:00'; \
+RUN powershell -Command `
+    "Import-Module WebAdministration; `
+     Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name processModel.idleTimeout -Value '00:00:00'; `
+     Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name recycling.periodicRestart.time -Value '00:00:00'; `
      Set-ItemProperty 'IIS:\AppPools\DefaultAppPool' -Name startMode -Value 'AlwaysRunning'"
 ```
 
@@ -181,6 +184,7 @@ RUN powershell -Command \
 Server Core supports COM registration, which many legacy Windows applications require.
 
 ```dockerfile
+# escape=`
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop';"]
@@ -189,18 +193,18 @@ SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop';"]
 COPY ./com-components/ C:/com/
 
 # Register each COM DLL
-RUN Get-ChildItem C:\com\*.dll | ForEach-Object { \
-    Write-Host "Registering $($_.Name)..."; \
-    regsvr32.exe /s $_.FullName; \
-    if ($LASTEXITCODE -ne 0) { \
-        Write-Error "Failed to register $($_.Name)"; \
-        exit 1 \
-    } \
+RUN Get-ChildItem C:\com\*.dll | ForEach-Object { `
+    Write-Host "Registering $($_.Name)..."; `
+    regsvr32.exe /s $_.FullName; `
+    if ($LASTEXITCODE -ne 0) { `
+        Write-Error "Failed to register $($_.Name)"; `
+        exit 1 `
+    } `
 }
 
 # Verify registration
-RUN Get-ChildItem 'HKLM:\SOFTWARE\Classes\CLSID' | Where-Object { \
-    (Get-ItemProperty $_.PSPath).'(Default)' -like 'MyComComponent*' \
+RUN Get-ChildItem 'HKLM:\SOFTWARE\Classes\CLSID' | Where-Object { `
+    (Get-ItemProperty $_.PSPath).'(Default)' -like 'MyComComponent*' `
 } | Format-Table
 ```
 
@@ -209,13 +213,14 @@ RUN Get-ChildItem 'HKLM:\SOFTWARE\Classes\CLSID' | Where-Object { \
 Applications that read from the registry need their keys configured in the image.
 
 ```dockerfile
+# escape=`
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 # Set registry values that the application expects
-RUN powershell -Command \
-    "New-Item -Path 'HKLM:\SOFTWARE\MyCompany\MyApp' -Force; \
-     Set-ItemProperty -Path 'HKLM:\SOFTWARE\MyCompany\MyApp' -Name 'InstallPath' -Value 'C:\app'; \
-     Set-ItemProperty -Path 'HKLM:\SOFTWARE\MyCompany\MyApp' -Name 'LogLevel' -Value 'Warning'; \
+RUN powershell -Command `
+    "New-Item -Path 'HKLM:\SOFTWARE\MyCompany\MyApp' -Force; `
+     Set-ItemProperty -Path 'HKLM:\SOFTWARE\MyCompany\MyApp' -Name 'InstallPath' -Value 'C:\app'; `
+     Set-ItemProperty -Path 'HKLM:\SOFTWARE\MyCompany\MyApp' -Name 'LogLevel' -Value 'Warning'; `
      Set-ItemProperty -Path 'HKLM:\SOFTWARE\MyCompany\MyApp' -Name 'MaxConnections' -Value 100 -Type DWord"
 
 # Import a complete registry file
@@ -228,14 +233,15 @@ RUN reg import C:\temp\settings.reg
 Server Core images are large. Every optimization matters.
 
 ```dockerfile
+# escape=`
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop';"]
 
 # Strategy 1: Combine related operations into single layers
-RUN Install-WindowsFeature Web-Server, Web-Asp-Net45; \
-    Remove-WindowsFeature -Name Windows-Defender-Features -ErrorAction SilentlyContinue; \
-    Remove-Item -Recurse -Force C:\Windows\Temp\*; \
+RUN Install-WindowsFeature Web-Server, Web-Asp-Net45; `
+    Remove-WindowsFeature -Name Windows-Defender-Features -ErrorAction SilentlyContinue; `
+    Remove-Item -Recurse -Force C:\Windows\Temp\*; `
     Remove-Item -Recurse -Force $env:TEMP\*
 
 # Strategy 2: Remove unnecessary Windows features to shrink the image
@@ -245,7 +251,7 @@ RUN Remove-WindowsFeature -Name `
     -ErrorAction SilentlyContinue
 
 # Strategy 3: Clean the package cache
-RUN Dism.exe /Online /Cleanup-Image /StartComponentCleanup; \
+RUN Dism.exe /Online /Cleanup-Image /StartComponentCleanup; `
     Remove-Item -Recurse -Force C:\Windows\SoftwareDistribution\Download\*
 
 # Strategy 4: Use multi-stage builds (shown in examples above)
@@ -256,10 +262,11 @@ RUN Dism.exe /Online /Cleanup-Image /StartComponentCleanup; \
 Server Core includes the Windows Event Log, useful for debugging.
 
 ```dockerfile
+# escape=`
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 # Write startup messages to the event log
-RUN powershell -Command \
+RUN powershell -Command `
     "New-EventLog -LogName Application -Source 'MyApp' -ErrorAction SilentlyContinue"
 
 COPY startup.ps1 C:/scripts/
@@ -275,18 +282,19 @@ Access event logs from outside the container.
 
 ```powershell
 # Read the application event log from a running container
-docker exec my-container powershell -Command \
-    "Get-EventLog -LogName Application -Newest 20 | Format-Table TimeGenerated, Source, Message"
+docker exec my-container powershell -Command `
+    "Get-WinEvent -LogName Application -MaxEvents 20 | Format-Table TimeCreated, ProviderName, Message"
 ```
 
 ## Networking and Ports
 
 ```dockerfile
+# escape=`
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 # Open Windows Firewall ports (if the firewall is enabled)
-RUN powershell -Command \
-    "New-NetFirewallRule -DisplayName 'MyApp HTTP' -Direction Inbound -Port 8080 -Protocol TCP -Action Allow; \
+RUN powershell -Command `
+    "New-NetFirewallRule -DisplayName 'MyApp HTTP' -Direction Inbound -Port 8080 -Protocol TCP -Action Allow; `
      New-NetFirewallRule -DisplayName 'MyApp HTTPS' -Direction Inbound -Port 8443 -Protocol TCP -Action Allow"
 
 EXPOSE 8080 8443
@@ -294,7 +302,7 @@ EXPOSE 8080 8443
 
 ## Version Tagging Strategy
 
-Windows container images must match the host OS version. Use a consistent tagging strategy.
+For process-isolated Windows containers, the container image OS version must be compatible with the host OS version. Use a consistent tagging strategy.
 
 ```powershell
 # Tag images with both the app version and Windows version
@@ -308,4 +316,4 @@ docker manifest push myapp:1.0.0
 
 ## Conclusion
 
-Server Core is the essential base image for any Windows application that needs the full .NET Framework, IIS, COM components, MSI installations, or broad Windows API access. Yes, it is large compared to Linux images and Nano Server, but it runs the vast universe of Windows applications without modification. Invest in multi-stage builds, layer optimization, and feature cleanup to manage the image size. For new applications that can target .NET 6+, consider Nano Server instead. For everything else on Windows, Server Core is your foundation.
+Server Core is the essential base image for many Windows applications that need the .NET Framework, IIS, COM components, MSI installations, or broad Windows API access. Yes, it is large compared to Linux images and Nano Server, but it supports many existing Windows applications with minimal modification. Invest in multi-stage builds, layer optimization, and feature cleanup to manage the image size. For new applications that can target a supported modern .NET version, consider Nano Server instead. For everything else on Windows, Server Core is your foundation.
