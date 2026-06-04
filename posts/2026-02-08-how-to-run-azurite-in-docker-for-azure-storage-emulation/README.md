@@ -8,7 +8,7 @@ Description: Deploy Azurite in Docker to emulate Azure Blob, Queue, and Table st
 
 ---
 
-Azurite is the official Azure Storage emulator maintained by Microsoft. It provides local implementations of Azure Blob Storage, Queue Storage, and Table Storage. If your application uses Azure Storage, Azurite lets you develop and run tests without an Azure subscription or internet connection. Docker is the cleanest way to run Azurite, keeping it isolated from your development machine and making it easy to start, stop, and reset.
+Azurite is the official Azure Storage emulator maintained by Microsoft. It provides local implementations of Azure Blob Storage, Queue Storage, and Table Storage (currently in preview). If your application uses Azure Storage, Azurite lets you develop and run tests without an Azure subscription or internet connection. Docker is the cleanest way to run Azurite, keeping it isolated from your development machine and making it easy to start, stop, and reset.
 
 This guide covers deploying Azurite in Docker, connecting to it with Azure SDKs, testing common storage operations, and integrating it into your development workflow.
 
@@ -39,8 +39,6 @@ For a project-integrated setup:
 
 ```yaml
 # docker-compose.yml - Azurite with persistent storage
-version: "3.8"
-
 services:
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite
@@ -65,7 +63,7 @@ volumes:
   azurite-data:
 ```
 
-The `--loose` flag relaxes API version checking, which helps with compatibility across SDK versions. The `--skipApiVersionCheck` flag prevents Azurite from rejecting requests with newer API versions.
+The `--loose` flag relaxes strict header and parameter validation. The `--skipApiVersionCheck` flag prevents Azurite from rejecting requests based on the API version check.
 
 Start it:
 
@@ -82,7 +80,7 @@ Azurite uses a well-known default connection string:
 DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;
 ```
 
-The account name is always `devstoreaccount1` and the account key is a fixed value. These are not real credentials and are safe to commit to source control.
+The default account name is `devstoreaccount1` and the default account key is a fixed value. These are not real credentials and are safe to commit to source control for local emulator configuration.
 
 ## Working with Blob Storage (Python)
 
