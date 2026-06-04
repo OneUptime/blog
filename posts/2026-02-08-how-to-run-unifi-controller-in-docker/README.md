@@ -14,9 +14,9 @@ This guide covers deploying the Unifi Controller with Docker Compose, adopting d
 
 ## Why Run the Unifi Controller in Docker
 
-The Unifi Controller is a Java application with specific dependencies. Installing it natively means dealing with Java versions, MongoDB compatibility, and system-level package conflicts. Docker packages all of that into a single image. You get consistent behavior regardless of your host OS, and rolling back a bad upgrade is as simple as changing the image tag.
+The Unifi Controller is a Java application with specific dependencies. Installing it natively means dealing with Java versions, MongoDB compatibility, and system-level package conflicts. Docker packages the application runtime and keeps MongoDB isolated in its own container. You get consistent behavior regardless of your host OS, and rolling back a bad upgrade is as simple as changing the image tag.
 
-The controller manages your entire Ubiquiti network from a single web interface. Access points, switches, security gateways, and cameras all report to it. Running it in Docker does not change any of that functionality.
+The controller manages your entire Ubiquiti network from a single web interface. Access points, switches, and security gateways all report to it. Running it in Docker does not change any of that functionality.
 
 ## Prerequisites
 
@@ -36,12 +36,10 @@ docker compose version
 
 ## Docker Compose Configuration
 
-The most popular community-maintained image comes from linuxserver.io. It bundles MongoDB and the Unifi Controller into a well-maintained package.
+The most popular community-maintained image comes from linuxserver.io. It runs the Unifi Network Application in a well-maintained package and connects to a separate MongoDB container.
 
 ```yaml
 # docker-compose.yml - Unifi Network Controller
-version: "3.8"
-
 services:
   unifi-controller:
     image: lscr.io/linuxserver/unifi-network-application:latest
@@ -59,6 +57,7 @@ services:
       MONGO_HOST: unifi-mongo
       MONGO_PORT: 27017
       MONGO_DBNAME: unifi
+      MONGO_AUTHSOURCE: admin
     volumes:
       # Persist controller configuration and data
       - unifi-config:/config
@@ -90,10 +89,14 @@ services:
       # Persist MongoDB data
       - unifi-mongo-data:/data/db
       # Init script to create the database user
-      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - ./init-mongo.sh:/docker-entrypoint-initdb.d/init-mongo.sh:ro
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_USER: unifi
+      MONGO_PASS: ${MONGO_PASSWORD}
+      MONGO_DBNAME: unifi
+      MONGO_AUTHSOURCE: admin
 
 volumes:
   unifi-config:
@@ -102,20 +105,30 @@ volumes:
 
 Create the MongoDB initialization script that sets up the database user.
 
-```javascript
-// init-mongo.js - Create the unifi database and user on first run
-db.getSiblingDB("unifi").createUser({
-  user: "unifi",
-  pwd: "your-mongo-password",
-  roles: [{ role: "dbOwner", db: "unifi" }]
-});
+```bash
+#!/bin/bash
+# init-mongo.sh - Create the unifi database user on first run
+if which mongosh > /dev/null 2>&1; then
+  mongo_init_bin='mongosh'
+else
+  mongo_init_bin='mongo'
+fi
 
-// Create the statistics database used by the controller
-db.getSiblingDB("unifi_stat").createUser({
-  user: "unifi",
-  pwd: "your-mongo-password",
-  roles: [{ role: "dbOwner", db: "unifi_stat" }]
-});
+"${mongo_init_bin}" <<EOF
+use ${MONGO_AUTHSOURCE}
+db.auth("${MONGO_INITDB_ROOT_USERNAME}", "${MONGO_INITDB_ROOT_PASSWORD}")
+db.createUser({
+  user: "${MONGO_USER}",
+  pwd: "${MONGO_PASS}",
+  roles: [
+    "clusterMonitor",
+    { db: "${MONGO_DBNAME}", role: "dbOwner" },
+    { db: "${MONGO_DBNAME}_stat", role: "dbOwner" },
+    { db: "${MONGO_DBNAME}_audit", role: "dbOwner" },
+    { db: "${MONGO_DBNAME}_restore", role: "dbOwner" }
+  ]
+})
+EOF
 ```
 
 Set up the environment file with your passwords.
@@ -184,7 +197,7 @@ If you are migrating from an existing controller, export a backup from the old c
 Updating the Unifi Controller in Docker is straightforward. Always back up your configuration before upgrading.
 
 ```bash
-# Step 1: Create a backup from the web UI or via the API
+# Step 1: Create a backup from the web UI
 # Settings > System > Backup > Download Backup
 
 # Step 2: Pull the latest image
@@ -209,13 +222,7 @@ image: lscr.io/linuxserver/unifi-network-application:8.0.28
 The controller stores site configuration, device settings, network maps, and historical statistics. Losing this data means re-adopting and reconfiguring every device.
 
 ```bash
-# Export a backup using the Unifi API
-curl -k -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"cmd":"backup"}' \
-  "https://localhost:8443/api/s/default/cmd/backup"
-
-# You can also automate backups by copying the config volume
+# You can automate file-level backups by copying the config volume
 docker run --rm \
   -v unifi-config:/source:ro \
   -v $(pwd)/backups:/backup \
