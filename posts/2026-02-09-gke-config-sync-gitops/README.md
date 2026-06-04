@@ -12,7 +12,7 @@ GKE Config Sync continuously synchronizes Kubernetes cluster configuration from 
 
 ## Understanding Config Sync Architecture
 
-Config Sync consists of several components working together. The reconciler watches Git repositories for changes and applies them to the cluster. The admission webhook validates configurations before they are applied, preventing invalid or conflicting resources. The monitoring component tracks sync status and reports errors.
+Config Sync consists of several components working together. The reconciler watches Git repositories for changes and applies them to the cluster. The admission webhook can prevent conflicting changes to managed resources when drift prevention is enabled. The monitoring component tracks sync status and reports errors.
 
 Unlike traditional deployment pipelines that push changes to clusters, Config Sync uses a pull model. Each cluster continuously polls the Git repository and reconciles any differences between the repository state and cluster state.
 
@@ -20,28 +20,52 @@ This architecture supports both hierarchical and unstructured repository layouts
 
 ## Enabling Config Sync
 
-Config Sync is available on GKE clusters as part of Anthos Config Management. Enable it through the GKE console or gcloud:
+Config Sync is available on GKE clusters as part of Google Kubernetes Engine. Enable it through the GKE console or gcloud:
 
 ```bash
-# Enable Config Sync on existing cluster
-
-gcloud beta container fleet config-management enable \
+# Register an existing GKE cluster with a fleet
+gcloud container clusters update production-cluster \
+  --location=us-central1 \
+  --enable-fleet \
   --project=my-project
 
-# Register cluster with fleet
-gcloud container fleet memberships register production-cluster \
-  --gke-cluster=us-central1/production-cluster \
-  --enable-workload-identity \
+# Enable the Config Management fleet feature
+gcloud beta container fleet config-management enable \
   --project=my-project
 ```
 
-Install Config Sync operator:
+Install Config Sync on the fleet membership:
+
+```yaml
+# apply-spec.yaml
+applySpecVersion: 1
+spec:
+  configSync:
+    enabled: true
+    sourceFormat: unstructured
+    syncRepo: https://github.com/myorg/k8s-configs
+    syncRev: main
+    secretType: none
+    policyDir: clusters/production
+```
 
 ```bash
-# Download and apply Config Sync operator
-gsutil cp gs://config-management-release/released/latest/config-sync-operator.yaml config-sync-operator.yaml
+gcloud beta container fleet config-management apply \
+  --membership=production-cluster \
+  --config=apply-spec.yaml \
+  --project=my-project
+```
 
-kubectl apply -f config-sync-operator.yaml
+If you install Config Sync manually with kubectl instead, download and apply the supported manifest bundle:
+
+```bash
+# Download Config Sync manifests
+gcloud storage cp gs://config-management-release/released/latest/config-sync.tar.gz config-sync.tar.gz
+
+tar -xzvf config-sync.tar.gz
+
+# Follow the extracted README.md to render the manifest, then apply it
+kubectl apply -f CONFIG_SYNC_MANIFEST
 
 # Verify installation
 kubectl get pods -n config-management-system
@@ -51,25 +75,25 @@ The config-management-system namespace contains the reconciler and other Config 
 
 ## Configuring Repository Synchronization
 
-Create a ConfigManagement custom resource to specify your Git repository:
+Create or update a RootSync resource to specify your Git repository:
 
 ```yaml
-apiVersion: configmanagement.gke.io/v1
-kind: ConfigManagement
+apiVersion: configsync.gke.io/v1beta1
+kind: RootSync
 metadata:
-  name: config-management
+  name: root-sync
+  namespace: config-management-system
 spec:
-  clusterName: production-cluster
-  git:
-    syncRepo: https://github.com/myorg/k8s-configs
-    syncBranch: main
-    syncRev: HEAD
-    secretType: ssh
-    policyDir: clusters/production
   sourceFormat: unstructured
+  git:
+    repo: https://github.com/myorg/k8s-configs
+    branch: main
+    revision: HEAD
+    auth: none
+    dir: clusters/production
 ```
 
-For public repositories, use token or none for secretType. For private repositories, create a secret with SSH credentials:
+For public repositories, use `none` for `auth`. For private repositories, create a secret with SSH credentials:
 
 ```bash
 # Create SSH key pair
@@ -84,13 +108,13 @@ kubectl create secret generic git-creds \
   --from-file=ssh=config-sync-key
 ```
 
-Update the ConfigManagement resource to reference the secret:
+Update the RootSync resource to reference the secret and use an SSH repository URL:
 
 ```yaml
 spec:
   git:
-    syncRepo: git@github.com:myorg/k8s-configs.git
-    secretType: ssh
+    repo: git@github.com:myorg/k8s-configs.git
+    auth: ssh
     secretRef:
       name: git-creds
 ```
@@ -98,10 +122,10 @@ spec:
 Apply the configuration:
 
 ```bash
-kubectl apply -f config-management.yaml
+kubectl apply -f root-sync.yaml
 
 # Check sync status
-kubectl get configmanagement config-management -o yaml
+kubectl get rootsync root-sync -n config-management-system -o yaml
 ```
 
 ## Organizing Repository Structure
@@ -373,42 +397,22 @@ kubectl describe rootsync root-sync -n config-management-system
 kubectl logs -n config-management-system -l app=reconciler
 ```
 
-Config Sync exposes metrics for monitoring:
+Config Sync publishes OpenTelemetry metrics through the collector in the config-management-monitoring namespace:
 
 ```bash
-# Port-forward to metrics endpoint
-kubectl port-forward -n config-management-system \
-  svc/reconciler-manager 8675:8675
+# Check the OpenTelemetry collector
+kubectl get deployment otel-collector -n config-management-monitoring
 
-# Query metrics
-curl http://localhost:8675/metrics | grep config_sync
+# Inspect the collector configuration
+kubectl get configmap otel-collector -n config-management-monitoring -o yaml
 ```
 
-Integrate with Cloud Monitoring for alerting:
+Config Sync can also export metrics to Cloud Monitoring. With Workload Identity Federation for GKE enabled, grant the Config Sync monitoring service account permission to write metrics:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: otel-collector-config
-  namespace: config-management-system
-data:
-  config.yaml: |
-    receivers:
-      prometheus:
-        config:
-          scrape_configs:
-          - job_name: 'config-sync'
-            static_configs:
-            - targets: ['reconciler-manager:8675']
-    exporters:
-      googlecloud:
-        project: my-project
-    service:
-      pipelines:
-        metrics:
-          receivers: [prometheus]
-          exporters: [googlecloud]
+```bash
+gcloud projects add-iam-policy-binding my-project \
+  --role=roles/monitoring.metricWriter \
+  --member="serviceAccount:my-project.svc.id.goog[config-management-monitoring/default]"
 ```
 
 ## Handling Sync Errors
