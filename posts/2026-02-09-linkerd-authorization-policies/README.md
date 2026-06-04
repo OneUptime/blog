@@ -14,9 +14,9 @@ Zero-trust security requires explicit authorization for every service-to-service
 
 Linkerd's authorization works at Layer 4 and Layer 7. You define Server resources that represent services listening on specific ports. ServerAuthorization resources specify which clients can access those servers based on ServiceAccount identity, namespace, or network attributes.
 
-Authorization happens at the proxy level before traffic reaches your application. This means unauthorized requests never consume application resources. The authorization decision is based on mTLS-verified identities, making it cryptographically secure.
+Authorization happens at the proxy level before traffic reaches your application. This means unauthorized requests never consume application resources. For meshed clients, the authorization decision is based on mTLS-verified identities, making it cryptographically secure.
 
-By default, Linkerd allows all traffic. You must explicitly create policies to restrict access. This lets you adopt authorization incrementally without breaking existing communication patterns.
+By default, Linkerd allows all traffic. When you create a Server resource for a pod port, traffic to that port is denied unless it is explicitly authorized. This lets you adopt authorization incrementally without breaking existing communication patterns.
 
 ## Prerequisites
 
@@ -226,8 +226,8 @@ spec:
     name: backend-server
   client:
     meshTLS:
-      serviceAccounts:
-      - namespace: production
+      identities:
+      - "*.production.serviceaccount.identity.linkerd.cluster.local"
 ```
 
 ```bash
@@ -251,6 +251,7 @@ spec:
   server:
     name: backend-server
   client:
+    unauthenticated: true
     networks:
     - cidr: 10.0.0.0/8
     - cidr: 192.168.1.0/24
@@ -280,10 +281,10 @@ spec:
   port: 8080
   proxyProtocol: HTTP/1
 ---
-apiVersion: policy.linkerd.io/v1alpha1
+apiVersion: policy.linkerd.io/v1beta1
 kind: HTTPRoute
 metadata:
-  name: backend-routes
+  name: backend-public
   namespace: default
 spec:
   parentRefs:
@@ -295,29 +296,72 @@ spec:
     - path:
         value: "/api/public"
         type: PathPrefix
-    backendRefs:
-    - name: backend
-      port: 8080
+---
+apiVersion: policy.linkerd.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: backend-admin
+  namespace: default
+spec:
+  parentRefs:
+  - name: backend-server
+    kind: Server
+    group: policy.linkerd.io
+  rules:
   - matches:
     - path:
         value: "/api/admin"
         type: PathPrefix
-    backendRefs:
-    - name: backend
-      port: 8080
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: frontend-auth
+  namespace: default
+spec:
+  identityRefs:
+  - kind: ServiceAccount
+    name: frontend-sa
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: admin-auth
+  namespace: default
+spec:
+  identityRefs:
+  - kind: ServiceAccount
+    name: admin-sa
 ---
 apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
-  name: backend-route-auth
+  name: backend-public-auth
   namespace: default
 spec:
   targetRef:
+    group: policy.linkerd.io
     kind: HTTPRoute
-    name: backend-routes
+    name: backend-public
   requiredAuthenticationRefs:
-  - kind: MeshTLSAuthentication
+  - group: policy.linkerd.io
+    kind: MeshTLSAuthentication
     name: frontend-auth
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: backend-admin-auth
+  namespace: default
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: HTTPRoute
+    name: backend-admin
+  requiredAuthenticationRefs:
+  - group: policy.linkerd.io
+    kind: MeshTLSAuthentication
+    name: admin-auth
 ```
 
 This is more advanced and allows different authorization for different routes on the same service.
@@ -333,10 +377,8 @@ kind: Server
 metadata:
   name: backend-server
   namespace: default
-  annotations:
-    # Enable default deny
-    config.linkerd.io/default-inbound-policy: "deny"
 spec:
+  accessPolicy: deny
   podSelector:
     matchLabels:
       app: backend
@@ -344,7 +386,7 @@ spec:
   proxyProtocol: HTTP/1
 ```
 
-With this annotation, all connections are denied unless a ServerAuthorization explicitly allows them. This is the most secure approach but requires careful policy management.
+With this access policy, all connections to this Server are denied unless a ServerAuthorization or AuthorizationPolicy explicitly allows them. This is the most secure approach but requires careful policy management.
 
 ## Authorizing Specific HTTP Methods
 
@@ -364,7 +406,7 @@ spec:
   port: 8080
   proxyProtocol: HTTP/1
 ---
-apiVersion: policy.linkerd.io/v1alpha1
+apiVersion: policy.linkerd.io/v1beta1
 kind: HTTPRoute
 metadata:
   name: backend-readonly
@@ -379,18 +421,30 @@ spec:
     - method: GET
     - method: HEAD
 ---
-apiVersion: policy.linkerd.io/v1beta1
-kind: ServerAuthorization
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: readonly-auth
+  namespace: default
+spec:
+  identityRefs:
+  - kind: ServiceAccount
+    name: readonly-sa
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
 metadata:
   name: readonly-access
   namespace: default
 spec:
-  server:
-    name: backend-server
-  client:
-    meshTLS:
-      serviceAccounts:
-      - name: readonly-sa
+  targetRef:
+    group: policy.linkerd.io
+    kind: HTTPRoute
+    name: backend-readonly
+  requiredAuthenticationRefs:
+  - group: policy.linkerd.io
+    kind: MeshTLSAuthentication
+    name: readonly-auth
 ```
 
 This restricts readonly-sa to only GET and HEAD requests.
@@ -401,7 +455,7 @@ Check for authorization failures in metrics:
 
 ```bash
 # View authorization metrics
-kubectl exec -n linkerd deploy/linkerd-prometheus -- \
+kubectl exec -n linkerd-viz deploy/prometheus -- \
   promtool query instant http://localhost:9090 \
   'inbound_http_authz_deny_total{namespace="default"}'
 ```
@@ -412,8 +466,8 @@ Query Prometheus for denied requests:
 # Authorization denial rate
 rate(inbound_http_authz_deny_total[5m])
 
-# Denials by client identity
-sum by (client_id) (
+# Denials by destination pod
+sum by (pod) (
   rate(inbound_http_authz_deny_total[5m])
 )
 ```
@@ -445,7 +499,7 @@ kubectl describe serverauthorization frontend-to-backend -n default
 Verify client identity:
 
 ```bash
-linkerd identity deploy/frontend -n default
+linkerd identity -n default -l app=frontend
 ```
 
 The identity should match what you specified in the ServerAuthorization.
