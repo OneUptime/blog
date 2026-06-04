@@ -30,7 +30,9 @@ access_log:
   typed_config:
     "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
     path: /dev/stdout
-    format: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% \"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" \"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n"
+    log_format:
+      text_format_source:
+        inline_string: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% \"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" \"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n"
 ```
 
 ## JSON Access Logging
@@ -41,23 +43,24 @@ access_log:
   typed_config:
     "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
     path: /dev/stdout
-    typed_json_format:
-      timestamp: "%START_TIME%"
-      method: "%REQ(:METHOD)%"
-      path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-      protocol: "%PROTOCOL%"
-      response_code: "%RESPONSE_CODE%"
-      response_flags: "%RESPONSE_FLAGS%"
-      bytes_received: "%BYTES_RECEIVED%"
-      bytes_sent: "%BYTES_SENT%"
-      duration: "%DURATION%"
-      upstream_service_time: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
-      x_forwarded_for: "%REQ(X-FORWARDED-FOR)%"
-      user_agent: "%REQ(USER-AGENT)%"
-      request_id: "%REQ(X-REQUEST-ID)%"
-      authority: "%REQ(:AUTHORITY)%"
-      upstream_host: "%UPSTREAM_HOST%"
-      upstream_cluster: "%UPSTREAM_CLUSTER%"
+    log_format:
+      json_format:
+        timestamp: "%START_TIME%"
+        method: "%REQ(:METHOD)%"
+        path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+        protocol: "%PROTOCOL%"
+        response_code: "%RESPONSE_CODE%"
+        response_flags: "%RESPONSE_FLAGS%"
+        bytes_received: "%BYTES_RECEIVED%"
+        bytes_sent: "%BYTES_SENT%"
+        duration: "%DURATION%"
+        upstream_service_time: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+        x_forwarded_for: "%REQ(X-FORWARDED-FOR)%"
+        user_agent: "%REQ(USER-AGENT)%"
+        request_id: "%REQ(X-REQUEST-ID)%"
+        authority: "%REQ(:AUTHORITY)%"
+        upstream_host: "%UPSTREAM_HOST%"
+        upstream_cluster: "%UPSTREAM_CLUSTER%"
 ```
 
 JSON format is ideal for log aggregation systems like Elasticsearch.
@@ -123,7 +126,7 @@ Important response flags:
 - UF: Upstream connection failure
 - UO: Upstream overflow (circuit breaking)
 - NR: No route configured
-- UR: Upstream retry limit exceeded
+- URX: Upstream retry limit exceeded
 - UC: Upstream connection termination
 - UT: Upstream request timeout
 - RL: Rate limited
@@ -150,9 +153,9 @@ access_log:
 
 Log 10% of requests.
 
-## Per-Route Access Logs
+## Per-Route Upstream Access Logs
 
-Different logging per route:
+Different upstream logging per route:
 
 ```yaml
 routes:
@@ -163,7 +166,7 @@ routes:
   typed_per_filter_config:
     envoy.filters.http.router:
       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
-      access_log:
+      upstream_log:
       - name: envoy.access_loggers.file
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
