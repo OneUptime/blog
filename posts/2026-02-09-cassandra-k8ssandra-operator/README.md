@@ -8,11 +8,11 @@ Description: Learn how to deploy and manage Apache Cassandra on Kubernetes using
 
 ---
 
-K8ssandra provides a complete operational stack for Apache Cassandra on Kubernetes, bundling the database with essential tools like backup/restore, repair operations, and monitoring. This production-ready distribution eliminates the complexity of assembling separate components, delivering a turnkey Cassandra platform. This guide demonstrates deploying Cassandra clusters with K8ssandra, implementing operational best practices from day one.
+K8ssandra provides a complete operational stack for Apache Cassandra on Kubernetes, integrating the database with essential tools like backup/restore, repair operations, and monitoring hooks. This production-ready distribution eliminates much of the complexity of assembling separate components, delivering a turnkey Cassandra platform. This guide demonstrates deploying Cassandra clusters with K8ssandra, implementing operational best practices from day one.
 
 ## Understanding K8ssandra Architecture
 
-K8ssandra combines several components into a unified platform. At the core, the Cass Operator manages Cassandra StatefulSets and configuration. Medusa handles backup and restore operations to object storage. Reaper automates repair operations to maintain data consistency. Prometheus and Grafana provide comprehensive monitoring with pre-built dashboards.
+K8ssandra combines several components into a unified platform. At the core, the Cass Operator manages Cassandra StatefulSets and configuration. Medusa handles backup and restore operations to object storage. Reaper automates repair operations to maintain data consistency. Prometheus and Grafana can provide comprehensive monitoring with imported K8ssandra dashboards when you install a monitoring stack separately.
 
 This integrated approach solves the operational challenges that make Cassandra difficult to run in production. Instead of manually configuring each component, K8ssandra provides tested configurations and automation that follow Cassandra best practices.
 
@@ -24,7 +24,14 @@ Deploy K8ssandra using Helm:
 # Add K8ssandra Helm repository
 
 helm repo add k8ssandra https://helm.k8ssandra.io/stable
+helm repo add jetstack https://charts.jetstack.io
 helm repo update
+
+# Install cert-manager dependency
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set installCRDs=true
 
 # Create namespace
 kubectl create namespace k8ssandra
@@ -88,15 +95,13 @@ spec:
         # JVM configuration
         config:
           jvmOptions:
-            heapSize: 8G
-            heapNewGenSize: 2G
-            additionalOptions:
-              - -XX:+UseG1GC
-              - -XX:G1RSetUpdatingPauseTimePercent=5
-              - -XX:MaxGCPauseMillis=500
+            heap_initial_size: 8G
+            heap_max_size: 8G
+            gc: G1GC
+            gc_g1_rset_updating_pause_time_percent: 5
+            gc_g1_max_gc_pause_ms: 500
 
-        # Cassandra configuration
-        cassandraConfig:
+          # Cassandra configuration
           cassandraYaml:
             num_tokens: 16
             authenticator: PasswordAuthenticator
@@ -107,6 +112,11 @@ spec:
             concurrent_compactors: 4
             compaction_throughput_mb_per_sec: 64
             stream_throughput_outbound_megabits_per_sec: 400
+
+        # Prometheus ServiceMonitor configuration
+        telemetry:
+          prometheus:
+            enabled: true
 
         # Rack awareness
         racks:
@@ -123,6 +133,9 @@ spec:
   # Stargate API (optional CQL, REST, GraphQL)
   stargate:
     size: 1
+    telemetry:
+      prometheus:
+        enabled: true
     resources:
       requests:
         cpu: 1000m
@@ -140,9 +153,11 @@ spec:
 
   # Reaper repair automation
   reaper:
-    enabled: true
     autoScheduling:
       enabled: true
+    telemetry:
+      prometheus:
+        enabled: true
     resources:
       requests:
         cpu: 500m
@@ -152,16 +167,18 @@ spec:
 Create S3 credentials secret:
 
 ```bash
+kubectl create namespace cassandra
+
 kubectl create secret generic medusa-s3-credentials \
   -n cassandra \
-  --from-literal=access_key_id=YOUR_ACCESS_KEY \
-  --from-literal=secret_access_key=YOUR_SECRET_KEY
+  --from-literal=credentials='[default]
+aws_access_key_id = YOUR_ACCESS_KEY
+aws_secret_access_key = YOUR_SECRET_KEY'
 ```
 
 Deploy the cluster:
 
 ```bash
-kubectl create namespace cassandra
 kubectl apply -f k8ssandra-cluster.yaml
 
 # Watch cluster initialization
@@ -223,7 +240,7 @@ INSERT INTO users (user_id, email, name, created_at)
 VALUES (uuid(), 'alice@example.com', 'Alice', toTimestamp(now()));
 
 -- Query data
-SELECT * FROM users WHERE email = 'alice@example.com' ALLOW FILTERING;
+SELECT * FROM users WHERE email = 'alice@example.com';
 ```
 
 ## Configuring Automated Backups
@@ -252,7 +269,7 @@ kubectl apply -f backup-schedule.yaml
 # Trigger manual backup
 cat <<EOF | kubectl apply -f -
 apiVersion: medusa.k8ssandra.io/v1alpha1
-kind: MedusaBackup
+kind: MedusaBackupJob
 metadata:
   name: manual-backup-$(date +%Y%m%d)
   namespace: cassandra
@@ -262,7 +279,7 @@ spec:
 EOF
 
 # Monitor backup progress
-kubectl get medusabackups -n cassandra -w
+kubectl get medusabackupjobs -n cassandra -w
 ```
 
 ## Restoring from Backup
@@ -299,13 +316,13 @@ Reaper handles anti-entropy repairs automatically:
 
 ```bash
 # Access Reaper UI
-kubectl port-forward -n cassandra svc/prod-cluster-reaper-service 8080:8080
+kubectl port-forward -n cassandra svc/prod-cluster-dc1-reaper-service 8080:8080
 
-# Open browser to http://localhost:8080
+# Open browser to http://localhost:8080/webui
 
 # Or configure via API
 kubectl exec -it -n cassandra prod-cluster-dc1-rack1-sts-0 -- \
-  curl -X POST http://prod-cluster-reaper-service:8080/repair_schedule \
+  curl -X POST http://prod-cluster-dc1-reaper-service:8080/repair_schedule \
   -H "Content-Type: application/json" \
   -d '{
     "clusterName": "prod-cluster",
@@ -321,22 +338,42 @@ Reaper schedules repairs automatically, preventing data inconsistency.
 
 ## Monitoring with Prometheus and Grafana
 
-K8ssandra includes monitoring stack:
+K8ssandra Operator creates Prometheus ServiceMonitors when telemetry is enabled, but you must install Prometheus and Grafana separately:
 
 ```bash
-# Port-forward Grafana
-kubectl port-forward -n cassandra svc/prod-cluster-grafana 3000:3000
+# Add Prometheus Community Helm repository
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
 
-# Get Grafana credentials
-kubectl get secret prod-cluster-grafana -n cassandra \
-  -o jsonpath='{.data.admin-password}' | base64 -d
+# Configure Prometheus to discover ServiceMonitors across namespaces
+cat <<EOF > kube-prom-stack-values.yaml
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+grafana:
+  adminUser: admin
+  adminPassword: secret
+EOF
+
+# Install kube-prometheus-stack
+helm install prometheus-grafana prometheus-community/kube-prometheus-stack \
+  -n cassandra \
+  -f kube-prom-stack-values.yaml
+
+# Verify ServiceMonitors
+kubectl get servicemonitors -n cassandra
+
+# Port-forward Grafana
+kubectl port-forward -n cassandra svc/prometheus-grafana 3000:80
 
 # Open browser to http://localhost:3000
 # Username: admin
-# Password: <from above command>
+# Password: secret
 ```
 
-K8ssandra provides pre-built dashboards showing:
+K8ssandra provides dashboard definitions you can import into Grafana showing:
 
 - Cluster overview (node status, disk usage)
 - Read/write latency percentiles
@@ -354,7 +391,7 @@ kubectl patch k8ssandracluster prod-cluster -n cassandra \
   --type='json' \
   -p='[{"op": "replace", "path": "/spec/cassandra/datacenters/0/size", "value": 6}]'
 
-# Cassandra automatically rebalances
+# Cassandra bootstraps the new nodes
 kubectl get pods -n cassandra -w
 
 # Monitor rebalancing
@@ -400,8 +437,11 @@ ALTER KEYSPACE myapp WITH replication = {
   'dc1': 3,
   'dc2': 3
 };
+```
 
--- Rebuild dc2 from dc1
+Rebuild dc2 from dc1:
+
+```bash
 kubectl exec -it -n cassandra prod-cluster-dc2-rack1-sts-0 -- \
   nodetool rebuild -- dc1
 ```
@@ -430,7 +470,7 @@ Optimize for your workload:
 spec:
   cassandra:
     datacenters:
-      - cassandraConfig:
+      - config:
           cassandraYaml:
             # Increase for write-heavy workloads
             concurrent_writes: 64
@@ -447,6 +487,6 @@ spec:
 
 ## Conclusion
 
-K8ssandra transforms Cassandra operations on Kubernetes from a complex challenge into a manageable platform. By bundling essential operational tools like backup, repair, and monitoring, it eliminates the need to assemble and integrate separate components.
+K8ssandra transforms Cassandra operations on Kubernetes from a complex challenge into a manageable platform. By integrating essential operational tools like backup, repair, and monitoring, it reduces the need to assemble and integrate separate components.
 
 The operator-based approach provides declarative cluster management with automated day-2 operations. For teams running Cassandra in production, K8ssandra delivers the reliability and operational automation needed to run distributed NoSQL at scale while significantly reducing operational burden.
