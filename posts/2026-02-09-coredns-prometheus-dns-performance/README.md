@@ -81,12 +81,12 @@ coredns_dns_request_duration_seconds
 
 # Cache statistics
 coredns_cache_hits_total
-coredns_cache_misses_total
+coredns_cache_requests_total
 coredns_cache_entries
 
 # Forward statistics
-coredns_forward_requests_total
-coredns_forward_responses_total
+coredns_proxy_request_duration_seconds
+coredns_proxy_conn_cache_hits_total
 ```
 
 ## Configuring Prometheus ServiceMonitor
@@ -154,7 +154,7 @@ sum(rate(coredns_dns_requests_total[5m])) by (zone)
 # Cache hit ratio
 sum(rate(coredns_cache_hits_total[5m]))
 /
-sum(rate(coredns_dns_requests_total[5m]))
+sum(rate(coredns_cache_requests_total[5m]))
 
 # Cache entries
 coredns_cache_entries
@@ -168,18 +168,18 @@ rate(coredns_cache_evictions_total[5m])
 ```promql
 # 95th percentile latency
 histogram_quantile(0.95,
-  rate(coredns_dns_request_duration_seconds_bucket[5m])
+  sum(rate(coredns_dns_request_duration_seconds_bucket[5m])) by (le)
 )
 
 # 99th percentile latency
 histogram_quantile(0.99,
-  rate(coredns_dns_request_duration_seconds_bucket[5m])
+  sum(rate(coredns_dns_request_duration_seconds_bucket[5m])) by (le)
 )
 
 # Average latency
-rate(coredns_dns_request_duration_seconds_sum[5m])
+sum(rate(coredns_dns_request_duration_seconds_sum[5m]))
 /
-rate(coredns_dns_request_duration_seconds_count[5m])
+sum(rate(coredns_dns_request_duration_seconds_count[5m]))
 ```
 
 **Error rates:**
@@ -222,13 +222,13 @@ data:
           {
             "title": "Cache Hit Ratio",
             "targets": [{
-              "expr": "sum(rate(coredns_cache_hits_total[5m])) / sum(rate(coredns_dns_requests_total[5m]))"
+              "expr": "sum(rate(coredns_cache_hits_total[5m])) / sum(rate(coredns_cache_requests_total[5m]))"
             }]
           },
           {
             "title": "Query Latency (p95)",
             "targets": [{
-              "expr": "histogram_quantile(0.95, rate(coredns_dns_request_duration_seconds_bucket[5m]))"
+              "expr": "histogram_quantile(0.95, sum(rate(coredns_dns_request_duration_seconds_bucket[5m])) by (le))"
             }]
           },
           {
@@ -244,9 +244,9 @@ data:
             }]
           },
           {
-            "title": "Forward Requests",
+            "title": "Forward Request Latency",
             "targets": [{
-              "expr": "sum(rate(coredns_forward_requests_total[5m]))"
+              "expr": "histogram_quantile(0.95, sum(rate(coredns_proxy_request_duration_seconds_bucket{proxy_name=\"forward\"}[5m])) by (le))"
             }]
           }
         ]
@@ -259,99 +259,98 @@ data:
 Configure Prometheus alerting rules:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
 metadata:
   name: prometheus-coredns-rules
   namespace: monitoring
-data:
-  coredns-rules.yaml: |
-    groups:
-    - name: coredns
-      interval: 30s
-      rules:
-      # High query latency
-      - alert: CoreDNSHighLatency
-        expr: |
-          histogram_quantile(0.99,
-            rate(coredns_dns_request_duration_seconds_bucket[5m])
-          ) > 0.1
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "CoreDNS high query latency"
-          description: "99th percentile latency is above 100ms"
+spec:
+  groups:
+  - name: coredns
+    interval: 30s
+    rules:
+    # High query latency
+    - alert: CoreDNSHighLatency
+      expr: |
+        histogram_quantile(0.99,
+          sum(rate(coredns_dns_request_duration_seconds_bucket[5m])) by (le)
+        ) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "CoreDNS high query latency"
+        description: "99th percentile latency is above 100ms"
 
-      # Low cache hit rate
-      - alert: CoreDNSLowCacheHitRate
-        expr: |
-          sum(rate(coredns_cache_hits_total[5m]))
-          /
-          sum(rate(coredns_dns_requests_total[5m]))
-          < 0.7
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "CoreDNS cache hit rate is low"
-          description: "Cache hit rate has dropped below 70%"
+    # Low cache hit rate
+    - alert: CoreDNSLowCacheHitRate
+      expr: |
+        sum(rate(coredns_cache_hits_total[5m]))
+        /
+        sum(rate(coredns_cache_requests_total[5m]))
+        < 0.7
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "CoreDNS cache hit rate is low"
+        description: "Cache hit rate has dropped below 70%"
 
-      # High error rate
-      - alert: CoreDNSHighErrorRate
-        expr: |
-          sum(rate(coredns_dns_responses_total{rcode="SERVFAIL"}[5m]))
-          /
-          sum(rate(coredns_dns_responses_total[5m]))
-          > 0.05
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "CoreDNS high error rate"
-          description: "More than 5% of queries returning SERVFAIL"
+    # High error rate
+    - alert: CoreDNSHighErrorRate
+      expr: |
+        sum(rate(coredns_dns_responses_total{rcode="SERVFAIL"}[5m]))
+        /
+        sum(rate(coredns_dns_responses_total[5m]))
+        > 0.05
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "CoreDNS high error rate"
+        description: "More than 5% of queries returning SERVFAIL"
 
-      # CoreDNS down
-      - alert: CoreDNSDown
-        expr: up{job="kube-dns"} == 0
-        for: 2m
-        labels:
-          severity: critical
-        annotations:
-          summary: "CoreDNS is down"
-          description: "CoreDNS has been down for more than 2 minutes"
+    # CoreDNS down
+    - alert: CoreDNSDown
+      expr: up{job="kube-dns"} == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "CoreDNS is down"
+        description: "CoreDNS has been down for more than 2 minutes"
 
-      # High query load
-      - alert: CoreDNSHighQueryLoad
-        expr: |
-          sum(rate(coredns_dns_requests_total[5m])) > 10000
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "CoreDNS experiencing high query load"
-          description: "Query rate exceeds 10,000 QPS"
+    # High query load
+    - alert: CoreDNSHighQueryLoad
+      expr: |
+        sum(rate(coredns_dns_requests_total[5m])) > 10000
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "CoreDNS experiencing high query load"
+        description: "Query rate exceeds 10,000 QPS"
 
-      # Cache near capacity
-      - alert: CoreDNSCacheNearCapacity
-        expr: coredns_cache_entries > 30000
-        for: 10m
-        labels:
-          severity: info
-        annotations:
-          summary: "CoreDNS cache approaching capacity"
-          description: "Cache has more than 30,000 entries"
+    # Cache near capacity
+    - alert: CoreDNSCacheNearCapacity
+      expr: coredns_cache_entries > 9000
+      for: 10m
+      labels:
+        severity: info
+      annotations:
+        summary: "CoreDNS cache approaching capacity"
+        description: "Cache has more than 9,000 entries"
 
-      # High forward failure rate
-      - alert: CoreDNSForwardFailures
-        expr: |
-          sum(rate(coredns_forward_healthcheck_failures_total[5m])) > 10
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "CoreDNS forward healthcheck failures"
-          description: "Upstream DNS servers failing healthchecks"
+    # High forward failure rate
+    - alert: CoreDNSForwardFailures
+      expr: |
+        sum(rate(coredns_proxy_healthcheck_failures_total{proxy_name="forward"}[5m])) > 10
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "CoreDNS forward healthcheck failures"
+        description: "Upstream DNS servers failing healthchecks"
 ```
 
 Apply alerting rules:
@@ -396,7 +395,7 @@ data:
             nslookup $domain >/dev/null 2>&1 &
             count=$((count + 1))
         done
-        sleep $(echo "scale=3; 1/$QUERIES_PER_SEC" | bc)
+        sleep $(echo "scale=3; ${#DOMAINS[@]}/$QUERIES_PER_SEC" | bc)
     done
 
     wait
@@ -416,7 +415,7 @@ spec:
       - name: benchmark
         image: nicolaka/netshoot
         command:
-        - sh
+        - bash
         - /scripts/benchmark.sh
         volumeMounts:
         - name: scripts
