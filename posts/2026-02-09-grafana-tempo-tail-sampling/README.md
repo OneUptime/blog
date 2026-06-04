@@ -8,17 +8,17 @@ Description: Learn how to configure tail-based sampling in Grafana Tempo to inte
 
 ---
 
-Head-based sampling makes decisions about keeping traces at the start of a request, before you know if anything interesting happens. Tail-based sampling waits until the trace completes, then decides whether to keep it based on actual characteristics like errors, latency, or specific service involvement. This approach captures the traces you actually want to investigate.
+Head-based sampling makes decisions about keeping traces at the start of a request, before you know if anything interesting happens. Tail-based sampling waits until the trace completes or a configured wait time elapses, then decides whether to keep it based on actual characteristics like errors, latency, or specific service involvement. This approach captures the traces you actually want to investigate.
 
 ## Understanding Tail-Based Sampling
 
-Traditional head-based sampling keeps every Nth trace, chosen at the entry point before processing begins. This means you might discard a critical trace showing a rare error because it happened to fall outside your sampling rate.
+Traditional head-based sampling keeps a fixed ratio of traces, chosen at the entry point before processing begins. This means you might discard a critical trace showing a rare error because it happened to fall outside your sampling rate.
 
-Tail-based sampling collects complete traces in memory, evaluates them against policies after they finish, and only stores traces that match your criteria. You keep all error traces and slow requests while sampling away boring successful requests.
+Tail-based sampling collects traces in memory, evaluates them against policies after they finish or reach the configured decision wait, and only stores traces that match your criteria. You keep all error traces and slow requests while sampling away boring successful requests.
 
 ## Setting Up Tempo for Tail Sampling
 
-Tempo's tail sampling requires specific configuration and enough memory to buffer traces during evaluation.
+Tempo stores the traces that the OpenTelemetry Collector sends after tail sampling. The Tempo configuration needs to receive OTLP data and store it in your backend.
 
 ```yaml
 # tempo-config.yaml
@@ -31,7 +31,9 @@ distributor:
     otlp:
       protocols:
         http:
+          endpoint: 0.0.0.0:4318
         grpc:
+          endpoint: 0.0.0.0:4317
 
 ingester:
   max_block_duration: 5m
@@ -48,7 +50,9 @@ storage:
       endpoint: s3.amazonaws.com
 
 overrides:
-  metrics_generator_processors: [service-graphs, span-metrics]
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]
 ```
 
 The basic configuration above prepares Tempo to receive traces and store them in S3.
@@ -63,7 +67,9 @@ receivers:
   otlp:
     protocols:
       grpc:
+        endpoint: 0.0.0.0:4317
       http:
+        endpoint: 0.0.0.0:4318
 
 processors:
   batch:
@@ -72,7 +78,7 @@ processors:
 
   # Tail sampling configuration
   tail_sampling:
-    # How long to wait for all spans in a trace
+    # How long to wait before making a sampling decision
     decision_wait: 30s
     # Number of traces to keep in memory
     num_traces: 100000
@@ -149,19 +155,15 @@ processors:
                 key: service.name
                 values: [api-gateway, auth-service]
 
-      # Keep traces with high latency OR errors
-      - name: slow-or-error
-        type: or
-        or:
-          or_sub_policy:
-            - name: latency-check
-              type: latency
-              latency:
-                threshold_ms: 3000
-            - name: error-check
-              type: status_code
-              status_code:
-                status_codes: [ERROR]
+      # Keep traces with high latency OR errors by using separate top-level policies
+      - name: latency-check
+        type: latency
+        latency:
+          threshold_ms: 3000
+      - name: error-check
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
 
       # Keep traces with specific attributes
       - name: important-customers
@@ -172,7 +174,7 @@ processors:
           enabled_regex_matching: false
           invert_match: false
 
-      # Rate limit specific services
+      # Rate limit sampled traces
       - name: rate-limit-background
         type: rate_limiting
         rate_limiting:
@@ -183,15 +185,15 @@ These policies give you fine-grained control over which traces to keep based on 
 
 ## Handling Trace Completion
 
-Tail sampling needs complete traces to make decisions. Configure appropriate wait times for your trace duration distribution.
+Tail sampling works best when it has complete traces to make decisions. Configure appropriate wait times for your trace duration distribution.
 
 ```yaml
 processors:
   tail_sampling:
-    # Traces taking longer than this are sampled based on partial data
+    # Traces taking longer than this can be sampled based on partial data
     decision_wait: 30s
 
-    # For long-running traces, make decision on partial spans
+    # Remember sampled trace IDs so late spans can reuse the same keep decision
     decision_cache:
       sampled_cache_size: 50000
 ```
@@ -203,19 +205,19 @@ If traces regularly take longer than `decision_wait`, you'll make sampling decis
 Track tail sampling metrics to ensure it's working correctly and not overwhelming your collector.
 
 ```promql
-# Traces evaluated per second
-rate(otelcol_processor_tail_sampling_trace_evaluated[1m])
+# New traces received per second
+rate(otelcol_processor_tail_sampling_new_trace_id_received[1m])
 
 # Sampling decisions by policy
 sum by (policy) (
-  rate(otelcol_processor_tail_sampling_policy_decision[1m])
+  rate(otelcol_processor_tail_sampling_count_traces_sampled{decision="sampled"}[1m])
 )
 
 # Late arriving spans (arrived after decision)
-rate(otelcol_processor_tail_sampling_late_span_age[1m])
+rate(otelcol_processor_tail_sampling_sampling_late_span_age{le="+Inf"}[1m])
 
 # Memory usage for buffered traces
-otelcol_processor_tail_sampling_trace_on_memory
+otelcol_processor_tail_sampling_sampling_traces_on_memory
 ```
 
 High numbers of late-arriving spans indicate you need to increase `decision_wait` or investigate why spans arrive out of order.
@@ -225,10 +227,18 @@ High numbers of late-arriving spans indicate you need to increase `decision_wait
 For high-volume environments, run multiple collector instances with consistent hash load balancing.
 
 ```yaml
-# otel-collector-config.yaml
-processors:
+# first-tier collector config
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
   # Load balancer sends traces with same ID to same collector
-  loadbalancing:
+  load_balancing:
     routing_key: "traceID"
     protocol:
       otlp:
@@ -240,30 +250,57 @@ processors:
           - collector-1.collectors:4317
           - collector-2.collectors:4317
 
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [load_balancing]
+
+---
+
+# downstream tail-sampling collector config
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
   tail_sampling:
     decision_wait: 30s
     num_traces: 50000
     expected_new_traces_per_sec: 500
 
+exporters:
+  otlp:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [loadbalancing, tail_sampling, batch]
+      processors: [tail_sampling, batch]
       exporters: [otlp]
 ```
 
-Load balancing ensures all spans from a trace go to the same collector instance, so the complete trace is available for evaluation.
+The first-tier load-balancing exporter ensures all spans from a trace go to the same downstream collector instance, so the trace is available for evaluation by one tail-sampling processor.
 
 ## Combining Head and Tail Sampling
 
 Use head-based sampling upstream to reduce the volume of traces reaching tail sampling.
 
-```yaml
+```bash
 # Application instrumentation config
 export OTEL_TRACES_SAMPLER=parentbased_traceidratio
 export OTEL_TRACES_SAMPLER_ARG=0.5  # Keep 50% at head
+```
 
+```yaml
 # Then tail sampling refines further
 processors:
   tail_sampling:
@@ -320,7 +357,7 @@ These attribute-based policies let you prioritize business-critical transactions
 
 ## Handling Multi-Tenant Scenarios
 
-Apply different sampling policies per tenant using attribute-based routing.
+Apply different sampling policies per tenant using tenant attributes.
 
 ```yaml
 processors:
@@ -376,16 +413,16 @@ processors:
   tail_sampling:
     decision_wait: 30s
     num_traces: 100000
-    # Enable decision logging
+    # Remember sampled trace IDs for late-arriving spans
     decision_cache:
       sampled_cache_size: 10000
 ```
 
-Debug logs show which policy matched each trace, helping you tune your configuration.
+Debug logs and tail sampling metrics help you tune your configuration. To attach the policy name to sampled spans, enable the `processor.tailsamplingprocessor.recordpolicy` feature gate.
 
 ## Optimizing Memory Usage
 
-Tail sampling buffers complete traces in memory. Size your collectors appropriately.
+Tail sampling buffers accumulated trace data in memory. Size your collectors appropriately.
 
 ```yaml
 # Kubernetes deployment
@@ -395,7 +432,13 @@ metadata:
   name: otel-collector
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: collector
