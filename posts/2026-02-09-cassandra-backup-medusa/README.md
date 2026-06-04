@@ -12,7 +12,7 @@ Backing up Apache Cassandra in a Kubernetes environment presents unique challeng
 
 ## What Is Medusa?
 
-Medusa is a backup and restore tool for Apache Cassandra that supports multiple storage backends including Amazon S3, Google Cloud Storage, Azure Blob Storage, and any S3-compatible object store like MinIO. It performs node-level backups by taking snapshots of SSTables and uploading them to your configured storage backend. Medusa also handles differential backups, meaning it only uploads SSTables that have changed since the last backup, significantly reducing storage costs and backup duration.
+Medusa is a backup and restore tool for Apache Cassandra that supports multiple storage backends including Amazon S3, Google Cloud Storage, Azure Blob Storage, and any S3-compatible object store like MinIO. It performs node-level backups by taking snapshots of SSTables and uploading them to your configured storage backend. Medusa also handles differential backups, which keep references to previously uploaded immutable SSTables instead of copying every SSTable into each backup catalog, significantly reducing storage costs.
 
 ## Prerequisites
 
@@ -58,11 +58,6 @@ spec:
       prefix: k8ssandra
       maxBackupAge: 7
       maxBackupCount: 10
-    containerImage:
-      registry: docker.io
-      repository: k8ssandra
-      name: medusa
-      tag: "0.17.1"
 ```
 
 ## Configuring Storage Credentials
@@ -113,17 +108,17 @@ kubectl apply -f medusa-bucket-secret.yaml
 
 ## Triggering Backups
 
-Once Medusa is deployed alongside your Cassandra cluster, you can trigger backups using the MedusaBackup custom resource:
+Once Medusa is deployed alongside your Cassandra cluster, you can trigger backups using the MedusaBackupJob custom resource:
 
 ```yaml
 apiVersion: medusa.k8ssandra.io/v1alpha1
-kind: MedusaBackup
+kind: MedusaBackupJob
 metadata:
   name: backup-2026-02-09
   namespace: cassandra
 spec:
   cassandraDatacenter: dc1
-  type: full
+  backupType: full
 ```
 
 Apply this resource to initiate a backup:
@@ -132,10 +127,10 @@ Apply this resource to initiate a backup:
 kubectl apply -f backup.yaml
 ```
 
-You can monitor the backup status:
+You can monitor the backup job status:
 
 ```bash
-kubectl get medusabackup -n cassandra backup-2026-02-09 -o yaml
+kubectl get medusabackupjob -n cassandra backup-2026-02-09 -o yaml
 ```
 
 The output will include status fields showing the progress of the backup across all nodes:
@@ -144,10 +139,13 @@ The output will include status fields showing the progress of the backup across 
 status:
   startTime: "2026-02-09T10:00:00Z"
   finishTime: "2026-02-09T10:05:32Z"
-  status: SUCCESS
-  totalNodes: 3
-  finishedNodes: 3
+  finished:
+    - production-cluster-dc1-default-sts-0
+    - production-cluster-dc1-default-sts-1
+    - production-cluster-dc1-default-sts-2
 ```
+
+When the job completes, the operator creates a MedusaBackup resource with the same name.
 
 ## Scheduling Automated Backups
 
@@ -162,12 +160,12 @@ metadata:
 spec:
   backupSpec:
     cassandraDatacenter: dc1
-    type: differential
+    backupType: differential
   cronSchedule: "0 2 * * *"
   disabled: false
 ```
 
-This creates a differential backup every day at 2:00 AM. Differential backups are significantly faster than full backups because Medusa only uploads SSTables that have changed since the last backup.
+This creates a differential backup every day at 2:00 AM. Differential backups reduce the size of each backup catalog because Medusa keeps references to previously uploaded SSTables instead of copying every SSTable into each backup.
 
 ## Restoring from a Backup
 
@@ -207,7 +205,7 @@ You can also use the Medusa CLI directly within the Cassandra pod to verify back
 
 ```bash
 kubectl exec -it production-cluster-dc1-default-sts-0 -n cassandra -c medusa -- \
-  medusa verify backup --backup-name=backup-2026-02-09
+  medusa verify --backup-name=backup-2026-02-09
 ```
 
 ## Performance Tuning
@@ -235,43 +233,14 @@ When both are set, Medusa applies the more restrictive policy. For example, with
 
 ## Monitoring Backups
 
-Integrate Medusa backup monitoring with your existing observability stack. Medusa exposes metrics that can be scraped by Prometheus:
+Integrate Medusa backup monitoring with your existing observability stack. In Kubernetes, the primary source of truth is the status of the MedusaBackupJob and MedusaBackup resources:
 
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: medusa-metrics
-  namespace: cassandra
-spec:
-  selector:
-    matchLabels:
-      app: cassandra
-  endpoints:
-    - port: metrics
-      interval: 30s
-      path: /metrics
+```bash
+kubectl get medusabackupjob -n cassandra -o custom-columns=NAME:.metadata.name,START:.status.startTime,FINISH:.status.finishTime,FAILED:.status.failed
+kubectl get medusabackup -n cassandra
 ```
 
-Key metrics to monitor include backup duration, backup size, number of failed backups, and time since last successful backup. Set up alerts for backup failures:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: medusa-alerts
-spec:
-  groups:
-    - name: medusa
-      rules:
-        - alert: CassandraBackupFailed
-          expr: medusa_backup_status == 0
-          for: 5m
-          labels:
-            severity: critical
-          annotations:
-            summary: "Cassandra backup failed"
-```
+Key signals to monitor include backup duration, backup size, number of failed backups, and time since last successful backup. You can get these from the MedusaBackup and MedusaBackupJob statuses, or use the Medusa CLI's `report-last-backup --push-metrics` command if you configure a compatible monitoring provider.
 
 ## Disaster Recovery Strategy
 
@@ -285,4 +254,4 @@ Medusa backups should be part of a broader disaster recovery strategy. Consider 
 
 ## Conclusion
 
-Medusa provides a reliable, cloud-native solution for backing up and restoring Apache Cassandra on Kubernetes. By leveraging the K8ssandra operator, you can declaratively manage your backup strategy using Kubernetes custom resources. The combination of full and differential backups, automated scheduling, configurable retention policies, and multiple storage backend support makes Medusa a production-ready choice for protecting your Cassandra data. Start by configuring daily differential backups with weekly full backups, monitor backup health through Prometheus, and regularly test your restore procedures to ensure your data is always recoverable.
+Medusa provides a reliable, cloud-native solution for backing up and restoring Apache Cassandra on Kubernetes. By leveraging the K8ssandra operator, you can declaratively manage your backup strategy using Kubernetes custom resources. The combination of full and differential backups, automated scheduling, configurable retention policies, and multiple storage backend support makes Medusa a production-ready choice for protecting your Cassandra data. Start by configuring daily differential backups with weekly full backups, monitor backup health through Kubernetes resource status or configured metrics, and regularly test your restore procedures to ensure your data is always recoverable.
