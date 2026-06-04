@@ -14,11 +14,11 @@ This guide shows you how to configure and manage custom DNS entries using the Co
 
 ## Understanding the Hosts Plugin
 
-The hosts plugin reads DNS records from a hosts file format and serves them before other resolution methods. Key features:
+The hosts plugin reads DNS records from a hosts file format and serves matching entries as part of the CoreDNS plugin chain. Key features:
 
-- Static A, AAAA, and CNAME records
+- Static A and AAAA records, with automatically generated PTR records
 - Applies to all pods in the cluster
-- Higher priority than forward/kubernetes plugins
+- Can answer configured hostnames before forwarding to upstream resolvers
 - Supports fallthrough for unmatched queries
 - Reloadable without pod restarts
 
@@ -150,7 +150,7 @@ data:
         ready
 
         # Load hosts from file
-        hosts /etc/coredns/customhosts {
+        hosts /etc/coredns/custom-hosts/customhosts {
             fallthrough
             reload 30s  # Reload every 30 seconds
         }
@@ -190,8 +190,7 @@ spec:
           mountPath: /etc/coredns
           readOnly: true
         - name: custom-hosts
-          mountPath: /etc/coredns/customhosts
-          subPath: customhosts
+          mountPath: /etc/coredns/custom-hosts
           readOnly: true
       volumes:
       - name: config-volume
@@ -204,7 +203,7 @@ spec:
 
 ## Environment-Specific Host Mappings
 
-Configure different hosts per environment using namespaced resolution:
+Configure different hosts per environment using separate hosts files:
 
 ```yaml
 apiVersion: v1
@@ -220,7 +219,7 @@ data:
         ready
 
         # Production mappings
-        hosts /etc/coredns/prod-hosts {
+        hosts /etc/coredns/prod-hosts/prod-hosts {
             fallthrough
         }
 
@@ -367,7 +366,7 @@ Enable automatic reloading when hosts file changes:
     ready
 
     # Reload hosts file every 30 seconds
-    hosts /etc/coredns/customhosts {
+    hosts /etc/coredns/custom-hosts/customhosts {
         reload 30s
         fallthrough
     }
@@ -500,7 +499,7 @@ Add log directive:
     errors
     health
 
-    hosts /etc/coredns/customhosts {
+    hosts /etc/coredns/custom-hosts/customhosts {
         fallthrough
     }
 
@@ -561,7 +560,7 @@ kubectl describe deployment coredns -n kube-system | grep -A5 Mounts
 Check reload interval:
 
 ```yaml
-hosts /etc/coredns/customhosts {
+hosts /etc/coredns/custom-hosts/customhosts {
     reload 30s  # Ensure this is set
     fallthrough
 }
