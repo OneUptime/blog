@@ -22,7 +22,8 @@ Cluster Autoscaler considers a node for removal when:
 Several pod characteristics prevent node removal:
 
 - Pods with local storage
-- Pods controlled by DaemonSets
+- Pods that cannot be moved elsewhere because of scheduling constraints
+- Pods not backed by a controller object
 - Pods with restrictive PodDisruptionBudgets
 - Pods with specific annotations
 
@@ -66,7 +67,7 @@ With `safe-to-evict: "false"`, Cluster Autoscaler will not remove nodes running 
 
 ## Preventing Eviction of Pods with Local Storage
 
-Pods using emptyDir volumes with local storage prevent scale-down by default:
+Pods using disk-backed emptyDir volumes prevent scale-down by default:
 
 ```yaml
 apiVersion: apps/v1
@@ -93,7 +94,7 @@ spec:
           mountPath: /usr/share/elasticsearch/data
       volumes:
       - name: data
-        emptyDir: {}  # Local storage prevents scale-down
+        emptyDir: {}  # Disk-backed local storage prevents scale-down
 ```
 
 However, if you use emptyDir only for temporary data that's safe to lose, explicitly allow eviction:
@@ -236,7 +237,7 @@ spec:
             memory: 64Mi
 ```
 
-The combination of `safe-to-evict: "false"` and `system-cluster-critical` priority ensures these pods are never evicted for scale-down.
+The `safe-to-evict: "false"` annotation prevents Cluster Autoscaler from evicting these pods for scale-down, while `system-cluster-critical` marks them as high-priority cluster components for scheduling and preemption.
 
 ## Handling Long-Running Batch Jobs
 
@@ -312,14 +313,14 @@ spec:
       serviceAccountName: cluster-autoscaler
       containers:
       - name: cluster-autoscaler
-        image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.2
+        # Match the Cluster Autoscaler minor version to your Kubernetes minor version
+        image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.34.3
         command:
         - ./cluster-autoscaler
         - --cloud-provider=aws
         - --namespace=kube-system
         - --nodes=1:10:k8s-worker-nodes
         # Scale-down configuration
-        - --scale-down-enabled=true
         - --scale-down-delay-after-add=10m  # Wait 10 min after scale-up
         - --scale-down-unneeded-time=10m    # Node must be unneeded for 10 min
         - --scale-down-utilization-threshold=0.5  # Scale down if <50% utilized
@@ -337,29 +338,26 @@ Key parameters:
 - **scale-down-delay-after-add**: How long to wait after adding nodes before considering removal
 - **scale-down-unneeded-time**: How long a node must be underutilized before removal
 - **scale-down-utilization-threshold**: CPU/memory threshold below which nodes are considered underutilized
-- **skip-nodes-with-local-storage**: Never remove nodes with emptyDir volumes
+- **skip-nodes-with-local-storage**: Never remove nodes with local volumes such as disk-backed emptyDir or hostPath volumes
 
 ## Creating Node Pools for Different Workload Types
 
-Separate workloads into different node pools with different autoscaling configurations:
+Separate workloads into different node pools with labels and per-node scale-down protection:
 
 ```yaml
-# Node pool for stateful workloads - scale-down disabled
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: stateful-node-pool-config
-  namespace: kube-system
-data:
-  scale-down-enabled: "false"
----
-# Deployment affinity to stateful node pool
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: stateful-app
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: stateful-app
   template:
+    metadata:
+      labels:
+        app: stateful-app
     spec:
       affinity:
         nodeAffinity:
@@ -412,7 +410,7 @@ groups:
   - alert: NodeScaleDownBlocked
     expr: |
       cluster_autoscaler_unschedulable_pods_count == 0
-      and cluster_autoscaler_nodes_count{state="ready"} > cluster_autoscaler_nodes_count{state="ready"} offset 1h
+      and cluster_autoscaler_unneeded_nodes_count > 0
     for: 2h
     annotations:
       summary: "Cluster has underutilized nodes that cannot scale down"
