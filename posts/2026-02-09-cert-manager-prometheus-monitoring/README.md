@@ -18,7 +18,7 @@ cert-manager exposes Prometheus metrics on port 9402 covering:
 
 Certificate expiration timestamps for tracking time until expiration
 Certificate readiness status indicating if certificates are valid and ready
-Certificate renewal timestamps for monitoring renewal activity
+Certificate renewal timestamps for monitoring scheduled renewal activity
 Controller operation metrics for troubleshooting performance issues
 ACME challenge metrics for monitoring certificate issuance
 
@@ -101,36 +101,39 @@ certmanager_certificate_expiration_timestamp_seconds
 (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400
 
 # Certificates expiring in next 30 days
-count((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30)
+count(((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30)
+  and certmanager_certificate_expiration_timestamp_seconds > 0)
 
 # Certificates expiring in next 7 days (critical)
-count((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 7)
+count(((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 7)
+  and certmanager_certificate_expiration_timestamp_seconds > 0)
 ```
 
 ### Certificate Readiness
 
 ```promql
-# Certificate ready status (1 = ready, 0 = not ready)
+# Certificate ready status by condition (the active condition has value 1)
 certmanager_certificate_ready_status
 
 # Count of not ready certificates
-count(certmanager_certificate_ready_status == 0)
+count(certmanager_certificate_ready_status{condition!="True"} == 1)
 
 # Not ready certificates by namespace
-sum(certmanager_certificate_ready_status == 0) by (namespace)
+sum(certmanager_certificate_ready_status{condition!="True"} == 1) by (namespace)
 ```
 
 ### Certificate Renewal
 
 ```promql
-# Certificate renewal timestamp
+# Certificate scheduled renewal timestamp
 certmanager_certificate_renewal_timestamp_seconds
 
-# Time since last renewal
-time() - certmanager_certificate_renewal_timestamp_seconds
+# Time until scheduled renewal
+certmanager_certificate_renewal_timestamp_seconds - time()
 
-# Certificates not renewed in last 30 days
-count((time() - certmanager_certificate_renewal_timestamp_seconds) / 86400 > 30)
+# Certificates past their scheduled renewal time
+count(((time() - certmanager_certificate_renewal_timestamp_seconds) / 86400 > 0)
+  and certmanager_certificate_renewal_timestamp_seconds > 0)
 ```
 
 ## Implementing Alerts
@@ -152,7 +155,8 @@ spec:
     # Critical: Certificate expires in 24 hours
     - alert: CertificateExpiresCritical
       expr: |
-        (certmanager_certificate_expiration_timestamp_seconds - time()) / 3600 < 24
+        ((certmanager_certificate_expiration_timestamp_seconds - time()) / 3600 < 24)
+        and certmanager_certificate_expiration_timestamp_seconds > 0
       labels:
         severity: critical
       annotations:
@@ -164,7 +168,8 @@ spec:
     # Warning: Certificate expires in 7 days
     - alert: CertificateExpiresWarning
       expr: |
-        (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 7
+        ((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 7)
+        and certmanager_certificate_expiration_timestamp_seconds > 0
       labels:
         severity: warning
       annotations:
@@ -176,7 +181,8 @@ spec:
     # Info: Certificate expires in 30 days
     - alert: CertificateExpiresInfo
       expr: |
-        (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30
+        ((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30)
+        and certmanager_certificate_expiration_timestamp_seconds > 0
       labels:
         severity: info
       annotations:
@@ -187,7 +193,7 @@ spec:
 
     # Certificate not ready
     - alert: CertificateNotReady
-      expr: certmanager_certificate_ready_status == 0
+      expr: certmanager_certificate_ready_status{condition!="True"} == 1
       for: 10m
       labels:
         severity: critical
@@ -197,25 +203,27 @@ spec:
           Certificate {{ $labels.name }} in namespace {{ $labels.namespace }}
           has been not ready for 10 minutes. Check certificate status.
 
-    # Renewal failing
-    - alert: CertificateRenewalFailed
+    # Renewal overdue
+    - alert: CertificateRenewalOverdue
       expr: |
-        (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30
+        ((time() - certmanager_certificate_renewal_timestamp_seconds) / 3600 > 6)
+        and certmanager_certificate_renewal_timestamp_seconds > 0
         and
-        increase(certmanager_certificate_renewal_timestamp_seconds[24h]) == 0
-      for: 6h
+        ((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30)
+        and certmanager_certificate_expiration_timestamp_seconds > 0
+      for: 30m
       labels:
         severity: warning
       annotations:
-        summary: "Certificate {{ $labels.name }} renewal may have failed"
+        summary: "Certificate {{ $labels.name }} renewal is overdue"
         description: |
           Certificate {{ $labels.name }} in namespace {{ $labels.namespace }}
-          expires in {{ $value }} days but hasn't renewed in 24 hours.
+          is more than {{ $value }} hours past its scheduled renewal time.
           Check renewal status and logs.
 
     # Too many not ready certificates
     - alert: ManyNotReadyCertificates
-      expr: count(certmanager_certificate_ready_status == 0) > 5
+      expr: count(certmanager_certificate_ready_status{condition!="True"} == 1) > 5
       for: 15m
       labels:
         severity: warning
@@ -259,10 +267,10 @@ Create a comprehensive Grafana dashboard for certificate monitoring:
     "panels": [
       {
         "title": "Certificates by Expiration",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
-            "expr": "(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400",
+            "expr": "((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400) and certmanager_certificate_expiration_timestamp_seconds > 0",
             "legendFormat": "{{ namespace }}/{{ name }}"
           }
         ],
@@ -277,7 +285,7 @@ Create a comprehensive Grafana dashboard for certificate monitoring:
         "type": "stat",
         "targets": [
           {
-            "expr": "sum(certmanager_certificate_ready_status)"
+            "expr": "sum(certmanager_certificate_ready_status{condition=\"True\"})"
           }
         ],
         "options": {
@@ -290,7 +298,7 @@ Create a comprehensive Grafana dashboard for certificate monitoring:
         "type": "stat",
         "targets": [
           {
-            "expr": "count(certmanager_certificate_ready_status == 0)"
+            "expr": "count(certmanager_certificate_ready_status{condition!=\"True\"} == 1)"
           }
         ],
         "options": {
@@ -310,7 +318,7 @@ Create a comprehensive Grafana dashboard for certificate monitoring:
         "type": "table",
         "targets": [
           {
-            "expr": "(certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30",
+            "expr": "((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30) and certmanager_certificate_expiration_timestamp_seconds > 0",
             "format": "table",
             "instant": true
           }
@@ -335,8 +343,8 @@ Create a comprehensive Grafana dashboard for certificate monitoring:
         ]
       },
       {
-        "title": "Certificate Renewal Activity",
-        "type": "graph",
+        "title": "Certificate Renewal Schedule Changes",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "changes(certmanager_certificate_renewal_timestamp_seconds[1d])",
@@ -349,13 +357,13 @@ Create a comprehensive Grafana dashboard for certificate monitoring:
         "type": "piechart",
         "targets": [
           {
-            "expr": "count(certmanager_certificate_ready_status) by (issuer_name, issuer_kind)"
+            "expr": "count(certmanager_certificate_ready_status{condition=\"True\"}) by (issuer_name, issuer_kind)"
           }
         ]
       },
       {
         "title": "Controller Request Rate",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "rate(certmanager_controller_sync_call_count[5m])",
@@ -365,7 +373,7 @@ Create a comprehensive Grafana dashboard for certificate monitoring:
       },
       {
         "title": "ACME HTTP Requests",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "rate(certmanager_http_acme_client_request_count[5m])",
@@ -385,17 +393,18 @@ Import this dashboard into Grafana for comprehensive certificate visibility.
 Track certificate lifecycle events:
 
 ```promql
-# New certificates created (last 24 hours)
+# Certificates with readiness changes (last 24 hours)
 count(changes(certmanager_certificate_ready_status[24h]) > 0)
 
-# Certificates renewed (last 7 days)
+# Certificates with scheduled renewal time changes (last 7 days)
 count(changes(certmanager_certificate_renewal_timestamp_seconds[7d]) > 0)
 
-# Average certificate age
-avg(time() - certmanager_certificate_renewal_timestamp_seconds)
+# Average time until scheduled renewal
+avg((certmanager_certificate_renewal_timestamp_seconds - time())
+  and certmanager_certificate_renewal_timestamp_seconds > 0)
 
-# Certificate churn rate
-rate(certmanager_certificate_ready_status[1h])
+# Certificate readiness status change rate
+sum(changes(certmanager_certificate_ready_status[1h]))
 ```
 
 ## Issuer-Specific Monitoring
@@ -404,13 +413,13 @@ Monitor issuer health and performance:
 
 ```promql
 # Certificates by issuer
-count(certmanager_certificate_ready_status) by (issuer_name, issuer_kind)
+count(certmanager_certificate_ready_status{condition="True"}) by (issuer_name, issuer_kind)
 
 # Not ready certificates by issuer
-count(certmanager_certificate_ready_status == 0) by (issuer_name)
+count(certmanager_certificate_ready_status{condition!="True"} == 1) by (issuer_name)
 
-# Certificate request rate by issuer
-rate(certmanager_controller_sync_call_count{controller="certificates"}[5m])
+# Certificate controller sync rate
+rate(certmanager_controller_sync_call_count{controller=~"certificates.*"}[5m])
 ```
 
 ## Advanced Monitoring Queries
@@ -418,27 +427,31 @@ rate(certmanager_controller_sync_call_count{controller="certificates"}[5m])
 ### Certificate Renewal Prediction
 
 ```promql
-# Predict certificates needing renewal in next 24 hours
-predict_linear(certmanager_certificate_expiration_timestamp_seconds[1h], 86400) - time() < 0
+# Certificates scheduled for renewal in next 24 hours
+((certmanager_certificate_renewal_timestamp_seconds - time()) < 86400)
+  and certmanager_certificate_renewal_timestamp_seconds > 0
 ```
 
 ### Certificate Distribution by Namespace
 
 ```promql
 # Certificates per namespace
-count(certmanager_certificate_ready_status) by (namespace)
+count(certmanager_certificate_ready_status{condition="True"}) by (namespace)
 
 # Average expiration time by namespace
-avg((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400) by (namespace)
+avg(((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400)
+  and certmanager_certificate_expiration_timestamp_seconds > 0) by (namespace)
 ```
 
-### Renewal Success Rate
+### Controller Sync Success Rate
 
 ```promql
-# Certificate renewal success rate
-sum(rate(certmanager_certificate_renewal_timestamp_seconds[1d]))
-/
-sum(rate(certmanager_certificate_expiration_timestamp_seconds[1d]))
+# Certificate controller sync success rate
+1 - (
+  sum(rate(certmanager_controller_sync_error_count{controller=~"certificates.*"}[1d]))
+  /
+  sum(rate(certmanager_controller_sync_call_count{controller=~"certificates.*"}[1d]))
+)
 ```
 
 ## Integration with Alerting Systems
@@ -449,9 +462,9 @@ sum(rate(certmanager_certificate_expiration_timestamp_seconds[1d]))
 # alertmanager-config.yaml
 route:
   routes:
-  - match:
-      severity: critical
-      alertname: CertificateExpiresCritical
+  - matchers:
+    - severity="critical"
+    - alertname="CertificateExpiresCritical"
     receiver: pagerduty-critical
 
 receivers:
@@ -466,9 +479,9 @@ receivers:
 ```yaml
 route:
   routes:
-  - match:
-      severity: warning
-      alertname: CertificateExpiresWarning
+  - matchers:
+    - severity="warning"
+    - alertname="CertificateExpiresWarning"
     receiver: slack-certificates
 
 receivers:
@@ -525,25 +538,28 @@ spec:
     # Certificate readiness percentage
     - record: cert:ready:percentage
       expr: |
-        sum(certmanager_certificate_ready_status) / count(certmanager_certificate_ready_status) * 100
+        sum(certmanager_certificate_ready_status{condition="True"}) / count(certmanager_certificate_ready_status{condition="True"}) * 100
 
     # Certificates by expiration bucket
     - record: cert:expiration:bucket
       expr: |
-        count((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 7) or vector(0)
+        count(((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 7)
+          and certmanager_certificate_expiration_timestamp_seconds > 0) or vector(0)
       labels:
         bucket: "7d"
 
     - record: cert:expiration:bucket
       expr: |
-        count((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30 and
-               (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 >= 7) or vector(0)
+        count(((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30) and
+               ((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 >= 7) and
+               certmanager_certificate_expiration_timestamp_seconds > 0) or vector(0)
       labels:
         bucket: "7-30d"
 
     - record: cert:expiration:bucket
       expr: |
-        count((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 >= 30) or vector(0)
+        count(((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 >= 30)
+          and certmanager_certificate_expiration_timestamp_seconds > 0) or vector(0)
       labels:
         bucket: "30d+"
 ```
@@ -553,17 +569,17 @@ spec:
 Use metrics to troubleshoot certificate issues:
 
 ```promql
-# Find certificates failing renewal
-certmanager_certificate_ready_status == 0
+# Find certificates that are not ready
+certmanager_certificate_ready_status{condition!="True"} == 1
 
 # Check controller sync failures
-rate(certmanager_controller_sync_call_count{status="error"}[5m]) > 0
+rate(certmanager_controller_sync_error_count[5m]) > 0
 
 # Identify slow ACME operations
-histogram_quantile(0.99, rate(certmanager_http_acme_client_request_duration_seconds_bucket[5m]))
+certmanager_http_acme_client_request_duration_seconds{quantile="0.99"}
 
-# Monitor certificate request queue depth
-certmanager_controller_queue_depth
+# Monitor certificate controller sync volume
+rate(certmanager_controller_sync_call_count{controller=~"certificates.*"}[5m])
 ```
 
 ## Conclusion
