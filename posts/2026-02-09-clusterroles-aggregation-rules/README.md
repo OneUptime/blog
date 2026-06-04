@@ -230,7 +230,7 @@ rules:
   verbs: ["create", "update", "patch", "delete"]
 ```
 
-Now the built-in view and edit roles automatically include these custom permissions.
+Now the built-in view, edit, and admin roles automatically include these custom permissions.
 
 ## Creating Component-Specific Aggregations
 
@@ -264,7 +264,7 @@ rules:
 - apiGroups: [""]
   resources: ["configmaps"]
   resourceNames: ["prometheus-config", "grafana-config"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
