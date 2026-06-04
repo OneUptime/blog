@@ -44,7 +44,11 @@ static_resources:
   - name: xds_cluster
     connect_timeout: 1s
     type: STRICT_DNS
-    http2_protocol_options: {}
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_config:
+          http2_protocol_options: {}
     load_assignment:
       cluster_name: xds_cluster
       endpoints:
@@ -72,13 +76,12 @@ LDS dynamically provides listener configurations. The control plane sends listen
 package main
 
 import (
-    "context"
-
     core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
     listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
     hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
-    "github.com/envoyproxy/go-control-plane/pkg/cache/types"
-    "github.com/envoyproxy/go-control-plane/pkg/cache/v3"
+    router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
+    "google.golang.org/protobuf/proto"
+    "google.golang.org/protobuf/types/known/anypb"
 )
 
 func makeListener() *listener.Listener {
@@ -105,6 +108,55 @@ func makeListener() *listener.Listener {
             },
         },
     }
+}
+
+func makeHttpConnectionManager() *anypb.Any {
+    return mustAny(&hcm.HttpConnectionManager{
+        StatPrefix: "ingress_http",
+        RouteSpecifier: &hcm.HttpConnectionManager_Rds{
+            Rds: &hcm.Rds{
+                RouteConfigName: "local_route",
+                ConfigSource: makeGrpcConfigSource(),
+            },
+        },
+        HttpFilters: []*hcm.HttpFilter{
+            {
+                Name: "envoy.filters.http.router",
+                ConfigType: &hcm.HttpFilter_TypedConfig{
+                    TypedConfig: mustAny(&router.Router{}),
+                },
+            },
+        },
+    })
+}
+
+func makeGrpcConfigSource() *core.ConfigSource {
+    return &core.ConfigSource{
+        ResourceApiVersion: core.ApiVersion_V3,
+        ConfigSourceSpecifier: &core.ConfigSource_ApiConfigSource{
+            ApiConfigSource: &core.ApiConfigSource{
+                ApiType:             core.ApiConfigSource_GRPC,
+                TransportApiVersion: core.ApiVersion_V3,
+                GrpcServices: []*core.GrpcService{
+                    {
+                        TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
+                            EnvoyGrpc: &core.GrpcService_EnvoyGrpc{
+                                ClusterName: "xds_cluster",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+}
+
+func mustAny(message proto.Message) *anypb.Any {
+    typedConfig, err := anypb.New(message)
+    if err != nil {
+        panic(err)
+    }
+    return typedConfig
 }
 ```
 
@@ -244,12 +296,12 @@ transport_socket:
             transport_api_version: V3
             grpc_services:
             - envoy_grpc:
-                cluster_name: sds_cluster
+                cluster_name: xds_cluster
 ```
 
 ## Aggregated Discovery Service (ADS)
 
-ADS combines all xDS APIs into a single stream:
+ADS multiplexes configured xDS APIs onto a single stream:
 
 ```yaml
 dynamic_resources:
@@ -302,10 +354,12 @@ Track xDS health:
 envoy_control_plane_connected_state
 
 # Update successes
-envoy_server_dynamic_unknown_update_success
+envoy_listener_manager_lds_update_success
+envoy_cluster_manager_cds_update_success
 
 # Update rejections
-envoy_server_dynamic_unknown_update_rejected
+envoy_listener_manager_lds_update_rejected
+envoy_cluster_manager_cds_update_rejected
 ```
 
 ## Best Practices
@@ -320,4 +374,4 @@ envoy_server_dynamic_unknown_update_rejected
 
 ## Conclusion
 
-Dynamic configuration via xDS enables runtime updates without Envoy restarts, essential for large-scale deployments. Use LDS, RDS, CDS, and EDS to manage different configuration aspects independently, or combine them with ADS for atomic updates. Implement a robust control plane that tracks configuration versions and provides reliable xDS responses. Monitor xDS connection health and configuration update success to ensure your fleet stays synchronized.
+Dynamic configuration via xDS enables runtime updates without Envoy restarts, essential for large-scale deployments. Use LDS, RDS, CDS, and EDS to manage different configuration aspects independently, or combine them with ADS for sequenced updates. Implement a robust control plane that tracks configuration versions and provides reliable xDS responses. Monitor xDS connection health and configuration update success to ensure your fleet stays synchronized.
