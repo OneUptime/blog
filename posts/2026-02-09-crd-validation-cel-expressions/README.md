@@ -196,7 +196,7 @@ properties:
         x-kubernetes-validations:
         - rule: "self.all(p, p.port >= 1 && p.port <= 65535)"
           message: "all port numbers must be between 1 and 65535"
-        - rule: "self.all(i, self.filter(p, p.name == self[i].name).size() == 1)"
+        - rule: "self.all(p, self.filter(q, q.name == p.name).size() == 1)"
           message: "port names must be unique"
         - rule: "self.exists(p, p.protocol == 'TCP')"
           message: "at least one port must use TCP protocol"
@@ -296,35 +296,35 @@ properties:
     type: object
     properties:
       version:
-        type: string
+        type: integer
       replicas:
         type: integer
       immutableField:
         type: string
     x-kubernetes-validations:
-    - rule: "!has(oldSelf) || self.immutableField == oldSelf.immutableField"
+    - rule: "self.immutableField == oldSelf.immutableField"
       message: "immutableField cannot be changed after creation"
-    - rule: "!has(oldSelf) || self.version >= oldSelf.version"
+    - rule: "self.version >= oldSelf.version"
       message: "version can only be increased"
-    - rule: "!has(oldSelf) || abs(self.replicas - oldSelf.replicas) <= 5"
+    - rule: "self.replicas - oldSelf.replicas <= 5 && oldSelf.replicas - self.replicas <= 5"
       message: "replicas can only change by a maximum of 5 at a time"
 ```
 
-The `oldSelf` keyword refers to the previous version of the object. This enables validation of how fields change over time.
+The `oldSelf` keyword refers to the previous version of the object during update validation. This enables validation of how fields change over time.
 
 ## Validating Based on Metadata
 
-You can access metadata fields in validation rules.
+You can access selected metadata fields in validation rules.
 
 ```yaml
 x-kubernetes-validations:
-- rule: "self.namespace != 'kube-system' || self.metadata.labels.exists(k, k == 'critical')"
-  message: "resources in kube-system must have a 'critical' label"
-- rule: "!self.metadata.name.startsWith('temp-') || has(self.metadata.annotations['expires-at'])"
-  message: "temporary resources must have an expires-at annotation"
+- rule: "self.metadata.name.startsWith('prod-')"
+  message: "resource names must start with prod-"
+- rule: "!has(self.metadata.generateName) || self.metadata.generateName.startsWith('job-')"
+  message: "generated names must use the job- prefix"
 ```
 
-This allows validation based on resource name, namespace, labels, and annotations.
+This allows validation based on resource name and generateName.
 
 ## Performance Considerations
 
@@ -340,9 +340,19 @@ CEL validation has cost limits to prevent expensive operations. Complex rules wi
 - rule: "self.items.all(i, self.items.all(j, i.id != j.id || i == j))"
   message: "all items must have unique IDs"
 
-# Better - use a map for uniqueness checking
-- rule: "self.items.map(i, i.id).unique().size() == self.items.size()"
-  message: "all items must have unique IDs"
+# Better - enforce uniqueness in the schema when possible
+items:
+  type: array
+  x-kubernetes-list-type: map
+  x-kubernetes-list-map-keys:
+  - id
+  items:
+    type: object
+    required:
+    - id
+    properties:
+      id:
+        type: string
 ```
 
 Keep validation rules focused and avoid unnecessary complexity.
@@ -405,11 +415,11 @@ Here are the most useful CEL functions for CRD validation.
 
 # Existence checks
 - rule: "has(self.config)"
-- rule: "has(self.metadata.labels['app'])"
+- rule: "has(self.labels) && 'app' in self.labels"
 
 # Type checks
 - rule: "type(self.value) == int"
-- rule: "type(self.config) == map"
+- rule: "type(self.value) == string"
 ```
 
 ## Conclusion
