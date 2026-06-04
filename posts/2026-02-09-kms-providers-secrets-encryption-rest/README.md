@@ -8,7 +8,7 @@ Description: Learn how to integrate external Key Management Systems (KMS) with K
 
 ---
 
-While Kubernetes supports built-in encryption providers like AES-CBC, using an external Key Management System (KMS) provides enhanced security through centralized key management, automatic key rotation, audit logging, and hardware security module (HSM) backed encryption. KMS providers separate key management from the Kubernetes cluster, ensuring that encryption keys are never stored alongside the encrypted data.
+While Kubernetes supports built-in encryption providers like AES-CBC, using an external Key Management System (KMS) provides enhanced security through centralized key management, automatic key rotation, audit logging, and hardware security module (HSM) backed encryption. KMS providers separate key-encryption key management from the Kubernetes cluster, ensuring that external KEKs are never stored alongside the encrypted data.
 
 This guide demonstrates how to configure Kubernetes to use external KMS providers for secrets encryption.
 
@@ -18,16 +18,17 @@ Kubernetes KMS integration works through a plugin architecture:
 
 1. API server sends encryption requests to a KMS plugin socket
 2. The KMS plugin communicates with the external KMS service
-3. KMS service performs encryption/decryption using keys it manages
+3. KMS service wraps and unwraps Kubernetes encryption key material using keys it manages
 4. Encrypted data is stored in etcd
 
-This architecture ensures that encryption keys never exist on the Kubernetes cluster nodes, significantly improving security posture.
+This architecture ensures that the external key-encryption key (KEK) is not stored on Kubernetes cluster nodes, significantly improving security posture.
 
 ## Prerequisites
 
 Before implementing KMS encryption, ensure you have:
 
 - Kubernetes 1.29 or later (for KMS v2 API)
+- etcd v3 or later
 - Access to a KMS service (AWS KMS, Azure Key Vault, or Google Cloud KMS)
 - IAM permissions to use KMS keys
 - Access to control plane nodes
@@ -38,12 +39,13 @@ Before implementing KMS encryption, ensure you have:
 Install the AWS KMS plugin on each control plane node:
 
 ```bash
-# Download AWS KMS plugin
-
-curl -LO https://github.com/kubernetes-sigs/aws-encryption-provider/releases/download/v0.0.7/aws-encryption-provider_linux_amd64
+# Build AWS KMS plugin from the official source
+git clone https://github.com/kubernetes-sigs/aws-encryption-provider.git
+cd aws-encryption-provider
+make build-server
 
 # Install to standard location
-sudo mv aws-encryption-provider_linux_amd64 /usr/local/bin/aws-encryption-provider
+sudo mv bin/aws-encryption-provider /usr/local/bin/aws-encryption-provider
 sudo chmod +x /usr/local/bin/aws-encryption-provider
 ```
 
@@ -81,7 +83,7 @@ resources:
 Create systemd service for KMS plugin:
 
 ```bash
-sudo cat <<EOF > /etc/systemd/system/aws-kms-plugin.service
+sudo tee /etc/systemd/system/aws-kms-plugin.service >/dev/null <<EOF
 [Unit]
 Description=AWS KMS Plugin for Kubernetes
 After=network.target
@@ -146,11 +148,13 @@ spec:
 For Azure, use the Azure Key Vault provider:
 
 ```bash
-# Install Azure KMS plugin
-curl -LO https://github.com/Azure/kubernetes-kms/releases/download/v0.6.0/kubernetes-kms_linux_amd64
+# Build Azure KMS plugin from the official source
+git clone --branch v0.10.0 https://github.com/Azure/kubernetes-kms.git
+cd kubernetes-kms
+make build
 
-sudo mv kubernetes-kms_linux_amd64 /usr/local/bin/azure-kms
-sudo chmod +x /usr/local/bin/azure-kms
+sudo mv _output/kubernetes-kms /usr/local/bin/kubernetes-kms
+sudo chmod +x /usr/local/bin/kubernetes-kms
 ```
 
 Create Azure Key Vault and key:
@@ -166,11 +170,12 @@ az keyvault create \
   --location eastus
 
 # Create encryption key
-az keyvault key create \
+KEY_VERSION=$(az keyvault key create \
   --vault-name k8s-secrets-kv \
   --name k8s-secrets-key \
   --kty RSA \
-  --size 2048
+  --size 2048 \
+  --query key.kid -o tsv | awk -F/ '{print $NF}')
 ```
 
 Configure managed identity or service principal for authentication:
@@ -208,20 +213,19 @@ resources:
 Create systemd service:
 
 ```bash
-sudo cat <<EOF > /etc/systemd/system/azure-kms-plugin.service
+sudo tee /etc/systemd/system/azure-kms-plugin.service >/dev/null <<EOF
 [Unit]
 Description=Azure KMS Plugin for Kubernetes
 After=network.target
 
 [Service]
 Type=simple
-Environment="AZURE_TENANT_ID=<tenant-id>"
-Environment="AZURE_CLIENT_ID=<client-id>"
-Environment="AZURE_CLIENT_SECRET=<client-secret>"
-ExecStart=/usr/local/bin/azure-kms \
+ExecStart=/usr/local/bin/kubernetes-kms \
+  --listen-addr=unix:///var/run/kmsplugin/socket.sock \
   --keyvault-name=k8s-secrets-kv \
   --key-name=k8s-secrets-key \
-  --listen=/var/run/kmsplugin/socket.sock
+  --key-version=${KEY_VERSION} \
+  --config-file-path=/etc/kubernetes/azure.json
 Restart=always
 RestartSec=5
 
@@ -229,6 +233,7 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+sudo mkdir -p /var/run/kmsplugin
 sudo systemctl daemon-reload
 sudo systemctl enable azure-kms-plugin
 sudo systemctl start azure-kms-plugin
@@ -263,11 +268,13 @@ gcloud kms keys create k8s-secrets-key \
 Install KMS plugin:
 
 ```bash
-# Download Google KMS plugin
-curl -LO https://github.com/GoogleCloudPlatform/k8s-cloudkms-plugin/releases/download/v0.3.0/k8s-cloud-kms-plugin
+# Build Google KMS plugin from the official source
+git clone https://github.com/GoogleCloudPlatform/k8s-cloudkms-plugin.git
+cd k8s-cloudkms-plugin
+make build
 
-sudo mv k8s-cloud-kms-plugin /usr/local/bin/
-sudo chmod +x /usr/local/bin/k8s-cloud-kms-plugin
+sudo mv build/k8s-cloudkms-plugin /usr/local/bin/
+sudo chmod +x /usr/local/bin/k8s-cloudkms-plugin
 ```
 
 Create encryption configuration:
@@ -308,7 +315,7 @@ gcloud iam service-accounts keys create /etc/kubernetes/gcp-kms-key.json \
 Create systemd service:
 
 ```bash
-sudo cat <<EOF > /etc/systemd/system/gcp-kms-plugin.service
+sudo tee /etc/systemd/system/gcp-kms-plugin.service >/dev/null <<EOF
 [Unit]
 Description=Google Cloud KMS Plugin for Kubernetes
 After=network.target
@@ -316,9 +323,9 @@ After=network.target
 [Service]
 Type=simple
 Environment="GOOGLE_APPLICATION_CREDENTIALS=/etc/kubernetes/gcp-kms-key.json"
-ExecStart=/usr/local/bin/k8s-cloud-kms-plugin \
+ExecStart=/usr/local/bin/k8s-cloudkms-plugin \
   --key-uri=projects/PROJECT_ID/locations/us-east1/keyRings/k8s-secrets/cryptoKeys/k8s-secrets-key \
-  --listen=/var/run/kmsplugin/socket.sock
+  --path-to-unix-socket=/var/run/kmsplugin/socket.sock
 Restart=always
 RestartSec=5
 
@@ -326,6 +333,7 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+sudo mkdir -p /var/run/kmsplugin
 sudo systemctl daemon-reload
 sudo systemctl enable gcp-kms-plugin
 sudo systemctl start gcp-kms-plugin
@@ -404,7 +412,7 @@ sudo systemctl start aws-kms-plugin
 ls -l /var/run/kmsplugin/socket.sock
 ```
 
-Configure load balancer health checks for KMS plugins:
+If you run KMS plugins as pods, expose their HTTP health endpoints with a Service:
 
 ```yaml
 # Health check endpoint configuration
@@ -417,12 +425,12 @@ spec:
     component: kms-plugin
   ports:
   - port: 8080
-    targetPort: health
+    targetPort: 8080
 ```
 
 ## Key Rotation
 
-KMS providers typically support automatic key rotation:
+KMS providers typically support automatic key rotation. For Kubernetes KMS plugins that pin a key ID or key version, update the plugin configuration and follow the provider's Kubernetes key-rotation procedure before re-encrypting existing Secrets.
 
 **AWS KMS:**
 
@@ -450,6 +458,8 @@ az keyvault key rotation-policy update \
   }'
 ```
 
+For the Azure Key Vault plugin, update the plugin to use the new `--key-version` and run the old and new plugin instances on different sockets during the transition.
+
 **Google Cloud KMS:**
 
 ```bash
@@ -458,7 +468,7 @@ gcloud kms keys update k8s-secrets-key \
   --location us-east1 \
   --keyring k8s-secrets \
   --rotation-period 90d \
-  --next-rotation-time 2026-05-01T00:00:00Z
+  --next-rotation-time 2026-09-01T00:00:00Z
 ```
 
 After rotation, re-encrypt secrets:
@@ -469,6 +479,6 @@ kubectl get secrets --all-namespaces -o json | kubectl replace -f -
 
 ## Conclusion
 
-Using external KMS providers for Kubernetes secrets encryption provides enterprise-grade security through centralized key management, audit logging, and hardware-backed encryption. By integrating with AWS KMS, Azure Key Vault, or Google Cloud KMS, you separate encryption key management from the cluster, ensuring that compromising the cluster does not expose encryption keys.
+Using external KMS providers for Kubernetes secrets encryption provides enterprise-grade security through centralized key management, audit logging, and hardware-backed encryption. By integrating with AWS KMS, Azure Key Vault, or Google Cloud KMS, you separate key-encryption key management from the cluster, reducing the risk that a compromise of stored etcd data also exposes the keys needed to decrypt it.
 
 Implement KMS encryption for production clusters, enable automatic key rotation, monitor plugin health continuously, and maintain redundant KMS plugins across control plane nodes for high availability. Use OneUptime to track KMS plugin health and encryption operations for comprehensive security monitoring.
