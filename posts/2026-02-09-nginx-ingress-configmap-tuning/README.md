@@ -10,6 +10,8 @@ Description: Optimize NGINX Ingress Controller performance using ConfigMap tunin
 
 NGINX Ingress Controller performance depends heavily on proper configuration. The ConfigMap allows global tuning of NGINX parameters without rebuilding container images, enabling optimization for specific workload characteristics and traffic patterns.
 
+As of March 2026, the community ingress-nginx project is retired and is no longer receiving releases, bug fixes, or security updates. Existing deployments and artifacts remain available, but new production deployments should evaluate Gateway API implementations or another actively maintained ingress controller.
+
 ## Understanding NGINX Ingress ConfigMap
 
 The NGINX Ingress Controller reads configuration from a ConfigMap that controls global NGINX behavior. Changes to this ConfigMap automatically reload NGINX configuration without dropping connections. This makes tuning safe in production environments.
@@ -28,11 +30,11 @@ helm repo update
 
 kubectl create namespace ingress-nginx
 
-helm install nginx-ingress ingress-nginx/ingress-nginx \
+helm install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
   --set controller.metrics.enabled=true \
-  --set controller.podAnnotations."prometheus\.io/scrape"=true \
-  --set controller.podAnnotations."prometheus\.io/port"="10254"
+  --set-string controller.podAnnotations."prometheus\.io/scrape"="true" \
+  --set-string controller.podAnnotations."prometheus\.io/port"="10254"
 ```
 
 ## Configuring Worker Processes and Connections
@@ -91,9 +93,8 @@ data:
   proxy-buffers-number: "8"
   proxy-buffering: "on"
   
-  # FastCGI buffers (if using PHP)
-  fastcgi-buffers-number: "16"
-  fastcgi-buffer-size: "16k"
+  # gRPC buffers (if using gRPC services)
+  grpc-buffer-size-kb: "16"
 ```
 
 Large buffers enable handling of big headers or request bodies but consume more memory. Start conservative and increase if you see buffer overflow errors in logs.
@@ -161,7 +162,6 @@ metadata:
 data:
   # Body size limits
   proxy-body-size: "10m"
-  client-max-body-size: "10m"
   
   # Request rate limiting (global defaults)
   limit-req-status-code: "429"
@@ -206,7 +206,6 @@ data:
   # SSL protocols
   ssl-protocols: "TLSv1.2 TLSv1.3"
   ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
-  ssl-prefer-server-ciphers: "true"
   
   # SSL session cache
   ssl-session-cache: "true"
@@ -219,8 +218,8 @@ data:
   
   # HTTP/2 settings
   use-http2: "true"
-  http2-max-field-size: "8k"
-  http2-max-header-size: "32k"
+  http2-max-concurrent-streams: "128"
+  large-client-header-buffers: "4 8k"
 ```
 
 ## Complete Production ConfigMap
@@ -278,10 +277,6 @@ data:
   access-log-path: "/var/log/nginx/access.log"
   error-log-path: "/var/log/nginx/error.log"
   error-log-level: "notice"
-  
-  # Monitoring
-  enable-vts-status: "false"
-  vts-status-zone-size: "10m"
 ```
 
 ## Monitoring Configuration Performance
