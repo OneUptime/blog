@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenEBS, LocalPV, Kubernetes
 
-Description: Deploy OpenEBS LocalPV for high-performance node-local storage on Kubernetes with hostpath and device modes, capacity management, and application deployment strategies for stateful workloads.
+Description: Deploy OpenEBS LocalPV for high-performance node-local storage on Kubernetes with hostpath and LVM modes, capacity management, and application deployment strategies for stateful workloads.
 
 ---
 
@@ -12,7 +12,7 @@ OpenEBS LocalPV provides high-performance persistent storage by using local disk
 
 ## Understanding LocalPV Architecture
 
-LocalPV operates in two modes: hostpath and device. Hostpath mode creates subdirectories on a designated filesystem path, similar to Kubernetes HostPath volumes but with dynamic provisioning. Device mode provisions entire block devices (disks) for each PVC, providing complete device isolation and maximum performance.
+LocalPV operates in multiple modes, including hostpath and LVM. Hostpath mode creates subdirectories on a designated filesystem path, similar to Kubernetes HostPath volumes but with dynamic provisioning. LVM mode provisions logical volumes from local volume groups, providing stronger capacity management, expansion support, and better isolation than hostpath mode.
 
 The key tradeoff with LocalPV is pod affinity. Pods using LocalPV volumes can only run on the node where the volume exists. If that node fails, the pod cannot start on another node until the original node recovers or you manually migrate data. This architecture is acceptable for applications designed with node-level redundancy, like distributed databases.
 
@@ -23,7 +23,7 @@ Deploy OpenEBS operators and storage engines.
 ```bash
 # Install OpenEBS via Helm
 
-helm repo add openebs https://openebs.github.io/charts
+helm repo add openebs https://openebs.github.io/openebs
 helm repo update
 
 # Install OpenEBS control plane
@@ -34,15 +34,6 @@ helm install openebs openebs/openebs \
 
 # Verify installation
 kubectl get pods -n openebs
-```
-
-Alternatively, use kubectl:
-
-```bash
-kubectl apply -f https://openebs.github.io/charts/openebs-operator.yaml
-
-# Wait for pods to be ready
-kubectl wait --for=condition=ready pod -l name=openebs-localpv-provisioner -n openebs --timeout=300s
 ```
 
 ## Configuring Hostpath StorageClass
@@ -79,9 +70,9 @@ kubectl apply -f localpv-hostpath-sc.yaml
 kubectl get storageclass openebs-hostpath
 ```
 
-## Preparing Block Devices
+## Preparing LVM Volume Groups
 
-For device mode, prepare raw block devices on each node.
+For LVM mode, prepare raw block devices and create a volume group on each storage node.
 
 ```bash
 # List available block devices on a node
@@ -92,42 +83,39 @@ lsblk
 # sdc      8:32   0  100G  0 disk
 
 # Ensure devices are not mounted or partitioned
-sudo wipefs -a /dev/sdb
-sudo wipefs -a /dev/sdc
+sudo wipefs -f -a /dev/sdb
+sudo pvcreate /dev/sdb
+sudo vgcreate lvmvg /dev/sdb
 ```
 
-Label nodes with block devices:
+Verify the volume group:
 
 ```bash
-kubectl label nodes node1 openebs.io/block-device=available
-kubectl label nodes node2 openebs.io/block-device=available
-kubectl label nodes node3 openebs.io/block-device=available
+sudo vgs
+sudo lvs
 ```
 
-## Device Mode StorageClass
+## LVM Mode StorageClass
 
-Configure StorageClass for block device provisioning.
+Configure a StorageClass for LVM provisioning.
 
 ```yaml
-# localpv-device-sc.yaml
+# localpv-lvm-sc.yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: openebs-device
-  annotations:
-    openebs.io/cas-type: local
-    cas.openebs.io/config: |
-      - name: StorageType
-        value: device
-      - name: FSType
-        value: ext4
-provisioner: openebs.io/local
+  name: openebs-lvm
+provisioner: local.csi.openebs.io
+parameters:
+  storage: "lvm"
+  vgpattern: "^lvmvg$"
+  fsType: "ext4"
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
-allowVolumeExpansion: false
+allowVolumeExpansion: true
 ```
 
-Device mode provisions entire devices, providing better isolation and performance than hostpath mode.
+LVM mode provisions logical volumes from matching volume groups, providing better capacity controls and isolation than hostpath mode.
 
 ## Creating PVCs with LocalPV
 
@@ -213,7 +201,14 @@ kind: StatefulSet
 metadata:
   name: redis
 spec:
+  serviceName: redis
+  selector:
+    matchLabels:
+      app: redis
   template:
+    metadata:
+      labels:
+        app: redis
     spec:
       affinity:
         nodeAffinity:
@@ -224,10 +219,15 @@ spec:
                 operator: In
                 values:
                 - database
-              - key: openebs.io/block-device
+              - key: kubernetes.io/hostname
                 operator: In
                 values:
-                - available
+                - node1
+                - node2
+                - node3
+      containers:
+      - name: redis
+        image: redis:7
 ```
 
 This ensures pods schedule only on nodes with appropriate storage.
@@ -238,32 +238,30 @@ Monitor and manage LocalPV capacity on each node.
 
 ```bash
 # Check available capacity on nodes
-kubectl get nodes -o custom-columns=NAME:.metadata.name,CAPACITY:.status.capacity.storage
+kubectl get pvc -A
+kubectl get pv
 
 # View LocalPV volumes per node
 kubectl get pv -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0].values[0],CAPACITY:.spec.capacity.storage
 
-# Set up capacity alerts
-kubectl top nodes
+# Check hostpath capacity on each node
+df -h /var/openebs/local
+
+# Check LVM capacity on each node
+sudo vgs
 ```
 
-Configure capacity limits per node:
+Configure namespace-level PVC request limits:
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: ResourceQuota
 metadata:
-  name: openebs-capacity-config
-  namespace: openebs
-data:
-  node-capacity.yaml: |
-    nodes:
-      node1:
-        maxCapacity: 500Gi
-        reservedCapacity: 50Gi
-      node2:
-        maxCapacity: 500Gi
-        reservedCapacity: 50Gi
+  name: storage-quota
+  namespace: default
+spec:
+  hard:
+    requests.storage: 500Gi
 ```
 
 ## High-Performance Configuration
@@ -276,21 +274,16 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: openebs-localpv-fast
-  annotations:
-    openebs.io/cas-type: local
-    cas.openebs.io/config: |
-      - name: StorageType
-        value: device
-      - name: FSType
-        value: ext4
-      - name: MountOptions
-        value: "noatime,nodiratime,nobarrier"
-provisioner: openebs.io/local
+provisioner: local.csi.openebs.io
+parameters:
+  storage: "lvm"
+  vgpattern: "^fastvg$"
+  fsType: "ext4"
 volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
 mountOptions:
 - noatime
 - nodiratime
-- discard
 ```
 
 Use nvme or SSD devices for LocalPV volumes:
@@ -300,40 +293,36 @@ Use nvme or SSD devices for LocalPV volumes:
 lsblk -d -o name,rota
 
 # ROTA=0 indicates SSD/NVMe
-# Dedicate these devices to LocalPV
+sudo wipefs -f -a /dev/nvme0n1
+sudo pvcreate /dev/nvme0n1
+sudo vgcreate fastvg /dev/nvme0n1
 ```
 
 ## Monitoring LocalPV
 
 Track LocalPV volume metrics and health.
 
-```yaml
-# ServiceMonitor for Prometheus
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: openebs-localpv
-  namespace: openebs
-spec:
-  selector:
-    matchLabels:
-      openebs.io/component: localpv-provisioner
-  endpoints:
-  - port: metrics
-    interval: 30s
+```bash
+# Install the OpenEBS monitoring stack
+helm repo add monitoring https://openebs.github.io/monitoring/
+helm repo update
+helm install monitoring monitoring/monitoring \
+  --namespace openebs \
+  --create-namespace
 ```
 
 Key metrics:
 
 ```promql
-# Volume capacity
-openebs_volume_capacity_bytes
+# PersistentVolume capacity from kube-state-metrics
+kube_persistentvolume_capacity_bytes
 
-# Volume usage
-openebs_volume_used_bytes
+# PVC capacity and available bytes from kubelet
+kubelet_volume_stats_capacity_bytes
+kubelet_volume_stats_available_bytes
 
-# Provisioning errors
-rate(openebs_volume_provision_failed_total[5m])
+# Hostpath filesystem capacity from node-exporter
+node_filesystem_avail_bytes{mountpoint="/var/openebs/local"}
 
 # I/O statistics
 rate(node_disk_reads_completed_total[5m])
@@ -359,7 +348,8 @@ spec:
     labelSelector:
       matchLabels:
         app: mysql
-    snapshotVolumes: true
+    defaultVolumesToFsBackup: true
+    snapshotVolumes: false
     ttl: 720h  # Retain for 30 days
 ```
 
@@ -367,7 +357,11 @@ For manual backup:
 
 ```bash
 # Backup using Velero
-velero backup create mysql-backup-$(date +%Y%m%d) --include-namespaces default --selector app=mysql
+velero backup create mysql-backup-$(date +%Y%m%d) \
+  --include-namespaces default \
+  --selector app=mysql \
+  --default-volumes-to-fs-backup \
+  --snapshot-volumes=false
 
 # Restore from backup
 velero restore create --from-backup mysql-backup-20260209
@@ -398,6 +392,9 @@ spec:
         requests:
           storage: 100Gi
   template:
+    metadata:
+      labels:
+        app: cassandra
     spec:
       affinity:
         podAntiAffinity:
@@ -409,6 +406,12 @@ spec:
                 values:
                 - cassandra
             topologyKey: kubernetes.io/hostname
+      containers:
+      - name: cassandra
+        image: cassandra:4.1
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/cassandra
 ```
 
 Pod anti-affinity ensures replicas spread across nodes, providing application-level redundancy despite node-local storage.
@@ -424,14 +427,16 @@ kubectl describe pvc <pvc-name>
 
 # Volume not mounting
 kubectl describe pod <pod-name>
-kubectl logs -n openebs -l openebs.io/component=localpv-provisioner
+kubectl logs -n openebs deploy/openebs-localpv-provisioner
+kubectl logs -n openebs deploy/openebs-lvm-localpv-controller
 
 # Check node storage capacity
 df -h /var/openebs/local
 
 # Verify block device availability
 lsblk
-kubectl get blockdevice -n openebs
+sudo vgs
+sudo lvs
 
 # Clean up orphaned volumes
 kubectl delete pv <pv-name> --grace-period=0 --force
@@ -439,4 +444,4 @@ kubectl delete pv <pv-name> --grace-period=0 --force
 
 ## Conclusion
 
-OpenEBS LocalPV provides high-performance storage by leveraging local node storage directly. While it sacrifices the mobility of network-attached storage, it delivers superior IOPS and latency for applications that can handle node-level failures through application-layer replication. Use hostpath mode for simple deployments or device mode for maximum isolation and performance. Combine LocalPV with proper backup strategies and application-level redundancy to build resilient, high-performance stateful applications on Kubernetes.
+OpenEBS LocalPV provides high-performance storage by leveraging local node storage directly. While it sacrifices the mobility of network-attached storage, it delivers superior IOPS and latency for applications that can handle node-level failures through application-layer replication. Use hostpath mode for simple deployments or LVM mode for stronger capacity management, volume expansion, and isolation. Combine LocalPV with proper backup strategies and application-level redundancy to build resilient, high-performance stateful applications on Kubernetes.
