@@ -14,7 +14,7 @@ This guide covers diagnosing etcd performance problems, identifying latency sour
 
 ## Understanding API Server and etcd Relationship
 
-The Kubernetes API server stores all cluster state in etcd. Every kubectl command, controller reconciliation, and scheduler decision involves reading from or writing to etcd. The API server expects etcd responses within milliseconds. When etcd latency exceeds thresholds, API server requests time out.
+The Kubernetes API server stores all cluster state in etcd. Many kubectl commands, controller reconciliation loops, and scheduler operations involve reading from or writing to API server storage, directly or through the API server's caches. The API server expects etcd responses within milliseconds. When etcd latency exceeds thresholds, API server requests time out.
 
 Common symptoms include kubectl commands hanging or failing with timeout errors, controllers falling behind on reconciliation, admission webhooks timing out, and slow pod creation. The API server remains responsive for requests served from its cache, but any write operation or cache miss requires etcd access.
 
@@ -36,15 +36,14 @@ kubectl logs -n kube-system kube-apiserver-master-1 | grep -i timeout
 Monitor API server request latency metrics.
 
 ```bash
-# Port-forward to API server metrics
-kubectl port-forward -n kube-system pod/kube-apiserver-master-1 8080:8080
-
-# Query request duration
-curl http://localhost:8080/metrics | grep apiserver_request_duration_seconds
+# Query API server metrics through the Kubernetes API
+kubectl get --raw /metrics | grep apiserver_request_duration_seconds
 
 # Look for high P99 latencies:
-# apiserver_request_duration_seconds{verb="GET",resource="pods"} 0.5  # 500ms - concerning
-# apiserver_request_duration_seconds{verb="PUT",resource="nodes"} 2.0  # 2s - critical
+# histogram_quantile(0.99,
+#   sum by (le, verb, resource) (rate(apiserver_request_duration_seconds_bucket[5m]))
+# )
+# GET pods at 500ms is concerning; writes taking seconds are critical.
 ```
 
 Check kubectl response times to confirm client-visible impact.
@@ -233,12 +232,19 @@ ETCDCTL_API=3 etcdctl \
   endpoint status -w json | jq '.[].Status.dbSize'
 
 # Manual compaction if DB is large
+REVISION=$(ETCDCTL_API=3 etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key \
+  endpoint status -w json | jq -r '.[0].Status.header.revision')
+
 ETCDCTL_API=3 etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
   --cert=/etc/kubernetes/pki/etcd/server.crt \
   --key=/etc/kubernetes/pki/etcd/server.key \
-  compact $(etcdctl endpoint status -w json | jq '.[].Status.header.revision')
+  compact "$REVISION"
 
 # Defragment etcd database
 ETCDCTL_API=3 etcdctl \
@@ -251,7 +257,7 @@ ETCDCTL_API=3 etcdctl \
 
 ## Reducing API Server Load on etcd
 
-Optimize API server caching to reduce etcd queries.
+Ensure API server watch caching is enabled to reduce etcd queries.
 
 ```yaml
 # /etc/kubernetes/manifests/kube-apiserver.yaml
@@ -264,8 +270,8 @@ spec:
   containers:
   - command:
     - kube-apiserver
-    # Increase watch cache size
-    - --watch-cache-sizes=nodes#1000,pods#5000,configmaps#1000
+    # Enable watch cache (enabled by default in current Kubernetes releases)
+    - --watch-cache=true
     # Request timeout
     - --request-timeout=60s
     # etcd settings
@@ -299,7 +305,7 @@ spec:
 Deploy Prometheus monitoring for etcd metrics.
 
 ```yaml
-apiVersion: v1
+apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: etcd
@@ -334,7 +340,7 @@ data:
       - alert: HighEtcdDiskLatency
         expr: |
           histogram_quantile(0.99,
-            rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])
+            sum by (le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m]))
           ) > 0.01
         for: 10m
         labels:
@@ -352,14 +358,14 @@ data:
         annotations:
           summary: "etcd database size is {{ $value }} bytes"
 
-      - alert: APIServerEtcdTimeout
+      - alert: APIServerEtcdErrors
         expr: |
-          rate(etcd_request_duration_seconds_count{code="Timeout"}[5m]) > 0
+          sum(rate(etcd_request_errors_total[5m])) > 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "API server experiencing etcd timeouts"
+          summary: "API server experiencing etcd request errors"
 ```
 
 ## Scaling etcd Cluster
