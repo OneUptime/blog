@@ -8,7 +8,7 @@ Description: Understand the OCI image and runtime specifications that standardiz
 
 ---
 
-The Open Container Initiative (OCI) was founded in 2015 to create open standards for container formats and runtimes. Before OCI, Docker's proprietary formats were the de facto standard, which made it difficult for alternative tools to interoperate. Today, the OCI specifications ensure that images built with Docker work with Podman, that images stored in any OCI-compliant registry can be pulled by any OCI-compliant runtime, and that container execution behaves consistently across implementations.
+The Open Container Initiative (OCI) was founded in 2015 to create open standards for container formats and runtimes. Before OCI, Docker's proprietary formats were the de facto standard, which made it difficult for alternative tools to interoperate. Today, the OCI specifications ensure that images built with Docker work with Podman, that images stored in any OCI-compliant registry can be pulled by OCI-compliant tooling, and that container execution behaves consistently across runtime implementations.
 
 ## The Two OCI Specifications
 
@@ -22,8 +22,9 @@ There is also a third specification, the OCI Distribution Specification, which s
 ```mermaid
 graph LR
     A["OCI Image Spec"] -->|"Image is stored in"| B["OCI Distribution Spec"]
-    B -->|"Image is pulled by"| C["OCI Runtime Spec"]
-    C -->|"Container runs via"| D["runc / crun / youki"]
+    B -->|"Image is pulled and unpacked by"| C["Container Engine / Image Store"]
+    C -->|"Bundle is executed via"| D["OCI Runtime Spec"]
+    D -->|"Container runs via"| E["runc / crun / youki"]
 ```
 
 ## OCI Image Specification
@@ -40,18 +41,18 @@ The manifest describes the image content. It lists the layers and references the
   "mediaType": "application/vnd.oci.image.manifest.v1+json",
   "config": {
     "mediaType": "application/vnd.oci.image.config.v1+json",
-    "digest": "sha256:config-digest-here",
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
     "size": 7023
   },
   "layers": [
     {
       "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-      "digest": "sha256:layer1-digest-here",
+      "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
       "size": 32654321
     },
     {
       "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-      "digest": "sha256:layer2-digest-here",
+      "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
       "size": 16724567
     }
   ]
@@ -69,7 +70,7 @@ An image index (similar to Docker's manifest list) allows a single tag to refere
   "manifests": [
     {
       "mediaType": "application/vnd.oci.image.manifest.v1+json",
-      "digest": "sha256:amd64-manifest",
+      "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
       "size": 1024,
       "platform": {
         "architecture": "amd64",
@@ -78,7 +79,7 @@ An image index (similar to Docker's manifest list) allows a single tag to refere
     },
     {
       "mediaType": "application/vnd.oci.image.manifest.v1+json",
-      "digest": "sha256:arm64-manifest",
+      "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
       "size": 1024,
       "platform": {
         "architecture": "arm64",
@@ -121,7 +122,7 @@ This is the heart of the runtime spec. It tells the runtime exactly how to creat
 
 ```json
 {
-  "ociVersion": "1.0.2",
+  "ociVersion": "1.2.1",
   "process": {
     "terminal": false,
     "user": { "uid": 0, "gid": 0 },
@@ -267,15 +268,17 @@ sudo ls -la /proc/$PID/ns/
 
 ### Cgroups
 
-Cgroups (control groups) limit resource usage. The runtime spec maps directly to cgroup settings.
+Cgroups (control groups) limit resource usage. The runtime spec maps resource settings onto cgroup controls, but the exact filesystem path depends on the host's cgroup version and cgroup driver.
 
 ```bash
-# View cgroup limits for a running Docker container
-# Memory limit
-cat /sys/fs/cgroup/docker/<container-id>/memory.max
+# Locate the cgroup path for a running Docker container
+PID=$(docker inspect --format '{{.State.Pid}}' my-container)
+cat /proc/$PID/cgroup
 
-# CPU weight
-cat /sys/fs/cgroup/docker/<container-id>/cpu.weight
+# On a cgroup v2 host, use the reported path under /sys/fs/cgroup
+CGROUP_PATH=$(awk -F: '$1 == "0" { print $3 }' /proc/$PID/cgroup)
+cat /sys/fs/cgroup$CGROUP_PATH/memory.max
+cat /sys/fs/cgroup$CGROUP_PATH/cpu.weight
 ```
 
 ### Seccomp
@@ -310,8 +313,9 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   https://registry-1.docker.io/v2/library/nginx/tags/list | python3 -m json.tool
 
 # Check if a specific blob exists (HEAD request)
+DIGEST=sha256:1111111111111111111111111111111111111111111111111111111111111111
 curl -s -I -H "Authorization: Bearer $TOKEN" \
-  https://registry-1.docker.io/v2/library/nginx/blobs/sha256:abc123
+  https://registry-1.docker.io/v2/library/nginx/blobs/$DIGEST
 ```
 
 ## Why OCI Matters
