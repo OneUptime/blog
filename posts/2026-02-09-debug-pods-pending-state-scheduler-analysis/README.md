@@ -8,13 +8,13 @@ Description: Learn systematic techniques to debug Kubernetes pods stuck in Pendi
 
 ---
 
-When pods get stuck in Pending state, they cannot start running. No containers are created, no work gets done, and your application stays unavailable. Pods remain pending when the scheduler cannot find a suitable node or when pre-scheduling conditions are not met.
+When pods get stuck in Pending state, they cannot start running. One or more containers have not been set up and made ready to run, no work gets done, and your application stays unavailable. Pods can remain pending when the scheduler cannot find a suitable node, when pre-scheduling conditions are not met, or while container images are still being pulled.
 
 Debugging pending pods requires systematic analysis of events, resource availability, node selectors, taints and tolerations, and scheduler behavior. This guide shows you how to diagnose and fix the most common causes of pending pods.
 
 ## Understanding the Pending State
 
-A pod enters Pending state when it has been accepted by Kubernetes but cannot be scheduled onto a node. The scheduler continuously tries to find a suitable node until it succeeds or the pod is deleted.
+A pod enters Pending state when it has been accepted by Kubernetes but one or more containers have not been set up and made ready to run. This includes time spent waiting to be scheduled and time spent downloading container images. For unscheduled pods, the scheduler continuously tries to find a suitable node until it succeeds or the pod is deleted.
 
 Common reasons for pending pods:
 - Insufficient resources (CPU, memory)
@@ -23,7 +23,7 @@ Common reasons for pending pods:
 - Pod affinity or anti-affinity rules blocking placement
 - Persistent volume claim issues
 - Image pull secrets missing
-- Resource quotas exceeded
+- Resource quotas exceeded during pod creation
 
 ## Quick Diagnostic Commands
 
@@ -41,7 +41,7 @@ kubectl describe pod my-pod
 kubectl get events --field-selector involvedObject.name=my-pod
 
 # View all pod events sorted by time
-kubectl get events --sort-by='.lastTimestamp'
+kubectl get events --sort-by='.metadata.creationTimestamp'
 ```
 
 The describe output includes a crucial "Events" section that often reveals the exact reason for pending status.
@@ -122,14 +122,14 @@ Allocated resources:
   memory             7500Mi (93%)  15000Mi (186%)
 ```
 
-Compare the pod's resource requests to available capacity:
+Compare the pod's resource requests to available allocatable capacity:
 
 ```bash
 # Check pod resource requests
 kubectl get pod pending-pod -o jsonpath='{.spec.containers[*].resources.requests}'
 ```
 
-If the pod requests 500m CPU but all nodes only have <500m available, the pod stays pending.
+If the pod requests 500m CPU but every node has less than 500m of unallocated CPU requests, the pod stays pending.
 
 ## Resolving Resource Constraints
 
@@ -321,7 +321,7 @@ affinity:
 
 ## Debugging PersistentVolumeClaim Issues
 
-Pods with PersistentVolumeClaims stay pending if the claim cannot be satisfied.
+Pods with PersistentVolumeClaims can stay pending if the claim cannot be satisfied. For StorageClasses with `Immediate` volume binding, an unbound PVC can prevent scheduling; with `WaitForFirstConsumer`, binding and provisioning are intentionally delayed until a pod using the PVC is created and scheduling can choose a suitable node.
 
 Check PVC status:
 
@@ -336,7 +336,7 @@ NAME     STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
 my-pvc   Pending                                      standard       5m
 ```
 
-Pending PVC prevents pod from scheduling.
+A pending PVC with immediate binding can prevent pod scheduling.
 
 Describe the PVC for details:
 
@@ -411,7 +411,7 @@ requests.cpu     2000m  2000m
 requests.memory  8Gi    8Gi
 ```
 
-The namespace has reached quota limits. New pods cannot be created.
+The namespace has reached quota limits. New pods cannot be created; Kubernetes rejects the create request instead of creating a pod that remains Pending.
 
 Delete unused pods or increase quota:
 
@@ -437,7 +437,7 @@ Find the scheduler pod:
 kubectl get pods -n kube-system -l component=kube-scheduler
 ```
 
-View scheduler logs:
+View scheduler logs, replacing the pod name with the name from your cluster:
 
 ```bash
 kubectl logs -n kube-system kube-scheduler-master-node
@@ -450,7 +450,7 @@ I0209 10:15:30.123456 1 schedule_one.go:100] "Attempting to schedule pod" pod="d
 I0209 10:15:30.234567 1 schedule_one.go:200] "Pod cannot be scheduled" pod="default/my-pod" err="0/3 nodes available: insufficient cpu"
 ```
 
-Increase scheduler verbosity for more details:
+Increase scheduler verbosity for more details. In clusters where kube-scheduler is managed as a Deployment, edit the Deployment:
 
 ```bash
 kubectl edit deployment kube-scheduler -n kube-system
@@ -465,6 +465,8 @@ spec:
     - kube-scheduler
     - --v=4  # Increase verbosity
 ```
+
+In kubeadm clusters, kube-scheduler is commonly a static Pod instead of a Deployment. In that case, update the static Pod manifest on the control plane node, often at `/etc/kubernetes/manifests/kube-scheduler.yaml`.
 
 ## Debugging with a Test Pod
 
@@ -533,16 +535,21 @@ Set up alerts for pending pods:
 
 ```yaml
 # PrometheusRule
-groups:
-- name: pod-alerts
-  rules:
-  - alert: PodStuckPending
-    expr: |
-      kube_pod_status_phase{phase="Pending"} > 0
-    for: 5m
-    annotations:
-      summary: "Pod {{ $labels.pod }} stuck in Pending state"
-      description: "Pod has been pending for 5+ minutes"
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pod-alerts
+spec:
+  groups:
+  - name: pod-alerts
+    rules:
+    - alert: PodStuckPending
+      expr: |
+        kube_pod_status_phase{phase="Pending"} > 0
+      for: 5m
+      annotations:
+        summary: "Pod {{ $labels.pod }} stuck in Pending state"
+        description: "Pod has been pending for 5+ minutes"
 ```
 
 Track pending pod metrics:
