@@ -91,14 +91,14 @@ server {
 
 This configuration allows clients to bypass cache by adding `?nocache=1` to requests, useful for debugging or forcing fresh data.
 
-## Kong Proxy Caching Plugin
+## Kong Proxy Caching Advanced Plugin
 
-Kong's proxy-cache plugin provides response caching with Redis or in-memory storage.
+Kong's Proxy Cache plugin provides in-memory response caching. For Redis-backed caching, use Kong's Proxy Caching Advanced plugin.
 
 ```bash
 # Enable proxy caching with Redis backend
 curl -X POST http://kong-admin:8001/plugins \
-  --data "name=proxy-cache" \
+  --data "name=proxy-cache-advanced" \
   --data "config.strategy=redis" \
   --data "config.redis.host=redis.cache.svc.cluster.local" \
   --data "config.redis.port=6379" \
@@ -119,14 +119,16 @@ Kong's declarative configuration:
 _format_version: "3.0"
 
 plugins:
-- name: proxy-cache
+- name: proxy-cache-advanced
   config:
     strategy: redis
     redis:
       host: redis.cache.svc.cluster.local
       port: 6379
       database: 0
-      timeout: 2000
+      connect_timeout: 2000
+      send_timeout: 2000
+      read_timeout: 2000
     response_code:
     - 200
     - 301
@@ -154,9 +156,13 @@ services:
     paths:
     - /api/products
   plugins:
-  - name: proxy-cache
+  - name: proxy-cache-advanced
     config:
       cache_ttl: 600
+      strategy: redis
+      redis:
+        host: redis.cache.svc.cluster.local
+        port: 6379
 ```
 
 The `cache_control: true` setting respects `Cache-Control` headers from backend services, allowing backends to override default TTL values.
@@ -168,7 +174,7 @@ Include request headers in cache keys when responses differ based on headers.
 ```yaml
 # Kong configuration with vary headers
 plugins:
-- name: proxy-cache
+- name: proxy-cache-advanced
   config:
     vary_headers:
     - Accept-Language
@@ -203,8 +209,6 @@ static_resources:
               "@type": type.googleapis.com/envoy.extensions.filters.http.cache.v3.CacheConfig
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.http.cache.simple_http_cache.v3.SimpleHttpCacheConfig
-                http_cache_config:
-                  max_body_bytes: 1048576
               allowed_vary_headers:
               - match:
                   exact: accept-encoding
@@ -223,21 +227,33 @@ static_resources:
                   prefix: "/api/products"
                 route:
                   cluster: product_service
-                typed_per_filter_config:
-                  envoy.filters.http.cache:
-                    "@type": type.googleapis.com/envoy.extensions.filters.http.cache.v3.CacheConfig
+  clusters:
+  - name: product_service
+    connect_timeout: 1s
+    type: STRICT_DNS
+    load_assignment:
+      cluster_name: product_service
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: product-service
+                port_value: 8080
 ```
+
+Envoy's current HTTP cache filter is marked work-in-progress in the official documentation, so evaluate it carefully before using it in production deployments.
 
 ## Cache Invalidation Strategies
 
 Implement cache invalidation to ensure clients receive fresh data after updates.
 
 ```nginx
-# NGINX cache purge with custom endpoint
+# NGINX Plus cache purge with custom endpoint
 location ~ /purge(/.*) {
     allow 10.0.0.0/8;  # Only allow from internal network
     deny all;
-    proxy_cache_purge api_cache "$scheme$request_method$host$1";
+    proxy_cache_purge api_cache "$schemeGET$host$1";
 }
 ```
 
@@ -251,14 +267,14 @@ curl -X PURGE http://api-gateway/purge/api/products/123
 curl -X PURGE http://api-gateway/purge/api/products/*
 ```
 
-Kong cache invalidation:
+Kong Proxy Caching Advanced cache invalidation:
 
 ```bash
-# Invalidate all cached entries for a route
-curl -X DELETE http://kong-admin:8001/proxy-cache/route-id
+# Invalidate all cached entries
+curl -X DELETE http://kong-admin:8001/proxy-cache-advanced/
 
 # Invalidate specific cache entry
-curl -X DELETE "http://kong-admin:8001/proxy-cache/route-id?cache_key=abc123"
+curl -X DELETE http://kong-admin:8001/proxy-cache-advanced/abc123
 ```
 
 ## Event-Driven Cache Invalidation
@@ -267,11 +283,9 @@ Invalidate cache entries automatically when data changes using event streams.
 
 ```python
 # cache-invalidator.py
-import redis
 import requests
 from kafka import KafkaConsumer
 
-redis_client = redis.Redis(host='redis', port=6379)
 consumer = KafkaConsumer('product-updates', bootstrap_servers='kafka:9092')
 
 for message in consumer:
@@ -283,10 +297,9 @@ for message in consumer:
         f'http://api-gateway/purge/api/products/{product_id}'
     )
 
-    # Invalidate Redis cache (Kong)
-    pattern = f'*:GET:/api/products/{product_id}*'
-    for key in redis_client.scan_iter(match=pattern):
-        redis_client.delete(key)
+    # Invalidate Kong cache using the cache key returned in X-Cache-Key
+    # or purge all entries after product updates.
+    requests.delete('http://kong-admin:8001/proxy-cache-advanced/')
 
     print(f'Invalidated cache for product {product_id}')
 ```
@@ -296,15 +309,11 @@ for message in consumer:
 Support conditional requests to minimize bandwidth usage even when cache misses occur.
 
 ```nginx
-# NGINX ETag support
+# NGINX cache revalidation with ETag and Last-Modified validators
 location /api/ {
-    etag on;
-
-    # Handle If-None-Match header
-    if ($http_if_none_match = $upstream_http_etag) {
-        return 304;
-    }
-
+    proxy_cache api_cache;
+    proxy_cache_revalidate on;
+    proxy_cache_valid 200 5m;
     proxy_pass http://backend-service:8080;
     add_header X-Cache-Status $upstream_cache_status;
 }
@@ -327,13 +336,16 @@ def get_product(product_id):
     # Generate ETag from content
     etag = hashlib.md5(product_json.get_data()).hexdigest()
 
-    # Check If-None-Match header
-    if request.headers.get('If-None-Match') == etag:
-        return '', 304
-
     response = make_response(product_json)
-    response.headers['ETag'] = etag
+    response.set_etag(etag)
     response.headers['Cache-Control'] = 'max-age=300'
+
+    # Check If-None-Match header
+    if request.if_none_match.contains(etag):
+        response.status_code = 304
+        response.set_data(b'')
+        return response
+
     return response
 ```
 
@@ -444,17 +456,15 @@ spec:
 Track cache hit rates and performance metrics to optimize caching strategies.
 
 ```yaml
-# Prometheus queries for cache monitoring
+# Example Prometheus queries for a log-derived counter named
+# nginx_cache_responses_total with a cache_status label.
 
 # Cache hit rate
-sum(rate(nginx_http_cache_hit[5m])) /
-(sum(rate(nginx_http_cache_hit[5m])) + sum(rate(nginx_http_cache_miss[5m])))
-
-# Cache size
-nginx_cache_size_bytes
+sum(rate(nginx_cache_responses_total{cache_status="HIT"}[5m])) /
+sum(rate(nginx_cache_responses_total{cache_status=~"HIT|MISS|BYPASS|EXPIRED|STALE|UPDATING|REVALIDATED"}[5m]))
 
 # Stale responses served
-rate(nginx_http_cache_stale[5m])
+rate(nginx_cache_responses_total{cache_status="STALE"}[5m])
 ```
 
 Create alerts for low cache hit rates:
@@ -470,8 +480,8 @@ spec:
     rules:
     - alert: LowCacheHitRate
       expr: |
-        sum(rate(nginx_http_cache_hit[5m])) /
-        (sum(rate(nginx_http_cache_hit[5m])) + sum(rate(nginx_http_cache_miss[5m]))) < 0.5
+        sum(rate(nginx_cache_responses_total{cache_status="HIT"}[5m])) /
+        sum(rate(nginx_cache_responses_total{cache_status=~"HIT|MISS|BYPASS|EXPIRED|STALE|UPDATING|REVALIDATED"}[5m])) < 0.5
       for: 10m
       labels:
         severity: warning
