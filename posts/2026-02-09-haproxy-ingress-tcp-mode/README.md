@@ -12,38 +12,30 @@ This guide covers advanced ingress controller configuration for Kubernetes envir
 
 ## Understanding the Architecture
 
-Modern ingress controllers act as the entry point for external traffic into Kubernetes clusters. They provide Layer 7 load balancing, SSL termination, and advanced routing based on hostnames, paths, headers, and other request attributes.
+Modern ingress controllers act as the entry point for external traffic into Kubernetes clusters. For HTTP traffic, they provide Layer 7 load balancing, SSL termination, and advanced routing based on hostnames, paths, headers, and other request attributes. For non-HTTP TCP traffic, HAProxy Ingress exposes dedicated ports and maps them to backend services.
 
-The ingress controller watches Ingress resources and translates them into native configuration for the underlying proxy. This abstraction allows teams to use Kubernetes-native resources while leveraging battle-tested load balancing technologies.
+The ingress controller watches Kubernetes resources such as Ingress objects, TCP custom resources, or TCP service ConfigMaps and translates them into native configuration for the underlying proxy. This abstraction allows teams to use Kubernetes-native resources while leveraging battle-tested load balancing technologies.
 
 ## Basic Configuration
 
-Deploy the ingress controller and create basic routing:
+Configure HAProxy Ingress TCP routing with a TCP services ConfigMap:
 
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: example-ingress
-  namespace: production
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: app.example.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: app-service
-                port:
-                  number: 80
+  name: tcp-configmap
+  namespace: haproxy-controller
+data:
+  5432: production/postgres-service:5432
+  6379: production/redis-service:6379
 ```
+
+Start the HAProxy Kubernetes Ingress Controller with `--configmap-tcp-services=haproxy-controller/tcp-configmap` and expose the listening ports on the controller's Kubernetes Service so external clients can reach them.
 
 ## Advanced Features
 
-The ingress controller supports sophisticated traffic management patterns including weighted routing, header-based routing, rate limiting, authentication, and custom middleware chains.
+The ingress controller supports sophisticated traffic management patterns including weighted routing, header-based routing for HTTP traffic, rate limiting, authentication, and custom HAProxy configuration.
 
 Configure these features using annotations or custom resource definitions depending on your ingress controller choice. Each controller provides unique capabilities tailored to specific use cases.
 
@@ -51,11 +43,11 @@ Configure these features using annotations or custom resource definitions depend
 
 Always enable TLS encryption for production traffic. Use cert-manager to automate certificate management. Implement rate limiting and authentication to protect backend services from abuse.
 
-Configure security headers, enable CORS policies, and implement Web Application Firewall rules to protect against common attacks. Regular security audits ensure configurations remain secure as threats evolve.
+For HTTP applications, configure security headers, enable CORS policies, and implement Web Application Firewall rules to protect against common attacks. Regular security audits ensure configurations remain secure as threats evolve.
 
 ## Performance Optimization
 
-Tune connection pooling, keepalive settings, and buffer sizes based on your traffic patterns. Enable HTTP/2 and compression to improve client performance. Monitor metrics to identify bottlenecks and optimize resource allocation.
+Tune connection pooling, keepalive settings, and buffer sizes based on your traffic patterns. For HTTP traffic, enable HTTP/2 and compression to improve client performance. Monitor metrics to identify bottlenecks and optimize resource allocation.
 
 Scale ingress controller replicas horizontally to handle increased load. Use pod affinity rules to distribute replicas across nodes for high availability.
 
