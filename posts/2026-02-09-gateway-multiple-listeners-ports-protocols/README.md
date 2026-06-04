@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, Networking
 
-Description: Configure a single Kubernetes Gateway with multiple listeners supporting different ports and protocols including HTTP, HTTPS, TLS passthrough, TCP.
+Description: Configure a single Kubernetes Gateway with multiple listeners supporting different ports and protocols including HTTP, HTTPS, TLS passthrough, TCP, UDP, and gRPC over HTTP/HTTPS.
 
 ---
 
-A Kubernetes Gateway can expose multiple listeners on different ports and protocols, consolidating infrastructure while maintaining routing flexibility. Instead of deploying separate load balancers for HTTP, HTTPS, gRPC, and TCP services, you configure one Gateway with multiple listeners. This reduces costs and simplifies management while supporting diverse workloads.
+A Kubernetes Gateway can expose multiple listeners on different ports and protocols, consolidating infrastructure while maintaining routing flexibility. Instead of deploying separate load balancers for HTTP, HTTPS, gRPC over HTTP/HTTPS, and TCP services, you configure one Gateway with multiple listeners. This reduces costs and simplifies management while supporting diverse workloads.
 
 ## Understanding Gateway Listeners
 
 Each listener in a Gateway defines:
-- Protocol (HTTP, HTTPS, TLS, TCP, UDP, gRPC)
+- Protocol (HTTP, HTTPS, TLS, TCP, UDP, or an implementation-specific protocol)
 - Port number
 - TLS configuration (for HTTPS and TLS protocols)
 - Hostname matching (for HTTP/HTTPS/TLS)
@@ -23,7 +23,7 @@ Routes (HTTPRoute, TLSRoute, TCPRoute, etc.) attach to specific listeners using 
 
 ## Creating a Multi-Protocol Gateway
 
-Configure a Gateway supporting HTTP, HTTPS, TLS passthrough, TCP, and UDP:
+Configure a Gateway supporting HTTP, HTTPS, TLS passthrough, TCP, UDP, and gRPC over cleartext HTTP/2 if your implementation supports it:
 
 ```yaml
 # multi-protocol-gateway.yaml
@@ -83,7 +83,7 @@ spec:
       kinds:
       - kind: UDPRoute
 
-  # gRPC listener
+  # gRPC listener over cleartext HTTP/2
   - name: grpc
     protocol: HTTP
     port: 50051
@@ -158,7 +158,7 @@ spec:
         from: All
 ```
 
-Routes automatically attach to the correct listener based on hostname matching.
+Routes attach to the matching listener when their `parentRefs` select the Gateway or listener and their hostnames intersect with the listener hostname.
 
 ## Port Separation by Environment
 
@@ -210,7 +210,7 @@ spec:
 
 ## Attaching Routes to Specific Listeners
 
-Routes can target specific listeners by name:
+Routes can target specific listeners by name. The namespace selectors in `allowedRoutes` match labels on Namespace objects, so ensure the `production` and `staging` namespaces are labeled accordingly:
 
 ```yaml
 # targeted-httproute.yaml
@@ -307,7 +307,7 @@ spec:
       port: 8080
 ---
 # gRPC route for API traffic
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: grpc-api
@@ -354,9 +354,9 @@ spec:
       port: 53
 ```
 
-## Listener Address Binding
+## Gateway Address Binding
 
-Some implementations allow binding listeners to specific IP addresses:
+Some implementations allow requesting specific addresses for the Gateway. In the standard Gateway API, `addresses` apply to the Gateway as a whole rather than binding individual listeners to different IPs:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -367,11 +367,9 @@ spec:
   gatewayClassName: kong
   addresses:
   - type: IPAddress
-    value: 203.0.113.10  # Public IP
-  - type: IPAddress
-    value: 10.0.1.50     # Internal IP
+    value: 203.0.113.10
   listeners:
-  # Public listener on public IP
+  # HTTPS listener exposed on the Gateway address
   - name: public-https
     protocol: HTTPS
     port: 443
@@ -380,7 +378,7 @@ spec:
       certificateRefs:
       - kind: Secret
         name: public-tls
-  # Internal listener on internal IP
+  # HTTP listener exposed on the Gateway address
   - name: internal-http
     protocol: HTTP
     port: 80
@@ -466,14 +464,14 @@ status:
       status: "True"
 ```
 
-Monitor traffic per listener using gateway metrics:
+Monitor traffic per listener using your implementation's metrics. For Kong, metrics require the Prometheus plugin or status endpoint configuration:
 
 ```bash
-# Access gateway metrics endpoint
-kubectl port-forward -n kong svc/kong-proxy 8001:8001
+# Access the configured Kong metrics endpoint
+kubectl port-forward -n kong svc/kong-admin 8001:8001
 
 # Query metrics
-curl http://localhost:8001/metrics | grep listener
+curl http://localhost:8001/metrics
 ```
 
 ## Testing Each Listener
@@ -560,7 +558,7 @@ If a listener saturates resources, consider:
 Configure resource limits:
 
 ```yaml
-# Gateway class with resource limits
+# Gateway implementation Service and Deployment resource limits
 apiVersion: v1
 kind: Service
 metadata:
