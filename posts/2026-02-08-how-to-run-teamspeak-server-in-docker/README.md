@@ -53,6 +53,7 @@ docker run -d \
   -p 10022:10022 \
   -p 30033:30033 \
   -e TS3SERVER_LICENSE=accept \
+  -e TS3SERVER_QUERY_PROTOCOLS=raw,ssh \
   -v ts3-data:/var/ts3server \
   teamspeak:3
 ```
@@ -242,7 +243,7 @@ servergroupcopy ssgid=6 tsgid=0 name=Moderator type=1
 # Assign a permission to the group
 # i_channel_needed_modify_power controls who can edit channels
 servergrouppermlist sgid=NEW_GROUP_ID
-servergroupaddperm sgid=NEW_GROUP_ID permid=140 permvalue=75 permnegated=0 permskip=0
+servergroupaddperm sgid=NEW_GROUP_ID permsid=i_channel_needed_modify_power permvalue=75 permnegated=0 permskip=0
 ```
 
 ## Customizing the Server
@@ -296,9 +297,9 @@ docker start teamspeak-server
 Add a health check to detect server issues early.
 
 ```yaml
-    # Health check verifies the voice port is accepting connections
+    # Health check verifies the raw ServerQuery port is accepting connections
     healthcheck:
-      test: ["CMD-SHELL", "nc -zu localhost 9987 || exit 1"]
+      test: ["CMD-SHELL", "nc -z localhost 10011 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -315,11 +316,11 @@ echo -e "login serveradmin PASSWORD\nuse sid=1\nclientlist\nquit" | nc your-serv
 
 ## Security Hardening
 
-Protect your TeamSpeak server with these measures. Restrict the ServerQuery interface to trusted IPs using Docker network rules or a firewall. Change the default ServerQuery admin password immediately after first boot. Enable the IP whitelist for ServerQuery by creating a query_ip_allowlist.txt file in the data volume. Set anti-flood protection values to prevent abuse. Disable file transfers if your server does not need them by not exposing port 30033.
+Protect your TeamSpeak server with these measures. Restrict the ServerQuery interface to trusted IPs using Docker network rules or a firewall. Change the generated ServerQuery admin password immediately after first boot. Use the ServerQuery IP allowlist for trusted automation clients that should be exempt from flood protection. Set anti-flood protection values to prevent abuse. Disable file transfers if your server does not need them by not exposing port 30033.
 
 ```bash
-# Create an IP allowlist for ServerQuery access
-# Only listed IPs can connect to the admin interface
+# Add trusted automation clients to the ServerQuery allowlist
+# Allowlisted IPs are exempt from ServerQuery flood protection
 docker exec teamspeak-server sh -c 'echo "127.0.0.1" > /var/ts3server/query_ip_allowlist.txt'
 docker restart teamspeak-server
 ```
