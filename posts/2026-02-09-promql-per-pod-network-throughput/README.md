@@ -23,7 +23,7 @@ The primary metrics are:
 - `container_network_receive_packets_total` - Total packets received
 - `container_network_transmit_packets_total` - Total packets transmitted
 
-These are counter metrics that always increase. To calculate throughput (bytes per second), you need to compute the rate of change over time.
+These are counter metrics that increase until they reset, such as when a pod restarts. To calculate throughput (bytes per second), you need to compute the rate of change over time.
 
 ## Calculating Basic Receive Throughput
 
@@ -37,14 +37,14 @@ rate(container_network_receive_bytes_total{pod="my-app-7d8f9b5c-xk2m9"}[5m])
 
 The `rate()` function calculates the per-second average rate over the specified time window (5 minutes here). It handles counter resets automatically, which occur during pod restarts.
 
-For human-readable output, convert to megabytes per second:
+For human-readable output, convert to mebibytes per second:
 
 ```promql
-# MB/s received by pod
+# MiB/s received by pod
 rate(container_network_receive_bytes_total{pod="my-app-7d8f9b5c-xk2m9"}[5m]) / 1024 / 1024
 ```
 
-This divides bytes by 1024 twice to convert to megabytes.
+This divides bytes by 1024 twice to convert to mebibytes.
 
 ## Calculating Transmit Throughput
 
@@ -58,7 +58,7 @@ rate(container_network_transmit_bytes_total{pod="my-app-7d8f9b5c-xk2m9"}[5m])
 To get total bidirectional throughput, sum both directions:
 
 ```promql
-# Total bidirectional throughput in MB/s
+# Total bidirectional throughput in MiB/s
 (
   rate(container_network_receive_bytes_total{pod="my-app-7d8f9b5c-xk2m9"}[5m]) +
   rate(container_network_transmit_bytes_total{pod="my-app-7d8f9b5c-xk2m9"}[5m])
@@ -197,7 +197,7 @@ Multiply bytes by 8 to convert to bits, divide by interface capacity in bits per
 Identify pods with sudden bandwidth increases using the increase function:
 
 ```promql
-# Bytes received in last 1 minute vs previous 5 minutes
+# MiB received in last 1 minute vs previous 5-minute average
 (
   increase(container_network_receive_bytes_total[1m]) -
   increase(container_network_receive_bytes_total[5m] offset 1m) / 5
@@ -208,16 +208,16 @@ This compares recent throughput to the average over a longer window, highlightin
 
 ## Throughput by Service
 
-If pods have service labels, aggregate by service:
+If you relabel pod or service metadata onto these metrics, aggregate by that label:
 
 ```promql
-# Throughput per service
-sum by (service) (
+# Throughput per app label
+sum by (app) (
   rate(container_network_receive_bytes_total[5m])
 ) / 1024 / 1024
 ```
 
-Requires the service label to be present on metrics. Prometheus service discovery typically adds this.
+Requires the label to be present on the scraped series. Kubernetes service discovery exposes metadata labels for relabeling, but it does not automatically add an application or Kubernetes Service label to cAdvisor metrics.
 
 ## Creating Throughput Alerts
 
@@ -237,10 +237,10 @@ groups:
       severity: warning
     annotations:
       summary: "Pod {{ $labels.pod }} high receive bandwidth"
-      description: "Pod receiving {{ $value | humanize }}MB/s"
+      description: "Pod receiving {{ $value | humanize }}MiB/s"
 ```
 
-This alerts when any pod receives more than 100 MB/s for 5 minutes.
+This alerts when any pod receives more than 100 MiB/s for 5 minutes.
 
 ## Optimizing Query Performance
 
@@ -279,18 +279,20 @@ pod:network_receive_bytes:rate5m{namespace="production"} / 1024 / 1024
 
 ## Handling Missing Metrics
 
-Some pods may not have network metrics if they are very short-lived or failed during startup. Use `or vector(0)` to handle missing data:
+Some pods may not have network metrics if they are very short-lived or failed during startup. Use `or` with a pod inventory metric from kube-state-metrics to handle missing data:
 
 ```promql
 # Throughput with zero default for missing pods
 (
-  sum by (pod) (
+  sum by (namespace, pod) (
     rate(container_network_receive_bytes_total[5m])
-  ) or vector(0)
+  )
+  or on (namespace, pod)
+  sum by (namespace, pod) (0 * kube_pod_info)
 ) / 1024 / 1024
 ```
 
-This ensures queries return zero instead of no data for pods without metrics.
+This returns zero-valued series for pods that exist in kube-state-metrics but do not have matching network metrics.
 
 ## Combining with Resource Limits
 
@@ -304,7 +306,9 @@ Compare network usage to pod resource requests:
   ) / 1024 / 1024
 ) /
 (
-  kube_pod_container_resource_requests{resource="cpu"}
+  sum by (namespace, pod) (
+    kube_pod_container_resource_requests{resource="cpu", unit="core"}
+  )
 )
 ```
 
