@@ -32,13 +32,11 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  servicegraph:
-    # Time to wait for spans to arrive
+  service_graph:
+    # Duration buckets for request latency histograms
     latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s]
     dimensions:
-      - client
-      - server
-      - connection_type
+      - deployment.environment
     store:
       ttl: 2s
       max_items: 1000
@@ -65,15 +63,15 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [servicegraph, otlp/traces]
+      exporters: [service_graph, otlp/traces]
     
     metrics/servicegraph:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       processors: [batch]
       exporters: [prometheusremotewrite]
 ```
 
-This configuration generates service graph metrics and exports them to Prometheus.
+This configuration generates service graph metrics and exports them to Prometheus. When exporting directly to Prometheus with remote write, start Prometheus with the remote write receiver enabled.
 
 ## Service Graph Metrics
 
@@ -83,61 +81,45 @@ The connector generates several metrics that describe service interactions.
 # Generated metrics:
 
 # Request count between services
-traces_service_graph_request_total{client="service-a", server="service-b", connection_type="virtual_node"}
-
-# Request duration histogram
-traces_service_graph_request_duration_seconds{client="service-a", server="service-b"}
+traces_service_graph_request_total{client="service-a", server="service-b", connection_type="unset"}
 
 # Failed requests count
-traces_service_graph_request_failed_total{client="service-a", server="service-b"}
+traces_service_graph_request_failed_total{client="service-a", server="service-b", connection_type="unset"}
 
 # Server duration histogram
-traces_service_graph_request_server_seconds{server="service-b"}
+traces_service_graph_request_server{client="service-a", server="service-b", connection_type="unset"}
 
 # Client duration histogram
-traces_service_graph_request_client_seconds{client="service-a"}
+traces_service_graph_request_client{client="service-a", server="service-b", connection_type="unset"}
 ```
 
 These metrics power service graph visualizations and RED (Rate, Errors, Duration) dashboards.
 
 ## Visualizing with Grafana
 
-Create Grafana dashboards using service graph metrics.
+Configure Grafana's Tempo data source to use the Prometheus backend where service graph metrics are stored.
 
-```json
-{
-  "title": "Service Graph",
-  "panels": [
-    {
-      "title": "Service Dependencies",
-      "type": "nodeGraph",
-      "targets": [
-        {
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_total[5m]))",
-          "format": "table"
-        }
-      ]
-    },
-    {
-      "title": "Request Rate by Service Pair",
-      "type": "graph",
-      "targets": [
-        {
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_total[5m]))"
-        }
-      ]
-    },
-    {
-      "title": "Error Rate by Service Pair",
-      "type": "graph",
-      "targets": [
-        {
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_failed_total[5m])) / sum by (client, server) (rate(traces_service_graph_request_total[5m]))"
-        }
-      ]
-    }
-  ]
-}
+```yaml
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    url: http://prometheus:9090
+    jsonData:
+      httpMethod: GET
+    version: 1
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    url: http://tempo:3200
+    jsonData:
+      httpMethod: GET
+      serviceMap:
+        datasourceUid: prometheus
+    version: 1
 ```
 
 ## Enhancing with Custom Dimensions
@@ -146,21 +128,17 @@ Add custom dimensions to service graph metrics for richer analysis.
 
 ```yaml
 connectors:
-  servicegraph:
+  service_graph:
     latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
     dimensions:
-      - client
-      - server
-      - connection_type
-      - client_region
-      - server_region
-      - environment
+      - cloud.region
+      - deployment.environment
     store:
       ttl: 2s
       max_items: 10000
 ```
 
-Custom dimensions enable filtering and grouping service graphs by environment, region, or other attributes.
+Custom dimensions enable filtering and grouping service graph metrics by environment, region, or other attributes. The connector adds prefixes such as `client_` and `server_` to labels from client and server spans.
 
 ## Best Practices
 
