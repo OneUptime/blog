@@ -202,7 +202,7 @@ spec:
     http:
       paths:
       # gRPC endpoints
-      - path: /grpc
+      - path: /
         pathType: Prefix
         backend:
           service:
@@ -247,30 +247,28 @@ spec:
 
 ## Health Checks
 
-Configure health checking for gRPC and WebSocket.
+Configure health checking for gRPC services.
 
 ### gRPC Health Check
 
 ```yaml
 # grpc-health.yaml
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
+apiVersion: configuration.konghq.com/v1beta1
+kind: KongUpstreamPolicy
 metadata:
   name: grpc-health-check
   namespace: default
-upstream:
+spec:
   healthchecks:
     active:
       type: grpc
-      grpc_service: "health.HealthService"
-      grpc_status: 12  # UNIMPLEMENTED
-      http_path: /grpc.health.v1.Health/Check
       healthy:
         interval: 10
         successes: 2
       unhealthy:
         interval: 5
-        http_failures: 3
+        tcpFailures: 3
+        timeouts: 3
 ---
 apiVersion: v1
 kind: Service
@@ -278,7 +276,7 @@ metadata:
   name: grpc-service
   namespace: default
   annotations:
-    konghq.com/override: grpc-health-check
+    konghq.com/upstream-policy: grpc-health-check
 spec:
   selector:
     app: grpc-app
@@ -291,9 +289,9 @@ spec:
 Test gRPC and WebSocket endpoints:
 
 ```bash
-# Test gRPC
-grpcurl -plaintext grpc.example.com:443 list
-grpcurl -plaintext grpc.example.com:443 my.package.MyService/MyMethod
+# Test gRPC over TLS
+grpcurl -insecure grpc.example.com:443 list
+grpcurl -insecure grpc.example.com:443 my.package.MyService/MyMethod
 
 # Test WebSocket
 wscat -c wss://ws.example.com/ws
