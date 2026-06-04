@@ -54,7 +54,7 @@ VirtioFS typically delivers 2-5x better performance than gRPC FUSE for workloads
 
 ## Configuring Shared Directories
 
-Docker Desktop only allows mounting directories that are explicitly shared. By default, `/Users`, `/tmp`, `/private`, and `/var/folders` are shared on macOS.
+On macOS, Docker Desktop only allows mounting directories that are explicitly shared. By default, `/Users`, `/Volumes`, `/private`, `/tmp`, and `/var/folders` are shared.
 
 To add or remove shared directories, go to Settings > Resources > File Sharing.
 
@@ -186,6 +186,7 @@ Development servers that watch for file changes (webpack, nodemon, Vite) depend 
 module.exports = {
   devServer: {
     watchFiles: {
+      paths: ["src/**/*"],
       options: {
         // Use polling if inotify events are not reliable
         usePolling: true,
@@ -197,7 +198,6 @@ module.exports = {
 ```
 
 ```json
-// nodemon.json - Configure polling for file watching
 {
   "watch": ["src"],
   "ext": "ts,js,json",
@@ -237,8 +237,8 @@ docker compose up -d
 When volume mounts behave unexpectedly, check these common causes.
 
 ```bash
-# Verify the path is in Docker Desktop's shared directories
-docker info --format '{{json .DockerRootDir}}'
+# Docker CLI cannot list Docker Desktop's shared directories.
+# Confirm them in Docker Desktop under Settings > Resources > File Sharing.
 
 # Test basic file sharing
 echo "test" > /tmp/docker-share-test.txt
@@ -246,7 +246,7 @@ docker run --rm -v /tmp/docker-share-test.txt:/test.txt alpine cat /test.txt
 
 # Check if inotify events propagate (for file watching)
 # Terminal 1: Watch for changes inside the container
-docker run --rm -v $(pwd):/watch alpine sh -c "inotifywait -m /watch"
+docker run --rm -v $(pwd):/watch alpine sh -c "apk add --no-cache inotify-tools >/dev/null && inotifywait -m /watch"
 # Terminal 2: Create a file on the host
 touch testfile.txt
 ```
