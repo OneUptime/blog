@@ -12,6 +12,8 @@ CompositeResourceDefinitions (XRDs) are Custom Resource Definitions for your pla
 
 XRDs give your platform a clean API surface. Application teams interact with XRDs, platform teams implement them with Compositions. This separation enables platform evolution without breaking consumers.
 
+The examples below use the Crossplane v1-style `LegacyCluster` XRD model with claims. Crossplane v2 also supports namespaced and cluster-scoped XRs without claims, so omit `claimNames` when building those newer APIs.
+
 ## Understanding XRD Structure
 
 An XRD consists of three main components:
@@ -20,7 +22,7 @@ An XRD consists of three main components:
 **Names**: The kind name and plural form
 **Schema**: OpenAPI v3 schema defining the resource structure
 
-XRDs create two resource types: the Composite Resource (XR) and the Claim. The XR is cluster-scoped, while Claims are namespace-scoped.
+When `claimNames` is specified in a v1-style XRD, Crossplane creates two resource types: the Composite Resource (XR) and the Claim. In the legacy claim model, the XR is cluster-scoped, while Claims are namespace-scoped.
 
 ## Creating a Basic XRD
 
@@ -218,25 +220,9 @@ schema:
             type: integer
           ready:
             type: boolean
-          conditions:
-            type: array
-            items:
-              type: object
-              properties:
-                type:
-                  type: string
-                status:
-                  type: string
-                lastTransitionTime:
-                  type: string
-                  format: date-time
-                reason:
-                  type: string
-                message:
-                  type: string
 ```
 
-Status fields provide visibility into resource provisioning state.
+Status fields provide visibility into resource provisioning state. Crossplane manages `status.conditions` itself, so don't define that reserved field in your XRD schema.
 
 ## Adding Connection Secret Configuration
 
@@ -268,18 +254,14 @@ spec:
           spec:
             type: object
             properties:
-              writeConnectionSecretToRef:
+              parameters:
                 type: object
                 properties:
-                  name:
+                  databaseName:
                     type: string
-                  namespace:
-                    type: string
-                required:
-                - name
 ```
 
-This ensures connection secrets contain the specified keys and can be created in user-specified locations.
+This limits the connection secret data exposed to the composite resource or claim to the specified keys. Crossplane manages `spec.writeConnectionSecretToRef`, so don't define that reserved field in your XRD schema.
 
 ## Creating Multi-Version XRDs
 
@@ -322,6 +304,8 @@ spec:
           spec:
             type: object
             properties:
+              size:
+                type: string
               parameters:
                 type: object
                 properties:
@@ -331,7 +315,7 @@ spec:
                     type: integer
 ```
 
-This allows gradual API evolution while maintaining backward compatibility.
+This allows gradual API evolution while maintaining backward compatibility. Avoid breaking schema changes between served versions unless you implement conversion.
 
 ## Implementing Composition Selection
 
@@ -361,16 +345,11 @@ spec:
           spec:
             type: object
             properties:
-              compositionSelector:
+              parameters:
                 type: object
-                properties:
-                  matchLabels:
-                    type: object
-                    additionalProperties:
-                      type: string
 ```
 
-Users can select specific Compositions through labels, or the platform can enforce a specific Composition.
+Users can select specific Compositions through the built-in composition selector on the XR or claim, or the platform can enforce a specific Composition.
 
 ## Validating Field Values
 
@@ -499,7 +478,7 @@ spec:
 EOF
 
 # Verify claim created composite resource
-kubectl get xpostgresqlinstance
+kubectl get xpostgresqlinstances
 ```
 
 ## Conclusion
