@@ -56,7 +56,7 @@ The controller automatically creates VPA objects for workloads in labeled namesp
 kubectl get vpa -n production
 ```
 
-You will see VPA resources named after your deployments with the suffix -goldilocks-vpa.
+You will see VPA resources named after your workloads with the prefix `goldilocks-`.
 
 ## Accessing the Dashboard
 
@@ -99,33 +99,30 @@ spec:
 
 ## Interpreting Recommendations
 
-The dashboard shows three recommendation types for each container:
+The dashboard shows two QoS-based recommendation types for each container:
 
 **Guaranteed**: VPA recommends setting requests equal to limits at this level. This creates Guaranteed QoS class pods.
 
-**Burstable**: VPA recommends these request values with higher limits. This allows bursting while providing baseline guarantees.
-
-**Unconstrained**: VPA recommendations without considering limits. Use this when you want maximum flexibility.
+**Burstable**: Goldilocks uses the VPA lower bound for requests and upper bound for limits. This allows bursting while providing baseline guarantees.
 
 For most workloads, use the Burstable recommendations. They balance resource efficiency with performance headroom.
 
 Each recommendation shows:
 - Current requests and limits
 - Recommended requests and limits
-- Percentage difference from current values
+- Status indicators comparing current values with recommendations
 
-Green percentages indicate potential cost savings. Red indicates current requests are too low and should be increased.
+When cost calculation is enabled, the dashboard can show the hourly cost difference for Guaranteed and Burstable recommendations.
 
 ## Filtering and Sorting Recommendations
 
-The dashboard provides filtering options:
+The dashboard provides namespace filtering and groups recommendations by workload:
 
 - Filter by namespace
-- Filter by workload type (Deployment, StatefulSet, DaemonSet)
-- Sort by potential savings percentage
-- Sort by workload name
+- Browse by workload type (Deployment, StatefulSet, DaemonSet, and other controllers with a pod template)
+- Compare current settings with Guaranteed and Burstable recommendations
 
-Sort by savings percentage to identify the biggest optimization opportunities:
+Use the dashboard cost comparison or the `goldilocks summary` output to identify the biggest optimization opportunities:
 
 ```text
 Workload          Current CPU  Recommended  Savings
@@ -138,12 +135,12 @@ Start optimizations with high-savings, low-risk workloads like batch jobs and ba
 
 ## Exporting Recommendations
 
-Goldilocks does not automatically apply recommendations. Export them for review:
+Goldilocks defaults to recommendation-only VPAs and does not automatically apply recommendations unless you explicitly configure an applying VPA update mode and install the required VPA components. Export recommendations for review:
 
 ```bash
 # Get VPA recommendations as YAML
 
-kubectl get vpa analytics-worker-goldilocks-vpa -n production -o yaml
+kubectl get vpa goldilocks-analytics-worker -n production -o yaml
 ```
 
 The output includes recommended values:
@@ -187,7 +184,7 @@ spec:
 
 ## Customizing VPA Creation
 
-Control how Goldilocks creates VPAs with annotations:
+Control how Goldilocks creates VPAs with labels:
 
 ```yaml
 apiVersion: v1
@@ -196,31 +193,29 @@ metadata:
   name: production
   labels:
     goldilocks.fairwinds.com/enabled: "true"
-  annotations:
     goldilocks.fairwinds.com/vpa-update-mode: "off"
 ```
 
 Valid update modes:
 - `off`: Recommendations only (default)
 - `initial`: Apply recommendations to new pods only
-- `auto`: Automatically update existing pods (use carefully)
+- `recreate`: Automatically update existing pods by recreating them (use carefully)
 
-Set resource boundaries with additional annotations:
+Set resource boundaries with the `vpa-resource-policy` annotation:
 
 ```yaml
 annotations:
-  goldilocks.fairwinds.com/vpa-update-mode: "off"
-  goldilocks.fairwinds.com/cpu-min: "100m"
-  goldilocks.fairwinds.com/cpu-max: "4000m"
-  goldilocks.fairwinds.com/memory-min: "128Mi"
-  goldilocks.fairwinds.com/memory-max: "8Gi"
+  goldilocks.fairwinds.com/vpa-resource-policy: >
+    { "containerPolicies": [ { "containerName": "*", "minAllowed": {
+    "cpu": "100m", "memory": "128Mi" }, "maxAllowed": { "cpu": "4000m",
+    "memory": "8Gi" } } ] }
 ```
 
 Goldilocks applies these boundaries to all VPAs it creates in the namespace.
 
-## Excluding Specific Workloads
+## Excluding Specific Containers
 
-Prevent Goldilocks from creating VPAs for certain workloads:
+Prevent Goldilocks from showing recommendations for certain containers:
 
 ```yaml
 apiVersion: apps/v1
@@ -229,7 +224,7 @@ metadata:
   name: database
   namespace: production
   labels:
-    goldilocks.fairwinds.com/enabled: "false"
+    goldilocks.fairwinds.com/exclude-containers: "postgres"
 spec:
   template:
     spec:
@@ -241,7 +236,7 @@ spec:
             cpu: "2000m"
 ```
 
-Use this for stateful workloads or services with manually tuned resources.
+Use this for sidecars, stateful containers, or services with manually tuned resources.
 
 ## Monitoring Recommendation Accuracy
 
@@ -249,14 +244,14 @@ Track how accurately VPA predicts resource needs:
 
 ```bash
 # Get VPA recommendations
-kubectl get vpa analytics-worker-goldilocks-vpa -n production \
+kubectl get vpa goldilocks-analytics-worker -n production \
   -o jsonpath='{.status.recommendation.containerRecommendations[0].target}'
 
 # Compare to actual usage
 kubectl top pod -n production -l app=analytics-worker
 ```
 
-If actual usage consistently exceeds recommendations, VPA may not have enough historical data. Wait longer or adjust VPA's recommendation window.
+If actual usage consistently exceeds recommendations, VPA may not have enough historical data. Wait longer or adjust recommender flags such as `--history-length` when using Prometheus history.
 
 ## Integration with GitOps Workflows
 
@@ -270,22 +265,22 @@ NAMESPACE=$1
 DEPLOYMENT=$2
 
 # Get VPA recommendation
-RECOMMENDED_CPU=$(kubectl get vpa ${DEPLOYMENT}-goldilocks-vpa -n $NAMESPACE \
+RECOMMENDED_CPU=$(kubectl get vpa "goldilocks-${DEPLOYMENT}" -n "$NAMESPACE" \
   -o jsonpath='{.status.recommendation.containerRecommendations[0].target.cpu}')
 
-RECOMMENDED_MEM=$(kubectl get vpa ${DEPLOYMENT}-goldilocks-vpa -n $NAMESPACE \
+RECOMMENDED_MEM=$(kubectl get vpa "goldilocks-${DEPLOYMENT}" -n "$NAMESPACE" \
   -o jsonpath='{.status.recommendation.containerRecommendations[0].target.memory}')
 
 # Update deployment manifest
-kubectl patch deployment $DEPLOYMENT -n $NAMESPACE --type=json \
+kubectl patch deployment "$DEPLOYMENT" -n "$NAMESPACE" --type=json \
   -p="[{
-    'op': 'replace',
-    'path': '/spec/template/spec/containers/0/resources/requests/cpu',
-    'value': '$RECOMMENDED_CPU'
+    \"op\": \"replace\",
+    \"path\": \"/spec/template/spec/containers/0/resources/requests/cpu\",
+    \"value\": \"$RECOMMENDED_CPU\"
   },{
-    'op': 'replace',
-    'path': '/spec/template/spec/containers/0/resources/requests/memory',
-    'value': '$RECOMMENDED_MEM'
+    \"op\": \"replace\",
+    \"path\": \"/spec/template/spec/containers/0/resources/requests/memory\",
+    \"value\": \"$RECOMMENDED_MEM\"
   }]"
 ```
 
@@ -297,10 +292,10 @@ Calculate potential savings from Goldilocks recommendations:
 
 ```promql
 # Current resource requests cost
-sum(kube_pod_container_resource_requests_cpu_cores) * $cpu_hourly_cost
+sum(kube_pod_container_resource_requests{resource="cpu",unit="core"}) * $cpu_hourly_cost
 
 # Potential cost with recommendations
-sum(vpa_containerrecommendations_target{resource="cpu"}) * $cpu_hourly_cost
+sum(kube_customresource_verticalpodautoscaler_status_recommendation_containerrecommendations_target_cpu{resource="cpu"}) * $cpu_hourly_cost
 ```
 
 Create a dashboard showing:
@@ -313,20 +308,24 @@ Present this data to justify resource optimization initiatives.
 
 ## Advanced Configuration
 
-Adjust VPA recommender behavior globally:
+Adjust VPA recommender behavior globally by setting recommender flags in your VPA installation:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: vpa-recommender-config
+  name: vpa-recommender
   namespace: kube-system
-data:
-  recommender-config: |
-    pod_recommendation_min_cpu_millicores: 50
-    pod_recommendation_min_memory_mb: 64
-    target_cpu_percentile: 0.95
-    target_memory_percentile: 0.95
+spec:
+  template:
+    spec:
+      containers:
+      - name: recommender
+        args:
+        - --pod-recommendation-min-cpu-millicores=50
+        - --pod-recommendation-min-memory-mb=64
+        - --target-cpu-percentile=0.95
+        - --target-memory-percentile=0.95
 ```
 
 These settings affect all VPAs, including those created by Goldilocks. Adjust percentiles to make recommendations more conservative (99th percentile) or aggressive (90th percentile).
@@ -353,17 +352,17 @@ Recommendations seem incorrect:
 kubectl get vpa -n production -o custom-columns=NAME:.metadata.name,AGE:.metadata.creationTimestamp
 
 # View VPA conditions
-kubectl describe vpa analytics-worker-goldilocks-vpa -n production | grep Conditions -A 10
+kubectl describe vpa goldilocks-analytics-worker -n production | grep Conditions -A 10
 ```
 
-VPAs need at least 24 hours of metrics before recommendations stabilize. Recently created VPAs show less accurate recommendations.
+VPAs can show recommendations after a few minutes, but the VPA recommender's default historical model uses an 8-day history window for maximum accuracy. Recently created VPAs show less accurate upper and lower bounds.
 
 Dashboard shows no data:
 
 ```bash
-# Verify dashboard can reach VPA API
-kubectl exec -n goldilocks deployment/goldilocks-dashboard -- \
-  curl -s http://kubernetes.default.svc/apis/autoscaling.k8s.io/v1/verticalpodautoscalers
+# Verify the dashboard service account can list VPA objects
+kubectl auth can-i list verticalpodautoscalers.autoscaling.k8s.io \
+  --as=system:serviceaccount:goldilocks:goldilocks-dashboard
 ```
 
 Check RBAC permissions if the request fails.
@@ -388,7 +387,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ops-team
+          kubernetes.io/metadata.name: ops-team
     ports:
     - protocol: TCP
       port: 80
