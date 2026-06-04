@@ -8,7 +8,7 @@ Description: Optimize CoreDNS cache configuration for high-query-per-second Kube
 
 ---
 
-DNS caching can make or break performance in high-traffic Kubernetes clusters. Every pod-to-service call involves a DNS lookup, and at scale, CoreDNS can become overwhelmed. Proper cache tuning reduces latency, lowers CPU usage, and prevents cascading failures when applications spike in traffic.
+DNS caching can make or break performance in high-traffic Kubernetes clusters. Many pod-to-service calls begin with a DNS lookup, and at scale, CoreDNS can become overwhelmed. Proper cache tuning reduces latency, lowers CPU usage, and prevents cascading failures when applications spike in traffic.
 
 ## Understanding CoreDNS Cache Behavior
 
@@ -41,7 +41,7 @@ A typical default configuration:
 }
 ```
 
-This caches everything for 30 seconds regardless of the record's actual TTL. For high-QPS clusters, you need more sophisticated controls.
+This caches responses for up to 30 seconds, while still respecting records with lower TTLs. For high-QPS clusters, you need more sophisticated controls.
 
 ## Optimizing Cache Size and TTL
 
@@ -60,7 +60,7 @@ Configure cache size and success/denial TTLs separately:
     cache {
         # Cache successful responses for up to 3600 seconds
         success 9984 3600
-        # Cache NXDOMAIN/SERVFAIL for 30 seconds
+        # Cache NXDOMAIN/NODATA responses for up to 30 seconds
         denial 9984 30
         # Enable prefetch
         prefetch 10 60s 10%
@@ -75,8 +75,8 @@ Configure cache size and success/denial TTLs separately:
 Let's break down these parameters:
 
 - `success 9984 3600`: Cache up to 9984 successful responses for up to 3600 seconds (1 hour)
-- `denial 9984 30`: Cache up to 9984 denial responses (NXDOMAIN, SERVFAIL) for 30 seconds
-- `prefetch 10 60s 10%`: Prefetch records that will expire in 60 seconds if they've been requested at least 10 times, hitting them 10% before expiry
+- `denial 9984 30`: Cache up to 9984 denial-of-existence responses (NXDOMAIN/NODATA) for up to 30 seconds
+- `prefetch 10 60s 10%`: Prefetch records if they've been requested at least 10 times with no gap of 60 seconds or more, refreshing them when the TTL drops below 10%
 
 Apply the changes:
 
@@ -104,19 +104,19 @@ coredns_cache_entries{server="dns://:53",type="denial"} 245
 coredns_cache_entries{server="dns://:53",type="success"} 8421
 coredns_cache_hits_total{server="dns://:53",type="denial"} 12543
 coredns_cache_hits_total{server="dns://:53",type="success"} 845231
-coredns_cache_misses_total{server="dns://:53"} 92341
+coredns_cache_requests_total{server="dns://:53"} 937572
 ```
 
 Calculate cache hit rate:
 
 ```text
-hit_rate = hits / (hits + misses)
-hit_rate = 845231 / (845231 + 92341) = 90.1%
+hit_rate = hits / requests
+hit_rate = (12543 + 845231) / 937572 = 91.5%
 ```
 
 If your hit rate is below 85%, increase cache size. If you're using less than 70% of allocated cache, reduce it.
 
-For a cluster with 500 services and 2000 pods making frequent requests, start with a cache size of 10000-15000 entries:
+For a cluster with 500 services and 2000 pods making frequent requests, start with a cache size of 10000-15000 entries. CoreDNS rounds configured cache capacities down to the nearest multiple of 256:
 
 ```yaml
 cache {
@@ -132,7 +132,7 @@ Different zones have different caching requirements. Cluster-internal queries ca
 
 ```yaml
 # Corefile with zone-specific caching
-cluster.local:53 {
+cluster.local in-addr.arpa ip6.arpa {
     errors
     kubernetes cluster.local in-addr.arpa ip6.arpa {
         pods insecure
@@ -169,7 +169,7 @@ This configuration caches internal services for up to 1 hour but external domain
 
 ## Enabling Serve Stale on Upstream Failure
 
-When upstream DNS servers fail, serve stale cache entries rather than returning errors:
+When a cached entry expires, serve stale cache entries while CoreDNS refreshes them:
 
 ```yaml
 cache {
@@ -181,7 +181,7 @@ cache {
 }
 ```
 
-This keeps your applications running even during DNS outages. CoreDNS serves expired entries and asynchronously tries to refresh them.
+This can keep your applications running during DNS outages. By default, CoreDNS serves expired entries with a TTL of 0 and asynchronously tries to refresh them.
 
 ## Prefetch Configuration for Proactive Caching
 
@@ -191,12 +191,12 @@ Prefetching keeps popular records fresh in the cache. When a cached record appro
 cache {
     success 10000 3600
     denial 5000 30
-    # Prefetch if requested 5+ times, refresh at 80% TTL
+    # Prefetch if requested 5+ times, refresh when 20% of the TTL remains
     prefetch 5 60s 20%
 }
 ```
 
-This configuration says: if a record has been requested at least 5 times and will expire within 60 seconds, refresh it when 20% of its TTL remains.
+This configuration says: if a record has been requested at least 5 times with no gap of 60 seconds or more between requests, refresh it when 20% of its TTL remains.
 
 For extremely high-QPS services, be more aggressive:
 
@@ -209,7 +209,7 @@ cache {
 }
 ```
 
-This refreshes any record requested twice or more when 30% of its TTL is left.
+This refreshes any record requested twice or more, with no gap of 120 seconds or more between requests, when 30% of its TTL is left.
 
 ## Memory Optimization
 
@@ -273,7 +273,7 @@ During pod restarts or when many pods start simultaneously, they all query the s
         success 15000 3600
         denial 5000 30
         prefetch 5 60s 20%
-        # Serve stale during high load
+        # Serve stale entries while CoreDNS refreshes them
         serve_stale 3600
     }
     # Limit concurrent upstream queries
@@ -281,13 +281,12 @@ During pod restarts or when many pods start simultaneously, they all query the s
         max_concurrent 500
         expire 10s
     }
-    # Randomize TTL by up to 10% to spread cache expirations
-    ttl 30 10
+    # Keep Kubernetes answers cacheable for a short, bounded period
     reload
 }
 ```
 
-The `ttl 30 10` directive adds random jitter (up to 10 seconds) to TTL values, preventing synchronized cache expirations.
+The `ttl 30` setting inside the `kubernetes` plugin keeps service records cacheable for a short, bounded period. CoreDNS does not provide a cache TTL jitter directive; use prefetching, serve-stale behavior, and staggered rollouts to reduce synchronized cache refreshes.
 
 ## Monitoring Cache Performance
 
@@ -326,7 +325,7 @@ spec:
       expr: |
         sum(rate(coredns_cache_hits_total[5m]))
         /
-        (sum(rate(coredns_cache_hits_total[5m])) + sum(rate(coredns_cache_misses_total[5m])))
+        sum(rate(coredns_cache_requests_total[5m]))
         < 0.80
       for: 10m
       labels:
@@ -337,16 +336,13 @@ spec:
 
     - alert: CoreDNSCacheFull
       expr: |
-        coredns_cache_entries
-        /
-        on(server) coredns_cache_size
-        > 0.95
+        sum(rate(coredns_cache_evictions_total[5m])) > 0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "CoreDNS cache is nearly full"
-        description: "Cache is {{ $value | humanizePercentage }} full"
+        summary: "CoreDNS cache is evicting entries"
+        description: "CoreDNS cache evictions are occurring, which can indicate an undersized cache for the current query pattern."
 ```
 
 ## Testing Cache Configuration
@@ -355,10 +351,11 @@ Benchmark your cache settings under load:
 
 ```bash
 # Create a test pod with dnsperf
-kubectl run dns-benchmark --image=nicolaka/netshoot -it --rm -- bash
+kubectl run dns-benchmark --image=debian:stable-slim -it --rm -- bash
 
 # Inside the pod
-apk add --no-cache bind-tools
+apt-get update
+apt-get install -y dnsutils dnsperf
 
 # Generate query list
 cat > queries.txt << EOF
@@ -368,13 +365,10 @@ database.production.svc.cluster.local A
 cache.production.svc.cluster.local A
 EOF
 
-# Install dnsperf
-apk add --no-cache dnsperf
-
 # Run benchmark
 dnsperf -d queries.txt -s 10.96.0.10 -l 60 -c 100 -Q 10000
 
-# Results show queries per second and cache hit rate
+# Results show queries per second and latency; compare CoreDNS metrics for cache hit rate
 ```
 
 Compare results before and after tuning. Look for:
@@ -396,7 +390,7 @@ Follow these guidelines for optimal cache performance:
 - Set appropriate resource limits for CoreDNS pods
 - Use multiple CoreDNS replicas for redundancy and load distribution
 - Consider NodeLocal DNSCache for clusters with 50+ nodes
-- Add jitter to TTL values to prevent stampede scenarios
+- Use prefetching, serve-stale behavior, and staggered rollouts to reduce stampede scenarios
 - Regularly review and update cache configuration as traffic patterns change
 
-Proper cache tuning transforms CoreDNS from a potential bottleneck into an efficient, high-performance component of your Kubernetes infrastructure. In high-QPS environments, these optimizations can reduce DNS query latency by 90% or more while significantly lowering resource consumption.
+Proper cache tuning transforms CoreDNS from a potential bottleneck into an efficient, high-performance component of your Kubernetes infrastructure. In high-QPS environments, these optimizations can materially reduce DNS query latency while significantly lowering resource consumption.
