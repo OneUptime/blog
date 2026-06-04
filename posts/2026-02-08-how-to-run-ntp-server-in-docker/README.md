@@ -14,7 +14,7 @@ Running your own NTP server in Docker gives you a local time source that your in
 
 ## Why Run a Local NTP Server?
 
-Public NTP pools work fine for individual machines, but relying on them for your entire infrastructure introduces several risks. Internet connectivity issues can prevent time sync. Firewall rules might block NTP traffic to external servers. The round-trip latency to public pools varies, reducing accuracy. And if you run services that require microsecond-level precision (like financial trading systems or distributed databases), a local NTP server is essential.
+Public NTP pools work fine for individual machines, but relying on them for your entire infrastructure introduces several risks. Internet connectivity issues can prevent time sync. Firewall rules might block NTP traffic to external servers. The round-trip latency to public pools varies, reducing accuracy. And if you run services that need tighter precision, a local NTP server can help reduce jitter, while microsecond-level requirements typically need specialized time sources or PTP.
 
 ## Chrony vs ntpd
 
@@ -31,11 +31,10 @@ Run a Chrony-based NTP server with a single command.
 docker run -d \
   --name ntp-server \
   -p 123:123/udp \
-  --cap-add SYS_TIME \
   cturra/ntp:latest
 ```
 
-The `SYS_TIME` capability allows the container to adjust the system clock, which Chrony needs for accurate timekeeping.
+The `cturra/ntp` image runs Chrony without adjusting the host system clock. It synchronizes its internal Chrony clock to upstream sources and serves NTP responses on UDP port 123.
 
 ## Docker Compose Setup
 
@@ -44,30 +43,27 @@ A production-ready NTP server needs custom configuration and persistent state.
 ```yaml
 # docker-compose.yml - Local NTP server using Chrony
 # Provides time synchronization for your entire network
-version: "3.8"
-
 services:
   ntp:
-    image: cturra/ntp:latest
+    build: .
+    image: custom-chrony-ntp:latest
     container_name: ntp-server
     restart: unless-stopped
     ports:
       - "123:123/udp"
-    cap_add:
-      - SYS_TIME          # Required for clock discipline
-    environment:
-      - NTP_SERVERS=time.cloudflare.com,time.google.com,pool.ntp.org
-      - LOG_LEVEL=0
     volumes:
       - ./chrony.conf:/etc/chrony/chrony.conf:ro
+      - chrony-data:/var/lib/chrony
     tmpfs:
       - /run/chrony        # Chrony runtime data
-      - /var/lib/chrony    # Drift file storage
     deploy:
       resources:
         limits:
           cpus: "0.5"
           memory: 64M
+
+volumes:
+  chrony-data:
 ```
 
 ## Custom Chrony Configuration
@@ -93,8 +89,7 @@ allow 10.0.0.0/8
 allow 172.16.0.0/12
 allow 192.168.0.0/16
 
-# Deny all other clients by default
-deny all
+# Clients outside these allowed networks are denied by default
 
 # Serve time even when not synchronized to an upstream source
 # This prevents clients from losing their time reference during outages
@@ -103,13 +98,6 @@ local stratum 10
 # Record the rate at which the system clock gains/loses time
 # This file persists across restarts for faster convergence
 driftfile /var/lib/chrony/chrony.drift
-
-# Enable kernel synchronization of the hardware clock
-rtcsync
-
-# Step the system clock if the offset is larger than 1 second
-# during the first three updates (handles VM clock jumps)
-makestep 1.0 3
 
 # Log timing statistics for troubleshooting
 log tracking measurements statistics
@@ -136,7 +124,7 @@ If you want full control over the NTP server build, create your own image.
 FROM alpine:3.19
 
 # Install Chrony and useful network tools
-RUN apk add --no-cache chrony tzdata
+RUN apk add --no-cache chrony tzdata procps
 
 # Create necessary directories
 RUN mkdir -p /var/log/chrony /var/lib/chrony /run/chrony
@@ -151,10 +139,10 @@ EXPOSE 123/udp
 COPY healthcheck.sh /usr/local/bin/healthcheck.sh
 RUN chmod +x /usr/local/bin/healthcheck.sh
 
-# Run Chrony in the foreground
+# Run Chrony in the foreground without controlling the host clock
 # -d keeps it in the foreground
-# -s sets the system clock from the hardware clock on startup
-ENTRYPOINT ["chronyd", "-d", "-s"]
+# -x disables system clock control, which avoids requiring SYS_TIME in Docker
+ENTRYPOINT ["chronyd", "-d", "-x"]
 ```
 
 Create a health check script for the NTP server.
@@ -171,7 +159,7 @@ if ! pgrep -x chronyd > /dev/null; then
 fi
 
 # Check if Chrony has at least one reachable source
-SOURCES=$(chronyc -n sources 2>/dev/null | grep -c '^\^')
+SOURCES=$(chronyc -n sources 2>/dev/null | grep -c '^[\^=#][*+-]')
 if [ "$SOURCES" -lt 1 ]; then
     echo "No reachable NTP sources"
     exit 1
@@ -260,28 +248,24 @@ For high availability, run two or more NTP servers and configure clients to use 
 
 ```yaml
 # docker-compose.yml - Redundant NTP server pair
-version: "3.8"
-
 services:
   ntp-primary:
-    image: cturra/ntp:latest
+    build: .
+    image: custom-chrony-ntp:latest
     container_name: ntp-primary
     restart: unless-stopped
     ports:
-      - "123:123/udp"
-    cap_add:
-      - SYS_TIME
+      - "192.168.1.5:123:123/udp"
     volumes:
       - ./chrony-primary.conf:/etc/chrony/chrony.conf:ro
 
   ntp-secondary:
-    image: cturra/ntp:latest
+    build: .
+    image: custom-chrony-ntp:latest
     container_name: ntp-secondary
     restart: unless-stopped
     ports:
-      - "124:123/udp"    # Map to a different host port
-    cap_add:
-      - SYS_TIME
+      - "192.168.1.6:123:123/udp"    # Use another host IP, or run on a separate host
     volumes:
       - ./chrony-secondary.conf:/etc/chrony/chrony.conf:ro
 ```
