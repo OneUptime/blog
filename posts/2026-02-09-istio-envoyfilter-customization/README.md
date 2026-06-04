@@ -47,20 +47,21 @@ spec:
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.lua
+        name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              request_handle:headers():add("x-custom-source", "my-service")
-            end
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                request_handle:headers():add("x-custom-source", "my-service")
+              end
 ```
 
 The workloadSelector targets pods with `app: myapp`. The configPatch inserts a Lua filter before the router filter in the HTTP connection manager. The Lua script adds a header to every outbound request.
 
 ## Implementing Rate Limiting with EnvoyFilter
 
-Let's implement per-route rate limiting, something Istio does not natively support. First, deploy a rate limit service. Envoy delegates rate limit decisions to this external service:
+Let's implement global rate limiting for selected routes. First, deploy a rate limit service. Envoy delegates rate limit decisions to this external service:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -71,28 +72,8 @@ metadata:
 spec:
   workloadSelector:
     labels:
-      app: istio-ingressgateway
+      istio: ingressgateway
   configPatches:
-  # Add the rate limit service cluster
-  - applyTo: CLUSTER
-    patch:
-      operation: ADD
-      value:
-        name: rate_limit_cluster
-        type: STRICT_DNS
-        connect_timeout: 1s
-        lb_policy: ROUND_ROBIN
-        protocol_selection: USE_CONFIGURED_PROTOCOL
-        http2_protocol_options: {}
-        load_assignment:
-          cluster_name: rate_limit_cluster
-          endpoints:
-          - lb_endpoints:
-            - endpoint:
-                address:
-                  socket_address:
-                    address: ratelimit.default.svc.cluster.local
-                    port_value: 8081
   # Configure the rate limit filter
   - applyTo: HTTP_FILTER
     match:
@@ -114,15 +95,33 @@ spec:
           rate_limit_service:
             grpc_service:
               envoy_grpc:
-                cluster_name: rate_limit_cluster
+                cluster_name: outbound|8081||ratelimit.default.svc.cluster.local
+                authority: ratelimit.default.svc.cluster.local
             transport_api_version: V3
+  # Apply rate limit actions to matched routes
+  - applyTo: VIRTUAL_HOST
+    match:
+      context: GATEWAY
+      routeConfiguration:
+        vhost:
+          name: "api.example.com:80"
+          route:
+            action: ANY
+    patch:
+      operation: MERGE
+      value:
+        rate_limits:
+        - actions:
+          - request_headers:
+              header_name: ":path"
+              descriptor_key: "PATH"
 ```
 
-This configuration adds a rate limit filter to your ingress gateway. The filter consults the rate limit service before allowing requests through. Set `failure_mode_deny` to false during initial rollout - if the rate limit service is unavailable, requests proceed normally.
+This configuration adds a rate limit filter to your ingress gateway and applies rate limit actions to routes in the `api.example.com:80` virtual host. The filter consults the rate limit service before allowing requests through. Set `failure_mode_deny` to false during initial rollout - if the rate limit service is unavailable, requests proceed normally.
 
 ## Custom Authentication with External Authorization
 
-External authorization lets you delegate authentication and authorization to a custom service. This is useful for complex auth logic that does not fit standard JWT validation:
+External authorization lets you delegate authentication and authorization to a custom service. Istio's `AuthorizationPolicy` with the `CUSTOM` action is the preferred API for this when it fits, but EnvoyFilter can still be useful for advanced `ext_authz` options:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -183,7 +182,7 @@ The external authorization service receives each request and returns allow or de
 
 ## Modifying TLS Configuration
 
-Sometimes you need to adjust TLS settings beyond what Istio's PeerAuthentication allows. For example, enabling specific cipher suites:
+Sometimes you need to adjust TLS settings beyond what Istio's PeerAuthentication allows. For example, enforcing a minimum TLS version:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -224,68 +223,36 @@ spec:
             common_tls_context:
               tls_params:
                 tls_minimum_protocol_version: TLSv1_3
-                cipher_suites:
-                - ECDHE-ECDSA-AES128-GCM-SHA256
-                - ECDHE-RSA-AES128-GCM-SHA256
 ```
 
-This configuration enforces TLS 1.3 and restricts cipher suites to specific algorithms. Use this when compliance requirements mandate particular cryptographic settings.
+This configuration enforces TLS 1.3. Envoy's `cipher_suites` setting only affects TLS 1.0 through TLS 1.2 negotiation, so do not use TLS 1.2 cipher names as a way to restrict TLS 1.3 ciphers. Use this when compliance requirements mandate particular protocol settings.
 
 ## Adding Custom Metrics
 
-Envoy can expose custom metrics based on request attributes. Add metrics that track business-specific dimensions:
+For most metric customization, use Istio's Telemetry API instead of EnvoyFilter. Add metric dimensions that track business-specific attributes:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
   name: custom-metrics
   namespace: default
 spec:
-  workloadSelector:
-    labels:
+  selector:
+    matchLabels:
       app: api-gateway
-  configPatches:
-  - applyTo: HTTP_FILTER
-    match:
-      context: SIDECAR_OUTBOUND
-      listener:
-        filterChain:
-          filter:
-            name: envoy.filters.network.http_connection_manager
-            subFilter:
-              name: envoy.filters.http.router
-    patch:
-      operation: INSERT_BEFORE
-      value:
-        name: envoy.filters.http.wasm
-        typed_config:
-          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
-          type_url: envoy.extensions.filters.http.wasm.v3.Wasm
-          value:
-            config:
-              vm_config:
-                runtime: envoy.wasm.runtime.null
-                code:
-                  local:
-                    inline_string: "stats"
-              configuration:
-                "@type": type.googleapis.com/google.protobuf.StringValue
-                value: |
-                  {
-                    "metrics": [
-                      {
-                        "name": "api_version",
-                        "type": "counter",
-                        "dimensions": {
-                          "version": "request.headers['x-api-version']"
-                        }
-                      }
-                    ]
-                  }
+  metrics:
+  - providers:
+    - name: prometheus
+    overrides:
+    - match:
+        metric: REQUEST_COUNT
+      tagOverrides:
+        api_version:
+          value: "request.headers['x-api-version']"
 ```
 
-This creates a counter metric that tracks API versions based on request headers. You can then query these metrics from Prometheus to understand version distribution across clients.
+This adds an `api_version` label to Istio's request counter based on request headers. You can then query `istio_requests_total` from Prometheus to understand version distribution across clients.
 
 ## Request/Response Transformation
 
@@ -314,26 +281,32 @@ spec:
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.lua
+        name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              local path = request_handle:headers():get(":path")
-              -- Transform legacy API paths to new format
-              if string.match(path, "^/api/v1/") then
-                local new_path = string.gsub(path, "^/api/v1/", "/api/v2/")
-                request_handle:headers():replace(":path", new_path)
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                local path = request_handle:headers():get(":path")
+                -- Transform legacy API paths to new format
+                if path ~= nil and string.match(path, "^/api/v1/") then
+                  local new_path = string.gsub(path, "^/api/v1/", "/api/v2/")
+                  request_handle:headers():replace(":path", new_path)
+                  request_handle:streamInfo():dynamicMetadata():set(
+                    "envoy.filters.http.lua",
+                    "legacy_api_path",
+                    true
+                  )
+                end
               end
-            end
 
-            function envoy_on_response(response_handle)
-              -- Add deprecation warning for old API versions
-              local path = response_handle:headers():get(":path")
-              if string.match(path, "^/api/v1/") then
-                response_handle:headers():add("X-API-Deprecated", "true")
+              function envoy_on_response(response_handle)
+                -- Add deprecation warning for old API versions
+                local lua_metadata = response_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+                if lua_metadata ~= nil and lua_metadata["legacy_api_path"] == true then
+                  response_handle:headers():add("X-API-Deprecated", "true")
+                end
               end
-            end
 ```
 
 This filter transparently migrates old API paths to new versions while adding deprecation warnings. Clients continue working while you phase out legacy endpoints.
@@ -353,8 +326,8 @@ curl http://localhost:15000/config_dump
 # Check specific listeners
 curl http://localhost:15000/config_dump?resource=listeners
 
-# View applied filters
-curl http://localhost:15000/config_dump?resource=filters
+# View listener configuration, including filter chains
+curl http://localhost:15000/config_dump?resource=listeners
 ```
 
 Compare the actual Envoy configuration with your EnvoyFilter intent. Look for missing patches or incorrect insertion points. The config dump is verbose but shows exactly what Envoy sees.
