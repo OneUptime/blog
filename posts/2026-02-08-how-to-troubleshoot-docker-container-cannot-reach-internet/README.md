@@ -203,6 +203,9 @@ Different network modes have different connectivity characteristics:
 ```bash
 # Check which network mode the container is using
 docker inspect my-container --format '{{.HostConfig.NetworkMode}}'
+
+# If the container uses a custom network, check whether that network is internal
+docker network inspect <network-name> --format '{{.Internal}}'
 ```
 
 - `bridge` (default): Should have internet access through NAT
@@ -211,7 +214,7 @@ docker inspect my-container --format '{{.HostConfig.NetworkMode}}'
 - `container:<name>`: Shares another container's network, check that container
 - Custom network with `internal: true`: Intentionally blocks internet access
 
-If the network is `none` or `internal`, the container is isolated by design.
+If the network mode is `none`, or the container is attached only to networks where `Internal` is `true`, the container is isolated by design.
 
 ## Step 8: Test with a Fresh Container
 
@@ -232,7 +235,7 @@ If the fresh container works but your application container does not, the proble
 
 ## Step 9: Check Docker Daemon Proxy Settings
 
-If your host is behind a corporate proxy, Docker containers need proxy configuration too:
+If your host is behind a corporate proxy, check the Docker daemon proxy settings for image pulls and pushes:
 
 ```bash
 # Check if Docker daemon has proxy settings
@@ -258,7 +261,7 @@ sudo systemctl daemon-reload
 sudo systemctl restart docker
 ```
 
-For containers to use the proxy, pass environment variables:
+For containers to use the proxy for their own outbound HTTP or HTTPS traffic, pass environment variables:
 
 ```bash
 # Run a container with proxy settings
@@ -281,20 +284,15 @@ docker network inspect bridge --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}
 ip route | grep 172.17
 ```
 
-If there is a conflict, change Docker's default address pool:
+If there is a conflict with the default `docker0` bridge, change the default bridge address:
 
 ```json
 {
-  "default-address-pools": [
-    {
-      "base": "10.200.0.0/16",
-      "size": 24
-    }
-  ]
+  "bip": "10.200.0.1/24"
 }
 ```
 
-Save to `/etc/docker/daemon.json` and restart Docker.
+Save to `/etc/docker/daemon.json` and restart Docker. For conflicts involving newly created user-defined networks, configure `default-address-pools` instead.
 
 ## Quick Diagnostic Script
 
