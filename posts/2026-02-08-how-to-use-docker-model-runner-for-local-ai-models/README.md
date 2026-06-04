@@ -19,12 +19,12 @@ The key capabilities:
 - Pull models from Docker Hub and other registries
 - Run models with GPU acceleration (NVIDIA, Apple Silicon)
 - Expose an OpenAI-compatible REST API
-- Manage model lifecycle (start, stop, remove)
+- Manage model lifecycle (pull, load, unload, remove)
 - Integrate models into Docker Compose stacks
 
 ## Prerequisites
 
-You need Docker Desktop 4.34 or later with the Model Runner feature enabled:
+You need Docker Desktop 4.40 or later on macOS, Docker Desktop 4.41 or later on Windows, or Docker Engine with Model Runner installed:
 
 ```bash
 # Check your Docker Desktop version
@@ -36,7 +36,7 @@ docker model --help
 ```
 
 For GPU acceleration:
-- **NVIDIA GPUs**: Install the NVIDIA Container Toolkit
+- **NVIDIA GPUs**: Use a supported NVIDIA driver
 - **Apple Silicon**: GPU acceleration works out of the box on M1/M2/M3/M4 Macs
 - **CPU-only**: Models run on CPU if no GPU is available (slower but functional)
 
@@ -51,8 +51,8 @@ docker model pull ai/llama3.2:1B-Q8_0
 # Pull a larger, more capable model
 docker model pull ai/llama3.2:3B-Q4_K_M
 
-# Pull a code-specialized model
-docker model pull ai/codellama:7B-Q4_K_M
+# Pull a larger model with stronger coding ability
+docker model pull ai/qwen2.5:7B-Q4_K_M
 
 # List all downloaded models
 docker model list
@@ -65,18 +65,18 @@ The model tags follow a pattern: `model-name:parameter-count-quantization`. Q4_K
 Start a model and interact with it through the built-in API:
 
 ```bash
-# Run a model (starts the inference server)
-docker model run ai/llama3.2:1B-Q8_0
+# Pre-load a model in the background
+docker model run --detach ai/llama3.2:1B-Q8_0
 
-# The model is now serving on a local endpoint
-# Default: http://localhost:12434/v1
+# The model is now available through the local endpoint
+# OpenAI-compatible base URL: http://localhost:12434/engines/v1
 ```
 
 Once running, you can chat with the model directly:
 
 ```bash
 # Send a chat completion request using curl
-curl http://localhost:12434/engines/ai/llama3.2:1B-Q8_0/v1/chat/completions \
+curl http://localhost:12434/engines/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "ai/llama3.2:1B-Q8_0",
@@ -101,7 +101,7 @@ from openai import OpenAI
 
 # Point the client to the local Docker Model Runner endpoint
 client = OpenAI(
-    base_url="http://localhost:12434/engines/ai/llama3.2:1B-Q8_0/v1",
+    base_url="http://localhost:12434/engines/v1",
     api_key="not-needed"  # Local models do not require an API key
 )
 
@@ -123,7 +123,7 @@ This approach lets you develop and test AI features locally without paying for A
 
 ## Integrating Models into Docker Compose
 
-Docker Model Runner models can be part of your Docker Compose stack. This is useful for applications that include an AI component alongside traditional services.
+Docker Model Runner models can be part of your Docker Compose stack with Docker Compose 2.38 or later. This is useful for applications that include an AI component alongside traditional services.
 
 ```yaml
 # compose.yaml - Application stack with local AI model
@@ -133,11 +133,12 @@ services:
     build: .
     ports:
       - "3000:3000"
-    environment:
-      - AI_API_URL=http://model-runner:12434/engines/ai/llama3.2:1B-Q8_0/v1
-      - AI_MODEL=ai/llama3.2:1B-Q8_0
     depends_on:
       - db
+    models:
+      llm:
+        endpoint_var: AI_API_URL
+        model_var: AI_MODEL
 
   # Database
   db:
@@ -151,6 +152,10 @@ services:
 
 volumes:
   pgdata:
+
+models:
+  llm:
+    model: ai/llama3.2:1B-Q8_0
 ```
 
 Your application code connects to the model API endpoint just like it would connect to OpenAI, but everything runs locally.
@@ -169,8 +174,8 @@ docker model inspect ai/llama3.2:1B-Q8_0
 # Remove a model to free disk space
 docker model rm ai/llama3.2:1B-Q8_0
 
-# Remove all unused models
-docker model prune
+# Remove all models
+docker model purge
 ```
 
 ## GPU Memory Management
@@ -208,7 +213,7 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
-const AI_URL = process.env.AI_API_URL || 'http://localhost:12434/engines/ai/llama3.2:1B-Q8_0/v1';
+const AI_URL = process.env.AI_API_URL || 'http://localhost:12434/engines/v1';
 
 // Summarize endpoint - sends text to the local model for summarization
 app.post('/api/summarize', async (req, res) => {
@@ -251,7 +256,7 @@ For better user experience with longer outputs, use streaming:
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:12434/engines/ai/llama3.2:1B-Q8_0/v1",
+    base_url="http://localhost:12434/engines/v1",
     api_key="not-needed"
 )
 
@@ -275,7 +280,7 @@ for chunk in stream:
 Different tasks call for different models:
 
 - **General conversation**: Llama 3.2 1B or 3B
-- **Code generation**: CodeLlama 7B or 13B
+- **Code generation**: Qwen2.5 7B or another code-capable model
 - **Technical writing**: Llama 3.2 3B or larger
 - **Quick responses, limited hardware**: Llama 3.2 1B with Q4 quantization
 
@@ -287,6 +292,6 @@ Keep models on an SSD. Loading a multi-gigabyte model from a spinning disk adds 
 
 Use lower quantization (Q4) for development and testing where speed matters more than quality. Switch to Q8 or full precision only when evaluating model output quality.
 
-Set temperature to 0.0 for deterministic outputs in testing. This makes your AI features easier to test because the same input always produces the same output.
+Set temperature to 0.0 for more repeatable outputs in testing. This makes your AI features easier to test because the model is less likely to vary its response for the same input.
 
 Docker Model Runner bridges the gap between traditional Docker workflows and AI model serving. You manage models with familiar commands, serve them through a standard API, and integrate them into existing Compose stacks. For development and testing, this eliminates the need for cloud API keys and gives you complete control over your AI infrastructure.
