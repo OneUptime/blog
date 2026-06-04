@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Docker Scout, Vulnerability Remediation, Security, Base Images, DevOps
 
-Description: Use Docker Scout recommendations to fix vulnerabilities by updating base images, packages, and dependencies in your containers.
+Description: Use Docker Scout recommendations and CVE scans to fix vulnerabilities by updating base images, packages, and dependencies in your containers.
 
 ---
 
-Finding vulnerabilities is only half the battle. The other half, and often the harder half, is figuring out how to fix them. Docker Scout Recommendations bridges this gap by analyzing your image and telling you exactly which base image updates, package upgrades, and configuration changes will eliminate the most vulnerabilities with the least effort.
+Finding vulnerabilities is only half the battle. The other half, and often the harder half, is figuring out how to fix them. Docker Scout Recommendations bridges this gap by analyzing your image and telling you which base image updates can eliminate vulnerabilities with the least effort.
 
-Instead of researching each CVE individually and trying to find which package update resolves it, Scout's recommendations give you actionable steps sorted by impact. This guide shows how to use recommendations effectively, from simple base image swaps to systematic vulnerability remediation workflows.
+Instead of researching each CVE individually and trying to find which base image update resolves it, Scout's recommendations give you actionable steps sorted by impact. This guide shows how to use recommendations effectively, from simple base image swaps to systematic vulnerability remediation workflows.
 
 ## Getting Recommendations
 
@@ -24,20 +24,19 @@ docker scout recommendations myapp:latest
 # Get recommendations for a remote image
 docker scout recommendations nginx:1.25
 
-# Get detailed recommendations in JSON format
-docker scout recommendations myapp:latest --format json > recommendations.json
+# Save recommendations to a file
+docker scout recommendations myapp:latest --output recommendations.txt
 ```
 
 The output typically includes:
 
 - Recommended base image updates (newer tags, slimmer variants)
-- Package versions that fix known vulnerabilities
 - Alternative base images with fewer vulnerabilities
 - The number of CVEs each recommendation would fix
 
 ## Understanding Recommendation Types
 
-Scout provides several categories of recommendations, each addressing different sources of vulnerabilities.
+Scout provides base image recommendations, and you can combine them with CVE scans to address other sources of vulnerabilities.
 
 ### Base Image Recommendations
 
@@ -76,12 +75,11 @@ docker scout cves myapp:latest --only-severity critical,high
 
 ### Package Update Recommendations
 
-When specific OS packages have vulnerabilities, Scout recommends updated versions.
+When specific OS packages have vulnerabilities, Scout can show which CVEs are fixable.
 
 ```bash
-# Get detailed CVE information including fixed versions
-docker scout cves myapp:latest --only-fixed --format json | \
-  jq '.vulnerabilities[] | {cve: .cveId, package: .packageName, installed: .installedVersion, fixed: .fixedVersion}'
+# Get detailed CVE information including fixed versions in the text output
+docker scout cves myapp:latest --only-fixed --details
 ```
 
 Apply package updates in your Dockerfile.
@@ -94,7 +92,7 @@ RUN apk update && apk upgrade --no-cache
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 COPY dist/ ./dist/
 CMD ["node", "dist/index.js"]
 ```
@@ -112,12 +110,12 @@ RUN apt-get update && \
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 COPY dist/ ./dist/
 CMD ["node", "dist/index.js"]
 ```
 
-### Application Dependency Recommendations
+### Application Dependency Vulnerabilities
 
 Scout also identifies vulnerable application-level dependencies (npm packages, Python packages, etc.).
 
@@ -125,9 +123,8 @@ Scout also identifies vulnerable application-level dependencies (npm packages, P
 # Filter for application-level vulnerabilities
 docker scout cves myapp:latest --only-package-type npm
 
-# See which npm packages need updates
-docker scout cves myapp:latest --format json | \
-  jq '.vulnerabilities[] | select(.packageType == "npm") | {package: .packageName, installed: .installedVersion, fixed: .fixedVersion}'
+# List vulnerable npm packages
+docker scout cves myapp:latest --format only-packages --only-package-type npm --only-vuln-packages
 ```
 
 Fix application dependencies before building.
@@ -180,9 +177,9 @@ FIXED_IMAGE="myapp:remediated"
 echo "Step 1: Baseline scan"
 echo "===================="
 docker scout cves "$IMAGE" --only-severity critical,high
-BASELINE_CRITICAL=$(docker scout cves "$IMAGE" --format json | jq '[.vulnerabilities[] | select(.severity == "critical")] | length')
-BASELINE_HIGH=$(docker scout cves "$IMAGE" --format json | jq '[.vulnerabilities[] | select(.severity == "high")] | length')
-echo "Baseline: $BASELINE_CRITICAL critical, $BASELINE_HIGH high"
+docker scout cves "$IMAGE" --only-severity critical --output baseline-critical.txt
+docker scout cves "$IMAGE" --only-severity high --output baseline-high.txt
+echo "Baseline reports saved to baseline-critical.txt and baseline-high.txt"
 echo ""
 
 echo "Step 2: Get recommendations"
@@ -192,8 +189,7 @@ echo ""
 
 echo "Step 3: Check for base image updates"
 echo "==================================="
-docker scout recommendations "$IMAGE" --format json | \
-  jq '.baseImageRecommendations // empty'
+docker scout recommendations "$IMAGE" --only-update
 echo ""
 
 echo "Step 4: Check fixable vulnerabilities"
@@ -222,8 +218,7 @@ Not all vulnerabilities have fixes available. Scout helps you understand and man
 docker scout cves myapp:latest --only-unfixed --only-severity critical,high
 
 # Get details about unfixed vulnerabilities
-docker scout cves myapp:latest --only-unfixed --format json | \
-  jq '.vulnerabilities[] | {cve: .cveId, severity: .severity, package: .packageName, description: .description}'
+docker scout cves myapp:latest --only-unfixed --details
 ```
 
 Strategies for unfixed vulnerabilities:
@@ -259,17 +254,17 @@ CMD ["dist/index.js"]
 
 ```bash
 # Generate a report of accepted risks
-docker scout cves myapp:latest --only-unfixed --format json | \
-  jq '.vulnerabilities[] | select(.severity == "high" or .severity == "critical")' > accepted-risks.json
+docker scout cves myapp:latest --only-unfixed --only-severity critical,high \
+  --format markdown --output accepted-risks.md
 ```
 
 ## Automating Remediation
 
-Set up automated processes that apply Scout recommendations.
+Set up automated processes that check Scout recommendations.
 
 ```yaml
-# .github/workflows/auto-remediate.yml
-name: Auto-Remediate Vulnerabilities
+# .github/workflows/scout-recommendations.yml
+name: Docker Scout Recommendations
 
 on:
   schedule:
@@ -283,48 +278,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - name: Build image
+        run: docker build -t myapp:current .
+
+      - name: Docker Scout recommendations
+        uses: docker/scout-action@v1
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Check for base image updates
-        id: check
-        run: |
-          docker build -t myapp:current .
-          RECS=$(docker scout recommendations myapp:current --format json 2>/dev/null || echo "{}")
-          # Check if a newer base image is available
-          CURRENT_BASE=$(echo "$RECS" | jq -r '.currentBaseImage // empty')
-          RECOMMENDED_BASE=$(echo "$RECS" | jq -r '.recommendedBaseImage // empty')
-          if [ -n "$RECOMMENDED_BASE" ] && [ "$CURRENT_BASE" != "$RECOMMENDED_BASE" ]; then
-            echo "update_available=true" >> $GITHUB_OUTPUT
-            echo "recommended=$RECOMMENDED_BASE" >> $GITHUB_OUTPUT
-          else
-            echo "update_available=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Update Dockerfile
-        if: steps.check.outputs.update_available == 'true'
-        run: |
-          # Update the FROM instruction with the recommended base image
-          RECOMMENDED="${{ steps.check.outputs.recommended }}"
-          sed -i "1s|^FROM .*|FROM $RECOMMENDED|" Dockerfile
-          echo "Updated Dockerfile to use $RECOMMENDED"
-
-      - name: Create pull request
-        if: steps.check.outputs.update_available == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          title: "Update base image to ${{ steps.check.outputs.recommended }}"
-          body: |
-            Docker Scout recommends updating the base image to reduce vulnerabilities.
-
-            **Recommended base image:** ${{ steps.check.outputs.recommended }}
-
-            Please review the changes and run tests before merging.
-          branch: auto-remediate/base-image-update
-          commit-message: "chore: update base image per Docker Scout recommendation"
+          command: recommendations
+          image: myapp:current
+          only-update: true
+          summary: true
 ```
 
 ## Tracking Remediation Progress
@@ -334,15 +297,14 @@ Monitor how your vulnerability count changes over time.
 ```bash
 # Save scan results with timestamps for tracking
 DATE=$(date +%Y-%m-%d)
-docker scout cves myapp:latest --format json > "scans/scan-${DATE}.json"
+docker scout cves myapp:latest --format markdown --output "scans/scan-${DATE}.md"
 
-# Generate a trend summary
-for scan in scans/scan-*.json; do
-    date=$(basename "$scan" | sed 's/scan-\(.*\)\.json/\1/')
-    critical=$(jq '[.vulnerabilities[] | select(.severity == "critical")] | length' "$scan")
-    high=$(jq '[.vulnerabilities[] | select(.severity == "high")] | length' "$scan")
-    echo "$date: critical=$critical, high=$high"
+# Generate a trend summary from the saved reports
+for scan in scans/scan-*.md; do
+    date=$(basename "$scan" | sed 's/scan-\(.*\)\.md/\1/')
+    echo "=== $date ==="
+    grep -E "critical-|high-" "$scan" || true
 done
 ```
 
-Docker Scout Recommendations turn vulnerability scan results into a clear action plan. Start with base image updates for the biggest impact, then address package-level fixes, and finally handle application dependencies. By following recommendations systematically, you can drive your vulnerability count down steadily over time.
+Docker Scout Recommendations turn vulnerability scan results into a clear base image update plan. Start with base image updates for the biggest impact, then address package-level fixes, and finally handle application dependencies. By following recommendations systematically, you can drive your vulnerability count down steadily over time.
