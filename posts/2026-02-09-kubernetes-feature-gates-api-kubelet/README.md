@@ -18,7 +18,7 @@ Features progress through stages:
 
 - **Alpha**: Disabled by default, may be buggy, no guarantees
 - **Beta**: Enabled by default, well-tested, may change
-- **GA (Stable)**: Always enabled, cannot be disabled, feature gate removed
+- **GA (Stable)**: Always enabled by default; the feature gate is eventually removed
 
 Feature naming:
 - `FeatureName=true`: Enable feature
@@ -50,7 +50,7 @@ kubectl get pods -n kube-system kube-apiserver-<node> -o yaml | grep feature-gat
 cat /var/lib/kubelet/config.yaml | grep -A 10 featureGates
 
 # Check API server metrics
-kubectl get --raw /metrics | grep feature_gate
+kubectl get --raw /metrics | grep kubernetes_feature_enabled
 ```
 
 ## Enabling Feature Gates on API Server
@@ -68,7 +68,7 @@ spec:
   containers:
   - command:
     - kube-apiserver
-    - --feature-gates=EphemeralContainers=true,TTLAfterFinished=true,SizeMemoryBackedVolumes=true
+    - --feature-gates=APIResponseCompression=true,APIServerIdentity=true,StorageVersionMigrator=true
     # ... other flags
 ```
 
@@ -76,11 +76,12 @@ Or via kubeadm configuration:
 
 ```yaml
 # kubeadm-config.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 apiServer:
   extraArgs:
-    feature-gates: "EphemeralContainers=true,TTLAfterFinished=true,SizeMemoryBackedVolumes=true"
+    - name: feature-gates
+      value: "APIResponseCompression=true,APIServerIdentity=true,StorageVersionMigrator=true"
 ```
 
 Apply and verify:
@@ -106,26 +107,24 @@ Configure in kubelet config file:
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 featureGates:
-  EphemeralContainers: true
-  TopologyManager: true
-  CPUManager: true
   MemoryQoS: true
-  NodeSwap: true
+  KubeletSeparateDiskGC: true
+  GracefulNodeShutdown: true
 ```
 
 Or via kubeadm:
 
 ```yaml
 # kubeadm-config.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 ---
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 featureGates:
-  EphemeralContainers: true
-  TopologyManager: true
-  CPUManager: true
+  MemoryQoS: true
+  KubeletSeparateDiskGC: true
+  GracefulNodeShutdown: true
 ```
 
 Apply configuration:
@@ -153,7 +152,7 @@ spec:
   containers:
   - command:
     - kube-controller-manager
-    - --feature-gates=TTLAfterFinished=true,CronJobTimeZone=true
+    - --feature-gates=HPAConfigurableTolerance=true,MaxUnavailableStatefulSet=true
     # ... other flags
 ```
 
@@ -161,31 +160,21 @@ Or via kubeadm:
 
 ```yaml
 # kubeadm-config.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 controllerManager:
   extraArgs:
-    feature-gates: "TTLAfterFinished=true,CronJobTimeZone=true"
+    - name: feature-gates
+      value: "HPAConfigurableTolerance=true,MaxUnavailableStatefulSet=true"
 ```
 
-## Useful Beta Features to Enable
+## Useful Features to Configure
 
 ### Ephemeral Containers (GA in 1.25)
 
-Enable ephemeral containers for debugging:
+Ephemeral containers are stable and no feature gate is required in supported Kubernetes releases.
 
-```yaml
-apiServer:
-  extraArgs:
-    feature-gates: "EphemeralContainers=true"
----
-apiVersion: kubelet.config.k8s.io/v1beta1
-kind: KubeletConfiguration
-featureGates:
-  EphemeralContainers: true
-```
-
-Use ephemeral containers:
+Use ephemeral containers for debugging:
 
 ```bash
 kubectl debug -it pod-name --image=busybox --target=container-name
@@ -193,13 +182,7 @@ kubectl debug -it pod-name --image=busybox --target=container-name
 
 ### TTL After Finished (GA in 1.23)
 
-Auto-delete completed Jobs and Pods:
-
-```yaml
-controllerManager:
-  extraArgs:
-    feature-gates: "TTLAfterFinished=true"
-```
+Auto-delete completed Jobs. This feature is stable and no feature gate is required in supported Kubernetes releases.
 
 Use in Job definitions:
 
@@ -219,15 +202,9 @@ spec:
       restartPolicy: Never
 ```
 
-### Size Memory Backed Volumes (Beta in 1.22+)
+### Size Memory Backed Volumes (GA in 1.32)
 
-Limit size of memory-backed volumes:
-
-```yaml
-apiServer:
-  extraArgs:
-    feature-gates: "SizeMemoryBackedVolumes=true"
-```
+Limit size of memory-backed volumes. This feature is stable and no feature gate is required in supported Kubernetes releases.
 
 Use in pod specs:
 
@@ -250,28 +227,24 @@ spec:
       sizeLimit: 1Gi
 ```
 
-### CPU Manager (Beta, enabled by default 1.10+)
+### CPU Manager (GA in 1.26)
 
 Enable CPU pinning:
 
 ```yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
-featureGates:
-  CPUManager: true
 cpuManagerPolicy: static
 reservedSystemCPUs: "0-1"
 ```
 
-### Topology Manager (Beta in 1.18+)
+### Topology Manager (GA in 1.27)
 
 NUMA-aware resource allocation:
 
 ```yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
-featureGates:
-  TopologyManager: true
 topologyManagerPolicy: best-effort
 ```
 
@@ -294,22 +267,22 @@ Combine multiple features:
 # API Server
 apiServer:
   extraArgs:
-    feature-gates: "EphemeralContainers=true,TTLAfterFinished=true,SizeMemoryBackedVolumes=true,APIPriorityAndFairness=true"
+    - name: feature-gates
+      value: "APIResponseCompression=true,APIServerIdentity=true,StorageVersionMigrator=true"
 
 # kubelet
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 featureGates:
-  EphemeralContainers: true
-  TopologyManager: true
-  CPUManager: true
   MemoryQoS: true
+  KubeletSeparateDiskGC: true
   GracefulNodeShutdown: true
 
 # Controller Manager
 controllerManager:
   extraArgs:
-    feature-gates: "TTLAfterFinished=true,CronJobTimeZone=true,JobTrackingWithFinalizers=true"
+    - name: feature-gates
+      value: "HPAConfigurableTolerance=true,MaxUnavailableStatefulSet=true"
 ```
 
 ## Testing Feature Gate Configuration
@@ -327,8 +300,9 @@ sudo journalctl -u kubelet | grep "Feature gates"
 # For EphemeralContainers:
 kubectl debug -it <pod-name> --image=busybox
 
-# For TTLAfterFinished:
+# For TTL-after-finished:
 kubectl create job test --image=busybox -- echo "test"
+kubectl patch job test -p '{"spec":{"ttlSecondsAfterFinished":100}}'
 kubectl get job test -o yaml | grep ttlSecondsAfterFinished
 ```
 
@@ -339,37 +313,32 @@ Enable experimental features (use caution):
 ```yaml
 apiServer:
   extraArgs:
-    feature-gates: "OpenAPIV3=true,ServerSideFieldValidation=true"
+    - name: feature-gates
+      value: "APIServingWithRoutine=true,CBORServingAndStorage=true"
 
-kubeletConfiguration:
-  featureGates:
-    NodeSwap: true
-    UserNamespacesStatelessPodsSupport: true
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+featureGates:
+  MemoryQoS: true
+  KubeletInUserNamespace: true
 ```
 
-### Node Swap (Alpha)
+### Node Swap (GA in 1.34)
 
 Enable swap support on nodes:
 
 ```yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
-featureGates:
-  NodeSwap: true
 memorySwap:
   swapBehavior: LimitedSwap
 failSwapOn: false
 ```
 
-### Server-Side Field Validation (Beta)
+### Server-Side Field Validation (GA in 1.27)
 
-Improve field validation:
-
-```yaml
-apiServer:
-  extraArgs:
-    feature-gates: "ServerSideFieldValidation=true"
-```
+Server-side field validation is stable and no feature gate is required in supported Kubernetes releases.
 
 Use with kubectl:
 
@@ -384,7 +353,8 @@ Disable features being deprecated:
 ```yaml
 apiServer:
   extraArgs:
-    feature-gates: "LegacyServiceAccountTokenNoAutoGeneration=false"
+    - name: feature-gates
+      value: "GitRepoVolumeDriver=false"
 ```
 
 ## Monitoring Feature Gate Status
@@ -420,6 +390,11 @@ These features are GA and feature gates can be removed:
 # - VolumeSnapshotDataSource (GA in 1.20)
 # - CSIStorageCapacity (GA in 1.24)
 # - EndpointSlice (GA in 1.21)
+# - EphemeralContainers (GA in 1.25)
+# - TTLAfterFinished (GA in 1.23)
+# - CPUManager (GA in 1.26)
+# - TopologyManager (GA in 1.27)
+# - NodeSwap (GA in 1.34)
 # - ServiceTopology (deprecated, use TopologyAwareHints)
 ```
 
@@ -444,19 +419,23 @@ Example production configuration:
 ```yaml
 # Production cluster - conservative approach
 # Only enable well-tested beta features
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
 apiServer:
   extraArgs:
-    feature-gates: "EphemeralContainers=true,APIPriorityAndFairness=true"
-
-kubeletConfiguration:
-  featureGates:
-    CPUManager: true
-    TopologyManager: true
-    GracefulNodeShutdown: true
-
+    - name: feature-gates
+      value: "APIResponseCompression=true,APIServerIdentity=true"
 controllerManager:
   extraArgs:
-    feature-gates: "TTLAfterFinished=true,CronJobTimeZone=true"
+    - name: feature-gates
+      value: "HPAConfigurableTolerance=true,MaxUnavailableStatefulSet=true"
+
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+featureGates:
+  KubeletSeparateDiskGC: true
+  GracefulNodeShutdown: true
 ```
 
 Feature gates provide controlled access to new Kubernetes functionality before general availability. Enable beta features that provide clear value, avoid alpha features in production unless absolutely necessary, test thoroughly in non-production environments, and maintain documentation of enabled features and their purpose for your cluster.
