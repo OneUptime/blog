@@ -14,7 +14,7 @@ This guide explores advanced kubernetes plugin configurations for custom service
 
 ## Understanding the Kubernetes Plugin
 
-The kubernetes plugin watches Kubernetes API for services and endpoints, creating DNS records dynamically. It supports:
+The kubernetes plugin watches the Kubernetes API for services and EndpointSlices, creating DNS records dynamically. It supports:
 
 - Service A/AAAA records
 - Pod A/AAAA records
@@ -36,7 +36,7 @@ kubernetes cluster.local in-addr.arpa ip6.arpa {
 
 ## Advanced Kubernetes Plugin Configuration
 
-Full plugin configuration with all options:
+Plugin configuration with commonly used options:
 
 ```yaml
 apiVersion: v1
@@ -58,8 +58,8 @@ data:
             # Namespaces to watch (empty = all namespaces)
             namespaces production staging
 
-            # API server endpoint
-            endpoint https://kubernetes.default.svc.cluster.local:443
+            # Omit endpoint for in-cluster API access with the CoreDNS service account.
+            # Use endpoint with tls or kubeconfig when connecting to a remote API server.
 
             # TTL for records
             ttl 30
@@ -89,7 +89,7 @@ Enable pod IP discovery:
 
 ```yaml
 kubernetes cluster.local {
-    pods verified  # Verify pod IP matches DNS query source
+    pods verified  # Verify that a pod exists in the namespace with the queried IP
     endpoint_pod_names
     ttl 30
 }
@@ -181,7 +181,7 @@ kubernetes cluster.local {
 }
 ```
 
-This prevents pods from discovering services in unauthorized namespaces.
+This prevents CoreDNS from exposing services outside the configured namespaces. Use Kubernetes RBAC and NetworkPolicy for authorization and traffic controls.
 
 ## Custom Endpoint Discovery
 
@@ -241,45 +241,37 @@ dig postgres-0.database.default.svc.cluster.local
 
 ## Implementing Multi-Cluster Service Discovery
 
-Configure cross-cluster service discovery:
+Configure Multi-Cluster Services API discovery:
 
 ```yaml
-# Cluster A CoreDNS
-kubernetes cluster.local {
+# CoreDNS with a local cluster zone and an MCS zone
+kubernetes cluster.local clusterset.local {
     pods insecure
-    endpoint https://cluster-a-api:443
+    multicluster clusterset.local
     ttl 30
-}
-
-# Federation zone for Cluster B
-kubernetes cluster-b.fed.local {
-    pods disabled
-    endpoint https://cluster-b-api:443
-    ttl 60
 }
 ```
 
-Services in Cluster B accessible as:
+Exported services are accessible as:
 
 ```text
-service-name.namespace.svc.cluster-b.fed.local
+service-name.namespace.svc.clusterset.local
 ```
 
 ## Custom TTL Configuration
 
-Set different TTLs for different query patterns:
+Set a TTL for kubernetes plugin responses:
 
 ```yaml
 kubernetes cluster.local {
     pods verified
     ttl 5  # Short TTL for rapid updates
 
-    # Override TTL for specific zones
     endpoint_pod_names
 }
 ```
 
-Or use zone-specific configuration:
+Or use zone-specific server blocks with different TTL values:
 
 ```yaml
 # Stable services - longer TTL
@@ -301,24 +293,19 @@ dynamic.cluster.local:53 {
 
 ## Implementing Service Aliases
 
-Create service aliases using multiple DNS names:
+Kubernetes Services do not support arbitrary extra DNS names through CoreDNS annotations. Create service aliases with CoreDNS plugins or Kubernetes `ExternalName` Services:
 
 ```yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: api-v1
-  annotations:
-    coredns.io/hostname: api.company.local,api-legacy.company.local
+  name: api-legacy
 spec:
-  selector:
-    app: api
-    version: v1
-  ports:
-  - port: 80
+  type: ExternalName
+  externalName: api-v1.default.svc.cluster.local
 ```
 
-Configure CoreDNS to honor annotations:
+For aliases outside the cluster domain, configure CoreDNS explicitly:
 
 ```yaml
 kubernetes cluster.local {
