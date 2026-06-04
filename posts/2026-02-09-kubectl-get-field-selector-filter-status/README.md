@@ -68,16 +68,16 @@ kubectl get pods --field-selector metadata.name=nginx-deployment-xyz
 To find all resources in a specific namespace:
 
 ```bash
-kubectl get all --field-selector metadata.namespace=production
+kubectl get all --all-namespaces --field-selector metadata.namespace=production
 ```
 
 This is useful when writing scripts that need to work across different namespaces without hardcoding namespace names.
 
-## Filtering Nodes by Condition
+## Filtering Nodes by Scheduling State
 
-Nodes have various conditions you can filter on. This helps you identify nodes with problems quickly.
+Nodes support filtering by whether they are marked unschedulable. This helps you identify nodes that have been cordoned quickly.
 
-To find nodes that are not ready:
+To find nodes that are unschedulable:
 
 ```bash
 kubectl get nodes --field-selector spec.unschedulable=true
@@ -156,7 +156,7 @@ kubectl get pods --field-selector spec.nodeName=worker-node-2 \
   --all-namespaces
 ```
 
-Find all completed jobs that need cleanup:
+Find all completed pods from jobs that need cleanup:
 
 ```bash
 kubectl get pods --field-selector status.phase=Succeeded \
