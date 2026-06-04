@@ -8,7 +8,7 @@ Description: A complete guide to using docker init with Java projects, covering 
 
 ---
 
-Java applications bring their own set of containerization challenges. The JVM needs tuning for container environments. Build tools like Maven and Gradle download half the internet during dependency resolution. Multi-stage builds are essential to keep the JDK out of the production image. The `docker init` command detects Java projects by looking for pom.xml or build.gradle files and generates a Dockerfile that handles all of this.
+Java applications bring their own set of containerization challenges. The JVM often needs tuning for container environments. Build tools like Maven and Gradle download half the internet during dependency resolution. Multi-stage builds are essential to keep the JDK out of the production image. The `docker init` command includes a Java template for Maven projects packaged as an uber JAR and generates starter Docker files that you can tailor to your application.
 
 ## Setting Up a Sample Spring Boot Project
 
@@ -60,13 +60,13 @@ With the project ready, run docker init:
 docker init
 ```
 
-Docker init detects the pom.xml and identifies the project as Java:
+When you choose the Java template, Docker Init prompts for the Java version, app directory, and port:
 
 ```text
 ? What application platform does your project use? Java
 ? What version of Java do you want to use? 21
+? What's the relative directory (with a leading .) for your app? ./src
 ? What port does your server listen on? 8080
-? What is the relative directory for your app? (e.g., ./target for Maven) ./target
 ```
 
 ## Understanding the Generated Dockerfile
@@ -115,14 +115,14 @@ ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 
 The critical design decisions here:
 
-- **eclipse-temurin** is the recommended OpenJDK distribution for containers
+- **eclipse-temurin** is a widely used official OpenJDK image for containers
 - **JDK in build stage, JRE in runtime** keeps the final image smaller by hundreds of megabytes
 - **Maven wrapper (mvnw)** ensures consistent Maven versions
 - **Cache mount for .m2** prevents re-downloading dependencies on every build
 
 ## Gradle Projects
 
-If your project uses Gradle instead of Maven, docker init adapts. The generated Dockerfile changes the build commands:
+If your project uses Gradle instead of Maven, adapt the same multi-stage pattern. The Dockerfile changes the build commands:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -166,7 +166,7 @@ The `--no-daemon` flag is important for Docker builds. The Gradle daemon persist
 
 ## JVM Tuning for Containers
 
-The default JVM settings are designed for traditional servers, not containers. Modern JVMs (Java 17+) detect container memory limits automatically, but you should still tune some parameters.
+Modern JVMs are container-aware by default, but the default heap sizing may still be too high or too low for your application. Tune the heap percentage so the JVM leaves room for metaspace, thread stacks, direct buffers, and the operating system.
 
 Add JVM flags to the entrypoint:
 
@@ -183,7 +183,7 @@ ENTRYPOINT ["java", \
 
 These flags tell the JVM to:
 
-- **UseContainerSupport** - Detect container memory and CPU limits (on by default in Java 17+)
+- **UseContainerSupport** - Detect container memory and CPU limits (on by default since Java 10)
 - **MaxRAMPercentage=75.0** - Use up to 75% of container memory for the heap
 - **InitialRAMPercentage=50.0** - Start with 50% of container memory
 - **UseG1GC** - Use the G1 garbage collector, which works well in containers
@@ -206,8 +206,9 @@ RUN --mount=type=cache,target=/root/.m2 ./mvnw dependency:resolve
 COPY src ./src
 RUN --mount=type=cache,target=/root/.m2 ./mvnw package -DskipTests
 
-# Extract layers from the built JAR
-RUN java -Djarmode=layertools -jar target/*.jar extract --destination extracted
+# Copy and extract layers from the built JAR
+RUN cp target/*.jar application.jar && \
+    java -Djarmode=tools -jar application.jar extract --layers --destination extracted
 
 # Runtime stage with layered copying
 FROM eclipse-temurin:21-jre-jammy as final
@@ -232,7 +233,7 @@ COPY --from=build /app/extracted/snapshot-dependencies/ ./
 COPY --from=build /app/extracted/application/ ./
 
 EXPOSE 8080
-ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
+ENTRYPOINT ["java", "-jar", "application.jar"]
 ```
 
 With layered JARs, changing your application code only invalidates the last layer. Dependencies (which change rarely) stay cached.
@@ -284,7 +285,7 @@ volumes:
   pgdata:
 ```
 
-Setting a memory limit on the app service is important for Java. Without it, the JVM might consume all available host memory.
+Setting a memory limit on the app service is important for Java. Without it, the JVM sizes itself against the memory available to the container process rather than a service-specific budget.
 
 ## Java-Specific .dockerignore
 
@@ -335,4 +336,4 @@ curl http://localhost:8080/api/greeting
 curl http://localhost:8080/actuator/health
 ```
 
-Docker init takes the guesswork out of containerizing Java applications. It generates the right base images, handles build tool caching, and separates the build from runtime. From there, tune the JVM for your container's memory limits, consider layered JARs for better caching, and set resource constraints in your compose file. Java in containers performs well when configured correctly, and docker init gives you the right starting point.
+Docker init takes some of the guesswork out of containerizing Java applications. It generates starter Docker files that you can tailor with the right base images, build tool caching, and separation between build and runtime. From there, tune the JVM for your container's memory limits, consider layered JARs for better caching, and set resource constraints in your compose file. Java in containers performs well when configured correctly, and docker init gives you the right starting point.
