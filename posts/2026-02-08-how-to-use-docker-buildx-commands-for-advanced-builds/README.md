@@ -24,7 +24,7 @@ docker buildx version
 
 ## Managing Builders
 
-A "builder" in Buildx is a build instance. The default builder wraps the legacy Docker builder. You can create additional builders with different drivers.
+A "builder" in Buildx is a build instance. The default builder uses the Docker driver, which runs BuildKit through Docker Engine. You can create additional builders with different drivers.
 
 List all available builders:
 
@@ -38,7 +38,7 @@ Create a new builder using the docker-container driver (runs BuildKit in a conta
 docker buildx create --name mybuilder --driver docker-container --bootstrap
 ```
 
-The `docker-container` driver offers features the default driver does not, including multi-platform builds and advanced cache exports.
+The `docker-container` driver gives you a configurable BuildKit environment and is commonly used for multi-platform builds and advanced cache exports, especially when the default driver does not support the options you need.
 
 Switch to your new builder:
 
@@ -74,7 +74,7 @@ Build and load the image into the local Docker image store:
 docker buildx build --load -t my-app:latest .
 ```
 
-Without `--load`, the docker-container driver builds the image but does not make it available locally. You must specify either `--load` (stores locally) or `--push` (pushes to registry).
+Without `--load`, the docker-container driver builds the image but does not make it available locally. Use `--load` to store it locally, `--push` to push it to a registry, or another `--output` option if you want a different export format.
 
 Build and push directly to a registry:
 
@@ -108,7 +108,7 @@ docker buildx build \
   .
 ```
 
-You need QEMU emulation for cross-platform builds. Set it up with:
+If you are building for platforms that your builder cannot run natively, you need QEMU emulation or another multi-platform strategy such as native builder nodes or cross-compilation. On standalone Docker Engine, you can set up QEMU with:
 
 ```bash
 docker run --privileged --rm tonistiigi/binfmt --install all
@@ -128,7 +128,7 @@ Build with inline cache metadata (stores cache info in the image itself):
 
 ```bash
 docker buildx build \
-  --cache-from type=registry,ref=registry.example.com/myteam/my-app:cache \
+  --cache-from type=registry,ref=registry.example.com/myteam/my-app:latest \
   --cache-to type=inline \
   --push \
   -t registry.example.com/myteam/my-app:latest \
@@ -309,20 +309,20 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
