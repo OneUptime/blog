@@ -45,8 +45,10 @@ Get n8n running in one command.
 docker run -d \
   --name n8n \
   -p 5678:5678 \
+  -e N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true \
+  -e N8N_RUNNERS_ENABLED=true \
   -v n8n-data:/home/node/.n8n \
-  n8nio/n8n
+  docker.n8n.io/n8nio/n8n
 ```
 
 Open `http://your-server-ip:5678` in your browser. You will see the n8n setup wizard where you create your owner account.
@@ -61,7 +63,7 @@ version: "3.8"
 
 services:
   n8n:
-    image: n8nio/n8n:latest
+    image: docker.n8n.io/n8nio/n8n:stable
     container_name: n8n
     restart: unless-stopped
     ports:
@@ -86,6 +88,9 @@ services:
       # Timezone
       GENERIC_TIMEZONE: America/New_York
       TZ: America/New_York
+      # Recommended Docker settings
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_RUNNERS_ENABLED: "true"
       # Execution settings
       EXECUTIONS_DATA_PRUNE: "true"
       EXECUTIONS_DATA_MAX_AGE: 168
@@ -144,14 +149,14 @@ docker compose logs -f n8n
 
 After logging in, click "Add workflow" to create a new one. Here is a practical example: monitoring a website and sending a Slack notification when it goes down.
 
-The workflow has three nodes:
+The workflow has four nodes:
 
 1. **Schedule Trigger** - runs every 5 minutes
 2. **HTTP Request** - checks if the website responds
 3. **IF** - checks the response status
 4. **Slack** - sends an alert if the site is down
 
-You build this visually in the n8n editor, but you can also import workflows as JSON.
+You build this visually in the n8n editor, but you can also import workflows as JSON. A shortened JSON example for the health-check portion looks like this:
 
 ```json
 {
@@ -165,6 +170,7 @@ You build this visually in the n8n editor, but you can also import workflows as 
       },
       "name": "Every 5 Minutes",
       "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
       "position": [250, 300]
     },
     {
@@ -177,6 +183,7 @@ You build this visually in the n8n editor, but you can also import workflows as 
       },
       "name": "Check Website",
       "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
       "position": [450, 300],
       "continueOnFail": true
     },
@@ -194,9 +201,19 @@ You build this visually in the n8n editor, but you can also import workflows as 
       },
       "name": "Is Down?",
       "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
       "position": [650, 300]
     }
-  ]
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [[{"node": "Check Website", "type": "main", "index": 0}]]
+    },
+    "Check Website": {
+      "main": [[{"node": "Is Down?", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {}
 }
 ```
 
@@ -237,18 +254,18 @@ environment:
   # Limit concurrent workflow executions
   N8N_CONCURRENCY_PRODUCTION_LIMIT: 10
   # Disable the public API if you do not need it
-  N8N_PUBLIC_API_DISABLED: "false"
+  N8N_PUBLIC_API_DISABLED: "true"
   # Log level for debugging
   N8N_LOG_LEVEL: info
   # Disable telemetry
   N8N_DIAGNOSTICS_ENABLED: "false"
-  # User management
-  N8N_USER_MANAGEMENT_DISABLED: "false"
+  # Disable the first-run personalization questions
+  N8N_PERSONALIZATION_ENABLED: "false"
 ```
 
 ## Backup Strategy
 
-Your n8n workflows and credentials live in the PostgreSQL database and the n8n data directory. Back up both.
+With PostgreSQL, your workflows and credentials live in the PostgreSQL database. The n8n data directory still contains important instance files such as the encryption key, logs, and source-control assets. Back up both.
 
 ```bash
 # Backup the PostgreSQL database
@@ -265,7 +282,7 @@ You can also export workflows as JSON from the n8n interface for version control
 
 ```bash
 # Export all workflows via the n8n CLI
-docker exec n8n n8n export:workflow --all --output=/home/node/.n8n/backups/workflows/
+docker exec -u node n8n n8n export:workflow --backup --output=/home/node/.n8n/backups/workflows/
 docker cp n8n:/home/node/.n8n/backups/workflows/ ./workflow-backups/
 ```
 
