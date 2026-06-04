@@ -39,6 +39,7 @@ After=docker.service
 Requires=docker.service
 # Wait for network to be available
 After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -104,6 +105,7 @@ Description=PostgreSQL Docker Container
 After=docker.service
 Requires=docker.service
 After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -151,6 +153,7 @@ ExecStartPre=-/usr/bin/docker rm -f app
 ExecStart=/usr/bin/docker run \
   --name app \
   --rm \
+  --add-host=host.docker.internal:host-gateway \
   -p 8080:8080 \
   -e DATABASE_URL=postgresql://postgres:secretpass@host.docker.internal:5432/myapp \
   -e REDIS_URL=redis://host.docker.internal:6379 \
@@ -224,7 +227,7 @@ With a shared Docker network, containers can reach each other by name (e.g., `re
 
 Resource Limits Through Systemd
 
-Systemd can enforce resource limits on Docker containers at the system level:
+Systemd can enforce resource limits on the service that runs the Docker CLI. To limit the container workload itself, combine that with Docker's resource flags:
 
 ```ini
 # /etc/systemd/system/docker-app.service with resource limits
@@ -256,6 +259,10 @@ ExecStart=/usr/bin/docker run \
   --name app \
   --rm \
   --network app-net \
+  --cpus=2 \
+  --memory=1g \
+  --memory-reservation=768m \
+  --pids-limit=512 \
   -p 8080:8080 \
   myapp:latest
 
@@ -266,7 +273,7 @@ TimeoutStopSec=35
 WantedBy=multi-user.target
 ```
 
-These systemd-level limits work in addition to any Docker-level resource constraints. The stricter limit wins.
+These systemd-level limits work in addition to Docker-level resource constraints, but Docker's own flags are what directly constrain the container workload unless you deliberately place containers under a managed cgroup parent.
 
 ## Logging Integration with Journald
 
