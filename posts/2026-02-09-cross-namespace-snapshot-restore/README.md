@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, VolumeSnapshot, Multi-Tenancy
 
-Description: Learn how to restore volume snapshots across Kubernetes namespaces for data sharing, environment promotion, and disaster recovery scenarios using VolumeSnapshotContent resources.
+Description: Learn how to restore volume snapshots across Kubernetes namespaces for data sharing, environment promotion, and disaster recovery scenarios using VolumeSnapshot resources.
 
 ---
 
@@ -12,14 +12,16 @@ Cross-namespace snapshot restore enables data sharing between isolated environme
 
 ## Understanding Cross-Namespace Snapshot Architecture
 
-VolumeSnapshots are namespace-scoped resources, meaning they exist within a single namespace. However, the underlying VolumeSnapshotContent is cluster-scoped, allowing snapshots to be referenced across namespaces.
+VolumeSnapshots are namespace-scoped resources, meaning they exist within a single namespace. Cross-namespace restore uses a PersistentVolumeClaim `dataSourceRef` that points to a VolumeSnapshot in another namespace, and the source namespace must allow that reference with a ReferenceGrant. The underlying VolumeSnapshotContent is cluster-scoped, but PVC restore references the VolumeSnapshot, not the VolumeSnapshotContent.
+
+This requires a cluster with the `AnyVolumeDataSource` and `CrossNamespaceVolumeDataSource` feature gates enabled for the API server and controller manager, the `CrossNamespaceVolumeDataSource` feature gate enabled for the CSI external provisioner, the Gateway API ReferenceGrant CRD installed, and a CSI driver that supports snapshot restore.
 
 The workflow involves:
 
 1. Create snapshot in source namespace
-2. Identify the VolumeSnapshotContent (cluster-scoped)
-3. Create PVC in target namespace referencing the content
-4. Optionally create a VolumeSnapshot reference in target namespace
+2. Create a ReferenceGrant in the source namespace
+3. Create PVC in target namespace referencing the source VolumeSnapshot with `dataSourceRef`
+4. Verify the restored data in the target namespace
 
 ## Basic Cross-Namespace Restore
 
@@ -67,9 +69,8 @@ EOF
 kubectl wait -n production --for=condition=ready pod database --timeout=120s
 
 # Create test data
-kubectl exec -n production database -- psql -U postgres -c "
-CREATE DATABASE proddb;
-\c proddb
+kubectl exec -n production database -- psql -U postgres -c "CREATE DATABASE proddb;"
+kubectl exec -n production database -- psql -U postgres -d proddb -c "
 CREATE TABLE customers (id SERIAL PRIMARY KEY, name VARCHAR(100));
 INSERT INTO customers (name) VALUES ('Customer A'), ('Customer B');
 "
@@ -89,7 +90,7 @@ spec:
     persistentVolumeClaimName: database-pvc
 ```
 
-Apply and get the VolumeSnapshotContent:
+Apply and wait for the snapshot:
 
 ```bash
 kubectl apply -f production-snapshot.yaml
@@ -99,14 +100,7 @@ kubectl wait -n production \
   --for=jsonpath='{.status.readyToUse}'=true \
   volumesnapshot/production-snapshot --timeout=300s
 
-# Get the cluster-scoped VolumeSnapshotContent name
-CONTENT_NAME=$(kubectl get volumesnapshot production-snapshot -n production \
-  -o jsonpath='{.status.boundVolumeSnapshotContentName}')
-
-echo "VolumeSnapshotContent: $CONTENT_NAME"
-
-# View the content (cluster-scoped, no namespace)
-kubectl get volumesnapshotcontent $CONTENT_NAME
+kubectl get volumesnapshot production-snapshot -n production
 ```
 
 Now restore to the development namespace:
@@ -115,12 +109,31 @@ Now restore to the development namespace:
 # Create development namespace
 kubectl create namespace development
 
-# Create PVC in development namespace using the VolumeSnapshotContent
-kubectl apply -n development -f - <<EOF
+# Allow PVCs in development to reference the production snapshot
+kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-development-restore
+  namespace: production
+spec:
+  from:
+  - group: ""
+    kind: PersistentVolumeClaim
+    namespace: development
+  to:
+  - group: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: production-snapshot
+EOF
+
+# Create PVC in development namespace using the source VolumeSnapshot
+kubectl apply -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: dev-database-pvc
+  namespace: development
 spec:
   accessModes:
     - ReadWriteOnce
@@ -128,10 +141,11 @@ spec:
     requests:
       storage: 10Gi
   storageClassName: standard
-  dataSource:
-    name: $CONTENT_NAME
-    kind: VolumeSnapshotContent
+  dataSourceRef:
     apiGroup: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: production-snapshot
+    namespace: production
 EOF
 ```
 
@@ -205,12 +219,6 @@ if [ "$READY" != "true" ]; then
   exit 1
 fi
 
-# Get VolumeSnapshotContent name
-CONTENT_NAME=$(kubectl get volumesnapshot $SOURCE_SNAPSHOT -n $SOURCE_NAMESPACE \
-  -o jsonpath='{.status.boundVolumeSnapshotContentName}')
-
-echo "VolumeSnapshotContent: $CONTENT_NAME"
-
 # Get snapshot details
 RESTORE_SIZE=$(kubectl get volumesnapshot $SOURCE_SNAPSHOT -n $SOURCE_NAMESPACE \
   -o jsonpath='{.status.restoreSize}')
@@ -227,6 +235,25 @@ if ! kubectl get namespace $TARGET_NAMESPACE &>/dev/null; then
   echo "Creating namespace $TARGET_NAMESPACE..."
   kubectl create namespace $TARGET_NAMESPACE
 fi
+
+# Allow the target namespace to reference the source snapshot
+echo "Creating ReferenceGrant in source namespace..."
+cat <<EOF | kubectl apply -f -
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-${TARGET_NAMESPACE}-${SOURCE_SNAPSHOT}
+  namespace: $SOURCE_NAMESPACE
+spec:
+  from:
+  - group: ""
+    kind: PersistentVolumeClaim
+    namespace: $TARGET_NAMESPACE
+  to:
+  - group: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: $SOURCE_SNAPSHOT
+EOF
 
 # Create PVC in target namespace
 echo "Creating PVC in target namespace..."
@@ -246,10 +273,11 @@ spec:
     requests:
       storage: $RESTORE_SIZE
   storageClassName: $STORAGE_CLASS
-  dataSource:
-    name: $CONTENT_NAME
-    kind: VolumeSnapshotContent
+  dataSourceRef:
     apiGroup: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: $SOURCE_SNAPSHOT
+    namespace: $SOURCE_NAMESPACE
 EOF
 
 # Wait for PVC to be bound
@@ -269,36 +297,36 @@ chmod +x cross-namespace-restore.sh
 ./cross-namespace-restore.sh production production-snapshot development dev-database-pvc
 ```
 
-## Creating VolumeSnapshot Reference in Target Namespace
+## Creating a Cross-Namespace VolumeSnapshot Reference
 
-For better organization, create a VolumeSnapshot resource in the target namespace:
+For better organization, grant access from the source namespace and reference the source VolumeSnapshot directly:
 
 ```bash
-# Get the VolumeSnapshotContent
-CONTENT_NAME=$(kubectl get volumesnapshot production-snapshot -n production \
-  -o jsonpath='{.status.boundVolumeSnapshotContentName}')
-
-# Create VolumeSnapshot reference in development namespace
-kubectl apply -n development -f - <<EOF
-apiVersion: snapshot.storage.k8s.io/v1
-kind: VolumeSnapshot
+# Allow development PVCs to reference the production snapshot
+kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
 metadata:
-  name: prod-snapshot-reference
-  labels:
-    source-namespace: production
-    source-snapshot: production-snapshot
+  name: allow-development-restore
+  namespace: production
 spec:
-  source:
-    volumeSnapshotContentName: $CONTENT_NAME
-  volumeSnapshotClassName: csi-snapshot-class
+  from:
+  - group: ""
+    kind: PersistentVolumeClaim
+    namespace: development
+  to:
+  - group: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: production-snapshot
 EOF
 
-# Now you can use this snapshot reference in the same namespace
-kubectl apply -n development -f - <<EOF
+# Now you can use the source snapshot from the target namespace
+kubectl apply -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: dev-pvc-from-reference
+  name: dev-pvc-from-production-snapshot
+  namespace: development
 spec:
   accessModes:
     - ReadWriteOnce
@@ -306,10 +334,11 @@ spec:
     requests:
       storage: 10Gi
   storageClassName: standard
-  dataSource:
-    name: prod-snapshot-reference
-    kind: VolumeSnapshot
+  dataSourceRef:
     apiGroup: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: production-snapshot
+    namespace: production
 EOF
 ```
 
@@ -365,11 +394,24 @@ spec:
             --for=jsonpath='{.status.readyToUse}'=true \
             volumesnapshot/$SNAPSHOT_NAME --timeout=300s
 
-          # Step 2: Get VolumeSnapshotContent
-          CONTENT_NAME=$(kubectl get volumesnapshot $SNAPSHOT_NAME -n staging \
-            -o jsonpath='{.status.boundVolumeSnapshotContentName}')
-
-          echo "VolumeSnapshotContent: $CONTENT_NAME"
+          # Step 2: Allow production PVCs to reference the staging snapshot
+          echo "Creating ReferenceGrant..."
+          kubectl apply -f - <<EOF
+          apiVersion: gateway.networking.k8s.io/v1beta1
+          kind: ReferenceGrant
+          metadata:
+            name: allow-production-${SNAPSHOT_NAME}
+            namespace: staging
+          spec:
+            from:
+            - group: ""
+              kind: PersistentVolumeClaim
+              namespace: production
+            to:
+            - group: snapshot.storage.k8s.io
+              kind: VolumeSnapshot
+              name: $SNAPSHOT_NAME
+          EOF
 
           # Step 3: Scale down production deployment
           echo "Scaling down production..."
@@ -401,10 +443,11 @@ spec:
               requests:
                 storage: $RESTORE_SIZE
             storageClassName: standard
-            dataSource:
-              name: $CONTENT_NAME
-              kind: VolumeSnapshotContent
+            dataSourceRef:
               apiGroup: snapshot.storage.k8s.io
+              kind: VolumeSnapshot
+              name: $SNAPSHOT_NAME
+              namespace: staging
           EOF
 
           # Wait for PVC to be bound
@@ -434,7 +477,10 @@ metadata:
   name: snapshot-promoter-role
 rules:
 - apiGroups: ["snapshot.storage.k8s.io"]
-  resources: ["volumesnapshots", "volumesnapshotcontents"]
+  resources: ["volumesnapshots"]
+  verbs: ["create", "get", "list"]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["referencegrants"]
   verbs: ["create", "get", "list"]
 - apiGroups: [""]
   resources: ["persistentvolumeclaims"]
@@ -485,29 +531,42 @@ LATEST_SNAPSHOT=$(kubectl get volumesnapshot -n $PROD_NAMESPACE \
 
 echo "Latest production snapshot: $LATEST_SNAPSHOT"
 
-# Get VolumeSnapshotContent
-CONTENT_NAME=$(kubectl get volumesnapshot $LATEST_SNAPSHOT -n $PROD_NAMESPACE \
-  -o jsonpath='{.status.boundVolumeSnapshotContentName}')
-
 # Get all PVCs from production that have snapshots
 kubectl get volumesnapshot -n $PROD_NAMESPACE -o json | \
-  jq -r '.items[] | .spec.source.persistentVolumeClaimName' | \
+  jq -r '.items[] | .spec.source.persistentVolumeClaimName // empty' | \
   sort -u | while read PVC; do
 
   echo "Restoring PVC: $PVC"
 
   # Find snapshot for this PVC
-  SNAPSHOT=$(kubectl get volumesnapshot -n $PROD_NAMESPACE \
-    --field-selector spec.source.persistentVolumeClaimName=$PVC \
-    --sort-by=.metadata.creationTimestamp \
-    -o jsonpath='{.items[-1].metadata.name}')
+  SNAPSHOT=$(kubectl get volumesnapshot -n $PROD_NAMESPACE -o json | \
+    jq -r --arg pvc "$PVC" '.items
+      | map(select(.spec.source.persistentVolumeClaimName == $pvc))
+      | sort_by(.metadata.creationTimestamp)
+      | last
+      | .metadata.name')
 
-  if [ -n "$SNAPSHOT" ]; then
-    CONTENT=$(kubectl get volumesnapshot $SNAPSHOT -n $PROD_NAMESPACE \
-      -o jsonpath='{.status.boundVolumeSnapshotContentName}')
-
+  if [ -n "$SNAPSHOT" ] && [ "$SNAPSHOT" != "null" ]; then
     RESTORE_SIZE=$(kubectl get volumesnapshot $SNAPSHOT -n $PROD_NAMESPACE \
       -o jsonpath='{.status.restoreSize}')
+
+    # Allow the DR namespace to reference the production snapshot
+    kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-dr-${SNAPSHOT}
+  namespace: $PROD_NAMESPACE
+spec:
+  from:
+  - group: ""
+    kind: PersistentVolumeClaim
+    namespace: $DR_NAMESPACE
+  to:
+  - group: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: $SNAPSHOT
+EOF
 
     # Create PVC in DR namespace
     kubectl apply -f - <<EOF
@@ -523,10 +582,11 @@ spec:
     requests:
       storage: $RESTORE_SIZE
   storageClassName: standard
-  dataSource:
-    name: $CONTENT
-    kind: VolumeSnapshotContent
+  dataSourceRef:
     apiGroup: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: $SNAPSHOT
+    namespace: $PROD_NAMESPACE
 EOF
 
     echo "Restored $PVC to DR namespace"
@@ -538,7 +598,7 @@ echo "✓ DR restore complete"
 
 ## Best Practices
 
-1. **Use VolumeSnapshotContent** for cross-namespace references
+1. **Use dataSourceRef** for cross-namespace references
 2. **Document promotion workflows** for team clarity
 3. **Test DR procedures** regularly
 4. **Label snapshots** with source namespace information
