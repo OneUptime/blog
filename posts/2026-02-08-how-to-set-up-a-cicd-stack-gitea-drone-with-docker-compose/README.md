@@ -27,7 +27,7 @@ Developers push code to Gitea. Gitea sends webhooks to Drone when events happen 
 
 ## Prerequisites
 
-You need Docker Engine and Docker Compose installed. You also need a hostname or IP address that both Gitea and Drone can use to communicate with each other. For local development, `localhost` works, but for team use, you will want a proper domain or static IP.
+You need Docker Engine and Docker Compose installed. You also need a hostname or IP address that your browser, Gitea, and Drone can all use to communicate with each other. For local development, use a host IP address or a resolvable local hostname; for team use, you will want a proper domain or static IP.
 
 Generate a shared secret for Drone and Gitea:
 
@@ -43,12 +43,10 @@ Save this value. You will use it in the compose configuration.
 
 ```yaml
 # CI/CD Stack - Gitea + Drone CI
-version: "3.8"
-
 services:
   # Gitea - lightweight Git hosting
   gitea:
-    image: gitea/gitea:1.21
+    image: gitea/gitea:1.25
     container_name: gitea
     ports:
       - "3000:3000"
@@ -57,9 +55,9 @@ services:
       - USER_UID=1000
       - USER_GID=1000
       - GITEA__database__DB_TYPE=sqlite3
-      - GITEA__server__ROOT_URL=http://localhost:3000/
-      - GITEA__server__DOMAIN=localhost
-      - GITEA__server__SSH_DOMAIN=localhost
+      - GITEA__server__ROOT_URL=http://${CICD_HOST}:3000/
+      - GITEA__server__DOMAIN=${CICD_HOST}
+      - GITEA__server__SSH_DOMAIN=${CICD_HOST}
       - GITEA__server__SSH_PORT=2222
     volumes:
       - gitea-data:/data
@@ -76,11 +74,11 @@ services:
     ports:
       - "8080:80"
     environment:
-      - DRONE_GITEA_SERVER=http://gitea:3000
+      - DRONE_GITEA_SERVER=http://${CICD_HOST}:3000
       - DRONE_GITEA_CLIENT_ID=${DRONE_GITEA_CLIENT_ID}
       - DRONE_GITEA_CLIENT_SECRET=${DRONE_GITEA_CLIENT_SECRET}
       - DRONE_RPC_SECRET=${DRONE_RPC_SECRET}
-      - DRONE_SERVER_HOST=localhost:8080
+      - DRONE_SERVER_HOST=${CICD_HOST}:8080
       - DRONE_SERVER_PROTO=http
       - DRONE_USER_CREATE=username:your-gitea-admin,admin:true
     volumes:
@@ -124,6 +122,7 @@ Create a `.env` file for the secrets:
 
 ```bash
 # .env - CI/CD stack secrets (do not commit to version control)
+CICD_HOST=your-host-or-ip
 DRONE_RPC_SECRET=your_generated_hex_secret_here
 DRONE_GITEA_CLIENT_ID=
 DRONE_GITEA_CLIENT_SECRET=
@@ -141,21 +140,21 @@ docker compose up -d gitea
 
 # Wait for it to be ready
 sleep 10
-curl http://localhost:3000
+curl http://your-host-or-ip:3000
 ```
 
 ### Step 1: Configure Gitea
 
-1. Open http://localhost:3000 in your browser
+1. Open http://your-host-or-ip:3000 in your browser
 2. Complete the installation wizard (defaults are fine for SQLite)
 3. Register an admin account
 
 ### Step 2: Create OAuth2 Application
 
 1. In Gitea, go to Settings, then Applications
-2. Create a new OAuth2 application with these values:
+2. Create a new OAuth2 application, enable Confidential Client, and use these values:
    - Application Name: Drone
-   - Redirect URI: http://localhost:8080/login
+   - Redirect URI: http://your-host-or-ip:8080/login
 3. Copy the Client ID and Client Secret
 
 ### Step 3: Update Environment and Start Drone
@@ -171,10 +170,11 @@ docker compose up -d
 
 ### Step 4: Activate Drone
 
-1. Open http://localhost:8080
+1. Open http://your-host-or-ip:8080
 2. You will be redirected to Gitea for authorization
 3. Authorize the Drone application
 4. Drone will sync your repositories
+5. Enable the repository you want to build so Drone can create the webhook
 
 ## Creating Your First Pipeline
 
@@ -219,7 +219,7 @@ trigger:
     - pull_request
 ```
 
-Push this file to your Gitea repository, and Drone will automatically pick it up and run the pipeline.
+Enable the repository in Drone, push this file to your Gitea repository, and Drone will run the pipeline when it receives the webhook.
 
 ## Pipeline with Docker Build
 
@@ -267,7 +267,7 @@ curl -L https://github.com/harness/drone-cli/releases/latest/download/drone_linu
 sudo install drone /usr/local/bin/
 
 # Configure the CLI
-export DRONE_SERVER=http://localhost:8080
+export DRONE_SERVER=http://your-host-or-ip:8080
 export DRONE_TOKEN=your_token_from_drone_ui
 
 # Add a secret to a repository
@@ -315,8 +315,8 @@ drone build ls your-user/your-repo
 # Get details of a specific build
 drone build info your-user/your-repo 1
 
-# View build logs
-drone build logs your-user/your-repo 1 1
+# View build logs for build 1, stage 1, step 1
+drone log view your-user/your-repo 1 1 1
 ```
 
 ## Scaling Runners
