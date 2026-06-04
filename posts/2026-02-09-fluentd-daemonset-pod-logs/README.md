@@ -17,11 +17,11 @@ This guide shows you how to configure and deploy Fluentd as a DaemonSet to colle
 When deployed as a DaemonSet, Fluentd:
 - Runs one pod per Kubernetes node
 - Accesses container logs at `/var/log/containers/`
-- Parses JSON-formatted container logs
+- Parses container runtime log formats
 - Enriches logs with Kubernetes metadata
 - Forwards processed logs to Elasticsearch
 
-The log collection flow: Container stdout/stderr → Docker/containerd → Node filesystem → Fluentd → Elasticsearch
+The log collection flow: Container stdout/stderr → container runtime → Node filesystem → Fluentd → Elasticsearch
 
 ## Creating Fluentd configuration
 
@@ -46,12 +46,10 @@ data:
       path /var/log/containers/*.log
       pos_file /var/log/fluentd-containers.log.pos
       tag kubernetes.*
+      exclude_path "#{ENV['FLUENT_CONTAINER_TAIL_EXCLUDE_PATH'] || '[]'}"
       read_from_head true
       <parse>
-        @type json
-        time_format %Y-%m-%dT%H:%M:%S.%NZ
-        time_key time
-        keep_time_key true
+        @type cri
       </parse>
     </source>
 
@@ -164,8 +162,10 @@ spec:
       tolerations:
         # Allow Fluentd to run on all nodes including masters
         - key: node-role.kubernetes.io/control-plane
+          operator: Exists
           effect: NoSchedule
         - key: node-role.kubernetes.io/master
+          operator: Exists
           effect: NoSchedule
       containers:
         - name: fluentd
@@ -191,7 +191,7 @@ spec:
             - name: CLUSTER_NAME
               value: "production-cluster"
             - name: FLUENT_CONTAINER_TAIL_EXCLUDE_PATH
-              value: /var/log/containers/fluentd*.log
+              value: '["/var/log/containers/fluentd*.log"]'
             - name: FLUENT_UID
               value: "0"
           resources:
@@ -288,14 +288,13 @@ Handle multiple log formats with multi-line and custom parsers:
     </pattern>
     # CRI format
     <pattern>
-      format /^(?<time>.+) (?<stream>stdout|stderr) [^ ]* (?<log>.*)$/
-      time_format %Y-%m-%dT%H:%M:%S.%N%:z
+      format cri
     </pattern>
   </parse>
 </source>
 
 # Parse application-specific logs
-<filter kubernetes.var.log.containers.app-**.log>
+<filter /kubernetes\.var\.log\.containers\.app-[^\.]+\.log/>
   @type parser
   key_name log
   reserve_data true
@@ -307,7 +306,7 @@ Handle multiple log formats with multi-line and custom parsers:
 </filter>
 
 # Parse nginx access logs
-<filter kubernetes.var.log.containers.nginx-**.log>
+<filter /kubernetes\.var\.log\.containers\.nginx-[^\.]+\.log/>
   @type parser
   key_name log
   reserve_data true
@@ -317,7 +316,7 @@ Handle multiple log formats with multi-line and custom parsers:
 </filter>
 
 # Parse multi-line Java stack traces
-<filter kubernetes.var.log.containers.java-app-**.log>
+<filter /kubernetes\.var\.log\.containers\.java-app-[^\.]+\.log/>
   @type concat
   key log
   stream_identity_key stream
@@ -385,21 +384,21 @@ Add custom fields and metadata to logs:
     cluster_region "#{ENV['CLUSTER_REGION']}"
 
     # Extract useful fields
-    pod_name ${record["kubernetes"]["pod_name"]}
-    namespace ${record["kubernetes"]["namespace_name"]}
-    container_name ${record["kubernetes"]["container_name"]}
-    node_name ${record["kubernetes"]["host"]}
+    pod_name ${record.dig("kubernetes", "pod_name")}
+    namespace ${record.dig("kubernetes", "namespace_name")}
+    container_name ${record.dig("kubernetes", "container_name")}
+    node_name ${record.dig("kubernetes", "host")}
 
     # Add timestamp in multiple formats
     timestamp ${time.strftime('%Y-%m-%d %H:%M:%S')}
 
     # Add log level if present
-    level ${record.dig("log", "level") || "INFO"}
+    level ${(record["log"].is_a?(Hash) ? record["log"]["level"] : record["level"]) || "INFO"}
   </record>
 </filter>
 
 # Add custom labels based on namespace
-<filter kubernetes.var.log.containers.**production**.log>
+<filter /kubernetes\.var\.log\.containers\..*production.*\.log/>
   @type record_transformer
   <record>
     tier production
@@ -420,7 +419,7 @@ Optimize buffering for reliability and performance:
   scheme https
   ssl_verify false
   user elastic
-  password ${ELASTICSEARCH_PASSWORD}
+  password "#{ENV['ELASTICSEARCH_PASSWORD']}"
   logstash_format true
   logstash_prefix kubernetes
 
@@ -469,13 +468,13 @@ Configure Fluentd for high-throughput environments:
 <source>
   @type systemd
   path /var/log/journal
-  matches [{ "_SYSTEMD_UNIT": "docker.service" }]
+  matches [{ "_SYSTEMD_UNIT": "containerd.service" }]
   read_from_head true
-  tag systemd.docker
+  tag systemd.containerd
   <storage>
     @type local
     persistent true
-    path /var/log/fluentd-journald-docker.pos
+    path /var/log/fluentd-journald-containerd.pos
   </storage>
   <entry>
     field_map {"MESSAGE": "log", "_PID": "pid", "_COMM": "command"}
