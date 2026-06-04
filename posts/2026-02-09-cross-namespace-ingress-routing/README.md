@@ -130,7 +130,7 @@ This approach:
 
 - Centralizes ingress configuration
 - Uses standard Kubernetes resources
-- Works with most ingress controllers
+- Works with ingress controllers that support ExternalName backends
 - Requires creating ExternalName services for each backend
 
 Limitations:
@@ -141,7 +141,7 @@ Limitations:
 
 ## Approach 3: NGINX Ingress Controller Annotations
 
-NGINX Ingress supports cross-namespace routing via annotations.
+NGINX Ingress can customize routing to ExternalName backends via annotations, but annotations do not let an Ingress reference a Service in another namespace directly.
 
 ### Using Backend Protocol Annotation
 
@@ -180,11 +180,14 @@ metadata:
 spec:
   type: ExternalName
   externalName: team-a-service.team-a.svc.cluster.local
+  ports:
+  - port: 8080
+    targetPort: 8080
 ```
 
 ### Using Configuration Snippet
 
-For more control, use configuration snippets:
+Configuration snippets can add NGINX directives to the generated location block, but they do not replace the required Ingress backend Service. In ingress-nginx, snippet annotations are disabled by default and should only be enabled for trusted Ingress authors.
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -194,7 +197,6 @@ metadata:
   namespace: ingress-configs
   annotations:
     nginx.ingress.kubernetes.io/configuration-snippet: |
-      proxy_pass http://team-a-service.team-a.svc.cluster.local:8080;
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
 spec:
@@ -207,9 +209,9 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: dummy-service
+            name: team-a-service-proxy
             port:
-              number: 80
+              number: 8080
 ```
 
 ## Approach 4: Gateway API (Future-Proof)
@@ -219,7 +221,7 @@ The Gateway API natively supports cross-namespace routing.
 ### Install Gateway API
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
 ```
 
 ### Create Gateway
@@ -279,22 +281,19 @@ spec:
       port: 8080
 ```
 
-Gateway API requires ReferenceGrant for cross-namespace access:
+Gateway API requires a ReferenceGrant only when a Route references a backend Service in a different namespace. The ReferenceGrant must be created in the namespace of the referenced Service:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
-  name: allow-team-routes
-  namespace: gateway-system
+  name: allow-platform-routes
+  namespace: team-a
 spec:
   from:
   - group: gateway.networking.k8s.io
     kind: HTTPRoute
-    namespace: team-a
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    namespace: team-b
+    namespace: platform
   to:
   - group: ""
     kind: Service
@@ -307,7 +306,7 @@ Service meshes like Istio provide cross-namespace routing.
 ### Istio VirtualService
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: cross-namespace-routing
@@ -339,7 +338,7 @@ spec:
 Configure Istio Gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: shared-gateway
@@ -408,7 +407,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
     ports:
     - protocol: TCP
       port: 8080
@@ -440,6 +439,8 @@ metadata:
   name: validate-cross-namespace-ingress
 webhooks:
 - name: ingress.validation.example.com
+  admissionReviewVersions: ["v1"]
+  sideEffects: None
   rules:
   - operations: ["CREATE", "UPDATE"]
     apiGroups: ["networking.k8s.io"]
@@ -528,8 +529,8 @@ kubectl get ingress -A
 kubectl describe ingress <name> -n <namespace>
 
 # For NGINX Ingress, check backend status
-kubectl exec -n ingress-nginx nginx-ingress-controller-xxxxx -- \
-  curl http://localhost:10254/nginx_status
+kubectl exec -n ingress-nginx deploy/ingress-nginx-controller -- \
+  curl http://localhost:10254/metrics
 ```
 
 Create alerts for routing failures:
