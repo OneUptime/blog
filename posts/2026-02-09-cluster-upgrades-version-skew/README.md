@@ -16,9 +16,9 @@ This guide explains version skew rules, demonstrates planning multi-stage upgrad
 
 Kubernetes follows semantic versioning with three version components: major.minor.patch (e.g., 1.28.4). The skew policy primarily concerns minor versions, allowing specific differences between components.
 
-Control plane components (kube-apiserver, kube-controller-manager, kube-scheduler, cloud-controller-manager) must be within one minor version of each other. The kube-apiserver must be at the highest version. Other components can be at kube-apiserver version or one minor version older.
+In highly available clusters, kube-apiserver instances must be within one minor version of each other. Control plane components (kube-controller-manager, kube-scheduler, cloud-controller-manager) must not be newer than the kube-apiserver instances they communicate with. They are expected to match the kube-apiserver minor version, but can be one minor version older during live upgrades.
 
-Kubelet can be up to two minor versions older than kube-apiserver. This allows gradual node upgrades without immediately upgrading all workers. Kubectl is supported within one minor version (older or newer) of kube-apiserver, providing flexibility in client upgrades.
+Kubelet must not be newer than kube-apiserver. For kubelet 1.25 and newer, it can be up to three minor versions older than kube-apiserver; older kubelet versions are limited to two minor versions older. Kube-proxy follows the same kube-apiserver skew rule and can also be up to three minor versions older or newer than the kubelet it runs alongside. Kubectl is supported within one minor version (older or newer) of kube-apiserver, providing flexibility in client upgrades.
 
 ## Checking Current Cluster Versions
 
@@ -27,7 +27,7 @@ Identify versions across all cluster components.
 ```bash
 # Check control plane version
 
-kubectl version --short
+kubectl version
 
 # Check individual control plane component versions
 kubectl get pods -n kube-system -o json | \
@@ -40,43 +40,47 @@ NAME:.metadata.name,\
 VERSION:.status.nodeInfo.kubeletVersion,\
 OS:.status.nodeInfo.osImage
 
-# Check node component versions
+# Check node component versions. The kubeProxyVersion node field is
+# deprecated and unreliable, so check kube-proxy from the DaemonSet image.
 kubectl get nodes -o json | \
   jq -r '.items[] | {
     name: .metadata.name,
     kubelet: .status.nodeInfo.kubeletVersion,
-    kubeProxy: .status.nodeInfo.kubeProxyVersion,
     containerRuntime: .status.nodeInfo.containerRuntimeVersion
   }'
+
+kubectl get daemonset kube-proxy -n kube-system -o json | \
+  jq -r '.spec.template.spec.containers[] | select(.name == "kube-proxy") |
+    {name: .name, image: .image}'
 ```
 
 ## Planning the Upgrade Path
 
 Plan upgrades in stages respecting version skew.
 
-Example scenario: Upgrading from 1.26 to 1.28
+Example scenario: Upgrading from 1.34 to 1.36
 
 ```bash
-# Current state: All components at 1.26
-# Target state: All components at 1.28
+# Current state: All components at 1.34
+# Target state: All components at 1.36
 
-# Stage 1: Upgrade control plane to 1.27
-# - kube-apiserver: 1.26 → 1.27
-# - controller-manager, scheduler: 1.26 → 1.27
-# - kubelet: Remains at 1.26 (within 2 minor versions of apiserver 1.27)
+# Stage 1: Upgrade control plane to 1.35
+# - kube-apiserver: 1.34 → 1.35
+# - controller-manager, scheduler: 1.34 → 1.35
+# - kubelet: Remains at 1.34 (within supported skew of apiserver 1.35)
 
-# Stage 2: Upgrade worker nodes to 1.27
-# - kubelet: 1.26 → 1.27
-# - kube-proxy: 1.26 → 1.27
+# Stage 2: Upgrade worker nodes to 1.35
+# - kubelet: 1.34 → 1.35
+# - kube-proxy: 1.34 → 1.35
 
-# Stage 3: Upgrade control plane to 1.28
-# - kube-apiserver: 1.27 → 1.28
-# - controller-manager, scheduler: 1.27 → 1.28
-# - kubelet: Remains at 1.27 (within 2 minor versions of apiserver 1.28)
+# Stage 3: Upgrade control plane to 1.36
+# - kube-apiserver: 1.35 → 1.36
+# - controller-manager, scheduler: 1.35 → 1.36
+# - kubelet: Remains at 1.35 (within supported skew of apiserver 1.36)
 
-# Stage 4: Upgrade worker nodes to 1.28
-# - kubelet: 1.27 → 1.28
-# - kube-proxy: 1.27 → 1.28
+# Stage 4: Upgrade worker nodes to 1.36
+# - kubelet: 1.35 → 1.36
+# - kube-proxy: 1.35 → 1.36
 ```
 
 ## Documenting Upgrade Plan
@@ -93,84 +97,84 @@ metadata:
 data:
   plan.yaml: |
     cluster: production
-    currentVersion: 1.26.10
-    targetVersion: 1.28.4
+    currentVersion: 1.34.0
+    targetVersion: 1.36.0
 
     stages:
     - stage: 1
-      name: "Control Plane 1.26 → 1.27"
-      date: "2026-02-15"
+      name: "Control Plane 1.34 → 1.35"
+      date: "2026-06-15"
       components:
         - name: kube-apiserver
-          from: 1.26.10
-          to: 1.27.8
+          from: 1.34.0
+          to: 1.35.0
         - name: kube-controller-manager
-          from: 1.26.10
-          to: 1.27.8
+          from: 1.34.0
+          to: 1.35.0
         - name: kube-scheduler
-          from: 1.26.10
-          to: 1.27.8
+          from: 1.34.0
+          to: 1.35.0
       validation:
         - "Verify API server responds"
         - "Check control plane pod health"
         - "Run conformance subset"
 
     - stage: 2
-      name: "Worker Nodes 1.26 → 1.27"
-      date: "2026-02-17"
+      name: "Worker Nodes 1.34 → 1.35"
+      date: "2026-06-17"
       rolloutStrategy: "rolling"
       maxUnavailable: 1
       components:
         - name: kubelet
-          from: 1.26.10
-          to: 1.27.8
+          from: 1.34.0
+          to: 1.35.0
         - name: kube-proxy
-          from: 1.26.10
-          to: 1.27.8
+          from: 1.34.0
+          to: 1.35.0
       validation:
         - "Verify node Ready status"
         - "Check workload health"
         - "Monitor application metrics"
 
     - stage: 3
-      name: "Control Plane 1.27 → 1.28"
-      date: "2026-02-22"
+      name: "Control Plane 1.35 → 1.36"
+      date: "2026-06-22"
       components:
         - name: kube-apiserver
-          from: 1.27.8
-          to: 1.28.4
+          from: 1.35.0
+          to: 1.36.0
         - name: kube-controller-manager
-          from: 1.27.8
-          to: 1.28.4
+          from: 1.35.0
+          to: 1.36.0
         - name: kube-scheduler
-          from: 1.27.8
-          to: 1.28.4
+          from: 1.35.0
+          to: 1.36.0
       validation:
         - "Verify API server responds"
         - "Check deprecated API usage"
         - "Validate admission webhooks"
 
     - stage: 4
-      name: "Worker Nodes 1.27 → 1.28"
-      date: "2026-02-24"
+      name: "Worker Nodes 1.35 → 1.36"
+      date: "2026-06-24"
       rolloutStrategy: "rolling"
       maxUnavailable: 2
       components:
         - name: kubelet
-          from: 1.27.8
-          to: 1.28.4
+          from: 1.35.0
+          to: 1.36.0
         - name: kube-proxy
-          from: 1.27.8
-          to: 1.28.4
+          from: 1.35.0
+          to: 1.36.0
       validation:
         - "Verify all nodes at target version"
         - "Run full conformance tests"
         - "Performance baseline comparison"
 
     rollback:
-      supported: true
-      procedure: "Downgrade control plane first, then nodes"
-      maxDowngradeWindow: "24 hours"
+      supported: false
+      procedure: "Restore from tested backups or use provider-specific rollback if supported; do not rely on Kubernetes control plane downgrades"
+      maxRestoreWindow: "24 hours"
 
     communicationPlan:
       - stakeholder: "Development Teams"
@@ -197,7 +201,7 @@ echo "API Server version: 1.$API_VERSION"
 # Check control plane components
 echo -e "\n=== Control Plane Components ==="
 kubectl get pods -n kube-system -o json | \
-  jq -r '.items[] | select(.metadata.name | test("kube-controller-manager|kube-scheduler")) |
+  jq -c '.items[] | select(.metadata.name | test("kube-controller-manager|kube-scheduler|cloud-controller-manager")) |
     {
       name: .metadata.name,
       image: .spec.containers[0].image,
@@ -207,17 +211,19 @@ kubectl get pods -n kube-system -o json | \
     COMPONENT_VERSION=$(echo "$line" | jq -r '.version' | cut -d'.' -f2)
     SKEW=$((API_VERSION - COMPONENT_VERSION))
 
-    if [ $SKEW -gt 1 ]; then
-      echo "❌ VIOLATION: $(echo "$line" | jq -r '.name') is $SKEW versions behind (max 1)"
+    if [ $SKEW -lt 0 ]; then
+      echo "VIOLATION: $(echo "$line" | jq -r '.name') is newer than kube-apiserver"
+    elif [ $SKEW -gt 1 ]; then
+      echo "VIOLATION: $(echo "$line" | jq -r '.name') is $SKEW versions behind (max 1)"
     else
-      echo "✓ $(echo "$line" | jq -r '.name'): v$(echo "$line" | jq -r '.version') (skew: $SKEW)"
+      echo "OK: $(echo "$line" | jq -r '.name'): v$(echo "$line" | jq -r '.version') (skew: $SKEW)"
     fi
   done
 
 # Check kubelet versions
 echo -e "\n=== Kubelet Versions ==="
 kubectl get nodes -o json | \
-  jq -r '.items[] | {
+  jq -c '.items[] | {
     name: .metadata.name,
     version: .status.nodeInfo.kubeletVersion
   }' | \
@@ -226,12 +232,33 @@ kubectl get nodes -o json | \
     KUBELET_VERSION=$(echo "$line" | jq -r '.version' | sed 's/v1\.//' | cut -d'.' -f1)
     SKEW=$((API_VERSION - KUBELET_VERSION))
 
-    if [ $SKEW -gt 2 ]; then
-      echo "❌ VIOLATION: $NODE_NAME kubelet is $SKEW versions behind (max 2)"
+    if [ $SKEW -lt 0 ]; then
+      echo "VIOLATION: $NODE_NAME kubelet is newer than kube-apiserver"
+    elif [ "$KUBELET_VERSION" -lt 25 ] && [ $SKEW -gt 2 ]; then
+      echo "VIOLATION: $NODE_NAME kubelet is $SKEW versions behind (max 2 for kubelet < 1.25)"
+    elif [ $SKEW -gt 3 ]; then
+      echo "VIOLATION: $NODE_NAME kubelet is $SKEW versions behind (max 3)"
     else
-      echo "✓ $NODE_NAME: v1.$KUBELET_VERSION (skew: $SKEW)"
+      echo "OK: $NODE_NAME: v1.$KUBELET_VERSION (skew: $SKEW)"
     fi
   done
+
+# Check kube-proxy version from DaemonSet image
+echo -e "\n=== kube-proxy Version ==="
+KUBE_PROXY_VERSION=$(kubectl get daemonset kube-proxy -n kube-system -o json | \
+  jq -r '.spec.template.spec.containers[] | select(.name == "kube-proxy") |
+    .image | capture("v(?<version>[0-9]+\\.[0-9]+)") | .version' | cut -d'.' -f2)
+KUBE_PROXY_SKEW=$((API_VERSION - KUBE_PROXY_VERSION))
+
+if [ $KUBE_PROXY_SKEW -lt 0 ]; then
+  echo "VIOLATION: kube-proxy is newer than kube-apiserver"
+elif [ "$KUBE_PROXY_VERSION" -lt 25 ] && [ $KUBE_PROXY_SKEW -gt 2 ]; then
+  echo "VIOLATION: kube-proxy is $KUBE_PROXY_SKEW versions behind (max 2 for kube-proxy < 1.25)"
+elif [ $KUBE_PROXY_SKEW -gt 3 ]; then
+  echo "VIOLATION: kube-proxy is $KUBE_PROXY_SKEW versions behind (max 3)"
+else
+  echo "OK: kube-proxy: v1.$KUBE_PROXY_VERSION (skew: $KUBE_PROXY_SKEW)"
+fi
 
 # Check kubectl version
 echo -e "\n=== kubectl Version ==="
@@ -239,9 +266,9 @@ KUBECTL_VERSION=$(kubectl version -o json | jq -r '.clientVersion.minor' | sed '
 KUBECTL_SKEW=$((API_VERSION - KUBECTL_VERSION))
 
 if [ ${KUBECTL_SKEW#-} -gt 1 ]; then
-  echo "⚠️  WARNING: kubectl is ${KUBECTL_SKEW#-} versions different (max 1)"
+  echo "WARNING: kubectl is ${KUBECTL_SKEW#-} versions different (max 1)"
 else
-  echo "✓ kubectl: v1.$KUBECTL_VERSION (skew: $KUBECTL_SKEW)"
+  echo "OK: kubectl: v1.$KUBECTL_VERSION (skew: $KUBECTL_SKEW)"
 fi
 ```
 
@@ -260,22 +287,22 @@ When managing multiple clusters, stagger upgrades to reduce risk.
 # multi-cluster-schedule.yaml
 clusters:
   - name: dev
-    currentVersion: 1.26.10
-    targetVersion: 1.28.4
-    upgradeWindow: "2026-02-10 to 2026-02-11"
+    currentVersion: 1.34.0
+    targetVersion: 1.36.0
+    upgradeWindow: "2026-06-10 to 2026-06-11"
     priority: low
 
   - name: staging
-    currentVersion: 1.26.10
-    targetVersion: 1.28.4
-    upgradeWindow: "2026-02-15 to 2026-02-16"
+    currentVersion: 1.34.0
+    targetVersion: 1.36.0
+    upgradeWindow: "2026-06-15 to 2026-06-16"
     priority: medium
     dependsOn: ["dev"]
 
   - name: production
-    currentVersion: 1.26.10
-    targetVersion: 1.28.4
-    upgradeWindow: "2026-02-22 to 2026-02-25"
+    currentVersion: 1.34.0
+    targetVersion: 1.36.0
+    upgradeWindow: "2026-06-22 to 2026-06-25"
     priority: critical
     dependsOn: ["staging"]
     soakPeriod: 168h  # 1 week in staging before prod
@@ -287,7 +314,7 @@ Before production upgrades, test in lower environments.
 
 ```bash
 # Create test cluster at target version
-kind create cluster --name upgrade-test --image kindest/node:v1.28.4
+kind create cluster --name upgrade-test --image kindest/node:v1.36.0
 
 # Deploy representative workloads
 kubectl apply -f production-workloads/
@@ -299,8 +326,8 @@ kubectl wait --for=condition=ready pod/test-pod --timeout=60s
 # Test API access
 kubectl get pods --v=6
 
-# Test custom resources
-kubectl get <your-crds>
+# Test custom resource definitions
+kubectl get crd
 
 # Clean up
 kind delete cluster --name upgrade-test
