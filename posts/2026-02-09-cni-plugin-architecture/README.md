@@ -14,10 +14,10 @@ CNI plugins are not daemons or long-running services. They are executables that 
 
 ## CNI Specification Overview
 
-The CNI specification defines three operations: ADD, DEL, and CHECK. The container runtime invokes CNI plugins by executing them with specific environment variables and passing configuration via stdin. The plugin performs network setup, then returns results via stdout in JSON format.
+The CNI specification defines attachment operations like ADD, DEL, and CHECK, plus operations such as VERSION, STATUS, and GC for version probing, readiness checks, and garbage collection in current CNI versions. The container runtime invokes CNI plugins by executing them with specific environment variables and passing configuration via stdin. The plugin performs network setup, then returns results via stdout in JSON format.
 
 The CNI plugin receives these key inputs:
-- Command (ADD, DEL, or CHECK) via environment variable
+- Command (such as ADD, DEL, CHECK, VERSION, STATUS, or GC) via environment variable
 - Container ID and network namespace path
 - Plugin configuration in JSON format
 - Previous result from earlier plugins in the chain
@@ -46,7 +46,11 @@ CNI configuration files live in `/etc/cni/net.d/` and use JSON format:
   "ipMasq": true,
   "ipam": {
     "type": "host-local",
-    "subnet": "10.244.0.0/16",
+    "ranges": [
+      [
+        { "subnet": "10.244.0.0/16" }
+      ]
+    ],
     "routes": [
       { "dst": "0.0.0.0/0" }
     ]
@@ -200,7 +204,11 @@ Kubernetes often chains multiple CNI plugins together. The configuration uses a 
       "ipMasq": true,
       "ipam": {
         "type": "host-local",
-        "subnet": "10.244.0.0/16"
+        "ranges": [
+          [
+            { "subnet": "10.244.0.0/16" }
+          ]
+        ]
       }
     },
     {
@@ -254,7 +262,7 @@ package main
 import (
     "encoding/json"
     "fmt"
-    "os"
+    "net"
 
     "github.com/containernetworking/cni/pkg/skel"
     "github.com/containernetworking/cni/pkg/types"
@@ -263,7 +271,7 @@ import (
 )
 
 type PluginConf struct {
-    types.NetConf
+    types.PluginConf
     CustomField string `json:"customField"`
 }
 
@@ -326,8 +334,24 @@ func cmdCheck(args *skel.CmdArgs) error {
     return nil
 }
 
+func cmdGC(args *skel.CmdArgs) error {
+    // Clean up stale resources
+    return nil
+}
+
+func cmdStatus(args *skel.CmdArgs) error {
+    // Report readiness to handle ADD requests
+    return nil
+}
+
 func main() {
-    skel.PluginMain(cmdAdd, cmdCheck, cmdDel, version.All, "my-cni-plugin v1.0.0")
+    skel.PluginMainFuncs(skel.CNIFuncs{
+        Add:    cmdAdd,
+        Check:  cmdCheck,
+        Del:    cmdDel,
+        GC:     cmdGC,
+        Status: cmdStatus,
+    }, version.All, "my-cni-plugin v1.0.0")
 }
 ```
 
@@ -350,7 +374,11 @@ echo '{
   "ipMasq": true,
   "ipam": {
     "type": "host-local",
-    "subnet": "10.244.0.0/16"
+    "ranges": [
+      [
+        { "subnet": "10.244.0.0/16" }
+      ]
+    ]
   }
 }' | CNI_COMMAND=ADD \
 CNI_CONTAINERID=test123 \
@@ -379,7 +407,7 @@ ip netns list
 
 ## CNI Plugin Capabilities
 
-Modern CNI plugins support capabilities for feature negotiation:
+Modern CNI plugins support capabilities so runtimes can pass plugin-specific runtime arguments only to plugins that declare support for them. For example, the portmap plugin declares the `portMappings` capability and expects the runtime to pass the actual mappings through `runtimeConfig`:
 
 ```json
 {
@@ -388,15 +416,24 @@ Modern CNI plugins support capabilities for feature negotiation:
   "plugins": [
     {
       "type": "bridge",
-      "capabilities": {
-        "ipRanges": true,
-        "bandwidth": true
+      "bridge": "cni0",
+      "ipam": {
+        "type": "host-local",
+        "ranges": [
+          [
+            { "subnet": "10.244.0.0/16" }
+          ]
+        ]
       }
+    },
+    {
+      "type": "portmap",
+      "capabilities": {"portMappings": true}
     }
   ]
 }
 ```
 
-The runtime queries capabilities and only uses features the plugin supports.
+The runtime derives the `runtimeConfig` it passes to each plugin from the plugin's declared `capabilities` and the capability arguments requested by the runtime.
 
 Understanding CNI plugin architecture demystifies Kubernetes networking. CNI provides a clean, standardized interface that makes it possible to use different network implementations without changing Kubernetes itself. This modularity is key to Kubernetes' flexibility in diverse networking environments.
