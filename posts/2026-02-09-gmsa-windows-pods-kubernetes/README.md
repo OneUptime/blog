@@ -16,7 +16,7 @@ In this guide, you'll learn how to configure gMSA for Windows pods in Kubernetes
 
 Group Managed Service Accounts are special Active Directory accounts where passwords are automatically managed by Active Directory. The password rotates automatically and is never exposed to administrators. Windows containers can use gMSA accounts to authenticate as domain identities.
 
-For Kubernetes integration, gMSA credentials are stored as Custom Resource Definitions and referenced in pod specifications. The Windows kubelet retrieves credentials from AD and injects them into containers at runtime.
+For Kubernetes integration, gMSA credential specs are stored as Custom Resources and referenced in pod specifications. Admission webhooks inline and validate the credential spec, and the Windows container runtime configures the container to use the gMSA for domain authentication.
 
 ## Prerequisites
 
@@ -24,9 +24,10 @@ Before configuring gMSA, ensure these requirements are met:
 
 - Windows Server 2019 or later for worker nodes
 - Active Directory domain controller running Windows Server 2012 or later
-- Windows nodes domain-joined or able to communicate with AD
+- Windows nodes domain-joined and able to communicate with AD
 - PowerShell 5.1 or later with AD module installed
-- Kubernetes 1.18 or later for gMSA support
+- Kubernetes 1.18 or later for stable gMSA support
+- A Key Distribution Services (KDS) root key in the Active Directory forest
 
 ## Creating a gMSA Account in Active Directory
 
@@ -41,7 +42,7 @@ Import-Module ActiveDirectory
 New-ADServiceAccount -Name webapp-gmsa `
   -DNSHostName webapp-gmsa.contoso.com `
   -PrincipalsAllowedToRetrieveManagedPassword "Domain Computers" `
-  -KerberosEncryptionType RC4, AES128, AES256 `
+  -KerberosEncryptionType AES128, AES256 `
   -ServicePrincipalNames "HTTP/webapp-gmsa", "HTTP/webapp-gmsa.contoso.com"
 
 # Verify creation
@@ -70,9 +71,11 @@ Set-ADServiceAccount -Identity webapp-gmsa `
   -PrincipalsAllowedToRetrieveManagedPassword "K8s-gMSA-Users"
 ```
 
+Restart Windows nodes after adding their computer accounts to the group so the updated group membership is present in the machine token.
+
 ## Installing gMSA Webhook on Kubernetes
 
-The gMSA webhook mutates pod specifications to inject gMSA credentials:
+The gMSA admission webhooks mutate pod specifications to inline credential specs and validate that the pod's service account is authorized to use the referenced gMSA:
 
 ```bash
 # Clone the webhook repository
@@ -80,11 +83,11 @@ git clone https://github.com/kubernetes-sigs/windows-gmsa.git
 cd windows-gmsa
 
 # Generate certificates for webhook
-./admission-webhook/deploy/deploy-gmsa-webhook.sh --file ./admission-webhook/deploy/gmsa-webhook.yml.tpl \
+./admission-webhook/deploy/deploy-gmsa-webhook.sh --file ./admission-webhook/deploy/gmsa-webhook.yml \
   --namespace kube-system \
   --certs-dir ./admission-webhook/deploy/certs
 
-# Deploy the webhook
+# The script deploys the generated manifest. Reapply it later if needed:
 kubectl apply -f ./admission-webhook/deploy/gmsa-webhook.yml
 ```
 
@@ -131,6 +134,10 @@ The credential spec looks like:
       {
         "Name": "webapp-gmsa",
         "Scope": "contoso.com"
+      },
+      {
+        "Name": "webapp-gmsa",
+        "Scope": "CONTOSO"
       }
     ]
   }
@@ -151,6 +158,8 @@ credspec:
     GroupManagedServiceAccounts:
     - Name: webapp-gmsa
       Scope: contoso.com
+    - Name: webapp-gmsa
+      Scope: CONTOSO
   CmsPlugins:
   - ActiveDirectory
   DomainJoinConfig:
@@ -282,8 +291,8 @@ Check the pod is running with gMSA identity:
 kubectl logs gmsa-test
 
 # You should see output like:
-# Running as: CONTOSO\webapp-gmsa$
-# Domain trust succeeded
+# Running as: ContainerAdministrator
+# The command completed successfully
 ```
 
 Execute commands in the pod to test AD access:
@@ -293,7 +302,10 @@ kubectl exec -it gmsa-test -- powershell
 
 # Inside the pod
 whoami
-# Output: contoso\webapp-gmsa$
+# Output: user manager\containeradministrator
+
+nltest /query
+# Output: The command completed successfully
 
 # Test SQL Server connection with integrated auth
 $conn = New-Object System.Data.SqlClient.SqlConnection
@@ -329,22 +341,23 @@ spec:
       # Test file share access
       New-PSDrive -Name Z -PSProvider FileSystem -Root "\\fileserver.contoso.com\share"
       Get-ChildItem Z:\
+      New-Item -ItemType Directory -Force C:\temp
       Copy-Item Z:\data.txt C:\temp\
 ```
 
-## Using gMSA with SQL Server Authentication
+## Using gMSA with SQL Server Integrated Authentication
 
 Example ASP.NET application connecting to SQL Server:
 
-```csharp
-// appsettings.json
+```json
 {
   "ConnectionStrings": {
     "DefaultConnection": "Server=sqlserver.contoso.com;Database=AppDB;Integrated Security=SSPI;TrustServerCertificate=True;"
   }
 }
+```
 
-// Startup.cs
+```csharp
 public void ConfigureServices(IServiceCollection services)
 {
     services.AddDbContext<ApplicationDbContext>(options =>
@@ -422,7 +435,7 @@ Use network policies to restrict which pods can use specific gMSAs.
 
 Monitor gMSA usage through AD audit logs to detect unauthorized access.
 
-Rotate gMSA-enabled service principals periodically even though passwords rotate automatically.
+Recreate or rotate affected gMSA accounts after suspected compromise even though managed passwords rotate automatically.
 
 ## Conclusion
 
