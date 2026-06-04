@@ -32,9 +32,12 @@ clusteradm init --wait
 
 # Get the join command for managed clusters
 clusteradm get token --use-bootstrap-token
+
+# Install the policy framework hub add-on
+clusteradm install hub-addon --names governance-policy-framework --context hub
 ```
 
-The initialization creates several components on the hub cluster including the cluster manager, placement controller, and policy framework.
+The initialization creates core hub components including the cluster manager and placement controller. The policy framework is installed as an add-on.
 
 Verify the hub installation:
 
@@ -65,40 +68,19 @@ For multiple clusters, automate this process:
 #!/bin/bash
 # join-clusters.sh
 
-HUB_TOKEN=$(clusteradm get token --use-bootstrap-token | grep "token:" | awk '{print $2}')
-HUB_API=$(kubectl config view -o jsonpath='{.clusters[?(@.name=="hub")].cluster.server}')
+HUB_CONTEXT=hub
+HUB_TOKEN="${HUB_TOKEN:?Set HUB_TOKEN from the clusteradm get token output}"
+HUB_API="${HUB_API:?Set HUB_API to the hub API server URL}"
 
 for CLUSTER in cluster-1 cluster-2 cluster-3; do
   echo "Joining $CLUSTER..."
-  kubectl --context=$CLUSTER apply -f - <<EOF
-apiVersion: v1
-kind: Secret
-metadata:
-  name: bootstrap-hub-kubeconfig
-  namespace: open-cluster-management-agent
-type: Opaque
-stringData:
-  kubeconfig: |
-    apiVersion: v1
-    kind: Config
-    clusters:
-    - name: hub
-      cluster:
-        server: $HUB_API
-    users:
-    - name: bootstrap
-      user:
-        token: $HUB_TOKEN
-    contexts:
-    - name: bootstrap
-      context:
-        cluster: hub
-        user: bootstrap
-    current-context: bootstrap
-EOF
-
-  clusteradm join --hub-kubeconfig-secret bootstrap-hub-kubeconfig --cluster-name $CLUSTER --wait
-  clusteradm accept --clusters $CLUSTER
+  clusteradm join \
+    --hub-token "$HUB_TOKEN" \
+    --hub-apiserver "$HUB_API" \
+    --cluster-name "$CLUSTER" \
+    --context "$CLUSTER" \
+    --wait
+  clusteradm accept --clusters "$CLUSTER" --context "$HUB_CONTEXT"
 done
 ```
 
@@ -107,6 +89,13 @@ Verify managed clusters:
 ```bash
 kubectl get managedclusters
 kubectl get managedclusteraddons --all-namespaces
+```
+
+Enable the policy framework and configuration policy controller on each managed cluster:
+
+```bash
+clusteradm addon enable --names governance-policy-framework --clusters cluster-1,cluster-2,cluster-3 --context hub
+clusteradm addon enable --names config-policy-controller --clusters cluster-1,cluster-2,cluster-3 --context hub
 ```
 
 ## Organizing Clusters with Labels and ClusterSets
@@ -136,6 +125,7 @@ metadata:
   name: production-clusters
 spec:
   clusterSelector:
+    selectorType: LabelSelector
     labelSelector:
       matchLabels:
         environment: production
@@ -147,6 +137,7 @@ metadata:
   name: development-clusters
 spec:
   clusterSelector:
+    selectorType: LabelSelector
     labelSelector:
       matchLabels:
         environment: development
@@ -160,6 +151,15 @@ kind: ManagedClusterSetBinding
 metadata:
   name: production-clusters
   namespace: production-apps
+spec:
+  clusterSet: production-clusters
+
+---
+apiVersion: cluster.open-cluster-management.io/v1beta2
+kind: ManagedClusterSetBinding
+metadata:
+  name: production-clusters
+  namespace: default
 spec:
   clusterSet: production-clusters
 ```
@@ -215,26 +215,27 @@ kind: PlacementBinding
 metadata:
   name: binding-require-quotas
   namespace: default
-spec:
-  placementRef:
-    name: placement-production
-    kind: PlacementRule
-    apiGroup: apps.open-cluster-management.io
-  subjects:
-  - name: require-resource-quotas
-    kind: Policy
-    apiGroup: policy.open-cluster-management.io
+placementRef:
+  name: placement-production
+  kind: Placement
+  apiGroup: cluster.open-cluster-management.io
+subjects:
+- name: require-resource-quotas
+  kind: Policy
+  apiGroup: policy.open-cluster-management.io
 
 ---
-apiVersion: apps.open-cluster-management.io/v1
-kind: PlacementRule
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Placement
 metadata:
   name: placement-production
   namespace: default
 spec:
-  clusterSelector:
-    matchLabels:
-      environment: production
+  predicates:
+  - requiredClusterSelector:
+      labelSelector:
+        matchLabels:
+          environment: production
 ```
 
 Create a security policy to enforce pod security standards:
@@ -263,13 +264,14 @@ spec:
           exclude:
           - kube-system
           - open-cluster-management*
+        objectSelector: {}
         object-templates:
         - complianceType: musthave
           objectDefinition:
             apiVersion: v1
             kind: Namespace
             metadata:
-              name: "{{ .metadata.name }}"
+              name: "{{ .ObjectName }}"
               labels:
                 pod-security.kubernetes.io/enforce: baseline
                 pod-security.kubernetes.io/audit: restricted
@@ -285,7 +287,7 @@ kubectl get policy require-resource-quotas -o yaml
 
 ## Certificate Management Policies
 
-Enforce certificate rotation and validation:
+Audit certificate expiration with the optional certificate policy controller:
 
 ```yaml
 apiVersion: policy.open-cluster-management.io/v1
@@ -303,9 +305,12 @@ spec:
       metadata:
         name: cert-expiration-check
       spec:
+        remediationAction: inform
+        severity: medium
         namespaceSelector:
           include:
           - "*"
+          exclude: []
         minimumDuration: 720h  # Alert if cert expires in < 30 days
         minimumCADuration: 1440h  # Alert if CA expires in < 60 days
 ```
@@ -372,70 +377,83 @@ spec:
 
 ## Application Deployment with Placement
 
-Deploy applications to selected clusters based on placement rules:
+Deploy applications to selected clusters by connecting OCM `Placement` decisions to Argo CD ApplicationSet:
 
 ```yaml
-apiVersion: app.k8s.io/v1beta1
-kind: Application
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: nginx-app
-  namespace: default
-spec:
-  componentKinds:
-  - group: apps.open-cluster-management.io
-    kind: Subscription
-  selector:
-    matchExpressions:
-    - key: app
-      operator: In
-      values:
-      - nginx
+  name: ocm-placement-generator
+  namespace: argocd
+data:
+  apiVersion: cluster.open-cluster-management.io/v1beta1
+  kind: placementdecisions
+  statusListKey: decisions
+  matchKey: clusterName
 
 ---
-apiVersion: apps.open-cluster-management.io/v1
-kind: Channel
+apiVersion: cluster.open-cluster-management.io/v1beta2
+kind: ManagedClusterSetBinding
 metadata:
-  name: nginx-channel
-  namespace: default
+  name: global
+  namespace: argocd
 spec:
-  type: Git
-  pathname: https://github.com/example/nginx-manifests.git
+  clusterSet: global
 
 ---
-apiVersion: apps.open-cluster-management.io/v1
-kind: Subscription
-metadata:
-  name: nginx-subscription
-  namespace: default
-  labels:
-    app: nginx
-spec:
-  channel: default/nginx-channel
-  placement:
-    placementRef:
-      name: nginx-placement
-      kind: PlacementRule
-
----
-apiVersion: apps.open-cluster-management.io/v1
-kind: PlacementRule
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Placement
 metadata:
   name: nginx-placement
-  namespace: default
+  namespace: argocd
 spec:
-  clusterSelector:
-    matchExpressions:
-    - key: environment
-      operator: In
-      values:
-      - production
-      - staging
-  clusterReplicas: 2  # Deploy to 2 clusters
+  numberOfClusters: 2
+  predicates:
+  - requiredClusterSelector:
+      labelSelector:
+        matchExpressions:
+        - key: environment
+          operator: In
+          values:
+          - production
+          - staging
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: nginx-app
+  namespace: argocd
+spec:
+  generators:
+  - clusterDecisionResource:
+      configMapRef: ocm-placement-generator
+      labelSelector:
+        matchLabels:
+          cluster.open-cluster-management.io/placement: nginx-placement
+      requeueAfterSeconds: 30
+  template:
+    metadata:
+      name: '{{clusterName}}-nginx'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/example/nginx-manifests.git
+        targetRevision: HEAD
+        path: manifests
+      destination:
+        name: '{{clusterName}}'
+        namespace: nginx
+      syncPolicy:
+        automated:
+          prune: true
+        syncOptions:
+        - CreateNamespace=true
 ```
 
 ## Cluster Lifecycle Management
 
-Manage cluster provisioning and upgrades through OCM. For example, create a cluster using Hive:
+Manage OpenShift cluster provisioning and upgrades through Hive and the OpenShift Cluster Version Operator. For example, create a cluster using Hive:
 
 ```yaml
 apiVersion: hive.openshift.io/v1
@@ -449,16 +467,15 @@ spec:
   platform:
     aws:
       region: us-west-2
-  provisioning:
-    imageSetRef:
-      name: kubernetes-1.28
-    installConfigSecretRef:
-      name: install-config
+  imageSetRef:
+    name: openshift-v4.14.0
+  installConfigSecretRef:
+    name: install-config
   pullSecretRef:
     name: pull-secret
 ```
 
-Automate cluster upgrades:
+Automate OpenShift cluster upgrades:
 
 ```yaml
 apiVersion: config.openshift.io/v1
@@ -466,14 +483,14 @@ kind: ClusterVersion
 metadata:
   name: version
 spec:
-  channel: stable-1.28
+  channel: stable-4.14
   desiredUpdate:
-    version: 1.28.5
+    version: 4.14.5
 ```
 
 ## Monitoring Policy Compliance
 
-Create dashboards to monitor compliance across clusters:
+Create dashboards from the policy metrics that you export from your OCM environment. The metric names below assume your telemetry pipeline publishes a policy compliance metric with `status`, `cluster`, and `policy` labels:
 
 ```yaml
 apiVersion: v1
