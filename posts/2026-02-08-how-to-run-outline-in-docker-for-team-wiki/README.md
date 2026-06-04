@@ -19,7 +19,7 @@ Many wiki tools feel clunky or outdated. Outline was built with a modern web app
 - A Linux server with Docker and Docker Compose installed
 - At least 2 GB of RAM
 - A domain name with SSL (required for authentication)
-- An authentication provider (Google, Slack, OIDC, or SAML)
+- An authentication provider (Google, Slack, OIDC, or SAML in the licensed Business or Enterprise edition)
 - An S3-compatible storage bucket for file uploads (MinIO works for self-hosted)
 
 Outline requires an external authentication provider. It does not have built-in username/password login. This is by design for security, but it means you need to set up OAuth before getting started.
@@ -55,7 +55,7 @@ Before writing the Docker Compose file, you need OAuth credentials. Here is how 
 3. Add the required scopes: `identity.basic`, `identity.email`, `identity.avatar`, `identity.team`
 4. Note the Client ID and Client Secret
 
-For Google authentication:
+For Google authentication, you need Google Workspace:
 
 1. Go to the Google Cloud Console and create OAuth credentials
 2. Set the redirect URI to `https://wiki.your-domain.com/auth/google.callback`
@@ -77,8 +77,6 @@ Save both values for the Compose file.
 
 ```yaml
 # docker-compose.yml - Outline Team Wiki
-version: "3.8"
-
 services:
   db:
     image: postgres:16-alpine
@@ -117,7 +115,7 @@ services:
       - outline-net
 
   outline:
-    image: outlinewiki/outline:latest
+    image: docker.getoutline.com/outlinewiki/outline:latest
     container_name: outline
     restart: unless-stopped
     depends_on:
@@ -143,10 +141,11 @@ services:
       PORT: 3000
 
       # File storage (MinIO / S3)
+      FILE_STORAGE: s3
       AWS_ACCESS_KEY_ID: outline_minio
       AWS_SECRET_ACCESS_KEY: minio_password_change_me
       AWS_REGION: us-east-1
-      AWS_S3_UPLOAD_BUCKET_URL: http://minio:9000
+      AWS_S3_UPLOAD_BUCKET_URL: https://minio.your-domain.com
       AWS_S3_UPLOAD_BUCKET_NAME: outline
       AWS_S3_FORCE_PATH_STYLE: "true"
       AWS_S3_ACL: private
@@ -169,8 +168,11 @@ services:
 
 networks:
   outline-net:
+    name: outline-net
     driver: bridge
 ```
+
+If you use MinIO for storage, publish the MinIO S3 API endpoint over HTTPS, such as `https://minio.your-domain.com`, because browser uploads use the bucket URL.
 
 ## Creating the MinIO Bucket
 
@@ -187,7 +189,18 @@ sleep 5
 docker run --rm --network outline-net \
   --entrypoint /bin/sh minio/mc -c \
   "mc alias set local http://minio:9000 outline_minio minio_password_change_me && \
-   mc mb local/outline && \
+   mc mb --ignore-existing local/outline && \
+   printf '%s\n' \
+     '<CORSConfiguration>' \
+     '  <CORSRule>' \
+     '    <AllowedOrigin>https://wiki.your-domain.com</AllowedOrigin>' \
+     '    <AllowedMethod>GET</AllowedMethod>' \
+     '    <AllowedMethod>PUT</AllowedMethod>' \
+     '    <AllowedMethod>POST</AllowedMethod>' \
+     '    <AllowedHeader>*</AllowedHeader>' \
+     '  </CORSRule>' \
+     '</CORSConfiguration>' > /tmp/cors.xml && \
+   mc cors set local/outline /tmp/cors.xml && \
    mc anonymous set download local/outline"
 ```
 
@@ -279,6 +292,9 @@ curl -X POST "https://wiki.your-domain.com/api/documents.list" \
 ## Backup Strategy
 
 ```bash
+# Create the backup directory
+mkdir -p ~/outline-backup
+
 # Dump the PostgreSQL database
 docker exec outline-db pg_dump -U outline outline > ~/outline-backup/db_$(date +%Y%m%d).sql
 
