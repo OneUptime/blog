@@ -12,7 +12,7 @@ Git commit signing provides cryptographic proof that commits come from trusted d
 
 ## Understanding Commit Signing
 
-GPG commit signing attaches a cryptographic signature to each commit using the developer's private key. CI/CD pipelines can verify these signatures against trusted public keys before building and deploying code. This prevents malicious commits from untrusted sources.
+GPG commit signing attaches a cryptographic signature to each commit using the developer's private key. CI/CD pipelines can verify these signatures against trusted public keys and an approved key fingerprint list before building and deploying code. This prevents malicious commits from untrusted sources.
 
 ## Setting Up GPG for Developers
 
@@ -69,11 +69,8 @@ for key in ci/trusted-keys/*.asc; do
   gpg --import "$key"
 done
 
-# Trust keys
-gpg --edit-key user@example.com
-# Type: trust
-# Select: 5 (ultimate)
-# Type: quit
+# Record fingerprints for the CI allowlist
+gpg --show-keys --with-fingerprint ci/trusted-keys/*.asc
 ```
 
 ## Verifying Signatures in CI
@@ -87,12 +84,16 @@ on: [push, pull_request]
 jobs:
   verify-signatures:
     runs-on: ubuntu-latest
+    env:
+      ALLOWED_FINGERPRINTS: "ABCD1234EF567890ABCD1234EF567890ABCD1234 1234567890ABCDEF1234567890ABCDEF12345678"
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Import trusted keys
+        env:
+          TRUSTED_GPG_KEYS: ${{ secrets.TRUSTED_GPG_KEYS }}
         run: |
           # Import GPG keys from repository
           for key in ci/trusted-keys/*.asc; do
@@ -100,7 +101,9 @@ jobs:
           done
 
           # Or from secrets
-          echo "${{ secrets.TRUSTED_GPG_KEYS }}" | gpg --import
+          if [ -n "${TRUSTED_GPG_KEYS:-}" ]; then
+            printf '%s' "$TRUSTED_GPG_KEYS" | gpg --import
+          fi
 
       - name: Verify commit signatures
         run: |
@@ -113,7 +116,7 @@ jobs:
             COMMITS=$(git rev-list ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
           else
             # Push: verify pushed commits
-            COMMITS=$(git rev-list ${{ github.event.before }}..${{ github.event.after }})
+            COMMITS=$(jq -r '.commits[].id' "$GITHUB_EVENT_PATH")
           fi
 
           # Verify each commit
@@ -121,15 +124,30 @@ jobs:
           for commit in $COMMITS; do
             echo "Verifying commit: $commit"
 
-            if ! git verify-commit $commit 2>&1 | grep -q "Good signature"; then
+            if ! git verify-commit "$commit"; then
               echo "ERROR: Commit $commit is not signed or has invalid signature"
-              git log --format="%H %an <%ae> %s" -n 1 $commit
+              git log --format="%H %an <%ae> %s" -n 1 "$commit"
               FAILED=1
             else
-              echo "✓ Commit $commit has valid signature"
-              git log --format="%H %an <%ae> %s" -n 1 $commit
+              SIGNER_FP=$(git log --format="%GF" -n 1 "$commit")
+
+              case " $ALLOWED_FINGERPRINTS " in
+                *" $SIGNER_FP "*)
+                  echo "✓ Commit $commit has a valid signature from an authorized key"
+                  git log --format="%H %an <%ae> %s" -n 1 "$commit"
+                  ;;
+                *)
+                  echo "ERROR: Commit $commit was signed by an unauthorized key: $SIGNER_FP"
+                  git log --format="%H %an <%ae> %s" -n 1 "$commit"
+                  FAILED=1
+                  ;;
+              esac
             fi
           done
+
+          if [ -z "$COMMITS" ]; then
+            echo "No commits to verify"
+          fi
 
           if [ $FAILED -eq 1 ]; then
             echo "One or more commits failed signature verification"
@@ -159,6 +177,8 @@ stages:
 verify-signatures:
   stage: verify
   image: alpine:latest
+  variables:
+    ALLOWED_FINGERPRINTS: "ABCD1234EF567890ABCD1234EF567890ABCD1234 1234567890ABCDEF1234567890ABCDEF12345678"
   before_script:
     - apk add --no-cache git gnupg
   script:
@@ -169,18 +189,29 @@ verify-signatures:
       done
 
       # Get commits to verify
-      git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME
-      COMMITS=$(git rev-list origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..HEAD)
+      git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+      COMMITS=$(git rev-list "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"..HEAD)
 
       # Verify each commit
       for commit in $COMMITS; do
-        if ! git verify-commit $commit; then
+        if ! git verify-commit "$commit"; then
           echo "Commit $commit verification failed"
           exit 1
         fi
+
+        SIGNER_FP=$(git log --format="%GF" -n 1 "$commit")
+        case " $ALLOWED_FINGERPRINTS " in
+          *" $SIGNER_FP "*)
+            echo "Commit $commit signed by authorized key"
+            ;;
+          *)
+            echo "Commit $commit signed by unauthorized key: $SIGNER_FP"
+            exit 1
+            ;;
+        esac
       done
-  only:
-    - merge_requests
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
 build:
   stage: build
@@ -188,6 +219,8 @@ build:
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
   needs:
     - verify-signatures
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 ```
 
 ## Tekton Verification Task
@@ -205,6 +238,8 @@ spec:
     - name: revision
     - name: base-revision
       default: ""
+    - name: allowed-fingerprints
+      default: ""
 
   workspaces:
     - name: source
@@ -216,21 +251,8 @@ spec:
         #!/bin/sh
         git clone $(params.repo-url) $(workspaces.source.path)
         cd $(workspaces.source.path)
+        git fetch --all --tags
         git checkout $(params.revision)
-
-    - name: import-keys
-      image: alpine:latest
-      script: |
-        #!/bin/sh
-        apk add --no-cache gnupg
-
-        # Import keys from ConfigMap or workspace
-        for key in /keys/*.asc; do
-          gpg --import "$key"
-        done
-      volumeMounts:
-        - name: trusted-keys
-          mountPath: /keys
 
     - name: verify-signatures
       image: alpine:latest
@@ -240,6 +262,17 @@ spec:
         set -e
 
         apk add --no-cache git gnupg
+
+        # Import keys from ConfigMap in the same step that runs verification
+        for key in /keys/*.asc; do
+          gpg --import "$key"
+        done
+
+        ALLOWED_FINGERPRINTS="$(params.allowed-fingerprints)"
+        if [ -z "$ALLOWED_FINGERPRINTS" ]; then
+          echo "allowed-fingerprints must contain at least one trusted key fingerprint"
+          exit 1
+        fi
 
         # Determine commits to verify
         if [ -n "$(params.base-revision)" ]; then
@@ -252,13 +285,25 @@ spec:
         for commit in $COMMITS; do
           echo "Verifying commit: $commit"
 
-          if git verify-commit $commit 2>&1 | grep -q "Good signature"; then
-            echo "✓ Valid signature for commit $commit"
-          else
+          if ! git verify-commit "$commit"; then
             echo "✗ Invalid or missing signature for commit $commit"
             exit 1
           fi
+
+          SIGNER_FP=$(git log --format="%GF" -n 1 "$commit")
+          case " $ALLOWED_FINGERPRINTS " in
+            *" $SIGNER_FP "*)
+              echo "✓ Valid signature from authorized key for commit $commit"
+              ;;
+            *)
+              echo "✗ Unauthorized signing key for commit $commit: $SIGNER_FP"
+              exit 1
+              ;;
+          esac
         done
+      volumeMounts:
+        - name: trusted-keys
+          mountPath: /keys
 
   volumes:
     - name: trusted-keys
@@ -282,11 +327,12 @@ Get commit author and signer:
 # Show commit with signature
 git log --show-signature -1
 
-# Extract signer email
-git log --format="%G? %GS %s" -1
+# Extract signature status, signer name, and signing key fingerprint
+git log --format="%G? %GS %GF %s" -1
 
-# %G? = G (good), B (bad), U (unknown), N (no signature)
-# %GS = signer name/email
+# %G? = G (good), B (bad), U (unknown validity), N (no signature)
+# %GS = signer name
+# %GF = signing key fingerprint
 ```
 
 Validate in pipeline:
@@ -294,23 +340,26 @@ Validate in pipeline:
 ```yaml
 - name: Verify authorized signers
   run: |
-    ALLOWED_SIGNERS="user1@example.com user2@example.com user3@example.com"
+    ALLOWED_FINGERPRINTS="ABCD1234EF567890ABCD1234EF567890ABCD1234 1234567890ABCDEF1234567890ABCDEF12345678"
 
     for commit in $COMMITS; do
-      SIGNER=$(git log --format="%GS" -n 1 $commit)
-      VERIFIED=$(git log --format="%G?" -n 1 $commit)
+      SIGNER_FP=$(git log --format="%GF" -n 1 "$commit")
+      VERIFIED=$(git log --format="%G?" -n 1 "$commit")
 
       if [ "$VERIFIED" != "G" ]; then
         echo "Commit $commit has invalid signature"
         exit 1
       fi
 
-      if ! echo "$ALLOWED_SIGNERS" | grep -q "$SIGNER"; then
-        echo "Commit $commit signed by unauthorized user: $SIGNER"
-        exit 1
-      fi
-
-      echo "✓ Commit $commit signed by authorized user: $SIGNER"
+      case " $ALLOWED_FINGERPRINTS " in
+        *" $SIGNER_FP "*)
+          echo "✓ Commit $commit signed by authorized key: $SIGNER_FP"
+          ;;
+        *)
+          echo "Commit $commit signed by unauthorized key: $SIGNER_FP"
+          exit 1
+          ;;
+      esac
     done
 ```
 
@@ -324,8 +373,10 @@ gh api repos/owner/repo/branches/main/protection/required_signatures \
   --method POST
 
 # Via API
-curl -X POST \
-  -H "Authorization: token $GITHUB_TOKEN" \
+curl -L -X POST \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
   https://api.github.com/repos/owner/repo/branches/main/protection/required_signatures
 ```
 
@@ -364,7 +415,7 @@ Verify signed tags:
     done
 
     # Verify tag signature
-    if git verify-tag $TAG 2>&1 | grep -q "Good signature"; then
+    if git verify-tag "$TAG"; then
       echo "✓ Tag $TAG has valid signature"
     else
       echo "✗ Tag $TAG has invalid or missing signature"
