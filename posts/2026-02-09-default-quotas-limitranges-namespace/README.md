@@ -46,14 +46,21 @@ spec:
     requests.memory: 200Gi
     limits.memory: 400Gi
 
-    # Extended resources
-    requests.nvidia.com/gpu: "4"
-
   scopeSelector:
     matchExpressions:
     - operator: In
       scopeName: PriorityClass
       values: ["high-priority", "medium-priority"]
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: gpu-quota
+  namespace: production
+spec:
+  hard:
+    # Extended resources
+    requests.nvidia.com/gpu: "4"
 ---
 apiVersion: v1
 kind: ResourceQuota
@@ -67,8 +74,8 @@ spec:
     persistentvolumeclaims: "100"
 
     # Storage class specific
-    requests.storage.storageclass.storage.k8s.io/fast-ssd: 500Gi
-    requests.storage.storageclass.storage.k8s.io/standard: 1.5Ti
+    fast-ssd.storageclass.storage.k8s.io/requests.storage: 500Gi
+    standard.storageclass.storage.k8s.io/requests.storage: 1.5Ti
 ---
 apiVersion: v1
 kind: ResourceQuota
@@ -80,11 +87,11 @@ spec:
     # Workload objects
     pods: "500"
     replicationcontrollers: "50"
-    deployments.apps: "100"
-    statefulsets.apps: "30"
-    daemonsets.apps: "10"
-    jobs.batch: "200"
-    cronjobs.batch: "50"
+    count/deployments.apps: "100"
+    count/statefulsets.apps: "30"
+    count/daemonsets.apps: "10"
+    count/jobs.batch: "200"
+    count/cronjobs.batch: "50"
 
     # Service objects
     services: "50"
@@ -96,7 +103,7 @@ spec:
     secrets: "200"
 
     # Network objects
-    ingresses.networking.k8s.io: "50"
+    count/ingresses.networking.k8s.io: "50"
 ```
 
 ## Implementing Limit Ranges
@@ -220,6 +227,7 @@ Automate quota creation for new namespaces:
 from kubernetes import client, config
 
 def apply_default_quotas(namespace, environment):
+    config.load_kube_config()
     v1 = client.CoreV1Api()
 
     # Environment-based quota templates
@@ -321,7 +329,7 @@ spec:
     rules:
     - alert: NamespaceQuotaExceeded
       expr: |
-        (kube_resourcequota{type="used"} / kube_resourcequota{type="hard"}) > 0.9
+        (kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"}) > 0.9
       for: 10m
       labels:
         severity: warning
@@ -331,7 +339,7 @@ spec:
 
     - alert: NamespaceQuotaFull
       expr: |
-        (kube_resourcequota{type="used"} / kube_resourcequota{type="hard"}) >= 1
+        (kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"}) >= 1
       for: 5m
       labels:
         severity: critical
@@ -344,10 +352,10 @@ Query quota usage:
 
 ```promql
 # Quota utilization percentage
-(kube_resourcequota{type="used"} / kube_resourcequota{type="hard"}) * 100
+(kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"}) * 100
 
 # Namespaces over 80% quota
-(kube_resourcequota{type="used"} / kube_resourcequota{type="hard"}) > 0.8
+(kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"}) > 0.8
 
 # Top 10 namespaces by CPU usage
 topk(10, sum(kube_resourcequota{type="used", resource="requests.cpu"}) by (namespace))
