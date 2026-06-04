@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CDK8s, Kubernetes, TypeScript
 
-Description: Learn how to create reusable CDK8s library constructs that encapsulate microservice patterns including deployment, service, ingress, and monitoring configuration for consistent application deployment.
+Description: Learn how to create reusable CDK8s library constructs that encapsulate microservice patterns including deployment, service, ingress, and autoscaling configuration for consistent application deployment.
 
 ---
 
@@ -19,7 +19,7 @@ Start with deployment and service:
 ```typescript
 // lib/microservice.ts
 import { Construct } from "constructs";
-import * as k8s from "cdk8s-plus-27";
+import * as k8s from "cdk8s-plus-34";
 import { Size } from "cdk8s";
 
 export interface MicroserviceProps {
@@ -51,21 +51,20 @@ export class Microservice extends Construct {
         namespace: props.namespace
       },
       replicas: props.replicas || 2,
-      select: k8s.LabelSelector.of({ labels }),
       podMetadata: {
         labels
       },
       containers: [{
         image: props.image,
-        port: props.port,
+        portNumber: props.port,
         envVariables: props.env ? Object.entries(props.env).reduce((acc, [key, value]) => {
           acc[key] = k8s.EnvValue.fromValue(value);
           return acc;
         }, {} as Record<string, k8s.EnvValue>) : {},
         resources: {
           cpu: {
-            request: Size.milliCpus(parseInt(props.resources?.cpu || "100")),
-            limit: Size.milliCpus(parseInt(props.resources?.cpu || "100") * 2)
+            request: k8s.Cpu.millis(parseInt(props.resources?.cpu || "100")),
+            limit: k8s.Cpu.millis(parseInt(props.resources?.cpu || "100") * 2)
           },
           memory: {
             request: Size.mebibytes(parseInt(props.resources?.memory || "128")),
@@ -123,6 +122,8 @@ Extend with readiness and liveness probes:
 
 ```typescript
 // lib/microservice.ts (extended)
+import { Duration } from "cdk8s";
+
 export interface MicroserviceProps {
   // ... previous props ...
   readonly healthCheck?: {
@@ -138,35 +139,24 @@ export class Microservice extends Construct {
 
     const container = new k8s.Container({
       image: props.image,
-      port: props.port,
+      portNumber: props.port,
+      liveness: props.healthCheck ? k8s.Probe.fromHttpGet(props.healthCheck.path, {
+        port: props.port,
+        initialDelaySeconds: Duration.seconds(props.healthCheck.initialDelaySeconds || 10),
+        periodSeconds: Duration.seconds(props.healthCheck.periodSeconds || 10)
+      }) : undefined,
+      readiness: props.healthCheck ? k8s.Probe.fromHttpGet(props.healthCheck.path, {
+        port: props.port,
+        initialDelaySeconds: Duration.seconds(props.healthCheck.initialDelaySeconds || 5),
+        periodSeconds: Duration.seconds(props.healthCheck.periodSeconds || 5)
+      }) : undefined,
       // ... other config ...
     });
 
-    // Add health checks if specified
-    if (props.healthCheck) {
-      container.addLivenessProbe({
-        httpGet: {
-          path: props.healthCheck.path,
-          port: props.port
-        },
-        initialDelaySeconds: props.healthCheck.initialDelaySeconds || 10,
-        periodSeconds: props.healthCheck.periodSeconds || 10
-      });
-
-      container.addReadinessProbe({
-        httpGet: {
-          path: props.healthCheck.path,
-          port: props.port
-        },
-        initialDelaySeconds: props.healthCheck.initialDelaySeconds || 5,
-        periodSeconds: props.healthCheck.periodSeconds || 5
-      });
-    }
-
     this.deployment = new k8s.Deployment(this, "deployment", {
       // ... config ...
-      containers: [container]
     });
+    this.deployment.attachContainer(container);
   }
 }
 ```
@@ -213,7 +203,7 @@ export class Microservice extends Construct {
 
     const container = new k8s.Container({
       image: props.image,
-      port: props.port
+      portNumber: props.port
     });
 
     // Mount ConfigMap
@@ -235,9 +225,9 @@ export class Microservice extends Construct {
       metadata: {
         name: props.name,
         namespace: props.namespace
-      },
-      containers: [container]
+      }
     });
+    this.deployment.attachContainer(container);
   }
 }
 ```
@@ -272,22 +262,18 @@ export class Microservice extends Construct {
           name: props.name,
           namespace: props.namespace,
           annotations: {
-            "kubernetes.io/ingress.class": "nginx",
             ...(props.ingress.tls && {
               "cert-manager.io/cluster-issuer": "letsencrypt-prod"
             }),
             ...props.ingress.annotations
           }
         },
+        className: "nginx",
         rules: [{
           host: props.ingress.host,
-          http: {
-            paths: [{
-              path: props.ingress.path || "/",
-              pathType: "Prefix",
-              backend: k8s.IngressBackend.fromService(this.service)
-            }]
-          }
+          path: props.ingress.path || "/",
+          pathType: k8s.HttpIngressPathType.PREFIX,
+          backend: k8s.IngressBackend.fromService(this.service)
         }],
         tls: props.ingress.tls ? [{
           hosts: [props.ingress.host],
@@ -320,7 +306,7 @@ export class Microservice extends Construct {
   constructor(scope: Construct, id: string, props: MicroserviceProps) {
     super(scope, id);
 
-    // ... create deployment ...
+    // ... create deployment without a replicas value when autoscaling is enabled ...
 
     // Create HPA if autoscaling specified
     if (props.autoscaling) {
@@ -329,30 +315,16 @@ export class Microservice extends Construct {
           name: props.name,
           namespace: props.namespace
         },
-        scaleTarget: this.deployment,
+        target: this.deployment,
         minReplicas: props.autoscaling.minReplicas,
         maxReplicas: props.autoscaling.maxReplicas,
         metrics: [
-          ...(props.autoscaling.targetCpu ? [{
-            type: "Resource",
-            resource: {
-              name: "cpu",
-              target: {
-                type: "Utilization",
-                averageUtilization: props.autoscaling.targetCpu
-              }
-            }
-          }] : []),
-          ...(props.autoscaling.targetMemory ? [{
-            type: "Resource",
-            resource: {
-              name: "memory",
-              target: {
-                type: "Utilization",
-                averageUtilization: props.autoscaling.targetMemory
-              }
-            }
-          }] : [])
+          ...(props.autoscaling.targetCpu ? [
+            k8s.Metric.resourceCpu(k8s.MetricTarget.averageUtilization(props.autoscaling.targetCpu))
+          ] : []),
+          ...(props.autoscaling.targetMemory ? [
+            k8s.Metric.resourceMemory(k8s.MetricTarget.averageUtilization(props.autoscaling.targetMemory))
+          ] : [])
         ]
       });
     }
@@ -459,7 +431,7 @@ Create package.json:
   },
   "peerDependencies": {
     "cdk8s": "^2.0.0",
-    "cdk8s-plus-27": "^2.0.0",
+    "cdk8s-plus-34": "^2.0.0",
     "constructs": "^10.0.0"
   },
   "devDependencies": {
@@ -501,4 +473,4 @@ new Microservice(chart, "api", {
 
 ## Summary
 
-CDK8s library constructs encapsulate microservice patterns into reusable components. By defining standard interfaces for deployments, services, ingress, and monitoring, you eliminate boilerplate and enforce consistency. Environment-specific defaults adapt configurations automatically, while publishing as NPM packages enables sharing across projects and teams. This approach scales from individual applications to entire microservice platforms with hundreds of services.
+CDK8s library constructs encapsulate microservice patterns into reusable components. By defining standard interfaces for deployments, services, ingress, and autoscaling, you eliminate boilerplate and enforce consistency. Environment-specific defaults adapt configurations automatically, while publishing as NPM packages enables sharing across projects and teams. This approach scales from individual applications to entire microservice platforms with hundreds of services.
