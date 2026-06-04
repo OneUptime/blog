@@ -8,7 +8,7 @@ Description: Deploy a self-hosted Sentry instance in Docker for comprehensive er
 
 ---
 
-Sentry is the leading open-source error tracking platform. It captures exceptions, stack traces, and performance data from your applications and organizes them into actionable issues. While Sentry offers a hosted SaaS service, you can also self-host it for free using Docker. Self-hosting gives you full control over your data, no per-event pricing limits, and the ability to run Sentry behind your firewall.
+Sentry is a leading source-available error tracking platform. It captures exceptions, stack traces, and performance data from your applications and organizes them into actionable issues. While Sentry offers a hosted SaaS service, you can also self-host it for free using Docker. Self-hosting gives you full control over your data, no per-event pricing limits, and the ability to run Sentry behind your firewall.
 
 This guide walks through deploying self-hosted Sentry using Docker, configuring it for production use, and integrating it with a sample application.
 
@@ -31,7 +31,7 @@ graph TD
 
 ## Prerequisites
 
-Self-hosted Sentry requires significant resources. The minimum recommendation is 4 CPU cores and 16GB of RAM, with at least 20GB of free disk space. Docker and Docker Compose must be installed.
+Self-hosted Sentry requires significant resources. The minimum requirement is 4 CPU cores, 16GB of RAM, 16GB of swap, and at least 20GB of free disk space. Docker 19.03.6 or newer and Docker Compose 2.32.2 or newer must be installed.
 
 ```bash
 # Check available resources
@@ -47,11 +47,13 @@ Sentry provides an official installation script that handles the entire setup. C
 
 ```bash
 # Clone the Sentry self-hosted repository
+VERSION=$(curl -Ls -o /dev/null -w %{url_effective} https://github.com/getsentry/self-hosted/releases/latest)
+VERSION=${VERSION##*/}
 git clone https://github.com/getsentry/self-hosted.git sentry-docker
 cd sentry-docker
 
-# Check out a stable release tag
-git checkout 24.2.0
+# Check out the latest stable release tag
+git checkout ${VERSION}
 ```
 
 Run the installation script. This will pull all necessary Docker images, create the database schema, and generate configuration files.
@@ -68,8 +70,8 @@ During installation, you will be prompted to create a superuser account. This ac
 After installation completes, start all services.
 
 ```bash
-# Start Sentry (this launches ~30 containers)
-docker compose up -d
+# Start Sentry (this launches many containers and waits for health checks)
+docker compose up --wait
 
 # Check that all services are running
 docker compose ps
@@ -103,6 +105,15 @@ filestore.options:
   location: "/data/files"
 ```
 
+Event retention is configured through `.env` or `.env.custom`.
+
+```bash
+# .env.custom - Deployment settings
+
+# Increase event retention (default is 90 days)
+SENTRY_EVENT_RETENTION_DAYS=180
+```
+
 Additional Python-based settings live in `sentry/sentry.conf.py`.
 
 ```python
@@ -111,15 +122,8 @@ Additional Python-based settings live in `sentry/sentry.conf.py`.
 # Session cookie settings
 SESSION_COOKIE_SECURE = False  # Set to True if using HTTPS
 
-# Increase event retention (default is 90 days)
-SENTRY_OPTIONS["system.event-retention-days"] = 180
-
-# Rate limiting for ingestion
-SENTRY_OPTIONS["store.ip-rate-limit"] = 0  # 0 = unlimited
-SENTRY_OPTIONS["store.project-rate-limit"] = 0
-
-# Enable performance monitoring
-SENTRY_OPTIONS["performance.issues.all.problem-detection"] = True
+# Disable self-hosted beacon reporting if required by your policy
+SENTRY_BEACON = False
 ```
 
 ## Creating a Project
@@ -146,8 +150,8 @@ CMD ["python", "app.py"]
 
 ```text
 # requirements.txt
-flask==3.0.0
-sentry-sdk[flask]==1.40.0
+flask==3.1.3
+sentry-sdk[flask]==2.61.1
 ```
 
 ```python
@@ -207,7 +211,7 @@ Add the Flask app to your Docker Compose file.
   flask-app:
     build: ./flask-app
     environment:
-      - SENTRY_DSN=http://your-key@sentry-web:9000/1
+      - SENTRY_DSN=http://your-key@web:9000/1
       - APP_VERSION=1.0.0
       - APP_ENV=development
     ports:
@@ -223,7 +227,7 @@ For frontend applications, Sentry captures JavaScript errors and performance dat
 ```html
 <!-- Add the Sentry SDK to your HTML -->
 <script
-  src="https://browser.sentry-cdn.com/7.100.0/bundle.tracing.min.js"
+  src="https://browser.sentry-cdn.com/10.56.0/bundle.tracing.min.js"
   crossorigin="anonymous"
 ></script>
 <script>
@@ -245,16 +249,17 @@ Upload source maps so Sentry can display readable stack traces for minified Java
 # Install the Sentry CLI
 npm install -g @sentry/cli
 
+# Configure the CLI for your self-hosted instance
+export SENTRY_URL=http://localhost:9000
+export SENTRY_AUTH_TOKEN=YOUR_AUTH_TOKEN
+
 # Upload source maps after your build step
 sentry-cli releases new frontend@1.0.0 \
-  --url http://localhost:9000 \
-  --auth-token YOUR_AUTH_TOKEN \
   --org sentry \
   --project frontend
 
-sentry-cli releases files frontend@1.0.0 upload-sourcemaps ./dist \
-  --url http://localhost:9000 \
-  --auth-token YOUR_AUTH_TOKEN \
+sentry-cli sourcemaps upload ./dist \
+  --release frontend@1.0.0 \
   --org sentry \
   --project frontend
 ```
@@ -283,4 +288,4 @@ docker compose down -v
 
 ## Conclusion
 
-Self-hosted Sentry gives you a powerful error tracking platform with no event limits. The Docker deployment handles the complexity of the many internal services, and once running, it provides the same capabilities as the hosted version. For teams that want error tracking combined with uptime monitoring, alerting, and status pages in a single platform, [OneUptime](https://oneuptime.com) offers an integrated solution that covers both error tracking and infrastructure monitoring.
+Self-hosted Sentry gives you a powerful error tracking platform with no per-event billing limits. The Docker deployment handles the complexity of the many internal services, and once running, it provides many of the same core capabilities as the hosted version. For teams that want error tracking combined with uptime monitoring, alerting, and status pages in a single platform, [OneUptime](https://oneuptime.com) offers an integrated solution that covers both error tracking and infrastructure monitoring.
