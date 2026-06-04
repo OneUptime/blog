@@ -38,29 +38,34 @@ jobs:
         cluster:
           - name: dev-us-west
             context: dev-us-west-1
+            kubeconfig_secret: KUBECONFIG_DEV_US_WEST
             namespace: myapp-dev
             replicas: 2
           - name: staging-us-east
             context: staging-us-east-1
+            kubeconfig_secret: KUBECONFIG_STAGING_US_EAST
             namespace: myapp-staging
             replicas: 3
           - name: prod-us-west
             context: prod-us-west-1
+            kubeconfig_secret: KUBECONFIG_PROD_US_WEST
             namespace: myapp-prod
             replicas: 5
           - name: prod-eu-west
             context: prod-eu-west-1
+            kubeconfig_secret: KUBECONFIG_PROD_EU_WEST
             namespace: myapp-prod
             replicas: 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure kubectl
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v5
         with:
           method: kubeconfig
-          kubeconfig: ${{ secrets[format('KUBECONFIG_{0}', matrix.cluster.context)] }}
+          kubeconfig: ${{ secrets[matrix.cluster.kubeconfig_secret] }}
+          context: ${{ matrix.cluster.context }}
 
       - name: Deploy to ${{ matrix.cluster.name }}
         run: |
@@ -158,26 +163,31 @@ jobs:
       fail-fast: false
       max-parallel: 5
 
-    # Filter matrix based on input
-    if: matrix.environment == github.event.inputs.environment
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Skip non-selected environment
+        if: ${{ matrix.environment != inputs.environment }}
+        run: echo "Skipping ${{ matrix.cluster }} because ${{ inputs.environment }} was selected."
+
+      - uses: actions/checkout@v5
+        if: ${{ matrix.environment == inputs.environment }}
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ matrix.environment == inputs.environment }}
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ matrix.region }}
 
       - name: Update kubeconfig
+        if: ${{ matrix.environment == inputs.environment }}
         run: |
           aws eks update-kubeconfig \
             --name $(echo "${{ matrix.context }}" | cut -d'/' -f2) \
             --region ${{ matrix.region }}
 
       - name: Generate deployment manifest
+        if: ${{ matrix.environment == inputs.environment }}
         run: |
           cat > deployment.yaml <<EOF
           apiVersion: apps/v1
@@ -223,6 +233,7 @@ jobs:
           EOF
 
       - name: Deploy to ${{ matrix.cluster }}
+        if: ${{ matrix.environment == inputs.environment }}
         run: |
           kubectl apply -f deployment.yaml
           kubectl rollout status deployment/myapp \
@@ -230,6 +241,7 @@ jobs:
             --timeout=10m
 
       - name: Verify deployment health
+        if: ${{ matrix.environment == inputs.environment }}
         run: |
           # Check that all pods are ready
           kubectl wait --for=condition=ready pod \
@@ -243,7 +255,7 @@ jobs:
             -o jsonpath='{.status.conditions[?(@.type=="Available")].status}'
 ```
 
-This advanced configuration uses matrix filtering to deploy only to selected environments while maintaining all configuration in one place.
+This advanced configuration uses step-level filtering to deploy only to selected environments while maintaining all configuration in one place.
 
 ## Handling Deployment Failures Gracefully
 
@@ -252,6 +264,8 @@ Configure failure handling to continue deployments even if one cluster fails:
 ```yaml
 jobs:
   deploy:
+    permissions:
+      issues: write
     strategy:
       matrix:
         cluster: [...]
@@ -260,7 +274,7 @@ jobs:
 
     steps:
       - name: Deploy with retry logic
-        uses: nick-invision/retry@v2
+        uses: nick-fields/retry@v3
         with:
           timeout_minutes: 10
           max_attempts: 3
@@ -273,18 +287,18 @@ jobs:
 
       - name: Report deployment failure
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
+            await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `❌ Deployment to cluster **${{ matrix.cluster.name }}** failed. Please investigate.`
+              title: `Deployment to ${{ matrix.cluster.name }} failed`,
+              body: `Deployment to cluster **${{ matrix.cluster.name }}** failed in run ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}. Please investigate.`
             })
 ```
 
-This configuration prevents one failing cluster from blocking deployments to others, and automatically creates issue comments for failures.
+This configuration prevents one failing cluster from blocking deployments to others, and automatically creates GitHub issues for failures.
 
 ## Dynamic Matrix from Configuration File
 
@@ -323,7 +337,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Generate matrix
         id: set-matrix
@@ -340,7 +354,7 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Deploy to ${{ matrix.cluster.name }}
         run: |
@@ -411,25 +425,31 @@ jobs:
   deploy:
     # ... matrix deployment steps ...
 
-    outputs:
-      deployment-status: ${{ steps.deploy.outcome }}
-
   report:
     needs: deploy
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
     steps:
       - name: Collect deployment results
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
-            const deployJobs = context.payload.workflow_run.jobs;
+            const { data } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+              per_page: 100
+            });
+
+            const deployJobs = data.jobs;
             const results = deployJobs
               .filter(job => job.name.startsWith('deploy'))
               .map(job => ({
                 cluster: job.name,
                 status: job.conclusion,
-                duration: job.completed_at - job.started_at
+                duration_seconds: Math.round((new Date(job.completed_at) - new Date(job.started_at)) / 1000)
               }));
 
             const summary = results.reduce((acc, r) => {
