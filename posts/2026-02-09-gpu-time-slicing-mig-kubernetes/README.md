@@ -22,7 +22,7 @@ Before diving into configuration, understand the trade-offs:
 - Potential for resource contention
 
 **MIG (Multi-Instance GPU):**
-- Only available on A100, A30, and H100 GPUs
+- Only available on select NVIDIA GPUs, including A100, A30, H100, H200, and newer MIG-capable data center or workstation GPUs
 - Hardware-isolated GPU partitions
 - Guaranteed resources per partition
 - Better for predictable performance
@@ -79,8 +79,10 @@ metadata:
   namespace: gpu-operator
 data:
   # Each GPU will be shared by up to 4 pods
-  time-slicing-config: |
+  any: |
     version: v1
+    flags:
+      migStrategy: none
     sharing:
       timeSlicing:
         resources:
@@ -98,6 +100,7 @@ kubectl apply -f time-slicing-config.yaml
 helm upgrade gpu-operator nvidia/gpu-operator \
   --namespace gpu-operator \
   --set devicePlugin.config.name=time-slicing-config \
+  --set devicePlugin.config.default=any \
   --reuse-values
 
 # Wait for device plugin to restart
@@ -174,21 +177,18 @@ Enable MIG mode on GPUs:
 nvidia-smi -mig 1
 
 # Verify MIG is enabled
-nvidia-smi -L
-# Should show: GPU 0: A100-SXM4-40GB (MIG Enabled)
+nvidia-smi --query-gpu=index,mig.mode.current --format=csv
+# Should show MIG mode as Enabled
 ```
 
-Create MIG instances:
+If you are configuring MIG manually outside the GPU Operator, create MIG instances:
 
 ```bash
 # Create 7 equal instances (1g.5gb profile) on each A100
 # This gives you 7 separate 5GB GPU instances per physical GPU
 
 for gpu_id in 0 1 2 3; do
-  # Create 7 instances on each GPU
-  for i in {1..7}; do
-    nvidia-smi mig -cgi 9,9,9,9,9,9,9 -C -i $gpu_id
-  done
+  nvidia-smi mig -cgi 19,19,19,19,19,19,19 -C -i $gpu_id
 done
 
 # Verify instances were created
@@ -210,9 +210,12 @@ metadata:
   name: mig-config
   namespace: gpu-operator
 data:
-  mig-config: |
+  config.yaml: |
     version: v1
     mig-configs:
+      all-disabled:
+        - devices: all
+          mig-enabled: false
       # Configure for 1g.5gb profile (7 instances per GPU)
       all-1g.5gb:
         - devices: [0,1,2,3]  # Apply to all GPUs
@@ -231,11 +234,14 @@ kubectl apply -f mig-config.yaml
 helm upgrade gpu-operator nvidia/gpu-operator \
   --namespace gpu-operator \
   --set mig.strategy=mixed \
-  --set devicePlugin.config.name=mig-config \
+  --set migManager.config.name=mig-config \
   --reuse-values
 
-# Restart device plugin
-kubectl delete pods -n gpu-operator -l app=nvidia-device-plugin-daemonset
+# Tell MIG Manager which MIG profile to apply to the node
+kubectl label nodes <gpu-node-name> nvidia.com/mig.config=all-1g.5gb --overwrite
+
+# Wait for MIG Manager to finish applying the configuration
+kubectl get node <gpu-node-name> -o=jsonpath='{.metadata.labels.nvidia\.com/mig\.config\.state}'
 
 # Verify MIG resources are available
 kubectl describe node <gpu-node-name> | grep "nvidia.com/mig"
@@ -252,7 +258,7 @@ You can create different MIG profiles for different workload types:
 nvidia-smi mig -cgi 14,14,14 -C -i 0
 
 # GPU 1: 7x 1g.5gb instances (for inference)
-nvidia-smi mig -cgi 9,9,9,9,9,9,9 -C -i 1
+nvidia-smi mig -cgi 19,19,19,19,19,19,19 -C -i 1
 
 # GPU 2: 1x 4g.20gb instance (for training)
 nvidia-smi mig -cgi 5 -C -i 2
@@ -274,9 +280,12 @@ metadata:
   name: mixed-mig-config
   namespace: gpu-operator
 data:
-  mig-config: |
+  config.yaml: |
     version: v1
     mig-configs:
+      all-disabled:
+        - devices: all
+          mig-enabled: false
       mixed:
         - devices: [0]
           mig-enabled: true
@@ -306,7 +315,7 @@ metadata:
   name: bert-inference
   namespace: ml-inference
 spec:
-  replicas: 14  # Can run 14 replicas on 7x1g.5gb instances
+  replicas: 7  # Can run 7 replicas on 7x1g.5gb instances
   selector:
     matchLabels:
       app: bert-inference
@@ -369,8 +378,11 @@ Deploy DCGM Exporter to monitor GPU metrics:
 
 ```bash
 # Install DCGM Exporter
-helm install dcgm-exporter nvidia/dcgm-exporter \
+helm repo add gpu-helm-charts https://nvidia.github.io/dcgm-exporter/helm-charts
+helm repo update
+helm install dcgm-exporter gpu-helm-charts/dcgm-exporter \
   --namespace gpu-operator \
+  --create-namespace \
   --set serviceMonitor.enabled=true
 
 # Verify it's collecting metrics
@@ -384,13 +396,10 @@ Query GPU utilization by MIG instance:
 
 ```promql
 # GPU utilization by MIG instance
-DCGM_FI_DEV_GPU_UTIL{gpu_instance_id!=""}
+DCGM_FI_PROF_GR_ENGINE_ACTIVE{GPU_I_ID!=""}
 
 # Memory usage by MIG instance
-DCGM_FI_DEV_FB_USED{gpu_instance_id!=""}
-
-# Number of active processes per instance
-DCGM_FI_DEV_RUNNING_PROCESSES{gpu_instance_id!=""}
+DCGM_FI_DEV_FB_USED{GPU_I_ID!=""}
 ```
 
 Create alerts for GPU issues:
@@ -408,7 +417,7 @@ spec:
     interval: 30s
     rules:
     - alert: GPUMemoryHigh
-      expr: DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_FREE > 0.9
+      expr: DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE) > 0.9
       for: 5m
       annotations:
         summary: "GPU memory usage above 90%"
@@ -426,16 +435,14 @@ To switch from MIG back to time-slicing:
 
 ```bash
 # Disable MIG on all GPUs
-nvidia-smi -mig 0 -i 0,1,2,3
-
-# Reset the GPUs
-nvidia-smi --gpu-reset
+kubectl label nodes <gpu-node-name> nvidia.com/mig.config=all-disabled --overwrite
 
 # Update GPU Operator back to time-slicing
 helm upgrade gpu-operator nvidia/gpu-operator \
   --namespace gpu-operator \
   --set mig.strategy=none \
   --set devicePlugin.config.name=time-slicing-config \
+  --set devicePlugin.config.default=any \
   --reuse-values
 
 # Restart device plugin
