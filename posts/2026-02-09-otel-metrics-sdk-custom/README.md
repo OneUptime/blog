@@ -126,9 +126,9 @@ meter = metrics.get_meter(__name__)
 
 # Create histogram for latency
 request_duration = meter.create_histogram(
-    name="http.server.duration",
+    name="http.server.request.duration",
     description="HTTP request duration",
-    unit="ms",
+    unit="s",
 )
 
 # Record request latency
@@ -139,25 +139,25 @@ def handle_request(request):
         response = process_request(request)
         
         # Record duration
-        duration_ms = (time.time() - start_time) * 1000
+        duration_s = time.time() - start_time
         request_duration.record(
-            duration_ms,
+            duration_s,
             {
-                "http.method": request.method,
+                "http.request.method": request.method,
                 "http.route": request.path,
-                "http.status_code": response.status_code,
+                "http.response.status_code": response.status_code,
             }
         )
         
         return response
     except Exception as e:
-        duration_ms = (time.time() - start_time) * 1000
+        duration_s = time.time() - start_time
         request_duration.record(
-            duration_ms,
+            duration_s,
             {
-                "http.method": request.method,
+                "http.request.method": request.method,
                 "http.route": request.path,
-                "error": True,
+                "error.type": type(e).__name__,
             }
         )
         raise
@@ -169,9 +169,9 @@ def process_request(request):
 
 # Create histogram for response sizes
 response_size = meter.create_histogram(
-    name="http.server.response.size",
+    name="http.server.response.body.size",
     description="HTTP response body size",
-    unit="bytes",
+    unit="By",
 )
 
 def send_response(response_data):
@@ -312,24 +312,23 @@ Configure metric views to control aggregation and cardinality.
 
 ```python
 # metric_views.py
-from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.view import View
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, View
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 # Configure custom histogram buckets
 custom_histogram_view = View(
-    instrument_name="http.server.duration",
-    aggregation=metrics.ExplicitBucketHistogramAggregation(
-        boundaries=[10, 50, 100, 200, 500, 1000, 2000, 5000]
+    instrument_name="http.server.request.duration",
+    aggregation=ExplicitBucketHistogramAggregation(
+        boundaries=[0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10]
     ),
 )
 
 # Drop high-cardinality attribute
 filtered_view = View(
-    instrument_name="requests.total",
-    attribute_keys={"http.method", "http.route"},  # Only keep these attributes
+    instrument_name="http.server.requests",
+    attribute_keys={"http.request.method", "http.route"},  # Only keep these attributes
 )
 
 # Create meter provider with views
@@ -369,35 +368,43 @@ request_counter = meter.create_counter(
 )
 
 request_duration = meter.create_histogram(
-    "http.server.duration",
+    "http.server.request.duration",
     description="HTTP request duration",
-    unit="ms",
+    unit="s",
 )
 
 active_requests = meter.create_up_down_counter(
     "http.server.active_requests",
     description="Currently active requests",
+    unit="{request}",
 )
 
 @app.before_request
 def before_request():
     request.start_time = time.time()
-    active_requests.add(1, {"http.method": request.method})
+    active_requests.add(
+        1,
+        {"http.request.method": request.method, "url.scheme": request.scheme},
+    )
 
 @app.after_request
 def after_request(response):
     # Record metrics
-    duration_ms = (time.time() - request.start_time) * 1000
+    duration_s = time.time() - request.start_time
     
     attributes = {
-        "http.method": request.method,
-        "http.route": request.path,
-        "http.status_code": response.status_code,
+        "http.request.method": request.method,
+        "http.route": request.url_rule.rule if request.url_rule else request.path,
+        "http.response.status_code": response.status_code,
+        "url.scheme": request.scheme,
     }
     
     request_counter.add(1, attributes)
-    request_duration.record(duration_ms, attributes)
-    active_requests.add(-1, {"http.method": request.method})
+    request_duration.record(duration_s, attributes)
+    active_requests.add(
+        -1,
+        {"http.request.method": request.method, "url.scheme": request.scheme},
+    )
     
     return response
 
