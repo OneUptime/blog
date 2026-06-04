@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DaemonSet, Toleration, Taints, Node Scheduling
 
-Description: Learn how to configure tolerations in Kubernetes DaemonSets to ensure critical node-level agents run on tainted nodes including master nodes, GPU nodes, and specialized workload nodes.
+Description: Learn how to configure tolerations in Kubernetes DaemonSets to ensure critical node-level agents run on tainted nodes including control plane nodes, GPU nodes, and specialized workload nodes.
 
 ---
 
-Kubernetes taints prevent regular pods from scheduling on nodes with special requirements. However, DaemonSet workloads like monitoring agents and log collectors must run on ALL nodes, including tainted ones. Tolerations allow DaemonSets to bypass taints and ensure comprehensive node coverage. This guide demonstrates configuring tolerations for various taint scenarios.
+Kubernetes taints prevent regular pods from scheduling on nodes with special requirements. However, DaemonSet workloads like monitoring agents and log collectors often need to run on every eligible node, including tainted ones. Tolerations allow DaemonSets to schedule onto tainted nodes and ensure comprehensive node coverage. This guide demonstrates configuring tolerations for various taint scenarios.
 
 ## Understanding Taints and Tolerations
 
-Nodes receive taints to mark them as special, such as master nodes, GPU nodes, or nodes undergoing maintenance. Taints have three effects: NoSchedule prevents new pods from scheduling, PreferNoSchedule suggests avoiding the node, and NoExecute evicts existing pods.
+Nodes receive taints to mark them as special, such as control plane nodes, GPU nodes, or nodes undergoing maintenance. Taints have three effects: NoSchedule prevents new pods from scheduling, PreferNoSchedule suggests avoiding the node, and NoExecute evicts pods that do not tolerate the taint.
 
-DaemonSets need tolerations matching node taints to schedule successfully. Without proper tolerations, critical agents won't run on tainted nodes, creating monitoring blind spots and operational gaps.
+Kubernetes automatically adds several condition-related tolerations to DaemonSet Pods, but DaemonSets still need explicit tolerations for control plane, GPU, and other custom taints. Without proper tolerations, critical agents won't run on those tainted nodes, creating monitoring blind spots and operational gaps.
 
-## Tolerating Master Node Taints
+## Tolerating Control Plane Node Taints
 
 Control plane nodes have taints preventing regular workloads. System DaemonSets must tolerate these:
 
@@ -69,7 +69,7 @@ spec:
         effect: NoSchedule
 ```
 
-The `Exists` operator matches any value, allowing the pod to tolerate master/control-plane taints regardless of their values.
+The `Exists` operator matches any value, allowing the pod to tolerate control plane taints regardless of their values. The `node-role.kubernetes.io/master` toleration is included for older clusters that still use the deprecated taint key.
 
 ## Tolerating All NoSchedule Taints
 
@@ -93,7 +93,7 @@ spec:
       hostNetwork: true
       containers:
       - name: kube-proxy
-        image: k8s.gcr.io/kube-proxy:v1.28.0
+        image: registry.k8s.io/kube-proxy:v1.28.0
         command:
         - /usr/local/bin/kube-proxy
         - --config=/var/lib/kube-proxy/config.conf
@@ -173,7 +173,7 @@ Both NoSchedule and NoExecute tolerations ensure the plugin persists even if the
 
 ## Handling NoExecute Taints
 
-NoExecute taints evict existing pods. Configure tolerations with duration limits:
+NoExecute taints evict pods that do not tolerate them. Configure explicit tolerations with duration limits when you want DaemonSet Pods to leave a node after a condition persists instead of relying on the default DaemonSet tolerations for `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable`, which have no `tolerationSeconds`:
 
 ```yaml
 apiVersion: apps/v1
@@ -209,7 +209,7 @@ spec:
         operator: Exists
         effect: NoExecute
         tolerationSeconds: 300
-      - key: node.kubernetes.io/disk-pressure
+      - key: maintenance
         operator: Exists
         effect: NoExecute
         tolerationSeconds: 60
@@ -222,11 +222,10 @@ The `tolerationSeconds` field defines how long pods tolerate the condition befor
 When draining nodes for maintenance, add temporary taints:
 
 ```bash
-# Taint node for maintenance
-
 kubectl taint node node-1 maintenance=scheduled:NoExecute
+```
 
-# DaemonSet tolerating maintenance
+```yaml
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -262,15 +261,13 @@ kubectl taint node node-1 maintenance-
 
 ## Creating Dynamic Toleration Policies
 
-Use admission webhooks to inject tolerations automatically:
+Use admission webhooks to inject tolerations automatically into selected namespaces:
 
 ```go
 package main
 
 import (
-    "encoding/json"
     corev1 "k8s.io/api/core/v1"
-    "k8s.io/api/admission/v1"
 )
 
 type patchOperation struct {
@@ -282,7 +279,7 @@ type patchOperation struct {
 func addTolerations(pod *corev1.Pod) ([]patchOperation, error) {
     var patches []patchOperation
 
-    // Default tolerations for DaemonSet pods
+    // Default tolerations for selected pods
     defaultTolerations := []corev1.Toleration{
         {
             Key:      "node-role.kubernetes.io/master",
@@ -372,22 +369,24 @@ data:
       rules:
       - alert: DaemonSetNotOnTaintedNodes
         expr: |
-          count(kube_node_spec_taint{effect="NoSchedule"})
-          != count(kube_pod_info{created_by_kind="DaemonSet"})
+          count by (node) (kube_node_spec_taint{effect="NoSchedule"})
+          unless on (node)
+          count by (node) (kube_pod_info{created_by_kind="DaemonSet",pod=~"node-exporter.*"})
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "DaemonSet missing on tainted nodes"
 
-      - alert: MasterNodeMissingMonitoring
+      - alert: ControlPlaneNodeMissingMonitoring
         expr: |
-          count(kube_node_role{role="master"})
-          > count(kube_pod_info{created_by_kind="DaemonSet",pod=~"node-exporter.*",node=~".*master.*"})
+          count by (node) (kube_node_role{role=~"control-plane|master"})
+          unless on (node)
+          count by (node) (kube_pod_info{created_by_kind="DaemonSet",namespace="monitoring",pod=~"node-exporter.*"})
         labels:
           severity: critical
         annotations:
-          summary: "Master nodes missing monitoring agents"
+          summary: "Control plane nodes missing monitoring agents"
 ```
 
 Query tainted nodes and DaemonSet coverage:
@@ -396,8 +395,8 @@ Query tainted nodes and DaemonSet coverage:
 # List tainted nodes
 kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
 
-# Check DaemonSet pods on masters
-kubectl get pods -n monitoring -o wide | grep master
+# Check DaemonSet pods on control plane nodes
+kubectl get pods -n monitoring -o wide
 
 # Verify tolerations
 kubectl get daemonset node-exporter -n monitoring -o yaml | grep -A 10 tolerations
@@ -468,6 +467,6 @@ Consider using admission webhooks to inject common tolerations automatically, re
 
 ## Conclusion
 
-Tolerations ensure DaemonSets achieve complete node coverage despite taints. By properly configuring tolerations for master nodes, GPU nodes, and custom taint scenarios, you guarantee critical node-level services run everywhere they're needed. This comprehensive coverage is essential for monitoring, logging, security scanning, and other infrastructure components that must operate on every node regardless of specialization or restrictions.
+Tolerations ensure DaemonSets achieve complete node coverage despite taints. By properly configuring tolerations for control plane nodes, GPU nodes, and custom taint scenarios, you guarantee critical node-level services run everywhere they're needed. This comprehensive coverage is essential for monitoring, logging, security scanning, and other infrastructure components that must operate on every node regardless of specialization or restrictions.
 
 Implement proper tolerations to ensure DaemonSet workloads run on all nodes in your cluster.
