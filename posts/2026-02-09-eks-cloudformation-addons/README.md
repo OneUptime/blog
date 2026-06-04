@@ -36,7 +36,7 @@ Parameters:
 
   KubernetesVersion:
     Type: String
-    Default: '1.28'
+    Default: '1.35'
     Description: Kubernetes version
 
 Resources:
@@ -53,6 +53,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSVPCResourceController
 
   # VPC for EKS
   VPC:
@@ -266,7 +267,6 @@ Extend the template with managed add-ons:
     Properties:
       AddonName: vpc-cni
       ClusterName: !Ref ClusterName
-      AddonVersion: v1.15.1-eksbuild.1
       ResolveConflicts: OVERWRITE
       ConfigurationValues: |
         {
@@ -286,7 +286,6 @@ Extend the template with managed add-ons:
     Properties:
       AddonName: coredns
       ClusterName: !Ref ClusterName
-      AddonVersion: v1.10.1-eksbuild.4
       ResolveConflicts: OVERWRITE
 
   # kube-proxy add-on
@@ -296,7 +295,6 @@ Extend the template with managed add-ons:
     Properties:
       AddonName: kube-proxy
       ClusterName: !Ref ClusterName
-      AddonVersion: v1.28.2-eksbuild.2
       ResolveConflicts: OVERWRITE
 
   # EBS CSI driver add-on
@@ -306,7 +304,6 @@ Extend the template with managed add-ons:
     Properties:
       AddonName: aws-ebs-csi-driver
       ClusterName: !Ref ClusterName
-      AddonVersion: v1.25.0-eksbuild.1
       ServiceAccountRoleArn: !GetAtt EBSCSIDriverRole.Arn
       ResolveConflicts: OVERWRITE
 
@@ -315,15 +312,28 @@ Extend the template with managed add-ons:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Federated: !Sub 'arn:aws:iam::${AWS::AccountId}:oidc-provider/${OIDCProvider}'
-            Action: sts:AssumeRoleWithWebIdentity
-            Condition:
-              StringEquals:
-                !Sub '${OIDCProvider}:sub': 'system:serviceaccount:kube-system:ebs-csi-controller-sa'
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Federated": "${OIDCProviderArn}"
+                  },
+                  "Action": "sts:AssumeRoleWithWebIdentity",
+                  "Condition": {
+                    "StringEquals": {
+                      "${Issuer}:aud": "sts.amazonaws.com",
+                      "${Issuer}:sub": "system:serviceaccount:kube-system:ebs-csi-controller-sa"
+                    }
+                  }
+                }
+              ]
+            }
+          - OIDCProviderArn: !Ref OIDCProvider
+            Issuer: !Select [1, !Split ['//', !GetAtt EKSCluster.OpenIdConnectIssuerUrl]]
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy
 
@@ -334,11 +344,9 @@ Extend the template with managed add-ons:
       Url: !GetAtt EKSCluster.OpenIdConnectIssuerUrl
       ClientIdList:
         - sts.amazonaws.com
-      ThumbprintList:
-        - 9e99a48a9960b14926bb7f3b02e22da2b0ab7280
 ```
 
-This adds essential add-ons with specific versions and configuration. The EBS CSI driver uses IRSA (IAM Roles for Service Accounts) for secure AWS API access.
+This adds essential add-ons with compatible default versions and configuration. If you need to pin versions, use `aws eks describe-addon-versions` to choose versions that match your Kubernetes minor version. The EBS CSI driver uses IRSA (IAM Roles for Service Accounts) for secure AWS API access.
 
 ## Creating Node Groups
 
@@ -379,7 +387,7 @@ Add managed node groups:
         DesiredSize: 3
       InstanceTypes:
         - t3.medium
-      AmiType: AL2_x86_64
+      AmiType: AL2023_x86_64_STANDARD
       UpdateConfig:
         MaxUnavailablePercentage: 33
       Labels:
@@ -468,8 +476,9 @@ Use CloudFormation custom resources for features not supported by native resourc
                           'name': 'aws',
                           'user': {
                               'exec': {
-                                  'apiVersion': 'client.authentication.k8s.io/v1beta1',
+                                  'apiVersion': 'client.authentication.k8s.io/v1',
                                   'command': 'aws',
+                                  'interactiveMode': 'Never',
                                   'args': [
                                       'eks',
                                       'get-token',
