@@ -8,13 +8,13 @@ Description: Implement Cilium ClusterMesh for seamless multi-cluster networking 
 
 ---
 
-Cilium ClusterMesh connects multiple Kubernetes clusters into a unified network, enabling pod-to-pod communication and service discovery across cluster boundaries. Unlike traditional multi-cluster approaches that rely on gateways or proxies, ClusterMesh provides direct pod connectivity using BGP or tunneling, making it ideal for distributed applications, disaster recovery, and gradual migrations.
+Cilium ClusterMesh connects multiple Kubernetes clusters into a unified network, enabling pod-to-pod communication and service discovery across cluster boundaries. Unlike traditional multi-cluster approaches that rely on gateways or proxies, ClusterMesh provides direct pod connectivity using Cilium's configured datapath mode, making it ideal for distributed applications, disaster recovery, and gradual migrations.
 
 ## Understanding ClusterMesh Architecture
 
-ClusterMesh works by connecting the control planes of multiple clusters. Each cluster runs its own Cilium agents and a clustermesh-apiserver that exposes cluster state (endpoints, services, identities) to other clusters. The agents establish secure tunnels between clusters, allowing pods to communicate directly without NAT or proxies.
+ClusterMesh works by connecting the control planes of multiple clusters. Each cluster runs its own Cilium agents and a clustermesh-apiserver that exposes cluster state (endpoints, services, identities) to other clusters. The agents use the synchronized state to route traffic through Cilium's configured datapath, allowing pods to communicate directly without NAT or proxies.
 
-Every cluster maintains its own pod CIDR and service CIDR. ClusterMesh handles routing between these ranges, ensuring that pods can reach services in remote clusters using the same mechanisms as local services. Network policies apply across clusters, so you can enforce security boundaries that span your entire infrastructure.
+Every cluster maintains its own pod CIDR and service CIDR. ClusterMesh handles routing between non-overlapping pod CIDRs and synchronizes service information for global services, ensuring that pods can reach remote backends using the same mechanisms as local services. Network policy enforcement can span clusters, but policies must be applied in each cluster where they are needed.
 
 ## Prerequisites and Planning
 
@@ -35,7 +35,7 @@ Cluster ID: 2
 
 Key requirements:
 - Pod CIDRs must not overlap between clusters
-- Service CIDRs must not overlap if using global services
+- All clusters must use the same datapath mode
 - Clusters must have unique IDs (1-255)
 - Network connectivity between cluster nodes (VPN, VPC peering, or direct routing)
 
@@ -43,10 +43,12 @@ Install Cilium CLI on your management machine:
 
 ```bash
 CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
-curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz
-tar xzvf cilium-linux-amd64.tar.gz
-sudo mv cilium /usr/local/bin/
-rm cilium-linux-amd64.tar.gz
+CLI_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
+curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 
 cilium version
 ```
@@ -61,10 +63,10 @@ kubectl config use-context cluster-1
 
 # Install Cilium
 cilium install \
-  --cluster-name cluster-1 \
-  --cluster-id 1 \
-  --ipam kubernetes \
-  --kube-proxy-replacement strict
+  --set cluster.name=cluster-1 \
+  --set cluster.id=1 \
+  --set ipam.mode=kubernetes \
+  --set kubeProxyReplacement=true
 
 # Wait for Cilium to be ready
 cilium status --wait
@@ -79,10 +81,10 @@ Install on the second cluster:
 kubectl config use-context cluster-2
 
 cilium install \
-  --cluster-name cluster-2 \
-  --cluster-id 2 \
-  --ipam kubernetes \
-  --kube-proxy-replacement strict
+  --set cluster.name=cluster-2 \
+  --set cluster.id=2 \
+  --set ipam.mode=kubernetes \
+  --set kubeProxyReplacement=true
 
 cilium status --wait
 ```
@@ -109,20 +111,17 @@ cilium clustermesh enable --service-type LoadBalancer
 cilium clustermesh status
 ```
 
-The clustermesh-apiserver exposes an endpoint that other clusters connect to. It can use LoadBalancer, NodePort, or ClusterIP with external access configured manually.
+The clustermesh-apiserver exposes an endpoint that other clusters connect to. The Cilium CLI supports LoadBalancer and NodePort service types; ClusterIP exposure requires routable ClusterIPs and is typically configured through Helm.
 
 ## Connecting Clusters
 
-Connect cluster-2 to cluster-1:
+Connect cluster-1 to cluster-2:
 
 ```bash
-# From cluster-2 context, connect to cluster-1
-kubectl config use-context cluster-2
+# This establishes bidirectional connectivity
 cilium clustermesh connect \
   --context cluster-1 \
   --destination-context cluster-2
-
-# This establishes bidirectional connectivity
 ```
 
 Verify connectivity:
@@ -145,8 +144,8 @@ cilium clustermesh status
 Check connectivity at the pod level:
 
 ```bash
-# View clustermesh metrics
-kubectl -n kube-system exec -ti ds/cilium -- cilium status --verbose | grep -A 10 "ClusterMesh"
+# View ClusterMesh status from inside the Cilium agent
+kubectl -n kube-system exec -ti ds/cilium -- cilium-dbg status --all-clusters
 ```
 
 ## Creating Global Services
@@ -206,15 +205,15 @@ kubectl config use-context cluster-2
 kubectl apply -f web-app.yaml
 ```
 
-Now pods in either cluster can access `web-service` and get load-balanced to pods in both clusters:
+Now pods in either cluster can access `web-service` and get load-balanced to pods in both clusters. To verify which cluster served each response, serve cluster-specific content from each deployment:
 
 ```bash
 # Test from cluster-1
 kubectl config use-context cluster-1
 kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
-  sh -c 'for i in $(seq 1 10); do curl -s web-service | grep "Server address"; done'
+  sh -c 'for i in $(seq 1 10); do curl -s web-service; done'
 
-# You'll see responses from pods in both clusters
+# You'll see responses from pods in both clusters if each cluster serves distinct content
 ```
 
 ## Implementing Cross-Cluster Network Policies
@@ -250,7 +249,7 @@ The `io.cilium.k8s.policy.cluster` label allows policies to reference pods in sp
 kubectl apply -f cross-cluster-policy.yaml
 
 # Verify policy is enforced
-kubectl -n kube-system exec -ti ds/cilium -- cilium policy get
+kubectl -n kube-system exec -ti ds/cilium -- cilium-dbg policy get
 ```
 
 ## Configuring Service Affinity
@@ -290,38 +289,28 @@ cilium clustermesh status --verbose
 
 # Check endpoint synchronization
 kubectl -n kube-system exec -ti ds/cilium -- \
-  cilium endpoint list
+  cilium-dbg endpoint list
 
 # View clustermesh connections
 kubectl -n kube-system logs deployment/clustermesh-apiserver | grep -i "connection"
 
 # Monitor global service endpoints
 kubectl -n kube-system exec -ti ds/cilium -- \
-  cilium service list --clustermesh-affinity
+  cilium-dbg service list --clustermesh-affinity
 ```
 
 Export metrics to Prometheus:
 
-```yaml
-apiVersion: v1
-kind: ServiceMonitor
-metadata:
-  name: cilium-clustermesh
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      k8s-app: cilium
-  endpoints:
-  - port: prometheus
-    interval: 30s
-    path: /metrics
+```bash
+helm upgrade cilium cilium/cilium --namespace kube-system --reuse-values \
+  --set clustermesh.apiserver.metrics.enabled=true \
+  --set clustermesh.apiserver.metrics.serviceMonitor.enabled=true
 ```
 
 Key metrics to monitor:
-- `cilium_clustermesh_global_services`: Number of global services
-- `cilium_clustermesh_remote_clusters`: Connected clusters
-- `cilium_clustermesh_endpoints_total`: Total synchronized endpoints
+- `cilium_kvstoremesh_remote_clusters`: Connected remote clusters
+- `cilium_kvstoremesh_remote_cluster_readiness_status`: Readiness of each remote cluster
+- `cilium_clustermesh_apiserver_kvstore_sync_errors_total`: ClusterMesh API server kvstore synchronization errors
 
 ## Troubleshooting ClusterMesh
 
@@ -335,10 +324,9 @@ kubectl -n kube-system logs deployment/clustermesh-apiserver
 # Verify network connectivity between clusters
 kubectl -n kube-system get svc clustermesh-apiserver
 
-# Test connectivity from cluster-2 to cluster-1 apiserver
-APISERVER_IP=$(kubectl --context cluster-1 -n kube-system get svc clustermesh-apiserver -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-kubectl --context cluster-2 run -it --rm debug --image=curlimages/curl --restart=Never -- \
-  curl -k https://$APISERVER_IP:2379/health
+# Run ClusterMesh troubleshooting checks from a Cilium agent
+kubectl -n kube-system exec -it ds/cilium -c cilium-agent -- \
+  cilium-dbg troubleshoot clustermesh
 
 # Issue: Global services not working
 # Check service annotations
@@ -346,14 +334,16 @@ kubectl get svc web-service -o yaml | grep annotations -A 5
 
 # Verify endpoints are synchronized
 kubectl -n kube-system exec -ti ds/cilium -- \
-  cilium service list | grep web-service
+  cilium-dbg service list | grep web-service
 
 # Issue: High latency for cross-cluster traffic
 # Check if direct routing is being used
-kubectl -n kube-system exec -ti ds/cilium -- cilium status | grep Routing
+kubectl -n kube-system exec -ti ds/cilium -- cilium-dbg status | grep Routing
 
-# Consider enabling WireGuard encryption for better performance
-cilium config set enable-wireguard true
+# If encryption is required, enable WireGuard through Helm and restart Cilium
+helm upgrade cilium cilium/cilium --namespace kube-system --reuse-values \
+  --set encryption.enabled=true \
+  --set encryption.type=wireguard
 ```
 
 ## Implementing Disaster Recovery with ClusterMesh
@@ -426,6 +416,6 @@ During failover, scale up the DR deployment:
 kubectl --context cluster-2 scale deployment/database --replicas=3 -n production
 ```
 
-Clients automatically fail over to the new endpoints thanks to ClusterMesh synchronization.
+Clients can fail over to the new network endpoints thanks to ClusterMesh synchronization, while database replication and application-level failover still need to be handled separately.
 
 Cilium ClusterMesh provides powerful multi-cluster networking capabilities with minimal operational overhead. By connecting clusters at the CNI level, you gain true pod-to-pod connectivity, unified service discovery, and consistent network policy enforcement across your entire infrastructure.
