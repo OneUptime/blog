@@ -8,11 +8,11 @@ Description: Learn how to pin Docker containers to specific CPU cores for consis
 
 ---
 
-When Docker runs a container without CPU constraints, the Linux scheduler freely moves its threads across all available cores. For most applications, this is fine. The scheduler does a good job of balancing load. But for latency-sensitive applications like financial trading systems, real-time data processing, game servers, and low-latency APIs, thread migration between cores causes cache invalidation, NUMA penalties, and scheduling jitter. CPU pinning fixes this by restricting a container to specific cores.
+When Docker runs a container without CPU constraints, the Linux scheduler freely moves its threads across all available cores. For most applications, this is fine. The scheduler does a good job of balancing load. But for latency-sensitive applications like financial trading systems, real-time data processing, game servers, and low-latency APIs, thread migration between cores can cause cache invalidation, NUMA penalties, and scheduling jitter. CPU pinning helps by restricting a container to specific cores.
 
 ## Why CPU Pinning Matters for Latency
 
-Every time a thread moves from one CPU core to another, it loses its L1 and L2 cache contents. The new core must reload everything from L3 cache or main memory. This cache cold-start adds microseconds to hundreds of microseconds of latency per migration.
+When a thread moves from one CPU core to another, it can no longer use the previous core's private L1 and L2 cache state directly. The new core may need to reload data from shared cache or main memory. This cache cold-start can add microseconds of latency per migration, depending on the workload and hardware.
 
 On multi-socket servers (NUMA systems), the penalty is worse. Moving between NUMA nodes means the thread must access memory attached to a different physical CPU socket, adding significant latency.
 
@@ -24,7 +24,7 @@ graph TD
     D --> E[Extra 10-100 microseconds latency]
 ```
 
-CPU pinning eliminates this by keeping threads on the same cores, preserving cache locality.
+CPU pinning reduces this by keeping threads within a smaller CPU set. For strict per-thread locality, combine container CPU sets with application-level thread affinity or another per-thread pinning mechanism.
 
 ## Basic CPU Pinning with Docker
 
@@ -93,7 +93,7 @@ The best approach dedicates cores exclusively to your application, keeping syste
 
 # Isolate cores from the general scheduler using kernel parameter
 # Edit /etc/default/grub
-GRUB_CMDLINE_LINUX="isolcpus=2-15 nohz_full=2-15 rcu_nocbs=2-15"
+GRUB_CMDLINE_LINUX="isolcpus=domain,2-15 nohz_full=2-15 rcu_nocbs=2-15"
 
 # Update GRUB and reboot
 sudo update-grub
@@ -101,9 +101,11 @@ sudo reboot
 ```
 
 The kernel parameters:
-- `isolcpus=2-15`: Prevents the scheduler from placing tasks on these cores unless explicitly pinned
-- `nohz_full=2-15`: Disables timer interrupts on isolated cores when only one task is running
+- `isolcpus=domain,2-15`: Isolates these cores from scheduler load balancing unless tasks are explicitly pinned there
+- `nohz_full=2-15`: Stops the periodic scheduler tick on isolated cores whenever possible, such as when only one task is running
 - `rcu_nocbs=2-15`: Moves RCU (Read-Copy-Update) callbacks off these cores
+
+Modern Linux kernel documentation marks `isolcpus` as deprecated in favor of cpusets, but it is still commonly used as a boot-time isolation option.
 
 ### Step 2: Pin Containers to Isolated Cores
 
@@ -140,7 +142,7 @@ for irq in $(grep eth0 /proc/interrupts | awk -F: '{print $1}' | tr -d ' '); do
     echo "Pinned IRQ $irq to cores $SYSTEM_CORES"
 done
 
-# Move all IRQ balancing to system cores
+# Set the default affinity for newly allocated IRQs
 if [ -f /proc/irq/default_smp_affinity ]; then
     echo 3 > /proc/irq/default_smp_affinity  # Bitmask for cores 0,1
 fi
@@ -286,7 +288,8 @@ docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}"
 
 # Check for CPU migrations using perf
 perf stat -e migrations -p $(docker inspect --format '{{.State.Pid}}' latency-app) -- sleep 10
-# 0 migrations  (exactly what we want)
+# A lower migration count is better; container-level cpusets can still allow
+# migrations within the selected CPU set.
 ```
 
 ## Wrapping Up
