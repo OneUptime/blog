@@ -42,20 +42,20 @@ metadata:
 spec:
   endpoints:
   - dnsName: app.example.com
-    recordType: A
+    recordType: CNAME
+    setIdentifier: us-east-1
     targets:
     - us-east-nlb.example.com
-    - eu-west-nlb.example.com
-    - ap-southeast-nlb.example.com
     providerSpecific:
-    - name: aws/route53/geolocation-continent-code
+    - name: aws/geolocation-continent-code
       value: NA  # North America -> us-east
   - dnsName: app.example.com
-    recordType: A
+    recordType: CNAME
+    setIdentifier: eu-west-1
     targets:
     - eu-west-nlb.example.com
     providerSpecific:
-    - name: aws/route53/geolocation-continent-code
+    - name: aws/geolocation-continent-code
       value: EU  # Europe -> eu-west
 ```
 
@@ -141,7 +141,7 @@ spec:
         targetRevision: HEAD
         path: 'rollouts/{{region}}'
       destination:
-        server: '{{cluster}}'
+        name: '{{cluster}}'
         namespace: production
       syncPolicy:
         automated:
@@ -173,12 +173,7 @@ for region in "${REGIONS[@]}"; do
 
   # Wait for rollout to complete
   echo "Waiting for $region rollout..."
-  kubectl argo rollouts status web-app -n production --watch
-
-  # Check if rollout succeeded
-  STATUS=$(kubectl argo rollouts status web-app -n production | grep "Healthy")
-
-  if [ -z "$STATUS" ]; then
+  if ! kubectl argo rollouts status web-app -n production --watch; then
     echo "Rollout failed in $region! Aborting global rollout."
 
     # Rollback this region
@@ -220,7 +215,7 @@ spec:
   - name: regional-error-rate
     interval: 1m
     count: 10
-    successCondition: result < 0.01
+    successCondition: result[0] < 0.01
     provider:
       prometheus:
         address: http://prometheus:9090
@@ -241,7 +236,7 @@ spec:
   - name: regional-latency
     interval: 1m
     count: 10
-    successCondition: result < 0.5
+    successCondition: result[0] < 0.5
     provider:
       prometheus:
         address: http://prometheus:9090
@@ -305,12 +300,12 @@ Track rollout status across all regions:
 
 ```promql
 # Rollout status by region
-argo_rollouts_info{rollout="web-app"}
+rollout_info{rollout="web-app"}
 
 # Success rate comparison across regions
-rate(http_requests_total{status!~"5.."}[5m])
+sum by (region) (rate(http_requests_total{status!~"5.."}[5m]))
   /
-rate(http_requests_total[5m])
+sum by (region) (rate(http_requests_total[5m]))
 
 # Regional latency comparison
 histogram_quantile(0.95,
@@ -331,8 +326,9 @@ kind: CronJob
 metadata:
   name: web-app-rollout-us-east
 spec:
-  # 2 AM EST (7 AM UTC)
-  schedule: "0 7 * * *"
+  # 2 AM New York time
+  schedule: "0 2 * * *"
+  timeZone: America/New_York
   jobTemplate:
     spec:
       template:
@@ -354,8 +350,9 @@ kind: CronJob
 metadata:
   name: web-app-rollout-eu-west
 spec:
-  # 2 AM CET (1 AM UTC)
-  schedule: "0 1 * * *"
+  # 2 AM Dublin time
+  schedule: "0 2 * * *"
+  timeZone: Europe/Dublin
   jobTemplate:
     spec:
       template:
