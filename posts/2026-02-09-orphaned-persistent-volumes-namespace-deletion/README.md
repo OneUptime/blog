@@ -8,13 +8,13 @@ Description: Learn how to identify, recover, and prevent orphaned persistent vol
 
 ---
 
-Deleting a Kubernetes namespace removes all resources within it, but persistent volumes often survive the deletion due to their reclaim policy configuration. These orphaned volumes consume storage and incur costs without serving any active workload. Understanding how to manage them prevents storage waste and budget overruns.
+Deleting a Kubernetes namespace removes the namespaced resources within it, including persistent volume claims, but persistent volumes often survive the deletion due to their reclaim policy configuration. These orphaned volumes consume storage and incur costs without serving any active workload. Understanding how to manage them prevents storage waste and budget overruns.
 
 ## Understanding Volume Lifecycle and Reclaim Policies
 
-Persistent volumes have a reclaim policy that controls their fate when the associated PVC is deleted. Three reclaim policies exist:
+Persistent volumes have a reclaim policy that controls their fate when the associated PVC is deleted. Three reclaim policies are defined:
 
-**Retain**: The volume persists after PVC deletion, preserving data for manual recovery or migration. **Delete**: The volume and its underlying storage get deleted automatically when the PVC is deleted. **Recycle**: Deprecated and no longer supported in modern Kubernetes versions.
+**Retain**: The volume persists after PVC deletion, preserving data for manual recovery or migration. **Delete**: The volume and its underlying storage get deleted automatically when the PVC is deleted. **Recycle**: Deprecated and should not be used.
 
 When you delete a namespace, Kubernetes deletes all PVCs in that namespace. What happens next depends on the reclaim policy of the bound persistent volumes.
 
@@ -45,7 +45,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: standard
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
 reclaimPolicy: Retain
@@ -64,7 +64,11 @@ Check for released volumes:
 ```bash
 # Find volumes in Released state
 
-kubectl get pv --field-selector status.phase=Released
+kubectl get pv -o json | jq -r '
+  .items[] |
+  select(.status.phase == "Released") |
+  .metadata.name
+'
 
 # Show details
 kubectl get pv -o custom-columns=\
@@ -123,10 +127,11 @@ Before deleting orphaned volumes, you may need to recover data:
 VOLUME_ID=$(kubectl get pv pvc-abc123 -o jsonpath='{.spec.csi.volumeHandle}')
 
 # For AWS EBS, create snapshot
-aws ec2 create-snapshot \
+SNAPSHOT_ID=$(aws ec2 create-snapshot \
   --volume-id $VOLUME_ID \
   --description "Backup before cleanup - namespace: dev-project" \
-  --tag-specifications 'ResourceType=snapshot,Tags=[{Key=Purpose,Value=OrphanedVolumeBackup},{Key=OriginalNamespace,Value=dev-project}]'
+  --tag-specifications 'ResourceType=snapshot,Tags=[{Key=Purpose,Value=OrphanedVolumeBackup},{Key=OriginalNamespace,Value=dev-project}]' \
+  --output text --query 'SnapshotId')
 
 # Wait for snapshot completion
 aws ec2 wait snapshot-completed --snapshot-ids $SNAPSHOT_ID
@@ -134,9 +139,9 @@ aws ec2 wait snapshot-completed --snapshot-ids $SNAPSHOT_ID
 
 Alternatively, reclaim the volume by removing the claim reference:
 
-```yaml
+```bash
 # Edit the PV to remove claimRef
-kubectl patch pv pvc-abc123 -p '{"spec":{"claimRef":null}}'
+kubectl patch pv pvc-abc123 --type=merge -p '{"spec":{"claimRef":null}}'
 ```
 
 This changes the volume status from Released to Available, allowing it to be bound to a new PVC.
@@ -177,6 +182,7 @@ kubectl run data-recovery \
   --namespace=recovery \
   --overrides='
   {
+    "apiVersion": "v1",
     "spec": {
       "containers": [{
         "name": "busybox",
@@ -217,7 +223,7 @@ kubectl get pv -o json | jq -r --arg days "$RETENTION_DAYS" '
   .items[] |
   select(.status.phase == "Released") |
   select(
-    (now - (.metadata.creationTimestamp | fromdateiso8601)) / 86400 > ($days | tonumber)
+    (now - ((.status.lastPhaseTransitionTime // .metadata.creationTimestamp) | fromdateiso8601)) / 86400 > ($days | tonumber)
   ) |
   .metadata.name
 ' | while read pv_name; do
@@ -227,6 +233,12 @@ kubectl get pv -o json | jq -r --arg days "$RETENTION_DAYS" '
   VOLUME_ID=$(kubectl get pv $pv_name -o jsonpath='{.spec.csi.volumeHandle}')
   NAMESPACE=$(kubectl get pv $pv_name -o jsonpath='{.spec.claimRef.namespace}')
   CLAIM_NAME=$(kubectl get pv $pv_name -o jsonpath='{.spec.claimRef.name}')
+
+  if [ -z "$VOLUME_ID" ]; then
+    echo "  Skipping: PV does not use a CSI volumeHandle"
+    echo ""
+    continue
+  fi
 
   if [ "$DRY_RUN" = "true" ]; then
     echo "  [DRY RUN] Would delete PV: $pv_name"
@@ -241,8 +253,9 @@ kubectl get pv -o json | jq -r --arg days "$RETENTION_DAYS" '
       --output text --query 'SnapshotId')
 
     echo "  Snapshot created: $SNAPSHOT_ID"
+    aws ec2 wait snapshot-completed --snapshot-ids $SNAPSHOT_ID
 
-    # Delete PV (this will trigger volume deletion if reclaim policy allows)
+    # Delete PV object, then delete the retained EBS volume if it still exists
     echo "  Deleting PV: $pv_name"
     kubectl delete pv $pv_name
 
@@ -296,17 +309,15 @@ reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
 ```
 
-## Implementing Finalizers for Controlled Deletion
+## Implementing Admission Control for Controlled Deletion
 
-Add finalizers to namespaces to prevent accidental deletion:
+Add approval annotations to namespaces and enforce them with admission control:
 
 ```yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: production
-  finalizers:
-  - kubernetes.io/pvc-protection
   annotations:
     delete-protection: "enabled"
     contact: "ops-team@example.com"
@@ -321,7 +332,6 @@ import (
     "context"
     "encoding/json"
     "fmt"
-    "net/http"
 
     admissionv1 "k8s.io/api/admission/v1"
     corev1 "k8s.io/api/core/v1"
@@ -393,13 +403,11 @@ func (w *NamespaceDeletionWebhook) validateNamespaceDeletion(ar *admissionv1.Adm
         if len(retainedPVCs) > 0 {
             return &admissionv1.AdmissionResponse{
                 Allowed: true,
-                Result: &metav1.Status{
-                    Message: fmt.Sprintf(
-                        "Warning: %d PVCs have Retain policy and will become orphaned: %v",
-                        len(retainedPVCs),
-                        retainedPVCs,
-                    ),
-                },
+                Warnings: []string{fmt.Sprintf(
+                    "%d PVCs have Retain policy and will become orphaned: %v",
+                    len(retainedPVCs),
+                    retainedPVCs,
+                )},
             }
         }
     }
@@ -421,14 +429,15 @@ COST_PER_GB_MONTH=0.10
 
 total_gb=0
 
-kubectl get pv --field-selector status.phase=Released -o json | jq -r '
-  .items[] |
-  .spec.capacity.storage
-' | while read size; do
+while read -r size; do
   # Convert to GB (assuming Gi units)
-  gb=$(echo $size | sed 's/Gi//')
+  gb=$(echo "$size" | sed 's/Gi//')
   total_gb=$((total_gb + gb))
-done
+done < <(kubectl get pv -o json | jq -r '
+  .items[] |
+  select(.status.phase == "Released") |
+  .spec.capacity.storage
+')
 
 monthly_cost=$(echo "$total_gb * $COST_PER_GB_MONTH" | bc)
 
@@ -444,9 +453,10 @@ Set up cost alerts in Prometheus:
 ```promql
 # Cost of orphaned volumes
 sum(
-  kube_persistentvolume_capacity_bytes{phase="Released"}
-  * on() group_left() vector(0.0000000001)  # $0.10/GB/month in $/byte/month
-)
+  kube_persistentvolume_capacity_bytes
+  * on(persistentvolume) group_left()
+    (kube_persistentvolume_status_phase{phase="Released"} == 1)
+) * 0.0000000001  # $0.10/GB/month in $/byte/month
 ```
 
 ## Best Practices
