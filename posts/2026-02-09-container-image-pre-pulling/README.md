@@ -100,9 +100,12 @@ package main
 
 import (
     "context"
+    "fmt"
+    "log"
     "time"
 
     corev1 "k8s.io/api/core/v1"
+    "k8s.io/apimachinery/pkg/api/resource"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
@@ -120,7 +123,9 @@ func (ipp *ImagePrePuller) Run(ctx context.Context) {
     for {
         select {
         case <-ticker.C:
-            ipp.analyzeAndPrePull()
+            if err := ipp.analyzeAndPrePull(); err != nil {
+                log.Printf("failed to analyze and pre-pull images: %v", err)
+            }
         case <-ctx.Done():
             return
         }
@@ -196,8 +201,15 @@ func (ipp *ImagePrePuller) updatePrePullerDaemonSet(images []string) error {
 }
 
 func main() {
-    config, _ := rest.InClusterConfig()
-    clientset, _ := kubernetes.NewForConfig(config)
+    config, err := rest.InClusterConfig()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    clientset, err := kubernetes.NewForConfig(config)
+    if err != nil {
+        log.Fatal(err)
+    }
 
     controller := &ImagePrePuller{
         clientset: clientset,
@@ -279,7 +291,8 @@ Pre-pull new versions before deployments to enable zero-downtime updates.
 
 NAMESPACE=$1
 DEPLOYMENT=$2
-NEW_IMAGE=$3
+CONTAINER=$3
+NEW_IMAGE=$4
 
 echo "Pre-pulling image: $NEW_IMAGE"
 
@@ -291,6 +304,7 @@ for NODE in $NODES; do
   kubectl run prepull-${NODE}-$(date +%s) \
     --image=$NEW_IMAGE \
     --restart=Never \
+    --labels=app=image-prepull-job \
     --overrides="{
       \"apiVersion\": \"v1\",
       \"spec\": {
@@ -305,16 +319,19 @@ for NODE in $NODES; do
     --namespace=kube-system &
 done
 
-# Wait for all pre-pull pods to complete
+# Wait for all pre-pull pods to be created, then complete
 echo "Waiting for pre-pull to complete..."
-sleep 30
+wait
+kubectl wait pod -n kube-system -l app=image-prepull-job \
+  --for=jsonpath='{.status.phase}'=Succeeded \
+  --timeout=10m
 
 # Clean up pre-pull pods
-kubectl delete pods -n kube-system -l job=prepull --field-selector=status.phase=Succeeded
+kubectl delete pods -n kube-system -l app=image-prepull-job --field-selector=status.phase=Succeeded
 
 # Now update the deployment
 echo "Updating deployment..."
-kubectl set image deployment/$DEPLOYMENT -n $NAMESPACE app=$NEW_IMAGE
+kubectl set image deployment/$DEPLOYMENT -n $NAMESPACE $CONTAINER=$NEW_IMAGE
 
 echo "Deployment updated with pre-pulled image!"
 ```
@@ -340,11 +357,7 @@ jobs:
 
     - name: Pre-pull image to all nodes
       run: |
-        ./scripts/pre-pull-deployment.sh production api-server mycompany/app:${{ github.sha }}
-
-    - name: Update deployment
-      run: |
-        kubectl set image deployment/api-server api=mycompany/app:${{ github.sha }} -n production
+        ./scripts/pre-pull-deployment.sh production api-server api mycompany/app:${{ github.sha }}
 ```
 
 ## Creating Node-Specific Pre-Pull Strategies
@@ -400,26 +413,18 @@ spec:
       nodeSelector:
         environment: production
       initContainers:
-      - name: pull-production-images
-        image: alpine:3.18
-        command:
-        - sh
-        - -c
-        - |
-          # Read config and pull appropriate images
-          for image in $(cat /config/config.yaml | yq '.strategies[] | select(.name == "production-nodes") | .images[]'); do
-            echo "Pulling $image"
-          done
-        volumeMounts:
-        - name: config
-          mountPath: /config
+      - name: pull-api
+        image: mycompany/api:latest
+        command: ["true"]
+      - name: pull-worker
+        image: mycompany/worker:latest
+        command: ["true"]
+      - name: pull-envoy
+        image: envoyproxy/envoy:latest
+        command: ["true"]
       containers:
       - name: pause
         image: registry.k8s.io/pause:3.9
-      volumes:
-      - name: config
-        configMap:
-          name: prepull-config
 ```
 
 ## Monitoring Pre-Pull Effectiveness
@@ -439,18 +444,13 @@ data:
       rules:
       - record: image_pull_skip_rate
         expr: |
-          sum(rate(kubelet_image_pull_skipped_total[5m])) /
-          sum(rate(kubelet_image_pull_total[5m]))
+          sum(rate(kubelet_image_manager_ensure_image_requests_total{pull_required="false"}[5m])) /
+          sum(rate(kubelet_image_manager_ensure_image_requests_total[5m]))
 
-      - record: prepull_coverage
-        expr: |
-          count(kubelet_image_cached{prepulled="true"}) /
-          count(kubelet_image_total)
-
-      - record: pod_startup_without_pull_seconds
+      - record: image_pull_p99_seconds
         expr: |
           histogram_quantile(0.99,
-            rate(kubelet_pod_start_duration_seconds_bucket{image_pulled="false"}[5m])
+            sum(rate(kubelet_image_pull_duration_seconds_bucket[5m])) by (le)
           )
 ```
 
@@ -458,7 +458,9 @@ Query metrics:
 
 ```bash
 # Check cache hit rate
-kubectl top nodes --sort-by=image-cache-hit-rate
+for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl get --raw "/api/v1/nodes/${NODE}/proxy/metrics" | grep kubelet_image_manager_ensure_image_requests_total
+done
 
 # View prepull pod status
 kubectl get pods -n kube-system -l app=image-prepuller
