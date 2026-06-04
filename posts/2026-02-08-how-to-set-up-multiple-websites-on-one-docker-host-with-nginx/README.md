@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Nginx, Web Server, Reverse Proxy, DevOps, Hosting
 
-Description: Host multiple websites on a single Docker server using Nginx as a reverse proxy with automatic SSL certificate management.
+Description: Host multiple websites on a single Docker server using Nginx as a reverse proxy with SSL certificate renewal support.
 
 ---
 
 Running multiple websites on a single server is one of the most cost-effective hosting strategies. With Docker, each site runs in its own isolated container while Nginx acts as the front door, routing incoming requests to the correct container based on the domain name. This setup keeps sites isolated from each other while sharing the same server resources efficiently.
 
-This guide covers setting up Nginx as a reverse proxy for multiple Docker-based websites, complete with automatic SSL certificates.
+This guide covers setting up Nginx as a reverse proxy for multiple Docker-based websites, complete with SSL certificates.
 
 ## Architecture Overview
 
@@ -20,8 +20,8 @@ The architecture is straightforward. Nginx listens on ports 80 and 443 on the ho
 graph LR
     Client --> Nginx[Nginx Reverse Proxy :80/:443]
     Nginx --> SiteA[Site A Container :3000]
-    Nginx --> SiteB[Site B Container :4000]
-    Nginx --> SiteC[Site C Container :8080]
+    Nginx --> SiteB[Site B Container :5000]
+    Nginx --> SiteC[Site C Container :80]
 ```
 
 ## Setting Up the Reverse Proxy Network
@@ -133,8 +133,6 @@ Now bring everything together in a single Docker Compose file:
 
 ```yaml
 # docker-compose.yml - Multi-site hosting with Nginx reverse proxy
-version: "3.8"
-
 services:
   # Nginx reverse proxy - the traffic router
   nginx-proxy:
@@ -222,15 +220,15 @@ services:
     volumes:
       - certbot_certs:/etc/letsencrypt
       - certbot_www:/var/www/certbot
-    # Renew certificates every 12 hours
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'"
+    # Check for certificate renewals every 12 hours
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done'"
 
 volumes:
   certbot_certs:
   certbot_www:
 ```
 
-Update the Nginx site configurations to handle SSL:
+Update the Nginx site configurations to handle SSL. For the first certificate issuance, add only the port 80 server block with the ACME challenge location, run the Certbot commands below, then add the 443 server block and reload Nginx. Nginx will not load an HTTPS server block that points to certificate files that do not exist yet.
 
 ```nginx
 # nginx-proxy/conf.d/site-a.conf - With SSL termination
@@ -274,15 +272,17 @@ Obtain the initial certificates:
 
 ```bash
 # Request certificates for each domain
-docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot \
+docker compose run --rm --entrypoint certbot certbot certonly --webroot --webroot-path=/var/www/certbot \
   -d site-a.com -d www.site-a.com --email admin@site-a.com --agree-tos
 
-docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot \
+docker compose run --rm --entrypoint certbot certbot certonly --webroot --webroot-path=/var/www/certbot \
   -d site-b.com -d www.site-b.com --email admin@site-b.com --agree-tos
 
 # Reload Nginx to pick up the new certificates
 docker compose exec nginx-proxy nginx -s reload
 ```
+
+Use the same reload command after successful renewals so Nginx picks up renewed certificates.
 
 ## Separating Compose Files for Each Site
 
@@ -292,8 +292,6 @@ The proxy gets its own compose file:
 
 ```yaml
 # proxy/docker-compose.yml - Standalone reverse proxy
-version: "3.8"
-
 services:
   nginx-proxy:
     image: nginx:alpine
@@ -316,8 +314,6 @@ Each site gets its own compose file and connects to the shared network:
 
 ```yaml
 # sites/site-a/docker-compose.yml - Independent site deployment
-version: "3.8"
-
 services:
   site-a:
     build: .
@@ -377,4 +373,4 @@ docker compose exec nginx-proxy nginx -t
 
 ## Summary
 
-Hosting multiple websites on a single Docker host with Nginx as a reverse proxy is a clean, scalable approach. Each site runs in its own container with full isolation, while Nginx handles routing based on domain names. You can mix different technologies, scale individual sites independently, and add new sites by simply dropping in a configuration file and reloading Nginx. Combined with Certbot for automatic SSL, this setup is production-ready and costs a fraction of running separate servers for each site.
+Hosting multiple websites on a single Docker host with Nginx as a reverse proxy is a clean, scalable approach. Each site runs in its own container with full isolation, while Nginx handles routing based on domain names. You can mix different technologies, scale individual sites independently, and add new sites by simply dropping in a configuration file and reloading Nginx. Combined with Certbot for SSL certificate renewal, this setup is production-ready and costs a fraction of running separate servers for each site.
