@@ -158,7 +158,7 @@ This ensures iSCSI kernel modules are loaded before the storage driver starts.
 
 ## Installing node dependencies
 
-Init containers can install required packages on the node:
+Init containers can install required packages on Debian-based nodes:
 
 ```yaml
 apiVersion: apps/v1
@@ -175,6 +175,7 @@ spec:
       labels:
         app: monitoring-agent
     spec:
+      hostPID: true
       initContainers:
       - name: install-dependencies
         image: debian:12-slim
@@ -184,8 +185,8 @@ spec:
         - |
           set -euo pipefail
 
-          # Update package list
-          apt-get update
+          # Update host package list
+          nsenter -t 1 -m -u -n -i apt-get update
 
           # Check if required tools are available on host
           if ! nsenter -t 1 -m -u -n -i which netstat > /dev/null 2>&1; then
@@ -247,6 +248,7 @@ spec:
       labels:
         app: high-performance-app
     spec:
+      hostNetwork: true
       initContainers:
       - name: configure-sysctl
         image: busybox:1.36
@@ -286,7 +288,7 @@ spec:
             cpu: 1000m
 ```
 
-These sysctl changes persist on the node and benefit the main application's performance.
+These sysctl changes apply to the node's current runtime configuration and benefit the main application's performance.
 
 ## Multiple init containers for sequential setup
 
@@ -310,7 +312,29 @@ spec:
       nodeSelector:
         accelerator: nvidia-gpu
       initContainers:
-      # Step 1: Verify GPU hardware
+      # Step 1: Load GPU drivers
+      - name: load-drivers
+        image: ubuntu:22.04
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          apt-get update
+          apt-get install -y kmod
+
+          echo "Loading NVIDIA drivers..."
+          modprobe nvidia
+          modprobe nvidia-uvm
+          echo "Drivers loaded successfully"
+        volumeMounts:
+        - name: lib-modules
+          mountPath: /lib/modules
+          readOnly: true
+        securityContext:
+          privileged: true
+
+      # Step 2: Verify GPU hardware
       - name: verify-gpu
         image: nvidia/cuda:12.3.0-base-ubuntu22.04
         command:
@@ -329,24 +353,9 @@ spec:
           mountPath: /usr/local/nvidia
         securityContext:
           privileged: true
-
-      # Step 2: Load GPU drivers
-      - name: load-drivers
-        image: nvidia/cuda:12.3.0-devel-ubuntu22.04
-        command:
-        - /bin/bash
-        - -c
-        - |
-          echo "Loading NVIDIA drivers..."
-          modprobe nvidia
-          modprobe nvidia-uvm
-          echo "Drivers loaded successfully"
-        volumeMounts:
-        - name: lib-modules
-          mountPath: /lib/modules
-          readOnly: true
-        securityContext:
-          privileged: true
+        resources:
+          limits:
+            nvidia.com/gpu: 1
 
       # Step 3: Configure GPU settings
       - name: configure-gpu
@@ -370,6 +379,9 @@ spec:
           mountPath: /usr/local/nvidia
         securityContext:
           privileged: true
+        resources:
+          limits:
+            nvidia.com/gpu: 1
 
       containers:
       - name: gpu-agent
@@ -488,6 +500,7 @@ spec:
       labels:
         app: critical-service
     spec:
+      hostNetwork: true
       initContainers:
       - name: validate-node
         image: curlimages/curl:8.5.0
@@ -498,7 +511,7 @@ spec:
           echo "Validating node health..."
 
           # Check node has sufficient disk space
-          df -h | grep -E '(8|9)[0-9]%' && {
+          df -h /host | grep -E '(8|9)[0-9]%' && {
             echo "ERROR: Disk usage too high"
             exit 1
           }
@@ -520,10 +533,18 @@ spec:
         securityContext:
           runAsNonRoot: true
           runAsUser: 65534
+        volumeMounts:
+        - name: host-root
+          mountPath: /host
+          readOnly: true
 
       containers:
       - name: service
         image: example/critical-service:v2.0
+      volumes:
+      - name: host-root
+        hostPath:
+          path: /
 ```
 
 This validation ensures the node meets all requirements before starting the critical service.
