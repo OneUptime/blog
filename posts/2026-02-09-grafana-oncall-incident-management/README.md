@@ -12,60 +12,27 @@ Getting woken up at 3 AM is part of being on-call, but chaotic incident manageme
 
 ## Understanding Grafana Oncall
 
-Grafana Oncall is an incident response platform that integrates directly with Grafana's unified alerting system. It handles on-call schedules, alert routing, escalations, and acknowledgments while maintaining a complete incident timeline.
+Grafana Oncall is an incident response platform that integrates with Grafana's unified alerting system. It handles on-call schedules, alert routing, escalations, and acknowledgments while maintaining a complete alert group timeline.
 
-Unlike standalone paging tools, Oncall lives within your Grafana stack, giving responders immediate access to dashboards, logs, and traces without context switching between tools.
+Unlike standalone paging tools, Oncall is available from Grafana through the OnCall app plugin, giving responders access to dashboards, logs, and traces with less context switching between tools.
 
 ## Installing Grafana Oncall
 
-Oncall can run as a standalone service or as a Grafana Cloud feature. For self-hosted deployments, use Docker Compose.
+Oncall can run as a self-hosted OSS service or as part of Grafana Cloud IRM. As of March 24, 2026, the Grafana OnCall OSS repository is archived and read-only, so use self-hosted OSS only for existing deployments or migration testing. For a local OSS playground, use the official Docker Compose file from the Grafana OnCall repository.
 
-```yaml
-# docker-compose.yml
+```bash
+curl -fsSL https://raw.githubusercontent.com/grafana/oncall/dev/docker-compose.yml -o docker-compose.yml
 
-version: '3.8'
+cat > .env <<'EOF'
+DOMAIN=http://localhost:8080
+COMPOSE_PROFILES=with_grafana
+SECRET_KEY=my_random_secret_must_be_more_than_32_characters_long
+EOF
 
-services:
-  oncall-engine:
-    image: grafana/oncall:latest
-    ports:
-      - "8080:8080"
-    environment:
-      - DATABASE_TYPE=postgresql
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_NAME=oncall
-      - DATABASE_USER=oncall
-      - DATABASE_PASSWORD=oncall_password
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - SECRET_KEY=your-secret-key
-      - BASE_URL=http://localhost:8080
-      - GRAFANA_API_URL=http://grafana:3000
-    depends_on:
-      - postgres
-      - redis
-
-  postgres:
-    image: postgres:14
-    environment:
-      - POSTGRES_DB=oncall
-      - POSTGRES_USER=oncall
-      - POSTGRES_PASSWORD=oncall_password
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7
-    volumes:
-      - redis-data:/data
-
-volumes:
-  postgres-data:
-  redis-data:
+docker compose up -d
 ```
 
-Start the services with `docker-compose up -d`. Oncall will be available at http://localhost:8080.
+Oncall will be available at http://localhost:8080.
 
 ## Connecting Oncall to Grafana
 
@@ -79,16 +46,7 @@ grafana-cli plugins install grafana-oncall-app
 docker restart grafana
 ```
 
-Then configure the connection in Grafana:
-
-```yaml
-# grafana.ini additions
-[plugin.grafana-oncall-app]
-enabled = true
-oncall_api_url = http://oncall-engine:8080
-```
-
-Navigate to Configuration > Plugins in Grafana, find Oncall, and complete the setup wizard to link your Grafana instance to the Oncall engine.
+Navigate to Administration > Plugins and data > Plugins in Grafana, find Oncall, and complete the setup wizard to link your Grafana instance to the Oncall engine.
 
 ## Creating Your First Integration
 
@@ -97,12 +55,10 @@ Integrations define how alerts flow into Oncall. Create an integration for Grafa
 ```bash
 # Create integration via API
 curl -X POST http://localhost:8080/api/v1/integrations/ \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "type": "grafana_alerting",
-    "name": "Production Alerts",
-    "team_id": "T001"
+    "type": "grafana"
   }'
 ```
 
@@ -117,7 +73,7 @@ In Grafana, create a contact point that sends alerts to Oncall.
 Name: Oncall Production
 Type: Webhook
 
-URL: http://oncall-engine:8080/integrations/v1/grafana_alerting/INTEGRATION_TOKEN/
+URL: http://oncall-engine:8080/integrations/v1/grafana/INTEGRATION_TOKEN/
 
 # Optional: add custom headers
 HTTP Headers:
@@ -132,88 +88,83 @@ Now alerts from Grafana will flow into Oncall for routing and escalation.
 Schedules determine who receives alerts at any given time. Oncall supports rotation schedules, overrides, and handoff notifications.
 
 ```bash
-# Create an on-call schedule via API
+# Create an API-managed schedule
 curl -X POST http://localhost:8080/api/v1/schedules/ \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Primary On-Call",
     "team_id": "T001",
     "type": "calendar",
-    "ical_url_primary": null,
-    "time_zone": "America/New_York",
-    "shifts": [
-      {
-        "name": "Weekday Daytime",
-        "type": "rolling_users",
-        "users": ["U001", "U002", "U003"],
-        "rotation_start": "2026-02-10T09:00:00Z",
-        "duration": 86400,
-        "frequency": "weekly",
-        "week_start": "monday",
-        "by_day": ["MO", "TU", "WE", "TH", "FR"],
-        "start_time": "09:00:00",
-        "end_time": "17:00:00"
-      },
-      {
-        "name": "24/7 Coverage",
-        "type": "rolling_users",
-        "users": ["U001", "U002", "U003"],
-        "rotation_start": "2026-02-10T00:00:00Z",
-        "duration": 604800,
-        "frequency": "weekly"
-      }
-    ]
+    "time_zone": "America/New_York"
+  }'
+
+# Create a weekly rolling shift for that schedule
+curl -X POST http://localhost:8080/api/v1/on_call_shifts/ \
+  -H "Authorization: YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "24/7 Coverage",
+    "type": "rolling_users",
+    "team_id": "T001",
+    "start": "2026-02-10T00:00:00",
+    "duration": 604800,
+    "frequency": "weekly",
+    "week_start": "MO",
+    "rolling_users": [["U001"], ["U002"], ["U003"]]
   }'
 ```
 
-This creates a schedule with weekday daytime coverage and weekly rotation for 24/7 periods.
+This creates an API-managed schedule and a weekly 24/7 rolling shift.
 
 ## Building Escalation Chains
 
 Escalation chains define what happens when alerts aren't acknowledged. Start with immediate notification, then escalate through multiple levels.
 
-```json
-{
-  "name": "Production Escalation",
-  "team_id": "T001",
-  "steps": [
-    {
-      "type": "notify_persons",
-      "persons": ["current_oncall"],
-      "important": false
-    },
-    {
-      "type": "wait",
-      "duration": 300
-    },
-    {
-      "type": "notify_persons",
-      "persons": ["current_oncall"],
-      "important": true
-    },
-    {
-      "type": "wait",
-      "duration": 300
-    },
-    {
-      "type": "notify_schedule",
-      "schedule_id": "S002",
-      "important": true
-    },
-    {
-      "type": "wait",
-      "duration": 600
-    },
-    {
-      "type": "notify_team_members",
-      "team_id": "T001"
-    }
-  ]
-}
+```bash
+# Create the escalation chain
+curl -X POST http://localhost:8080/api/v1/escalation_chains/ \
+  -H "Authorization: YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production Escalation",
+    "team_id": "T001"
+  }'
+
+# Add ordered escalation policies to the chain
+curl -X POST http://localhost:8080/api/v1/escalation_policies/ \
+  -H "Authorization: YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "escalation_chain_id": "E001",
+    "type": "notify_on_call_from_schedule",
+    "notify_on_call_from_schedule": "S001",
+    "position": 0
+  }'
+
+curl -X POST http://localhost:8080/api/v1/escalation_policies/ \
+  -H "Authorization: YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "escalation_chain_id": "E001",
+    "type": "wait",
+    "duration": 300,
+    "position": 1
+  }'
+
+curl -X POST http://localhost:8080/api/v1/escalation_policies/ \
+  -H "Authorization: YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "escalation_chain_id": "E001",
+    "type": "notify_team_members",
+    "team_to_notify": "T001",
+    "important": true,
+    "position": 2
+  }'
 ```
 
-This escalation policy tries the on-call person, waits 5 minutes, tries again with important flag (different notification method), then escalates to a backup schedule, and finally notifies the entire team if still unacknowledged.
+This escalation chain notifies the current on-call user from the schedule, waits 5 minutes, and then notifies the entire team with the important flag if the alert group is still unacknowledged.
 
 ## Creating Routing Rules
 
@@ -222,22 +173,24 @@ Routing rules direct alerts to different escalation chains based on alert labels
 ```bash
 # Create route via API
 curl -X POST http://localhost:8080/api/v1/routes/ \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "integration_id": "I001",
     "routing_regex": ".*severity=critical.*",
-    "escalation_chain_id": "E001"
+    "escalation_chain_id": "E001",
+    "position": 0
   }'
 
 # Create another route for warnings
 curl -X POST http://localhost:8080/api/v1/routes/ \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Authorization: YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "integration_id": "I001",
     "routing_regex": ".*severity=warning.*",
-    "escalation_chain_id": "E002"
+    "escalation_chain_id": "E002",
+    "position": 1
   }'
 ```
 
@@ -247,34 +200,38 @@ Critical alerts go through faster escalation while warnings use a more relaxed p
 
 Each user can configure multiple notification channels with different priorities.
 
-```json
-{
-  "user_id": "U001",
-  "notification_channels": [
-    {
-      "type": "slack",
-      "slack_user_id": "U123456",
-      "important": false
-    },
-    {
-      "type": "sms",
-      "phone_number": "+1234567890",
-      "important": true
-    },
-    {
-      "type": "phone_call",
-      "phone_number": "+1234567890",
-      "important": true
-    }
-  ],
-  "notification_timing": {
-    "default_notification_delay": 0,
-    "important_notification_delay": 0
-  }
-}
+```bash
+curl -X POST http://localhost:8080/api/v1/personal_notification_rules/ \
+  -H "Authorization: YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "U001",
+    "type": "notify_by_slack",
+    "position": 0
+  }'
+
+curl -X POST http://localhost:8080/api/v1/personal_notification_rules/ \
+  -H "Authorization: YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "U001",
+    "type": "notify_by_sms",
+    "important": true,
+    "position": 0
+  }'
+
+curl -X POST http://localhost:8080/api/v1/personal_notification_rules/ \
+  -H "Authorization: YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "U001",
+    "type": "notify_by_phone_call",
+    "important": true,
+    "position": 1
+  }'
 ```
 
-Regular notifications go to Slack, while important notifications trigger SMS and phone calls immediately.
+Regular notifications go to Slack, while important notifications trigger SMS and phone calls according to the user's important notification policy.
 
 ## Acknowledging and Resolving Incidents
 
@@ -282,40 +239,39 @@ When an alert fires, responders can acknowledge it through multiple channels.
 
 ```bash
 # Acknowledge via API
-curl -X POST http://localhost:8080/api/v1/incidents/INC001/acknowledge/ \
-  -H "Authorization: Bearer YOUR_API_TOKEN"
+curl -X POST http://localhost:8080/api/v1/alert_groups/I001/acknowledge \
+  -H "Authorization: YOUR_API_TOKEN"
 
-# Resolve incident
-curl -X POST http://localhost:8080/api/v1/incidents/INC001/resolve/ \
-  -H "Authorization: Bearer YOUR_API_TOKEN"
+# Resolve alert group
+curl -X POST http://localhost:8080/api/v1/alert_groups/I001/resolve \
+  -H "Authorization: YOUR_API_TOKEN"
 
 # Add resolution note
-curl -X POST http://localhost:8080/api/v1/incidents/INC001/notes/ \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
+curl -X POST http://localhost:8080/api/v1/resolution_notes/ \
+  -H "Authorization: YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
+    "alert_group_id": "I001",
     "text": "Resolved by restarting pod api-7d8f9b"
   }'
 ```
 
-Acknowledgments stop escalation, while resolution closes the incident and creates a record for post-mortems.
+Acknowledgments stop escalation, while resolution closes the alert group and resolution notes create a record for post-mortems.
 
 ## Using Oncall with Grafana Dashboards
 
 Oncall embeds incident context directly in Grafana. Responders see which dashboards to check without leaving their workflow.
 
-```yaml
-# Configure incident templates to include dashboard links
-incident_template:
-  title: "{{ payload.groupLabels.alertname }}"
-  message: |
-    Alert: {{ payload.groupLabels.alertname }}
-    Severity: {{ payload.commonLabels.severity }}
-    Instance: {{ payload.commonLabels.instance }}
-
-    Dashboard: https://grafana.example.com/d/dashboard-uid
-
-    Runbook: https://runbooks.example.com/{{ payload.groupLabels.alertname }}
+```json
+{
+  "templates": {
+    "web": {
+      "title": "{{ payload.title }}",
+      "message": "Alert: {{ payload.title }}\nSeverity: {{ payload.get('severity', 'unknown') }}\nDashboard: {{ payload.ruleUrl }}\nRunbook: https://runbooks.example.com/{{ payload.title }}"
+    },
+    "source_link": "{{ payload.ruleUrl }}"
+  }
+}
 ```
 
 This creates a direct link from the incident notification to relevant dashboards and documentation.
@@ -326,16 +282,13 @@ Group related alerts to prevent notification storms during cascading failures.
 
 ```json
 {
-  "integration_id": "I001",
-  "grouping_config": {
-    "enabled": true,
-    "fields": ["namespace", "alertname"],
-    "timeout": 300
+  "templates": {
+    "grouping_key": "{{ payload.groupKey }}"
   }
 }
 ```
 
-Alerts with the same namespace and alert name get grouped into a single incident, with all related alerts visible in the incident timeline.
+Grafana Alerting and Alertmanager should usually handle grouping before sending alerts to Oncall. Oncall then uses the integration's grouping template to decide which alerts belong in the same alert group.
 
 ## Creating Custom Webhooks for Actions
 
@@ -344,43 +297,30 @@ Automate common remediation actions using outgoing webhooks.
 ```json
 {
   "name": "Restart Pod",
-  "webhook_url": "https://automation.example.com/restart-pod",
-  "trigger_type": "manual",
-  "data": "{{ payload }}"
+  "url": "https://automation.example.com/restart-pod",
+  "http_method": "POST",
+  "trigger_type": "resolve",
+  "data": "{\"labels\": {{ alert_payload.commonLabels | tojson() }}}"
 }
 ```
 
-Responders can trigger these webhooks from the Oncall UI, running automated remediation without leaving the incident response interface.
+Responders can use outgoing webhooks to run automated workflows when supported alert group events occur.
 
 ## Analyzing Incident Metrics
 
-Oncall tracks key metrics about your incident response process.
+Oncall exposes alert group timestamps and state changes that you can use to analyze your incident response process.
 
 ```bash
-# Get incident statistics
-curl -X GET "http://localhost:8080/api/v1/incidents/stats/?from=2026-02-01&to=2026-02-09" \
-  -H "Authorization: Bearer YOUR_API_TOKEN"
+# List alert groups for a date range
+curl -X GET "http://localhost:8080/api/v1/alert_groups/?started_at=2026-02-01T00:00:00_2026-02-09T23:59:59" \
+  -H "Authorization: YOUR_API_TOKEN"
 ```
 
-This returns data on mean time to acknowledge (MTTA), mean time to resolve (MTTR), incidents per day, and escalation frequency.
+This returns alert group data you can use to calculate response metrics such as mean time to acknowledge (MTTA), mean time to resolve (MTTR), incident volume, and escalation frequency.
 
 ## Setting Up Maintenance Windows
 
-Prevent alert noise during planned maintenance by creating maintenance windows.
-
-```bash
-# Create maintenance window
-curl -X POST http://localhost:8080/api/v1/maintenance/ \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "integration_ids": ["I001"],
-    "start_time": "2026-02-09T14:00:00Z",
-    "end_time": "2026-02-09T16:00:00Z"
-  }'
-```
-
-Alerts during this window are received but don't trigger notifications or escalations.
+Prevent alert noise during planned maintenance by starting Maintenance Mode on the affected integration from the Integration page menu. Choose Debug mode to process alerts without notifying users, or Maintenance mode to consolidate alerts during infrastructure work, set the duration, and stop the mode from the same menu when maintenance ends.
 
 ## Best Practices for Oncall Management
 
@@ -388,7 +328,7 @@ Keep escalation chains short. If alerts reach the fourth escalation level regula
 
 Use different escalation policies for different severity levels. Critical alerts should escalate quickly, while warnings can wait longer between steps.
 
-Configure notification methods appropriate to importance. Slack for low-priority, SMS for medium, phone calls for critical.
+Configure notification methods appropriate to importance. Slack works well for low-priority alerts, while SMS and phone calls are common for critical alerts when you have configured a supported phone or SMS provider.
 
 Review incidents weekly to identify patterns. Multiple incidents for the same issue suggest the underlying problem needs fixing.
 
