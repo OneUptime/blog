@@ -214,28 +214,27 @@ The difference grows with the size of the files being copied. Larger projects se
 
 COPY --link has a few limitations you should know about.
 
-First, the destination path must not already exist or must be a directory. Since --link creates the layer independently, it cannot merge files with content from a previous layer at the same path. If two COPY --link instructions target the same directory, the second one will overwrite the first.
+First, `COPY --link` cannot read files from the previous filesystem state. This matters when the destination path depends on something created earlier, such as a symlink. With regular `COPY`, Docker can follow a destination symlink from a previous layer. With `--link`, the destination path is created as directories in the linked layer instead.
 
-Demonstrating the overwrite behavior:
+Demonstrating the symlink behavior:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
 
 FROM debian:bookworm-slim
 
-# This COPY gets overwritten by the next one
-COPY --link files1/ /app/
-# This replaces everything at /app/ from the previous COPY
-COPY --link files2/ /app/
+# Regular COPY can follow this symlink
+RUN ln -s /real-app /app
+COPY files/ /app/
 
-# To merge files from multiple sources, use regular COPY
-COPY files1/ /app/
-COPY files2/ /app/
+# COPY --link cannot follow /app from the previous layer
+# and creates /app as a directory in the linked layer instead
+COPY --link files/ /app/
 ```
 
 Second, --link layers contain the full content at the destination path rather than a diff. For small files this does not matter, but copying the same large directory multiple times with --link creates redundant data.
 
-Third, file ownership changes from previous USER instructions may not apply as expected. If you need specific ownership, use `--chown` explicitly:
+Third, as with regular `COPY`, files are created with UID and GID 0 unless you set ownership explicitly. If you need specific ownership, use `--chown`:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -258,8 +257,8 @@ Use `--link` in these situations:
 
 Skip `--link` when:
 
-- Multiple COPY instructions write to the same directory and need to merge
-- You depend on file system state from previous layers
+- You need COPY to follow a destination symlink from a previous layer
+- You otherwise depend on file system state from previous layers
 - Compatibility with older Docker versions is required
 
 ## Adding --link to Existing Dockerfiles
@@ -293,4 +292,4 @@ docker run --rm myapp-linked python --version
 
 ## Summary
 
-COPY --link creates independent layers that do not depend on previous layers in the chain. This means Docker can reuse cached COPY layers even when earlier layers change. The biggest impact comes in multi-stage builds where you copy artifacts between stages. Add `# syntax=docker/dockerfile:1` to the top of your Dockerfile, put `--link` on your COPY instructions, and enjoy faster rebuilds. Watch out for the overwrite behavior when multiple COPY --link instructions target the same directory.
+COPY --link creates independent layers that do not depend on previous layers in the chain. This means Docker can reuse cached COPY layers even when earlier layers change. The biggest impact comes in multi-stage builds where you copy artifacts between stages. Add `# syntax=docker/dockerfile:1` to the top of your Dockerfile, put `--link` on your COPY instructions, and enjoy faster rebuilds. Watch out for destination paths that depend on symlinks or other filesystem state from previous layers.
