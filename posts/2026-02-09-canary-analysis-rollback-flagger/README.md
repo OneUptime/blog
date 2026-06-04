@@ -15,11 +15,17 @@ In this guide, we'll configure Flagger for automated canary deployments with met
 ## Installing Flagger
 
 ```bash
+# Flagger's Linkerd provider requires Linkerd, Linkerd Viz, and Linkerd-SMI
+# to be installed first.
 kubectl apply -k github.com/fluxcd/flagger//kustomize/linkerd
 
 # Verify installation
+kubectl -n flagger-system rollout status deploy/flagger
 
-kubectl get pods -n linkerd
+# Install the Flagger load tester used by the canary webhook
+kubectl create ns test
+kubectl annotate namespace test linkerd.io/inject=enabled
+kubectl apply -k https://github.com/fluxcd/flagger//kustomize/tester?ref=main
 ```
 
 ## Creating Canary Resource
@@ -29,7 +35,7 @@ apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
   name: myapp
-  namespace: default
+  namespace: test
 spec:
   targetRef:
     apiVersion: apps/v1
@@ -54,36 +60,27 @@ spec:
       interval: 1m
     webhooks:
     - name: load-test
-      url: http://flagger-loadtester.default/
+      type: rollout
+      url: http://flagger-loadtester.test/
       metadata:
-        cmd: "hey -z 1m -q 10 -c 2 http://myapp-canary.default:80/"
+        cmd: "hey -z 1m -q 10 -c 2 http://myapp-canary.test:80/"
 ```
 
 ## Simulating Canary Promotion
 
 ```bash
 # Trigger canary by updating deployment
-kubectl set image deployment/myapp myapp=myapp:v2
+kubectl -n test set image deployment/myapp myapp=myapp:v2
 
 # Watch canary progress
-watch kubectl get canary myapp
+watch kubectl -n test get canary myapp
 ```
 
 ## Testing Automatic Rollback
 
-```yaml
+```bash
 # Deploy bad canary that will fail metrics
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: myapp
-spec:
-  template:
-    spec:
-      containers:
-      - name: myapp
-        image: myapp:broken
-        # This version returns 500 errors
+kubectl -n test set image deployment/myapp myapp=myapp:broken
 ```
 
 Flagger detects failed metrics and automatically rolls back.
