@@ -48,8 +48,8 @@ kubectl port-forward -n production service/api-service 8080:80
 # Let Kubernetes choose local port
 kubectl port-forward service/web-service :80
 
-# Service port forwarding automatically handles pod restarts
-# and load balancing to healthy pods
+# Service port forwarding selects a matching pod automatically.
+# If the selected pod terminates, rerun the command to reconnect.
 ```
 
 ## Port Forwarding to Deployments
@@ -128,8 +128,8 @@ mysql -h 127.0.0.1 -P 3306 -u root -p
 # MongoDB
 kubectl port-forward pod/mongo-pod 27017:27017
 
-# Connect with mongo shell
-mongo mongodb://localhost:27017
+# Connect with MongoDB Shell
+mongosh mongodb://localhost:27017
 
 # Redis
 kubectl port-forward pod/redis-pod 6379:6379
@@ -418,14 +418,14 @@ kubectl port-forward pod/api-pod 8080:80
 # Never bind to 0.0.0.0 in production
 # kubectl port-forward --address 0.0.0.0 pod/api-pod 8080:80  # Dangerous!
 
-# Use strong authentication
+# Prefer TLS and application authentication on the forwarded endpoint
 kubectl port-forward pod/api-pod 8080:443  # HTTPS endpoint
 
-# Audit port forward usage
-kubectl get events --field-selector involvedObject.kind=Pod
+# Audit port forward usage with Kubernetes API audit logs
+# Include pods/portforward in your audit policy
 
 # Use RBAC to restrict port-forward access
-# Users need pods/portforward permission
+# Users need create access on the pods/portforward subresource
 ```
 
 kubectl port-forward is essential for local development and debugging, providing secure, temporary access to Kubernetes services without the complexity of ingress configuration or the security risks of public exposure.
