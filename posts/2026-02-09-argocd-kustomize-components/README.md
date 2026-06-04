@@ -143,7 +143,6 @@ kind: Component
 
 resources:
   - networkpolicy.yaml
-  - podsecuritypolicy.yaml
 
 # Patch deployments with security context
 patches:
@@ -152,9 +151,13 @@ patches:
       kind: Deployment
 
 # Add security-related labels
-commonLabels:
-  security.enabled: "true"
+labels:
+  - pairs:
+      security.enabled: "true"
+    includeSelectors: true
 ```
+
+For Kubernetes 1.25 and later, enforce pod security restrictions with Pod Security Admission labels on namespaces or a third-party admission controller instead of PodSecurityPolicy, which has been removed.
 
 Define the security context patch:
 
@@ -447,7 +450,7 @@ configMapGenerator:
       - LOG_LEVEL=debug
 ```
 
-Components compose cleanly without conflicts, unlike traditional overlay hierarchies.
+Components compose cleanly when their resources and patches do not target the same fields, unlike traditional overlay hierarchies.
 
 ## ArgoCD ApplicationSet with Components
 
@@ -465,11 +468,8 @@ spec:
     - list:
         elements:
           - env: development
-            components: "monitoring"
           - env: staging
-            components: "monitoring,security,observability"
           - env: production
-            components: "monitoring,security,observability,backup"
   template:
     metadata:
       name: 'demo-app-{{env}}'
@@ -488,7 +488,7 @@ spec:
           selfHeal: true
 ```
 
-Each environment automatically gets the appropriate component set based on the generator configuration.
+Each environment automatically gets the component set declared in its corresponding overlay. The ApplicationSet generator selects the overlay path; if you want ArgoCD to add components directly to an Application, use `spec.source.kustomize.components` in ArgoCD v2.10 or later.
 
 ## Testing Component Configurations
 
