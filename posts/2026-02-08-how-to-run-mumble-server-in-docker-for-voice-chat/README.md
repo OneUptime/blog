@@ -61,6 +61,7 @@ services:
       - mumble-data:/data
       - ./murmur.ini:/etc/murmur.ini:ro
     environment:
+      - MUMBLE_CUSTOM_CONFIG_FILE=/etc/murmur.ini
       - MUMBLE_SUPERUSER_PASSWORD=YourStrongPassword123
     deploy:
       resources:
@@ -100,7 +101,7 @@ serverpassword=
 ; 72000 is suitable for the Opus codec at good quality
 bandwidth=72000
 
-; Enable text-to-speech for messages
+; Allow HTML in messages, user comments, and channel descriptions
 allowhtml=true
 
 ; Log file path inside the container
@@ -121,10 +122,7 @@ database=/data/murmur.sqlite
 ; Ice interface for remote administration (optional)
 ; ice="tcp -h 127.0.0.1 -p 6502"
 
-; gRPC interface (Mumble 1.5+)
-; grpc="127.0.0.1:50051"
-
-; Enable automatic channel cleanup when empty
+; Global temporary ban settings for repeated connection attempts
 autobanAttempts=10
 autobanTimeframe=120
 autobanTime=300
@@ -136,7 +134,7 @@ The SuperUser account has full administrative control over the server. Set it ex
 
 ```bash
 # Set a new SuperUser password on the running container
-docker exec -it mumble-server murmurd -ini /etc/murmur.ini -supw YourNewPassword
+docker exec -it mumble-server mumble-server --ini /etc/murmur.ini --set-su-pw YourNewPassword
 
 # Alternatively, use the environment variable approach in docker-compose.yml
 # MUMBLE_SUPERUSER_PASSWORD=YourStrongPassword123
@@ -203,7 +201,7 @@ Keep track of your Mumble server with health checks and log monitoring.
 ```yaml
     # Health check verifies the TCP control port is responding
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "64738"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/64738'"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -243,14 +241,14 @@ docker start mumble-server
 Murmur supports running multiple virtual servers on a single instance, each with its own channel structure and user base.
 
 ```ini
-; In murmur.ini, enable the Ice or gRPC interface
+; In murmur.ini, enable the Ice interface
 ; Then use the Mumble client or a web admin panel to create virtual servers
 ice="tcp -h 127.0.0.1 -p 6502"
 ```
 
 ## Performance Tips
 
-Mumble is lightweight by design. A single-core server with 256 MB of RAM can handle 50-100 concurrent users. For larger deployments, keep these tips in mind. Use the UDP protocol exclusively for voice data by ensuring port 64738/udp is not blocked. Set the bandwidth limit appropriately for your network - 72000 bps per user works well for most scenarios. Place the server geographically close to your users to minimize latency. Monitor the container's CPU usage, as audio encoding is the primary resource consumer.
+Mumble is lightweight by design. A single-core server with 256 MB of RAM can handle 50-100 concurrent users. For larger deployments, keep these tips in mind. Make sure UDP port 64738 is not blocked, because Mumble uses UDP for voice traffic when possible. Set the bandwidth limit appropriately for your network - 72000 bps per user works well for most scenarios. Place the server geographically close to your users to minimize latency. Monitor the container's CPU and network usage, especially as concurrent users increase.
 
 ## Connecting to Your Server
 
