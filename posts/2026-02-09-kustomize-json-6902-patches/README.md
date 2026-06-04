@@ -95,7 +95,7 @@ patches:
           name: app-config
 ```
 
-The add operation creates new fields or appends to arrays.
+The add operation creates new fields, inserts array elements by index, or appends to arrays when you use `-`.
 
 ## Removing specific array elements
 
@@ -202,7 +202,7 @@ patches:
         value: "true"
 ```
 
-Use `-` to append to the end of an array.
+Use `-` to append to the end of an existing array.
 
 ## Modifying annotations and labels
 
@@ -221,8 +221,9 @@ patches:
         prometheus.io/port: "9090"
 
     - op: add
-      path: /metadata/labels/team
-      value: platform
+      path: /metadata/labels
+      value:
+        team: platform
 
     - op: add
       path: /spec/template/metadata/annotations
@@ -258,9 +259,9 @@ patches:
       value: 3
 
     - op: add
-      path: /spec/template/spec/containers/0/env/-
+      path: /spec/template/spec/containers/0/env
       value:
-        name: SCALING_MODE
+      - name: SCALING_MODE
         value: fixed
 ```
 
@@ -366,25 +367,28 @@ patches:
     kind: Deployment
   patch: |-
     - op: add
-      path: /metadata/labels/managed-by
-      value: kustomize
+      path: /metadata/labels
+      value:
+        managed-by: kustomize
 
 - target:
     kind: Service
   patch: |-
     - op: add
-      path: /metadata/labels/managed-by
-      value: kustomize
+      path: /metadata/labels
+      value:
+        managed-by: kustomize
 
 - target:
     kind: ConfigMap
   patch: |-
     - op: add
-      path: /metadata/labels/managed-by
-      value: kustomize
+      path: /metadata/labels
+      value:
+        managed-by: kustomize
 ```
 
-Use targetless selectors to apply to all matching resources.
+Use broad target selectors to apply to all matching resources.
 
 ## Escaping special characters
 
@@ -408,6 +412,7 @@ patches:
 ```
 
 Use `~1` for `/` and `~0` for `~` in JSON Pointer paths.
+These examples assume the parent `annotations` and `labels` maps already exist.
 
 ## Testing and validation
 
@@ -438,12 +443,11 @@ kind: Kustomization
 resources:
 - ../../base
 
+patches:
 # Strategic merge for simple changes
-patchesStrategicMerge:
-- env-patch.yaml
+- path: env-patch.yaml
 
 # JSON 6902 for precise modifications
-patches:
 - target:
     kind: Deployment
     name: web-app
