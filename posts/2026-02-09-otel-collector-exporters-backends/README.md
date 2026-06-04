@@ -12,9 +12,9 @@ Exporters send processed telemetry data from the OpenTelemetry Collector to back
 
 ## Understanding Exporter Types
 
-Exporters come in different types based on the signal they handle. Some exporters are signal-specific (prometheus for metrics only, jaeger for traces only), while others are universal (OTLP supports traces, metrics, and logs). Most production deployments use multiple exporters to send data to different backends based on team preferences or specific tooling requirements.
+Exporters come in different types based on the signal they handle. Some exporters are signal-specific (prometheus for metrics only, zipkin for traces only), while others are universal (OTLP supports traces, metrics, and logs). Most production deployments use multiple exporters to send data to different backends based on team preferences or specific tooling requirements.
 
-Exporters support various reliability features including retry logic, queue management, and batch processing. Understanding these features helps you configure exporters that handle backpressure and network issues gracefully without losing data.
+Exporters support various reliability features including retry logic, queue management, and batch processing. Understanding these features helps you configure exporters that handle backpressure and network issues gracefully while reducing data loss.
 
 ## Configuring OTLP Exporters
 
@@ -22,10 +22,11 @@ OTLP exporters send data to backends that support the OpenTelemetry protocol:
 
 ```yaml
 exporters:
-  otlp/oneuptime:
-    endpoint: oneuptime.com:443
+  otlp_http/oneuptime:
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
-      "x-oneuptime-api-key": "${env:ONEUPTIME_API_KEY}"
+      "x-oneuptime-token": "${env:ONEUPTIME_OTLP_TOKEN}"
     compression: gzip
     timeout: 30s
     retry_on_failure:
@@ -37,11 +38,6 @@ exporters:
       enabled: true
       num_consumers: 10
       queue_size: 5000
-    tls:
-      insecure: false
-      ca_file: /certs/ca.crt
-      cert_file: /certs/client.crt
-      key_file: /certs/client.key
 
   otlp/jaeger:
     endpoint: jaeger-collector:4317
@@ -56,8 +52,8 @@ exporters:
       num_consumers: 5
       queue_size: 1000
 
-  otlp/grafana-cloud:
-    endpoint: otlp-gateway-prod-us-central-0.grafana.net:443
+  otlp_http/grafana-cloud:
+    endpoint: https://otlp-gateway-prod-us-central-0.grafana.net/otlp
     headers:
       authorization: "Basic ${env:GRAFANA_CLOUD_AUTH}"
     compression: gzip
@@ -68,27 +64,27 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlp/oneuptime, otlp/jaeger, otlp/grafana-cloud]
+      exporters: [otlp_http/oneuptime, otlp/jaeger, otlp_http/grafana-cloud]
     metrics:
       receivers: [otlp]
-      exporters: [otlp/oneuptime, otlp/grafana-cloud]
+      exporters: [otlp_http/oneuptime, otlp_http/grafana-cloud]
 ```
 
 Store credentials securely:
 
 ```bash
 kubectl create secret generic otel-exporter-secrets -n observability \
-  --from-literal=oneuptime-api-key='your-key' \
+  --from-literal=oneuptime-otlp-token='your-token' \
   --from-literal=grafana-cloud-auth='your-token'
 
 # Reference in deployment
 
 env:
-- name: ONEUPTIME_API_KEY
+- name: ONEUPTIME_OTLP_TOKEN
   valueFrom:
     secretKeyRef:
       name: otel-exporter-secrets
-      key: oneuptime-api-key
+      key: oneuptime-otlp-token
 ```
 
 ## Configuring Prometheus Remote Write
@@ -97,7 +93,7 @@ Export metrics to Prometheus-compatible backends:
 
 ```yaml
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: http://prometheus:9090/api/v1/write
     timeout: 30s
     retry_on_failure:
@@ -109,11 +105,11 @@ exporters:
       enabled: true
     target_info:
       enabled: true
-    add_metric_suffixes: true
+    translation_strategy: UnderscoreEscapingWithSuffixes
     headers:
       X-Scope-OrgID: "tenant-1"
 
-  prometheusremotewrite/mimir:
+  prometheus_remote_write/mimir:
     endpoint: https://mimir.example.com/api/v1/push
     headers:
       Authorization: "Bearer ${env:MIMIR_TOKEN}"
@@ -123,7 +119,7 @@ exporters:
       cluster: production
       region: us-east-1
 
-  prometheusremotewrite/victoria:
+  prometheus_remote_write/victoria:
     endpoint: http://victoria-metrics:8428/api/v1/write
     timeout: 10s
 
@@ -137,20 +133,19 @@ service:
     metrics:
       receivers: [otlp, prometheus]
       processors: [batch]
-      exporters: [prometheusremotewrite, prometheusremotewrite/mimir, prometheusremotewrite/victoria]
+      exporters: [prometheus_remote_write, prometheus_remote_write/mimir, prometheus_remote_write/victoria]
 ```
 
-## Configuring Jaeger Exporter
+## Configuring Jaeger with OTLP
 
-Export traces specifically to Jaeger:
+Export traces specifically to Jaeger using its OTLP endpoint:
 
 ```yaml
 exporters:
-  jaeger:
-    endpoint: jaeger-collector:14250
+  otlp/jaeger:
+    endpoint: jaeger-collector:4317
     tls:
-      insecure: false
-      ca_file: /certs/ca.crt
+      insecure: true
     timeout: 30s
     retry_on_failure:
       enabled: true
@@ -164,7 +159,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp, jaeger, zipkin]
-      exporters: [jaeger]
+      exporters: [otlp/jaeger]
 ```
 
 ## Configuring Cloud Provider Exporters
@@ -175,10 +170,14 @@ Send data to cloud-native backends:
 
 ```yaml
 exporters:
-  awscloudwatch:
+  awscloudwatchlogs:
     region: us-east-1
     log_group_name: /aws/otel/application
     log_stream_name: application-logs
+    role_arn: arn:aws:iam::123456789012:role/OTelCollectorRole
+
+  awsemf:
+    region: us-east-1
     role_arn: arn:aws:iam::123456789012:role/OTelCollectorRole
     namespace: ApplicationMetrics
     metric_declarations:
@@ -201,7 +200,10 @@ service:
       exporters: [awsxray]
     metrics:
       receivers: [otlp]
-      exporters: [awscloudwatch]
+      exporters: [awsemf]
+    logs:
+      receivers: [otlp]
+      exporters: [awscloudwatchlogs]
 ```
 
 ### Google Cloud Operations
@@ -215,15 +217,15 @@ exporters:
       skip_create_descriptor: false
       instrumentation_library_labels: true
       service_resource_labels: true
+      resource_filters:
+      - prefix: "k8s."
+      - prefix: "cloud."
     trace:
       endpoint: cloudtrace.googleapis.com:443
     log:
       default_log_name: otel-collector
     retry_on_failure:
       enabled: true
-    resource_filters:
-    - prefix: "k8s."
-    - prefix: "cloud."
 
 service:
   pipelines:
@@ -240,10 +242,9 @@ service:
 ```yaml
 exporters:
   azuremonitor:
-    instrumentation_key: "${env:AZURE_INSTRUMENTATION_KEY}"
-    endpoint: https://dc.services.visualstudio.com/v2/track
-    max_batch_size: 1024
-    max_batch_interval: 5s
+    connection_string: "${env:APPLICATIONINSIGHTS_CONNECTION_STRING}"
+    maxbatchsize: 1024
+    maxbatchinterval: 5s
 
 service:
   pipelines:
@@ -264,23 +265,21 @@ exporters:
     - kafka-1:9092
     - kafka-2:9092
     - kafka-3:9092
-    topic: otel-traces
-    encoding: otlp_proto
+    traces:
+      topic: otel-traces
+      encoding: otlp_proto
+    tls:
+      insecure: false
+      ca_file: /certs/ca.crt
+      cert_file: /certs/client.crt
+      key_file: /certs/client.key
     auth:
       sasl:
         username: otel-producer
         password: ${env:KAFKA_PASSWORD}
         mechanism: SCRAM-SHA-512
-      tls:
-        insecure: false
-        ca_file: /certs/ca.crt
-        cert_file: /certs/client.crt
-        key_file: /certs/client.key
     metadata:
-      full: true
-      retry:
-        max: 3
-        backoff: 100ms
+      refresh_interval: 10m
     producer:
       compression: gzip
       max_message_bytes: 1048576
@@ -300,7 +299,7 @@ Distribute load across multiple backend instances:
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         timeout: 1s
@@ -311,17 +310,12 @@ exporters:
         - otel-backend-1:4317
         - otel-backend-2:4317
         - otel-backend-3:4317
-      dns:
-        hostname: otel-backends.svc.cluster.local
-        port: 4317
-        interval: 5m
-        timeout: 1m
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 ## Configuring File Exporter for Testing
@@ -338,7 +332,7 @@ exporters:
       max_backups: 3
       localtime: true
     format: json
-    compression: gzip
+    compression: zstd
 
   file/metrics:
     path: /var/log/otel/metrics.json
@@ -370,19 +364,15 @@ volumeMounts:
 
 ## Implementing Exporter Failover
 
-Use routing processor for failover between exporters:
+Use the failover connector for health-based failover between exporter pipelines:
 
 ```yaml
-processors:
-  routing:
-    default_exporters:
-    - otlp/primary
-    error_mode: propagate
-    table:
-    - statement: route()
-      exporters:
-      - otlp/primary
-      - otlp/backup
+connectors:
+  failover:
+    priority_levels:
+    - [traces/primary]
+    - [traces/backup]
+    retry_interval: 10s
 
 exporters:
   otlp/primary:
@@ -400,8 +390,13 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [routing]
-      exporters: [otlp/primary, otlp/backup]
+      exporters: [failover]
+    traces/primary:
+      receivers: [failover]
+      exporters: [otlp/primary]
+    traces/backup:
+      receivers: [failover]
+      exporters: [otlp/backup]
 ```
 
 ## Monitoring Exporter Health
@@ -464,16 +459,12 @@ kubectl exec -n observability deployment/otel-collector -- \
 kubectl exec -n observability deployment/otel-collector -- \
   grpcurl -plaintext otel-backend:4317 list
 
-# Enable debug logging for specific exporter
+# Enable debug logging for the Collector
 # Edit config to add:
-exporters:
-  otlp/primary:
-    endpoint: backend:4317
-    sending_queue:
-      enabled: true
-      queue_size: 5000
-    debug:
-      verbosity: detailed
+service:
+  telemetry:
+    logs:
+      level: debug
 
 # View detailed logs
 kubectl logs -n observability -l app=otel-collector -f | grep "exporter.*error"
