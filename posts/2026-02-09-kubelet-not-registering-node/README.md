@@ -65,8 +65,8 @@ The kubelet must authenticate to the API server using valid credentials. Check t
 # Check kubelet configuration
 cat /var/lib/kubelet/config.yaml
 
-# View kubeconfig location
-grep -i kubeconfig /var/lib/kubelet/config.yaml
+# View kubeconfig flags passed to kubelet
+systemctl cat kubelet | grep -i kubeconfig
 
 # Examine kubeconfig content
 cat /etc/kubernetes/kubelet.conf
@@ -203,11 +203,11 @@ grep -i hostname /var/lib/kubelet/config.yaml
 # Check kubelet process arguments
 ps aux | grep kubelet | grep hostname-override
 
-# View node name in kubeconfig
-grep server /etc/kubernetes/kubelet.conf
+# Check the kubelet client certificate subject
+openssl x509 -in /var/lib/kubelet/pki/kubelet-client-current.pem -noout -subject
 ```
 
-The node name must be unique in the cluster and resolvable by the API server.
+The node name must be unique in the cluster and match the kubelet identity, which normally uses the `system:node:<nodeName>` username.
 
 ## Example: Kubelet Service File
 
@@ -226,8 +226,7 @@ ExecStart=/usr/bin/kubelet \
   --bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf \
   --kubeconfig=/etc/kubernetes/kubelet.conf \
   --config=/var/lib/kubelet/config.yaml \
-  --container-runtime-endpoint=unix:///var/run/containerd/containerd.sock \
-  --pod-infra-container-image=registry.k8s.io/pause:3.9
+  --container-runtime-endpoint=unix:///run/containerd/containerd.sock
 Restart=always
 StartLimitInterval=0
 RestartSec=10
@@ -256,10 +255,10 @@ kubectl get clusterrole system:node
 kubectl get clusterrolebinding | grep system:node
 
 # Check kubelet user permissions
-kubectl auth can-i create nodes --as=system:node:worker-1
+kubectl auth can-i create nodes --as=system:node:worker-1 --as-group=system:nodes
 
 # List all permissions for kubelet
-kubectl auth can-i --list --as=system:node:worker-1
+kubectl auth can-i --list --as=system:node:worker-1 --as-group=system:nodes
 ```
 
 Missing RBAC permissions prevent node registration and pod management.
@@ -285,7 +284,7 @@ cat /etc/containerd/config.toml
 journalctl -u containerd -n 50
 ```
 
-If the container runtime isn't running or has configuration errors, kubelet can't function.
+If the container runtime isn't running or has configuration errors, kubelet may register the node but keep it in a NotReady state.
 
 ## Node Registration Timeout
 
@@ -295,7 +294,7 @@ Sometimes registration takes longer than expected. Check for timeout-related err
 # Check for timeout errors in logs
 journalctl -u kubelet | grep timeout
 
-# Increase node status update frequency
+# Check node status and lease update timing
 # Edit /var/lib/kubelet/config.yaml
 nodeStatusUpdateFrequency: 10s
 nodeStatusReportFrequency: 5m
@@ -355,11 +354,10 @@ If kubelet state is corrupted, reset it and re-register.
 # Stop kubelet
 systemctl stop kubelet
 
-# Remove kubelet state (backup first)
-mv /var/lib/kubelet /var/lib/kubelet.backup
-
-# Remove kubelet certificates
-rm -rf /var/lib/kubelet/pki/*
+# Back up kubelet state and remove generated certificates
+cp -a /var/lib/kubelet /var/lib/kubelet.backup
+rm -f /var/lib/kubelet/pki/kubelet-client-current.pem
+rm -f /var/lib/kubelet/pki/kubelet-client-*.pem
 
 # Restart kubelet (it will reinitialize)
 systemctl start kubelet
@@ -368,7 +366,7 @@ systemctl start kubelet
 journalctl -u kubelet -f
 ```
 
-This forces kubelet to go through initial registration again.
+This forces kubelet to request fresh client credentials while keeping its configuration in place.
 
 ## Manual Node Registration
 
