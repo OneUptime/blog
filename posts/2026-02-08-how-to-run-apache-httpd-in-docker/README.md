@@ -12,23 +12,21 @@ Apache httpd has been serving web traffic since 1995. It remains one of the most
 
 ## Quick Start
 
-Serve static files with a single command.
-
-```bash
-# Serve files from the current directory
-
-docker run -d \
-  --name apache \
-  -p 8080:80 \
-  -v $(pwd)/html:/usr/local/apache2/htdocs/:ro \
-  httpd:2.4
-```
-
 Create a simple test page.
 
 ```bash
 mkdir -p html
 echo "<h1>Hello from Apache in Docker</h1>" > html/index.html
+```
+
+Serve the files with a single command.
+
+```bash
+docker run -d \
+  --name apache \
+  -p 8080:80 \
+  -v $(pwd)/html:/usr/local/apache2/htdocs/:ro \
+  httpd:2.4
 ```
 
 Open `http://localhost:8080` to see the page.
@@ -39,8 +37,6 @@ A production-style configuration with custom config, logging, and health checks.
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   apache:
     image: httpd:2.4
@@ -79,10 +75,10 @@ Start by extracting the default configuration from the image.
 docker run --rm httpd:2.4 cat /usr/local/apache2/conf/httpd.conf > httpd.conf
 ```
 
-Enable commonly needed modules by uncommenting them in httpd.conf.
+Ensure commonly needed modules are enabled by uncommenting them in httpd.conf when needed.
 
 ```apache
-# httpd.conf - Key modules to enable (uncomment these lines)
+# httpd.conf - Key modules to enable
 
 # Enable mod_rewrite for URL rewriting
 LoadModule rewrite_module modules/mod_rewrite.so
@@ -200,8 +196,6 @@ Docker Compose with a backend application.
 
 ```yaml
 # docker-compose-proxy.yml
-version: "3.8"
-
 services:
   apache:
     image: httpd:2.4
@@ -279,6 +273,7 @@ mkdir -p certs
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout certs/server.key \
   -out certs/server.crt \
+  -addext "subjectAltName=DNS:localhost" \
   -subj "/CN=localhost"
 ```
 
@@ -340,11 +335,11 @@ docker run -d -p 80:80 -p 443:443 my-apache
 
 ## Monitoring and Logging
 
-Enable the server-status module for monitoring.
+Configure the server-status handler for monitoring. The official `httpd:2.4` image already loads `mod_status` by default; if your custom configuration does not, enable it first.
 
 ```apache
 # Add to httpd.conf
-LoadModule status_module modules/mod_status.so
+# LoadModule status_module modules/mod_status.so
 
 <Location "/server-status">
     SetHandler server-status
@@ -357,8 +352,8 @@ LoadModule status_module modules/mod_status.so
 # View server status
 curl http://localhost/server-status?auto
 
-# Tail access logs
-docker logs -f apache
+# Tail the vhost access log
+docker exec apache tail -f /usr/local/apache2/logs/main-access.log
 
 # Check configuration syntax
 docker exec apache httpd -t
