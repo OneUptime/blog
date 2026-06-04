@@ -8,9 +8,9 @@ Description: Learn how to implement namespace resource quotas for different prio
 
 ---
 
-Resource management in Kubernetes becomes complex when you have workloads with different priorities competing for the same namespace resources. Without proper quota configuration, high-priority workloads might starve low-priority ones, or vice versa. Kubernetes provides a mechanism to set resource quotas based on priority classes, allowing you to allocate resources fairly across different workload types.
+Resource management in Kubernetes becomes complex when you have workloads with different priorities competing for the same namespace resources. Without proper quota configuration, high-priority workloads might starve low-priority ones, or vice versa. Kubernetes provides a mechanism to set resource quotas based on priority classes, allowing you to cap resource consumption across different workload types.
 
-Priority classes help the scheduler make decisions about which pods to schedule first when resources are constrained. By combining priority classes with resource quotas, you can ensure each priority level gets its fair share of resources while preventing any single priority class from consuming all available capacity.
+Priority classes help the scheduler make decisions about which pods to schedule first when resources are constrained. By combining priority classes with resource quotas, you can define consumption limits for each priority level while preventing any single priority class from consuming all available capacity.
 
 ## Understanding Priority Classes and Resource Quotas
 
@@ -88,7 +88,6 @@ spec:
     limits.cpu: "40"
     limits.memory: "80Gi"
     pods: "50"
-    persistentvolumeclaims: "20"
   scopeSelector:
     matchExpressions:
     - operator: In
@@ -109,7 +108,6 @@ spec:
     limits.cpu: "80"
     limits.memory: "160Gi"
     pods: "100"
-    persistentvolumeclaims: "40"
   scopeSelector:
     matchExpressions:
     - operator: In
@@ -130,7 +128,6 @@ spec:
     limits.cpu: "60"
     limits.memory: "120Gi"
     pods: "80"
-    persistentvolumeclaims: "30"
   scopeSelector:
     matchExpressions:
     - operator: In
@@ -151,7 +148,6 @@ spec:
     limits.cpu: "40"
     limits.memory: "80Gi"
     pods: "50"
-    persistentvolumeclaims: "10"
   scopeSelector:
     matchExpressions:
     - operator: In
@@ -172,7 +168,6 @@ spec:
     limits.cpu: "20"
     limits.memory: "40Gi"
     pods: "30"
-    persistentvolumeclaims: "5"
   scopeSelector:
     matchExpressions:
     - operator: In
@@ -288,9 +283,9 @@ for priority in critical high medium low best-effort; do
     echo "Priority Class: ${priority}-priority"
     echo "------------------------------------"
 
-    kubectl get resourcequota $quota_name -n $NAMESPACE -o json | \
-        jq -r '.status | to_entries[] | "\(.key): \(.value)"' | \
-        column -t -s ':'
+    kubectl get resourcequota "$quota_name" -n "$NAMESPACE" -o json | \
+        jq -r '.status.hard as $hard | .status.used as $used | ($hard | keys[]) as $resource | "\($resource): used=\($used[$resource] // "0") hard=\($hard[$resource])"' | \
+        column -t -s ' '
 
     echo
 done
@@ -449,9 +444,9 @@ data:
       rules:
       - alert: NamespaceQuotaExceeded
         expr: |
-          kube_resourcequota{job="kube-state-metrics"}
+          kube_resourcequota{job="kube-state-metrics",type="used"}
           / on(resource,namespace,resourcequota)
-          kube_resourcequota{type="hard"}
+          kube_resourcequota{job="kube-state-metrics",type="hard"}
           > 0.9
         for: 5m
         labels:
@@ -462,9 +457,9 @@ data:
 
       - alert: PriorityClassQuotaExhausted
         expr: |
-          kube_resourcequota{job="kube-state-metrics"}
+          kube_resourcequota{job="kube-state-metrics",type="used"}
           / on(resource,namespace,resourcequota)
-          kube_resourcequota{type="hard"}
+          kube_resourcequota{job="kube-state-metrics",type="hard"}
           >= 1.0
         for: 2m
         labels:
