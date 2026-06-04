@@ -8,7 +8,7 @@ Description: Learn how to use the Kubernetes aggregated API discovery mechanism 
 
 ---
 
-Kubernetes clusters can host many API groups beyond the core APIs: custom resource definitions, aggregated API servers, and extensions add hundreds of endpoints. The aggregated discovery API provides a unified way to discover all available APIs in your cluster with a single request, making it easier to build tools that work across different cluster configurations.
+Kubernetes clusters can host many API groups beyond the core APIs: custom resource definitions, aggregated API servers, and extensions add hundreds of endpoints. The aggregated discovery API provides a unified way to discover available APIs in your cluster with one request per discovery root (`/api` for the core group and `/apis` for named API groups), making it easier to build tools that work across different cluster configurations.
 
 ## Traditional Discovery vs Aggregated Discovery
 
@@ -20,19 +20,30 @@ Traditionally, API discovery required multiple requests:
 kubectl get --raw /api
 
 # List each API group separately
-kubectl get --raw /apis/apps
-kubectl get --raw /apis/batch
+kubectl get --raw /apis/apps/v1
+kubectl get --raw /apis/batch/v1
 # ... and so on for each group
 ```
 
-Aggregated discovery consolidates this into one response:
+Aggregated discovery consolidates this into one response per discovery root. Start a local authenticated proxy in one terminal:
 
 ```bash
-# Get all API information in a single request
-kubectl get --raw /apis | jq
+kubectl proxy
 ```
 
-This endpoint returns information about all API groups at once.
+Then request the aggregated discovery format with the required `Accept` header:
+
+```bash
+ACCEPT='application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList'
+
+# Get named API group information in a single request
+curl -sH "Accept: $ACCEPT" http://127.0.0.1:8001/apis | jq
+
+# Get core API group information
+curl -sH "Accept: $ACCEPT" http://127.0.0.1:8001/api | jq
+```
+
+Without this `Accept` header, `/api` and `/apis` return the traditional unaggregated discovery documents.
 
 ## Understanding Aggregated Discovery Format
 
@@ -49,7 +60,7 @@ Example response structure:
 ```json
 {
   "kind": "APIGroupDiscoveryList",
-  "apiVersion": "apidiscovery.k8s.io/v2beta1",
+  "apiVersion": "apidiscovery.k8s.io/v2",
   "items": [
     {
       "metadata": {
@@ -83,9 +94,11 @@ Query all API groups in your cluster:
 
 ```bash
 # Get all API groups
-kubectl get --raw /apis | jq '.items[].metadata.name'
+ACCEPT='application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList'
+curl -sH "Accept: $ACCEPT" http://127.0.0.1:8001/api http://127.0.0.1:8001/apis | jq -s -r '.[].items[].metadata.name | if . == "" then "core" else . end'
 
 # Output shows all available groups:
+# core
 # apps
 # batch
 # networking.k8s.io
@@ -94,13 +107,14 @@ kubectl get --raw /apis | jq '.items[].metadata.name'
 # etc.
 ```
 
-## Finding All Custom Resources
+## Finding Domain-Qualified API Groups
 
-Identify CRDs installed in your cluster:
+Identify domain-qualified API groups in your cluster:
 
 ```bash
-# List all CRD API groups
-kubectl get --raw /apis | jq -r '.items[] | select(.metadata.name | contains(".")) | .metadata.name'
+# List domain-qualified API groups
+ACCEPT='application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList'
+curl -sH "Accept: $ACCEPT" http://127.0.0.1:8001/apis | jq -r '.items[] | select(.metadata.name | contains(".")) | .metadata.name'
 
 # This shows third-party API groups like:
 # cert-manager.io
@@ -108,7 +122,7 @@ kubectl get --raw /apis | jq -r '.items[] | select(.metadata.name | contains("."
 # example.com
 ```
 
-Core Kubernetes groups typically do not have dots in their names (`apps`, `batch`, etc.), while CRDs and aggregated APIs use fully qualified domain names.
+Some core Kubernetes groups do not have dots in their names (`apps`, `batch`, etc.), while CRDs, aggregated APIs, and many built-in extension groups use fully qualified domain names. Use `kubectl get crds` if you need to distinguish CRD-backed APIs from built-in or aggregated API groups.
 
 ## Enumerating Resources in an API Group
 
@@ -116,7 +130,8 @@ List all resources for a specific API group:
 
 ```bash
 # Get all resources in the apps API group
-kubectl get --raw /apis | jq '.items[] | select(.metadata.name == "apps") | .versions[0].resources[].resource'
+ACCEPT='application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList'
+curl -sH "Accept: $ACCEPT" http://127.0.0.1:8001/apis | jq -r '.items[] | select(.metadata.name == "apps") | .versions[0].resources[].resource'
 
 # Output:
 # deployments
@@ -137,16 +152,26 @@ echo "Kubernetes API Inventory"
 echo "========================"
 echo ""
 
+ACCEPT='application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList'
+API_SERVER='http://127.0.0.1:8001'
+DISCOVERY=$(curl -sH "Accept: $ACCEPT" "$API_SERVER/api" "$API_SERVER/apis" | jq -s '{items: [.[].items[]]}')
+
 # Get all API groups
-kubectl get --raw /apis | jq -r '.items[].metadata.name' | while read group; do
-    echo "API Group: $group"
+echo "$DISCOVERY" | jq -c '.items[]' | while read api_group; do
+    group=$(echo "$api_group" | jq -r '.metadata.name')
+    display_group="$group"
+    if [ -z "$display_group" ]; then
+        display_group="core"
+    fi
+
+    echo "API Group: $display_group"
 
     # Get versions for this group
-    kubectl get --raw /apis | jq -r ".items[] | select(.metadata.name == \"$group\") | .versions[].version" | while read version; do
+    echo "$api_group" | jq -r '.versions[].version' | while read version; do
         echo "  Version: $version"
 
         # Get resources for this version
-        kubectl get --raw /apis | jq -r ".items[] | select(.metadata.name == \"$group\") | .versions[] | select(.version == \"$version\") | .resources[].resource" | while read resource; do
+        echo "$api_group" | jq -r ".versions[] | select(.version == \"$version\") | .resources[].resource" | while read resource; do
             echo "    - $resource"
         done
     done
@@ -162,12 +187,9 @@ Implement API discovery programmatically:
 package main
 
 import (
-    "context"
     "fmt"
     "log"
 
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/client-go/discovery"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/tools/clientcmd"
 )
