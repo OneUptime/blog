@@ -22,7 +22,7 @@ You need a Kubernetes cluster with Istio installed. Make sure you have the Istio
 
 ## Deploying Two Versions of Your Service
 
-First, deploy two versions of your application. We'll use a simple web service as an example, but this works for any application type.
+First, deploy two versions of your application. We'll use a simple web service as an example, but this works for any HTTP-based application.
 
 ```yaml
 # deployment-v1.yaml
@@ -117,7 +117,7 @@ The DestinationRule defines subsets for each version. These subsets are referenc
 
 ```yaml
 # destinationrule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: web-app
@@ -143,7 +143,7 @@ Now create the VirtualService that routes traffic based on headers. This example
 
 ```yaml
 # virtualservice-header-routing.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: web-app
@@ -229,10 +229,10 @@ Istio supports several header matching strategies beyond exact matching. You can
 
 ```yaml
 # virtualservice-advanced-matching.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: web-app-advanced
+  name: web-app
   namespace: default
 spec:
   hosts:
@@ -280,10 +280,10 @@ You can combine header-based routing with percentage-based traffic splitting for
 
 ```yaml
 # virtualservice-combined-routing.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: web-app-combined
+  name: web-app
   namespace: default
 spec:
   hosts:
@@ -316,45 +316,28 @@ This gives you progressive exposure within a segment. You can gradually increase
 
 For production A/B testing, integrate with feature flag platforms like LaunchDarkly or Unleash. Your API gateway or frontend can add headers based on feature flag evaluations.
 
-Here's an example using an Envoy filter to add headers based on JWT claims:
+Here's an example using Istio request authentication to copy a verified JWT claim into a header:
 
 ```yaml
-# envoyfilter-jwt-headers.yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+# requestauthentication-jwt-headers.yaml
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
 metadata:
   name: jwt-to-header
   namespace: istio-system
 spec:
-  workloadSelector:
-    labels:
+  selector:
+    matchLabels:
       istio: ingressgateway
-  configPatches:
-  - applyTo: HTTP_FILTER
-    match:
-      context: GATEWAY
-      listener:
-        filterChain:
-          filter:
-            name: "envoy.filters.network.http_connection_manager"
-            subFilter:
-              name: "envoy.filters.http.jwt_authn"
-    patch:
-      operation: INSERT_AFTER
-      value:
-        name: envoy.lua
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              local jwt = request_handle:headers():get("x-jwt-payload")
-              if jwt then
-                -- Parse JWT and extract feature flags
-                -- Add header based on flags
-                request_handle:headers():add("x-feature-new-ui", "true")
-              end
-            end
+  jwtRules:
+  - issuer: "https://issuer.example.com"
+    jwksUri: "https://issuer.example.com/.well-known/jwks.json"
+    outputClaimToHeaders:
+    - header: x-feature-new-ui
+      claim: new_ui_enabled
 ```
+
+The `outputClaimToHeaders` field is currently experimental, so verify support in your Istio version before depending on it for production rollout logic.
 
 ## Monitoring Your A/B Test
 
