@@ -69,7 +69,7 @@ spec:
       selectPolicy: Min
 ```
 
-This configuration allows scaling up by either 50% or 5 pods (whichever is larger) every 60 seconds, while limiting scale-down to either 10% or 2 pods (whichever is smaller).
+This configuration allows scaling up by either 50% or 5 pods (whichever is larger) every 60 seconds, while limiting scale-down to either 10% every 60 seconds or 2 pods every 180 seconds (whichever permits fewer removals).
 
 ## Controlling Scale-Up Rate
 
@@ -116,7 +116,7 @@ spec:
       selectPolicy: Max
 ```
 
-With this configuration, if CPU suddenly spikes, HPA can double the replica count or add 10 pods within 30 seconds, providing fast scaling for traffic bursts.
+With this configuration, if CPU suddenly spikes, HPA can double the replica count over a 60-second window or add 10 pods within a 30-second window, providing fast scaling for traffic bursts.
 
 ## Implementing Conservative Scale-Down
 
@@ -347,10 +347,6 @@ spec:
 
     scaleDown:
       # Disable scale-down
-      policies:
-      - type: Pods
-        value: 0
-        periodSeconds: 60
       selectPolicy: Disabled
 ```
 
