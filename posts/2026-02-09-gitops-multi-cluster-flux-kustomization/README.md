@@ -34,6 +34,7 @@ flux bootstrap github \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/production-east \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --personal \
   --context=production-east
 
@@ -43,6 +44,7 @@ flux bootstrap github \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/production-west \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --personal \
   --context=production-west
 
@@ -52,6 +54,7 @@ flux bootstrap github \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/staging \
+  --components-extra=image-reflector-controller,image-automation-controller \
   --personal \
   --context=staging
 ```
@@ -253,7 +256,7 @@ spec:
     spec:
       containers:
       - name: api
-        image: myregistry.io/api:v1.0.0
+        image: myregistry.io/api:v1.0.0 # {"$imagepolicy": "flux-system:api"}
         ports:
         - containerPort: 8080
         resources:
@@ -271,7 +274,6 @@ Create cluster-specific overlay:
 # apps/overlays/production-east/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: production
 resources:
 - ../../base/api
 - ../../base/frontend
@@ -299,13 +301,14 @@ patches:
 - path: resource-limits-patch.yaml
   target:
     kind: Deployment
+    name: api
 
 ---
 # apps/overlays/production-east/resource-limits-patch.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: all-deployments
+  name: api
 spec:
   template:
     spec:
@@ -354,6 +357,7 @@ spec:
       interval: 1m
     webhooks:
     - name: load-test
+      type: rollout
       url: http://flagger-loadtester/
       timeout: 5s
       metadata:
@@ -459,7 +463,7 @@ kubectl create secret generic api-credentials \
   --from-literal=db-password=supersecret \
   --dry-run=client -o yaml > api-credentials.yaml
 
-sops --encrypt --in-place --pgp ${SOPS_PGP_FP} api-credentials.yaml
+sops --encrypt --encrypted-regex '^(data|stringData)$' --in-place --pgp ${SOPS_PGP_FP} api-credentials.yaml
 ```
 
 Configure Flux to decrypt secrets:
@@ -513,13 +517,13 @@ data:
           {
             "title": "Kustomization Status by Cluster",
             "targets": [{
-              "expr": "gotk_reconcile_condition{type='Ready'}"
+              "expr": "count by (cluster, name, ready) (gotk_resource_info{customresource_kind='Kustomization'})"
             }]
           },
           {
             "title": "Reconciliation Failures",
             "targets": [{
-              "expr": "sum(rate(gotk_reconcile_condition{status='False'}[5m])) by (cluster, name)"
+              "expr": "gotk_resource_info{ready='False'} == 1"
             }]
           }
         ]
@@ -540,13 +544,13 @@ spec:
   - name: flux
     rules:
     - alert: FluxReconciliationFailure
-      expr: gotk_reconcile_condition{type="Ready",status="False"} == 1
+      expr: gotk_resource_info{ready="False"} == 1
       for: 10m
       annotations:
         summary: "Flux reconciliation failing for {{ $labels.name }}"
 
     - alert: FluxSuspended
-      expr: gotk_suspend_status == 1
+      expr: gotk_resource_info{suspended="true"} == 1
       for: 5m
       annotations:
         summary: "Flux resource {{ $labels.name }} is suspended"
