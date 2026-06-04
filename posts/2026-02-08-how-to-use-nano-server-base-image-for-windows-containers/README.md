@@ -8,27 +8,26 @@ Description: Build minimal Windows container images using Nano Server for fast d
 
 ---
 
-Windows container images have a reputation for being enormous. Server Core weighs in around 1.8 GB, and the full Windows image exceeds 3.5 GB. Nano Server breaks that pattern. At roughly 260 MB, it is the smallest Windows container base image available, making it practical for microservices, APIs, and any workload that does not need the full Windows feature set.
+Windows container images have a reputation for being enormous. Server Core and Windows images are measured in gigabytes. Nano Server breaks that pattern. At roughly a few hundred megabytes on disk, it is the smallest Windows container base image available, making it practical for microservices, APIs, and any workload that does not need the full Windows feature set.
 
 This guide covers what Nano Server includes (and what it leaves out), which applications work well on it, and how to build optimized images using it as a base.
 
 ## What Is Nano Server?
 
-Nano Server is a stripped-down Windows image designed specifically for containers and cloud-native applications. Microsoft removed everything unnecessary for running modern applications: no GUI, no full PowerShell, no Windows Installer (MSI), no Server Manager, no COM support, and no full .NET Framework.
+Nano Server is a stripped-down Windows image designed specifically for containers and cloud-native applications. Microsoft removed everything unnecessary for running modern applications: no GUI, no PowerShell, no Windows Installer (MSI), no Server Manager, no COM support, and no full .NET Framework.
 
 What it includes:
 
-- A minimal Windows kernel
+- Minimal Windows user-mode components
 - Basic networking stack
-- PowerShell Core (not Windows PowerShell)
-- .NET runtime support (for .NET 6+)
+- Support for modern .NET applications when you use the .NET Nano Server runtime images or publish a self-contained app
 - Basic file system operations
 - HTTP client capabilities
 
 What it does NOT include:
 
-- Windows PowerShell (only PowerShell Core)
-- .NET Framework (only .NET 6+)
+- Windows PowerShell or PowerShell Core by default
+- .NET Framework, or a .NET runtime in the plain Nano Server base image
 - MSI installer support
 - COM/DCOM components
 - IIS (Internet Information Services)
@@ -39,7 +38,7 @@ What it does NOT include:
 
 Nano Server works well for:
 
-- .NET 6, 7, 8, and newer applications
+- Supported modern .NET applications, such as .NET 8 and newer
 - Go binaries compiled for Windows
 - Rust binaries compiled for Windows
 - Node.js applications (with manual installation)
@@ -71,7 +70,7 @@ docker run --rm mcr.microsoft.com/windows/nanoserver:ltsc2022 cmd /c "echo Hello
 
 ## Building a .NET Application on Nano Server
 
-The most common use case is hosting .NET 6+ applications. Microsoft provides .NET runtime images based on Nano Server.
+The most common use case is hosting supported modern .NET applications. Microsoft provides .NET runtime images based on Nano Server.
 
 ```dockerfile
 # Dockerfile - .NET 8 API on Nano Server
@@ -127,7 +126,7 @@ The difference in image size between base images is substantial.
 # Pull all three Windows base images to compare
 docker pull mcr.microsoft.com/windows/nanoserver:ltsc2022
 docker pull mcr.microsoft.com/windows/servercore:ltsc2022
-docker pull mcr.microsoft.com/windows:ltsc2022
+docker pull mcr.microsoft.com/windows/server:ltsc2022
 
 # Compare sizes
 docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | findstr "windows"
@@ -136,7 +135,7 @@ docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | findstr "w
 Typical sizes:
 - Nano Server: ~260 MB
 - Server Core: ~1.8 GB
-- Full Windows: ~3.5 GB
+- Windows Server: ~3.5 GB
 
 For a .NET 8 API, the final image size on Nano Server is typically 300-400 MB total, compared to 2+ GB on Server Core.
 
@@ -147,14 +146,15 @@ Go compiles to a single binary, making it perfect for Nano Server.
 ```dockerfile
 # Dockerfile - Go application on Nano Server
 # Stage 1: Build the Go binary
-FROM golang:1.22-windowsservercore-ltsc2022 AS build
+FROM golang:1.26-windowsservercore-ltsc2022 AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-# Build a static binary for Windows
+# Build a single Windows binary without cgo dependencies
+ENV CGO_ENABLED=0
 RUN go build -o /app/server.exe ./cmd/server
 
 # Stage 2: Run on Nano Server
@@ -180,10 +180,10 @@ FROM mcr.microsoft.com/windows/servercore:ltsc2022 AS download
 SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop';"]
 
 # Download Node.js binary distribution
-RUN Invoke-WebRequest -Uri "https://nodejs.org/dist/v20.11.0/node-v20.11.0-win-x64.zip" \
+RUN Invoke-WebRequest -Uri "https://nodejs.org/dist/v24.15.0/node-v24.15.0-win-x64.zip" \
     -OutFile "C:\node.zip"; \
     Expand-Archive -Path "C:\node.zip" -DestinationPath "C:\"; \
-    Rename-Item "C:\node-v20.11.0-win-x64" "C:\nodejs"
+    Rename-Item "C:\node-v24.15.0-win-x64" "C:\nodejs"
 
 # Stage 2: Copy Node.js to Nano Server
 FROM mcr.microsoft.com/windows/nanoserver:ltsc2022
@@ -191,16 +191,11 @@ FROM mcr.microsoft.com/windows/nanoserver:ltsc2022
 # Copy Node.js binaries
 COPY --from=download C:/nodejs C:/nodejs
 
-# Add Node.js to PATH
-USER ContainerAdministrator
-RUN setx /M PATH "%PATH%;C:\nodejs"
-USER ContainerUser
-
 WORKDIR /app
 
 # Copy application files
 COPY package*.json ./
-RUN C:\nodejs\npm.exe install --production
+RUN C:\nodejs\npm.cmd install --omit=dev
 
 COPY . .
 
@@ -210,7 +205,7 @@ CMD ["C:\\nodejs\\node.exe", "server.js"]
 
 ## Working Without PowerShell
 
-Nano Server includes PowerShell Core (pwsh), not the full Windows PowerShell. Some operations that are simple on Server Core require different approaches.
+Nano Server does not include Windows PowerShell or PowerShell Core by default. Some operations that are simple on Server Core require different approaches.
 
 ```dockerfile
 FROM mcr.microsoft.com/windows/nanoserver:ltsc2022
@@ -219,9 +214,8 @@ FROM mcr.microsoft.com/windows/nanoserver:ltsc2022
 RUN cmd /c "mkdir C:\app\data"
 RUN cmd /c "echo configuration=default > C:\app\config.txt"
 
-# For more complex operations, use PowerShell Core
-# Note: PowerShell Core uses 'pwsh' not 'powershell'
-# On Nano Server, you may need to install pwsh separately or use cmd
+# For more complex operations, install PowerShell Core yourself,
+# copy prepared files from a Server Core build stage, or use cmd.
 ```
 
 ## Health Checks on Nano Server
@@ -232,7 +226,7 @@ Health checks need to work within Nano Server's limited toolset.
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-nanoserver-ltsc2022
 
 WORKDIR /app
-COPY --from=build /app/publish .
+COPY ./publish .
 
 EXPOSE 8080
 
@@ -263,7 +257,7 @@ catch
 }
 ```
 
-## Multi-Architecture Builds
+## Multi-Version Builds
 
 Build images that work on different Windows versions by using manifest lists.
 
@@ -287,7 +281,7 @@ ARG BASE_TAG=ltsc2022
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-nanoserver-${BASE_TAG}
 
 WORKDIR /app
-COPY --from=build /app/publish .
+COPY ./publish .
 ENTRYPOINT ["dotnet", "MyApi.dll"]
 ```
 
@@ -303,8 +297,8 @@ docker run --rm -v ${PWD}:C:\check mcr.microsoft.com/windows/nanoserver:ltsc2022
 
 **Cannot install software using MSI.** Nano Server has no MSI installer. Use zip-based distributions or copy binaries from a Server Core build stage.
 
-**PowerShell commands fail.** Remember that Nano Server uses PowerShell Core (pwsh), not Windows PowerShell. Many cmdlets from the full PowerShell are not available. Use cmd.exe for simple operations or find PowerShell Core equivalents.
+**PowerShell commands fail.** Nano Server does not include Windows PowerShell or PowerShell Core by default. Use cmd.exe for simple operations, install PowerShell Core yourself, or do PowerShell-based setup in a Server Core build stage.
 
 ## Conclusion
 
-Nano Server is the right choice when your application runs on .NET 6+ or compiles to a standalone binary. The image size savings are dramatic, pulling a 300 MB image versus a 2 GB one makes a real difference in CI/CD pipeline speed and container startup times. The trade-off is a reduced API surface, so applications with legacy Windows dependencies need Server Core instead. For new microservices and modern .NET applications, Nano Server should be your default Windows base image.
+Nano Server is the right choice when your application runs on a supported modern .NET runtime or compiles to a standalone binary. The image size savings are dramatic, pulling a 300 MB image versus a 2 GB one makes a real difference in CI/CD pipeline speed and container startup times. The trade-off is a reduced API surface, so applications with legacy Windows dependencies need Server Core instead. For new microservices and modern .NET applications, Nano Server should be your default Windows base image.
