@@ -18,8 +18,10 @@ Install CDK8s CLI and create a Python project:
 
 ```bash
 # Install CDK8s CLI
-
 npm install -g cdk8s-cli
+
+# Install uv if your system does not already have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Create new Python project
 mkdir k8s-app && cd k8s-app
@@ -99,7 +101,7 @@ class WebApp(Chart):
                                 ),
                                 liveness_probe=k8s.Probe(
                                     http_get=k8s.HttpGetAction(
-                                        path='/health',
+                                        path='/',
                                         port=k8s.IntOrString.from_number(80)
                                     ),
                                     initial_delay_seconds=10,
@@ -141,7 +143,7 @@ Generate manifests:
 cdk8s synth
 ```
 
-This creates dist/webapp.k8s.yaml with all resources. Python's type checking catches errors at development time instead of deployment.
+This creates dist/webapp.k8s.yaml with all resources. Generated Python bindings and static type checkers can catch many errors at development time instead of deployment.
 
 ## Building Reusable Components
 
@@ -488,7 +490,7 @@ Add conditional logic:
 
 ```python
 from constructs import Construct
-from cdk8s import App, Chart
+from cdk8s import App, ApiObject, ApiObjectMetadata, Chart, JsonPatch
 from imports import k8s
 
 class DatabaseApp(Chart):
@@ -522,10 +524,30 @@ class DatabaseApp(Chart):
                                 name='postgres',
                                 image='postgres:15',
                                 ports=[k8s.ContainerPort(container_port=5432)],
+                                env=[
+                                    k8s.EnvVar(
+                                        name='POSTGRES_PASSWORD',
+                                        value='postgres'
+                                    )
+                                ],
                                 volume_mounts=[
                                     k8s.VolumeMount(
                                         name='data',
                                         mount_path='/var/lib/postgresql/data'
+                                    )
+                                ]
+                            ),
+                            k8s.Container(
+                                name='postgres-exporter',
+                                image='quay.io/prometheuscommunity/postgres-exporter:v0.19.1',
+                                ports=[k8s.ContainerPort(
+                                    container_port=9187,
+                                    name='metrics'
+                                )],
+                                env=[
+                                    k8s.EnvVar(
+                                        name='DATA_SOURCE_NAME',
+                                        value='postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable'
                                     )
                                 ]
                             )
@@ -533,8 +555,7 @@ class DatabaseApp(Chart):
                     )
                 ),
                 volume_claim_templates=[
-                    k8s.KubePersistentVolumeClaim(
-                        self, 'pvc',
+                    k8s.KubePersistentVolumeClaimProps(
                         metadata=k8s.ObjectMeta(name='data'),
                         spec=k8s.PersistentVolumeClaimSpec(
                             access_modes=['ReadWriteOnce'],
@@ -547,7 +568,27 @@ class DatabaseApp(Chart):
             )
         )
 
-        # Optional read replica
+        k8s.KubeService(
+            self, 'postgres-service',
+            metadata=k8s.ObjectMeta(
+                name='postgres',
+                labels=labels
+            ),
+            spec=k8s.ServiceSpec(
+                selector=labels,
+                ports=[k8s.ServicePort(
+                    name='postgres',
+                    port=5432,
+                    target_port=k8s.IntOrString.from_number(5432)
+                ), k8s.ServicePort(
+                    name='metrics',
+                    port=9187,
+                    target_port=k8s.IntOrString.from_number(9187)
+                )]
+            )
+        )
+
+        # Optional second PostgreSQL instance for demonstration
         if enable_replica:
             k8s.KubeStatefulSet(
                 self, 'replica',
@@ -570,10 +611,31 @@ class DatabaseApp(Chart):
                                 k8s.Container(
                                     name='postgres',
                                     image='postgres:15',
+                                    ports=[k8s.ContainerPort(container_port=5432)],
                                     env=[
                                         k8s.EnvVar(
-                                            name='REPLICA_MODE',
-                                            value='true'
+                                            name='POSTGRES_PASSWORD',
+                                            value='postgres'
+                                        )
+                                    ],
+                                    volume_mounts=[
+                                        k8s.VolumeMount(
+                                            name='data',
+                                            mount_path='/var/lib/postgresql/data'
+                                        )
+                                    ]
+                                ),
+                                k8s.Container(
+                                    name='postgres-exporter',
+                                    image='quay.io/prometheuscommunity/postgres-exporter:v0.19.1',
+                                    ports=[k8s.ContainerPort(
+                                        container_port=9187,
+                                        name='metrics'
+                                    )],
+                                    env=[
+                                        k8s.EnvVar(
+                                            name='DATA_SOURCE_NAME',
+                                            value='postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable'
                                         )
                                     ]
                                 )
@@ -581,8 +643,7 @@ class DatabaseApp(Chart):
                         )
                     ),
                     volume_claim_templates=[
-                        k8s.KubePersistentVolumeClaim(
-                            self, 'replica-pvc',
+                        k8s.KubePersistentVolumeClaimProps(
                             metadata=k8s.ObjectMeta(name='data'),
                             spec=k8s.PersistentVolumeClaimSpec(
                                 access_modes=['ReadWriteOnce'],
@@ -595,15 +656,41 @@ class DatabaseApp(Chart):
                 )
             )
 
+            k8s.KubeService(
+                self, 'postgres-replica-service',
+                metadata=k8s.ObjectMeta(
+                    name='postgres-replica',
+                    labels={**labels, 'role': 'replica'}
+                ),
+                spec=k8s.ServiceSpec(
+                    selector={**labels, 'role': 'replica'},
+                    ports=[k8s.ServicePort(
+                        name='postgres',
+                        port=5432,
+                        target_port=k8s.IntOrString.from_number(5432)
+                    ), k8s.ServicePort(
+                        name='metrics',
+                        port=9187,
+                        target_port=k8s.IntOrString.from_number(9187)
+                    )]
+                )
+            )
+
         # Optional monitoring
         if enable_monitoring:
-            k8s.KubeServiceMonitor(
-                self, 'monitor',
-                metadata=k8s.ObjectMeta(
+            monitor = ApiObject(
+                self,
+                'monitor',
+                api_version='monitoring.coreos.com/v1',
+                kind='ServiceMonitor',
+                metadata=ApiObjectMetadata(
                     name='postgres-monitor',
                     labels=labels
-                ),
-                spec={
+                )
+            )
+            monitor.add_json_patch(JsonPatch.add(
+                '/spec',
+                {
                     'selector': {
                         'matchLabels': labels
                     },
@@ -612,7 +699,7 @@ class DatabaseApp(Chart):
                         'interval': '30s'
                     }]
                 }
-            )
+            ))
 
 app = App()
 DatabaseApp(app, "database", enable_replica=True, enable_monitoring=True)
