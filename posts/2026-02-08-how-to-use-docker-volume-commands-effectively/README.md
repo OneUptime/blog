@@ -8,13 +8,13 @@ Description: A practical guide to Docker volume commands for creating, managing,
 
 ---
 
-Containers are ephemeral by design. When a container stops, its writable layer disappears. That is fine for stateless application servers, but databases, file uploads, and configuration data need to survive container restarts. Docker volumes solve this problem.
+Containers are ephemeral by design. When a container is removed, its writable layer disappears. That is fine for stateless application servers, but databases, file uploads, and configuration data need to survive container removal and replacement. Docker volumes solve this problem.
 
-Volumes are the preferred way to persist data in Docker. They are managed by the Docker daemon, work across all platforms, and can be backed up, shared, and migrated between containers. This guide walks through every `docker volume` command with practical examples.
+Volumes are the preferred way to persist data in Docker. They are managed by the Docker daemon, work across Docker-supported platforms, and can be backed up, shared, and migrated between containers. This guide walks through the core `docker volume` commands with practical examples.
 
 ## Why Volumes Over Bind Mounts
 
-Docker offers three storage options: volumes, bind mounts, and tmpfs mounts. Volumes win for most production use cases because they are fully managed by Docker, work identically on Linux and Mac, do not depend on host directory structure, and can use volume drivers for remote storage.
+Docker offers three storage options: volumes, bind mounts, and tmpfs mounts. Volumes win for most production use cases because they are fully managed by Docker, do not depend on host directory structure, and can use volume drivers for remote storage.
 
 Bind mounts tie you to a specific path on the host filesystem. Volumes abstract that away and give you portability.
 
@@ -117,7 +117,7 @@ docker volume inspect --format '{{.Mountpoint}}' my-data
 
 The most common way to use volumes is with the `-v` or `--mount` flag when running containers.
 
-Mount a named volume into a container at /data:
+Mount a named volume into a container at the PostgreSQL data directory:
 
 ```bash
 docker run -d \
@@ -241,8 +241,6 @@ Docker Compose makes volume management declarative. Define volumes in your compo
 A docker-compose.yml that defines named volumes for persistent database and cache storage:
 
 ```yaml
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16
@@ -290,22 +288,28 @@ docker container rm -f my-postgres
 docker volume rm pgdata
 ```
 
-Remove all unused volumes (dangerous in production - verify first):
+Remove unused anonymous volumes (dangerous in production - verify first):
 
 ```bash
 docker volume prune
 ```
 
+Remove all unused volumes, including named volumes:
+
+```bash
+docker volume prune --all
+```
+
 Skip the confirmation prompt:
 
 ```bash
-docker volume prune --force
+docker volume prune --all --force
 ```
 
 Filter the prune to only remove volumes with specific labels:
 
 ```bash
-docker volume prune --filter "label=env=development"
+docker volume prune --all --filter "label=env=development"
 ```
 
 ## Checking Volume Disk Usage
@@ -326,7 +330,7 @@ This shows a breakdown of images, containers, and volumes with their sizes. For 
 | `docker volume create` | Create a new volume |
 | `docker volume inspect` | Show detailed volume info |
 | `docker volume rm` | Remove a volume |
-| `docker volume prune` | Remove all unused volumes |
+| `docker volume prune` | Remove unused anonymous volumes |
 
 ## Conclusion
 
