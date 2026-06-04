@@ -42,7 +42,7 @@ curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stabl
 chmod +x kubectl && sudo mv kubectl /usr/local/bin/
 
 # Install the Argo CLI
-curl -sLO https://github.com/argoproj/argo-workflows/releases/download/v3.5.5/argo-linux-amd64.gz
+curl -sLO https://github.com/argoproj/argo-workflows/releases/download/v4.0.5/argo-linux-amd64.gz
 gunzip argo-linux-amd64.gz
 chmod +x argo-linux-amd64 && sudo mv argo-linux-amd64 /usr/local/bin/argo
 ```
@@ -55,7 +55,6 @@ Create a k3d cluster that runs entirely in Docker.
 # Create a k3d cluster with port mappings for the Argo UI
 k3d cluster create argo-dev \
   --port "2746:30746@server:0" \
-  --port "9000:30900@server:0" \
   --agents 2 \
   --wait
 
@@ -74,7 +73,7 @@ Install Argo Workflows into the cluster.
 kubectl create namespace argo
 
 # Install Argo Workflows
-kubectl apply -n argo -f https://github.com/argoproj/argo-workflows/releases/download/v3.5.5/install.yaml
+kubectl apply -n argo -f https://github.com/argoproj/argo-workflows/releases/download/v4.0.5/install.yaml
 
 # Wait for the deployment to be ready
 kubectl wait --for=condition=available deployment/argo-server -n argo --timeout=120s
@@ -127,7 +126,7 @@ kubectl apply -f hello-world.yaml
 
 ## Multi-Step CI/CD Pipeline
 
-Here is a realistic CI/CD pipeline workflow with parallel steps, artifact passing, and conditional execution.
+Here is a realistic CI/CD pipeline workflow with parallel steps, a shared workspace volume, and conditional execution.
 
 ```yaml
 # ci-pipeline.yaml - Multi-step CI/CD workflow
@@ -138,10 +137,6 @@ metadata:
   namespace: argo
 spec:
   entrypoint: ci-pipeline
-  # Store artifacts in the built-in artifact repository
-  artifactRepositoryRef:
-    configMap: artifact-repositories
-    key: default-v1
 
   # Input parameters for the pipeline
   arguments:
@@ -287,7 +282,8 @@ metadata:
   namespace: argo
 spec:
   # Run every night at 2 AM UTC
-  schedule: "0 2 * * *"
+  schedules:
+    - "0 2 * * *"
   timezone: "UTC"
   concurrencyPolicy: "Replace"
   startingDeadlineSeconds: 0
@@ -320,8 +316,8 @@ argo watch -n argo @latest
 # View workflow logs
 argo logs -n argo @latest
 
-# View logs for a specific step
-argo logs -n argo @latest --step-name test
+# View logs for a specific workflow pod
+argo logs -n argo @latest <pod-name>
 ```
 
 ## Cleanup
