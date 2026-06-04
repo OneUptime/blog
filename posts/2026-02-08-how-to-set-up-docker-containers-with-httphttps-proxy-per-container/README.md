@@ -40,7 +40,7 @@ docker run -d \
   my-app:latest
 ```
 
-Both uppercase and lowercase variants are set because different tools respect different conventions. `curl` uses lowercase, `wget` uses uppercase, and some libraries check both.
+Both uppercase and lowercase variants are set because different tools respect different conventions. For example, `curl` requires lowercase `http_proxy` for HTTP proxying, while many libraries check uppercase, lowercase, or both.
 
 ## Method 2: Docker Compose Per Service
 
@@ -49,8 +49,6 @@ Docker Compose makes per-container proxy configuration clean and readable.
 This Compose file sets different proxies for different services:
 
 ```yaml
-version: "3.8"
-
 services:
   # This service routes through the corporate proxy
   backend:
@@ -110,8 +108,6 @@ no_proxy=localhost,127.0.0.1
 Reference them in Docker Compose:
 
 ```yaml
-version: "3.8"
-
 services:
   backend:
     image: my-backend:latest
@@ -153,12 +149,7 @@ Pass proxy settings as build arguments:
 ```dockerfile
 FROM python:3.12-slim
 
-# Accept proxy settings as build arguments
-ARG HTTP_PROXY
-ARG HTTPS_PROXY
-ARG NO_PROXY
-
-# These are automatically available to RUN commands
+# Docker's predefined proxy build arguments are automatically available to RUN commands
 WORKDIR /app
 COPY requirements.txt .
 
@@ -179,9 +170,9 @@ docker build \
   -t my-app:latest .
 ```
 
-Docker handles `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` as predefined build arguments. They are applied automatically without needing explicit `ARG` declarations, but declaring them makes the Dockerfile more readable.
+Docker handles `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` as predefined build arguments. They are applied automatically without needing explicit `ARG` declarations.
 
-**Important**: Build arguments with proxy settings are not persisted in the final image. They only apply during the build process.
+**Important**: Build arguments with proxy settings are not persisted in the final image. They only apply during the build process. Avoid declaring or referencing proxy `ARG` values in the Dockerfile unless you need to, because that can expose them in build history and affect cache behavior.
 
 ## Configuring NO_PROXY Correctly
 
@@ -196,7 +187,7 @@ NO_PROXY=localhost,127.0.0.1
 # Add Docker service names (they resolve internally)
 NO_PROXY=localhost,127.0.0.1,postgres,redis,backend,frontend
 
-# Add internal network ranges
+# Add internal network ranges when your HTTP client supports CIDR entries
 NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
 
 # Add company internal domains
@@ -208,6 +199,8 @@ NO_PROXY=localhost,127.0.0.1,postgres,redis,.company.com,10.0.0.0/8,172.16.0.0/1
 
 If you forget to include Docker service names in `NO_PROXY`, inter-service communication attempts to route through the proxy and fails.
 
+Different HTTP clients parse `NO_PROXY` differently because there is no single universal standard. Test CIDR, wildcard, and domain-suffix entries with the tools your container actually runs.
+
 ## Running a Per-Container HTTP Proxy
 
 You can run an HTTP proxy as a Docker service and route specific container traffic through it.
@@ -215,8 +208,6 @@ You can run an HTTP proxy as a Docker service and route specific container traff
 Run Squid as an HTTP proxy:
 
 ```yaml
-version: "3.8"
-
 services:
   # Squid HTTP proxy
   squid:
@@ -261,14 +252,16 @@ http_access deny all
 
 Different programming languages handle proxy environment variables differently.
 
-**Node.js**: The `http` and `https` modules do not automatically use proxy environment variables. You need a library like `global-agent` or `https-proxy-agent`.
+**Node.js**: Recent Node.js versions can use proxy environment variables when started with `NODE_USE_ENV_PROXY=1` or `--use-env-proxy`. Older versions and many application libraries need explicit proxy configuration, such as `https-proxy-agent`.
 
 ```javascript
-// Node.js needs explicit proxy configuration
+const https = require('node:https');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const agent = new HttpsProxyAgent(process.env.HTTPS_PROXY);
 
-fetch('https://api.example.com', { agent });
+https.get('https://api.example.com', { agent }, (response) => {
+  console.log(response.statusCode);
+});
 ```
 
 **Python**: The `requests` library respects proxy environment variables automatically.
@@ -281,7 +274,7 @@ response = requests.get('https://api.example.com')
 
 **Go**: The `http` package respects proxy environment variables by default through `http.ProxyFromEnvironment`.
 
-**Java**: Set proxy through system properties: `-Dhttp.proxyHost=proxy.company.com -Dhttp.proxyPort=8080`.
+**Java**: Set proxy through system properties: `-Dhttp.proxyHost=proxy.company.com -Dhttp.proxyPort=8080 -Dhttps.proxyHost=proxy.company.com -Dhttps.proxyPort=8080`.
 
 ## Verifying Proxy Configuration
 
