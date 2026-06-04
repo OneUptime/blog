@@ -8,12 +8,12 @@ Description: Learn how to set up Grafana Unified Alerting with multiple notifica
 
 ---
 
-Grafana Unified Alerting consolidates alert management across all datasources into a single, powerful alerting system. Unlike legacy alerting limited to graph panels, Unified Alerting supports multi-dimensional rules, routing trees, and complex notification policies. This guide covers configuring alert rules, contact points, and notification policies to build a robust alerting infrastructure.
+Grafana Unified Alerting consolidates alert management across supported alerting-enabled datasources into a single, powerful alerting system. Unlike legacy alerting limited to graph panels, Unified Alerting supports multi-dimensional rules, routing trees, and complex notification policies. This guide covers configuring alert rules, contact points, and notification policies to build a robust alerting infrastructure.
 
 ## Understanding Grafana Unified Alerting
 
 Unified Alerting provides:
-- Alert rules that query any datasource
+- Alert rules that query supported alerting-enabled datasources
 - Multi-dimensional alert instances
 - Flexible routing via notification policies
 - Contact points for various integrations
@@ -42,9 +42,6 @@ grafana:
       enabled: true
       # Admin config API for provisioning
       admin_config_poll_interval: 60s
-
-    alerting:
-      enabled: false  # Disable legacy alerting
 
   # SMTP for email notifications
   smtp:
@@ -80,7 +77,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: avg(rate(container_cpu_usage_seconds_total{namespace="production"}[5m])) by (pod)
+              expr: avg(rate(container_cpu_usage_seconds_total{namespace="production"}[5m])) by (pod) * 100
               refId: A
 
           - refId: B
@@ -106,7 +103,7 @@ groups:
               expression: B
               conditions:
                 - evaluator:
-                    params: [0.8]
+                    params: [80]
                     type: gt
               refId: C
 
@@ -114,7 +111,7 @@ groups:
         execErrState: Alerting
         for: 5m
         annotations:
-          description: 'Pod {{ $labels.pod }} CPU usage is {{ $values.A.Value }}%'
+          description: 'Pod {{ $labels.pod }} CPU usage is {{ $values.B.Value }}%'
           summary: 'High CPU detected'
         labels:
           severity: warning
@@ -323,20 +320,20 @@ routes:
   - receiver: pagerduty-production
     matchers:
       - environment = production
-      - severity =~ critical|high
+      - severity =~ "critical|high"
     group_wait: 0s
     repeat_interval: 5m
 
   # Staging alerts (less frequent)
   - receiver: slack-staging
     matchers:
-      - environment =~ staging|qa
+      - environment =~ "staging|qa"
     repeat_interval: 12h
 
   # Specific namespaces
   - receiver: team-payments
     matchers:
-      - namespace =~ payment.*|billing.*
+      - namespace =~ "payment.*|billing.*"
       - severity != info
 
   # Alerts without team label
@@ -499,20 +496,19 @@ Test contact points:
 # Alerting > Contact points > [Select contact point] > Test
 
 # Or via API
-curl -X POST http://grafana:3000/api/alertmanager/grafana/api/v1/alerts/test \
+curl -X POST http://grafana:3000/apis/notifications.alerting.grafana.app/v1beta1/namespaces/default/receivers/slack-platform-receiver/test \
   -H 'Content-Type: application/json' \
   -u admin:password \
   -d '{
-    "receivers": [{
-      "name": "slack-platform",
-      "grafana_managed_receiver_configs": [{
-        "name": "slack-platform",
+    "integration": {
+        "uid": "slack-platform-receiver",
         "type": "slack",
+        "version": "1",
         "settings": {
-          "url": "https://hooks.slack.com/services/YOUR/WEBHOOK"
+          "url": "https://hooks.slack.com/services/YOUR/WEBHOOK",
+          "recipient": "#platform-alerts"
         }
-      }]
-    }],
+    },
     "alert": {
       "labels": {
         "alertname": "TestAlert",
@@ -530,14 +526,14 @@ curl -X POST http://grafana:3000/api/alertmanager/grafana/api/v1/alerts/test \
 Track alert rule evaluation:
 
 ```promql
-# Alert rule evaluations
-grafana_alerting_rule_evaluations_total
+# Alert scheduler tick duration
+grafana_alerting_schedule_periodic_duration_seconds_bucket
 
-# Failed evaluations
-grafana_alerting_rule_evaluation_failures_total
+# Scheduled alert rules
+grafana_alerting_schedule_alert_rules
 
 # Notification sending duration
-grafana_alerting_notification_latency_seconds
+grafana_alerting_notification_latency_seconds_bucket
 ```
 
 ## Best Practices
