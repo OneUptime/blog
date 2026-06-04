@@ -35,8 +35,6 @@ For a more robust deployment, use PostgreSQL instead of SQLite:
 
 ```yaml
 # docker-compose.yml - Gitea with PostgreSQL
-version: "3.8"
-
 services:
   gitea:
     image: gitea/gitea:1.22
@@ -121,7 +119,7 @@ environment:
 
   # Configure repository defaults
   - GITEA__repository__DEFAULT_BRANCH=main
-  - GITEA__repository__DEFAULT_PRIVATE=true
+  - GITEA__repository__DEFAULT_PRIVATE=private
 
   # Attachment size limits
   - GITEA__attachment__MAX_SIZE=50
@@ -137,7 +135,7 @@ environment:
 
 ## Setting Up Gitea Actions
 
-Gitea Actions provides GitHub Actions-compatible CI/CD. First, enable it in your configuration:
+Gitea Actions provides GitHub Actions-compatible CI/CD. Gitea 1.22 enables Actions at the instance level by default, but you can explicitly keep it enabled in your configuration:
 
 ```yaml
 # Add to gitea service environment
@@ -165,7 +163,7 @@ Then deploy an Actions runner:
 
 Get the registration token from Gitea's admin panel under Site Administration > Runners.
 
-Now you can use workflow files in your repositories:
+Enable Actions in each repository's settings page, then you can use workflow files in your repositories:
 
 ```yaml
 # .gitea/workflows/ci.yaml - example CI workflow
@@ -261,11 +259,18 @@ curl -X POST http://localhost:3000/api/v1/repos/migrate \
 Gitea includes a built-in backup command:
 
 ```bash
-# Create a full backup
-docker exec gitea /usr/local/bin/gitea dump -c /data/gitea/conf/app.ini
+# Stop Gitea for a consistent backup
+docker compose stop gitea
 
-# The backup zip file is created in the current directory inside the container
-docker cp gitea:/app/gitea/gitea-dump-*.zip ./backups/
+# Create a full backup
+docker exec -u git -w /tmp gitea sh -c '/usr/local/bin/gitea dump -c /data/gitea/conf/app.ini && cp "$(ls -t /tmp/gitea-dump-*.zip | head -n1)" /tmp/gitea-dump.zip'
+
+# Copy the backup zip file from /tmp inside the container
+mkdir -p ./backups
+docker cp gitea:/tmp/gitea-dump.zip ./backups/
+
+# Start Gitea again
+docker compose start gitea
 ```
 
 For database-level backups with PostgreSQL:
@@ -285,10 +290,14 @@ docker compose stop gitea
 docker exec -i gitea-db psql -U gitea gitea < gitea-db-backup.sql
 
 # Restore Gitea data from the dump file
-docker exec gitea unzip /data/gitea-dump-*.zip -d /data/restore/
+docker cp ./backups/gitea-dump.zip gitea:/tmp/
+docker exec --user git -w /tmp gitea sh -c 'rm -rf /tmp/gitea-restore && mkdir /tmp/gitea-restore && unzip /tmp/gitea-dump.zip -d /tmp/gitea-restore && cd /tmp/gitea-restore/gitea-dump-* && mv data/* /data/gitea && mv repos/* /data/git/repositories/'
 
 # Start Gitea
 docker compose start gitea
+
+# Regenerate Git hooks after restoring
+docker exec --user git gitea /usr/local/bin/gitea -c /data/gitea/conf/app.ini admin regenerate hooks
 ```
 
 Resource Usage
