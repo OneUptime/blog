@@ -14,7 +14,7 @@ This guide shows you how to set up VNC servers inside Docker containers, connect
 
 ## How VNC Works with Docker
 
-VNC uses a client-server model. A VNC server runs inside the container, rendering graphical output to a virtual framebuffer. A VNC client on your host machine connects to the server and displays the remote desktop. The container exposes a VNC port (typically 5900) that your client connects to.
+VNC uses a client-server model. A VNC server runs inside the container, rendering graphical output to a virtual X display or framebuffer. A VNC client on your host machine connects to the server and displays the remote desktop. The container exposes a VNC port (typically 5900) that your client connects to.
 
 The flow looks like this:
 
@@ -22,7 +22,7 @@ The flow looks like this:
 graph LR
     A[VNC Client on Host] -->|Port 5900| B[Docker Container]
     B --> C[VNC Server - TigerVNC/x11vnc]
-    C --> D[Xvfb Virtual Display]
+    C --> D[Virtual X Display / Framebuffer]
     D --> E[GUI Application]
 ```
 
@@ -69,7 +69,7 @@ RUN echo '#!/bin/bash\nstartxfce4 &' > /home/vncuser/.vnc/xstartup && \
 EXPOSE 5901
 
 # Start VNC server on display :1 (port 5901)
-CMD ["vncserver", ":1", "-geometry", "1280x720", "-depth", "24", "-fg"]
+CMD ["vncserver", ":1", "-geometry", "1280x720", "-depth", "24", "-localhost", "no", "-fg"]
 ```
 
 Build and run the container.
@@ -126,7 +126,7 @@ USER root
 RUN cat > /start.sh << 'SCRIPT'
 #!/bin/bash
 # Start VNC server as vncuser
-su - vncuser -c "vncserver :1 -geometry 1280x720 -depth 24"
+su - vncuser -c "vncserver :1 -geometry 1280x720 -depth 24 -localhost no"
 # Start noVNC web proxy on port 6080
 websockify --web /usr/share/novnc 6080 localhost:5901
 SCRIPT
@@ -155,12 +155,12 @@ You do not always need a full desktop. Run individual applications with VNC.
 
 ```dockerfile
 # Dockerfile.firefox - Firefox browser in a container
-FROM ubuntu:22.04
+FROM debian:12
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
-    firefox \
+    firefox-esr \
     tigervnc-standalone-server \
     tigervnc-common \
     novnc \
@@ -177,13 +177,13 @@ WORKDIR /home/browser
 RUN mkdir -p .vnc && \
     echo "firefox" | vncpasswd -f > .vnc/passwd && \
     chmod 600 .vnc/passwd && \
-    echo '#!/bin/bash\nfirefox &' > .vnc/xstartup && \
+    echo '#!/bin/bash\nfirefox-esr &' > .vnc/xstartup && \
     chmod +x .vnc/xstartup
 
 USER root
 RUN cat > /start.sh << 'SCRIPT'
 #!/bin/bash
-su - browser -c "vncserver :1 -geometry 1920x1080 -depth 24"
+su - browser -c "vncserver :1 -geometry 1920x1080 -depth 24 -localhost no"
 websockify --web /usr/share/novnc 6080 localhost:5901
 SCRIPT
 RUN chmod +x /start.sh
@@ -198,7 +198,7 @@ docker build -f Dockerfile.firefox -t docker-firefox .
 docker run -d --name firefox -p 6080:6080 --shm-size=512m docker-firefox
 ```
 
-The `--shm-size=512m` flag is important for browsers. Without it, Chrome and Firefox crash because they need shared memory for rendering.
+The `--shm-size=512m` flag is important for browsers. Without enough shared memory, Chrome and Firefox can crash or behave unreliably because they need shared memory for rendering.
 
 ## Docker Compose Setup for VNC Environments
 
@@ -256,10 +256,11 @@ VNC containers are valuable for debugging automated browser tests. When a test f
 # docker-compose.test.yml - Selenium with VNC for test debugging
 services:
   selenium:
-    image: selenium/standalone-chrome-debug:latest
+    image: selenium/standalone-chrome:latest
     ports:
       - "4444:4444"  # Selenium WebDriver
       - "5900:5900"  # VNC for watching tests
+      - "7900:7900"  # noVNC browser access
     shm_size: '2g'
     environment:
       - SE_VNC_PASSWORD=secret
@@ -278,6 +279,7 @@ services:
 docker compose -f docker-compose.test.yml up
 
 # Connect VNC client to localhost:5900 (password: secret)
+# Or open noVNC at http://localhost:7900 (password: secret)
 # Watch tests execute in real time
 ```
 
@@ -292,7 +294,7 @@ docker run -d --shm-size=1g --name vnc-desktop -p 5901:5901 ubuntu-vnc
 # Use a lower color depth for faster network transfer
 # In the VNC server startup, use -depth 16 instead of -depth 24
 docker run -d --name vnc-fast -p 5901:5901 ubuntu-vnc \
-  vncserver :1 -geometry 1280x720 -depth 16 -fg
+  vncserver :1 -geometry 1280x720 -depth 16 -localhost no -fg
 
 # For remote access over slow networks, compress the VNC stream
 # Configure this in your VNC client settings (ZRLE or Tight encoding)
