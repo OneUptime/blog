@@ -14,7 +14,7 @@ Proper revision management ensures you can quickly recover from bad deployments 
 
 ## Understanding Revision History
 
-Every deployment update creates a new ReplicaSet:
+Every deployment update that changes the Pod template creates a new ReplicaSet:
 
 ```yaml
 apiVersion: apps/v1
@@ -157,12 +157,8 @@ spec:
 Or set via kubectl:
 
 ```bash
-# Update with change cause
-kubectl set image deployment/web-app nginx=nginx:1.25 \
-  --record=true  # Deprecated, use annotation instead
-
-# Better approach with annotation
-kubectl annotate deployment/web-app \
+# Set the annotation before the rollout so it is copied to the new revision
+kubectl annotate deployment/web-app --overwrite \
   kubernetes.io/change-cause="Update to nginx 1.25"
 
 kubectl set image deployment/web-app nginx=nginx:1.25
@@ -198,9 +194,15 @@ Automated rollback script:
 
 set -e
 
-NAMESPACE=${1:-default}
-DEPLOYMENT=$2
-TARGET_REVISION=$3
+if [ $# -eq 1 ]; then
+    NAMESPACE=default
+    DEPLOYMENT=$1
+    TARGET_REVISION=""
+else
+    NAMESPACE=${1:-default}
+    DEPLOYMENT=$2
+    TARGET_REVISION=$3
+fi
 
 if [ -z "$DEPLOYMENT" ]; then
     echo "Usage: $0 [namespace] <deployment> [revision]"
@@ -271,7 +273,7 @@ import sys
 
 config.load_kube_config()
 apps_v1 = client.AppsV1Api()
-v1 = client.CoreV1Api()
+api_client = client.ApiClient()
 
 def check_deployment_health(namespace, deployment_name, timeout=300):
     """Check if deployment is healthy."""
@@ -281,7 +283,7 @@ def check_deployment_health(namespace, deployment_name, timeout=300):
         deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
 
         # Check if all replicas are ready
-        replicas = deployment.spec.replicas
+        replicas = deployment.spec.replicas or 1
         ready_replicas = deployment.status.ready_replicas or 0
         updated_replicas = deployment.status.updated_replicas or 0
 
@@ -310,21 +312,43 @@ def rollback_deployment(namespace, deployment_name):
 
     # Get current revision
     deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
-    current_revision = deployment.metadata.annotations.get(
+    current_revision = int((deployment.metadata.annotations or {}).get(
         'deployment.kubernetes.io/revision', '0')
+    )
+    target_revision = current_revision - 1
 
     print(f"Current revision: {current_revision}")
+    print(f"Target revision: {target_revision}")
 
-    # Perform rollback
+    if target_revision < 1:
+        raise ValueError("No previous revision is available")
+
+    # Find the ReplicaSet that stores the target revision's Pod template
+    target_rs = None
+    replica_sets = apps_v1.list_namespaced_replica_set(namespace)
+    for rs in replica_sets.items:
+        owner_refs = rs.metadata.owner_references or []
+        owned_by_deployment = any(
+            ref.uid == deployment.metadata.uid and ref.kind == "Deployment"
+            for ref in owner_refs
+        )
+        revision = (rs.metadata.annotations or {}).get(
+            'deployment.kubernetes.io/revision')
+
+        if owned_by_deployment and revision == str(target_revision):
+            target_rs = rs
+            break
+
+    if target_rs is None:
+        raise ValueError(f"Revision {target_revision} was not found")
+
+    # apps/v1 removed spec.rollbackTo; patch the Deployment's Pod template
     body = {
         "spec": {
-            "rollbackTo": {
-                "revision": int(current_revision) - 1
-            }
+            "template": api_client.sanitize_for_serialization(
+                target_rs.spec.template)
         }
     }
-
-    # Note: rollbackTo is deprecated, use this instead:
     apps_v1.patch_namespaced_deployment(
         deployment_name,
         namespace,
@@ -412,17 +436,26 @@ spec:
                 jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name) \(.spec.revisionHistoryLimit // 10)"' | \
                 while read namespace deployment limit; do
                   echo "Checking $namespace/$deployment (limit: $limit)"
+                  deployment_uid=$(kubectl get deployment "$deployment" -n "$namespace" \
+                    -o jsonpath='{.metadata.uid}')
 
-                  # Get ReplicaSets for this deployment, sorted by creation time
-                  kubectl get rs -n $namespace \
-                    -l "app=$deployment" \
+                  # Get inactive ReplicaSets owned by this deployment, sorted oldest first
+                  mapfile -t old_rs < <(kubectl get rs -n "$namespace" \
                     --sort-by=.metadata.creationTimestamp -o json | \
-                    jq -r '.items[] | select(.spec.replicas == 0) | .metadata.name' | \
-                    tail -n +$((limit + 1)) | \
-                    while read rs; do
-                      echo "Deleting old ReplicaSet: $rs"
-                      kubectl delete rs $rs -n $namespace
-                    done
+                    jq -r --arg uid "$deployment_uid" '
+                      .items[]
+                      | select((.metadata.ownerReferences // [])[]? | .uid == $uid and .kind == "Deployment")
+                      | select(.spec.replicas == 0)
+                      | .metadata.name')
+
+                  delete_count=$((${#old_rs[@]} - limit))
+                  if [ "$delete_count" -gt 0 ]; then
+                    printf "%s\n" "${old_rs[@]:0:$delete_count}" | \
+                      while read rs; do
+                        echo "Deleting old ReplicaSet: $rs"
+                        kubectl delete rs "$rs" -n "$namespace"
+                      done
+                  fi
                 done
           restartPolicy: OnFailure
 ---
@@ -464,8 +497,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: critical-app
-  annotations:
-    deployment.kubernetes.io/paused: "true"  # Pause by default
 spec:
   paused: true
   revisionHistoryLimit: 20  # Keep more history for critical apps
