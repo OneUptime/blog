@@ -8,33 +8,65 @@ Description: Learn how to configure and use the Crossplane GCP provider to manag
 
 ---
 
-The Crossplane GCP provider enables managing Google Cloud resources through Kubernetes APIs. Provision Cloud SQL databases, GCS buckets, GKE clusters, and Compute Engine instances using kubectl instead of gcloud CLI or Terraform. The provider maintains continuous reconciliation between your Kubernetes manifests and actual GCP infrastructure.
+The Crossplane Upjet GCP provider family enables managing Google Cloud resources through Kubernetes APIs. Provision Cloud SQL databases, GCS buckets, GKE clusters, and Compute Engine instances using kubectl instead of gcloud CLI or Terraform. The provider maintains continuous reconciliation between your Kubernetes manifests and actual GCP infrastructure.
 
 Google Cloud's extensive API surface translates into hundreds of Kubernetes CRDs through the Crossplane provider. Each GCP resource type gets a corresponding Kubernetes resource definition, bringing infrastructure management into your GitOps workflows.
 
 ## Installing the GCP Provider
 
-Install the provider package:
+Install the provider packages needed for the examples:
 
 ```bash
-# Install GCP provider
-
-kubectl crossplane install provider \
-  xpkg.upbound.io/crossplane-contrib/provider-gcp:v0.36.0
+cat <<EOF | kubectl apply -f -
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-gcp-storage
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-gcp-storage:v1.12.1
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-gcp-sql
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-gcp-sql:v1.12.1
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-gcp-compute
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-gcp-compute:v1.12.1
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-gcp-container
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-gcp-container:v1.12.1
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-gcp-servicenetworking
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-gcp-servicenetworking:v1.12.1
+EOF
 
 # Check installation status
 kubectl get providers
 
 # Wait for provider to become healthy
 kubectl wait --for=condition=Healthy \
-  provider/provider-gcp \
+  provider/provider-gcp-storage \
   --timeout=300s
 
 # Verify CRDs are installed
-kubectl get crds | grep gcp.crossplane.io | wc -l
+kubectl get crds | grep gcp.upbound.io | wc -l
 ```
 
-The provider creates controllers for GCP services and installs CRDs representing GCP resources.
+Each service provider installs controllers for its GCP service and installs CRDs representing GCP resources. The service providers also install the shared GCP family provider for authentication.
 
 ## Creating a Service Account
 
@@ -86,7 +118,7 @@ rm crossplane-gcp-key.json
 Create ProviderConfig for authentication:
 
 ```yaml
-apiVersion: gcp.crossplane.io/v1beta1
+apiVersion: gcp.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
@@ -115,7 +147,7 @@ kubectl describe providerconfig default
 Create a GCS bucket:
 
 ```yaml
-apiVersion: storage.gcp.crossplane.io/v1alpha1
+apiVersion: storage.gcp.upbound.io/v1beta1
 kind: Bucket
 metadata:
   name: crossplane-gcs-bucket
@@ -124,16 +156,6 @@ spec:
     location: US
     storageClass: STANDARD
     uniformBucketLevelAccess: true
-    versioning:
-      enabled: true
-    encryption:
-      defaultKmsKeyName: ""
-    lifecycle:
-      rule:
-      - action:
-          type: Delete
-        condition:
-          age: 365
     labels:
       environment: production
       managed-by: crossplane
@@ -161,8 +183,8 @@ gsutil ls | grep crossplane-gcs-bucket
 Provision a PostgreSQL Cloud SQL database:
 
 ```yaml
-apiVersion: database.gcp.crossplane.io/v1beta1
-kind: CloudSQLInstance
+apiVersion: sql.gcp.upbound.io/v1beta2
+kind: DatabaseInstance
 metadata:
   name: crossplane-cloudsql
 spec:
@@ -170,26 +192,27 @@ spec:
     databaseVersion: POSTGRES_14
     region: us-central1
     settings:
-      tier: db-f1-micro
-      ipConfiguration:
-        ipv4Enabled: true
-        requireSsl: true
-        authorizedNetworks:
-        - name: allow-all
-          value: "0.0.0.0/0"
+    - tier: db-f1-micro
+      availabilityType: ZONAL
+      userLabels:
+        environment: production
+        managed-by: crossplane
       backupConfiguration:
-        enabled: true
+      - enabled: true
         startTime: "03:00"
         pointInTimeRecoveryEnabled: true
+      ipConfiguration:
+      - ipv4Enabled: true
+        sslMode: ENCRYPTED_ONLY
+        authorizedNetworks:
+        - name: allow-admin-network
+          value: "203.0.113.0/24"
       maintenanceWindow:
-        day: 7
+      - day: 7
         hour: 3
       databaseFlags:
       - name: max_connections
         value: "100"
-      userLabels:
-        environment: production
-        managed-by: crossplane
   writeConnectionSecretToRef:
     namespace: default
     name: cloudsql-conn
@@ -204,7 +227,7 @@ The connection secret contains the instance connection details.
 Create a Compute Engine VM:
 
 ```yaml
-apiVersion: compute.gcp.crossplane.io/v1beta1
+apiVersion: compute.gcp.upbound.io/v1beta1
 kind: Instance
 metadata:
   name: crossplane-vm
@@ -213,21 +236,19 @@ spec:
     zone: us-central1-a
     machineType: n1-standard-1
     bootDisk:
-      initializeParams:
-        sourceImage: projects/debian-cloud/global/images/family/debian-11
-        diskSizeGb: 20
+    - initializeParams:
+      - image: debian-cloud/debian-11
+        size: 20
     networkInterface:
     - network: default
       accessConfig:
-      - name: External NAT
-        type: ONE_TO_ONE_NAT
-    metadata:
-      startup-script: |
-        #!/bin/bash
-        apt-get update
-        apt-get install -y nginx
-        systemctl enable nginx
-        systemctl start nginx
+      - {}
+    metadataStartupScript: |
+      #!/bin/bash
+      apt-get update
+      apt-get install -y nginx
+      systemctl enable nginx
+      systemctl start nginx
     labels:
       environment: development
       managed-by: crossplane
@@ -240,41 +261,26 @@ spec:
 Deploy a Google Kubernetes Engine cluster:
 
 ```yaml
-apiVersion: container.gcp.crossplane.io/v1beta2
+apiVersion: container.gcp.upbound.io/v1beta1
 kind: Cluster
 metadata:
   name: crossplane-gke
+  labels:
+    name: crossplane-gke
 spec:
   forProvider:
-    initialClusterVersion: "1.27"
+    initialNodeCount: 1
     location: us-central1
     network: default
     subnetwork: default
-    addonsConfig:
-      httpLoadBalancing:
-        disabled: false
-      horizontalPodAutoscaling:
-        disabled: false
-    ipAllocationPolicy:
-      useIpAliases: true
-    masterAuth:
-      clientCertificateConfig:
-        issueClientCertificate: false
-    networkPolicy:
-      enabled: true
-      provider: CALICO
-    loggingService: logging.googleapis.com/kubernetes
-    monitoringService: monitoring.googleapis.com/kubernetes
+    removeDefaultNodePool: true
     resourceLabels:
       environment: production
       managed-by: crossplane
-  writeConnectionSecretToRef:
-    namespace: default
-    name: gke-kubeconfig
   providerConfigRef:
     name: default
 ---
-apiVersion: container.gcp.crossplane.io/v1beta1
+apiVersion: container.gcp.upbound.io/v1beta1
 kind: NodePool
 metadata:
   name: crossplane-gke-nodepool
@@ -283,32 +289,33 @@ spec:
     clusterSelector:
       matchLabels:
         name: crossplane-gke
+    location: us-central1
     initialNodeCount: 3
     autoscaling:
-      enabled: true
-      minNodeCount: 1
+    - minNodeCount: 1
       maxNodeCount: 5
-    config:
+    nodeConfig:
+    - oauthScopes:
+      - https://www.googleapis.com/auth/cloud-platform
       machineType: n1-standard-2
       diskSizeGb: 100
       diskType: pd-standard
       preemptible: false
-      oauthScopes:
-      - https://www.googleapis.com/auth/cloud-platform
     management:
+    - autoRepair: true
       autoUpgrade: true
-      autoRepair: true
   providerConfigRef:
     name: default
 ```
 
-Retrieve the kubeconfig:
+Retrieve credentials for the cluster:
 
 ```bash
-kubectl get secret gke-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 -d > gke-kubeconfig.yaml
-
 # Connect to GKE cluster
-export KUBECONFIG=gke-kubeconfig.yaml
+gcloud container clusters get-credentials crossplane-gke \
+  --region us-central1 \
+  --project $PROJECT_ID
+
 kubectl get nodes
 ```
 
@@ -317,20 +324,20 @@ kubectl get nodes
 Configure a custom VPC network:
 
 ```yaml
-apiVersion: compute.gcp.crossplane.io/v1beta1
+apiVersion: compute.gcp.upbound.io/v1beta1
 kind: Network
 metadata:
   name: crossplane-vpc
+  labels:
+    name: crossplane-vpc
 spec:
   forProvider:
     autoCreateSubnetworks: false
-    routingConfig:
-      routingMode: REGIONAL
     description: Crossplane managed VPC
   providerConfigRef:
     name: default
 ---
-apiVersion: compute.gcp.crossplane.io/v1beta1
+apiVersion: compute.gcp.upbound.io/v1beta1
 kind: Subnetwork
 metadata:
   name: crossplane-subnet
@@ -343,7 +350,7 @@ spec:
         name: crossplane-vpc
     privateIpGoogleAccess: true
     logConfig:
-      enable: true
+    - enable: true
       aggregationInterval: INTERVAL_5_SEC
       flowSampling: 0.5
   providerConfigRef:
@@ -369,12 +376,31 @@ gcloud iam service-accounts add-iam-policy-binding \
 kubectl annotate serviceaccount crossplane-gcp \
   -n crossplane-system \
   iam.gke.io/gcp-service-account=crossplane-sa@${PROJECT_ID}.iam.gserviceaccount.com
+
+# Run provider pods as the annotated Kubernetes service account
+cat <<EOF | kubectl apply -f -
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: gcp-workload-identity
+spec:
+  deploymentTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: crossplane-gcp
+EOF
+
+for provider in provider-gcp-storage provider-gcp-sql provider-gcp-compute provider-gcp-container provider-gcp-servicenetworking; do
+  kubectl patch provider "$provider" --type merge \
+    -p '{"spec":{"runtimeConfigRef":{"name":"gcp-workload-identity"}}}'
+done
 ```
 
 Update ProviderConfig:
 
 ```yaml
-apiVersion: gcp.crossplane.io/v1beta1
+apiVersion: gcp.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: workload-identity
@@ -389,7 +415,7 @@ spec:
 Configure different GCP projects:
 
 ```yaml
-apiVersion: gcp.crossplane.io/v1beta1
+apiVersion: gcp.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: production
@@ -402,7 +428,7 @@ spec:
       name: gcp-prod-creds
       key: creds
 ---
-apiVersion: gcp.crossplane.io/v1beta1
+apiVersion: gcp.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: development
@@ -423,18 +449,18 @@ Reference the appropriate config in resources.
 Link resources using selectors:
 
 ```yaml
-apiVersion: servicenetworking.gcp.crossplane.io/v1beta1
+apiVersion: servicenetworking.gcp.upbound.io/v1beta1
 kind: Connection
 metadata:
   name: cloudsql-private
 spec:
   forProvider:
-    parent: services/servicenetworking.googleapis.com
+    service: servicenetworking.googleapis.com
     networkSelector:
       matchLabels:
         name: crossplane-vpc
-    reservedPeeringRanges:
-    - google-managed-services-crossplane-vpc
+    reservedPeeringRangesRefs:
+    - name: google-managed-services-crossplane-vpc
   providerConfigRef:
     name: default
 ```
@@ -448,10 +474,10 @@ Track resource status:
 kubectl get managed | grep gcp
 
 # Check specific resource type
-kubectl get cloudsqlinstance
+kubectl get databaseinstance
 
 # Describe for detailed status
-kubectl describe cloudsqlinstance crossplane-cloudsql
+kubectl describe databaseinstance crossplane-cloudsql
 
 # Check synchronization status
 kubectl get bucket -o jsonpath='{.items[*].status.conditions[?(@.type=="Synced")].status}'
@@ -500,7 +526,7 @@ gcloud projects list
 kubectl describe bucket crossplane-gcs-bucket
 
 # View provider logs
-kubectl logs -n crossplane-system -l pkg.crossplane.io/provider=provider-gcp --tail=50
+kubectl logs -n crossplane-system -l pkg.crossplane.io/provider=provider-gcp-storage --tail=50
 ```
 
 **Permission errors**:
