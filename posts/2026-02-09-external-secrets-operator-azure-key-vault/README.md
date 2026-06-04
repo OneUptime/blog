@@ -218,7 +218,7 @@ Store credentials in Kubernetes:
 
 ```bash
 kubectl create secret generic azure-secret-sp \
-  --namespace external-secrets-system \
+  --namespace production \
   --from-literal=ClientID=$CLIENT_ID \
   --from-literal=ClientSecret=$CLIENT_SECRET
 ```
@@ -228,7 +228,7 @@ kubectl create secret generic azure-secret-sp \
 Create a SecretStore using Workload Identity:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: azure-keyvault
@@ -238,15 +238,12 @@ spec:
     azurekv:
       authType: WorkloadIdentity
       vaultUrl: "https://my-keyvault-prod.vault.azure.net"
-      serviceAccountRef:
-        name: external-secrets
-        namespace: external-secrets-system
 ```
 
 For a ClusterSecretStore accessible from all namespaces:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-keyvault-global
@@ -255,9 +252,6 @@ spec:
     azurekv:
       authType: WorkloadIdentity
       vaultUrl: "https://my-keyvault-prod.vault.azure.net"
-      serviceAccountRef:
-        name: external-secrets
-        namespace: external-secrets-system
 ```
 
 ## Creating SecretStore with Service Principal
@@ -265,7 +259,7 @@ spec:
 For service principal authentication:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: azure-keyvault
@@ -280,11 +274,9 @@ spec:
         clientId:
           name: azure-secret-sp
           key: ClientID
-          namespace: external-secrets-system
         clientSecret:
           name: azure-secret-sp
           key: ClientSecret
-          namespace: external-secrets-system
 ```
 
 ## Creating ExternalSecret Resources
@@ -294,7 +286,7 @@ spec:
 Sync a single secret from Azure Key Vault:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-password
@@ -318,7 +310,7 @@ spec:
 Fetch multiple secrets into one Kubernetes Secret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secrets
@@ -348,7 +340,7 @@ spec:
 Azure Key Vault supports versioning. Access specific versions:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: versioned-secret
@@ -378,7 +370,7 @@ spec:
 Transform secrets using templates:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-config
@@ -423,10 +415,10 @@ spec:
 
 ## Working with Certificates
 
-Azure Key Vault stores certificates differently. Access certificate components:
+Azure Key Vault stores certificates differently. Fetch the imported PFX certificate and transform it into the PEM fields Kubernetes expects:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: tls-certificate
@@ -438,19 +430,17 @@ spec:
     kind: SecretStore
   target:
     name: tls-certificate
-    type: kubernetes.io/tls
     creationPolicy: Owner
+    template:
+      type: kubernetes.io/tls
+      engineVersion: v2
+      data:
+        tls.crt: "{{ .tls | b64dec | pkcs12cert }}"
+        tls.key: "{{ .tls | b64dec | pkcs12key }}"
   data:
-  # Get certificate
-  - secretKey: tls.crt
+  - secretKey: tls
     remoteRef:
-      key: tls-cert
-      property: certificate
-  # Get private key
-  - secretKey: tls.key
-    remoteRef:
-      key: tls-cert
-      property: key
+      key: secret/tls-cert
 ```
 
 Use the certificate in an Ingress:
@@ -514,16 +504,16 @@ spec:
             secretKeyRef:
               name: app-secrets
               key: stripe_key
-        # Use entire secret as environment variables
         envFrom:
+        # Use entire secret as environment variables
         - secretRef:
             name: app-secrets
-            prefix: APP_
+          prefix: APP_
 ```
 
 ## Implementing Automatic Rotation
 
-Configure automatic secret rotation using Azure Key Vault's built-in features:
+Set expiration metadata for a secret in Azure Key Vault:
 
 ```bash
 # Set expiration date for a secret
@@ -533,7 +523,7 @@ az keyvault secret set-attributes \
   --expires "2026-12-31T23:59:59Z"
 ```
 
-External Secrets Operator will automatically sync new versions based on the `refreshInterval`. To trigger pod restarts when secrets change, use Reloader:
+When you create a new secret version in Key Vault, External Secrets Operator will sync it based on the `refreshInterval`. To trigger pod restarts when secrets change, use Reloader:
 
 ```yaml
 apiVersion: apps/v1
@@ -578,7 +568,7 @@ Status:
 For multi-region deployments, create separate SecretStores:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: azure-keyvault-eastus
@@ -588,11 +578,8 @@ spec:
     azurekv:
       authType: WorkloadIdentity
       vaultUrl: "https://keyvault-eastus.vault.azure.net"
-      serviceAccountRef:
-        name: external-secrets
-        namespace: external-secrets-system
 ---
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: azure-keyvault-westus
@@ -602,20 +589,17 @@ spec:
     azurekv:
       authType: WorkloadIdentity
       vaultUrl: "https://keyvault-westus.vault.azure.net"
-      serviceAccountRef:
-        name: external-secrets
-        namespace: external-secrets-system
 ```
 
 ## Best Practices
 
 1. **Use Workload Identity**: Always prefer Workload Identity over service principals for better security and simplified credential management.
 
-2. **Enable soft delete**: Protect against accidental deletion by enabling soft delete on Key Vault:
+2. **Enable purge protection**: Soft delete is enabled by default on new Key Vaults. Add purge protection for stronger deletion safeguards:
    ```bash
    az keyvault update \
      --name $KEY_VAULT_NAME \
-     --enable-soft-delete true \
+     --resource-group $RESOURCE_GROUP \
      --enable-purge-protection true
    ```
 
