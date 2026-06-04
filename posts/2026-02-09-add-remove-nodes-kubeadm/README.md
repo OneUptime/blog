@@ -23,15 +23,19 @@ Before adding nodes, ensure:
 # 2. Container runtime installed (containerd, CRI-O)
 # 3. kubeadm, kubelet, kubectl installed
 # 4. Network connectivity to control plane
-# 5. Unique hostname and MAC address
+# 5. Unique hostname, MAC address, and product_uuid
 
 # Install prerequisites on new node
 sudo apt-get update
-sudo apt-get install -y apt-transport-https ca-certificates curl
+sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+
+# Create apt keyring directory if needed
+sudo mkdir -p -m 755 /etc/apt/keyrings
 
 # Add Kubernetes repository
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+KUBERNETES_MINOR=v1.36
+curl -fsSL https://pkgs.k8s.io/core:/stable:/${KUBERNETES_MINOR}/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${KUBERNETES_MINOR}/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
 
 # Install kubeadm, kubelet, kubectl
 sudo apt-get update
@@ -39,7 +43,7 @@ sudo apt-get install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
 
 # Enable kubelet
-sudo systemctl enable kubelet
+sudo systemctl enable --now kubelet
 ```
 
 ## Generating Join Token
@@ -51,7 +55,7 @@ On control plane node, create a join token:
 sudo kubeadm token create --print-join-command
 
 # Output example:
-# kubeadm join 10.0.0.10:6443 --token abc123.xyz789 --discovery-token-ca-cert-hash sha256:1234567890abcdef...
+# kubeadm join 10.0.0.10:6443 --token abcdef.0123456789abcdef --discovery-token-ca-cert-hash sha256:1234567890abcdef...
 
 # List existing tokens
 sudo kubeadm token list
@@ -86,7 +90,7 @@ Join a new worker node to the cluster:
 ```bash
 # On the new worker node, run the join command
 sudo kubeadm join 10.0.0.10:6443 \
-  --token abc123.xyz789 \
+  --token abcdef.0123456789abcdef \
   --discovery-token-ca-cert-hash sha256:1234567890abcdef...
 
 # Output shows:
@@ -134,7 +138,7 @@ sudo kubeadm init phase upload-certs --upload-certs
 sudo kubeadm token create --print-join-command --certificate-key abc123def456...
 
 # Output:
-# kubeadm join 10.0.0.10:6443 --token xyz.abc --discovery-token-ca-cert-hash sha256:123... --control-plane --certificate-key abc123def456...
+# kubeadm join 10.0.0.10:6443 --token abcdef.0123456789abcdef --discovery-token-ca-cert-hash sha256:123... --control-plane --certificate-key abc123def456...
 ```
 
 On new control plane node:
@@ -142,7 +146,7 @@ On new control plane node:
 ```bash
 # Join as control plane
 sudo kubeadm join 10.0.0.10:6443 \
-  --token xyz.abc \
+  --token abcdef.0123456789abcdef \
   --discovery-token-ca-cert-hash sha256:123... \
   --control-plane \
   --certificate-key abc123def456...
@@ -161,8 +165,18 @@ kubectl get nodes -l node-role.kubernetes.io/control-plane
 Join with specific kubelet config:
 
 ```bash
-# Create custom kubelet config
-cat > kubelet-config.yaml <<EOF
+# Create custom kubeadm join config
+cat > kubeadm-join-config.yaml <<EOF
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: JoinConfiguration
+discovery:
+  bootstrapToken:
+    apiServerEndpoint: 10.0.0.10:6443
+    token: abcdef.0123456789abcdef
+    caCertHashes:
+      - sha256:123...
+  tlsBootstrapToken: abcdef.0123456789abcdef
+---
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 maxPods: 200
@@ -175,10 +189,7 @@ kubeReserved:
 EOF
 
 # Join with custom config
-sudo kubeadm join 10.0.0.10:6443 \
-  --token abc123.xyz789 \
-  --discovery-token-ca-cert-hash sha256:123... \
-  --config kubelet-config.yaml
+sudo kubeadm join --config kubeadm-join-config.yaml
 ```
 
 ## Verifying Node Addition
@@ -230,6 +241,7 @@ sudo kubeadm reset
 
 # Step 5: Clean up (optional)
 sudo rm -rf /etc/kubernetes/
+sudo rm -rf /etc/cni/net.d/
 sudo rm -rf /var/lib/kubelet/
 sudo rm -rf /var/lib/etcd/
 sudo rm -rf ~/.kube
@@ -266,6 +278,7 @@ sudo kubeadm reset
 
 # Step 5: Clean up
 sudo rm -rf /etc/kubernetes/
+sudo rm -rf /etc/cni/net.d/
 sudo rm -rf /var/lib/etcd/
 ```
 
@@ -278,7 +291,7 @@ sudo rm -rf /var/lib/etcd/
 kubectl delete pod <pod-name> --grace-period=0 --force
 
 # Delete all terminating pods
-kubectl get pods | grep Terminating | awk '{print $1}' | xargs kubectl delete pod --grace-period=0 --force
+kubectl get pods --all-namespaces | awk '$4=="Terminating"{print "-n", $1, $2}' | xargs -r -n 3 kubectl delete pod --grace-period=0 --force
 ```
 
 **Issue: Node won't drain**
@@ -304,8 +317,12 @@ ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 \
   --key=/etc/kubernetes/pki/etcd/server.key \
   endpoint health
 
-# Force remove if node is down
-ETCDCTL_API=3 etcdctl member remove <member-id> --force
+# Retry member removal through a healthy etcd endpoint
+ETCDCTL_API=3 etcdctl --endpoints=https://<healthy-etcd-node>:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key \
+  member remove <member-id>
 ```
 
 ## Automating Node Addition
