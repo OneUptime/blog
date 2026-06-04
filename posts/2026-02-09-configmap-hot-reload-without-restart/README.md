@@ -14,7 +14,7 @@ In this guide, you'll learn how to implement ConfigMap hot reload in your applic
 
 ## Understanding ConfigMap Updates
 
-When you update a ConfigMap mounted as a volume, Kubernetes eventually updates the files inside the pod. This process uses atomic symlink swaps and typically takes 30-60 seconds due to kubelet's sync period.
+When you update a ConfigMap mounted as a volume, Kubernetes eventually updates the files inside the pod. This process uses atomic symlink swaps, and the total delay can be as long as the kubelet sync period plus the ConfigMap cache propagation delay.
 
 The key insight is that your application needs to detect these file changes and reload its configuration, rather than relying on pod restarts.
 
@@ -77,7 +77,9 @@ import (
     "encoding/json"
     "log"
     "os"
+    "path/filepath"
     "sync"
+    "time"
 
     "github.com/fsnotify/fsnotify"
 )
@@ -118,7 +120,7 @@ func NewConfigManager(path string, onChange func(*Config)) (*ConfigManager, erro
 
     // Watch the parent directory because Kubernetes uses symlinks
     // Watching the file directly won't catch updates
-    if err := watcher.Add("/etc/config"); err != nil {
+    if err := watcher.Add(filepath.Dir(path)); err != nil {
         return nil, err
     }
 
@@ -153,10 +155,13 @@ func (cm *ConfigManager) watch() {
                 return
             }
 
-            // Look for Create or Write events on our config file
-            // Kubernetes creates a new symlink, so we watch for Create
-            if event.Op&fsnotify.Create == fsnotify.Create {
+            // Kubernetes updates the ..data symlink for projected volumes.
+            // Also handle direct file writes for local development.
+            if filepath.Base(event.Name) == "..data" ||
+                (filepath.Base(event.Name) == filepath.Base(cm.path) &&
+                    event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Rename) != 0) {
                 log.Println("Config file changed, reloading...")
+                time.Sleep(100 * time.Millisecond)
 
                 if err := cm.loadConfig(); err != nil {
                     log.Printf("Error reloading config: %v", err)
@@ -257,10 +262,13 @@ class ConfigReloader(FileSystemEventHandler):
         except Exception as e:
             logging.error(f"Failed to load config: {e}")
 
-    def on_created(self, event):
-        """Handle file creation events (Kubernetes symlink updates)"""
-        # Check if the event is for our config file
-        if Path(event.src_path).name == self.config_path.name:
+    def on_any_event(self, event):
+        """Handle file events from Kubernetes symlink updates or local writes"""
+        names = {Path(event.src_path).name}
+        if hasattr(event, "dest_path"):
+            names.add(Path(event.dest_path).name)
+
+        if "..data" in names or self.config_path.name in names:
             logging.info("Configuration file changed, reloading...")
             time.sleep(0.1)  # Brief delay to ensure file is fully written
             self.load_config()
@@ -372,8 +380,9 @@ class ConfigManager {
             }
         });
 
-        watcher.on('add', async (path) => {
-            if (path.includes('config.json')) {
+        watcher.on('all', async (event, path) => {
+            const fileName = path.split('/').pop();
+            if (fileName === '..data' || fileName === 'config.json') {
                 console.log('Configuration file changed, reloading...');
                 await this.loadConfig();
             }
@@ -444,9 +453,9 @@ kubectl create configmap app-config \
   --from-literal=config.json='{"log_level":"debug","max_connections":200}' \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Wait for kubelet to propagate changes (30-60 seconds)
+# Wait for kubelet to propagate changes
 echo "Waiting for configuration to propagate..."
-sleep 60
+sleep 120
 
 # Check application logs for reload message
 kubectl logs -l app=my-app --tail=20 | grep -i "reload"
