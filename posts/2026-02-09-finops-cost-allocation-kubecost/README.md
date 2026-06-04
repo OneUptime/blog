@@ -17,15 +17,14 @@ Deploy Kubecost using Helm:
 ```bash
 # Add Kubecost Helm repository
 
-helm repo add kubecost https://kubecost.github.io/cost-analyzer/
+helm repo add kubecost https://kubecost.github.io/kubecost/
 helm repo update
 
 # Install Kubecost
-helm install kubecost kubecost/cost-analyzer \
+helm upgrade --install kubecost kubecost/kubecost \
   --namespace kubecost \
   --create-namespace \
-  --set kubecostToken="<your-token>" \
-  --set prometheus.server.global.external_labels.cluster_id="production-cluster"
+  --set global.clusterId="production-cluster"
 
 # Verify installation
 kubectl get pods -n kubecost
@@ -34,7 +33,7 @@ kubectl get pods -n kubecost
 Access Kubecost UI:
 
 ```bash
-kubectl port-forward -n kubecost deployment/kubecost-cost-analyzer 9090:9090
+kubectl port-forward --namespace kubecost svc/kubecost-frontend 9090:9090
 # Open http://localhost:9090
 ```
 
@@ -81,18 +80,18 @@ Configure Kubecost to use these labels:
 
 ```yaml
 # kubecost-values.yaml
-costAllocationLabels:
-  - team
-  - department
-  - cost-center
-  - environment
-  - app
+kubecostProductConfigs:
+  labelMappingConfigs:
+    team_label: "team"
+    department_label: "department"
+    environment_label: "environment"
+    product_label: "app"
 ```
 
 Update the installation:
 
 ```bash
-helm upgrade kubecost kubecost/cost-analyzer \
+helm upgrade kubecost kubecost/kubecost \
   -n kubecost \
   -f kubecost-values.yaml
 ```
@@ -121,7 +120,7 @@ curl -G http://kubecost.kubecost.svc:9090/model/allocation \
   --data-urlencode "window=${START_DATE},${END_DATE}" \
   --data-urlencode 'aggregate=namespace' \
   --data-urlencode 'accumulate=true' | \
-  jq -r '.data[] | [.name, .cpuCost, .ramCost, .pvCost, .networkCost, .totalCost] | @csv' > namespace-costs.csv
+  jq -r '.data[] | to_entries[] | [.key, .value.cpuCost, .value.ramCost, .value.pvCost, .value.networkCost, .value.totalCost] | @csv' > namespace-costs.csv
 
 echo "Exported to namespace-costs.csv"
 ```
@@ -144,9 +143,8 @@ Generate monthly invoices:
 # generate-team-chargeback.py
 
 import requests
-import json
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 KUBECOST_URL = "http://kubecost.kubecost.svc:9090"
 
@@ -159,18 +157,20 @@ def get_team_costs(start_date, end_date):
     }
 
     response = requests.get(f'{KUBECOST_URL}/model/allocation', params=params)
+    response.raise_for_status()
     data = response.json()
 
     team_costs = []
-    for allocation in data.get('data', []):
-        team_costs.append({
-            'team': allocation['name'],
-            'cpu_cost': allocation.get('cpuCost', 0),
-            'memory_cost': allocation.get('ramCost', 0),
-            'storage_cost': allocation.get('pvCost', 0),
-            'network_cost': allocation.get('networkCost', 0),
-            'total_cost': allocation.get('totalCost', 0)
-        })
+    for allocation_set in data.get('data', []):
+        for team, allocation in allocation_set.items():
+            team_costs.append({
+                'team': team,
+                'cpu_cost': allocation.get('cpuCost', 0),
+                'memory_cost': allocation.get('ramCost', 0),
+                'storage_cost': allocation.get('pvCost', 0),
+                'network_cost': allocation.get('networkCost', 0),
+                'total_cost': allocation.get('totalCost', 0)
+            })
 
     return team_costs
 
@@ -188,19 +188,18 @@ def generate_invoice(team_costs, month):
 
 def main():
     # Get previous month
-    today = datetime.now()
-    first_of_month = today.replace(day=1)
-    last_month = first_of_month - timedelta(days=1)
+    today = datetime.now(timezone.utc)
+    first_of_month = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if first_of_month.month == 1:
+        start = first_of_month.replace(year=first_of_month.year - 1, month=12)
+    else:
+        start = first_of_month.replace(month=first_of_month.month - 1)
+    end = first_of_month
 
-    start_date = last_month.replace(day=1).strftime('%Y-%m-%dT00:00:00Z')
-    end_date = last_month.replace(
-        day=1
-    ).replace(
-        month=last_month.month + 1 if last_month.month < 12 else 1,
-        year=last_month.year + 1 if last_month.month == 12 else last_month.year
-    ).strftime('%Y-%m-%dT00:00:00Z')
+    start_date = start.strftime('%Y-%m-%dT00:00:00Z')
+    end_date = end.strftime('%Y-%m-%dT00:00:00Z')
 
-    month_label = last_month.strftime('%Y-%m')
+    month_label = start.strftime('%Y-%m')
 
     print(f'Generating chargeback for {month_label}')
     team_costs = get_team_costs(start_date, end_date)
@@ -216,38 +215,21 @@ if __name__ == '__main__':
 
 ## Implementing Budget Alerts
 
-Configure budget alerts using Kubecost:
+Configure notification delivery using Kubecost Helm values. In Kubecost 3.x, allocation and cloud cost budget alerts are managed through Govern > Budgets; Helm-configured allocation budget alerts are deprecated.
 
 ```yaml
-# budget-alert.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-alerts
-  namespace: kubecost
-data:
-  alerts.json: |
-    [
-      {
-        "type": "budget",
-        "threshold": 5000,
-        "window": "month",
-        "aggregation": "namespace",
-        "filter": "namespace:production",
-        "webhook": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-      },
-      {
-        "type": "budget",
-        "threshold": 10000,
-        "window": "month",
-        "aggregation": "label:team",
-        "filter": "team:ml-platform",
-        "webhook": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-      }
-    ]
+# kubecost-values.yaml
+global:
+  notifications:
+    alertConfigs:
+      frontendUrl: http://localhost:9090
+      globalSlackWebhookUrl: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+      alerts:
+        - type: health
+          window: 1h
 ```
 
-Create a custom alert webhook handler:
+Create a custom Slack webhook handler for budget workflows that post a normalized JSON payload:
 
 ```python
 #!/usr/bin/env python3
@@ -263,13 +245,12 @@ SLACK_WEBHOOK = os.getenv('SLACK_WEBHOOK_URL')
 
 @app.route('/webhook/kubecost', methods=['POST'])
 def handle_kubecost_alert():
-    """Handle Kubecost budget alerts"""
+    """Handle budget alert payloads"""
     data = request.json
 
-    alert_type = data.get('type')
     namespace = data.get('namespace', 'N/A')
-    current_cost = data.get('currentCost', 0)
-    budget = data.get('budget', 0)
+    current_cost = float(data.get('currentCost', 0))
+    budget = float(data.get('budget', 0))
     overage = current_cost - budget
 
     message = {
@@ -302,7 +283,7 @@ Track costs per application:
 curl -G http://localhost:9090/model/allocation \
   --data-urlencode 'window=7d' \
   --data-urlencode 'aggregate=label:app' | \
-  jq -r '.data[] | "\(.name),\(.totalCost)"' | \
+  jq -r '.data[] | to_entries[] | "\(.key),\(.value.totalCost)"' | \
   sort -t',' -k2 -rn | head -20
 ```
 
@@ -318,7 +299,7 @@ echo "==========================================="
 curl -s -G http://kubecost.kubecost.svc:9090/model/allocation \
   --data-urlencode 'window=7d' \
   --data-urlencode 'aggregate=label:app' | \
-  jq -r '.data[] | "\(.name)|\(.cpuCost)|\(.ramCost)|\(.pvCost)|\(.totalCost)"' | \
+  jq -r '.data[] | to_entries[] | "\(.key)|\(.value.cpuCost)|\(.value.ramCost)|\(.value.pvCost)|\(.value.totalCost)"' | \
   sort -t'|' -k5 -rn | head -20 | \
   awk -F'|' 'BEGIN {
     printf "%-40s %10s %10s %10s %12s\n", "Application", "CPU", "Memory", "Storage", "Total"
@@ -350,7 +331,7 @@ echo "=========================="
 
 kubectl get pods --all-namespaces -o json | \
   jq -r '.items[] |
-    select(.spec.containers[].resources.requests.cpu != null) |
+    select(any(.spec.containers[]; .resources.requests.cpu != null)) |
     {
       namespace: .metadata.namespace,
       pod: .metadata.name,
@@ -376,26 +357,10 @@ kubectl get pods --all-namespaces -o json | \
 Allocate shared costs like cluster management and logging:
 
 ```yaml
-# shared-costs-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-shared-costs
-  namespace: kubecost
-data:
-  shared-costs.yaml: |
-    sharedCosts:
-      - name: "cluster-management"
-        allocationType: "proportional"
-        shareNamespaces:
-          - "kube-system"
-          - "monitoring"
-          - "logging"
-      - name: "shared-services"
-        allocationType: "even"
-        shareNamespaces:
-          - "ingress-nginx"
-          - "cert-manager"
+# kubecost-values.yaml
+kubecostProductConfigs:
+  shareTenancyCosts: true
+  sharedNamespaces: "kube-system\\,monitoring\\,logging\\,ingress-nginx\\,cert-manager"
 ```
 
 ## Generating Executive Reports
@@ -422,17 +387,19 @@ def generate_executive_report():
     # Fetch cost data
     response = requests.get(
         f'{KUBECOST_URL}/model/allocation',
-        params={'window': f'{start},{end}', 'aggregate': 'namespace'}
+        params={'window': f'{start},{end}', 'aggregate': 'namespace', 'accumulate': 'true'}
     )
+    response.raise_for_status()
     data = response.json()
 
     # Process data
     costs = []
-    for item in data.get('data', []):
-        costs.append({
-            'namespace': item['name'],
-            'cost': item.get('totalCost', 0)
-        })
+    for allocation_set in data.get('data', []):
+        for namespace, item in allocation_set.items():
+            costs.append({
+                'namespace': namespace,
+                'cost': item.get('totalCost', 0)
+            })
 
     df = pd.DataFrame(costs)
     df = df.sort_values('cost', ascending=False)
@@ -463,24 +430,26 @@ if __name__ == '__main__':
 Connect Kubecost to cloud billing for accurate costs:
 
 ```yaml
-# aws-billing-config.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: kubecost-cloud-integration
-  namespace: kubecost
-type: Opaque
-stringData:
-  cloud-integration.json: |
+# kubecost-values.yaml
+kubecostProductConfigs:
+  cloudIntegrationJSON: |-
     {
       "aws": {
-        "accountID": "123456789012",
-        "athenaProjectID": "my-project-id",
-        "athenaBucketName": "s3://aws-athena-query-results-123456789012-us-east-1",
-        "athenaRegion": "us-east-1",
-        "athenaDatabase": "athenacurcfn_my_billing",
-        "athenaTable": "my_billing",
-        "masterPayerARN": "arn:aws:iam::123456789012:role/KubecostRole"
+        "athena": [
+          {
+            "bucket": "s3://aws-athena-query-results-123456789012-us-east-1",
+            "region": "us-east-1",
+            "database": "athenacurcfn_my_billing",
+            "table": "my_billing",
+            "workgroup": "primary",
+            "account": "123456789012",
+            "authorizer": {
+              "authorizerType": "AWSAccessKey",
+              "id": "<ACCESS_KEY_ID>",
+              "secret": "<ACCESS_KEY_SECRET>"
+            }
+          }
+        ]
       }
     }
 ```
