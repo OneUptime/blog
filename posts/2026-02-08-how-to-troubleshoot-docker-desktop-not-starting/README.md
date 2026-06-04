@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Desktop, Troubleshooting, macOS, Window, Linux, DevOps
+Tags: Docker, Docker Desktop, Troubleshooting, macOS, Windows, Linux, DevOps
 
 Description: Fix Docker Desktop startup failures on macOS, Windows, and Linux with step-by-step troubleshooting for common issues.
 
@@ -24,7 +24,9 @@ docker info 2>&1
 
 # 2. Kill any stuck Docker processes
 # macOS
-killall Docker && killall com.docker.hyperkit && killall com.docker.backend
+killall Docker 2>/dev/null
+killall com.docker.backend 2>/dev/null
+killall com.docker.vmnetd 2>/dev/null
 
 # Windows (PowerShell as administrator)
 # Stop-Process -Name "Docker Desktop" -Force
@@ -44,11 +46,13 @@ Docker Desktop needs free disk space for its VM image, image layers, and tempora
 df -h /
 
 # Check Docker's virtual disk size
-ls -lh ~/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw
+ls -klsh ~/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw
 
-# If disk is nearly full, clear Docker's data
-# WARNING: This removes all images, containers, and volumes
-rm -rf ~/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw
+# If Docker can start, remove unused Docker data first
+docker system prune -a --volumes
+
+# If Docker cannot start, use Troubleshoot > Clean / Purge data
+# WARNING: This removes Docker data and can remove settings
 ```
 
 ```powershell
@@ -67,25 +71,26 @@ Docker Desktop logs contain the specific error that prevents startup.
 
 ```bash
 # View Docker Desktop logs in real time
-tail -f ~/Library/Containers/com.docker.docker/Data/log/host/Docker\ Desktop.log
+pred='process matches ".*(ocker|vpnkit).*" || (process in {"taskgated-helper", "launchservicesd", "kernel"} && eventMessage contains[c] "docker")'
+/usr/bin/log stream --style syslog --level=debug --color=always --predicate "$pred"
 
 # Search for errors in the log
-grep -i "error\|fail\|fatal" ~/Library/Containers/com.docker.docker/Data/log/host/Docker\ Desktop.log | tail -20
+grep -R -i "error\|fail\|fatal" ~/.docker/desktop/log/ | tail -20
 
-# View the backend log
-tail -50 ~/Library/Containers/com.docker.docker/Data/log/host/com.docker.backend.log
+# View recent internal component logs
+find ~/.docker/desktop/log/ -maxdepth 2 -type f -print
 ```
 
 ### Virtualization Framework Issues
 
-Docker Desktop on macOS uses either Apple's Virtualization framework (Apple Silicon) or HyperKit (Intel). If the virtualization layer fails, Docker cannot start its VM.
+Docker Desktop on macOS uses a virtual machine manager such as Docker VMM or Apple's Virtualization framework. HyperKit is a legacy option for Intel Macs. If the virtualization layer fails, Docker cannot start its VM.
 
 ```bash
-# Check if virtualization is supported (Intel Macs)
-sysctl -a | grep machdep.cpu.features | grep VMX
+# Check if Apple's Hypervisor framework is supported
+sysctl kern.hv_support
 
-# Check Apple Virtualization framework (Apple Silicon)
-system_profiler SPSoftwareDataType | grep "System Integrity Protection"
+# Check your Mac architecture
+uname -m
 ```
 
 If you recently updated macOS, the virtualization framework may need to reinitialize. A full restart of your Mac (not just Docker) often fixes this.
@@ -100,8 +105,8 @@ osascript -e 'quit app "Docker"'
 sleep 5
 
 # Remove the configuration but keep images
-rm -rf ~/Library/Containers/com.docker.docker/Data/com.docker.driver.amd64-linux/
-rm ~/Library/Group\ Containers/group.com.docker/settings.json
+mv ~/Library/Group\ Containers/group.com.docker/settings-store.json \
+  ~/Library/Group\ Containers/group.com.docker/settings-store.json.bak
 
 # Restart Docker Desktop
 open -a Docker
@@ -148,7 +153,7 @@ wsl --shutdown
 
 ### Windows Features
 
-Docker Desktop requires specific Windows features to be enabled.
+Docker Desktop with the WSL 2 backend requires specific Windows features to be enabled.
 
 ```powershell
 # Check required Windows features (run as administrator)
@@ -165,7 +170,7 @@ Restart-Computer
 
 ### Hyper-V Conflicts
 
-Other virtualization software (VirtualBox, VMware) can conflict with Docker Desktop's use of Hyper-V.
+Other software can disable the Windows hypervisor at startup, which prevents Docker Desktop from using WSL 2 or Hyper-V correctly.
 
 ```powershell
 # Check if Hyper-V is enabled
@@ -268,8 +273,7 @@ This means virtualization is disabled in your BIOS/UEFI. Restart your computer, 
 
 ```bash
 # macOS: Try switching between VM backends
-# Open settings.json and try changing the VM type
-# Edit ~/Library/Group Containers/group.com.docker/settings.json
+# Open Docker Desktop > Settings > General > Virtual Machine Manager
 
 # Windows: Try reinstalling WSL 2 kernel
 wsl --update --web-download
@@ -278,8 +282,10 @@ wsl --update --web-download
 **"Unexpected WSL error" on Windows:**
 
 ```powershell
-# Reset the WSL 2 installation
+# Restart WSL 2 and verify virtualization before resetting Docker's WSL data
 wsl --shutdown
+wsl --list --verbose
+# If Docker Desktop still fails and you accept losing Docker images, containers, and volumes:
 wsl --unregister docker-desktop
 wsl --unregister docker-desktop-data
 netsh winsock reset
