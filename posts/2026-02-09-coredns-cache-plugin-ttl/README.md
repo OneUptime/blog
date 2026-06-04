@@ -19,8 +19,8 @@ DNS caching stores query results to avoid repeated lookups. The cache plugin int
 Key caching concepts:
 
 - **Positive caching**: Stores successful query results
-- **Negative caching**: Caches failed queries (NXDOMAIN responses)
-- **TTL override**: Customize cache duration regardless of upstream TTL
+- **Negative caching**: Caches denial-of-existence responses such as NXDOMAIN
+- **TTL limits**: Customize maximum and minimum cache durations
 - **Prefetching**: Proactively refresh popular entries before expiration
 - **Cache size**: Maximum number of entries to store
 
@@ -47,18 +47,18 @@ data:
         }
         prometheus :9153
         forward . /etc/resolv.conf
-        cache 30  # Cache all responses for 30 seconds
+        cache 30  # Cache responses for up to 30 seconds
         loop
         reload
         loadbalance
     }
 ```
 
-This caches all responses for 30 seconds, regardless of their original TTL.
+This caches responses for up to 30 seconds, with each entry still bounded by its DNS TTL.
 
 ## Advanced Cache Configuration with Custom TTL
 
-Configure separate TTL values for successful and failed queries:
+Configure separate TTL values for successful and denial-of-existence responses:
 
 ```yaml
 .:53 {
@@ -74,14 +74,14 @@ Configure separate TTL values for successful and failed queries:
 
     # Advanced cache configuration
     cache 300 {
-        # Success cache: 8192 entries, 300 second TTL
+        # Success cache: 8192 entries, 300 second maximum TTL
         success 8192 300
 
-        # Denial (negative) cache: 2048 entries, 60 second TTL
+        # Denial (negative) cache: 2048 entries, 60 second maximum TTL
         denial 2048 60
 
-        # Prefetch entries when 10% of TTL remains
-        # Check every 60 minutes, prefetch if accessed at least 10% of the time
+        # Prefetch popular entries when less than 10% of TTL remains
+        # Popular means 10 queries with no gap of 60 minutes or more
         prefetch 10 60m 10%
     }
 
@@ -94,8 +94,8 @@ Configure separate TTL values for successful and failed queries:
 ```
 
 This configuration:
-- Caches successful queries for 5 minutes (300s)
-- Caches failed queries for 1 minute (60s)
+- Caches successful queries for up to 5 minutes (300s)
+- Caches denial-of-existence responses for up to 1 minute (60s)
 - Stores up to 8192 successful responses
 - Stores up to 2048 negative responses
 - Prefetches popular entries before expiration
@@ -137,7 +137,7 @@ Negative caching prevents repeated queries for non-existent domains:
         # Negative cache: shorter TTL to catch newly created services
         denial 4096 30
 
-        # Serve stale entries for up to 1 hour if upstream is down
+        # Serve stale entries for up to 1 hour while refreshing them
         serve_stale 3600
     }
 
@@ -148,7 +148,7 @@ Negative caching prevents repeated queries for non-existent domains:
 }
 ```
 
-The `serve_stale` directive returns expired cache entries if upstream servers are unavailable, improving resilience.
+The `serve_stale` directive can return expired cache entries for the configured duration while CoreDNS refreshes them, improving resilience. Stale responses are returned with a TTL of 0.
 
 ## Environment-Specific Cache Tuning
 
@@ -199,7 +199,7 @@ Different environments benefit from different cache strategies:
     cache 900 {
         success 32768 900
         denial 8192 300
-        prefetch 20 120m 5%
+        prefetch 20 120m 10%
         serve_stale 7200
     }
 
@@ -232,9 +232,9 @@ Prefetching keeps popular entries fresh:
 
         # Prefetch parameters:
         # prefetch <amount> <duration> <percentage>
-        # amount: prefetch when this much of TTL remains (seconds)
-        # duration: check interval
-        # percentage: minimum hit rate to trigger prefetch
+        # amount: number of queries required for an entry to be popular
+        # duration: maximum allowed gap between those queries
+        # percentage: prefetch when the remaining TTL drops below this percentage
         prefetch 20 60m 10%
     }
 
@@ -246,8 +246,8 @@ Prefetching keeps popular entries fresh:
 ```
 
 This configuration prefetches entries that:
-- Have 20 seconds or less remaining on their TTL
-- Have been accessed at least 10% of the time during the last 60 minutes
+- Have received 20 queries with no gap of 60 minutes or more between them
+- Have less than 10% of their TTL remaining, or are within 1 second of expiration
 
 ## Zone-Specific Cache Configuration
 
@@ -265,7 +265,7 @@ cluster.local:53 {
     cache 600 {
         success 32768 600
         denial 8192 120
-        prefetch 30 30m 5%
+        prefetch 30 30m 10%
     }
     prometheus :9153
 }
@@ -312,7 +312,7 @@ coredns_cache_entries
 sum(rate(coredns_cache_hits_total[5m])) by (type)
 
 # Cache miss rate
-sum(rate(coredns_cache_misses_total[5m]))
+sum(rate(coredns_cache_requests_total[5m])) - sum(rate(coredns_cache_hits_total[5m]))
 ```
 
 Create a Grafana dashboard configuration:
