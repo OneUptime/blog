@@ -41,6 +41,9 @@ spec:
     image: nicolaka/netshoot
     command: ["/bin/bash"]
     args: ["-c", "while true; do sleep 3600; done"]
+    securityContext:
+      capabilities:
+        add: ["NET_ADMIN", "NET_RAW"]
 ```
 
 Apply and exec into it:
@@ -53,7 +56,7 @@ kubectl exec -it debug-tools -- bash
 Alternatively, use ephemeral debug containers:
 
 ```bash
-kubectl debug pod-name -it --image=nicolaka/netshoot
+kubectl debug pod-name -it --image=nicolaka/netshoot --profile=netadmin --target=container-name
 ```
 
 ## Step 1: Verify DNS Resolution
@@ -81,7 +84,7 @@ If DNS fails:
 # Check /etc/resolv.conf
 cat /etc/resolv.conf
 
-# Should show:
+# Should show something similar. The DNS service IP and cluster domain can vary:
 # nameserver 10.96.0.10
 # search default.svc.cluster.local svc.cluster.local cluster.local
 # options ndots:5
@@ -95,7 +98,9 @@ dig @10.96.0.10 kubernetes.default.svc.cluster.local
 
 # Test with specific query types
 dig @10.96.0.10 kubernetes.default.svc.cluster.local A
-dig @10.96.0.10 kubernetes.default.svc.cluster.local SRV
+
+# SRV records use _port-name._protocol and only exist for named service ports
+dig @10.96.0.10 _http._tcp.my-service.production.svc.cluster.local SRV
 ```
 
 ### Debug DNS Resolution Failures
@@ -111,6 +116,7 @@ kubectl logs -n kube-system -l k8s-app=kube-dns -f
 
 # Test connectivity to CoreDNS
 nc -zv 10.96.0.10 53
+nc -zvu 10.96.0.10 53
 
 # Check if the service exists
 kubectl get svc -A | grep my-service
@@ -118,15 +124,15 @@ kubectl get svc -A | grep my-service
 
 ## Step 2: Check Service Endpoints
 
-Services without endpoints can't route traffic:
+Services without ready endpoints can't route traffic. Current Kubernetes versions use EndpointSlices as the scalable endpoint API:
 
 ```bash
 # Check if endpoints exist
-kubectl get endpoints my-service -n production
+kubectl get endpointslice -n production -l kubernetes.io/service-name=my-service
 
 # Expected output should show IP addresses:
-# NAME         ENDPOINTS                                   AGE
-# my-service   10.244.1.5:8080,10.244.2.3:8080,10.244.3.1:8080   5d
+# NAME             ADDRESSTYPE   PORTS   ENDPOINTS                         AGE
+# my-service-abc   IPv4          8080    10.244.1.5,10.244.2.3,10.244.3.1   5d
 ```
 
 If endpoints are missing:
@@ -198,7 +204,9 @@ Example output:
 ### Capture Service Traffic
 
 ```bash
-# On the node where the debug pod runs, capture traffic to service IP
+# On the node where the debug pod runs, capture traffic to service IP.
+# Set SERVICE_IP in this node shell first.
+SERVICE_IP=$(kubectl get svc my-service -n production -o jsonpath='{.spec.clusterIP}')
 sudo tcpdump -i any -n host $SERVICE_IP -v
 
 # Trigger traffic
@@ -218,7 +226,7 @@ Watch for these patterns:
 10.244.2.5.8080 > 10.244.1.10.45678: Flags [S.], seq 456, ack 124
 ```
 
-If you see the first packet but not the DNAT transformation, kube-proxy rules are broken.
+If you see the first packet but not traffic to any backend pod, check kube-proxy rules and the node's packet filtering path.
 
 ### Capture on Multiple Interfaces
 
@@ -229,16 +237,9 @@ sudo tcpdump -i any -n port 8080 -w /tmp/capture.pcap
 # Capture on specific interface
 sudo tcpdump -i eth0 -n port 8080 -w /tmp/capture.pcap
 
-# Capture on pod's veth interface
-# Find the veth pair for the pod
-POD_NAME="my-service-pod-xxxxx"
-POD_NS="production"
-POD_ID=$(kubectl get pod $POD_NAME -n $POD_NS -o jsonpath='{.status.containerStatuses[0].containerID}' | cut -d'/' -f3)
-
-# Find veth interface (Docker example)
-VETH=$(docker inspect $POD_ID | jq -r '.[0].NetworkSettings.SandboxKey' | xargs -I {} ip netns identify {} | xargs -I {} ip netns exec {} ip link show | grep veth | awk '{print $2}' | cut -d'@' -f1)
-
-sudo tcpdump -i $VETH -n -w /tmp/pod-capture.pcap
+# Capture inside a pod's network namespace using an ephemeral container.
+# This avoids runtime-specific veth lookup commands.
+kubectl debug my-service-pod-xxxxx -n production -it --image=nicolaka/netshoot --profile=netadmin --target=app -- tcpdump -i any -n -w /tmp/pod-capture.pcap
 ```
 
 Analyze the capture file:
@@ -341,7 +342,7 @@ sudo conntrack -E | grep $SERVICE_IP
 
 ```bash
 # Create debug pod in specific namespace
-kubectl run debug-tools -n production --image=nicolaka/netshoot -it --rm -- bash
+kubectl run debug-tools -n production --image=nicolaka/netshoot -it --rm --restart=Never -- bash
 
 # Test connectivity to service in same namespace
 curl http://my-service:8080
@@ -384,7 +385,7 @@ ping $SERVICE_IP
 
 ```bash
 # Verify endpoints exist
-kubectl get endpoints my-service -n production
+kubectl get endpointslice -n production -l kubernetes.io/service-name=my-service
 
 # Test pod directly
 curl http://$POD_IP:8080
@@ -423,7 +424,7 @@ kubectl exec my-service-pod-xxxxx -- netstat -tlnp
 
 ```bash
 # Check endpoint count
-kubectl get endpoints my-service -n production
+kubectl get endpointslice -n production -l kubernetes.io/service-name=my-service
 
 # Test multiple times
 for i in {1..20}; do curl http://my-service:8080 || echo "FAILED"; done
@@ -448,15 +449,15 @@ echo "1. Checking service exists..."
 kubectl get svc $SERVICE_NAME -n $NAMESPACE
 
 echo "2. Checking endpoints..."
-kubectl get endpoints $SERVICE_NAME -n $NAMESPACE
+kubectl get endpointslice -n $NAMESPACE -l kubernetes.io/service-name=$SERVICE_NAME
 
 echo "3. Testing DNS resolution..."
-kubectl run test-dns --image=busybox -it --rm -- nslookup $SERVICE_NAME.$NAMESPACE.svc.cluster.local
+kubectl run test-dns --image=busybox -it --rm --restart=Never -- nslookup $SERVICE_NAME.$NAMESPACE.svc.cluster.local
 
 echo "4. Testing connectivity..."
 SERVICE_IP=$(kubectl get svc $SERVICE_NAME -n $NAMESPACE -o jsonpath='{.spec.clusterIP}')
 SERVICE_PORT=$(kubectl get svc $SERVICE_NAME -n $NAMESPACE -o jsonpath='{.spec.ports[0].port}')
-kubectl run test-connect --image=nicolaka/netshoot -it --rm -- nc -zv $SERVICE_IP $SERVICE_PORT
+kubectl run test-connect --image=nicolaka/netshoot -it --rm --restart=Never -- nc -zv $SERVICE_IP $SERVICE_PORT
 
 echo "5. Checking network policies..."
 kubectl get networkpolicies -n $NAMESPACE
