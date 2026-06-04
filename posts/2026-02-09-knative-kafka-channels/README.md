@@ -25,7 +25,8 @@ Install the Kafka Channel controller:
 ```bash
 # Install Knative Kafka Channel
 
-kubectl apply -f https://github.com/knative-extensions/eventing-kafka/releases/latest/download/channel-consolidated.yaml
+kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/latest/download/eventing-kafka-controller.yaml
+kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/latest/download/eventing-kafka-channel.yaml
 
 # Verify installation
 kubectl get pods -n knative-eventing | grep kafka-ch
@@ -41,11 +42,7 @@ metadata:
   name: kafka-channel-config
   namespace: knative-eventing
 data:
-  bootstrapServers: kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092
-  # Replication factor for channel topics
-  default.topic.replication.factor: "3"
-  # Partitions for new topics
-  default.topic.partitions: "10"
+  bootstrap.servers: "kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092"
 ```
 
 ## Creating Kafka Channels
@@ -86,13 +83,6 @@ spec:
 
   # Kafka topic configuration
   retentionDuration: P14D
-  compressionType: snappy
-
-  # Consumer configuration
-  subscribers:
-    - uid: processor-1
-      generation: 1
-      subscriberUri: http://event-processor.default.svc.cluster.local
 
   # Delivery spec
   delivery:
@@ -114,8 +104,8 @@ Create a service that publishes events:
 # event_publisher.py
 from flask import Flask, request, jsonify
 import requests
-import json
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -129,7 +119,7 @@ def publish_event():
         # Create CloudEvent
         cloud_event = {
             'data': event_data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
         # Publish to channel
@@ -265,7 +255,7 @@ Implement message replay for recovery:
 
 ```python
 # replay_service.py
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, TopicPartition
 import json
 
 def replay_messages(topic, from_offset, to_offset):
@@ -279,18 +269,24 @@ def replay_messages(topic, from_offset, to_offset):
         value_deserializer=lambda m: json.loads(m.decode('utf-8'))
     )
 
-    # Seek to start offset
-    for partition in consumer.partitions_for_topic(topic):
-        tp = TopicPartition(topic, partition)
-        consumer.assign([tp])
-        consumer.seek(tp, from_offset)
+    partitions = consumer.partitions_for_topic(topic) or []
+    topic_partitions = [TopicPartition(topic, partition) for partition in partitions]
+    consumer.assign(topic_partitions)
 
-        for message in consumer:
-            if message.offset >= to_offset:
+    for topic_partition in topic_partitions:
+        consumer.seek(topic_partition, from_offset)
+
+    remaining = set(topic_partitions)
+
+    for message in consumer:
+        if message.offset >= to_offset:
+            remaining.discard(TopicPartition(message.topic, message.partition))
+            if not remaining:
                 break
+            continue
 
-            print(f"Replaying message at offset {message.offset}")
-            process_message(message.value)
+        print(f"Replaying message at offset {message.offset}")
+        process_message(message.value)
 
 def process_message(data):
     # Reprocess message
@@ -320,14 +316,14 @@ kubectl exec -n kafka kafka-0 -- \
 Create monitoring dashboards:
 
 ```promql
-# Message rate per channel
-rate(kafka_server_brokertopicmetrics_messagesin_total{topic=~"knative.*"}[5m])
+# Event dispatch latency for Kafka Channel receiver
+histogram_quantile(0.95, rate(event_dispatch_latencies_ms_bucket{job=~"kafka-channel.*"}[5m]))
 
-# Consumer lag
+# Consumer lag from your Kafka exporter
 kafka_consumergroup_lag{topic=~"knative.*"}
 
-# Channel subscription count
-count(kube_subscription_status{channel_name="order-events"})
+# Message rate from your Kafka broker exporter
+rate(kafka_server_brokertopicmetrics_messagesin_total{topic=~"knative.*"}[5m])
 ```
 
 ## Best Practices
@@ -342,7 +338,7 @@ Monitor consumer lag. High lag indicates slow processing or insufficient consume
 
 Implement idempotent consumers. Messages may be delivered multiple times during failures. Design handlers to handle duplicates gracefully.
 
-Use compression. Enable snappy or lz4 compression to reduce network bandwidth and storage costs without significant CPU overhead.
+Use compression where your Kafka brokers and Knative Kafka data plane configuration support it. Snappy or lz4 compression can reduce network bandwidth and storage costs without significant CPU overhead.
 
 ## Conclusion
 
