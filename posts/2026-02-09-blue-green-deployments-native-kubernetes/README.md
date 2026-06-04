@@ -122,7 +122,7 @@ spec:
   selector:
     app: api
     env: production
-    active: "true"  # Use custom label for active version
+    version: blue  # Initially route to blue
   ports:
   - name: http
     port: 80
@@ -153,7 +153,6 @@ spec:
         app: api
         version: blue
         env: production
-        active: "true"  # Initially active
     spec:
       containers:
       - name: api
@@ -209,7 +208,6 @@ spec:
         app: api
         version: green
         env: production
-        active: "false"  # Initially inactive
     spec:
       containers:
       - name: api
@@ -243,6 +241,21 @@ spec:
             port: 8080
           initialDelaySeconds: 10
           periodSeconds: 5
+---
+# Internal test service for blue
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service-blue-test
+  namespace: production
+spec:
+  selector:
+    app: api
+    version: blue
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP
 ---
 # Internal test service for green
 apiVersion: v1
@@ -304,17 +317,14 @@ kubectl set image deployment/${APP_NAME}-${NEW_ACTIVE} \
 echo "Waiting for rollout to complete..."
 kubectl rollout status deployment/${APP_NAME}-${NEW_ACTIVE} -n $NAMESPACE
 
-# Update labels
-kubectl patch deployment ${APP_NAME}-${NEW_ACTIVE} -n $NAMESPACE \
-    -p '{"spec":{"template":{"metadata":{"labels":{"active":"true"}}}}}'
-
 # Run smoke tests against new deployment
 echo "Running smoke tests..."
 TEST_SERVICE="${APP_NAME}-service-${NEW_ACTIVE}-test"
-TEST_URL=$(kubectl get service $TEST_SERVICE -n $NAMESPACE \
-    -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-if curl -f http://$TEST_URL/healthz; then
+if kubectl run smoke-test --rm -i --restart=Never \
+    --image=curlimages/curl:8.8.0 \
+    -n $NAMESPACE -- \
+    --fail --silent --show-error http://${TEST_SERVICE}/healthz; then
     echo "Smoke tests passed!"
 else
     echo "Smoke tests failed! Aborting switch."
@@ -324,17 +334,13 @@ fi
 # Switch traffic
 echo "Switching traffic to $NEW_ACTIVE..."
 kubectl patch service ${APP_NAME}-service -n $NAMESPACE \
-    -p "{\"spec\":{\"selector\":{\"version\":\"${NEW_ACTIVE}\"}}}"
-
-# Update old deployment label
-kubectl patch deployment ${APP_NAME}-${OLD_ACTIVE} -n $NAMESPACE \
-    -p '{"spec":{"template":{"metadata":{"labels":{"active":"false"}}}}}'
+    -p "{\"spec\":{\"selector\":{\"app\":\"${APP_NAME}\",\"env\":\"production\",\"version\":\"${NEW_ACTIVE}\"}}}"
 
 echo "Deployment complete! Traffic switched to $NEW_ACTIVE"
 echo "Old deployment ($OLD_ACTIVE) is still running for rollback if needed"
 echo ""
 echo "To rollback: kubectl patch service ${APP_NAME}-service -n $NAMESPACE \\"
-echo "  -p '{\"spec\":{\"selector\":{\"version\":\"${OLD_ACTIVE}\"}}}'"
+echo "  -p '{\"spec\":{\"selector\":{\"app\":\"${APP_NAME}\",\"env\":\"production\",\"version\":\"${OLD_ACTIVE}\"}}}'"
 ```
 
 ## Testing Strategy
@@ -389,30 +395,34 @@ import time
 
 config.load_kube_config()
 v1 = client.CoreV1Api()
+discovery = client.DiscoveryV1Api()
 
 def monitor_traffic_switch(namespace, service_name):
-    """Monitor endpoints during blue-green switch."""
+    """Monitor EndpointSlices during blue-green switch."""
     print(f"Monitoring service: {namespace}/{service_name}")
 
     while True:
-        endpoints = v1.read_namespaced_endpoints(service_name, namespace)
+        slices = discovery.list_namespaced_endpoint_slice(
+            namespace,
+            label_selector=f"kubernetes.io/service-name={service_name}"
+        )
 
         blue_count = 0
         green_count = 0
 
-        if endpoints.subsets:
-            for subset in endpoints.subsets:
-                if subset.addresses:
-                    for address in subset.addresses:
-                        if address.target_ref:
-                            pod = v1.read_namespaced_pod(
-                                address.target_ref.name, namespace)
-                            version = pod.metadata.labels.get('version', 'unknown')
+        for endpoint_slice in slices.items:
+            for endpoint in endpoint_slice.endpoints:
+                if endpoint.conditions and endpoint.conditions.ready is False:
+                    continue
+                if endpoint.target_ref and endpoint.target_ref.kind == 'Pod':
+                    pod = v1.read_namespaced_pod(
+                        endpoint.target_ref.name, namespace)
+                    version = pod.metadata.labels.get('version', 'unknown')
 
-                            if version == 'blue':
-                                blue_count += 1
-                            elif version == 'green':
-                                green_count += 1
+                    if version == 'blue':
+                        blue_count += 1
+                    elif version == 'green':
+                        green_count += 1
 
         print(f"Blue endpoints: {blue_count}, Green endpoints: {green_count}")
         time.sleep(5)
@@ -481,12 +491,13 @@ Document rollback procedures. Ensure teams know how to quickly revert if problem
 
 Consider database compatibility. Schema changes must work with both blue and green versions.
 
-Use progressive rollout for extra safety:
+If you need progressive rollout for extra safety, use a controller that can split traffic. A single Service selector can only select one set of pods or both sets:
 
 ```bash
-# Switch only part of traffic first
+# This selects both blue and green pods; for controlled percentages, use
+# multiple Services with an Ingress, Gateway API, or service mesh.
 kubectl patch service api-service -n production \
-    -p '{"spec":{"selector":{"active":"true"}}}' # Both blue and green have this label temporarily
+    -p '{"spec":{"selector":{"app":"api","env":"production"}}}'
 ```
 
 Plan for resource overhead. Running two full environments doubles resource requirements during deployment.
