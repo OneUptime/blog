@@ -14,33 +14,18 @@ This enables sophisticated scaling strategies like scaling up when error rates i
 
 ## Setting Up Datadog Cluster Agent
 
-Install the Datadog Cluster Agent with external metrics enabled.
+Install the Datadog Cluster Agent with external metrics and DatadogMetric query support enabled.
 
 ```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: datadog-secret
-  namespace: datadog
-type: Opaque
-stringData:
-  api-key: "your-datadog-api-key"
-  app-key: "your-datadog-app-key"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: datadog-cluster-agent-config
-  namespace: datadog
-data:
-  datadog-cluster.yaml: |
-    cluster_agent:
-      enabled: true
-    external_metrics:
-      enabled: true
-      port: 8443
-    kubernetes:
-      collect_metadata_tags: true
+datadog:
+  apiKey: "your-datadog-api-key"
+  appKey: "your-datadog-app-key"
+
+clusterAgent:
+  enabled: true
+  metricsProvider:
+    enabled: true
+    useDatadogMetrics: true
 ```
 
 Deploy with Helm.
@@ -55,11 +40,12 @@ helm install datadog-agent datadog/datadog \
   --set datadog.apiKey="your-api-key" \
   --set datadog.appKey="your-app-key" \
   --set clusterAgent.enabled=true \
-  --set clusterAgent.metricsProvider.enabled=true
+  --set clusterAgent.metricsProvider.enabled=true \
+  --set clusterAgent.metricsProvider.useDatadogMetrics=true
 
 # Verify external metrics API
 
-kubectl get apiservice | grep datadoghq
+kubectl get apiservice v1beta1.external.metrics.k8s.io
 ```
 
 ## Scaling Based on Request Rate
@@ -67,6 +53,14 @@ kubectl get apiservice | grep datadoghq
 Scale based on requests per second from Datadog APM.
 
 ```yaml
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: api-server-rps
+  namespace: production
+spec:
+  query: "sum:trace.web.request.hits{service:api-server,env:production}.as_rate().rollup(60)"
+---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -84,11 +78,7 @@ spec:
   - type: External
     external:
       metric:
-        name: datadog.trace.requests_per_second
-        selector:
-          matchLabels:
-            service: api-server
-            env: production
+        name: datadogmetric@production:api-server-rps
       target:
         type: AverageValue
         averageValue: "100"  # 100 requests/sec per pod
@@ -108,19 +98,37 @@ spec:
         periodSeconds: 120
 ```
 
-Datadog APM automatically tracks request rates for instrumented services.
+Datadog APM automatically creates trace metrics for instrumented services. Replace `web.request` with the span name used by your service.
 
 ## Scaling on Error Rate
 
 Scale up when error rates increase to handle issues.
 
 ```yaml
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: payment-error-rate
+  namespace: production
+spec:
+  query: "100 * sum:trace.web.request.errors{service:payment-service,env:production}.as_rate().rollup(60) / sum:trace.web.request.hits{service:payment-service,env:production}.as_rate().rollup(60)"
+---
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: payment-rps
+  namespace: production
+spec:
+  query: "sum:trace.web.request.hits{service:payment-service,env:production}.as_rate().rollup(60)"
+---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: error-rate-hpa
+  namespace: production
 spec:
   scaleTargetRef:
+    apiVersion: apps/v1
     kind: Deployment
     name: payment-service
   minReplicas: 15
@@ -131,23 +139,16 @@ spec:
   - type: External
     external:
       metric:
-        name: datadog.trace.error_rate
-        selector:
-          matchLabels:
-            service: payment-service
-            env: production
+        name: datadogmetric@production:payment-error-rate
       target:
         type: Value
-        value: "50"  # Scale when errors exceed 50/min
+        value: "5"  # Scale when the error rate exceeds 5%
 
   # Secondary: request rate
   - type: External
     external:
       metric:
-        name: datadog.trace.requests_per_second
-        selector:
-          matchLabels:
-            service: payment-service
+        name: datadogmetric@production:payment-rps
       target:
         type: AverageValue
         averageValue: "80"
@@ -161,19 +162,29 @@ spec:
         periodSeconds: 60
 ```
 
-This adds capacity when errors spike, helping resolve issues through increased capacity.
+This adds capacity when errors spike and the errors are correlated with saturation.
 
 ## Scaling Based on Trace Latency
 
 Use p99 latency from Datadog APM traces.
 
 ```yaml
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: web-frontend-p99-latency
+  namespace: production
+spec:
+  query: "p99:trace.web.request{service:web-frontend,env:production}.rollup(60)"
+---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: latency-based-hpa
+  namespace: production
 spec:
   scaleTargetRef:
+    apiVersion: apps/v1
     kind: Deployment
     name: web-frontend
   minReplicas: 20
@@ -183,14 +194,10 @@ spec:
   - type: External
     external:
       metric:
-        name: datadog.trace.p99_latency_ms
-        selector:
-          matchLabels:
-            service: web-frontend
-            resource: GET /api/data
+        name: datadogmetric@production:web-frontend-p99-latency
       target:
         type: Value
-        value: "250"  # Scale when p99 exceeds 250ms
+        value: "0.25"  # Scale when p99 exceeds 250ms
 
   behavior:
     scaleUp:
@@ -212,10 +219,10 @@ spec:
 Use custom metrics sent to Datadog from your application.
 
 ```python
-# Python application code with datadog client
+# Python application code with DogStatsD
 from datadog import initialize, statsd
 
-initialize(api_key='your-api-key', app_key='your-app-key')
+initialize(statsd_host='127.0.0.1', statsd_port=8125)
 
 def process_order(order):
     # Process order
@@ -231,12 +238,22 @@ def process_order(order):
 Scale based on the custom metric.
 
 ```yaml
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: order-processor-orders
+  namespace: production
+spec:
+  query: "sum:orders.processed{env:production,service:order-processor}.rollup(60)"
+---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: custom-metric-hpa
+  namespace: production
 spec:
   scaleTargetRef:
+    apiVersion: apps/v1
     kind: Deployment
     name: order-processor
   minReplicas: 10
@@ -246,11 +263,7 @@ spec:
   - type: External
     external:
       metric:
-        name: datadog.custom.orders.processed_per_second
-        selector:
-          matchLabels:
-            env: production
-            service: order-processor
+        name: datadogmetric@production:order-processor-orders
       target:
         type: AverageValue
         averageValue: "50"  # 50 orders/sec per pod
@@ -261,12 +274,38 @@ spec:
 Use multiple APM metrics for comprehensive scaling.
 
 ```yaml
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: comprehensive-rps
+  namespace: production
+spec:
+  query: "sum:trace.web.request.hits{service:comprehensive-service,env:production}.as_rate().rollup(60)"
+---
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: comprehensive-p95-latency
+  namespace: production
+spec:
+  query: "p95:trace.web.request{service:comprehensive-service,env:production}.rollup(60)"
+---
+apiVersion: datadoghq.com/v1alpha1
+kind: DatadogMetric
+metadata:
+  name: comprehensive-errors
+  namespace: production
+spec:
+  query: "sum:trace.web.request.errors{service:comprehensive-service,env:production}.as_rate().rollup(60)"
+---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: multi-datadog-hpa
+  namespace: production
 spec:
   scaleTargetRef:
+    apiVersion: apps/v1
     kind: Deployment
     name: comprehensive-service
   minReplicas: 15
@@ -277,10 +316,7 @@ spec:
   - type: External
     external:
       metric:
-        name: datadog.trace.requests_per_second
-        selector:
-          matchLabels:
-            service: comprehensive-service
+        name: datadogmetric@production:comprehensive-rps
       target:
         type: AverageValue
         averageValue: "100"
@@ -289,22 +325,16 @@ spec:
   - type: External
     external:
       metric:
-        name: datadog.trace.p95_latency_ms
-        selector:
-          matchLabels:
-            service: comprehensive-service
+        name: datadogmetric@production:comprehensive-p95-latency
       target:
         type: Value
-        value: "200"
+        value: "0.2"
 
   # Error count
   - type: External
     external:
       metric:
-        name: datadog.trace.errors_per_minute
-        selector:
-          matchLabels:
-            service: comprehensive-service
+        name: datadogmetric@production:comprehensive-errors
       target:
         type: Value
         value: "10"
@@ -323,11 +353,11 @@ spec:
 Check available Datadog metrics.
 
 ```bash
-# List all external metrics
-kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1" | jq '.resources[].name' | grep datadog
+# List DatadogMetric resources
+kubectl get datadogmetric -n production
 
 # Check specific metric value
-kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/production/datadog.trace.requests_per_second" | jq .
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/production/datadogmetric@production:api-server-rps" | jq .
 
 # View HPA status
 kubectl describe hpa datadog-requests-hpa
@@ -344,7 +374,7 @@ Set target values based on observed behavior in Datadog dashboards. Review actua
 
 Combine Datadog metrics with resource metrics to ensure scaling responds to both application and infrastructure signals.
 
-Tag your Datadog metrics consistently to enable proper filtering in HPA metric selectors. Use service, env, and resource tags.
+Tag your Datadog metrics consistently to enable proper filtering in DatadogMetric queries. Use service, env, and resource tags.
 
 Monitor for metric lag. Datadog metrics may have slight delay compared to Kubernetes resource metrics. Account for this in stabilization windows.
 
@@ -358,9 +388,9 @@ Test metric availability before deploying HPA. Verify the Datadog Cluster Agent 
 kubectl logs -n datadog -l app=datadog-cluster-agent | grep external_metrics
 ```
 
-**HPA shows unknown for Datadog metrics**: Check metric name and selector labels match exactly what Datadog reports.
+**HPA shows unknown for Datadog metrics**: Check that the HPA references an existing `DatadogMetric` and that the Datadog query returns one series.
 
-**Scaling based on wrong service**: Ensure service tags in metric selector match your service name in Datadog APM.
+**Scaling based on wrong service**: Ensure service tags in DatadogMetric queries match your service name in Datadog APM.
 
 **High costs from Datadog custom metrics**: Each unique tag combination creates a custom metric. Keep tag cardinality low.
 
