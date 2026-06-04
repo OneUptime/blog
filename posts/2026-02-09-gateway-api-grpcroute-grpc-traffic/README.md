@@ -78,7 +78,7 @@ Route all methods of a gRPC service to a backend:
 
 ```yaml
 # basic-grpcroute.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: user-service-route
@@ -163,7 +163,7 @@ Route different gRPC methods to different backends:
 
 ```yaml
 # method-based-routing.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: user-service-methods
@@ -208,7 +208,7 @@ Route based on gRPC metadata (headers):
 
 ```yaml
 # header-based-grpcroute.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: version-based-routing
@@ -247,11 +247,12 @@ package main
 import (
     "context"
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/metadata"
 )
 
 func main() {
-    conn, _ := grpc.Dial("grpc.example.com:80", grpc.WithInsecure())
+    conn, _ := grpc.NewClient("grpc.example.com:80", grpc.WithTransportCredentials(insecure.NewCredentials()))
     client := userpb.NewUserServiceClient(conn)
 
     // Set metadata for routing
@@ -271,7 +272,7 @@ Gradually shift traffic to a new version:
 
 ```yaml
 # grpc-canary.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: user-service-canary
@@ -311,7 +312,7 @@ Add or modify gRPC metadata before forwarding to backends:
 
 ```yaml
 # header-modification.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: user-service-headers
@@ -331,8 +332,8 @@ spec:
         add:
         - name: x-gateway-name
           value: grpc-gateway
-        - name: x-request-id
-          value: "${request_id}"  # If supported by implementation
+        - name: x-route-name
+          value: user-service-headers
         set:
         - name: x-forwarded-proto
           value: grpc
@@ -347,7 +348,7 @@ Route multiple gRPC services through one gateway:
 
 ```yaml
 # multi-service-grpc.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: multi-service-routing
@@ -385,7 +386,7 @@ spec:
 Match specific methods only:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: specific-methods
@@ -419,7 +420,7 @@ Route to services in different namespaces using ReferenceGrant:
 
 ```yaml
 # cross-namespace-grpc.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: cross-ns-route
@@ -437,7 +438,7 @@ spec:
       namespace: backend
       port: 50051
 ---
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-frontend-to-backend
@@ -468,24 +469,28 @@ Monitor gRPC-specific metrics in your services:
 package main
 
 import (
-    "github.com/grpc-ecosystem/go-grpc-prometheus"
+    grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
+    "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promhttp"
     "google.golang.org/grpc"
     "net/http"
 )
 
 func main() {
+    srvMetrics := grpcprom.NewServerMetrics()
+    prometheus.MustRegister(srvMetrics)
+
     // Create gRPC server with metrics
     grpcServer := grpc.NewServer(
-        grpc.StreamInterceptor(grpc_prometheus.StreamServerInterceptor),
-        grpc.UnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
+        grpc.StreamInterceptor(srvMetrics.StreamServerInterceptor()),
+        grpc.UnaryInterceptor(srvMetrics.UnaryServerInterceptor()),
     )
 
     // Register your service
     userpb.RegisterUserServiceServer(grpcServer, &userServer{})
 
     // Initialize metrics
-    grpc_prometheus.Register(grpcServer)
+    srvMetrics.InitializeMetrics(grpcServer)
 
     // Expose metrics endpoint
     http.Handle("/metrics", promhttp.Handler())
@@ -556,7 +561,7 @@ Compare performance across different routes or backends.
 Configure TLS termination for secure gRPC:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: secure-grpc
@@ -580,7 +585,7 @@ Client code for TLS:
 ```go
 // Go client with TLS
 creds := credentials.NewClientTLSFromCert(certPool, "grpc.example.com")
-conn, _ := grpc.Dial("grpc.example.com:443", grpc.WithTransportCredentials(creds))
+conn, _ := grpc.NewClient("grpc.example.com:443", grpc.WithTransportCredentials(creds))
 ```
 
-GRPCRoute provides powerful, gRPC-aware routing that HTTPRoute cannot match. Use method-based routing for CQRS patterns, traffic splitting for safe canary deployments of specific methods, and header-based routing for API versioning. The type-safe matching on gRPC service and method names makes routing configuration clear and less error-prone than path-based routing.
+GRPCRoute provides powerful, gRPC-aware routing without requiring path-based matches in HTTPRoute. Use method-based routing for CQRS patterns, traffic splitting for safe canary deployments of specific methods, and header-based routing for API versioning. The typed matching on gRPC service and method names makes routing configuration clear and less error-prone than path-based routing.
