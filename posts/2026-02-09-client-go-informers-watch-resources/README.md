@@ -23,8 +23,7 @@ The cache means you can query resource state locally without API calls. Event ha
 Install the client-go library.
 
 ```bash
-go get k8s.io/client-go@latest
-go get k8s.io/apimachinery/pkg/apis/meta/v1@latest
+go get k8s.io/client-go@latest k8s.io/api@latest k8s.io/apimachinery@latest
 ```
 
 Create a client configuration.
@@ -73,9 +72,7 @@ import (
     "time"
 
     corev1 "k8s.io/api/core/v1"
-    "k8s.io/apimachinery/pkg/labels"
     "k8s.io/client-go/informers"
-    "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/tools/cache"
 )
 
@@ -104,7 +101,19 @@ func main() {
             fmt.Printf("  Old phase: %s, New phase: %s\n", oldPod.Status.Phase, newPod.Status.Phase)
         },
         DeleteFunc: func(obj interface{}) {
-            pod := obj.(*corev1.Pod)
+            pod, ok := obj.(*corev1.Pod)
+            if !ok {
+                tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+                if !ok {
+                    fmt.Printf("Error decoding deleted pod, unknown type: %T\n", obj)
+                    return
+                }
+                pod, ok = tombstone.Obj.(*corev1.Pod)
+                if !ok {
+                    fmt.Printf("Error decoding deleted pod tombstone, unknown type: %T\n", tombstone.Obj)
+                    return
+                }
+            }
             fmt.Printf("Pod DELETED: %s/%s\n", pod.Namespace, pod.Name)
         },
     })
@@ -131,7 +140,14 @@ func main() {
 Once synced, query the informer's cache without API calls.
 
 ```go
-func listPodsFromCache(podInformer informers.PodInformer) {
+import (
+    "fmt"
+
+    "k8s.io/apimachinery/pkg/labels"
+    coreinformers "k8s.io/client-go/informers/core/v1"
+)
+
+func listPodsFromCache(podInformer coreinformers.PodInformer) {
     // List all pods from cache
     pods, err := podInformer.Lister().List(labels.Everything())
     if err != nil {
@@ -145,7 +161,7 @@ func listPodsFromCache(podInformer informers.PodInformer) {
     }
 }
 
-func getPodFromCache(podInformer informers.PodInformer, namespace, name string) {
+func getPodFromCache(podInformer coreinformers.PodInformer, namespace, name string) {
     pod, err := podInformer.Lister().Pods(namespace).Get(name)
     if err != nil {
         fmt.Printf("Error getting pod: %v\n", err)
@@ -283,12 +299,14 @@ func createIndexedInformer(clientset *kubernetes.Clientset) {
     podInformer := informerFactory.Core().V1().Pods()
 
     // Add custom index by node name
-    podInformer.Informer().AddIndexers(cache.Indexers{
+    if err := podInformer.Informer().AddIndexers(cache.Indexers{
         "byNode": func(obj interface{}) ([]string, error) {
             pod := obj.(*corev1.Pod)
             return []string{pod.Spec.NodeName}, nil
         },
-    })
+    }); err != nil {
+        panic(err)
+    }
 
     stopCh := make(chan struct{})
     defer close(stopCh)
@@ -313,7 +331,7 @@ func createIndexedInformer(clientset *kubernetes.Clientset) {
 
 ## Handling Resync
 
-Informers periodically resync to catch missed events.
+Informers can periodically reprocess objects from the local cache. Use resync to periodically re-evaluate cached objects; the informer's list/watch retry and relist behavior handles recovery from watch interruptions.
 
 ```go
 func createInformerWithResync(clientset *kubernetes.Clientset) {
@@ -326,20 +344,21 @@ func createInformerWithResync(clientset *kubernetes.Clientset) {
     podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
         AddFunc: func(obj interface{}) {
             pod := obj.(*corev1.Pod)
-            fmt.Printf("Pod add/resync: %s/%s\n", pod.Namespace, pod.Name)
+            fmt.Printf("Pod added: %s/%s\n", pod.Namespace, pod.Name)
         },
         UpdateFunc: func(oldObj, newObj interface{}) {
-            // During resync, oldObj == newObj
-            if oldObj == newObj {
-                // This is a resync event
+            oldPod := oldObj.(*corev1.Pod)
+            newPod := newObj.(*corev1.Pod)
+
+            // During resync or an unchanged relist, the resource version is unchanged.
+            if oldPod.ResourceVersion == newPod.ResourceVersion {
                 pod := newObj.(*corev1.Pod)
                 fmt.Printf("Pod resync: %s/%s\n", pod.Namespace, pod.Name)
                 return
             }
 
             // Actual update
-            pod := newObj.(*corev1.Pod)
-            fmt.Printf("Pod updated: %s/%s\n", pod.Namespace, pod.Name)
+            fmt.Printf("Pod updated: %s/%s\n", newPod.Namespace, newPod.Name)
         },
     })
 
@@ -388,11 +407,9 @@ func createRobustInformer(clientset *kubernetes.Clientset) {
 }
 
 func processPodAdd(obj interface{}) error {
-    pod := obj.(*corev1.Pod)
-
-    // Validate object
-    if pod == nil {
-        return fmt.Errorf("received nil pod")
+    pod, ok := obj.(*corev1.Pod)
+    if !ok || pod == nil {
+        return fmt.Errorf("expected *corev1.Pod, got %T", obj)
     }
 
     // Process the pod
@@ -403,8 +420,15 @@ func processPodAdd(obj interface{}) error {
 }
 
 func processPodUpdate(oldObj, newObj interface{}) error {
-    oldPod := oldObj.(*corev1.Pod)
-    newPod := newObj.(*corev1.Pod)
+    oldPod, ok := oldObj.(*corev1.Pod)
+    if !ok || oldPod == nil {
+        return fmt.Errorf("expected old object to be *corev1.Pod, got %T", oldObj)
+    }
+
+    newPod, ok := newObj.(*corev1.Pod)
+    if !ok || newPod == nil {
+        return fmt.Errorf("expected new object to be *corev1.Pod, got %T", newObj)
+    }
 
     // Check if this is actually a change
     if oldPod.ResourceVersion == newPod.ResourceVersion {
@@ -423,6 +447,6 @@ func processPodUpdate(oldObj, newObj interface{}) error {
 
 Informers are the foundation of efficient Kubernetes controllers. They maintain local caches and provide event-driven updates without constant API polling.
 
-Use informers for any application that watches Kubernetes resources. Configure appropriate resync periods to catch missed events. Add custom indexes for complex queries. Handle events in lightweight handlers and defer heavy processing to work queues.
+Use informers for any application that watches Kubernetes resources. Configure resync periods when you need periodic re-evaluation of cached objects. Add custom indexes for complex queries. Handle events in lightweight handlers and defer heavy processing to work queues.
 
 Informers reduce API server load, improve response times, and enable real-time reactions to cluster changes. They're essential for building production-grade Kubernetes controllers and operators.
