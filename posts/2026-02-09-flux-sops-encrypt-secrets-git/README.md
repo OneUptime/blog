@@ -34,9 +34,9 @@ Install the SOPS CLI:
 brew install sops
 
 # Linux
-curl -LO https://github.com/mozilla/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
-chmod +x sops-v3.8.1.linux.amd64
-sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+curl -LO https://github.com/getsops/sops/releases/download/v3.13.1/sops-v3.13.1.linux.amd64
+chmod +x sops-v3.13.1.linux.amd64
+sudo mv sops-v3.13.1.linux.amd64 /usr/local/bin/sops
 
 # Verify installation
 sops --version
@@ -190,7 +190,7 @@ sops:
             YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBFM...
             -----END AGE ENCRYPTED FILE-----
     encrypted_regex: ^(data|stringData)$
-    version: 3.8.1
+    version: 3.13.1
 ```
 
 Values are encrypted, but structure and metadata remain readable.
@@ -299,10 +299,10 @@ When you need to rotate keys, re-encrypt with the new key:
 
 ```bash
 # Using new Age key
-sops --rotate --age age1new_public_key --in-place secret.yaml
+sops rotate --in-place --add-age age1new_public_key --rm-age age1old_public_key secret.yaml
 
 # Using new KMS key
-sops --rotate --kms arn:aws:kms:region:account:key/new-key-id --in-place secret.yaml
+sops rotate --in-place --add-kms arn:aws:kms:region:account:key/new-key-id --rm-kms arn:aws:kms:region:account:key/old-key-id secret.yaml
 ```
 
 ## Git Diff for Encrypted Files
