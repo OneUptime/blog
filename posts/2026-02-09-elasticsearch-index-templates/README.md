@@ -266,8 +266,8 @@ Higher priority wins when patterns match.
 ## Best practices
 
 1. **Use component templates:** Promote reusability
-2. **Set appropriate shard counts:** 50GB per shard is optimal
-3. **Enable doc_values:** Required for aggregations and sorting
+2. **Set appropriate shard counts:** Aim for shard sizes between 10GB and 50GB
+3. **Keep doc_values enabled:** Used for efficient aggregations and sorting on supported field types
 4. **Use keyword for exact match:** Store IDs, statuses as keywords
 5. **Disable indexing when not searching:** Save space with index: false
 6. **Plan for growth:** Use dynamic templates for unknown fields
