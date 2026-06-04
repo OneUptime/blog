@@ -292,7 +292,20 @@ TAG=v2.1.0 GIT_SHA=$(git rev-parse --short HEAD) \
 
 ## Variable Validation Patterns
 
-HCL does not have built-in variable validation, but you can use the `--print` flag to verify values:
+Bake HCL supports variable `validation` blocks for checking values before a build runs:
+
+```hcl
+variable "TAG" {
+  default = "latest"
+
+  validation {
+    condition     = TAG != "" && TAG != "latest"
+    error_message = "TAG must be set to a specific version."
+  }
+}
+```
+
+You can also use the `--print` flag to verify resolved values:
 
 ```bash
 # Print the resolved build plan to verify variable values
