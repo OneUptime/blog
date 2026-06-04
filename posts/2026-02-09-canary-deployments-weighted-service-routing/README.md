@@ -110,6 +110,11 @@ if [ -z "$NEW_VERSION" ]; then
     exit 1
 fi
 
+check_error_rate() {
+    # Replace this placeholder with a Prometheus, Datadog, or custom metrics check.
+    echo 0
+}
+
 # Update canary deployment
 echo "Deploying canary version $NEW_VERSION..."
 kubectl set image deployment/${APP_NAME}-canary \
@@ -118,20 +123,22 @@ kubectl set image deployment/${APP_NAME}-canary \
 
 kubectl rollout status deployment/${APP_NAME}-canary -n $NAMESPACE
 
-# Get current stable replica count
-TOTAL_REPLICAS=$(kubectl get deployment ${APP_NAME}-stable -n $NAMESPACE \
+# Get current total replica count
+STABLE_CURRENT=$(kubectl get deployment ${APP_NAME}-stable -n $NAMESPACE \
     -o jsonpath='{.spec.replicas}')
+CANARY_CURRENT=$(kubectl get deployment ${APP_NAME}-canary -n $NAMESPACE \
+    -o jsonpath='{.spec.replicas}')
+TOTAL_REPLICAS=$(( STABLE_CURRENT + CANARY_CURRENT ))
 
 for PERCENT in "${CANARY_STEPS[@]}"; do
     echo ""
     echo "=== Increasing canary traffic to ${PERCENT}% ==="
 
-    CANARY_REPLICAS=$(( TOTAL_REPLICAS * PERCENT / 100 ))
+    CANARY_REPLICAS=$(( (TOTAL_REPLICAS * PERCENT + 50) / 100 ))
     STABLE_REPLICAS=$(( TOTAL_REPLICAS - CANARY_REPLICAS ))
 
-    # Ensure at least 1 replica
+    # Ensure at least 1 canary replica before the 100% stage
     CANARY_REPLICAS=$(( CANARY_REPLICAS > 0 ? CANARY_REPLICAS : 1 ))
-    STABLE_REPLICAS=$(( STABLE_REPLICAS > 0 ? STABLE_REPLICAS : 1 ))
 
     echo "Stable replicas: $STABLE_REPLICAS"
     echo "Canary replicas: $CANARY_REPLICAS"
@@ -325,16 +332,16 @@ def query_prometheus(query):
 def get_error_rate(version):
     """Get error rate for a specific version."""
     query = f'''
-    rate(http_requests_total{{
+    sum(rate(http_requests_total{{
         app="{APP}",
         version="{version}",
         status=~"5.."
-    }}[5m])
+    }}[5m]))
     /
-    rate(http_requests_total{{
+    sum(rate(http_requests_total{{
         app="{APP}",
         version="{version}"
-    }}[5m])
+    }}[5m]))
     '''
     result = query_prometheus(query)
     if result['data']['result']:
@@ -345,10 +352,10 @@ def get_latency_p99(version):
     """Get p99 latency for a version."""
     query = f'''
     histogram_quantile(0.99,
-      rate(http_request_duration_seconds_bucket{{
+      sum by (le) (rate(http_request_duration_seconds_bucket{{
         app="{APP}",
         version="{version}"
-      }}[5m])
+      }}[5m]))
     )
     '''
     result = query_prometheus(query)
@@ -479,15 +486,15 @@ data:
       - alert: CanaryHighErrorRate
         expr: |
           (
-            rate(http_requests_total{version="canary",status=~"5.."}[5m])
+            sum(rate(http_requests_total{version="canary",status=~"5.."}[5m]))
             /
-            rate(http_requests_total{version="canary"}[5m])
+            sum(rate(http_requests_total{version="canary"}[5m]))
           )
           >
           (
-            rate(http_requests_total{version="stable",status=~"5.."}[5m])
+            sum(rate(http_requests_total{version="stable",status=~"5.."}[5m]))
             /
-            rate(http_requests_total{version="stable"}[5m])
+            sum(rate(http_requests_total{version="stable"}[5m]))
           ) * 2
         for: 5m
         labels:
@@ -498,11 +505,11 @@ data:
       - alert: CanaryHighLatency
         expr: |
           histogram_quantile(0.99,
-            rate(http_request_duration_seconds_bucket{version="canary"}[5m])
+            sum by (le) (rate(http_request_duration_seconds_bucket{version="canary"}[5m]))
           )
           >
           histogram_quantile(0.99,
-            rate(http_request_duration_seconds_bucket{version="stable"}[5m])
+            sum by (le) (rate(http_request_duration_seconds_bucket{version="stable"}[5m]))
           ) * 1.5
         for: 10m
         labels:
