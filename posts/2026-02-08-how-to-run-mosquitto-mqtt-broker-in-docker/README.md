@@ -22,11 +22,10 @@ Run Mosquitto with default settings:
 docker run -d \
   --name mosquitto \
   -p 1883:1883 \
-  -p 9001:9001 \
   eclipse-mosquitto:2
 ```
 
-Port 1883 handles standard MQTT connections. Port 9001 is for MQTT over WebSockets.
+Port 1883 handles standard MQTT connections. The WebSocket listener configured later uses port 9001.
 
 However, Mosquitto 2.x requires explicit configuration to allow connections. Without a config file, it only listens on localhost inside the container. Let's set it up properly.
 
@@ -37,6 +36,7 @@ Create the directory structure for Mosquitto configuration and data:
 ```bash
 # Create project directories
 mkdir -p mosquitto-docker/{config,data,log}
+cd mosquitto-docker
 ```
 
 ## Basic Configuration
@@ -71,8 +71,6 @@ log_type all
 
 ```yaml
 # docker-compose.yml - Mosquitto MQTT broker
-version: "3.8"
-
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -82,8 +80,8 @@ services:
       # MQTT over WebSocket
       - "9001:9001"
     volumes:
-      # Mount configuration file
-      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      # Mount configuration directory
+      - ./config:/mosquitto/config
       # Persist message data
       - ./data:/mosquitto/data
       # Persist log files
@@ -107,16 +105,16 @@ Test publish and subscribe using the Mosquitto command-line tools:
 
 ```bash
 # Open a subscriber in one terminal - listens to all topics under "home/"
-docker exec mosquitto mosquitto_sub -t "home/#" -v
+docker compose exec mosquitto mosquitto_sub -t "home/#" -v
 
 # Publish a message in another terminal
-docker exec mosquitto mosquitto_pub -t "home/livingroom/temperature" -m '{"value": 22.5}'
+docker compose exec mosquitto mosquitto_pub -t "home/livingroom/temperature" -m '{"value": 22.5}'
 
 # Publish with QoS 1 (at least once delivery)
-docker exec mosquitto mosquitto_pub -t "home/livingroom/temperature" -m '{"value": 23.0}' -q 1
+docker compose exec mosquitto mosquitto_pub -t "home/livingroom/temperature" -m '{"value": 23.0}' -q 1
 
 # Publish a retained message (new subscribers will receive it immediately)
-docker exec mosquitto mosquitto_pub -t "home/livingroom/status" -m "online" -r
+docker compose exec mosquitto mosquitto_pub -t "home/livingroom/status" -m "online" -r
 ```
 
 ## Adding Password Authentication
@@ -125,11 +123,11 @@ For anything beyond local testing, enable authentication. First, create a passwo
 
 ```bash
 # Create a password file with an initial user
-docker exec mosquitto mosquitto_passwd -c /mosquitto/config/passwd device1
+docker compose exec mosquitto mosquitto_passwd -c /mosquitto/config/passwd device1
 
 # Add more users without the -c flag (which creates a new file)
-docker exec mosquitto mosquitto_passwd /mosquitto/config/passwd device2
-docker exec mosquitto mosquitto_passwd /mosquitto/config/passwd webapp
+docker compose exec mosquitto mosquitto_passwd /mosquitto/config/passwd device2
+docker compose exec mosquitto mosquitto_passwd /mosquitto/config/passwd webapp
 ```
 
 Update the configuration to require authentication:
@@ -163,8 +161,8 @@ Restart Mosquitto to apply changes:
 docker compose restart mosquitto
 
 # Test with authentication
-docker exec mosquitto mosquitto_pub -t "test" -m "hello" -u device1 -P "your_password"
-docker exec mosquitto mosquitto_sub -t "test" -u webapp -P "your_password"
+docker compose exec mosquitto mosquitto_pub -t "test" -m "hello" -u device1 -P "your_password"
+docker compose exec mosquitto mosquitto_sub -t "test" -u webapp -P "your_password"
 ```
 
 ## Adding Access Control Lists (ACLs)
@@ -187,6 +185,7 @@ topic read commands/device2/#
 # webapp can read all home topics and write commands
 user webapp
 topic read home/#
+topic read $SYS/#
 topic write commands/#
 ```
 
@@ -197,13 +196,12 @@ Add the ACL file to the Mosquitto configuration:
 acl_file /mosquitto/config/acl.conf
 ```
 
-Update Docker Compose to mount the ACL file:
+Make sure Docker Compose mounts the configuration directory:
 
 ```yaml
 # Updated volumes section
     volumes:
-      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - ./config/acl.conf:/mosquitto/config/acl.conf
+      - ./config:/mosquitto/config
       - ./data:/mosquitto/data
       - ./log:/mosquitto/log
 ```
@@ -214,7 +212,7 @@ For production deployments, encrypt MQTT traffic with TLS. First, generate certi
 
 ```bash
 # Generate a self-signed CA and server certificate for testing
-mkdir -p mosquitto-docker/config/certs
+mkdir -p config/certs
 
 # Create CA key and certificate
 openssl genrsa -out config/certs/ca.key 2048
@@ -224,11 +222,16 @@ openssl req -new -x509 -days 365 -key config/certs/ca.key -out config/certs/ca.c
 # Create server key and certificate signing request
 openssl genrsa -out config/certs/server.key 2048
 openssl req -new -key config/certs/server.key -out config/certs/server.csr \
-  -subj "/CN=mqtt.example.com"
+  -subj "/CN=localhost" \
+  -addext "subjectAltName = DNS:localhost,IP:127.0.0.1"
 
 # Sign the server certificate with the CA
 openssl x509 -req -in config/certs/server.csr -CA config/certs/ca.crt \
-  -CAkey config/certs/ca.key -CAcreateserial -out config/certs/server.crt -days 365
+  -CAkey config/certs/ca.key -CAcreateserial -out config/certs/server.crt -days 365 \
+  -copy_extensions copy
+
+# Make the test key readable by the Mosquitto user in the container
+chmod 644 config/certs/server.key
 ```
 
 Update the configuration for TLS:
@@ -268,8 +271,6 @@ Update Docker Compose to expose the TLS port:
 
 ```yaml
 # docker-compose.yml - Mosquitto with TLS
-version: "3.8"
-
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -287,7 +288,7 @@ Test the TLS connection:
 
 ```bash
 # Connect with TLS using the CA certificate
-docker exec mosquitto mosquitto_pub \
+docker compose exec mosquitto mosquitto_pub \
   -h localhost -p 8883 \
   --cafile /mosquitto/config/certs/ca.crt \
   -t "test/tls" -m "encrypted message" \
@@ -300,8 +301,6 @@ Add a Prometheus exporter for monitoring Mosquitto metrics:
 
 ```yaml
 # docker-compose.yml - Mosquitto with metrics monitoring
-version: "3.8"
-
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -318,7 +317,7 @@ services:
       - "9234:9234"
     environment:
       # Point the exporter at the Mosquitto broker
-      MQTT_BROKER: tcp://mosquitto:1883
+      BROKER_ENDPOINT: tcp://mosquitto:1883
       MQTT_USER: webapp
       MQTT_PASS: your_password
     depends_on:
@@ -357,13 +356,13 @@ restart_timeout 10 30
 docker compose logs mosquitto | grep "New connection"
 
 # Monitor all messages flowing through the broker
-docker exec mosquitto mosquitto_sub -t "#" -v -u admin -P admin_pass
+docker compose exec mosquitto mosquitto_sub -t "#" -v -u admin -P admin_pass
 
 # Check Mosquitto version and build info
-docker exec mosquitto mosquitto -h
+docker compose exec mosquitto mosquitto -h
 
 # View retained messages on a topic
-docker exec mosquitto mosquitto_sub -t "home/+/status" -v -u admin -P admin_pass --retained-only
+docker compose exec mosquitto mosquitto_sub -t "home/+/status" -v -u admin -P admin_pass --retained-only
 ```
 
 ## Summary
