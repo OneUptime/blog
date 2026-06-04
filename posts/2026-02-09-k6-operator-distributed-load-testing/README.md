@@ -14,9 +14,9 @@ In this guide, we'll deploy the K6 operator, create distributed load tests that 
 
 ## Understanding K6 Operator Architecture
 
-The K6 operator watches for K6 custom resources that define load test specifications. When you create a K6 resource, the operator spawns K6 runner pods that execute your test script in parallel. The operator handles test orchestration, result aggregation, and cleanup automatically.
+The K6 operator watches for TestRun custom resources that define load test specifications. When you create a TestRun resource, the operator spawns K6 runner pods that execute your test script in parallel. The operator handles test orchestration, lifecycle management, and optional cleanup automatically.
 
-Distributed testing splits virtual users across multiple pods, enabling tests that exceed single-pod capacity. The operator manages pod creation, starts tests simultaneously, and collects results from all runners. This approach generates authentic load patterns that stress your services realistically.
+Distributed testing splits virtual users across multiple pods, enabling tests that exceed single-pod capacity. The operator manages pod creation and starts tests across all runners. Use a real-time output backend, such as Prometheus Remote Write or Grafana Cloud k6, when you need centralized metrics from all runners. This approach generates authentic load patterns that stress your services realistically.
 
 The K6 operator supports standard K6 scripts with full access to K6 modules, thresholds, and custom metrics. Tests run as Kubernetes Jobs, inheriting familiar Job semantics like restart policies and resource limits.
 
@@ -26,9 +26,7 @@ Deploy the operator to your cluster:
 
 ```bash
 # Install operator via manifests
-
-kubectl create namespace k6-operator-system
-kubectl apply -f https://github.com/grafana/k6-operator/releases/download/v0.0.14/bundle.yaml
+curl https://raw.githubusercontent.com/grafana/k6-operator/main/bundle.yaml | kubectl apply -f -
 
 # Verify operator is running
 kubectl get pods -n k6-operator-system
@@ -125,12 +123,12 @@ kubectl apply -f k6-script-configmap.yaml
 
 ## Running a Basic Load Test
 
-Create a K6 custom resource:
+Create a TestRun custom resource:
 
 ```yaml
 # k6-test.yaml
 apiVersion: k6.io/v1alpha1
-kind: K6
+kind: TestRun
 metadata:
   name: k6-sample-test
   namespace: default
@@ -156,7 +154,7 @@ Execute the test:
 kubectl apply -f k6-test.yaml
 
 # Watch test execution
-kubectl get k6 k6-sample-test -w
+kubectl get testrun k6-sample-test -w
 
 # View test logs
 kubectl logs -l k6_cr=k6-sample-test -f
@@ -169,7 +167,7 @@ Scale test execution across multiple pods:
 ```yaml
 # distributed-k6-test.yaml
 apiVersion: k6.io/v1alpha1
-kind: K6
+kind: TestRun
 metadata:
   name: distributed-load-test
   namespace: default
@@ -182,8 +180,11 @@ spec:
       name: k6-test-script
       file: test.js
 
-  # Arguments passed to k6
+  # Arguments passed to k6. Each runner writes this file inside its own pod.
   arguments: --out json=results.json
+
+  # Spread runner pods across nodes
+  separate: true
 
   runner:
     image: grafana/k6:latest
@@ -194,23 +195,9 @@ spec:
       limits:
         cpu: "1000m"
         memory: "1Gi"
-
-    # Spread pods across nodes
-    affinity:
-      podAntiAffinity:
-        preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchExpressions:
-              - key: k6_cr
-                operator: In
-                values:
-                - distributed-load-test
-            topologyKey: kubernetes.io/hostname
 ```
 
-This configuration creates 10 K6 runner pods that execute the test in parallel, distributing virtual users across all runners. Total load equals single-pod load multiplied by parallelism factor.
+This configuration creates 10 K6 runner pods that execute the test in parallel, splitting the configured virtual users across all runners with execution segments. For example, a script configured for 100 VUs with `parallelism: 10` runs about 10 VUs per runner, for 100 total VUs.
 
 Execute distributed test:
 
@@ -273,7 +260,7 @@ Run different test types:
 # Spike test
 kubectl apply -f - <<EOF
 apiVersion: k6.io/v1alpha1
-kind: K6
+kind: TestRun
 metadata:
   name: spike-test
 spec:
@@ -287,7 +274,7 @@ EOF
 # Stress test
 kubectl apply -f - <<EOF
 apiVersion: k6.io/v1alpha1
-kind: K6
+kind: TestRun
 metadata:
   name: stress-test
 spec:
@@ -301,12 +288,12 @@ EOF
 
 ## Integrating with Prometheus
 
-Export K6 metrics to Prometheus:
+Export K6 metrics to Prometheus. Make sure Prometheus is configured to receive remote write data, for example with `--web.enable-remote-write-receiver` in Prometheus 2.x:
 
 ```yaml
 # k6-prometheus-test.yaml
 apiVersion: k6.io/v1alpha1
-kind: K6
+kind: TestRun
 metadata:
   name: k6-prometheus-test
 spec:
@@ -315,25 +302,28 @@ spec:
     configMap:
       name: k6-test-script
       file: test.js
+  arguments: -o experimental-prometheus-rw
   runner:
     env:
     - name: K6_PROMETHEUS_RW_SERVER_URL
-      value: "http://prometheus-pushgateway.monitoring.svc:9091/metrics/job/k6"
+      value: "http://prometheus.monitoring.svc:9090/api/v1/write"
     - name: K6_PROMETHEUS_RW_PUSH_INTERVAL
       value: "5s"
+    - name: K6_PROMETHEUS_RW_TREND_STATS
+      value: "p(95),p(99),avg"
 ```
 
 Query K6 metrics in Prometheus:
 
 ```promql
 # Request duration percentiles
-k6_http_req_duration{percentile="95"}
+k6_http_req_duration_p95
 
 # Request rate
-rate(k6_http_reqs[1m])
+rate(k6_http_reqs_total[1m])
 
 # Failed requests
-rate(k6_http_req_failed[5m])
+k6_http_req_failed_rate
 ```
 
 ## Scheduling Recurring Load Tests
@@ -362,7 +352,7 @@ spec:
             - |
               cat <<EOF | kubectl apply -f -
               apiVersion: k6.io/v1alpha1
-              kind: K6
+              kind: TestRun
               metadata:
                 name: scheduled-test-$(date +%s)
               spec:
@@ -393,8 +383,8 @@ metadata:
   namespace: default
 rules:
 - apiGroups: ["k6.io"]
-  resources: ["k6s"]
-  verbs: ["create", "get", "list"]
+  resources: ["testruns"]
+  verbs: ["create", "get", "list", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -416,10 +406,10 @@ Extract test results:
 
 ```bash
 # Get test status
-kubectl describe k6 k6-sample-test
+kubectl describe testrun k6-sample-test
 
-# View aggregated results
-kubectl logs -l k6_cr=k6-sample-test --tail=100 | grep "summary"
+# View runner summaries
+kubectl logs -l k6_cr=k6-sample-test --tail=100
 
 # Export results to file
 kubectl logs -l k6_cr=k6-sample-test > test-results.log
@@ -439,10 +429,10 @@ Clean up completed tests:
 
 ```bash
 # Delete specific test
-kubectl delete k6 k6-sample-test
+kubectl delete testrun k6-sample-test
 
 # Delete all K6 tests
-kubectl delete k6 --all
+kubectl delete testrun --all
 
 # Cleanup completed test pods
 kubectl delete pods -l k6_cr --field-selector=status.phase=Succeeded
@@ -453,7 +443,7 @@ Configure automatic cleanup:
 ```yaml
 # k6-with-cleanup.yaml
 apiVersion: k6.io/v1alpha1
-kind: K6
+kind: TestRun
 metadata:
   name: auto-cleanup-test
 spec:
@@ -462,8 +452,8 @@ spec:
     configMap:
       name: k6-test-script
       file: test.js
-  # Cleanup after 1 hour
-  cleanup: "ttlSecondsAfterFinished: 3600"
+  # Remove runner resources after the test completes
+  cleanup: post
 ```
 
 ## Conclusion
