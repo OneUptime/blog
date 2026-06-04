@@ -96,10 +96,10 @@ stringData:
   type: git
   url: https://github.com/myorg/private-repo.git
   password: ghp_YourPersonalAccessToken123456
-  username: not-used  # Username can be anything for token auth
+  username: myusername  # Use the username expected by your Git provider
 ```
 
-For GitHub, GitLab, and Bitbucket, the password field should contain your personal access token. The username field is typically ignored when using token authentication but must be present.
+For GitHub, GitLab, and Bitbucket, the password field should contain your personal access token or app password. The username field should match the requirements of your Git provider: GitHub accepts the GitHub username with the token as the password, GitLab commonly uses the account username or `oauth2` depending on the token type, and Bitbucket Cloud app passwords require the Bitbucket username.
 
 ## Implementing credential templates for multiple repositories
 
@@ -157,7 +157,7 @@ kubectl apply -f gitlab-group-credentials.yaml
 kubectl apply -f bitbucket-workspace-credentials.yaml
 ```
 
-Now any Application referencing repositories under these URL patterns will automatically use the configured credentials.
+Now any Application referencing repositories under these URL patterns will automatically use the configured credentials, unless the repository is separately configured with its own credentials.
 
 ## Creating applications with multiple repository sources
 
@@ -173,15 +173,16 @@ metadata:
 spec:
   project: default
   sources:
-    - repoURL: https://github.com/myorg/app-manifests.git
+    - repoURL: https://github.com/myorg/helm-chart.git
       targetRevision: main
-      path: overlays/production
-    - repoURL: https://github.com/myorg/helm-values.git
-      targetRevision: main
-      path: values
+      path: charts/my-app
       helm:
         valueFiles:
-          - production-values.yaml
+          - values.yaml
+          - $values/production-values.yaml
+    - repoURL: https://github.com/myorg/helm-values.git
+      targetRevision: main
+      ref: values
     - repoURL: https://gitlab.com/mygroup/config-repo.git
       targetRevision: main
       path: configs
@@ -194,7 +195,7 @@ spec:
       selfHeal: true
 ```
 
-This Application pulls manifests from three different repositories, each authenticated using the appropriate credential template.
+This Application renders a Helm chart with value files from another repository and also pulls manifests from a third repository. Each repository is authenticated using the appropriate credential template.
 
 ## Managing credentials with external secrets
 
@@ -233,7 +234,7 @@ This approach keeps sensitive credentials in your secret management system while
 
 ## Using declarative repository management
 
-You can manage repositories declaratively using the Repository CRD:
+You can manage repositories through the ArgoCD CLI:
 
 ```bash
 # Add repositories using ArgoCD CLI
@@ -251,7 +252,7 @@ argocd repo list
 argocd repo rm https://github.com/myorg/repo1.git
 ```
 
-For declarative management, use the ArgoCD repositories ConfigMap or individual secrets as shown earlier.
+For declarative management, use repository Secrets or repository credential template Secrets as shown earlier.
 
 ## Implementing project-scoped repository access
 
@@ -300,10 +301,7 @@ argocd repo add git@github.com:myorg/test.git \
 
 **Credential precedence:**
 
-ArgoCD matches credentials in this order:
-1. Exact URL match in repository secrets
-2. Longest prefix match in credential templates
-3. Fallback to anonymous access if no match
+ArgoCD uses credentials from a repository secret when that secret contains credential fields. Repository credential templates apply only when the repository is not configured at all, or when its repository secret does not include credential information. When multiple credential templates match a repository URL, the longest matching URL prefix takes precedence.
 
 Ensure your credential templates use the correct URL prefixes for proper matching.
 
