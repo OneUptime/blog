@@ -16,7 +16,7 @@ This guide shows you how to configure Cloud NAT for GKE egress traffic, customiz
 
 Cloud NAT is a distributed, software-defined managed service that allows private GKE nodes to access the internet without exposing them to inbound connections. The architecture works like this:
 
-**Router** - A Cloud Router in your VPC that manages NAT configurations and handles routing.
+**Router** - A Cloud Router in your VPC that provides the control plane for Cloud NAT configuration.
 
 **NAT Gateway** - The logical NAT gateway that translates private IPs to public IPs for outbound traffic.
 
@@ -53,7 +53,7 @@ gcloud compute routers create nat-router \
   --region=us-central1
 ```
 
-The router manages routing for your VPC and acts as the control plane for Cloud NAT.
+The router acts as the control plane for Cloud NAT. Cloud Router doesn't forward NAT packets itself.
 
 Now create the NAT gateway:
 
@@ -170,7 +170,7 @@ To NAT only specific subnets:
 gcloud compute routers nats create selective-nat \
   --router=nat-router \
   --region=us-central1 \
-  --nat-custom-subnet-ip-ranges=my-subnet \
+  --nat-custom-subnet-ip-ranges=my-subnet:ALL \
   --auto-allocate-nat-external-ips
 ```
 
@@ -210,8 +210,8 @@ metadata:
   name: nat-test
 spec:
   containers:
-  - name: curl
-    image: curlimages/curl:latest
+  - name: netshoot
+    image: nicolaka/netshoot:latest
     command: ["sleep", "3600"]
 ```
 
@@ -264,10 +264,10 @@ resource "google_compute_router_nat" "nat_gateway" {
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 
   # Port allocation
-  min_ports_per_vm                 = 64
-  max_ports_per_vm                 = 512
-  enable_dynamic_port_allocation   = true
-  enable_endpoint_independent_mapping = true
+  min_ports_per_vm                    = 64
+  max_ports_per_vm                    = 512
+  enable_dynamic_port_allocation      = true
+  enable_endpoint_independent_mapping = false
 
   log_config {
     enable = true
@@ -339,12 +339,12 @@ resource "google_monitoring_dashboard" "nat_dashboard" {
           width  = 6
           height = 4
           widget = {
-            title = "NAT Connections"
+            title = "NAT Allocation Failed"
             xyChart = {
               dataSets = [{
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter = "resource.type=\"nat_gateway\" metric.type=\"router.googleapis.com/nat/nat_allocation_failed\""
+                    filter = "resource.type=\"nat_gateway\" metric.type=\"compute.googleapis.com/nat/nat_allocation_failed\""
                   }
                 }
               }]
@@ -357,15 +357,16 @@ resource "google_monitoring_dashboard" "nat_dashboard" {
 }
 ```
 
-Set up alerts for port exhaustion:
+Set up alerts for NAT allocation failures:
 
 ```bash
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --notification-channels=CHANNEL_ID \
-  --display-name="NAT Port Exhaustion" \
-  --condition-display-name="Ports per VM high" \
-  --condition-threshold-value=450 \
-  --condition-threshold-duration=300s
+  --display-name="NAT Allocation Failed" \
+  --condition-display-name="NAT allocation failed" \
+  --condition-filter='resource.type="nat_gateway" AND metric.type="compute.googleapis.com/nat/nat_allocation_failed"' \
+  --duration=300s \
+  --if="> 0"
 ```
 
 ## Troubleshooting Cloud NAT Issues
@@ -411,24 +412,30 @@ nslookup google.com
 
 ## NAT for GKE Workload Identity
 
-When using Workload Identity, ensure NAT allows metadata server access:
+When using Workload Identity with restrictive NetworkPolicies, allow pods to reach the GKE metadata server:
 
-```hcl
-resource "google_compute_firewall" "allow_metadata" {
-  name    = "allow-metadata-server"
-  network = google_compute_network.vpc.name
-
-  allow {
-    protocol = "tcp"
-    ports    = ["80", "443"]
-  }
-
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["gke-node"]
-
-  # Allow access to metadata server
-  destination_ranges = ["169.254.169.254/32"]
-}
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gke-metadata-server
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: 169.254.169.252/32
+    ports:
+    - protocol: TCP
+      port: 988
+  - to:
+    - ipBlock:
+        cidr: 169.254.169.254/32
+    ports:
+    - protocol: TCP
+      port: 80
 ```
 
 Pods using Workload Identity need to reach Google APIs:
@@ -456,9 +463,9 @@ kubectl exec workload-identity-test -- gcloud storage ls
 ## Cost Optimization for Cloud NAT
 
 Cloud NAT charges for:
-- Number of NAT gateways
+- NAT gateway usage based on assigned VM instances
 - Data processing
-- VM-to-NAT assignments
+- External IP addresses used by Public NAT
 
 Optimize costs:
 
