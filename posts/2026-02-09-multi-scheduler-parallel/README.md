@@ -19,7 +19,7 @@ Multiple schedulers solve several problems:
 - **Different strategies**: Apply bin-packing for batch jobs and balanced allocation for services.
 - **Custom logic**: Implement specialized scheduling for GPU allocation or network topology.
 - **Isolation**: Prevent experimental scheduling algorithms from affecting production workloads.
-- **Throughput**: Distribute scheduling load across multiple scheduler instances.
+- **Throughput**: Distribute scheduling load across schedulers that handle different workload types.
 - **Gradual migration**: Test new scheduling configurations without disrupting existing workloads.
 
 ## Understanding the Default Scheduler
@@ -31,8 +31,8 @@ Before adding schedulers, understand what you're working with. The default sched
 
 kubectl get pods -n kube-system -l component=kube-scheduler
 
-# Check its configuration
-kubectl get configmap -n kube-system kube-scheduler -o yaml
+# Check how the scheduler pod is configured
+kubectl get pod -n kube-system -l component=kube-scheduler -o yaml
 ```
 
 The default scheduler is named `default-scheduler`, and pods use it unless you specify otherwise.
@@ -66,9 +66,14 @@ data:
             weight: 2
           disabled:
           - name: NodeResourcesBalancedAllocation  # Disable spreading
+      pluginConfig:
+      - name: NodeResourcesFit
+        args:
+          scoringStrategy:
+            type: MostAllocated  # Favor nodes with higher allocated resources
 ```
 
-Deploy the scheduler as a Deployment:
+Deploy the scheduler as a Deployment. In production, use a `kube-scheduler` image tag that matches your cluster control plane version.
 
 ```yaml
 apiVersion: apps/v1
@@ -95,7 +100,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
       - name: scheduler
-        image: registry.k8s.io/kube-scheduler:v1.28.0
+        image: registry.k8s.io/kube-scheduler:v1.36.1
         command:
         - kube-scheduler
         - --config=/etc/kubernetes/scheduler-config.yaml
@@ -159,7 +164,23 @@ subjects:
 - kind: ServiceAccount
   name: bin-packing-scheduler
   namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bin-packing-scheduler-extension-apiserver-authentication-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: bin-packing-scheduler
+  namespace: kube-system
 ```
+
+Because this scheduler uses leader election, also update the `system:kube-scheduler` ClusterRole so its `leases` and `endpoints` rules include `bin-packing-scheduler` in `resourceNames`.
 
 ## Using Your Custom Scheduler
 
@@ -246,9 +267,21 @@ data:
         bind:
           enabled:
           - name: DefaultBinder
+      pluginConfig:
+      - name: NodeResourcesFit
+        args:
+          scoringStrategy:
+            type: MostAllocated
+            resources:
+            - name: nvidia.com/gpu
+              weight: 5
+            - name: cpu
+              weight: 1
+            - name: memory
+              weight: 1
 ```
 
-Deploy this scheduler:
+Deploy this scheduler. In production, use a `kube-scheduler` image tag that matches your cluster control plane version.
 
 ```yaml
 apiVersion: apps/v1
@@ -272,7 +305,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
       - name: scheduler
-        image: registry.k8s.io/kube-scheduler:v1.28.0
+        image: registry.k8s.io/kube-scheduler:v1.36.1
         command:
         - kube-scheduler
         - --config=/etc/kubernetes/scheduler-config.yaml
@@ -307,7 +340,36 @@ subjects:
 - kind: ServiceAccount
   name: gpu-scheduler
   namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gpu-scheduler-volume-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:volume-scheduler
+subjects:
+- kind: ServiceAccount
+  name: gpu-scheduler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gpu-scheduler-extension-apiserver-authentication-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: gpu-scheduler
+  namespace: kube-system
 ```
+
+Because this scheduler uses leader election, also update the `system:kube-scheduler` ClusterRole so its `leases` and `endpoints` rules include `gpu-scheduler` in `resourceNames`.
 
 Use it for GPU workloads:
 
@@ -362,6 +424,11 @@ data:
             weight: 10
           disabled:
           - name: NodeResourcesBalancedAllocation
+      pluginConfig:
+      - name: NodeResourcesFit
+        args:
+          scoringStrategy:
+            type: MostAllocated
     # Spreading profile
     - schedulerName: spreading-scheduler
       plugins:
@@ -374,6 +441,7 @@ data:
       pluginConfig:
       - name: PodTopologySpread
         args:
+          defaultingType: List
           defaultConstraints:
           - maxSkew: 1
             topologyKey: topology.kubernetes.io/zone
@@ -390,7 +458,7 @@ Track the performance of your schedulers:
 # Check scheduler pod status
 kubectl get pods -n kube-system -l component=scheduler
 
-# View scheduler metrics
+# View scheduler pod CPU and memory usage (requires Metrics Server)
 kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/kube-system/pods | \
   jq '.items[] | select(.metadata.labels.component=="scheduler") |
     {name: .metadata.name, cpu: .containers[0].usage.cpu, memory: .containers[0].usage.memory}'
@@ -417,13 +485,13 @@ metadata:
   name: resilient-workload
 spec:
   schedulerName: custom-scheduler
-  # If custom scheduler fails, you'll need to update the pod
+  # If custom scheduler fails, recreate the pod or update its controller template
   containers:
   - name: app
     image: myapp:latest
 ```
 
-Consider using an admission webhook that automatically falls back to the default scheduler if the specified scheduler is unhealthy.
+Consider using an admission webhook that chooses the default scheduler at pod creation time if the specified scheduler is unhealthy.
 
 ## Testing Scheduler Behavior
 
