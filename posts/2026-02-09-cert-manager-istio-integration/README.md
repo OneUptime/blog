@@ -26,15 +26,32 @@ By default, Istio manages all these with its internal CA. Integrating cert-manag
 
 ## Installing Istio with cert-manager Integration
 
-Install Istio configured to use cert-manager for certificate issuance:
+Install Istio configured to use cert-manager for certificate issuance after cert-manager, the Issuer, and istio-csr are installed:
 
 ```bash
-# Install Istio with external CA configuration
+# Create an IstioOperator manifest with external CA configuration
+cat > istio-install-config.yaml <<'EOF'
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  namespace: istio-system
+spec:
+  profile: demo
+  meshConfig:
+    trustDomain: cluster.local
+  values:
+    global:
+      caAddress: cert-manager-istio-csr.cert-manager.svc:443
+  components:
+    pilot:
+      k8s:
+        env:
+        - name: ENABLE_CA_SERVER
+          value: "false"
+EOF
 
-istioctl install --set profile=demo \
-  --set values.global.caAddress="cert-manager-istio-csr.cert-manager.svc:443" \
-  --set values.pilot.env.EXTERNAL_CA=ISTIOD_RA_KUBERNETES_API \
-  -y
+# Install Istio with external CA configuration
+istioctl install -f istio-install-config.yaml -y
 
 # Verify Istio installation
 kubectl get pods -n istio-system
@@ -48,18 +65,24 @@ The cert-manager istio-csr component acts as a certificate signing service for I
 
 ```bash
 # Install cert-manager istio-csr
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
+kubectl create namespace istio-system --dry-run=client -o yaml | kubectl apply -f -
 
-helm install cert-manager-istio-csr jetstack/cert-manager-istio-csr \
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
+  --install \
   --namespace cert-manager \
   --set app.certmanager.issuer.name=istio-ca \
   --set app.certmanager.issuer.kind=ClusterIssuer \
+  --set app.certmanager.issuer.group=cert-manager.io \
+  --set app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem \
+  --set "volumeMounts[0].name=root-ca" \
+  --set "volumeMounts[0].mountPath=/var/run/secrets/istio-csr" \
+  --set "volumes[0].name=root-ca" \
+  --set "volumes[0].secret.secretName=istio-root-ca" \
   --set app.server.maxCertificateDuration=48h \
   --wait
 
 # Verify istio-csr installation
-kubectl get pods -n cert-manager -l app=cert-manager-istio-csr
+kubectl get pods -n cert-manager -l app.kubernetes.io/name=cert-manager-istio-csr
 ```
 
 istio-csr listens for certificate requests from Istio and uses cert-manager to issue them.
@@ -78,6 +101,11 @@ openssl req -new -x509 -days 3650 -key istio-ca.key -out istio-ca.crt -subj \
 kubectl create secret tls istio-ca-key-pair \
   --cert=istio-ca.crt \
   --key=istio-ca.key \
+  -n cert-manager
+
+# Mount the trusted root CA into istio-csr
+kubectl create secret generic istio-root-ca \
+  --from-file=ca.pem=istio-ca.crt \
   -n cert-manager
 ```
 
@@ -157,12 +185,14 @@ kubectl apply -f test-app.yaml
 kubectl get pods -n test-mesh
 
 # Verify certificate issued by cert-manager
-kubectl exec -n test-mesh deployment/httpbin -c istio-proxy -- \
-  cat /etc/certs/cert-chain.pem | openssl x509 -text -noout
+istioctl proxy-config secret -n test-mesh deployment/httpbin -o json | \
+  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  base64 --decode | openssl x509 -text -noout
 
 # Check certificate issuer matches Istio CA
-kubectl exec -n test-mesh deployment/httpbin -c istio-proxy -- \
-  cat /etc/certs/cert-chain.pem | openssl x509 -issuer -noout
+istioctl proxy-config secret -n test-mesh deployment/httpbin -o json | \
+  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  base64 --decode | openssl x509 -issuer -noout
 ```
 
 The certificate should show your Istio CA as the issuer, confirming cert-manager integration works.
@@ -266,10 +296,11 @@ spec:
 Update istio-csr to use Vault issuer:
 
 ```bash
-helm upgrade cert-manager-istio-csr jetstack/cert-manager-istio-csr \
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
   --namespace cert-manager \
   --set app.certmanager.issuer.name=vault-istio-ca \
   --set app.certmanager.issuer.kind=ClusterIssuer \
+  --set app.certmanager.issuer.group=cert-manager.io \
   --reuse-values
 ```
 
@@ -279,10 +310,10 @@ Configure certificate rotation for mesh workloads:
 
 ```bash
 # Update istio-csr with rotation settings
-helm upgrade cert-manager-istio-csr jetstack/cert-manager-istio-csr \
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
   --namespace cert-manager \
   --set app.server.maxCertificateDuration=24h \
-  --set app.server.servingCertificateDuration=1h \
+  --set app.tls.certificateDuration=1h \
   --reuse-values
 ```
 
@@ -298,16 +329,16 @@ Monitor certificate issuance and status:
 
 ```bash
 # Check cert-manager istio-csr logs
-kubectl logs -n cert-manager -l app=cert-manager-istio-csr -f
+kubectl logs -n cert-manager -l app.kubernetes.io/name=cert-manager-istio-csr -f
 
 # View certificate requests from Istio
-kubectl get certificaterequest -n cert-manager
+kubectl get certificaterequests.cert-manager.io -n istio-system
 
 # Check Istio certificate status
 istioctl proxy-config secret -n test-mesh deployment/httpbin
 
-# Verify mTLS between services
-istioctl authn tls-check -n test-mesh deployment/httpbin
+# Inspect authorization policy propagation
+istioctl experimental authz check -n test-mesh deployment/httpbin
 ```
 
 ## Implementing Zero-Trust with Custom Policies
@@ -316,7 +347,7 @@ Combine cert-manager and Istio for zero-trust architecture:
 
 ```yaml
 # peer-authentication.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
@@ -326,7 +357,7 @@ spec:
     mode: STRICT
 ---
 # authorization-policy.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-httpbin
@@ -351,8 +382,9 @@ Apply policies:
 kubectl apply -f peer-authentication.yaml
 kubectl apply -f authorization-policy.yaml
 
-# Verify strict mTLS enforced
-istioctl authn tls-check -n test-mesh deployment/httpbin
+# Verify policies are accepted and propagated
+istioctl analyze -n test-mesh
+istioctl experimental authz check -n test-mesh deployment/httpbin
 ```
 
 ## Multi-Cluster Mesh with Shared CA
@@ -413,7 +445,7 @@ Istio Gateway automatically picks up renewed certificates without restart.
 
 ```bash
 # Check istio-csr logs
-kubectl logs -n cert-manager -l app=cert-manager-istio-csr
+kubectl logs -n cert-manager -l app.kubernetes.io/name=cert-manager-istio-csr
 
 # Verify issuer ready
 kubectl get clusterissuer istio-ca
@@ -429,9 +461,8 @@ kubectl logs -n cert-manager deployment/cert-manager
 # Check Istio configuration
 istioctl analyze -n test-mesh
 
-# Verify certificate chain
-kubectl exec -n test-mesh deployment/httpbin -c istio-proxy -- \
-  cat /etc/certs/cert-chain.pem | openssl verify -CAfile /etc/certs/root-cert.pem
+# Inspect the active workload certificate
+istioctl proxy-config secret -n test-mesh deployment/httpbin
 
 # Check peer authentication
 kubectl get peerauthentication -n test-mesh
