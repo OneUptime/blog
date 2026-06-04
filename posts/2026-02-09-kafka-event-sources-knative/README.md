@@ -37,31 +37,19 @@ kubectl get pods -n knative-eventing
 Next, install the Kafka event source:
 
 ```bash
-# Install Kafka Source
-kubectl apply -f https://github.com/knative-sandbox/eventing-kafka/releases/latest/download/source.yaml
+# Install Kafka Source controller
+kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.22.1/eventing-kafka-controller.yaml
+
+# Install Kafka Source data plane
+kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.22.1/eventing-kafka-source.yaml
 
 # Verify Kafka controller is running
-kubectl get pods -n knative-eventing | grep kafka
+kubectl get deployments.apps,statefulsets.apps -n knative-eventing
 ```
 
 ## Configuring Kafka Connection Settings
 
-Create a ConfigMap to store Kafka connection details. This approach centralizes configuration and makes it easier to manage multiple KafkaSource instances:
-
-```yaml
-# kafka-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kafka-config
-  namespace: default
-data:
-  bootstrap.servers: "kafka-broker-1:9092,kafka-broker-2:9092,kafka-broker-3:9092"
-  security.protocol: "SASL_SSL"
-  sasl.mechanism: "PLAIN"
-```
-
-If your Kafka cluster requires authentication, create a Secret:
+KafkaSource stores broker addresses directly in the `bootstrapServers` field. If your Kafka cluster requires authentication, create a Secret for the credentials and certificates:
 
 ```yaml
 # kafka-secret.yaml
@@ -74,6 +62,7 @@ type: Opaque
 stringData:
   sasl.username: "your-username"
   sasl.password: "your-password"
+  sasl.mechanism: "PLAIN"
   # For SSL/TLS
   ca.crt: |
     -----BEGIN CERTIFICATE-----
@@ -81,10 +70,9 @@ stringData:
     -----END CERTIFICATE-----
 ```
 
-Apply these configurations:
+Apply this configuration:
 
 ```bash
-kubectl apply -f kafka-config.yaml
 kubectl apply -f kafka-secret.yaml
 ```
 
@@ -94,7 +82,7 @@ A KafkaSource defines which Kafka topics to consume from and where to send the e
 
 ```yaml
 # kafka-source.yaml
-apiVersion: sources.knative.dev/v1beta1
+apiVersion: sources.knative.dev/v1
 kind: KafkaSource
 metadata:
   name: user-events-source
@@ -149,13 +137,12 @@ app.post('/', (req, res) => {
   const eventSource = req.headers['ce-source'];
   const eventId = req.headers['ce-id'];
 
-  // Kafka-specific extensions
-  const kafkaTopic = req.headers['ce-kafkatopic'];
-  const kafkaPartition = req.headers['ce-kafkapartition'];
-  const kafkaOffset = req.headers['ce-kafkaoffset'];
+  // KafkaSource encodes Kafka metadata in standard CloudEvent attributes.
+  const eventSubject = req.headers['ce-subject'];
+  const eventKey = req.headers['ce-key'];
 
-  console.log(`Received event ${eventId} from ${kafkaTopic}`);
-  console.log(`Type: ${eventType}, Partition: ${kafkaPartition}, Offset: ${kafkaOffset}`);
+  console.log(`Received event ${eventId} from ${eventSource}`);
+  console.log(`Type: ${eventType}, Subject: ${eventSubject}, Key: ${eventKey}`);
 
   // Process the event data
   const eventData = req.body;
@@ -202,7 +189,7 @@ For production environments, you'll need proper authentication. Here's a KafkaSo
 
 ```yaml
 # kafka-source-auth.yaml
-apiVersion: sources.knative.dev/v1beta1
+apiVersion: sources.knative.dev/v1
 kind: KafkaSource
 metadata:
   name: secure-kafka-source
@@ -252,7 +239,7 @@ spec:
 KafkaSource uses consumer groups to manage message distribution. You can configure the number of consumers to scale message processing:
 
 ```yaml
-apiVersion: sources.knative.dev/v1beta1
+apiVersion: sources.knative.dev/v1
 kind: KafkaSource
 metadata:
   name: high-volume-source
@@ -266,11 +253,8 @@ spec:
   # Number of consumers (should match partition count)
   consumers: 10
 
-  # Consumer configuration
-  config:
-    auto.offset.reset: "earliest"
-    session.timeout.ms: "30000"
-    max.poll.interval.ms: "300000"
+  # Start from the earliest offset when the consumer group has no committed offsets
+  initialOffset: earliest
 
   sink:
     ref:
@@ -300,14 +284,14 @@ kubectl run kafka-consumer-groups -it --rm \
   --describe
 
 # View logs from Kafka source adapter
-kubectl logs -n knative-eventing -l eventing.knative.dev/sourceName=user-events-source
+kubectl logs -n knative-eventing statefulset/kafka-source-dispatcher
 ```
 
 ## Best Practices
 
 Always use consumer groups wisely. Set the number of consumers equal to the number of partitions in your Kafka topics for optimal parallelism. Use dedicated consumer groups for each KafkaSource to avoid conflicts.
 
-Configure appropriate timeouts and poll intervals. Longer processing times require larger max.poll.interval.ms values to prevent rebalancing. Monitor consumer lag regularly to ensure your system keeps up with message production.
+Configure delivery retries and dead letter sinks for failures. Monitor consumer lag regularly to ensure your system keeps up with message production.
 
 Use secrets for all sensitive data like passwords and certificates. Never hardcode credentials in your YAML manifests. Consider using external secret management solutions like Sealed Secrets or External Secrets Operator.
 
