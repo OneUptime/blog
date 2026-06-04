@@ -45,11 +45,15 @@ package main
 
 import (
     "context"
+    "encoding/json"
     "fmt"
     "time"
 
     corev1 "k8s.io/api/core/v1"
+    apierrors "k8s.io/apimachinery/pkg/api/errors"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/types"
+    "k8s.io/client-go/informers"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
     "k8s.io/client-go/tools/cache"
@@ -64,7 +68,7 @@ const (
 
 type PodConditionController struct {
     clientset  *kubernetes.Clientset
-    queue      workqueue.RateLimitingInterface
+    queue      workqueue.TypedRateLimitingInterface[string]
     informer   cache.SharedIndexInformer
 }
 
@@ -81,11 +85,22 @@ func NewPodConditionController() (*PodConditionController, error) {
         return nil, err
     }
 
-    // Create controller
+    podInformer := informers.NewSharedInformerFactory(clientset, time.Minute).
+        Core().V1().Pods().Informer()
+
     controller := &PodConditionController{
         clientset: clientset,
-        queue:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+        queue:     workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
+        informer:  podInformer,
     }
+
+    podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+        AddFunc: controller.enqueuePod,
+        UpdateFunc: func(_, newObj interface{}) {
+            controller.enqueuePod(newObj)
+        },
+        DeleteFunc: controller.enqueuePod,
+    })
 
     return controller, nil
 }
@@ -94,6 +109,12 @@ func (c *PodConditionController) Run(stopCh <-chan struct{}) {
     defer c.queue.ShutDown()
 
     fmt.Println("Starting Pod Condition Controller")
+
+    go c.informer.Run(stopCh)
+    if !cache.WaitForCacheSync(stopCh, c.informer.HasSynced) {
+        fmt.Println("Timed out waiting for pod informer cache to sync")
+        return
+    }
 
     // Start workers
     for i := 0; i < 2; i++ {
@@ -109,6 +130,16 @@ func (c *PodConditionController) worker() {
     }
 }
 
+func (c *PodConditionController) enqueuePod(obj interface{}) {
+    key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
+    if err != nil {
+        fmt.Printf("Error getting pod key: %v\n", err)
+        return
+    }
+
+    c.queue.Add(key)
+}
+
 func (c *PodConditionController) processNextItem() bool {
     key, quit := c.queue.Get()
     if quit {
@@ -117,7 +148,7 @@ func (c *PodConditionController) processNextItem() bool {
     defer c.queue.Done(key)
 
     // Process the pod
-    err := c.syncPod(key.(string))
+    err := c.syncPod(key)
     if err != nil {
         fmt.Printf("Error syncing pod %s: %v\n", key, err)
         c.queue.AddRateLimited(key)
@@ -138,6 +169,9 @@ func (c *PodConditionController) syncPod(key string) error {
     pod, err := c.clientset.CoreV1().Pods(namespace).Get(
         context.TODO(), name, metav1.GetOptions{})
     if err != nil {
+        if apierrors.IsNotFound(err) {
+            return nil
+        }
         return err
     }
 
@@ -222,9 +256,18 @@ func (c *PodConditionController) updatePodCondition(
         pod.Status.Conditions = append(pod.Status.Conditions, newCondition)
     }
 
-    // Update pod status
-    _, err := c.clientset.CoreV1().Pods(pod.Namespace).UpdateStatus(
-        context.TODO(), pod, metav1.UpdateOptions{})
+    patchBytes, err := json.Marshal(map[string]interface{}{
+        "status": map[string]interface{}{
+            "conditions": pod.Status.Conditions,
+        },
+    })
+    if err != nil {
+        return err
+    }
+
+    // Patch the pod status subresource
+    _, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(
+        context.TODO(), pod.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{}, "status")
 
     return err
 }
@@ -275,8 +318,14 @@ rules:
   resources: ["pods"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get"]
+- apiGroups: [""]
   resources: ["pods/status"]
   verbs: ["update", "patch"]
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
+  verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -329,26 +378,50 @@ func (c *PodConditionController) checkDependencies(pod *corev1.Pod) (bool, strin
         return true, "NoDependencies", "No dependencies specified"
     }
 
-    // Parse dependencies (format: "service1,service2,pod/pod-name")
+    // Parse dependencies (format: "service/service-name,pod/pod-name")
     deps := strings.Split(dependencies, ",")
 
     for _, dep := range deps {
         parts := strings.Split(strings.TrimSpace(dep), "/")
+        if len(parts) != 2 || parts[1] == "" {
+            return false, "InvalidDependency",
+                fmt.Sprintf("Dependency %q must use service/name or pod/name", dep)
+        }
 
         if parts[0] == "service" {
-            // Check if service exists and has endpoints
-            svc, err := c.clientset.CoreV1().Services(pod.Namespace).Get(
+            // Check if service exists and has ready EndpointSlice endpoints
+            _, err := c.clientset.CoreV1().Services(pod.Namespace).Get(
                 context.TODO(), parts[1], metav1.GetOptions{})
             if err != nil {
                 return false, "ServiceNotFound",
                     fmt.Sprintf("Service %s not found", parts[1])
             }
 
-            endpoints, err := c.clientset.CoreV1().Endpoints(pod.Namespace).Get(
-                context.TODO(), parts[1], metav1.GetOptions{})
-            if err != nil || len(endpoints.Subsets) == 0 {
+            endpointSlices, err := c.clientset.DiscoveryV1().EndpointSlices(pod.Namespace).List(
+                context.TODO(), metav1.ListOptions{
+                    LabelSelector: "kubernetes.io/service-name=" + parts[1],
+                })
+            if err != nil {
+                return false, "EndpointSliceLookupFailed",
+                    fmt.Sprintf("Could not list EndpointSlices for service %s", parts[1])
+            }
+
+            readyEndpointFound := false
+            for _, slice := range endpointSlices.Items {
+                for _, endpoint := range slice.Endpoints {
+                    if endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready {
+                        readyEndpointFound = true
+                        break
+                    }
+                }
+                if readyEndpointFound {
+                    break
+                }
+            }
+
+            if !readyEndpointFound {
                 return false, "NoEndpoints",
-                    fmt.Sprintf("Service %s has no endpoints", parts[1])
+                    fmt.Sprintf("Service %s has no ready endpoints", parts[1])
             }
         } else if parts[0] == "pod" {
             // Check if pod exists and is ready
@@ -372,6 +445,9 @@ func (c *PodConditionController) checkDependencies(pod *corev1.Pod) (bool, strin
                 return false, "DependencyNotReady",
                     fmt.Sprintf("Pod %s is not ready", parts[1])
             }
+        } else {
+            return false, "InvalidDependency",
+                fmt.Sprintf("Unsupported dependency type %q", parts[0])
         }
     }
 
@@ -409,7 +485,6 @@ metadata:
 spec:
   readinessGates:
   - conditionType: "CustomHealthy"
-  - conditionType: "DependenciesReady"
   containers:
   - name: app
     image: myapp:1.0
@@ -429,6 +504,7 @@ Here's a simpler Python version for quick prototyping:
 
 ```python
 #!/usr/bin/env python3
+from datetime import datetime, timezone
 from kubernetes import client, config, watch
 import time
 
@@ -441,8 +517,8 @@ def update_pod_condition(pod, condition_type, status, reason, message):
     new_condition = client.V1PodCondition(
         type=condition_type,
         status="True" if status else "False",
-        last_probe_time=client.V1Time(),
-        last_transition_time=client.V1Time(),
+        last_probe_time=datetime.now(timezone.utc),
+        last_transition_time=datetime.now(timezone.utc),
         reason=reason,
         message=message
     )
@@ -470,7 +546,7 @@ def update_pod_condition(pod, condition_type, status, reason, message):
     v1.patch_namespaced_pod_status(
         name=pod.metadata.name,
         namespace=pod.metadata.namespace,
-        body=pod
+        body={"status": {"conditions": pod.status.conditions}}
     )
 
 def check_database_connectivity(pod):
@@ -481,7 +557,8 @@ def check_database_connectivity(pod):
     # 3. Return True/False based on success
 
     # Simplified example
-    if "database-client" in pod.metadata.labels.get("app", ""):
+    labels = pod.metadata.labels or {}
+    if "database-client" in labels.get("app", ""):
         # Assume we checked and it's reachable
         return True, "DatabaseReachable", "Successfully connected to database"
     return False, "DatabaseUnreachable", "Could not connect to database"
@@ -496,7 +573,8 @@ def main():
         event_type = event['type']
 
         # Only process pods with our annotation
-        if pod.metadata.annotations.get("custom-health-check") != "enabled":
+        annotations = pod.metadata.annotations or {}
+        if annotations.get("custom-health-check") != "enabled":
             continue
 
         # Only process Running pods
@@ -529,7 +607,7 @@ Watch condition changes in real time:
 kubectl get pods -w -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[?(@.type=="CustomHealthy")].status}{"\n"}{end}'
 ```
 
-Create alerts based on custom conditions:
+If your monitoring stack exports custom pod conditions, create alerts based on those metrics:
 
 ```yaml
 # Prometheus rule
@@ -548,7 +626,7 @@ groups:
 
 ## Best Practices
 
-Use descriptive condition types with your organization prefix, like `com.example.DatabaseConnectivity` to avoid conflicts.
+Use descriptive condition types with your organization prefix, like `example.com/DatabaseConnectivity` to avoid conflicts.
 
 Always set meaningful reason and message fields. These appear in kubectl output and help with debugging.
 
