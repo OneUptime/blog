@@ -29,15 +29,11 @@ Create the basic webhook server structure:
 package main
 
 import (
-    "encoding/json"
-    "fmt"
-    "io"
     "log"
     "net/http"
 
     admissionv1 "k8s.io/api/admission/v1"
     corev1 "k8s.io/api/core/v1"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
     "k8s.io/apimachinery/pkg/runtime/serializer"
 )
@@ -202,6 +198,7 @@ import (
 
     admissionv1 "k8s.io/api/admission/v1"
     corev1 "k8s.io/api/core/v1"
+    "k8s.io/apimachinery/pkg/api/resource"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -302,14 +299,26 @@ func mutatePod(pod *corev1.Pod) []JSONPatch {
 
         // Add resource limits if missing
         if container.Resources.Limits == nil {
-            patches = append(patches, JSONPatch{
-                Op:   "add",
-                Path: fmt.Sprintf("/spec/containers/%d/resources/limits", i),
-                Value: corev1.ResourceList{
-                    corev1.ResourceCPU:    resource.MustParse("500m"),
-                    corev1.ResourceMemory: resource.MustParse("512Mi"),
-                },
-            })
+            limits := corev1.ResourceList{
+                corev1.ResourceCPU:    resource.MustParse("500m"),
+                corev1.ResourceMemory: resource.MustParse("512Mi"),
+            }
+
+            if container.Resources.Requests == nil {
+                patches = append(patches, JSONPatch{
+                    Op:   "add",
+                    Path: fmt.Sprintf("/spec/containers/%d/resources", i),
+                    Value: corev1.ResourceRequirements{
+                        Limits: limits,
+                    },
+                })
+            } else {
+                patches = append(patches, JSONPatch{
+                    Op:   "add",
+                    Path: fmt.Sprintf("/spec/containers/%d/resources/limits", i),
+                    Value: limits,
+                })
+            }
         }
     }
 
@@ -334,8 +343,13 @@ Create certificates for the webhook server:
 SERVICE_NAME=admission-webhook
 NAMESPACE=default
 
-# Create a private key
+# Create a CA certificate
+openssl genrsa -out ca.key 2048
+openssl req -x509 -new -nodes -key ca.key -days 365 \
+    -subj "/CN=admission-webhook-ca" \
+    -out ca.crt
 
+# Create a private key for the webhook server
 openssl genrsa -out tls.key 2048
 
 # Create a certificate signing request
@@ -356,8 +370,22 @@ DNS.3 = ${SERVICE_NAME}.${NAMESPACE}.svc
 DNS.4 = ${SERVICE_NAME}.${NAMESPACE}.svc.cluster.local
 EOF
 
-# Self-sign the certificate
-openssl x509 -req -days 365 -in tls.csr -signkey tls.key -out tls.crt
+# Sign the serving certificate with the CA
+openssl x509 -req -days 365 -in tls.csr \
+    -CA ca.crt -CAkey ca.key -CAcreateserial \
+    -extensions v3_req -extfile <(cat <<EOF
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = ${SERVICE_NAME}
+DNS.2 = ${SERVICE_NAME}.${NAMESPACE}
+DNS.3 = ${SERVICE_NAME}.${NAMESPACE}.svc
+DNS.4 = ${SERVICE_NAME}.${NAMESPACE}.svc.cluster.local
+EOF
+) -out tls.crt
 
 # Create Kubernetes secret
 kubectl create secret tls admission-webhook-tls \
@@ -491,7 +519,7 @@ webhooks:
 Replace `<base64-encoded-ca-cert>` with your CA certificate:
 
 ```bash
-cat tls.crt | base64 | tr -d '\n'
+cat ca.crt | base64 | tr -d '\n'
 ```
 
 ## Testing the Webhook
@@ -510,7 +538,8 @@ kubectl run test-good --image=registry.company.com/nginx:1.21 \
 Test mutation by checking injected fields:
 
 ```bash
-kubectl run test-mutate --image=nginx:1.21
+kubectl run test-mutate --image=registry.company.com/nginx:1.21 \
+    --labels="team=platform,environment=dev,app=test"
 kubectl get pod test-mutate -o yaml | grep -A5 securityContext
 ```
 
