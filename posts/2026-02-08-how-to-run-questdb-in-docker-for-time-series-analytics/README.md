@@ -30,7 +30,7 @@ docker run -d \
   -p 8812:8812 \
   -p 9003:9003 \
   -v questdb_data:/var/lib/questdb \
-  questdb/questdb:8.0.0
+  questdb/questdb:9.4.1
 ```
 
 Port reference:
@@ -51,7 +51,7 @@ version: "3.8"
 
 services:
   questdb:
-    image: questdb/questdb:8.0.0
+    image: questdb/questdb:9.4.1
     container_name: questdb
     restart: unless-stopped
     ports:
@@ -65,15 +65,19 @@ services:
       QDB_PG_ENABLED: "true"
       QDB_LINE_TCP_ENABLED: "true"
       # Memory settings
-      QDB_SHARED_WORKER_COUNT: "4"
+      QDB_SHARED_QUERY_WORKER_COUNT: "4"
+      QDB_SHARED_WRITE_WORKER_COUNT: "4"
       QDB_PG_WORKER_COUNT: "2"
       QDB_LINE_TCP_WRITER_WORKER_COUNT: "2"
-      # Commit lag for batching writes (microseconds)
-      QDB_CAIRO_COMMIT_LAG: "1000"
+      # Default ILP/TCP commit interval for batching writes (milliseconds)
+      QDB_LINE_TCP_COMMIT_INTERVAL_DEFAULT: "1000"
     volumes:
       - questdb_data:/var/lib/questdb
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9003/status"]
+      test:
+        - CMD-SHELL
+        - >
+          perl -e 'use IO::Socket::INET; $socket = IO::Socket::INET->new(PeerAddr=>"localhost:9003") or exit 1; print $socket "GET /status HTTP/1.0\r\nHost: localhost\r\n\r\n"; $response = <$socket>; exit($response =~ /HTTP\/1\.[01] 2\d\d/ ? 0 : 1);'
       interval: 10s
       timeout: 5s
       retries: 5
@@ -98,7 +102,7 @@ Connect through the web console at `http://localhost:9000` or via psql.
 
 ```bash
 # Connect using the PostgreSQL wire protocol
-docker exec -it questdb psql -h localhost -p 8812 -U admin -d questdb
+PGPASSWORD=quest psql -h localhost -p 8812 -U admin -d qdb
 ```
 
 Create a table optimized for time-series data. The `PARTITION BY` clause controls how data files are organized on disk.
@@ -138,15 +142,14 @@ For higher throughput, send multiple lines in a single TCP connection.
 ```python
 # ingest.py - High-throughput data ingestion using QuestDB's client
 # pip install questdb
-import time
 import random
-from questdb.ingress import Sender, IngressError
+from questdb.ingress import Sender, IngressError, Protocol, TimestampNanos
 
 hosts = ['web-01', 'web-02', 'web-03', 'db-01', 'cache-01']
 
 try:
     # Connect to QuestDB's ILP endpoint
-    with Sender('localhost', 9009) as sender:
+    with Sender(Protocol.Tcp, 'localhost', 9009) as sender:
         for i in range(10000):
             host = random.choice(hosts)
             sender.row(
@@ -160,7 +163,7 @@ try:
                     'network_in': random.uniform(500, 5000),
                     'network_out': random.uniform(1000, 10000),
                 },
-                at=time.time_ns()
+                at=TimestampNanos.now()
             )
             # Flush every 1000 rows for efficiency
             if (i + 1) % 1000 == 0:
@@ -215,7 +218,7 @@ QuestDB exposes a REST API for running queries programmatically.
 ```bash
 # Execute a query via the REST API and get JSON results
 curl -G "http://localhost:9000/exec" \
-  --data-urlencode "query=SELECT host, avg(cpu_usage) FROM server_metrics SAMPLE BY 1h LIMIT 10"
+  --data-urlencode "query=SELECT timestamp, host, avg(cpu_usage) FROM server_metrics SAMPLE BY 1h LIMIT 10"
 
 # Export query results as CSV
 curl -G "http://localhost:9000/exp" \
