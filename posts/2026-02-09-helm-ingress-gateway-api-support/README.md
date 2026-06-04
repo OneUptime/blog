@@ -63,7 +63,7 @@ gateway:
           port: 8080
 ```
 
-This structure allows users to enable either or both approaches depending on their needs.
+This structure allows users to enable either approach depending on their needs.
 
 ## Creating the Ingress Template
 
@@ -74,13 +74,8 @@ Build a standard Ingress template that follows best practices:
 {{- if and .Values.ingress.enabled (not .Values.gateway.enabled) -}}
 {{- $fullName := include "myapp.fullname" . -}}
 {{- $svcPort := .Values.service.port -}}
-{{- if .Capabilities.APIVersions.Has "networking.k8s.io/v1" -}}
+{{- if .Capabilities.APIVersions.Has "networking.k8s.io/v1/Ingress" -}}
 apiVersion: networking.k8s.io/v1
-{{- else if .Capabilities.APIVersions.Has "networking.k8s.io/v1beta1" -}}
-apiVersion: networking.k8s.io/v1beta1
-{{- else -}}
-apiVersion: extensions/v1beta1
-{{- end }}
 kind: Ingress
 metadata:
   name: {{ $fullName }}
@@ -111,24 +106,19 @@ spec:
         paths:
           {{- range .paths }}
           - path: {{ .path }}
-            {{- if $.Capabilities.APIVersions.Has "networking.k8s.io/v1" }}
-            pathType: {{ .pathType }}
+            pathType: {{ .pathType | default "Prefix" }}
             backend:
               service:
                 name: {{ $fullName }}
                 port:
                   number: {{ $svcPort }}
-            {{- else }}
-            backend:
-              serviceName: {{ $fullName }}
-              servicePort: {{ $svcPort }}
-            {{- end }}
           {{- end }}
     {{- end }}
 {{- end }}
+{{- end }}
 ```
 
-The template checks Kubernetes version to use the correct Ingress API version and only renders when Ingress is enabled and Gateway is disabled.
+The template checks whether the stable Ingress API is available and only renders when Ingress is enabled and Gateway is disabled.
 
 ## Creating Gateway API Templates
 
@@ -137,11 +127,12 @@ Gateway API uses multiple resources. Create a Gateway template:
 ```yaml
 # templates/gateway.yaml
 {{- if and .Values.gateway.enabled (not .Values.ingress.enabled) -}}
-{{- if .Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1" -}}
+{{- if .Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1/Gateway" -}}
+{{- $fullName := include "myapp.fullname" . -}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: {{ include "myapp.fullname" . }}
+  name: {{ .Values.gateway.gatewayName | default $fullName }}
   labels:
     {{- include "myapp.labels" . | nindent 4 }}
 spec:
@@ -182,7 +173,7 @@ Create the HTTPRoute template:
 ```yaml
 # templates/httproute.yaml
 {{- if and .Values.gateway.enabled (not .Values.ingress.enabled) -}}
-{{- if .Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1" -}}
+{{- if .Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1/HTTPRoute" -}}
 {{- $fullName := include "myapp.fullname" . -}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -272,12 +263,12 @@ spec:
     {{- if .Values.ingress.enabled }}
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
     {{- end }}
     {{- if .Values.gateway.enabled }}
     - namespaceSelector:
         matchLabels:
-          name: {{ .Values.gateway.namespace | default "gateway-system" }}
+          kubernetes.io/metadata.name: {{ .Values.gateway.namespace | default "gateway-system" }}
     {{- end }}
     ports:
     - protocol: TCP
@@ -342,11 +333,12 @@ true
 
 ## Creating Advanced Gateway Features
 
-Leverage Gateway API's advanced capabilities:
+Leverage Gateway API's advanced capabilities where your Gateway implementation supports them:
 
 ```yaml
 # templates/httproute-advanced.yaml
 {{- if .Values.gateway.enabled -}}
+{{- if .Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1/HTTPRoute" -}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -403,6 +395,7 @@ spec:
     backendRefs:
     - name: {{ include "myapp.fullname" . }}
       port: 8080
+{{- end }}
 {{- end }}
 ```
 
@@ -465,6 +458,11 @@ gateway:
   enabled: true
   gatewayClassName: istio
   gatewayName: shared-gateway
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: app-gateway.example.com
   hostnames:
     - app-gateway.example.com
   routes:
@@ -480,10 +478,10 @@ Test both configurations:
 
 ```bash
 # Test Ingress
-helm template myapp ./mychart -f values-ingress.yaml
+helm template myapp ./mychart -f values-ingress.yaml --api-versions networking.k8s.io/v1/Ingress
 
 # Test Gateway API
-helm template myapp ./mychart -f values-gateway.yaml
+helm template myapp ./mychart -f values-gateway.yaml --api-versions gateway.networking.k8s.io/v1/Gateway --api-versions gateway.networking.k8s.io/v1/HTTPRoute
 
 # Install with Ingress
 helm install myapp ./mychart -f values-ingress.yaml
