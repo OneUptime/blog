@@ -20,7 +20,7 @@ The hierarchy looks like this: GatewayClass defines the load balancer implementa
 
 ## Enabling Gateway Controller in GKE
 
-GKE clusters version 1.24 and later include the Gateway Controller by default. Enable it if not already active:
+GKE clusters version 1.24 and later support the Gateway API. Enable the Gateway API Standard channel if it is not already active:
 
 ```bash
 # Enable Gateway API on existing cluster
@@ -32,7 +32,7 @@ gcloud container clusters update production-cluster \
 # Verify Gateway API is enabled
 gcloud container clusters describe production-cluster \
   --region=us-central1 \
-  --format="value(addonsConfig.gkeGatewayApi)"
+  --format="value(networkConfig.gatewayApiConfig.channel)"
 ```
 
 For new clusters, enable during creation:
@@ -46,14 +46,14 @@ gcloud container clusters create production-cluster \
   --machine-type=n1-standard-4
 ```
 
-The standard mode provides external HTTP(S) load balancing. For internal-only load balancers, GKE also supports internal mode.
+The standard channel installs the Gateway API CRDs. For internal-only load balancers, use an internal GatewayClass such as gke-l7-rilb.
 
 ## Creating a Basic Gateway
 
 Start with a simple Gateway that provisions a Google Cloud Load Balancer:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: external-http
@@ -88,7 +88,7 @@ The Gateway provisions a global external HTTP(S) load balancer. GKE creates the 
 HTTPRoute resources define how traffic routes to backend services. Here's a basic example with path-based routing:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: api-routes
@@ -142,7 +142,7 @@ kubectl describe httproute api-routes
 Traffic splitting enables canary deployments and gradual rollouts. Split traffic between service versions by assigning weights:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: canary-rollout
@@ -150,6 +150,7 @@ metadata:
 spec:
   parentRefs:
   - name: external-http
+    namespace: default
   hostnames:
   - "app.example.com"
   rules:
@@ -166,7 +167,7 @@ This configuration sends 10% of traffic to app-v2 and 90% to app-v1. Gradually i
 
 ```bash
 # Update weights for 50/50 split
-kubectl patch httproute canary-rollout --type='json' \
+kubectl patch httproute canary-rollout -n production --type='json' \
   -p='[{"op": "replace", "path": "/spec/rules/0/backendRefs/0/weight", "value": 50},
        {"op": "replace", "path": "/spec/rules/0/backendRefs/1/weight", "value": 50}]'
 ```
@@ -175,7 +176,7 @@ Monitor application metrics during the rollout. If issues arise, immediately shi
 
 ```bash
 # Rollback to v1
-kubectl patch httproute canary-rollout --type='json' \
+kubectl patch httproute canary-rollout -n production --type='json' \
   -p='[{"op": "replace", "path": "/spec/rules/0/backendRefs/0/weight", "value": 0},
        {"op": "replace", "path": "/spec/rules/0/backendRefs/1/weight", "value": 100}]'
 ```
@@ -185,7 +186,7 @@ kubectl patch httproute canary-rollout --type='json' \
 Route traffic based on HTTP headers for A/B testing or routing specific clients to dedicated backends:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: header-routing
@@ -221,13 +222,13 @@ Test header-based routing:
 
 ```bash
 # Request to premium backend
-curl -H "X-User-Type: premium" https://app.example.com/
+curl -H "X-User-Type: premium" http://app.example.com/
 
 # Request to beta backend
-curl -H "X-Api-Version: beta" https://app.example.com/
+curl -H "X-Api-Version: beta" http://app.example.com/
 
 # Request to default backend
-curl https://app.example.com/
+curl http://app.example.com/
 ```
 
 ## URL Rewrites and Redirects
@@ -235,7 +236,7 @@ curl https://app.example.com/
 Transform request URLs before they reach backend services:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: url-transforms
@@ -280,7 +281,7 @@ The first rule rewrites /api/v1 to /v1 before forwarding to the backend. The sec
 Add, modify, or remove headers in requests and responses:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: header-manipulation
@@ -324,15 +325,13 @@ This adds headers to requests before they reach the backend and modifies respons
 GKE Gateway Controller supports multi-cluster ingress, distributing traffic across clusters in different regions:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: multi-cluster-gateway
   namespace: default
-  annotations:
-    networking.gke.io/multi-cluster: "true"
 spec:
-  gatewayClassName: gke-l7-global-external-managed
+  gatewayClassName: gke-l7-global-external-managed-mc
   listeners:
   - name: http
     protocol: HTTP
@@ -342,7 +341,7 @@ spec:
 Configure HTTPRoute with backends in multiple clusters:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: multi-cluster-route
@@ -360,14 +359,14 @@ spec:
       port: 8080
 ```
 
-ServiceImport resources represent services exported from member clusters. GKE automatically distributes traffic based on proximity and health.
+ServiceImport resources represent services exported from member clusters. Multi-cluster Gateway resources are deployed in the fleet's config cluster, and GKE distributes traffic to healthy backends across the fleet.
 
 ## TLS Configuration
 
 Enable HTTPS with automated certificate management:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: https-gateway
@@ -388,20 +387,28 @@ spec:
         from: All
 ```
 
-Create a TLS secret or use Google-managed certificates:
+Create a TLS secret or use Certificate Manager for Google-managed certificates. The Gateway controller does not support the Ingress `ManagedCertificate` resource.
 
 ```yaml
-apiVersion: networking.gke.io/v1
-kind: ManagedCertificate
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
 metadata:
-  name: app-cert
+  name: https-gateway
+  namespace: default
+  annotations:
+    networking.gke.io/certmap: app-cert-map
 spec:
-  domains:
-  - app.example.com
-  - www.app.example.com
+  gatewayClassName: gke-l7-global-external-managed
+  listeners:
+  - name: https
+    protocol: HTTPS
+    port: 443
+    allowedRoutes:
+      namespaces:
+        from: All
 ```
 
-Reference the managed certificate in the Gateway:
+For regional Gateways, reference Certificate Manager certificates in the Gateway listener:
 
 ```yaml
 listeners:
@@ -411,7 +418,7 @@ listeners:
   tls:
     mode: Terminate
     options:
-      networking.gke.io/pre-shared-certs: app-cert
+      networking.gke.io/cert-manager-certs: app-cert
 ```
 
 ## Monitoring and Observability
@@ -430,16 +437,13 @@ gcloud compute backend-services describe <backend-service-name> \
   --format="value(backends)"
 ```
 
-Configure health checks for backend services through service annotations:
+Configure health checks for backend services with a HealthCheckPolicy:
 
 ```yaml
 apiVersion: v1
 kind: Service
 metadata:
   name: app-service
-  annotations:
-    cloud.google.com/neg: '{"ingress": true}'
-    cloud.google.com/backend-config: '{"default": "app-backendconfig"}'
 spec:
   ports:
   - port: 8080
@@ -448,22 +452,29 @@ spec:
     app: myapp
 ```
 
-Create a BackendConfig for custom health checks:
+Create a HealthCheckPolicy for custom health checks:
 
 ```yaml
-apiVersion: cloud.google.com/v1
-kind: BackendConfig
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
 metadata:
-  name: app-backendconfig
+  name: app-healthcheck
 spec:
-  healthCheck:
+  default:
     checkIntervalSec: 10
     timeoutSec: 5
     healthyThreshold: 2
     unhealthyThreshold: 3
-    type: HTTP
-    requestPath: /healthz
-    port: 8080
+    config:
+      type: HTTP
+      httpHealthCheck:
+        portSpecification: USE_FIXED_PORT
+        port: 8080
+        requestPath: /healthz
+  targetRef:
+    group: ""
+    kind: Service
+    name: app-service
 ```
 
 Gateway API in GKE provides powerful traffic management capabilities through Google Cloud Load Balancer integration. The declarative configuration model simplifies complex routing scenarios while maintaining flexibility for advanced use cases.
