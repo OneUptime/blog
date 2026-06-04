@@ -14,7 +14,7 @@ Mutual TLS (mTLS) provides strong authentication for service-to-service communic
 
 In mTLS, the handshake process includes an additional step where the server requests a client certificate. The server validates this certificate against a trusted certificate authority (CA) before allowing the connection. This prevents unauthorized services from accessing your APIs even if they know the correct endpoints and credentials.
 
-mTLS eliminates the need for API keys, tokens, or passwords between services. The certificate itself serves as both authentication and encryption. This is particularly valuable in zero-trust architectures where you cannot rely on network boundaries for security.
+mTLS can reduce or replace the need for API keys, tokens, or passwords between services. The certificate provides authentication, while the TLS session provides encryption. This is particularly valuable in zero-trust architectures where you cannot rely on network boundaries for security.
 
 ## Certificate Management
 
@@ -25,26 +25,36 @@ Before configuring mTLS in your gateway, you need certificates for both the gate
 
 openssl genrsa -out ca-key.pem 4096
 openssl req -new -x509 -days 3650 -key ca-key.pem -out ca-cert.pem \
-  -subj "/CN=Internal CA/O=YourOrg"
+  -subj "/CN=Internal CA/O=YourOrg" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 
 # Generate gateway server certificate
 openssl genrsa -out gateway-key.pem 2048
 openssl req -new -key gateway-key.pem -out gateway-csr.pem \
-  -subj "/CN=api-gateway.internal"
+  -subj "/CN=api-gateway.internal" \
+  -addext "subjectAltName=DNS:api-gateway.internal" \
+  -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
+  -addext "extendedKeyUsage=serverAuth"
 
 # Sign with CA
 openssl x509 -req -days 365 -in gateway-csr.pem \
   -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial \
+  -copy_extensions copy \
   -out gateway-cert.pem
 
 # Generate client certificate for a service
 openssl genrsa -out service-key.pem 2048
 openssl req -new -key service-key.pem -out service-csr.pem \
-  -subj "/CN=user-service/O=YourOrg"
+  -subj "/CN=user-service/O=YourOrg" \
+  -addext "subjectAltName=DNS:user-service" \
+  -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
+  -addext "extendedKeyUsage=clientAuth"
 
 # Sign with CA
 openssl x509 -req -days 365 -in service-csr.pem \
   -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial \
+  -copy_extensions copy \
   -out service-cert.pem
 ```
 
@@ -72,6 +82,8 @@ Configure NGINX to require and validate client certificates.
 
 ```nginx
 # nginx.conf
+events {}
+
 http {
   upstream backend_service {
     server backend-service:8080;
@@ -82,11 +94,11 @@ http {
     server_name api-gateway.internal;
 
     # Server certificate
-    ssl_certificate /etc/nginx/certs/gateway-cert.pem;
-    ssl_certificate_key /etc/nginx/certs/gateway-key.pem;
+    ssl_certificate /etc/nginx/certs/tls.crt;
+    ssl_certificate_key /etc/nginx/certs/tls.key;
 
     # Client certificate validation
-    ssl_client_certificate /etc/nginx/certs/ca-cert.pem;
+    ssl_client_certificate /etc/nginx/ca/ca.crt;
     ssl_verify_client on;
     ssl_verify_depth 2;
 
@@ -97,7 +109,7 @@ http {
 
     location /api/ {
       # Pass client certificate info to backend
-      proxy_set_header X-Client-Cert $ssl_client_cert;
+      proxy_set_header X-Client-Cert $ssl_client_escaped_cert;
       proxy_set_header X-Client-DN $ssl_client_s_dn;
       proxy_set_header X-Client-Verify $ssl_client_verify;
 
@@ -128,7 +140,7 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: nginx:1.25
+        image: nginx:stable
         ports:
         - containerPort: 443
         volumeMounts:
@@ -248,7 +260,7 @@ This configuration enforces mTLS for all services in the backend namespace. Isti
 
 ## Certificate-Based Authorization
 
-Beyond authentication, use certificate attributes for authorization decisions. Extract the Common Name (CN) or Organization (O) from client certificates to determine access levels.
+Beyond authentication, use certificate-derived identities for authorization decisions. In Istio, authorization policies commonly match the authenticated SPIFFE service-account principals derived from workload certificates.
 
 ```yaml
 # istio-authz-policy.yaml
@@ -282,14 +294,14 @@ spec:
 Kong supports mTLS through the `mtls-auth` plugin. Configure certificate validation for routes or services.
 
 ```bash
-# Enable mTLS plugin
-curl -X POST http://kong-admin:8001/services/backend-service/plugins \
-  --data "name=mtls-auth" \
-  --data "config.ca_certificates[]=<ca-cert-uuid>"
-
 # Upload CA certificate
 curl -X POST http://kong-admin:8001/ca_certificates \
   --form "cert=@ca-cert.pem"
+
+# Enable mTLS plugin using the returned CA certificate ID
+curl -X POST http://kong-admin:8001/services/backend-service/plugins \
+  --data "name=mtls-auth" \
+  --data "config.ca_certificates[]=<ca-cert-uuid>"
 ```
 
 Kong configuration for mTLS with certificate whitelisting:
@@ -309,10 +321,17 @@ certificates:
     -----END PRIVATE KEY-----
 
 ca_certificates:
-- cert: |
+- id: <ca-cert-uuid>
+  cert: |
     -----BEGIN CERTIFICATE-----
     [CA Certificate]
     -----END CERTIFICATE-----
+
+consumers:
+- username: user-service
+  mtls_auth_credentials:
+  - id: <mtls-auth-credential-uuid>
+    subject_name: user-service
 
 services:
 - name: backend-service
@@ -351,8 +370,8 @@ package main
 import (
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
     "net/http"
+    "os"
 )
 
 func main() {
@@ -363,7 +382,7 @@ func main() {
     }
 
     // Load CA cert
-    caCert, err := ioutil.ReadFile("ca-cert.pem")
+    caCert, err := os.ReadFile("ca-cert.pem")
     if err != nil {
         panic(err)
     }
@@ -439,7 +458,7 @@ spec:
 
     - alert: MTLSAuthenticationFailures
       expr: |
-        rate(envoy_listener_ssl_connection_error[5m]) > 0.1
+        sum(rate({__name__=~"envoy_listener_.*_ssl_fail_verify_(no_cert|error|san|cert_hash)"}[5m])) > 0.1
       for: 5m
       labels:
         severity: critical
