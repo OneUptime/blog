@@ -88,7 +88,7 @@ docker run -d \
   -p 8080:8080 \
   -p 9901:9901 \
   -v $(pwd)/envoy-config/envoy.yaml:/etc/envoy/envoy.yaml:ro \
-  envoyproxy/envoy:v1.30-latest
+  envoyproxy/envoy:v1.38-latest
 ```
 
 Access the admin dashboard at `http://localhost:9901`.
@@ -99,17 +99,15 @@ A complete setup with Envoy proxying to multiple backend services.
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   envoy:
-    image: envoyproxy/envoy:v1.30-latest
+    image: envoyproxy/envoy:v1.38-latest
     container_name: envoy
     ports:
       - "8080:8080"    # Application traffic
       - "9901:9901"    # Admin interface
     volumes:
-      - ./envoy-config/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./envoy-config/envoy-lb.yaml:/etc/envoy/envoy.yaml:ro
     depends_on:
       - api-v1
       - api-v2
@@ -191,7 +189,7 @@ static_resources:
           unhealthy_threshold: 3
           healthy_threshold: 2
           http_health_check:
-            path: "/health"
+            path: "/"
       load_assignment:
         cluster_name: backend_cluster
         endpoints:
@@ -390,7 +388,7 @@ Always validate your configuration before deploying.
 # Validate the Envoy config file
 docker run --rm \
   -v $(pwd)/envoy-config/envoy.yaml:/etc/envoy/envoy.yaml:ro \
-  envoyproxy/envoy:v1.30-latest \
+  envoyproxy/envoy:v1.38-latest \
   envoy --mode validate -c /etc/envoy/envoy.yaml
 ```
 
