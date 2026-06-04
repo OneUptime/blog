@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DaemonSet, Scheduling
 
-Description: Discover how to use pod affinity rules in DaemonSets to ensure node services run only on nodes hosting specific application workloads.
+Description: Discover how to use pod affinity rules in DaemonSets to co-locate node services with specific application workloads.
 
 ---
 
-Pod affinity in DaemonSets enables you to deploy node services only where specific workloads run, rather than on every node in the cluster. This pattern optimizes resource usage by placing supporting infrastructure close to the applications that need it. Understanding pod affinity with DaemonSets helps you build more efficient and cost-effective Kubernetes clusters.
+Pod affinity in DaemonSets enables you to schedule node services successfully where specific workloads run, rather than running them on every eligible node in the cluster. This pattern optimizes resource usage by placing supporting infrastructure close to the applications that need it. Understanding pod affinity with DaemonSets helps you build more efficient and cost-effective Kubernetes clusters.
 
 ## Understanding pod affinity for DaemonSets
 
-Traditional DaemonSets place one pod on every node, but pod affinity allows you to restrict placement based on other pods' presence. This is valuable when you have specialized node services needed only by certain applications, such as GPU monitoring for ML workloads or specialized logging for high-throughput services.
+Traditional DaemonSets place one pod on every eligible node, but pod affinity allows you to require co-location with other pods before the DaemonSet pod can be scheduled. The DaemonSet controller can still create pods for eligible nodes that do not satisfy inter-pod affinity; those pods remain Pending until the scheduler can satisfy the rule. Use node labels, node selectors, or node affinity when you need the DaemonSet controller itself to create pods only for a subset of nodes.
 
-Pod affinity uses label selectors to identify target pods. When combined with DaemonSets and node selectors, you create sophisticated placement rules that ensure infrastructure services run exactly where needed.
+Pod affinity uses label selectors to identify target pods. When combined with DaemonSets and node selectors, you create sophisticated placement rules that ensure infrastructure services run where needed. If target workloads run in different namespaces from the DaemonSet, include `namespaces` or `namespaceSelector` in the affinity term.
 
 ## Basic DaemonSet with pod affinity
 
@@ -45,6 +45,7 @@ spec:
                 values:
                 - postgres
                 - mysql
+            namespaceSelector: {}
             topologyKey: kubernetes.io/hostname
       containers:
       - name: monitor
@@ -61,7 +62,7 @@ spec:
             cpu: 100m
 ```
 
-This DaemonSet only deploys on nodes that have PostgreSQL or MySQL pods running.
+This DaemonSet pod schedules successfully only on nodes that have PostgreSQL or MySQL pods running. Nodes without matching pods can still get Pending DaemonSet pods unless you also narrow eligible nodes with node labels or node affinity.
 
 ## GPU monitoring for ML workloads
 
@@ -94,6 +95,7 @@ spec:
                 - inference
               - key: accelerator
                 operator: Exists
+            namespaceSelector: {}
             topologyKey: kubernetes.io/hostname
       nodeSelector:
         accelerator: nvidia-gpu
@@ -112,14 +114,13 @@ spec:
           limits:
             memory: 256Mi
             cpu: 200m
-            nvidia.com/gpu: 0  # No GPU allocation needed for monitoring
       volumes:
       - name: nvidia
         hostPath:
           path: /usr/local/nvidia
 ```
 
-This ensures GPU monitoring runs only where ML workloads are actually scheduled.
+This ensures GPU monitoring schedules only where ML workloads are actually scheduled, while `nodeSelector` limits DaemonSet pod creation to GPU-labeled nodes.
 
 ## Application-specific logging
 
@@ -152,6 +153,7 @@ spec:
                   values:
                   - high
                   - very-high
+              namespaceSelector: {}
               topologyKey: kubernetes.io/hostname
       containers:
       - name: collector
@@ -185,7 +187,7 @@ spec:
           sizeLimit: 5Gi
 ```
 
-Using preferredDuringScheduling allows the DaemonSet to run on other nodes if needed, but prioritizes nodes with high-volume logs.
+With a DaemonSet, `preferredDuringSchedulingIgnoredDuringExecution` is only a soft scheduler preference. It does not reduce the set of nodes where the DaemonSet controller creates pods; use node labels or required pod affinity if you need stricter placement.
 
 ## Service mesh sidecars for specific services
 
@@ -215,6 +217,7 @@ spec:
                 operator: In
                 values:
                 - "true"
+            namespaceSelector: {}
             topologyKey: kubernetes.io/hostname
       hostNetwork: true
       containers:
@@ -259,11 +262,11 @@ spec:
           name: envoy-node-config
 ```
 
-This DaemonSet only runs on nodes that have mesh-enabled applications.
+This DaemonSet schedules only on nodes that have mesh-enabled applications.
 
 ## Storage monitoring for stateful workloads
 
-Monitor storage metrics only on nodes with StatefulSets:
+Monitor storage metrics only on nodes with pods labeled as stateful workloads:
 
 ```yaml
 apiVersion: apps/v1
@@ -294,6 +297,7 @@ spec:
                 operator: In
                 values:
                 - "true"
+            namespaceSelector: {}
             topologyKey: kubernetes.io/hostname
       containers:
       - name: monitor
@@ -326,7 +330,7 @@ spec:
           path: /var/lib/kubelet/pods
 ```
 
-This avoids wasting resources monitoring storage on nodes without stateful workloads.
+This avoids wasting resources monitoring storage on nodes without pods that carry your stateful workload labels.
 
 ## Anti-affinity for isolation
 
@@ -357,6 +361,7 @@ spec:
                 values:
                 - critical
                 - high
+            namespaceSelector: {}
             topologyKey: kubernetes.io/hostname
         podAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -369,6 +374,7 @@ spec:
                   values:
                   - batch
                   - async
+              namespaceSelector: {}
               topologyKey: kubernetes.io/hostname
       containers:
       - name: processor
@@ -382,7 +388,7 @@ spec:
             cpu: 500m
 ```
 
-This keeps batch processing away from critical workloads while preferring nodes with other batch jobs.
+This keeps batch processing from scheduling on nodes with critical workloads while preferring nodes with other batch jobs.
 
 ## Multi-topology affinity
 
@@ -417,6 +423,7 @@ spec:
                 values:
                 - frontend
                 - api
+            namespaceSelector: {}
             topologyKey: topology.kubernetes.io/zone
           - labelSelector:
               matchExpressions:
@@ -424,6 +431,7 @@ spec:
                 operator: In
                 values:
                 - "true"
+            namespaceSelector: {}
             topologyKey: kubernetes.io/hostname
       containers:
       - name: cache
@@ -444,7 +452,7 @@ spec:
           type: DirectoryOrCreate
 ```
 
-This ensures cache nodes run in specific zones and on nodes with cache clients.
+This ensures cache pods schedule in zones with matching frontend or API pods and on nodes with cache clients.
 
 ## Dynamic affinity based on workload labels
 
@@ -476,6 +484,7 @@ spec:
                   operator: In
                   values:
                   - intensive
+              namespaceSelector: {}
               topologyKey: kubernetes.io/hostname
           - weight: 50
             podAffinityTerm:
@@ -485,6 +494,7 @@ spec:
                   operator: In
                   values:
                   - standard
+              namespaceSelector: {}
               topologyKey: kubernetes.io/hostname
       containers:
       - name: monitor
@@ -501,7 +511,7 @@ spec:
             cpu: 150m
 ```
 
-Weight-based preferences allow fine-grained control over placement priorities.
+Weight-based preferences allow fine-grained scheduler scoring, but they do not change which nodes are eligible for DaemonSet pod creation.
 
 ## Verification and monitoring
 
@@ -526,4 +536,4 @@ echo "Database nodes: $(kubectl get pods -A -l app=postgres -o jsonpath='{.items
 
 ## Conclusion
 
-Pod affinity in DaemonSets enables efficient resource utilization by deploying node services only where needed. Whether you're monitoring specific workloads, providing specialized infrastructure, or optimizing costs, affinity rules ensure your DaemonSets run exactly where they should. Combine required and preferred affinity rules with anti-affinity to create sophisticated placement strategies that match your operational requirements.
+Pod affinity in DaemonSets enables efficient resource utilization by co-locating node services where needed. Whether you're monitoring specific workloads, providing specialized infrastructure, or optimizing costs, affinity rules help your DaemonSets run where they should. Combine required and preferred affinity rules with node selectors, node affinity, and anti-affinity to create sophisticated placement strategies that match your operational requirements.
