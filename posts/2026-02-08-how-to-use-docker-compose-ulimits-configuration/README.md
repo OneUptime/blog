@@ -38,8 +38,6 @@ When you specify a single number, it sets both the soft and hard limit to the sa
 
 ```yaml
 # Set both soft and hard limits to the same value
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -117,7 +115,7 @@ Some applications lock memory pages to prevent them from being swapped to disk. 
 # Elasticsearch needs unlimited memlock for performance
 services:
   elasticsearch:
-    image: elasticsearch:8.12.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
     ulimits:
       memlock:
         soft: -1
@@ -127,7 +125,7 @@ services:
       - "bootstrap.memory_lock=true"
 ```
 
-The value `-1` means unlimited. Elasticsearch documentation specifically recommends setting memlock to unlimited for production deployments.
+The value `-1` means unlimited. Elasticsearch documentation recommends disabling swap for production deployments; if you use `bootstrap.memory_lock=true`, set `memlock` to unlimited so Elasticsearch can lock memory successfully.
 
 ### stack - Stack Size
 
@@ -198,9 +196,6 @@ services:
       nofile:
         soft: 65536
         hard: 65536
-      memlock:
-        soft: -1
-        hard: -1
     shm_size: "256m"
     command:
       - "postgres"
@@ -214,14 +209,14 @@ services:
 # Elasticsearch production ulimits
 services:
   elasticsearch:
-    image: elasticsearch:8.12.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
     ulimits:
       memlock:
         soft: -1
         hard: -1
       nofile:
-        soft: 65536
-        hard: 65536
+        soft: 65535
+        hard: 65535
       nproc:
         soft: 4096
         hard: 4096
@@ -251,8 +246,6 @@ Here is a complete Compose file with tuned ulimits for every service.
 
 ```yaml
 # Production stack with tuned ulimits
-version: "3.8"
-
 services:
   proxy:
     image: nginx:alpine
@@ -294,14 +287,14 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   elasticsearch:
-    image: elasticsearch:8.12.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
     ulimits:
       memlock:
         soft: -1
         hard: -1
       nofile:
-        soft: 65536
-        hard: 65536
+        soft: 65535
+        hard: 65535
     environment:
       - "bootstrap.memory_lock=true"
       - "discovery.type=single-node"
@@ -385,7 +378,7 @@ When you suspect ulimit problems, look for these symptoms and solutions.
 
 **"Resource temporarily unavailable" when forking** - The `nproc` limit is too low. Increase it, keeping in mind that threads count as processes.
 
-**Elasticsearch refuses to start** - Almost always a `memlock` or `nofile` issue. Elasticsearch requires unlimited memlock and at least 65536 file descriptors.
+**Elasticsearch refuses to start** - Often a `memlock`, `nofile`, or `nproc` issue. Elasticsearch Docker deployments need increased `nofile` and `nproc` limits, and if you enable `bootstrap.memory_lock`, the container also needs unlimited `memlock`.
 
 **Application runs fine under low load but crashes under high load** - Profile the application's resource usage at peak load. The limit that gets hit first is your bottleneck.
 
