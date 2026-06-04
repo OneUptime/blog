@@ -10,7 +10,7 @@ Description: Deploy a dedicated Valheim server in Docker with world persistence,
 
 Valheim is a Viking survival game that took the gaming world by storm. Its procedurally generated world, cooperative gameplay, and challenging boss fights make it a perfect game for playing with friends. Running a dedicated server lets your world stay online even when you are not playing, and your friends can hop in whenever they want.
 
-Docker is an excellent way to run a Valheim dedicated server. It handles the SteamCMD installation, server binary updates, and process management. The `lloesche/valheim-server` Docker image is the most popular choice, offering automatic updates, backup support, and BepInEx mod compatibility.
+Docker is an excellent way to run a Valheim dedicated server. It handles the SteamCMD installation, server binary updates, and process management. The `ghcr.io/community-valheim-tools/valheim-server` Docker image offers automatic updates, backup support, and BepInEx mod compatibility.
 
 ## Prerequisites
 
@@ -36,13 +36,13 @@ Get a Valheim server running with one command.
 # Start a Valheim dedicated server
 docker run -d \
   --name valheim \
-  -p 2456-2458:2456-2458/udp \
+  -p 2456-2457:2456-2457/udp \
   -e SERVER_NAME="My Valheim Server" \
   -e WORLD_NAME="DockerViking" \
   -e SERVER_PASS="vikingpass" \
   -v valheim-config:/config \
   -v valheim-data:/opt/valheim \
-  lloesche/valheim-server
+  ghcr.io/community-valheim-tools/valheim-server
 ```
 
 The server password must be at least 5 characters and cannot be part of the server name.
@@ -53,17 +53,14 @@ A full Docker Compose setup with all the important options.
 
 ```yaml
 # docker-compose.yml - Valheim dedicated server
-version: "3.8"
-
 services:
   valheim:
-    image: lloesche/valheim-server
+    image: ghcr.io/community-valheim-tools/valheim-server
     container_name: valheim-server
     ports:
-      # Valheim uses three consecutive UDP ports
+      # Valheim uses the configured port and the next UDP port
       - "2456:2456/udp"
       - "2457:2457/udp"
-      - "2458:2458/udp"
     environment:
       # Server identity - shown in the server browser
       SERVER_NAME: "Docker Vikings"
@@ -93,7 +90,8 @@ services:
       SERVER_PORT: "2456"
 
       # Crossplay support (allows Xbox and PC players together)
-      ENABLE_CROSSPLAY: "false"
+      # Set CROSSPLAY to "true" and expose UDP port 2458 if you enable it
+      CROSSPLAY: "false"
 
     volumes:
       # Configuration, worlds, and backups
@@ -140,7 +138,7 @@ The first startup takes 5-10 minutes because SteamCMD needs to download the comp
 
 1. Click "Join Game"
 2. Click "Join IP"
-3. Enter `YOUR_IP:2457` (note: use port 2457, not 2456)
+3. Enter `YOUR_IP:2456` (or just `YOUR_IP` if you use the default port)
 4. Enter the password
 
 ```bash
@@ -153,26 +151,26 @@ curl ifconfig.me
 Manage your server through the admin list and console.
 
 ```bash
-# Find your Steam ID (needed for admin access)
-# You can find it at steamid.io
+# Find your Platform User ID (needed for admin access)
+# You can find it in the server log or in-game with the F2 panel
 
 # Add yourself as an admin by editing the adminlist
-docker exec valheim-server bash -c 'echo "YOUR_STEAM_ID" >> /config/adminlist.txt'
+docker exec valheim-server bash -c 'echo "YOUR_PLATFORM_USER_ID" >> /config/adminlist.txt'
 
 # Add a player to the permitted list (whitelist equivalent)
-docker exec valheim-server bash -c 'echo "PLAYER_STEAM_ID" >> /config/permittedlist.txt'
+docker exec valheim-server bash -c 'echo "PLAYER_PLATFORM_USER_ID" >> /config/permittedlist.txt'
 
 # Ban a player
-docker exec valheim-server bash -c 'echo "PLAYER_STEAM_ID" >> /config/bannedlist.txt'
+docker exec valheim-server bash -c 'echo "PLAYER_PLATFORM_USER_ID" >> /config/bannedlist.txt'
 ```
 
-Once you are an admin in-game, press F5 to open the console and use admin commands.
+Once you are an admin in-game, press F5 to open the console and use admin commands. In recent Valheim versions, start the game client with the `-console` launch option if F5 does not open the console.
 
 ```text
 # In-game console commands (press F5)
-kick [name/steamID]
-ban [name/steamID]
-unban [steamID]
+kick [name]
+ban [name]
+unban [name]
 help
 info
 save
@@ -281,4 +279,4 @@ docker compose down -v
 
 ## Summary
 
-Docker makes hosting a Valheim dedicated server straightforward. The `lloesche/valheim-server` image handles SteamCMD updates, automatic backups, and even BepInEx mod support. Your world data persists in Docker volumes, and the server can update itself on a schedule. Whether you are running a private server for a few friends or a public community server, this Docker-based approach keeps everything organized and reproducible.
+Docker makes hosting a Valheim dedicated server straightforward. The `ghcr.io/community-valheim-tools/valheim-server` image handles SteamCMD updates, automatic backups, and even BepInEx mod support. Your world data persists in Docker volumes, and the server can update itself on a schedule. Whether you are running a private server for a few friends or a public community server, this Docker-based approach keeps everything organized and reproducible.
