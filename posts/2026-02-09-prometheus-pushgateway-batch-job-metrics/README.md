@@ -8,20 +8,20 @@ Description: Learn how to configure Prometheus Pushgateway to collect metrics fr
 
 ---
 
-Prometheus excels at scraping long-running services, but short-lived Kubernetes jobs present a challenge. A batch job might complete its work and terminate before Prometheus scrapes its metrics. Prometheus Pushgateway solves this by letting jobs push their metrics before terminating, ensuring you capture performance data from every job execution.
+Prometheus excels at scraping long-running services, but short-lived Kubernetes jobs present a challenge. A batch job might complete its work and terminate before Prometheus scrapes its metrics. Prometheus Pushgateway helps with this by letting jobs push their final state before terminating, so Prometheus can scrape those metrics after the job exits.
 
 This guide shows you how to deploy Pushgateway in Kubernetes, instrument batch jobs to push metrics, and configure Prometheus to collect them.
 
 ## Understanding the Pushgateway Pattern
 
-Unlike normal Prometheus scraping where Prometheus pulls metrics from targets, Pushgateway reverses the flow. Jobs push their metrics to Pushgateway, which holds them until Prometheus scrapes. This works perfectly for:
+Unlike normal Prometheus scraping where Prometheus pulls metrics from targets, Pushgateway reverses the flow. Jobs push their metrics to Pushgateway, which holds them until Prometheus scrapes. This works well for service-level batch work such as:
 
 - Kubernetes Jobs and CronJobs
 - Batch processing scripts
 - Scheduled maintenance tasks
 - Migration scripts
 
-The key limitation: Pushgateway stores the last pushed value for each metric, making it unsuitable for frequently changing metrics.
+The key limitation: Pushgateway is a metrics cache, not an event store or distributed counter. It stores pushed series until they are overwritten or deleted, making it unsuitable for frequently changing metrics or per-instance metrics that should disappear automatically.
 
 ## Deploying Pushgateway in Kubernetes
 
@@ -45,7 +45,7 @@ spec:
     spec:
       containers:
       - name: pushgateway
-        image: prom/pushgateway:v1.6.2
+        image: prom/pushgateway:v1.11.3
         ports:
         - containerPort: 9091
           name: http
@@ -123,7 +123,7 @@ data:
       static_configs:
       - targets: ['prometheus-pushgateway.monitoring.svc.cluster.local:9091']
 
-      metric_relabel_configs:
+      relabel_configs:
       # Add pushgateway instance label
       - source_labels: [__address__]
         target_label: pushgateway_instance
@@ -189,10 +189,10 @@ spec:
             # Report progress every 100 records
             if [ $((i % 100)) -eq 0 ]; then
               cat <<EOF | curl --data-binary @- ${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}/instance/${INSTANCE}
-          # TYPE backup_records_processed counter
-          backup_records_processed{job="${JOB_NAME}"} ${RECORDS_PROCESSED}
-          # TYPE backup_records_failed counter
-          backup_records_failed{job="${JOB_NAME}"} ${RECORDS_FAILED}
+          # TYPE backup_records_processed_total counter
+          backup_records_processed_total{job="${JOB_NAME}"} ${RECORDS_PROCESSED}
+          # TYPE backup_records_failed_total counter
+          backup_records_failed_total{job="${JOB_NAME}"} ${RECORDS_FAILED}
           EOF
             fi
           done
@@ -205,10 +205,10 @@ spec:
           cat <<EOF | curl --data-binary @- ${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}/instance/${INSTANCE}
           # TYPE backup_job_duration_seconds gauge
           backup_job_duration_seconds{job="${JOB_NAME}"} ${DURATION}
-          # TYPE backup_records_processed counter
-          backup_records_processed{job="${JOB_NAME}"} ${RECORDS_PROCESSED}
-          # TYPE backup_records_failed counter
-          backup_records_failed{job="${JOB_NAME}"} ${RECORDS_FAILED}
+          # TYPE backup_records_processed_total counter
+          backup_records_processed_total{job="${JOB_NAME}"} ${RECORDS_PROCESSED}
+          # TYPE backup_records_failed_total counter
+          backup_records_failed_total{job="${JOB_NAME}"} ${RECORDS_FAILED}
           # TYPE backup_job_success gauge
           backup_job_success{job="${JOB_NAME}"} 1
           # TYPE backup_job_last_completion_timestamp gauge
@@ -227,7 +227,7 @@ For Python jobs, use the Prometheus client library:
 ```python
 # requirements.txt
 
-prometheus-client==0.19.0
+prometheus-client==0.25.0
 
 # backup_script.py
 import time
@@ -250,13 +250,13 @@ job_duration = Gauge(
 )
 
 records_processed = Counter(
-    'backup_records_processed',
+    'backup_records_processed_total',
     'Number of records processed',
     registry=registry
 )
 
 records_failed = Counter(
-    'backup_records_failed',
+    'backup_records_failed_total',
     'Number of records that failed processing',
     registry=registry
 )
@@ -361,7 +361,7 @@ spec:
         - /bin/bash
         - -c
         - |
-          pip install prometheus-client
+          pip install prometheus-client==0.25.0
           python /scripts/backup_script.py
         volumeMounts:
         - name: scripts
@@ -504,9 +504,9 @@ spec:
     - alert: BatchJobHighFailureRate
       expr: |
         (
-          backup_records_failed
+          backup_records_failed_total
           /
-          (backup_records_processed + backup_records_failed)
+          (backup_records_processed_total + backup_records_failed_total)
         ) > 0.1
       for: 5m
       labels:
@@ -550,7 +550,7 @@ spec:
             - /bin/sh
             - -c
             - |
-              # Delete metrics older than 7 days
+              # Delete metrics for a known stale group
               # This is a simplified example
               curl -X DELETE http://prometheus-pushgateway.monitoring.svc.cluster.local:9091/metrics/job/old_job_name
 ```
@@ -567,13 +567,13 @@ backup_job_duration_seconds
 avg_over_time(backup_job_success[24h])
 
 # Records processed per job run
-backup_records_processed
+backup_records_processed_total
 
 # Time since last successful run
-time() - backup_job_last_completion_timestamp{backup_job_success="1"}
+time() - (backup_job_last_completion_timestamp and backup_job_success == 1)
 
 # Failure rate
-backup_records_failed / (backup_records_processed + backup_records_failed)
+backup_records_failed_total / (backup_records_processed_total + backup_records_failed_total)
 ```
 
 ## Conclusion
