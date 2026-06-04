@@ -24,7 +24,7 @@ This approach works but adds complexity to your cluster infrastructure.
 
 ## Enter ValidatingAdmissionPolicy
 
-Kubernetes 1.26 introduced ValidatingAdmissionPolicy (beta in 1.28+), which allows you to write admission policies using Common Expression Language (CEL) directly in policy objects. No webhook server required.
+Kubernetes 1.26 introduced ValidatingAdmissionPolicy as an alpha feature. It became beta in 1.28 and stable in 1.30, which allows you to write admission policies using Common Expression Language (CEL) directly in policy objects. No webhook server required.
 
 The basic structure consists of two resources:
 
@@ -53,7 +53,7 @@ spec:
   validations:
   - expression: "object.spec.template.spec.containers.all(c, has(c.resources) && has(c.resources.limits))"
     message: "All containers must define resource limits"
-  - expression: "object.spec.template.spec.containers.all(c, has(c.resources.limits.memory) && has(c.resources.limits.cpu))"
+  - expression: "object.spec.template.spec.containers.all(c, has(c.resources) && has(c.resources.limits) && 'memory' in c.resources.limits && 'cpu' in c.resources.limits)"
     message: "All containers must specify both CPU and memory limits"
 ```
 
@@ -66,6 +66,7 @@ metadata:
   name: require-resource-limits-binding
 spec:
   policyName: require-resource-limits
+  validationActions: [Deny]
   # Apply to all namespaces except kube-system
   matchResources:
     namespaceSelector:
@@ -123,7 +124,7 @@ spec:
   - expression: "has(object.metadata.annotations) && 'created-by' in object.metadata.annotations"
     message: "ConfigMaps must have a 'created-by' annotation"
   # Reject if user is trying to impersonate another creator
-  - expression: "!has(object.metadata.annotations) || object.metadata.annotations['created-by'] == request.userInfo.username"
+  - expression: "!has(object.metadata.annotations) || !('created-by' in object.metadata.annotations) || object.metadata.annotations['created-by'] == request.userInfo.username"
     message: "You can only set created-by to your own username"
   - expression: "request.operation == 'UPDATE' || has(object.metadata.labels)"
     message: "New ConfigMaps must include labels"
@@ -149,14 +150,17 @@ spec:
   validations:
   # Prevent changes to the app label after creation
   - expression: |
-      !has(oldObject.metadata.labels.app) ||
-      !has(object.metadata.labels.app) ||
-      oldObject.metadata.labels.app == object.metadata.labels.app
+      !has(oldObject.metadata.labels) ||
+      !('app' in oldObject.metadata.labels) ||
+      !has(object.metadata.labels) ||
+      !('app' in object.metadata.labels) ||
+      oldObject.metadata.labels['app'] == object.metadata.labels['app']
     message: "The 'app' label cannot be changed after creation"
   # Prevent downscaling in production
   - expression: |
-      !has(oldObject.metadata.labels.environment) ||
-      oldObject.metadata.labels.environment != 'production' ||
+      !has(oldObject.metadata.labels) ||
+      !('environment' in oldObject.metadata.labels) ||
+      oldObject.metadata.labels['environment'] != 'production' ||
       object.spec.replicas >= oldObject.spec.replicas
     message: "Cannot reduce replicas in production deployments"
 ```
@@ -213,9 +217,11 @@ metadata:
   name: registry-and-replica-limits-binding
 spec:
   policyName: registry-and-replica-limits
+  validationActions: [Deny]
   paramRef:
     name: admission-policy-params
     namespace: default
+    parameterNotFoundAction: Deny
   matchResources:
     namespaceSelector:
       matchLabels:
@@ -242,22 +248,25 @@ spec:
   validations:
   # Production workloads must have multiple replicas
   - expression: |
-      !has(object.metadata.labels.environment) ||
-      object.metadata.labels.environment != 'production' ||
+      !has(object.metadata.labels) ||
+      !('environment' in object.metadata.labels) ||
+      object.metadata.labels['environment'] != 'production' ||
       object.spec.replicas >= 2
     message: "Production workloads must have at least 2 replicas for HA"
 
   # Production workloads must define pod disruption budgets
   - expression: |
-      !has(object.metadata.labels.environment) ||
-      object.metadata.labels.environment != 'production' ||
-      has(object.metadata.annotations['pdb-configured'])
+      !has(object.metadata.labels) ||
+      !('environment' in object.metadata.labels) ||
+      object.metadata.labels['environment'] != 'production' ||
+      (has(object.metadata.annotations) && 'pdb-configured' in object.metadata.annotations)
     message: "Production workloads must have a PodDisruptionBudget (annotate with pdb-configured=true)"
 
   # Production images must use specific tags, not 'latest'
   - expression: |
-      !has(object.metadata.labels.environment) ||
-      object.metadata.labels.environment != 'production' ||
+      !has(object.metadata.labels) ||
+      !('environment' in object.metadata.labels) ||
+      object.metadata.labels['environment'] != 'production' ||
       object.spec.template.spec.containers.all(c, !c.image.endsWith(':latest'))
     message: "Production containers cannot use 'latest' tag"
 ```
@@ -303,7 +312,7 @@ spec:
       operations: ["CREATE"]
       resources: ["namespaces"]
   validations:
-  - expression: "has(object.metadata.labels.team) && object.metadata.labels.team != ''"
+  - expression: "has(object.metadata.labels) && 'team' in object.metadata.labels && object.metadata.labels['team'] != ''"
     message: "Namespaces must have a non-empty 'team' label"
 ```
 
@@ -324,16 +333,16 @@ kubectl describe validatingadmissionpolicy require-resource-limits
 
 ## Limitations and When to Still Use Webhooks
 
-CEL admission policies cannot:
+ValidatingAdmissionPolicy cannot:
 
-- Mutate objects (use MutatingAdmissionWebhook for this)
+- Mutate objects (use MutatingAdmissionPolicy or MutatingAdmissionWebhook for this)
 - Make external API calls
 - Access data from other Kubernetes resources (beyond params)
 - Perform complex computations
 
 Use webhooks when you need:
 
-- Mutation logic (adding sidecars, injecting volumes)
+- Mutation logic that cannot be handled by MutatingAdmissionPolicy
 - External validation (checking against external databases)
 - Complex business logic that CEL cannot express
 - Cross-resource validation
@@ -348,7 +357,7 @@ Use webhooks when you need:
 
 4. **Scope policies carefully**: Use namespace selectors to avoid blocking critical system resources
 
-5. **Set appropriate failurePolicy**: Use `Fail` for critical policies, `Ignore` for advisory ones
+5. **Set appropriate enforcement**: Use `validationActions: [Deny]` for blocking policies, `Warn` or `Audit` for advisory rollouts, and reserve `failurePolicy` for handling evaluation errors
 
 6. **Monitor performance**: CEL expressions run on every matching request, so keep them efficient
 
@@ -358,9 +367,9 @@ To migrate from webhooks to CEL policies:
 
 1. Identify webhook validation logic that can be expressed in CEL
 2. Create corresponding ValidatingAdmissionPolicy resources
-3. Deploy policies with `failurePolicy: Ignore` initially
+3. Deploy policies with non-blocking binding actions such as `validationActions: [Warn, Audit]` initially
 4. Monitor and test thoroughly
-5. Switch to `failurePolicy: Fail` once confident
+5. Switch the binding to `validationActions: [Deny]` once confident
 6. Remove the webhook configuration
 
 ## Conclusion
