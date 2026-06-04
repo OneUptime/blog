@@ -122,7 +122,7 @@ metadata:
   namespace: production
 spec:
   type: ExternalName
-  externalName: 10.1.2.3  # Cloud SQL private IP
+  externalName: mysql.private.example.com  # DNS name that resolves to the Cloud SQL private IP
   ports:
   - port: 3306
     protocol: TCP
@@ -195,14 +195,29 @@ Application code uses consistent service names:
 package main
 
 import (
+    "context"
     "fmt"
+    "net"
     "net/http"
+    "time"
 )
 
 func main() {
-    // Use cluster service name
-    // DNS resolves to external API
-    resp, err := http.Get("https://payment-api.default.svc.cluster.local/v1/charges")
+    dialer := &net.Dialer{
+        Timeout: 30 * time.Second,
+    }
+
+    transport := &http.Transport{
+        DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+            // Connect through the Kubernetes ExternalName DNS alias while keeping
+            // the URL host as api.stripe.com for the HTTP Host header and TLS SNI.
+            return dialer.DialContext(ctx, network, "payment-api.default.svc.cluster.local:443")
+        },
+    }
+
+    client := &http.Client{Transport: transport}
+
+    resp, err := client.Get("https://api.stripe.com/v1/charges")
     if err != nil {
         fmt.Printf("Error: %v\n", err)
         return
@@ -367,7 +382,7 @@ metadata:
   namespace: default
 spec:
   hosts:
-  - external-api.default.svc.cluster.local
+  - api.external.com
   tls:
   - match:
     - port: 443
@@ -445,7 +460,7 @@ spec:
       - name: monitor
         image: nicolaka/netshoot
         command:
-        - sh
+        - bash
         - /scripts/monitor.sh
         volumeMounts:
         - name: scripts
@@ -526,7 +541,7 @@ spec:
       - name: test
         image: nicolaka/netshoot
         command:
-        - sh
+        - bash
         - /scripts/test.sh
         volumeMounts:
         - name: scripts
@@ -580,9 +595,11 @@ ExternalName services have limitations:
 1. **No load balancing**: Clients connect directly to external endpoint
 2. **No health checks**: Kubernetes doesn't monitor external service health
 3. **DNS only**: Works through DNS CNAME records only
-4. **No port remapping**: Port configuration is informational only
-5. **Network policies**: Policies must allow actual external IPs
-6. **Service mesh**: May require additional configuration
+4. **DNS names only**: Values that look like IPv4 addresses are treated as DNS names and are not resolved as IP addresses
+5. **No port remapping**: Port configuration is informational only
+6. **Hostname-sensitive protocols**: HTTP Host headers and TLS SNI still use the hostname requested by the client, which can cause errors when clients request the Kubernetes service name
+7. **Network policies**: Policies must allow actual external IPs
+8. **Service mesh**: May require additional configuration
 
 ## Best Practices
 
