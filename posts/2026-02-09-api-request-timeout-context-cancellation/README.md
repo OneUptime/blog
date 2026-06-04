@@ -130,25 +130,25 @@ import (
 
 type Controller struct {
     clientset  *kubernetes.Clientset
-    ctx        context.Context
     cancel     context.CancelFunc
     wg         sync.WaitGroup
 }
 
 func NewController(clientset *kubernetes.Clientset) *Controller {
-    ctx, cancel := context.WithCancel(context.Background())
     return &Controller{
         clientset: clientset,
-        ctx:       ctx,
-        cancel:    cancel,
+        cancel:    func() {},
     }
 }
 
 func (c *Controller) Start() {
+    ctx, cancel := context.WithCancel(context.Background())
+    c.cancel = cancel
+
     c.wg.Add(1)
     go func() {
         defer c.wg.Done()
-        c.watchPods()
+        c.watchPods(ctx)
     }()
 }
 
@@ -159,9 +159,9 @@ func (c *Controller) Stop() {
     c.wg.Wait()
 }
 
-func (c *Controller) watchPods() {
+func (c *Controller) watchPods(ctx context.Context) {
     watcher, err := c.clientset.CoreV1().Pods("default").Watch(
-        c.ctx,
+        ctx,
         metav1.ListOptions{},
     )
     if err != nil {
@@ -180,7 +180,7 @@ func (c *Controller) watchPods() {
             // Process event
             fmt.Printf("Event: %s\n", event.Type)
 
-        case <-c.ctx.Done():
+        case <-ctx.Done():
             // Context was cancelled
             fmt.Println("Watch cancelled")
             return
@@ -304,10 +304,6 @@ func int32Ptr(i int32) *int32 {
 Set timeouts at the client level:
 
 ```go
-import (
-    "k8s.io/client-go/rest"
-)
-
 func createClientWithTimeouts() (*kubernetes.Clientset, error) {
     config, err := clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile)
     if err != nil {
@@ -367,6 +363,8 @@ Properly handle watch timeout and reconnection:
 
 ```go
 func watchWithReconnect(clientset *kubernetes.Clientset, stopCh <-chan struct{}) {
+    resourceVersion := ""
+
     for {
         select {
         case <-stopCh:
@@ -377,7 +375,9 @@ func watchWithReconnect(clientset *kubernetes.Clientset, stopCh <-chan struct{})
         // Create context for this watch attempt
         ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 
-        watcher, err := clientset.CoreV1().Pods("default").Watch(ctx, metav1.ListOptions{})
+        watcher, err := clientset.CoreV1().Pods("default").Watch(ctx, metav1.ListOptions{
+            ResourceVersion: resourceVersion,
+        })
         if err != nil {
             cancel()
             log.Printf("Failed to start watch: %v", err)
@@ -386,7 +386,7 @@ func watchWithReconnect(clientset *kubernetes.Clientset, stopCh <-chan struct{})
         }
 
         // Process watch events
-        watchLoop(watcher, ctx, stopCh)
+        resourceVersion = watchLoop(watcher, ctx, stopCh, resourceVersion)
 
         watcher.Stop()
         cancel()
@@ -400,24 +400,27 @@ func watchWithReconnect(clientset *kubernetes.Clientset, stopCh <-chan struct{})
     }
 }
 
-func watchLoop(watcher watch.Interface, ctx context.Context, stopCh <-chan struct{}) {
+func watchLoop(watcher watch.Interface, ctx context.Context, stopCh <-chan struct{}, resourceVersion string) string {
     for {
         select {
         case event, ok := <-watcher.ResultChan():
             if !ok {
                 log.Println("Watch channel closed")
-                return
+                return resourceVersion
+            }
+            if obj, ok := event.Object.(metav1.Object); ok {
+                resourceVersion = obj.GetResourceVersion()
             }
             // Process event
             log.Printf("Event: %s\n", event.Type)
 
         case <-ctx.Done():
             log.Printf("Watch timeout: %v", ctx.Err())
-            return
+            return resourceVersion
 
         case <-stopCh:
             log.Println("Stop requested")
-            return
+            return resourceVersion
         }
     }
 }
@@ -462,7 +465,7 @@ func (c *PodController) updatePodStatus(ctx context.Context, pod *corev1.Pod) er
 
 ## Best Practices
 
-1. **Always use contexts**: Never pass `context.Background()` directly; use `WithTimeout` or `WithCancel`
+1. **Always use contexts**: Pass a caller-provided context through controller operations, or derive one with `WithTimeout` or `WithCancel`
 
 2. **Set appropriate timeouts**: Fast operations (get) need shorter timeouts than slow ones (list)
 
