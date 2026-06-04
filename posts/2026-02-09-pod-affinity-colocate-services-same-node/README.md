@@ -249,6 +249,7 @@ spec:
       - name: data
         hostPath:
           path: /mnt/local-storage
+      restartPolicy: OnFailure
 ```
 
 Processing jobs run on nodes with local data, avoiding network transfer overhead.
@@ -295,7 +296,7 @@ affinity:
         topologyKey: kubernetes.io/hostname
 ```
 
-The scheduler evaluates all preferences and chooses nodes with the highest combined score.
+The scheduler evaluates all preferences, adds matching affinity weights to other scheduler scores, and chooses the node with the highest final score.
 
 ## Sidecar Pattern with Affinity
 
@@ -324,10 +325,11 @@ spec:
 ---
 # Logging sidecar as separate deployment
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
   name: log-collector
 spec:
+  replicas: 5
   selector:
     matchLabels:
       app: log-collector
@@ -351,7 +353,7 @@ spec:
         image: log-collector:latest
 ```
 
-Log collectors preferentially run on nodes with application pods.
+Log collectors preferentially run on nodes with application pods, while still allowing scheduling elsewhere if needed.
 
 ## Avoiding Affinity Deadlocks
 
