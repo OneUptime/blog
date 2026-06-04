@@ -33,11 +33,11 @@ Our pipeline has three main components:
 2. **Argo Workflows**: Orchestrates feature computation jobs on schedules
 3. **Feast**: Stores features for both training (offline) and inference (online)
 
-Features are computed periodically, written to Feast's offline store (like Parquet files), and optionally materialized to the online store (like Redis) for low-latency serving.
+Features are computed periodically, written to Feast's offline store (like BigQuery tables), and optionally materialized to the online store (like Redis) for low-latency serving.
 
 ## Installing Feast on Kubernetes
 
-First, install Feast. We'll deploy the Feast feature server that provides HTTP/gRPC APIs for feature retrieval:
+First, install Feast. We'll deploy the Feast feature server that provides HTTP APIs for feature retrieval:
 
 ```yaml
 # feast-namespace.yaml
@@ -52,9 +52,9 @@ Create a feature repository structure that Feast will use:
 
 ```bash
 # Initialize a Feast repository locally first
-pip install feast
-feast init feature_repo
-cd feature_repo
+pip install 'feast[gcp,redis]'
+feast init -t gcp feature_repo
+cd feature_repo/feature_repo
 ```
 
 Edit `feature_store.yaml` to configure offline and online stores:
@@ -154,19 +154,19 @@ Create feature definitions in Python. These define how raw data maps to features
 ```python
 # features.py
 from datetime import timedelta
-from feast import Entity, FeatureView, Field, FileSource, ValueType
+from feast import BigQuerySource, Entity, FeatureView, Field
 from feast.types import Float32, Int64
 
 # Define the entity (what features are keyed by)
 user = Entity(
     name="user_id",
     description="User identifier",
-    value_type=ValueType.INT64
+    join_keys=["user_id"],
 )
 
 # Define the data source
-transactions_source = FileSource(
-    path="gs://your-bucket/feature-data/transactions.parquet",
+transactions_source = BigQuerySource(
+    table="your-project.feast_offline.transactions",
     timestamp_field="event_timestamp",
 )
 
@@ -203,7 +203,7 @@ Create a Python script that computes features from raw data:
 ```python
 # compute_features.py
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import timedelta
 from google.cloud import bigquery
 
 def compute_transaction_features(start_date, end_date):
@@ -211,8 +211,14 @@ def compute_transaction_features(start_date, end_date):
     Compute transaction features from raw data.
     """
     client = bigquery.Client()
+    output_start = pd.Timestamp(start_date)
+    output_end = pd.Timestamp(end_date)
+    output_start = output_start.tz_localize("UTC") if output_start.tzinfo is None else output_start.tz_convert("UTC")
+    output_end = output_end.tz_localize("UTC") if output_end.tzinfo is None else output_end.tz_convert("UTC")
+    if output_start == output_end:
+        output_start = output_end - pd.Timedelta(days=1)
 
-    # Query raw transaction data
+    # Query enough history to compute the longest lookback window
     query = f"""
     SELECT
         user_id,
@@ -222,10 +228,15 @@ def compute_transaction_features(start_date, end_date):
     FROM
         `project.dataset.transactions`
     WHERE
-        timestamp BETWEEN '{start_date}' AND '{end_date}'
+        timestamp BETWEEN TIMESTAMP_SUB(TIMESTAMP('{output_start}'), INTERVAL 30 DAY)
+        AND TIMESTAMP('{output_end}')
     """
 
     transactions = client.query(query).to_dataframe()
+    transactions['event_timestamp'] = pd.to_datetime(
+        transactions['event_timestamp'],
+        utc=True,
+    )
 
     # Compute time-window features
     features = []
@@ -235,6 +246,8 @@ def compute_transaction_features(start_date, end_date):
 
         for idx, row in user_txns.iterrows():
             event_time = row['event_timestamp']
+            if event_time < output_start or event_time > output_end:
+                continue
 
             # Window-based aggregations
             window_1h = user_txns[
@@ -270,12 +283,19 @@ def compute_transaction_features(start_date, end_date):
 
     features_df = pd.DataFrame(features)
 
-    # Write to parquet for Feast offline store
-    output_path = f"gs://your-bucket/feature-data/transactions.parquet"
-    features_df.to_parquet(output_path)
+    # Write to BigQuery for Feast offline store
+    output_table = "your-project.feast_offline.transactions"
+    job_config = bigquery.LoadJobConfig(
+        write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+    )
+    client.load_table_from_dataframe(
+        features_df,
+        output_table,
+        job_config=job_config,
+    ).result()
 
     print(f"Computed {len(features_df)} feature rows")
-    return output_path
+    return output_table
 
 if __name__ == "__main__":
     import sys
@@ -292,7 +312,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN pip install pandas google-cloud-bigquery pyarrow feast
+RUN pip install pandas google-cloud-bigquery pyarrow db-dtypes 'feast[gcp,redis]'
 
 COPY compute_features.py .
 
@@ -315,14 +335,14 @@ kubectl create namespace argo
 kubectl apply -n argo -f https://raw.githubusercontent.com/argoproj/argo-workflows/stable/manifests/quick-start-postgres.yaml
 ```
 
-Create an Argo Workflow that runs feature computation and materializes to online store:
+Create an Argo WorkflowTemplate that runs feature computation and materializes to online store:
 
 ```yaml
 # feature-pipeline-workflow.yaml
 apiVersion: argoproj.io/v1alpha1
-kind: Workflow
+kind: WorkflowTemplate
 metadata:
-  generateName: feature-pipeline-
+  name: feature-pipeline
   namespace: argo
 spec:
   entrypoint: feature-pipeline
@@ -402,6 +422,12 @@ spec:
         name: feast-feature-repo
 ```
 
+You can submit an ad-hoc run from the template when needed:
+
+```bash
+argo submit -n argo --from workflowtemplate/feature-pipeline
+```
+
 Create a CronWorkflow to run this daily:
 
 ```yaml
@@ -412,27 +438,22 @@ metadata:
   name: daily-feature-pipeline
   namespace: argo
 spec:
-  schedule: "0 2 * * *"  # 2 AM daily
+  schedules:
+    - "0 2 * * *"  # 2 AM daily
   timezone: "America/Los_Angeles"
   startingDeadlineSeconds: 0
   concurrencyPolicy: "Replace"
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   workflowSpec:
-    entrypoint: feature-pipeline
+    workflowTemplateRef:
+      name: feature-pipeline
     arguments:
       parameters:
         - name: start-date
           value: "{{workflow.creationTimestamp.Y}}-{{workflow.creationTimestamp.m}}-{{workflow.creationTimestamp.d}}"
         - name: end-date
           value: "{{workflow.creationTimestamp.Y}}-{{workflow.creationTimestamp.m}}-{{workflow.creationTimestamp.d}}"
-    templates:
-      - name: feature-pipeline
-        steps:
-          - - name: compute-features
-              templateRef:
-                name: feature-pipeline
-                template: compute-features-template
 ```
 
 Apply the workflows:
@@ -469,17 +490,14 @@ spec:
           command:
             - feast
             - serve
+            - --host
+            - 0.0.0.0
+            - --port
+            - "6566"
           ports:
             - containerPort: 6566
-              name: grpc
-            - containerPort: 6567
               name: http
-          env:
-            - name: FEAST_FEATURE_STORE_YAML_BASE64
-              valueFrom:
-                configMapKeyRef:
-                  name: feast-config
-                  key: feature_store_yaml_base64
+          workingDir: /feast-repo
           resources:
             requests:
               cpu: "1"
@@ -499,6 +517,13 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 5
+          volumeMounts:
+            - name: feast-repo
+              mountPath: /feast-repo
+      volumes:
+        - name: feast-repo
+          configMap:
+            name: feast-feature-repo
 ---
 apiVersion: v1
 kind: Service
@@ -509,12 +534,9 @@ spec:
   selector:
     app: feast-server
   ports:
-    - name: grpc
+    - name: http
       port: 6566
       targetPort: 6566
-    - name: http
-      port: 6567
-      targetPort: 6567
   type: ClusterIP
 ```
 
@@ -597,7 +619,7 @@ print(features)
 Or use the feature server HTTP API:
 
 ```bash
-curl -X POST http://feast-server.feast.svc.cluster.local:6567/get-online-features \
+curl -X POST http://feast-server.feast.svc.cluster.local:6566/get-online-features \
   -H "Content-Type: application/json" \
   -d '{
     "features": [
@@ -628,7 +650,7 @@ spec:
       rules:
         - alert: FeaturePipelineFailures
           expr: |
-            sum(argo_workflow_status_phase{phase="Failed"}) > 0
+            increase(argo_workflows_total_count{namespace="argo",phase="Failed"}[5m]) > 0
           for: 5m
           labels:
             severity: critical
@@ -637,7 +659,7 @@ spec:
 
         - alert: StaleFeatures
           expr: |
-            time() - feast_last_materialization_timestamp > 7200
+            feast_feature_freshness_seconds{project="fraud_detection",feature_view="user_transaction_features"} > 7200
           for: 10m
           labels:
             severity: warning
