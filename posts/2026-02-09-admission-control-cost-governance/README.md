@@ -23,7 +23,6 @@ metadata:
     policies.kyverno.io/title: Enforce Resource Limits
     policies.kyverno.io/category: Cost Management
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-cpu-limits
@@ -33,6 +32,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Container CPU requests must not exceed 2 cores"
         foreach:
           - list: "request.object.spec.containers"
@@ -50,6 +50,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Container memory requests must not exceed 8Gi"
         foreach:
           - list: "request.object.spec.containers"
@@ -73,7 +74,6 @@ kind: ClusterPolicy
 metadata:
   name: pod-resource-caps
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: total-pod-resources
       match:
@@ -81,15 +81,21 @@ spec:
           - resources:
               kinds:
                 - Pod
+      context:
+        - name: cpuRequests
+          variable:
+            jmesPath: request.object.spec.containers[].resources.requests.cpu
+            default:
+              - "0"
       validate:
+        failureAction: Enforce
         message: "Total pod CPU requests must not exceed 4 cores"
         deny:
           conditions:
             any:
-              - key: |
-                  {{ sum(request.object.spec.containers[].resources.requests.cpu | [0] | map(&to_number(@), @) ) }}
+              - key: "{{ sum(cpuRequests) }}"
                 operator: GreaterThan
-                value: 4000
+                value: "4"
 ```
 
 ## Enforcing Cost Center Labels
@@ -102,7 +108,6 @@ kind: ClusterPolicy
 metadata:
   name: require-cost-labels
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-cost-center
@@ -115,6 +120,7 @@ spec:
                 - StatefulSet
                 - PersistentVolumeClaim
       validate:
+        failureAction: Enforce
         message: |
           Resources must have cost-center and owner labels for chargeback.
           Contact finance team for cost center codes.
@@ -136,7 +142,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-storage-classes
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: allowed-storage-classes
       match:
@@ -145,6 +150,7 @@ spec:
               kinds:
                 - PersistentVolumeClaim
       validate:
+        failureAction: Enforce
         message: |
           Only gp3, standard, and ebs-sc storage classes allowed.
           Premium SSD requires approval - contact platform team.
@@ -159,6 +165,7 @@ spec:
               kinds:
                 - PersistentVolumeClaim
       validate:
+        failureAction: Enforce
         message: "PVC size must not exceed 500Gi"
         deny:
           conditions:
@@ -178,7 +185,6 @@ kind: ClusterPolicy
 metadata:
   name: namespace-budget-enforcement
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-namespace-budget
       match:
@@ -192,6 +198,7 @@ spec:
             urlPath: "/api/v1/namespaces/{{request.namespace}}"
             jmesPath: "metadata.annotations"
       validate:
+        failureAction: Enforce
         message: |
           Namespace monthly budget: ${{namespaceAnnotations.\"budget-monthly\"}}
           Current usage exceeds budget. Contact finance for increase.
@@ -230,7 +237,6 @@ kind: ClusterPolicy
 metadata:
   name: limit-hpa-scale
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: max-replicas-limit
       match:
@@ -239,6 +245,7 @@ spec:
               kinds:
                 - HorizontalPodAutoscaler
       validate:
+        failureAction: Enforce
         message: "HPA maxReplicas must not exceed 20"
         pattern:
           spec:
@@ -251,7 +258,8 @@ spec:
               kinds:
                 - HorizontalPodAutoscaler
       validate:
-        message: "Target deployment must have resource requests defined"
+        failureAction: Enforce
+        message: "HPA must define at least one Resource metric"
         deny:
           conditions:
             all:
@@ -270,7 +278,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-node-selectors
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: block-expensive-instances
       match:
@@ -279,13 +286,25 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: |
           GPU and high-memory instances require approval.
           Blocked instance types: p3, p4, r6g, x2gd
-        pattern:
-          spec:
-            =(nodeSelector):
-              X(node.kubernetes.io/instance-type): "p3* | p4* | r6g* | x2gd*"
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.nodeSelector.\"node.kubernetes.io/instance-type\" || '' }}"
+                operator: Equals
+                value: "p3*"
+              - key: "{{ request.object.spec.nodeSelector.\"node.kubernetes.io/instance-type\" || '' }}"
+                operator: Equals
+                value: "p4*"
+              - key: "{{ request.object.spec.nodeSelector.\"node.kubernetes.io/instance-type\" || '' }}"
+                operator: Equals
+                value: "r6g*"
+              - key: "{{ request.object.spec.nodeSelector.\"node.kubernetes.io/instance-type\" || '' }}"
+                operator: Equals
+                value: "x2gd*"
 ```
 
 ## Idle Resource Detection
@@ -298,7 +317,6 @@ kind: ClusterPolicy
 metadata:
   name: warn-idle-resources
 spec:
-  validationFailureAction: Audit  # Warn but don't block
   background: true
   rules:
     - name: detect-overprovisioning
@@ -308,6 +326,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Audit  # Warn but don't block
         message: |
           WARNING: This pod may be over-provisioned.
           Current requests are significantly higher than typical usage.
@@ -322,7 +341,7 @@ spec:
 
 ## Cost Estimation in Admission
 
-Add cost estimates to pod events:
+Surface externally calculated cost estimates in audit reports:
 
 ```yaml
 apiVersion: kyverno.io/v1
@@ -330,7 +349,6 @@ kind: ClusterPolicy
 metadata:
   name: annotate-estimated-cost
 spec:
-  validationFailureAction: Audit
   rules:
     - name: calculate-monthly-cost
       match:
@@ -339,11 +357,15 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Audit
         message: |
-          Estimated monthly cost: ${{
-            (to_number(request.object.spec.containers[0].resources.requests.cpu || '0') * 30 * 0.05) +
-            (to_number(request.object.spec.containers[0].resources.requests.memory || '0') * 30 * 0.01)
-          }}
+          Estimated monthly cost: ${{ request.object.metadata.annotations.\"estimated-monthly-cost\" }}
+        deny:
+          conditions:
+            any:
+              - key: "{{ to_number(request.object.metadata.annotations.\"estimated-monthly-cost\" || '0') }}"
+                operator: GreaterThan
+                value: 0
 ```
 
 ## Implementing Quota Policies
@@ -356,7 +378,6 @@ kind: ClusterPolicy
 metadata:
   name: enforce-quotas
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-namespace-quota
       match:
@@ -370,15 +391,16 @@ spec:
             urlPath: "/api/v1/namespaces/{{request.namespace}}/resourcequotas/compute-quota"
             jmesPath: "status"
       validate:
+        failureAction: Enforce
         message: |
           Namespace CPU quota: {{quota.hard.\"requests.cpu\"}}
           Current usage: {{quota.used.\"requests.cpu\"}}
         deny:
           conditions:
             any:
-              - key: "{{ to_number(quota.used.\"requests.cpu\") }}"
+              - key: "{{ quota.used.\"requests.cpu\" }}"
                 operator: GreaterThan
-                value: "{{ to_number(quota.hard.\"requests.cpu\") * 0.9 }}"
+                value: "{{ multiply('{{ quota.hard.\"requests.cpu\" }}', `0.9`) }}"
 ```
 
 ## Conclusion
