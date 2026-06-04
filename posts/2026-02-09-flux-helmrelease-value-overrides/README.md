@@ -16,7 +16,7 @@ This guide shows you how to use HelmRelease patches to manage Helm configuration
 
 Flux provides multiple ways to set Helm values. You can inline values directly in the HelmRelease, reference ConfigMaps or Secrets containing values, or use patches to modify the base values. Patches are the most powerful approach because they let you define common values once and override only what differs per environment.
 
-Strategic merge patches merge your overrides with base values, while JSON patches provide precise modifications using JSONPath selectors.
+Strategic merge patches merge your overrides with base values, while JSON patches provide precise modifications using JSON Pointer paths.
 
 ## Creating a Base HelmRelease
 
@@ -216,24 +216,24 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: myrepo
-  # Base values
+  # Inline values override valuesFrom when the same key is set
   values:
     replicaCount: 2
     image:
       repository: myapp
       tag: v1.0.0
-  # Override from ConfigMap
+  # Values references are merged in list order
   valuesFrom:
   - kind: ConfigMap
     name: app-config
     valuesKey: values.yaml
-  # Override from Secret (highest priority)
+  # Secret values override ConfigMap values for matching keys
   - kind: Secret
     name: app-secrets
     valuesKey: values.yaml
 ```
 
-Flux merges values in order: inline values, then ConfigMap values, then Secret values.
+Flux merges valuesFrom entries in list order, with later entries overwriting earlier ones, and then inline values in spec.values overwriting those.
 
 ## Using JSON Patches for Precise Modifications
 
@@ -433,9 +433,12 @@ metadata:
 spec:
   chart:
     spec:
-      chart: myapp
-  valuesFiles:
-  - values.yaml  # From source repository
+      chart: ./charts/myapp
+      sourceRef:
+        kind: GitRepository
+        name: myapp
+      valuesFiles:
+      - environments/production/values.yaml  # From source repository
 ```
 
 ## Validating Values Before Apply
@@ -473,10 +476,10 @@ View rendered values:
 
 ```bash
 # Get effective values after all overrides
-kubectl get helmrelease application -n flux-system -o jsonpath='{.spec.values}'
+flux debug helmrelease application -n flux-system --show-values
 
 # Check helm release values in cluster
-helm get values application -n flux-system
+helm get values application -n flux-system --all
 ```
 
 Debug value merge issues:
@@ -493,7 +496,7 @@ kubectl logs -n flux-system deployment/helm-controller -f
 
 Keep base values minimal with sensible defaults. Override only what differs per environment to reduce duplication.
 
-Use ValuesFrom for sensitive data. Never commit secrets to Git, even if encrypted.
+Use ValuesFrom for sensitive data. Never commit plaintext secrets to Git; use SOPS or another supported secret-management workflow for encrypted secrets.
 
 Structure directories by environment (dev/staging/prod) with Kustomize overlays for clean separation.
 
