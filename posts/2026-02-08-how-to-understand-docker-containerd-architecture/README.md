@@ -8,7 +8,7 @@ Description: Explore the containerd architecture that powers Docker's container 
 
 ---
 
-When Docker Inc. decided to break Docker into smaller, modular components, containerd emerged as the core container runtime. It sits between the Docker daemon and the low-level runtime (runc), managing the full container lifecycle: image pulling, storage, container execution, networking setup, and supervision. Understanding containerd is critical because it is now the default container runtime for both Docker and Kubernetes.
+When Docker Inc. decided to break Docker into smaller, modular components, containerd emerged as the core container runtime. It sits between the Docker daemon and the low-level runtime (runc), managing much of the container lifecycle: image pulling, storage, container execution, and supervision. Networking is handled by higher-level integrations such as Docker's networking stack or the containerd CRI plugin using CNI. Understanding containerd is critical because it powers Docker's container execution path and is one of the most common CRI runtimes for Kubernetes.
 
 ## Where containerd Fits
 
@@ -16,7 +16,7 @@ containerd is not a replacement for Docker. It is a component that Docker uses i
 
 ```mermaid
 graph TD
-    A["Docker CLI / Kubernetes kubelet"] --> B["Docker Daemon / CRI Plugin"]
+    A["Docker CLI / Kubernetes kubelet"] --> B["Docker Daemon / containerd CRI Plugin"]
     B --> C["containerd"]
     C --> D["containerd-shim"]
     D --> E["runc"]
@@ -68,7 +68,7 @@ ctr plugins ls
 
 ## Using the ctr Command-Line Tool
 
-containerd comes with `ctr`, a low-level CLI for interacting with containerd directly (bypassing Docker).
+containerd comes with `ctr`, a low-level debug and administrative CLI for interacting with containerd directly (bypassing Docker).
 
 ```bash
 # Pull an image using containerd directly
@@ -106,7 +106,7 @@ sudo ctr containers delete my-nginx
 
 ## Namespaces in containerd
 
-containerd supports namespaces to isolate different clients. Docker uses the `moby` namespace, while Kubernetes uses the `k8s.io` namespace. This prevents them from interfering with each other.
+containerd supports namespaces to isolate metadata for different clients. Docker uses the `moby` namespace, while Kubernetes uses the `k8s.io` namespace. This prevents their container, image, and task metadata from interfering with each other, although underlying image content can still be shared by digest.
 
 ```bash
 # List all namespaces
@@ -122,11 +122,11 @@ sudo ctr -n k8s.io images ls
 sudo ctr -n default containers ls
 ```
 
-This is why images pulled by Docker are not visible to Kubernetes and vice versa, even though both use the same containerd instance.
+This is why image names and metadata managed by Docker are not visible to Kubernetes and vice versa, even though both can use the same containerd instance.
 
 ## The containerd-shim
 
-Each running container has an associated containerd-shim process. The shim serves several important purposes:
+Each running container, or sometimes a group of containers such as a Kubernetes pod, has an associated containerd-shim process. The shim serves several important purposes:
 
 1. It allows containerd to restart without killing running containers
 2. It collects the exit status of the container process
@@ -137,7 +137,7 @@ Each running container has an associated containerd-shim process. The shim serve
 # View containerd-shim processes for running containers
 ps aux | grep containerd-shim
 
-# Each shim manages exactly one container
+# A shim commonly manages one container, but runtime v2 can also group containers
 # The --bundle flag shows which container directory it manages
 ```
 
@@ -173,27 +173,28 @@ state = "/run/containerd"
   max_recv_message_size = 16777216
   max_send_message_size = 16777216
 
-# Plugin configuration
+# Plugin configuration for containerd 2.x
 [plugins]
   # CRI plugin for Kubernetes integration
-  [plugins."io.containerd.grpc.v1.cri"]
-    sandbox_image = "registry.k8s.io/pause:3.9"
+  [plugins."io.containerd.cri.v1.images"]
+    snapshotter = "overlayfs"
+
+    [plugins."io.containerd.cri.v1.images".pinned_images]
+      sandbox = "registry.k8s.io/pause:3.10"
 
     # Container runtime configuration
-    [plugins."io.containerd.grpc.v1.cri".containerd]
+    [plugins."io.containerd.cri.v1.runtime".containerd]
       default_runtime_name = "runc"
 
-      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
-        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+      [plugins."io.containerd.cri.v1.runtime".containerd.runtimes]
+        [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc]
           runtime_type = "io.containerd.runc.v2"
-          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+          [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc.options]
             SystemdCgroup = true
 
     # Registry configuration for pulling images
-    [plugins."io.containerd.grpc.v1.cri".registry]
-      [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-          endpoint = ["https://registry-1.docker.io"]
+    [plugins."io.containerd.cri.v1.images".registry]
+      config_path = "/etc/containerd/certs.d"
 ```
 
 After modifying the configuration:
@@ -208,7 +209,7 @@ sudo containerd config dump | grep -A 5 "grpc"
 
 ## containerd with Kubernetes
 
-Kubernetes adopted containerd as its preferred container runtime after deprecating the Docker shim in Kubernetes 1.24. The CRI (Container Runtime Interface) plugin in containerd translates Kubernetes requests into containerd operations.
+Kubernetes removed the in-tree Docker shim in Kubernetes 1.24. The CRI (Container Runtime Interface) plugin in containerd translates Kubernetes requests into containerd operations, which is why containerd is a common runtime choice for Kubernetes nodes.
 
 ```bash
 # On a Kubernetes node, verify the container runtime
@@ -268,15 +269,15 @@ For production environments, monitoring containerd health and performance matter
 ```bash
 # containerd exposes Prometheus metrics
 # Check if the metrics endpoint is accessible
-curl -s http://localhost:10257/v1/metrics 2>/dev/null || echo "Metrics not enabled on default port"
+curl -s http://localhost:10257/v1/metrics 2>/dev/null || echo "Metrics not enabled on this port"
 
 # Enable metrics in the config
 # Add to /etc/containerd/config.toml:
 # [metrics]
 #   address = "127.0.0.1:10257"
 
-# Check containerd logs for issues
-sudo journalctl -u containerd -f --no-pager | head -50
+# Check recent containerd logs for issues
+sudo journalctl -u containerd -n 50 --no-pager
 ```
 
 ## Troubleshooting containerd
@@ -294,7 +295,7 @@ ls -la /run/containerd/containerd.sock
 # Check disk usage for containerd storage
 sudo du -sh /var/lib/containerd/
 
-# Clean up unused images and snapshots
+# Remove all images in the current namespace after reviewing the list
 sudo ctr images ls -q | xargs -I{} sudo ctr images rm {}
 
 # If containerd won't start, validate the configuration
