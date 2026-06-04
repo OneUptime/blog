@@ -33,8 +33,6 @@ LibreNMS requires a web server, PHP, MariaDB, Redis, and several background work
 # docker-compose.yml - Complete LibreNMS monitoring stack
 
 # Includes the web UI, database, cache, and background workers
-version: "3.8"
-
 services:
   # MariaDB database for storing device data and configuration
   db:
@@ -91,7 +89,7 @@ services:
       - DB_PASSWORD=librenms_db_password
       - DB_TIMEOUT=60
       - REDIS_HOST=redis
-      - BASE_URL=http://librenms.example.com
+      - LIBRENMS_BASE_URL=http://librenms.example.com
       - TZ=UTC
       - PUID=1000
       - PGID=1000
@@ -99,8 +97,6 @@ services:
       - SESSION_DRIVER=redis
     volumes:
       - librenms-data:/data
-      - librenms-rrd:/opt/librenms/rrd
-      - librenms-logs:/opt/librenms/logs
     depends_on:
       db:
         condition: service_healthy
@@ -127,8 +123,6 @@ services:
       - DISPATCHER_NODE_ID=dispatcher1
     volumes:
       - librenms-data:/data
-      - librenms-rrd:/opt/librenms/rrd
-      - librenms-logs:/opt/librenms/logs
     depends_on:
       - librenms
     networks:
@@ -162,8 +156,6 @@ volumes:
   db-data:
   redis-data:
   librenms-data:
-  librenms-rrd:
-  librenms-logs:
 
 networks:
   librenms-net:
@@ -191,17 +183,16 @@ Add network devices through the web interface or the command line.
 
 ```bash
 # Add a device via the command line inside the container
-# Syntax: addhost.php <hostname> <community> <snmpver>
-docker exec librenms php /opt/librenms/addhost.php 192.168.1.1 public v2c
+docker exec librenms lnms device:add 192.168.1.1 --v2c --community public
 
 # Add a device using SNMPv3 with authentication and privacy
-docker exec librenms php /opt/librenms/addhost.php 192.168.1.1 \
-  ap v3 \
-  authuser \
-  authpassword \
-  sha \
-  privpassword \
-  aes
+docker exec librenms lnms device:add 192.168.1.1 \
+  --v3 \
+  --security-name authuser \
+  --auth-password authpassword \
+  --auth-protocol SHA \
+  --privacy-password privpassword \
+  --privacy-protocol AES
 
 # Force a poll of a specific device
 docker exec librenms php /opt/librenms/poller.php -h 192.168.1.1
@@ -215,26 +206,21 @@ docker exec librenms php /opt/librenms/discovery.php -h 192.168.1.1
 LibreNMS can discover devices automatically using several methods.
 
 ```bash
-# Configure automatic discovery by editing the LibreNMS configuration
-# Add these settings through the web interface under Settings > Discovery
-# or create a config file
+# Configure automatic discovery through the live LibreNMS config
+docker exec librenms lnms config:set autodiscovery.xdp true
+docker exec librenms lnms config:set autodiscovery.ospf true
+docker exec librenms lnms config:set autodiscovery.bgp true
 
-docker exec librenms sh -c 'cat >> /opt/librenms/config.php << EOF
+# Define subnets used by the SNMP scanner
+docker exec librenms lnms config:set nets.+ 192.168.1.0/24
+docker exec librenms lnms config:set nets.+ 10.0.0.0/24
 
-// Enable automatic discovery of devices found through SNMP
-\$config["autodiscovery"]["xdp"] = true;            // CDP/LLDP discovery
-\$config["autodiscovery"]["ospf"] = true;            // OSPF neighbor discovery
-\$config["autodiscovery"]["bgp"] = true;             // BGP peer discovery
-\$config["autodiscovery"]["snmpscan"] = true;        // SNMP scan of subnets
+# SNMP communities to try during discovery
+docker exec librenms lnms config:set snmp.community.+ public
+docker exec librenms lnms config:set snmp.community.+ private
 
-// Define subnets to scan for new devices
-\$config["nets"][] = "192.168.1.0/24";
-\$config["nets"][] = "10.0.0.0/24";
-
-// SNMP communities to try during discovery
-\$config["snmp"]["community"][] = "public";
-\$config["snmp"]["community"][] = "private";
-EOF'
+# Run an SNMP scan of the configured networks
+docker exec librenms /opt/librenms/snmp-scan.py
 ```
 
 ## Configuring Alerts
@@ -242,19 +228,8 @@ EOF'
 LibreNMS includes a flexible alerting system with rules and transport methods.
 
 ```bash
-# Configure alert transports via the API
-# First, create a Slack transport
-curl -X POST "http://localhost:8000/api/v0/alert/transports" \
-  -H "X-Auth-Token: YOUR_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Slack Alerts",
-    "transport_type": "slack",
-    "transport_config": {
-        "slack-url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-    },
-    "is_default": true
-  }'
+# Create a Slack transport in the web UI under Alerts > Alert Transports.
+# Use transport type "Slack" and set the Webhook URL field to your Slack webhook.
 
 # List existing alert rules
 curl -s "http://localhost:8000/api/v0/rules" \
@@ -294,8 +269,8 @@ Protect your monitoring data with regular backups.
 docker exec librenms-db mysqldump -u librenms -plibrenms_db_password librenms | gzip > librenms-db-$(date +%Y%m%d).sql.gz
 
 # Back up the RRD files (historical graph data)
-docker run --rm -v librenms-rrd:/source:ro -v $(pwd):/backup alpine \
-  tar czf /backup/librenms-rrd-$(date +%Y%m%d).tar.gz -C /source .
+docker run --rm -v librenms-data:/source:ro -v $(pwd):/backup alpine \
+  tar czf /backup/librenms-rrd-$(date +%Y%m%d).tar.gz -C /source/rrd .
 
 # Restore the database
 gunzip < librenms-db-20260208.sql.gz | docker exec -i librenms-db mysql -u librenms -plibrenms_db_password librenms
@@ -310,7 +285,7 @@ Keep an eye on LibreNMS's own performance to make sure polling keeps up with you
 docker exec librenms php /opt/librenms/poller.php -h all -r -f -d
 
 # View the polling log for timing information
-docker exec librenms cat /opt/librenms/logs/librenms.log | tail -50
+docker exec librenms cat /data/logs/librenms.log | tail -50
 
 # Check the dispatcher worker status
 docker logs librenms-dispatcher --tail 20
@@ -318,6 +293,6 @@ docker logs librenms-dispatcher --tail 20
 
 ## Production Recommendations
 
-For production LibreNMS deployments, tune MariaDB with appropriate buffer pool sizes - allocate about 70% of available RAM to `innodb_buffer_pool_size`. Use fast storage (SSD or NVMe) for the RRD volume since it handles constant writes. Scale the number of dispatcher workers based on your device count - one worker handles roughly 200 devices comfortably. Set up daily database and RRD backups with offsite storage. Enable HTTPS by placing a reverse proxy (Nginx or Traefik) in front of the web container. Monitor LibreNMS itself with tools like OneUptime to ensure your monitoring system stays healthy.
+For production LibreNMS deployments, tune MariaDB with appropriate buffer pool sizes - allocate about 70% of available RAM to `innodb_buffer_pool_size`. Use fast storage (SSD or NVMe) for the LibreNMS data volume since the RRD directory handles constant writes. Scale the number of dispatcher workers based on your device count - one worker handles roughly 200 devices comfortably. Set up daily database and RRD backups with offsite storage. Enable HTTPS by placing a reverse proxy (Nginx or Traefik) in front of the web container. Monitor LibreNMS itself with tools like OneUptime to ensure your monitoring system stays healthy.
 
 LibreNMS in Docker provides a powerful, autodiscovering network monitoring platform that works with thousands of device types. The containerized deployment removes the complexity of managing PHP, database, and web server configurations, letting you focus on what matters - keeping your network running.
