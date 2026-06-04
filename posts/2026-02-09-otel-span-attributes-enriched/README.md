@@ -14,7 +14,7 @@ Span attributes provide detailed context about operations in your distributed sy
 
 Span attributes are key-value pairs attached to spans that describe the operation being traced. They include HTTP status codes, database queries, error messages, and custom business data. Attributes make spans searchable and filterable in observability backends.
 
-OpenTelemetry defines semantic conventions for common attributes like `http.method`, `db.system`, and `error.type`. Following these conventions ensures consistency across systems and enables better tooling support.
+OpenTelemetry defines semantic conventions for common attributes like `http.request.method`, `db.system.name`, and `error.type`. Following these conventions ensures consistency across systems and enables better tooling support.
 
 ## Adding Basic Custom Attributes
 
@@ -106,8 +106,8 @@ def after_request(response):
 
     if span and span.is_recording():
         # Add custom HTTP attributes
-        span.set_attribute("http.request.size", request.content_length or 0)
-        span.set_attribute("http.response.size", len(response.data))
+        span.set_attribute("http.request.body.size", request.content_length or 0)
+        span.set_attribute("http.response.body.size", len(response.data))
 
         # Add user context if available
         if hasattr(g, 'user_id'):
@@ -162,6 +162,7 @@ Add detailed attributes to database operations for better query analysis.
 # database_attributes.py
 from opentelemetry import trace
 import psycopg2
+import time
 from contextlib import contextmanager
 
 tracer = trace.get_tracer(__name__)
@@ -171,9 +172,9 @@ def traced_db_query(operation, table_name):
     """Context manager for traced database queries"""
     with tracer.start_as_current_span(f"db.{operation}") as span:
         # Set semantic convention attributes
-        span.set_attribute("db.system", "postgresql")
-        span.set_attribute("db.operation", operation)
-        span.set_attribute("db.sql.table", table_name)
+        span.set_attribute("db.system.name", "postgresql")
+        span.set_attribute("db.operation.name", operation)
+        span.set_attribute("db.collection.name", table_name)
 
         start_time = time.time()
         try:
@@ -183,7 +184,7 @@ def traced_db_query(operation, table_name):
             span.set_attribute("db.query.duration_ms", duration * 1000)
         except Exception as e:
             # Add error context
-            span.set_attribute("db.error.type", type(e).__name__)
+            span.set_attribute("error.type", type(e).__name__)
             span.set_attribute("db.error.message", str(e))
             raise
 
@@ -300,7 +301,6 @@ Store complex data structures as span attributes using arrays or JSON strings.
 ```python
 # complex_attributes.py
 from opentelemetry import trace
-import json
 
 tracer = trace.get_tracer(__name__)
 
@@ -308,8 +308,8 @@ def process_batch_operation(items):
     """Process batch with array attributes"""
     with tracer.start_as_current_span("batch.process") as span:
         # Add array attributes for item IDs
-        item_ids = [item['id'] for item in items]
-        span.set_attribute("batch.item_ids", json.dumps(item_ids))
+        item_ids = [str(item['id']) for item in items]
+        span.set_attribute("batch.item_ids", item_ids)
 
         # Add batch statistics
         span.set_attribute("batch.size", len(items))
@@ -334,7 +334,7 @@ def process_batch_operation(items):
         # Add batch results
         span.set_attribute("batch.success_count", success_count)
         span.set_attribute("batch.failure_count", failure_count)
-        span.set_attribute("batch.success_rate", success_count / len(items))
+        span.set_attribute("batch.success_rate", success_count / len(items) if items else 0)
 
 def process_item(item):
     """Process individual item"""
@@ -348,7 +348,16 @@ Follow OpenTelemetry semantic conventions for consistent attribute naming.
 ```python
 # attribute_conventions.py
 from opentelemetry import trace
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.semconv.attributes.db_attributes import (
+    DB_NAMESPACE,
+    DB_QUERY_TEXT,
+    DB_SYSTEM_NAME,
+)
+from opentelemetry.semconv.attributes.http_attributes import (
+    HTTP_REQUEST_METHOD,
+    HTTP_RESPONSE_STATUS_CODE,
+)
+from opentelemetry.semconv.attributes.url_attributes import URL_FULL, URL_SCHEME
 
 tracer = trace.get_tracer(__name__)
 
@@ -356,16 +365,16 @@ def make_http_request(url, method="GET"):
     """HTTP request with semantic convention attributes"""
     with tracer.start_as_current_span("http.client.request") as span:
         # Use semantic convention constants
-        span.set_attribute(SpanAttributes.HTTP_METHOD, method)
-        span.set_attribute(SpanAttributes.HTTP_URL, url)
-        span.set_attribute(SpanAttributes.HTTP_SCHEME, "https")
+        span.set_attribute(HTTP_REQUEST_METHOD, method)
+        span.set_attribute(URL_FULL, url)
+        span.set_attribute(URL_SCHEME, "https")
 
         # Make request
         response = perform_request(url, method)
 
         # Add response attributes
-        span.set_attribute(SpanAttributes.HTTP_STATUS_CODE, response.status_code)
-        span.set_attribute(SpanAttributes.HTTP_RESPONSE_CONTENT_LENGTH, len(response.content))
+        span.set_attribute(HTTP_RESPONSE_STATUS_CODE, response.status_code)
+        span.set_attribute("http.response.body.size", len(response.content))
 
         return response
 
@@ -373,10 +382,9 @@ def query_database(query, params):
     """Database query with semantic conventions"""
     with tracer.start_as_current_span("db.query") as span:
         # Database semantic conventions
-        span.set_attribute(SpanAttributes.DB_SYSTEM, "postgresql")
-        span.set_attribute(SpanAttributes.DB_STATEMENT, query)
-        span.set_attribute(SpanAttributes.DB_USER, "app_user")
-        span.set_attribute(SpanAttributes.DB_NAME, "production_db")
+        span.set_attribute(DB_SYSTEM_NAME, "postgresql")
+        span.set_attribute(DB_QUERY_TEXT, query)
+        span.set_attribute(DB_NAMESPACE, "production_db")
 
         # Execute query
         results = execute_query(query, params)
