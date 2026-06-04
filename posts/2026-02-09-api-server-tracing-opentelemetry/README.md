@@ -21,7 +21,7 @@ The API server is the heart of your cluster. Every kubectl command, controller r
 
 ## Enabling API Server Tracing
 
-API server tracing requires feature gates and configuration. Edit the API server manifest:
+API server tracing is enabled with a tracing configuration file. For Kubernetes 1.22-1.26, also enable the `APIServerTracing` feature gate; in Kubernetes 1.27 and later it is enabled by default, and in Kubernetes 1.34 and later the feature is GA. Edit the API server manifest:
 
 ```yaml
 apiVersion: v1
@@ -34,7 +34,7 @@ spec:
   - name: kube-apiserver
     command:
     - kube-apiserver
-    # Enable tracing feature gate
+    # Required only for Kubernetes 1.22-1.26
     - --feature-gates=APIServerTracing=true
     # Point to tracing configuration
     - --tracing-config-file=/etc/kubernetes/tracing-config.yaml
@@ -53,7 +53,7 @@ Create the tracing configuration file:
 ```yaml
 # /etc/kubernetes/tracing-config.yaml
 
-apiVersion: apiserver.config.k8s.io/v1beta1
+apiVersion: apiserver.config.k8s.io/v1
 kind: TracingConfiguration
 # Endpoint to send traces (usually an OpenTelemetry collector)
 endpoint: localhost:4317
@@ -88,22 +88,22 @@ data:
         timeout: 10s
 
     exporters:
-      # Export to Jaeger
-      jaeger:
-        endpoint: jaeger-collector.observability:14250
+      # Export to Jaeger using OTLP/gRPC
+      otlp/jaeger:
+        endpoint: jaeger-collector.observability:4317
         tls:
           insecure: true
 
       # Or export to console for debugging
-      logging:
-        loglevel: debug
+      debug:
+        verbosity: detailed
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [jaeger, logging]
+          exporters: [otlp/jaeger, debug]
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -122,7 +122,7 @@ spec:
       hostNetwork: true
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector:latest
+        image: otel/opentelemetry-collector-contrib:latest
         args:
         - --config=/etc/otel/config.yaml
         volumeMounts:
@@ -198,7 +198,7 @@ spec:
           value: "true"
         ports:
         - containerPort: 16686  # Jaeger UI
-        - containerPort: 14250  # gRPC collector
+        - containerPort: 4317   # OTLP gRPC
 ---
 apiVersion: v1
 kind: Service
@@ -209,9 +209,9 @@ spec:
   selector:
     app: jaeger
   ports:
-  - name: grpc
-    port: 14250
-    targetPort: 14250
+  - name: otlp-grpc
+    port: 4317
+    targetPort: 4317
 ---
 apiVersion: v1
 kind: Service
@@ -280,7 +280,7 @@ Tracing every request creates overhead. Use sampling to reduce load:
 
 ```yaml
 # Sample 10% of requests
-apiVersion: apiserver.config.k8s.io/v1beta1
+apiVersion: apiserver.config.k8s.io/v1
 kind: TracingConfiguration
 endpoint: localhost:4317
 samplingRatePerMillion: 100000  # 10%
@@ -324,8 +324,8 @@ data:
               sampling_percentage: 1
 
     exporters:
-      jaeger:
-        endpoint: jaeger-collector.observability:14250
+      otlp/jaeger:
+        endpoint: jaeger-collector.observability:4317
         tls:
           insecure: true
 
@@ -334,27 +334,30 @@ data:
         traces:
           receivers: [otlp]
           processors: [tail_sampling]
-          exporters: [jaeger]
+          exporters: [otlp/jaeger]
 ```
 
 This keeps all slow requests and errors while sampling only 1% of normal requests.
 
 ## Correlating with Application Traces
 
-If your applications use OpenTelemetry, you can correlate API server traces with application traces:
+If your applications use OpenTelemetry, API server traces can appear alongside application traces in the same backend. The API server propagates W3C Trace Context to outgoing requests such as webhooks and etcd, but it does not continue trace context attached to incoming client requests.
 
 ```go
 import (
-    "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/propagation"
+    "context"
+
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/client-go/kubernetes"
 )
 
-func callKubernetes(ctx context.Context, clientset *kubernetes.Clientset) {
-    // Context contains trace information
-    pods, err := clientset.CoreV1().Pods("default").List(ctx, metav1.ListOptions{})
+func callKubernetes(ctx context.Context, clientset *kubernetes.Clientset) error {
+    // Context still controls request cancellation and deadlines.
+    _, err := clientset.CoreV1().Pods("default").List(ctx, metav1.ListOptions{})
 
-    // The API server will continue the trace started in your application
-    // You'll see both application and API server spans in Jaeger
+    // The API server creates its own server-side trace for the request.
+    // It does not use incoming client trace context as the parent span.
+    return err
 }
 ```
 
@@ -406,13 +409,29 @@ Large lists indicate:
 Export trace metrics to Prometheus:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+
 exporters:
+  otlp/jaeger:
+    endpoint: jaeger-collector.observability:4317
+    tls:
+      insecure: true
+
   prometheus:
     endpoint: 0.0.0.0:8889
 
+connectors:
   spanmetrics:
-    metrics_exporter: prometheus
-    latency_histogram_buckets: [100us, 1ms, 10ms, 100ms, 1s, 10s]
+    histogram:
+      explicit:
+        buckets: [100us, 1ms, 10ms, 100ms, 1s, 10s]
     dimensions:
       - name: http.method
       - name: http.status_code
@@ -422,7 +441,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [jaeger, spanmetrics]
+      exporters: [otlp/jaeger, spanmetrics]
     metrics:
       receivers: [spanmetrics]
       exporters: [prometheus]
