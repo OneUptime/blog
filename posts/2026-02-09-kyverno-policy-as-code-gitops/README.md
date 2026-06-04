@@ -41,6 +41,8 @@ kyverno-policies/
 │       ├── kustomization.yaml
 │       └── policy-exceptions.yaml
 ├── tests/
+│   ├── resources/
+│   │   └── pod.yaml
 │   └── policy-tests.yaml
 └── README.md
 ```
@@ -59,7 +61,6 @@ metadata:
   annotations:
     policies.kyverno.io/category: Best Practices
 spec:
-  validationFailureAction: Audit  # Default to audit
   background: true
   rules:
     - name: check-team-label
@@ -69,6 +70,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Audit  # Default to audit
         message: "Pod must have 'team' label"
         pattern:
           metadata:
@@ -91,9 +93,11 @@ resources:
   - mutation/inject-security-context.yaml
   - generation/add-networkpolicy.yaml
 
-commonLabels:
-  managed-by: kustomize
-  policy-source: gitops
+labels:
+  - pairs:
+      managed-by: kustomize
+      policy-source: gitops
+    includeSelectors: true
 ```
 
 ## Environment-Specific Overlays
@@ -107,12 +111,21 @@ kind: Kustomization
 
 resources:
   - ../../base
-
-patchesStrategicMerge:
-  - enforce-policies.yaml
-
-resources:
   - policy-exceptions.yaml
+
+patches:
+  - path: enforce-require-labels.yaml
+    target:
+      group: kyverno.io
+      version: v1
+      kind: ClusterPolicy
+      name: require-labels
+  - path: enforce-require-resource-limits.yaml
+    target:
+      group: kyverno.io
+      version: v1
+      kind: ClusterPolicy
+      name: require-resource-limits
 
 namespace: kyverno
 ```
@@ -120,21 +133,16 @@ namespace: kyverno
 Enforce policies in production:
 
 ```yaml
-# overlays/production/enforce-policies.yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
-metadata:
-  name: require-labels
-spec:
-  validationFailureAction: Enforce  # Override to Enforce
+# overlays/production/enforce-require-labels.yaml
+- op: replace
+  path: /spec/rules/0/validate/failureAction
+  value: Enforce
 
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
-metadata:
-  name: require-resource-limits
-spec:
-  validationFailureAction: Enforce
+# overlays/production/enforce-require-resource-limits.yaml
+- op: replace
+  path: /spec/rules/0/validate/failureAction
+  value: Enforce
 ```
 
 Development overlay remains in audit:
@@ -172,9 +180,7 @@ spec:
     server: https://kubernetes.default.svc
     namespace: kyverno
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: false  # Require manual sync for policy changes
+    # Omit automated sync to require manual sync for policy changes
     syncOptions:
       - CreateNamespace=false
       - ServerSideApply=true
@@ -195,34 +201,46 @@ metadata:
   name: kyverno-policies
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions:
+    - missingkey=error
   generators:
     - list:
         elements:
           - env: development
             cluster: dev-cluster
-            autoSync: true
+            autoSync: "true"
           - env: staging
             cluster: staging-cluster
-            autoSync: true
+            autoSync: "true"
           - env: production
             cluster: prod-cluster
-            autoSync: false  # Manual sync for production
+            autoSync: "false"  # Manual sync for production
   template:
     metadata:
-      name: kyverno-policies-{{env}}
+      name: kyverno-policies-{{.env}}
     spec:
       project: security
       source:
         repoURL: https://github.com/company/kyverno-policies
         targetRevision: main
-        path: overlays/{{env}}
+        path: overlays/{{.env}}
       destination:
-        server: "{{cluster}}"
+        name: "{{.cluster}}"
         namespace: kyverno
       syncPolicy:
+        syncOptions:
+          - CreateNamespace=false
+  templatePatch: |
+    spec:
+      syncPolicy:
+        {{- if eq .autoSync "true" }}
         automated:
           prune: true
-          selfHeal: "{{autoSync}}"
+          selfHeal: true
+        {{- end }}
+        syncOptions:
+          - CreateNamespace=false
 ```
 
 ## FluxCD Integration
@@ -281,18 +299,18 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Validate policies
         run: |
           # Install kyverno CLI
-          curl -LO https://github.com/kyverno/kyverno/releases/download/v1.11.0/kyverno-cli_v1.11.0_linux_x86_64.tar.gz
-          tar -xzf kyverno-cli_v1.11.0_linux_x86_64.tar.gz
+          curl -LO https://github.com/kyverno/kyverno/releases/download/v1.18.1/kyverno-cli_v1.18.1_linux_x86_64.tar.gz
+          tar -xzf kyverno-cli_v1.18.1_linux_x86_64.tar.gz
           sudo mv kyverno /usr/local/bin/
 
-          # Validate all policy files
-          kyverno apply base/validation/*.yaml --cluster=false
-          kyverno apply base/mutation/*.yaml --cluster=false
+          # Validate all policy files against test resources
+          kyverno apply base/validation/*.yaml --resource tests/resources/*.yaml
+          kyverno apply base/mutation/*.yaml --resource tests/resources/*.yaml
 
       - name: Test policies
         run: |
@@ -309,7 +327,7 @@ jobs:
           echo "$CHANGED_FILES"
 
       - name: Comment on PR
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             github.rest.issues.createComment({
@@ -333,7 +351,6 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "1"  # Deploy first
 spec:
-  validationFailureAction: Audit  # Start in audit mode
   background: true
   rules:
     - name: check-security-context
@@ -345,6 +362,7 @@ spec:
               namespaces:
                 - canary-*  # Only apply to canary namespaces initially
       validate:
+        failureAction: Audit  # Start in audit mode
         message: "Security context required"
         pattern:
           spec:
@@ -373,7 +391,10 @@ After more validation, enforce:
 ```yaml
 # After 2 weeks, enforce
 spec:
-  validationFailureAction: Enforce
+  rules:
+    - name: check-security-context
+      validate:
+        failureAction: Enforce
 ```
 
 ## Monitoring Policy Changes
