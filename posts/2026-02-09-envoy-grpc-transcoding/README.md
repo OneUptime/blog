@@ -282,10 +282,10 @@ service UserService {
     };
   }
 
-  // Path parameter with custom pattern
+  // Custom method with a request body
   rpc GetUserByEmail(GetUserByEmailRequest) returns (GetUserByEmailResponse) {
     option (google.api.http) = {
-      get: "/v1/users:byEmail"
+      post: "/v1/users:byEmail"
       body: "*"
     };
   }
@@ -313,7 +313,7 @@ service UserService {
 
 ## Error Handling and Status Code Mapping
 
-The transcoding filter automatically maps gRPC status codes to HTTP status codes:
+With `convert_grpc_status: true`, the transcoding filter maps gRPC status codes to HTTP status codes and returns a JSON `google.rpc.Status` body when the upstream response has no HTTP body:
 
 - OK (0) → 200 OK
 - INVALID_ARGUMENT (3) → 400 Bad Request
@@ -345,7 +345,7 @@ func (s *userServiceServer) GetUser(ctx context.Context, req *pb.GetUserRequest)
 
 ## Streaming and Server-Sent Events
 
-The transcoding filter has limited support for streaming. Unary (single request/response) RPCs work perfectly, but streaming RPCs require special handling:
+The transcoding filter supports streaming RPCs, but they require special handling. By default, streaming messages are encoded as a JSON array. You can also configure newline-delimited JSON or Server-Sent Events framing for stream responses:
 
 ```protobuf
 service UserService {
@@ -358,7 +358,7 @@ service UserService {
 }
 ```
 
-Configure Envoy to handle streaming:
+Configure Envoy to return Server-Sent Events framing for stream responses:
 
 ```yaml
 http_filters:
@@ -368,8 +368,9 @@ http_filters:
     proto_descriptor: "/etc/envoy/descriptors/user_service.pb"
     services:
     - "userservice.UserService"
-    # Enable streaming support
-    match_incoming_request_route: true
+    print_options:
+      # Return streaming responses as SSE frames: data: <message>\n\n
+      stream_sse_style_delimited: true
 ```
 
 ## Performance Considerations
