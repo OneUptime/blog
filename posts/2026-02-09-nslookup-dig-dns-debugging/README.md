@@ -14,7 +14,7 @@ nslookup and dig are essential tools for DNS debugging. They query DNS servers d
 
 ## Understanding DNS in Kubernetes
 
-Kubernetes uses CoreDNS (or kube-dns in older clusters) to provide DNS services. Every pod gets a /etc/resolv.conf configuration pointing to the cluster DNS service. When applications lookup hostnames, queries go to CoreDNS which resolves cluster services locally and forwards external queries to upstream DNS servers.
+Kubernetes uses CoreDNS (or kube-dns in older clusters) to provide DNS services. Pods using the default ClusterFirst DNS policy get a /etc/resolv.conf configuration pointing to the cluster DNS service. When applications lookup hostnames, queries go to CoreDNS which resolves cluster services locally and forwards external queries to upstream DNS servers.
 
 Understanding this architecture helps you troubleshoot at the right layer.
 
@@ -77,13 +77,15 @@ kubectl exec -it my-pod -- nslookup my-service.other-namespace
 # Test fully qualified service name
 kubectl exec -it my-pod -- nslookup my-service.my-namespace.svc.cluster.local
 
-# All three should resolve to the same IP (service ClusterIP)
+# The same service should resolve to the same ClusterIP
+# whether you use the short name from its namespace,
+# namespace-qualified name, or fully qualified name.
 
 # Use dig for detailed information
 kubectl exec -it my-pod -- dig my-service.my-namespace.svc.cluster.local +noall +answer
 ```
 
-Services should always resolve using any of these formats.
+Services should resolve using the short name from the same namespace, the namespace-qualified name from other namespaces, or the fully qualified name.
 
 ## Testing External DNS Resolution
 
@@ -103,7 +105,7 @@ kubectl exec -it my-pod -- nslookup google.com
 # If this fails, check CoreDNS forwarding configuration
 ```
 
-External DNS failures indicate CoreDNS forwarding issues.
+External DNS failures can indicate CoreDNS forwarding issues, upstream DNS failures, or network policies blocking DNS traffic.
 
 ## Querying Specific DNS Servers
 
@@ -141,8 +143,8 @@ kubectl exec -it my-pod -- dig google.com | grep "Query time"
 kubectl exec -it my-pod -- dig my-service.my-namespace.svc.cluster.local | \
   grep "Query time"
 
-# Should be under 10ms
-# Over 100ms indicates CoreDNS performance issues
+# Cluster-local lookups are often low latency
+# Over 100ms can indicate CoreDNS, node, or network performance issues
 ```
 
 Slow DNS queries cause application latency.
@@ -155,12 +157,12 @@ Check pod DNS configuration:
 # View resolv.conf
 kubectl exec -it my-pod -- cat /etc/resolv.conf
 
-# Should show:
+# Should show something like this for a pod in the default namespace:
 # nameserver 10.96.0.10
 # search default.svc.cluster.local svc.cluster.local cluster.local
 # options ndots:5
 
-# Verify nameserver matches kube-dns service IP
+# Verify nameserver matches the cluster DNS service IP
 kubectl get svc -n kube-system kube-dns
 ```
 
@@ -180,10 +182,10 @@ kubectl exec -it my-pod -- nslookup my-service.my-namespace
 # Test FQDN (no search needed)
 kubectl exec -it my-pod -- nslookup my-service.my-namespace.svc.cluster.local
 
-# Use dig to see query expansion
-kubectl exec -it my-pod -- dig my-service +search +noall +question
+# Use dig to see search-path attempts
+kubectl exec -it my-pod -- dig my-service +search +showsearch +noall +question
 
-# Shows how search domains expand the query
+# Shows how search domains are tried
 ```
 
 Understanding search domains helps diagnose resolution failures.
@@ -227,8 +229,11 @@ kubectl get pods -n kube-system -l k8s-app=kube-dns
 # Check CoreDNS logs
 kubectl logs -n kube-system -l k8s-app=kube-dns --tail=50
 
-# Test connectivity to CoreDNS
+# Test TCP connectivity to CoreDNS
 kubectl exec -it my-pod -- nc -zv 10.96.0.10 53
+
+# Test an actual DNS query over UDP
+kubectl exec -it my-pod -- dig @10.96.0.10 google.com
 ```
 
 Timeouts indicate CoreDNS availability issues.
@@ -247,10 +252,10 @@ kubectl exec -it my-pod -- dig google.com +trace
 # - Query to authoritative servers
 # - Final answer
 
-# This reveals where resolution fails
+# This uses iterative queries and requires the pod to reach external DNS servers
 ```
 
-Trace mode is useful for debugging complex DNS hierarchies.
+Trace mode is useful for debugging complex DNS hierarchies, but it is not a direct test of CoreDNS forwarding behavior.
 
 ## Testing Different Record Types
 
@@ -266,7 +271,7 @@ kubectl exec -it my-pod -- dig my-service.my-namespace.svc.cluster.local AAAA
 # SRV record (service records)
 kubectl exec -it my-pod -- dig _http._tcp.my-service.my-namespace.svc.cluster.local SRV
 
-# ANY (all records)
+# ANY (requests available records, but many DNS servers return minimal responses or refuse ANY)
 kubectl exec -it my-pod -- dig my-service.my-namespace.svc.cluster.local ANY
 ```
 
@@ -280,15 +285,16 @@ Test reverse DNS lookups:
 # Reverse lookup by IP
 kubectl exec -it my-pod -- nslookup 10.96.0.1
 
-# Should resolve to kubernetes.default.svc.cluster.local
+# May resolve to a Kubernetes service or endpoint name,
+# depending on your DNS implementation and CoreDNS configuration
 
 # Use dig for reverse lookup
 kubectl exec -it my-pod -- dig -x 10.96.0.1
 
-# Reverse DNS helps verify DNS configuration
+# Reverse DNS helps verify DNS configuration when PTR records are available
 ```
 
-Reverse lookups confirm DNS zone configuration.
+Reverse lookups can confirm DNS zone configuration when PTR records are available.
 
 ## Testing DNS Over TCP
 
@@ -321,8 +327,8 @@ kubectl get configmap coredns -n kube-system -o yaml
 # Look for forward directive:
 # forward . /etc/resolv.conf
 
-# Verify CoreDNS can reach upstream DNS
-kubectl exec -n kube-system coredns-xxx -- nslookup google.com
+# Check CoreDNS logs for upstream DNS errors
+kubectl logs -n kube-system -l k8s-app=kube-dns --tail=100
 ```
 
 Forwarding issues prevent external DNS resolution.
@@ -406,7 +412,8 @@ Some pods might have DNS issues while others do not:
 kubectl exec pod-a -- cat /etc/resolv.conf
 kubectl exec pod-b -- cat /etc/resolv.conf
 
-# Should be identical for pods in same namespace
+# Should be identical for pods in the same namespace
+# when they use the same dnsPolicy and dnsConfig
 # Differences indicate pod-specific issues
 
 # Check dnsPolicy in pod spec
@@ -449,7 +456,7 @@ spec:
   dnsPolicy: None
   dnsConfig:
     nameservers:
-    - 8.8.8.8
+    - 10.96.0.10  # Replace with your cluster DNS service IP
     searches:
     - my-namespace.svc.cluster.local
     options:
