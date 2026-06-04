@@ -46,8 +46,11 @@ Shelves contain books. Books contain chapters. Chapters contain pages. You can a
 ```bash
 # Create the BookStack project directory
 
-mkdir -p ~/bookstack/{db,uploads,storage}
+mkdir -p ~/bookstack/{db,config}
 cd ~/bookstack
+
+# Generate a BookStack application key for APP_KEY below
+docker run -it --rm --entrypoint /bin/bash lscr.io/linuxserver/bookstack:latest appkey
 ```
 
 ## Docker Compose Configuration
@@ -84,6 +87,8 @@ services:
     environment:
       # Application URL (change to your domain for production)
       - APP_URL=http://192.168.1.100:6875
+      # Session encryption key from the appkey command above
+      - APP_KEY=base64:replace_with_generated_app_key
       # Database connection
       - DB_HOST=db
       - DB_PORT=3306
@@ -164,7 +169,7 @@ BookStack supports multiple authentication methods. For teams already using LDAP
 - LDAP_BASE_DN=dc=company,dc=com
 - LDAP_DN=cn=readonly,dc=company,dc=com
 - LDAP_PASS=ldap_password
-- LDAP_USER_FILTER=(&(uid=${user}))
+- LDAP_USER_FILTER=(&(uid={user}))
 - LDAP_VERSION=3
 ```
 
@@ -241,13 +246,16 @@ Users can then subscribe to books or pages and receive notifications about chang
 
 ## Search and Navigation
 
-BookStack includes full-text search across all content. Press `/` or click the search bar to search. The search indexes page content, titles, tags, and even text within uploaded images (if OCR is enabled).
+BookStack includes full-text search across all content. Press `/` or click the search bar to search. The search indexes page content, titles, and tags.
 
 Use tags to cross-reference content across books. Add tags to any page, and users can click a tag to find all related pages regardless of which book they are in.
 
 ## Backup Strategy
 
 ```bash
+# Create a local backup directory
+mkdir -p ~/bookstack-backup
+
 # Back up the database
 docker exec bookstack-db mysqldump -u bookstack -pdb_password_change_me bookstack > ~/bookstack-backup/db_$(date +%Y%m%d).sql
 
