@@ -14,7 +14,7 @@ Google Kubernetes Engine provides powerful upgrade features that balance automat
 
 Surge upgrades add temporary extra nodes to your cluster before draining and removing old nodes. This ensures your cluster maintains full capacity throughout the upgrade process, preventing resource shortages that could impact application performance.
 
-Without surge upgrades, GKE must drain and upgrade nodes in place, which temporarily reduces available capacity. With surge upgrades enabled, new nodes are added first, workloads are migrated, and only then are old nodes removed. This approach eliminates capacity dips during upgrades.
+Without surge upgrades, GKE must drain and upgrade nodes in place, which temporarily reduces available capacity. With surge upgrades enabled, new nodes are added first, workloads are migrated, and only then are old nodes removed. This approach helps avoid capacity dips during upgrades, subject to Compute Engine quota and resource availability.
 
 ## Configuring Surge Upgrade Settings
 
@@ -47,7 +47,7 @@ echo "Surge upgrade configured: 2 extra nodes, 0 unavailable"
 
 The maxSurge parameter determines how many extra nodes to add during upgrades. The maxUnavailable parameter controls how many nodes can be unavailable. Setting maxUnavailable to 0 ensures zero capacity reduction.
 
-```yaml
+```hcl
 # Configure via Terraform
 resource "google_container_node_pool" "primary" {
   name       = "primary-pool"
@@ -95,7 +95,7 @@ ZONE="us-central1-a"
 gcloud container clusters update $CLUSTER_NAME \
   --zone=$ZONE \
   --maintenance-window-start="2024-01-01T02:00:00Z" \
-  --maintenance-window-duration="4h" \
+  --maintenance-window-end="2024-01-01T06:00:00Z" \
   --maintenance-window-recurrence="FREQ=WEEKLY;BYDAY=SA,SU"
 
 # View current maintenance window
@@ -108,7 +108,8 @@ gcloud container clusters update $CLUSTER_NAME \
   --zone=$ZONE \
   --add-maintenance-exclusion-name="black-friday" \
   --add-maintenance-exclusion-start="2024-11-29T00:00:00Z" \
-  --add-maintenance-exclusion-end="2024-12-02T00:00:00Z"
+  --add-maintenance-exclusion-end="2024-12-02T00:00:00Z" \
+  --add-maintenance-exclusion-scope="no_upgrades"
 
 echo "Maintenance window configured"
 ```
@@ -121,13 +122,6 @@ resource "google_container_cluster" "primary" {
   location = "us-central1-a"
 
   maintenance_policy {
-    daily_maintenance_window {
-      start_time = "03:00"
-    }
-  }
-
-  # Alternative: recurring maintenance window
-  maintenance_policy {
     recurring_window {
       start_time = "2024-01-01T02:00:00Z"
       end_time   = "2024-01-01T06:00:00Z"
@@ -138,6 +132,10 @@ resource "google_container_cluster" "primary" {
       exclusion_name = "holiday-freeze"
       start_time     = "2024-12-20T00:00:00Z"
       end_time       = "2025-01-05T00:00:00Z"
+
+      exclusion_options {
+        scope = "NO_UPGRADES"
+      }
     }
   }
 }
@@ -153,7 +151,7 @@ While GKE supports auto-upgrades, manually triggered upgrades give you more cont
 
 CLUSTER_NAME="production"
 ZONE="us-central1-a"
-TARGET_VERSION="1.29.1-gke.1234"
+TARGET_VERSION="1.34.1-gke.1293000"
 
 echo "Starting GKE cluster upgrade..."
 
@@ -251,7 +249,7 @@ CLUSTER_NAME="production"
 ZONE="us-central1-a"
 OLD_POOL="blue-pool"
 NEW_POOL="green-pool"
-TARGET_VERSION="1.29.1-gke.1234"
+TARGET_VERSION="1.34.1-gke.1293000"
 
 echo "Creating new node pool with version $TARGET_VERSION..."
 
@@ -305,9 +303,12 @@ kubectl get nodes -l cloud.google.com/gke-nodepool=$OLD_POOL -o name | \
 done
 
 # Verify all pods migrated
+old_pool_nodes=$(kubectl get nodes -l cloud.google.com/gke-nodepool=$OLD_POOL \
+  -o json | jq -r '[.items[].metadata.name]')
+
 old_pool_pods=$(kubectl get pods -A -o json | \
-  jq --arg pool "$OLD_POOL" '[.items[] |
-  select(.spec.nodeName | contains($pool))] | length')
+  jq --argjson nodes "$old_pool_nodes" '[.items[] |
+  select(.spec.nodeName as $node | $nodes | index($node))] | length')
 
 if [ "$old_pool_pods" -eq 0 ]; then
   echo "All pods migrated to new pool"
@@ -434,7 +435,8 @@ echo "Troubleshooting surge upgrade failure..."
 
 # Get upgrade operation details
 gcloud container operations list \
-  --filter="targetLink:$CLUSTER_NAME AND operationType=UPGRADE_NODES" \
+  --zone=$ZONE \
+  --filter="TYPE=UPGRADE_NODES AND TARGET:$CLUSTER_NAME" \
   --format="table(name,status,statusMessage,startTime,endTime)"
 
 # Check node pool health
@@ -443,11 +445,11 @@ gcloud container node-pools describe $NODE_POOL \
   --zone=$ZONE \
   --format="yaml(status,statusMessage,conditions)"
 
-# Check for nodes stuck in upgrade
-kubectl get nodes -o json | \
-  jq -r '.items[] |
-  select(.metadata.labels["cloud.google.com/gke-node-pool-upgrading"] == "true") |
-  .metadata.name'
+# Check node versions in the node pool
+kubectl get nodes -l cloud.google.com/gke-nodepool=$NODE_POOL -o custom-columns=\
+NAME:.metadata.name,\
+VERSION:.status.nodeInfo.kubeletVersion,\
+READY:.status.conditions[?(@.type==\"Ready\")].status
 
 # Check for eviction failures
 kubectl get events -A --field-selector reason=EvictionFailed
@@ -455,10 +457,20 @@ kubectl get events -A --field-selector reason=EvictionFailed
 # Cancel ongoing upgrade if needed
 read -p "Cancel ongoing upgrade? (yes/no): " confirm
 if [ "$confirm" == "yes" ]; then
-  gcloud container clusters upgrade $CLUSTER_NAME \
+  OPERATION_ID=$(gcloud container operations list \
     --zone=$ZONE \
-    --cancel
-  echo "Upgrade cancellation requested"
+    --filter="TYPE=UPGRADE_NODES AND STATUS=RUNNING AND TARGET:$CLUSTER_NAME" \
+    --limit=1 \
+    --format="value(name)")
+
+  if [ -n "$OPERATION_ID" ]; then
+    gcloud container operations cancel $OPERATION_ID \
+      --zone=$ZONE \
+      --quiet
+    echo "Upgrade cancellation requested"
+  else
+    echo "No running node upgrade operation found"
+  fi
 fi
 ```
 
@@ -504,7 +516,9 @@ gcloud container clusters describe $CLUSTER_NAME \
 # Verify autoscaling works
 echo "Testing cluster autoscaler..."
 initial_nodes=$(kubectl get nodes -o json | jq '.items | length')
-kubectl create deployment stress-test --image=polinux/stress --replicas=50
+kubectl create deployment stress-test --image=polinux/stress --replicas=50 -- \
+  stress --cpu 1 --timeout 300s
+kubectl set resources deployment stress-test --requests=cpu=500m,memory=256Mi
 sleep 120
 new_nodes=$(kubectl get nodes -o json | jq '.items | length')
 
