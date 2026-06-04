@@ -39,9 +39,8 @@ cosign generate-key-pair
 # - cosign.key (private key)
 # - cosign.pub (public key)
 
-# Store private key securely
-kubectl create secret generic cosign-keys \
-  --from-file=cosign.key=cosign.key \
+# Store the public key for admission-time verification
+kubectl create secret generic cosign-public-key \
   --from-file=cosign.pub=cosign.pub \
   -n kube-system
 ```
@@ -57,7 +56,7 @@ docker push registry.example.com/myapp:v1.0.0
 
 # Sign the image
 export COSIGN_PASSWORD=your-password
-cosign sign --key cosign.key registry.example.com/myapp:v1.0.0
+cosign sign --yes --key cosign.key registry.example.com/myapp:v1.0.0
 
 # Verify signature
 cosign verify --key cosign.pub registry.example.com/myapp:v1.0.0
@@ -101,9 +100,9 @@ kind: ClusterPolicy
 metadata:
   name: verify-image-signatures
 spec:
-  validationFailureAction: Enforce
+  webhookConfiguration:
+    timeoutSeconds: 30
   background: false
-  webhookTimeoutSeconds: 30
   rules:
     - name: verify-signature
       match:
@@ -114,6 +113,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
@@ -132,7 +132,6 @@ kind: ClusterPolicy
 metadata:
   name: verify-image-signatures
 spec:
-  validationFailureAction: Enforce
   background: false
   rules:
     - name: verify-signature
@@ -146,13 +145,12 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
                 - keys:
-                    secret:
-                      name: cosign-keys
-                      namespace: kube-system
+                    publicKeys: k8s://kube-system/cosign-public-key
 ```
 
 ## Verifying Keyless Signatures
@@ -165,7 +163,6 @@ kind: ClusterPolicy
 metadata:
   name: verify-keyless-signatures
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: verify-keyless
       match:
@@ -176,11 +173,12 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
                 - keyless:
-                    subject: "https://github.com/myorg/*"
+                    subjectRegExp: "https://github\\.com/myorg/.+"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
@@ -196,13 +194,14 @@ package main
 
 import (
     "context"
+    "crypto"
     "encoding/json"
     "fmt"
     "net/http"
 
     "github.com/google/go-containerregistry/pkg/name"
-    "github.com/sigstore/cosign/v2/pkg/cosign"
-    "github.com/sigstore/cosign/v2/pkg/oci/remote"
+    "github.com/sigstore/cosign/v3/pkg/cosign"
+    csignature "github.com/sigstore/cosign/v3/pkg/signature"
     admissionv1 "k8s.io/api/admission/v1"
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -220,6 +219,11 @@ func (h *AdmissionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    if admissionReview.Request == nil {
+        http.Error(w, "missing admission request", http.StatusBadRequest)
+        return
+    }
+
     pod := &corev1.Pod{}
     if err := json.Unmarshal(admissionReview.Request.Object.Raw, pod); err != nil {
         http.Error(w, err.Error(), http.StatusBadRequest)
@@ -229,7 +233,9 @@ func (h *AdmissionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     allowed := true
     var message string
 
-    for _, container := range pod.Spec.Containers {
+    containers := append([]corev1.Container{}, pod.Spec.InitContainers...)
+    containers = append(containers, pod.Spec.Containers...)
+    for _, container := range containers {
         if !h.verifyImage(container.Image) {
             allowed = false
             message = fmt.Sprintf("Image %s is not signed or verification failed", container.Image)
@@ -256,12 +262,12 @@ func (h *AdmissionHandler) verifyImage(imageRef string) bool {
     }
 
     // Verify signature
-    verifier, err := cosign.LoadPublicKey(context.Background(), h.publicKey)
+    verifier, err := csignature.LoadPublicKeyRaw(h.publicKey, crypto.SHA256)
     if err != nil {
         return false
     }
 
-    sigs, _, err := remote.VerifyImageSignatures(context.Background(), ref, &cosign.CheckOpts{
+    sigs, _, err := cosign.VerifyImageSignatures(context.Background(), ref, &cosign.CheckOpts{
         SigVerifier: verifier,
     })
 
@@ -363,13 +369,12 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Login to registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: registry.example.com
           username: ${{ secrets.REGISTRY_USERNAME }}
@@ -381,14 +386,14 @@ jobs:
           docker push registry.example.com/myapp:${{ github.sha }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       - name: Sign image
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: |
           echo "${{ secrets.COSIGN_KEY }}" > cosign.key
-          cosign sign --key cosign.key \
+          cosign sign --yes --key cosign.key \
             registry.example.com/myapp:${{ github.sha }}
 
       - name: Verify signature
@@ -408,7 +413,6 @@ kind: ClusterPolicy
 metadata:
   name: namespace-specific-verification
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: production-strict
       match:
@@ -421,17 +425,14 @@ spec:
       verifyImages:
         - imageReferences:
             - "*"
+          failureAction: Enforce
           attestors:
             - count: 2
               entries:
                 - keys:
-                    secret:
-                      name: prod-key-1
-                      namespace: kube-system
+                    publicKeys: k8s://kube-system/prod-key-1
                 - keys:
-                    secret:
-                      name: prod-key-2
-                      namespace: kube-system
+                    publicKeys: k8s://kube-system/prod-key-2
 
     - name: staging-relaxed
       match:
@@ -444,13 +445,12 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
                 - keys:
-                    secret:
-                      name: staging-key
-                      namespace: kube-system
+                    publicKeys: k8s://kube-system/staging-key
 ```
 
 ## Monitoring Verification Events
@@ -482,9 +482,9 @@ data:
         rules:
           - alert: UnsignedImageAttempt
             expr: |
-              increase(kyverno_policy_results_total{
+              increase(kyverno_policy_results{
                 policy_name="verify-image-signatures",
-                policy_result="fail"
+                rule_result="fail"
               }[5m]) > 0
             annotations:
               summary: "Attempt to deploy unsigned image"
@@ -501,7 +501,6 @@ kind: ClusterPolicy
 metadata:
   name: verify-with-exceptions
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: verify-signature
       match:
@@ -522,13 +521,12 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
                 - keys:
-                    secret:
-                      name: cosign-keys
-                      namespace: kube-system
+                    publicKeys: k8s://kube-system/cosign-public-key
 ```
 
 ## Conclusion
