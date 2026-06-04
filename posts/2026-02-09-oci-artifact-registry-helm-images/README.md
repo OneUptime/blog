@@ -21,7 +21,7 @@ Use Harbor for a full-featured registry:
 ```bash
 # Install Harbor with Helm
 
-helm repo add harbor https://helm.goanywhere.com/chartrepo/library
+helm repo add harbor https://helm.goharbor.io
 helm repo update
 
 # Create namespace
@@ -79,16 +79,12 @@ Package and push Helm charts:
 helm package ./mychart
 
 # Login to registry (using Helm)
-export HELM_EXPERIMENTAL_OCI=1
 helm registry login harbor.example.com \
   --username admin \
   --password YourPassword
 
 # Push chart to OCI registry
-helm push mychart-1.0.0.tgz oci://harbor.example.com/myproject
-
-# Alternative: direct push without packaging
-helm push ./mychart oci://harbor.example.com/myproject
+helm push mychart-1.0.0.tgz oci://harbor.example.com/myproject/charts
 ```
 
 ## Creating a CI Pipeline for Images and Charts
@@ -107,13 +103,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Harbor
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: harbor.example.com
           username: ${{ secrets.HARBOR_USERNAME }}
@@ -121,7 +117,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: harbor.example.com/myproject/myapp
           tags: |
@@ -131,7 +127,7 @@ jobs:
             type=sha
 
       - name: Build and push image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -141,12 +137,13 @@ jobs:
           cache-to: type=registry,ref=harbor.example.com/myproject/myapp:buildcache,mode=max
 
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4
 
       - name: Update chart version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          if [ -z "$VERSION" ]; then
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
             VERSION="0.0.0-${GITHUB_SHA::8}"
           fi
           sed -i "s/^version:.*/version: $VERSION/" charts/myapp/Chart.yaml
@@ -159,25 +156,31 @@ jobs:
             --password ${{ secrets.HARBOR_PASSWORD }}
 
           helm package charts/myapp
-          helm push myapp-*.tgz oci://harbor.example.com/myproject
+          helm push myapp-*.tgz oci://harbor.example.com/myproject/charts
 
       - name: Sign artifacts with Cosign
         uses: sigstore/cosign-installer@v3
         with:
-          cosign-release: 'v2.0.0'
+          cosign-release: 'v3.0.6'
 
       - name: Sign image and chart
         env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION="0.0.0-${GITHUB_SHA::8}"
+          fi
+
           # Sign container image
-          cosign sign --key cosign.key \
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY \
             harbor.example.com/myproject/myapp:${{ steps.meta.outputs.version }}
 
           # Sign Helm chart
-          VERSION=${GITHUB_REF#refs/tags/v}
-          cosign sign --key cosign.key \
-            harbor.example.com/myproject/myapp:$VERSION
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY \
+            harbor.example.com/myproject/charts/myapp:$VERSION
 ```
 
 ## Pulling and Using OCI Artifacts
@@ -196,13 +199,13 @@ Pull and install Helm charts:
 
 ```bash
 # Pull chart
-helm pull oci://harbor.example.com/myproject/myapp --version 1.0.0
+helm pull oci://harbor.example.com/myproject/charts/myapp --version 1.0.0
 
 # Install chart directly from OCI
-helm install myapp oci://harbor.example.com/myproject/myapp --version 1.0.0
+helm install myapp oci://harbor.example.com/myproject/charts/myapp --version 1.0.0
 
 # Upgrade with values
-helm upgrade myapp oci://harbor.example.com/myproject/myapp \
+helm upgrade myapp oci://harbor.example.com/myproject/charts/myapp \
   --version 1.0.0 \
   --values values-prod.yaml
 ```
@@ -230,16 +233,21 @@ docker buildx imagetools inspect harbor.example.com/myproject/myapp:v1.0.0
 
 Configure retention policies in Harbor:
 
-```yaml
+```bash
 # Retention policy via Harbor API
-curl -X POST "https://harbor.example.com/api/v2.0/projects/myproject/repositories/myapp/retentions" \
+PROJECT_ID=$(curl -s "https://harbor.example.com/api/v2.0/projects/myproject" \
+  -u "admin:password" | jq -r '.project_id')
+
+curl -X POST "https://harbor.example.com/api/v2.0/retentions" \
   -H "Content-Type: application/json" \
   -u "admin:password" \
   -d '{
+    "algorithm": "or",
     "rules": [
       {
         "disabled": false,
         "action": "retain",
+        "template": "latestPushedK",
         "params": {
           "latestPushedK": 10
         },
@@ -263,6 +271,7 @@ curl -X POST "https://harbor.example.com/api/v2.0/projects/myproject/repositorie
       {
         "disabled": false,
         "action": "retain",
+        "template": "nDaysSinceLastPush",
         "params": {
           "nDaysSinceLastPush": 30
         },
@@ -283,7 +292,17 @@ curl -X POST "https://harbor.example.com/api/v2.0/projects/myproject/repositorie
           }
         ]
       }
-    ]
+    ],
+    "trigger": {
+      "kind": "Schedule",
+      "settings": {
+        "cron": "0 0 0 * * *"
+      }
+    },
+    "scope": {
+      "level": "project",
+      "ref": '"$PROJECT_ID"'
+    }
   }'
 ```
 
@@ -292,8 +311,8 @@ curl -X POST "https://harbor.example.com/api/v2.0/projects/myproject/repositorie
 Generate Helm repository index:
 
 ```bash
-# List all charts
-helm search repo oci://harbor.example.com/myproject -l
+# Inspect an OCI chart
+helm show chart oci://harbor.example.com/myproject/charts/myapp --version 1.0.0
 
 # Create traditional Helm repository alongside OCI
 helm repo index . --url https://charts.example.com
@@ -310,23 +329,20 @@ Integrate Trivy scanning:
 trivy image harbor.example.com/myproject/myapp:v1.0.0
 
 # Scan Helm chart
-helm pull oci://harbor.example.com/myproject/myapp --version 1.0.0
+helm pull oci://harbor.example.com/myproject/charts/myapp --version 1.0.0
 tar xzf myapp-1.0.0.tgz
 trivy config ./myapp
 ```
 
 Configure automated scanning in Harbor:
 
-```yaml
+```bash
 # Enable vulnerability scanning
-curl -X PUT "https://harbor.example.com/api/v2.0/projects/myproject" \
+curl -X PUT "https://harbor.example.com/api/v2.0/projects/myproject/metadatas/auto_scan" \
   -H "Content-Type: application/json" \
   -u "admin:password" \
   -d '{
-    "metadata": {
-      "auto_scan": "true",
-      "severity": "high"
-    }
+    "auto_scan": "true"
   }'
 ```
 
@@ -356,11 +372,12 @@ Use robot accounts for CI/CD:
 
 ```bash
 # Create robot account
-curl -X POST "https://harbor.example.com/api/v2.0/projects/myproject/robots" \
+curl -X POST "https://harbor.example.com/api/v2.0/robots" \
   -H "Content-Type: application/json" \
   -u "admin:password" \
   -d '{
     "name": "ci-pipeline",
+    "level": "project",
     "duration": 365,
     "description": "CI/CD pipeline robot account",
     "permissions": [
@@ -440,10 +457,10 @@ helm repo add oldrepo https://charts.example.com
 helm pull oldrepo/myapp
 
 # Push to OCI registry
-helm push myapp-1.0.0.tgz oci://harbor.example.com/myproject
+helm push myapp-1.0.0.tgz oci://harbor.example.com/myproject/charts
 
 # Update chart references
-helm search repo oci://harbor.example.com/myproject
+helm show chart oci://harbor.example.com/myproject/charts/myapp --version 1.0.0
 ```
 
 ## Conclusion
