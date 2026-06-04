@@ -14,7 +14,7 @@ PostgreSQL connections consume significant memory and CPU resources. Application
 
 PgBouncer provides three pooling modes with different tradeoffs. Session pooling assigns a server connection to a client for the entire session, similar to direct PostgreSQL connections. Transaction pooling returns server connections to the pool after each transaction, maximizing connection reuse. Statement pooling reuses connections after every statement, offering maximum efficiency but breaking multi-statement transactions.
 
-For most applications, transaction pooling provides the best balance. It dramatically reduces the number of PostgreSQL connections needed while maintaining transaction semantics. Applications can use prepared statements and transaction blocks without issues.
+For most applications, transaction pooling provides the best balance. It dramatically reduces the number of PostgreSQL connections needed while maintaining transaction semantics. Transaction blocks work as expected, but session-level features require care. PgBouncer 1.21 can support protocol-level named prepared statements in transaction pooling when `max_prepared_statements` is set to a non-zero value; SQL-level `PREPARE`, `EXECUTE`, and `DEALLOCATE` commands are still forwarded directly to PostgreSQL.
 
 ## Deploying PostgreSQL with PgBouncer Sidecar
 
@@ -56,6 +56,11 @@ data:
     max_db_connections = 50
     max_user_connections = 50
     ignore_startup_parameters = extra_float_digits
+    max_prepared_statements = 100
+
+    # Admin console access
+    admin_users = postgres
+    stats_users = postgres
 
     # Logging
     log_connections = 1
@@ -63,7 +68,7 @@ data:
     log_pooler_errors = 1
 
   userlist.txt: |
-    "postgres" "md5$(echo -n 'passwordpostgres' | md5sum | cut -d' ' -f1)"
+    "postgres" "your-secure-password"
 ---
 apiVersion: v1
 kind: Service
@@ -165,9 +170,11 @@ spec:
             storage: 100Gi
 ```
 
-Create the secret:
+Create the namespace and secret:
 
 ```bash
+kubectl create namespace database
+
 kubectl create secret generic postgres-secret \
   -n database \
   --from-literal=password='your-secure-password'
@@ -176,7 +183,6 @@ kubectl create secret generic postgres-secret \
 Deploy the stack:
 
 ```bash
-kubectl create namespace database
 kubectl apply -f postgres-with-pgbouncer.yaml
 
 # Verify both containers are running
@@ -226,6 +232,8 @@ spec:
 
 Applications connect to port 6432, unaware of connection pooling happening transparently.
 
+If the application runs in the `default` namespace, create a matching `postgres-secret` in that namespace or replace the secret reference with your application's existing database credential Secret.
+
 ## Configuring Pooling Parameters
 
 Optimize pool sizing based on your workload:
@@ -234,15 +242,18 @@ Optimize pool sizing based on your workload:
 # For high-concurrency read-heavy workloads
 [pgbouncer]
 pool_mode = transaction
-default_pool_size = 50  # Increase pool size
+# Increase pool size
+default_pool_size = 50
 min_pool_size = 10
-max_client_conn = 5000  # Support more app connections
+# Support more app connections
+max_client_conn = 5000
 
-# For write-heavy workloads
+# For applications that require session-level features
 [pgbouncer]
-pool_mode = session  # Use session pooling
+pool_mode = session
 default_pool_size = 100
-server_lifetime = 7200  # Keep connections longer
+# Keep connections longer
+server_lifetime = 7200
 
 # For microservices with many databases
 [databases]
@@ -326,17 +337,8 @@ spec:
           ports:
             - containerPort: 9127
           env:
-            - name: PGBOUNCER_HOST
-              value: postgres-pooled.database.svc.cluster.local
-            - name: PGBOUNCER_PORT
-              value: "6432"
-            - name: PGBOUNCER_USER
-              value: postgres
-            - name: PGBOUNCER_PASS
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-secret
-                  key: password
+            - name: PGBOUNCER_EXPORTER_CONNECTION_STRING
+              value: "postgres://postgres:your-secure-password@postgres-pooled.database.svc.cluster.local:6432/pgbouncer?sslmode=disable"
 ---
 apiVersion: v1
 kind: Service
@@ -347,7 +349,8 @@ spec:
   selector:
     app: pgbouncer-exporter
   ports:
-    - port: 9127
+    - name: http-metrics
+      port: 9127
       targetPort: 9127
 ---
 apiVersion: monitoring.coreos.com/v1
@@ -368,16 +371,16 @@ Create Grafana dashboards with key metrics:
 
 ```promql
 # Pool utilization
-pgbouncer_pools_server_active_connections / pgbouncer_pools_server_idle_connections
+pgbouncer_pools_server_active_connections / (pgbouncer_pools_server_active_connections + pgbouncer_pools_server_idle_connections)
 
 # Client wait time
-rate(pgbouncer_stats_queries_duration_microseconds_sum[5m]) / rate(pgbouncer_stats_queries_total[5m])
+rate(pgbouncer_stats_client_wait_seconds_total[5m]) / rate(pgbouncer_stats_queries_total[5m])
 
 # Connection queue depth
 pgbouncer_pools_client_waiting_connections
 
 # Pool saturation
-pgbouncer_pools_server_used_connections / pgbouncer_pools_server_max_connections
+pgbouncer_pools_client_maxwait_seconds
 ```
 
 ## Handling Connection Pool Exhaustion
@@ -399,14 +402,14 @@ server_idle_timeout = 600
 client_idle_timeout = 0
 ```
 
-Implement circuit breaker in application:
+Implement retry handling in application:
 
 ```python
 import psycopg2
 from psycopg2 import pool
 import time
 
-# Connection pool with fallback
+# Client-side pool with retry
 connection_pool = psycopg2.pool.SimpleConnectionPool(
     minconn=1,
     maxconn=20,
