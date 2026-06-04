@@ -12,11 +12,11 @@ OpenEBS is a Cloud Native Storage solution that turns Kubernetes nodes into stor
 
 ## Understanding OpenEBS
 
-OpenEBS provides three main storage engines:
+OpenEBS provides several storage engines, including:
 
-1. **Local PV** - Direct access to local disks (fastest)
-2. **Jiva** - Replicated storage using iSCSI
-3. **cStor** - Advanced pool-based replicated storage
+1. **Local PV Hostpath** - Direct access to host directories
+2. **Local PV LVM/ZFS** - Local storage backed by LVM volume groups or ZFS pools
+3. **Replicated PV Mayastor** - Replicated block storage using NVMe-oF
 
 Benefits:
 - Container-native architecture
@@ -32,7 +32,7 @@ Install using Helm:
 ```bash
 # Add OpenEBS Helm repository
 
-helm repo add openebs https://openebs.github.io/charts
+helm repo add openebs https://openebs.github.io/openebs
 helm repo update
 
 # Install OpenEBS
@@ -43,19 +43,17 @@ helm install openebs openebs/openebs \
 # Verify installation
 kubectl get pods -n openebs
 
-# Expected output shows multiple components:
-# openebs-ndm-xxxxx (Node Disk Manager)
-# openebs-ndm-operator-xxxxx
+# Expected output shows multiple components, depending on enabled engines:
 # openebs-localpv-provisioner-xxxxx
+# openebs-lvm-controller-xxxxx
+# openebs-zfs-controller-xxxxx
+# openebs-agent-core-xxxxx
 ```
 
-Or install using kubectl:
+For Replicated PV Mayastor, make sure the Mayastor prerequisites are met, including labeling the worker nodes that will run IO engine pods:
 
 ```bash
-kubectl apply -f https://openebs.github.io/charts/openebs-operator.yaml
-
-# Wait for pods to be ready
-kubectl wait --for=condition=ready pod -l app=openebs -n openebs --timeout=300s
+kubectl label node <node-name> openebs.io/engine=mayastor
 ```
 
 ## Using OpenEBS Local PV
@@ -108,114 +106,100 @@ kubectl run nginx --image=nginx \
 kubectl exec nginx -- df -h /usr/share/nginx/html
 ```
 
-## Using OpenEBS Device Local PV
+## Using OpenEBS LVM Local PV
 
-For better performance, use block devices directly:
+For better performance, use block devices through LVM:
 
-First, check available disks:
+First, create a volume group on the nodes that should provide local storage:
 
 ```bash
-# List block devices discovered by OpenEBS
-kubectl get bd -n openebs
-
-# Example output:
-# NAME                                           NODENAME   SIZE
-# blockdevice-xxxxx                             node1      100Gi
-# blockdevice-yyyyy                             node2      100Gi
+sudo vgcreate lvmvg /dev/sdb
 ```
 
-Create a StorageClass for device volumes:
+Create a StorageClass for LVM volumes:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: openebs-device
-  annotations:
-    openebs.io/cas-type: local
-    cas.openebs.io/config: |
-      - name: StorageType
-        value: "device"
-      - name: FSType
-        value: ext4
-provisioner: openebs.io/local
+  name: openebs-lvm
+allowVolumeExpansion: true
+provisioner: local.csi.openebs.io
+parameters:
+  storage: "lvm"
+  vgpattern: "lvmvg"
+  fsType: ext4
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 ```
 
-## Using OpenEBS cStor for Replication
+## Using OpenEBS Replicated PV Mayastor for Replication
 
-cStor provides replicated storage with snapshots and clones:
+Replicated PV Mayastor provides replicated storage with snapshots and clones:
 
 ```yaml
-apiVersion: cstor.openebs.io/v1
-kind: CStorPoolCluster
+apiVersion: "openebs.io/v1beta3"
+kind: DiskPool
 metadata:
-  name: cstor-pool-cluster
+  name: pool-on-node-1
   namespace: openebs
 spec:
-  pools:
-    - nodeSelector:
-        kubernetes.io/hostname: "node1"
-      dataRaidGroups:
-        - blockDevices:
-            - blockDeviceName: "blockdevice-xxxxx"
-      poolConfig:
-        dataRaidGroupType: "stripe"
-    - nodeSelector:
-        kubernetes.io/hostname: "node2"
-      dataRaidGroups:
-        - blockDevices:
-            - blockDeviceName: "blockdevice-yyyyy"
-      poolConfig:
-        dataRaidGroupType: "stripe"
-    - nodeSelector:
-        kubernetes.io/hostname: "node3"
-      dataRaidGroups:
-        - blockDevices:
-            - blockDeviceName: "blockdevice-zzzzz"
-      poolConfig:
-        dataRaidGroupType: "stripe"
+  node: node1
+  disks: ["aio:///dev/disk/by-id/disk-node-1"]
+---
+apiVersion: "openebs.io/v1beta3"
+kind: DiskPool
+metadata:
+  name: pool-on-node-2
+  namespace: openebs
+spec:
+  node: node2
+  disks: ["aio:///dev/disk/by-id/disk-node-2"]
+---
+apiVersion: "openebs.io/v1beta3"
+kind: DiskPool
+metadata:
+  name: pool-on-node-3
+  namespace: openebs
+spec:
+  node: node3
+  disks: ["aio:///dev/disk/by-id/disk-node-3"]
 ```
 
 Apply the pool configuration:
 
 ```bash
-kubectl apply -f cstor-pool.yaml
+kubectl apply -f mayastor-pools.yaml
 
 # Verify pool creation
-kubectl get cspc -n openebs
-
-# Check pool status
-kubectl get cspi -n openebs
+kubectl get dsp -n openebs
 ```
 
-Create a cStor StorageClass:
+Create a Mayastor StorageClass:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: cstor-csi-disk
-provisioner: cstor.csi.openebs.io
+  name: mayastor-3
+provisioner: io.openebs.csi-mayastor
 allowVolumeExpansion: true
 parameters:
-  cas-type: cstor
-  cstorPoolCluster: cstor-pool-cluster
-  replicaCount: "3"
+  protocol: nvmf
+  repl: "3"
 ```
 
 ## Creating Replicated Volumes
 
-Use the cStor storage class:
+Use the Mayastor storage class:
 
 ```yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: cstor-pvc
+  name: mayastor-pvc
 spec:
-  storageClassName: cstor-csi-disk
+  storageClassName: mayastor-3
   accessModes:
     - ReadWriteOnce
   resources:
@@ -254,7 +238,7 @@ spec:
   - metadata:
       name: data
     spec:
-      storageClassName: cstor-csi-disk
+      storageClassName: mayastor-3
       accessModes:
         - ReadWriteOnce
       resources:
@@ -270,8 +254,8 @@ Create a VolumeSnapshotClass:
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
-  name: cstor-snapshot-class
-driver: cstor.csi.openebs.io
+  name: mayastor-snapshot-class
+driver: io.openebs.csi-mayastor
 deletionPolicy: Delete
 ```
 
@@ -281,11 +265,11 @@ Take a snapshot:
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshot
 metadata:
-  name: cstor-snapshot
+  name: mayastor-snapshot
 spec:
-  volumeSnapshotClassName: cstor-snapshot-class
+  volumeSnapshotClassName: mayastor-snapshot-class
   source:
-    persistentVolumeClaimName: cstor-pvc
+    persistentVolumeClaimName: mayastor-pvc
 ```
 
 Restore from snapshot:
@@ -296,9 +280,9 @@ kind: PersistentVolumeClaim
 metadata:
   name: restored-pvc
 spec:
-  storageClassName: cstor-csi-disk
+  storageClassName: mayastor-3
   dataSource:
-    name: cstor-snapshot
+    name: mayastor-snapshot
     kind: VolumeSnapshot
     apiGroup: snapshot.storage.k8s.io
   accessModes:
@@ -313,48 +297,48 @@ spec:
 Check storage pools:
 
 ```bash
-# View cStor pools
-kubectl get cspc -n openebs
-
-# Check pool instances
-kubectl get cspi -n openebs
+# View Mayastor pools
+kubectl get dsp -n openebs
 
 # View volumes
-kubectl get cstorvolume -n openebs
+kubectl get pvc
 
-# Check volume replicas
-kubectl get cvr -n openebs
+# Check Mayastor volumes with the kubectl-openebs plugin
+kubectl openebs -n openebs mayastor get volumes
 ```
 
 Monitor with Prometheus:
 
 ```bash
-# OpenEBS exposes metrics on port 9500
-kubectl port-forward -n openebs openebs-cstor-xxxxx 9500:9500
+# Install the OpenEBS monitoring stack
+helm repo add monitoring https://openebs.github.io/monitoring/
+helm repo update
+helm install monitoring monitoring/monitoring --namespace openebs --create-namespace
 
-# Access metrics
-curl http://localhost:9500/metrics
+# Access Grafana
+kubectl get pods -n openebs | grep -i grafana
+kubectl port-forward -n openebs pod/<grafana-pod-name> 3000:3000
 ```
 
 ## Volume Expansion
 
-Expand a cStor volume:
+Expand a Mayastor volume:
 
 ```bash
 # Edit the PVC
-kubectl patch pvc cstor-pvc -p '{"spec":{"resources":{"requests":{"storage":"20Gi"}}}}'
+kubectl patch pvc mayastor-pvc -p '{"spec":{"resources":{"requests":{"storage":"20Gi"}}}}'
 
 # Watch the expansion
-kubectl get pvc cstor-pvc -w
+kubectl get pvc mayastor-pvc -w
 
 # Verify new size
-kubectl get pvc cstor-pvc
+kubectl get pvc mayastor-pvc
 ```
 
 ## Best Practices
 
 1. **Use Local PV for speed** when replication is not needed
-2. **Use cStor for production** workloads requiring replication
+2. **Use Replicated PV Mayastor for production** workloads requiring replication
 3. **Monitor pool capacity** to avoid running out of space
 4. **Set resource limits** on OpenEBS pods
 5. **Use node selectors** to control pool placement
