@@ -8,7 +8,7 @@ Description: Master Lens Desktop extensions to enhance your Kubernetes cluster m
 
 ---
 
-Lens Desktop has become the go-to Kubernetes IDE for many teams, offering a visual interface that simplifies cluster management. While Lens provides extensive built-in functionality, its extension system unlocks even more powerful capabilities tailored to your specific needs.
+Lens Desktop has become the go-to Kubernetes IDE for many teams, offering a visual interface that simplifies cluster management. In Lens Desktop builds that support the legacy Extension API, its extension system unlocks even more powerful capabilities tailored to your specific needs.
 
 Creating custom Lens extensions lets you integrate proprietary tools, add custom views for your resources, automate common operations, and build workflows that match how your team actually works with Kubernetes. This guide shows you how to build practical extensions that solve real problems.
 
@@ -23,8 +23,8 @@ Extensions run in two contexts: the main process (Node.js backend) and the rende
 Start by creating a new extension project using the Lens extension template:
 
 ```bash
-npm install -g @k8slens/create-extension
-create-lens-extension my-team-extension
+npm install -g yo generator-lens-ext
+yo lens-ext
 cd my-team-extension
 npm install
 ```
@@ -34,10 +34,10 @@ Your extension structure should look like this:
 ```text
 my-team-extension/
 ├── package.json
+├── main.ts           # Backend/main process entry point
+├── renderer.tsx      # Frontend/renderer process entry point
 ├── src/
-│   ├── main.tsx      # Backend/main process code
-│   ├── renderer.tsx  # Frontend/renderer process code
-│   └── common.ts     # Shared code
+│   └── page.tsx      # Additional React components
 └── tsconfig.json
 ```
 
@@ -45,17 +45,21 @@ Update your `package.json` with extension metadata:
 
 ```json
 {
-  "name": "@myorg/lens-team-extension",
+  "name": "lens-team-extension",
+  "publisher": "myorg",
   "version": "1.0.0",
+  "description": "Custom workflows for team operations",
+  "homepage": "https://github.com/myorg/lens-team-extension",
+  "engines": {
+    "lens": "6.5"
+  },
   "main": "dist/main.js",
   "renderer": "dist/renderer.js",
-  "lens": {
-    "name": "team-extension",
-    "displayName": "Team Operations Extension",
-    "description": "Custom workflows for team operations",
-    "homepage": "https://github.com/myorg/lens-team-extension"
+  "scripts": {
+    "build": "webpack --config webpack.config.js",
+    "start": "npm run build -- --watch"
   },
-  "dependencies": {
+  "devDependencies": {
     "@k8slens/extensions": "^6.5.0"
   }
 }
@@ -66,14 +70,12 @@ Update your `package.json` with extension metadata:
 Let's create an extension that adds a custom dashboard showing the health status of all your team's applications across namespaces:
 
 ```typescript
-// src/renderer.tsx
+// renderer.tsx
 import { Renderer } from "@k8slens/extensions";
 import React from "react";
 
 const {
-  Component: { Icon, SubTitle, Table },
-  K8sApi,
-  Navigation,
+  Component: { Icon, SubTitle, Table, TableRow, TableCell },
 } = Renderer;
 
 // Define your custom page component
@@ -89,13 +91,10 @@ class TeamDashboard extends React.Component {
 
   async loadDeployments() {
     try {
-      const deploymentsApi = Renderer.K8sApi.forCluster(
-        Renderer.Catalog.activeCluster,
-        Renderer.K8sApi.Deployment
-      );
+      const deploymentsApi = Renderer.K8sApi.deploymentApi;
 
       // Get all deployments
-      const allDeployments = await deploymentsApi.list();
+      const allDeployments = (await deploymentsApi.list({ namespace: "" })) ?? [];
 
       // Filter for team deployments (example: using label selector)
       const teamDeployments = allDeployments.filter((dep) =>
@@ -154,26 +153,7 @@ class TeamDashboard extends React.Component {
   }
 
   async restartDeployment(namespace, name) {
-    const deploymentsApi = Renderer.K8sApi.forCluster(
-      Renderer.Catalog.activeCluster,
-      Renderer.K8sApi.Deployment
-    );
-
-    // Trigger a rollout restart by updating an annotation
-    const deployment = await deploymentsApi.get({ namespace, name });
-    const patch = {
-      spec: {
-        template: {
-          metadata: {
-            annotations: {
-              "kubectl.kubernetes.io/restartedAt": new Date().toISOString(),
-            },
-          },
-        },
-      },
-    };
-
-    await deploymentsApi.patch({ namespace, name }, patch);
+    await Renderer.K8sApi.deploymentApi.restart({ namespace, name });
     await this.loadDeployments(); // Reload data
   }
 
@@ -189,30 +169,14 @@ class TeamDashboard extends React.Component {
         <SubTitle title="Team Platform Deployments" />
         <Table
           items={deployments}
-          columns={[
-            {
-              title: "Health",
-              render: (item) => this.getHealthIcon(item.health),
-            },
-            {
-              title: "Name",
-              render: (item) => item.name,
-            },
-            {
-              title: "Namespace",
-              render: (item) => item.namespace,
-            },
-            {
-              title: "Status",
-              render: (item) => `${item.available}/${item.replicas} available`,
-            },
-            {
-              title: "Age",
-              render: (item) => item.age,
-            },
-            {
-              title: "Actions",
-              render: (item) => (
+          renderRow={(item) => (
+            <TableRow key={`${item.namespace}/${item.name}`} nowrap>
+              <TableCell>{this.getHealthIcon(item.health)}</TableCell>
+              <TableCell>{item.name}</TableCell>
+              <TableCell>{item.namespace}</TableCell>
+              <TableCell>{`${item.available}/${item.replicas} available`}</TableCell>
+              <TableCell>{item.age}</TableCell>
+              <TableCell>
                 <button
                   onClick={() =>
                     this.restartDeployment(item.namespace, item.name)
@@ -220,9 +184,9 @@ class TeamDashboard extends React.Component {
                 >
                   Restart
                 </button>
-              ),
-            },
-          ]}
+              </TableCell>
+            </TableRow>
+          )}
         />
       </div>
     );
@@ -257,10 +221,20 @@ export default class TeamExtension extends Renderer.LensExtension {
 Extend Lens to work with your custom Kubernetes resources:
 
 ```typescript
-// src/main.tsx
-import { Main } from "@k8slens/extensions";
+// renderer.tsx
+import { Renderer } from "@k8slens/extensions";
 
-export default class TeamExtensionMain extends Main.LensExtension {
+class ApplicationSpec extends Renderer.K8sApi.KubeObject {
+  static kind = "ApplicationSpec";
+  static namespaced = true;
+  static apiBase = "/apis/platform.myorg.com/v1/applicationspecs";
+}
+
+const applicationSpecApi = new Renderer.K8sApi.KubeApi({
+  objectConstructor: ApplicationSpec,
+});
+
+export default class TeamExtension extends Renderer.LensExtension {
   async onActivate() {
     console.log("Team extension activated");
 
@@ -269,28 +243,22 @@ export default class TeamExtensionMain extends Main.LensExtension {
   }
 
   watchCustomResources() {
-    // Watch for ApplicationSpec CRD instances
-    const store = Main.K8sApi.apiManager.getStore(
-      Main.K8sApi.apiBase.createKubeObject({
-        apiVersion: "platform.myorg.com/v1",
-        kind: "ApplicationSpec",
-      })
-    );
+    // Watch for ApplicationSpec CRD instances across all namespaces
+    applicationSpecApi.watch({
+      namespace: "",
+      callback: (event) => {
+        if (!event || event.type === "ERROR") {
+          return;
+        }
 
-    if (store) {
-      store.subscribe(() => {
-        const apps = store.items;
-        console.log(`Found ${apps.length} ApplicationSpec resources`);
+        const app = new ApplicationSpec(event.object);
 
-        // Perform custom logic based on CRD state
-        apps.forEach((app) => {
-          if (app.status?.health === "degraded") {
-            // Send notification or trigger automation
-            this.notifyDegradedApp(app);
-          }
-        });
-      });
-    }
+        if (app.status?.health === "degraded") {
+          // Send notification or trigger automation
+          this.notifyDegradedApp(app);
+        }
+      },
+    });
   }
 
   notifyDegradedApp(app) {
@@ -307,7 +275,14 @@ export default class TeamExtensionMain extends Main.LensExtension {
 Add custom actions to resource context menus:
 
 ```typescript
-// src/renderer.tsx
+// renderer.tsx
+import { Renderer } from "@k8slens/extensions";
+import React from "react";
+
+const {
+  Component: { Icon, MenuItem, Notifications },
+} = Renderer;
+
 export default class TeamExtension extends Renderer.LensExtension {
   kubeObjectMenuItems = [
     {
@@ -318,12 +293,10 @@ export default class TeamExtension extends Renderer.LensExtension {
           const { object } = props;
 
           return (
-            <Renderer.Component.MenuItem
-              onClick={() => this.analyzeDeployment(object)}
-            >
+            <MenuItem onClick={() => this.analyzeDeployment(object)}>
               <Icon material="assessment" />
               <span>Analyze Performance</span>
-            </Renderer.Component.MenuItem>
+            </MenuItem>
           );
         },
       },
@@ -335,9 +308,7 @@ export default class TeamExtension extends Renderer.LensExtension {
     const metrics = await this.fetchMetrics(deployment);
 
     // Display analysis in custom modal
-    Renderer.Component.Notifications.ok(
-      `CPU: ${metrics.cpu}%, Memory: ${metrics.memory}%`
-    );
+    Notifications.ok(`Prometheus samples: ${metrics.samples}`);
   }
 
   async fetchMetrics(deployment) {
@@ -352,9 +323,9 @@ export default class TeamExtension extends Renderer.LensExtension {
     );
 
     const data = await response.json();
+
     return {
-      cpu: this.calculateCPU(data),
-      memory: this.calculateMemory(data),
+      samples: data.data?.result?.length ?? 0,
     };
   }
 }
@@ -369,7 +340,7 @@ npm run build
 npm pack
 ```
 
-Install the extension in Lens:
+Install the extension in a Lens Desktop build that supports extensions:
 
 1. Open Lens Desktop
 2. Navigate to File > Extensions (or press Cmd/Ctrl + Shift + E)
@@ -379,35 +350,39 @@ Install the extension in Lens:
 For development, use the dev mode:
 
 ```bash
-npm run dev
+npm start
 ```
 
-Then add the development path in Lens Extensions settings.
+If you did not let the generator create a symlink, add your development folder under `~/.k8slens/extensions`.
 
 ## Integrating with External Systems
 
 Create integrations with your existing tooling:
 
 ```typescript
-// src/main.tsx
+// main.ts
+import { Main } from "@k8slens/extensions";
+
 export default class TeamExtensionMain extends Main.LensExtension {
   async onActivate() {
-    // Register API endpoint for webhooks
-    this.registerWebhook();
+    // Start listening for deployment changes
+    this.watchDeployments();
   }
 
-  registerWebhook() {
+  watchDeployments() {
     // Example: Listen for deployment events
-    const deploymentStore = Main.K8sApi.apiManager.getStore(
-      Main.K8sApi.Deployment
-    );
+    const deploymentApi = new Main.K8sApi.DeploymentApi();
 
-    deploymentStore?.subscribe(() => {
-      deploymentStore.items.forEach((deployment) => {
-        if (this.isNewDeployment(deployment)) {
-          this.sendToSlack(deployment);
+    deploymentApi.watch({
+      namespace: "",
+      callback: (event) => {
+        if (!event || event.type !== "ADDED") {
+          return;
         }
-      });
+
+        const deployment = new Main.K8sApi.Deployment(event.object);
+        this.sendToSlack(deployment);
+      },
     });
   }
 
@@ -453,7 +428,9 @@ npm publish --registry https://npm.myorg.com
 Users can then install with:
 
 ```bash
-lens --install-extension @myorg/lens-team-extension
+npm view lens-team-extension dist.tarball
 ```
+
+Give the tarball URL to Lens when installing the extension from the Extensions page.
 
 Custom Lens extensions transform the Kubernetes IDE into a platform that matches your exact workflow. Start with simple dashboards and gradually add automation, integrations, and team-specific features as your needs evolve.
