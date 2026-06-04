@@ -22,7 +22,7 @@ The main CRDs for routing configuration are:
 
 **ApisixPluginConfig** - Groups plugins for reuse across multiple routes.
 
-These CRDs translate to APISIX configuration in etcd, providing a Kubernetes-native management experience.
+These CRDs translate to APISIX configuration through the APISIX Ingress Controller, providing a Kubernetes-native management experience.
 
 ## Creating Basic Routes
 
@@ -235,7 +235,7 @@ Define upstream configuration with health checks:
 apiVersion: apisix.apache.org/v2
 kind: ApisixUpstream
 metadata:
-  name: backend-upstream
+  name: backend-service
   namespace: default
 spec:
   loadbalancer:
@@ -268,7 +268,7 @@ spec:
         tcpFailures: 3
 ```
 
-Reference upstream in routes:
+Reference the configured upstream by routing to the matching service:
 
 ```yaml
 apiVersion: apisix.apache.org/v2
@@ -282,7 +282,6 @@ spec:
     match:
       paths:
       - /api/*
-    upstreamName: backend-upstream
     backends:
     - serviceName: backend-service
       servicePort: 8080
@@ -306,9 +305,9 @@ spec:
     key: X-Session-ID
 ```
 
-## Weighted Round Robin
+## Weighted Subset Routing
 
-Distribute traffic with weights:
+Distribute traffic across labeled service subsets with weights:
 
 ```yaml
 apiVersion: v1
@@ -339,11 +338,32 @@ spec:
   - name: v2
     labels:
       version: v2
+---
+apiVersion: apisix.apache.org/v2
+kind: ApisixRoute
+metadata:
+  name: weighted-route
+  namespace: default
+spec:
+  http:
+  - name: weighted-api
+    match:
+      paths:
+      - /api/*
+    backends:
+    - serviceName: backend-weighted
+      servicePort: 8080
+      subset: v1
+      weight: 80
+    - serviceName: backend-weighted
+      servicePort: 8080
+      subset: v2
+      weight: 20
 ```
 
-## Retries and Circuit Breaking
+## Retries and Health Check Failover
 
-Configure retry logic and circuit breakers:
+Configure retry logic and health check failover:
 
 ```yaml
 # resilience-upstream.yaml
@@ -362,7 +382,7 @@ spec:
   scheme: http
   passHost: pass
 
-  # Health check for circuit breaking behavior
+  # Health check configuration for bypassing unhealthy backends
   healthCheck:
     active:
       type: http
@@ -475,4 +495,4 @@ kubectl get apisixupstream -o yaml
 
 ## Conclusion
 
-APISIX's Kubernetes CRDs provide declarative, GitOps-friendly API management that integrates naturally with Kubernetes workflows. The ApisixRoute and ApisixUpstream resources enable sophisticated traffic management including canary deployments, A/B testing, and circuit breaking without manual Admin API calls. By representing routing configuration as Kubernetes objects, teams gain version control, automated deployment pipelines, and consistency across environments while leveraging APISIX's performance and feature-rich plugin ecosystem.
+APISIX's Kubernetes CRDs provide declarative, GitOps-friendly API management that integrates naturally with Kubernetes workflows. The ApisixRoute and ApisixUpstream resources enable sophisticated traffic management including canary deployments, A/B testing, and health check failover without manual Admin API calls. By representing routing configuration as Kubernetes objects, teams gain version control, automated deployment pipelines, and consistency across environments while leveraging APISIX's performance and feature-rich plugin ecosystem.
