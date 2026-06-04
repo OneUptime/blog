@@ -59,12 +59,16 @@ apiVersion: v1
 kind: Service
 metadata:
   name: api-stable
+  labels:
+    app: api
+    version: stable
 spec:
   selector:
     app: api
     version: stable
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
 ---
 # Experimental version
@@ -96,12 +100,16 @@ apiVersion: v1
 kind: Service
 metadata:
   name: api-experiment
+  labels:
+    app: api
+    version: experiment
 spec:
   selector:
     app: api
     version: experiment
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
 ```
 
@@ -305,23 +313,9 @@ spec:
         port:
           number: 80
       weight: 10
----
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: api-versions
-spec:
-  host: api
-  subsets:
-  - name: stable
-    labels:
-      version: stable
-  - name: experiment
-    labels:
-      version: experiment
 ```
 
-Istio also provides automatic retry logic, circuit breaking, and detailed metrics for each version.
+Istio can also provide retry logic, circuit breaking, and detailed metrics for each version.
 
 ## Monitoring A/B Test Results
 
@@ -338,7 +332,8 @@ spec:
     matchLabels:
       app: api
   endpoints:
-  - port: metrics
+  - port: http
+    path: /metrics
     interval: 30s
     relabelings:
     - sourceLabels: [__meta_kubernetes_pod_label_version]
@@ -349,13 +344,13 @@ Query metrics in Prometheus:
 
 ```promql
 # Compare error rates between versions
-rate(http_requests_total{status=~"5.."}[5m])
+sum by (version) (rate(http_requests_total{status=~"5.."}[5m]))
   /
-rate(http_requests_total[5m])
+sum by (version) (rate(http_requests_total[5m]))
 
 # Compare response times
 histogram_quantile(0.95,
-  rate(http_request_duration_seconds_bucket[5m])
+  sum by (version, le) (rate(http_request_duration_seconds_bucket[5m]))
 )
 ```
 
@@ -441,7 +436,7 @@ app.post('/api/login', async (req, res) => {
   // Determine experiment group
   const hash = simpleHash(user.id);
   if (hash % 100 < 10) {
-    res.cookie('experiment_group', 'beta', {
+    res.cookie('experiment_group', 'always', {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       httpOnly: true,
       secure: true
@@ -480,8 +475,8 @@ spec:
             - -c
             - |
               # Query error rates
-              STABLE_ERRORS=$(curl -s "$PROMETHEUS_URL/api/v1/query?query=rate(http_requests_total{status=~\"5..\",version=\"stable\"}[5m])/rate(http_requests_total{version=\"stable\"}[5m])" | jq -r '.data.result[0].value[1]')
-              EXPERIMENT_ERRORS=$(curl -s "$PROMETHEUS_URL/api/v1/query?query=rate(http_requests_total{status=~\"5..\",version=\"experiment\"}[5m])/rate(http_requests_total{version=\"experiment\"}[5m])" | jq -r '.data.result[0].value[1]')
+              STABLE_ERRORS=$(curl -s "$PROMETHEUS_URL/api/v1/query?query=sum(rate(http_requests_total{status=~\"5..\",version=\"stable\"}[5m]))/sum(rate(http_requests_total{version=\"stable\"}[5m]))" | jq -r '.data.result[0].value[1]')
+              EXPERIMENT_ERRORS=$(curl -s "$PROMETHEUS_URL/api/v1/query?query=sum(rate(http_requests_total{status=~\"5..\",version=\"experiment\"}[5m]))/sum(rate(http_requests_total{version=\"experiment\"}[5m]))" | jq -r '.data.result[0].value[1]')
 
               # Compare error rates
               if (( $(echo "$EXPERIMENT_ERRORS > $STABLE_ERRORS + $ERROR_RATE_THRESHOLD" | bc -l) )); then
