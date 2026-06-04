@@ -21,9 +21,11 @@ The kubelet monitors these resources for eviction decisions:
 - **nodefs.inodesFree**: Available inodes on node root filesystem
 - **imagefs.available**: Available disk space on image filesystem (if separate)
 - **imagefs.inodesFree**: Available inodes on image filesystem
+- **containerfs.available**: Available disk space on container filesystem (if separate and supported)
+- **containerfs.inodesFree**: Available inodes on container filesystem (if separate and supported)
 - **pid.available**: Available process IDs
 
-Each signal can have both hard and soft thresholds.
+Each signal can have both hard and soft thresholds, except that custom `containerfs` thresholds are not supported and are derived from `nodefs` or `imagefs` by kubelet.
 
 ## Difference Between Hard and Soft Eviction
 
@@ -35,7 +37,7 @@ Each signal can have both hard and soft thresholds.
 
 **Soft eviction:**
 - Requires threshold violation for configured grace period
-- Honors pod termination grace periods
+- Uses the configured maximum pod grace period for eviction termination
 - Used for gradual resource degradation
 - Allows time for pods to shut down gracefully
 
@@ -63,11 +65,13 @@ Create kubelet configuration with hard thresholds:
 # /var/lib/kubelet/config.yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
+mergeDefaultEvictionSettings: true
 evictionHard:
   memory.available: "500Mi"
   nodefs.available: "10%"
   nodefs.inodesFree: "5%"
   imagefs.available: "15%"
+  imagefs.inodesFree: "5%"
   pid.available: "5%"
 ```
 
@@ -76,7 +80,10 @@ These thresholds trigger immediate eviction:
 - When node filesystem drops below 10% free
 - When inodes drop below 5% free
 - When image filesystem drops below 15% free
+- When image filesystem inodes drop below 5% free
 - When available PIDs drop below 5%
+
+If you override any `evictionHard` value, provide all hard thresholds you rely on, or set `mergeDefaultEvictionSettings: true` so unspecified thresholds inherit their defaults.
 
 Apply configuration:
 
@@ -118,7 +125,7 @@ evictionMaxPodGracePeriod: 120
 Soft eviction logic:
 1. When memory.available drops below 1.5Gi, start grace period timer
 2. If still below threshold after 2 minutes, begin evicting pods
-3. Each pod gets up to 120 seconds to terminate gracefully
+3. Each pod gets up to the lesser of its `terminationGracePeriodSeconds` and 120 seconds to terminate gracefully
 
 ## Setting Eviction Pressure Transition Period
 
@@ -130,7 +137,7 @@ evictionPressureTransitionPeriod: 5m
 
 This prevents flapping:
 - Node enters MemoryPressure when threshold crossed
-- Kubelet stops scheduling new pods to node
+- Kubelet reports the pressure condition, and the control plane maps it to a taint that keeps new pods off the node
 - Even after eviction frees resources, MemoryPressure persists for 5 minutes
 - Prevents rapid scheduling/eviction cycles
 
@@ -179,7 +186,7 @@ kubectl label nodes node-small size=small
 kubectl label nodes node-large size=large
 ```
 
-Deploy kubelet config via DaemonSet with node selectors:
+Store node-specific kubelet config templates for your node provisioning or kubeadm automation:
 
 ```yaml
 # small-node-kubelet-config.yaml
@@ -192,6 +199,7 @@ data:
   kubelet-config.yaml: |
     apiVersion: kubelet.config.k8s.io/v1beta1
     kind: KubeletConfiguration
+    mergeDefaultEvictionSettings: true
     evictionHard:
       memory.available: "500Mi"
       nodefs.available: "10%"
@@ -215,14 +223,14 @@ kubectl get events --all-namespaces --field-selector reason=Evicted
 kubectl get events --all-namespaces --watch | grep Evicted
 
 # Check node conditions
-kubectl get nodes -o custom-columns=NAME:.metadata.name,MEMORY:.status.conditions[?\(@.type==\'MemoryPressure\'\)].status,DISK:.status.conditions[?\(@.type==\'DiskPressure\'\)].status
+kubectl get nodes -o custom-columns='NAME:.metadata.name,MEMORY:.status.conditions[?(@.type=="MemoryPressure")].status,DISK:.status.conditions[?(@.type=="DiskPressure")].status'
 ```
 
 Query eviction metrics in Prometheus:
 
 ```promql
 # Eviction rate
-rate(kubelet_evictions_total[5m])
+rate(kubelet_evictions[5m])
 
 # Nodes under pressure
 kube_node_status_condition{condition="MemoryPressure",status="true"}
@@ -248,13 +256,13 @@ data:
     - name: eviction_alerts
       rules:
       - alert: HighPodEvictionRate
-        expr: rate(kubelet_evictions_total[5m]) > 1
+        expr: rate(kubelet_evictions[5m]) > 1
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "High pod eviction rate"
-          description: "Node {{ $labels.node }} evicting pods at {{ $value }} per second"
+          description: "Kubelet {{ $labels.instance }} evicting pods at {{ $value }} per second"
 
       - alert: NodeMemoryPressure
         expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
@@ -277,13 +285,13 @@ data:
 
 ## Understanding Pod Eviction Order
 
-When eviction occurs, kubelet selects pods in this order:
+When eviction occurs, kubelet ranks pods using:
 
-1. **BestEffort pods**: No resource requests or limits
-2. **Burstable pods**: Requests < limits, sorted by usage above requests
-3. **Guaranteed pods**: Requests == limits, evicted last
+1. Whether the pod's usage of the starved resource exceeds requests
+2. Pod priority
+3. The pod's usage relative to requests
 
-Within each QoS class, higher priority pods evict last.
+QoS class is a useful estimate for memory pressure, but kubelet does not use QoS class directly as the eviction ordering key. BestEffort and Burstable pods exceeding requests are typically evicted before Guaranteed pods and Burstable pods below requests, with lower-priority pods evicted first.
 
 Example eviction scenario:
 
@@ -327,8 +335,10 @@ spec:
     image: nginx
     resources:
       requests:
+        cpu: "500m"
         memory: "512Mi"
       limits:
+        cpu: "500m"
         memory: "512Mi"
 ```
 
@@ -368,7 +378,7 @@ Monitor eviction:
 kubectl apply -f memory-stress-pod.yaml
 
 # Watch node conditions
-watch kubectl describe node <node-name> | grep -A 5 "Conditions:"
+watch 'kubectl describe node <node-name> | grep -A 5 "Conditions:"'
 
 # Check if eviction occurs
 kubectl get events --watch | grep Evicted
@@ -382,6 +392,7 @@ Eviction thresholds work with system and kube reservations:
 # /var/lib/kubelet/config.yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
+mergeDefaultEvictionSettings: true
 # Reserve resources for system processes
 systemReserved:
   memory: "1Gi"
@@ -390,6 +401,8 @@ systemReserved:
 kubeReserved:
   memory: "1Gi"
   cpu: "500m"
+kubeReservedCgroup: "/kube.slice"
+systemReservedCgroup: "/system.slice"
 # Eviction thresholds
 evictionHard:
   memory.available: "500Mi"
@@ -403,6 +416,8 @@ enforceNodeAllocatable:
 - system-reserved
 - kube-reserved
 ```
+
+Adjust the cgroup names to match your node's cgroup layout. They are required when you enforce `system-reserved` or `kube-reserved`.
 
 Total reserved memory = systemReserved + kubeReserved + evictionHard = 2.5Gi
 Allocatable to pods = Node capacity - 2.5Gi
