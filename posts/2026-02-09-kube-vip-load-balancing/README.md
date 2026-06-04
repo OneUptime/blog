@@ -161,12 +161,18 @@ You can add the kube-vip static pod to an already-initialized control plane with
     ping 192.168.1.100
     ```
 
-3. Update the API server certificate SANs to include the VIP. On the first control plane node, edit the kubeadm config:
+3. Update the API server certificate SANs to include the VIP. On each control plane node, export the kubeadm ClusterConfiguration, edit it so `apiServer.certSANs` includes the VIP, then regenerate the API server serving certificate. `kubeadm init phase certs apiserver` skips generation if the existing certificate and key are still present, so move them aside first:
 
     ```bash
+    kubectl -n kube-system get configmap kubeadm-config \
+      -o jsonpath='{.data.ClusterConfiguration}' > kubeadm-config.yaml
+    # edit kubeadm-config.yaml so apiServer.certSANs includes 192.168.1.100
+
+    sudo mv /etc/kubernetes/pki/apiserver.crt /etc/kubernetes/pki/apiserver.crt.bak
+    sudo mv /etc/kubernetes/pki/apiserver.key /etc/kubernetes/pki/apiserver.key.bak
+
     sudo kubeadm init phase certs apiserver \
-      --apiserver-cert-extra-sans=192.168.1.100 \
-      --config /etc/kubernetes/kubeadm-config.yaml
+      --config kubeadm-config.yaml
     ```
 
     Then restart `kube-apiserver` (deleting the static pod forces kubelet to recreate it):
@@ -217,11 +223,23 @@ metadata:
   name: kube-vip-role
 rules:
   - apiGroups: [""]
-    resources: ["services", "endpoints", "nodes"]
-    verbs: ["list","get","watch"]
-  - apiGroups: [""]
     resources: ["services/status"]
     verbs: ["update"]
+  - apiGroups: [""]
+    resources: ["services", "endpoints"]
+    verbs: ["list","get","watch","update"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["list","get","watch","update","patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["list","get","watch","update","create"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["list","get","watch","update"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -265,7 +283,7 @@ spec:
           value: "eth0"
         - name: port
           value: "6443"
-        - name: vip_cidr
+        - name: vip_subnet
           value: "32"
         - name: svc_enable
           value: "true"
@@ -294,7 +312,11 @@ kubectl apply -f kube-vip-daemonset.yaml
 
 ### Configure IP Address Pool
 
-Create a ConfigMap defining the IP address range for LoadBalancer services:
+Install the kube-vip cloud provider, which allocates external IPs for `LoadBalancer` Services, then create a ConfigMap defining the IP address range it can use:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/kube-vip/kube-vip-cloud-provider/main/manifest/kube-vip-cloud-controller.yaml
+```
 
 ```yaml
 apiVersion: v1
@@ -303,7 +325,7 @@ metadata:
   name: kubevip
   namespace: kube-system
 data:
-  cidr-global: 192.168.1.200-192.168.1.250
+  range-global: 192.168.1.200-192.168.1.250
   # Optionally define per-namespace ranges
   cidr-development: 192.168.2.0/24
 ```
@@ -363,7 +385,7 @@ kubectl get svc nginx-lb
 # nginx-lb   LoadBalancer   10.96.100.123   192.168.1.200   80:30123/TCP   10s
 ```
 
-kube-vip automatically assigns an IP from the configured range and advertises it using ARP.
+The kube-vip cloud provider assigns an IP from the configured range, and kube-vip advertises it using ARP.
 
 ## BGP Mode for Layer 3 Load Balancing
 
@@ -419,7 +441,7 @@ spec:
         - name: bgp_peeras
           value: "65001"
         - name: bgp_peers
-          value: "192.168.1.1:65001:false"  # Multiple peers separated by commas
+          value: "192.168.1.1:65001::false"  # Multiple peers separated by commas
         securityContext:
           capabilities:
             add:
@@ -433,7 +455,7 @@ For redundancy, configure multiple BGP peers:
 
 ```yaml
         - name: bgp_peers
-          value: "192.168.1.1:65001:false,192.168.1.2:65001:false"
+          value: "192.168.1.1:65001::false,192.168.1.2:65001::false"
 ```
 
 Each kube-vip instance establishes BGP sessions with all configured peers and advertises service IPs.
@@ -489,10 +511,15 @@ spec:
 Instead of static ranges, use DHCP to obtain IPs:
 
 ```yaml
-        - name: svc_enable
-          value: "true"
-        - name: enable_dhcp
-          value: "true"
+apiVersion: v1
+kind: Service
+metadata:
+  name: dhcp-lb
+  annotations:
+    kube-vip.io/loadbalancerIPs: "0.0.0.0"
+spec:
+  type: LoadBalancer
+  # ...
 ```
 
 This is useful for dynamic environments where IP management is handled externally.
@@ -507,11 +534,11 @@ kind: Service
 metadata:
   name: custom-lb
   annotations:
-    # Set VIP to a specific interface
-    kube-vip.io/vip-interface: "eth1"
-    # Disable leader election for this service
-    kube-vip.io/vip-svc-election: "false"
-    # Hwaddr for ARP (advanced)
+    # Ignore this service during kube-vip reconciliation
+    kube-vip.io/ignore: "true"
+    # Request a specific DHCP address
+    kube-vip.io/requestedIP: "192.168.1.221"
+    # Hardware address for DHCP (advanced)
     kube-vip.io/hwaddr: "00:00:00:00:00:01"
 spec:
   type: LoadBalancer
