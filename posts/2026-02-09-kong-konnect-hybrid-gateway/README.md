@@ -18,27 +18,22 @@ The data planes connect to the control plane using mutual TLS over port 443. Con
 
 ## Setting Up Kong Konnect Control Plane
 
-Create a Konnect account and set up your control plane at https://cloud.konghq.com. After creating an account, you'll get access to the Konnect dashboard where you can create runtime groups.
+Create a Konnect account and set up your control plane at https://cloud.konghq.com. After creating an account, you'll get access to the Konnect dashboard where you can create control planes.
 
-Runtime groups organize data planes by environment (development, staging, production) or by function (public APIs, internal APIs). Each runtime group has unique certificates for mTLS authentication.
+Control planes organize data planes by environment (development, staging, production) or by function (public APIs, internal APIs). Each control plane has unique certificates for mTLS authentication.
 
 ```bash
-# Download the runtime group certificates from Konnect UI
+# Download the data plane certificates from the Konnect UI
 
-# You'll receive three files:
+# You'll receive two files:
 # - tls.crt (certificate)
 # - tls.key (private key)
-# - ca.crt (CA certificate)
 
 # Create Kubernetes secret from certificates
 kubectl create namespace kong-dp
 kubectl create secret tls kong-cluster-cert \
   --cert=tls.crt \
   --key=tls.key \
-  -n kong-dp
-
-kubectl create configmap kong-cluster-ca \
-  --from-file=ca.crt=ca.crt \
   -n kong-dp
 ```
 
@@ -50,23 +45,32 @@ Install Kong Gateway in data plane mode, connecting to your Konnect control plan
 # kong-dp-values.yaml
 image:
   repository: kong/kong-gateway
-  tag: "3.5"
+  tag: "3.14"
 
 env:
   role: data_plane
   database: "off"
+  konnect_mode: "on"
+  vitals: "off"
   cluster_mtls: pki
   cluster_control_plane: your-control-plane.us.cp0.konghq.com:443
   cluster_server_name: your-control-plane.us.cp0.konghq.com
   cluster_telemetry_endpoint: your-telemetry.us.tp0.konghq.com:443
   cluster_telemetry_server_name: your-telemetry.us.tp0.konghq.com
-  lua_ssl_trusted_certificate: /etc/secrets/kong-cluster-ca/ca.crt
+  cluster_cert: /etc/secrets/kong-cluster-cert/tls.crt
+  cluster_cert_key: /etc/secrets/kong-cluster-cert/tls.key
+  lua_ssl_trusted_certificate: system
 
 secretVolumes:
   - kong-cluster-cert
-  - kong-cluster-ca
 
 ingressController:
+  enabled: false
+
+admin:
+  enabled: false
+
+manager:
   enabled: false
 
 proxy:
@@ -161,8 +165,10 @@ Deploy data planes in multiple regions for global coverage while managing them f
 ```yaml
 # kong-dp-us-east.yaml
 env:
-  cluster_control_plane: us.cp0.konghq.com:443
-  cluster_telemetry_endpoint: us.tp0.konghq.com:443
+  cluster_control_plane: your-control-plane.us.cp0.konghq.com:443
+  cluster_server_name: your-control-plane.us.cp0.konghq.com
+  cluster_telemetry_endpoint: your-telemetry.us.tp0.konghq.com:443
+  cluster_telemetry_server_name: your-telemetry.us.tp0.konghq.com
 
 nodeSelector:
   topology.kubernetes.io/region: us-east-1
@@ -171,8 +177,10 @@ nodeSelector:
 ```yaml
 # kong-dp-eu-west.yaml
 env:
-  cluster_control_plane: us.cp0.konghq.com:443
-  cluster_telemetry_endpoint: us.tp0.konghq.com:443
+  cluster_control_plane: your-control-plane.us.cp0.konghq.com:443
+  cluster_server_name: your-control-plane.us.cp0.konghq.com
+  cluster_telemetry_endpoint: your-telemetry.us.tp0.konghq.com:443
+  cluster_telemetry_server_name: your-telemetry.us.tp0.konghq.com
 
 nodeSelector:
   topology.kubernetes.io/region: eu-west-1
@@ -221,7 +229,7 @@ curl -X POST https://us.api.konghq.com/v2/control-planes/${CONTROL_PLANE_ID}/cor
   }'
 
 # Enable request transformer for a route
-curl -X POST https://us.api.konkhq.com/v2/control-planes/${CONTROL_PLANE_ID}/core-entities/plugins \
+curl -X POST https://us.api.konghq.com/v2/control-planes/${CONTROL_PLANE_ID}/core-entities/plugins \
   -H "Authorization: Bearer ${KONNECT_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -289,13 +297,13 @@ export DECK_KONNECT_TOKEN="your-personal-access-token"
 export DECK_KONNECT_CONTROL_PLANE_NAME="production"
 
 # Validate configuration
-deck validate --konnect-control-plane-name production kong-config.yaml
+deck gateway validate --konnect-control-plane-name production kong-config.yaml
 
 # Dry run to see changes
-deck diff --konnect-control-plane-name production kong-config.yaml
+deck gateway diff --konnect-control-plane-name production kong-config.yaml
 
 # Apply configuration
-deck sync --konnect-control-plane-name production kong-config.yaml
+deck gateway sync --konnect-control-plane-name production kong-config.yaml
 ```
 
 Integrate with CI/CD:
@@ -318,7 +326,7 @@ jobs:
 
     - name: Install decK
       run: |
-        curl -sL https://github.com/kong/deck/releases/download/v1.28.0/deck_1.28.0_linux_amd64.tar.gz -o deck.tar.gz
+        curl -sL https://github.com/kong/deck/releases/download/v1.60.0/deck_1.60.0_linux_amd64.tar.gz -o deck.tar.gz
         tar -xf deck.tar.gz
         sudo mv deck /usr/local/bin/
 
@@ -326,13 +334,13 @@ jobs:
       env:
         DECK_KONNECT_TOKEN: ${{ secrets.KONNECT_TOKEN }}
       run: |
-        deck validate --konnect-control-plane-name production kong-config.yaml
+        deck gateway validate --konnect-control-plane-name production kong-config.yaml
 
     - name: Sync to Konnect
       env:
         DECK_KONNECT_TOKEN: ${{ secrets.KONNECT_TOKEN }}
       run: |
-        deck sync --konnect-control-plane-name production kong-config.yaml
+        deck gateway sync --konnect-control-plane-name production kong-config.yaml
 ```
 
 ## Monitoring and Analytics
@@ -340,9 +348,8 @@ jobs:
 Konnect provides built-in analytics for all connected data planes. View metrics in the Konnect dashboard or export them to your monitoring system.
 
 ```bash
-# Query analytics via Konnect API
-curl -X GET "https://us.api.konghq.com/v2/control-planes/${CONTROL_PLANE_ID}/analytics/reports/summary?time_range=1h" \
-  -H "Authorization: Bearer ${KONNECT_TOKEN}"
+# Query custom metrics through the Konnect Metrics API or build reports in
+# Konnect Observability Explorer for the selected control plane.
 ```
 
 Configure Prometheus metrics export from data planes:
@@ -351,7 +358,13 @@ Configure Prometheus metrics export from data planes:
 # kong-dp-values.yaml with Prometheus
 env:
   # ... other config ...
-  prometheus: "on"
+  status_listen: "0.0.0.0:8100"
+
+status:
+  enabled: true
+  http:
+    enabled: true
+    containerPort: 8100
 
 podAnnotations:
   prometheus.io/scrape: "true"
@@ -395,17 +408,14 @@ autoscaling:
 Data planes cache configurations locally. If connectivity to the control plane is lost, data planes continue processing requests with their last known configuration.
 
 ```bash
-# Test resilience by blocking control plane access
-kubectl exec -n kong-dp kong-dp-0 -- iptables -A OUTPUT -d your-control-plane.us.cp0.konghq.com -j DROP
+# Test resilience by blocking control plane access at your firewall,
+# security group, or Kubernetes egress policy layer.
 
 # Verify data plane continues serving traffic
 curl http://kong-proxy/api/users
 
 # Data plane logs will show connection errors but continue serving
-kubectl logs -n kong-dp kong-dp-0 --tail=20
-
-# Restore connectivity
-kubectl exec -n kong-dp kong-dp-0 -- iptables -D OUTPUT -d your-control-plane.us.cp0.konghq.com -j DROP
+kubectl logs -n kong-dp deployment/kong-dp-kong --tail=20
 ```
 
 ## Security Considerations
@@ -436,7 +446,7 @@ kubectl create secret tls kong-cluster-cert \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Rolling restart to pick up new certificates
-kubectl rollout restart deployment/kong-dp -n kong-dp
+kubectl rollout restart deployment/kong-dp-kong -n kong-dp
 ```
 
 ## Conclusion
