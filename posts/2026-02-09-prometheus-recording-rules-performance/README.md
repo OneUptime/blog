@@ -94,7 +94,7 @@ Examples:
 rules:
   # Instance level
   - record: instance:node_cpu_utilization:rate5m
-    expr: rate(node_cpu_seconds_total[5m])
+    expr: sum without(cpu, mode) (rate(node_cpu_seconds_total{mode!="idle"}[5m]))
 
   # Job level
   - record: job:http_requests:rate5m
@@ -133,12 +133,10 @@ spec:
               rate(http_requests_total[5m])
             )
 
-        - record: pod:http_request_duration:p95
+        - record: pod:http_request_duration_seconds_bucket:rate5m
           expr: |
-            histogram_quantile(0.95,
-              sum by (namespace, pod, le) (
-                rate(http_request_duration_seconds_bucket[5m])
-              )
+            sum by (namespace, pod, le) (
+              rate(http_request_duration_seconds_bucket[5m])
             )
 
     - name: http-metrics-layer2
@@ -156,10 +154,12 @@ spec:
 
         - record: service:http_request_duration:p95
           expr: |
-            avg by (namespace, service) (
-              label_replace(
-                pod:http_request_duration:p95,
-                "service", "$1", "pod", "(.*)-[a-z0-9]+-[a-z0-9]+"
+            histogram_quantile(0.95,
+              sum by (namespace, service, le) (
+                label_replace(
+                  pod:http_request_duration_seconds_bucket:rate5m,
+                  "service", "$1", "pod", "(.*)-[a-z0-9]+-[a-z0-9]+"
+                )
               )
             )
 
@@ -224,7 +224,10 @@ spec:
           rate(http_requests_total[5m])
         )
         / count by (namespace, service) (
-          kube_pod_info{pod=~".*"}
+          label_replace(
+            kube_pod_info,
+            "service", "$1", "pod", "(.*)-[a-z0-9]+-[a-z0-9]+"
+          )
         )
 ```
 
@@ -335,7 +338,7 @@ Resource Utilization
     # Error budget remaining (30 day window)
     - record: slo:error_budget:remaining
       expr: |
-        1 - (
+        (
           (1 - 0.999)  # SLO target
           - (
             1 - (
@@ -369,7 +372,7 @@ groups:
     interval: 15s
     rules:
       - record: instance:cpu:rate1m
-        expr: rate(node_cpu_seconds_total[1m])
+        expr: sum without(cpu, mode) (rate(node_cpu_seconds_total{mode!="idle"}[1m]))
 
   # Medium-frequency metrics (most use cases)
   - name: medium-frequency
