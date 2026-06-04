@@ -8,7 +8,7 @@ Description: Configure a Docker registry as a read-only mirror and pull-through 
 
 ---
 
-Every time a developer runs `docker pull`, the image gets downloaded from a remote registry. In organizations with hundreds of developers or CI/CD pipelines, this means the same images get pulled thousands of times over the internet. A local registry mirror acts as a pull-through cache: the first pull fetches from the upstream registry, and every subsequent pull serves the image from the local cache. This reduces bandwidth, speeds up builds, and provides resilience when the upstream registry has an outage.
+When a developer runs `docker pull` for an image the Docker daemon does not already have, the image is downloaded from a remote registry. In organizations with hundreds of developers or CI/CD pipelines, this means the same images get pulled thousands of times over the internet. A local registry mirror acts as a pull-through cache: the first pull fetches from the upstream registry, and subsequent pulls can serve cached content from the local cache. This reduces bandwidth, speeds up builds, and provides some resilience for already-cached content when the upstream registry has an outage.
 
 This guide covers setting up a Docker registry mirror, configuring clients to use it, and managing the cache for long-term operation.
 
@@ -19,6 +19,8 @@ A pull-through cache sits between your Docker clients and the upstream registry.
 1. The mirror checks if it has the image cached locally
 2. If yes, it serves it directly (fast, no internet needed)
 3. If no, it fetches it from the upstream registry, caches it, and serves it to the client
+
+For tag-based pulls, the registry checks the upstream registry to make sure it has the latest version of the tag.
 
 The mirror is read-only from the client's perspective. You cannot push images to it. It only caches images pulled through it.
 
@@ -66,7 +68,7 @@ services:
     environment:
       # Enable pull-through cache mode pointing to Docker Hub
       REGISTRY_PROXY_REMOTEURL: https://registry-1.docker.io
-      # Set a generous storage limit
+      # Enable deletes so the proxy cache scheduler can clean old entries
       REGISTRY_STORAGE_DELETE_ENABLED: "true"
     volumes:
       # Persistent storage for cached images
@@ -184,58 +186,13 @@ curl http://mirror-host:5000/v2/_catalog
 
 ## Mirroring Multiple Registries
 
-The built-in pull-through cache only supports one upstream registry per mirror instance. To mirror multiple registries, run separate mirror instances.
+The Docker Engine `registry-mirrors` setting and Docker's official registry mirror documentation are for Docker Hub. The built-in pull-through cache only supports one upstream, and Docker's documentation states that only the central Docker Hub can be mirrored this way. Do not run additional `registry:2` instances for GHCR or Quay.io and expect Docker clients to use them transparently through `registry-mirrors`.
 
-```yaml
-# docker-compose.yml - Multiple registry mirrors
-version: "3.8"
-
-services:
-  # Mirror for Docker Hub
-  dockerhub-mirror:
-    image: registry:2
-    container_name: dockerhub-mirror
-    ports:
-      - "5000:5000"
-    environment:
-      REGISTRY_PROXY_REMOTEURL: https://registry-1.docker.io
-    volumes:
-      - dockerhub_cache:/var/lib/registry
-    restart: unless-stopped
-
-  # Mirror for GitHub Container Registry
-  ghcr-mirror:
-    image: registry:2
-    container_name: ghcr-mirror
-    ports:
-      - "5001:5000"
-    environment:
-      REGISTRY_PROXY_REMOTEURL: https://ghcr.io
-    volumes:
-      - ghcr_cache:/var/lib/registry
-    restart: unless-stopped
-
-  # Mirror for Quay.io
-  quay-mirror:
-    image: registry:2
-    container_name: quay-mirror
-    ports:
-      - "5002:5000"
-    environment:
-      REGISTRY_PROXY_REMOTEURL: https://quay.io
-    volumes:
-      - quay_cache:/var/lib/registry
-    restart: unless-stopped
-
-volumes:
-  dockerhub_cache:
-  ghcr_cache:
-  quay_cache:
-```
+To cache other registries, use a registry product or runtime configuration that explicitly supports proxy caching for those registries, and configure clients to pull from the cache address or use registry-specific mirror settings where your runtime supports them.
 
 ## Adding TLS to the Mirror
 
-For production use, serve the mirror over HTTPS.
+For production use, serve the mirror over HTTPS with a certificate trusted by your Docker clients.
 
 ```yaml
 # config-tls.yml - Mirror configuration with TLS
@@ -279,7 +236,7 @@ Update the compose file to mount certificates.
 
 ## Authenticating to Docker Hub
 
-Docker Hub rate limits anonymous pulls to 100 per 6 hours and authenticated pulls to 200. Adding credentials to the mirror lets it authenticate and get a higher limit.
+Docker Hub rate limits anonymous pulls to 100 per 6 hours. Authenticated Docker Personal users get 200 pulls per 6 hours, while authenticated Pro, Team, and Business users have no pull rate limit under the current Docker Hub usage policy. Adding credentials to the mirror lets it authenticate and get the limit for that account.
 
 ```yaml
 # config.yml - Mirror with Docker Hub authentication
@@ -306,23 +263,27 @@ curl -s http://localhost:5000/v2/_catalog | python3 -m json.tool
 curl -s http://localhost:5000/v2/library/nginx/tags/list | python3 -m json.tool
 ```
 
-Set up automated garbage collection with a scheduled cleanup script.
+The pull-through cache has its own scheduler for stale cached content, but you can also run garbage collection after deletions or untagged manifests. Garbage collection should run while the registry is stopped or in read-only mode.
 
 ```bash
 #!/bin/bash
-# cleanup-mirror.sh - Remove old cached images and run garbage collection
+# cleanup-mirror.sh - Stop the mirror and run garbage collection
 
-REGISTRY_CONTAINER="registry-mirror"
-MAX_AGE_DAYS=30
+REGISTRY_SERVICE="registry-mirror"
 
 echo "Starting cache cleanup at $(date)"
 
-# Run garbage collection inside the registry container
-docker exec ${REGISTRY_CONTAINER} /bin/registry garbage-collect \
+# Stop the registry before garbage collection to avoid corrupting uploads
+docker compose stop ${REGISTRY_SERVICE}
+
+# Run garbage collection using the same service config and volume
+docker compose run --rm --no-deps ${REGISTRY_SERVICE} garbage-collect \
   /etc/docker/registry/config.yml --delete-untagged
 
+docker compose up -d ${REGISTRY_SERVICE}
+
 # Log the current cache size
-CACHE_SIZE=$(docker exec ${REGISTRY_CONTAINER} du -sh /var/lib/registry | awk '{print $1}')
+CACHE_SIZE=$(docker compose exec -T ${REGISTRY_SERVICE} du -sh /var/lib/registry | awk '{print $1}')
 echo "Cache size after cleanup: ${CACHE_SIZE}"
 ```
 
@@ -353,11 +314,11 @@ Key metrics to watch:
 
 - `registry_proxy_hits_total` - number of cache hits
 - `registry_proxy_misses_total` - number of cache misses
-- `registry_storage_blob_upload_bytes_total` - amount of data cached
+- `registry_proxy_pulled_bytes_total` - amount of data pulled from the upstream registry
 
 ## Handling Mirror Failures
 
-If the mirror goes down, Docker clients fall back to pulling directly from the upstream registry. This happens transparently. However, builds will be slower and consume external bandwidth until the mirror is restored.
+If the mirror goes down, Docker clients configured with `registry-mirrors` can fall back to pulling directly from Docker Hub. However, builds will be slower and consume external bandwidth until the mirror is restored.
 
 ```bash
 # Quick health check for the mirror
@@ -369,4 +330,4 @@ docker inspect registry-mirror --format '{{.State.Status}}'
 
 ## Conclusion
 
-A Docker registry mirror is one of the simplest infrastructure improvements you can make for a team that works heavily with containers. It reduces external bandwidth, speeds up image pulls, provides resilience against upstream outages, and helps stay within Docker Hub rate limits. The setup takes minutes with Docker Compose, and the ongoing maintenance is minimal. Start with a single Docker Hub mirror and expand to cover other registries as your usage grows.
+A Docker registry mirror is one of the simplest infrastructure improvements you can make for a team that works heavily with containers. It reduces external bandwidth, speeds up image pulls, provides resilience for cached content, and helps stay within Docker Hub rate limits. The setup takes minutes with Docker Compose, and the ongoing maintenance is minimal. Start with a single Docker Hub mirror and use registry-specific cache solutions for other registries as your usage grows.
