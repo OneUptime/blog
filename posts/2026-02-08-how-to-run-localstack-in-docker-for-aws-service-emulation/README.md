@@ -43,8 +43,6 @@ For a more manageable configuration:
 
 ```yaml
 # docker-compose.yml - LocalStack with persistent storage
-version: "3.8"
-
 services:
   localstack:
     image: localstack/localstack:latest
@@ -57,12 +55,8 @@ services:
       - SERVICES=s3,sqs,sns,dynamodb,lambda,apigateway,iam,secretsmanager
       # Enable debug logging
       - DEBUG=0
-      # Lambda executor type
-      - LAMBDA_EXECUTOR=docker
       # Persist data across restarts
       - PERSISTENCE=1
-      # Default region
-      - DEFAULT_REGION=us-east-1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - localstack-data:/var/lib/localstack
@@ -159,14 +153,17 @@ Set up a message queue with a notification topic:
 
 ```bash
 # Create an SQS queue
-awslocal sqs create-queue --queue-name order-processing
+QUEUE_URL=$(awslocal sqs create-queue \
+  --queue-name order-processing \
+  --query 'QueueUrl' \
+  --output text)
 
 # Create an SNS topic
 awslocal sns create-topic --name order-events
 
 # Subscribe the SQS queue to the SNS topic
 QUEUE_ARN=$(awslocal sqs get-queue-attributes \
-  --queue-url http://localhost:4566/000000000000/order-processing \
+  --queue-url $QUEUE_URL \
   --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
 
 awslocal sns subscribe \
@@ -181,7 +178,7 @@ awslocal sns publish \
 
 # Receive the message from the queue
 awslocal sqs receive-message \
-  --queue-url http://localhost:4566/000000000000/order-processing
+  --queue-url $QUEUE_URL
 ```
 
 ## Deploying Lambda Functions
@@ -218,6 +215,7 @@ awslocal lambda create-function \
 # Invoke the function
 awslocal lambda invoke \
   --function-name hello-function \
+  --cli-binary-format raw-in-base64-out \
   --payload '{"name": "LocalStack"}' \
   output.json
 
