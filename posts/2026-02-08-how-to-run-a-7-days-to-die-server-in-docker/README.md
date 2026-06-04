@@ -10,7 +10,7 @@ Description: Deploy a dedicated 7 Days to Die server in Docker with world custom
 
 7 Days to Die combines survival horror, tower defense, and crafting in a zombie apocalypse setting. Every seven in-game days, a blood moon horde descends on players, making base building and resource management critical. Running a dedicated server lets your group maintain a persistent world where players can log in and out freely, and the game keeps running.
 
-Docker takes the pain out of managing a 7 Days to Die server. Instead of installing SteamCMD, managing library dependencies, and editing XML configuration files by hand, you configure everything through Docker Compose and let the container handle the rest.
+Docker takes the pain out of managing a 7 Days to Die server. Instead of installing SteamCMD and managing library dependencies by hand, you use Docker Compose for the container lifecycle and edit the generated server XML files from a mounted host directory.
 
 ## Prerequisites
 
@@ -34,8 +34,6 @@ Here is a complete Docker Compose setup for a 7 Days to Die server.
 
 ```yaml
 # docker-compose.yml - 7 Days to Die dedicated server
-version: "3.8"
-
 services:
   7dtd:
     image: vinanrra/7dtd-server:latest
@@ -49,78 +47,82 @@ services:
       - "26902:26902/udp"
       # Telnet port for server console
       - "8081:8081/tcp"
-      # Web dashboard (Allocs server fixes)
+      # Web admin
       - "8080:8080/tcp"
+      # Alloc Fixes map GUI, if enabled
+      - "8082:8082/tcp"
     environment:
-      # Start mode: 0 = update and start, 1 = just update, 2 = just start
-      START_MODE: 0
+      # Start mode: 1 = start, 3 = update and start
+      START_MODE: 1
 
-      # Server version: latest, stable, or a specific build number
-      VERSION: "latest"
+      # Server branch/version
+      VERSION: "stable"
 
-      # Server configuration
-      SERVER_NAME: "Docker 7DTD Server"
-      SERVER_PASSWORD: ""
-      SERVER_PORT: 26900
-      MAX_PLAYERS: 8
-
-      # World settings
-      WORLD_GEN_SEED: "DockerWorld"
-      WORLD_GEN_SIZE: 6144
-      GAME_WORLD: "RWG"
-      GAME_NAME: "Docker World"
-
-      # Difficulty and gameplay
-      GAME_DIFFICULTY: 2
-      GAME_MODE: "GameModeSurvival"
-
-      # Blood moon settings
-      BLOOD_MOON_FREQUENCY: 7
-      BLOOD_MOON_RANGE: 0
-      BLOOD_MOON_ENEMY_COUNT: 8
-
-      # Day/night cycle
-      DAY_NIGHT_LENGTH: 60
-      DAY_LIGHT_LENGTH: 18
-
-      # Loot and experience
-      LOOT_ABUNDANCE: 100
-      LOOT_RESPAWN_DAYS: 7
-      XP_MULTIPLIER: 100
-
-      # Zombie settings
-      ENEMY_SPAWN_MODE: "true"
-      ENEMY_DIFFICULTY: 0
-
-      # Drop on death: 0 = nothing, 1 = everything, 2 = toolbelt, 3 = backpack, 4 = delete all
-      DROP_ON_DEATH: 1
-      DROP_ON_QUIT: 0
-
-      # Telnet access for remote console
-      TELNET_ENABLED: "true"
-      TELNET_PORT: 8081
-      TELNET_PASSWORD: "telnet_pass"
-
-      # Admin settings
-      ADMIN_FILENAME: "serveradmin.xml"
+      # Match these to your host user's UID/GID
+      PUID: 1000
+      PGID: 1000
 
       # Timezone
-      TZ: "America/New_York"
+      TimeZone: "America/New_York"
+
+      # Built-in backup scheduler
+      BACKUP: "YES"
+      BACKUP_HOUR: 5
+      BACKUP_MAX: 7
 
     volumes:
-      # Server data and saves
-      - 7dtd-data:/home/sdtdserver
-      # World saves
-      - 7dtd-saves:/home/sdtdserver/.local/share/7DaysToDie
+      # World saves and generated maps
+      - ./7DaysToDie:/home/sdtdserver/.local/share/7DaysToDie/
+      # LinuxGSM configuration
+      - ./LGSM-Config:/home/sdtdserver/lgsm/config-lgsm/sdtdserver/
+      # Server files, including sdtdserver.xml and Mods
+      - ./ServerFiles:/home/sdtdserver/serverfiles/
+      # Logs and backups
+      - ./logs:/home/sdtdserver/log/
+      - ./backups:/home/sdtdserver/lgsm/backup/
+    ulimits:
+      nofile:
+        soft: 10240
+        hard: 10240
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 8G
+```
 
-volumes:
-  7dtd-data:
-  7dtd-saves:
+Gameplay settings such as server name, world generation, blood moon frequency, loot, and Telnet settings are stored in `./ServerFiles/sdtdserver.xml` after the first install. Edit the matching XML properties there, then restart the container.
+
+```xml
+<property name="ServerName" value="Docker 7DTD Server"/>
+<property name="ServerPassword" value=""/>
+<property name="ServerPort" value="26900"/>
+<property name="ServerMaxPlayerCount" value="8"/>
+
+<property name="GameWorld" value="RWG"/>
+<property name="WorldGenSeed" value="DockerWorld"/>
+<property name="WorldGenSize" value="6144"/>
+<property name="GameName" value="Docker World"/>
+<property name="GameMode" value="GameModeSurvival"/>
+
+<property name="GameDifficulty" value="2"/>
+<property name="BloodMoonFrequency" value="7"/>
+<property name="BloodMoonRange" value="0"/>
+<property name="BloodMoonEnemyCount" value="8"/>
+<property name="DayNightLength" value="60"/>
+<property name="DayLightLength" value="18"/>
+<property name="LootAbundance" value="100"/>
+<property name="LootRespawnDays" value="7"/>
+<property name="XPMultiplier" value="100"/>
+<property name="EnemySpawnMode" value="true"/>
+<property name="EnemyDifficulty" value="0"/>
+<property name="DropOnDeath" value="1"/>
+<property name="DropOnQuit" value="0"/>
+
+<property name="TelnetEnabled" value="true"/>
+<property name="TelnetPort" value="8081"/>
+<property name="TelnetPassword" value="telnet_pass"/>
+<property name="AdminFileName" value="serveradmin.xml"/>
 ```
 
 ## Starting the Server
@@ -129,7 +131,7 @@ volumes:
 # Start the server
 docker compose up -d
 
-# Follow the logs - the first startup downloads ~12GB of server files
+# Follow the logs - the first startup downloads about 12GB of server files
 docker compose logs -f 7dtd
 
 # Look for "GameServer.Init successful" to confirm the server is ready
@@ -145,7 +147,7 @@ The first startup takes a while because SteamCMD needs to download the server bi
 4. Enter your server's IP address and port 26900
 5. Enter the password if one is set
 
-For internet access, make sure port 26900 (TCP and UDP) is forwarded on your router.
+For internet access, make sure ports 26900 TCP/UDP, 26901 UDP, and 26902 UDP are forwarded on your router.
 
 ## Server Console
 
@@ -169,7 +171,7 @@ listplayers
 # Send a message to all players
 say "Blood moon is coming tonight!"
 
-# Give an item to a player
+# Give an item to a player (requires Alloc Fixes)
 give PlayerName gunHandgunT3Magnum44 1
 
 # Teleport a player
@@ -210,13 +212,13 @@ docker exec -it 7dtd-server bash
 ```
 
 ```xml
-<!-- serveradmin.xml - Admin, moderator, and whitelist configuration -->
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- serveradmin.xml - Admin, moderator, and whitelist configuration -->
 <adminTools>
-  <users>
-    <!-- Permission levels: 0 = admin, 1 = moderator, 2 = elevated player -->
+  <admins>
+    <!-- Permission levels run from 0-1000; 0 is the highest level -->
     <user platform="Steam" userid="YOUR_STEAM_ID" name="YourName" permission_level="0" />
-  </users>
+  </admins>
   <whitelist>
     <!-- Add players to the whitelist (only needed if whitelist is enabled) -->
     <user platform="Steam" userid="FRIEND_STEAM_ID" name="FriendName" />
@@ -231,40 +233,35 @@ docker exec -it 7dtd-server bash
 
 Adjust the Random World Generation settings to create different types of worlds.
 
-```yaml
-# Smaller world for fewer players
-environment:
-  WORLD_GEN_SIZE: 4096
-  WORLD_GEN_SEED: "SmallWorld"
+```xml
+<!-- Smaller world for fewer players -->
+<property name="WorldGenSize" value="4096"/>
+<property name="WorldGenSeed" value="SmallWorld"/>
 
-# Large world for many players
-environment:
-  WORLD_GEN_SIZE: 8192
-  WORLD_GEN_SEED: "BigWorld"
+<!-- Large world for many players -->
+<property name="WorldGenSize" value="8192"/>
+<property name="WorldGenSeed" value="BigWorld"/>
 ```
 
-Available world sizes: 2048, 3072, 4096, 5120, 6144, 7168, 8192. Larger worlds use more RAM and take longer to generate.
+World sizes must be multiples of 2048 between 2048 and 16384. Larger worlds use more RAM and take longer to generate.
 
 ## Blood Moon Configuration
 
 The blood moon is the defining feature of 7 Days to Die. Customize it to your preference.
 
-```yaml
-# Weekly blood moon with moderate difficulty
-environment:
-  BLOOD_MOON_FREQUENCY: 7
-  BLOOD_MOON_RANGE: 0
-  BLOOD_MOON_ENEMY_COUNT: 8
+```xml
+<!-- Weekly blood moon with moderate difficulty -->
+<property name="BloodMoonFrequency" value="7"/>
+<property name="BloodMoonRange" value="0"/>
+<property name="BloodMoonEnemyCount" value="8"/>
 
-# Frequent blood moons for intense gameplay
-environment:
-  BLOOD_MOON_FREQUENCY: 3
-  BLOOD_MOON_RANGE: 0
-  BLOOD_MOON_ENEMY_COUNT: 16
+<!-- Frequent blood moons for intense gameplay -->
+<property name="BloodMoonFrequency" value="3"/>
+<property name="BloodMoonRange" value="0"/>
+<property name="BloodMoonEnemyCount" value="16"/>
 
-# Disable blood moons for a building-focused server
-environment:
-  BLOOD_MOON_FREQUENCY: 0
+<!-- Disable blood moons for a building-focused server -->
+<property name="BloodMoonFrequency" value="0"/>
 ```
 
 ## Backup and Restore
@@ -272,15 +269,18 @@ environment:
 Protect your world with regular backups.
 
 ```bash
-# Save the world first
-docker exec -it 7dtd-server bash -c "echo 'saveworld' | telnet localhost 8081"
+# Run the container's backup script
+docker exec 7dtd-server ./scripts/server_backup.sh
 
-# Copy save files to the host
-docker cp 7dtd-server:/home/sdtdserver/.local/share/7DaysToDie/Saves ./7dtd-backup-$(date +%Y%m%d)
+# Backups are written to ./backups as tar.gz archives
 
 # Restore from a backup
 docker compose down
-docker cp ./7dtd-backup-20260101/. 7dtd-server:/home/sdtdserver/.local/share/7DaysToDie/Saves/
+mkdir -p ./restore
+tar -xzf ./backups/sdtdserver-2026-01-01-050000.tar.gz -C ./restore
+rm -rf ./7DaysToDie/*
+cp -a ./restore/home/sdtdserver/.local/share/7DaysToDie/. ./7DaysToDie/
+rm -rf ./restore
 docker compose up -d
 ```
 
@@ -292,18 +292,16 @@ Automated backup script.
 BACKUP_DIR="/backups/7dtd"
 DATE=$(date +%Y%m%d-%H%M)
 
-# Save the world
-docker exec 7dtd-server bash -c 'echo "saveworld" | telnet localhost 8081' 2>/dev/null
-sleep 10
-
 # Create the backup
+docker exec 7dtd-server ./scripts/server_backup.sh
 mkdir -p "$BACKUP_DIR"
-docker cp 7dtd-server:/home/sdtdserver/.local/share/7DaysToDie/Saves "$BACKUP_DIR/saves-$DATE"
+LATEST_BACKUP=$(ls -t ./backups/*.tar.gz | head -n 1)
+cp "$LATEST_BACKUP" "$BACKUP_DIR/sdtdserver-$DATE.tar.gz"
 
 # Remove backups older than 7 days
-find "$BACKUP_DIR" -type d -mtime +7 -exec rm -rf {} +
+find "$BACKUP_DIR" -type f -name "*.tar.gz" -mtime +7 -delete
 
-echo "Backup completed: $BACKUP_DIR/saves-$DATE"
+echo "Backup completed: $BACKUP_DIR/sdtdserver-$DATE.tar.gz"
 ```
 
 ## Mods and Modlets
@@ -319,15 +317,15 @@ mkdir -p mods
 
 # Mount the mods directory in docker-compose.yml
 # Add to volumes:
-# - ./mods:/home/sdtdserver/.local/share/7DaysToDie/Mods
+# - ./mods:/home/sdtdserver/serverfiles/Mods
 ```
 
 ## Updating the Server
 
 ```bash
-# Set START_MODE to 0 to update on startup
-# Then restart the container
-docker compose restart 7dtd
+# Set START_MODE to 3 to update on startup
+# Then recreate the container
+docker compose up -d
 
 # Or pull the latest image and recreate
 docker compose pull
@@ -339,23 +337,24 @@ docker compose logs -f 7dtd
 
 ## Performance Tips
 
-- Reduce `WORLD_GEN_SIZE` if you have limited RAM
-- Lower `BLOOD_MOON_ENEMY_COUNT` to reduce CPU load during horde nights
-- Set `DAY_NIGHT_LENGTH` to 120 for longer days (less frequent blood moons per real time)
-- Limit `MAX_PLAYERS` to match your server's capacity
+- Reduce `WorldGenSize` if you have limited RAM
+- Lower `BloodMoonEnemyCount` to reduce CPU load during horde nights
+- Set `DayNightLength` to 120 for longer days (less frequent blood moons per real time)
+- Limit `ServerMaxPlayerCount` to match your server's capacity
 
 ## Stopping and Cleaning Up
 
 ```bash
 # Save and shut down gracefully
-docker exec -it 7dtd-server bash -c 'echo "saveworld" | telnet localhost 8081'
-sleep 5
+docker exec 7dtd-server ./sdtdserver stop
 docker compose down
 
-# Remove everything including world data
-docker compose down -v
+# Remove the container and network
+docker compose down
+
+# Bind-mounted world data remains in ./7DaysToDie, ./ServerFiles, and ./backups
 ```
 
 ## Summary
 
-Docker simplifies running a 7 Days to Die dedicated server by handling the SteamCMD installation, server binary management, and process lifecycle. Configure your zombie apocalypse through environment variables, from blood moon frequency to loot abundance. With proper backups and admin tools, you can run a reliable community server that keeps the hordes coming and the bases standing.
+Docker simplifies running a 7 Days to Die dedicated server by handling the SteamCMD installation, server binary management, and process lifecycle. Configure your zombie apocalypse in `sdtdserver.xml`, from blood moon frequency to loot abundance. With proper backups and admin tools, you can run a reliable community server that keeps the hordes coming and the bases standing.
