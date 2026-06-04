@@ -14,7 +14,7 @@ In this guide, you'll configure K3s auto-deploy for disconnected edges, implemen
 
 ## Understanding K3s Auto-Deploy
 
-K3s automatically deploys manifests from `/var/lib/rancher/k3s/server/manifests/`. Any YAML files placed in this directory are automatically applied to the cluster. This works entirely offline, perfect for disconnected edge deployments.
+On server nodes, K3s automatically deploys manifests from `/var/lib/rancher/k3s/server/manifests/`. Files placed in this directory are applied to the cluster on startup and when they change. This works entirely offline as long as the referenced container images are already available to the nodes.
 
 ## Configuring K3s with Auto-Deploy
 
@@ -29,7 +29,8 @@ curl -sfL https://get.k3s.io | sh -s - server --write-kubeconfig-mode 644
 Place application manifests in the auto-deploy directory:
 
 ```bash
-sudo tee /var/lib/rancher/k3s/server/manifests/nginx-app.yaml > /dev/null <<EOF
+sudo mkdir -p /var/lib/rancher/k3s/server/manifests/edge-apps
+sudo tee /var/lib/rancher/k3s/server/manifests/edge-apps/nginx-app.yaml > /dev/null <<EOF
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -48,6 +49,7 @@ spec:
       containers:
         - name: nginx
           image: nginx:alpine
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
 EOF
@@ -82,14 +84,16 @@ spec:
     spec:
       containers:
         - name: app
-          image: alpine:latest
+          image: alpine:3.20
+          imagePullPolicy: IfNotPresent
           command: ["sleep", "infinity"]
 EOF
 
 # Create deployment script
 cat > deploy.sh <<'SCRIPT'
 #!/bin/bash
-sudo cp *.yaml /var/lib/rancher/k3s/server/manifests/
+sudo mkdir -p /var/lib/rancher/k3s/server/manifests/edge-apps
+sudo cp *.yaml /var/lib/rancher/k3s/server/manifests/edge-apps/
 echo "Manifests deployed"
 kubectl get deployments
 SCRIPT
@@ -115,13 +119,13 @@ grep "image:" *.yaml | awk '{print $2}' | sort -u > images.txt
 
 # Pull and save images
 while read image; do
-  docker pull $image
+  docker pull "$image"
 done < images.txt
 
-docker save $(cat images.txt) -o images.tar
+docker save -o images.tar $(cat images.txt)
 
 # At edge site, load images
-sudo k3s ctr images import images.tar
+sudo k3s ctr -n k8s.io images import images.tar
 ```
 
 ## Implementing Manifest Versioning
@@ -140,19 +144,21 @@ metadata:
 
 ## Creating Rollback Mechanism
 
-Backup and rollback manifests:
+Backup and rollback your application manifests:
 
 ```bash
 # Backup
 BACKUP_DIR="/var/backups/k3s-manifests"
-mkdir -p $BACKUP_DIR
-tar -czf $BACKUP_DIR/backup-$(date +%Y%m%d).tar.gz \
-  -C /var/lib/rancher/k3s/server/manifests .
+APP_MANIFEST_DIR="/var/lib/rancher/k3s/server/manifests/edge-apps"
+sudo mkdir -p "$BACKUP_DIR"
+sudo tar -czf "$BACKUP_DIR/backup-$(date +%Y%m%d).tar.gz" \
+  -C "$APP_MANIFEST_DIR" .
 
 # Rollback
-sudo rm /var/lib/rancher/k3s/server/manifests/*.yaml
-sudo tar -xzf $BACKUP_DIR/backup-20260209.tar.gz \
-  -C /var/lib/rancher/k3s/server/manifests/
+kubectl delete -f "$APP_MANIFEST_DIR" --ignore-not-found
+sudo rm -f "$APP_MANIFEST_DIR"/*.yaml
+sudo tar -xzf "$BACKUP_DIR/backup-20260209.tar.gz" \
+  -C "$APP_MANIFEST_DIR"
 ```
 
 ## Validating Manifests
@@ -162,7 +168,7 @@ Validate before deployment:
 ```bash
 #!/bin/bash
 for manifest in *.yaml; do
-  kubectl apply --dry-run=client -f $manifest
+  kubectl apply --dry-run=server -f "$manifest"
   if [ $? -eq 0 ]; then
     echo "Valid: $manifest"
   else
