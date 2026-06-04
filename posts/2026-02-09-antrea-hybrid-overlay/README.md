@@ -25,26 +25,17 @@ Deploy Antrea with hybrid overlay configuration:
 
 curl -L https://github.com/antrea-io/antrea/releases/download/v1.14.0/antrea.yml -o antrea.yml
 
-# Edit the ConfigMap to enable hybrid mode
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: antrea-config
-  namespace: kube-system
-data:
-  antrea-agent.conf: |
-    trafficEncapMode: hybrid
-    noSNAT: false
-    tunnelType: geneve
-    trafficEncryptionMode: none
-    enablePrometheusMetrics: true
-    flowExporter:
-      enable: true
-EOF
-
-# Apply the Antrea manifest
+# Apply the manifest, then patch the ConfigMap to enable hybrid mode
 kubectl apply -f antrea.yml
+kubectl -n kube-system patch configmap antrea-config --type merge -p '
+{
+  "data": {
+    "antrea-agent.conf": "trafficEncapMode: hybrid\nnoSNAT: false\ntunnelType: geneve\ntrafficEncryptionMode: none\nenablePrometheusMetrics: true\nfeatureGates:\n  FlowExporter: true\nflowExporter:\n  enable: true\n"
+  }
+}'
+
+# Restart Antrea agents so they read the updated configuration
+kubectl -n kube-system rollout restart daemonset/antrea-agent
 
 # Wait for Antrea pods to be ready
 kubectl rollout status daemonset/antrea-agent -n kube-system
@@ -121,7 +112,7 @@ gcloud container clusters create my-cluster \
 
 ## Understanding Hybrid Mode Behavior
 
-Hybrid mode makes intelligent routing decisions. For pods on the same node, traffic goes through OVS directly. For pods on different nodes but same subnet (same L2 domain), traffic routes without tunneling. For pods on different subnets, traffic uses GENEVE/VXLAN tunneling.
+Hybrid mode makes intelligent routing decisions. For pods on the same node, traffic goes through OVS directly. For pods on different nodes but same subnet, traffic is sent without tunneling and requires the node network to allow Pod IPs from the nodes. For pods on different subnets, traffic uses GENEVE/VXLAN tunneling.
 
 Check how specific traffic flows:
 
@@ -160,9 +151,6 @@ data:
   antrea-agent.conf: |
     trafficEncapMode: hybrid
     ovsDatapathType: system
-    ovsBridges:
-      - bridgeName: br-int
-        datapathType: system
     tlsCipherSuites: "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
     enablePrometheusMetrics: true
 ```
@@ -176,13 +164,9 @@ ethtool -k eth0 | grep hw-tc-offload
 # Enable TC offload
 ethtool -K eth0 hw-tc-offload on
 
-# Configure Antrea to use hardware offloading
-kubectl patch configmap antrea-config -n kube-system --type merge -p '
-{
-  "data": {
-    "antrea-agent.conf": "trafficEncapMode: hybrid\novsDatapathType: netdev\n"
-  }
-}'
+# Antrea's OVS offload path also requires SR-IOV VFs in switchdev mode,
+# Multus, the SR-IOV network device plugin, and starting OVS with --hw-offload.
+ovs-appctl dpctl/dump-flows --names type=offloaded
 ```
 
 ## Implementing Network Policies with Antrea
@@ -245,13 +229,14 @@ Check traffic flow and performance:
 
 ```bash
 # View Antrea metrics
-kubectl -n kube-system port-forward ds/antrea-agent 10349:10349
+AGENT_POD=$(kubectl -n kube-system get pod -l component=antrea-agent -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system port-forward pod/$AGENT_POD 10350:10350
 
 # Access metrics endpoint
-curl http://localhost:10349/metrics
+curl -k https://localhost:10350/metrics
 
 # Key metrics to monitor
-curl -s http://localhost:10349/metrics | grep -E "antrea_agent_ovs|antrea_agent_egress|antrea_agent_ingress"
+curl -ks https://localhost:10350/metrics | grep -E "antrea_agent_ovs|antrea_agent_egress|antrea_agent_ingress"
 ```
 
 Enable flow exporter for detailed traffic visibility:
@@ -265,12 +250,14 @@ metadata:
 data:
   antrea-agent.conf: |
     trafficEncapMode: hybrid
+    featureGates:
+      FlowExporter: true
     flowExporter:
       enable: true
-      flowCollectorAddr: "flow-aggregator.flow-visibility.svc:4739"
+      flowCollectorAddr: "flow-aggregator/flow-aggregator:4739:tls"
       flowPollInterval: "5s"
-      activeFlowTimeout: "60s"
-      idleFlowTimeout: "15s"
+      activeFlowExportTimeout: "60s"
+      idleFlowExportTimeout: "15s"
 ```
 
 Deploy flow aggregator to collect and analyze flows:
@@ -279,7 +266,7 @@ Deploy flow aggregator to collect and analyze flows:
 kubectl apply -f https://raw.githubusercontent.com/antrea-io/antrea/main/build/yamls/flow-aggregator.yml
 
 # Query flow records
-kubectl -n flow-visibility logs deployment/flow-aggregator
+kubectl -n flow-aggregator logs deployment/flow-aggregator
 ```
 
 ## Troubleshooting Traffic Modes
@@ -324,7 +311,7 @@ for node in $(kubectl get nodes -o name); do
   POD_CIDR=$(kubectl get $node -o jsonpath='{.spec.podCIDR}')
   NODE_IP=$(kubectl get $node -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
   echo "Testing route to $POD_CIDR via $NODE_IP"
-  ping -c 1 $(echo $POD_CIDR | sed 's|/.*||').1
+  ping -c 1 $(echo "$POD_CIDR" | awk -F'[./]' '{print $1"."$2"."$3".1"}')
 done
 ```
 
