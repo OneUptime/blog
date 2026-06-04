@@ -8,20 +8,20 @@ Description: Learn how to use CSI inline volumes to inject secrets directly into
 
 ---
 
-CSI inline volumes allow you to mount volumes directly in pod specifications without creating separate PersistentVolumeClaim resources. This is particularly useful for injecting secrets from external secret stores, providing short-lived credentials that are automatically rotated.
+CSI inline volumes allow you to mount volumes directly in pod specifications without creating separate PersistentVolumeClaim resources. This is particularly useful for injecting secrets from external secret stores, including short-lived credentials and secrets that can be refreshed when rotation is enabled.
 
 ## Understanding CSI Inline Volumes
 
-Traditional secret management in Kubernetes uses:
+Traditional secret management and CSI-backed storage in Kubernetes often use:
 
 1. **Kubernetes Secrets** - Stored in etcd, base64 encoded
-2. **PersistentVolumeClaims** - Require separate resource creation
+2. **PersistentVolumeClaims** - Require separate resource creation for persistent CSI volumes
 
 CSI inline volumes offer a better approach for secrets:
 
 1. **No PVC needed** - Volume defined directly in pod spec
 2. **External secret stores** - Integration with Vault, AWS, Azure, GCP
-3. **Automatic rotation** - Secrets updated without pod restart
+3. **Automatic rotation** - Mounted files and synced Kubernetes Secrets can be updated without pod restart when rotation is enabled
 4. **Short-lived credentials** - Reduces exposure window
 
 ## Installing the Secrets Store CSI Driver
@@ -60,8 +60,16 @@ Install the AWS provider:
 # Install AWS Secrets Manager provider
 kubectl apply -f https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/main/deployment/aws-provider-installer.yaml
 
+# Configure token requests when the AWS provider is installed separately
+helm upgrade csi-secrets-store \
+  secrets-store-csi-driver/secrets-store-csi-driver \
+  --namespace kube-system \
+  --reuse-values \
+  --set 'tokenRequests[0].audience=sts.amazonaws.com' \
+  --set 'tokenRequests[1].audience=pods.eks.amazonaws.com'
+
 # Verify provider is running
-kubectl get pods -n kube-system -l app=csi-secrets-store-provider-aws
+kubectl -n kube-system get pods | grep csi-secrets-store-provider-aws
 ```
 
 Create a SecretProviderClass:
@@ -110,7 +118,7 @@ spec:
   - name: app
     image: myapp:latest
     env:
-    # Read secrets from mounted files
+    # Read secrets from the synced Kubernetes Secret
     - name: DB_USERNAME
       valueFrom:
         secretKeyRef:
@@ -326,6 +334,25 @@ az keyvault secret set \
   --vault-name my-keyvault \
   --name database-password \
   --value "SecurePassword123!"
+
+# Grant the managed identity access to read Key Vault secrets
+MANAGED_IDENTITY_NAME="my-managed-identity"
+
+IDENTITY_OBJECT_ID=$(az identity show \
+  --resource-group my-rg \
+  --name "$MANAGED_IDENTITY_NAME" \
+  --query principalId \
+  -o tsv)
+
+KEYVAULT_SCOPE=$(az keyvault show \
+  --name my-keyvault \
+  --query id \
+  -o tsv)
+
+az role assignment create \
+  --role "Key Vault Secrets User" \
+  --assignee "$IDENTITY_OBJECT_ID" \
+  --scope "$KEYVAULT_SCOPE"
 ```
 
 Create a SecretProviderClass for Azure:
@@ -507,4 +534,4 @@ kubectl get secretproviderclass -A
 7. **Limit secret scope** with fine-grained IAM policies
 8. **Sync to Kubernetes Secrets** only when necessary
 
-CSI inline volumes provide a secure, cloud-native way to inject secrets into pods, eliminating the need to store sensitive data in Kubernetes and enabling automatic rotation for improved security posture.
+CSI inline volumes provide a secure, cloud-native way to inject secrets into pods, eliminating the need to store sensitive data in Kubernetes when you avoid syncing to Kubernetes Secrets and enabling automatic rotation for improved security posture.
