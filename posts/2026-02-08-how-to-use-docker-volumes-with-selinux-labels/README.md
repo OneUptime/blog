@@ -28,7 +28,7 @@ The important part is the type label: `container_file_t`. Docker containers expe
 
 ## The :z and :Z Volume Flags
 
-Docker provides two flags for automatic SELinux relabeling when mounting volumes:
+Docker provides two flags for automatic SELinux relabeling when mounting bind mounts:
 
 - `:z` (lowercase) - shared label. Multiple containers can access the volume.
 - `:Z` (uppercase) - private label. Only the specific container can access the volume.
@@ -40,7 +40,7 @@ Docker provides two flags for automatic SELinux relabeling when mounting volumes
 docker run --rm -v /opt/shared-data:/data:z alpine ls -la /data
 ```
 
-The `:z` flag tells Docker to relabel the directory with `container_file_t` and allow shared access. Any container that mounts this directory with `:z` can read and write to it.
+The `:z` flag tells Docker to relabel the directory with `container_file_t` and allow shared SELinux access. Any container that mounts this directory with `:z` can access it, subject to the usual Unix permissions and mount mode.
 
 ### Using :Z for Private Volumes
 
@@ -62,7 +62,7 @@ docker run --rm -v /opt/config:/config:z,ro alpine cat /config/app.conf
 
 ## How Relabeling Works
 
-When you use `:z` or `:Z`, Docker runs `chcon` (change context) on the mounted directory recursively. For `:z`, it applies:
+When you use `:z` or `:Z`, Docker relabels the mounted path recursively. For `:z`, the effect is similar to:
 
 ```bash
 # This is what Docker does internally when you use :z
@@ -87,11 +87,11 @@ Never use `:Z` on system directories like `/etc`, `/usr`, or `/home`. Docker wil
 # docker run -v /etc:/host-etc:Z alpine cat /host-etc/hostname  # DO NOT RUN
 ```
 
-If you need to mount system directories, use `:z` with read-only:
+If you need to mount a system file, avoid relabeling it. Use a read-only bind mount, and only disable label confinement for the container if you understand the security tradeoff:
 
 ```bash
-# Safe way to mount host config files
-docker run --rm -v /etc/hostname:/etc/hostname:z,ro alpine cat /etc/hostname
+# Mount a host config file without changing its SELinux label
+docker run --rm -v /etc/hostname:/etc/hostname:ro alpine cat /etc/hostname
 ```
 
 ## SELinux with Docker Compose
@@ -100,8 +100,6 @@ In Docker Compose, you specify SELinux labels in the volume mount string:
 
 ```yaml
 # docker-compose.yml with SELinux labels
-version: "3.8"
-
 services:
   web:
     image: nginx:alpine
@@ -115,7 +113,7 @@ services:
     image: myapp:latest
     volumes:
       # Shared label so both app and worker can access
-      - app_data:/var/lib/app:z
+      - app_data:/var/lib/app
       # Private label for this container's temp files
       - /opt/app-temp:/tmp/app:Z
 
@@ -124,13 +122,13 @@ services:
     command: ["worker"]
     volumes:
       # Same shared volume as the app service
-      - app_data:/var/lib/app:z
+      - app_data:/var/lib/app
 
 volumes:
   app_data:
 ```
 
-Notice that `app_data` uses `:z` in both services because they need shared access. The temp directory uses `:Z` because only the app service should access it.
+Notice that `app_data` is a named volume, so it does not need `:z` for sharing between services. The temp directory is a bind mount and uses `:Z` because only the app service should access it.
 
 ## Named Volumes vs Bind Mounts
 
