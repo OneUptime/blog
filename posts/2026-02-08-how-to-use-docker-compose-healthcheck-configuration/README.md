@@ -21,7 +21,7 @@ The healthcheck directive supports several parameters:
 - **timeout** - How long to wait before considering the check failed (default: 30s)
 - **retries** - Number of consecutive failures before marking unhealthy (default: 3)
 - **start_period** - Grace period for container initialization (default: 0s)
-- **start_interval** - Interval between checks during the start period (added in newer versions)
+- **start_interval** - Interval between checks during the start period (requires Docker Compose 2.20.2 or later and Docker Engine 25.0 or later)
 
 ## Basic Healthcheck Syntax
 
@@ -29,8 +29,6 @@ Here is a minimal healthcheck for a web server that verifies the HTTP endpoint r
 
 ```yaml
 # docker-compose.yml - Basic healthcheck for an Nginx service
-
-version: "3.8"
 
 services:
   web:
@@ -153,8 +151,6 @@ One of the most powerful uses of healthchecks is controlling service startup ord
 
 ```yaml
 # Full stack with dependency conditions based on health
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16
@@ -195,11 +191,11 @@ Getting the timing right matters. Here is a breakdown of how to think about each
 
 **interval** controls how often Docker runs the health check. Set it short enough to detect failures quickly, but not so short that you waste CPU on a busy system. For most services, 10-30 seconds works well.
 
-**timeout** should be shorter than your interval. If a health check takes longer than this, Docker kills the check process and counts it as a failure.
+**timeout** is the maximum time a single check can run. If a health check takes longer than this, Docker kills the check process and counts it as a failure. Keeping it shorter than your interval is a good rule of thumb for quick failure detection.
 
 **retries** prevents false positives from transient failures. Three retries is a solid default. For flaky services, increase it to 5.
 
-**start_period** gives your container time to initialize before Docker starts counting failures. This is critical for applications that take time to boot, like Java applications or services that run database migrations on startup.
+**start_period** gives your container time to initialize before startup failures count toward the retry limit. If a check succeeds during this period, Docker considers the container started and counts later failures normally. This is critical for applications that take time to boot, like Java applications or services that run database migrations on startup.
 
 ```yaml
 # Tuned healthcheck for a Java application with slow startup
@@ -253,9 +249,9 @@ services:
 
 **Using tools not in the image.** If your image does not include `curl`, the healthcheck will always fail. Use `wget`, write a custom script, or install the necessary tools in your Dockerfile.
 
-**Setting timeout longer than interval.** This creates overlapping health checks that can pile up and consume resources. Always keep timeout shorter than interval.
+**Setting timeout too high.** Long timeouts can delay failure detection because Docker waits for a check to finish or time out before scheduling the next one. Keep timeout aligned with the response time you consider acceptable.
 
-**Ignoring the start_period.** Without a start period, Docker counts boot-time failures as real failures. Your container might get marked unhealthy before it even finishes starting.
+**Ignoring the start_period.** Without a start period, Docker counts boot-time failures toward the retry limit immediately. Your container might get marked unhealthy before it even finishes starting.
 
 **Checking the wrong thing.** A healthcheck that just verifies a port is open does not tell you if the application is actually working. Test the actual functionality, like querying a health endpoint that checks database connectivity and other dependencies.
 
@@ -265,8 +261,6 @@ Here is a production-ready example combining everything discussed above.
 
 ```yaml
 # Production-ready docker-compose.yml with comprehensive healthchecks
-version: "3.8"
-
 services:
   db:
     image: postgres:16
