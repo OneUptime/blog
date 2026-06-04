@@ -281,7 +281,7 @@ HPA calculates desired replicas for each metric independently and uses the maxim
 
 ## Handling CPU Throttling
 
-When pods hit CPU limits, they get throttled, which can cause performance issues without triggering HPA scaling.
+When pods hit CPU limits, they get throttled, which can cause performance issues while HPA is still reacting to CPU metrics.
 
 ```yaml
 apiVersion: apps/v1
@@ -289,7 +289,13 @@ kind: Deployment
 metadata:
   name: no-throttle-app
 spec:
+  selector:
+    matchLabels:
+      app: no-throttle-app
   template:
+    metadata:
+      labels:
+        app: no-throttle-app
     spec:
       containers:
       - name: app
@@ -317,6 +323,9 @@ resources:
 Generate load to verify HPA responds appropriately.
 
 ```bash
+# Create a Service for the deployment if one does not already exist
+kubectl expose deployment web-application --name=web-application --port=80 --target-port=80 -n production
+
 # Create a load generator pod
 kubectl run load-generator --image=busybox --rm -it -- /bin/sh
 
