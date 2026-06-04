@@ -41,7 +41,7 @@ spec:
   # Certificate duration (Let's Encrypt issues 90-day certificates)
   duration: 2160h # 90 days
 
-  # Renew 30 days before expiration (default: 2/3 of duration)
+  # Renew 30 days before expiration (default: 1/3 of duration before expiry)
   renewBefore: 720h # 30 days
 
   dnsNames:
@@ -50,7 +50,7 @@ spec:
 
 With this configuration, cert-manager initiates renewal when the certificate has 30 days remaining. If the certificate duration is 90 days, renewal starts at day 60.
 
-The default renewBefore is 2/3 of the certificate duration if not specified. For a 90-day certificate, this means renewal at 60 days remaining. This provides ample buffer time for handling renewal failures.
+The default renewBefore is 1/3 of the issued certificate duration if not specified. For a 90-day certificate, this means renewal at 30 days remaining, or 60 days after issuance. This provides ample buffer time for handling renewal failures.
 
 ## Automatic Renewal for ACME Certificates
 
@@ -103,7 +103,8 @@ EXPIRATION:.status.notAfter
 
 # Find certificates expiring soon (within 30 days)
 kubectl get certificates --all-namespaces -o json | \
-  jq -r '.items[] | select(.status.notAfter != null) |
+  jq -r '.items[] |
+  select(.status.notAfter != null and (.status.notAfter | fromdateiso8601) < (now + 30*24*60*60)) |
   "\(.metadata.namespace) \(.metadata.name) \(.status.notAfter)"'
 ```
 
@@ -140,10 +141,10 @@ Key metrics to monitor:
 # Certificate expiration time (timestamp)
 certmanager_certificate_expiration_timestamp_seconds
 
-# Certificate readiness status (0=not ready, 1=ready)
+# Certificate readiness status by condition (one matching condition is 1, others are 0)
 certmanager_certificate_ready_status
 
-# Time until certificate renewal
+# Certificate renewal time (timestamp)
 certmanager_certificate_renewal_timestamp_seconds
 ```
 
@@ -165,6 +166,7 @@ spec:
     - alert: CertificateExpiringSoon
       expr: |
         (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 7
+        and certmanager_certificate_expiration_timestamp_seconds > time()
       for: 1h
       labels:
         severity: warning
@@ -174,7 +176,7 @@ spec:
 
     # Alert when certificate is not ready
     - alert: CertificateNotReady
-      expr: certmanager_certificate_ready_status == 0
+      expr: certmanager_certificate_ready_status{condition="True"} == 0
       for: 10m
       labels:
         severity: critical
@@ -185,8 +187,10 @@ spec:
     # Alert when certificate renewal fails
     - alert: CertificateRenewalFailed
       expr: |
-        increase(certmanager_certificate_renewal_timestamp_seconds[1h]) == 0
+        certmanager_certificate_renewal_timestamp_seconds > 0
+        and certmanager_certificate_renewal_timestamp_seconds < time()
         and (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30
+        and certmanager_certificate_expiration_timestamp_seconds > time()
       for: 6h
       labels:
         severity: warning
@@ -223,7 +227,7 @@ Create a Grafana dashboard to visualize certificate status:
         "title": "Certificate Ready Status",
         "targets": [
           {
-            "expr": "certmanager_certificate_ready_status",
+            "expr": "certmanager_certificate_ready_status{condition=\"True\"}",
             "legendFormat": "{{ namespace }}/{{ name }}"
           }
         ]
@@ -232,7 +236,7 @@ Create a Grafana dashboard to visualize certificate status:
         "title": "Certificates Expiring in 30 Days",
         "targets": [
           {
-            "expr": "count((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30)"
+            "expr": "count((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30 and certmanager_certificate_expiration_timestamp_seconds > time())"
           }
         ]
       }
@@ -293,27 +297,27 @@ spec:
   renewBefore: 12h
 
   issuerRef:
-    name: letsencrypt-staging # Use staging for testing
-    kind: ClusterIssuer
+    name: selfsigned-test # Use a test Issuer that honors short durations
+    kind: Issuer
 
   dnsNames:
   - test.example.com
 ```
 
-This certificate renews after 12 hours, allowing you to verify renewal automation quickly. Monitor the renewal:
+With an issuer that honors the requested duration, this certificate renews after 12 hours, allowing you to verify renewal automation quickly. Public ACME issuers such as Let's Encrypt may ignore requested short durations and issue certificates with their standard lifetime. Monitor the renewal:
 
 ```bash
 # Apply test certificate
 kubectl apply -f test-renewal-certificate.yaml
 
 # Watch certificate status
-kubectl get certificate renewal-test -w
+kubectl get certificate renewal-test -n default -w
 
 # After 12 hours, verify renewal occurred
-kubectl describe certificate renewal-test
+kubectl describe certificate renewal-test -n default
 
 # Check certificate events for renewal activity
-kubectl get events --field-selector involvedObject.name=renewal-test
+kubectl get events --field-selector involvedObject.name=renewal-test -n default
 ```
 
 ## Renewal Notifications
@@ -395,9 +399,9 @@ spec:
 
 The usages field ensures the certificate includes specific key usage extensions. This validation prevents issuing certificates that don't meet your application requirements.
 
-## Automatic Secret Cleanup
+## Secret Metadata and Cleanup
 
-cert-manager can clean up old certificate secrets after renewal:
+cert-manager updates the target certificate secret during renewal rather than creating old per-renewal secrets. You can use `secretTemplate` to keep labels and annotations on the managed secret:
 
 ```yaml
 # certificate-with-cleanup.yaml
@@ -418,11 +422,13 @@ spec:
   dnsNames:
   - app.example.com
 
-  # Configure secret template
+  # Configure secret template metadata
   secretTemplate:
     labels:
       managed-by: cert-manager
 ```
+
+If you want cert-manager to delete the target secret when the Certificate resource is deleted, enable the controller's `--enable-certificate-owner-ref` option.
 
 ## Best Practices for Renewal Automation
 
