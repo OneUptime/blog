@@ -20,10 +20,10 @@ During rolling updates, Kubernetes creates new pods before terminating old ones.
 
 The sequence is:
 1. Pod marked for deletion
-2. Removed from endpoints (stops receiving new traffic)
-3. PreStop hook executes
-4. SIGTERM sent to application
-5. Grace period countdown begins
+2. Termination grace period countdown begins
+3. PreStop hook executes, if configured
+4. SIGTERM sent to application after the preStop hook completes
+5. EndpointSlices mark the terminating endpoint as not ready for regular traffic
 6. Existing connections drain
 7. SIGKILL forces termination if grace period expires
 
@@ -37,6 +37,9 @@ metadata:
   namespace: production
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: web-service
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -67,7 +70,7 @@ spec:
           periodSeconds: 5
 ```
 
-The `maxUnavailable: 0` ensures no existing pods terminate until replacements are ready. The preStop hook delays SIGTERM, giving load balancers time to update.
+The `maxUnavailable: 0` ensures no existing pods terminate until replacements are ready, as long as Kubernetes can create surge pods. The preStop hook delays SIGTERM, giving load balancers time to update. The preStop delay counts against `terminationGracePeriodSeconds`, so keep the hook delay and application shutdown timeout within the grace period.
 
 ## Implementing Application-Level Connection Draining
 
@@ -197,7 +200,13 @@ kind: Deployment
 metadata:
   name: api-service
 spec:
+  selector:
+    matchLabels:
+      app: api-service
   template:
+    metadata:
+      labels:
+        app: api-service
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -211,7 +220,7 @@ spec:
               - -c
               - |
                 # Mark pod as not ready
-                curl -X POST localhost:8080/shutdown
+                curl -X POST http://localhost:8080/shutdown
 
                 # Wait for load balancer to deregister
                 sleep 20
@@ -226,13 +235,13 @@ spec:
           failureThreshold: 1
 ```
 
-The application implements a shutdown endpoint:
+The application implements a shutdown endpoint using `sync/atomic` for the shared flag:
 
 ```go
-var shuttingDown bool
+var shuttingDown atomic.Bool
 
 func readyHandler(w http.ResponseWriter, r *http.Request) {
-    if shuttingDown {
+    if shuttingDown.Load() {
         w.WriteHeader(http.StatusServiceUnavailable)
         return
     }
@@ -240,12 +249,12 @@ func readyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func shutdownHandler(w http.ResponseWriter, r *http.Request) {
-    shuttingDown = true
+    shuttingDown.Store(true)
     w.WriteHeader(http.StatusOK)
 }
 ```
 
-When the preStop hook calls `/shutdown`, the readiness probe begins failing, removing the pod from service endpoints and load balancer target groups.
+When the preStop hook calls `/shutdown`, the readiness probe begins failing. During pod deletion, Kubernetes also marks terminating endpoints as not ready, so regular service traffic stops while the application has time to finish existing requests.
 
 ## Handling Long-Polling and WebSocket Connections
 
@@ -392,9 +401,9 @@ data:
       rules:
       - alert: ConnectionDropsDuringUpdate
         expr: |
-          rate(http_connection_errors_total[1m]) > 0
-          and
-          changes(kube_deployment_status_observed_generation[5m]) > 0
+          sum(rate(http_connection_errors_total[1m])) > 0
+          and on()
+          sum(changes(kube_deployment_status_observed_generation[5m])) > 0
         labels:
           severity: warning
         annotations:
@@ -402,10 +411,12 @@ data:
 
       - alert: HighErrorRateDuringUpdate
         expr: |
-          rate(http_requests_total{status=~"5.."}[2m]) /
-          rate(http_requests_total[2m]) > 0.01
-          and
-          changes(kube_deployment_status_observed_generation[5m]) > 0
+          (
+            sum(rate(http_requests_total{status=~"5.."}[2m])) /
+            sum(rate(http_requests_total[2m]))
+          ) > 0.01
+          and on()
+          sum(changes(kube_deployment_status_observed_generation[5m])) > 0
         labels:
           severity: critical
         annotations:
