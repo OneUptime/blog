@@ -24,7 +24,7 @@ Effective DLQ implementation requires careful consideration of retry policies, f
 
 ## Implementing DLQs in Kafka
 
-Kafka doesn't have native DLQ support, but you can implement the pattern using error handling in consumers.
+Kafka's consumer API doesn't have built-in DLQ handling, but you can implement the pattern using error handling in consumers.
 
 Create a Kafka consumer with DLQ support:
 
@@ -32,9 +32,13 @@ Create a Kafka consumer with DLQ support:
 // KafkaConsumerWithDLQ.java
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 public class KafkaConsumerWithDLQ {
@@ -42,6 +46,7 @@ public class KafkaConsumerWithDLQ {
     private final KafkaProducer<String, String> dlqProducer;
     private final String dlqTopic;
     private final int maxRetries;
+    private final Map<String, Integer> retryCounts = new HashMap<>();
 
     public KafkaConsumerWithDLQ(String bootstrapServers, String groupId,
                                  String topic, String dlqTopic, int maxRetries) {
@@ -74,28 +79,48 @@ public class KafkaConsumerWithDLQ {
     public void processMessages() {
         while (true) {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
+            boolean retryScheduled = false;
 
             for (ConsumerRecord<String, String> record : records) {
-                int retryCount = getRetryCount(record);
+                String recordId = record.topic() + "-" + record.partition() + "-" + record.offset();
+                int retryCount = retryCounts.getOrDefault(recordId, 0);
 
                 try {
                     // Attempt to process the message
                     processMessage(record.value());
 
                     // Commit on success
-                    consumer.commitSync();
+                    commitRecord(record);
+                    retryCounts.remove(recordId);
                 } catch (Exception e) {
                     if (retryCount >= maxRetries) {
                         // Send to DLQ after max retries
                         sendToDLQ(record, e.getMessage());
-                        consumer.commitSync();
+                        commitRecord(record);
+                        retryCounts.remove(recordId);
                     } else {
                         // Retry with exponential backoff
+                        retryCounts.put(recordId, retryCount + 1);
                         handleRetry(record, retryCount + 1);
+                        consumer.seek(new TopicPartition(record.topic(), record.partition()), record.offset());
+                        retryScheduled = true;
+                        break;
                     }
                 }
             }
+
+            if (retryScheduled) {
+                continue;
+            }
         }
+    }
+
+    private void commitRecord(ConsumerRecord<String, String> record) {
+        TopicPartition partition = new TopicPartition(record.topic(), record.partition());
+        consumer.commitSync(Collections.singletonMap(
+            partition,
+            new OffsetAndMetadata(record.offset() + 1)
+        ));
     }
 
     private void sendToDLQ(ConsumerRecord<String, String> record, String errorMessage) {
@@ -117,17 +142,12 @@ public class KafkaConsumerWithDLQ {
         dlqRecord.headers().add("timestamp",
                                String.valueOf(System.currentTimeMillis()).getBytes());
 
-        dlqProducer.send(dlqRecord);
-        System.out.println("Sent message to DLQ: " + record.key());
-    }
-
-    private int getRetryCount(ConsumerRecord<String, String> record) {
-        // Extract retry count from headers
-        var retryHeader = record.headers().lastHeader("retry_count");
-        if (retryHeader != null) {
-            return Integer.parseInt(new String(retryHeader.value()));
+        try {
+            dlqProducer.send(dlqRecord).get();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to send message to DLQ", e);
         }
-        return 0;
+        System.out.println("Sent message to DLQ: " + record.key());
     }
 
     private void handleRetry(ConsumerRecord<String, String> record, int retryCount) {
@@ -261,9 +281,10 @@ Consumer code with retry logic:
 package main
 
 import (
+    "crypto/sha256"
     "fmt"
     "log"
-    "github.com/streadway/amqp"
+    amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type RabbitMQConsumer struct {
@@ -271,6 +292,7 @@ type RabbitMQConsumer struct {
     channel *amqp.Channel
     queue   string
     maxRetries int
+    attempts map[string]int
 }
 
 func (c *RabbitMQConsumer) processMessages() {
@@ -287,35 +309,42 @@ func (c *RabbitMQConsumer) processMessages() {
         log.Fatal(err)
     }
 
+    if c.attempts == nil {
+        c.attempts = make(map[string]int)
+    }
+
     for msg := range msgs {
-        retryCount := getRetryCount(msg.Headers)
+        messageID := messageKey(msg)
+        retryCount := c.attempts[messageID]
 
         err := processMessage(msg.Body)
         if err != nil {
             if retryCount < c.maxRetries {
                 // Reject with requeue
+                c.attempts[messageID] = retryCount + 1
                 msg.Nack(false, true)
                 log.Printf("Requeued message, retry %d/%d", retryCount+1, c.maxRetries)
             } else {
                 // Reject without requeue (goes to DLQ)
+                delete(c.attempts, messageID)
                 msg.Nack(false, false)
                 log.Printf("Sent message to DLQ after %d retries", c.maxRetries)
             }
         } else {
             // Acknowledge successful processing
+            delete(c.attempts, messageID)
             msg.Ack(false)
         }
     }
 }
 
-func getRetryCount(headers amqp.Table) int {
-    if headers == nil {
-        return 0
+func messageKey(msg amqp.Delivery) string {
+    if msg.MessageId != "" {
+        return msg.MessageId
     }
-    if count, ok := headers["x-retry-count"].(int32); ok {
-        return int(count)
-    }
-    return 0
+
+    sum := sha256.Sum256(msg.Body)
+    return fmt.Sprintf("%x", sum)
 }
 
 func processMessage(body []byte) error {
@@ -448,7 +477,7 @@ spec:
         description: "DLQ {{ $labels.queue }} grew by {{ $value }} messages"
 
     - alert: DLQProcessingStalled
-      expr: changes(dlq_message_count[1h]) == 0 AND dlq_message_count > 0
+      expr: changes(dlq_message_count[1h]) == 0 and dlq_message_count > 0
       for: 30m
       labels:
         severity: critical
@@ -499,7 +528,6 @@ Reprocessing script:
 
 ```python
 #!/usr/bin/env python3
-import json
 import os
 from kafka import KafkaConsumer, KafkaProducer
 
@@ -507,14 +535,14 @@ def reprocess_dlq():
     consumer = KafkaConsumer(
         os.getenv('DLQ_TOPIC'),
         bootstrap_servers=os.getenv('KAFKA_BOOTSTRAP_SERVERS'),
-        value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+        value_deserializer=lambda m: m.decode('utf-8'),
         auto_offset_reset='earliest',
         enable_auto_commit=False
     )
 
     producer = KafkaProducer(
         bootstrap_servers=os.getenv('KAFKA_BOOTSTRAP_SERVERS'),
-        value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        value_serializer=lambda v: v.encode('utf-8')
     )
 
     batch_size = int(os.getenv('BATCH_SIZE', 100))
@@ -529,7 +557,7 @@ def reprocess_dlq():
             fixed_value = apply_fix(original_value)
 
             # Send back to original topic
-            producer.send(os.getenv('TARGET_TOPIC'), value=fixed_value)
+            producer.send(os.getenv('TARGET_TOPIC'), value=fixed_value).get(timeout=10)
 
             consumer.commit()
             processed += 1
