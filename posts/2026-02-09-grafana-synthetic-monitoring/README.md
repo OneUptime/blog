@@ -14,41 +14,26 @@ Real-user monitoring shows you what actual users experience, but it can't tell y
 
 Synthetic monitoring simulates user interactions by running automated tests against your applications at regular intervals. Unlike passive monitoring that waits for problems to occur, synthetic monitoring actively probes your services to verify they're working correctly.
 
-Grafana Synthetic Monitoring extends this concept by integrating directly with your existing Grafana stack, storing check results as metrics in Prometheus and logs in Loki.
+Grafana Synthetic Monitoring extends this concept by integrating directly with your Grafana stack, storing check results as Prometheus metrics and Loki logs in Grafana Cloud.
 
 ## Setting Up Grafana Synthetic Monitoring
 
-For Grafana Cloud users, Synthetic Monitoring is available as a built-in feature. For self-hosted deployments, install the synthetic monitoring agent.
+For Grafana Cloud users, Synthetic Monitoring is available as a built-in feature. For local Grafana OSS or Enterprise deployments, install the Synthetic Monitoring app and connect it to Grafana Cloud, which stores the check metrics and logs. To run checks from your own network, add a private probe and install the synthetic monitoring agent with the probe token.
 
 ```bash
-# Download and install the synthetic monitoring agent
+# Install the Synthetic Monitoring app in a local Grafana instance
+grafana-cli plugins install grafana-synthetic-monitoring-app
 
-wget https://github.com/grafana/synthetic-monitoring-agent/releases/latest/download/synthetic-monitoring-agent-linux-amd64
+# Run a private probe with Docker
+docker pull grafana/synthetic-monitoring-agent:latest
 
-chmod +x synthetic-monitoring-agent-linux-amd64
-sudo mv synthetic-monitoring-agent-linux-amd64 /usr/local/bin/synthetic-monitoring-agent
+export API_TOKEN="<YOUR_PROBE_AUTH_TOKEN>"
+export API_SERVER="<YOUR_SYNTHETIC_MONITORING_BACKEND_ADDRESS>"
 
-# Create configuration
-sudo mkdir -p /etc/synthetic-monitoring
-
-cat > /etc/synthetic-monitoring/config.yaml <<EOF
-api:
-  url: https://synthetic-monitoring-api.grafana.net
-  token: YOUR_API_TOKEN
-
-prometheus:
-  url: http://prometheus:9090
-  username: ""
-  password: ""
-
-loki:
-  url: http://loki:3100
-  username: ""
-  password: ""
-EOF
-
-# Run the agent
-synthetic-monitoring-agent -config /etc/synthetic-monitoring/config.yaml
+docker run grafana/synthetic-monitoring-agent \
+  --api-server-address="${API_SERVER}" \
+  --api-token="${API_TOKEN}" \
+  --verbose=true
 ```
 
 ## Creating HTTP Endpoint Checks
@@ -57,7 +42,7 @@ Start with simple HTTP checks to verify endpoint availability and response time.
 
 ```bash
 # Create an HTTP check via API
-curl -X POST https://synthetic-monitoring-api.grafana.net/api/v1/checks \
+curl -X POST https://synthetic-monitoring-api.grafana.net/api/v1/check \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -69,7 +54,7 @@ curl -X POST https://synthetic-monitoring-api.grafana.net/api/v1/checks \
     "probes": [1, 2, 3],
     "settings": {
       "http": {
-        "method": "GET",
+        "method": 0,
         "headers": [
           "Authorization: Bearer token123"
         ],
@@ -92,7 +77,7 @@ curl -X POST https://synthetic-monitoring-api.grafana.net/api/v1/checks \
   }'
 ```
 
-This check runs every 60 seconds from three probe locations.
+This check runs every 60 seconds from three probe locations. Replace `synthetic-monitoring-api.grafana.net` with the backend address shown in your Grafana Cloud Synthetic Monitoring configuration, such as `synthetic-monitoring-api-us-east-0.grafana.net`.
 
 ## Validating Response Content
 
@@ -104,9 +89,8 @@ Check not just that endpoints respond, but that they return expected content.
   "target": "https://api.example.com/status",
   "settings": {
     "http": {
-      "method": "GET",
+      "method": 0,
       "validStatusCodes": [200],
-      "validationRegex": "\"status\":\\s*\"healthy\"",
       "failIfBodyNotMatchesRegexp": ["\"status\":\\s*\"healthy\""],
       "failIfBodyMatchesRegexp": ["error", "failed"],
       "headers": [
@@ -121,7 +105,7 @@ The check fails if the response doesn't contain `"status": "healthy"` or if it c
 
 ## Implementing Multi-Step Checks
 
-Test complete user flows with scripted browser checks using the Playwright-based scripting.
+Test complete user flows with k6 scripted checks.
 
 ```javascript
 // checkout-flow.js
@@ -145,7 +129,7 @@ export default function() {
   });
   check(response, {
     'item added': (r) => r.status === 200,
-    'cart updated': (r) => JSON.parse(r.body).items.length > 0
+    'cart updated': (r) => r.json('items').length > 0
   });
 
   // Step 3: Proceed to checkout
@@ -173,10 +157,11 @@ Check DNS resolution speed and correctness.
   "target": "example.com",
   "settings": {
     "dns": {
-      "recordType": "A",
+      "ipVersion": 1,
+      "recordType": 1,
       "server": "8.8.8.8",
       "port": 53,
-      "protocol": "UDP",
+      "protocol": 1,
       "validRCodes": ["NOERROR"],
       "validateAnswerRRS": {
         "failIfMatchesRegexp": [],
@@ -212,7 +197,7 @@ Monitor TCP port availability and SSL certificate validity.
 }
 ```
 
-The check validates that the TCP connection succeeds and the SSL certificate is valid and not expiring soon.
+The check validates that the TCP connection succeeds and that the current SSL certificate chain is valid. Synthetic Monitoring also emits certificate expiry metrics that you can alert on separately.
 
 ## Setting Up Ping Checks
 
@@ -224,9 +209,10 @@ Monitor network latency with ICMP ping checks.
   "target": "8.8.8.8",
   "settings": {
     "ping": {
-      "ipVersion": "V4",
+      "ipVersion": 1,
       "dontFragment": false,
-      "payloadSize": 0
+      "payloadSize": 0,
+      "packetCount": 5
     }
   },
   "frequency": 10000,
@@ -242,21 +228,17 @@ Run checks from multiple geographic locations to ensure global availability.
 
 ```bash
 # List available probe locations
-curl -X GET https://synthetic-monitoring-api.grafana.net/api/v1/probes \
+curl -X GET https://synthetic-monitoring-api.grafana.net/api/v1/probe \
   -H "Authorization: Bearer YOUR_API_TOKEN"
+```
 
-# Response shows available probes:
-# - US East (Virginia)
-# - US West (California)
-# - EU West (Ireland)
-# - Asia Pacific (Singapore)
-# - etc.
+The response shows the available public and private probes and their IDs.
 
-# Configure check to run from multiple locations
+```json
 {
   "job": "global-availability",
   "target": "https://api.example.com",
-  "probes": [1, 4, 7, 10],  # IDs for US East, US West, EU, Asia
+  "probes": [1, 4, 7, 10],
   "frequency": 30000
 }
 ```
@@ -270,9 +252,7 @@ Alert when synthetic checks fail or performance degrades.
 ```promql
 # Alert when check success rate drops below 95%
 (
-  sum(rate(probe_success_total{job="api-health-check"}[5m]))
-  /
-  sum(rate(probe_all_total{job="api-health-check"}[5m]))
+  avg by (job) (avg_over_time(probe_success{job="api-health-check"}[5m]))
 ) < 0.95
 
 # Alert when response time exceeds threshold
@@ -300,7 +280,7 @@ Create dashboards showing check results and trends.
       "title": "Check Success Rate",
       "targets": [
         {
-          "expr": "avg(rate(probe_success_total[5m])) by (job)"
+          "expr": "avg by (job) (avg_over_time(probe_success[5m]))"
         }
       ],
       "fieldConfig": {
@@ -348,23 +328,15 @@ Create dashboards showing check results and trends.
 }
 ```
 
-## Implementing Check Dependencies
+## Implementing Alert Dependencies
 
-Configure checks that only run when dependent services are available.
+Configure alert rules that only fire when dependent services are available.
 
-```bash
-# Primary service check
-{
-  "job": "database-check",
-  "target": "db.example.com:5432",
-  "enabled": true
-}
-
-# Dependent check - only alert if primary is healthy
-# In alert rules:
-probe_success{job="api-check"} == 0
-and
-probe_success{job="database-check"} == 1
+```promql
+# Dependent alert - only alert if the primary dependency is healthy
+(probe_success{job="api-check"} == 0)
+and on()
+(min(probe_success{job="database-check"}) == 1)
 ```
 
 This prevents cascading alerts when an upstream dependency fails.
@@ -379,31 +351,23 @@ Track API usage and alert before hitting rate limits.
   "target": "https://api.example.com/status",
   "settings": {
     "http": {
-      "method": "GET",
+      "method": 0,
       "headers": [
         "Authorization: Bearer token"
       ],
-      "responseHeaders": {
-        "X-RateLimit-Remaining": {
-          "failIfNotPresent": true,
-          "regexp": "",
+      "failIfHeaderNotMatchesRegexp": [
+        {
+          "header": "X-RateLimit-Remaining",
+          "regexp": "^[0-9]+$",
           "allowMissing": false
         }
-      }
+      ]
     }
   }
 }
 ```
 
-Parse response headers to track remaining API quota:
-
-```promql
-# Extract rate limit from logs
-sum(rate({job="synthetic-monitoring"} | json | __error__="" | line_format "{{.X_RateLimit_Remaining}}" | unwrap remaining [5m]))
-
-# Alert when approaching limit
-probe_http_header_value{header="X-RateLimit-Remaining"} < 100
-```
+HTTP checks can validate that the rate-limit header is present and well-formed. To alert on the numeric quota value itself, emit it as a metric from your application or from a k6 scripted check.
 
 ## Testing Behind Authentication
 
@@ -415,7 +379,7 @@ Run checks against authenticated endpoints.
   "target": "https://api.example.com/private/data",
   "settings": {
     "http": {
-      "method": "GET",
+      "method": 0,
       "headers": [
         "Authorization: Bearer ${API_TOKEN}",
         "X-API-Key: ${API_KEY}"
