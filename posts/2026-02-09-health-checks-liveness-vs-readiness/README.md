@@ -34,6 +34,7 @@ Let's build a Node.js application with properly separated health checks.
 // healthcheck.js
 const express = require('express');
 const http = require('http');
+const { monitorEventLoopDelay } = require('perf_hooks');
 
 class HealthChecker {
   constructor() {
@@ -44,30 +45,30 @@ class HealthChecker {
       cache: false,
       messageQueue: false
     };
+    this.eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+    this.eventLoopDelay.enable();
   }
 
   // Liveness check - basic application health
   checkLiveness() {
     // Simple checks that indicate the app is fundamentally broken
     // Only things that require a restart to fix
+    const checks = {
+      eventLoop: this.checkEventLoop(),
+      memory: this.checkMemoryThreshold()
+    };
+
     return {
-      alive: this.isAlive,
+      alive: this.isAlive && checks.eventLoop && checks.memory,
       timestamp: new Date().toISOString(),
-      checks: {
-        eventLoop: this.checkEventLoop(),
-        memory: this.checkMemoryThreshold()
-      }
+      checks
     };
   }
 
   checkEventLoop() {
     // Check if event loop is responsive
-    const start = Date.now();
-    setImmediate(() => {
-      const delay = Date.now() - start;
-      return delay < 1000; // Event loop responsive
-    });
-    return true;
+    const meanDelayMs = this.eventLoopDelay.mean / 1e6;
+    return Number.isNaN(meanDelayMs) || meanDelayMs < 1000;
   }
 
   checkMemoryThreshold() {
@@ -330,9 +331,9 @@ class HealthChecker:
 
     def _check_memory_pressure(self) -> bool:
         """Check if memory usage is critical"""
-        memory = psutil.virtual_memory()
+        process = psutil.Process()
         # Only fail if we're in critical memory state
-        return memory.percent < 95
+        return process.memory_percent() < 95
 
     def check_readiness(self) -> Dict[str, Any]:
         """
