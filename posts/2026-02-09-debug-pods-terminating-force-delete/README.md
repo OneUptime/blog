@@ -16,17 +16,17 @@ This guide covers the root causes of stuck terminating pods and shows you how to
 
 When you delete a pod, Kubernetes follows a termination sequence:
 
-1. Pod status changes to Terminating
+1. Pod is marked for deletion and `kubectl` shows it as Terminating
 2. PreStop hooks execute (if configured)
 3. SIGTERM is sent to containers
 4. Kubernetes waits up to terminationGracePeriodSeconds (default 30s)
 5. SIGKILL is sent if containers are still running
-6. Pod is removed from API server
+6. Pod is removed from the API server after termination completes
 
 Pods get stuck when this sequence does not complete. Common causes include:
 - Finalizers preventing deletion
 - Node is down or unreachable
-- Container processes not responding to SIGTERM/SIGKILL
+- Container runtime unable to stop processes cleanly
 - Network partition preventing communication
 - Kubelet issues
 - Storage volume unmount failures
@@ -94,7 +94,7 @@ kubectl patch pod stuck-pod -p '{"metadata":{"finalizers":null}}'
 
 The pod should delete immediately after removing finalizers.
 
-For specific finalizers:
+To remove the whole finalizers list with JSON Patch:
 
 ```bash
 kubectl patch pod stuck-pod --type='json' -p='[{"op": "remove", "path": "/metadata/finalizers"}]'
@@ -123,7 +123,7 @@ NAME           STATUS     ROLES    AGE   VERSION
 worker-node-1  NotReady   <none>   5d    v1.28.0
 ```
 
-A NotReady node cannot execute pod deletion.
+A NotReady node may not be able to observe and execute pod deletion.
 
 Check node conditions:
 
@@ -189,16 +189,16 @@ Find attachments for the stuck pod's node:
 kubectl get volumeattachments -o json | jq -r '.items[] | select(.spec.nodeName == "worker-node-1")'
 ```
 
-Describe the volume attachment for errors:
+Describe the volume attachment for errors using the actual VolumeAttachment name:
 
 ```bash
-kubectl describe volumeattachment pvc-abc123
+kubectl describe volumeattachment csi-123456
 ```
 
-If the volume is stuck, force delete it:
+If the volume is stuck, delete the VolumeAttachment only after confirming that the storage backend has detached the volume:
 
 ```bash
-kubectl delete volumeattachment pvc-abc123
+kubectl delete volumeattachment csi-123456
 ```
 
 Then delete the pod.
@@ -225,7 +225,7 @@ Check container runtime status on the node:
 # For containerd
 sudo systemctl status containerd
 
-# For Docker
+# For Docker with CRI-Dockerd or legacy dockershim clusters
 sudo systemctl status docker
 ```
 
@@ -235,7 +235,7 @@ List containers for the stuck pod:
 # Containerd
 sudo crictl ps | grep stuck-pod
 
-# Docker
+# Docker with CRI-Dockerd or legacy dockershim clusters
 sudo docker ps | grep stuck-pod
 ```
 
@@ -246,7 +246,7 @@ Force remove stuck containers:
 CONTAINER_ID=$(sudo crictl ps | grep stuck-pod | awk '{print $1}')
 sudo crictl rm -f $CONTAINER_ID
 
-# Docker
+# Docker with CRI-Dockerd or legacy dockershim clusters
 CONTAINER_ID=$(sudo docker ps | grep stuck-pod | awk '{print $1}')
 sudo docker rm -f $CONTAINER_ID
 ```
@@ -261,7 +261,7 @@ Standard force delete:
 kubectl delete pod stuck-pod --grace-period=0 --force
 ```
 
-This sends SIGKILL immediately without waiting for graceful shutdown.
+This removes the pod object from the API server without waiting for confirmation that the pod's processes have stopped. The processes may continue running on the node until the kubelet or container runtime finishes cleanup.
 
 If the pod still does not delete, remove it from API server:
 
@@ -270,9 +270,11 @@ kubectl patch pod stuck-pod -p '{"metadata":{"finalizers":null}}' && \
 kubectl delete pod stuck-pod --grace-period=0 --force
 ```
 
-For StatefulSet pods, deletion might recreate the pod. Delete the StatefulSet first:
+For StatefulSet pods, deletion might recreate the pod. If you do not want the controller to recreate it, scale down or delete the StatefulSet first:
 
 ```bash
+kubectl scale statefulset my-statefulset --replicas=0
+# Or:
 kubectl delete statefulset my-statefulset --cascade=orphan
 kubectl delete pod stuck-pod --grace-period=0 --force
 ```
@@ -387,7 +389,7 @@ groups:
 Track terminating pod count:
 
 ```bash
-kubectl get pods -A --field-selector status.phase=Terminating --no-headers | wc -l
+kubectl get pods -A -o json | jq '[.items[] | select(.metadata.deletionTimestamp != null)] | length'
 ```
 
 Script to find old terminating pods:
@@ -408,13 +410,13 @@ kubectl get pods -A -o json | jq -r '
     deletionTimestamp: .metadata.deletionTimestamp,
     nodeName: .spec.nodeName
   } | @json
-' | while read pod_json; do
-  DELETION_TIME=$(echo $pod_json | jq -r '.deletionTimestamp' | date -f - +%s)
+' | while read -r pod_json; do
+  DELETION_TIME=$(echo "$pod_json" | jq -r '.deletionTimestamp' | date -f - +%s)
   AGE=$((CURRENT_TIME - DELETION_TIME))
 
   if [ $AGE -gt $THRESHOLD ]; then
     echo "Stuck pod found:"
-    echo $pod_json | jq .
+    echo "$pod_json" | jq .
   fi
 done
 ```
@@ -476,7 +478,7 @@ For critical situations where multiple pods are stuck:
 
 1. Identify all stuck pods:
 ```bash
-kubectl get pods -A --field-selector status.phase=Terminating
+kubectl get pods -A -o json | jq -r '.items[] | select(.metadata.deletionTimestamp != null) | "\(.metadata.namespace) \(.metadata.name) \(.spec.nodeName)"'
 ```
 
 2. Check if specific node is causing issues:
@@ -492,10 +494,10 @@ kubectl drain problem-node --ignore-daemonsets --delete-emptydir-data
 
 4. Force delete stuck pods:
 ```bash
-kubectl get pods -A --field-selector status.phase=Terminating -o json | \
-  jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
-  while read ns name; do
-    kubectl delete pod $name -n $ns --grace-period=0 --force
+kubectl get pods -A -o json | \
+  jq -r '.items[] | select(.metadata.deletionTimestamp != null) | "\(.metadata.namespace) \(.metadata.name)"' | \
+  while read -r ns name; do
+    kubectl delete pod "$name" -n "$ns" --grace-period=0 --force
   done
 ```
 
