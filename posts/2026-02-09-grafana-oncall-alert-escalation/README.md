@@ -12,14 +12,16 @@ Kubernetes alerts are only valuable if they reach someone who can act on them. G
 
 This guide walks through deploying Grafana OnCall in Kubernetes, configuring escalation chains, setting up rotation schedules, and integrating with your existing Prometheus alerting infrastructure.
 
+Note: Grafana OnCall OSS was archived on March 24, 2026. Existing self-hosted deployments can still run the archived OSS chart, but active development has moved to Grafana Cloud IRM. Treat new OSS deployments as maintenance or migration work rather than a long-term greenfield choice.
+
 ## Understanding Grafana OnCall Architecture
 
 Grafana OnCall consists of several components:
 
 - **Engine** - Core routing and escalation logic
-- **Web UI** - Management interface for schedules and escalations
-- **Mobile Apps** - iOS and Android apps for on-call engineers
-- **Integrations** - Connectors for Prometheus, Grafana alerts, and other sources
+- **Grafana plugin UI** - Management interface for schedules and escalations inside Grafana
+- **Celery workers** - Background processing for escalations and notifications
+- **Integrations** - Connectors for Prometheus Alertmanager, Grafana alerts, and other sources
 
 The system receives alerts, applies routing rules, follows escalation policies, and tracks acknowledgments and resolutions.
 
@@ -41,46 +43,65 @@ metadata:
 # helm install oncall grafana/oncall -n oncall -f values.yaml
 
 # values.yaml
+base_url: oncall.example.com
+base_url_protocol: https
+
+engine:
+  replicaCount: 2
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+celery:
+  replicaCount: 2
+
 oncall:
-  engine:
-    replicaCount: 2
-    resources:
-      requests:
-        memory: "512Mi"
-        cpu: "500m"
-      limits:
-        memory: "1Gi"
-        cpu: "1000m"
+  secrets:
+    existingSecret: oncall-secrets
+    secretKey: SECRET_KEY
+    mirageSecretKey: MIRAGE_SECRET_KEY
 
-  database:
-    type: postgresql
-    external:
-      host: postgres.oncall.svc.cluster.local
-      port: 5432
-      database: oncall
-      user: oncall
+database:
+  type: postgresql
 
-  redis:
-    enabled: true
-    replica:
-      replicaCount: 2
+postgresql:
+  enabled: false
 
-  ingress:
-    enabled: true
-    hosts:
-      - host: oncall.example.com
-        paths:
-          - path: /
-            pathType: Prefix
+externalPostgresql:
+  host: postgres.oncall.svc.cluster.local
+  port: 5432
+  db_name: oncall
+  user: oncall
+  existingSecret: oncall-secrets
+  passwordKey: DATABASE_PASSWORD
 
-  env:
-    - name: BASE_URL
-      value: "https://oncall.example.com"
-    - name: SECRET_KEY
-      valueFrom:
-        secretKeyRef:
-          name: oncall-secrets
-          key: secret-key
+redis:
+  enabled: true
+
+rabbitmq:
+  enabled: true
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/issuer: "letsencrypt-prod"
+  tls:
+    - hosts:
+        - oncall.example.com
+      secretName: oncall-tls
+
+grafana:
+  enabled: true
+  grafana.ini:
+    server:
+      domain: oncall.example.com
+      root_url: "%(protocol)s://%(domain)s/grafana/"
+      serve_from_sub_path: true
 ```
 
 Deploy the configuration:
@@ -89,8 +110,9 @@ Deploy the configuration:
 # Create secret for OnCall
 kubectl create secret generic oncall-secrets \
   -n oncall \
-  --from-literal=secret-key=$(openssl rand -hex 32) \
-  --from-literal=database-password=$(openssl rand -hex 16)
+  --from-literal=SECRET_KEY=$(openssl rand -hex 32) \
+  --from-literal=MIRAGE_SECRET_KEY=$(openssl rand -hex 32) \
+  --from-literal=DATABASE_PASSWORD=$(openssl rand -hex 16)
 
 # Install OnCall
 helm install oncall grafana/oncall \
@@ -100,7 +122,7 @@ helm install oncall grafana/oncall \
 
 ## Configuring Alert Sources from Prometheus
 
-Connect Prometheus Alertmanager to Grafana OnCall:
+Connect Prometheus Alertmanager to Grafana OnCall. Create an Alertmanager Prometheus integration in the OnCall UI, then copy the integration URL from the HTTP Endpoint section:
 
 ```yaml
 # Alertmanager configuration
@@ -134,18 +156,21 @@ data:
     receivers:
     - name: 'grafana-oncall'
       webhook_configs:
-      - url: 'http://oncall-engine.oncall.svc.cluster.local:8080/integrations/v1/prometheus/'
+      - url: '<oncall-alertmanager-integration-url>'
         send_resolved: true
+        max_alerts: 100
 
     - name: 'grafana-oncall-critical'
       webhook_configs:
-      - url: 'http://oncall-engine.oncall.svc.cluster.local:8080/integrations/v1/prometheus/critical'
+      - url: '<critical-alertmanager-integration-url>'
         send_resolved: true
+        max_alerts: 100
 
     - name: 'grafana-oncall-warning'
       webhook_configs:
-      - url: 'http://oncall-engine.oncall.svc.cluster.local:8080/integrations/v1/prometheus/warning'
+      - url: '<warning-alertmanager-integration-url>'
         send_resolved: true
+        max_alerts: 100
 ```
 
 ## Creating On-Call Rotation Schedules
@@ -154,16 +179,24 @@ Define rotation schedules using the OnCall API or UI. Here's a complete schedule
 
 ```python
 import requests
-import json
 
 # OnCall API endpoint
 ONCALL_API = "https://oncall.example.com/api/v1"
 API_TOKEN = "your-api-token"
 
 headers = {
-    "Authorization": f"Bearer {API_TOKEN}",
+    "Authorization": API_TOKEN,
     "Content-Type": "application/json"
 }
+
+# User IDs from the OnCall users API
+ALICE = "U4DNY931HHJS5"
+BOB = "U7S8H84ARFTGN"
+CHARLIE = "UC2CHRT5SD34X"
+DAVE = "U9Q9X84ARFTGN"
+EVE = "U1A2B3C4D5E6F"
+FRANK = "U6F5E4D3C2B1A"
+GRACE = "U8G7H6I5J4K3L"
 
 # Create a weekly rotation schedule
 schedule_config = {
@@ -174,49 +207,40 @@ schedule_config = {
         {
             "name": "Business Hours Weekdays",
             "type": "rolling_users",
-            "rotation_start": "2026-02-10T09:00:00",
+            "start": "2026-02-10T09:00:00",
             "duration": 28800,  # 8 hours in seconds
             "frequency": "weekly",
             "by_day": ["MO", "TU", "WE", "TH", "FR"],
-            "users": [
-                {"user": "alice@example.com"},
-                {"user": "bob@example.com"},
-                {"user": "charlie@example.com"}
-            ]
+            "rolling_users": [[ALICE], [BOB], [CHARLIE]]
         },
         {
             "name": "After Hours Weekdays",
             "type": "rolling_users",
-            "rotation_start": "2026-02-10T17:00:00",
+            "start": "2026-02-10T17:00:00",
             "duration": 57600,  # 16 hours
             "frequency": "weekly",
             "by_day": ["MO", "TU", "WE", "TH", "FR"],
-            "users": [
-                {"user": "dave@example.com"},
-                {"user": "eve@example.com"}
-            ]
+            "rolling_users": [[DAVE], [EVE]]
         },
         {
             "name": "Weekend Rotation",
             "type": "rolling_users",
-            "rotation_start": "2026-02-15T00:00:00",
+            "start": "2026-02-15T00:00:00",
             "duration": 172800,  # 48 hours
             "frequency": "weekly",
-            "by_day": ["SA", "SU"],
-            "users": [
-                {"user": "frank@example.com"},
-                {"user": "grace@example.com"}
-            ]
+            "by_day": ["SA"],
+            "rolling_users": [[FRANK], [GRACE]]
         }
     ]
 }
 
 # Create schedule via API
 response = requests.post(
-    f"{ONCALL_API}/schedules",
+    f"{ONCALL_API}/schedules/",
     headers=headers,
     json=schedule_config
 )
+response.raise_for_status()
 
 schedule_id = response.json()["id"]
 print(f"Created schedule: {schedule_id}")
@@ -227,65 +251,72 @@ print(f"Created schedule: {schedule_id}")
 Create sophisticated escalation policies that define how alerts progress if not acknowledged:
 
 ```python
-# Define escalation chain
-escalation_config = {
-    "name": "Critical Kubernetes Alerts",
-    "steps": [
-        {
-            "type": "notify_persons",
-            "delay": 0,
-            "notify": [
-                {"user": "current_on_call"}
-            ],
-            "important": False
-        },
-        {
-            "type": "wait",
-            "delay": 300  # Wait 5 minutes
-        },
-        {
-            "type": "notify_persons",
-            "delay": 0,
-            "notify": [
-                {"user": "current_on_call"}
-            ],
-            "important": True  # Second notification is important
-        },
-        {
-            "type": "wait",
-            "delay": 600  # Wait 10 more minutes
-        },
-        {
-            "type": "notify_persons",
-            "delay": 0,
-            "notify": [
-                {"user": "team_lead@example.com"}
-            ],
-            "important": True
-        },
-        {
-            "type": "wait",
-            "delay": 600
-        },
-        {
-            "type": "notify_persons",
-            "delay": 0,
-            "notify": [
-                {"user": "engineering_manager@example.com"}
-            ],
-            "important": True
-        }
-    ]
-}
-
 # Create escalation chain
 response = requests.post(
-    f"{ONCALL_API}/escalation_chains",
+    f"{ONCALL_API}/escalation_chains/",
     headers=headers,
-    json=escalation_config
+    json={"name": "Critical Kubernetes Alerts"}
 )
-
+response.raise_for_status()
 escalation_id = response.json()["id"]
+
+# Define escalation policies
+escalation_policies = [
+    {
+        "escalation_chain_id": escalation_id,
+        "position": 0,
+        "type": "notify_on_call_from_schedule",
+        "notify_on_call_from_schedule": schedule_id,
+        "important": False
+    },
+    {
+        "escalation_chain_id": escalation_id,
+        "position": 1,
+        "type": "wait",
+        "duration": 300  # Wait 5 minutes
+    },
+    {
+        "escalation_chain_id": escalation_id,
+        "position": 2,
+        "type": "notify_on_call_from_schedule",
+        "notify_on_call_from_schedule": schedule_id,
+        "important": True  # Second notification is important
+    },
+    {
+        "escalation_chain_id": escalation_id,
+        "position": 3,
+        "type": "wait",
+        "duration": 600  # Wait 10 more minutes
+    },
+    {
+        "escalation_chain_id": escalation_id,
+        "position": 4,
+        "type": "notify_persons",
+        "persons_to_notify": ["UTEAMLEAD123"],
+        "important": True
+    },
+    {
+        "escalation_chain_id": escalation_id,
+        "position": 5,
+        "type": "wait",
+        "duration": 600
+    },
+    {
+        "escalation_chain_id": escalation_id,
+        "position": 6,
+        "type": "notify_persons",
+        "persons_to_notify": ["UENGMANAGER1"],
+        "important": True
+    }
+]
+
+for policy in escalation_policies:
+    response = requests.post(
+        f"{ONCALL_API}/escalation_policies/",
+        headers=headers,
+        json=policy
+    )
+    response.raise_for_status()
 ```
 
 This escalation chain notifies the on-call person immediately, then escalates to the team lead after 15 minutes, and to the engineering manager after another 10 minutes if still unacknowledged.
@@ -296,29 +327,39 @@ Define routing rules that determine which alerts go to which escalation chains:
 
 ```python
 # Create routing rules
-routing_config = {
-    "integration": "prometheus",
-    "routes": [
-        {
-            "position": 0,
-            "routing_regex": ".*severity.*critical.*",
-            "escalation_chain": escalation_id,
-            "slack_channel": "alerts-critical"
-        },
-        {
-            "position": 1,
-            "routing_regex": ".*namespace.*kube-system.*",
-            "escalation_chain": escalation_id,
-            "slack_channel": "alerts-infrastructure"
-        },
-        {
-            "position": 2,
-            "routing_regex": ".*alertname.*PodCrashLooping.*",
-            "escalation_chain": escalation_id,
-            "slack_channel": "alerts-applications"
-        }
-    ]
-}
+integration_id = "CFRPV98RPR1U8"
+
+routing_rules = [
+    {
+        "integration_id": integration_id,
+        "position": 0,
+        "routing_regex": ".*severity.*critical.*",
+        "escalation_chain_id": escalation_id,
+        "slack": {"channel_id": "C01234CRITICAL"}
+    },
+    {
+        "integration_id": integration_id,
+        "position": 1,
+        "routing_regex": ".*namespace.*kube-system.*",
+        "escalation_chain_id": escalation_id,
+        "slack": {"channel_id": "C01234INFRA"}
+    },
+    {
+        "integration_id": integration_id,
+        "position": 2,
+        "routing_regex": ".*alertname.*PodCrashLooping.*",
+        "escalation_chain_id": escalation_id,
+        "slack": {"channel_id": "C01234APPS"}
+    }
+]
+
+for route in routing_rules:
+    response = requests.post(
+        f"{ONCALL_API}/routes/",
+        headers=headers,
+        json=route
+    )
+    response.raise_for_status()
 ```
 
 ## Setting Up Notification Channels
@@ -326,47 +367,55 @@ routing_config = {
 Configure multiple notification channels for different alert types:
 
 ```yaml
-# Slack integration via ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: oncall-integrations
-  namespace: oncall
-data:
-  slack.json: |
-    {
-      "slack_channel_id": "C01234ABCDE",
-      "slack_team_identity": {
-        "id": "T01234ABCDE",
-        "name": "Example Team"
-      }
-    }
+# Slack integration via Helm values
+oncall:
+  slack:
+    enabled: true
+    existingSecret: oncall-slack-secrets
+    clientIdKey: SLACK_CLIENT_OAUTH_ID
+    clientSecretKey: SLACK_CLIENT_OAUTH_SECRET
+    signingSecretKey: SLACK_SIGNING_SECRET
+    redirectHost: https://oncall.example.com
 ```
 
 Configure notification preferences via API:
 
 ```python
 # Set user notification preferences
-notification_config = {
-    "user": "alice@example.com",
-    "notification_rules": [
-        {
-            "type": "notify_by_slack",
-            "important": False,
-            "delay": 0
-        },
-        {
-            "type": "notify_by_sms",
-            "important": True,
-            "delay": 0
-        },
-        {
-            "type": "notify_by_phone_call",
-            "important": True,
-            "delay": 300  # Call after 5 minutes if still unacknowledged
-        }
-    ]
-}
+notification_rules = [
+    {
+        "user_id": ALICE,
+        "position": 0,
+        "type": "notify_by_slack",
+        "important": False
+    },
+    {
+        "user_id": ALICE,
+        "position": 1,
+        "type": "notify_by_sms",
+        "important": True
+    },
+    {
+        "user_id": ALICE,
+        "position": 2,
+        "type": "wait",
+        "duration": 300
+    },
+    {
+        "user_id": ALICE,
+        "position": 3,
+        "type": "notify_by_phone_call",
+        "important": True
+    }
+]
+
+for rule in notification_rules:
+    response = requests.post(
+        f"{ONCALL_API}/personal_notification_rules/",
+        headers=headers,
+        json=rule
+    )
+    response.raise_for_status()
 ```
 
 ## Implementing Follow-the-Sun Schedules
@@ -377,71 +426,69 @@ For global teams, create schedules that hand off between time zones:
 # Asia-Pacific shift
 apac_schedule = {
     "name": "APAC Shift",
+    "type": "calendar",
     "time_zone": "Asia/Singapore",
     "shifts": [{
-        "rotation_start": "2026-02-10T09:00:00",
+        "name": "APAC Business Hours",
+        "type": "rolling_users",
+        "start": "2026-02-10T09:00:00",
         "duration": 28800,  # 8 hours
         "frequency": "daily",
-        "users": [
-            {"user": "apac-engineer1@example.com"},
-            {"user": "apac-engineer2@example.com"}
-        ]
+        "rolling_users": [["UAPACENG1"], ["UAPACENG2"]]
     }]
 }
 
 # Europe shift
 emea_schedule = {
     "name": "EMEA Shift",
+    "type": "calendar",
     "time_zone": "Europe/London",
     "shifts": [{
-        "rotation_start": "2026-02-10T09:00:00",
+        "name": "EMEA Business Hours",
+        "type": "rolling_users",
+        "start": "2026-02-10T09:00:00",
         "duration": 28800,
         "frequency": "daily",
-        "users": [
-            {"user": "emea-engineer1@example.com"},
-            {"user": "emea-engineer2@example.com"}
-        ]
+        "rolling_users": [["UEMEAENG1"], ["UEMEAENG2"]]
     }]
 }
 
 # Americas shift
 amer_schedule = {
     "name": "Americas Shift",
+    "type": "calendar",
     "time_zone": "America/New_York",
     "shifts": [{
-        "rotation_start": "2026-02-10T09:00:00",
+        "name": "Americas Business Hours",
+        "type": "rolling_users",
+        "start": "2026-02-10T09:00:00",
         "duration": 28800,
         "frequency": "daily",
-        "users": [
-            {"user": "amer-engineer1@example.com"},
-            {"user": "amer-engineer2@example.com"}
-        ]
+        "rolling_users": [["UAMERENG1"], ["UAMERENG2"]]
     }]
 }
 ```
 
 ## Creating Override Schedules
 
-Handle vacation and shift swaps with override schedules:
+Handle vacation and shift swaps with web overrides, shift swaps, or an override iCal calendar:
 
 ```python
-# Create override for user vacation
+# Attach an override calendar to an API-managed schedule
 override_config = {
-    "schedule": schedule_id,
-    "user": "alice@example.com",
-    "start": "2026-02-20T00:00:00",
-    "end": "2026-02-27T00:00:00",
-    "rotation_start": None  # Remove from rotation
+    "name": "Platform Team - Weekly Rotation",
+    "type": "calendar",
+    "time_zone": "America/New_York",
+    "ical_url_overrides": "https://calendar.example.com/platform-overrides.ics",
+    "enable_web_overrides": True
 }
 
-# Create override for shift swap
-swap_config = {
-    "schedule": schedule_id,
-    "user": "bob@example.com",  # Bob covers for Alice
-    "start": "2026-02-20T00:00:00",
-    "end": "2026-02-27T00:00:00",
-    "rotation_start": "2026-02-20T09:00:00"
-}
+response = requests.put(
+    f"{ONCALL_API}/schedules/{schedule_id}/",
+    headers=headers,
+    json=override_config
+)
+response.raise_for_status()
 ```
 
 ## Integrating with Kubernetes Operators
@@ -449,9 +496,12 @@ swap_config = {
 Create a Kubernetes operator integration for automated escalation:
 
 ```python
+import requests
 from kubernetes import client, config, watch
 
-# Watch for pod failures and create OnCall incidents
+ONCALL_INTEGRATION_URL = "https://oncall.example.com/integrations/v1/webhook/<integration-token>/"
+
+# Watch for pod failures and send alerts to an OnCall webhook integration
 def watch_critical_pods():
     config.load_incluster_config()
     v1 = client.CoreV1Api()
@@ -460,19 +510,19 @@ def watch_critical_pods():
     for event in w.stream(v1.list_pod_for_all_namespaces):
         pod = event['object']
         if pod.status.phase == 'Failed':
-            # Create incident in OnCall
-            incident_data = {
+            alert_data = {
                 "title": f"Pod {pod.metadata.name} failed",
                 "message": f"Pod in namespace {pod.metadata.namespace} has failed",
                 "alert_group_id": f"pod-failure-{pod.metadata.uid}",
-                "integration": "kubernetes",
-                "severity": "critical"
+                "severity": "critical",
+                "namespace": pod.metadata.namespace,
+                "pod": pod.metadata.name
             }
 
             requests.post(
-                f"{ONCALL_API}/incidents",
-                headers=headers,
-                json=incident_data
+                ONCALL_INTEGRATION_URL,
+                json=alert_data,
+                timeout=10
             )
 ```
 
@@ -481,63 +531,85 @@ def watch_critical_pods():
 Configure intelligent alert grouping to reduce notification noise:
 
 ```python
-# Configure grouping rules
+# Configure grouping templates for an integration
 grouping_config = {
-    "integration": "prometheus",
-    "grouping_id_template": "{{ payload.labels.alertname }}-{{ payload.labels.namespace }}",
-    "resolve_condition": "payload.status == 'resolved'",
-    "acknowledge_condition": None,
-    "source_link_template": "https://grafana.example.com/d/{{ payload.labels.dashboard }}?orgId=1&var-namespace={{ payload.labels.namespace }}"
+    "templates": {
+        "grouping_key": "{{ payload.groupLabels.alertname }}-{{ payload.groupLabels.namespace }}",
+        "resolve_signal": "{{ 1 if payload.status == 'resolved' else 0 }}",
+        "acknowledge_signal": None,
+        "source_link": "https://grafana.example.com/d/{{ payload.commonLabels.dashboard }}?orgId=1&var-namespace={{ payload.commonLabels.namespace }}"
+    }
 }
+
+response = requests.put(
+    f"{ONCALL_API}/integrations/{integration_id}/",
+    headers=headers,
+    json=grouping_config
+)
+response.raise_for_status()
 ```
+
+For Alertmanager integrations, keep grouping in Alertmanager when possible and only customize OnCall grouping templates when you have a specific reason to override the defaults.
 
 ## Creating Custom Notification Templates
 
 Customize notification messages for better context:
 
 ```python
-# Custom Slack message template
-slack_template = {
-    "title": "{{ payload.labels.alertname }}",
-    "message": """
-*Alert:* {{ payload.labels.alertname }}
-*Severity:* {{ payload.labels.severity }}
-*Namespace:* {{ payload.labels.namespace }}
-*Pod:* {{ payload.labels.pod }}
+# Custom notification templates
+template_config = {
+    "templates": {
+        "slack": {
+            "title": "{{ payload.commonLabels.alertname }}",
+            "message": """
+*Alert:* {{ payload.commonLabels.alertname }}
+*Severity:* {{ payload.commonLabels.severity }}
+*Namespace:* {{ payload.commonLabels.namespace }}
 
 *Description:*
-{{ payload.annotations.description }}
+{{ payload.commonAnnotations.description }}
 
-*Runbook:* {{ payload.annotations.runbook_url }}
-    """,
-    "image_url": None
+*Runbook:* {{ payload.commonAnnotations.runbook_url }}
+            """,
+            "image_url": None
+        },
+        "sms": {
+            "title": "{{ payload.commonLabels.severity | upper }}: {{ payload.commonLabels.alertname }} in {{ payload.commonLabels.namespace }}"
+        }
+    }
 }
 
-# Custom SMS template (keep it short)
-sms_template = {
-    "message": "{{ payload.labels.severity | upper }}: {{ payload.labels.alertname }} in {{ payload.labels.namespace }}"
-}
+response = requests.put(
+    f"{ONCALL_API}/integrations/{integration_id}/",
+    headers=headers,
+    json=template_config
+)
+response.raise_for_status()
 ```
 
 ## Monitoring OnCall Performance
 
-Track OnCall system health:
+Track OnCall system health. Enable the OnCall exporter in Helm, then scrape the `/metrics/` endpoint:
+
+```yaml
+oncall:
+  exporter:
+    enabled: true
+    authToken: "replace-with-a-long-random-token"
+```
 
 ```promql
-# Alert acknowledgment time
+# Alert group response time over the last 7 days
 histogram_quantile(
   0.95,
-  sum(rate(oncall_alert_acknowledgment_duration_seconds_bucket[5m])) by (le)
+  sum(rate(oncall_alert_groups_response_time_seconds_bucket[5m])) by (le)
 )
 
-# Alert resolution time
-histogram_quantile(
-  0.95,
-  sum(rate(oncall_alert_resolution_duration_seconds_bucket[5m])) by (le)
-)
+# Alert groups by state
+sum(oncall_alert_groups_total) by (state)
 
-# Failed notification delivery
-rate(oncall_notification_failed_total[5m])
+# Users who received alert group notifications
+sum(rate(oncall_user_was_notified_of_alert_groups_total[5m])) by (username)
 ```
 
 ## Conclusion
