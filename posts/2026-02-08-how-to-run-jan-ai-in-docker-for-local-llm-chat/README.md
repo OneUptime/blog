@@ -8,7 +8,7 @@ Description: Deploy Jan AI in Docker for a private, offline-capable local LLM ch
 
 ---
 
-Jan AI is an open-source desktop and server application for running large language models locally. It provides a clean chat interface, built-in model management, and an OpenAI-compatible API server. What makes Jan interesting is its focus on privacy - everything runs offline on your hardware, and no data leaves your machine. Running Jan in Docker makes it available as a network service, accessible from any device on your network while maintaining the same privacy guarantees.
+Jan AI is an open-source desktop application for running large language models locally, and Jan Server is the related self-hostable server stack for OpenAI-compatible APIs. The desktop app provides a clean chat interface, built-in model management, and a local API server on port 1337. Jan Server is deployed with Docker Compose from the official repository and exposes its API gateway on port 8000. What makes Jan interesting is its focus on privacy - you can run models on your own hardware and keep data under your control.
 
 ## What Jan AI Offers
 
@@ -20,14 +20,15 @@ Jan provides several features that make local LLM usage practical:
 - Conversation history with local storage
 - Model parameter tuning (temperature, top_p, max_tokens, etc.)
 - Support for multiple simultaneous conversations
-- Extension system for adding functionality
+- MCP support for adding tool integrations
 
 ## Prerequisites
 
 - Docker and Docker Compose installed
-- At least 8 GB of RAM (16 GB recommended for larger models)
+- At least 8 GB of RAM (12 GB recommended for the Jan Server stack, 16 GB recommended for larger local models)
 - 10 GB of free disk space for models
-- GPU with NVIDIA drivers is optional but improves performance significantly
+- Git and Make for the official Jan Server Docker Compose workflow
+- GPU with NVIDIA drivers is optional but improves performance significantly for local inference
 
 ```bash
 # Verify Docker is available
@@ -44,86 +45,52 @@ nvidia-smi 2>/dev/null && echo "GPU available" || echo "CPU only"
 
 ## Quick Start with Docker
 
-Run Jan AI's server component in Docker.
+Run Jan Server with the official Docker Compose workflow.
 
 ```bash
-# Run Jan AI server on port 1337
-docker run -d \
-  --name jan-ai \
-  -p 1337:1337 \
-  -v jan_data:/app/server/jan \
-  -v jan_models:/app/server/models \
-  ghcr.io/janhq/jan-server:latest
+# Clone the Jan Server repository
+git clone https://github.com/janhq/jan-server.git
+cd jan-server
+
+# Run the setup wizard and start Docker Compose
+make quickstart
 ```
 
 For GPU-accelerated inference:
 
 ```bash
-# Run with NVIDIA GPU support
-docker run -d \
-  --name jan-ai \
-  --gpus all \
-  -p 1337:1337 \
-  -v jan_data:/app/server/jan \
-  -v jan_models:/app/server/models \
-  ghcr.io/janhq/jan-server:latest
+# Rerun the wizard and choose the local vLLM/GPU option
+make quickstart
+
+# Or start the GPU profile after configuration
+make up-gpu
 ```
 
 ## Docker Compose Setup
 
-A complete Docker Compose setup for Jan AI with all the necessary configuration.
-
-```yaml
-# docker-compose.yml
-# Jan AI server with persistent storage and configuration
-version: "3.8"
-
-services:
-  jan:
-    image: ghcr.io/janhq/jan-server:latest
-    container_name: jan-ai
-    ports:
-      # API and web interface port
-      - "1337:1337"
-    volumes:
-      # Persist conversation data and settings
-      - jan_data:/app/server/jan
-      # Persist downloaded models
-      - jan_models:/app/server/models
-    environment:
-      # API server configuration
-      - JAN_API_HOST=0.0.0.0
-      - JAN_API_PORT=1337
-    # Uncomment for GPU support
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-    restart: unless-stopped
-
-volumes:
-  jan_data:
-  jan_models:
-```
+Jan Server ships its own Docker Compose configuration. Use the repository commands instead of a single `ghcr.io/janhq/jan-server` image.
 
 ```bash
-# Start Jan AI
-docker compose up -d
+# Generate or update .env and config/secrets.env
+make setup
+
+# Start the full Docker Compose stack
+make up-full
 
 # Watch the startup
-docker compose logs -f jan
+make logs
+
+# Check service health
+make health-check
 ```
 
-## Custom Docker Image with Pre-loaded Models
+## Custom Docker Image with Local GGUF Models
 
-Build a custom image that includes models pre-downloaded for faster deployment.
+If you specifically want a small single-container GGUF server, build a custom OpenAI-compatible llama.cpp service. This is not Jan Server, but it can be useful for testing local models with the same OpenAI-style client examples.
 
 ```dockerfile
 # Dockerfile
-# Custom Jan AI server with pre-configured settings
+# Custom OpenAI-compatible GGUF server
 FROM python:3.11-slim
 
 # Install system dependencies
@@ -152,7 +119,7 @@ EXPOSE 1337
 CMD ["uvicorn", "jan_server:app", "--host", "0.0.0.0", "--port", "1337"]
 ```
 
-Create a lightweight server that mimics Jan's API:
+Create a lightweight server that exposes an OpenAI-compatible API:
 
 ```python
 # jan_server.py
@@ -161,13 +128,13 @@ import os
 import json
 import time
 import uuid
-from typing import Optional, List
+from typing import List
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from llama_cpp import Llama
 
-app = FastAPI(title="Jan AI Server")
+app = FastAPI(title="Local GGUF Server")
 
 # Model storage
 models = {}
@@ -328,7 +295,7 @@ docker run -d \
 
 ## Downloading Models
 
-Download GGUF models from Hugging Face for use with Jan.
+Download GGUF models from Hugging Face for use with the custom llama.cpp server or the Jan desktop app.
 
 ```bash
 # Create the models directory
@@ -352,19 +319,19 @@ ls -lh models/
 
 ## Using the OpenAI-Compatible API
 
-Since Jan exposes an OpenAI-compatible API, you can use it with any OpenAI client library.
+Jan Server exposes an OpenAI-compatible API through its gateway. Get a short-lived guest token, then include it as a bearer token in API requests.
 
 ```bash
-# List available models
-curl http://localhost:1337/v1/models | python3 -m json.tool
+# Get a guest access token
+export JAN_ACCESS_TOKEN=$(curl -s -X POST http://localhost:8000/llm/auth/guest-login | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
 
 # Send a chat request
-curl -X POST http://localhost:1337/v1/chat/completions \
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer $JAN_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "Phi-3-mini-4k-instruct-q4.gguf",
+    "model": "jan-v1-4b",
     "messages": [
-      {"role": "system", "content": "You are a helpful assistant."},
       {"role": "user", "content": "What are the benefits of running LLMs locally?"}
     ],
     "temperature": 0.7,
@@ -376,23 +343,18 @@ curl -X POST http://localhost:1337/v1/chat/completions \
 
 ```python
 # jan_client.py
-# Use the OpenAI Python library to connect to Jan AI
+import os
 from openai import OpenAI
 
-# Point the client at the Jan AI server
+# Point the client at the Jan Server gateway
 client = OpenAI(
-    base_url="http://localhost:1337/v1",
-    api_key="not-needed"
+    base_url="http://localhost:8000/v1",
+    api_key=os.environ["JAN_ACCESS_TOKEN"],
 )
-
-# List available models
-models = client.models.list()
-for model in models.data:
-    print(f"Model: {model.id}")
 
 # Chat with the model
 response = client.chat.completions.create(
-    model="Phi-3-mini-4k-instruct-q4.gguf",
+    model="jan-v1-4b",
     messages=[
         {"role": "system", "content": "You are a knowledgeable DevOps engineer."},
         {"role": "user", "content": "How do I optimize Docker image layer caching?"}
@@ -408,17 +370,17 @@ print(response.choices[0].message.content)
 
 ```python
 # jan_stream.py
-# Stream responses from Jan AI for real-time output
+import os
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:1337/v1",
-    api_key="not-needed"
+    base_url="http://localhost:8000/v1",
+    api_key=os.environ["JAN_ACCESS_TOKEN"],
 )
 
 # Stream the response token by token
 stream = client.chat.completions.create(
-    model="Phi-3-mini-4k-instruct-q4.gguf",
+    model="jan-v1-4b",
     messages=[
         {"role": "user", "content": "Write a brief guide to Docker networking."}
     ],
@@ -433,22 +395,21 @@ print()
 
 ## Adding a Web Interface
 
-Pair Jan's API with Open WebUI for a full chat experience.
+Pair the custom GGUF server above with Open WebUI for a full chat experience.
 
 ```yaml
 # docker-compose-full.yml
-# Jan AI backend with Open WebUI frontend
-version: "3.8"
-
+# Local GGUF backend with Open WebUI frontend
 services:
-  jan:
-    image: ghcr.io/janhq/jan-server:latest
-    container_name: jan-ai
+  local-gguf:
+    build: .
+    container_name: local-gguf
     ports:
       - "1337:1337"
     volumes:
-      - jan_data:/app/server/jan
-      - jan_models:/app/server/models
+      - ./models:/app/models
+    environment:
+      - GPU_LAYERS=0
     restart: unless-stopped
 
   webui:
@@ -459,16 +420,14 @@ services:
     volumes:
       - webui_data:/app/backend/data
     environment:
-      # Point Open WebUI at Jan's API
-      - OPENAI_API_BASE_URLS=http://jan:1337/v1
-      - OPENAI_API_KEYS=not-needed
+      # Point Open WebUI at the local OpenAI-compatible API
+      - OPENAI_API_BASE_URL=http://local-gguf:1337/v1
+      - OPENAI_API_KEY=not-needed
     depends_on:
-      - jan
+      - local-gguf
     restart: unless-stopped
 
 volumes:
-  jan_data:
-  jan_models:
   webui_data:
 ```
 
@@ -477,35 +436,25 @@ volumes:
 docker compose -f docker-compose-full.yml up -d
 
 # Access the web UI at http://localhost:3000
-# Jan's API is available at http://localhost:1337
+# The local API is available at http://localhost:1337
 ```
 
 ## GPU Acceleration
 
-Enable GPU support for faster inference.
+Enable GPU support for faster inference. For Jan Server, choose the local vLLM/GPU option in `make quickstart` or run `make up-gpu` after setup. For the custom GGUF server, pass Docker's GPU flag and set the number of layers to offload.
 
-```yaml
-# GPU-enabled configuration
-services:
-  jan:
-    image: ghcr.io/janhq/jan-server:latest
-    container_name: jan-ai
-    ports:
-      - "1337:1337"
-    volumes:
-      - jan_data:/app/server/jan
-      - jan_models:/app/server/models
-    environment:
-      # Set the number of GPU layers to offload
-      - GPU_LAYERS=35
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    restart: unless-stopped
+```bash
+# Start Jan Server with the GPU inference profile
+make up-gpu
+
+# Or run the custom GGUF container with NVIDIA GPU access
+docker run -d \
+  --name local-gguf \
+  --gpus all \
+  -p 1337:1337 \
+  -v $(pwd)/models:/app/models \
+  -e GPU_LAYERS=35 \
+  jan-server-custom
 ```
 
 ```bash
@@ -517,56 +466,44 @@ watch -n 1 nvidia-smi
 
 ```bash
 # Check server health
-curl http://localhost:1337/health
+make health-check
 
 # Monitor resource usage
-docker stats jan-ai
+docker compose stats
 
 # View server logs
-docker compose logs -f jan
-
-# Check model storage size
-docker exec jan-ai du -sh /app/server/models/
+make logs
 
 # Restart the server if needed
-docker compose restart jan
+make restart-full
 ```
 
 ## Backup Conversations and Data
 
 ```bash
-# Backup all Jan data including conversations
-docker run --rm \
-  -v jan_data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/jan-data-backup.tar.gz -C /data .
-
-# Backup models separately (these can be large)
-docker run --rm \
-  -v jan_models:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/jan-models-backup.tar.gz -C /data .
+# Back up the Jan Server application database
+docker compose exec -T api-db \
+  pg_dump -U "${POSTGRES_USER:-jan_user}" "${POSTGRES_DB:-jan_llm_api}" \
+  > jan-llm-api.sql
 
 # Restore data
-docker run --rm \
-  -v jan_data:/data \
-  -v $(pwd):/backup \
-  alpine sh -c "cd /data && tar xzf /backup/jan-data-backup.tar.gz"
+cat jan-llm-api.sql | docker compose exec -T api-db \
+  psql -U "${POSTGRES_USER:-jan_user}" "${POSTGRES_DB:-jan_llm_api}"
 ```
 
 ## Updating Jan AI
 
 ```bash
-# Pull the latest image
-docker compose pull
+# Pull the latest repository changes
+git pull
 
-# Recreate with the new version
-docker compose up -d
+# Recreate with updated images
+make up-full
 
 # Check the new version
-docker compose logs jan | head -10
+make health-check
 ```
 
 ## Summary
 
-Jan AI in Docker provides a private, self-hosted LLM chat experience with an OpenAI-compatible API. The server runs entirely offline, keeping your conversations and data on your own hardware. Docker handles the deployment, while volume mounts ensure your models and conversations persist across updates. The OpenAI-compatible API means you can integrate Jan with any tool that supports the OpenAI format, from Open WebUI to custom applications. For teams and individuals who want local LLM access without cloud dependencies, Jan in Docker is a straightforward solution.
+Jan Server in Docker provides a private, self-hosted OpenAI-compatible API stack, while the Jan desktop app provides the local chat interface and model management on port 1337. Docker Compose handles the server deployment, and the OpenAI-compatible API means you can integrate Jan Server with tools that support the OpenAI format. For teams and individuals who want local LLM access without relying entirely on cloud APIs, Jan's desktop and server options provide a practical path.
