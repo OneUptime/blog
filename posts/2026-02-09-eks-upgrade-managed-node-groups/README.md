@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, EKS, Kubernetes
 
-Description: Learn how to safely upgrade Amazon EKS clusters using managed node group rolling updates with automated instance replacement, graceful pod eviction, and zero-downtime upgrade strategies.
+Description: Learn how to safely upgrade Amazon EKS clusters using managed node group rolling updates with automated instance replacement, graceful pod eviction, and low-disruption upgrade strategies.
 
 ---
 
@@ -42,11 +42,11 @@ echo "Node group versions:"
 aws eks list-nodegroups \
   --cluster-name $CLUSTER_NAME \
   --query 'nodegroups' \
-  --output text | while read nodegroup; do
+  --output text | tr '\t' '\n' | while read -r nodegroup; do
 
   version=$(aws eks describe-nodegroup \
     --cluster-name $CLUSTER_NAME \
-    --nodegroup-name $nodegroup \
+    --nodegroup-name "$nodegroup" \
     --query 'nodegroup.version' \
     --output text)
 
@@ -58,11 +58,11 @@ echo "Addon versions:"
 aws eks list-addons \
   --cluster-name $CLUSTER_NAME \
   --query 'addons' \
-  --output text | while read addon; do
+  --output text | tr '\t' '\n' | while read -r addon; do
 
   version=$(aws eks describe-addon \
     --cluster-name $CLUSTER_NAME \
-    --addon-name $addon \
+    --addon-name "$addon" \
     --query 'addon.addonVersion' \
     --output text)
 
@@ -79,7 +79,7 @@ Always upgrade the control plane before upgrading node groups. EKS supports upgr
 # upgrade-eks-control-plane.sh
 
 CLUSTER_NAME="production"
-TARGET_VERSION="1.29"
+TARGET_VERSION="1.34"
 
 echo "Starting EKS control plane upgrade to version $TARGET_VERSION..."
 
@@ -92,7 +92,7 @@ CURRENT_VERSION=$(aws eks describe-cluster \
 echo "Current version: $CURRENT_VERSION"
 echo "Target version: $TARGET_VERSION"
 
-# Validate upgrade path (must be sequential)
+# Validate that Amazon EKS supports the target version
 if ! aws eks describe-addon-versions \
   --kubernetes-version $TARGET_VERSION > /dev/null 2>&1; then
   echo "ERROR: Invalid target version"
@@ -149,7 +149,13 @@ aws eks describe-nodegroup \
 aws eks update-nodegroup-config \
   --cluster-name production \
   --nodegroup-name standard-workers \
-  --update-config maxUnavailable=1,maxUnavailablePercentage=33
+  --update-config maxUnavailable=1
+
+# Or configure by percentage instead of a fixed node count
+aws eks update-nodegroup-config \
+  --cluster-name production \
+  --nodegroup-name standard-workers \
+  --update-config maxUnavailablePercentage=33
 
 # Alternative: configure via CloudFormation
 cat > nodegroup-update-config.yaml << 'EOF'
@@ -159,14 +165,17 @@ Resources:
     Properties:
       ClusterName: production
       NodegroupName: standard-workers
+      NodeRole: arn:aws:iam::123456789012:role/eks-node-role
+      Subnets:
+        - subnet-0123456789abcdef0
+        - subnet-abcdef01234567890
       UpdateConfig:
         MaxUnavailable: 1
-        MaxUnavailablePercentage: 33
       ScalingConfig:
         MinSize: 3
         MaxSize: 10
         DesiredSize: 5
-      ReleaseVersion: "1.29.0-20240129"
+      Version: "1.34"
 EOF
 ```
 
@@ -237,15 +246,16 @@ kubectl get deploy -A -o json | jq -r '
   .items[] |
   select(.spec.replicas > 1) |
   "\(.metadata.namespace)/\(.metadata.name)"
-' | while read deploy; do
-  ns=$(echo $deploy | cut -d/ -f1)
-  name=$(echo $deploy | cut -d/ -f2)
+' | while read -r deploy; do
+  ns=$(echo "$deploy" | cut -d/ -f1)
+  name=$(echo "$deploy" | cut -d/ -f2)
 
-  labels=$(kubectl get deploy $name -n $ns -o jsonpath='{.spec.selector.matchLabels}')
+  labels=$(kubectl get deploy "$name" -n "$ns" -o json | \
+    jq -c '.spec.selector.matchLabels')
 
   # Check if PDB exists for these labels
-  if ! kubectl get pdb -n $ns -o json | jq -e --arg labels "$labels" \
-    '.items[] | select(.spec.selector.matchLabels == ($labels | fromjson))' > /dev/null; then
+  if ! kubectl get pdb -n "$ns" -o json | jq -e --argjson labels "$labels" \
+    '.items[] | select(.spec.selector.matchLabels == $labels)' > /dev/null; then
     echo "  WARNING: $deploy has no PDB"
   fi
 done
@@ -260,7 +270,7 @@ With PDBs in place, upgrade your node groups. EKS will handle the rolling update
 # upgrade-node-groups.sh
 
 CLUSTER_NAME="production"
-TARGET_VERSION="1.29"
+TARGET_VERSION="1.34"
 
 echo "Upgrading EKS node groups to version $TARGET_VERSION..."
 
@@ -348,6 +358,8 @@ NODEGROUP_NAME="standard-workers"
 
 echo "Monitoring node group upgrade..."
 
+# Run these watch commands in separate terminals while the upgrade is in progress.
+
 # Watch node status
 watch -n 10 'kubectl get nodes -o custom-columns=\
 NAME:.metadata.name,\
@@ -360,8 +372,9 @@ kubectl get events --all-namespaces --watch \
   --field-selector reason=Evicted
 
 # Check for pods stuck in terminating
-watch -n 5 'kubectl get pods --all-namespaces \
-  --field-selector status.phase=Terminating'
+watch -n 5 'kubectl get pods --all-namespaces -o json | jq -r \
+  ".items[] | select(.metadata.deletionTimestamp != null) |
+  [.metadata.namespace, .metadata.name, .metadata.deletionTimestamp] | @tsv"'
 
 # Monitor PDB status during upgrade
 watch -n 10 'kubectl get pdb -A -o custom-columns=\
@@ -407,13 +420,13 @@ while true; do
     send_alert "WARNING: Unhealthy nodes detected: $unhealthy"
   fi
 
-  # Check for PDB violations
-  pdb_violations=$(kubectl get pdb -A -o json | \
+  # Check for PDBs that are currently blocking disruptions
+  pdb_blockers=$(kubectl get pdb -A -o json | \
     jq -r '.items[] | select(.status.disruptionsAllowed == 0) |
     "\(.metadata.namespace)/\(.metadata.name)"')
 
-  if [ ! -z "$pdb_violations" ]; then
-    send_alert "INFO: PDBs blocking disruptions: $pdb_violations"
+  if [ ! -z "$pdb_blockers" ]; then
+    send_alert "INFO: PDBs blocking disruptions: $pdb_blockers"
   fi
 
   sleep 30
@@ -422,7 +435,7 @@ done
 
 ## Handling Upgrade Failures
 
-If a node group upgrade fails, you need to troubleshoot and potentially rollback.
+If a node group upgrade fails, you need to troubleshoot and potentially retry the update after resolving the issue.
 
 ```bash
 #!/bin/bash
@@ -449,9 +462,9 @@ aws eks describe-nodegroup \
   --nodegroup-name $NODEGROUP_NAME \
   --query 'nodegroup.health'
 
-# Check for pods that couldn't be evicted
-kubectl get pods -A --field-selector status.phase=Running | \
-  grep -E "Pending|Unknown"
+# Check for pods that are not healthy
+kubectl get pods -A \
+  --field-selector=status.phase!=Running,status.phase!=Succeeded
 
 # Check node conditions
 kubectl describe nodes | grep -A 10 "Conditions:"
@@ -486,8 +499,8 @@ NEW_VERSION=$(aws ec2 create-launch-template-version \
 
 echo "Created launch template version: $NEW_VERSION"
 
-# Update node group to use new launch template
-aws eks update-nodegroup-config \
+# Update node group to use new launch template version
+aws eks update-nodegroup-version \
   --cluster-name $CLUSTER_NAME \
   --nodegroup-name $NODEGROUP_NAME \
   --launch-template "{
@@ -543,4 +556,4 @@ done
 echo "Validation complete"
 ```
 
-EKS managed node groups dramatically simplify Kubernetes cluster upgrades by automating node replacement and pod migration. By properly configuring PodDisruptionBudgets, monitoring the upgrade process, and validating results, you can upgrade EKS clusters with minimal risk and zero downtime.
+EKS managed node groups dramatically simplify Kubernetes cluster upgrades by automating node replacement and pod migration. By properly configuring PodDisruptionBudgets, monitoring the upgrade process, and validating results, you can upgrade EKS clusters with minimal risk and minimal disruption.
