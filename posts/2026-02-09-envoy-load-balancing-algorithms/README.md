@@ -35,7 +35,7 @@ Round robin works well when all backends have similar capacity and requests have
 
 ## Least Request
 
-Sends requests to the host with the fewest active requests:
+Selects a configurable number of random healthy hosts and sends the request to the one with the fewest active requests:
 
 ```yaml
 clusters:
@@ -56,7 +56,7 @@ clusters:
               port_value: 8080
 ```
 
-choice_count determines how many hosts to consider. Higher values improve distribution but increase CPU overhead. Least request works well when request processing times vary significantly.
+choice_count determines how many random healthy hosts to consider. Higher values improve distribution but increase CPU overhead. Least request works well when request processing times vary significantly.
 
 ## Random
 
@@ -83,7 +83,7 @@ Random is simple and effective for stateless services with many backends.
 
 ## Ring Hash (Consistent Hashing)
 
-Routes requests based on a hash of request properties, ensuring the same request always goes to the same backend:
+Routes requests based on a hash of request properties, keeping requests with the same hash key on the same backend while the host set is stable:
 
 ```yaml
 clusters:
@@ -115,7 +115,7 @@ routes:
         header_name: "x-user-id"
 ```
 
-This routes all requests with the same x-user-id header to the same backend, useful for session affinity or caching.
+This routes requests with the same x-user-id header to the same backend while the host set is stable, useful for session affinity or caching.
 
 ## Hash Policy Configuration
 
@@ -145,7 +145,7 @@ routes:
 
 ## Maglev Load Balancing
 
-Maglev provides consistent hashing with better distribution than ring hash:
+Maglev provides consistent hashing with a fixed-size lookup table and fast host selection:
 
 ```yaml
 clusters:
@@ -166,13 +166,19 @@ clusters:
               port_value: 8080
 ```
 
-Use Maglev when you need consistent hashing with minimal disruption when backends change.
+Use Maglev when you need fast consistent hashing with minimal disruption when backends change.
 
 ## Weighted Load Balancing
 
 Assign different weights to backends:
 
 ```yaml
+lb_policy: ROUND_ROBIN
+round_robin_lb_config:
+  slow_start_config:
+    slow_start_window: 60s
+    aggression:
+      default_value: 1.0
 load_assignment:
   cluster_name: backend_service
   endpoints:
@@ -242,11 +248,6 @@ load_assignment:
           socket_address:
             address: backend.default.svc.cluster.local
             port_value: 8080
-common_lb_config:
-  slow_start_config:
-    slow_start_window: 60s
-    aggression:
-      default_value: 1.0
 ```
 
 New backends receive gradually increasing traffic over 60 seconds.
@@ -256,15 +257,14 @@ New backends receive gradually increasing traffic over 60 seconds.
 Track distribution metrics:
 
 ```promql
-# Requests per host
+# Requests per cluster
+envoy_cluster_upstream_rq_total
 
-envoy_cluster_lb_subsets_selected
-
-# Active requests per host
+# Active requests per cluster
 envoy_cluster_upstream_rq_active
 
-# Load balancing failures
-envoy_cluster_upstream_rq_pending_overflow
+# Load balancer subset selections
+envoy_cluster_lb_subsets_selected
 ```
 
 ## Choosing the Right Algorithm
@@ -283,7 +283,7 @@ envoy_cluster_upstream_rq_pending_overflow
 3. Implement consistent hashing for session affinity
 4. Configure weights for canary deployments
 5. Use priorities for multi-region failover
-6. Monitor per-host metrics to verify distribution
+6. Enable per-endpoint stats when you need to verify per-host distribution
 7. Test load balancing under realistic traffic patterns
 
 ## Conclusion
