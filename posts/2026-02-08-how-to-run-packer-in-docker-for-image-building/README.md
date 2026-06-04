@@ -253,16 +253,18 @@ jobs:
         run: |
           docker run --rm \
             -v ${{ github.workspace }}/packer:/workspace \
+            -v ~/.config/packer/plugins:/root/.config/packer/plugins \
             -w /workspace \
-            hashicorp/packer:1.10.0 \
+            hashicorp/packer:1.15.4 \
             init template.pkr.hcl
 
       - name: Validate Packer template
         run: |
           docker run --rm \
             -v ${{ github.workspace }}/packer:/workspace \
+            -v ~/.config/packer/plugins:/root/.config/packer/plugins \
             -w /workspace \
-            hashicorp/packer:1.10.0 \
+            hashicorp/packer:1.15.4 \
             validate template.pkr.hcl
 
       - name: Build AMI
@@ -272,11 +274,12 @@ jobs:
         run: |
           docker run --rm \
             -v ${{ github.workspace }}/packer:/workspace \
+            -v ~/.config/packer/plugins:/root/.config/packer/plugins \
             -w /workspace \
             -e AWS_ACCESS_KEY_ID \
             -e AWS_SECRET_ACCESS_KEY \
             -e AWS_DEFAULT_REGION=us-east-1 \
-            hashicorp/packer:1.10.0 \
+            hashicorp/packer:1.15.4 \
             build -color=false template.pkr.hcl
 ```
 
@@ -300,7 +303,7 @@ In CI, use GitHub Actions cache to persist the plugin directory.
       - name: Cache Packer plugins
         uses: actions/cache@v4
         with:
-          path: ~/.packer.d/plugins
+          path: ~/.config/packer/plugins
           key: packer-plugins-${{ hashFiles('packer/**/*.pkr.hcl') }}
 ```
 
