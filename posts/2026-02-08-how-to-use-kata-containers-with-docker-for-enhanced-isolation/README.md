@@ -14,7 +14,7 @@ Standard Docker containers share the host kernel. Every container on a machine m
 
 Kata Containers is an open source project that runs container workloads inside lightweight VMs. Each container (or pod) gets its own kernel, its own memory space, and hardware-enforced isolation through the CPU's virtualization extensions (Intel VT-x or AMD-V).
 
-The key difference from traditional VMs is speed. Kata VMs boot in under a second, use minimal memory overhead (around 20-30 MB per VM), and present a standard OCI runtime interface. Docker sees Kata as just another runtime, like runc.
+The key difference from traditional VMs is speed. Kata VMs are designed to boot quickly, use less overhead than general-purpose VMs, and present a standard container runtime interface. Docker can select Kata through its containerd shim runtime, just as it can select other alternative runtimes.
 
 ```mermaid
 graph TB
@@ -57,6 +57,10 @@ grep -cE '(vmx|svm)' /proc/cpuinfo
 # If running in a VM, ensure nested virtualization is enabled
 cat /sys/module/kvm_intel/parameters/nested
 # Should output "Y" or "1"
+
+# On AMD hosts, check the AMD KVM module instead
+cat /sys/module/kvm_amd/parameters/nested
+# Should output "Y" or "1"
 ```
 
 You also need a compatible hypervisor. Kata supports QEMU, Cloud Hypervisor, and Firecracker.
@@ -66,24 +70,24 @@ You also need a compatible hypervisor. Kata supports QEMU, Cloud Hypervisor, and
 ### Install Kata Containers on Ubuntu/Debian
 
 ```bash
-# Add the Kata Containers repository
-sudo mkdir -p /etc/apt/keyrings
-wget -qO- https://packages.kata-containers.io/kata-containers.key | \
-  sudo tee /etc/apt/keyrings/kata-containers.asc
-
-sudo tee /etc/apt/sources.list.d/kata-containers.list << 'EOF'
-deb [signed-by=/etc/apt/keyrings/kata-containers.asc] https://packages.kata-containers.io/stable/ubuntu/ $(lsb_release -cs) main
-EOF
-
-# Install the Kata runtime
+# Install tools needed to unpack the static release archive
 sudo apt-get update
-sudo apt-get install -y kata-containers
+sudo apt-get install -y curl zstd
+
+# Download the current Kata Containers static release for amd64
+KATA_VERSION="3.31.0"
+curl -LO "https://github.com/kata-containers/kata-containers/releases/download/${KATA_VERSION}/kata-static-${KATA_VERSION}-amd64.tar.zst"
+
+# Extract to /opt/kata and put the main tools on PATH
+sudo tar --zstd -xvf "kata-static-${KATA_VERSION}-amd64.tar.zst" -C /
+sudo ln -sf /opt/kata/bin/kata-runtime /usr/local/bin/kata-runtime
+sudo ln -sf /opt/kata/bin/containerd-shim-kata-v2 /usr/local/bin/containerd-shim-kata-v2
 ```
 
-### Install on Fedora/RHEL
+### Install on Fedora
 
 ```bash
-# Install from the official repository
+# Install from the Fedora repository
 sudo dnf install -y kata-containers
 ```
 
@@ -103,20 +107,31 @@ kata-runtime --version
 Docker needs to know about the Kata runtime. Register it in the Docker daemon configuration:
 
 ```bash
+# Optional: create wrapper shims for non-default hypervisor configs
+sudo tee /usr/local/bin/containerd-shim-kata-clh-v2 << 'EOF'
+#!/bin/sh
+KATA_CONF_FILE=/opt/kata/share/defaults/kata-containers/configuration-clh.toml exec /usr/local/bin/containerd-shim-kata-v2 "$@"
+EOF
+
+sudo tee /usr/local/bin/containerd-shim-kata-fc-v2 << 'EOF'
+#!/bin/sh
+KATA_CONF_FILE=/opt/kata/share/defaults/kata-containers/configuration-fc.toml exec /usr/local/bin/containerd-shim-kata-v2 "$@"
+EOF
+
+sudo chmod +x /usr/local/bin/containerd-shim-kata-clh-v2 /usr/local/bin/containerd-shim-kata-fc-v2
+
 # Add Kata as a runtime in daemon.json
 sudo tee /etc/docker/daemon.json << 'EOF'
 {
   "runtimes": {
     "kata": {
-      "path": "/usr/bin/kata-runtime"
+      "runtimeType": "io.containerd.kata.v2"
     },
     "kata-clh": {
-      "path": "/usr/bin/kata-runtime",
-      "runtimeArgs": ["--config", "/etc/kata-containers/configuration-clh.toml"]
+      "runtimeType": "/usr/local/bin/containerd-shim-kata-clh-v2"
     },
     "kata-fc": {
-      "path": "/usr/bin/kata-runtime",
-      "runtimeArgs": ["--config", "/etc/kata-containers/configuration-fc.toml"]
+      "runtimeType": "/usr/local/bin/containerd-shim-kata-fc-v2"
     }
   }
 }
@@ -175,7 +190,7 @@ If all containers should use Kata, set it as the default:
   "default-runtime": "kata",
   "runtimes": {
     "kata": {
-      "path": "/usr/bin/kata-runtime"
+      "runtimeType": "io.containerd.kata.v2"
     }
   }
 }
@@ -229,14 +244,14 @@ Kata adds overhead compared to runc. The VM boot time, memory usage, and I/O pat
 Each hypervisor has different tradeoffs:
 
 ```bash
-# QEMU: Most compatible, highest overhead (~30 MB per VM, ~500ms boot)
-docker run --runtime=kata --name test1 alpine echo hello
+# QEMU: Most compatible
+docker run --rm --runtime=kata --name test1 alpine echo hello
 
-# Cloud Hypervisor: Good balance (~20 MB per VM, ~200ms boot)
-docker run --runtime=kata-clh --name test2 alpine echo hello
+# Cloud Hypervisor: Good balance between compatibility and overhead
+docker run --rm --runtime=kata-clh --name test2 alpine echo hello
 
-# Firecracker: Fastest boot (~15 MB per VM, ~125ms boot), limited features
-docker run --runtime=kata-fc --name test3 alpine echo hello
+# Firecracker: Minimal, fast boot, limited features
+docker run --rm --runtime=kata-fc --name test3 alpine echo hello
 ```
 
 ### Tune VM Resources
@@ -244,7 +259,12 @@ docker run --runtime=kata-fc --name test3 alpine echo hello
 Edit the Kata configuration to right-size the VMs:
 
 ```bash
-# Edit the Kata configuration
+# Copy the packaged QEMU config into /etc so local changes override defaults
+sudo mkdir -p /etc/kata-containers
+sudo cp /opt/kata/share/defaults/kata-containers/configuration-qemu.toml \
+  /etc/kata-containers/configuration.toml
+
+# Edit the local Kata configuration
 sudo vi /etc/kata-containers/configuration.toml
 ```
 
@@ -254,19 +274,19 @@ Key settings to adjust:
 # /etc/kata-containers/configuration.toml
 
 [hypervisor.qemu]
-# Reduce default memory (default is 256 MB, lower for small containers)
+# Reduce default memory for small containers
 default_memory = 128
 
-# Set default vCPUs (default is 1)
+# Set default vCPUs
 default_vcpus = 1
 
-# Enable memory hotplug so VMs start small and grow as needed
+# Disable preallocated memory so VM memory is not reserved up front
 enable_mem_prealloc = false
 
-# Use DAX for faster filesystem access
+# Use I/O threads for virtio block devices
 enable_iothreads = true
 
-# Use virtio-fs instead of 9p for better file I/O
+# Use virtio-fs for shared filesystem I/O
 shared_fs = "virtio-fs"
 ```
 
@@ -278,7 +298,7 @@ The default 9p filesystem driver is slow. Switch to virtio-fs for significantly 
 # In /etc/kata-containers/configuration.toml
 [hypervisor.qemu]
 shared_fs = "virtio-fs"
-virtio_fs_daemon = "/usr/libexec/virtiofsd"
+virtio_fs_daemon = "/opt/kata/libexec/virtiofsd"
 ```
 
 Benchmark the difference:
@@ -308,24 +328,24 @@ ab -n 1000 -c 10 http://localhost:8081/
 
 ## Monitoring Kata Containers
 
-Kata provides a monitoring socket for each VM:
+Kata provides environment, log, and diagnostic tools for troubleshooting:
 
 ```bash
-# Get Kata-specific metrics for a running container
-kata-runtime metrics <container-id>
+# Show the Kata environment and selected configuration
+kata-runtime env
 
-# Check the VM status
-kata-runtime state <container-id>
+# Collect diagnostic data for troubleshooting
+sudo kata-collect-data.sh
 
 # View Kata logs
-journalctl -t kata-runtime
+sudo journalctl -t kata
 ```
 
 ## Limitations
 
 Kata Containers has some limitations compared to standard runc:
 
-- No `--privileged` mode (the whole point is isolation)
+- `--privileged` has different semantics than runc and does not pass host devices through by default
 - Limited device passthrough
 - Higher memory baseline per container
 - Some volume drivers may not work
