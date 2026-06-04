@@ -162,7 +162,7 @@ app = Flask(__name__)
 
 @app.route('/ready')
 def readiness():
-    timeout = 3  # Internal timeout
+    timeout = 1  # Per-call timeout; total check time must stay below probe timeout
 
     # Check database with timeout
     try:
@@ -212,7 +212,7 @@ readinessProbe:
   httpGet:
     path: /ready
     port: 8080
-  timeoutSeconds: 5       # > internal timeout (3s)
+  timeoutSeconds: 5       # > cumulative internal timeouts
   periodSeconds: 10
 ```
 
@@ -240,7 +240,7 @@ spec:
       failureThreshold: 3
 ```
 
-TCP connection attempts either succeed immediately or fail. Long timeouts usually indicate network issues.
+TCP connection attempts often succeed or fail quickly, but dropped packets can make them wait until the timeout. Long TCP probe durations usually indicate network or path issues.
 
 ## Timeout for Exec Probes
 
@@ -276,7 +276,7 @@ Ensure script completes within timeout:
 # health-check.sh
 
 set -e
-export TIMEOUT=8  # Less than Kubernetes timeout
+export TIMEOUT=3  # Per-command timeout; total script time must stay below Kubernetes timeout
 
 # All checks with timeout
 timeout $TIMEOUT psql -h postgres -U app -c "SELECT 1"
@@ -289,33 +289,39 @@ exit 0
 
 ## Monitoring Probe Timeouts
 
-Track timeout frequency:
+Track probe failures and slow durations:
 
 ```promql
-# Probe timeout rate
-rate(prober_probe_total{result="timeout"}[5m])
+# Probe failure rate
+rate(prober_probe_total{result="failed"}[5m])
 
 # Probe duration distribution
 histogram_quantile(0.99,
-  rate(prober_probe_duration_seconds_bucket[5m])
+  sum by (le, namespace, pod, probe_type) (
+    rate(prober_probe_duration_seconds_bucket[5m])
+  )
 )
 
-# Probes exceeding timeout
-sum(prober_probe_duration_seconds > 5) by (pod, probe_type)
+# Probes with p99 duration above 5 seconds
+histogram_quantile(0.99,
+  sum by (le, namespace, pod, probe_type) (
+    rate(prober_probe_duration_seconds_bucket[5m])
+  )
+) > 5
 ```
 
-Alert on excessive timeouts:
+Alert on excessive failures:
 
 ```yaml
 groups:
   - name: probe_timeouts
     rules:
-      - alert: HighProbeTimeoutRate
+      - alert: HighProbeFailureRate
         expr: |
-          rate(prober_probe_total{result="timeout"}[5m]) > 0.1
+          rate(prober_probe_total{result="failed"}[5m]) > 0.1
         for: 10m
         annotations:
-          summary: "Probe timeouts for {{ $labels.pod }}"
+          summary: "Probe failures for {{ $labels.pod }}"
           description: "Consider increasing timeoutSeconds or optimizing health check"
 ```
 
@@ -417,8 +423,8 @@ Test different delays:
 # Test 3 second delay (should pass with 5s timeout)
 curl "http://pod:8080/health?delay=3s"
 
-# Test 6 second delay (should timeout with 5s timeout)
-curl "http://pod:8080/health?delay=6s"
+# Test 6 second delay (should timeout with a 5s client timeout)
+curl --max-time 5 "http://pod:8080/health?delay=6s"
 ```
 
 ## Conclusion
