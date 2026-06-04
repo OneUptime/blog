@@ -8,7 +8,7 @@ Description: Configure Hyper-V isolation for Windows containers to run different
 
 ---
 
-Windows containers support two isolation modes: process isolation and Hyper-V isolation. Process isolation shares the host kernel directly, similar to how Linux containers work. Hyper-V isolation goes further by running each container inside a lightweight virtual machine with its own kernel. This provides stronger security boundaries and, critically, lets you run containers built for different Windows versions on the same host.
+Windows containers support two isolation modes: process isolation and Hyper-V isolation. Process isolation shares the host kernel directly, similar to how Linux containers work. Hyper-V isolation goes further by running each container inside a lightweight virtual machine with its own kernel. This provides stronger security boundaries and, critically, lets you run supported containers built for different Windows versions on the same host.
 
 This guide explains when to use Hyper-V isolation, how to configure it, and the performance trade-offs involved.
 
@@ -23,7 +23,7 @@ Process isolation is the default on Windows Server. Containers share the host's 
 - Fast startup (1-2 seconds)
 - Low memory overhead
 - Direct kernel sharing with the host
-- Container OS version must match the host OS version exactly
+- Container OS version must be compatible with the host OS version
 - Weaker security boundary (kernel is shared)
 
 ### Hyper-V Isolation
@@ -33,8 +33,8 @@ Hyper-V isolation wraps each container in a lightweight Hyper-V virtual machine.
 - Slower startup (5-10 seconds)
 - Higher memory overhead (each container needs its own kernel memory)
 - Strong security boundary (separate kernel per container)
-- Can run different Windows versions on the same host
-- Required on Windows 10/11 for Windows containers
+- Can run supported different Windows versions on the same host
+- Default on Windows 10/11 for Windows containers, with process isolation available only in limited development/test scenarios
 
 ```mermaid
 graph TD
@@ -141,7 +141,7 @@ Now all containers run with Hyper-V isolation unless you explicitly override wit
 
 ## Cross-Version Container Compatibility
 
-The primary practical benefit of Hyper-V isolation is running containers built for different Windows versions on the same host. With process isolation, the container OS version must match the host exactly. Hyper-V removes this restriction.
+The primary practical benefit of Hyper-V isolation is running supported containers built for different Windows versions on the same host. With process isolation, the container OS version must be compatible with the host build; for Windows Server 2016 the revision must also match, while Windows Server version 1809 and later do not require matching revisions. Hyper-V isolation relaxes this requirement by giving the container matching kernel binaries, but you should still check Microsoft's compatibility matrix for unsupported host/image combinations.
 
 ```powershell
 # On a Windows Server 2022 host, run a container built for 2019
@@ -155,7 +155,7 @@ docker run --isolation=hyperv \
   powershell -Command "[System.Environment]::OSVersion"
 ```
 
-This is invaluable when you support applications targeting different Windows Server versions and want to consolidate them onto fewer hosts.
+This is invaluable when you support applications targeting supported Windows Server versions and want to consolidate them onto fewer hosts.
 
 ## Docker Compose with Hyper-V Isolation
 
@@ -310,7 +310,7 @@ Here is what to expect when switching from process isolation to Hyper-V isolatio
 
 1. **Use process isolation when you can.** It is faster and lighter. Default to process isolation on Windows Server where the versions match.
 
-2. **Use Hyper-V isolation when you must.** Specifically for cross-version compatibility, multi-tenant security, or compliance requirements.
+2. **Use Hyper-V isolation when you must.** Specifically for supported cross-version compatibility, multi-tenant security, or compliance requirements.
 
 3. **Set resource limits.** Without limits, Hyper-V containers can consume more resources than expected.
 
@@ -326,4 +326,4 @@ Get-Counter '\Hyper-V Dynamic Memory Balancer(*)\Available Memory'
 
 ## Conclusion
 
-Hyper-V isolation gives Windows containers the security and version flexibility that process isolation lacks. Each container gets its own kernel, providing strong boundaries between workloads and enabling containers built for different Windows versions to coexist on the same host. The trade-off is additional resource overhead and slower startup times, which matter at scale. Use process isolation as your default for performance-sensitive workloads where version matching is not an issue, and reserve Hyper-V isolation for scenarios that demand its unique capabilities: multi-tenant environments, mixed Windows version support, and compliance-sensitive deployments.
+Hyper-V isolation gives Windows containers the security and version flexibility that process isolation lacks. Each container gets its own kernel, providing strong boundaries between workloads and enabling supported containers built for different Windows versions to coexist on the same host. The trade-off is additional resource overhead and slower startup times, which matter at scale. Use process isolation as your default for performance-sensitive workloads where version compatibility is not an issue, and reserve Hyper-V isolation for scenarios that demand its unique capabilities: multi-tenant environments, mixed Windows version support, and compliance-sensitive deployments.
