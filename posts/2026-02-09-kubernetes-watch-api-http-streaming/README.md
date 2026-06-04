@@ -18,9 +18,9 @@ The Watch API uses HTTP streaming to deliver a continuous stream of events. When
 GET /api/v1/namespaces/default/pods?watch=true
 ```
 
-The response is a stream of newline-delimited JSON objects:
+The response is a stream of JSON documents:
 
-```json
+```text
 {"type":"ADDED","object":{"kind":"Pod","apiVersion":"v1","metadata":{"name":"nginx"},...}}
 {"type":"MODIFIED","object":{"kind":"Pod","apiVersion":"v1","metadata":{"name":"nginx"},...}}
 {"type":"DELETED","object":{"kind":"Pod","apiVersion":"v1","metadata":{"name":"nginx"},...}}
@@ -28,7 +28,7 @@ The response is a stream of newline-delimited JSON objects:
 
 Each event includes:
 - `type`: ADDED, MODIFIED, DELETED, BOOKMARK, or ERROR
-- `object`: The full resource object
+- `object`: The resource object for normal events, a metadata-only object for BOOKMARK events, or a status object for ERROR events
 
 ## Basic Watch with kubectl
 
@@ -96,24 +96,43 @@ func watchPods(clientset *kubernetes.Clientset) error {
 
     // Process events from the watch stream
     for event := range watcher.ResultChan() {
-        pod, ok := event.Object.(*corev1.Pod)
-        if !ok {
-            log.Printf("Unexpected type: %T\n", event.Object)
-            continue
-        }
-
         switch event.Type {
-        case watch.Added:
-            fmt.Printf("Pod ADDED: %s\n", pod.Name)
-        case watch.Modified:
-            fmt.Printf("Pod MODIFIED: %s (phase: %s)\n", pod.Name, pod.Status.Phase)
-        case watch.Deleted:
-            fmt.Printf("Pod DELETED: %s\n", pod.Name)
         case watch.Error:
-            log.Printf("Watch ERROR: %v\n", event.Object)
+            status, ok := event.Object.(*metav1.Status)
+            if !ok {
+                log.Printf("Watch ERROR with unexpected type: %T\n", event.Object)
+                continue
+            }
+            log.Printf("Watch ERROR: %s\n", status.Message)
         case watch.Bookmark:
+            pod, ok := event.Object.(*corev1.Pod)
+            if !ok {
+                log.Printf("Bookmark with unexpected type: %T\n", event.Object)
+                continue
+            }
             // Bookmark events are used for resuming watches
             fmt.Printf("Bookmark received (resourceVersion: %s)\n", pod.ResourceVersion)
+        case watch.Added:
+            pod, ok := event.Object.(*corev1.Pod)
+            if !ok {
+                log.Printf("Unexpected type: %T\n", event.Object)
+                continue
+            }
+            fmt.Printf("Pod ADDED: %s\n", pod.Name)
+        case watch.Modified:
+            pod, ok := event.Object.(*corev1.Pod)
+            if !ok {
+                log.Printf("Unexpected type: %T\n", event.Object)
+                continue
+            }
+            fmt.Printf("Pod MODIFIED: %s (phase: %s)\n", pod.Name, pod.Status.Phase)
+        case watch.Deleted:
+            pod, ok := event.Object.(*corev1.Pod)
+            if !ok {
+                log.Printf("Unexpected type: %T\n", event.Object)
+                continue
+            }
+            fmt.Printf("Pod DELETED: %s\n", pod.Name)
         }
     }
 
@@ -142,7 +161,7 @@ This code watches for pod events and prints them as they occur.
 
 ## Resuming Watches with ResourceVersion
 
-Watches can be interrupted by network issues or server restarts. Use `resourceVersion` to resume from where you left off:
+Watches can be interrupted by network issues or server restarts. Use `resourceVersion` to resume from where you left off. If the saved version is too old, the API server can return `410 Gone`; in that case, clear your local state, list again, and start from the new `resourceVersion`:
 
 ```go
 func watchWithResume(clientset *kubernetes.Clientset) error {
@@ -164,7 +183,19 @@ func watchWithResume(clientset *kubernetes.Clientset) error {
             continue
         }
 
+        restartFromCurrentState := false
         for event := range watcher.ResultChan() {
+            if event.Type == watch.Error {
+                status, ok := event.Object.(*metav1.Status)
+                if ok && status.Code == 410 {
+                    log.Println("ResourceVersion expired; relisting before watching again")
+                    resourceVersion = ""
+                    restartFromCurrentState = true
+                    break
+                }
+                return fmt.Errorf("watch error: %v", event.Object)
+            }
+
             pod, ok := event.Object.(*corev1.Pod)
             if !ok {
                 continue
@@ -182,11 +213,16 @@ func watchWithResume(clientset *kubernetes.Clientset) error {
         // Loop will restart the watch from the last resourceVersion
         fmt.Println("Watch closed, reconnecting...")
         watcher.Stop()
+
+        if restartFromCurrentState {
+            // In production, refresh your local cache with a new list before continuing.
+            continue
+        }
     }
 }
 ```
 
-This pattern ensures you do not miss events when connections are interrupted.
+This pattern lets you continue after interruptions while still handling the case where the API server no longer has the old history window available.
 
 ## Filtering Watch Results
 
@@ -209,6 +245,11 @@ func watchFilteredPods(clientset *kubernetes.Clientset) error {
     defer watcher.Stop()
 
     for event := range watcher.ResultChan() {
+        if event.Type == watch.Error {
+            log.Printf("Watch ERROR: %v\n", event.Object)
+            continue
+        }
+
         pod := event.Object.(*corev1.Pod)
         fmt.Printf("Event: %s, Pod: %s\n", event.Type, pod.Name)
     }
@@ -238,6 +279,8 @@ func watchWithBookmarks(clientset *kubernetes.Clientset) error {
 
     for event := range watcher.ResultChan() {
         switch event.Type {
+        case watch.Error:
+            log.Printf("Watch ERROR: %v\n", event.Object)
         case watch.Bookmark:
             // Bookmark events contain only metadata
             pod := event.Object.(*corev1.Pod)
@@ -253,7 +296,7 @@ func watchWithBookmarks(clientset *kubernetes.Clientset) error {
 }
 ```
 
-Bookmarks are sent periodically when there are no actual resource changes, allowing you to keep your resourceVersion current.
+Bookmarks can be requested with `AllowWatchBookmarks`, allowing you to keep your `resourceVersion` current when the API server sends them. Clients should not assume bookmarks are returned at any specific interval, or that they will be returned at all.
 
 ## Watching Multiple Resource Types
 
@@ -266,9 +309,17 @@ func watchMultipleResources(clientset *kubernetes.Clientset) error {
 
     // Watch pods
     go func() {
-        watcher, _ := clientset.CoreV1().Pods("default").Watch(ctx, metav1.ListOptions{})
+        watcher, err := clientset.CoreV1().Pods("default").Watch(ctx, metav1.ListOptions{})
+        if err != nil {
+            log.Printf("Failed to watch pods: %v\n", err)
+            return
+        }
         defer watcher.Stop()
         for event := range watcher.ResultChan() {
+            if event.Type == watch.Error {
+                log.Printf("Pod watch ERROR: %v\n", event.Object)
+                continue
+            }
             pod := event.Object.(*corev1.Pod)
             fmt.Printf("Pod %s: %s\n", event.Type, pod.Name)
         }
@@ -276,9 +327,17 @@ func watchMultipleResources(clientset *kubernetes.Clientset) error {
 
     // Watch services
     go func() {
-        watcher, _ := clientset.CoreV1().Services("default").Watch(ctx, metav1.ListOptions{})
+        watcher, err := clientset.CoreV1().Services("default").Watch(ctx, metav1.ListOptions{})
+        if err != nil {
+            log.Printf("Failed to watch services: %v\n", err)
+            return
+        }
         defer watcher.Stop()
         for event := range watcher.ResultChan() {
+            if event.Type == watch.Error {
+                log.Printf("Service watch ERROR: %v\n", event.Object)
+                continue
+            }
             svc := event.Object.(*corev1.Service)
             fmt.Printf("Service %s: %s\n", event.Type, svc.Name)
         }
@@ -305,17 +364,24 @@ type Controller struct {
 
 func (c *Controller) Run(ctx context.Context) error {
     for {
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        default:
+        }
+
         if err := c.runWatch(ctx); err != nil {
             log.Printf("Watch error: %v, retrying in 5s...", err)
             time.Sleep(5 * time.Second)
             continue
         }
 
-        select {
-        case <-ctx.Done():
+        if ctx.Err() != nil {
             return ctx.Err()
-        default:
         }
+
+        log.Println("Watch closed, retrying in 5s...")
+        time.Sleep(5 * time.Second)
     }
 }
 
@@ -330,6 +396,10 @@ func (c *Controller) runWatch(ctx context.Context) error {
     defer watcher.Stop()
 
     for event := range watcher.ResultChan() {
+        if event.Type == watch.Error {
+            return fmt.Errorf("watch error: %v", event.Object)
+        }
+
         pod := event.Object.(*corev1.Pod)
 
         switch event.Type {
@@ -379,7 +449,7 @@ func useInformer(clientset *kubernetes.Clientset) {
     podInformer := informerFactory.Core().V1().Pods()
 
     // Add event handlers
-    podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+    _, err := podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
         AddFunc: func(obj interface{}) {
             pod := obj.(*corev1.Pod)
             fmt.Printf("Pod added: %s\n", pod.Name)
@@ -389,10 +459,26 @@ func useInformer(clientset *kubernetes.Clientset) {
             fmt.Printf("Pod updated: %s\n", pod.Name)
         },
         DeleteFunc: func(obj interface{}) {
-            pod := obj.(*corev1.Pod)
+            pod, ok := obj.(*corev1.Pod)
+            if !ok {
+                tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+                if !ok {
+                    log.Printf("Unexpected delete object: %T\n", obj)
+                    return
+                }
+                pod, ok = tombstone.Obj.(*corev1.Pod)
+                if !ok {
+                    log.Printf("Unexpected tombstone object: %T\n", tombstone.Obj)
+                    return
+                }
+            }
             fmt.Printf("Pod deleted: %s\n", pod.Name)
         },
     })
+    if err != nil {
+        log.Printf("Failed to add event handler: %v\n", err)
+        return
+    }
 
     // Start the informer
     stopCh := make(chan struct{})
