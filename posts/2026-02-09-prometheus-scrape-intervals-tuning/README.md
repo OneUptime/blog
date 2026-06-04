@@ -13,17 +13,17 @@ Prometheus scrape configuration directly impacts monitoring accuracy, resource c
 ## Understanding Scrape Configuration
 
 Prometheus scrapes metrics from targets at regular intervals. Each scrape:
-- Opens an HTTP connection to the target
+- Makes an HTTP request to the target
 - Fetches metrics from the /metrics endpoint
 - Parses and stores the metrics
-- Closes the connection
+- Records scrape health and timing metrics
 
 Key parameters:
 - **scrape_interval**: How often to scrape (default: 1m)
 - **scrape_timeout**: Maximum time for a scrape (default: 10s)
 - **evaluation_interval**: How often to evaluate rules (default: 1m)
 
-The relationship: `scrape_timeout < scrape_interval`
+The relationship: `scrape_timeout <= scrape_interval` (prefer a timeout lower than the interval)
 
 ## Setting Global Defaults
 
@@ -195,14 +195,12 @@ spec:
   selector:
     matchLabels:
       metrics: high-cardinality
+  sampleLimit: 50000  # Fail the scrape if more than 50k samples are present
   endpoints:
     - port: metrics
       interval: 60s  # Longer interval to reduce load
       scrapeTimeout: 30s  # Longer timeout for large responses
       path: /metrics
-
-      # Optionally limit series
-      sampleLimit: 50000  # Drop scrape if more than 50k series
 ```
 
 ### Low-Latency Applications
@@ -289,7 +287,7 @@ scrape_samples_scraped{job="my-app"}
 # Failed scrapes
 up{job="my-app"} == 0
 
-# Scrapes exceeding timeout
+# Scrapes exceeding sample limit
 rate(prometheus_target_scrapes_exceeded_sample_limit_total[5m])
 ```
 
@@ -344,7 +342,7 @@ spec:
             severity: warning
           annotations:
             summary: "Scrape exceeds sample limit"
-            description: "Job {{ $labels.job }} is dropping samples."
+            description: "Job {{ $labels.job }} has scrapes failing because they exceed the sample limit."
 ```
 
 ## Optimizing Prometheus Resources
@@ -382,7 +380,7 @@ prometheus:
         spec:
           resources:
             requests:
-              storage: 100Gi  # 15 days * 2.88B * 2 bytes
+              storage: 100Gi  # 15 days * 2.88B samples/day * 2 bytes, plus overhead
 ```
 
 ## Sample Limit Configuration
@@ -414,10 +412,10 @@ spec:
   selector:
     matchLabels:
       app: my-app
+  sampleLimit: 10000  # Fail the scrape if more than 10k samples are present
   endpoints:
     - port: metrics
       interval: 30s
-      sampleLimit: 10000  # Drop scrape if more than 10k samples
 ```
 
 ## Testing Scrape Configuration
@@ -451,7 +449,7 @@ kubectl exec -n monitoring prometheus-pod -- \
 Adjust scrape intervals based on load:
 
 ```yaml
-# Use different intervals for prod vs non-prod
+# In a Helm template, use different intervals for prod vs non-prod
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -472,7 +470,7 @@ spec:
 
 1. Use 30s as the default scrape interval for most applications
 2. Increase interval for expensive or high-cardinality endpoints
-3. Set scrape_timeout to less than scrape_interval
+3. Set scrape_timeout to less than or equal to scrape_interval, and preferably lower
 4. Monitor scrape_duration_seconds to identify slow targets
 5. Use sample limits to protect against metric explosions
 6. Adjust intervals based on metric change frequency
