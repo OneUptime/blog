@@ -60,9 +60,16 @@ services:
       # Database configuration (SQLite by default, PostgreSQL for production)
       - DATABASE_TYPE=sqlite
       - DATABASE_PATH=/root/.flowise
-      # API security
-      - FLOWISE_USERNAME=admin
-      - FLOWISE_PASSWORD=changethispassword
+      # Persist credentials, logs, and uploaded files in the mounted volume
+      - SECRETKEY_PATH=/root/.flowise
+      - LOG_PATH=/root/.flowise/logs
+      - BLOB_STORAGE_PATH=/root/.flowise/storage
+      # App URL and auth secrets
+      - APP_URL=http://localhost:3000
+      - JWT_AUTH_TOKEN_SECRET=replace-with-a-random-32-byte-secret
+      - JWT_REFRESH_TOKEN_SECRET=replace-with-a-different-random-32-byte-secret
+      - EXPRESS_SESSION_SECRET=replace-with-a-random-session-secret
+      - TOKEN_HASH_SECRET=replace-with-a-random-token-secret
       # Secret key for credential encryption
       - FLOWISE_SECRETKEY_OVERWRITE=your-secret-key-here
       # Enable CORS for API access
@@ -108,12 +115,17 @@ services:
       - DATABASE_USER=flowise
       - DATABASE_PASSWORD=securepassword123
       - DATABASE_NAME=flowise
+      # Persist credentials, logs, and uploaded files in the mounted volume
+      - SECRETKEY_PATH=/root/.flowise
+      - LOG_PATH=/root/.flowise/logs
+      - BLOB_STORAGE_PATH=/root/.flowise/storage
       # Security settings
-      - FLOWISE_USERNAME=admin
-      - FLOWISE_PASSWORD=your-secure-admin-password
+      - APP_URL=http://localhost:3000
+      - JWT_AUTH_TOKEN_SECRET=replace-with-a-random-32-byte-secret
+      - JWT_REFRESH_TOKEN_SECRET=replace-with-a-different-random-32-byte-secret
+      - EXPRESS_SESSION_SECRET=replace-with-a-random-session-secret
+      - TOKEN_HASH_SECRET=replace-with-a-random-token-secret
       - FLOWISE_SECRETKEY_OVERWRITE=a-long-random-secret-key
-      # API rate limiting
-      - APIKEY_PATH=/root/.flowise
       # Logging
       - LOG_LEVEL=info
     depends_on:
@@ -168,8 +180,13 @@ services:
     volumes:
       - flowise_data:/root/.flowise
     environment:
-      - FLOWISE_USERNAME=admin
-      - FLOWISE_PASSWORD=changeme
+      - SECRETKEY_PATH=/root/.flowise
+      - BLOB_STORAGE_PATH=/root/.flowise/storage
+      - APP_URL=http://localhost:3000
+      - JWT_AUTH_TOKEN_SECRET=replace-with-a-random-32-byte-secret
+      - JWT_REFRESH_TOKEN_SECRET=replace-with-a-different-random-32-byte-secret
+      - EXPRESS_SESSION_SECRET=replace-with-a-random-session-secret
+      - TOKEN_HASH_SECRET=replace-with-a-random-token-secret
     depends_on:
       - ollama
     restart: unless-stopped
@@ -188,7 +205,7 @@ services:
     image: chromadb/chroma:latest
     container_name: flowise-chroma
     volumes:
-      - chroma_data:/chroma/chroma
+      - chroma_data:/data
     ports:
       - "8000:8000"
     restart: unless-stopped
