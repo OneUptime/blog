@@ -24,164 +24,53 @@ The typical architecture involves Prometheus instances scraping metrics locally 
 
 ## Setting Up Grafana Mimir
 
-Before configuring remote write, deploy Mimir. Here's a basic Kubernetes deployment:
+Before configuring remote write, deploy Mimir. The recommended Kubernetes deployment path is the `mimir-distributed` Helm chart. Here's a basic values file using S3-compatible object storage:
 
 ```yaml
-# mimir-deployment.yaml
+# mimir-values.yaml
+minio:
+  enabled: false
 
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: mimir
-
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mimir-config
-  namespace: mimir
-data:
-  mimir.yaml: |
+mimir:
+  structuredConfig:
     multitenancy_enabled: true
 
-    server:
-      http_listen_port: 8080
-      grpc_listen_port: 9095
-
-    distributor:
-      pool:
-        health_check_ingesters: true
-      ring:
-        kvstore:
-          store: memberlist
-
-    ingester:
-      ring:
-        kvstore:
-          store: memberlist
-        replication_factor: 3
+    common:
+      storage:
+        backend: s3
+        s3:
+          endpoint: s3.us-east-1.amazonaws.com
+          region: us-east-1
+          # Use IAM roles for service accounts or inject access_key_id and secret_access_key securely.
 
     blocks_storage:
-      backend: s3
       s3:
-        endpoint: s3.amazonaws.com
-        bucket_name: mimir-metrics
-        region: us-east-1
+        bucket_name: mimir-blocks
+
+    alertmanager_storage:
+      s3:
+        bucket_name: mimir-alertmanager
+
+    ruler_storage:
+      s3:
+        bucket_name: mimir-ruler
 
     limits:
       max_global_series_per_user: 1000000
       ingestion_rate: 100000
       ingestion_burst_size: 200000
-
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: mimir-ingester
-  namespace: mimir
-spec:
-  serviceName: mimir-ingester
-  replicas: 3
-  selector:
-    matchLabels:
-      app: mimir-ingester
-  template:
-    metadata:
-      labels:
-        app: mimir-ingester
-    spec:
-      containers:
-        - name: mimir
-          image: grafana/mimir:latest
-          args:
-            - -config.file=/etc/mimir/mimir.yaml
-            - -target=ingester
-          ports:
-            - containerPort: 8080
-              name: http
-            - containerPort: 9095
-              name: grpc
-          volumeMounts:
-            - name: config
-              mountPath: /etc/mimir
-            - name: storage
-              mountPath: /data
-          resources:
-            requests:
-              cpu: 500m
-              memory: 2Gi
-            limits:
-              cpu: 2000m
-              memory: 4Gi
-      volumes:
-        - name: config
-          configMap:
-            name: mimir-config
-  volumeClaimTemplates:
-    - metadata:
-        name: storage
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 50Gi
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mimir-distributor
-  namespace: mimir
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: mimir-distributor
-  template:
-    metadata:
-      labels:
-        app: mimir-distributor
-    spec:
-      containers:
-        - name: mimir
-          image: grafana/mimir:latest
-          args:
-            - -config.file=/etc/mimir/mimir.yaml
-            - -target=distributor
-          ports:
-            - containerPort: 8080
-              name: http
-          volumeMounts:
-            - name: config
-              mountPath: /etc/mimir
-          resources:
-            requests:
-              cpu: 250m
-              memory: 512Mi
-      volumes:
-        - name: config
-          configMap:
-            name: mimir-config
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mimir-distributor
-  namespace: mimir
-spec:
-  selector:
-    app: mimir-distributor
-  ports:
-    - port: 8080
-      targetPort: 8080
-      name: http
 ```
 
 Apply the Mimir deployment:
 
 ```bash
-kubectl apply -f mimir-deployment.yaml
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+
+helm upgrade --install mimir grafana/mimir-distributed \
+  --namespace mimir \
+  --create-namespace \
+  --values mimir-values.yaml
 ```
 
 ## Basic Remote Write Configuration
@@ -193,7 +82,7 @@ Configure Prometheus to send metrics to Mimir using remote write. For kube-prome
 prometheus:
   prometheusSpec:
     remoteWrite:
-      - url: http://mimir-distributor.mimir.svc.cluster.local:8080/api/v1/push
+      - url: http://mimir-nginx.mimir.svc.cluster.local:80/api/v1/push
 
         # Tenant ID header for multi-tenancy
         headers:
@@ -228,7 +117,7 @@ Filter which metrics to send to reduce costs and storage:
 prometheus:
   prometheusSpec:
     remoteWrite:
-      - url: http://mimir-distributor.mimir.svc.cluster.local:8080/api/v1/push
+      - url: http://mimir-nginx.mimir.svc.cluster.local:80/api/v1/push
         headers:
           X-Scope-OrgID: "tenant-1"
 
@@ -263,7 +152,7 @@ prometheus:
   prometheusSpec:
     remoteWrite:
       # Send all metrics to primary Mimir cluster
-      - url: http://mimir-distributor.mimir.svc.cluster.local:8080/api/v1/push
+      - url: http://mimir-nginx.mimir.svc.cluster.local:80/api/v1/push
         headers:
           X-Scope-OrgID: "tenant-1"
         queueConfig:
@@ -320,24 +209,18 @@ prometheus:
             key: tls.key
 
         # Bearer token authentication
-        bearerToken: "your-bearer-token"
-
-        # Or use basic auth
-        basicAuth:
-          username:
+        authorization:
+          type: Bearer
+          credentials:
             name: mimir-auth
-            key: username
-          password:
-            name: mimir-auth
-            key: password
+            key: token
 ```
 
 Create the authentication secret:
 
 ```bash
 kubectl create secret generic mimir-auth \
-  --from-literal=username=prometheus \
-  --from-literal=password=secure-password \
+  --from-literal=token=your-bearer-token \
   -n monitoring
 ```
 
@@ -351,7 +234,7 @@ Tune queue settings for your workload:
 prometheus:
   prometheusSpec:
     remoteWrite:
-      - url: http://mimir-distributor.mimir.svc.cluster.local:8080/api/v1/push
+      - url: http://mimir-nginx.mimir.svc.cluster.local:80/api/v1/push
         headers:
           X-Scope-OrgID: "tenant-1"
 
@@ -375,7 +258,7 @@ prometheus:
           minBackoff: 30ms
           maxBackoff: 100s
 
-          # Retry on 5xx errors
+          # Retry on 429 rate-limit responses
           retryOnRateLimit: true
 
         # Timeout for each request
@@ -397,7 +280,7 @@ prometheus:
         cpu: 4000m
         memory: 8Gi
 
-    # Increase WAL size for buffering
+    # Compress the local WAL to reduce disk usage
     walCompression: true
 ```
 
@@ -419,7 +302,7 @@ data:
       - name: Mimir Long-Term
         type: prometheus
         access: proxy
-        url: http://mimir-query-frontend.mimir.svc.cluster.local:8080/prometheus
+        url: http://mimir-nginx.mimir.svc.cluster.local:80/prometheus
         jsonData:
           httpHeaderName1: X-Scope-OrgID
           timeInterval: 30s
@@ -464,7 +347,7 @@ spec:
 
         - alert: RemoteWriteQueueFull
           expr: |
-            prometheus_remote_storage_samples_pending / prometheus_remote_storage_queue_capacity > 0.8
+            prometheus_remote_storage_samples_pending / (prometheus_remote_storage_shard_capacity * prometheus_remote_storage_shards) > 0.8
           for: 10m
           labels:
             severity: warning
@@ -475,7 +358,7 @@ spec:
         - alert: RemoteWriteHighLatency
           expr: |
             histogram_quantile(0.99,
-              rate(prometheus_remote_storage_queue_duration_seconds_bucket[5m])
+              rate(prometheus_remote_storage_sent_batch_duration_seconds_bucket[5m])
             ) > 120
           for: 10m
           labels:
@@ -498,7 +381,7 @@ prometheus_remote_storage_samples_failed_total
 prometheus_remote_storage_samples_pending
 
 # Check send latency
-prometheus_remote_storage_queue_duration_seconds
+prometheus_remote_storage_sent_batch_duration_seconds
 ```
 
 ## Multi-Cluster Setup
@@ -559,9 +442,8 @@ kubectl logs -n monitoring $PROM_POD | grep -i "remote"
 Verify Mimir is accessible:
 
 ```bash
-# From within the cluster
 kubectl run curl --image=curlimages/curl -it --rm -- \
-  curl -X POST http://mimir-distributor.mimir.svc.cluster.local:8080/api/v1/push \
+  curl http://mimir-nginx.mimir.svc.cluster.local:80/ready \
   -H "X-Scope-OrgID: tenant-1"
 ```
 
@@ -571,7 +453,7 @@ Monitor queue health:
 
 ```bash
 # Queue capacity utilization
-prometheus_remote_storage_samples_pending / prometheus_remote_storage_queue_capacity
+prometheus_remote_storage_samples_pending / (prometheus_remote_storage_shard_capacity * prometheus_remote_storage_shards)
 
 # Shards in use
 prometheus_remote_storage_shards
