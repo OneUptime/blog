@@ -116,7 +116,7 @@ violation[{"msg": msg}] {
   # Spec (varies by resource type)
   spec := input.review.object.spec
   
-  # For Pods/Deployments
+  # For Pods
   containers := spec.containers[_]
   image := containers.image
   
@@ -197,7 +197,6 @@ Validate naming conventions:
 ```rego
 package naming
 
-import future.keywords.contains
 import future.keywords.if
 
 violation[{"msg": msg}] if {
@@ -304,41 +303,43 @@ Example test file:
 
 ```rego
 # test_policy.rego
-package test
+package k8srequiredannotations
 
-test_violation_with_missing_labels {
-  violation with input as {
+test_violation_with_missing_annotations {
+  violations := violation with input as {
     "review": {
       "object": {
         "metadata": {
           "name": "test",
-          "labels": {}
+          "annotations": {}
         }
       }
     },
     "parameters": {
-      "labels": ["app", "team"]
+      "annotations": ["owner", "team"]
     }
   }
+  count(violations) > 0
 }
 
-test_no_violation_with_labels {
-  not violation with input as {
+test_no_violation_with_annotations {
+  violations := violation with input as {
     "review": {
       "object": {
         "metadata": {
           "name": "test",
-          "labels": {
-            "app": "myapp",
-            "team": "platform"
+          "annotations": {
+            "owner": "platform",
+            "team": "sre"
           }
         }
       }
     },
     "parameters": {
-      "labels": ["app", "team"]
+      "annotations": ["owner", "team"]
     }
   }
+  count(violations) == 0
 }
 ```
 
