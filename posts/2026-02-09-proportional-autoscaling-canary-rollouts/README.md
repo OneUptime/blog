@@ -8,7 +8,7 @@ Description: Learn how to implement proportional autoscaling during canary rollo
 
 ---
 
-During a canary rollout, your stable version handles 90% of traffic while the canary handles 10%. But both have the same number of pods. The stable pods are overloaded while canary pods sit idle, wasting resources and skewing performance metrics.
+During a canary rollout with traffic routing, your stable version can handle 90% of traffic while the canary handles 10%. If the rollout keeps the stable ReplicaSet at full size while also creating canary pods, the canary can sit underused while the stable version still carries most of the load.
 
 Proportional autoscaling adjusts pod counts based on traffic distribution, ensuring efficient resource use during rollouts.
 
@@ -40,7 +40,7 @@ spec:
 During canary:
 - Stable pods: 90% traffic, high CPU
 - Canary pods: 10% traffic, low CPU
-- HPA sees average CPU and scales both equally
+- HPA sees the average CPU across the pods selected by its scale target and updates one desired replica count
 
 This wastes resources on underutilized canary pods.
 
@@ -77,6 +77,14 @@ spec:
             memory: 256Mi
   strategy:
     canary:
+      canaryService: web-app-canary
+      stableService: web-app-stable
+      trafficRouting:
+        istio:
+          virtualService:
+            name: web-app
+            routes:
+            - primary
       # Enable dynamic scaling of stable version
       dynamicStableScale: true
       steps:
@@ -91,13 +99,15 @@ spec:
 ```
 
 With `dynamicStableScale: true`:
-- At 10% canary: stable has 9 pods, canary has 1 pod
-- At 25% canary: stable has 7-8 pods, canary has 2-3 pods
-- At 50% canary: stable has 5 pods, canary has 5 pods
+- At 10% canary with 10 desired replicas: stable has about 9 pods, canary has about 1 pod
+- At 25% canary with 10 desired replicas: stable has about 7-8 pods, canary has about 2-3 pods
+- At 50% canary with 10 desired replicas: stable has about 5 pods, canary has about 5 pods
+
+`dynamicStableScale` is only available when a Rollout uses traffic routing, such as Istio, Traefik, NGINX, ALB, or another supported traffic router.
 
 ## Separate HPAs for Stable and Canary
 
-Create separate HPAs for each version:
+If you manage stable and canary as separate workloads, create separate HPAs for each version. Do not attach HPAs directly to ReplicaSets owned by an Argo Rollout; for Rollouts, target the Rollout object and let the Rollouts controller manage ReplicaSets.
 
 ```yaml
 # HPA for stable version
@@ -109,8 +119,8 @@ metadata:
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: ReplicaSet
-    name: web-app-stable-rs
+    kind: Deployment
+    name: web-app-stable
   minReplicas: 5
   maxReplicas: 20
   metrics:
@@ -137,8 +147,8 @@ metadata:
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: ReplicaSet
-    name: web-app-canary-rs
+    kind: Deployment
+    name: web-app-canary
   minReplicas: 1
   maxReplicas: 10
   metrics:
@@ -166,7 +176,7 @@ Scale based on actual traffic received:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: web-app-canary
+  name: web-app
 spec:
   scaleTargetRef:
     apiVersion: argoproj.io/v1alpha1
@@ -182,7 +192,7 @@ spec:
         name: http_requests_per_second
         selector:
           matchLabels:
-            rollout-pod-template-hash: canary
+            version: canary
       target:
         type: AverageValue
         averageValue: "100"
@@ -201,9 +211,9 @@ Export metrics with version labels:
 // Metrics exporter
 const promClient = require('prom-client');
 
-const requestsPerSecond = new promClient.Counter({
-  name: 'http_requests_per_second',
-  help: 'HTTP requests per second',
+const httpRequests = new promClient.Counter({
+  name: 'http_requests_total',
+  help: 'Total HTTP requests',
   labelNames: ['version', 'status']
 });
 
@@ -211,7 +221,7 @@ app.use((req, res, next) => {
   const version = process.env.VERSION || 'unknown';
 
   res.on('finish', () => {
-    requestsPerSecond.inc({
+    httpRequests.inc({
       version: version,
       status: res.statusCode
     });
@@ -229,7 +239,7 @@ Use KEDA for advanced scaling logic:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: web-app-canary
+  name: web-app
 spec:
   scaleTargetRef:
     apiVersion: argoproj.io/v1alpha1
@@ -269,7 +279,7 @@ Scale up canary before traffic increases:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: web-app-canary
+  name: web-app-predictive
 spec:
   scaleTargetRef:
     apiVersion: argoproj.io/v1alpha1
@@ -299,17 +309,11 @@ spec:
       selectPolicy: Max
 ```
 
-## Custom Metrics Server
+## Custom Scaling Controller
 
-Build custom metrics for proportional scaling:
+Build a custom controller for proportional scaling when you need to calculate replica counts directly. HPA metrics adapters should expose metric values, not desired replica counts; a controller can calculate the desired count and update the Rollout's `/scale` subresource.
 
 ```javascript
-// Custom metrics server
-const express = require('express');
-const promClient = require('prom-client');
-
-const app = express();
-
 // Track traffic distribution
 const trafficDistribution = {
   stable: 0.9,
@@ -346,33 +350,23 @@ function calculateReplicas(version, totalReplicas, currentLoad) {
   return Math.max(1, Math.min(20, scaledReplicas));
 }
 
-// Expose custom metrics endpoint
-app.get('/apis/custom.metrics.k8s.io/v1beta1/namespaces/default/pods/*/proportional_replicas', async (req, res) => {
-  const version = req.query.version;
+// Update the Rollout scale subresource from a controller loop
+async function applyReplicaCount(version) {
   const totalReplicas = 10;
   const currentLoad = await getCurrentLoad(version);
-
   const replicas = calculateReplicas(version, totalReplicas, currentLoad);
 
-  res.json({
-    kind: 'MetricValueList',
-    apiVersion: 'custom.metrics.k8s.io/v1beta1',
-    metadata: {},
-    items: [{
-      describedObject: {
-        kind: 'Pod',
-        name: '*',
-        namespace: 'default'
-      },
-      metricName: 'proportional_replicas',
-      value: String(replicas)
-    }]
+  await patchRolloutScale('web-app', {
+    apiVersion: 'autoscaling/v1',
+    kind: 'Scale',
+    spec: {
+      replicas
+    }
   });
-});
+}
 
 setInterval(updateTrafficDistribution, 10000);
-
-app.listen(8080);
+setInterval(() => applyReplicaCount('canary'), 30000);
 ```
 
 ## Monitoring Proportional Scaling
@@ -441,6 +435,14 @@ spec:
   replicas: 10
   strategy:
     canary:
+      canaryService: web-app-canary
+      stableService: web-app-stable
+      trafficRouting:
+        istio:
+          virtualService:
+            name: web-app
+            routes:
+            - primary
       dynamicStableScale: true
       steps:
       # Step 1: 10% traffic, scale canary to 2 pods
