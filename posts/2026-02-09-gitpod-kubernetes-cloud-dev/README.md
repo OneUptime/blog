@@ -37,14 +37,10 @@ image:
 tasks:
   - name: Setup Kubernetes Access
     init: |
-      # Install kubectl
-      curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-      sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-      rm kubectl
-
-      # Install additional tools
-      curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-      kubectl krew install ctx ns
+      # Verify tools installed by .gitpod.Dockerfile
+      kubectl version --client
+      helm version
+      kubectl krew list
 
     command: |
       # Configure kubectl
@@ -60,10 +56,19 @@ tasks:
 
   - name: Configure Cluster Access
     init: |
-      # Wait for kubeconfig to be ready
+      # Prepare kubeconfig directory
       mkdir -p /workspace/.kube
 
     command: |
+      # Create kubeconfig from environment variable
+      if [ -z "$KUBECONFIG_BASE64" ]; then
+        echo "KUBECONFIG_BASE64 is not set"
+        exit 1
+      fi
+
+      echo "$KUBECONFIG_BASE64" | base64 -d > /workspace/.kube/config
+      chmod 600 /workspace/.kube/config
+
       # Signal that kubeconfig is ready
       gp sync-done kubeconfig
 
@@ -98,7 +103,10 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
 RUN curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
 # Install k9s
-RUN curl -sS https://webinstall.dev/k9s | bash
+RUN curl -LO https://github.com/derailed/k9s/releases/latest/download/k9s_linux_amd64.deb && \
+    apt-get update && \
+    apt-get install -y ./k9s_linux_amd64.deb && \
+    rm k9s_linux_amd64.deb
 
 # Install krew
 RUN set -x; cd "$(mktemp -d)" && \
@@ -107,13 +115,14 @@ RUN set -x; cd "$(mktemp -d)" && \
     KREW="krew-${OS}_${ARCH}" && \
     curl -fsSLO "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz" && \
     tar zxvf "${KREW}.tar.gz" && \
-    ./"${KREW}" install krew && \
-    mv .krew /home/gitpod/.krew
+    KREW_ROOT=/home/gitpod/.krew ./"${KREW}" install krew && \
+    chown -R gitpod:gitpod /home/gitpod/.krew
 
 ENV PATH="${PATH}:/home/gitpod/.krew/bin"
 
 # Install kubectx and kubens
-RUN /home/gitpod/.krew/bin/kubectl krew install ctx ns
+RUN KREW_ROOT=/home/gitpod/.krew /home/gitpod/.krew/bin/kubectl krew install ctx ns && \
+    chown -R gitpod:gitpod /home/gitpod/.krew
 
 USER gitpod
 ```
@@ -165,7 +174,8 @@ tasks:
   - name: Setup Cluster Access
     init: |
       # Fetch kubeconfig from internal service
-      curl -H "Authorization: Bearer $GITPOD_TOKEN" \
+      mkdir -p /workspace/.kube
+      curl -H "Authorization: Bearer $KUBECONFIG_SERVICE_TOKEN" \
            https://kubeconfig-service.company.com/api/config \
            -o /workspace/.kube/config
 
@@ -173,7 +183,7 @@ tasks:
       export KUBECONFIG=/workspace/.kube/config
 
       # Configure context
-      kubectl config use-context dev-cluster
+      kubectl config use-context dev-context
 
     command: |
       export KUBECONFIG=/workspace/.kube/config
@@ -191,12 +201,16 @@ const k8s = require('@kubernetes/client-node');
 const app = express();
 
 app.get('/api/config', authenticateToken, async (req, res) => {
-  const { email, teams } = req.user;
+  try {
+    const { email, teams } = req.user;
 
-  // Generate limited kubeconfig for developer
-  const kubeconfig = generateKubeconfig(email, teams);
+    // Generate limited kubeconfig for developer
+    const kubeconfig = generateKubeconfig(email, teams);
 
-  res.send(kubeconfig);
+    res.type('json').send(kubeconfig);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
 });
 
 function authenticateToken(req, res, next) {
@@ -214,7 +228,13 @@ function authenticateToken(req, res, next) {
 }
 
 function generateKubeconfig(email, teams) {
-  const devNamespace = `dev-${email.split('@')[0].replace('.', '-')}`;
+  const name = email
+    .split('@')[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const devNamespace = `dev-${name}`;
+  const token = getServiceAccountToken(email, devNamespace);
 
   const config = {
     apiVersion: 'v1',
@@ -229,7 +249,7 @@ function generateKubeconfig(email, teams) {
     users: [{
       name: email,
       user: {
-        token: generateServiceAccountToken(email, devNamespace)
+        token
       }
     }],
     contexts: [{
@@ -244,6 +264,17 @@ function generateKubeconfig(email, teams) {
   };
 
   return JSON.stringify(config, null, 2);
+}
+
+function getServiceAccountToken(email, namespace) {
+  const envKey = `K8S_TOKEN_${email.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`;
+  const token = process.env[envKey] || process.env.K8S_DEV_TOKEN;
+
+  if (!token) {
+    throw new Error(`No service account token configured for ${email} in ${namespace}`);
+  }
+
+  return token;
 }
 
 app.listen(3000);
@@ -261,7 +292,7 @@ tasks:
       mkdir -p /workspace/.kube
 
       # Fetch configurations for all accessible clusters
-      curl -H "Authorization: Bearer $GITPOD_TOKEN" \
+      curl -H "Authorization: Bearer $KUBECONFIG_SERVICE_TOKEN" \
            https://kubeconfig-service.company.com/api/config/all \
            -o /workspace/.kube/config
 
@@ -271,7 +302,7 @@ tasks:
       kubectl config get-contexts
 
       # Set default context
-      kubectl config use-context dev-cluster
+      kubectl config use-context dev-context
 
     command: |
       export KUBECONFIG=/workspace/.kube/config
@@ -281,7 +312,7 @@ tasks:
 
       echo ""
       echo "Quick commands:"
-      echo "  kubectx dev-cluster    # Switch to dev"
+      echo "  kubectx dev-context    # Switch to dev"
       echo "  kubectx staging        # Switch to staging"
       echo "  kubectl get pods       # View pods in current context"
 ```
@@ -299,7 +330,7 @@ tasks:
       export KUBECONFIG=/workspace/.kube/config
 
       # Create/update development namespace
-      DEV_NS="dev-$(echo $GITPOD_GIT_USER_EMAIL | cut -d@ -f1 | tr '[:upper:]' '[:lower:]' | tr '.' '-')"
+      DEV_NS="dev-$(echo "$GITPOD_GIT_USER_EMAIL" | cut -d@ -f1 | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//')"
       kubectl create namespace $DEV_NS --dry-run=client -o yaml | kubectl apply -f -
 
       # Set as default namespace
@@ -315,7 +346,7 @@ tasks:
 
     command: |
       export KUBECONFIG=/workspace/.kube/config
-      DEV_NS="dev-$(echo $GITPOD_GIT_USER_EMAIL | cut -d@ -f1 | tr '[:upper:]' '[:lower:]' | tr '.' '-')"
+      DEV_NS="dev-$(echo "$GITPOD_GIT_USER_EMAIL" | cut -d@ -f1 | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//')"
 
       # Show environment status
       kubectl get all
@@ -365,6 +396,7 @@ tasks:
       # Function to save workspace state
       save_workspace() {
         echo "Saving workspace state..."
+        mkdir -p /workspace/.state
 
         # Export current resources
         kubectl get all -o yaml > /workspace/.state/resources.yaml
@@ -502,6 +534,7 @@ save_workspace
 Set these in Gitpod settings:
 
 - `KUBECONFIG_BASE64`: Base64-encoded kubeconfig
+- `KUBECONFIG_SERVICE_TOKEN`: Token for the kubeconfig service
 - `DOCKER_REGISTRY_TOKEN`: Container registry access
 ```
 ````
