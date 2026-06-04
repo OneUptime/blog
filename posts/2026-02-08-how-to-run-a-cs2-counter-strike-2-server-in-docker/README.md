@@ -47,8 +47,6 @@ Here is a complete Docker Compose file for a CS2 server.
 
 ```yaml
 # docker-compose.yml - Counter-Strike 2 dedicated server
-version: "3.8"
-
 services:
   cs2:
     image: joedwards32/cs2
@@ -57,23 +55,21 @@ services:
       # Game traffic (TCP and UDP)
       - "27015:27015/tcp"
       - "27015:27015/udp"
-      # RCON port
+      # CSTV/SourceTV port
       - "27020:27020/udp"
-      # Steam server browser
-      - "27005:27005/udp"
     environment:
       # Server identity
       CS2_SERVERNAME: "My CS2 Server"
       CS2_PORT: 27015
 
       # GSLT from Steam - required for public servers
-      CS2_GSLT: "YOUR_GSLT_TOKEN_HERE"
+      SRCDS_TOKEN: "YOUR_GSLT_TOKEN_HERE"
 
       # RCON password for remote administration
       CS2_RCONPW: "your_rcon_password"
 
       # Game mode settings
-      # 0 = Casual, 1 = Competitive, 2 = Wingman, 3 = Deathmatch
+      # CS2 uses game_type and game_mode together; see the table below.
       CS2_GAMETYPE: 0
       CS2_GAMEMODE: 1
 
@@ -132,11 +128,11 @@ docker compose up -d
 # Watch the download and startup process
 docker compose logs -f cs2
 
-# First startup downloads ~35GB of server files
+# First startup requires about 60GB of free disk space
 # This takes a while depending on your internet speed
 ```
 
-The first launch requires downloading the full CS2 server binary through SteamCMD. This is roughly 35GB, so be patient.
+The first launch requires downloading the CS2 server files through SteamCMD. Make sure you have at least 60GB of free disk space, and be patient.
 
 ## Connecting to the Server
 
@@ -161,8 +157,8 @@ RCON (Remote Console) lets you manage the server remotely.
 # rcon_password your_rcon_password
 # rcon command_here
 
-# Or use a command-line RCON tool
-docker exec cs2-server rcon -a 127.0.0.1:27015 -p your_rcon_password "status"
+# Or use a command-line RCON tool from your host
+# Point it at YOUR_SERVER_IP:27015 with your RCON password
 ```
 
 Common RCON commands for server management.
@@ -204,8 +200,8 @@ Configure which maps are available on your server.
 # mg_dust - Dust maps only
 # mg_hostage - Hostage rescue maps
 
-# Change the map from outside the container
-docker exec cs2-server rcon changelevel de_inferno
+# Change the map with RCON
+rcon changelevel de_inferno
 ```
 
 ### Adding Workshop Maps
@@ -215,7 +211,7 @@ You can add Steam Workshop maps to your server.
 ```yaml
 # Add these environment variables for workshop map support
 environment:
-  CS2_ADDITIONAL_ARGS: "+host_workshop_collection YOUR_COLLECTION_ID"
+  CS2_HOST_WORKSHOP_COLLECTION: "YOUR_COLLECTION_ID"
 ```
 
 ## Competitive Server Configuration
@@ -290,10 +286,12 @@ docker compose logs -f cs2
 docker stats cs2-server
 
 # View active players
-docker exec cs2-server rcon status
+# Use your RCON client to run:
+rcon status
 
 # Check server performance (tick rate, player count)
-docker exec cs2-server rcon stats
+# Use your RCON client to run:
+rcon stats
 ```
 
 ## Troubleshooting
@@ -313,7 +311,8 @@ docker compose ps
 
 ```bash
 # Check server performance
-docker exec cs2-server rcon stats
+# Use your RCON client to run:
+rcon stats
 
 # If the server is overloaded, increase resource limits
 # Edit the deploy.resources.limits section in docker-compose.yml
@@ -329,7 +328,7 @@ Make sure your GSLT is valid and not shared across multiple servers. Each server
 # Stop the server
 docker compose down
 
-# Remove everything including downloaded server files (35GB+)
+# Remove everything including downloaded server files (60GB+)
 docker compose down -v
 ```
 
