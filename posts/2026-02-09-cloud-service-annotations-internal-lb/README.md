@@ -8,7 +8,7 @@ Description: Configure internal load balancers on EKS, GKE, and AKS using cloud-
 
 ---
 
-Kubernetes LoadBalancer services create public load balancers by default. For internal microservices, APIs, and databases, you want private load balancers accessible only within your VPC or virtual network. Each cloud provider uses different annotations to configure internal load balancers.
+On many managed Kubernetes providers, LoadBalancer services create public load balancers by default. For internal microservices, APIs, and databases, you want private load balancers accessible only within your VPC or virtual network. Each cloud provider uses different annotations to configure internal load balancers.
 
 This guide shows you how to create internal load balancers on AWS EKS, Google GKE, and Azure AKS using the correct service annotations.
 
@@ -90,11 +90,10 @@ kind: Service
 metadata:
   name: internal-api
   annotations:
-    cloud.google.com/load-balancer-type: "Internal"
+    networking.gke.io/load-balancer-type: "Internal"
     networking.gke.io/internal-load-balancer-allow-global-access: "true"
 spec:
   type: LoadBalancer
-  loadBalancerIP: 10.128.0.100
   selector:
     app: api
   ports:
@@ -104,7 +103,7 @@ spec:
 ```
 
 Key annotations:
-- `cloud.google.com/load-balancer-type: Internal` - Creates internal ILB
+- `networking.gke.io/load-balancer-type: Internal` - Creates internal ILB
 - `networking.gke.io/internal-load-balancer-allow-global-access` - Allows access from other regions
 
 For specific subnet:
@@ -112,7 +111,7 @@ For specific subnet:
 ```yaml
 metadata:
   annotations:
-    cloud.google.com/load-balancer-type: "Internal"
+    networking.gke.io/load-balancer-type: "Internal"
     networking.gke.io/internal-load-balancer-subnet: "backend-subnet"
 ```
 
@@ -141,9 +140,9 @@ metadata:
   annotations:
     service.beta.kubernetes.io/azure-load-balancer-internal: "true"
     service.beta.kubernetes.io/azure-load-balancer-internal-subnet: "backend-subnet"
+    service.beta.kubernetes.io/azure-load-balancer-ipv4: "10.240.0.100"
 spec:
   type: LoadBalancer
-  loadBalancerIP: 10.240.0.100
   selector:
     app: api
   ports:
@@ -155,6 +154,7 @@ spec:
 Key annotations:
 - `azure-load-balancer-internal: true` - Creates internal load balancer
 - `azure-load-balancer-internal-subnet` - Specifies subnet
+- `azure-load-balancer-ipv4` - Assigns a static private IPv4 address
 
 For cross-resource-group deployment:
 
@@ -188,7 +188,7 @@ metadata:
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
     service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-xxxxx"
-    service.beta.kubernetes.io/aws-load-balancer-eip-allocations: "eipalloc-xxxxx"
+    service.beta.kubernetes.io/aws-load-balancer-private-ipv4-addresses: "10.0.1.100"
 ```
 
 GKE with reserved IP:
@@ -204,9 +204,10 @@ gcloud compute addresses create api-internal-ip \
 Use in service:
 
 ```yaml
-spec:
-  type: LoadBalancer
-  loadBalancerIP: 10.128.0.100
+metadata:
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+    networking.gke.io/load-balancer-ip-addresses: "api-internal-ip"
 ```
 
 AKS with static IP:
@@ -283,27 +284,19 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold: "2"
 ```
 
-GKE with BackendConfig:
+GKE with a custom health check node port:
 
 ```yaml
-apiVersion: cloud.google.com/v1
-kind: BackendConfig
-metadata:
-  name: internal-backend
-spec:
-  healthCheck:
-    checkIntervalSec: 10
-    port: 8080
-    type: HTTP
-    requestPath: /health
----
 apiVersion: v1
 kind: Service
 metadata:
   name: internal-api
   annotations:
-    cloud.google.com/load-balancer-type: "Internal"
-    cloud.google.com/backend-config: '{"default": "internal-backend"}'
+    networking.gke.io/load-balancer-type: "Internal"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  healthCheckNodePort: 32080
 ```
 
 AKS health probe:
@@ -312,8 +305,8 @@ AKS health probe:
 metadata:
   annotations:
     service.beta.kubernetes.io/azure-load-balancer-internal: "true"
-    service.beta.kubernetes.io/azure-load-balancer-health-probe-protocol: "http"
-    service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: "/health"
+    service.beta.kubernetes.io/port_80_health-probe_protocol: "http"
+    service.beta.kubernetes.io/port_80_health-probe_request-path: "/health"
 ```
 
 ## Session Affinity Configuration
@@ -329,26 +322,27 @@ spec:
       timeoutSeconds: 3600
 ```
 
-GKE session affinity:
+GKE with client IP affinity:
 
 ```yaml
-apiVersion: cloud.google.com/v1
-kind: BackendConfig
-metadata:
-  name: session-affinity
 spec:
-  sessionAffinity:
-    affinityType: "CLIENT_IP"
-    affinityCookieTtlSec: 3600
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
 ```
 
-AKS session persistence:
+AKS with client IP affinity:
 
 ```yaml
 metadata:
   annotations:
     service.beta.kubernetes.io/azure-load-balancer-internal: "true"
-    service.beta.kubernetes.io/azure-load-balancer-disable-tcp-reset: "false"
+spec:
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
 ```
 
 ## Testing Internal Load Balancers
@@ -405,6 +399,6 @@ az network lb show \
 
 ## Conclusion
 
-Internal load balancers provide private network access to Kubernetes services without public internet exposure. Each cloud provider uses different annotations: EKS uses `aws-load-balancer-scheme: internal`, GKE uses `cloud.google.com/load-balancer-type: Internal`, and AKS uses `azure-load-balancer-internal: true`.
+Internal load balancers provide private network access to Kubernetes services without public internet exposure. Each cloud provider uses different annotations: EKS uses `aws-load-balancer-scheme: internal`, GKE uses `networking.gke.io/load-balancer-type: Internal`, and AKS uses `azure-load-balancer-internal: true`.
 
 Proper configuration of subnets, IP addresses, and health checks ensures reliable private load balancing for internal services, databases, and APIs that should remain accessible only within your private network or to on-premises systems via VPN or dedicated connectivity.
