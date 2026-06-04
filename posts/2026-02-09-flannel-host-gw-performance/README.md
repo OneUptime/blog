@@ -10,7 +10,7 @@ Description: Learn how to configure Flannel with the host-gw backend for high-pe
 
 Flannel's host-gw (host gateway) backend provides a simpler, faster alternative to the default VXLAN overlay by using direct Layer 3 routing between nodes. Instead of encapsulating packets in VXLAN headers, host-gw programs routes on each node that send pod traffic directly to destination nodes via the underlying network. This eliminates encapsulation overhead, resulting in better throughput and lower latency at the cost of requiring Layer 2 connectivity between nodes.
 
-The host-gw backend is ideal for on-premises clusters where all nodes are on the same network segment or in cloud environments using flat networking. It delivers near-native network performance while maintaining Flannel's simplicity and ease of deployment. The main limitation is that nodes must be able to route to each other directly at Layer 2, making it unsuitable for clusters spanning multiple subnets without additional BGP configuration.
+The host-gw backend is ideal for on-premises clusters where all nodes are on the same network segment or in cloud environments using flat networking. It delivers near-native network performance while maintaining Flannel's simplicity and ease of deployment. The main limitation is that the remote node IPs must be reachable through direct Layer 2 connectivity, making it unsuitable for clusters spanning multiple subnets without switching to an overlay or another routing solution.
 
 ## Installing Flannel with host-gw Backend
 
@@ -21,8 +21,8 @@ Install Flannel using the host-gw backend:
 
 curl -LO https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 
-# Edit the ConfigMap to use host-gw
-kubectl get configmap kube-flannel-cfg -n kube-flannel -o yaml
+# Edit the manifest's ConfigMap to use host-gw before applying it
+nano kube-flannel.yml
 ```
 
 Modify the net-conf.json section:
@@ -245,7 +245,7 @@ cat /run/flannel/subnet.env
 # Example:
 # FLANNEL_NETWORK=10.244.0.0/16
 # FLANNEL_SUBNET=10.244.0.1/24
-# FLANNEL_MTU=1450
+# FLANNEL_MTU=1500
 # FLANNEL_IPMASQ=true
 
 # Restart Flannel if needed
@@ -270,7 +270,7 @@ netstat -s | grep fragment
 
 # Adjust MTU if needed
 ip link set dev eth0 mtu 1500
-ip link set dev cni0 mtu 1450
+ip link set dev cni0 mtu 1500
 ```
 
 ## Optimizing host-gw Performance
@@ -328,12 +328,12 @@ data:
       "Network": "10.244.0.0/16",
       "Backend": {
         "Type": "vxlan",
-        "Directrouting": true
+        "DirectRouting": true
       }
     }
 ```
 
-With `Directrouting: true`, Flannel uses:
+With `DirectRouting: true`, Flannel uses:
 - host-gw for nodes on same subnet (fast)
 - VXLAN for nodes on different subnets (compatible)
 
@@ -349,7 +349,7 @@ kubectl run iperf3-server --image=networkstatic/iperf3 -- iperf3 -s
 SERVER_IP=$(kubectl get pod iperf3-server -o jsonpath='{.status.podIP}')
 
 # Run client test from different node
-kubectl run -it --rm iperf3-client --image=networkstatic/iperf3 --overrides='
+kubectl run -it --rm iperf3-client --image=networkstatic/iperf3 --restart=Never --overrides='
 {
   "spec": {
     "nodeName": "node2"
@@ -357,10 +357,10 @@ kubectl run -it --rm iperf3-client --image=networkstatic/iperf3 --overrides='
 }' -- iperf3 -c $SERVER_IP -t 30
 
 # Test with multiple streams
-kubectl run -it --rm iperf3-client --image=networkstatic/iperf3 -- iperf3 -c $SERVER_IP -P 10 -t 30
+kubectl run -it --rm iperf3-client --image=networkstatic/iperf3 --restart=Never -- iperf3 -c $SERVER_IP -P 10 -t 30
 
 # UDP test
-kubectl run -it --rm iperf3-client --image=networkstatic/iperf3 -- iperf3 -c $SERVER_IP -u -b 1G -t 30
+kubectl run -it --rm iperf3-client --image=networkstatic/iperf3 --restart=Never -- iperf3 -c $SERVER_IP -u -b 1G -t 30
 ```
 
 ## Migrating from VXLAN to host-gw
