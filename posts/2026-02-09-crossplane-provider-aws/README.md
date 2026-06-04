@@ -19,8 +19,9 @@ Install the provider package:
 ```bash
 # Install AWS provider
 
-kubectl crossplane install provider \
-  xpkg.upbound.io/crossplane-contrib/provider-aws:v0.40.0
+crossplane xpkg install provider \
+  xpkg.upbound.io/crossplane-contrib/provider-aws:v0.40.0 \
+  provider-aws
 
 # Verify provider installation
 kubectl get providers
@@ -154,14 +155,14 @@ metadata:
   name: my-crossplane-bucket
 spec:
   forProvider:
-    region: us-west-2
+    locationConstraint: us-west-2
     acl: private
     publicAccessBlockConfiguration:
       blockPublicAcls: true
       blockPublicPolicy: true
       ignorePublicAcls: true
       restrictPublicBuckets: true
-    versioning:
+    versioningConfiguration:
       status: Enabled
     serverSideEncryptionConfiguration:
       rules:
@@ -211,7 +212,7 @@ spec:
     allocatedStorage: 20
     storageEncrypted: true
     publiclyAccessible: false
-    skipFinalSnapshot: true
+    skipFinalSnapshotBeforeDeletion: true
     dbSubnetGroupName: my-db-subnet-group
     vpcSecurityGroupIds:
     - sg-0123456789abcdef
@@ -248,12 +249,14 @@ apiVersion: ec2.aws.crossplane.io/v1beta1
 kind: VPC
 metadata:
   name: crossplane-vpc
+  labels:
+    name: crossplane-vpc
 spec:
   forProvider:
     region: us-west-2
     cidrBlock: 10.0.0.0/16
     enableDnsSupport: true
-    enableDnsHostnames: true
+    enableDnsHostNames: true
     tags:
     - key: Name
       value: crossplane-vpc
