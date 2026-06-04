@@ -25,7 +25,7 @@ LABEL maintainer="team@example.com"
 LABEL version="1.0"
 LABEL description="My application image"
 
-# Multiple labels on a single line (recommended to reduce layers)
+# Multiple labels on a single line
 LABEL version="1.0" description="My application image" maintainer="team@example.com"
 
 # Multi-line format with backslash continuation
@@ -35,7 +35,7 @@ LABEL version="1.0" \
       org.opencontainers.image.source="https://github.com/myorg/myapp"
 ```
 
-Each separate LABEL instruction creates a new layer. Combining labels into a single instruction keeps your image lean.
+Modern Docker versions no longer require combining labels into a single instruction to reduce image size. Combining labels is still supported and can keep related metadata together.
 
 ## Label Key Naming Conventions
 
@@ -100,19 +100,19 @@ LABEL maintainer="john@example.com"
 LABEL org.opencontainers.image.authors="john@example.com"
 ```
 
-MAINTAINER still works but adds no functionality beyond what LABEL provides, and it creates an additional layer.
+MAINTAINER still works but adds no functionality beyond what LABEL provides.
 
 ## Dynamic Labels with Build Arguments
 
 Labels can include values from build arguments, which is useful for injecting build-time information like git commit hashes or build dates:
 
 ```dockerfile
+FROM python:3.11-slim
+
 # Accept build-time arguments
 ARG BUILD_DATE
 ARG GIT_COMMIT
 ARG VERSION
-
-FROM python:3.11-slim
 
 # Use build arguments in labels
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \
@@ -184,7 +184,7 @@ docker ps --filter "label=com.example.team=backend" --format "{{.Names}}"
 
 ### Labels in Docker Compose
 
-Labels can be set in Docker Compose files and are useful for service discovery and management:
+Container labels can be set in Docker Compose files and are useful for service discovery and management:
 
 ```yaml
 # docker-compose.yml
@@ -248,7 +248,7 @@ Labels from base images are inherited by child images. If you build an image FRO
 ```dockerfile
 # Base image with labels
 FROM python:3.11-slim
-# python:3.11-slim already has labels set by the Python maintainers
+# If the base image has labels, they are inherited
 
 # Your labels are added alongside the inherited ones
 LABEL com.example.app="myservice"
@@ -266,11 +266,11 @@ LABEL maintainer="your-team@example.com"
 Here is a recommended set of labels for a production image:
 
 ```dockerfile
+FROM python:3.11-slim
+
 ARG BUILD_DATE
 ARG GIT_COMMIT
 ARG VERSION
-
-FROM python:3.11-slim
 
 # Standard OCI labels for interoperability
 LABEL org.opencontainers.image.title="Order Processing Service" \
@@ -301,13 +301,13 @@ This gives you OCI-standard labels for tool interoperability plus custom labels 
 You can inspect labels on a remote image without pulling it:
 
 ```bash
-# View labels on a Docker Hub image without downloading it
-docker buildx imagetools inspect python:3.11-slim --format '{{json .Manifest}}'
-
 # Using skopeo (if installed)
-skopeo inspect docker://python:3.11-slim | python3 -m json.tool
+skopeo inspect --format '{{json .Labels}}' docker://python:3.11-slim | python3 -m json.tool
+
+# View OCI manifest annotations with Docker buildx
+docker buildx imagetools inspect python:3.11-slim --format '{{json .Manifest}}'
 ```
 
 ## Summary
 
-The LABEL instruction adds key-value metadata to Docker images. Use OCI standard label keys for broad tool compatibility and add custom namespaced labels for organization-specific metadata. Combine multiple labels into a single instruction to minimize layers. Inject dynamic values like git commits and build dates through build arguments. Query labels with `docker inspect` and use them for filtering with `docker images --filter` and `docker ps --filter`. Labels cost nothing at runtime but provide significant value for image management, automation, and traceability.
+The LABEL instruction adds key-value metadata to Docker images. Use OCI standard label keys for broad tool compatibility and add custom namespaced labels for organization-specific metadata. Combine multiple labels into a single instruction when it makes the metadata easier to read. Inject dynamic values like git commits and build dates through build arguments. Query labels with `docker inspect` and use them for filtering with `docker images --filter` and `docker ps --filter`. Labels cost nothing at runtime but provide significant value for image management, automation, and traceability.
