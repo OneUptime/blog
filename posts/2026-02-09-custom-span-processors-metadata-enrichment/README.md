@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, OpenTelemetry, Distributed Tracing, Observability, Metadata
 
-Description: Learn how to build custom OpenTelemetry span processors that automatically enrich traces with Kubernetes metadata including deployment information, resource quotas.
+Description: Learn how to build custom OpenTelemetry span processors that automatically enrich traces with Kubernetes metadata including deployment information, resource limits.
 
 ---
 
 Default OpenTelemetry instrumentation captures application-level information but often misses valuable Kubernetes context. Custom span processors solve this by automatically enriching every span with cluster metadata, deployment details, and runtime information before traces are exported to backends.
 
-Span processors sit in the OpenTelemetry pipeline between span creation and export. They can modify spans, add attributes, filter spans, or perform any custom logic. For Kubernetes environments, processors can query the Kubernetes API, read pod annotations, or extract metadata from environment variables to enrich traces with operational context.
+Span processors sit in the OpenTelemetry pipeline between span creation and export. In Go, they can modify spans while they are starting, observe completed spans, export spans, or perform other custom logic. For Kubernetes environments, processors can query the Kubernetes API, read pod annotations, or extract metadata from environment variables to enrich traces with operational context.
 
 ## Understanding Span Processors
 
 OpenTelemetry provides two built-in span processors. The SimpleSpanProcessor exports spans immediately as they complete. The BatchSpanProcessor collects spans and exports them in batches. Custom processors implement the same interface, allowing you to insert custom logic into the trace pipeline.
 
-Span processors receive callbacks when spans start and end. The OnStart callback lets you modify spans when they begin. The OnEnd callback processes completed spans before export. Custom processors can add attributes, create span events, or even drop spans based on criteria.
+Span processors receive callbacks when spans start and end. The OnStart callback lets you modify spans when they begin. The OnEnd callback receives a completed span before export, but ended spans are read-only in the Go SDK, so use OnStart for adding attributes or events and use sampling or an exporter-aware processor for filtering.
 
 ## Building a Kubernetes Metadata Processor
 
@@ -169,7 +169,7 @@ func (p *KubernetesMetadataProcessor) OnStart(parent context.Context, s trace.Re
     }
 
     attrs := []attribute.KeyValue{
-        attribute.String("k8s.namespace", p.namespace),
+        attribute.String("k8s.namespace.name", p.namespace),
         attribute.String("k8s.pod.name", p.podName),
         attribute.String("k8s.node.name", p.nodeName),
     }
@@ -185,7 +185,7 @@ func (p *KubernetesMetadataProcessor) OnStart(parent context.Context, s trace.Re
     // Add important labels
     for key, value := range p.metadata.Labels {
         if key == "app" || key == "version" || key == "environment" {
-            attrs = append(attrs, attribute.String("k8s.label."+key, value))
+            attrs = append(attrs, attribute.String("k8s.pod.label."+key, value))
         }
     }
 
@@ -201,11 +201,11 @@ func (p *KubernetesMetadataProcessor) OnStart(parent context.Context, s trace.Re
 
     // Add node labels
     if zone, ok := p.metadata.NodeLabels["topology.kubernetes.io/zone"]; ok {
-        attrs = append(attrs, attribute.String("k8s.node.zone", zone))
+        attrs = append(attrs, attribute.String("k8s.node.label.topology.kubernetes.io/zone", zone))
     }
 
     if instanceType, ok := p.metadata.NodeLabels["node.kubernetes.io/instance-type"]; ok {
-        attrs = append(attrs, attribute.String("k8s.node.instance_type", instanceType))
+        attrs = append(attrs, attribute.String("k8s.node.label.node.kubernetes.io/instance-type", instanceType))
     }
 
     s.SetAttributes(attrs...)
@@ -297,6 +297,8 @@ import (
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/trace"
+
+    "your/module/processor"
 )
 
 func initTracer() (*trace.TracerProvider, error) {
@@ -325,11 +327,16 @@ func initTracer() (*trace.TracerProvider, error) {
     })
 
     // Create tracer provider with custom processors
-    tp := trace.NewTracerProvider(
-        trace.WithSpanProcessor(k8sProcessor),
+    options := []trace.TracerProviderOption{}
+    if k8sProcessor != nil {
+        options = append(options, trace.WithSpanProcessor(k8sProcessor))
+    }
+    options = append(options,
         trace.WithSpanProcessor(costProcessor),
         trace.WithBatcher(exporter),
     )
+
+    tp := trace.NewTracerProvider(options...)
 
     otel.SetTracerProvider(tp)
     return tp, nil
@@ -369,11 +376,8 @@ rules:
 - apiGroups: [""]
   resources: ["pods"]
   verbs: ["get", "list"]
-- apiGroups: [""]
-  resources: ["nodes"]
-  verbs: ["get", "list"]
 - apiGroups: ["apps"]
-  resources: ["replicasets", "deployments"]
+  resources: ["replicasets"]
   verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -390,15 +394,33 @@ subjects:
   name: traced-app
   namespace: production
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traced-app-node-reader
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: traced-app-node-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traced-app-node-reader
+subjects:
+- kind: ServiceAccount
+  name: traced-app
+  namespace: production
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: payment-service
   namespace: production
-  annotations:
-    cost-center: "engineering"
-    team: "payments"
-    project: "checkout"
 spec:
   replicas: 3
   selector:
@@ -409,6 +431,10 @@ spec:
       labels:
         app: payment-service
         version: v1.0.0
+      annotations:
+        cost-center: "engineering"
+        team: "payments"
+        project: "checkout"
     spec:
       serviceAccountName: traced-app
       containers:
