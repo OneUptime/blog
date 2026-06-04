@@ -10,7 +10,7 @@ Description: Learn how to use Docker Scout to scan images for vulnerabilities, u
 
 Container images inherit vulnerabilities from their base images and dependencies. A single outdated library can expose your entire application to known exploits. Docker Scout is Docker's built-in tool for identifying these vulnerabilities before they reach production.
 
-This guide walks through Docker Scout from installation to integration in your CI/CD pipeline, with practical examples of finding and fixing real vulnerabilities.
+This guide walks through Docker Scout from installation to integration in your CI/CD pipeline, with practical examples of finding and fixing vulnerabilities.
 
 ## What Docker Scout Does
 
@@ -24,11 +24,11 @@ Docker Scout comes bundled with Docker Desktop. For Docker Engine on Linux, inst
 
 ```bash
 # Check if Docker Scout is available
-
 docker scout version
 
 # If not installed, install the Scout CLI plugin
-curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh -o install-scout.sh
+sh install-scout.sh
 ```
 
 ## Scanning a Local Image
@@ -54,7 +54,7 @@ This produces a report organized by severity:
 
 ## Understanding Severity Levels
 
-Docker Scout uses the standard CVSS severity scale:
+Docker Scout reports severity using advisory source data and CVSS scoring:
 
 - **Critical** - Exploitable remotely with no authentication, can lead to full system compromise
 - **High** - Significant impact, often exploitable remotely
@@ -74,10 +74,10 @@ You can scan images in registries without pulling them first.
 
 ```bash
 # Scan an image directly from Docker Hub
-docker scout cves docker.io/library/python:3.12-slim
+docker scout cves registry://docker.io/library/python:3.12-slim
 
 # Scan an image from a private registry
-docker scout cves myregistry.example.com/myapp:1.0
+docker scout cves registry://myregistry.example.com/myapp:1.0
 ```
 
 ## Analyzing the SBOM
@@ -163,22 +163,27 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Login to Docker Hub (required for Scout)
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Scan for critical vulnerabilities
-        run: |
-          docker scout cves myapp:${{ github.sha }} \
-            --only-severity critical,high \
-            --exit-code
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: myapp:${{ github.sha }}
+          only-severities: critical,high
+          exit-code: true
 
       - name: Generate SBOM
         if: github.ref == 'refs/heads/main'
-        run: |
-          docker scout sbom --format cyclonedx \
-            myapp:${{ github.sha }} > sbom.json
+        uses: docker/scout-action@v1
+        with:
+          command: sbom
+          image: myapp:${{ github.sha }}
+          format: cyclonedx
+          output: sbom.json
 
       - name: Upload SBOM artifact
         if: github.ref == 'refs/heads/main'
@@ -231,11 +236,11 @@ Policies can enforce rules like:
 New vulnerabilities are discovered daily. An image that was clean last week might have new CVEs today.
 
 ```bash
-# Enable continuous monitoring for a repository
-docker scout repo enable myregistry.example.com/myapp
+# Enable continuous monitoring for a repository in a specific registry
+docker scout repo enable myapp --registry myregistry.example.com
 
-# Check the current status of monitored images
-docker scout watch
+# List repositories that have Docker Scout enabled
+docker scout repo list
 ```
 
 Docker Scout continuously re-evaluates monitored images against new vulnerability data and alerts you when new issues appear.
@@ -251,7 +256,7 @@ Not every CVE requires immediate action. Consider these factors:
 
 ```bash
 # Get detailed information about a specific CVE
-docker scout cves --format json nginx:latest | jq '.[] | select(.id == "CVE-2024-1234")'
+docker scout cves --only-cve-id CVE-2024-1234 --details nginx:latest
 ```
 
 ## Practical Remediation Workflow
