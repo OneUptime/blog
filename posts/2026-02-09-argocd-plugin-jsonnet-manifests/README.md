@@ -8,7 +8,7 @@ Description: Learn how to create a custom ArgoCD config management plugin for re
 
 ---
 
-Jsonnet is a powerful data templating language that makes complex Kubernetes configurations manageable through functions, imports, and composition. While ArgoCD supports Jsonnet natively for older versions, the recommended approach for modern ArgoCD is building a custom plugin. This gives you complete control over Jsonnet versions, library paths, and custom functions.
+Jsonnet is a powerful data templating language that makes complex Kubernetes configurations manageable through functions, imports, and composition. While ArgoCD still supports Jsonnet natively, building a custom plugin is useful when you need complete control over Jsonnet versions, library paths, dependency installation, and custom functions.
 
 This guide shows you how to build a production-ready Jsonnet plugin for ArgoCD.
 
@@ -83,7 +83,7 @@ case "$1" in
 
   generate)
     # Find the main file (default to main.jsonnet)
-    MAIN_FILE="${JSONNET_MAIN_FILE:-main.jsonnet}"
+    MAIN_FILE="${ARGOCD_ENV_JSONNET_MAIN_FILE:-main.jsonnet}"
 
     if [ ! -f "$MAIN_FILE" ]; then
       echo "Error: $MAIN_FILE not found" >&2
@@ -96,11 +96,11 @@ case "$1" in
     # Use jsonnet with library paths and external variables
     jsonnet \
       --ext-str namespace="${ARGOCD_APP_NAMESPACE:-default}" \
-      --ext-str appName="${ARGOCD_APP_NAME}" \
+      --ext-str appName="${ARGOCD_APP_NAME:-}" \
+      --ext-str environment="${ARGOCD_ENV_environment:-}" \
       --jpath vendor \
       --jpath lib \
       --yaml-stream \
-      --string \
       "$MAIN_FILE"
 
     exit 0
@@ -139,10 +139,7 @@ COPY --from=builder /go/bin/jb /usr/local/bin/jb
 COPY jsonnet-plugin.sh /usr/local/bin/jsonnet-plugin
 RUN chmod +x /usr/local/bin/jsonnet-plugin
 
-# Set up working directory
 WORKDIR /tmp
-
-ENTRYPOINT ["/usr/local/bin/jsonnet-plugin"]
 ```
 
 Build and push:
@@ -172,7 +169,8 @@ data:
     spec:
       version: v1.0
       discover:
-        command: ["/usr/local/bin/jsonnet-plugin", "discover"]
+        find:
+          command: ["/usr/local/bin/jsonnet-plugin", "discover"]
       init:
         command: ["/usr/local/bin/jsonnet-plugin", "init"]
       generate:
@@ -194,6 +192,7 @@ spec:
       containers:
       - name: jsonnet-plugin
         image: yourregistry.io/argocd-jsonnet-plugin:v1.0.0
+        command: [/var/run/argocd/argocd-cmp-server]
         securityContext:
           runAsNonRoot: true
           runAsUser: 999
@@ -203,18 +202,15 @@ spec:
         - name: plugins
           mountPath: /home/argocd/cmp-server/plugins
         - name: jsonnet-plugin-config
-          mountPath: /home/argocd/cmp-server/config
-        - name: tmp
+          mountPath: /home/argocd/cmp-server/config/plugin.yaml
+          subPath: plugin.yaml
+        - name: cmp-tmp
           mountPath: /tmp
       volumes:
       - name: jsonnet-plugin-config
         configMap:
           name: jsonnet-plugin-config
-      - name: var-files
-        emptyDir: {}
-      - name: plugins
-        emptyDir: {}
-      - name: tmp
+      - name: cmp-tmp
         emptyDir: {}
 ```
 
@@ -249,13 +245,13 @@ Install Kubernetes library:
       "source": {
         "git": {
           "remote": "https://github.com/jsonnet-libs/k8s-libsonnet",
-          "subdir": "1.29"
+          "subdir": "1.35"
         }
       },
       "version": "main"
     }
   ],
-  "legacyImports": true
+  "legacyImports": false
 }
 ```
 
@@ -290,7 +286,7 @@ Create the main manifest:
 
 ```jsonnet
 // main.jsonnet
-local k = import 'k.libsonnet';
+local k = import 'github.com/jsonnet-libs/k8s-libsonnet/1.35/main.libsonnet';
 local params = import 'params.libsonnet';
 
 local deployment = k.apps.v1.deployment.new(
@@ -299,7 +295,7 @@ local deployment = k.apps.v1.deployment.new(
   containers=[
     k.core.v1.container.new(params.name, params.image)
     + k.core.v1.container.withPorts([
-      k.core.v1.containerPort.new('http', params.port),
+      k.core.v1.containerPort.newNamed(params.port, 'http'),
     ])
     + k.core.v1.container.resources.withRequests(params.resources.requests)
     + k.core.v1.container.resources.withLimits(params.resources.limits)
@@ -319,14 +315,10 @@ local service = k.core.v1.service.new(
   ],
 );
 
-{
-  apiVersion: 'v1',
-  kind: 'List',
-  items: [
-    deployment + k.apps.v1.deployment.metadata.withNamespace(params.namespace),
-    service + k.core.v1.service.metadata.withNamespace(params.namespace),
-  ],
-}
+[
+  deployment + k.apps.v1.deployment.metadata.withNamespace(params.namespace),
+  service + k.core.v1.service.metadata.withNamespace(params.namespace),
+]
 ```
 
 ## Using the Plugin in ArgoCD
@@ -346,7 +338,7 @@ spec:
     targetRevision: main
     path: apps/myapp
     plugin:
-      name: jsonnet
+      name: jsonnet-v1.0
       env:
         - name: JSONNET_MAIN_FILE
           value: main.jsonnet
@@ -392,9 +384,9 @@ Pass via ArgoCD Application:
 
 ```yaml
 plugin:
-  name: jsonnet
+  name: jsonnet-v1.0
   env:
-    - name: ARGOCD_ENV_environment
+    - name: environment
       value: production
 ```
 
@@ -445,7 +437,7 @@ Generate multiple Kubernetes resources:
 
 ```jsonnet
 // main.jsonnet
-local k = import 'k.libsonnet';
+local k = import 'github.com/jsonnet-libs/k8s-libsonnet/1.35/main.libsonnet';
 
 local resources = [
   k.core.v1.namespace.new('myapp'),
@@ -458,11 +450,7 @@ local resources = [
   // More resources...
 ];
 
-{
-  apiVersion: 'v1',
-  kind: 'List',
-  items: resources,
-}
+resources
 ```
 
 ## Debugging
@@ -487,6 +475,7 @@ jb install
 jsonnet \
   --ext-str namespace=production \
   --ext-str appName=myapp \
+  --ext-str environment=production \
   --jpath vendor \
   --yaml-stream \
   main.jsonnet
