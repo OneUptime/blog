@@ -14,24 +14,24 @@ Memory leaks in containerized applications cause pods to be OOMKilled repeatedly
 
 Memory leaks manifest as steadily increasing memory usage over time. Pods restart due to OOMKill events. Application performance degrades as the garbage collector works harder. Request latency increases and throughput decreases as memory pressure builds.
 
-Check pod events for OOMKilled containers.
+Check pod state and events for OOMKilled containers.
 
 ```bash
 # View pod events
 
 kubectl describe pod my-app-abc123 -n production | grep -A 5 Events
 
-# Check for OOMKilled containers
-kubectl get events -n production | grep OOMKilling
+# Check the last terminated state reason
+kubectl get pod my-app-abc123 -n production -o jsonpath='{.status.containerStatuses[0].lastState.terminated.reason}'
 
 # View pod restart count
 kubectl get pods -n production -o wide
 
-# Check container exit codes (137 indicates OOMKill)
+# Check container exit codes (137 indicates SIGKILL)
 kubectl get pod my-app-abc123 -n production -o jsonpath='{.status.containerStatuses[0].lastState.terminated.exitCode}'
 ```
 
-Exit code 137 (128 + 9 for SIGKILL) confirms OOMKill.
+Exit code 137 (128 + 9 for SIGKILL) often appears with OOMKills, but the terminated reason `OOMKilled` confirms the diagnosis.
 
 ## Monitoring Memory Usage Trends
 
@@ -47,27 +47,26 @@ kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/production/pods/my-app
 
 Use Prometheus to track memory trends over days or weeks.
 
-```yaml
+```promql
 # Prometheus query for memory growth
 container_memory_working_set_bytes{pod="my-app-abc123", namespace="production"}
 
 # Rate of memory increase
-rate(container_memory_working_set_bytes{pod="my-app-abc123"}[1h])
+deriv(container_memory_working_set_bytes{pod="my-app-abc123"}[1h])
 
 # Alert on steady memory growth
-increase(container_memory_working_set_bytes{pod="my-app-abc123"}[6h]) > 500000000
+delta(container_memory_working_set_bytes{pod="my-app-abc123"}[6h]) > 500000000
 ```
 
 Steadily increasing memory without corresponding load increases indicates a leak.
 
 ## Profiling Node.js Applications
 
-Node.js provides heap snapshots and profiling through the inspector protocol.
+Node.js provides heap snapshots through V8 APIs and profiling through the inspector protocol.
 
 ```javascript
 // Add profiling endpoint to your application
 const v8 = require('v8');
-const fs = require('fs');
 const express = require('express');
 
 const app = express();
@@ -192,6 +191,7 @@ Go's pprof provides comprehensive profiling capabilities.
 package main
 
 import (
+    "log"
     "net/http"
     _ "net/http/pprof"
     "runtime"
@@ -296,7 +296,7 @@ public class MemoryDiagnostics {
 Trigger heap dump and analyze with Eclipse MAT.
 
 ```bash
-# Trigger heap dump via JMX
+# Trigger heap dump with jcmd
 kubectl exec -it my-java-app-abc123 -n production -- \
   jcmd 1 GC.heap_dump /tmp/heap.hprof
 
@@ -316,7 +316,7 @@ kubectl debug -it my-app-abc123 -n production \
   --image=nicolaka/netshoot \
   --target=app-container
 
-# Inside debug container, access process namespace
+# Inside the debug container, inspect the target process namespace if the container runtime supports it
 # Install and run profiling tools
 ```
 
@@ -324,7 +324,7 @@ This approach works when you can't modify the application container.
 
 ## Analyzing Core Dumps
 
-Configure pods to generate core dumps on crash for post-mortem analysis.
+Configure pods to write core dumps on crash for post-mortem analysis. Kubernetes does not have a `resources.limits.core` setting, so enable core dumps in the container process and write them to a mounted directory.
 
 ```yaml
 apiVersion: v1
@@ -335,9 +335,9 @@ spec:
   containers:
   - name: app
     image: myapp:1.0
-    resources:
-      limits:
-        core: "1"
+    command: ["/bin/sh", "-c"]
+    args:
+    - cd /cores && ulimit -c unlimited && exec /app/myapp
     securityContext:
       allowPrivilegeEscalation: false
     volumeMounts:
@@ -350,12 +350,19 @@ spec:
       type: DirectoryOrCreate
 ```
 
-Set ulimit for core dumps in the container.
+Set ulimit for core dumps in the container entrypoint. The node's `kernel.core_pattern` setting still controls the final core file naming and location.
 
 ```dockerfile
-# In Dockerfile
-RUN echo "* soft core unlimited" >> /etc/security/limits.conf && \
-    echo "* hard core unlimited" >> /etc/security/limits.conf
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+```
+
+```bash
+#!/bin/sh
+ulimit -c unlimited
+cd /cores
+exec /app/myapp
 ```
 
 ## Continuous Memory Profiling
