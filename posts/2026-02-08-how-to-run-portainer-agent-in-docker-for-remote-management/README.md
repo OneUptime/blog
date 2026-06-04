@@ -96,14 +96,13 @@ TOKEN=$(curl -sk -X POST "https://localhost:9443/api/auth" \
 # Add the remote agent endpoint
 curl -sk -X POST "https://localhost:9443/api/endpoints" \
   -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "Name": "Production Server 1",
-    "EndpointCreationType": 2,
-    "URL": "tcp://192.168.1.100:9001",
-    "TLS": false,
-    "GroupID": 1
-  }'
+  -F "Name=Production Server 1" \
+  -F "EndpointCreationType=2" \
+  -F "URL=tcp://192.168.1.100:9001" \
+  -F "TLS=true" \
+  -F "TLSSkipVerify=true" \
+  -F "TLSSkipClientVerify=true" \
+  -F "GroupID=1"
 ```
 
 ## Docker Compose for the Agent
@@ -112,8 +111,6 @@ For a more structured deployment:
 
 ```yaml
 # docker-compose.agent.yml - Portainer Agent deployment
-version: "3.8"
-
 services:
   portainer-agent:
     image: portainer/agent:latest
@@ -127,11 +124,11 @@ services:
       # Required: Volume access for browsing volume contents
       - /var/lib/docker/volumes:/var/lib/docker/volumes
     environment:
-      # Optional: set a shared secret for agent-server communication
+      # Optional: set this only if the Portainer Server uses the same AGENT_SECRET
       AGENT_SECRET: your-shared-secret-here
 ```
 
-When using `AGENT_SECRET`, set the same secret on the Portainer server side when adding the environment.
+When using `AGENT_SECRET`, set the same `AGENT_SECRET` environment variable on the Portainer Server container.
 
 ## Deploying the Agent on Docker Swarm
 
@@ -139,9 +136,12 @@ For Docker Swarm clusters, deploy the agent as a global service so it runs on ev
 
 ```bash
 # Deploy the Portainer Agent across all Swarm nodes
+docker network create --driver overlay --attachable portainer_agent_network
+
 docker service create \
   --name portainer_agent \
   --network portainer_agent_network \
+  -e AGENT_CLUSTER_ADDR=tasks.portainer_agent \
   --mode global \
   --constraint 'node.platform.os == linux' \
   --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
@@ -154,14 +154,19 @@ Or with a Docker Compose file for Swarm:
 
 ```yaml
 # docker-compose.swarm-agent.yml - Portainer Agent for Swarm clusters
-version: "3.8"
-
 services:
   agent:
     image: portainer/agent:latest
+    environment:
+      AGENT_CLUSTER_ADDR: tasks.agent
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
+    ports:
+      - target: 9001
+        published: 9001
+        protocol: tcp
+        mode: host
     networks:
       - agent_network
     deploy:
@@ -209,7 +214,7 @@ The `EDGE_ID` and `EDGE_KEY` values come from the Portainer server when you add 
 For production deployments, secure the agent communication:
 
 ```yaml
-# Secure agent deployment with TLS and secrets
+# Secure agent deployment with a shared secret
 services:
   portainer-agent:
     image: portainer/agent:latest
@@ -222,9 +227,9 @@ services:
     environment:
       # Shared secret must match the Portainer server configuration
       AGENT_SECRET: ${AGENT_SECRET}
-      # Restrict which Portainer server can connect
-      CAP_HOST_MANAGEMENT: 1
 ```
+
+The agent uses HTTPS with certificates generated during installation. `AGENT_SECRET` adds shared-secret authorization between the Portainer Server and Agent.
 
 Restrict network access to the agent port using firewall rules:
 
