@@ -36,7 +36,7 @@ Simple schema types:
 
 ```python
 import pulsar
-from pulsar.schema import String, BytesSchema, JsonSchema
+from pulsar.schema import StringSchema, BytesSchema
 
 client = pulsar.Client('pulsar://localhost:6650')
 
@@ -44,7 +44,7 @@ client = pulsar.Client('pulsar://localhost:6650')
 
 string_producer = client.create_producer(
     'persistent://public/default/messages',
-    schema=String()
+    schema=StringSchema()
 )
 string_producer.send("Hello, Pulsar!")
 
@@ -63,7 +63,7 @@ Consume with schema validation:
 consumer = client.subscribe(
     'persistent://public/default/messages',
     subscription_name='string-consumer',
-    schema=String()
+    schema=StringSchema()
 )
 
 msg = consumer.receive()
@@ -157,14 +157,16 @@ Go implementation with Avro:
 package main
 
 import (
+    "context"
     "log"
+
     "github.com/apache/pulsar-client-go/pulsar"
 )
 
 type User struct {
-    UserID   int    `json:"user_id"`
-    Username string `json:"username"`
-    Email    string `json:"email"`
+    UserID   int
+    Username string
+    Email    string
 }
 
 func main() {
@@ -176,16 +178,16 @@ func main() {
     }
     defer client.Close()
 
-    // Producer with JSON schema (Avro not yet in Go client)
+    // Producer with Avro schema
     producer, err := client.CreateProducer(pulsar.ProducerOptions{
         Topic: "persistent://public/default/users",
-        Schema: pulsar.NewJSONSchema(`{
+        Schema: pulsar.NewAvroSchema(`{
             "type": "record",
             "name": "User",
             "fields": [
-                {"name": "user_id", "type": "int"},
-                {"name": "username", "type": "string"},
-                {"name": "email", "type": "string"}
+                {"name": "UserID", "type": "int"},
+                {"name": "Username", "type": "string"},
+                {"name": "Email", "type": "string"}
             ]
         }`, nil),
     })
@@ -201,7 +203,7 @@ func main() {
     }
 
     _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
-        Value: user,
+        Value: &user,
     })
     if err != nil {
         log.Fatal(err)
@@ -227,13 +229,20 @@ class OrderV2(Record):
     amount = Float()
     discount = Float(default=0.0)  # Optional with default
 
-# Producers using V2 can send to consumers expecting V1
+# Producers using V2 can send with the added defaulted field
 producer_v2 = client.create_producer(
     'persistent://public/default/orders',
     schema=JsonSchema(OrderV2)
 )
 
-# Consumers using V1 can still read V2 messages
+# Consumers using V2 can still read V1 messages under BACKWARD compatibility
+consumer_v2 = client.subscribe(
+    'persistent://public/default/orders',
+    subscription_name='new-consumer',
+    schema=JsonSchema(OrderV2)
+)
+
+# Consumers using V1 can read V2 messages under FORWARD or FULL compatibility
 consumer_v1 = client.subscribe(
     'persistent://public/default/orders',
     subscription_name='old-consumer',
@@ -246,14 +255,15 @@ Configure schema compatibility:
 ```bash
 # Set compatibility mode for namespace
 pulsar-admin namespaces set-schema-compatibility-strategy \
-  public/default \
-  --compatibility BACKWARD
+  --compatibility BACKWARD \
+  public/default
 
 # Compatibility modes:
 # - ALWAYS_COMPATIBLE: No validation
 # - BACKWARD: New schema can read old data
 # - FORWARD: Old schema can read new data
 # - FULL: Both backward and forward compatible
+# - BACKWARD_TRANSITIVE, FORWARD_TRANSITIVE, FULL_TRANSITIVE: Check all previous schemas
 ```
 
 ## Validating Schema Compatibility
@@ -270,9 +280,10 @@ pulsar-admin schemas upload \
 pulsar-admin schemas get \
   persistent://public/default/orders
 
-# Get schema history
-pulsar-admin schemas list \
-  persistent://public/default/orders
+# Get a specific schema version
+pulsar-admin schemas get \
+  persistent://public/default/orders \
+  --version 0
 ```
 
 Programmatic compatibility check:
@@ -306,9 +317,12 @@ Create custom serialization logic:
 ```python
 from pulsar.schema import Schema
 import json
+import time
+import _pulsar
 
 class CustomJSONSchema(Schema):
     def __init__(self, schema_class):
+        super().__init__(schema_class, _pulsar.SchemaType.BYTES, None, 'CustomJSON')
         self.schema_class = schema_class
 
     def encode(self, obj):
@@ -340,9 +354,6 @@ producer = client.create_producer(
 View schemas via admin API:
 
 ```bash
-# List all schemas
-pulsar-admin schemas list public/default
-
 # Get specific schema
 pulsar-admin schemas get persistent://public/default/orders
 
@@ -372,10 +383,12 @@ Share schemas across different languages:
 
 ```python
 # Python producer
+from pulsar.schema import AvroSchema, Long, Record, String
+
 class Event(Record):
-    event_id = String()
-    event_type = String()
-    timestamp = Integer()
+    eventId = String()
+    eventType = String()
+    timestamp = Long()
 
 producer = client.create_producer(
     'persistent://public/default/events',
@@ -391,9 +404,9 @@ Java consumer reads same schema:
 @AllArgsConstructor
 @NoArgsConstructor
 public class Event {
-    private String eventId;
-    private String eventType;
-    private Long timestamp;
+    public String eventId;
+    public String eventType;
+    public Long timestamp;
 }
 
 PulsarClient client = PulsarClient.builder()
@@ -442,18 +455,18 @@ spec:
   groups:
   - name: pulsar-schemas
     rules:
-    - alert: SchemaValidationErrors
+    - alert: SchemaRegistryPutFailures
       expr: |
-        rate(pulsar_schema_validation_errors_total[5m]) > 0.01
+        rate(pulsar_schema_put_ops_failed_total[5m]) > 0.01
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Schema validation errors detected"
+        summary: "Schema registry put failures detected"
 
     - alert: IncompatibleSchemaUpdate
       expr: |
-        pulsar_schema_compatibility_check_failed > 0
+        increase(pulsar_schema_incompatible_total[5m]) > 0
       for: 1m
       labels:
         severity: critical
@@ -482,10 +495,8 @@ pulsar-admin topics peek-messages \
   --count 1 \
   --subscription-name debug
 
-# Check schema compatibility
-pulsar-admin schemas test-compatibility \
-  persistent://public/default/orders \
-  --filename new-schema.json
+# Test schema compatibility by creating a producer with the new schema
+# or by uploading the schema in a non-production namespace first
 
 # Force schema update (dangerous)
 pulsar-admin schemas delete persistent://public/default/orders
