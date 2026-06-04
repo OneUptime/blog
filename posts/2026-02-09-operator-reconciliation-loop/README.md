@@ -38,14 +38,8 @@ package controllers
 
 import (
     "context"
-    "fmt"
-
-    appsv1 "k8s.io/api/apps/v1"
-    corev1 "k8s.io/api/core/v1"
     "k8s.io/apimachinery/pkg/api/errors"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
-    "k8s.io/apimachinery/pkg/types"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
     "sigs.k8s.io/controller-runtime/pkg/log"
@@ -191,6 +185,7 @@ The pattern for the Service is identical:
 ```go
 func (r *WebAppReconciler) reconcileService(ctx context.Context, webapp *myappv1.WebApp) error {
     logger := log.FromContext(ctx)
+    targetPort := intstr.FromInt32(int32(webapp.Spec.Port))
 
     desired := &corev1.Service{
         ObjectMeta: metav1.ObjectMeta{
@@ -204,7 +199,7 @@ func (r *WebAppReconciler) reconcileService(ctx context.Context, webapp *myappv1
             Ports: []corev1.ServicePort{
                 {
                     Port:       int32(webapp.Spec.Port),
-                    TargetPort: intstr.FromInt(int(webapp.Spec.Port)),
+                    TargetPort: targetPort,
                 },
             },
         },
@@ -223,8 +218,22 @@ func (r *WebAppReconciler) reconcileService(ctx context.Context, webapp *myappv1
         }
         return r.Create(ctx, desired)
     }
+    if err != nil {
+        return err
+    }
 
-    return err
+    if existing.Spec.Selector["app.kubernetes.io/name"] != webapp.Name ||
+        len(existing.Spec.Ports) != 1 ||
+        existing.Spec.Ports[0].Port != int32(webapp.Spec.Port) ||
+        existing.Spec.Ports[0].TargetPort != targetPort {
+
+        existing.Spec.Selector = desired.Spec.Selector
+        existing.Spec.Ports = desired.Spec.Ports
+        logger.Info("Updating Service", "name", existing.Name)
+        return r.Update(ctx, existing)
+    }
+
+    return nil
 }
 ```
 
@@ -291,7 +300,7 @@ The `ctrl.Result` return value controls requeueing behavior:
 
 - `ctrl.Result{}, nil` means reconciliation succeeded and the item should not be requeued (unless a new event triggers it).
 - `ctrl.Result{}, err` means reconciliation failed and the item will be requeued with exponential backoff.
-- `ctrl.Result{Requeue: true}, nil` means the controller should immediately requeue the item.
+- `ctrl.Result{Requeue: true}, nil` means the controller should requeue the item using the controller's rate limiter, typically with exponential backoff.
 - `ctrl.Result{RequeueAfter: 30 * time.Second}, nil` means requeue after a specific duration. This is useful for polling external systems that do not generate Kubernetes events.
 
 ## Setting Up Watches
