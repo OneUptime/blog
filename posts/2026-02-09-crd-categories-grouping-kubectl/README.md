@@ -217,7 +217,7 @@ spec:
   # ... rest of spec
 ```
 
-Now `kubectl get all` includes your custom resources:
+Now `kubectl get all` includes your custom resources. If the CRD also defines printer columns for version and replicas, the output includes those custom columns:
 
 ```bash
 kubectl get all
@@ -249,6 +249,7 @@ With Kubebuilder, specify categories using resource markers:
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:categories={platform,all},shortName=app
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
+// +kubebuilder:printcolumn:name="Replicas",type=integer,JSONPath=`.spec.replicas`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 type Application struct {
@@ -373,7 +374,7 @@ kubectl get <category-name>
 kubectl api-resources --categories=all
 ```
 
-The `kubectl api-resources` command shows all available categories:
+The `kubectl api-resources` command can show which resources belong to a category:
 
 ```bash
 kubectl api-resources --categories=platform
@@ -386,7 +387,7 @@ caches                       platform.example.com/v1       true         Cache
 
 ## Category Limitations
 
-Categories are client-side constructs. They don't affect RBAC or API behavior, just kubectl output. Users still need appropriate RBAC permissions for each resource type.
+Categories are published in API discovery documents and used by clients such as kubectl. They don't affect RBAC or resource behavior, just how clients can discover and group resources. Users still need appropriate RBAC permissions for each resource type.
 
 You can't remove resources from built-in categories like "all" if they're added by default. You can only add your custom resources to these categories.
 
