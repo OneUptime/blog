@@ -50,7 +50,7 @@ Each `--add-host` flag creates one line in `/etc/hosts`.
 
 ## Pointing to the Host Machine
 
-A very common use case is pointing a container at a service running on the Docker host. Docker provides a special hostname `host-gateway` that resolves to the host's IP address:
+A very common use case is pointing a container at a service running on the Docker host. Docker provides a special `host-gateway` value for `--add-host` that resolves to the host's IP address:
 
 ```bash
 # Map "docker-host" to the Docker host's IP address
@@ -69,7 +69,7 @@ docker run --rm \
   my-app
 ```
 
-On Docker Desktop (macOS and Windows), the hostname `host.docker.internal` is automatically available. On Linux, `host-gateway` achieves the same result.
+On Docker Desktop (macOS and Windows), the hostname `host.docker.internal` is automatically available. On Linux, mapping a hostname to `host-gateway` achieves the same result.
 
 ## Host Aliases in Docker Compose
 
@@ -89,7 +89,7 @@ services:
       AUTH_URL: http://auth.external.com:9090
 ```
 
-The `extra_hosts` list follows the format `"hostname:ip"`, just like `--add-host`.
+The `extra_hosts` list follows the format `"hostname:ip"`, just like `--add-host`. Compose also supports `"hostname=ip"`, which is the preferred separator in the Compose specification.
 
 ## Use Cases and Practical Examples
 
@@ -209,7 +209,7 @@ You can add IPv6 addresses as host aliases:
 # Add an IPv6 host alias
 docker run --rm \
   --add-host ipv6-service:[2001:db8::1] \
-  alpine ping6 -c 1 ipv6-service
+  alpine cat /etc/hosts
 ```
 
 Or mix IPv4 and IPv6 for the same hostname:
