@@ -36,10 +36,10 @@ clusters:
       path: /health
       expected_statuses:
       - start: 200
-        end: 299
+        end: 300
 ```
 
-Envoy sends GET /health every 10 seconds. Three consecutive failures mark the host unhealthy, two successes mark it healthy.
+Envoy sends GET /health every 10 seconds. Three consecutive failures such as timeouts or retriable responses mark the host unhealthy, two successes mark it healthy. For HTTP health checks, a response outside `expected_statuses` and `retriable_statuses` marks the host unhealthy immediately.
 
 ## TCP Health Checks
 
@@ -53,9 +53,9 @@ health_checks:
   healthy_threshold: 2
   tcp_health_check:
     send:
-      text: "ping"
+      text: "70696e67"
     receive:
-    - text: "pong"
+    - text: "706f6e67"
 ```
 
 ## gRPC Health Checks
@@ -101,7 +101,11 @@ health_checks:
   interval: 10s
   unhealthy_threshold: 3
   healthy_threshold: 2
-  event_log_path: /var/log/envoy/health_check.log
+  event_logger:
+  - name: envoy.health_check.event_sinks.file
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.health_check.event_sinks.file.v3.HealthCheckEventFileSink
+      event_log_path: /var/log/envoy/health_check.log
   http_health_check:
     path: /health
 ```
@@ -121,7 +125,7 @@ health_checks:
     path: /health
 ```
 
-Actual interval will be between 8-12 seconds.
+Actual interval will be between 10-12 seconds.
 
 ## No Traffic Interval
 
@@ -138,7 +142,7 @@ health_checks:
     path: /health
 ```
 
-Check every 60 seconds when the host receives no traffic, every 10 seconds when active.
+Check every 60 seconds before the cluster has routed traffic, then every 10 seconds after the cluster has been used for traffic routing.
 
 ## Passive Health Checking (Outlier Detection)
 
@@ -196,9 +200,9 @@ clusters:
     max_ejection_percent: 50
 ```
 
-## Health Check Filtering
+## Health Check Identity
 
-Only health check specific endpoints:
+Verify health check responses from the expected service:
 
 ```yaml
 health_checks:
@@ -208,13 +212,13 @@ health_checks:
   healthy_threshold: 2
   http_health_check:
     path: /health
-  health_checker:
-    name: envoy.health_checkers.http
+    service_name_matcher:
+      exact: backend_service
 ```
 
 ## TLS Health Checks
 
-Health check TLS-enabled backends:
+Health checks use the cluster transport socket. If the cluster uses a TLS-enabled transport socket, the health check also uses TLS:
 
 ```yaml
 health_checks:
@@ -222,10 +226,11 @@ health_checks:
   interval: 10s
   unhealthy_threshold: 3
   healthy_threshold: 2
+  tls_options:
+    alpn_protocols:
+    - h2
   http_health_check:
     path: /health
-  transport_socket_match_criteria:
-    tls_mode: true
 ```
 
 ## Monitoring Health Checks
@@ -256,12 +261,12 @@ groups:
   - alert: NoHealthyBackends
     expr: envoy_cluster_membership_healthy == 0
     annotations:
-      summary: "Cluster {{ $labels.cluster_name }} has no healthy backends"
+      summary: "Cluster {{ $labels.envoy_cluster_name }} has no healthy backends"
 
   - alert: HighHealthCheckFailureRate
     expr: rate(envoy_cluster_health_check_failure[5m]) > 0.5
     annotations:
-      summary: "High health check failure rate for {{ $labels.cluster_name }}"
+      summary: "High health check failure rate for {{ $labels.envoy_cluster_name }}"
 ```
 
 ## Best Practices
