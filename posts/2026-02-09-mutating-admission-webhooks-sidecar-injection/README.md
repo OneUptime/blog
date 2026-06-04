@@ -28,26 +28,23 @@ package main
 
 import (
     "encoding/json"
-    "fmt"
-    "io/ioutil"
-    "net/http"
 
     admissionv1 "k8s.io/api/admission/v1"
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
-    "k8s.io/apimachinery/pkg/runtime/serializer"
 )
 
 var (
     scheme = runtime.NewScheme()
-    codecs = serializer.NewCodecFactory(scheme)
 )
 
 func init() {
     corev1.AddToScheme(scheme)
     admissionv1.AddToScheme(scheme)
 }
+
+type WebhookServer struct{}
 
 type patchOperation struct {
     Op    string      `json:"op"`
@@ -61,6 +58,7 @@ func (ws *WebhookServer) mutate(ar *admissionv1.AdmissionReview) *admissionv1.Ad
     var pod corev1.Pod
     if err := json.Unmarshal(req.Object.Raw, &pod); err != nil {
         return &admissionv1.AdmissionResponse{
+            UID: req.UID,
             Result: &metav1.Status{
                 Message: err.Error(),
             },
@@ -70,6 +68,7 @@ func (ws *WebhookServer) mutate(ar *admissionv1.AdmissionReview) *admissionv1.Ad
     // Check if sidecar injection is enabled
     if !shouldInjectSidecar(&pod) {
         return &admissionv1.AdmissionResponse{
+            UID:     req.UID,
             Allowed: true,
         }
     }
@@ -80,6 +79,7 @@ func (ws *WebhookServer) mutate(ar *admissionv1.AdmissionReview) *admissionv1.Ad
     patchBytes, err := json.Marshal(patches)
     if err != nil {
         return &admissionv1.AdmissionResponse{
+            UID: req.UID,
             Result: &metav1.Status{
                 Message: err.Error(),
             },
@@ -87,6 +87,7 @@ func (ws *WebhookServer) mutate(ar *admissionv1.AdmissionReview) *admissionv1.Ad
     }
 
     return &admissionv1.AdmissionResponse{
+        UID:     req.UID,
         Allowed: true,
         Patch:   patchBytes,
         PatchType: func() *admissionv1.PatchType {
@@ -106,8 +107,6 @@ Create functions that generate JSON patches to inject sidecars.
 package main
 
 import (
-    "fmt"
-
     corev1 "k8s.io/api/core/v1"
     "k8s.io/apimachinery/pkg/api/resource"
 )
@@ -245,6 +244,9 @@ Implement functions that generate JSON patch operations.
 package main
 
 import (
+    "strings"
+    "time"
+
     corev1 "k8s.io/api/core/v1"
 )
 
@@ -415,16 +417,18 @@ func getSidecarConfig(namespace string, annotations map[string]string) SidecarCo
     }
 
     // Override from annotations
-    if level, ok := annotations["sidecar.example.com/log-level"]; ok {
-        config.LogLevel = level
-    }
+    if annotations != nil {
+        if level, ok := annotations["sidecar.example.com/log-level"]; ok {
+            config.LogLevel = level
+        }
 
-    if endpoint, ok := annotations["sidecar.example.com/metrics-endpoint"]; ok {
-        config.MetricsEndpoint = endpoint
-    }
+        if endpoint, ok := annotations["sidecar.example.com/metrics-endpoint"]; ok {
+            config.MetricsEndpoint = endpoint
+        }
 
-    if scan, ok := annotations["sidecar.example.com/security-scan"]; ok && scan == "true" {
-        config.SecurityScanningEnabled = true
+        if scan, ok := annotations["sidecar.example.com/security-scan"]; ok && scan == "true" {
+            config.SecurityScanningEnabled = true
+        }
     }
 
     // Add shared volumes
@@ -507,11 +511,6 @@ webhooks:
   namespaceSelector:
     matchLabels:
       sidecar-injection: enabled
-  objectSelector:
-    matchExpressions:
-    - key: sidecar.example.com/inject
-      operator: In
-      values: ["true"]
 ```
 
 ## Testing Sidecar Injection
@@ -519,6 +518,8 @@ webhooks:
 Create a test pod with the injection annotation.
 
 ```bash
+kubectl label namespace default sidecar-injection=enabled --overwrite
+
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
@@ -573,6 +574,6 @@ kubectl get pod test-no-inject -o yaml | grep sidecar
 
 Mutating admission webhooks enable powerful automation patterns like sidecar injection. They modify resources transparently, adding capabilities without requiring users to change their manifests.
 
-Use mutation for cross-cutting concerns like logging, monitoring, security scanning, and service mesh integration. Keep mutation logic simple and predictable. Add comprehensive logging to debug injection issues. Use namespace and object selectors to control where injection applies.
+Use mutation for cross-cutting concerns like logging, monitoring, security scanning, and service mesh integration. Keep mutation logic simple and predictable. Add comprehensive logging to debug injection issues. Use namespace selectors and label-based object selectors to control where injection applies.
 
 Deploy webhooks with appropriate failure policies. Ignore is safer during development to prevent blocking pod creation. Fail provides stronger guarantees in production but requires careful testing.
