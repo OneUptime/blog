@@ -15,16 +15,16 @@ Alertmanager routes alerts from Prometheus to various notification channels. In 
 Alertmanager routing works through a hierarchical tree structure. Each route can:
 - Match alerts based on label matchers
 - Have child routes for more specific matching
-- Send alerts to one or more receivers
+- Send alerts to a receiver
 - Control grouping, timing, and repetition
-- Continue matching child routes or stop at first match
+- Continue matching sibling routes or stop at the first matching sibling route
 
 The routing process:
 1. Alert enters at the root route
-2. Alert is evaluated against matchers
-3. If matched, alert is sent to the receiver
-4. Child routes are evaluated (unless continue: false)
-5. Process repeats until no more routes match
+2. Child routes are evaluated against their matchers in order
+3. Matching child routes are evaluated recursively
+4. If a matching child route has continue: false, sibling evaluation stops at that level
+5. If no child routes match, the alert is handled by the current route's receiver
 
 ## Basic Routing Configuration
 
@@ -55,20 +55,20 @@ stringData:
       # Child routes for specific teams
       routes:
         # Platform team handles infrastructure alerts
-        - match:
-            team: platform
+        - matchers:
+            - team="platform"
           receiver: 'platform-team'
           group_by: ['alertname', 'instance']
 
         # Application team handles app alerts
-        - match:
-            team: application
+        - matchers:
+            - team="application"
           receiver: 'application-team'
           group_by: ['alertname', 'service']
 
         # Database team handles database alerts
-        - match:
-            team: database
+        - matchers:
+            - team="database"
           receiver: 'database-team'
           group_by: ['alertname', 'database']
 
@@ -112,12 +112,12 @@ alertmanager:
       repeat_interval: 12h
 
       routes:
-        - match:
-            team: platform
+        - matchers:
+            - team="platform"
           receiver: 'platform-team'
 
-        - match:
-            team: application
+        - matchers:
+            - team="application"
           receiver: 'application-team'
 
     receivers:
@@ -151,27 +151,27 @@ route:
 
   routes:
     # Critical alerts go to on-call immediately
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'on-call-critical'
       group_wait: 0s
       repeat_interval: 5m
       routes:
         # Database critical alerts need special handling
-        - match:
-            team: database
+        - matchers:
+            - team="database"
           receiver: 'database-on-call'
 
     # Warning alerts go to team channels
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'team-warnings'
       group_wait: 30s
       repeat_interval: 4h
 
     # Info alerts are logged only
-    - match:
-        severity: info
+    - matchers:
+        - severity="info"
       receiver: 'info-logger'
       group_wait: 5m
       repeat_interval: 24h
@@ -209,46 +209,46 @@ receivers:
 
 ## Advanced Label Matching
 
-Use match_re for regex matching and complex conditions:
+Use matchers for regex matching and complex conditions:
 
 ```yaml
 route:
   receiver: 'default'
   routes:
     # Match multiple namespaces with regex
-    - match_re:
-        namespace: '^(prod|production)-.*'
+    - matchers:
+        - namespace=~"^(prod|production)-.*"
       receiver: 'production-team'
       routes:
         # Within production, route by service
-        - match_re:
-            service: '^api-.*'
+        - matchers:
+            - service=~"^api-.*"
           receiver: 'api-team'
 
-        - match_re:
-            service: '^web-.*'
+        - matchers:
+            - service=~"^web-.*"
           receiver: 'web-team'
 
     # Match staging environments
-    - match_re:
-        namespace: '^(stage|staging)-.*'
+    - matchers:
+        - namespace=~"^(stage|staging)-.*"
       receiver: 'staging-team'
       repeat_interval: 24h  # Less frequent for staging
 
     # Development environments
-    - match_re:
-        namespace: '^(dev|development)-.*'
+    - matchers:
+        - namespace=~"^(dev|development)-.*"
       receiver: 'dev-team'
       repeat_interval: 48h
 
     # Catch kubernetes system alerts
-    - match_re:
-        namespace: '^kube-.*'
+    - matchers:
+        - namespace=~"^kube-.*"
       receiver: 'platform-team'
 
     # Monitoring namespace alerts
-    - match:
-        namespace: monitoring
+    - matchers:
+        - namespace="monitoring"
       receiver: 'observability-team'
 ```
 
@@ -292,27 +292,49 @@ receivers:
 
 ## Time-Based Routing
 
-Route differently based on time of day:
+Route differently based on time of day with time intervals:
 
 ```yaml
 route:
   receiver: 'default'
   routes:
     # Business hours routing (9 AM - 5 PM weekdays)
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'business-hours-team'
-      # Note: Alertmanager doesn't natively support time-based routing
-      # This requires additional labels from Prometheus rules or external tools
+      active_time_intervals:
+        - business-hours
+      continue: true
 
     # After-hours routing
-    - match:
-        severity: critical
-        shift: after-hours
+    - matchers:
+        - severity="critical"
       receiver: 'on-call-rotation'
+      active_time_intervals:
+        - after-hours
+
+time_intervals:
+  - name: business-hours
+    time_intervals:
+      - times:
+          - start_time: '09:00'
+            end_time: '17:00'
+        weekdays: ['monday:friday']
+
+  - name: after-hours
+    time_intervals:
+      - times:
+          - start_time: '17:00'
+            end_time: '24:00'
+        weekdays: ['monday:friday']
+      - times:
+          - start_time: '00:00'
+            end_time: '09:00'
+        weekdays: ['monday:friday']
+      - weekdays: ['saturday', 'sunday']
 ```
 
-To implement time-based routing, add time information in Prometheus rules:
+If you need custom shift logic beyond fixed time intervals, add shift information in Prometheus rules or external labelers:
 
 ```yaml
 # In PrometheusRule
@@ -337,38 +359,38 @@ route:
 
   routes:
     # Production environment
-    - match:
-        environment: production
+    - matchers:
+        - environment="production"
       receiver: 'production-default'
       routes:
         # Production platform issues
-        - match_re:
-            namespace: '^kube-|^istio-|^monitoring$'
+        - matchers:
+            - namespace=~"^kube-|^istio-|^monitoring$"
           receiver: 'platform-production'
           group_wait: 0s
 
         # Production application issues by team
-        - match:
-            team: payments
+        - matchers:
+            - team="payments"
           receiver: 'payments-production'
 
-        - match:
-            team: user-service
+        - matchers:
+            - team="user-service"
           receiver: 'users-production'
 
     # Staging environment
-    - match:
-        environment: staging
+    - matchers:
+        - environment="staging"
       receiver: 'staging-default'
       repeat_interval: 6h
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'staging-critical'
 
     # Development environment
-    - match:
-        environment: development
+    - matchers:
+        - environment="development"
       receiver: 'dev-notifications'
       repeat_interval: 24h
 
@@ -398,67 +420,67 @@ Prevent redundant alerts using inhibition:
 # Inhibit dependent alerts when root cause is firing
 inhibit_rules:
   # If node is down, inhibit all pod alerts on that node
-  - source_match:
-      alertname: NodeDown
-    target_match_re:
-      alertname: '(PodCrashLooping|PodNotReady)'
+  - source_matchers:
+      - alertname="NodeDown"
+    target_matchers:
+      - alertname=~"(PodCrashLooping|PodNotReady)"
     equal:
       - node
 
   # If entire service is down, inhibit individual pod alerts
-  - source_match:
-      alertname: ServiceDown
-    target_match:
-      alertname: PodNotReady
+  - source_matchers:
+      - alertname="ServiceDown"
+    target_matchers:
+      - alertname="PodNotReady"
     equal:
       - service
       - namespace
 
   # If cluster is unreachable, inhibit all cluster alerts
-  - source_match:
-      alertname: ClusterUnreachable
-    target_match_re:
-      severity: '.*'
+  - source_matchers:
+      - alertname="ClusterUnreachable"
+    target_matchers:
+      - severity=~".*"
     equal:
       - cluster
 
   # During maintenance, inhibit all alerts for that service
-  - source_match:
-      alertname: MaintenanceWindow
-    target_match_re:
-      alertname: '.*'
+  - source_matchers:
+      - alertname="MaintenanceWindow"
+    target_matchers:
+      - alertname=~".*"
     equal:
       - service
 ```
 
 ## Continue vs Stop Matching
 
-Control whether alerts continue to child routes:
+Control whether alerts continue to sibling routes:
 
 ```yaml
 route:
   receiver: 'default'
   routes:
-    # This route continues to children
-    - match:
-        team: platform
+    # This route continues to sibling routes
+    - matchers:
+        - team="platform"
       receiver: 'platform-team'
-      continue: true  # Keep evaluating child routes
+      continue: true  # Keep evaluating sibling routes
       routes:
         # Critical platform alerts also go to on-call
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'platform-oncall'
 
     # This route stops sibling evaluation on match
-    - match:
-        team: database
+    - matchers:
+        - team="database"
       receiver: 'database-team'
       continue: false  # Don't evaluate further sibling routes
       routes:
         # Child routes are still evaluated when the parent matches
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'database-oncall'
 ```
 
@@ -470,8 +492,8 @@ Configure time windows when alerts should be muted:
 route:
   receiver: 'default'
   routes:
-    - match:
-        team: platform
+    - matchers:
+        - team="platform"
       receiver: 'platform-team'
       # Apply mute timing
       mute_time_intervals:
@@ -479,7 +501,7 @@ route:
         - business-hours
 
 # Define mute time intervals
-mute_time_intervals:
+time_intervals:
   - name: weekends
     time_intervals:
       - weekdays: ['saturday', 'sunday']
