@@ -35,18 +35,12 @@ Istio supports the Gateway API natively, allowing you to use Gateway resources i
 Install Istio with Gateway API support:
 
 ```bash
-# Install Istio with Gateway API experimental features
+# Install Gateway API CRDs if they are not already present
+kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1 || \
+  kubectl kustomize "github.com/kubernetes-sigs/gateway-api/config/crd?ref=v1.5.1" | kubectl apply -f -
 
-istioctl install --set profile=default \
-  --set values.pilot.env.PILOT_ENABLE_GATEWAY_API=true \
-  --set values.pilot.env.PILOT_ENABLE_GATEWAY_API_STATUS=true \
-  --set values.pilot.env.PILOT_ENABLE_GATEWAY_API_DEPLOYMENT_CONTROLLER=true
-```
-
-Install Gateway API CRDs:
-
-```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+# Install Istio
+istioctl install --set profile=minimal -y
 ```
 
 Create a Gateway using Istio:
@@ -134,7 +128,7 @@ spec:
       - name: app
         image: nginx:latest
         ports:
-        - containerPort: 8080
+        - containerPort: 80
 ---
 apiVersion: v1
 kind: Service
@@ -146,7 +140,7 @@ spec:
     app: frontend
   ports:
   - port: 8080
-    targetPort: 8080
+    targetPort: 80
 ```
 
 Traffic flows: External client -> Istio Gateway -> HTTPRoute -> Frontend pod (with sidecar) -> Backend services (with sidecars).
@@ -157,7 +151,7 @@ Use Istio DestinationRule for service mesh policies while Gateway API handles in
 
 ```yaml
 # destination-rule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: frontend-dr
@@ -174,7 +168,7 @@ spec:
     loadBalancer:
       simple: LEAST_REQUEST
     outlierDetection:
-      consecutiveErrors: 5
+      consecutive5xxErrors: 5
       interval: 30s
       baseEjectionTime: 30s
 ```
@@ -187,7 +181,7 @@ Configure Istio PeerAuthentication for strict mTLS:
 
 ```yaml
 # peer-authentication.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -217,7 +211,10 @@ Linkerd doesn't provide a built-in Gateway implementation, so use an external ga
 
 ```bash
 # Install Envoy Gateway
-helm install eg oci://docker.io/envoyproxy/gateway-helm --version v0.6.0 -n envoy-gateway-system --create-namespace
+helm install eg oci://docker.io/envoyproxy/gateway-helm --version v1.8.0 -n envoy-gateway-system --create-namespace
+
+# Envoy Gateway creates data plane pods in this namespace by default.
+kubectl annotate namespace envoy-gateway-system linkerd.io/inject=enabled --overwrite
 ```
 
 Create a Gateway:
@@ -236,8 +233,6 @@ kind: Gateway
 metadata:
   name: envoy-linkerd-gateway
   namespace: default
-  annotations:
-    linkerd.io/inject: enabled  # Inject Linkerd sidecar into gateway
 spec:
   gatewayClassName: envoy
   listeners:
@@ -277,36 +272,35 @@ spec:
       port: 8080
 ```
 
-The Envoy Gateway pod will have a Linkerd sidecar, enabling mTLS from gateway to services.
+The Envoy Gateway data plane pods will have Linkerd sidecars, enabling mTLS from the gateway to meshed services.
 
 ## Service Profiles with Gateway API
 
-Use Linkerd ServiceProfile for per-route metrics:
+For current Linkerd versions, use Gateway API HTTPRoute resources for per-route policy and metrics. ServiceProfiles remain supported for backwards compatibility, but new route-level configuration should use Gateway API resources:
 
 ```yaml
-# service-profile.yaml
-apiVersion: linkerd.io/v1alpha2
-kind: ServiceProfile
+# linkerd-service-route.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
-  name: app-service.default.svc.cluster.local
+  name: app-service-routes
   namespace: default
 spec:
-  routes:
+  parentRefs:
+  - group: ""
+    kind: Service
+    name: app-service
+    port: 8080
+  rules:
   - name: GET /api/users
-    condition:
-      method: GET
-      pathRegex: /api/users
-    responseClasses:
-    - condition:
-        status:
-          min: 200
-          max: 299
-      isFailure: false
-    - condition:
-        status:
-          min: 500
-          max: 599
-      isFailure: true
+    matches:
+    - method: GET
+      path:
+        type: PathPrefix
+        value: /api/users
+    backendRefs:
+    - name: app-service
+      port: 8080
 ```
 
 This provides detailed metrics for routes defined in your HTTPRoute.
@@ -317,11 +311,11 @@ Cilium provides both Gateway and service mesh functionality. Install Cilium with
 
 ```bash
 # Install Cilium with Gateway API and service mesh
-helm install cilium cilium/cilium --version 1.14.5 \
+helm install cilium oci://quay.io/cilium/charts/cilium --version 1.19.4 \
   --namespace kube-system \
-  --set kubeProxyReplacement=strict \
+  --set kubeProxyReplacement=true \
   --set gatewayAPI.enabled=true \
-  --set authentication.mutual.spire.enabled=true
+  --set authentication.mutual.spire.install.enabled=true
 ```
 
 Cilium creates a GatewayClass automatically:
@@ -365,7 +359,7 @@ spec:
       port: 8080
 ```
 
-Enable mTLS with Cilium NetworkPolicy:
+Require mutual authentication for selected east-west traffic with CiliumNetworkPolicy:
 
 ```yaml
 # cilium-mtls-policy.yaml
@@ -376,11 +370,11 @@ metadata:
 spec:
   endpointSelector:
     matchLabels:
-      app: app-service
+      app: backend
   ingress:
   - fromEndpoints:
     - matchLabels:
-        io.cilium.k8s.policy.serviceaccount: gateway
+        app: frontend
     authentication:
       mode: required
 ```
@@ -393,9 +387,28 @@ Configure distributed tracing across Gateway and service mesh.
 
 For Istio with Jaeger:
 
+```bash
+cat <<EOF > tracing.yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    enableTracing: true
+    defaultConfig:
+      tracing: {}
+    extensionProviders:
+    - name: jaeger
+      opentelemetry:
+        port: 4317
+        service: jaeger-collector.istio-system.svc.cluster.local
+EOF
+
+istioctl install -f tracing.yaml --skip-confirmation
+```
+
 ```yaml
 # istio-telemetry.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: tracing
@@ -410,7 +423,7 @@ spec:
 Deploy Jaeger:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
 ```
 
 Access Jaeger:
@@ -456,7 +469,7 @@ Combine with Istio VirtualService for east-west canary:
 
 ```yaml
 # istio-canary-vs.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-canary
@@ -477,7 +490,7 @@ spec:
         host: backend.default.svc.cluster.local
         subset: stable
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-dr
@@ -505,12 +518,11 @@ kind: BackendTrafficPolicy
 metadata:
   name: rate-limit-policy
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: app-route
   rateLimit:
-    type: Global
     global:
       rules:
       - clientSelectors:
@@ -526,7 +538,7 @@ Add service mesh rate limiting with Istio:
 
 ```yaml
 # istio-ratelimit.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
   name: service-ratelimit
@@ -556,39 +568,35 @@ This provides defense in depth with rate limiting at both ingress and service le
 
 ## Authentication and Authorization
 
-Configure authentication at the Gateway:
+Configure JWT authentication at the Gateway with Envoy Gateway:
 
 ```yaml
 # gateway-authn.yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
 metadata:
   name: authenticated-route
 spec:
-  parentRefs:
-  - name: istio-gateway
-    namespace: istio-system
-  rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /api
-    filters:
-    - type: RequestHeaderModifier
-      requestHeaderModifier:
-        add:
-        - name: X-Forwarded-User
-          value: "${jwt.sub}"  # Extract from JWT
-    backendRefs:
-    - name: api-service
-      port: 8080
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: app-route
+  jwt:
+    providers:
+    - name: example
+      issuer: https://issuer.example.com
+      remoteJWKS:
+        uri: https://issuer.example.com/.well-known/jwks.json
+      claimToHeaders:
+      - claim: sub
+        header: x-forwarded-user
 ```
 
 Add authorization in the service mesh:
 
 ```yaml
 # istio-authz.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: api-authz
@@ -630,9 +638,12 @@ metadata:
   name: gateway-metrics
   namespace: monitoring
 spec:
+  namespaceSelector:
+    matchNames:
+    - istio-system
   selector:
     matchLabels:
-      app: istio-ingressgateway
+      gateway.networking.k8s.io/gateway-name: istio-gateway
   endpoints:
   - port: http-envoy-prom
     interval: 30s
@@ -661,11 +672,12 @@ kubectl describe httproute app-route
 # Verify sidecar injection
 kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].name}{"\n"}{end}'
 
-# Check mTLS status (Istio)
-istioctl authn tls-check frontend-pod.default backend.default.svc.cluster.local
+# Check mTLS policy and gateway certificates (Istio)
+kubectl get peerauthentication -A
+istioctl proxy-config secret deploy/istio-gateway-istio -n istio-system
 
 # View Envoy config in gateway
-kubectl exec -n istio-system deploy/istio-ingressgateway -- pilot-agent request GET config_dump
+kubectl exec -n istio-system deploy/istio-gateway-istio -- pilot-agent request GET config_dump
 
 # Check service mesh connectivity
 linkerd viz stat deploy  # For Linkerd
