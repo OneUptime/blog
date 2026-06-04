@@ -25,7 +25,11 @@ helm plugin list
 helm diff version
 ```
 
-The plugin integrates seamlessly with the Helm CLI and works with all Helm 3 releases.
+The plugin integrates seamlessly with the Helm CLI. The current plugin install flow requires Helm 3.18 or later. If you are using Helm 4, pass `--verify=false` because Helm verifies remote plugins by default and Helm Diff does not currently publish provenance artifacts:
+
+```bash
+helm plugin install https://github.com/databus23/helm-diff --verify=false
+```
 
 ## Basic Diff Usage
 
@@ -52,7 +56,6 @@ The diff output uses color coding and symbols to indicate changes:
 ```text
 + Lines in green with a plus sign indicate additions
 - Lines in red with a minus sign indicate deletions
-~ Lines in yellow with a tilde indicate modifications
 ```
 
 Example output:
@@ -145,8 +148,8 @@ Use the script:
 Focus on specific resources or changes:
 
 ```bash
-# Show only the summary
-helm diff upgrade myapp ./mychart --suppress-secrets
+# Show a simplified summary
+helm diff upgrade myapp ./mychart --output simple
 
 # Hide secrets from output
 helm diff upgrade myapp ./mychart --suppress-secrets
@@ -213,18 +216,21 @@ on:
 jobs:
   diff:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
 
     - name: Install Helm
-      uses: azure/setup-helm@v3
+      uses: azure/setup-helm@v4.3.0
 
     - name: Install Helm Diff Plugin
       run: helm plugin install https://github.com/databus23/helm-diff
 
     - name: Configure Kubernetes
-      uses: azure/k8s-set-context@v3
+      uses: azure/k8s-set-context@v4
       with:
         kubeconfig: ${{ secrets.KUBECONFIG }}
 
@@ -240,12 +246,14 @@ jobs:
         echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Comment on PR
-      uses: actions/github-script@v6
+      uses: actions/github-script@v9
+      env:
+        DIFF_OUTPUT: ${{ steps.diff.outputs.diff }}
       with:
         script: |
-          const diff = `${{ steps.diff.outputs.diff }}`;
-          const body = `## Helm Diff Output\n```diff\n${diff}\n````;
-          github.rest.issues.createComment({
+          const diff = process.env.DIFF_OUTPUT || '';
+          const body = ['## Helm Diff Output', '```diff', diff, '```'].join('\n');
+          await github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
             repo: context.repo.repo,
@@ -255,14 +263,14 @@ jobs:
 
 ## Comparing Release Manifests
 
-Preview the complete manifest that will be applied:
+Compare rendered release manifests and save diff output for review:
 
 ```bash
-# Show full manifest with changes highlighted
+# Return a non-zero exit code when changes are found
 helm diff upgrade myapp ./mychart -f values.yaml --detailed-exitcode
 
-# Save manifest for review
-helm diff upgrade myapp ./mychart -f values.yaml > proposed-changes.yaml
+# Save diff for review
+helm diff upgrade myapp ./mychart -f values.yaml > proposed-changes.diff
 
 # Compare manifests side by side
 helm get manifest myapp > current.yaml
@@ -276,7 +284,7 @@ Customize diff behavior for specific scenarios:
 
 ```bash
 # Suppress hooks from comparison
-helm diff upgrade myapp ./mychart --suppress-hooks
+helm diff upgrade myapp ./mychart --no-hooks
 
 # Normalize YAML before comparison
 helm diff upgrade myapp ./mychart --normalize-manifests
@@ -296,11 +304,11 @@ helm diff upgrade myapp ./mychart --three-way-merge
 For charts with many resources, make the output more manageable:
 
 ```bash
-# Count changed resources
-helm diff upgrade myapp ./mychart | grep "has changed" | wc -l
+# Count changed, added, or removed resources
+helm diff upgrade myapp ./mychart | grep -E "has (changed|been added|been removed)" | wc -l
 
-# Show only resource names that changed
-helm diff upgrade myapp ./mychart | grep "has changed"
+# Show only resource names that changed, were added, or were removed
+helm diff upgrade myapp ./mychart | grep -E "has (changed|been added|been removed)"
 
 # Filter specific resource types
 helm diff upgrade myapp ./mychart | grep "Deployment"
@@ -316,7 +324,7 @@ Preview what will be created for a new installation:
 
 ```bash
 # Compare against empty state
-helm diff install myapp ./mychart -f values.yaml
+helm diff upgrade myapp ./mychart -f values.yaml --allow-unreleased
 
 # Preview all resources that will be created
 helm template myapp ./mychart -f values.yaml | kubectl diff -f -
@@ -422,13 +430,13 @@ Handle common problems with the diff plugin:
 # Force rerendering of templates
 helm diff upgrade myapp ./mychart --reset-values
 
-# Connection timeouts
-# Increase timeout duration
-helm diff upgrade myapp ./mychart --timeout 5m
+# Cluster validation problems
+# Skip validating rendered manifests against the cluster
+helm diff upgrade myapp ./mychart --disable-validation
 
 # Large manifests cause issues
 # Split by resource type
-for kind in deployment service configmap; do
+for kind in Deployment Service ConfigMap; do
     helm diff upgrade myapp ./mychart | grep -A 50 "$kind"
 done
 ```
