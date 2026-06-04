@@ -53,7 +53,7 @@ services:
   medusa:
     image: node:20-alpine
     working_dir: /app
-    command: sh -c "npx create-medusa-app@latest --skip-db --db-url postgresql://medusa:medusa_pass@postgres:5432/medusa --no-browser --directory /app/medusa-store && cd /app/medusa-store && npx medusa develop --host 0.0.0.0"
+    command: sh -c "if [ ! -f /app/medusa-store/package.json ]; then npx create-medusa-app@latest --db-url postgresql://medusa:medusa_pass@postgres:5432/medusa --seed --no-browser --directory-path /app/medusa-store; fi && cd /app/medusa-store && npx medusa db:migrate && npx medusa develop --host 0.0.0.0"
     ports:
       - "9000:9000"   # Medusa API
       - "7001:7001"   # Admin dashboard
@@ -63,6 +63,9 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: supersecret_jwt_key_change_in_production
       COOKIE_SECRET: supersecret_cookie_change_in_production
+      STORE_CORS: http://localhost:8000
+      ADMIN_CORS: http://localhost:7001
+      AUTH_CORS: http://localhost:7001,http://localhost:8000
     volumes:
       - medusa-data:/app
     depends_on:
@@ -122,11 +125,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install the Medusa CLI globally
-RUN npm install -g @medusajs/medusa-cli
-
 # Create a new Medusa project
-RUN npx create-medusa-app@latest --skip-db --no-browser --directory /app/store
+RUN npx create-medusa-app@latest --skip-db --no-browser --directory-path /app/store
 
 WORKDIR /app/store
 
@@ -136,8 +136,8 @@ RUN npm install
 # Expose the API and admin ports
 EXPOSE 9000 7001
 
-# Start the development server
-CMD ["npx", "medusa", "develop", "--host", "0.0.0.0"]
+# Run migrations and start the development server
+CMD ["sh", "-c", "npx medusa db:migrate && npx medusa develop --host 0.0.0.0"]
 ```
 
 Then update your docker-compose.yml to build from this Dockerfile instead of using the node image directly.
@@ -158,6 +158,9 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: supersecret_jwt_key_change_in_production
       COOKIE_SECRET: supersecret_cookie_change_in_production
+      STORE_CORS: http://localhost:8000
+      ADMIN_CORS: http://localhost:7001
+      AUTH_CORS: http://localhost:7001,http://localhost:8000
     depends_on:
       postgres:
         condition: service_healthy
@@ -169,28 +172,44 @@ services:
 
 ## Configuring Medusa
 
-Medusa uses a `medusa-config.js` file for its settings. Here is a configuration tuned for Docker.
+Medusa uses a `medusa-config.ts` file for its settings. Here is a configuration tuned for Docker.
 
-```javascript
-// medusa-config.js - Configuration for Docker environment
-const dotenv = require("dotenv");
-dotenv.config();
+```typescript
+// medusa-config.ts - Configuration for Docker environment
+import { loadEnv, defineConfig } from "@medusajs/framework/utils"
 
-module.exports = {
+loadEnv(process.env.NODE_ENV || "development", process.cwd())
+
+module.exports = defineConfig({
   projectConfig: {
-    // Use Redis for the event bus
-    redis_url: process.env.REDIS_URL || "redis://localhost:6379",
     // PostgreSQL connection string from environment
-    database_url: process.env.DATABASE_URL || "postgresql://localhost/medusa",
-    database_type: "postgres",
-    // Allow connections from any host in Docker
-    store_cors: process.env.STORE_CORS || "http://localhost:8000",
-    admin_cors: process.env.ADMIN_CORS || "http://localhost:7001",
-    jwt_secret: process.env.JWT_SECRET || "change-me",
-    cookie_secret: process.env.COOKIE_SECRET || "change-me",
+    databaseUrl: process.env.DATABASE_URL,
+    http: {
+      // Allow connections from the storefront and admin in Docker
+      storeCors: process.env.STORE_CORS || "http://localhost:8000",
+      adminCors: process.env.ADMIN_CORS || "http://localhost:7001",
+      authCors: process.env.AUTH_CORS || "http://localhost:7001,http://localhost:8000",
+      jwtSecret: process.env.JWT_SECRET || "change-me",
+      cookieSecret: process.env.COOKIE_SECRET || "change-me",
+    },
   },
-  plugins: [],
-};
+  modules: [
+    {
+      resolve: "@medusajs/medusa/event-bus-redis",
+      options: {
+        redisUrl: process.env.REDIS_URL,
+      },
+    },
+    {
+      resolve: "@medusajs/medusa/workflow-engine-redis",
+      options: {
+        redis: {
+          redisUrl: process.env.REDIS_URL,
+        },
+      },
+    },
+  ],
+})
 ```
 
 ## Starting the Stack
@@ -216,10 +235,11 @@ Test that the Medusa API is responding.
 curl http://localhost:9000/health
 
 # List available products through the store API
-curl http://localhost:9000/store/products | python3 -m json.tool
+curl http://localhost:9000/store/products \
+  -H "x-publishable-api-key: YOUR_PUBLISHABLE_API_KEY" | python3 -m json.tool
 ```
 
-You should get a JSON response with product data if the seed script ran successfully.
+You should get a JSON response with product data if the seed script ran successfully and the publishable API key is associated with a sales channel.
 
 ## Accessing the Admin Dashboard
 
@@ -238,15 +258,21 @@ Medusa is headless, so you need a separate frontend. The Medusa team provides a 
 
 ```bash
 # Clone the Next.js storefront starter on your host machine
-npx create-medusa-app@latest --skip-db --with-nextjs-starter
+git clone https://github.com/medusajs/nextjs-starter-medusa storefront
+cd storefront
+npm install
+cp .env.template .env.local
+# Set MEDUSA_BACKEND_URL and NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY in .env.local
+npm run dev
 
 # Or run a separate container for the storefront
 docker run -d \
   --name medusa-storefront \
   --network medusa-docker_medusa-network \
-  -e NEXT_PUBLIC_MEDUSA_BACKEND_URL=http://medusa:9000 \
+  -e MEDUSA_BACKEND_URL=http://medusa:9000 \
+  -e NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_API_KEY \
   -p 8000:8000 \
-  node:20-alpine sh -c "npx create-next-app@latest storefront && cd storefront && npm run dev"
+  node:20-alpine sh -c "apk add --no-cache git && git clone https://github.com/medusajs/nextjs-starter-medusa storefront && cd storefront && npm install && npm run dev -- -H 0.0.0.0 -p 8000"
 ```
 
 ## Working with Products
@@ -261,13 +287,21 @@ curl -X POST http://localhost:9000/admin/products \
   -d '{
     "title": "Docker T-Shirt",
     "description": "A comfortable t-shirt for Docker enthusiasts",
+    "options": [
+      {
+        "title": "Size",
+        "values": ["Small", "Medium"]
+      }
+    ],
     "variants": [
       {
         "title": "Small",
+        "options": {"Size": "Small"},
         "prices": [{"amount": 2500, "currency_code": "usd"}]
       },
       {
         "title": "Medium",
+        "options": {"Size": "Medium"},
         "prices": [{"amount": 2500, "currency_code": "usd"}]
       }
     ]
@@ -283,7 +317,7 @@ Useful commands for managing the PostgreSQL database.
 docker compose exec postgres psql -U medusa -d medusa
 
 # Run Medusa migrations manually
-docker compose exec medusa npx medusa migrations run
+docker compose exec medusa npx medusa db:migrate
 
 # Back up the database to a SQL file
 docker compose exec postgres pg_dump -U medusa medusa > medusa_backup.sql
@@ -303,6 +337,7 @@ cat medusa_backup.sql | docker compose exec -T postgres psql -U medusa -d medusa
 | NODE_ENV | Node environment | development |
 | STORE_CORS | Allowed origins for store API | http://localhost:8000 |
 | ADMIN_CORS | Allowed origins for admin API | http://localhost:7001 |
+| AUTH_CORS | Allowed origins for auth API | http://localhost:7001,http://localhost:8000 |
 
 ## Stopping and Cleaning Up
 
