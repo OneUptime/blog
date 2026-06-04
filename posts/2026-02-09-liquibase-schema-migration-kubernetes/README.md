@@ -72,14 +72,14 @@ Create a Docker image containing Liquibase and your changelog files:
 
 ```dockerfile
 # Dockerfile
-FROM liquibase/liquibase:4.25
+FROM liquibase:4.33
 
 # Copy changelog files
 COPY db-changelog-master.yaml /liquibase/changelog/
 COPY db/changelog/ /liquibase/changelog/db/changelog/
 
 # Copy database driver if needed (PostgreSQL example)
-# Liquibase official images include common drivers
+# Liquibase 4.x images include common drivers, including PostgreSQL
 
 # Set working directory
 WORKDIR /liquibase
@@ -110,12 +110,9 @@ metadata:
 data:
   liquibase.properties: |
     driver: org.postgresql.Driver
-    changeLogFile: changelog/db-changelog-master.yaml
-    url: jdbc:postgresql://postgres-service:5432/appdb
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
-    liquibase.hub.mode: off
-    logLevel: INFO
+    liquibase.changelogFile: changelog/db-changelog-master.yaml
+    liquibase.command.url: jdbc:postgresql://postgres-service:5432/appdb
+    liquibase.logLevel: INFO
 ```
 
 Apply the ConfigMap:
@@ -168,9 +165,8 @@ spec:
         - name: liquibase
           image: myregistry/liquibase-migrations:v1.0
           args:
+            - --defaults-file=/liquibase/liquibase.properties
             - update
-            - --changelog-file=changelog/db-changelog-master.yaml
-            - --url=jdbc:postgresql://postgres-service:5432/appdb
             - --username=$(DB_USERNAME)
             - --password=$(DB_PASSWORD)
           env:
@@ -191,8 +187,16 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+          volumeMounts:
+            - name: liquibase-config
+              mountPath: /liquibase/liquibase.properties
+              subPath: liquibase.properties
       # Use service account with database access
       serviceAccountName: database-migration-sa
+      volumes:
+        - name: liquibase-config
+          configMap:
+            name: liquibase-config
 ```
 
 ## Creating Database Credentials Secret
@@ -219,9 +223,9 @@ stages:
 
 liquibase-validate:
   stage: validate
-  image: liquibase/liquibase:4.25
+  image: liquibase:4.33
   script:
-    - liquibase --changelog-file=db-changelog-master.yaml validate
+    - liquibase validate --changelog-file=db-changelog-master.yaml --url=offline:postgresql
   only:
     - merge_requests
 
@@ -236,7 +240,7 @@ liquibase-migrate:
     # Check job status
     - kubectl get job liquibase-migration -n production
   only:
-    - master
+    - main
   when: manual
 
 deploy-application:
@@ -332,8 +336,8 @@ spec:
         - name: liquibase
           image: myregistry/liquibase-migrations:v1.0
           args:
-            - rollbackCount
-            - "1"  # Rollback last changeset
+            - rollback-count
+            - --count=1  # Rollback last changeset
             - --changelog-file=changelog/db-changelog-master.yaml
             - --url=jdbc:postgresql://postgres-service:5432/appdb
             - --username=$(DB_USERNAME)
