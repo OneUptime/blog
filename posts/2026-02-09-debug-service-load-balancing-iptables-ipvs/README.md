@@ -12,13 +12,13 @@ When service connectivity breaks in Kubernetes, the problem often lies in how ku
 
 ## Understanding kube-proxy Modes
 
-kube-proxy implements service load balancing in one of three modes:
+kube-proxy implements service load balancing in different modes depending on the node operating system and kube-proxy configuration. On Linux, the current modes are:
 
 - **iptables**: Uses iptables NAT rules for load balancing (default in many distributions)
-- **IPVS**: Uses Linux kernel IPVS for high-performance load balancing
-- **userspace**: Legacy mode, rarely used
+- **IPVS**: Uses Linux kernel IPVS and iptables APIs for load balancing (deprecated as of Kubernetes v1.35)
+- **nftables**: Uses nftables rules for load balancing
 
-Most debugging focuses on iptables and IPVS modes since they're most common in production.
+Most debugging still focuses on iptables and IPVS modes in clusters that use them, but newer Linux clusters may use nftables instead.
 
 ## Determining Your kube-proxy Mode
 
@@ -162,11 +162,11 @@ kubectl get pods -n kube-system -l k8s-app=kube-proxy
 kubectl logs -n kube-system kube-proxy-xxxxx
 ```
 
-**No backend pods**: If the service chain exists but has no SEP chains, no healthy endpoints are available:
+**No backend pods**: If the service chain exists but has no SEP chains, no healthy EndpointSlices are available:
 
 ```bash
-# Check endpoints
-kubectl get endpoints web-app -n production
+# Check EndpointSlices
+kubectl get endpointslice -n production -l kubernetes.io/service-name=web-app
 ```
 
 **Wrong packet counts**: If `pkts` column shows 0 for all rules, traffic isn't reaching the service:
@@ -179,7 +179,7 @@ Check pod network configuration and CNI plugin status.
 
 ## Debugging IPVS Mode
 
-IPVS mode uses the kernel's IPVS load balancer instead of iptables. It's more efficient but requires different debugging tools.
+IPVS mode uses the kernel's IPVS load balancer together with iptables APIs. It was designed for better performance than older iptables implementations, but it is deprecated as of Kubernetes v1.35 and requires different debugging tools.
 
 ### Installing IPVS Tools
 
@@ -249,7 +249,7 @@ TCP  10.96.100.50:80                  1234    12340    12340   1234000  1234000
   -> 10.244.3.2:8080                   411     4110     4110    411000   411000
 ```
 
-Perfect load balancing shows equal connections across backends.
+With `rr` and equal weights, traffic should trend toward an even distribution over time, but exact equality is not guaranteed, especially with long-lived connections or session affinity.
 
 ### Checking IPVS Scheduler Algorithm
 
@@ -315,16 +315,16 @@ sudo ipvsadm -L -n | grep -A 10 "10.96.100.50"
 
 All weights should be equal (1) unless you've configured weighted load balancing.
 
-**Backends with 0 weight**: These backends are considered down:
+**Backends with 0 weight**: These backends should not receive new connections:
 
 ```bash
 TCP  10.96.100.50:80 rr
   -> 10.244.1.5:8080              Masq    1      5          0
-  -> 10.244.2.8:8080              Masq    0      0          0    # Weight 0 = down
+  -> 10.244.2.8:8080              Masq    0      0          0    # Weight 0 = no new connections
   -> 10.244.3.2:8080              Masq    1      5          0
 ```
 
-Check pod readiness probes and endpoint controller logs.
+Check pod readiness probes and EndpointSlices.
 
 ## Comparing iptables and IPVS
 
@@ -332,10 +332,10 @@ Use this comparison to understand behavior differences:
 
 | Aspect | iptables | IPVS |
 |--------|----------|------|
-| Performance | Good for <1000 services | Excellent for 10000+ services |
+| Performance | Good, and improved in recent Kubernetes releases | Deprecated as of Kubernetes v1.35; nftables is the recommended high-scale replacement |
 | Debugging tool | `iptables` | `ipvsadm` |
 | Load balancing | Statistical probability | True round robin/least connection |
-| Rule updates | Full chain rebuild | Incremental updates |
+| Rule updates | Minimal updates in recent Kubernetes releases; older versions rebuilt more rules | Incremental updates |
 | Connection tracking | conntrack | IPVS connection table |
 
 ## Using tcpdump for Traffic Analysis
@@ -364,21 +364,21 @@ If you see the first packet but not the DNAT transformation, iptables/IPVS rules
 Always check that services have valid endpoints:
 
 ```bash
-# List endpoints
-kubectl get endpoints web-app -n production
+# List EndpointSlices
+kubectl get endpointslice -n production -l kubernetes.io/service-name=web-app
 
 # Detailed view
-kubectl describe endpoints web-app -n production
+kubectl describe endpointslice -n production -l kubernetes.io/service-name=web-app
 ```
 
-If no endpoints exist, no traffic will flow regardless of iptables/IPVS rules.
+If no EndpointSlices with ready endpoints exist, no traffic will flow regardless of iptables/IPVS rules.
 
 ## Best Practices for Debugging
 
 When debugging service load balancing:
 
 - Always check kube-proxy mode first
-- Verify endpoints exist before inspecting rules
+- Verify EndpointSlices exist before inspecting rules
 - Use `-v` flag with iptables to see packet counts
 - Watch kube-proxy logs in real-time during reproduction
 - Use tcpdump to verify actual packet flow
