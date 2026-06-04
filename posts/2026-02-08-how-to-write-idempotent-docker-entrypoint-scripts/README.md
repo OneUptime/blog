@@ -107,11 +107,13 @@ done
 # Create the database if it does not exist (idempotent)
 create_database() {
     echo "Ensuring database exists..."
-    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -tc \
-        "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" | \
+    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres \
+        -v dbname="$DB_NAME" -tc \
+        "SELECT 1 FROM pg_database WHERE datname = :'dbname'" | \
         grep -q 1 || \
-        psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -c \
-        "CREATE DATABASE $DB_NAME"
+        psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres \
+        -v dbname="$DB_NAME" -c \
+        'CREATE DATABASE :"dbname"'
 }
 
 # Create extensions idempotently
@@ -226,7 +228,6 @@ acquire_lock() {
 
 release_lock() {
     exec 200>&-
-    rm -f "$LOCK_FILE"
 }
 
 if [ ! -f "$INIT_FLAG" ]; then
@@ -261,6 +262,31 @@ set -euo pipefail
 CURRENT_VERSION="2.3.0"
 VERSION_FILE="/data/.version"
 
+version_lt() {
+    local IFS=.
+    local i
+    local -a left=($1)
+    local -a right=($2)
+
+    for ((i=${#left[@]}; i<3; i++)); do left[i]=0; done
+    for ((i=${#right[@]}; i<3; i++)); do right[i]=0; done
+
+    for i in 0 1 2; do
+        if ((10#${left[i]} < 10#${right[i]})); then
+            return 0
+        fi
+        if ((10#${left[i]} > 10#${right[i]})); then
+            return 1
+        fi
+    done
+
+    return 1
+}
+
+version_ge() {
+    ! version_lt "$1" "$2"
+}
+
 # Get the previously recorded version
 if [ -f "$VERSION_FILE" ]; then
     PREVIOUS_VERSION=$(cat "$VERSION_FILE")
@@ -281,12 +307,12 @@ if [ "$PREVIOUS_VERSION" != "$CURRENT_VERSION" ]; then
         /app/scripts/setup.sh
     fi
 
-    if [ "$PREVIOUS_VERSION" \< "2.0.0" ] && [ "$CURRENT_VERSION" \> "2.0.0" ]; then
+    if version_lt "$PREVIOUS_VERSION" "2.0.0" && version_ge "$CURRENT_VERSION" "2.0.0"; then
         echo "Upgrading to v2.x..."
         /app/scripts/upgrade-v2.sh
     fi
 
-    if [ "$PREVIOUS_VERSION" \< "2.3.0" ] && [ "$CURRENT_VERSION" \> "2.2.0" ]; then
+    if version_lt "$PREVIOUS_VERSION" "2.3.0" && version_ge "$CURRENT_VERSION" "2.3.0"; then
         echo "Upgrading to v2.3..."
         /app/scripts/upgrade-v2.3.sh
     fi
