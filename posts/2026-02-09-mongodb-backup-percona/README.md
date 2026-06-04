@@ -46,8 +46,8 @@ data:
         bucket: mongodb-backups
         prefix: production-cluster
         credentials:
-          access-key-id: ${AWS_ACCESS_KEY_ID}
-          secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+          access-key-id: your-access-key-id
+          secret-access-key: your-secret-access-key
         serverSideEncryption:
           sseAlgorithm: aws:kms
           kmsKeyID: arn:aws:kms:us-east-1:123456789:key/abcd-1234
@@ -92,14 +92,11 @@ spec:
         app: mongodb
     spec:
       containers:
-      # MongoDB container
+      # MongoDB container, assuming your StatefulSet already initializes rs0 and authentication
       - name: mongod
         image: percona/percona-server-mongodb:6.0
         ports:
         - containerPort: 27017
-        env:
-        - name: MONGODB_REPLSET
-          value: "rs0"
         volumeMounts:
         - name: mongodb-data
           mountPath: /data/db
@@ -113,10 +110,10 @@ spec:
 
       # PBM Agent container
       - name: pbm-agent
-        image: percona/percona-backup-mongodb:2.3.0
+        image: percona/percona-backup-mongodb:2.14.0
         env:
         - name: PBM_MONGODB_URI
-          value: "mongodb://pbm-user:pbm-password@localhost:27017/?replSetName=rs0"
+          value: "mongodb://pbm-user:pbm-password@localhost:27017/?authSource=admin"
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
@@ -139,8 +136,6 @@ spec:
             memory: "1Gi"
         command:
           - pbm-agent
-        args:
-          - --config-file=/etc/pbm/pbm-config.yaml
 
       volumes:
       - name: pbm-config
@@ -158,6 +153,18 @@ spec:
           storage: 500Gi
 ```
 
+After the agents are running, upload the PBM cluster configuration:
+
+```bash
+PBM_CLI_URI="mongodb://pbm-user:pbm-password@mongodb-replica-0.mongodb-svc.mongodb.svc.cluster.local:27017,mongodb-replica-1.mongodb-svc.mongodb.svc.cluster.local:27017,mongodb-replica-2.mongodb-svc.mongodb.svc.cluster.local:27017/?authSource=admin&replSetName=rs0"
+
+kubectl exec -n mongodb mongodb-replica-0 -c pbm-agent -- \
+  env PBM_MONGODB_URI="$PBM_CLI_URI" pbm config --file /etc/pbm/pbm-config.yaml
+
+kubectl exec -n mongodb mongodb-replica-0 -c pbm-agent -- \
+  env PBM_MONGODB_URI="$PBM_CLI_URI" pbm status
+```
+
 ## Configuring PBM Users and Permissions
 
 Create a dedicated user for PBM operations:
@@ -165,6 +172,18 @@ Create a dedicated user for PBM operations:
 ```javascript
 // Connect to MongoDB primary
 use admin
+
+// Create PBM role with required privileges
+db.createRole({
+  role: "pbmAnyAction",
+  privileges: [
+    {
+      resource: { anyResource: true },
+      actions: [ "anyAction" ]
+    }
+  ],
+  roles: []
+})
 
 // Create PBM user with required permissions
 db.createUser({
@@ -175,14 +194,9 @@ db.createUser({
     { role: "clusterMonitor", db: "admin" },
     { role: "restore", db: "admin" },
     { role: "backup", db: "admin" },
-    { role: "readAnyDatabase", db: "admin" }
+    { role: "pbmAnyAction", db: "admin" }
   ]
 })
-
-// Grant additional privileges
-db.grantRolesToUser("pbm-user", [
-  { role: "pbmAnyAction", db: "admin" }
-])
 ```
 
 ## Configuring Storage Backend
@@ -224,7 +238,7 @@ set -e
 
 BACKUP_TYPE=${BACKUP_TYPE:-snapshot}
 NAMESPACE=${NAMESPACE:-mongodb}
-MONGODB_URI=${MONGODB_URI:-"mongodb://pbm-user:pbm-password@mongodb-svc.mongodb.svc.cluster.local:27017/?replSetName=rs0"}
+MONGODB_URI=${MONGODB_URI:-"mongodb://pbm-user:pbm-password@mongodb-replica-0.mongodb-svc.mongodb.svc.cluster.local:27017,mongodb-replica-1.mongodb-svc.mongodb.svc.cluster.local:27017,mongodb-replica-2.mongodb-svc.mongodb.svc.cluster.local:27017/?authSource=admin&replSetName=rs0"}
 
 export PBM_MONGODB_URI=$MONGODB_URI
 
@@ -252,17 +266,18 @@ create_physical() {
 create_incremental() {
     echo "Creating incremental backup..."
 
-    # Find base backup
-    BASE_BACKUP=$(pbm list --full | grep "snapshot" | head -1 | awk '{print $1}')
+    # Check for an existing incremental base backup
+    BASE_BACKUP=$(pbm list | awk '$2 == "incremental" && $5 == "yes" {print $1; exit}')
 
     if [ -z "$BASE_BACKUP" ]; then
-        echo "No base backup found. Creating full backup instead..."
-        create_snapshot
+        echo "No incremental base backup found. Creating base incremental backup..."
+        BACKUP_NAME=$(pbm backup --type=incremental --base --wait)
+        echo "Base incremental backup completed: $BACKUP_NAME"
         return
     fi
 
-    echo "Creating incremental backup based on: $BASE_BACKUP"
-    BACKUP_NAME=$(pbm backup --type=incremental --base=$BASE_BACKUP --wait)
+    echo "Creating incremental backup in existing chain based on: $BASE_BACKUP"
+    BACKUP_NAME=$(pbm backup --type=incremental --wait)
     echo "Incremental backup completed: $BACKUP_NAME"
 }
 
@@ -294,7 +309,7 @@ Make the script executable and build a container:
 
 ```dockerfile
 # Dockerfile
-FROM percona/percona-backup-mongodb:2.3.0
+FROM percona/percona-backup-mongodb:2.14.0
 
 COPY pbm-backup.sh /usr/local/bin/pbm-backup.sh
 RUN chmod +x /usr/local/bin/pbm-backup.sh
@@ -398,8 +413,8 @@ pbm config --set pitr.enabled=true
 # Set oplog span (minimum time between slices)
 pbm config --set pitr.oplogSpanMin=10
 
-# Start PITR
-pbm backup --type=oplog
+# Create a base backup if one does not already exist
+pbm backup --type=logical --wait
 
 # Verify PITR is running
 pbm status
@@ -433,11 +448,13 @@ pbm list
 if [ -n "$RESTORE_TO_TIME" ]; then
     # Point-in-time restore
     echo "Performing point-in-time restore to: $RESTORE_TO_TIME"
-    pbm restore --time="$RESTORE_TO_TIME" --wait
+    pbm config --set pitr.enabled=false
+    pbm restore --time="$RESTORE_TO_TIME" --wait --yes
 else
     # Snapshot restore
     echo "Restoring from backup: $BACKUP_NAME"
-    pbm restore $BACKUP_NAME --wait
+    pbm config --set pitr.enabled=false
+    pbm restore "$BACKUP_NAME" --wait --yes
 fi
 
 # Verify restore
@@ -445,7 +462,7 @@ echo "Restore completed. Checking status..."
 pbm status
 
 # Run database validation
-mongo $PBM_MONGODB_URI --eval "
+mongosh "$PBM_MONGODB_URI" --eval "
     db.adminCommand({ listDatabases: 1 }).databases.forEach(function(database) {
         if (database.name !== 'admin' && database.name !== 'local' && database.name !== 'config') {
             print('Validating database: ' + database.name);
@@ -484,7 +501,7 @@ echo "=== PITR Status ==="
 pbm status | grep -A 10 "PITR"
 
 # Check backup age
-LAST_BACKUP_TIME=$(pbm list --full | grep "snapshot" | head -1 | awk '{print $2, $3}')
+LAST_BACKUP_TIME=$(pbm list --size=1 | awk '$2 ~ /logical|physical|incremental/ {print $1; exit}')
 if [ -n "$LAST_BACKUP_TIME" ]; then
     LAST_BACKUP_EPOCH=$(date -d "$LAST_BACKUP_TIME" +%s)
     CURRENT_EPOCH=$(date +%s)
@@ -502,7 +519,7 @@ fi
 # Check storage usage
 echo ""
 echo "=== Storage Usage ==="
-pbm list --size
+pbm list --size=20
 ```
 
 Deploy as a CronJob:
@@ -547,17 +564,17 @@ kubectl create namespace mongodb-restore-test
 kubectl apply -f mongodb-statefulset.yaml -n mongodb-restore-test
 
 # Run restore
-BACKUP_NAME=$(pbm list --full | grep "snapshot" | head -1 | awk '{print $1}')
+BACKUP_NAME=$(pbm list --size=1 | awk '$2 ~ /logical|physical|incremental/ {print $1; exit}')
 
 kubectl run pbm-restore \
   --image=your-registry/pbm-backup:latest \
   --env="BACKUP_NAME=$BACKUP_NAME" \
-  --env="PBM_MONGODB_URI=mongodb://pbm-user:pbm-password@mongodb-svc.mongodb-restore-test:27017/?replSetName=rs0" \
+  --env="PBM_MONGODB_URI=mongodb://pbm-user:pbm-password@mongodb-replica-0.mongodb-svc.mongodb-restore-test.svc.cluster.local:27017,mongodb-replica-1.mongodb-svc.mongodb-restore-test.svc.cluster.local:27017,mongodb-replica-2.mongodb-svc.mongodb-restore-test.svc.cluster.local:27017/?authSource=admin&replSetName=rs0" \
   -n mongodb-restore-test \
   --command -- /usr/local/bin/pbm-restore.sh
 
 # Verify data
-kubectl exec -it mongodb-0 -n mongodb-restore-test -- mongo --eval "db.adminCommand({ listDatabases: 1 })"
+kubectl exec -it mongodb-0 -n mongodb-restore-test -- mongosh --eval "db.adminCommand({ listDatabases: 1 })"
 ```
 
 ## Conclusion
