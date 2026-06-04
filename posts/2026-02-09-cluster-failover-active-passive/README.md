@@ -25,7 +25,7 @@ The trade-off is that you're not utilizing the passive cluster's resources durin
 Start by provisioning two identical Kubernetes clusters. They should have the same node pools, storage configurations, and network settings to ensure workloads behave identically.
 
 ```bash
-# Create active cluster (us-east-1)
+# Create active cluster (us-east1)
 
 gcloud container clusters create production-active \
   --region us-east1 \
@@ -36,7 +36,7 @@ gcloud container clusters create production-active \
   --max-nodes 10 \
   --labels role=active,env=production
 
-# Create passive cluster (us-west-1)
+# Create passive cluster (us-west1)
 gcloud container clusters create production-passive \
   --region us-west1 \
   --num-nodes 3 \
@@ -109,14 +109,13 @@ Configure Route53 health checks and failover routing:
 ```json
 {
   "HealthCheckConfig": {
-    "Type": "HTTPS",
-    "ResourcePath": "/health",
+    "Type": "HTTP",
+    "ResourcePath": "/",
     "FullyQualifiedDomainName": "active.example.com",
-    "Port": 443,
+    "Port": 80,
     "RequestInterval": 30,
     "FailureThreshold": 3,
-    "MeasureLatency": true,
-    "EnableSNI": true
+    "MeasureLatency": true
   }
 }
 ```
@@ -134,11 +133,12 @@ Create the failover DNS record set:
         "SetIdentifier": "active-cluster",
         "Failover": "PRIMARY",
         "HealthCheckId": "health-check-id",
-        "AliasTarget": {
-          "HostedZoneId": "Z1234567890ABC",
-          "DNSName": "active-lb.elb.amazonaws.com",
-          "EvaluateTargetHealth": true
-        }
+        "TTL": 60,
+        "ResourceRecords": [
+          {
+            "Value": "203.0.113.10"
+          }
+        ]
       }
     },
     {
@@ -148,11 +148,12 @@ Create the failover DNS record set:
         "Type": "A",
         "SetIdentifier": "passive-cluster",
         "Failover": "SECONDARY",
-        "AliasTarget": {
-          "HostedZoneId": "Z0987654321XYZ",
-          "DNSName": "passive-lb.elb.amazonaws.com",
-          "EvaluateTargetHealth": true
-        }
+        "TTL": 60,
+        "ResourceRecords": [
+          {
+            "Value": "203.0.113.20"
+          }
+        ]
       }
     }
   ]
@@ -182,30 +183,29 @@ data:
     synchronous_commit = remote_apply
     synchronous_standby_names = 'passive_replica'
 
-  recovery.conf: |
-    # Standby (passive cluster)
-    standby_mode = on
+    # Standby (passive cluster, PostgreSQL 12+)
     primary_conninfo = 'host=active-db.example.com port=5432 user=replicator'
     primary_slot_name = 'passive_replica'
-    trigger_file = '/tmp/promote_to_primary'
+    hot_standby = on
+
+  standby.signal: |
+    # Create this file in the standby data directory to enable standby mode.
 ```
 
-For stateless applications with external state stores, ensure both clusters can access the same storage:
+For stateless applications with shared file state, use a storage backend that supports multi-writer access. On GKE, Filestore supports `ReadWriteMany` access through the Filestore CSI driver:
 
 ```yaml
 apiVersion: v1
-kind: PersistentVolume
+kind: PersistentVolumeClaim
 metadata:
   name: shared-storage
 spec:
-  capacity:
-    storage: 100Gi
   accessModes:
   - ReadWriteMany
-  csi:
-    driver: pd.csi.storage.gke.io
-    volumeHandle: projects/my-project/zones/us-central1-a/disks/shared-disk
-    readOnly: false
+  storageClassName: standard-rwx
+  resources:
+    requests:
+      storage: 100Gi
 ```
 
 ## Automated Failover Controller
@@ -224,6 +224,7 @@ class FailoverController:
         self.route53 = boto3.client('route53')
         self.active_endpoint = 'https://active.example.com/health'
         self.passive_endpoint = 'https://passive.example.com/health'
+        self.active_health_check_id = 'health-check-id'
         self.failure_threshold = 3
         self.failure_count = 0
 
@@ -260,33 +261,21 @@ class FailoverController:
 
     def promote_database(self):
         """Promote passive database to primary"""
-        # Create trigger file for PostgreSQL promotion
+        # Run pg_ctl promote or SELECT pg_promote() against the standby database
         config.load_kube_config(context='passive-cluster')
         v1 = client.CoreV1Api()
 
         # Execute promotion command in database pod
-        command = ['touch', '/tmp/promote_to_primary']
+        command = ['pg_ctl', 'promote', '-D', '/var/lib/postgresql/data']
         # Execute command in pod
         print("Promoting passive database to primary")
 
     def update_dns_failover(self):
         """Manually trigger DNS failover"""
-        # Update Route53 health check to force failover
-        response = self.route53.change_resource_record_sets(
-            HostedZoneId='Z1234567890ABC',
-            ChangeBatch={
-                'Changes': [{
-                    'Action': 'UPSERT',
-                    'ResourceRecordSet': {
-                        'Name': 'app.example.com',
-                        'Type': 'A',
-                        'SetIdentifier': 'passive-cluster',
-                        'Failover': 'PRIMARY',
-                        'TTL': 60,
-                        'ResourceRecords': [{'Value': 'passive-lb-ip'}]
-                    }
-                }]
-            }
+        # Invert the active health check so Route53 treats the primary record as unhealthy
+        response = self.route53.update_health_check(
+            HealthCheckId=self.active_health_check_id,
+            Inverted=True
         )
         print(f"DNS failover triggered: {response}")
 
