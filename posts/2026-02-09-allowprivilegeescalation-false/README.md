@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Container Security, Privilege Escalation, Pod Security
 
-Description: Understand how to use allowPrivilegeEscalation: false in Kubernetes to prevent processes from gaining more privileges than their parent, blocking a critical container escape technique.
+Description: Understand how to use allowPrivilegeEscalation: false in Kubernetes to prevent processes from gaining more privileges than their parent, blocking common exec-based privilege escalation paths.
 
 ---
 
@@ -12,13 +12,13 @@ Privilege escalation is one of the most dangerous attack vectors in containerize
 
 ## Understanding Privilege Escalation in Containers
 
-In Linux systems, processes can gain additional privileges through several mechanisms. The most common include setuid binaries, file capabilities, and kernel exploits. When a process executes a setuid binary like `sudo` or `ping`, it temporarily gains elevated privileges.
+In Linux systems, processes can gain additional privileges through several mechanisms. The most common exec-based mechanisms include setuid binaries and file capabilities. When a process executes a setuid binary like `sudo`, it temporarily gains elevated privileges.
 
-In containers, privilege escalation becomes particularly dangerous because elevated privileges might allow escape from the container namespace or access to the host system. Setting `allowPrivilegeEscalation: false` blocks the kernel mechanisms that would allow privilege gain.
+In containers, privilege escalation becomes particularly dangerous because elevated privileges might allow escape from the container namespace or access to the host system. Setting `allowPrivilegeEscalation: false` blocks exec-time privilege gains such as setuid, setgid, and file capabilities.
 
 ## How allowPrivilegeEscalation Works
 
-When you set `allowPrivilegeEscalation: false`, Kubernetes sets the `no_new_privs` bit on the container process. This kernel feature prevents the process and all its children from gaining additional privileges through any mechanism.
+When you set `allowPrivilegeEscalation: false`, Kubernetes sets the `no_new_privs` bit on the container process. This kernel feature prevents the process and all its children from gaining additional privileges through `execve`, including setuid, setgid, and file capability transitions.
 
 The setting is particularly effective because it operates at the kernel level. Even if an attacker finds a setuid binary or a file with capabilities inside the container, the kernel refuses to grant those elevated privileges.
 
@@ -42,7 +42,7 @@ spec:
       runAsUser: 1000
 ```
 
-With this configuration, processes in the container cannot gain elevated privileges. If the container contains setuid binaries like `sudo`, they will execute with the current user's privileges rather than root.
+With this configuration, processes in the container cannot gain elevated privileges through exec-time mechanisms. If the container contains setuid binaries like `sudo`, they will execute with the current user's privileges rather than root.
 
 ## Testing Privilege Escalation Prevention
 
@@ -61,12 +61,12 @@ sudo id
 cat /proc/self/status | grep NoNewPrivs
 # Should show: NoNewPrivs: 1
 
-# Try a setuid binary like ping
-ls -la /bin/ping
-# Shows setuid bit, but execution won't gain privileges
+# Inspect a setuid binary if one is present
+find / -perm -4000 -type f 2>/dev/null | head
+# Executing these files won't grant additional privileges
 ```
 
-When `NoNewPrivs` is set to 1, the kernel blocks privilege escalation regardless of file permissions or capabilities.
+When `NoNewPrivs` is set to 1, the kernel blocks exec-time privilege escalation through setuid, setgid, and file capabilities.
 
 ## Combining with Other Security Settings
 
@@ -103,7 +103,7 @@ spec:
     emptyDir: {}
 ```
 
-This configuration layers multiple security controls. Running as non-root provides basic protection, dropping all capabilities removes dangerous permissions, read-only filesystem prevents modifications, and `allowPrivilegeEscalation: false` blocks privilege gain.
+This configuration layers multiple security controls. Running as non-root provides basic protection, dropping all capabilities removes dangerous permissions, read-only filesystem prevents modifications, and `allowPrivilegeEscalation: false` blocks exec-time privilege gain.
 
 ## Impact on Legitimate Use Cases
 
@@ -168,7 +168,7 @@ spec:
       exec /app/start.sh
 ```
 
-This debug container helps identify which setuid binaries your application attempts to use. You can then either remove those dependencies or grant specific capabilities.
+This debug container helps identify setuid binaries present in your image and confirms whether `NoNewPrivs` is enabled. You can then either remove those dependencies or grant specific capabilities.
 
 ## Container Runtime Implementation
 
@@ -179,9 +179,6 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: runtime-test
-  annotations:
-    # Works with containerd, CRI-O, Docker
-    container.apparmor.security.beta.kubernetes.io/app: runtime/default
 spec:
   runtimeClassName: kata  # Example using alternate runtime
   containers:
@@ -190,9 +187,11 @@ spec:
     securityContext:
       allowPrivilegeEscalation: false
       runAsNonRoot: true
+      appArmorProfile:
+        type: RuntimeDefault
 ```
 
-Regardless of runtime, the `no_new_privs` bit ensures consistent behavior. Kata Containers, gVisor, and other alternative runtimes all support this security feature.
+For CRI runtimes that honor Kubernetes Linux security contexts, the `no_new_privs` bit provides consistent exec-time behavior. The `runtimeClassName` value must match a RuntimeClass configured in your cluster.
 
 ## Enforcing with Pod Security Admission
 
@@ -279,7 +278,7 @@ spec:
       runAsUser: 10000
 ```
 
-Each tenant's pods run with strict security constraints. Even if an attacker compromises one pod, they cannot escalate privileges to attack the node or other tenants.
+Each tenant's pods run with strict security constraints. Even if an attacker compromises one pod, they cannot use setuid or file-capability execution paths to gain additional privileges for attacks against the node or other tenants.
 
 ## Monitoring and Alerting
 
@@ -290,9 +289,10 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: app-with-audit
-  annotations:
-    seccomp.security.alpha.kubernetes.io/pod: runtime/default
 spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
   containers:
   - name: app
     image: myapp:1.0
@@ -300,8 +300,8 @@ spec:
       allowPrivilegeEscalation: false
 ```
 
-Configure your logging stack to alert on security context violations. These alerts indicate either misconfigured applications or potential security incidents.
+Configure your logging stack to alert on Pod Security Admission audit and warning events for workloads that omit `allowPrivilegeEscalation: false`. These alerts indicate either misconfigured applications or potential security incidents.
 
 ## Conclusion
 
-Setting `allowPrivilegeEscalation: false` is a simple yet powerful security measure that blocks a critical attack vector. By preventing processes from gaining elevated privileges, you significantly limit what attackers can do even if they compromise a container. This setting should be standard in all production workloads unless you have a specific, documented reason to allow privilege escalation. Combined with running as non-root, dropping capabilities, and other security measures, it creates a defense-in-depth strategy that makes container escapes extremely difficult. Make `allowPrivilegeEscalation: false` a default in your pod templates and require explicit justification for any exceptions.
+Setting `allowPrivilegeEscalation: false` is a simple yet powerful security measure that blocks a critical attack vector. By preventing processes from gaining elevated privileges through exec-time mechanisms, you significantly limit what attackers can do even if they compromise a container. This setting should be standard in all production workloads unless you have a specific, documented reason to allow privilege escalation. Combined with running as non-root, dropping capabilities, and other security measures, it creates a defense-in-depth strategy that makes container escapes much harder. Make `allowPrivilegeEscalation: false` a default in your pod templates and require explicit justification for any exceptions.
