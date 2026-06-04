@@ -127,8 +127,6 @@ Mount a volume to persist the database file.
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   app:
     build: .
@@ -227,7 +225,8 @@ Run tests in Docker.
 
 ```bash
 # Run tests inside the container
-docker run --rm sqlite-app python -m pytest test_app.py -v
+docker run --rm -v "$PWD/test_app.py:/app/test_app.py:ro" sqlite-app \
+  sh -c "pip install --no-cache-dir pytest && python -m pytest test_app.py -v"
 ```
 
 ## Backup Strategies
@@ -246,7 +245,13 @@ source.close()
 print('Backup complete')
 "
 
-# Method 2: Copy the file (only safe if no writes are happening)
+# Method 2: Copy the file (only safe after checkpointing and while no writes are happening)
+docker exec sqlite-app python -c "
+import sqlite3
+conn = sqlite3.connect('/data/app.db')
+conn.execute('PRAGMA wal_checkpoint(FULL)')
+conn.close()
+"
 docker cp sqlite-app:/data/app.db ./app_backup.db
 
 # Method 3: Use sqlite3 CLI .dump command for SQL export
@@ -289,7 +294,7 @@ services:
       - ./local_data:/data
 ```
 
-## Multi-Stage Build for CLI Tools
+## Build for CLI Tools
 
 Build a lightweight container with SQLite CLI tools for database inspection.
 
