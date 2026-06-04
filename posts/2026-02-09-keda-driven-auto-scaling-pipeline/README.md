@@ -8,7 +8,7 @@ Description: Build intelligent auto-scaling pipelines using KEDA to scale Kubern
 
 ---
 
-KEDA (Kubernetes Event-Driven Autoscaling) extends Kubernetes with event-driven scaling capabilities. While the standard Horizontal Pod Autoscaler scales based on CPU and memory, KEDA scales based on external event sources like message queues, databases, and custom metrics. This guide shows you how to build comprehensive auto-scaling pipelines for event-driven workloads.
+KEDA (Kubernetes Event-Driven Autoscaling) extends Kubernetes with event-driven scaling capabilities. While the standard Horizontal Pod Autoscaler is commonly used for CPU and memory, KEDA scales based on external event sources like message queues, databases, and custom metrics. This guide shows you how to build comprehensive auto-scaling pipelines for event-driven workloads.
 
 ## Understanding KEDA Architecture
 
@@ -50,6 +50,7 @@ kubectl get crd | grep keda
 # scaledobjects.keda.sh
 # scaledjobs.keda.sh
 # triggerauthentications.keda.sh
+# clustertriggerauthentications.keda.sh
 ```
 
 ## Scaling Based on Queue Depth
@@ -78,7 +79,7 @@ spec:
         image: your-registry/order-processor:latest
         env:
         - name: RABBITMQ_URL
-          value: "amqp://rabbitmq:5672"
+          value: "amqp://rabbitmq:5672/"
         - name: QUEUE_NAME
           value: "orders"
         resources:
@@ -109,9 +110,10 @@ spec:
   triggers:
   - type: rabbitmq
     metadata:
-      host: "amqp://rabbitmq:5672"
+      host: "amqp://rabbitmq.default.svc.cluster.local:5672/"
       queueName: "orders"
-      queueLength: "10"  # Target 10 messages per pod
+      mode: "QueueLength"
+      value: "10"  # Target 10 messages per pod
       protocol: "auto"
 ```
 
@@ -275,21 +277,21 @@ spec:
   minReplicaCount: 2
   maxReplicaCount: 100
 
-  # Multiple triggers (OR logic - any trigger can cause scaling)
+  # Multiple triggers (KEDA/HPA use the trigger that asks for the highest replica count)
   triggers:
   # Scale based on SQS queue depth
   - type: aws-sqs-queue
+    authenticationRef:
+      name: aws-sqs-auth
     metadata:
       queueURL: https://sqs.us-east-1.amazonaws.com/123456789/api-tasks
       queueLength: "5"
       awsRegion: us-east-1
-      identityOwner: operator
 
   # Also scale based on HTTP request rate
   - type: prometheus
     metadata:
-      serverAddress: http://prometheus:9090
-      metricName: http_requests_total
+      serverAddress: http://prometheus.default.svc.cluster.local:9090
       threshold: "100"
       query: |
         sum(rate(http_requests_total{job="api-gateway"}[1m]))
@@ -299,6 +301,15 @@ spec:
     metricType: Utilization
     metadata:
       value: "70"
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: aws-sqs-auth
+  namespace: default
+spec:
+  podIdentity:
+    provider: aws
 ```
 
 ## Database Query-Based Scaling
@@ -313,7 +324,7 @@ metadata:
   name: postgres-credentials
 type: Opaque
 stringData:
-  connection: "postgresql://user:password@postgres:5432/mydb?sslmode=require"
+  connection: "postgresql://user:password@postgres.default.svc.cluster.local:5432/mydb?sslmode=require"
 ---
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
@@ -373,9 +384,15 @@ func main() {
     log.Println("Report generator started")
 
     for {
-        // Query for pending reports
+        tx, err := db.Begin()
+        if err != nil {
+            log.Printf("Transaction error: %v", err)
+            time.Sleep(1 * time.Second)
+            continue
+        }
+
         var reportID int
-        err := db.QueryRow(`
+        err = tx.QueryRow(`
             SELECT id FROM reports
             WHERE status = 'pending'
             ORDER BY created_at
@@ -384,13 +401,33 @@ func main() {
         `).Scan(&reportID)
 
         if err == sql.ErrNoRows {
+            tx.Rollback()
             // No pending reports, wait before checking again
             time.Sleep(5 * time.Second)
             continue
         }
 
         if err != nil {
+            tx.Rollback()
             log.Printf("Query error: %v", err)
+            time.Sleep(1 * time.Second)
+            continue
+        }
+
+        _, err = tx.Exec(
+            "UPDATE reports SET status = $1, updated_at = NOW() WHERE id = $2",
+            "processing",
+            reportID,
+        )
+        if err != nil {
+            tx.Rollback()
+            log.Printf("Failed to claim report: %v", err)
+            time.Sleep(1 * time.Second)
+            continue
+        }
+
+        if err := tx.Commit(); err != nil {
+            log.Printf("Commit error: %v", err)
             time.Sleep(1 * time.Second)
             continue
         }
@@ -448,21 +485,17 @@ spec:
   triggers:
   - type: prometheus
     metadata:
-      serverAddress: http://prometheus:9090
-      metricName: pending_video_transcoding_jobs
+      serverAddress: http://prometheus.default.svc.cluster.local:9090
       threshold: "2"
       query: |
         sum(video_transcode_queue_length{status="pending"})
 
   - type: prometheus
     metadata:
-      serverAddress: http://prometheus:9090
-      metricName: video_transcode_success_rate
-      threshold: "0.95"
+      serverAddress: http://prometheus.default.svc.cluster.local:9090
+      threshold: "1"
       query: |
-        sum(rate(video_transcode_total{status="success"}[5m]))
-        /
-        sum(rate(video_transcode_total[5m]))
+        sum(rate(video_transcode_total{status="failed"}[5m]))
 ```
 
 Expose custom metrics from your application:
@@ -489,6 +522,11 @@ const transcodeCounter = new client.Counter({
   labelNames: ['status'],
   registers: [register]
 });
+
+async function getPendingTranscodeCount() {
+  // Replace this with a database, queue, or API query in your application.
+  return 0;
+}
 
 // Update queue length periodically
 async function updateQueueMetrics() {
@@ -597,10 +635,10 @@ Create dashboards with Prometheus queries:
 keda_scaler_active{scaledObject="order-processor-scaler"}
 
 # Scaling events
-rate(keda_scaler_errors_total[5m])
+rate(keda_scaler_detail_errors_total[5m])
 
-# Time spent scaling
-histogram_quantile(0.95, rate(keda_scaler_scaling_duration_bucket[5m]))
+# Metric collection latency
+histogram_quantile(0.95, rate(keda_scaler_metrics_latency_seconds_bucket[5m]))
 
 # External metric value
 keda_scaler_metrics_value{metric="s0-rabbitmq-orders"}
