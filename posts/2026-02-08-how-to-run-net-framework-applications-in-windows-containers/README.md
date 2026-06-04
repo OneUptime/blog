@@ -140,6 +140,7 @@ Alternatively, convert the service to a console application for better container
 ```csharp
 // Program.cs - Adapted Windows Service for container environments
 using System;
+using System.ServiceProcess;
 using System.Threading;
 
 class Program
@@ -283,7 +284,7 @@ $xml.Save($configPath)
 ```dockerfile
 # Dockerfile addition for config transformation
 COPY transform-config.ps1 /scripts/
-ENTRYPOINT ["powershell", "-File", "C:\\scripts\\transform-config.ps1; C:\\ServiceMonitor.exe w3svc"]
+ENTRYPOINT ["powershell", "-Command", "& 'C:\\scripts\\transform-config.ps1'; & 'C:\\ServiceMonitor.exe' w3svc"]
 ```
 
 ## Image Size Optimization
@@ -304,11 +305,12 @@ RUN powershell -Command \
      Remove-Item -Recurse C:\Windows\Temp\*"
 ```
 
-## Docker Compose for Full Application Stack
+## Docker Compose for Application Configuration
 
 ```yaml
 # docker-compose.yml - .NET Framework app with dependencies
-version: "3.8"
+# Run this with Docker configured for Windows containers. SQL Server and Redis
+# should run separately, such as on Linux container hosts or managed services.
 
 services:
   web:
@@ -318,27 +320,8 @@ services:
     ports:
       - "80:80"
     environment:
-      - CONNSTR_DEFAULTCONNECTION=Server=db;Database=AppDB;User Id=sa;Password=YourStrong!Passw0rd
+      - CONNSTR_DEFAULTCONNECTION=Server=sql.example.com;Database=AppDB;User Id=sa;Password=YourStrong!Passw0rd
       - APPSETTING_ENVIRONMENT=production
-    depends_on:
-      - db
-      - redis
-
-  db:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "YourStrong!Passw0rd"
-    volumes:
-      - sql_data:/var/opt/mssql
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
-volumes:
-  sql_data:
 ```
 
 ## Conclusion
