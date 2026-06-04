@@ -14,9 +14,9 @@ Without proper monitoring, probe failures can go unnoticed until users report pr
 
 ## Understanding Probe Failure Metrics
 
-Kubernetes exposes probe failures through multiple channels. The kubelet records probe results and emits events when probes fail. These events feed into kube-state-metrics, which exports Prometheus-compatible metrics about probe status.
+Kubernetes exposes probe failures through multiple channels. The kubelet records probe results and emits events when probes fail. Kubelet probe metrics, Kubernetes events, and kube-state-metrics object-state metrics can all be scraped or exported in Prometheus-compatible formats.
 
-Key metrics to track include probe success rate, failure count, and restart counts triggered by liveness failures. Correlation between these metrics reveals patterns that indicate underlying problems.
+Key metrics to track include kubelet probe success rate, failure count, pod readiness state, and restart counts triggered by liveness or startup failures. Correlation between these metrics reveals patterns that indicate underlying problems.
 
 ## Setting Up Kube-State-Metrics
 
@@ -41,7 +41,9 @@ spec:
       serviceAccountName: kube-state-metrics
       containers:
       - name: kube-state-metrics
-        image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.10.1
+        image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.18.0
+        args:
+        - --resources=pods,deployments,endpointslices
         ports:
         - containerPort: 8080
           name: http-metrics
@@ -49,13 +51,13 @@ spec:
           name: telemetry
         livenessProbe:
           httpGet:
-            path: /healthz
+            path: /livez
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
         readinessProbe:
           httpGet:
-            path: /
+            path: /readyz
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 5
@@ -92,6 +94,10 @@ rules:
   - daemonsets
   - deployments
   - replicasets
+  verbs: ["list", "watch"]
+- apiGroups: ["discovery.k8s.io"]
+  resources:
+  - endpointslices
   verbs: ["list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -149,6 +155,21 @@ data:
       static_configs:
       - targets: ['kube-state-metrics.kube-system:8080']
 
+    - job_name: 'kubernetes-kubelet-probes'
+      scheme: https
+      metrics_path: /metrics/probes
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tls_config:
+        insecure_skip_verify: true
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics/probes
+
     - job_name: 'kubernetes-pods'
       kubernetes_sd_configs:
       - role: pod
@@ -193,26 +214,26 @@ spec:
     # Alert on readiness probe failures
     - alert: PodReadinessProbeFailure
       expr: |
-        kube_pod_status_ready{condition="false"} == 1
+        rate(prober_probe_total{probe_type="Readiness",result="failed"}[5m]) > 0
       for: 5m
       labels:
         severity: warning
         component: health-check
       annotations:
         summary: "Pod readiness probe failing"
-        description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has been not ready for 5 minutes"
+        description: "Readiness probe failures detected for pod {{ $labels.namespace }}/{{ $labels.pod }}"
 
     # Alert on liveness probe failures leading to restarts
     - alert: PodLivenessProbeFailure
       expr: |
-        rate(kube_pod_container_status_restarts_total[15m]) > 0
+        rate(prober_probe_total{probe_type="Liveness",result="failed"}[5m]) > 0
       for: 5m
       labels:
         severity: critical
         component: health-check
       annotations:
         summary: "Pod restarting due to liveness probe failures"
-        description: "Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} is restarting"
+        description: "Liveness probe failures detected for container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }}"
 
     # Alert on high restart rate
     - alert: HighPodRestartRate
@@ -245,20 +266,20 @@ spec:
     # Alert on startup probe timeout
     - alert: PodStartupProbeTimeout
       expr: |
-        kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} == 1
+        rate(prober_probe_total{probe_type="Startup",result="failed"}[5m]) > 0
       for: 5m
       labels:
         severity: warning
         component: health-check
       annotations:
-        summary: "Pod in CrashLoopBackOff"
-        description: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} is in CrashLoopBackOff"
+        summary: "Pod startup probe failing"
+        description: "Startup probe failures detected for container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }}"
 
     # Alert when probe duration is high
     - alert: ProbeSlowResponse
       expr: |
         histogram_quantile(0.99,
-          rate(probe_duration_seconds_bucket[5m])
+          rate(prober_probe_duration_seconds_bucket[5m])
         ) > 5
       for: 10m
       labels:
@@ -283,7 +304,23 @@ spec:
     # Alert when no pods are ready in a service
     - alert: ServiceHasNoEndpoints
       expr: |
-        sum by (namespace, service) (kube_endpoint_address_available) == 0
+        (
+          sum by (namespace, service) (
+            label_replace(
+              kube_endpointslice_endpoints{ready="true"},
+              "service", "$1", "endpointslice", "(.+)-[a-z0-9]+"
+            )
+          )
+          or on (namespace, service)
+          (
+            0 * sum by (namespace, service) (
+              label_replace(
+                kube_endpointslice_endpoints,
+                "service", "$1", "endpointslice", "(.+)-[a-z0-9]+"
+              )
+            )
+          )
+        ) == 0
       for: 5m
       labels:
         severity: critical
@@ -403,12 +440,10 @@ package main
 
 import (
     "context"
-    "fmt"
     "log"
 
-    corev1 "k8s.io/api/core/v1"
+    eventsv1 "k8s.io/api/events/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/apimachinery/pkg/watch"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
     "github.com/prometheus/client_golang/prometheus"
@@ -444,7 +479,7 @@ func monitorEvents(ctx context.Context) error {
         return err
     }
 
-    watcher, err := clientset.CoreV1().Events("").Watch(ctx, metav1.ListOptions{})
+    watcher, err := clientset.EventsV1().Events("").Watch(ctx, metav1.ListOptions{})
     if err != nil {
         return err
     }
@@ -456,12 +491,15 @@ func monitorEvents(ctx context.Context) error {
         select {
         case <-ctx.Done():
             return nil
-        case event := <-watcher.ResultChan():
+        case event, ok := <-watcher.ResultChan():
+            if !ok {
+                return nil
+            }
             if event.Object == nil {
                 continue
             }
 
-            kubeEvent, ok := event.Object.(*corev1.Event)
+            kubeEvent, ok := event.Object.(*eventsv1.Event)
             if !ok {
                 continue
             }
@@ -471,34 +509,34 @@ func monitorEvents(ctx context.Context) error {
     }
 }
 
-func handleEvent(event *corev1.Event) {
+func handleEvent(event *eventsv1.Event) {
     // Track probe-related events
     switch event.Reason {
     case "Unhealthy":
         // Probe failure event
         probeFailureEvents.WithLabelValues(
-            event.InvolvedObject.Namespace,
-            event.InvolvedObject.Name,
-            event.InvolvedObject.FieldPath,
+            event.Regarding.Namespace,
+            event.Regarding.Name,
+            event.Regarding.FieldPath,
             event.Reason,
         ).Inc()
 
         log.Printf("Probe failure: %s/%s - %s",
-            event.InvolvedObject.Namespace,
-            event.InvolvedObject.Name,
-            event.Message)
+            event.Regarding.Namespace,
+            event.Regarding.Name,
+            event.Note)
 
     case "BackOff":
         unhealthyEvents.WithLabelValues(
-            event.InvolvedObject.Namespace,
-            event.InvolvedObject.Name,
+            event.Regarding.Namespace,
+            event.Regarding.Name,
             event.Reason,
         ).Inc()
 
         log.Printf("BackOff: %s/%s - %s",
-            event.InvolvedObject.Namespace,
-            event.InvolvedObject.Name,
-            event.Message)
+            event.Regarding.Namespace,
+            event.Regarding.Name,
+            event.Note)
     }
 }
 ```
@@ -540,7 +578,7 @@ Create a Grafana dashboard for probe monitoring:
         "title": "Health Check Duration",
         "targets": [
           {
-            "expr": "histogram_quantile(0.99, rate(app_health_check_duration_seconds_bucket[5m]))"
+            "expr": "histogram_quantile(0.99, rate(prober_probe_duration_seconds_bucket[5m]))"
           }
         ]
       }
