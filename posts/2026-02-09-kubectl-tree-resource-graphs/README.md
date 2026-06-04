@@ -29,7 +29,7 @@ git clone https://github.com/ahmetb/kubectl-tree.git
 cd kubectl-tree
 
 # Build and install
-make
+go build -o kubectl-tree ./cmd/kubectl-tree
 sudo cp kubectl-tree /usr/local/bin/
 ```
 
@@ -61,15 +61,15 @@ kubectl tree deployment nginx -n production
 Show only specific resource types:
 
 ```bash
-kubectl tree deployment nginx --only pod,configmap
+kubectl tree deployment nginx --resources deployments,rs,pods
 ```
 
 ## Visualizing Service Relationships
 
-Map out all resources connected to a service:
+Map out owner-referenced resources connected to a service:
 
 ```bash
-# View service and its endpoints
+# View service and its EndpointSlices
 kubectl tree service api
 
 # Example output:
@@ -100,12 +100,12 @@ echo "Service:"
 kubectl get svc -n "$NAMESPACE" "$SERVICE" -o wide
 
 echo ""
-echo "Endpoints:"
-kubectl get endpoints -n "$NAMESPACE" "$SERVICE"
+echo "EndpointSlices:"
+kubectl get endpointslices.discovery.k8s.io -n "$NAMESPACE" -l kubernetes.io/service-name="$SERVICE"
 
 echo ""
 echo "Pods backing this service:"
-SELECTOR=$(kubectl get svc -n "$NAMESPACE" "$SERVICE" -o jsonpath='{.spec.selector}' | jq -r 'to_entries | map("\(.key)=\(.value)") | join(",")')
+SELECTOR=$(kubectl get svc -n "$NAMESPACE" "$SERVICE" -o json | jq -r '(.spec.selector // {}) | to_entries | map("\(.key)=\(.value)") | join(",")')
 
 if [ -n "$SELECTOR" ]; then
     kubectl get pods -n "$NAMESPACE" -l "$SELECTOR"
@@ -243,7 +243,7 @@ func buildResourceTree(clientset *kubernetes.Clientset, kind, name, namespace st
                         Children:  []*ResourceNode{},
                     }
 
-                    // Add config maps and secrets used by pod
+                    // Add config maps and secrets mounted as volumes by pod
                     for _, volume := range pod.Spec.Volumes {
                         if volume.ConfigMap != nil {
                             podNode.Children = append(podNode.Children, &ResourceNode{
@@ -304,7 +304,7 @@ Build and use it:
 ```bash
 go build -o kubectl-resource-graph resource-graph.go
 sudo mv kubectl-resource-graph /usr/local/bin/
-kubectl resource-graph deployment nginx default
+kubectl resource graph deployment nginx default
 ```
 
 ## Creating Dependency Visualization Scripts
@@ -357,7 +357,7 @@ add_resource() {
         deployment)
             # Get replica sets
             local replicasets=$(kubectl get rs -n "$NAMESPACE" -o json | \
-                jq -r ".items[] | select(.metadata.ownerReferences[]?.name==\"$name\") | .metadata.name")
+                jq -r ".items[] | select(.metadata.ownerReferences[]? | .kind==\"Deployment\" and .name==\"$name\") | .metadata.name")
 
             for rs in $replicasets; do
                 add_resource "replicaset" "$rs" "$node_id"
@@ -367,7 +367,7 @@ add_resource() {
         replicaset)
             # Get pods
             local pods=$(kubectl get pods -n "$NAMESPACE" -o json | \
-                jq -r ".items[] | select(.metadata.ownerReferences[]?.name==\"$name\") | .metadata.name")
+                jq -r ".items[] | select(.metadata.ownerReferences[]? | .kind==\"ReplicaSet\" and .name==\"$name\") | .metadata.name")
 
             for pod in $pods; do
                 add_resource "pod" "$pod" "$node_id"
@@ -375,7 +375,7 @@ add_resource() {
             ;;
 
         pod)
-            # Get config maps
+            # Get config maps mounted as volumes
             local configmaps=$(kubectl get pod "$name" -n "$NAMESPACE" -o json | \
                 jq -r '.spec.volumes[]?.configMap?.name // empty')
 
@@ -385,7 +385,7 @@ add_resource() {
                 echo "    \"$node_id\" -> \"$cm_id\";" >> "$OUTPUT_FILE"
             done
 
-            # Get secrets
+            # Get secrets mounted as volumes
             local secrets=$(kubectl get pod "$name" -n "$NAMESPACE" -o json | \
                 jq -r '.spec.volumes[]?.secret?.secretName // empty')
 
@@ -445,13 +445,13 @@ kubectl get pods -n "$NAMESPACE" -o json | \
   jq -r '.items[] |
     .spec.containers[] |
     .env[]? |
-    select(.value | test("\\.[a-z0-9-]+\\.svc\\.cluster\\.local")) |
+    select((.value? // "") | test("\\.[a-z0-9-]+\\.svc\\.cluster\\.local")) |
     .value' | \
   sort -u
 
-# Check for ingress backends in other namespaces
+# Check for Ingress service backends in this namespace
 echo ""
-echo "Ingress References:"
+echo "Ingress Service Backends:"
 kubectl get ingress -n "$NAMESPACE" -o json | \
   jq -r '.items[] |
     .spec.rules[]? |
