@@ -8,7 +8,7 @@ Description: Learn how to safely migrate Kubernetes etcd from the deprecated v2 
 
 ---
 
-Kubernetes originally supported etcd v2 API but now requires v3. Migrating between storage backends requires careful planning to avoid data loss. This guide shows you how to migrate etcd from v2 to v3 safely while maintaining cluster availability.
+Kubernetes originally supported the etcd v2 storage backend but now requires etcd3. Migrating between storage backends requires careful planning to avoid data loss. This guide shows you how to migrate etcd from v2 to v3 safely during a controlled maintenance window.
 
 ## Understanding etcd v2 vs v3
 
@@ -21,17 +21,17 @@ The v3 API provides better performance and features than v2.
 ETCDCTL_API=3 etcdctl version
 etcdctl --version
 
-# Check if cluster uses v2 storage
+# Check whether the legacy v2 keyspace is reachable
 
 ETCDCTL_API=2 etcdctl ls / 2>/dev/null
 if [ $? -eq 0 ]; then
-  echo "Cluster using etcd v2 storage"
+  echo "Legacy etcd v2 keyspace is reachable"
 else
-  echo "Cluster using etcd v3 storage"
+  echo "Legacy etcd v2 keyspace is not reachable"
 fi
 ```
 
-Modern Kubernetes versions require etcd v3.
+Kubernetes v1.13 and later require the etcd3 storage backend.
 
 ## Backing Up etcd v2 Data
 
@@ -42,15 +42,15 @@ Create comprehensive backups before migration.
 # Backup etcd v2 data
 
 BACKUP_DIR="/var/backups/etcd/v2-$(date +%Y%m%d-%H%M%S)"
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
-# Backup v2 data
+# Backup v2 data directory. Add --wal-dir if WAL files are stored separately.
 ETCDCTL_API=2 etcdctl backup \
   --data-dir /var/lib/etcd \
-  --backup-dir $BACKUP_DIR
+  --backup-dir "$BACKUP_DIR/data"
 
-# Export v2 data
-ETCDCTL_API=2 etcdctl ls / --recursive > $BACKUP_DIR/keys.txt
+# Keep a key inventory for validation
+ETCDCTL_API=2 etcdctl ls / --recursive > "$BACKUP_DIR/keys.txt"
 
 echo "Backup created at $BACKUP_DIR"
 ```
@@ -65,23 +65,31 @@ Perform the storage backend migration.
 #!/bin/bash
 # Migrate etcd storage
 
-# Stop Kubernetes API server
+# Stop Kubernetes API servers and any clients writing to etcd
 systemctl stop kube-apiserver
 
-# Migrate data from v2 to v3
-ETCDCTL_API=3 etcdctl migrate --data-dir=/var/lib/etcd
+# Stop etcd before offline migration
+systemctl stop etcd
+
+# Migrate data from v2 to v3 with etcdctl v3.4 or earlier
+ETCDCTL_API=3 etcdctl migrate \
+  --data-dir=/var/lib/etcd \
+  --wal-dir=/var/lib/etcd/member/wal
+
+# Restart etcd
+systemctl start etcd
 
 # Verify migration
-ETCDCTL_API=3 etcdctl get / --prefix --keys-only
+ETCDCTL_API=3 etcdctl get /registry --prefix --keys-only
 
 # Restart API server with v3 storage
 systemctl start kube-apiserver
 
 # Verify cluster health
-kubectl get componentstatuses
+kubectl get --raw='/readyz?verbose'
 ```
 
-The migrate command converts v2 data to v3 format.
+The migrate command converts v2 data to v3 format, but it was removed in etcd v3.5. Use etcdctl v3.4 or earlier for this step.
 
 ## Updating Kubernetes Configuration
 
@@ -138,15 +146,15 @@ Restore from backup if issues occur.
 
 BACKUP_DIR="/var/backups/etcd/v2-20260209-100000"
 
-# Stop Kubernetes
-systemctl stop kube-apiserver kubelet
+# Stop Kubernetes API servers and etcd
+systemctl stop kube-apiserver etcd
 
-# Restore etcd v2 data
-rm -rf /var/lib/etcd/*
-cp -r $BACKUP_DIR/* /var/lib/etcd/
+# Move failed data aside and restore the v2 backup data directory
+mv /var/lib/etcd /var/lib/etcd.failed.$(date +%Y%m%d-%H%M%S)
+cp -a "$BACKUP_DIR/data" /var/lib/etcd
 
-# Restart with v2 configuration
-systemctl start kube-apiserver kubelet
+# Restart etcd and the API server with v2 configuration
+systemctl start etcd kube-apiserver
 
 echo "Rolled back to etcd v2"
 ```
@@ -177,4 +185,4 @@ Monitor etcd health closely after migration.
 
 ## Conclusion
 
-Migrating etcd from v2 to v3 is required for modern Kubernetes. Check current etcd version and storage backend in use. Create comprehensive backups before migration. Use the etcdctl migrate command to convert v2 data to v3 format. Update Kubernetes component configurations to specify etcd3 storage backend. Validate that all resources are accessible after migration. Have a tested rollback procedure ready. Monitor etcd performance and latency after migration. Plan the migration during a maintenance window to minimize risk. Test the entire procedure in a non-production environment first.
+Migrating etcd from v2 to v3 is required for modern Kubernetes. Check current etcd version and storage backend in use. Create comprehensive backups before migration. Use etcdctl v3.4 or earlier with the migrate command to convert v2 data to v3 format. Update Kubernetes component configurations to specify etcd3 storage backend. Validate that all resources are accessible after migration. Have a tested rollback procedure ready. Monitor etcd performance and latency after migration. Plan the migration during a maintenance window to minimize risk. Test the entire procedure in a non-production environment first.
