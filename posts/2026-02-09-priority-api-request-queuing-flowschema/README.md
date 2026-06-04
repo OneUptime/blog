@@ -38,7 +38,7 @@ Default FlowSchemas handle system components, leader election, health checks, an
 Define a FlowSchema for your application's requests:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: FlowSchema
 metadata:
   name: app-workload-high
@@ -71,6 +71,8 @@ spec:
     - verbs: ["get", "list", "watch"]
       apiGroups: ["*"]
       resources: ["*"]
+      clusterScope: true
+      namespaces: ["*"]
 ```
 
 Apply the FlowSchema:
@@ -88,7 +90,7 @@ kubectl describe flowschema app-workload-high
 Create a PriorityLevelConfiguration that defines request handling characteristics:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: app-high-priority
@@ -105,9 +107,9 @@ spec:
       queuing:
         # Number of queues (buckets)
         queues: 64
-        # Width of each queue
+        # Maximum requests waiting in each queue
         queueLengthLimit: 50
-        # Total request timeout including queue wait
+        # Number of queues considered for each flow
         handSize: 8
 ```
 
@@ -117,7 +119,7 @@ The configuration parameters control throughput and fairness:
 - `lendablePercent`: Percentage that can be borrowed by other priority levels
 - `queues`: Number of shuffle-sharding buckets for fairness
 - `queueLengthLimit`: Maximum requests waiting in each queue
-- `handSize`: Number of queues a flow can occupy
+- `handSize`: Number of queues considered when placing each queued request
 
 Apply the priority level:
 
@@ -134,7 +136,7 @@ kubectl describe prioritylevelconfiguration app-high-priority
 Separate read operations from writes for better control:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: FlowSchema
 metadata:
   name: readonly-queries
@@ -152,11 +154,13 @@ spec:
     - verbs: ["get", "list", "watch"]
       apiGroups: ["*"]
       resources: ["*"]
+      clusterScope: true
+      namespaces: ["*"]
     nonResourceRules:
     - verbs: ["get"]
       nonResourceURLs: ["*"]
 ---
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: readonly-priority
@@ -178,7 +182,7 @@ spec:
 Ensure system controllers have priority over user requests:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: FlowSchema
 metadata:
   name: system-controllers-high
@@ -196,8 +200,10 @@ spec:
     - verbs: ["*"]
       apiGroups: ["*"]
       resources: ["*"]
+      clusterScope: true
+      namespaces: ["*"]
 ---
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: system-priority
@@ -220,7 +226,7 @@ spec:
 Prioritize requests based on namespace criticality:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: FlowSchema
 metadata:
   name: production-namespace-priority
@@ -239,7 +245,7 @@ spec:
       resources: ["*"]
       namespaces: ["production", "critical-apps"]
 ---
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: FlowSchema
 metadata:
   name: development-namespace-priority
@@ -258,7 +264,7 @@ spec:
       resources: ["*"]
       namespaces: ["dev", "test", "staging"]
 ---
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: production-priority
@@ -274,7 +280,7 @@ spec:
         queueLengthLimit: 75
         handSize: 8
 ---
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: development-priority
@@ -296,7 +302,7 @@ spec:
 Track request queuing and rejection metrics:
 
 ```bash
-# Enable metrics endpoint
+# Query the metrics endpoint
 kubectl get --raw /metrics | grep apiserver_flowcontrol
 
 # View request counts by FlowSchema
@@ -401,7 +407,7 @@ QUEUES:.spec.limited.limitResponse.queuing.queues
 Adjust shares based on utilization:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: app-high-priority
@@ -424,9 +430,9 @@ spec:
 Determine which FlowSchema matches a request:
 
 ```bash
-# Check API server audit logs
-kubectl logs -n kube-system kube-apiserver-<node> | \
-  grep flowSchema
+# Map API Priority and Fairness response header UIDs to object names
+kubectl get flowschemas -o custom-columns="uid:{metadata.uid},name:{metadata.name}"
+kubectl get prioritylevelconfigurations -o custom-columns="uid:{metadata.uid},name:{metadata.name}"
 
 # Enable verbose logging for APF
 # Edit API server manifest
@@ -444,8 +450,8 @@ spec:
 Test FlowSchema matching:
 
 ```bash
-# Make a test request and check which FlowSchema handled it
-kubectl get pods --v=8 2>&1 | grep -i flow
+# Make a test request and check the APF response headers
+kubectl get pods --v=8 2>&1 | grep -i X-Kubernetes-PF
 
 # Check FlowSchema matching precedence
 kubectl get flowschemas --sort-by=.spec.matchingPrecedence
