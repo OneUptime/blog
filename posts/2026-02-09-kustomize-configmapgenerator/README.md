@@ -8,13 +8,13 @@ Description: Learn how to use Kustomize configMapGenerator to dynamically create
 
 ---
 
-Kustomize's configMapGenerator automates ConfigMap creation and adds hash suffixes to trigger pod restarts when configuration changes. Instead of manually managing ConfigMaps and updating references, the generator handles both tasks automatically. This eliminates a common source of deployment problems where configuration changes don't propagate to running pods.
+Kustomize's configMapGenerator automates ConfigMap creation and adds hash suffixes so workload manifests reference a new ConfigMap name when configuration changes. Instead of manually managing ConfigMaps and updating references, the generator handles both tasks automatically. This eliminates a common source of deployment problems where configuration changes don't propagate to running pods.
 
 ## Understanding configMapGenerator
 
-The configMapGenerator creates ConfigMaps from various sources: literal key-value pairs, files, or environment files. Kustomize automatically appends a hash suffix to the generated ConfigMap name and updates all references in your resources. When the source content changes, the hash changes, causing Kubernetes to recognize the configuration update and restart affected pods.
+The configMapGenerator creates ConfigMaps from various sources: literal key-value pairs, files, or environment files. Kustomize automatically appends a hash suffix to the generated ConfigMap name and updates recognized references in your resources. When the source content changes, the hash changes, which updates the pod template in resources such as Deployments and triggers a rollout.
 
-This automatic behavior solves the problem where updating a ConfigMap doesn't trigger pod restarts because Kubernetes treats ConfigMaps as immutable after creation from a pod's perspective.
+This automatic behavior solves the problem where updating a ConfigMap doesn't trigger pod restarts for environment variables because those values are set when the pod starts. ConfigMaps mounted as volumes are updated eventually by the kubelet, but applications may still need their own reload logic.
 
 ## Basic literal ConfigMap generation
 
@@ -177,19 +177,19 @@ The `behavior: replace` ignores base values entirely.
 
 ## Binary data in ConfigMaps
 
-Include binary files:
+ConfigMaps are intended for text data. Kustomize's configMapGenerator loads file contents into the ConfigMap `data` field, which must contain UTF-8 strings:
 
 ```yaml
 configMapGenerator:
 - name: app-assets
   files:
-  - logo.png
-  - favicon.ico
+  - robots.txt
+  - site-config.json
   options:
     disableNameSuffixHash: false
 ```
 
-Binary data is base64 encoded automatically.
+For non-UTF-8 binary content, define a ConfigMap with `binaryData` manually or use a Secret when the data is sensitive.
 
 ## Disabling hash suffixes
 
@@ -249,17 +249,16 @@ Generate from an entire directory:
 configMapGenerator:
 - name: nginx-config
   files:
-  - configs/nginx/nginx.conf
-  - configs/nginx/mime.types
-  - configs/nginx/fastcgi.conf
+  - configs/nginx
 ```
 
-Or use a pattern:
+Or list specific files:
 
-```bash
-# Generate from all .conf files
+```yaml
 files:
-- configs/*.conf
+- configs/nginx/nginx.conf
+- configs/nginx/mime.types
+- configs/nginx/fastcgi.conf
 ```
 
 ## Environment file with custom keys
@@ -365,7 +364,7 @@ configMapGenerator:
 
 ## Rolling restarts on config changes
 
-The hash suffix automatically triggers restarts:
+The hash suffix updates workload references when manifests are reapplied:
 
 ```bash
 # Update config
@@ -375,10 +374,10 @@ echo "new_setting=enabled" >> base/app.env
 kustomize build base/
 
 # New hash is generated: app-config-7gh9k2m3f8
-# All pods using this ConfigMap will restart
+# Deployments that reference the generated ConfigMap get an updated pod template
 ```
 
-This ensures configuration changes propagate immediately.
+This causes controllers such as Deployments to roll out new pods after you apply the rebuilt manifests.
 
 ## Validation and testing
 
@@ -386,13 +385,13 @@ Test generated ConfigMaps:
 
 ```bash
 # View generated ConfigMap
-kustomize build base/ | kubectl get -f - configmap -o yaml
+kustomize build base/ | kubectl get -f - -o yaml
 
 # Check hash generation
 kustomize build base/ | grep "name: app-config-"
 
 # Verify data contents
-kustomize build base/ | yq eval '.data' -
+kustomize build base/ | yq eval 'select(.kind == "ConfigMap").data' -
 
 # Apply dry run
 kustomize build base/ | kubectl apply --dry-run=client -f -
