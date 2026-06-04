@@ -8,15 +8,15 @@ Description: Integrate NetApp enterprise storage systems with Kubernetes using T
 
 ---
 
-NetApp Trident provides enterprise storage integration for Kubernetes by connecting to ONTAP, SolidFire, Cloud Volumes, and other NetApp storage systems. Trident delivers advanced features including storage efficiency through deduplication and compression, data protection via snapshots and replication, and multi-protocol support for block, file, and object storage.
+NetApp Trident provides enterprise storage integration for Kubernetes by connecting to ONTAP, Element, Azure NetApp Files, Google Cloud NetApp Volumes, and other supported NetApp storage systems. Trident delivers advanced features including storage efficiency through deduplication and compression, data protection via snapshots and replication, and multi-protocol support for block and file storage.
 
 This guide covers Trident installation, backend configuration for various NetApp platforms, storage class creation with performance tiers, and implementing advanced features like volume import and storage quality of service.
 
 ## Understanding Trident Architecture
 
-Trident operates as a standard CSI driver with controller and node components. The controller handles volume provisioning by communicating with NetApp storage APIs, while node plugins mount volumes on worker nodes using appropriate protocols (iSCSI, NFS, or NVME-oF).
+Trident operates as a standard CSI driver with controller and node components. The controller handles volume provisioning by communicating with NetApp storage APIs, while node plugins mount volumes on worker nodes using appropriate protocols (iSCSI, NFS, FC, or NVMe/TCP).
 
-Trident supports multiple backend types: ONTAP provides unified storage with extensive features, Element offers predictable performance through QoS, Cloud Volumes services integrate with AWS, Azure, and GCP, and E-Series delivers high-performance block storage. Each backend type uses specific configuration parameters and capabilities.
+Trident supports multiple backend types: ONTAP provides unified storage with extensive features, Element offers predictable performance through QoS, and cloud services integrate with AWS, Azure, and GCP through Amazon FSx for NetApp ONTAP, Azure NetApp Files, Google Cloud NetApp Volumes, and Cloud Volumes ONTAP. Each backend type uses specific configuration parameters and capabilities.
 
 The driver maintains backend connectivity and automatically selects appropriate storage pools based on storage class requirements, topology constraints, and available capacity.
 
@@ -27,18 +27,18 @@ Deploy Trident using the operator method for simplified lifecycle management.
 ```bash
 # Download Trident installer
 
-wget https://github.com/NetApp/trident/releases/download/v23.10.0/trident-installer-23.10.0.tar.gz
-tar -xvf trident-installer-23.10.0.tar.gz
+wget https://github.com/NetApp/trident/releases/download/v26.02.0/trident-installer-26.02.0.tar.gz
+tar -xvf trident-installer-26.02.0.tar.gz
 cd trident-installer
 
 # Install Trident operator
-kubectl create namespace trident
-kubectl apply -f deploy/crds/trident.netapp.io_tridentorchestrators_crd_post1.16.yaml
-kubectl apply -f deploy/bundle_post_1_25.yaml
+kubectl apply -f deploy/namespace.yaml
+kubectl create -f deploy/crds/trident.netapp.io_tridentorchestrators_crd_post1.16.yaml
+kubectl create -f deploy/bundle.yaml
 
 # Verify operator deployment
 kubectl get pods -n trident
-kubectl wait --for=condition=ready pod -l app=trident-operator -n trident --timeout=300s
+kubectl wait --for=condition=Ready pod -l app=operator.trident.netapp.io,name=trident-operator -n trident --timeout=300s
 ```
 
 Create TridentOrchestrator custom resource:
@@ -55,9 +55,8 @@ spec:
   IPv6: false
   k8sTimeout: 30
   silenceAutosupport: false
-  autosupportImage: netapp/trident-autosupport:23.10
-  image: netapp/trident:23.10.0
-  enableNodePrep: false
+  autosupportImage: netapp/trident-autosupport:26.02
+  tridentImage: netapp/trident:26.02.0
   imagePullSecrets: []
 ```
 
@@ -67,8 +66,8 @@ Deploy Trident:
 kubectl apply -f trident-orchestrator.yaml
 
 # Watch Trident deployment
-kubectl get torc -n trident
-kubectl describe torc trident -n trident
+kubectl get torc
+kubectl describe torc trident
 
 # Verify Trident pods are running
 kubectl get pods -n trident
@@ -130,14 +129,13 @@ spec:
   storageDriverName: ontap-san
   backendName: ontap-san-backend
   managementLIF: 192.168.1.100
-  dataLIF: 192.168.1.102
   svm: svm_kubernetes
   credentials:
     name: backend-ontap-nas-secret
+  igroupName: netappdvp
   defaults:
     spaceReserve: none
     snapshotPolicy: default
-    igroupName: kubernetes
 ```
 
 Apply backend configurations:
@@ -197,7 +195,6 @@ parameters:
   backendType: "ontap-san"
   media: "ssd"
   provisioningType: "thick"
-  IOPS: "5000"
 allowVolumeExpansion: true
 reclaimPolicy: Delete
 ```
@@ -262,22 +259,18 @@ spec:
 
 Import pre-existing NetApp volumes into Kubernetes.
 
+Create a PVC with Trident import annotations:
+
 ```yaml
-# import-pv.yaml
-apiVersion: trident.netapp.io/v1
-kind: TridentVolumeReference
-metadata:
-  name: imported-volume
-spec:
-  pvcName: imported-pvc
-  pvcNamespace: default
-  backendName: ontap-nas-backend
-  volumeName: existing_volume_name
----
+# import-pvc.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: imported-pvc
+  namespace: default
+  annotations:
+    trident.netapp.io/importOriginalName: "existing_volume_name"
+    trident.netapp.io/importBackendUUID: "backend-uuid"
 spec:
   accessModes:
     - ReadWriteMany
@@ -300,9 +293,7 @@ metadata:
 provisioner: csi.trident.netapp.io
 parameters:
   backendType: "ontap-san"
-  qosPolicy: "guaranteed-5000"
-  adaptiveQosPolicy: ""
-  IOPS: "5000"
+  selector: "performance=guaranteed"
 allowVolumeExpansion: true
 ```
 
@@ -311,6 +302,16 @@ Create QoS policy on ONTAP before using:
 ```bash
 # On ONTAP CLI
 qos policy-group create -policy-group guaranteed-5000 -vserver svm_kubernetes -max-throughput 5000iops
+```
+
+Reference the QoS policy in the ONTAP SAN backend or storage pool:
+
+```yaml
+defaults:
+  qosPolicy: guaranteed-5000
+storage:
+  - labels:
+      performance: guaranteed
 ```
 
 ## Monitoring Trident
@@ -339,14 +340,14 @@ spec:
 Key metrics:
 
 ```promql
-# Backend connectivity
-trident_backend_state
+# REST success rate
+(sum (trident_rest_ops_seconds_total_count{status_code=~"2.."} OR on() vector(0)) / sum (trident_rest_ops_seconds_total_count)) * 100
 
 # Volume operations
-rate(trident_operation_duration_milliseconds_count[5m])
+sum by (operation) (rate(trident_operation_duration_milliseconds_count{success="true"}[5m]))
 
-# Operation latency
-histogram_quantile(0.99, rate(trident_operation_duration_milliseconds_bucket[5m]))
+# Average operation duration in milliseconds
+sum by (operation) (trident_operation_duration_milliseconds_sum{success="true"}) / sum by (operation) (trident_operation_duration_milliseconds_count{success="true"})
 ```
 
 NetApp Trident brings enterprise storage capabilities to Kubernetes through seamless integration with ONTAP and other NetApp platforms. Features like space-efficient cloning, application-consistent snapshots, and storage QoS enable running demanding workloads with enterprise-grade data management. The combination of Kubernetes-native APIs and NetApp storage efficiency creates a powerful platform for stateful applications.
