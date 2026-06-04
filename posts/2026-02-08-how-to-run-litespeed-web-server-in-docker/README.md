@@ -23,23 +23,28 @@ This guide covers both, starting with OpenLiteSpeed since it is freely available
 ## Quick Start with OpenLiteSpeed
 
 ```bash
-# Run OpenLiteSpeed with PHP 8.3
+# Run OpenLiteSpeed with PHP 8.5
 
 docker run -d \
   --name openlitespeed \
   -p 80:80 \
   -p 443:443 \
+  -p 443:443/udp \
   -p 7080:7080 \
   -v ols_data:/var/www/vhosts \
-  litespeedtech/openlitespeed:1.7.19-lsphp83
+  litespeedtech/openlitespeed:1.8.5-lsphp85
 ```
 
 Port reference:
 - **80**: HTTP traffic
-- **443**: HTTPS traffic
+- **443**: HTTPS traffic and HTTP/3 over UDP
 - **7080**: OpenLiteSpeed WebAdmin console
 
-Access the admin console at `https://localhost:7080`. The default credentials are `admin` / `123456`. Change these immediately.
+Set the WebAdmin password, then access the admin console at `https://localhost:7080`.
+
+```bash
+docker exec -it openlitespeed /usr/local/lsws/admin/misc/admpass.sh
+```
 
 ## Docker Compose for PHP Application
 
@@ -47,16 +52,15 @@ A complete setup for hosting a PHP application with OpenLiteSpeed.
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   litespeed:
-    image: litespeedtech/openlitespeed:1.7.19-lsphp83
+    image: litespeedtech/openlitespeed:1.8.5-lsphp85
     container_name: openlitespeed
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
+      - "443:443/udp"
       - "7080:7080"
     environment:
       # PHP tuning
@@ -67,7 +71,7 @@ services:
       # Custom virtual host configuration
       - ./vhconf:/usr/local/lsws/conf/vhosts/localhost:ro
       # PHP configuration
-      - ./php.ini:/usr/local/lsws/lsphp83/etc/php/8.3/litespeed/php.ini:ro
+      - ./php.ini:/usr/local/lsws/lsphp85/etc/php/8.5/litespeed/php.ini:ro
       # SSL certificates
       - ./certs:/usr/local/lsws/certs:ro
       # Persistent logs
@@ -133,16 +137,15 @@ LiteSpeed is particularly popular for WordPress hosting due to its built-in cach
 
 ```yaml
 # docker-compose-wordpress.yml
-version: "3.8"
-
 services:
   litespeed:
-    image: litespeedtech/openlitespeed:1.7.19-lsphp83
+    image: litespeedtech/openlitespeed:1.8.5-lsphp85
     container_name: ls-wordpress
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
+      - "443:443/udp"
       - "7080:7080"
     volumes:
       - wordpress:/var/www/vhosts/localhost/html
@@ -218,21 +221,13 @@ context / {
     location                /var/www/vhosts/localhost/html
     allowBrowse             1
 
-    rewrite {
+    rewrite  {
         enable              1
         autoLoadHtaccess    1
+        rules               <<<END_rules
+RewriteRule ^(\.git|\.env) - [F,L]
+END_rules
     }
-}
-
-# Deny access to sensitive files
-context /.git {
-    type                    NULL
-    allowBrowse             0
-}
-
-context /.env {
-    type                    NULL
-    allowBrowse             0
 }
 
 # Static file caching
@@ -296,11 +291,13 @@ For non-WordPress PHP applications, use LiteSpeed's built-in cache directives.
 ```text
 # .htaccess cache rules for LiteSpeed
 <IfModule LiteSpeed>
+    RewriteEngine On
+
     # Enable public cache for static content
     CacheEnable public /
 
     # Cache HTML pages for 1 hour
-    CacheLookup on
+    CacheLookup public on
     RewriteRule .* - [E=Cache-Control:max-age=3600]
 
     # Do not cache admin or login pages
