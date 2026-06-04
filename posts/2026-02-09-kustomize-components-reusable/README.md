@@ -90,27 +90,22 @@ kind: Component
 
 patches:
 - patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: not-important
-    spec:
-      template:
-        spec:
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 1000
-            fsGroup: 2000
-            seccompProfile:
-              type: RuntimeDefault
-          containers:
-          - name: not-important
-            securityContext:
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: true
-              capabilities:
-                drop:
-                - ALL
+    - op: add
+      path: /spec/template/spec/securityContext
+      value:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+    - op: add
+      path: /spec/template/spec/containers/0/securityContext
+      value:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+          - ALL
   target:
     kind: Deployment
 
@@ -220,22 +215,15 @@ kind: Component
 
 patches:
 - patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: not-important
-    spec:
-      template:
-        spec:
-          containers:
-          - name: not-important
-            env:
-            - name: LOG_LEVEL
-              value: debug
-            - name: DEBUG
-              value: "true"
-            - name: PROFILING_ENABLED
-              value: "true"
+    - op: add
+      path: /spec/template/spec/containers/0/env
+      value:
+      - name: LOG_LEVEL
+        value: debug
+      - name: DEBUG
+        value: "true"
+      - name: PROFILING_ENABLED
+        value: "true"
   target:
     kind: Deployment
 
@@ -252,7 +240,7 @@ kind: Service
 metadata:
   name: debug-port
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: web-app
   ports:
@@ -298,7 +286,6 @@ patches:
 
 resources:
 - virtualservice.yaml
-- destinationrule.yaml
 ```
 
 Virtual service definition:
@@ -316,7 +303,6 @@ spec:
   - route:
     - destination:
         host: web-app
-        subset: v1
       weight: 100
 ```
 
@@ -331,26 +317,18 @@ kind: Component
 
 resources:
 - resourcequota.yaml
-- limitrange.yaml
 
 patches:
 - patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: not-important
-    spec:
-      template:
-        spec:
-          containers:
-          - name: not-important
-            resources:
-              requests:
-                memory: "256Mi"
-                cpu: "250m"
-              limits:
-                memory: "512Mi"
-                cpu: "500m"
+    - op: add
+      path: /spec/template/spec/containers/0/resources
+      value:
+        requests:
+          memory: "256Mi"
+          cpu: "250m"
+        limits:
+          memory: "512Mi"
+          cpu: "500m"
   target:
     kind: Deployment
 ```
@@ -460,24 +438,21 @@ configMapGenerator:
 
 patches:
 - patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: not-important
-    spec:
-      template:
-        spec:
-          containers:
-          - name: not-important
-            envFrom:
-            - configMapRef:
-                name: logging-config
-            volumeMounts:
-            - name: logs
-              mountPath: /var/log
-          volumes:
-          - name: logs
-            emptyDir: {}
+    - op: add
+      path: /spec/template/spec/containers/0/envFrom
+      value:
+      - configMapRef:
+          name: logging-config
+    - op: add
+      path: /spec/template/spec/containers/0/volumeMounts
+      value:
+      - name: logs
+        mountPath: /var/log
+    - op: add
+      path: /spec/template/spec/volumes
+      value:
+      - name: logs
+        emptyDir: {}
   target:
     kind: Deployment
 ```
@@ -519,8 +494,7 @@ components/
 │   └── servicemonitor.yaml
 ├── security/
 │   ├── kustomization.yaml
-│   ├── networkpolicy.yaml
-│   └── podsecuritypolicy.yaml
+│   └── networkpolicy.yaml
 ├── autoscaling/
 │   ├── kustomization.yaml
 │   └── hpa.yaml
@@ -529,8 +503,7 @@ components/
 │   └── debug-service.yaml
 └── istio/
     ├── kustomization.yaml
-    ├── virtualservice.yaml
-    └── destinationrule.yaml
+    └── virtualservice.yaml
 ```
 
 Each component is self-contained and independently testable.
