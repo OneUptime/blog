@@ -8,7 +8,7 @@ Description: Learn how to use enableServiceLinks in Kubernetes to control automa
 
 ---
 
-Kubernetes automatically injects environment variables for every service into every pod. For clusters with hundreds of services, this creates thousands of environment variables in each container. This slows down container startup, clutters the environment, and wastes memory. The enableServiceLinks field lets you disable this behavior.
+Kubernetes automatically injects environment variables for active services into pods in the same namespace, plus Kubernetes control plane services. For clusters with hundreds of services, this creates thousands of environment variables in each container. This slows down container startup, clutters the environment, and wastes memory. The enableServiceLinks field lets you disable most of this behavior.
 
 Understanding enableServiceLinks helps you optimize pod startup time and reduce environment variable pollution while maintaining service discovery where you need it.
 
@@ -42,7 +42,7 @@ Dependency on startup order. Environment variables are set when the pod starts. 
 
 ## Disabling Service Links
 
-Set enableServiceLinks to false to disable automatic injection:
+Set enableServiceLinks to false to disable automatic injection for regular service links:
 
 ```yaml
 apiVersion: v1
@@ -56,7 +56,7 @@ spec:
     image: app:latest
 ```
 
-This pod will not receive service environment variables.
+This pod will not receive environment variables for regular services in its namespace. Kubernetes API service variables such as `KUBERNETES_SERVICE_HOST` may still be present.
 
 For Deployments:
 
@@ -81,7 +81,7 @@ spec:
         image: web:v1.0.0
 ```
 
-All pods in this deployment skip service environment variable injection.
+All pods in this deployment skip regular service environment variable injection.
 
 ## Using DNS Instead of Environment Variables
 
@@ -130,7 +130,7 @@ kubectl run test-without-links --image=nginx --restart=Never --overrides='{"spec
 kubectl get pod test-without-links -o jsonpath='{.status.containerStatuses[0].state.running.startedAt}'
 ```
 
-In clusters with 100+ services, disabling service links can save several seconds per pod startup.
+In namespaces with many services, disabling service links can reduce pod startup overhead.
 
 ## Selective Service Discovery
 
@@ -375,15 +375,19 @@ for pod in pods.items:
 Alert on slow pod startups:
 
 ```yaml
-# PrometheusRule
-groups:
-- name: startup-alerts
-  rules:
-  - alert: SlowPodStartup
-    expr: |
-      (time() - kube_pod_start_time) - (time() - kube_pod_container_started_at) > 30
-    annotations:
-      summary: "Pod {{ $labels.pod }} took >30s to start containers"
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: startup-alerts
+spec:
+  groups:
+  - name: startup-alerts
+    rules:
+    - alert: SlowPodStartup
+      expr: |
+        kube_pod_container_state_started - on(namespace, pod) group_left kube_pod_start_time > 30
+      annotations:
+        summary: "Pod {{ $labels.pod }} took >30s to start containers"
 ```
 
 ## Best Practices
@@ -415,7 +419,7 @@ kubectl exec my-pod -- env | grep SERVICE
 # Reveals all services in namespace
 ```
 
-With enableServiceLinks: false, pods do not automatically expose this information.
+With enableServiceLinks: false, pods do not automatically expose ordinary namespace service information. Kubernetes API service variables may still be present.
 
 Still protect service names and endpoints:
 - Use NetworkPolicies to restrict access
@@ -424,7 +428,7 @@ Still protect service names and endpoints:
 
 ## Conclusion
 
-enableServiceLinks controls whether Kubernetes automatically injects service environment variables into pods. Disable it to improve pod startup time, reduce environment variable clutter, and simplify service discovery.
+enableServiceLinks controls whether Kubernetes automatically injects regular service link environment variables into pods. Disable it to improve pod startup time, reduce environment variable clutter, and simplify service discovery.
 
 Use DNS-based service discovery instead of environment variables. Migrate existing applications gradually with thorough testing. Monitor startup time improvements and validate functionality.
 
