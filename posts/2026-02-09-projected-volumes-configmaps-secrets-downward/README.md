@@ -12,17 +12,19 @@ Projected volumes allow you to combine multiple volume sources into a single dir
 
 ## Understanding Projected Volumes
 
-A projected volume combines these sources:
+A projected volume commonly combines these sources:
 
 1. **Secret** - Sensitive configuration data
 2. **ConfigMap** - Application configuration
 3. **DownwardAPI** - Pod/container metadata
 4. **ServiceAccountToken** - JWT tokens for authentication
 
+Newer Kubernetes releases also support additional projected sources such as ClusterTrustBundle and PodCertificate, but the examples below focus on ConfigMaps, Secrets, Downward API data, and service account tokens.
+
 Benefits of projected volumes:
 
 - **Single mount point** - Simpler container configuration
-- **Atomic updates** - All sources updated together
+- **Atomic updates** - Volume contents are refreshed atomically when updates are applied
 - **Custom permissions** - Fine-grained file mode control
 - **Reduced volume mounts** - Cleaner pod specifications
 
@@ -154,9 +156,6 @@ spec:
           - path: "namespace"
             fieldRef:
               fieldPath: metadata.namespace
-          - path: "pod-ip"
-            fieldRef:
-              fieldPath: status.podIP
           # Container resource info
           - path: "cpu-limit"
             resourceFieldRef:
@@ -290,7 +289,7 @@ kubectl exec app-with-sa-token -- cat /var/run/secrets/tokens/api-token
 
 # Decode the JWT to see claims
 kubectl exec app-with-sa-token -- cat /var/run/secrets/tokens/api-token | \
-  cut -d'.' -f2 | base64 -d | jq .
+  cut -d'.' -f2 | jq -Rr 'gsub("-"; "+") | gsub("_"; "/") | @base64d | fromjson'
 
 # Output shows custom audience:
 # {
@@ -436,7 +435,7 @@ spec:
           while true; do
             echo "Loading config from $CONFIG_PATH"
             # Your app should reload when config changes
-            inotifywait -e modify,create $CONFIG_PATH
+            inotifywait -e create,delete,move,attrib /etc/config
             echo "Config updated, reloading..."
           done
         volumeMounts:
@@ -461,7 +460,7 @@ kubectl patch configmap dynamic-config --patch '
   }
 }'
 
-# ConfigMap changes propagate to pods (may take up to 60 seconds)
+# ConfigMap changes propagate to pods after the kubelet sync period plus cache propagation delay
 # Watch the app reload
 kubectl logs -f deployment/feature-flag-app
 ```
