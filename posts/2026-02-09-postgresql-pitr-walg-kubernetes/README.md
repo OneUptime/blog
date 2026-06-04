@@ -26,8 +26,8 @@ WAL-G is a backup tool that handles both base backups and continuous WAL archivi
 ```bash
 # Download WAL-G binary
 
-wget https://github.com/wal-g/wal-g/releases/download/v2.0.1/wal-g-pg-ubuntu-20.04-amd64.tar.gz
-tar -xzf wal-g-pg-ubuntu-20.04-amd64.tar.gz
+wget https://github.com/wal-g/wal-g/releases/download/v3.0.8/wal-g-pg-20.04-amd64.tar.gz
+tar -xzf wal-g-pg-20.04-amd64.tar.gz
 ```
 
 For Kubernetes, create a custom PostgreSQL image with WAL-G:
@@ -38,14 +38,15 @@ FROM postgres:16
 # Install WAL-G
 RUN apt-get update && \
     apt-get install -y wget && \
-    wget https://github.com/wal-g/wal-g/releases/download/v2.0.1/wal-g-pg-ubuntu-20.04-amd64.tar.gz && \
-    tar -xzf wal-g-pg-ubuntu-20.04-amd64.tar.gz && \
-    mv wal-g-pg-ubuntu-20.04-amd64 /usr/local/bin/wal-g && \
+    wget https://github.com/wal-g/wal-g/releases/download/v3.0.8/wal-g-pg-20.04-amd64.tar.gz && \
+    tar -xzf wal-g-pg-20.04-amd64.tar.gz && \
+    mv wal-g-pg-20.04-amd64 /usr/local/bin/wal-g && \
     chmod +x /usr/local/bin/wal-g && \
-    rm wal-g-pg-ubuntu-20.04-amd64.tar.gz
+    rm wal-g-pg-20.04-amd64.tar.gz
 
 # Install AWS CLI for S3 access
-RUN apt-get install -y awscli
+RUN apt-get install -y awscli && \
+    rm -rf /var/lib/apt/lists/*
 ```
 
 Build and push the image:
@@ -93,6 +94,20 @@ data:
 Deploy PostgreSQL StatefulSet with WAL-G:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-walg
+  namespace: database
+spec:
+  clusterIP: None
+  selector:
+    app: postgres-walg
+  ports:
+  - port: 5432
+    targetPort: postgres
+    name: postgres
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -142,15 +157,9 @@ spec:
           mountPath: /var/lib/postgresql/data
         - name: config
           mountPath: /etc/postgresql
-        command:
-        - bash
+        args:
         - -c
-        - |
-          # Source WAL-G environment
-          source /etc/postgresql/walg-env.sh
-
-          # Start PostgreSQL
-          postgres -c config_file=/etc/postgresql/postgresql.conf
+        - config_file=/etc/postgresql/postgresql.conf
         resources:
           requests:
             memory: "1Gi"
@@ -221,25 +230,22 @@ spec:
               value: s3://postgres-backups/wal-archive
             - name: AWS_REGION
               value: us-east-1
+            - name: PGHOST
+              value: postgres-walg
+            - name: PGUSER
+              value: postgres
             command:
             - bash
             - -c
             - |
               echo "Starting base backup..."
-              wal-g backup-push /var/lib/postgresql/data/pgdata
+              wal-g backup-push
 
               echo "Backup completed. Listing backups:"
               wal-g backup-list
 
-              # Delete backups older than 30 days
-              wal-g delete retain 30 --confirm
-            volumeMounts:
-            - name: data
-              mountPath: /var/lib/postgresql/data
-          volumes:
-          - name: data
-            persistentVolumeClaim:
-              claimName: data-postgres-walg-0
+              # Keep the last 30 backups
+              wal-g delete retain FULL 30 --confirm
           restartPolicy: OnFailure
 ```
 
@@ -264,6 +270,20 @@ kubectl exec -it postgres-walg-0 -n database -- \
 To recover to a specific point in time:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-restored
+  namespace: database
+spec:
+  clusterIP: None
+  selector:
+    app: postgres-restored
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgres
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -314,15 +334,14 @@ spec:
           wal-g backup-fetch $PGDATA LATEST
 
           # Configure recovery
-          cat > $PGDATA/recovery.signal <<EOF
-          # recovery.signal
-EOF
+          touch $PGDATA/recovery.signal
 
           cat > $PGDATA/postgresql.auto.conf <<EOF
           restore_command = 'wal-g wal-fetch %f %p'
-          recovery_target_time = '2026-02-09 12:00:00'
+          recovery_target_time = '2026-02-09 12:00:00+00'
           recovery_target_action = 'promote'
-EOF
+          EOF
+          chown -R postgres:postgres /var/lib/postgresql/data
 
           echo "Restore configuration complete"
         volumeMounts:
@@ -353,6 +372,8 @@ EOF
               key: secret-access-key
         - name: WALG_S3_PREFIX
           value: s3://postgres-backups/wal-archive
+        - name: AWS_REGION
+          value: us-east-1
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
@@ -374,8 +395,6 @@ To recover to the most recent state:
 ```bash
 cat > postgresql.auto.conf <<EOF
 restore_command = 'wal-g wal-fetch %f %p'
-recovery_target = 'latest'
-recovery_target_action = 'promote'
 EOF
 ```
 
@@ -386,7 +405,7 @@ For precise recovery to a transaction:
 ```bash
 # Get transaction ID
 kubectl exec postgres-walg-0 -n database -- \
-  psql -U postgres -c "SELECT txid_current();"
+  psql -U postgres -c "SELECT pg_current_xact_id();"
 
 # Configure recovery
 cat > postgresql.auto.conf <<EOF
@@ -434,7 +453,7 @@ spec:
 
     - alert: PostgreSQLWALArchiveLag
       expr: |
-        pg_stat_archiver_age_seconds > 600
+        pg_stat_archiver_last_archive_age > 600
       for: 5m
       labels:
         severity: warning
@@ -480,17 +499,17 @@ echo "Update postgresql.auto.conf with this timestamp and deploy postgres-restor
 Configure retention policies:
 
 ```bash
-# Delete backups older than 30 days
+# Keep the last 30 backups
 kubectl exec postgres-walg-0 -n database -- \
-  bash -c 'source /etc/postgresql/walg-env.sh && wal-g delete retain 30 --confirm'
+  bash -c 'source /etc/postgresql/walg-env.sh && wal-g delete retain FULL 30 --confirm'
 
 # Keep only last 7 full backups
 kubectl exec postgres-walg-0 -n database -- \
   bash -c 'source /etc/postgresql/walg-env.sh && wal-g delete retain FULL 7 --confirm'
 
-# Delete everything except last 3 backups
+# Delete all backups and WAL archives
 kubectl exec postgres-walg-0 -n database -- \
-  bash -c 'source /etc/postgresql/walg-env.sh && wal-g delete everything RETAIN 3 --confirm'
+  bash -c 'source /etc/postgresql/walg-env.sh && wal-g delete everything --confirm'
 ```
 
 ## Best Practices
