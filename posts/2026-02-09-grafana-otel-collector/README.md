@@ -14,7 +14,7 @@ OpenTelemetry provides a single instrumentation standard for collecting metrics,
 
 The OpenTelemetry Collector is a standalone service that receives telemetry data from instrumented applications, processes it through pipelines, and exports it to one or more backends. It supports dozens of protocols and can fan out data to multiple destinations simultaneously.
 
-For Grafana users, the Collector exports metrics to Prometheus or Mimir, logs to Loki, and traces to Tempo, providing a complete observability pipeline.
+For Grafana users, the Collector can expose metrics for Prometheus scraping or export them to Mimir, send logs to Loki, and send traces to Tempo, providing a complete observability pipeline.
 
 ## Installing the OpenTelemetry Collector
 
@@ -35,6 +35,7 @@ services:
       - "4317:4317"   # OTLP gRPC
       - "4318:4318"   # OTLP HTTP
       - "9090:9090"   # Prometheus exporter
+      - "8888:8888"   # Collector metrics
       - "13133:13133" # Health check
 ```
 
@@ -65,25 +66,19 @@ processors:
 
   resource:
     attributes:
-      - key: environment
+      - key: deployment.environment.name
         value: production
         action: upsert
 
 exporters:
-  # Export metrics to Prometheus
+  # Expose metrics for Prometheus to scrape
   prometheus:
     endpoint: "0.0.0.0:9090"
     namespace: "otel"
 
-  # Export logs to Loki
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    labels:
-      resource:
-        service.name: "service_name"
-        service.namespace: "service_namespace"
-      attributes:
-        severity: "severity"
+  # Export logs to Loki using its native OTLP endpoint
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
   # Export traces to Tempo
   otlp/tempo:
@@ -106,7 +101,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 ```
 
 This configuration creates three separate pipelines for traces, metrics, and logs.
@@ -117,6 +112,7 @@ Add OpenTelemetry instrumentation to your applications to send data to the Colle
 
 ```python
 # Python application with OpenTelemetry
+from flask import Flask
 from opentelemetry import trace, metrics
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -126,24 +122,26 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 
+app = Flask(__name__)
+
 # Configure resource attributes
 resource = Resource.create({
     "service.name": "my-application",
     "service.version": "1.0.0",
-    "deployment.environment": "production"
+    "deployment.environment.name": "production"
 })
 
 # Setup tracing
 trace.set_tracer_provider(TracerProvider(resource=resource))
 tracer = trace.get_tracer(__name__)
-span_exporter = OTLPSpanExporter(endpoint="http://otel-collector:4317")
+span_exporter = OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True)
 trace.get_tracer_provider().add_span_processor(
     BatchSpanProcessor(span_exporter)
 )
 
 # Setup metrics
 metric_reader = PeriodicExportingMetricReader(
-    OTLPMetricExporter(endpoint="http://otel-collector:4317")
+    OTLPMetricExporter(endpoint="http://otel-collector:4317", insecure=True)
 )
 metrics.set_meter_provider(MeterProvider(
     resource=resource,
@@ -174,6 +172,12 @@ Use processors to enrich, filter, and transform telemetry data before export.
 
 ```yaml
 # otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 processors:
   # Add resource attributes
   resource:
@@ -187,6 +191,7 @@ processors:
 
   # Filter out health check spans
   filter:
+    error_mode: ignore
     traces:
       span:
         - 'attributes["http.route"] == "/health"'
@@ -210,6 +215,12 @@ processors:
     send_batch_size: 1024
     send_batch_max_size: 2048
 
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
 service:
   pipelines:
     traces:
@@ -226,6 +237,15 @@ Export data to multiple destinations for redundancy or different use cases.
 
 ```yaml
 # otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+processors:
+  batch:
+
 exporters:
   # Primary Tempo instance
   otlp/tempo-primary:
@@ -239,9 +259,9 @@ exporters:
     tls:
       insecure: true
 
-  # Also export to Jaeger for comparison
-  jaeger:
-    endpoint: jaeger:14250
+  # Also export to Jaeger through its OTLP gRPC endpoint
+  otlp/jaeger:
+    endpoint: jaeger:4317
     tls:
       insecure: true
 
@@ -250,7 +270,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/tempo-primary, otlp/tempo-backup, jaeger]
+      exporters: [otlp/tempo-primary, otlp/tempo-backup, otlp/jaeger]
 ```
 
 Data flows to all three backends simultaneously, providing redundancy and flexibility.
@@ -295,6 +315,9 @@ exporters:
   prometheus:
     endpoint: "0.0.0.0:9090"
 
+processors:
+  batch:
+
 service:
   pipelines:
     metrics:
@@ -336,32 +359,21 @@ processors:
         value: application
         action: insert
 
-  # Transform log structure for Loki
-  attributes:
-    actions:
-      - key: loki.attribute.labels
-        value: level,service
-        action: insert
+  batch:
 
 exporters:
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    labels:
-      resource:
-        service.name: "service_name"
-        service.namespace: "namespace"
-      attributes:
-        level: "level"
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
 service:
   pipelines:
     logs:
       receivers: [otlp, filelog]
-      processors: [resource, attributes, batch]
-      exporters: [loki]
+      processors: [resource, batch]
+      exporters: [otlphttp/loki]
 ```
 
-Logs from applications and files flow through the same pipeline to Loki.
+Logs from applications and files flow through the same pipeline to Loki. Loki 3.0 and later enables the structured metadata required for OTLP logs by default; older Loki versions need `allow_structured_metadata: true`.
 
 ## Monitoring Collector Health
 
@@ -369,14 +381,6 @@ The Collector exposes its own metrics for monitoring pipeline health.
 
 ```yaml
 # otel-collector-config.yaml
-service:
-  telemetry:
-    logs:
-      level: info
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8888
-
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
@@ -388,6 +392,19 @@ extensions:
     endpoint: 0.0.0.0:55679
 
 service:
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888
+                without_type_suffix: true
+                without_units: true
   extensions: [health_check, pprof, zpages]
 ```
 
@@ -404,7 +421,8 @@ rate(otelcol_exporter_sent_metric_points[5m])
 
 # Errors
 rate(otelcol_exporter_send_failed_spans[5m])
-rate(otelcol_processor_dropped_spans[5m])
+rate(otelcol_exporter_enqueue_failed_spans[5m])
+rate(otelcol_receiver_refused_spans[5m])
 ```
 
 These metrics reveal pipeline bottlenecks and errors.
@@ -432,7 +450,7 @@ spec:
       containers:
         - name: collector
           image: otel/opentelemetry-collector-contrib:latest
-          command: ["--config=/conf/otel-agent-config.yaml"]
+          args: ["--config=/conf/otel-agent-config.yaml"]
           volumeMounts:
             - name: config
               mountPath: /conf
@@ -471,7 +489,7 @@ spec:
       containers:
         - name: collector
           image: otel/opentelemetry-collector-contrib:latest
-          command: ["--config=/conf/otel-gateway-config.yaml"]
+          args: ["--config=/conf/otel-gateway-config.yaml"]
           ports:
             - containerPort: 4317
             - containerPort: 4318
