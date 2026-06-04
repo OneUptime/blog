@@ -40,7 +40,6 @@ The nuclear option is to tell Docker not to touch iptables at all. This gives yo
 Edit the Docker daemon configuration:
 
 ```json
-// /etc/docker/daemon.json - Disable Docker's iptables management
 {
   "iptables": false
 }
@@ -84,8 +83,8 @@ Allow access only from a specific IP range:
 
 ```bash
 # Allow only the office network (10.0.1.0/24) to reach port 5432
-sudo iptables -I DOCKER-USER -i eth0 -p tcp --dport 5432 -s 10.0.1.0/24 -j RETURN
-sudo iptables -I DOCKER-USER -i eth0 -p tcp --dport 5432 -j DROP
+sudo iptables -I DOCKER-USER 1 -i eth0 -p tcp --dport 5432 -j DROP
+sudo iptables -I DOCKER-USER 1 -i eth0 -p tcp --dport 5432 -s 10.0.1.0/24 -j RETURN
 ```
 
 The order matters here. The `RETURN` rule for the allowed subnet must come before the `DROP` rule. The `RETURN` target tells iptables to continue processing the packet through Docker's normal chains.
@@ -94,8 +93,8 @@ Allow access from a specific IP only:
 
 ```bash
 # Allow only the monitoring server to reach port 9090 (Prometheus)
-sudo iptables -I DOCKER-USER -i eth0 -p tcp --dport 9090 -s 10.0.1.50 -j RETURN
-sudo iptables -A DOCKER-USER -i eth0 -p tcp --dport 9090 -j DROP
+sudo iptables -I DOCKER-USER 1 -i eth0 -p tcp --dport 9090 -j DROP
+sudo iptables -I DOCKER-USER 1 -i eth0 -p tcp --dport 9090 -s 10.0.1.50 -j RETURN
 ```
 
 ## Binding to Localhost Instead of All Interfaces
@@ -142,8 +141,6 @@ Create an internal network that has no outbound internet access:
 
 ```yaml
 # docker-compose.yml - Internal network with no internet access
-version: "3.8"
-
 services:
   app:
     build: .
@@ -175,9 +172,9 @@ networks:
 
 In this setup, the database can only communicate with the app service through the backend network. It cannot reach the internet and is not accessible from outside the Docker host.
 
-## Per-Container Firewall Rules with nftables
+## Per-Container Firewall Rules
 
-For more granular control, use nftables rules targeting specific container IP addresses.
+For more granular control, use firewall rules targeting specific container IP addresses.
 
 First, find the container's IP:
 
@@ -190,17 +187,17 @@ Apply rules for that container:
 
 ```bash
 # Block a specific container from reaching external DNS servers
-sudo nft add rule ip filter DOCKER-USER ip saddr 172.17.0.5 tcp dport 53 drop
-sudo nft add rule ip filter DOCKER-USER ip saddr 172.17.0.5 udp dport 53 drop
+sudo iptables -I DOCKER-USER -s 172.17.0.5 -p tcp --dport 53 -j DROP
+sudo iptables -I DOCKER-USER -s 172.17.0.5 -p udp --dport 53 -j DROP
 ```
 
 Since container IPs can change, a better approach is to use the container's network subnet:
 
 ```bash
 # Allow only HTTP/HTTPS outbound from the application network
-sudo iptables -I DOCKER-USER -s 172.20.0.0/16 -p tcp --dport 80 -j RETURN
-sudo iptables -I DOCKER-USER -s 172.20.0.0/16 -p tcp --dport 443 -j RETURN
-sudo iptables -I DOCKER-USER -s 172.20.0.0/16 -p tcp -j DROP
+sudo iptables -I DOCKER-USER 1 -s 172.20.0.0/16 -p tcp -j DROP
+sudo iptables -I DOCKER-USER 1 -s 172.20.0.0/16 -p tcp --dport 443 -j RETURN
+sudo iptables -I DOCKER-USER 1 -s 172.20.0.0/16 -p tcp --dport 80 -j RETURN
 ```
 
 ## Making Firewall Rules Persistent
@@ -219,7 +216,7 @@ On RHEL/CentOS:
 
 ```bash
 # Save iptables rules for automatic restoration on boot
-sudo iptables-save > /etc/sysconfig/iptables
+sudo sh -c 'iptables-save > /etc/sysconfig/iptables'
 sudo systemctl enable iptables
 ```
 
@@ -311,9 +308,9 @@ Add logging rules before your DROP rules to troubleshoot blocked connections:
 
 ```bash
 # Log dropped packets before they are dropped (limited to 5 per minute)
-sudo iptables -I DOCKER-USER -i eth0 -p tcp --dport 5432 -j LOG \
+sudo iptables -I DOCKER-USER 1 -i eth0 -p tcp --dport 5432 -j DROP
+sudo iptables -I DOCKER-USER 1 -i eth0 -p tcp --dport 5432 -j LOG \
   --log-prefix "DOCKER-BLOCKED: " --log-level 4 -m limit --limit 5/min
-sudo iptables -A DOCKER-USER -i eth0 -p tcp --dport 5432 -j DROP
 ```
 
 View the logs:
