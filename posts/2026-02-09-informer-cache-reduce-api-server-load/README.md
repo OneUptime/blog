@@ -38,7 +38,7 @@ Informers provide a better approach:
 2. **Watch for changes**: Maintain a watch connection to receive updates
 3. **Local cache**: Store resources in memory
 4. **Event handlers**: Trigger callbacks when resources change
-5. **Automatic resync**: Periodically re-list to catch missed events
+5. **Optional resync**: Periodically re-deliver update notifications from the local cache
 
 This architecture dramatically reduces API server load while providing real-time updates.
 
@@ -90,7 +90,17 @@ func main() {
             fmt.Printf("Pod updated: %s/%s\n", pod.Namespace, pod.Name)
         },
         DeleteFunc: func(obj interface{}) {
-            pod := obj.(*corev1.Pod)
+            pod, ok := obj.(*corev1.Pod)
+            if !ok {
+                tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+                if !ok {
+                    return
+                }
+                pod, ok = tombstone.Obj.(*corev1.Pod)
+                if !ok {
+                    return
+                }
+            }
             fmt.Printf("Pod deleted: %s/%s\n", pod.Namespace, pod.Name)
         },
     })
@@ -144,7 +154,7 @@ func getPodFromCache(podInformer cache.SharedIndexInformer, namespace, name stri
 }
 ```
 
-These queries happen in microseconds with zero API server load.
+These queries are served from memory with zero API server load.
 
 ## Using Listers for Type-Safe Access
 
@@ -194,11 +204,11 @@ Filter cached resources without API calls:
 
 ```go
 import (
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/labels"
+    corev1listers "k8s.io/client-go/listers/core/v1"
 )
 
-func filterCachedPods(podLister v1.PodLister) {
+func filterCachedPods(podLister corev1listers.PodLister) {
     // Create label selector
     selector, err := labels.Parse("app=nginx,environment=production")
     if err != nil {
@@ -252,7 +262,7 @@ func namespacedInformer(clientset *kubernetes.Clientset) {
 
 ## Customizing Resync Period
 
-The resync period controls how often the informer re-lists all resources:
+The resync period controls how often the informer re-delivers update notifications for objects already in the local cache. It does not re-list resources from the API server:
 
 ```go
 func customResync(clientset *kubernetes.Clientset) {
@@ -263,9 +273,14 @@ func customResync(clientset *kubernetes.Clientset) {
 
     podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
         AddFunc: func(obj interface{}) {
-            // Called for initial list and resync
+            // Called for the initial list and new pods
             pod := obj.(*corev1.Pod)
             fmt.Printf("Pod: %s\n", pod.Name)
+        },
+        UpdateFunc: func(oldObj, newObj interface{}) {
+            // Called for watch updates and resync notifications
+            pod := newObj.(*corev1.Pod)
+            fmt.Printf("Pod updated or resynced: %s\n", pod.Name)
         },
     })
 
@@ -278,7 +293,7 @@ func customResync(clientset *kubernetes.Clientset) {
 }
 ```
 
-Longer resync periods reduce API server load but may miss events if watch breaks. Typical values: 30 seconds to 10 minutes.
+Longer resync periods reduce handler churn, not API server list/watch traffic. Watch reconnects and relists are handled separately by the informer machinery. Many controllers use long resync periods or `0` when they do not need periodic reconciliation callbacks.
 
 ## Multiple Resource Types
 
@@ -333,26 +348,32 @@ Typical controller pattern with informers:
 
 ```go
 import (
+    "fmt"
+
+    coreinformers "k8s.io/client-go/informers/core/v1"
+    corev1listers "k8s.io/client-go/listers/core/v1"
+    "k8s.io/client-go/kubernetes"
+    "k8s.io/client-go/tools/cache"
     "k8s.io/client-go/util/workqueue"
 )
 
 type Controller struct {
     clientset     *kubernetes.Clientset
-    podLister     v1.PodLister
+    podLister     corev1listers.PodLister
     podSynced     cache.InformerSynced
-    queue         workqueue.RateLimitingInterface
+    queue         workqueue.TypedRateLimitingInterface[string]
 }
 
-func NewController(clientset *kubernetes.Clientset, podInformer cache.SharedIndexInformer) *Controller {
+func NewController(clientset *kubernetes.Clientset, podInformer coreinformers.PodInformer) *Controller {
     controller := &Controller{
         clientset: clientset,
-        podLister: podInformer.Lister().(v1.PodLister),
-        podSynced: podInformer.HasSynced,
-        queue:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+        podLister: podInformer.Lister(),
+        podSynced: podInformer.Informer().HasSynced,
+        queue:     workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
     }
 
     // Add event handlers that queue pod keys
-    podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+    podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
         AddFunc: controller.enqueuePod,
         UpdateFunc: func(old, new interface{}) {
             controller.enqueuePod(new)
@@ -364,7 +385,7 @@ func NewController(clientset *kubernetes.Clientset, podInformer cache.SharedInde
 }
 
 func (c *Controller) enqueuePod(obj interface{}) {
-    key, err := cache.MetaNamespaceKeyFunc(obj)
+    key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
     if err != nil {
         return
     }
@@ -398,7 +419,7 @@ func (c *Controller) processNextItem() bool {
     }
     defer c.queue.Done(key)
 
-    err := c.syncHandler(key.(string))
+    err := c.syncHandler(key)
     if err != nil {
         c.queue.AddRateLimited(key)
         return true
@@ -437,11 +458,11 @@ This pattern uses the informer cache for all reads, dramatically reducing API se
 
 3. **Use listers for queries**: Listers provide type-safe, indexed access
 
-4. **Set appropriate resync periods**: Balance freshness with API server load
+4. **Set appropriate resync periods**: Balance periodic reconciliation needs with handler churn
 
 5. **Scope to namespaces when possible**: Reduce memory for namespace-specific controllers
 
-6. **Handle deleted objects**: Check for deletions before processing
+6. **Handle deleted objects**: Use deletion-aware key functions or check tombstones before processing
 
 7. **Use work queues**: Decouple event handling from processing
 
@@ -451,7 +472,7 @@ This pattern uses the informer cache for all reads, dramatically reducing API se
 
 **Querying before sync**: Always wait for `HasSynced` to return true
 
-**Not handling nil pointers**: Objects may be nil during deletion
+**Not handling delete tombstones**: Delete handlers may receive `cache.DeletedFinalStateUnknown`
 
 **Modifying cached objects**: Never modify objects from cache; clone them first
 
@@ -462,13 +483,13 @@ This pattern uses the informer cache for all reads, dramatically reducing API se
 ## Performance Comparison
 
 Without informers (repeated list calls):
-- 1000 pods, 10 queries/sec = 10,000 API calls/sec
+- 1000 pods, 10 queries/sec = 10 list API calls/sec and up to 10,000 pod objects/sec transferred or decoded
 - High API server CPU and network usage
 
 With informers:
-- 1000 pods, 1 initial list + watch = ~1 API call for initial sync
+- 1000 pods, 1 initial list + watch stream for ongoing updates
 - Subsequent queries from cache = 0 API calls
-- 99.99% reduction in API server load
+- Major reduction in API server load for read-heavy controllers
 
 ## Conclusion
 
