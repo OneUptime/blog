@@ -10,13 +10,13 @@ Description: Learn how to use ephemeral debug containers in Kubernetes for netwo
 
 When you need to diagnose network issues in Kubernetes pods, traditional approaches often require modifying pod definitions, adding debugging tools to container images, or restarting pods. Ephemeral debug containers solve this problem by allowing you to attach temporary containers to running pods for troubleshooting without any disruption.
 
-Ephemeral containers are a Kubernetes feature that lets you inject debugging tools into running pods on demand. They are perfect for network diagnostics because you can attach containers with full networking toolsets to production workloads without changing their configuration or restarting them.
+Ephemeral containers are a Kubernetes feature that lets you inject debugging tools into running pods on demand. They are perfect for network diagnostics because you can attach containers with full networking toolsets to production workloads without changing the workload template or restarting them.
 
 ## Understanding Ephemeral Containers
 
 Ephemeral containers are temporary containers that exist only for debugging purposes. Unlike regular containers in a pod, ephemeral containers cannot be removed or restarted once added. They share the pod's network namespace, allowing them to access the same network interfaces as the application containers.
 
-The key difference from regular containers is that ephemeral containers are defined in the pod's `ephemeralContainers` field, not in the pod spec. This means you can add them to running pods using the Kubernetes API without modifying the original pod definition.
+The key difference from regular containers is that ephemeral containers are recorded in the pod's `spec.ephemeralContainers` field, rather than in the normal `spec.containers` list or the workload's pod template. They are added through the Kubernetes API's `ephemeralcontainers` subresource, so you cannot add them with `kubectl edit`.
 
 ## Prerequisites for Using Ephemeral Containers
 
@@ -25,7 +25,7 @@ Before using ephemeral containers, verify that your cluster supports them. The f
 ```bash
 # Check your Kubernetes version
 
-kubectl version --short
+kubectl version
 
 # Verify the feature is enabled
 kubectl explain pod.spec.ephemeralContainers
@@ -43,8 +43,9 @@ kubectl debug -it pod/my-app-pod \
   --image=nicolaka/netshoot \
   --target=my-app-container
 
-# The --target flag shares the process namespace with the specified container
-# This gives you access to the same network namespace
+# Pods already share one network namespace, so the debug container sees
+# the same pod interfaces. The --target flag targets another container's
+# process namespace when the container runtime supports it.
 ```
 
 Once the ephemeral container starts, you get an interactive shell with access to comprehensive network diagnostic tools including ping, curl, dig, nslookup, traceroute, tcpdump, and more.
@@ -100,9 +101,11 @@ The `-v` flag with curl provides verbose output, showing connection details, SSL
 One powerful use case for ephemeral containers is packet capture. You can run tcpdump to analyze network traffic:
 
 ```bash
-# Attach ephemeral container with elevated privileges
+# Attach ephemeral container with network administration privileges
 kubectl debug -it pod/my-app-pod \
   --image=nicolaka/netshoot \
+  --container=net-debug \
+  --profile=netadmin \
   --target=my-app-container
 
 # Inside the container, capture traffic
@@ -119,7 +122,7 @@ You can copy the capture file to your local machine for analysis:
 
 ```bash
 # From another terminal
-kubectl cp my-app-pod:/tmp/capture.pcap ./capture.pcap
+kubectl cp my-app-pod:/tmp/capture.pcap ./capture.pcap -c net-debug
 
 # Analyze with Wireshark or tcpdump locally
 tcpdump -r capture.pcap
@@ -211,7 +214,7 @@ kubectl debug -it pod/distroless-pod \
 # Now you have a shell with access to the pod's network
 ```
 
-The `--target` flag ensures the ephemeral container shares the network namespace with the distroless container.
+The debug container already shares the pod's network namespace. The `--target` flag targets the distroless container's process namespace when the container runtime supports it, which is useful when you need to inspect that container's processes.
 
 ## Best Practices
 
@@ -219,16 +222,17 @@ When using ephemeral containers for network diagnostics, follow these practices:
 
 First, choose appropriate debug images. The nicolaka/netshoot image contains comprehensive networking tools, while busybox is lighter but has fewer tools. Select based on your needs.
 
-Second, always specify the `--target` flag when you need to share the process namespace with a specific container. This is crucial for accurate network diagnostics.
+Second, specify the `--target` flag when you need to inspect processes from a specific container. It is useful for correlating sockets and processes, but the pod network namespace is shared regardless.
 
 Third, remember that ephemeral containers cannot be removed once added. They remain until the pod is deleted. For long-running pods, this can accumulate multiple ephemeral containers if you debug repeatedly.
 
-Fourth, use appropriate resource limits for ephemeral containers to avoid impacting the pod's performance:
+Fourth, remember that ephemeral containers cannot specify resource requests or limits because pod resource allocations are immutable. Use focused commands and choose the least privileged debug profile that still gives you the access you need:
 
 ```bash
-kubectl debug pod/my-app-pod \
+kubectl debug -it pod/my-app-pod \
   --image=nicolaka/netshoot \
   --target=my-app \
+  --profile=general \
   -- /bin/bash
 ```
 
