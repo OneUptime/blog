@@ -46,7 +46,7 @@ TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=r
 
 # Fetch the manifest using the token
 curl -s -H "Authorization: Bearer $TOKEN" \
-  -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+  -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json" \
   https://registry-1.docker.io/v2/library/nginx/manifests/latest | python3 -m json.tool
 ```
 
@@ -93,7 +93,7 @@ The config blob referenced in the manifest holds the image metadata. You can fet
 
 ```bash
 # Fetch the image config blob using its digest
-# Replace the digest with the actual value from the manifest
+# Replace the digest with the actual config digest from a platform-specific manifest
 curl -s -H "Authorization: Bearer $TOKEN" \
   -H "Accept: application/vnd.docker.container.image.v1+json" \
   https://registry-1.docker.io/v2/library/nginx/blobs/sha256:abc123... | python3 -m json.tool
@@ -106,7 +106,7 @@ You can also inspect it locally:
 docker inspect nginx:latest --format '{{json .Config}}' | python3 -m json.tool
 ```
 
-The configuration includes environment variables, exposed ports, volumes, the entrypoint and CMD, working directory, labels, and the diff IDs for each layer.
+The configuration blob includes environment variables, exposed ports, volumes, the entrypoint and CMD, working directory, labels, and the root filesystem diff IDs for each layer. Docker's local inspect output exposes the runnable configuration under `.Config` and layer information separately under `.RootFS`.
 
 ## Multi-Architecture Manifest Lists
 
