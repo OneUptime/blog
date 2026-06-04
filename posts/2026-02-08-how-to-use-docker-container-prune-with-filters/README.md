@@ -8,7 +8,7 @@ Description: Learn how to selectively remove stopped Docker containers using doc
 
 ---
 
-Stopped containers accumulate silently. Every `docker run` that finishes, every crashed service, every completed one-off task leaves behind a stopped container. These containers consume disk space for their writable layers and clutter your `docker ps -a` output. The `docker container prune` command removes all stopped containers, but the real power comes from its filter options that let you selectively prune based on age, labels, and other criteria.
+Stopped containers accumulate silently. Every `docker run` that finishes, every crashed service, every completed one-off task leaves behind a stopped container. These containers consume disk space for their writable layers and clutter your `docker ps -a` output. The `docker container prune` command removes all stopped containers, but the real power comes from its filter options that let you selectively prune based on creation time and labels.
 
 This guide shows you how to use `docker container prune` with filters to keep your Docker environment clean without accidentally removing containers you still need.
 
@@ -40,21 +40,21 @@ Check what would be removed before running prune:
 
 ```bash
 # List all stopped containers to see what prune would remove
-docker ps -a --filter status=exited --filter status=created
+docker ps -a --filter status=exited --filter status=created --filter status=dead
 ```
 
 ## Filtering by Time with "until"
 
-The `until` filter removes only containers that were stopped before a certain time. This is the most useful filter for maintenance scripts because it preserves recently stopped containers that you might still want to inspect.
+The `until` filter removes only stopped containers that were created before a certain time. This is useful for maintenance scripts because it preserves recently created containers that you might still want to inspect.
 
-Remove containers stopped more than 24 hours ago:
+Remove stopped containers created more than 24 hours ago:
 
 ```bash
-# Prune containers that have been stopped for more than 24 hours
+# Prune stopped containers that were created more than 24 hours ago
 docker container prune -f --filter "until=24h"
 ```
 
-Remove containers stopped more than 7 days ago:
+Remove stopped containers created more than 7 days ago:
 
 ```bash
 # Prune containers older than 7 days
@@ -63,10 +63,10 @@ docker container prune -f --filter "until=168h"
 
 The time format uses Go duration strings: `h` for hours, `m` for minutes, `s` for seconds. You can combine them: `72h30m` means 72 hours and 30 minutes.
 
-Remove containers stopped before a specific date:
+Remove stopped containers created before a specific date:
 
 ```bash
-# Prune containers stopped before January 1, 2026
+# Prune stopped containers created before January 1, 2026
 docker container prune -f --filter "until=2026-01-01T00:00:00"
 ```
 
@@ -98,8 +98,8 @@ docker container prune -f --filter "label!=keep"
 This is a safety mechanism. Tag containers you want to preserve:
 
 ```bash
-# Start a container with the "keep" label so prune skips it
-docker run -d --name important-data --label keep alpine sleep infinity
+# Create a stopped container with the "keep" label so prune skips it
+docker run --name important-data --label keep alpine echo "keep"
 
 # Start temporary containers without the label
 docker run --name temp-job-1 alpine echo "done"
@@ -111,9 +111,9 @@ docker container prune -f --filter "label!=keep"
 
 ## Combining Multiple Filters
 
-You can use multiple `--filter` flags. When you specify multiple filters, Docker applies all of them (AND logic).
+You can use multiple `--filter` flags. Docker applies filters with different keys using AND logic; multiple filters with the same key use OR logic.
 
-Remove containers that are older than 48 hours AND have the staging label:
+Remove stopped containers that were created more than 48 hours ago AND have the staging label:
 
 ```bash
 # Prune old staging containers
@@ -122,7 +122,7 @@ docker container prune -f \
   --filter "label=environment=staging"
 ```
 
-Remove containers older than 7 days that do not have the "persist" label:
+Remove stopped containers created more than 7 days ago that do not have the "persist" label:
 
 ```bash
 # Prune old containers except those marked for persistence
@@ -143,7 +143,7 @@ echo "=== Docker Container Cleanup ==="
 echo ""
 
 # Show current state
-STOPPED=$(docker ps -a --filter status=exited -q | wc -l | tr -d ' ')
+STOPPED=$(docker ps -a --filter status=exited --filter status=created --filter status=dead -q | wc -l | tr -d ' ')
 echo "Stopped containers: $STOPPED"
 
 if [ "$STOPPED" -eq 0 ]; then
@@ -151,7 +151,7 @@ if [ "$STOPPED" -eq 0 ]; then
   exit 0
 fi
 
-# Step 1: Remove containers stopped more than 7 days ago
+# Step 1: Remove stopped containers created more than 7 days ago
 echo ""
 echo "Removing containers older than 7 days..."
 docker container prune -f --filter "until=168h"
@@ -162,7 +162,7 @@ echo "Removing temporary containers..."
 docker container prune -f --filter "label=temporary"
 
 # Step 3: Show remaining stopped containers
-REMAINING=$(docker ps -a --filter status=exited -q | wc -l | tr -d ' ')
+REMAINING=$(docker ps -a --filter status=exited --filter status=created --filter status=dead -q | wc -l | tr -d ' ')
 echo ""
 echo "Remaining stopped containers: $REMAINING"
 
@@ -187,7 +187,7 @@ For production servers, be more conservative:
 #!/bin/bash
 # production-cleanup.sh - Conservative cleanup for production
 
-# Only remove containers stopped more than 30 days ago
+# Only remove stopped containers created more than 30 days ago
 docker container prune -f --filter "until=720h"
 
 # Log the action
@@ -215,7 +215,7 @@ Then prune by label:
 # Prune only containers marked for immediate cleanup
 docker container prune -f --filter "label=prune=immediate"
 
-# Prune daily containers that are more than 24 hours old
+# Prune stopped daily containers that were created more than 24 hours ago
 docker container prune -f --filter "label=prune=daily" --filter "until=24h"
 ```
 
@@ -267,7 +267,7 @@ Local Volumes   8         4         3.5GB     1.2GB (34%)
 Build Cache     42        0         890MB     890MB
 ```
 
-The "Containers" line shows how much space stopped containers consume. After pruning:
+The "Containers" line shows total container usage and reclaimable space. After pruning:
 
 ```bash
 # Prune and check the difference
@@ -296,7 +296,7 @@ docker system prune -f
 docker system prune -f --volumes
 ```
 
-But `docker system prune` does not support the same fine-grained filters as `docker container prune`, which is why the container-specific command is preferred for targeted cleanup.
+Although `docker system prune` also supports filters, it applies them across multiple resource types. The container-specific command is preferred when you only want targeted container cleanup.
 
 ## Dry Run Approach
 
@@ -307,18 +307,21 @@ Docker prune does not have a built-in dry-run flag, but you can simulate it:
 docker ps -a \
   --filter status=exited \
   --filter status=created \
+  --filter status=dead \
   --format "table {{.Names}}\t{{.Status}}\t{{.Size}}" | head -20
 ```
 
-For time-based filtering, check container creation and stop times:
+For time-based filtering, check container creation times and status:
 
 ```bash
-# Show when each stopped container was last active
+# Show when each stopped container was created and its current status
 docker ps -a \
   --filter status=exited \
+  --filter status=created \
+  --filter status=dead \
   --format "{{.Names}}\t{{.Status}}\t{{.CreatedAt}}"
 ```
 
 ## Summary
 
-`docker container prune` with filters is the right way to manage stopped container cleanup. The `until` filter protects recently stopped containers that you might still need for debugging. Label filters give you category-based control over what gets pruned and what stays. Combine both in automated scripts to keep your Docker environment clean without manual intervention. Always check `docker system df` before and after pruning to understand the disk space impact. For production systems, use conservative time-based filters (7 or 30 days) and run cleanup on a cron schedule.
+`docker container prune` with filters is the right way to manage stopped container cleanup. The `until` filter protects recently created containers that you might still need for debugging. Label filters give you category-based control over what gets pruned and what stays. Combine both in automated scripts to keep your Docker environment clean without manual intervention. Always check `docker system df` before and after pruning to understand the disk space impact. For production systems, use conservative time-based filters (7 or 30 days) and run cleanup on a cron schedule.
