@@ -37,7 +37,7 @@ The most common setup uses SSH to connect to a remote Docker host.
 docker context create production \
   --docker "host=ssh://deploy@production-server.example.com"
 
-# Create a context with a specific SSH key
+# Create a context with a description
 docker context create staging \
   --docker "host=ssh://deploy@staging-server.example.com" \
   --description "Staging environment"
@@ -46,7 +46,7 @@ docker context create staging \
 This requires:
 - SSH access to the remote server
 - Docker installed on the remote server
-- Your user being in the `docker` group on the remote server (or using sudo)
+- Your user having permission to access the Docker socket on the remote server
 
 ```bash
 # Verify the connection works
@@ -113,10 +113,10 @@ docker ps  # Runs against production
 unset DOCKER_CONTEXT
 ```
 
-You can also use the classic `DOCKER_HOST` variable, which takes precedence over everything.
+You can also use the classic `DOCKER_HOST` variable for a direct host override. The `--context` flag and `DOCKER_CONTEXT` environment variable override `DOCKER_HOST`.
 
 ```bash
-# Direct host override (highest priority)
+# Direct host override
 DOCKER_HOST=ssh://deploy@prod-server docker ps
 ```
 
@@ -302,7 +302,7 @@ Note that SSH contexts do not include SSH keys. The importing machine still need
 docker context ls --format '{{.Name}}: {{.DockerEndpoint}}'
 ```
 
-**Limit remote user permissions.** The SSH user for Docker contexts should only have Docker group membership, not full sudo access.
+**Treat Docker socket access as root-equivalent.** The SSH user for Docker contexts should not have unrelated sudo access, and you should restrict who can use that account.
 
 ## Troubleshooting
 
