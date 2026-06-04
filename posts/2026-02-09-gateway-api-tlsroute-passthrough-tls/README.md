@@ -12,7 +12,7 @@ TLS passthrough allows encrypted traffic to flow through a gateway directly to b
 
 ## Understanding TLS Passthrough vs Termination
 
-TLS termination decrypts traffic at the gateway, inspects or modifies it, then re-encrypts before sending to backends. This requires the gateway to hold TLS certificates and private keys.
+TLS termination decrypts traffic at the gateway, inspects or modifies it, then forwards it to backends. Some deployments re-encrypt backend traffic, while others send plain HTTP or TCP to the backend. This requires the gateway to hold TLS certificates and private keys.
 
 TLS passthrough reads only the Server Name Indication (SNI) field from the TLS ClientHello message to determine routing, then forwards the encrypted stream unchanged to the backend. The backend service performs TLS termination.
 
@@ -69,7 +69,7 @@ Configure TLSRoute to route based on SNI hostnames:
 
 ```yaml
 # basic-tlsroute.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: api-tls-route
@@ -167,7 +167,8 @@ Create a self-signed certificate for testing:
 # Generate self-signed certificate
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout tls.key -out tls.crt \
-  -subj "/CN=api.example.com/O=Example Inc"
+  -subj "/CN=api.example.com/O=Example Inc" \
+  -addext "subjectAltName=DNS:api.example.com"
 
 # Create Kubernetes secret
 kubectl create secret tls api-tls-cert --cert=tls.crt --key=tls.key
@@ -196,7 +197,7 @@ Route different SNI hostnames to different backend services:
 
 ```yaml
 # multi-service-tlsroute.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: multi-service-tls
@@ -210,7 +211,7 @@ spec:
     - name: api-service
       port: 8443
 ---
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: admin-tls
@@ -224,7 +225,7 @@ spec:
     - name: admin-service
       port: 8443
 ---
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: metrics-tls
@@ -246,7 +247,7 @@ Each service gets routed based on the SNI hostname in the TLS ClientHello.
 Use wildcard patterns for subdomains:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: wildcard-tls
@@ -269,7 +270,7 @@ Route to services in different namespaces:
 
 ```yaml
 # tlsroute-cross-namespace.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: backend-tls
@@ -287,7 +288,7 @@ spec:
       port: 8443
 ---
 # Allow cross-namespace reference
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-default-to-backend
@@ -307,7 +308,7 @@ spec:
 Split TLS traffic between multiple backend versions:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: canary-tls
@@ -326,7 +327,7 @@ spec:
       weight: 10
 ```
 
-Note that with TLS passthrough, you cannot use header-based or cookie-based canary routing since the gateway doesn't decrypt traffic. Traffic splitting is purely random based on weights.
+Note that with TLS passthrough, you cannot use header-based or cookie-based canary routing since the gateway doesn't decrypt traffic. Traffic splitting is handled by the Gateway implementation according to the configured weights.
 
 ## Monitoring TLS Passthrough
 
@@ -438,7 +439,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 Cert-manager automatically renews certificates before expiration.
@@ -496,6 +497,6 @@ hey -z 30s -c 100 https://api.example.com
 hey -z 30s -c 100 https://terminated-api.example.com
 ```
 
-Passthrough typically shows 10-30% better latency and throughput.
+Passthrough can show lower latency and higher throughput, but the exact difference depends on the Gateway implementation, cipher suites, hardware, and backend behavior.
 
 TLSRoute with passthrough mode provides secure, performant routing for services that need end-to-end encryption. Use it when backends must control their own certificates, when Layer 7 inspection isn't required, or when you need the lowest possible latency. Combine passthrough and termination listeners on a single Gateway to handle different security requirements for different services.
