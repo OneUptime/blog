@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DaemonSet, Scheduler
 
-Description: Explore how to use custom schedulers with DaemonSets for advanced pod placement strategies beyond the default node-per-pod pattern.
+Description: Explore how to use custom schedulers with DaemonSets while keeping the DaemonSet node-per-eligible-node placement model.
 
 ---
 
-While DaemonSets traditionally place one pod per node using the default scheduler, custom schedulers enable advanced placement strategies. You might want to schedule DaemonSet pods based on custom logic, hardware topology, or business requirements that the default scheduler cannot handle. Custom schedulers give you fine-grained control over where and how DaemonSet pods run.
+While DaemonSets traditionally place one pod per eligible node using the default scheduler, custom schedulers can add custom scheduling checks for those DaemonSet pods. You might want DaemonSet pods to be evaluated by custom logic, hardware topology checks, or business requirements that the default scheduler cannot handle. Custom schedulers give you fine-grained control over how DaemonSet pods are bound, while node selectors, required affinity, and tolerations still define which nodes are eligible.
 
 ## Understanding custom schedulers with DaemonSets
 
-Kubernetes allows multiple schedulers to coexist in a cluster. When you specify a schedulerName in a pod spec, that scheduler takes responsibility for placing the pod. For DaemonSets, custom schedulers can implement logic like placing pods on specific CPU architectures, NUMA nodes, or based on custom resource availability.
+Kubernetes allows multiple schedulers to coexist in a cluster. When you specify a schedulerName in a pod spec, the scheduler with the matching name takes responsibility for scheduling the pod. For DaemonSets, custom schedulers can implement logic such as validating CPU architectures, topology requirements, or custom resource availability for each DaemonSet pod.
 
-The default DaemonSet behavior uses node affinity rather than the scheduler to ensure one pod per node. However, by combining a custom scheduler with appropriate node selectors and affinity rules, you can create sophisticated placement strategies.
+The DaemonSet controller creates one pod per eligible node and adds node affinity to each created pod so it targets that node. The default scheduler then usually binds the pod to that target host, and you can specify a different scheduler with `.spec.template.spec.schedulerName`. Because each DaemonSet pod is already constrained to its target node, scheduler scoring does not select among all cluster nodes the way it does for a Deployment or Job. Combine a custom scheduler with appropriate node selectors, required affinity rules, and tolerations to define the eligible nodes before the scheduler binds the pods.
 
 ## Basic DaemonSet with custom scheduler
 
@@ -53,7 +53,7 @@ The schedulerName field tells Kubernetes to use your custom scheduler instead of
 
 ## Custom scheduler implementation
 
-Here's a simple custom scheduler that prioritizes nodes with specific labels:
+Here's a simple kube-scheduler deployment with a custom scheduler profile:
 
 ```yaml
 apiVersion: apps/v1
@@ -74,10 +74,11 @@ spec:
       serviceAccountName: custom-scheduler
       containers:
       - name: scheduler
-        image: example/custom-scheduler:v1.0
+        image: registry.k8s.io/kube-scheduler:v1.35.0
         command:
-        - /usr/local/bin/custom-scheduler
+        - /usr/local/bin/kube-scheduler
         - --config=/etc/kubernetes/scheduler-config.yaml
+        - --leader-elect=false
         - --v=3
         volumeMounts:
         - name: config
@@ -126,11 +127,11 @@ subjects:
   namespace: kube-system
 ```
 
-This custom scheduler can apply different scoring algorithms to select optimal nodes.
+This scheduler profile can apply different built-in scoring plugins. For DaemonSet pods, those scoring plugins are useful only after the DaemonSet controller has selected an eligible target node for each pod.
 
 ## Topology-aware DaemonSet scheduling
 
-Use a custom scheduler to implement topology-aware placement:
+Use required node selection and a custom scheduler to enforce topology-aware placement:
 
 ```yaml
 apiVersion: apps/v1
@@ -160,14 +161,9 @@ spec:
           limits:
             cpu: "4"
             memory: 8Gi
-        env:
-        - name: NUMA_NODE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.annotations['numa.node']
 ```
 
-The custom scheduler analyzes NUMA topology and places pods optimally for memory locality.
+The custom scheduler can analyze NUMA topology and reject or bind each DaemonSet pod based on the target node's topology. If you need to pass NUMA placement details into the container, add an admission webhook or controller that annotates the pod and expose that annotation with the downward API.
 
 ## Hardware-specific DaemonSet scheduling
 
@@ -190,7 +186,7 @@ spec:
     spec:
       schedulerName: hardware-aware-scheduler
       nodeSelector:
-        cpu.feature.node.kubernetes.io/avx512: "true"
+        feature.node.kubernetes.io/cpu-cpuid.AVX512F: "true"
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -210,7 +206,7 @@ spec:
             memory: 32Gi
 ```
 
-This ensures the DaemonSet only runs on nodes with AVX-512 CPU instructions.
+This ensures the DaemonSet only creates pods for nodes labeled with AVX-512 CPU support.
 
 ## Cost-optimized DaemonSet scheduling
 
@@ -234,17 +230,16 @@ spec:
       schedulerName: cost-optimizer-scheduler
       priorityClassName: low-priority
       tolerations:
-      - key: node.kubernetes.io/instance-type
+      - key: workload.oneuptime.com/lifecycle
         operator: Equal
         value: spot
         effect: NoSchedule
       affinity:
         nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            preference:
-              matchExpressions:
-              - key: node.kubernetes.io/instance-pricing
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: workload.oneuptime.com/lifecycle
                 operator: In
                 values:
                 - spot
@@ -254,7 +249,7 @@ spec:
         image: example/batch-processor:v3.0
 ```
 
-The custom scheduler prioritizes cheaper spot instances while maintaining service availability.
+The required node affinity limits the DaemonSet to cheaper spot or preemptible nodes. A custom scheduler can still add extra checks, but preferred affinity alone would not reduce DaemonSet pods because the DaemonSet controller creates pods for all eligible nodes.
 
 ## Network-topology-aware scheduling
 
@@ -398,7 +393,7 @@ spec:
         image: example/service:v2.0
 ```
 
-The extender can call external APIs to make scheduling decisions based on real-time data.
+The extender can call external APIs to make scheduling decisions based on real-time data, but DaemonSet pods remain constrained to the target nodes selected by the DaemonSet controller.
 
 ## Monitoring custom scheduler performance
 
@@ -438,4 +433,4 @@ kubectl logs -n kube-system deployment/custom-scheduler --tail=100
 
 ## Conclusion
 
-Custom schedulers with DaemonSets unlock advanced placement strategies beyond simple one-pod-per-node deployment. Whether you need topology awareness, hardware-specific placement, cost optimization, or network-aware scheduling, custom schedulers provide the flexibility to implement complex logic. Combine custom schedulers with node selectors, affinity rules, and tolerations to create sophisticated DaemonSet deployment patterns that match your infrastructure requirements.
+Custom schedulers with DaemonSets let you add advanced scheduling logic while preserving the DaemonSet one-pod-per-eligible-node model. Whether you need topology awareness, hardware-specific placement, cost optimization, or network-aware checks, custom schedulers provide flexibility for complex binding logic. Combine custom schedulers with node selectors, required affinity rules, and tolerations to create DaemonSet deployment patterns that match your infrastructure requirements.
