@@ -14,7 +14,7 @@ With Okteto, developers can work in actual Kubernetes clusters without managing 
 
 ## Understanding Okteto Architecture
 
-Okteto works by replacing pods in a Kubernetes cluster with development containers that sync code from your local machine. When you activate a development environment, Okteto swaps the production container with a development container that has your development tools installed, syncs your local code to the container, forwards ports for access, and provides shell access for debugging.
+Okteto works by scaling the selected Kubernetes deployment to zero and creating a mirror deployment with a development container that syncs code from your local machine. When you activate a development environment, Okteto overrides the original container settings with a development container that has your development tools installed, syncs your local code to the container, forwards ports for access, and provides shell access for debugging.
 
 This creates a hybrid environment where you code locally but run in the cloud, getting the benefits of both local development speed and cloud infrastructure power.
 
@@ -25,7 +25,7 @@ Install the Okteto CLI:
 ```bash
 # macOS
 
-brew install okteto/cli/okteto
+brew install okteto
 
 # Linux
 curl https://get.okteto.com -sSfL | sh
@@ -38,7 +38,6 @@ okteto version
 
 # Login to Okteto Cloud (or self-hosted instance)
 okteto context use https://cloud.okteto.com
-okteto login
 ```
 
 Configure Okteto for your cluster:
@@ -69,12 +68,12 @@ namespace: development
 # Development container configuration
 dev:
   api:
-    # Container to replace
+    # Deployment to mirror
     selector:
       app: api-service
 
     # Development image with tools
-    image: okteto/node:18
+    image: node:22
 
     # Command to run in dev mode
     command: bash
@@ -85,12 +84,6 @@ dev:
     # Sync configuration
     sync:
       - .:/app
-      excludes:
-        - node_modules
-        - .git
-        - '*.log'
-        - dist/
-        - coverage/
 
     # Port forwarding
     forward:
@@ -131,7 +124,7 @@ dev:
   worker:
     selector:
       app: worker-service
-    image: okteto/node:18
+    image: node:22
     sync:
       - ./services/worker:/app
     forward:
@@ -159,13 +152,13 @@ Create a development-optimized Dockerfile:
 
 ```dockerfile
 # Dockerfile
-FROM node:18-alpine as base
+FROM node:22-alpine as base
 WORKDIR /app
 
 # Production dependencies
 FROM base as dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Development dependencies
 FROM base as dev-dependencies
@@ -207,10 +200,11 @@ okteto up
 # This will:
 # 1. Build development image
 # 2. Deploy manifests
-# 3. Replace pod with dev container
-# 4. Sync local files
-# 5. Forward ports
-# 6. Open shell
+# 3. Scale the original deployment to zero
+# 4. Create a mirror deployment with the dev container
+# 5. Sync local files
+# 6. Forward ports
+# 7. Open shell
 ```
 
 Inside the development container:
@@ -226,7 +220,7 @@ npm run dev
 npm test
 
 # Access other cluster services
-curl http://database-service:5432
+nc -vz database-service 5432
 curl http://auth-service:8080
 
 # Exit development mode
@@ -254,7 +248,7 @@ dev:
   api:
     selector:
       app: api
-    image: okteto/node:18
+    image: node:22
     sync:
       - ./services/api:/app
     forward:
@@ -264,7 +258,7 @@ dev:
   frontend:
     selector:
       app: frontend
-    image: okteto/node:18
+    image: node:22
     sync:
       - ./services/frontend:/app
     forward:
@@ -298,14 +292,14 @@ deploy:
 Develop multiple services:
 
 ```bash
-# Start all services
+# Start development mode and choose a service if prompted
 okteto up
 
 # Start specific service
 okteto up api
 
-# Start multiple specific services
-okteto up api worker
+# Start another service in a separate terminal
+okteto up worker
 ```
 
 ## Configuring CI/CD Integration
@@ -324,7 +318,7 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install Okteto CLI
         run: |
@@ -332,8 +326,7 @@ jobs:
 
       - name: Authenticate with Okteto
         run: |
-          okteto context use ${{ secrets.OKTETO_URL }}
-          echo ${{ secrets.OKTETO_TOKEN }} | okteto login --token
+          okteto context use ${{ secrets.OKTETO_URL }} --token ${{ secrets.OKTETO_TOKEN }}
 
       - name: Deploy Preview
         run: |
@@ -342,27 +335,32 @@ jobs:
       - name: Get Preview URL
         id: preview
         run: |
-          URL=$(okteto preview list | grep pr-${{ github.event.pull_request.number }} | awk '{print $2}')
-          echo "url=$URL" >> $GITHUB_OUTPUT
+          ENDPOINTS=$(okteto preview endpoints pr-${{ github.event.pull_request.number }} -o md)
+          {
+            echo "body<<EOF"
+            echo "Preview environment deployed:"
+            echo "$ENDPOINTS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Comment on PR
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           script: |
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '🚀 Preview environment deployed: ${{ steps.preview.outputs.url }}'
+              body: `${{ steps.preview.outputs.body }}`
             })
 ```
 
-## Creating Development Stacks
+## Creating Docker Compose Development Environments
 
-Define reusable development stacks:
+Define a reusable Docker Compose development environment:
 
 ```yaml
-# okteto-stack.yml
+# docker-compose.yml
 name: development-stack
 
 services:
@@ -402,20 +400,20 @@ volumes:
   postgres-data:
 ```
 
-Deploy the stack:
+Deploy the environment:
 
 ```bash
-# Deploy stack
-okteto stack deploy -f okteto-stack.yml
+# Deploy the Compose environment
+okteto deploy
 
-# List running stacks
-okteto stack list
+# List public endpoints
+okteto endpoints
 
-# View stack logs
-okteto stack logs
+# View service logs
+okteto logs api
 
-# Destroy stack
-okteto stack destroy
+# Destroy the environment
+okteto destroy
 ```
 
 ## Implementing Secrets Management
@@ -430,32 +428,25 @@ dev:
   api:
     selector:
       app: api
-    image: okteto/node:18
+    image: node:22
 
-    # Secrets from Kubernetes
+    # Local secret files to sync into the development container
     secrets:
-      - name: database-credentials
-        file: /app/.env.db
-
-      - name: api-keys
-        file: /app/.env.keys
-
-    # External secrets
-    externalSecrets:
-      - name: aws-credentials
-        backend: aws-secrets-manager
-        data:
-          - key: /prod/database/password
-            name: DB_PASSWORD
+      - .env.db:/app/.env.db:600
+      - .env.keys:/app/.env.keys:600
 
     environment:
       DATABASE_PASSWORD: ${DB_PASSWORD}
 ```
 
-Create secrets:
+Prepare secrets:
 
 ```bash
-# Create secret from file
+# Create local secret files referenced by dev.secrets
+printf "DATABASE_URL=postgres://postgres:dev@database:5432/app\n" > .env.db
+printf "API_KEY=your-key\nSECRET_KEY=your-secret\n" > .env.keys
+
+# Create a Kubernetes secret for deployed workloads
 kubectl create secret generic database-credentials \
   --from-file=.env.db
 
@@ -464,9 +455,8 @@ kubectl create secret generic api-keys \
   --from-literal=API_KEY=your-key \
   --from-literal=SECRET_KEY=your-secret
 
-# Use Okteto to manage secrets
-okteto secret create AWS_ACCESS_KEY_ID=xxx
-okteto secret create AWS_SECRET_ACCESS_KEY=yyy
+# Pass environment variables from your shell or Okteto variables
+export DB_PASSWORD=dev-password
 ```
 
 ## Configuring Custom Domains
@@ -478,20 +468,31 @@ Set up custom domains for preview environments:
 name: api-service
 
 deploy:
-  - kubectl apply -f k8s/
+  - envsubst < k8s/ingress.yaml | kubectl apply -f -
+```
 
-ingress:
-  enabled: true
+Create the Ingress manifest:
+
+```yaml
+# k8s/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-service
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
   rules:
     - host: ${OKTETO_NAMESPACE}.${OKTETO_DOMAIN}
       http:
         paths:
           - path: /
+            pathType: Prefix
             backend:
-              serviceName: api-service
-              servicePort: 80
+              service:
+                name: api-service
+                port:
+                  number: 80
   tls:
     - hosts:
         - ${OKTETO_NAMESPACE}.${OKTETO_DOMAIN}
@@ -518,17 +519,9 @@ dev:
       # Sync settings
       rescanInterval: 300
 
-      # Exclude patterns
-      - .:/app
-      excludes:
-        - node_modules/
-        - .git/
-        - '*.log'
-        - coverage/
-        - dist/
-        - build/
-        - .next/
-        - .cache/
+      # Sync folders
+      folders:
+        - .:/app
 
     # Use persistent volumes for dependencies
     volumes:
@@ -541,13 +534,13 @@ Monitor sync status:
 
 ```bash
 # Watch file sync
-okteto up --verbose
+okteto status --watch
 
 # Check sync status
 okteto status
 
 # Force resync
-okteto restart
+okteto up --reset
 ```
 
 Okteto transforms Kubernetes development by providing instant access to cloud-based development environments that mirror production. By eliminating local infrastructure requirements while maintaining the speed and convenience of local development through intelligent file syncing and port forwarding, Okteto enables teams to develop efficiently regardless of their local machine capabilities or network conditions.
