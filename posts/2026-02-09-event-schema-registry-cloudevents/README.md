@@ -29,7 +29,7 @@ metadata:
   name: schema-registry
   namespace: default
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: schema-registry
@@ -111,8 +111,9 @@ Register schemas:
 # register_schemas.py
 import requests
 import json
+import os
 
-SCHEMA_REGISTRY_URL = "http://schema-registry:8081"
+SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
 
 def register_schema(subject, schema_json):
     """Register schema with the registry"""
@@ -157,10 +158,11 @@ import requests
 import jsonschema
 from jsonschema import validate
 import json
+import os
 
 app = Flask(__name__)
 
-SCHEMA_REGISTRY_URL = "http://schema-registry:8081"
+SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
 schema_cache = {}
 
 def get_schema(event_type):
@@ -181,14 +183,24 @@ def get_schema(event_type):
     schema_cache[event_type] = schema
     return schema
 
+def extract_event_data():
+    """Extract event type and data from binary or structured CloudEvents"""
+
+    content_type = request.headers.get('Content-Type', '').split(';')[0].lower()
+
+    if content_type == 'application/cloudevents+json':
+        cloud_event = request.get_json()
+        return cloud_event.get('type'), cloud_event.get('data')
+
+    return request.headers.get('Ce-Type'), request.get_json()
+
 @app.route('/validate', methods=['POST'])
 def validate_event():
     """Validate CloudEvent against schema"""
 
     try:
         # Extract CloudEvent
-        event_type = request.headers.get('Ce-Type')
-        event_data = request.get_json()
+        event_type, event_data = extract_event_data()
 
         if not event_type:
             return jsonify({'error': 'Missing event type'}), 400
@@ -275,8 +287,9 @@ Configure compatibility modes:
 ```python
 # configure_compatibility.py
 import requests
+import os
 
-SCHEMA_REGISTRY_URL = "http://schema-registry:8081"
+SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
 
 def set_compatibility(subject, compatibility_level):
     """
