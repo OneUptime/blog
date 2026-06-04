@@ -64,10 +64,13 @@ spec:
 
       containers:
       - name: keeper
-        image: clickhouse/clickhouse-server:23.12
+        image: clickhouse/clickhouse-server:26.3
         command:
-        - clickhouse-keeper
-        - --config-file=/etc/clickhouse-keeper/keeper.xml
+        - sh
+        - -c
+        - |
+          export KEEPER_SERVER_ID=$((${HOSTNAME##*-} + 1))
+          exec clickhouse-keeper --config /etc/clickhouse-keeper/keeper.xml
 
         ports:
         - containerPort: 9181
@@ -193,38 +196,16 @@ data:
     </clickhouse>
 ```
 
-Update the StatefulSet to set server ID:
+The StatefulSet command above derives the Keeper server ID from the pod ordinal. For example, `clickhouse-keeper-0` starts with `KEEPER_SERVER_ID=1`, matching the first `<server>` entry in the Raft configuration.
 
 ```yaml
-# Add to keeper container env
-env:
-- name: KEEPER_SERVER_ID
-  valueFrom:
-    fieldRef:
-      fieldPath: metadata.name
-  value: |
-    {{ if eq .Values.name "clickhouse-keeper-0" }}1{{ end }}
-    {{ if eq .Values.name "clickhouse-keeper-1" }}2{{ end }}
-    {{ if eq .Values.name "clickhouse-keeper-2" }}3{{ end }}
-```
-
-A better approach using init container:
-
-```yaml
-initContainers:
-- name: set-server-id
-  image: busybox
-  command:
-  - sh
-  - -c
-  - |
-    # Extract ordinal from pod name
-    ORDINAL=${HOSTNAME##*-}
-    SERVER_ID=$((ORDINAL + 1))
-    echo $SERVER_ID > /tmp/server-id
-  volumeMounts:
-  - name: tmp
-    mountPath: /tmp
+# Keeper container command
+command:
+- sh
+- -c
+- |
+  export KEEPER_SERVER_ID=$((${HOSTNAME##*-} + 1))
+  exec clickhouse-keeper --config /etc/clickhouse-keeper/keeper.xml
 ```
 
 Deploy Keeper:
@@ -277,7 +258,7 @@ spec:
     spec:
       containers:
       - name: clickhouse
-        image: clickhouse/clickhouse-server:23.12
+        image: clickhouse/clickhouse-server:26.3
         ports:
         - containerPort: 9000
           name: native
@@ -285,6 +266,16 @@ spec:
           name: http
         - containerPort: 9009
           name: interserver
+
+        env:
+        - name: SHARD_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        - name: REPLICA_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
 
         volumeMounts:
         - name: config
@@ -404,11 +395,13 @@ kubectl apply -f clickhouse-cluster.yaml
 
 Connect to ClickHouse and create a replicated table:
 
-```sql
--- Connect to any ClickHouse node
+```bash
 kubectl exec -it clickhouse-0 -n clickhouse -- clickhouse-client
+```
 
--- Create a replicated table
+Create a replicated table:
+
+```sql
 CREATE TABLE events_local ON CLUSTER cluster_3shards_1replica
 (
     event_time DateTime,
@@ -485,7 +478,7 @@ kubectl exec -n clickhouse clickhouse-keeper-0 -- \
 kubectl get pods -n clickhouse -l app=clickhouse-keeper -w
 ```
 
-The remaining nodes elect a new leader if the failed node was the leader. Operations continue without interruption.
+The remaining nodes elect a new leader if the failed node was the leader. Reads and writes can pause briefly during election, but the ensemble remains available after a new quorum leader is elected.
 
 ## Scaling Keeper Ensemble
 
@@ -512,17 +505,19 @@ Update the configuration to include new nodes:
 </server>
 ```
 
-Keeper supports dynamic reconfiguration, but it's safer to add nodes during low-traffic periods.
+Keeper supports dynamic reconfiguration when `enable_reconfiguration` is enabled, but scaling a StatefulSet still requires updating and rolling out the Keeper configuration on every Keeper pod. Add nodes during low-traffic periods and verify quorum after the rollout.
 
 ## Migrating from ZooKeeper to Keeper
 
 If you're running ClickHouse with ZooKeeper, migrate to Keeper:
 
-1. Deploy Keeper alongside existing ZooKeeper
-2. Update ClickHouse configuration to point to Keeper
-3. Rolling restart ClickHouse nodes
-4. Verify replication works correctly
-5. Decommission ZooKeeper
+1. Take a ZooKeeper snapshot
+2. Convert the ZooKeeper snapshot with `clickhouse-keeper-converter`
+3. Deploy Keeper with the converted snapshot data
+4. Update ClickHouse configuration to point to Keeper
+5. Rolling restart ClickHouse nodes
+6. Verify replication works correctly
+7. Decommission ZooKeeper
 
 Migration configuration:
 
@@ -531,7 +526,7 @@ Migration configuration:
     <zookeeper>
         <!-- New Keeper nodes -->
         <node>
-            <host>clickhouse-keeper-0.clickhouse-keeper</host>
+            <host>clickhouse-keeper-0.clickhouse-keeper.clickhouse.svc.cluster.local</host>
             <port>9181</port>
         </node>
         <!-- Add more Keeper nodes -->
@@ -555,9 +550,8 @@ Optimize Keeper performance:
     <election_timeout_lower_bound_ms>1000</election_timeout_lower_bound_ms>
     <election_timeout_upper_bound_ms>2000</election_timeout_upper_bound_ms>
 
-    <!-- Reduce for faster convergence in small clusters -->
+    <!-- Keep enough committed log entries before compaction -->
     <reserved_log_items>100000</reserved_log_items>
-    <snapshot_distance>75000</snapshot_distance>
 </coordination_settings>
 ```
 
