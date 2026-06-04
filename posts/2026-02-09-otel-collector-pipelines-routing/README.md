@@ -8,13 +8,13 @@ Description: Configure OpenTelemetry Collector pipelines for intelligent telemet
 
 ---
 
-OpenTelemetry Collector pipelines define the flow of telemetry data from receivers through processors to exporters. Advanced routing allows sending different data to different backends based on attributes, implementing multi-tenancy, and creating sophisticated observability architectures. This guide covers building complex pipeline configurations for real-world scenarios.
+OpenTelemetry Collector pipelines define the flow of telemetry data from receivers through processors to exporters. Connectors can link pipelines together and enable routing different data to different backends based on attributes, implementing multi-tenancy, and creating sophisticated observability architectures. This guide covers building complex pipeline configurations for real-world scenarios.
 
 ## Understanding Pipeline Architecture
 
-A pipeline consists of three components: receivers accept data, processors transform it, and exporters send it to backends. The collector can run multiple pipelines simultaneously, each handling different signal types (traces, metrics, logs) or routing data differently based on criteria.
+A pipeline consists of receivers that accept data, processors that transform it, and exporters that send it to backends. Connectors can act as both exporters and receivers to connect pipelines together. The collector can run multiple pipelines simultaneously, each handling different signal types (traces, metrics, logs) or routing data differently based on criteria.
 
-Multiple pipelines enable sophisticated routing patterns. You might send high-priority traces to one backend and sampled traces to another. Or route metrics from production services to one Prometheus instance and development metrics to another. The routing processor and multiple pipeline definitions make this possible.
+Multiple pipelines enable sophisticated routing patterns. You might send high-priority traces to one backend and sampled traces to another. Or route metrics from production services to one Prometheus instance and development metrics to another. The routing connector and multiple pipeline definitions make this possible.
 
 ## Configuring Basic Multi-Pipeline Setup
 
@@ -38,8 +38,8 @@ exporters:
     endpoint: prod-backend:4317
   otlp/dev:
     endpoint: dev-backend:4317
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
@@ -53,7 +53,7 @@ service:
     traces/dev:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/dev, logging]
+      exporters: [otlp/dev, debug]
 
     # Metrics pipeline (single path)
     metrics:
@@ -62,11 +62,11 @@ service:
       exporters: [otlp/prod]
 ```
 
-This creates separate pipelines but doesn't route dynamically. For conditional routing, use the routing processor.
+This creates separate pipelines but doesn't route dynamically. For conditional routing, use the routing connector.
 
 ## Implementing Attribute-Based Routing
 
-Route telemetry based on attributes using the routing processor:
+Route telemetry based on attributes using the routing connector:
 
 ```yaml
 receivers:
@@ -75,54 +75,71 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
+connectors:
+  routing:
+    default_pipelines:
+    - traces/default
+    table:
+    - context: resource
+      condition: attributes["service.namespace"] == "production"
+      pipelines:
+      - traces/production
+    - context: resource
+      condition: attributes["service.namespace"] == "staging"
+      pipelines:
+      - traces/staging
+    - context: resource
+      condition: attributes["service.namespace"] == "development"
+      pipelines:
+      - traces/development
+
 processors:
   batch:
     timeout: 10s
 
-  routing:
-    from_attribute: service.namespace
-    default_exporters:
-    - otlp/default
-    table:
-    - value: production
-      exporters:
-      - otlp/prod-jaeger
-      - otlp/prod-oneuptime
-    - value: staging
-      exporters:
-      - otlp/staging-jaeger
-    - value: development
-      exporters:
-      - logging
-
 exporters:
   otlp/prod-jaeger:
     endpoint: prod-jaeger:4317
-  otlp/prod-oneuptime:
-    endpoint: oneuptime.com:443
+  otlphttp/prod-oneuptime:
+    endpoint: https://oneuptime.com/otlp
     headers:
-      "x-oneuptime-api-key": "${env:PROD_API_KEY}"
+      "x-oneuptime-token": "${env:PROD_API_KEY}"
   otlp/staging-jaeger:
     endpoint: staging-jaeger:4317
   otlp/default:
     endpoint: default-backend:4317
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [routing, batch]
+      exporters: [routing]
+    traces/production:
+      receivers: [routing]
+      processors: [batch]
       exporters:
       - otlp/prod-jaeger
-      - otlp/prod-oneuptime
+      - otlphttp/prod-oneuptime
+    traces/staging:
+      receivers: [routing]
+      processors: [batch]
+      exporters:
       - otlp/staging-jaeger
+    traces/default:
+      receivers: [routing]
+      processors: [batch]
+      exporters:
       - otlp/default
-      - logging
+    traces/development:
+      receivers: [routing]
+      processors: [batch]
+      exporters:
+      - debug
 ```
 
-The routing processor examines `service.namespace` attribute and routes to appropriate exporters based on the value.
+The routing connector examines the `service.namespace` resource attribute and routes to appropriate pipelines based on the value.
 
 ## Implementing Multi-Tenant Routing
 
@@ -134,31 +151,41 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+        include_metadata: true
+
+connectors:
+  routing/tenant:
+    default_pipelines:
+    - traces/default
+    table:
+    - context: request
+      condition: request["tenant-id"] == "tenant-a"
+      pipelines:
+      - traces/tenant-a
+    - context: request
+      condition: request["tenant-id"] == "tenant-b"
+      pipelines:
+      - traces/tenant-b
+    - context: request
+      condition: request["tenant-id"] == "tenant-c"
+      pipelines:
+      - traces/tenant-c
 
 processors:
-  attributes/extract-tenant:
-    actions:
-    - key: tenant.id
-      from_context: metadata.tenant-id
-      action: insert
-
-  routing/tenant:
-    from_attribute: tenant.id
-    table:
-    - value: tenant-a
-      exporters:
-      - otlp/tenant-a
-    - value: tenant-b
-      exporters:
-      - otlp/tenant-b
-    - value: tenant-c
-      exporters:
-      - otlp/tenant-c
-
-  resource/add-tenant:
+  resource/tenant-a:
     attributes:
     - key: tenant.id
-      from_attribute: tenant.id
+      value: tenant-a
+      action: upsert
+  resource/tenant-b:
+    attributes:
+    - key: tenant.id
+      value: tenant-b
+      action: upsert
+  resource/tenant-c:
+    attributes:
+    - key: tenant.id
+      value: tenant-c
       action: upsert
 
   batch:
@@ -169,7 +196,7 @@ exporters:
     endpoint: tenant-a-backend:4317
     headers:
       "x-tenant-id": "tenant-a"
-  otlp/tenant-a:
+  otlp/tenant-b:
     endpoint: tenant-b-backend:4317
     headers:
       "x-tenant-id": "tenant-b"
@@ -177,20 +204,40 @@ exporters:
     endpoint: tenant-c-backend:4317
     headers:
       "x-tenant-id": "tenant-c"
+  otlp/default:
+    endpoint: default-backend:4317
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors:
-      - attributes/extract-tenant
+      exporters:
       - routing/tenant
-      - resource/add-tenant
+    traces/tenant-a:
+      receivers: [routing/tenant]
+      processors:
+      - resource/tenant-a
       - batch
       exporters:
       - otlp/tenant-a
+    traces/tenant-b:
+      receivers: [routing/tenant]
+      processors:
+      - resource/tenant-b
+      - batch
+      exporters:
       - otlp/tenant-b
+    traces/tenant-c:
+      receivers: [routing/tenant]
+      processors:
+      - resource/tenant-c
+      - batch
+      exporters:
       - otlp/tenant-c
+    traces/default:
+      receivers: [routing/tenant]
+      processors: [batch]
+      exporters: [otlp/default]
 ```
 
 ## Implementing Priority-Based Routing
@@ -204,42 +251,26 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
-processors:
-  # Classify traces by priority
-  attributes/classify:
-    actions:
-    - key: priority
-      value: high
-      action: insert
-      from_context: status.code
-      pattern: "ERROR"
-    - key: priority
-      value: high
-      action: insert
-      from_context: attributes["http.status_code"]
-      pattern: "^5[0-9]{2}$"
-    - key: priority
-      value: high
-      action: insert
-      from_context: attributes["duration_ms"]
-      pattern: "^[5-9][0-9]{3,}$"  # > 5000ms
-    - key: priority
-      value: normal
-      action: insert
-      from_context: priority
-      pattern: "^$"  # If not set
-
+connectors:
   routing/priority:
-    from_attribute: priority
+    error_mode: ignore
+    default_pipelines:
+    - traces/normal
     table:
-    - value: high
-      exporters:
-      - otlp/premium  # Low latency, high retention
-      - otlp/alerting
-    - value: normal
-      exporters:
-      - otlp/standard  # Standard latency, sampled
+    - context: span
+      condition: status.code == STATUS_CODE_ERROR
+      pipelines:
+      - traces/high-priority
+    - context: span
+      condition: attributes["http.status_code"] >= 500 and attributes["http.status_code"] < 600
+      pipelines:
+      - traces/high-priority
+    - context: span
+      condition: attributes["duration_ms"] >= 5000
+      pipelines:
+      - traces/high-priority
 
+processors:
   # Sample normal priority traces
   tail_sampling/normal:
     policies:
@@ -265,12 +296,15 @@ exporters:
 
 service:
   pipelines:
+    traces/in:
+      receivers: [otlp]
+      exporters:
+      - routing/priority
+
     # High priority path (no sampling)
     traces/high-priority:
-      receivers: [otlp]
+      receivers: [routing/priority]
       processors:
-      - attributes/classify
-      - routing/priority
       - batch
       exporters:
       - otlp/premium
@@ -278,10 +312,8 @@ service:
 
     # Normal priority path (sampled)
     traces/normal:
-      receivers: [otlp]
+      receivers: [routing/priority]
       processors:
-      - attributes/classify
-      - routing/priority
       - tail_sampling/normal
       - batch
       exporters:
@@ -325,10 +357,12 @@ processors:
     timeout: 30s
     send_batch_size: 5000
 
+connectors:
   # Aggregated metrics from traces
   spanmetrics:
-    metrics_exporter: prometheusremotewrite
-    latency_histogram_buckets: [2ms, 8ms, 50ms, 100ms, 200ms, 500ms, 1s, 5s, 10s]
+    histogram:
+      explicit:
+        buckets: [2ms, 8ms, 50ms, 100ms, 200ms, 500ms, 1s, 5s, 10s]
     dimensions:
     - name: http.method
       default: GET
@@ -349,10 +383,10 @@ exporters:
     endpoint: http://prometheus:9090/api/v1/write
 
   # Alerting backend
-  otlp/oneuptime:
-    endpoint: oneuptime.com:443
+  otlphttp/oneuptime:
+    endpoint: https://oneuptime.com/otlp
     headers:
-      "x-oneuptime-api-key": "${env:ONEUPTIME_API_KEY}"
+      "x-oneuptime-token": "${env:ONEUPTIME_API_KEY}"
 
 service:
   pipelines:
@@ -360,7 +394,7 @@ service:
     traces/realtime:
       receivers: [otlp]
       processors: [batch/full]
-      exporters: [otlp/jaeger, otlp/oneuptime]
+      exporters: [otlp/jaeger, otlphttp/oneuptime, spanmetrics]
 
     # Sampled traces for long-term storage
     traces/longterm:
@@ -369,9 +403,8 @@ service:
       exporters: [otlp/s3]
 
     # Generate metrics from traces
-    traces/metrics:
-      receivers: [otlp]
-      processors: [spanmetrics]
+    metrics/spanmetrics:
+      receivers: [spanmetrics]
       exporters: [prometheusremotewrite]
 ```
 
@@ -386,35 +419,35 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
+connectors:
+  routing/environment:
+    error_mode: ignore
+    default_pipelines:
+    - traces/default
+    table:
+    - context: resource
+      condition: attributes["deployment.environment"] == "prod"
+      pipelines:
+      - traces/prod-premium
+    - context: resource
+      condition: IsMatch(attributes["deployment.environment"], "^prod-.+")
+      pipelines:
+      - traces/prod-standard
+    - context: resource
+      condition: IsMatch(attributes["deployment.environment"], "^staging-.+")
+      pipelines:
+      - traces/staging
+    - context: resource
+      condition: IsMatch(attributes["deployment.environment"], "^dev-.+")
+      pipelines:
+      - traces/dev
+
 processors:
   resource/detect-env:
     attributes:
     - key: deployment.environment
       from_attribute: k8s.namespace.name
       action: insert
-
-  routing/environment:
-    from_attribute: deployment.environment
-    default_exporters:
-    - logging
-    table:
-    - value: prod
-      exporters:
-      - otlp/prod-premium
-    - value: prod-*
-      exporters:
-      - otlp/prod-standard
-    - value: staging-*
-      exporters:
-      - otlp/staging
-    - value: dev-*
-      exporters:
-      - otlp/dev
-
-  filter/prod-only:
-    traces:
-      span:
-      - 'resource.attributes["deployment.environment"] == "prod"'
 
   batch:
     timeout: 10s
@@ -428,23 +461,42 @@ exporters:
     endpoint: staging:4317
   otlp/dev:
     endpoint: dev:4317
-  logging:
-    loglevel: warn
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       processors:
       - resource/detect-env
+      exporters:
       - routing/environment
-      - batch
+    traces/prod-premium:
+      receivers: [routing/environment]
+      processors: [batch]
       exporters:
       - otlp/prod-premium
+    traces/prod-standard:
+      receivers: [routing/environment]
+      processors: [batch]
+      exporters:
       - otlp/prod-standard
+    traces/staging:
+      receivers: [routing/environment]
+      processors: [batch]
+      exporters:
       - otlp/staging
+    traces/dev:
+      receivers: [routing/environment]
+      processors: [batch]
+      exporters:
       - otlp/dev
-      - logging
+    traces/default:
+      receivers: [routing/environment]
+      processors: [batch]
+      exporters:
+      - debug
 ```
 
 ## Implementing Cost-Optimized Routing
@@ -458,21 +510,22 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
-processors:
-  # Classify by data volume
-  attributes/classify-volume:
-    actions:
-    - key: data.class
-      value: high-volume
-      action: insert
-      from_context: attributes["http.target"]
-      pattern: "^/(metrics|health|readiness)"
-    - key: data.class
-      value: business-critical
-      action: insert
-      from_context: attributes["service.name"]
-      pattern: "^(payment|auth|checkout)"
+connectors:
+  routing/cost:
+    error_mode: ignore
+    default_pipelines:
+    - traces/standard
+    table:
+    - context: span
+      condition: IsMatch(attributes["http.target"], "^/(metrics|health|readiness)")
+      pipelines:
+      - traces/high-volume
+    - context: resource
+      condition: IsMatch(attributes["service.name"], "^(payment|auth|checkout)")
+      pipelines:
+      - traces/business
 
+processors:
   # Aggressive sampling for high-volume data
   tail_sampling/high-volume:
     policies:
@@ -501,18 +554,6 @@ processors:
       probabilistic:
         sampling_percentage: 20
 
-  routing/cost:
-    from_attribute: data.class
-    table:
-    - value: high-volume
-      exporters:
-      - otlp/cheap-storage
-    - value: business-critical
-      exporters:
-      - otlp/premium-storage
-    default_exporters:
-    - otlp/standard-storage
-
   batch:
     timeout: 10s
 
@@ -529,29 +570,28 @@ exporters:
 
 service:
   pipelines:
-    traces/high-volume:
+    traces/in:
       receivers: [otlp]
-      processors:
-      - attributes/classify-volume
-      - tail_sampling/high-volume
+      exporters:
       - routing/cost
+
+    traces/high-volume:
+      receivers: [routing/cost]
+      processors:
+      - tail_sampling/high-volume
       - batch
       exporters: [otlp/cheap-storage]
 
     traces/business:
-      receivers: [otlp]
+      receivers: [routing/cost]
       processors:
-      - attributes/classify-volume
       - tail_sampling/business
-      - routing/cost
       - batch
       exporters: [otlp/premium-storage]
 
     traces/standard:
-      receivers: [otlp]
+      receivers: [routing/cost]
       processors:
-      - attributes/classify-volume
-      - routing/cost
       - batch
       exporters: [otlp/standard-storage]
 ```
@@ -568,7 +608,7 @@ curl http://localhost:8888/metrics | grep pipeline
 
 # Key metrics per pipeline:
 # otelcol_receiver_accepted_spans{pipeline="traces/prod"}
-# otelcol_processor_accepted_spans{pipeline="traces/prod",processor="routing"}
+# otelcol_processor_incoming_items{pipeline="traces/prod",processor="batch"}
 # otelcol_exporter_sent_spans{pipeline="traces/prod",exporter="otlp/prod"}
 ```
 
@@ -625,4 +665,4 @@ kubectl exec -n observability deployment/otel-collector -- \
   otelcol validate --config=/conf/config.yaml
 ```
 
-OpenTelemetry Collector pipelines enable sophisticated telemetry routing patterns. By combining multiple pipelines, routing processors, and conditional logic, you can build cost-effective observability architectures that send the right data to the right place based on priority, tenant, environment, or any other criteria relevant to your organization.
+OpenTelemetry Collector pipelines enable sophisticated telemetry routing patterns. By combining multiple pipelines, routing connectors, and conditional logic, you can build cost-effective observability architectures that send the right data to the right place based on priority, tenant, environment, or any other criteria relevant to your organization.
