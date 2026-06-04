@@ -31,7 +31,7 @@ StatefulSets are ideal for Kafka Streams applications because they provide:
 - Persistent volume claims bound to specific pods
 - Predictable DNS names for inter-pod communication
 
-Each Kafka Streams instance gets its own persistent volume for state stores, and the stable identity ensures that after a restart, the same pod gets the same data and storage.
+Each Kafka Streams instance gets its own persistent volume for state stores, and the stable identity ensures that after a restart, the same pod gets the same storage. Kafka Streams can still rebalance tasks across instances, so changelog topics remain the source of truth for restoring task state when assignments move.
 
 ## Creating the Kafka Streams Application
 
@@ -40,6 +40,7 @@ Start with a basic Kafka Streams application that uses stateful operations:
 ```java
 // StreamProcessor.java
 import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.*;
@@ -80,7 +81,7 @@ public class StreamProcessor {
 
         KTable<Windowed<String>, Long> windowedCounts = events
             .groupByKey()
-            .windowedBy(TimeWindows.of(Duration.ofMinutes(5)))
+            .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(5)))
             .count(Materialized.as("windowed-counts-store"));
 
         windowedCounts
@@ -184,10 +185,6 @@ spec:
     metadata:
       labels:
         app: kafka-streams
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "9999"
-        prometheus.io/path: "/metrics"
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -222,7 +219,7 @@ spec:
             command:
             - /bin/sh
             - -c
-            - pgrep -f kafka-streams-app
+            - pgrep -f '^java .*app.jar'
           initialDelaySeconds: 60
           periodSeconds: 30
           timeoutSeconds: 10
@@ -231,7 +228,7 @@ spec:
             command:
             - /bin/sh
             - -c
-            - test -f /var/lib/kafka-streams/.running
+            - pgrep -f '^java .*app.jar'
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
@@ -255,13 +252,13 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   iops: "3000"
   throughput: "125"
   encrypted: "true"
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 ```
@@ -349,11 +346,13 @@ Add JMX metrics for Kafka Streams:
 props.put(StreamsConfig.METRIC_REPORTER_CLASSES_CONFIG,
           "org.apache.kafka.common.metrics.JmxReporter");
 
-// Add custom tags for better filtering
+// Add a client ID for better filtering
 props.put(StreamsConfig.APPLICATION_ID_CONFIG, "stateful-processor");
 props.put(StreamsConfig.CLIENT_ID_CONFIG,
           System.getenv("POD_NAME") + "-streams-client");
 ```
+
+If Prometheus needs to scrape these JMX metrics directly, add the Prometheus JMX Exporter Java agent and annotate the exporter port rather than the raw JMX port.
 
 ## Implementing Standby Replicas
 
@@ -404,7 +403,7 @@ spec:
         spec:
           containers:
           - name: backup
-            image: amazon/aws-cli:latest
+            image: myregistry.io/aws-cli-kubectl:latest
             command:
             - /bin/sh
             - -c
@@ -479,12 +478,19 @@ props.put(StreamsConfig.ROCKSDB_CONFIG_SETTER_CLASS_CONFIG,
           CustomRocksDBConfig.class);
 
 // Custom RocksDB configuration class
+import org.apache.kafka.streams.state.RocksDBConfigSetter;
+import org.rocksdb.BlockBasedTableConfig;
+import org.rocksdb.CompressionType;
+import org.rocksdb.Options;
+import java.util.Map;
+
 public class CustomRocksDBConfig implements RocksDBConfigSetter {
     @Override
     public void setConfig(String storeName, Options options,
                           Map<String, Object> configs) {
         // Increase block cache size
-        BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
+        BlockBasedTableConfig tableConfig =
+            (BlockBasedTableConfig) options.tableFormatConfig();
         tableConfig.setBlockCacheSize(256 * 1024 * 1024L); // 256MB
         tableConfig.setBlockSize(16 * 1024L); // 16KB
         tableConfig.setCacheIndexAndFilterBlocks(true);
@@ -496,6 +502,11 @@ public class CustomRocksDBConfig implements RocksDBConfigSetter {
 
         // Compression settings
         options.setCompressionType(CompressionType.SNAPPY_COMPRESSION);
+    }
+
+    @Override
+    public void close(String storeName, Options options) {
+        // No custom RocksObject instances are allocated in setConfig().
     }
 }
 ```
