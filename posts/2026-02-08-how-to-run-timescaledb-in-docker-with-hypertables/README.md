@@ -8,7 +8,7 @@ Description: A practical guide to running TimescaleDB in Docker containers with 
 
 ---
 
-TimescaleDB extends PostgreSQL with automatic partitioning and time-series optimizations. Running it inside Docker lets you spin up a production-grade time-series database in minutes, without installing PostgreSQL extensions manually or fighting dependency issues on your host machine.
+TimescaleDB extends PostgreSQL with automatic partitioning and time-series optimizations. Running it inside Docker lets you spin up a time-series database in minutes, without installing PostgreSQL extensions manually or fighting dependency issues on your host machine.
 
 This guide walks through the full setup, from pulling the image to creating hypertables and running queries against time-series data.
 
@@ -20,7 +20,7 @@ For monitoring, IoT, financial data, or any workload where rows arrive with time
 
 ## Quick Start with Docker
 
-Pull the official TimescaleDB image, which ships as a PostgreSQL extension already enabled.
+Pull the official TimescaleDB image, which ships with the TimescaleDB PostgreSQL extension installed.
 
 ```bash
 # Pull the latest TimescaleDB image (based on PostgreSQL 16)
@@ -54,8 +54,6 @@ For a more reproducible setup, use Docker Compose. This configuration includes h
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   timescaledb:
     image: timescale/timescaledb:latest-pg16
@@ -67,12 +65,10 @@ services:
       POSTGRES_DB: tsdb
       POSTGRES_USER: tsadmin
       POSTGRES_PASSWORD: strongpassword123
-      # Preload the TimescaleDB extension on startup
+      # Disable TimescaleDB telemetry
       TIMESCALEDB_TELEMETRY: "off"
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
-      # Mount a custom init script to run on first boot
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tsadmin -d tsdb"]
       interval: 10s
@@ -125,13 +121,12 @@ CREATE TABLE sensor_data (
 );
 
 -- Convert to a hypertable, partitioned on the 'time' column
--- chunk_time_interval sets how wide each partition is (7 days here)
-SELECT create_hypertable('sensor_data', 'time',
-    chunk_time_interval => INTERVAL '7 days'
-);
+-- by_range sets the time column and chunk interval (7 days here)
+SELECT create_hypertable('sensor_data',
+    by_range('time', INTERVAL '7 days'));
 ```
 
-The `chunk_time_interval` parameter controls partition size. For high-ingest workloads, smaller chunks (1 day) work well. For lower-volume data, weekly or monthly chunks reduce overhead.
+The chunk interval controls partition size. For high-ingest workloads, smaller chunks (1 day) work well. For lower-volume data, weekly or monthly chunks reduce overhead.
 
 ## Inserting Time-Series Data
 
@@ -166,7 +161,7 @@ GROUP BY bucket, sensor_id
 ORDER BY bucket DESC;
 ```
 
-For continuous aggregates (materialized views that update automatically), define them like this.
+For continuous aggregates (materialized views that can be refreshed automatically with a policy), define them like this.
 
 ```sql
 -- Create a continuous aggregate for hourly averages
@@ -195,7 +190,7 @@ Time-series data often has a shelf life. TimescaleDB can automatically drop old 
 
 ```sql
 -- Automatically drop data older than 90 days
-SELECT add_retention_policy('sensor_data', INTERVAL '90 days');
+SELECT add_retention_policy('sensor_data', drop_after => INTERVAL '90 days');
 
 -- Verify the policy was created
 SELECT * FROM timescaledb_information.jobs
@@ -204,18 +199,18 @@ WHERE proc_name = 'policy_retention';
 
 ## Compression
 
-TimescaleDB supports native compression that can reduce storage by 90% or more.
+TimescaleDB supports native compression through Hypercore's columnstore, which can reduce storage by 90% or more.
 
 ```sql
--- Enable compression on the hypertable
+-- Enable columnstore on the hypertable
 ALTER TABLE sensor_data SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'sensor_id',
-    timescaledb.compress_orderby = 'time DESC'
+    timescaledb.enable_columnstore = true,
+    timescaledb.segmentby = 'sensor_id',
+    timescaledb.orderby = 'time DESC'
 );
 
--- Add a policy to compress chunks older than 7 days
-SELECT add_compression_policy('sensor_data', INTERVAL '7 days');
+-- Add a policy to move chunks older than 7 days to the columnstore
+CALL add_columnstore_policy('sensor_data', after => INTERVAL '7 days');
 ```
 
 ## Performance Tuning
@@ -224,6 +219,10 @@ Adjust PostgreSQL and TimescaleDB settings for better performance. Create a cust
 
 ```ini
 # custom-timescaledb.conf
+# Required when replacing the container's default PostgreSQL config
+listen_addresses = '*'
+shared_preload_libraries = 'timescaledb'
+
 # Memory settings - adjust based on available RAM
 shared_buffers = 512MB
 effective_cache_size = 1536MB
@@ -242,10 +241,11 @@ timescaledb.max_background_workers = 8
 Mount this config in your Docker Compose file.
 
 ```yaml
-# Add to the timescaledb service volumes
-volumes:
-  - timescaledb_data:/var/lib/postgresql/data
-  - ./custom-timescaledb.conf:/etc/postgresql/conf.d/custom.conf
+# Add to the timescaledb service
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./custom-timescaledb.conf:/etc/postgresql/postgresql.conf
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
 ```
 
 ## Monitoring TimescaleDB in Docker
@@ -311,4 +311,4 @@ conn.close()
 
 ## Summary
 
-TimescaleDB in Docker gives you a fully-featured time-series database with minimal setup. The key steps are: pull the image, create your tables, convert them to hypertables with `create_hypertable()`, and set up retention and compression policies. For production workloads, tune the PostgreSQL settings, enable persistent volumes, and monitor chunk sizes over time. The combination of Docker's portability and TimescaleDB's automatic partitioning makes this a practical choice for any time-series project.
+TimescaleDB in Docker gives you a fully-featured time-series database with minimal setup. The key steps are: pull the image, create your tables, convert them to hypertables with `create_hypertable()`, and set up retention and columnstore policies. For production workloads, tune the PostgreSQL settings, enable persistent volumes, add backups and high availability, and monitor chunk sizes over time. The combination of Docker's portability and TimescaleDB's automatic partitioning makes this a practical choice for any time-series project.
