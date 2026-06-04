@@ -32,7 +32,7 @@ spec:
         path: /healthz          # URL path to check
         port: 8080              # Port number or name
         scheme: HTTP            # HTTP or HTTPS
-        host: localhost         # Host header (optional)
+        # host: 127.0.0.1       # Connection host override (rarely needed)
         httpHeaders:            # Custom headers (optional)
         - name: X-Custom-Header
           value: health-check
@@ -42,7 +42,7 @@ spec:
       failureThreshold: 3
 ```
 
-All HTTP GET probes must specify a path and port at minimum.
+All HTTP GET probes must specify a port. The path defaults to `/` if omitted, but setting it explicitly is clearer.
 
 ## Adding Custom Headers for Authentication
 
@@ -94,6 +94,8 @@ spec:
             httpHeaders:
             - name: Authorization
               value: "Bearer secret-health-check-token"
+            - name: X-Health-Check
+              value: "true"
             - name: X-Probe-Type
               value: "readiness"
           periodSeconds: 5
@@ -139,7 +141,7 @@ func withHealthCheckAuth(next http.HandlerFunc) http.HandlerFunc {
             }
         }
 
-        // Allow health checks from Kubernetes probe IP ranges
+        // Allow health checks from trusted kubelet or node addresses
         // without authentication (optional)
         if isKubernetesProbe(r.RemoteAddr) {
             next(w, r)
@@ -164,6 +166,15 @@ func readyHandler(w http.ResponseWriter, r *http.Request) {
         w.WriteHeader(http.StatusServiceUnavailable)
         w.Write([]byte("Not ready"))
     }
+}
+
+func isKubernetesProbe(remoteAddr string) bool {
+    // Implement this for your cluster's trusted node addresses if needed.
+    return false
+}
+
+func checkDependencies() bool {
+    return true
 }
 ```
 
@@ -225,6 +236,21 @@ import time
 app = Flask(__name__)
 startup_complete = False
 startup_time = time.time()
+
+def is_deadlocked():
+    return False
+
+def is_out_of_memory():
+    return False
+
+def check_database():
+    return True
+
+def check_redis():
+    return True
+
+def check_rabbitmq():
+    return True
 
 @app.route('/startup')
 def startup_probe():
@@ -377,8 +403,9 @@ spec:
       httpGet:
         path: /healthz
         port: 8080
-        host: api.example.com  # Custom host header
         httpHeaders:
+        - name: Host
+          value: api.example.com
         - name: X-Forwarded-Proto
           value: https
         - name: X-Request-ID
@@ -386,7 +413,7 @@ spec:
       periodSeconds: 10
 ```
 
-The probe connects to localhost:8080 but sends `Host: api.example.com` header.
+The probe connects to the Pod IP on port 8080 and sends `Host: api.example.com` header.
 
 ## Probes with Query Parameters
 
@@ -412,6 +439,18 @@ Use query parameters to control probe behavior:
 // Node.js example with query parameter handling
 const express = require('express');
 const app = express();
+
+function isHealthy() {
+  return true;
+}
+
+function checkAllDependencies() {
+  return true;
+}
+
+function isBasicallyReady() {
+  return true;
+}
 
 app.get('/healthz', (req, res) => {
   const source = req.query.source;
@@ -441,7 +480,7 @@ app.get('/ready', (req, res) => {
     }
   } else {
     // Quick check only
-    if (isBasicallReady()) {
+    if (isBasicallyReady()) {
       res.status(200).send('Ready');
     } else {
       res.status(503).send('Not ready');
@@ -487,6 +526,11 @@ var healthCheckLimiter = &RateLimiter{
     minInterval: 100 * time.Millisecond,
 }
 
+func main() {
+    http.HandleFunc("/healthz", healthHandler)
+    http.ListenAndServe(":8080", nil)
+}
+
 func healthHandler(w http.ResponseWriter, r *http.Request) {
     // Rate limit health checks
     if !healthCheckLimiter.Allow() {
@@ -505,6 +549,10 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
         w.WriteHeader(http.StatusServiceUnavailable)
         w.Write([]byte("Unhealthy"))
     }
+}
+
+func performHealthCheck() bool {
+    return true
 }
 ```
 
@@ -540,16 +588,18 @@ Track probe latency and failures:
 ```promql
 # Probe latency
 histogram_quantile(0.99,
-  rate(probe_http_duration_seconds_bucket[5m])
+  rate(prober_probe_duration_seconds_bucket[5m])
 )
 
-# Probe failures by endpoint
-sum by (path) (
-  rate(probe_http_status_code{code!~"2.."}[5m])
+# Probe failures by pod and probe type
+sum by (namespace, pod, probe_type) (
+  rate(prober_probe_total{result!="successful"}[5m])
 )
 
 # Probe timeout rate
-rate(probe_duration_seconds{result="timeout"}[5m])
+sum by (namespace, pod, probe_type) (
+  rate(prober_probe_total{result="timeout"}[5m])
+)
 ```
 
 ## Common Issues and Solutions
