@@ -8,22 +8,19 @@ Description: Learn how to build and configure custom ArgoCD config management pl
 
 ---
 
-ArgoCD ships with native support for Helm, Kustomize, and plain YAML. But what happens when your organization uses a proprietary templating system, needs to fetch manifests from external APIs, or wants to integrate with legacy configuration management tools? That's where ArgoCD config management plugins come in.
+ArgoCD ships with native support for Helm, Kustomize, Jsonnet, and plain YAML. But what happens when your organization uses a proprietary templating system, needs to fetch manifests from external APIs, or wants to integrate with legacy configuration management tools? That's where ArgoCD config management plugins come in.
 
 This guide shows you how to build custom plugins that extend ArgoCD's manifest generation capabilities.
 
 ## Understanding ArgoCD Plugin Architecture
 
-ArgoCD plugins are executables that implement a simple contract. They receive application source information and output valid Kubernetes manifests to stdout. The plugin system supports two versions:
+ArgoCD plugins are executables that implement a simple contract. They receive application source information and output valid Kubernetes manifests to stdout. The legacy `argocd-cm` plugin configuration was deprecated in Argo CD 2.4 and removed in Argo CD 2.8.
 
-- v1 plugins: Legacy plugin system, being deprecated
-- v2 plugins: Current system using sidecar containers
-
-This guide focuses on v2 plugins, which run as sidecar containers alongside the argocd-repo-server.
+This guide focuses on the current sidecar-based plugin model, which runs plugin tooling in sidecar containers alongside the argocd-repo-server.
 
 ## Plugin Contract
 
-Your plugin must implement three commands:
+Your plugin configuration must define a `generate` command. It can also define an `init` command and a discovery rule. This example plugin script accepts three subcommands:
 
 ```bash
 # Discover if the plugin should handle this repository
@@ -37,7 +34,7 @@ plugin init
 plugin generate
 ```
 
-ArgoCD calls these commands in sequence, passing environment variables with application details.
+ArgoCD uses the discovery rule to decide whether the plugin supports a repository, then runs `init` immediately before `generate` during manifest generation. It passes environment variables with application details to those commands.
 
 ## Building a Basic Plugin
 
@@ -100,8 +97,8 @@ RUN apk add --no-cache bash curl && \
 COPY cue-plugin.sh /usr/local/bin/cue-plugin
 RUN chmod +x /usr/local/bin/cue-plugin
 
-# ArgoCD expects the plugin at this location
-ENTRYPOINT ["/usr/local/bin/cue-plugin"]
+# The sidecar deployment runs argocd-cmp-server as the entrypoint.
+# The plugin executable only needs to be available in the image.
 ```
 
 Build and push the image:
@@ -131,7 +128,8 @@ data:
     spec:
       version: v1.0
       discover:
-        command: ["/usr/local/bin/cue-plugin", "discover"]
+        find:
+          command: ["/usr/local/bin/cue-plugin", "discover"]
       init:
         command: ["/usr/local/bin/cue-plugin", "init"]
       generate:
@@ -153,6 +151,7 @@ spec:
       containers:
       - name: cue-plugin
         image: yourregistry.io/argocd-cue-plugin:v1.0.0
+        command: ["/var/run/argocd/argocd-cmp-server"]
         securityContext:
           runAsNonRoot: true
           runAsUser: 999
@@ -162,7 +161,10 @@ spec:
         - name: plugins
           mountPath: /home/argocd/cmp-server/plugins
         - name: cue-plugin-config
-          mountPath: /home/argocd/cmp-server/config
+          mountPath: /home/argocd/cmp-server/config/plugin.yaml
+          subPath: plugin.yaml
+        - name: cmp-tmp
+          mountPath: /tmp
       volumes:
       - name: cue-plugin-config
         configMap:
@@ -170,6 +172,8 @@ spec:
       - name: var-files
         emptyDir: {}
       - name: plugins
+        emptyDir: {}
+      - name: cmp-tmp
         emptyDir: {}
 ```
 
@@ -291,7 +295,8 @@ RUN pip install --no-cache-dir requests pyyaml
 COPY api-plugin.py /usr/local/bin/api-plugin
 RUN chmod +x /usr/local/bin/api-plugin
 
-ENTRYPOINT ["/usr/local/bin/api-plugin"]
+# The sidecar deployment runs argocd-cmp-server as the entrypoint.
+# The plugin executable only needs to be available in the image.
 ```
 
 ## Passing Parameters to Plugins
@@ -305,12 +310,13 @@ metadata:
   name: my-app
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/yourorg/configs
     targetRevision: main
     path: apps/production
     plugin:
-      name: cue
+      name: cue-v1.0
       env:
         - name: ENVIRONMENT
           value: production
@@ -318,13 +324,16 @@ spec:
           value: us-east-1
         - name: REPLICAS
           value: "3"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
 Access these in your plugin via `ARGOCD_ENV_ENVIRONMENT`, `ARGOCD_ENV_REGION`, etc.
 
 ## Handling Secrets Securely
 
-Never hardcode secrets in your plugin. Use Kubernetes secrets mounted as volumes:
+Never hardcode secrets in your plugin. Use Kubernetes secrets as environment variables or mounted volumes:
 
 ```yaml
 apiVersion: apps/v1
