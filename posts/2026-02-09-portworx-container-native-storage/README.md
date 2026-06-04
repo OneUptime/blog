@@ -25,12 +25,14 @@ Portworx's data services layer provides encryption, compression, and application
 Portworx Enterprise requires a valid license. You can obtain a trial license from the Portworx website.
 
 ```bash
-# Install px command-line tool
-
-curl -fsSL https://install.portworx.com/px-kubectl | bash
+# Install PX CLI after downloading it from Portworx Central
+tar -xzf <downloaded-filename>
+sudo cp px/bin/* /usr/local/bin/
+chmod +x /usr/local/bin/px*
 
 # Verify installation
-kubectl portworx version
+px version
+px component list
 ```
 
 Ensure nodes have raw, unmounted block devices available for Portworx. These devices should not contain filesystems or partitions.
@@ -55,10 +57,11 @@ Use the Portworx spec generator to create installation manifests.
 # Or use the CLI
 
 # Example spec generation for on-premises deployment
-curl -fsL -o px-spec.yaml "https://install.portworx.com/2.13?comp=pxoperator&kbver=$(kubectl version --short | awk -Fv '/Server Version: /{print $3}')&ns=portworx&c=px-cluster-1&stork=true&csi=true&mon=true&st=k8s&e=KVDB_DEVICE%3D%2Fdev/sdc"
+K8S_VERSION=$( (kubectl version --short 2>&1 || kubectl version) | awk -Fv '/Server Version: /{print $3}')
+curl -fsL -o px-spec.yaml "https://install.portworx.com/3.6.0?comp=pxoperator&kbver=${K8S_VERSION}&ns=portworx&c=px-cluster-1&stork=true&csi=true&mon=true&st=k8s&e=KVDB_DEVICE%3D%2Fdev%2Fsdc"
 
 # For cloud deployments with auto-disk provisioning on AWS
-curl -fsL -o px-spec.yaml "https://install.portworx.com/2.13?comp=pxoperator&kbver=1.28&ns=portworx&c=px-cluster-aws&stork=true&csi=true&mon=true&st=k8s&cloud=aws&aws=type%3Dgp3%2Csize%3D150"
+curl -fsL -o px-spec.yaml "https://install.portworx.com/3.6.0?comp=pxoperator&kbver=${K8S_VERSION}&ns=portworx&c=px-cluster-aws&stork=true&csi=true&mon=true&st=k8s&cloud=aws&aws=type%3Dgp3%2Csize%3D150"
 ```
 
 Key parameters:
@@ -80,7 +83,7 @@ metadata:
   name: portworx
 ---
 # Download and apply operator manifest
-# kubectl apply -f 'https://install.portworx.com/2.13?comp=pxoperator'
+# kubectl apply -f 'https://install.portworx.com/3.6.0?comp=pxoperator'
 ```
 
 Apply the generated spec.
@@ -110,7 +113,7 @@ metadata:
   name: px-cluster
   namespace: portworx
 spec:
-  image: portworx/oci-monitor:2.13.0
+  image: portworx/oci-monitor:3.6.0
   imagePullPolicy: Always
   kvdb:
     internal: true
@@ -122,10 +125,6 @@ spec:
     - /dev/sdb
     - /dev/sdc
     journalDevice: auto
-  cloudStorage:
-    maxStorageNodesPerZone: 3
-    deviceSpecs:
-    - type=gp3,size=150
   secretsProvider: k8s
   stork:
     enabled: true
@@ -139,9 +138,16 @@ spec:
     prometheus:
       enabled: true
       exportMetrics: true
-  env:
-  - name: ENABLE_ASG_STORAGE_PARTITIONING
-    value: "true"
+```
+
+For cloud deployments, do not combine `spec.storage` and `spec.cloudStorage` in the same `StorageCluster`. Use `spec.cloudStorage` with a provider and device specs instead.
+
+```yaml
+cloudStorage:
+  provider: aws
+  maxStorageNodesPerZone: 3
+  deviceSpecs:
+  - type=gp3,size=150
 ```
 
 Apply and monitor cluster deployment.
@@ -172,7 +178,7 @@ metadata:
 provisioner: pxd.portworx.com
 parameters:
   repl: "3"
-  io_priority: "high"
+  priority_io: "high"
   snap_interval: "60"
   io_profile: "db_remote"
   fs: "ext4"
@@ -186,7 +192,7 @@ metadata:
 provisioner: pxd.portworx.com
 parameters:
   repl: "2"
-  io_priority: "medium"
+  priority_io: "medium"
   fs: "ext4"
 allowVolumeExpansion: true
 volumeBindingMode: Immediate
@@ -199,7 +205,7 @@ provisioner: pxd.portworx.com
 parameters:
   repl: "3"
   secure: "true"
-  io_profile: "sequential"
+  io_profile: "auto"
 allowVolumeExpansion: true
 ```
 
@@ -212,7 +218,7 @@ kubectl get storageclass
 
 ## Configuring Volume Encryption
 
-Portworx supports cluster-wide and per-volume encryption using Kubernetes secrets.
+Portworx supports cluster-wide and per-volume encryption using Kubernetes secrets. The following example uses a per-volume secret referenced by PVC annotations.
 
 ```yaml
 # encryption-secret.yaml
@@ -224,7 +230,7 @@ metadata:
 type: Opaque
 data:
   # Base64 encoded passphrase
-  cluster-wide-secret: <base64-encoded-passphrase>
+  postgres-key: <base64-encoded-passphrase>
 ```
 
 Create encrypted PVC.
@@ -238,7 +244,7 @@ metadata:
   annotations:
     px/secret-name: px-vol-encryption
     px/secret-namespace: portworx
-    px/secret-key: cluster-wide-secret
+    px/secret-key: postgres-key
 spec:
   accessModes:
   - ReadWriteOnce
@@ -283,10 +289,12 @@ spec:
   volumeClaimTemplates:
   - metadata:
       name: data
+      labels:
+        app: postgres
       annotations:
         px/secret-name: px-vol-encryption
         px/secret-namespace: portworx
-        px/secret-key: cluster-wide-secret
+        px/secret-key: postgres-key
     spec:
       accessModes: [ "ReadWriteOnce" ]
       storageClassName: px-encrypted
@@ -375,7 +383,7 @@ spec:
   pollInterval: 60s
   conditions:
     expressions:
-    - key: "100 * (px_volume_usage_bytes / px_volume_capacity_bytes)"
+    - key: "100 * (px_volume_fs_usage_bytes / px_volume_capacity_bytes)"
       operator: Gt
       values:
       - "80"
@@ -400,40 +408,44 @@ kubectl logs -n portworx -l name=autopilot -f
 Configure S3 for cloud backups and disaster recovery.
 
 ```bash
-# Create cloud credential
-PX_POD=$(kubectl get pods -l name=portworx -n portworx -o jsonpath='{.items[0].metadata.name}')
-
-kubectl exec $PX_POD -n portworx -- /opt/pwx/bin/pxctl credentials create \
-  --provider s3 \
-  --s3-access-key YOUR_ACCESS_KEY \
-  --s3-secret-key YOUR_SECRET_KEY \
-  --s3-region us-east-1 \
-  --s3-endpoint s3.amazonaws.com \
-  backup-creds
-
-# Create scheduled backup
+# Create a backup location and scheduled backup
 cat <<EOF | kubectl apply -f -
+apiVersion: stork.libopenstorage.org/v1alpha1
+kind: BackupLocation
+metadata:
+  name: s3-backup-location
+location:
+  type: s3
+  path: my-backups/postgres
+  s3Config:
+    accessKeyID: YOUR_ACCESS_KEY
+    secretAccessKey: YOUR_SECRET_KEY
+    region: us-east-1
+    endpoint: s3.amazonaws.com
+---
 apiVersion: stork.libopenstorage.org/v1alpha1
 kind: SchedulePolicy
 metadata:
   name: daily-backup
-spec:
+policy:
   daily:
     time: "02:00AM"
     retain: 7
 ---
 apiVersion: stork.libopenstorage.org/v1alpha1
-kind: ApplicationBackup
+kind: ApplicationBackupSchedule
 metadata:
   name: postgres-daily-backup
 spec:
   schedulePolicyName: daily-backup
-  namespaces:
-  - default
-  selectors:
-    app: postgres
   reclaimPolicy: Delete
-  backupLocation: s3://my-backups/postgres
+  template:
+    spec:
+      backupLocation: s3-backup-location
+      namespaces:
+      - default
+      selectors:
+        app: postgres
 EOF
 ```
 
@@ -442,6 +454,7 @@ Restore from backup.
 ```bash
 # List available backups
 kubectl get applicationbackup
+kubectl get applicationbackupschedule postgres-daily-backup
 
 # Create restore
 cat <<EOF | kubectl apply -f -
@@ -481,9 +494,9 @@ spec:
 ```
 
 Key metrics to monitor:
-- `px_cluster_status_cluster_quorum`: Cluster quorum status
-- `px_volume_usage_bytes`: Volume usage
-- `px_volume_capacity_bytes`: Volume capacity
+- `px_cluster_status_quorum`: Cluster quorum status
+- `px_volume_fs_usage_bytes`: Filesystem usage
+- `px_volume_fs_capacity_bytes`: Filesystem capacity
 - `px_node_status_node_status`: Node health
 
 Portworx delivers enterprise storage capabilities purpose-built for containers with data services that extend beyond basic block storage. Features like encryption, application-consistent snapshots, automated capacity management, and cloud backup integration provide production-ready storage for demanding stateful workloads. The combination of container-native architecture and enterprise features makes Portworx suitable for running critical databases and applications at scale.
