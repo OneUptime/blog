@@ -160,18 +160,23 @@ These options apply during ArgoCD's kustomize build, overriding values in the ku
 Use ArgoCD Image Updater to automate image version updates:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
   name: webapp-staging
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: webapp=registry.example.com/webapp
-    argocd-image-updater.argoproj.io/webapp.update-strategy: latest
-    argocd-image-updater.argoproj.io/write-back-method: git
+  namespace: argocd
 spec:
-  source:
-    repoURL: https://github.com/example/config
-    path: overlays/staging
+  writeBackConfig:
+    method: git
+    gitConfig:
+      writeBackTarget: kustomization
+  applicationRefs:
+  - namePattern: webapp-staging
+    images:
+    - alias: webapp
+      imageName: registry.example.com/webapp
+      commonUpdateSettings:
+        updateStrategy: newest-build
 ```
 
 Image Updater monitors the registry and automatically updates the kustomization when new images are available. Changes commit back to Git, maintaining GitOps principles.
@@ -248,9 +253,13 @@ data:
       health.lua: |
         hs = {}
         if obj.status ~= nil then
-          if obj.status.updatedReplicas == obj.spec.replicas then
+          replicas = obj.spec.replicas or 1
+          if obj.status.observedGeneration ~= nil and
+             obj.status.observedGeneration >= obj.metadata.generation and
+             obj.status.updatedReplicas == replicas and
+             obj.status.availableReplicas == replicas then
             hs.status = "Healthy"
-            hs.message = "All replicas are updated"
+            hs.message = "All replicas are updated and available"
             return hs
           end
         end
@@ -276,8 +285,13 @@ on:
 jobs:
   deploy-preview:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ github.head_ref }}
 
     - name: Create preview overlay
       run: |
@@ -289,12 +303,20 @@ jobs:
         kind: Kustomization
         namespace: preview-pr-${PR_NUMBER}
         namePrefix: pr-${PR_NUMBER}-
-        bases:
+        resources:
         - ../../base
         images:
         - name: webapp
           newTag: pr-${PR_NUMBER}
         EOF
+
+    - name: Commit preview overlay
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add overlays/preview-pr-${{ github.event.pull_request.number }}
+        git diff --cached --quiet || git commit -m "Add preview overlay for PR ${{ github.event.pull_request.number }}"
+        git push origin HEAD:${{ github.head_ref }}
 
     - name: Create ArgoCD Application
       run: |
@@ -320,7 +342,7 @@ jobs:
         EOF
 
     - name: Comment preview URL
-      uses: actions/github-script@v6
+      uses: actions/github-script@v9
       with:
         script: |
           github.rest.issues.createComment({
@@ -345,6 +367,9 @@ metadata:
   name: webapp
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: webapp
   strategy:
     canary:
       steps:
@@ -354,6 +379,9 @@ spec:
       - pause: {duration: 10m}
       - setWeight: 100
   template:
+    metadata:
+      labels:
+        app: webapp
     spec:
       containers:
       - name: webapp
@@ -419,7 +447,7 @@ spec:
         summary: "ArgoCD application out of sync"
     - alert: ArgoAppSyncFailed
       expr: |
-        argocd_app_sync_total{phase="Failed"} > 0
+        increase(argocd_app_sync_total{phase="Failed"}[10m]) > 0
       annotations:
         summary: "ArgoCD sync failed"
 ```
