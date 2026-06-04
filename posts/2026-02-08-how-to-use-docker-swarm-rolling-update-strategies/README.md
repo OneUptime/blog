@@ -10,19 +10,19 @@ Description: Configure Docker Swarm rolling update parameters for zero-downtime 
 
 Deploying a new version of your application should not cause downtime. Docker Swarm's rolling update feature replaces containers incrementally, taking down old instances and spinning up new ones in a controlled manner. By tuning the update parameters, you control how many containers update at once, how long the system waits between batches, and what happens when a new version fails health checks.
 
-This guide covers every rolling update parameter, shows how to configure them for real-world scenarios, and demonstrates automatic rollback when things go wrong.
+This guide covers the key rolling update parameters, shows how to configure them for real-world scenarios, and demonstrates automatic rollback when things go wrong.
 
 ## How Rolling Updates Work in Swarm
 
 When you update a service (change the image, environment variables, or any other configuration), Swarm does not replace all containers at once. Instead, it follows these steps:
 
-1. Stop a batch of old tasks (determined by `--update-parallelism`)
-2. Start new tasks with the updated configuration
-3. Wait for new tasks to become healthy
+1. Select a batch of tasks (determined by `--update-parallelism`)
+2. Replace each task according to the configured order (`stop-first` or `start-first`)
+3. Monitor the updated tasks for failures during the configured monitor window (`--update-monitor`)
 4. Pause for the configured delay (`--update-delay`)
 5. Repeat until all tasks are updated
 
-If any new task fails to start or fails its health check, Swarm takes action based on the `--update-failure-action` setting (pause, continue, or rollback).
+If the fraction of tasks that fail to update successfully exceeds `--update-max-failure-ratio`, Swarm takes action based on the `--update-failure-action` setting (pause, continue, or rollback).
 
 ## Creating a Service with Update Configuration
 
@@ -36,6 +36,7 @@ docker service create \
   --replicas 6 \
   --update-parallelism 2 \
   --update-delay 10s \
+  --update-monitor 30s \
   --update-failure-action rollback \
   --update-max-failure-ratio 0.25 \
   --update-order start-first \
@@ -49,6 +50,8 @@ Let us break down each parameter:
 
 **--update-delay 10s**: Wait 10 seconds between each batch. This gives you time to detect issues before the next batch starts.
 
+**--update-monitor 30s**: Monitor each updated task for 30 seconds. Failures during this window count toward the update failure ratio.
+
 **--update-failure-action rollback**: If a task fails, automatically roll back to the previous version. Other options are `pause` (stop updating and wait for manual intervention) and `continue` (ignore failures and keep going).
 
 **--update-max-failure-ratio 0.25**: Allow up to 25% of tasks to fail before triggering the failure action. This prevents a single flaky container from triggering a full rollback.
@@ -61,7 +64,7 @@ The `--update-order` parameter has a significant impact on your deployment.
 
 **stop-first (default)**: Stops the old task, then starts the new one. This temporarily reduces capacity but avoids running two versions simultaneously on the same slot.
 
-**start-first**: Starts the new task first, waits for it to become healthy, then stops the old one. This maintains full capacity throughout the update but briefly runs more containers than the replica count.
+**start-first**: Starts the new task first, then stops the old one after the new task is running. This maintains full capacity throughout the update but briefly runs more containers than the replica count.
 
 For most web services, `start-first` is the better choice:
 
@@ -113,7 +116,7 @@ Define health checks in your Dockerfile:
 FROM node:20-alpine
 WORKDIR /app
 COPY . .
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Health check that verifies the app is responding
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
@@ -136,6 +139,7 @@ docker service create \
   --health-start-period 15s \
   --update-parallelism 2 \
   --update-delay 10s \
+  --update-monitor 30s \
   --update-failure-action rollback \
   --update-order start-first \
   -p 80:8080 \
@@ -155,10 +159,12 @@ docker service create \
   --replicas 6 \
   --update-parallelism 2 \
   --update-delay 10s \
+  --update-monitor 30s \
   --update-failure-action rollback \
   --update-max-failure-ratio 0.25 \
   --rollback-parallelism 3 \
   --rollback-delay 5s \
+  --rollback-monitor 20s \
   --rollback-max-failure-ratio 0.1 \
   --rollback-order start-first \
   -p 80:8080 \
@@ -201,12 +207,14 @@ services:
       update_config:
         parallelism: 2
         delay: 10s
+        monitor: 30s
         failure_action: rollback
         max_failure_ratio: 0.25
         order: start-first
       rollback_config:
         parallelism: 3
         delay: 5s
+        monitor: 20s
         order: start-first
       restart_policy:
         condition: on-failure
