@@ -40,7 +40,7 @@ Check which admission controllers are enabled:
 kubectl get pods -n kube-system kube-apiserver-<node-name> -o yaml | grep enable-admission-plugins
 
 # Example output:
-# --enable-admission-plugins=NodeRestriction,PodSecurityPolicy,ResourceQuota
+# --enable-admission-plugins=NodeRestriction,PodSecurity,ResourceQuota
 
 # Check disabled plugins
 kubectl get pods -n kube-system kube-apiserver-<node-name> -o yaml | grep disable-admission-plugins
@@ -58,12 +58,12 @@ Configure essential admission controllers via kubeadm:
 
 ```yaml
 # kubeadm-admission-config.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 apiServer:
   extraArgs:
-    enable-admission-plugins: "NodeRestriction,NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,ResourceQuota,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,PodSecurityPolicy,Priority,DefaultTolerationSeconds,StorageObjectInUseProtection,PersistentVolumeClaimResize,RuntimeClass,CertificateApproval,CertificateSigning,CertificateSubjectRestriction,TaintNodesByCondition"
-    disable-admission-plugins: "AlwaysPullImages"
+  - name: enable-admission-plugins
+    value: "NodeRestriction,NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultIngressClass,DefaultStorageClass,ResourceQuota,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,ValidatingAdmissionPolicy,PodSecurity,Priority,DefaultTolerationSeconds,StorageObjectInUseProtection,PersistentVolumeClaimResize,RuntimeClass,CertificateApproval,CertificateSigning,CertificateSubjectRestriction,TaintNodesByCondition"
 ```
 
 Or edit the static pod manifest directly:
@@ -89,8 +89,8 @@ enable-admission-plugins: "NodeRestriction"
 
 This prevents kubelets from:
 - Modifying node objects they don't own
-- Accessing secrets/configmaps not bound to their pods
 - Modifying pods scheduled to other nodes
+- Updating or removing taints from their own node objects
 
 ### NamespaceLifecycle
 
@@ -196,21 +196,17 @@ metadata:
 
 Admission plugins execute in specific order regardless of configuration:
 
-**Mutating plugins run first (order matters):**
-1. MutatingAdmissionWebhook
-2. NamespaceLifecycle
-3. LimitRanger
-4. ServiceAccount
-5. (other mutating plugins)
+**Mutating plugins run first:**
+1. Mutating admission controllers can modify the object.
+2. `MutatingAdmissionWebhook` calls matching mutating webhooks in sequence.
+3. Mutating webhooks can be reinvoked, so each webhook should be idempotent.
 
 **Validating plugins run second:**
-1. LimitRanger (validation phase)
-2. ResourceQuota
-3. PodSecurityPolicy/PodSecurity
-4. ValidatingAdmissionWebhook
-5. (other validating plugins)
+1. Validating admission controllers can accept or reject the final object.
+2. `ValidatingAdmissionPolicy` evaluates matching in-process policies.
+3. `ValidatingAdmissionWebhook` calls matching validating webhooks in parallel.
 
-The order in `--enable-admission-plugins` doesn't change execution order, only which plugins are active.
+The order in `--enable-admission-plugins` doesn't change execution order, only which plugins are active. Do not rely on a specific mutating webhook invocation order; validate the final state with a validating admission controller when order-sensitive mutations matter.
 
 ## Configuring Admission Webhooks
 
@@ -219,7 +215,8 @@ Enable webhook admission controllers:
 ```yaml
 apiServer:
   extraArgs:
-    enable-admission-plugins: "MutatingAdmissionWebhook,ValidatingAdmissionWebhook"
+  - name: enable-admission-plugins
+    value: "MutatingAdmissionWebhook,ValidatingAdmissionWebhook"
 ```
 
 Create a mutating webhook:
@@ -319,12 +316,14 @@ Reference the configuration file:
 ```yaml
 apiServer:
   extraArgs:
-    admission-control-config-file: "/etc/kubernetes/admission-config.yaml"
+  - name: admission-control-config-file
+    value: "/etc/kubernetes/admission-config.yaml"
   extraVolumes:
   - name: admission-config
     hostPath: "/etc/kubernetes/admission-config.yaml"
     mountPath: "/etc/kubernetes/admission-config.yaml"
     readOnly: true
+    pathType: File
 ```
 
 ## Testing Admission Control
