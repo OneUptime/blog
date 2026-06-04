@@ -46,11 +46,10 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  validation: client
   timeout: 2m
 ```
 
-Flux checks the repository every 5 minutes and applies changes. The prune setting removes resources deleted from Git.
+Flux reconciles this Kustomization every 5 minutes and applies changes from the referenced source artifact. The GitRepository source has its own polling interval. The prune setting removes resources deleted from Git.
 
 ## Structuring repositories for Flux
 
@@ -183,9 +182,6 @@ spec:
     kind: GitRepository
     name: flux-system
   postBuild:
-    substitute:
-      cluster_name: "${cluster_name}"
-      environment: "${environment}"
     substituteFrom:
     - kind: ConfigMap
       name: cluster-vars
@@ -207,7 +203,7 @@ Flux performs substitution before applying resources, enabling dynamic configura
 
 ## Decrypting secrets with SOPS
 
-Integrate sealed secrets using Mozilla SOPS:
+Integrate SOPS-encrypted secrets:
 
 ```bash
 # Create encrypted secret
@@ -233,7 +229,7 @@ spec:
       name: sops-age
 ```
 
-Flux decrypts secrets automatically before applying them to the cluster. The encryption keys never leave the cluster.
+Flux decrypts secrets automatically before applying them to the cluster. The private decryption keys remain in the cluster.
 
 ## Multi-cluster deployments
 
@@ -262,7 +258,9 @@ kind: Kustomization
 metadata:
   name: apps
 spec:
+  interval: 5m
   path: ./apps/webapp/overlays/production
+  prune: true
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -279,7 +277,9 @@ kind: Kustomization
 metadata:
   name: apps
 spec:
+  interval: 5m
   path: ./apps/webapp/overlays/production
+  prune: true
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -336,7 +336,7 @@ Flux applies the Canary resource, and Flagger automatically performs progressive
 
 ## Image automation with Flux
 
-Configure automatic image updates:
+Configure automatic image updates, assuming an ImageRepository and ImagePolicy named `webapp` already exist:
 
 ```yaml
 # clusters/production/image-update-automation.yaml
@@ -399,7 +399,7 @@ Create alerts for reconciliation failures:
 
 ```yaml
 # clusters/production/alert-provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -407,10 +407,11 @@ metadata:
 spec:
   type: slack
   channel: production-alerts
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-url
+    name: slack-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: kustomization-failures
