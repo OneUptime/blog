@@ -14,9 +14,9 @@ Oracle Kubernetes Engine (OKE) supports flexible compute shapes that allow preci
 
 Traditional compute shapes come in predefined configurations like VM.Standard2.4 (4 OCPUs, 60GB RAM). Flexible shapes use the naming pattern VM.Standard.E4.Flex, where you specify OCPU count and memory amount at creation time.
 
-Flexible shapes provide several advantages: independent CPU and memory sizing, ability to change resources without recreating instances, support for fractional OCPU counts (0.5, 1, 2, etc.), and consistent pricing per OCPU and GB of memory.
+Flexible shapes provide several advantages: independent CPU and memory sizing, ability to change resources without recreating instances, and consistent pricing per OCPU and GB of memory.
 
-The E4.Flex shape uses AMD EPYC processors, while E3.Flex uses Intel processors. Both offer similar performance characteristics with slight variations in single-thread performance and memory bandwidth.
+The E4.Flex and E3.Flex shapes use AMD EPYC processors. Both offer similar performance characteristics with slight variations in single-thread performance and memory bandwidth.
 
 ## Creating OKE Cluster with Flexible Node Pools
 
@@ -39,7 +39,7 @@ oci ce cluster create \
   --compartment-id ocid1.compartment.oc1..aaa \
   --name production-cluster \
   --vcn-id ocid1.vcn.oc1..aaa \
-  --kubernetes-version v1.28.2 \
+  --kubernetes-version v1.35.2 \
   --service-lb-subnet-ids '["ocid1.subnet.oc1..lb"]' \
   --endpoint-subnet-id ocid1.subnet.oc1..api
 ```
@@ -51,7 +51,7 @@ oci ce node-pool create \
   --cluster-id ocid1.cluster.oc1..aaa \
   --compartment-id ocid1.compartment.oc1..aaa \
   --name flex-node-pool \
-  --kubernetes-version v1.28.2 \
+  --kubernetes-version v1.35.2 \
   --node-shape VM.Standard.E4.Flex \
   --node-shape-config '{"ocpus": 2, "memoryInGBs": 16}' \
   --node-image-id ocid1.image.oc1..aaa \
@@ -89,9 +89,11 @@ Adjust OCPU and memory for different workload types:
 ```bash
 oci ce node-pool create \
   --cluster-id ocid1.cluster.oc1..aaa \
+  --compartment-id ocid1.compartment.oc1..aaa \
   --name compute-pool \
   --node-shape VM.Standard.E4.Flex \
   --node-shape-config '{"ocpus": 8, "memoryInGBs": 32}' \
+  --subnet-ids '["ocid1.subnet.oc1..workers"]' \
   --size 2
 ```
 
@@ -100,9 +102,11 @@ oci ce node-pool create \
 ```bash
 oci ce node-pool create \
   --cluster-id ocid1.cluster.oc1..aaa \
+  --compartment-id ocid1.compartment.oc1..aaa \
   --name memory-pool \
   --node-shape VM.Standard.E4.Flex \
   --node-shape-config '{"ocpus": 4, "memoryInGBs": 64}' \
+  --subnet-ids '["ocid1.subnet.oc1..workers"]' \
   --size 2
 ```
 
@@ -111,9 +115,11 @@ oci ce node-pool create \
 ```bash
 oci ce node-pool create \
   --cluster-id ocid1.cluster.oc1..aaa \
+  --compartment-id ocid1.compartment.oc1..aaa \
   --name balanced-pool \
   --node-shape VM.Standard.E4.Flex \
   --node-shape-config '{"ocpus": 4, "memoryInGBs": 32}' \
+  --subnet-ids '["ocid1.subnet.oc1..workers"]' \
   --size 3
 ```
 
@@ -127,15 +133,18 @@ Taint node pools to control pod scheduling:
 # Create tainted node pool for database workloads
 oci ce node-pool create \
   --cluster-id ocid1.cluster.oc1..aaa \
+  --compartment-id ocid1.compartment.oc1..aaa \
   --name database-pool \
   --node-shape VM.Standard.E4.Flex \
   --node-shape-config '{"ocpus": 8, "memoryInGBs": 128}' \
+  --subnet-ids '["ocid1.subnet.oc1..workers"]' \
   --size 2 \
-  --initial-node-labels '[{"key":"workload","value":"database"}]' \
-  --node-metadata '{"user_data": "IyEvYmluL2Jhc2gKa3ViZWN0bCB0YWludCBub2RlcyAtLWFsbCB3b3JrbG9hZD1kYXRhYmFzZTpOb1NjaGVkdWxl"}'
+  --initial-node-labels '[{"key":"workload","value":"database"}]'
+
+kubectl taint nodes -l workload=database workload=database:NoSchedule
 ```
 
-The user_data contains a base64-encoded script that runs on node startup to apply taints.
+The node pool starts with a `workload=database` label, and the `kubectl taint` command applies the matching taint after the nodes join the cluster.
 
 Deploy pods with tolerations:
 
@@ -178,13 +187,8 @@ spec:
 Enable cluster autoscaling for flexible node pools:
 
 ```bash
-# Update node pool with autoscaling
-oci ce node-pool update \
-  --node-pool-id ocid1.nodepool.oc1..aaa \
-  --size 3 \
-  --enable-autoscaling true \
-  --min-size 2 \
-  --max-size 10
+# The cluster autoscaler reads min and max size from its --nodes argument.
+# Do not manually resize node pools that the cluster autoscaler manages.
 ```
 
 Deploy the cluster autoscaler:
@@ -196,7 +200,7 @@ metadata:
   name: cluster-autoscaler
   namespace: kube-system
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: cluster-autoscaler
@@ -207,23 +211,24 @@ spec:
     spec:
       serviceAccountName: cluster-autoscaler
       containers:
-      - image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.28.0
+      - image: iad.ocir.io/oracle/oci-cluster-autoscaler:v1.35.0
         name: cluster-autoscaler
         command:
         - ./cluster-autoscaler
         - --cloud-provider=oci
+        - --max-node-provision-time=25m
         - --nodes=2:10:ocid1.nodepool.oc1..aaa
         - --scale-down-delay-after-add=10m
         - --scale-down-unneeded-time=10m
         - --skip-nodes-with-system-pods=false
         env:
-        - name: OCI_USE_INSTANCE_PRINCIPAL
+        - name: OKE_USE_INSTANCE_PRINCIPAL
           value: "true"
-        - name: OCI_SDK_DEFAULT_RETRY_ENABLED
-          value: "true"
+        - name: OCI_SDK_APPEND_USER_AGENT
+          value: "oci-oke-cluster-autoscaler"
 ```
 
-Create the service account with instance principal authentication:
+Create the service account and RBAC rules with instance principal authentication:
 
 ```yaml
 apiVersion: v1
@@ -252,7 +257,7 @@ rules:
   verbs: ["get", "update"]
 - apiGroups: [""]
   resources: ["nodes"]
-  verbs: ["watch", "list", "get", "update"]
+  verbs: ["watch", "list", "get", "patch", "update"]
 - apiGroups: [""]
   resources: ["pods", "services", "replicationcontrollers", "persistentvolumeclaims", "persistentvolumes"]
   verbs: ["watch", "list", "get"]
@@ -266,7 +271,7 @@ rules:
   resources: ["statefulsets", "replicasets", "daemonsets"]
   verbs: ["watch", "list", "get"]
 - apiGroups: ["storage.k8s.io"]
-  resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities"]
+  resources: ["storageclasses", "csinodes", "volumeattachments"]
   verbs: ["watch", "list", "get"]
 - apiGroups: ["batch", "extensions"]
   resources: ["jobs"]
@@ -278,6 +283,26 @@ rules:
   resourceNames: ["cluster-autoscaler"]
   resources: ["leases"]
   verbs: ["get", "update"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["watch", "list"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["csidrivers", "csistoragecapacities"]
+  verbs: ["watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create", "list", "watch"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["cluster-autoscaler-status", "cluster-autoscaler-priority-expander"]
+  verbs: ["delete", "get", "update", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -286,6 +311,20 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
+  name: cluster-autoscaler
+subjects:
+- kind: ServiceAccount
+  name: cluster-autoscaler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
   name: cluster-autoscaler
 subjects:
 - kind: ServiceAccount
@@ -309,6 +348,8 @@ kubectl describe nodes | grep -A 5 "Allocated resources"
 Right-size node pools:
 
 ```python
+import math
+
 # Calculate optimal OCPU/memory ratio
 def calculate_optimal_shape(cpu_request_sum, memory_request_sum):
     # Add 20% overhead for system components
@@ -321,8 +362,8 @@ def calculate_optimal_shape(cpu_request_sum, memory_request_sum):
     # Round up to next OCPU
     ocpus = math.ceil(total_cpu)
 
-    # Calculate memory based on ratio
-    memory = ocpus * ratio
+    # Calculate memory based on ratio and round to GB
+    memory = math.ceil(ocpus * ratio)
 
     # Ensure minimum 1GB per OCPU
     memory = max(memory, ocpus * 1)
@@ -389,9 +430,11 @@ Change node shape by creating a new pool and migrating workloads:
 # Create new node pool with updated shape
 oci ce node-pool create \
   --cluster-id ocid1.cluster.oc1..aaa \
+  --compartment-id ocid1.compartment.oc1..aaa \
   --name upgraded-pool \
   --node-shape VM.Standard.E4.Flex \
   --node-shape-config '{"ocpus": 6, "memoryInGBs": 48}' \
+  --subnet-ids '["ocid1.subnet.oc1..workers"]' \
   --size 3
 
 # Cordon old nodes
@@ -429,11 +472,10 @@ oci limits value list \
   --scope-type AVAILABILITY_DOMAIN \
   --availability-domain <AD-name>
 
-# Check specific limit
-oci limits value get \
+# Check specific limit availability
+oci limits resource-availability get \
   --compartment-id ocid1.tenancy.oc1..aaa \
   --service-name compute \
-  --scope-type AVAILABILITY_DOMAIN \
   --availability-domain <AD-name> \
   --limit-name standard-e4-core-count
 ```
@@ -441,8 +483,11 @@ oci limits value get \
 Request limit increase if needed:
 
 ```bash
-oci support ticket create \
-  --summary "Increase E4 Flex OCPU limit" \
+oci support incident create \
+  --compartment-id ocid1.tenancy.oc1..aaa \
+  --problem-type LIMIT \
+  --severity MEDIUM \
+  --title "Increase E4 Flex OCPU limit" \
   --description "Need 200 OCPUs for OKE cluster expansion"
 ```
 
@@ -451,11 +496,11 @@ Debug node creation failures:
 ```bash
 # Check node pool events
 oci ce work-request list \
-  --compartment-id ocid1.compartment.oc1..aaa \
-  --resource-id ocid1.nodepool.oc1..aaa
+  --compartment-id ocid1.compartment.oc1..aaa
 
 # View error details
-oci ce work-request get \
+oci ce work-request-error list \
+  --compartment-id ocid1.compartment.oc1..aaa \
   --work-request-id ocid1.workrequest.oc1..aaa
 ```
 
