@@ -44,6 +44,7 @@ data:
   jmx-exporter.yml: |
     lowercaseOutputName: true
     lowercaseOutputLabelNames: true
+    hostPort: localhost:9999
     whitelistObjectNames:
     - kafka.server:type=BrokerTopicMetrics,name=*
     - kafka.server:type=ReplicaManager,name=*
@@ -55,13 +56,17 @@ data:
     - java.lang:type=Memory
     - java.lang:type=GarbageCollector,name=*
     rules:
-    - pattern: kafka.server<type=(.+), name=(.+)><>Value
-      name: kafka_server_$1_$2
-    - pattern: kafka.controller<type=(.+), name=(.+)><>Value
-      name: kafka_controller_$1_$2
+    - pattern: kafka.server<type=BrokerTopicMetrics, name=(.+)PerSec, topic=(.+)><>Count
+      name: kafka_server_brokertopicmetrics_$1_total
+      labels:
+        topic: "$2"
+    - pattern: kafka.server<type=BrokerTopicMetrics, name=(.+)PerSec><>Count
+      name: kafka_server_brokertopicmetrics_$1_total
+    - pattern: kafka.controller<type=KafkaController, name=(.+)><>Value
+      name: kafka_controller_$1
 ```
 
-Deploy Kafka with JMX exporter sidecar:
+Add the JMX exporter and Kafka exporter sidecars to your Kafka StatefulSet:
 
 ```yaml
 apiVersion: apps/v1
@@ -101,17 +106,46 @@ spec:
         image: bitnami/jmx-exporter:0.19.0
         ports:
         - containerPort: 5556
-          name: metrics
+          name: jmx-metrics
         args:
         - "5556"
         - "/etc/jmx-exporter/jmx-exporter.yml"
         volumeMounts:
         - name: jmx-config
           mountPath: /etc/jmx-exporter
+      - name: kafka-exporter
+        image: danielqsj/kafka-exporter:v1.7.0
+        ports:
+        - containerPort: 9308
+          name: kafka-exporter
+        args:
+        - --kafka.server=localhost:9092
       volumes:
       - name: jmx-config
         configMap:
           name: kafka-jmx-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: kafka
+  labels:
+    app: kafka
+spec:
+  clusterIP: None
+  selector:
+    app: kafka
+  ports:
+  - name: kafka
+    port: 9092
+    targetPort: kafka
+  - name: jmx-metrics
+    port: 5556
+    targetPort: jmx-metrics
+  - name: kafka-exporter
+    port: 9308
+    targetPort: kafka-exporter
 ```
 
 Create a ServiceMonitor for Prometheus Operator:
@@ -127,7 +161,10 @@ spec:
     matchLabels:
       app: kafka
   endpoints:
-  - port: metrics
+  - port: jmx-metrics
+    interval: 30s
+    path: /metrics
+  - port: kafka-exporter
     interval: 30s
     path: /metrics
 ```
@@ -167,9 +204,6 @@ spec:
           name: management
         - containerPort: 15692
           name: prometheus
-        env:
-        - name: RABBITMQ_PROMETHEUS_PLUGIN
-          value: "true"
         volumeMounts:
         - name: config
           mountPath: /etc/rabbitmq
@@ -189,6 +223,28 @@ data:
   rabbitmq.conf: |
     prometheus.return_per_object_metrics = true
     prometheus.tcp.port = 15692
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: messaging
+  labels:
+    app: rabbitmq
+spec:
+  clusterIP: None
+  selector:
+    app: rabbitmq
+  ports:
+  - name: amqp
+    port: 5672
+    targetPort: amqp
+  - name: management
+    port: 15672
+    targetPort: management
+  - name: prometheus
+    port: 15692
+    targetPort: prometheus
 ```
 
 Create ServiceMonitor for RabbitMQ:
@@ -236,6 +292,8 @@ spec:
         ports:
         - containerPort: 4222
           name: client
+        - containerPort: 6222
+          name: cluster
         - containerPort: 8222
           name: monitoring
         command:
@@ -263,6 +321,31 @@ spec:
           name: nats-config
 ---
 apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  namespace: nats
+  labels:
+    app: nats
+spec:
+  clusterIP: None
+  selector:
+    app: nats
+  ports:
+  - name: client
+    port: 4222
+    targetPort: client
+  - name: cluster
+    port: 6222
+    targetPort: cluster
+  - name: monitoring
+    port: 8222
+    targetPort: monitoring
+  - name: metrics
+    port: 7777
+    targetPort: metrics
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: nats-config
@@ -279,6 +362,24 @@ data:
         nats://nats-2.nats:6222
       ]
     }
+```
+
+Create ServiceMonitor for NATS:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nats-metrics
+  namespace: nats
+spec:
+  selector:
+    matchLabels:
+      app: nats
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
 ```
 
 ## Monitoring Redis Streams
@@ -322,6 +423,35 @@ spec:
         - --include-system-metrics
         - --check-keys=stream:*
         - --check-streams=orders,events
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-exporter
+  namespace: redis
+  labels:
+    app: redis-exporter
+spec:
+  selector:
+    app: redis-exporter
+  ports:
+  - name: metrics
+    port: 9121
+    targetPort: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis-metrics
+  namespace: redis
+spec:
+  selector:
+    matchLabels:
+      app: redis-exporter
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
 ```
 
 ## Creating Comprehensive Dashboards
@@ -344,7 +474,7 @@ data:
             "title": "Messages Per Second",
             "targets": [
               {
-                "expr": "rate(kafka_server_brokertopicmetrics_messagesinpersec[5m])",
+                "expr": "rate(kafka_server_brokertopicmetrics_messagesin_total[5m])",
                 "legendFormat": "Kafka - {{topic}}"
               },
               {
@@ -352,7 +482,7 @@ data:
                 "legendFormat": "RabbitMQ - {{queue}}"
               },
               {
-                "expr": "rate(nats_varz_in_msgs[5m])",
+                "expr": "rate(gnatsd_varz_in_msgs[5m])",
                 "legendFormat": "NATS"
               }
             ]
@@ -375,7 +505,7 @@ data:
               },
               {
                 "expr": "redis_stream_length",
-                "legendFormat": "Redis - {{stream}}"
+                "legendFormat": "Redis - {{key}}"
               }
             ]
           }
@@ -439,7 +569,7 @@ spec:
         description: "Queue {{ $labels.queue }} has no consumers"
 
     - alert: RabbitMQMemoryHigh
-      expr: rabbitmq_resident_memory_limit_bytes / rabbitmq_resident_memory_bytes < 0.1
+      expr: rabbitmq_resident_memory_bytes / rabbitmq_resident_memory_limit_bytes > 0.9
       for: 5m
       labels:
         severity: warning
@@ -450,7 +580,7 @@ spec:
     interval: 30s
     rules:
     - alert: NATSSlowConsumer
-      expr: nats_varz_slow_consumers > 0
+      expr: gnatsd_varz_slow_consumers > 0
       for: 2m
       labels:
         severity: warning
@@ -459,7 +589,7 @@ spec:
         description: "{{ $value }} slow consumers detected"
 
     - alert: NATSConnectionsHigh
-      expr: nats_varz_connections > 1000
+      expr: gnatsd_varz_connections > 1000
       for: 5m
       labels:
         severity: warning
@@ -510,7 +640,6 @@ func processMessage(queue string, msg []byte) error {
     timer := prometheus.NewTimer(processingDuration.WithLabelValues(queue))
     defer timer.ObserveDuration()
 
-    // Process message logic
     err := handleMessage(msg)
 
     if err != nil {
@@ -519,6 +648,11 @@ func processMessage(queue string, msg []byte) error {
     }
 
     messagesProcessed.WithLabelValues(queue, "success").Inc()
+    return nil
+}
+
+func handleMessage(msg []byte) error {
+    // Add message processing logic here.
     return nil
 }
 ```
