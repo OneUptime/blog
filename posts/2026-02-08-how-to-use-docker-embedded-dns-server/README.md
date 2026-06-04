@@ -70,7 +70,7 @@ Every container on a user-defined network can be reached by its name. Docker reg
 ```bash
 # Create a network and start some containers
 docker network create demo-net
-docker run -d --name database --network demo-net postgres:16 -e POSTGRES_PASSWORD=secret
+docker run -d --name database --network demo-net -e POSTGRES_PASSWORD=secret postgres:16
 docker run -d --name cache --network demo-net redis:7
 docker run -d --name webserver --network demo-net nginx
 
@@ -99,7 +99,7 @@ Now resolving "web" returns both container IPs:
 docker run --rm --network demo-net alpine nslookup web
 ```
 
-Docker's DNS performs round-robin between the IPs. Each query returns the addresses in a different order, providing basic load balancing.
+Docker's DNS can return multiple IPs for the shared alias. The exact container returned is not guaranteed, so treat this as basic service discovery rather than a full load balancer.
 
 ## Docker Compose Service Discovery
 
@@ -125,7 +125,7 @@ services:
     image: redis:7
 ```
 
-Compose also creates aliases for `<project>_<service>` format, so both `database` and `myproject_database` resolve correctly.
+Compose also creates container names based on the project and service, but the stable DNS name to use between services is the service name, such as `database`.
 
 ## Custom DNS Servers
 
@@ -185,7 +185,7 @@ The `dig` output shows the query, response, TTL, and authoritative server, which
 
 Docker's embedded DNS server does not cache negative responses aggressively. When you start a new container, other containers can resolve it almost immediately. When a container stops, its DNS record is removed promptly.
 
-However, application-level DNS caching can cause stale records. Java applications are notorious for caching DNS indefinitely by default. If your application caches DNS, it might hold onto the IP of a container that has been replaced.
+However, application-level DNS caching can cause stale records. Java applications, for example, can cache DNS results according to JVM security properties and runtime defaults. If your application caches DNS too long, it might hold onto the IP of a container that has been replaced.
 
 Verify DNS TTL from the embedded server:
 
@@ -195,7 +195,7 @@ docker run --rm --network demo-net nicolaka/netshoot \
   dig database | grep -A 2 "ANSWER SECTION"
 ```
 
-Docker typically returns a TTL of 600 seconds (10 minutes). Applications should respect this TTL.
+Docker commonly returns a TTL of 600 seconds (10 minutes) for embedded DNS answers, but application runtimes may apply their own caching policy. Applications should avoid caching Docker service lookups longer than appropriate for your deployment.
 
 ## Troubleshooting DNS Issues
 
@@ -266,11 +266,11 @@ networks:
         - subnet: 172.20.0.0/16
 ```
 
-This lets your application use the custom DNS server for both internal container names and any additional records you define.
+This lets your application use the custom DNS server for records you define. If you also want Docker container names to resolve through CoreDNS, configure CoreDNS to forward unresolved queries to Docker's embedded DNS or to the upstream resolvers you need.
 
 ## Embedding DNS in Health Checks
 
-You can use DNS resolution as a health check for service availability:
+You can use DNS resolution as a health check for service name registration:
 
 ```yaml
 services:
@@ -284,6 +284,10 @@ services:
       retries: 3
     networks:
       - app-net
+
+networks:
+  app-net:
+    driver: bridge
 ```
 
 ## Summary
