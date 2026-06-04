@@ -14,7 +14,7 @@ Fluentd's single-threaded nature can become a bottleneck when processing million
 
 In standard Fluentd deployment, a single Ruby process handles all input, filtering, and output operations. This process can consume only one CPU core, limiting throughput regardless of available hardware resources. When log volume exceeds what a single core can process, events queue up and eventually get dropped.
 
-Multi-worker mode spawns multiple independent Fluentd processes, each running its own input, filter, and output pipeline. An internal load balancer distributes incoming connections across workers. Each worker operates independently with its own buffer and output threads, effectively multiplying your processing capacity.
+Multi-worker mode spawns multiple independent Fluentd processes, each running its own input, filter, and output pipeline. Supported network input plugins can share listening sockets across workers. Each worker operates independently with its own buffer and output threads, effectively multiplying your processing capacity.
 
 The architecture requires careful configuration since workers don't share state. You need to consider how inputs accept connections, how buffers are isolated, and how outputs handle concurrent writes from multiple workers.
 
@@ -50,7 +50,7 @@ Multi-worker configuration happens in the system directive at the top of your Fl
 </match>
 ```
 
-This configuration launches 4 worker processes. The root_dir must be specified when using multiple workers because each worker needs its own buffer directory. Fluentd automatically creates subdirectories for each worker.
+This configuration launches 4 worker processes. The root_dir setting gives Fluentd a base directory for plugin state and buffer files; if you configure explicit file buffer paths, Fluentd automatically creates subdirectories for each worker under those paths.
 
 Verify workers are running:
 
@@ -77,8 +77,8 @@ Not all input plugins support multi-worker mode equally. The forward input plugi
   port 24224
   bind 0.0.0.0
 
-  # Each worker accepts connections on this port
-  # OS load balances incoming connections
+  # Fluentd shares this port across workers
+  # Accepted connections are dispatched to worker processes
 
   <security>
     self_hostname fluentd-server
@@ -87,52 +87,58 @@ Not all input plugins support multi-worker mode equally. The forward input plugi
 </source>
 ```
 
-When multiple workers bind to the same port, the operating system's SO_REUSEPORT socket option distributes incoming connections. Each connection lands on exactly one worker, ensuring proper load distribution.
+When multiple workers use a server-helper-based input such as forward, Fluentd shares the listening socket through the supervisor and dispatches accepted connections to workers. Each connection is handled by one worker.
 
 For file-based inputs like tail, use worker-specific configuration:
 
 ```ruby
-<source>
-  @type tail
-  path /var/log/app/application.log
-  pos_file /var/log/fluentd/app.log.pos.#{worker_id}
-  tag app.logs
+# Only read this file on worker 0
+<worker 0>
+  <source>
+    @type tail
+    path /var/log/app/application.log
+    pos_file /var/log/fluentd/app.log.pos
+    tag app.logs
 
-  <parse>
-    @type json
-  </parse>
-
-  # Only read this file on worker 0
-  <worker 0>
-    @include tail.conf
-  </worker>
-</source>
+    <parse>
+      @type json
+    </parse>
+  </source>
+</worker>
 ```
 
-The worker_id placeholder gets replaced with the actual worker number (0, 1, 2, 3). This prevents multiple workers from reading the same file and duplicating logs.
+The `<worker 0>` directive limits this source to worker 0. This prevents multiple workers from reading the same file and duplicating logs.
 
 Alternatively, dedicate specific files to specific workers:
 
 ```ruby
 # Worker 0 reads service A logs
-<source>
-  @type tail
-  path /var/log/service-a/*.log
-  tag service.a
+<worker 0>
+  <source>
+    @type tail
+    path /var/log/service-a/*.log
+    pos_file /var/log/fluentd/service-a.log.pos
+    tag service.a
 
-  <worker 0>
-  </worker>
-</source>
+    <parse>
+      @type json
+    </parse>
+  </source>
+</worker>
 
 # Worker 1 reads service B logs
-<source>
-  @type tail
-  path /var/log/service-b/*.log
-  tag service.b
+<worker 1>
+  <source>
+    @type tail
+    path /var/log/service-b/*.log
+    pos_file /var/log/fluentd/service-b.log.pos
+    tag service.b
 
-  <worker 1>
-  </worker>
-</source>
+    <parse>
+      @type json
+    </parse>
+  </source>
+</worker>
 ```
 
 This approach manually balances the load by assigning different log sources to different workers.
@@ -149,12 +155,12 @@ Each worker maintains independent buffers. You must ensure buffer paths don't co
 
   <buffer>
     @type file
-    # Fluentd automatically appends worker_id to this path
+    # Fluentd automatically creates worker-specific directories under this path
     path /var/log/fluentd/buffer/elasticsearch
 
     # Buffer settings
     chunk_limit_size 5M
-    queue_limit_length 128
+    total_limit_size 640M
     flush_interval 5s
     flush_thread_count 2
     retry_max_interval 30s
@@ -183,7 +189,7 @@ Memory buffer configuration:
 
     # Limit memory per worker
     chunk_limit_size 1M
-    queue_limit_length 32
+    total_limit_size 32M
 
     # Aggressive flushing for critical logs
     flush_interval 1s
@@ -191,7 +197,7 @@ Memory buffer configuration:
 </match>
 ```
 
-With 4 workers, each can buffer up to 32MB (32 chunks * 1MB), for a total of 128MB memory usage across all workers.
+With 4 workers, each memory buffer is limited to 32MB, for a total buffer limit of 128MB across all workers.
 
 ## Output Plugin Optimization
 
@@ -263,7 +269,7 @@ Kafka's partitioning naturally distributes writes from multiple workers across b
 
 Control how work distributes across workers by configuring inputs strategically.
 
-Round-robin HTTP input distribution:
+HTTP input distribution:
 
 ```ruby
 <source>
@@ -271,8 +277,7 @@ Round-robin HTTP input distribution:
   port 8888
   bind 0.0.0.0
 
-  # Each worker accepts HTTP requests
-  # OS round-robins connections
+  # Supported server-helper-based inputs can share this port across workers
 
   <parse>
     @type json
@@ -280,9 +285,9 @@ Round-robin HTTP input distribution:
 </source>
 ```
 
-Each HTTP POST lands on a different worker in rotation.
+HTTP requests are distributed across workers through Fluentd's shared socket handling. Do not assume strict per-request round-robin ordering, especially when clients reuse persistent connections.
 
-Syslog input with worker affinity:
+Syslog input distribution:
 
 ```ruby
 <source>
@@ -291,12 +296,11 @@ Syslog input with worker affinity:
   bind 0.0.0.0
   tag system.logs
 
-  # UDP syslog distributes based on source IP hash
-  # Same source typically hits same worker
+  # Distribution depends on Fluentd's shared socket handling and the transport
 </source>
 ```
 
-UDP-based inputs like syslog use hash-based distribution, providing natural load balancing while maintaining some affinity.
+UDP-based inputs like syslog can share the configured port across workers when shared sockets are enabled, but the exact packet distribution should not be treated as a stable affinity guarantee.
 
 ## Performance Monitoring and Tuning
 
@@ -308,7 +312,7 @@ Monitor worker performance to ensure balanced load distribution:
   bind 0.0.0.0
   port 24220
 
-  # Includes per-worker metrics
+  # Each worker exposes metrics on a sequential port
   include_config true
   include_retry true
 </source>
@@ -317,11 +321,13 @@ Monitor worker performance to ensure balanced load distribution:
 Query metrics:
 
 ```bash
-# Get overall metrics
+# Get metrics from worker 0
 curl http://localhost:24220/api/plugins.json | jq
 
+# With 4 workers, also check ports 24221, 24222, and 24223
+
 # Check buffer queue lengths per worker
-curl http://localhost:24220/api/plugins.json | jq '.plugins[] | select(.type=="elasticsearch") | {worker_id, buffer_queue_length}'
+curl http://localhost:24220/api/plugins.json | jq '.plugins[] | select(.type=="elasticsearch") | {plugin_id, buffer_queue_length}'
 
 # Monitor retry counts
 curl http://localhost:24220/api/plugins.json | jq '.plugins[] | select(.retry_count > 0)'
@@ -329,21 +335,24 @@ curl http://localhost:24220/api/plugins.json | jq '.plugins[] | select(.retry_co
 
 Look for imbalanced queue lengths indicating uneven load distribution. If worker 0 has a queue length of 100 while worker 3 has 10, your input distribution isn't balanced.
 
-Enable debug logging for specific workers:
+Enable debug logging for worker-scoped plugins:
 
 ```ruby
 <system>
   workers 4
   log_level info
-
-  # Worker-specific log levels
-  <worker 0>
-    log_level debug
-  </worker>
 </system>
+
+<worker 0>
+  <source>
+    @type forward
+    @log_level debug
+    port 24224
+  </source>
+</worker>
 ```
 
-This helps troubleshoot issues with a single worker without flooding logs from all workers.
+This helps troubleshoot a plugin instance running on a single worker without flooding logs from all workers.
 
 ## Handling Worker Failures
 
@@ -354,13 +363,10 @@ Configure the supervisor to manage worker lifecycle:
   workers 4
   root_dir /var/log/fluentd
 
-  # Supervisor restarts failed workers
+  # Supervisor restarts failed workers immediately by default
+  restart_worker_interval 0
   suppress_repeated_stacktrace true
   emit_error_log_interval 30s
-
-  # Worker lifecycle
-  worker_heartbeat_interval 1s
-  worker_hang_timeout 60s
 </system>
 ```
 
