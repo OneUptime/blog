@@ -17,7 +17,7 @@ Most Go developers start with something like this:
 ```dockerfile
 # BAD: Downloads all modules and recompiles everything on any change
 
-FROM golang:1.22-alpine
+FROM golang:1.26-alpine
 WORKDIR /app
 COPY . .
 RUN go build -o /server ./cmd/server
@@ -32,7 +32,7 @@ Copy `go.mod` and `go.sum` first, download modules, then copy source code:
 
 ```dockerfile
 # GOOD: Module cache persists unless go.mod/go.sum change
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 
 # Copy module files first
@@ -60,7 +60,7 @@ Cache mounts preserve Go's module cache and build cache between Docker builds, e
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 
 COPY go.mod go.sum ./
@@ -89,7 +89,7 @@ For maximum speed, use both layer ordering and cache mounts:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 
 # Layer 1: Module download (cached unless go.mod/go.sum change)
@@ -119,7 +119,7 @@ Go's ability to produce statically linked binaries makes it a perfect match for 
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 # Install CA certificates and timezone data in the build stage
 RUN apk add --no-cache ca-certificates tzdata
 
@@ -161,7 +161,7 @@ Some Go libraries require CGO (SQLite, certain crypto packages). These need a di
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM golang:1.22 AS builder
+FROM golang:1.26-bookworm AS builder
 # Install C build tools for CGO
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libc6-dev && rm -rf /var/lib/apt/lists/*
@@ -193,7 +193,7 @@ If your project produces multiple binaries, build them in parallel stages:
 # syntax=docker/dockerfile:1
 
 # Shared base with modules downloaded
-FROM golang:1.22-alpine AS base
+FROM golang:1.26-alpine AS base
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
@@ -233,6 +233,7 @@ BuildKit executes independent stages in parallel, so all three binaries compile 
 .git
 .gitignore
 *.md
+# Remove vendor only if you are not building with -mod=vendor
 vendor
 bin
 dist
@@ -261,7 +262,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -t myapp .
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 ARG TARGETPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
