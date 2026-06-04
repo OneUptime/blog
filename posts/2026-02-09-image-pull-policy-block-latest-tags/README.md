@@ -26,19 +26,19 @@ The `latest` tag creates several issues:
 
 Ensure you have:
 
-- Kubernetes cluster (1.26+ for ValidatingAdmissionPolicy)
+- Kubernetes cluster (1.30+ for stable ValidatingAdmissionPolicy)
 - kubectl with cluster admin access
 - Alternative policy engine (Kyverno, OPA) if using older Kubernetes
 
 ## Blocking Latest Tags with ValidatingAdmissionPolicy
 
-Create a policy that rejects pods using `latest` tags:
+Create policies that reject pods and workload controllers using `latest` tags:
 
 ```yaml
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: block-latest-tag
+  name: block-latest-tag-pods
 spec:
   failurePolicy: Fail
   matchConstraints:
@@ -47,40 +47,84 @@ spec:
       apiVersions: ["v1"]
       operations: ["CREATE", "UPDATE"]
       resources: ["pods"]
-    - apiGroups: ["apps"]
-      apiVersions: ["v1"]
-      operations: ["CREATE", "UPDATE"]
-      resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+  variables:
+  - name: taggedImagePattern
+    expression: "'^[^@]+:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}(@[A-Za-z][A-Za-z0-9]*(?:[+._-][A-Za-z][A-Za-z0-9]*)*:[0-9a-fA-F]{32,})?$'"
   validations:
   - expression: |
       object.spec.containers.all(c,
-        !c.image.endsWith(':latest') &&
-        c.image.contains(':')
+        !c.image.matches('^.*:latest(@.*)?$') &&
+        c.image.matches(variables.taggedImagePattern)
       )
     message: "Container images must not use ':latest' tag and must specify explicit version tags"
 
   - expression: |
       !has(object.spec.initContainers) ||
       object.spec.initContainers.all(c,
-        !c.image.endsWith(':latest') &&
-        c.image.contains(':')
+        !c.image.matches('^.*:latest(@.*)?$') &&
+        c.image.matches(variables.taggedImagePattern)
       )
     message: "Init container images must not use ':latest' tag and must specify explicit version tags"
 
   - expression: |
       !has(object.spec.ephemeralContainers) ||
       object.spec.ephemeralContainers.all(c,
-        !c.image.endsWith(':latest') &&
-        c.image.contains(':')
+        !c.image.matches('^.*:latest(@.*)?$') &&
+        c.image.matches(variables.taggedImagePattern)
       )
     message: "Ephemeral container images must not use ':latest' tag and must specify explicit version tags"
 ---
 apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: block-latest-tag-workloads
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: ["apps"]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+  variables:
+  - name: taggedImagePattern
+    expression: "'^[^@]+:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}(@[A-Za-z][A-Za-z0-9]*(?:[+._-][A-Za-z][A-Za-z0-9]*)*:[0-9a-fA-F]{32,})?$'"
+  validations:
+  - expression: |
+      object.spec.template.spec.containers.all(c,
+        !c.image.matches('^.*:latest(@.*)?$') &&
+        c.image.matches(variables.taggedImagePattern)
+      )
+    message: "Container images must not use ':latest' tag and must specify explicit version tags"
+
+  - expression: |
+      !has(object.spec.template.spec.initContainers) ||
+      object.spec.template.spec.initContainers.all(c,
+        !c.image.matches('^.*:latest(@.*)?$') &&
+        c.image.matches(variables.taggedImagePattern)
+      )
+    message: "Init container images must not use ':latest' tag and must specify explicit version tags"
+---
+apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
-  name: block-latest-tag-binding
+  name: block-latest-tag-pods-binding
 spec:
-  policyName: block-latest-tag
+  policyName: block-latest-tag-pods
+  validationActions: ["Deny"]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+      - key: environment
+        operator: In
+        values: ["production", "staging"]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: block-latest-tag-workloads-binding
+spec:
+  policyName: block-latest-tag-workloads
   validationActions: ["Deny"]
   matchResources:
     namespaceSelector:
@@ -90,15 +134,17 @@ spec:
         values: ["production", "staging"]
 ```
 
-This policy ensures all containers specify explicit version tags in production and staging environments.
+These policies ensure all containers specify explicit version tags in production and staging environments.
 
 Test the policy:
 
 ```bash
+# Run these in a namespace labeled environment=production or environment=staging
+
 # This should be rejected
 
 kubectl run test --image=nginx:latest
-# Error: admission webhook denied
+# Error: ValidatingAdmissionPolicy 'block-latest-tag-pods' denied request
 
 # This should succeed
 kubectl run test --image=nginx:1.25.3
@@ -124,11 +170,7 @@ spec:
   validations:
   - expression: |
       object.spec.template.spec.containers.all(c,
-        c.image.contains(':') &&
-        !c.image.endsWith(':latest') &&
-        !c.image.endsWith(':dev') &&
-        !c.image.endsWith(':staging') &&
-        c.image.split(':')[1].matches('^v?[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9]+)?$')
+        c.image.matches('^[^@]+:v?[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$')
       )
     message: |
       Container images must use semantic versioning (e.g., v1.2.3 or 1.2.3).
@@ -157,14 +199,7 @@ spec:
   validations:
   - expression: |
       object.spec.containers.all(c,
-        !c.image.endsWith(':latest') &&
-        !c.image.endsWith(':dev') &&
-        !c.image.endsWith(':develop') &&
-        !c.image.endsWith(':master') &&
-        !c.image.endsWith(':main') &&
-        !c.image.endsWith(':staging') &&
-        !c.image.endsWith(':prod') &&
-        !c.image.endsWith(':production')
+        !c.image.matches('^.*:(latest|dev|develop|master|main|staging|prod|production)(@.*)?$')
       )
     message: |
       Mutable image tags are not allowed. Use immutable tags like git commit SHAs or semantic versions.
@@ -215,7 +250,7 @@ spec:
     spec:
       containers:
       - name: app
-        image: myregistry.azurecr.io/myapp@sha256:abc123...
+        image: myregistry.azurecr.io/myapp@sha256:8f2a9b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8
 ```
 
 ## Image Pull Policy Enforcement
@@ -263,7 +298,6 @@ kind: ClusterPolicy
 metadata:
   name: disallow-latest-tag
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
   - name: require-image-tag
@@ -273,11 +307,18 @@ spec:
           kinds:
           - Pod
     validate:
+      failureAction: Enforce
       message: "An image tag is required"
-      pattern:
-        spec:
-          containers:
-          - image: "*:*"
+      foreach:
+      - list: "request.object.spec.containers"
+        pattern:
+          image: "*:*"
+      - list: "request.object.spec.initContainers"
+        pattern:
+          image: "*:*"
+      - list: "request.object.spec.ephemeralContainers"
+        pattern:
+          image: "*:*"
   - name: disallow-latest-tag
     match:
       any:
@@ -285,11 +326,18 @@ spec:
           kinds:
           - Pod
     validate:
+      failureAction: Enforce
       message: "Using 'latest' tag is not allowed"
-      pattern:
-        spec:
-          containers:
-          - image: "!*:latest"
+      foreach:
+      - list: "request.object.spec.containers"
+        pattern:
+          image: "!*:latest"
+      - list: "request.object.spec.initContainers"
+        pattern:
+          image: "!*:latest"
+      - list: "request.object.spec.ephemeralContainers"
+        pattern:
+          image: "!*:latest"
   - name: require-approved-registries
     match:
       any:
@@ -297,26 +345,26 @@ spec:
           kinds:
           - Pod
     validate:
+      failureAction: Enforce
       message: "Images must come from approved registries"
-      pattern:
-        spec:
-          containers:
-          - image: "myregistry.azurecr.io/*:* | gcr.io/myproject/*:*"
+      foreach:
+      - list: "request.object.spec.containers"
+        anyPattern:
+        - image: "myregistry.azurecr.io/*:*"
+        - image: "gcr.io/myproject/*:*"
 ```
 
 ## Registry-Level Controls
 
-Combine Kubernetes policies with registry controls. For Harbor:
+Combine Kubernetes policies with registry controls. For Harbor, configure project-level tag immutability rules:
 
 ```yaml
-# Harbor project metadata
-{
-  "prevent_vul": "true",
-  "severity": "high",
-  "prevent_latest": "true",
-  "auto_scan": "true"
-}
+# Harbor tag immutability rule settings
+repositories: "matching **"
+tags: "matching **"
 ```
+
+Harbor project configuration can also prevent pulling images with vulnerabilities at or above a selected severity and automatically scan images on push.
 
 For Docker Registry (using Notary):
 
@@ -377,7 +425,7 @@ kind: ValidatingAdmissionPolicyBinding
 metadata:
   name: block-latest-audit
 spec:
-  policyName: block-latest-tag
+  policyName: block-latest-tag-pods
   validationActions: ["Audit", "Warn"]
   matchResources:
     namespaceSelector:
@@ -398,7 +446,7 @@ kind: ValidatingAdmissionPolicyBinding
 metadata:
   name: block-latest-with-exceptions
 spec:
-  policyName: block-latest-tag
+  policyName: block-latest-tag-pods
   validationActions: ["Deny"]
   matchResources:
     namespaceSelector:
