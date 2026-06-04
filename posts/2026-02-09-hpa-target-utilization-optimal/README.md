@@ -14,9 +14,9 @@ Target utilization isn't just a percentage you guess at. It's a carefully chosen
 
 ## Understanding Target Utilization Impact
 
-HPA maintains resource utilization around your target by adding or removing replicas. If you target 70% CPU and current utilization hits 80%, HPA scales up. The formula is: desired replicas equals current replicas times current utilization divided by target utilization.
+HPA maintains resource utilization around your target by adding or removing replicas. If you target 70% CPU and current utilization hits 80%, HPA scales up. The formula is: desired replicas equals the ceiling of current replicas times current utilization divided by target utilization.
 
-At 70% target with 10 pods at 80% utilization, HPA calculates 10 multiplied by 80 divided by 70, which equals approximately 11 pods. This brings utilization back toward 70%. The lower your target, the more headroom you maintain, but the more pods you run.
+At 70% target with 10 pods at 80% utilization, HPA calculates 10 multiplied by 80 divided by 70, then rounds up to 12 pods. This brings utilization back toward 70%. The lower your target, the more headroom you maintain, but the more pods you run.
 
 ## Measuring Performance Under Load
 
@@ -33,9 +33,11 @@ kubectl scale deployment app-server --replicas=5
 # Generate increasing load and measure latency
 for rps in 100 200 500 1000 2000; do
   echo "Testing at $rps requests per second"
-  hey -z 5m -q $rps -c 50 http://app-server.default.svc.cluster.local
+  # hey -q is per worker, so divide the target RPS by concurrency
+  qps_per_worker=$((rps / 50))
+  hey -z 5m -q $qps_per_worker -c 50 http://app-server.default.svc.cluster.local
 
-  # Capture CPU and latency
+  # Capture CPU; hey output includes latency
   kubectl top pods -l app=app-server
   sleep 30
 done
@@ -155,7 +157,7 @@ spec:
         periodSeconds: 120
 ```
 
-Targeting 50% CPU utilization doubles your capacity headroom. When load spikes from 50% to 80%, you're still within safe performance zones while HPA adds capacity.
+Targeting 50% CPU utilization leaves roughly half of the requested CPU capacity as headroom. When load spikes from 50% to 80%, you're more likely to stay within safe performance zones while HPA adds capacity.
 
 ## Aggressive Targets for Cost-Conscious Workloads
 
@@ -229,7 +231,7 @@ spec:
         averageUtilization: 75  # Lower memory target for safety
 ```
 
-Memory requires more conservative targets because you can't recover from OOM kills. CPU can burst and throttle, making higher utilization safer.
+Memory often requires more conservative targets because OOM kills interrupt work and restart pods. CPU can burst and throttle, making higher utilization safer.
 
 ## Adjusting Targets Based on Traffic Patterns
 
@@ -301,7 +303,7 @@ kubectl get hpa mixed-targets-hpa -o json | jq '{
 }'
 
 # Check for performance degradation
-kubectl get events --field-selector involvedObject.name=web-app | grep -i "oom\|liveness\|error"
+kubectl get events --field-selector involvedObject.kind=Pod | grep -i "oom\|liveness\|error"
 ```
 
 If you see frequent OOM kills or probe failures, your target is too high.
@@ -340,7 +342,7 @@ spec:
         averageUtilization: 70
 ```
 
-Scaling on latency directly ensures you maintain performance regardless of CPU utilization.
+Scaling on latency directly helps maintain performance when CPU utilization is not the best capacity signal.
 
 ## Iterative Target Tuning
 
