@@ -8,11 +8,11 @@ Description: Master kubectl top command to quickly identify resource-hungry pods
 
 ---
 
-kubectl top is the fastest way to identify resource hogs in your cluster. It shows real-time CPU and memory usage for nodes and pods. This guide shows you every useful kubectl top command and how to use the data for optimization.
+kubectl top is the fastest way to identify resource hogs in your cluster. It shows recent CPU and memory usage for nodes and pods. This guide shows you every useful kubectl top command and how to use the data for optimization.
 
 ## Prerequisites
 
-kubectl top requires Metrics Server:
+kubectl top requires Metrics Server or another provider of the Kubernetes Metrics API:
 
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
@@ -169,10 +169,10 @@ Parse output with awk for automation:
 
 ```bash
 # Find pods using > 1 CPU
-kubectl top pods --all-namespaces --no-headers | awk '$3 > 1000 {print $1, $2, $3}'
+kubectl top pods --all-namespaces --no-headers | awk 'function cpu_m(v){return v ~ /m$/ ? v+0 : (v+0)*1000} cpu_m($3) > 1000 {print $1, $2, $3}'
 
 # Find pods using > 4Gi memory
-kubectl top pods --all-namespaces --no-headers | awk '$4 ~ /Gi/ && $4 > 4 {print $1, $2, $4}'
+kubectl top pods --all-namespaces --no-headers | awk 'function mem_mi(v){if (v ~ /Ki$/) return (v+0)/1024; if (v ~ /Mi$/) return v+0; if (v ~ /Gi$/) return (v+0)*1024; return v+0} mem_mi($4) > 4096 {print $1, $2, $4}'
 ```
 
 ## Monitoring Specific Pods
@@ -180,10 +180,10 @@ kubectl top pods --all-namespaces --no-headers | awk '$4 ~ /Gi/ && $4 > 4 {print
 Watch a pod's usage over time:
 
 ```bash
-kubectl top pod my-app -n production --watch
+watch -n 5 kubectl top pod my-app -n production
 ```
 
-Update every few seconds. Press Ctrl+C to stop.
+Update every 5 seconds. Press Ctrl+C to stop.
 
 ## Node Capacity vs Usage
 
@@ -222,7 +222,7 @@ kubectl top pod my-app -n production > current.txt
 diff baseline.txt current.txt
 ```
 
-Growing memory indicates a leak.
+Growing memory may indicate a leak.
 
 ## Exporting to CSV
 
@@ -254,7 +254,7 @@ Before draining a node, check its load:
 kubectl top node worker-1
 ```
 
-If usage is low, draining is safe. If high, pods will cause disruption when rescheduled.
+If usage is low, draining is lower risk. If high, verify rescheduling capacity and PodDisruptionBudgets before draining.
 
 Resource Usage by Node
 
@@ -335,7 +335,7 @@ Action: Increase requests to 3 CPU, 10Gi memory
 
 ## Limitations
 
-- kubectl top shows recent usage (last minute), not peak
+- kubectl top shows recent usage from the Metrics API, not peak
 - Metrics Server has no history
 - Usage can spike between measurements
 - Doesn't show disk I/O or network
@@ -361,7 +361,7 @@ kubectl top pods --all-namespaces --sort-by=memory | head -10
 kubectl top pods --containers -n production --sort-by=memory
 
 # 5. Identify low-usage pods (candidates for reduction)
-kubectl top pods --all-namespaces --no-headers | awk '$3 < 100 {print $0}' | head -20
+kubectl top pods --all-namespaces --no-headers | awk 'function cpu_m(v){return v ~ /m$/ ? v+0 : (v+0)*1000} cpu_m($3) < 100 {print $0}' | head -20
 ```
 
 Use this data to right-size deployments.
