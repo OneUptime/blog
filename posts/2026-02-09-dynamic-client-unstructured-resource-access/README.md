@@ -260,7 +260,10 @@ Combine the dynamic client with discovery to work with resources you discover at
 
 ```go
 import (
+    "strings"
+
     "k8s.io/client-go/discovery"
+    "k8s.io/client-go/rest"
 )
 
 func listAllResourceTypes(config *rest.Config) {
@@ -341,7 +344,12 @@ func watchPods(client dynamic.Interface) {
 
     // Process events
     for event := range watcher.ResultChan() {
-        pod := event.Object.(*unstructured.Unstructured)
+        pod, ok := event.Object.(*unstructured.Unstructured)
+        if !ok {
+            fmt.Printf("Event: %s, unexpected object type: %T\n",
+                event.Type, event.Object)
+            continue
+        }
 
         fmt.Printf("Event: %s, Pod: %s\n",
             event.Type, pod.GetName())
@@ -384,13 +392,17 @@ Convert typed objects to unstructured when needed:
 
 ```go
 import (
+    corev1 "k8s.io/api/core/v1"
     "k8s.io/apimachinery/pkg/runtime"
 )
 
 func convertToUnstructured(pod *corev1.Pod) (*unstructured.Unstructured, error) {
-    unstructuredObj := &unstructured.Unstructured{}
-    err := runtime.DefaultUnstructuredConverter.ToUnstructured(pod, &unstructuredObj.Object)
-    return unstructuredObj, err
+    obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(pod)
+    if err != nil {
+        return nil, err
+    }
+
+    return &unstructured.Unstructured{Object: obj}, nil
 }
 
 func convertFromUnstructured(obj *unstructured.Unstructured) (*corev1.Pod, error) {
