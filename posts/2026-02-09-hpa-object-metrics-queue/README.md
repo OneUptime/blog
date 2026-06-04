@@ -8,19 +8,19 @@ Description: Implement Horizontal Pod Autoscaler with object metrics to scale wo
 
 ---
 
-Object metrics in HPA allow scaling based on metrics associated with Kubernetes objects like Services, Ingresses, or custom resources. This differs from pod metrics which average across all pods, or external metrics which come from outside Kubernetes. Object metrics are particularly useful for scaling workers based on queue depth stored in ConfigMaps, scaling backends based on Ingress traffic, or scaling based on custom resource status.
+Object metrics in HPA allow scaling based on metrics associated with Kubernetes objects like Services, Ingresses, or custom resources. This differs from pod metrics which average across all pods, or external metrics which come from outside Kubernetes. Object metrics are particularly useful for scaling workers based on queue depth associated with a Service or custom resource, scaling backends based on Ingress traffic, or scaling based on custom resource status.
 
 The most common use case is queue-based autoscaling where you monitor the number of pending messages in a queue and scale workers to process them. Instead of scaling when worker CPU is high, you scale proactively based on how much work is waiting. This prevents queue backlog from growing while ensuring you don't run excess workers when the queue is empty.
 
 ## Understanding Object Metrics
 
-Object metrics come from Kubernetes API objects and are exposed through the custom metrics API. You reference a specific object by its API version, kind, and name. HPA queries that object's metrics and scales based on the values.
+Object metrics describe Kubernetes API objects and are exposed through the custom metrics API. You reference a specific object by its API version, kind, and name in the same namespace as the HPA. HPA queries that object's metrics and scales based on the values.
 
 For queue-based scaling, you typically expose queue depth as a metric associated with a Service or custom resource representing the queue. A metrics adapter queries the actual queue system (RabbitMQ, Redis, etc.) and exposes the depth as a Kubernetes metric.
 
 ## Setting Up Queue Depth Metrics
 
-First, deploy a metrics adapter that exposes queue depth. Here's an example using a custom metrics server with Redis.
+First, deploy a metrics adapter that exposes queue depth. Here's a simplified example of a custom metrics adapter configuration for Redis.
 
 ```yaml
 apiVersion: v1
@@ -99,7 +99,6 @@ spec:
         apiVersion: v1
         kind: Service
         name: redis-queue
-        namespace: workers
       target:
         type: Value
         value: "50"  # Scale when total queue depth exceeds 50
@@ -133,10 +132,10 @@ kubectl apply -f hpa.yaml
 kubectl get hpa queue-worker-hpa -n workers
 
 # Verify object metric is available
-kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/workers/services/redis-queue/redis_list_length" | jq .
+kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta2/namespaces/workers/services/redis-queue/redis_list_length" | jq .
 ```
 
-HPA now scales workers based on total queue depth. When 50 items are in the queue, HPA maintains enough workers to process them based on your other configured metrics and policies.
+HPA now scales workers based on total queue depth. With a `Value` target of 50, the HPA treats 50 queued items as the target total backlog and scales up when the current metric is higher, subject to your configured limits and policies.
 
 ## Scaling Based on Per-Pod Queue Target
 
@@ -302,7 +301,7 @@ Track queue depth and worker scaling relationship.
 
 ```bash
 # Check current queue depth metric
-kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/workers/services/redis-queue/redis_list_length" | jq '.value'
+kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta2/namespaces/workers/services/redis-queue/redis_list_length" | jq '.value'
 
 # View HPA status
 kubectl describe hpa queue-worker-hpa -n workers
@@ -311,7 +310,7 @@ kubectl describe hpa queue-worker-hpa -n workers
 kubectl get events -n workers --field-selector involvedObject.name=queue-worker-hpa -w
 
 # Monitor worker count vs queue depth
-watch -n 5 'echo "Workers: $(kubectl get deployment queue-worker -n workers -o jsonpath="{.status.replicas}")"; echo "Queue: $(kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/workers/services/redis-queue/redis_list_length" | jq -r ".value")"'
+watch -n 5 'echo "Workers: $(kubectl get deployment queue-worker -n workers -o jsonpath="{.status.replicas}")"; echo "Queue: $(kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta2/namespaces/workers/services/redis-queue/redis_list_length" | jq -r ".value")"'
 ```
 
 ## Handling Queue Depth Spikes
@@ -372,13 +371,15 @@ Define a custom resource to represent queue state.
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: messagequeus.queue.example.com
+  name: messagequeues.queue.example.com
 spec:
   group: queue.example.com
   versions:
   - name: v1
     served: true
     storage: true
+    subresources:
+      status: {}
     schema:
       openAPIV3Schema:
         type: object
@@ -397,7 +398,7 @@ spec:
                 type: integer
   scope: Namespaced
   names:
-    plural: messagequeus
+    plural: messagequeues
     singular: messagequeue
     kind: MessageQueue
 ---
