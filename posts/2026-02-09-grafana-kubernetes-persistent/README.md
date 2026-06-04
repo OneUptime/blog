@@ -10,7 +10,7 @@ Description: Learn how to deploy Grafana on Kubernetes with persistent storage u
 
 Deploying Grafana on Kubernetes is straightforward, but making it production-ready requires persistent storage. Without persistence, every time your Grafana pod restarts, you lose dashboards, data sources, and user configurations. That's not acceptable for a monitoring system.
 
-The solution is using Kubernetes persistent volumes to store Grafana's database and configuration files. This ensures your Grafana setup survives pod restarts, node failures, and cluster upgrades.
+The solution is using Kubernetes persistent volumes to store Grafana's database and plugins, while managing configuration with Kubernetes ConfigMaps and Secrets. This ensures your Grafana setup survives pod restarts, node failures, and cluster upgrades.
 
 ## Understanding Grafana Storage Needs
 
@@ -70,7 +70,7 @@ spec:
         runAsNonRoot: true
       containers:
       - name: grafana
-        image: grafana/grafana:10.2.0
+        image: grafana/grafana:13.0.1
         ports:
         - containerPort: 3000
           name: http
@@ -82,8 +82,8 @@ spec:
             secretKeyRef:
               name: grafana-credentials
               key: admin-password
-        - name: GF_INSTALL_PLUGINS
-          value: "grafana-piechart-panel,grafana-worldmap-panel"
+        - name: GF_PLUGINS_PREINSTALL
+          value: "grafana-clock-panel"
         volumeMounts:
         - name: storage
           mountPath: /var/lib/grafana
@@ -239,7 +239,7 @@ spec:
         runAsNonRoot: true
       containers:
       - name: grafana
-        image: grafana/grafana:10.2.0
+        image: grafana/grafana:13.0.1
         ports:
         - containerPort: 3000
           name: http
@@ -316,26 +316,19 @@ spec:
     spec:
       containers:
       - name: grafana
-        image: grafana/grafana:10.2.0
+        image: grafana/grafana:13.0.1
         envFrom:
         - secretRef:
             name: grafana-db-credentials
         ports:
         - containerPort: 3000
-        volumeMounts:
-        - name: plugins
-          mountPath: /var/lib/grafana/plugins
         resources:
           requests:
             cpu: 200m
             memory: 256Mi
-      volumes:
-      - name: plugins
-        persistentVolumeClaim:
-          claimName: grafana-plugins
 ```
 
-With an external database, you can run multiple Grafana replicas for high availability.
+With an external database, you can run multiple Grafana replicas for high availability. If you use plugins, preinstall the same plugins in each replica or bake them into a custom Grafana image.
 
 ## Backing Up Grafana Data
 
@@ -355,11 +348,13 @@ spec:
         spec:
           containers:
           - name: backup
-            image: bitnami/kubectl:latest
+            image: your-registry/kubectl-sqlite-awscli:latest
             command:
             - /bin/bash
             - -c
             - |
+              # This image must include kubectl, sqlite3, and the AWS CLI.
+
               # Get pod name
               POD=$(kubectl get pod -n monitoring -l app=grafana -o jsonpath='{.items[0].metadata.name}')
 
@@ -417,10 +412,10 @@ If you have an existing Grafana instance, migrate it:
 
 ```bash
 # Export dashboards from existing Grafana
-curl -H "Authorization: Bearer <api-key>" \
+curl -H "Authorization: Bearer <service-account-token>" \
   http://old-grafana:3000/api/search?type=dash-db | \
   jq -r '.[] | .uid' | while read uid; do
-    curl -H "Authorization: Bearer <api-key>" \
+    curl -H "Authorization: Bearer <service-account-token>" \
       http://old-grafana:3000/api/dashboards/uid/$uid -o "$uid.json"
   done
 
@@ -429,11 +424,11 @@ scp user@old-server:/var/lib/grafana/grafana.db ./grafana.db
 
 # Create PVC and copy database
 kubectl create -f grafana-pvc.yaml
-POD=$(kubectl get pod -l app=grafana -o jsonpath='{.items[0].metadata.name}')
+POD=$(kubectl get pod -n monitoring -l app=grafana -o jsonpath='{.items[0].metadata.name}')
 kubectl cp ./grafana.db monitoring/$POD:/var/lib/grafana/grafana.db
 
 # Restart Grafana
-kubectl rollout restart deployment grafana -n monitoring
+kubectl rollout restart deployment/grafana -n monitoring
 ```
 
 ## Monitoring Grafana Storage Usage
@@ -454,24 +449,23 @@ kubectl exec -n monitoring -it $(kubectl get pod -n monitoring -l app=grafana -o
   du -sh /var/lib/grafana
 ```
 
-Set up alerts for storage usage:
+If you use Prometheus Operator, set up alerts for storage usage:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
 metadata:
   name: grafana-alerts
   namespace: monitoring
-data:
-  alerts.yaml: |
-    groups:
-    - name: grafana
-      rules:
-      - alert: GrafanaStorageNearFull
-        expr: kubelet_volume_stats_available_bytes{persistentvolumeclaim="grafana-storage"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim="grafana-storage"} < 0.2
-        for: 5m
-        annotations:
-          summary: "Grafana storage is running low"
+spec:
+  groups:
+  - name: grafana
+    rules:
+    - alert: GrafanaStorageNearFull
+      expr: kubelet_volume_stats_available_bytes{persistentvolumeclaim="grafana-storage"} / kubelet_volume_stats_capacity_bytes{persistentvolumeclaim="grafana-storage"} < 0.2
+      for: 5m
+      annotations:
+        summary: "Grafana storage is running low"
 ```
 
 ## Troubleshooting Storage Issues
