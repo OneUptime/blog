@@ -20,6 +20,7 @@ You need a PagerDuty account (a free trial works) and at least one service confi
 # Store your PagerDuty integration key
 
 export PD_INTEGRATION_KEY="your-pagerduty-integration-key"
+printf "%s" "$PD_INTEGRATION_KEY" > pagerduty.key
 
 docker --version
 docker compose version
@@ -29,21 +30,20 @@ docker compose version
 
 The PagerDuty Agent (pdagent) runs as a local daemon that queues and sends events to PagerDuty. It handles retries and buffering when the network is unreliable.
 
+PagerDuty does not publish an official `pagerduty/pdagent` Docker Hub image. To run the agent in Docker, build the container from the official source repository.
+
 ```bash
-# Run the PagerDuty Agent container
-docker run -d \
-  --name pdagent \
-  --restart unless-stopped \
-  -v pdagent-data:/var/lib/pdagent \
-  -p 8090:8090 \
-  pagerduty/pdagent:latest
+# Build and run the PagerDuty Agent container from source
+git clone https://github.com/PagerDuty/pdagent.git
+cd pdagent
+./scripts/run-console.sh ubuntu
 ```
 
-Send events to the agent using its CLI or the local HTTP endpoint.
+Send events to the agent using its CLI.
 
 ```bash
 # Trigger an incident via the PagerDuty Agent
-docker exec pdagent pd-send \
+docker exec pdagent-ubuntu pd-send \
   -k ${PD_INTEGRATION_KEY} \
   -t trigger \
   -d "High CPU usage on web-server-01" \
@@ -58,8 +58,6 @@ The most common Docker-based integration routes alerts from Prometheus through A
 
 ```yaml
 # docker-compose.yml - Prometheus + Alertmanager + PagerDuty integration
-version: "3.8"
-
 services:
   # Prometheus for metrics collection
   prometheus:
@@ -77,6 +75,7 @@ services:
     image: prom/alertmanager:v0.27.0
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - ./pagerduty.key:/etc/alertmanager/pagerduty.key:ro
     ports:
       - "9093:9093"
     networks:
@@ -167,7 +166,7 @@ groups:
 
       # Alert when a Docker container is using too much memory
       - alert: ContainerHighMemory
-        expr: container_memory_usage_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""} > 0.9
+        expr: (container_memory_usage_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""} * 100) > 90 and container_spec_memory_limit_bytes{name!=""} > 0
         for: 2m
         labels:
           severity: warning
@@ -178,7 +177,7 @@ groups:
 
       # Alert when a container is restarting repeatedly
       - alert: ContainerRestarting
-        expr: increase(container_restart_count{name!=""}[1h]) > 3
+        expr: changes(max by (name) (container_start_time_seconds{name!=""})[1h:1m]) > 3
         for: 0m
         labels:
           severity: critical
@@ -205,20 +204,20 @@ route:
 
   # Route critical alerts to a different PagerDuty service
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: "pagerduty-critical"
       continue: false
 
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: "pagerduty-platform"
 
 receivers:
   # Critical alerts go to the high-priority PagerDuty service
   - name: "pagerduty-critical"
     pagerduty_configs:
-      - routing_key: "${PD_INTEGRATION_KEY}"
+      - routing_key_file: "/etc/alertmanager/pagerduty.key"
         severity: critical
         description: '{{ .CommonAnnotations.summary }}'
         details:
@@ -228,7 +227,7 @@ receivers:
   # Warning alerts go to a lower-priority service
   - name: "pagerduty-platform"
     pagerduty_configs:
-      - routing_key: "${PD_INTEGRATION_KEY}"
+      - routing_key_file: "/etc/alertmanager/pagerduty.key"
         severity: warning
         description: '{{ .CommonAnnotations.summary }}'
 ```
@@ -241,9 +240,7 @@ Build a lightweight container that monitors Docker events and sends PagerDuty al
 # docker_event_monitor.py - Watch Docker events and alert PagerDuty
 import docker
 import requests
-import json
 import os
-import time
 
 PD_ROUTING_KEY = os.environ.get("PD_INTEGRATION_KEY")
 EVENTS_API = "https://events.pagerduty.com/v2/enqueue"
