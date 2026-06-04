@@ -25,19 +25,15 @@ The Mimir ruler component evaluates recording and alerting rules. Enable it in y
 
 ruler:
   enable_api: true
-  enable_sharding: true
   rule_path: /data/ruler
 
   # Configure how often to evaluate rules
   evaluation_interval: 1m
 
-  # Enable rule group sharding for scalability
-  enable_sharding: true
-
-  # External labels added to all metrics
-  external_labels:
-    cluster: production
-    region: us-east-1
+  # Ruler replicas shard rule groups using their ruler ring
+  ring:
+    kvstore:
+      store: memberlist
 
 ruler_storage:
   backend: s3
@@ -100,7 +96,7 @@ curl -X GET \
 # Get a specific rule group
 curl -X GET \
   -H "X-Scope-OrgID: tenant1" \
-  http://mimir:8080/prometheus/config/v1/rules/http_metrics
+  http://mimir:8080/prometheus/config/v1/rules/http_metrics/http_metrics
 ```
 
 The X-Scope-OrgID header identifies which tenant's rules you're managing.
@@ -137,19 +133,20 @@ Use Terraform to manage Mimir rules as code, enabling version control and reprod
 terraform {
   required_providers {
     mimir = {
-      source = "grafana/mimir"
-      version = "~> 0.2"
+      source = "fgouteroux/mimir"
+      version = "~> 1.0"
     }
   }
 }
 
 provider "mimir" {
-  ruler_uri = "http://mimir:8080"
+  ruler_uri = "http://mimir:8080/prometheus"
   org_id    = "tenant1"
 }
 
 resource "mimir_rule_group_recording" "http_metrics" {
   name     = "http_metrics"
+  namespace = "http_metrics"
   interval = "30s"
 
   rule {
@@ -181,17 +178,19 @@ This makes rule management part of your infrastructure as code workflow.
 Mimir exposes metrics about rule evaluation that help you understand performance and identify issues.
 
 ```promql
-# Rule evaluation duration
-cortex_ruler_group_evaluation_duration_seconds{rule_group="http_metrics"}
+# Average rule evaluation duration
+sum(rate(cortex_prometheus_rule_evaluation_duration_seconds_sum{rule_group="http_metrics"}[5m]))
+/
+sum(rate(cortex_prometheus_rule_evaluation_duration_seconds_count{rule_group="http_metrics"}[5m]))
 
 # Failed rule evaluations
-rate(cortex_ruler_evaluation_failures_total[5m])
+rate(cortex_prometheus_rule_evaluation_failures_total[5m])
 
-# Number of samples produced by rules
-cortex_ruler_group_samples{rule_group="http_metrics"}
+# Missed rule group evaluations
+rate(cortex_prometheus_rule_group_iterations_missed_total{rule_group="http_metrics"}[5m])
 
-# Time since last evaluation
-time() - cortex_ruler_group_last_evaluation_timestamp_seconds
+# Number of rules in the group
+cortex_prometheus_rule_group_rules{rule_group="http_metrics"}
 ```
 
 Monitor these metrics to ensure your rules evaluate successfully and don't create too many time series.
@@ -226,7 +225,7 @@ High-frequency rules consume more resources but provide fresher data. Balance ev
 
 ## Handling Rule Failures
 
-Recording rules can fail if the underlying query returns unexpected results. Configure rules defensively:
+Recording rules can fail if the underlying query is invalid, exceeds limits, or cannot read or write data successfully. Configure rules defensively:
 
 ```yaml
 name: defensive_rules
@@ -253,7 +252,7 @@ rules:
       )
 ```
 
-Using `or vector(0)` provides a default value when queries return no results, preventing gaps in recorded metrics.
+Using `or vector(0)` provides a single unlabeled default value when the whole query returns no results. Avoid it when you need to preserve one zero-valued series per label set.
 
 ## Multi-Tenant Rule Management
 
