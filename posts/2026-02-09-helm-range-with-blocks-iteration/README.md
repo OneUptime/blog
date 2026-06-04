@@ -229,15 +229,16 @@ Generate ingress rules:
 # templates/ingress.yaml
 {{- if .Values.ingress.enabled -}}
 {{- $root := . -}}
+{{- with .Values.ingress }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "myapp.fullname" . }}
+  name: {{ include "myapp.fullname" $root }}
   labels:
-    {{- include "myapp.labels" . | nindent 4 }}
+    {{- include "myapp.labels" $root | nindent 4 }}
 spec:
   rules:
-  {{- range .Values.ingress.hosts }}
+  {{- range .hosts }}
   - host: {{ .host | quote }}
     http:
       paths:
@@ -251,6 +252,7 @@ spec:
               number: {{ .backend.port }}
       {{- end }}
   {{- end }}
+{{- end }}
 {{- end }}
 ```
 
@@ -372,7 +374,7 @@ workers:
     replicas: 2
 ```
 
-Create numbered StatefulSet instances:
+Create numbered Pod instances:
 
 ```yaml
 {{- $root := . -}}
