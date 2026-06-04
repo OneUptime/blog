@@ -24,19 +24,27 @@ You need a Kubernetes cluster with Istio installed:
 
 ```bash
 istioctl install --set profile=demo
-kubectl label namespace default istio-injection=enabled
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+kubectl create namespace test
+kubectl label namespace test istio-injection=enabled
 ```
 
 Install Flagger:
 
 ```bash
-kubectl apply -k github.com/fluxcd/flagger//kustomize/istio
+kustomize build https://github.com/fluxcd/flagger/kustomize/istio?ref=main | kubectl apply -f -
 ```
 
 Verify Flagger is running:
 
 ```bash
 kubectl get pods -n istio-system | grep flagger
+```
+
+Install the Flagger load tester to generate traffic during analysis:
+
+```bash
+kustomize build https://github.com/fluxcd/flagger/kustomize/tester?ref=main | kubectl apply -f -
 ```
 
 ## Deploying the Initial Application
@@ -50,7 +58,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: podinfo
-  namespace: default
+  namespace: test
 spec:
   replicas: 2
   selector:
@@ -74,7 +82,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: podinfo
-  namespace: default
+  namespace: test
 spec:
   selector:
     app: podinfo
@@ -84,7 +92,7 @@ spec:
 ```
 
 ```bash
-kubectl apply -f app-deployment.yaml
+kubectl -n test apply -f app-deployment.yaml
 ```
 
 ## Creating a Canary Resource
@@ -97,7 +105,7 @@ apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
   name: podinfo
-  namespace: default
+  namespace: test
 spec:
   targetRef:
     apiVersion: apps/v1
@@ -108,7 +116,7 @@ spec:
   analysis:
     # How often to run analysis
     interval: 1m
-    # Number of checks before promotion
+    # Max number of failed metric checks before rollback
     threshold: 5
     # Max traffic percentage for canary
     maxWeight: 50
@@ -127,27 +135,28 @@ spec:
     # Webhooks for custom checks
     webhooks:
     - name: load-test
-      url: http://flagger-loadtester.default/
+      url: http://flagger-loadtester.test/
       timeout: 5s
       metadata:
         type: cmd
-        cmd: "hey -z 1m -q 10 -c 2 http://podinfo-canary.default:9898/"
+        cmd: "hey -z 1m -q 10 -c 2 http://podinfo-canary.test:9898/"
 ```
 
 ```bash
-kubectl apply -f canary.yaml
+kubectl -n test apply -f canary.yaml
 ```
 
 Flagger creates several resources:
 
 - podinfo-primary deployment (production traffic)
 - podinfo-canary deployment (canary traffic)
-- VirtualService for traffic splitting
+- podinfo, podinfo-primary, and podinfo-canary services
+- DestinationRules and a VirtualService for traffic splitting
 
 Check the status:
 
 ```bash
-kubectl get canary podinfo
+kubectl -n test get canary podinfo
 ```
 
 ## Triggering a Canary Deployment
@@ -155,13 +164,13 @@ kubectl get canary podinfo
 Update the deployment to trigger a canary:
 
 ```bash
-kubectl set image deployment/podinfo podinfo=ghcr.io/stefanprodan/podinfo:6.3.1
+kubectl -n test set image deployment/podinfo podinfo=ghcr.io/stefanprodan/podinfo:6.3.1
 ```
 
 Watch the canary progress:
 
 ```bash
-kubectl describe canary podinfo
+kubectl -n test describe canary podinfo
 ```
 
 Flagger follows this process:
@@ -176,7 +185,7 @@ Flagger follows this process:
 Check traffic distribution:
 
 ```bash
-kubectl get virtualservice podinfo -o yaml
+kubectl -n test get virtualservice podinfo -o yaml
 ```
 
 You'll see traffic weights changing as Flagger progresses through the canary.
@@ -191,7 +200,7 @@ apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
   name: podinfo
-  namespace: default
+  namespace: test
 spec:
   targetRef:
     apiVersion: apps/v1
@@ -219,7 +228,7 @@ spec:
     - name: error-rate
       templateRef:
         name: error-rate
-        namespace: default
+        namespace: test
       thresholdRange:
         max: 1
       interval: 1m
@@ -233,7 +242,7 @@ apiVersion: flagger.app/v1beta1
 kind: MetricTemplate
 metadata:
   name: error-rate
-  namespace: default
+  namespace: test
 spec:
   provider:
     type: prometheus
@@ -262,17 +271,17 @@ spec:
 ```
 
 ```bash
-kubectl apply -f metric-template.yaml
-kubectl apply -f canary-metrics.yaml
+kubectl -n test apply -f metric-template.yaml
+kubectl -n test apply -f canary-metrics.yaml
 ```
 
 ## Implementing Automated Load Testing
 
-Flagger can trigger load tests during canary analysis:
+Flagger can trigger load tests during canary analysis. If you have not already installed the load tester, install it first:
 
 ```bash
 # Install Flagger load tester
-kubectl apply -k github.com/fluxcd/flagger//kustomize/tester
+kustomize build https://github.com/fluxcd/flagger/kustomize/tester?ref=main | kubectl apply -f -
 ```
 
 Configure webhooks in your Canary:
@@ -282,20 +291,20 @@ spec:
   analysis:
     webhooks:
     - name: load-test
-      url: http://flagger-loadtester.default/
+      url: http://flagger-loadtester.test/
       timeout: 15s
       metadata:
         type: cmd
-        cmd: "hey -z 2m -q 10 -c 2 http://podinfo-canary.default:9898/"
+        cmd: "hey -z 2m -q 10 -c 2 http://podinfo-canary.test:9898/"
     - name: smoke-test
-      url: http://flagger-loadtester.default/
+      url: http://flagger-loadtester.test/
       timeout: 5s
       metadata:
         type: cmd
-        cmd: "curl -s http://podinfo-canary.default:9898/status/200"
+        cmd: "curl -s http://podinfo-canary.test:9898/status/200"
 ```
 
-The load tester runs before analysis at each canary step.
+The rollout webhook runs during each analysis iteration before Flagger checks metrics.
 
 ## Configuring Canary Rollback
 
@@ -319,7 +328,7 @@ spec:
       interval: 1m
 ```
 
-When the success rate drops below 99%, Flagger:
+When the success rate stays below 99% until the failed checks threshold is reached, Flagger:
 
 1. Routes all traffic back to primary
 2. Scales down canary
@@ -335,7 +344,7 @@ apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
   name: podinfo
-  namespace: default
+  namespace: test
 spec:
   targetRef:
     apiVersion: apps/v1
@@ -366,14 +375,14 @@ Only requests with `x-user-type: beta` header go to the canary. This enables tes
 Query Prometheus for canary metrics:
 
 ```promql
-# Canary success rate
-flagger_canary_status{name="podinfo"}
+# Canary promotion status: 0 running, 1 successful, 2 failed
+flagger_canary_status{name="podinfo",namespace="test"}
 
 # Canary weight (traffic percentage)
-flagger_canary_weight{name="podinfo"}
+flagger_canary_weight{workload="podinfo",namespace="test"}
 
-# Canary duration
-flagger_canary_duration_seconds{name="podinfo"}
+# Canary analysis duration
+flagger_canary_duration_seconds_sum{name="podinfo",namespace="test"}
 ```
 
 Set up Grafana dashboards to visualize canary progress.
@@ -383,16 +392,24 @@ Set up Grafana dashboards to visualize canary progress.
 Get notified about canary progress:
 
 ```yaml
+apiVersion: flagger.app/v1beta1
+kind: AlertProvider
+metadata:
+  name: deployment-alerts
+  namespace: test
+spec:
+  type: slack
+  channel: deployments
+  username: flagger
+  address: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+---
 spec:
   analysis:
-    webhooks:
-    - name: slack
-      url: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
-      timeout: 5s
-      metadata:
-        type: slack
-        channel: deployments
-        username: flagger
+    alerts:
+    - name: deployment Slack
+      severity: info
+      providerRef:
+        name: deployment-alerts
 ```
 
 Flagger sends notifications when canary starts, progresses, succeeds, or fails.
