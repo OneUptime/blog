@@ -41,10 +41,12 @@ docker run -d \
   -p 5222:5222 \
   -p 5269:5269 \
   -p 5280:5280 \
+  -e PROSODY_VIRTUAL_HOSTS=chat.example.com \
+  -e LOCAL=admin \
   -e DOMAIN=chat.example.com \
-  -e ALLOW_REGISTRATION=true \
+  -e PASSWORD=change-this-password \
   -v prosody-data:/var/lib/prosody \
-  prosody/prosody:latest
+  prosodyim/prosody:latest
 ```
 
 ### Docker Compose Setup for Prosody
@@ -58,20 +60,19 @@ version: "3.8"
 
 services:
   prosody:
-    image: prosody/prosody:latest
+    image: prosodyim/prosody:latest
     container_name: prosody-xmpp
     restart: unless-stopped
     ports:
       - "5222:5222"   # Client-to-server connections
       - "5269:5269"   # Server-to-server federation
-      - "5280:5280"   # HTTP admin and BOSH
-      - "5281:5281"   # HTTPS admin
+      - "5280:5280"   # HTTP services such as BOSH and WebSocket
+      - "5281:5281"   # HTTPS services
     environment:
-      - DOMAIN=chat.example.com
-      - ALLOW_REGISTRATION=false
+      - PROSODY_VIRTUAL_HOSTS=chat.example.com
     volumes:
       - prosody-data:/var/lib/prosody
-      - prosody-modules:/usr/lib/prosody/modules
+      - prosody-modules:/etc/prosody/modules
       - ./prosody.cfg.lua:/etc/prosody/prosody.cfg.lua:ro
 
 volumes:
@@ -100,11 +101,12 @@ modules_enabled = {
     "pep";          -- Personal eventing (for avatars, etc.)
     "private";      -- Private XML storage
     "blocklist";    -- Block contacts
-    "vcard4";       -- User profiles
+    "vcard";        -- User profiles
     "mam";          -- Message archive management
     "ping";         -- XMPP ping
     "register";     -- In-band user registration
     "admin_adhoc";  -- Admin commands
+    "admin_shell";  -- Local admin shell
     "http";         -- HTTP server for BOSH/WebSocket
     "bosh";         -- BOSH support for web clients
     "websocket";    -- WebSocket support
@@ -135,7 +137,7 @@ Once Prosody is running, create user accounts with the prosodyctl command.
 docker exec -it prosody-xmpp prosodyctl adduser admin@chat.example.com
 
 # List registered users for the domain
-docker exec -it prosody-xmpp prosodyctl mod_listusers
+docker exec -it prosody-xmpp prosodyctl shell user list chat.example.com
 ```
 
 ## Option 2: Running ejabberd in Docker
@@ -163,9 +165,9 @@ services:
       - ERLANG_NODE_ARG=ejabberd@localhost
       - CTL_ON_CREATE=register admin chat.example.com supersecretpassword
     volumes:
-      - ejabberd-data:/home/ejabberd/database
-      - ejabberd-logs:/home/ejabberd/logs
-      - ./ejabberd.yml:/home/ejabberd/conf/ejabberd.yml:ro
+      - ejabberd-data:/opt/ejabberd/database
+      - ejabberd-logs:/opt/ejabberd/logs
+      - ./ejabberd.yml:/opt/ejabberd/conf/ejabberd.yml:ro
 
 volumes:
   ejabberd-data:
@@ -188,7 +190,6 @@ listen:
     ip: "::"
     module: ejabberd_c2s
     max_stanza_size: 262144
-    shaper: c2s_shaper
     access: c2s
     starttls_required: true
   -
@@ -205,7 +206,13 @@ listen:
       /admin: ejabberd_web_admin
       /api: mod_http_api
       /bosh: mod_bosh
+      /upload: mod_http_upload
       /ws: ejabberd_http_ws
+  -
+    port: 1883
+    ip: "::"
+    module: mod_mqtt
+    backlog: 1000
 
 # Authentication using the internal database
 auth_method: internal
@@ -245,6 +252,7 @@ modules:
     access_create: local
     default_room_options:
       mam: true
+  mod_mqtt: {}
   mod_ping: {}
   mod_privacy: {}
   mod_private: {}
@@ -252,7 +260,7 @@ modules:
     versioning: true
   mod_vcard: {}
   mod_http_upload:
-    put_url: "https://upload.chat.example.com:5443"
+    put_url: "https://upload.chat.example.com:5443/upload"
     max_size: 10485760
 ```
 
@@ -279,14 +287,12 @@ Both servers need TLS certificates for encrypted connections. You can use Let's 
 ```bash
 # Generate self-signed certificates for testing
 # For production, use Let's Encrypt or a trusted CA
+mkdir -p certs
 openssl req -x509 -nodes -days 365 \
   -newkey rsa:2048 \
-  -keyout certs/xmpp.key \
-  -out certs/xmpp.crt \
+  -keyout certs/chat.example.com.key \
+  -out certs/chat.example.com.crt \
   -subj "/CN=chat.example.com"
-
-# Combine key and cert for Prosody (it expects a single PEM file)
-cat certs/xmpp.key certs/xmpp.crt > certs/xmpp.pem
 ```
 
 Then mount the certificate directory into your container by adding a volume line to your Compose file.
@@ -295,7 +301,7 @@ Then mount the certificate directory into your container by adding a volume line
     volumes:
       - ./certs:/etc/prosody/certs:ro  # For Prosody
       # or
-      - ./certs:/home/ejabberd/certs:ro  # For ejabberd
+      - ./certs:/opt/ejabberd/conf/certs:ro  # For ejabberd
 ```
 
 ## Connecting XMPP Clients
