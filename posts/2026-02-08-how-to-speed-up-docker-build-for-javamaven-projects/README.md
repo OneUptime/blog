@@ -179,7 +179,7 @@ RUN jlink \
     --strip-debug \
     --no-man-pages \
     --no-header-files \
-    --compress=zip-6 \
+    --compress=2 \
     --output /custom-jre
 
 # Stage 3: Minimal runtime image
@@ -228,6 +228,8 @@ EXPOSE 8080
 CMD ["java", "org.springframework.boot.loader.launch.JarLauncher"]
 ```
 
+The `org.springframework.boot.loader.launch.JarLauncher` class is used by Spring Boot 3.x. For Spring Boot 2.x layered JARs, use `org.springframework.boot.loader.JarLauncher` instead.
+
 The layers are ordered by how frequently they change. Dependencies change rarely and get cached effectively. Application code changes on every build but is a small layer (usually under 5MB). This means incremental builds only copy the thin application layer.
 
 ## Technique 7: Gradle Builds
@@ -239,11 +241,11 @@ For Gradle projects, the same principles apply but with different commands:
 FROM gradle:8.5-jdk21 AS builder
 WORKDIR /app
 
-# Copy Gradle wrapper and build files first
+# Copy Gradle build files first
 COPY build.gradle.kts settings.gradle.kts gradle.properties ./
 COPY gradle ./gradle
 
-# Download dependencies only
+# Resolve dependency graph before copying application source
 RUN --mount=type=cache,target=/home/gradle/.gradle \
     gradle dependencies --no-daemon
 
