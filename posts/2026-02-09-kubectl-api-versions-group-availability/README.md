@@ -79,7 +79,7 @@ Filter the output to check if a specific API is available:
 ```bash
 # Check if apps/v1 is available
 
-kubectl api-versions | grep "apps/v1"
+kubectl api-versions | grep "^apps/v1$"
 
 # Check for Ingress API versions
 kubectl api-versions | grep networking
@@ -93,12 +93,12 @@ This is particularly useful in scripts:
 ```bash
 #!/bin/bash
 
-if kubectl api-versions | grep -q "networking.k8s.io/v1"; then
+if kubectl api-versions | grep -q "^networking.k8s.io/v1$"; then
     echo "Using stable Ingress API"
     apiVersion="networking.k8s.io/v1"
 else
-    echo "Falling back to beta Ingress API"
-    apiVersion="networking.k8s.io/v1beta1"
+    echo "ERROR: stable Ingress API is not available"
+    exit 1
 fi
 
 # Use $apiVersion in your manifest generation
@@ -110,7 +110,7 @@ After installing a CRD or operator, use `api-versions` to verify it registered s
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Check if cert-manager APIs are available
 kubectl api-versions | grep cert-manager
@@ -171,15 +171,15 @@ fi
 Kubernetes deprecates old API versions over time. Use `api-versions` to check what is currently available:
 
 ```bash
-# Check if old Ingress beta API is still available
-kubectl api-versions | grep "extensions/v1beta1"
+# Check if old Ingress beta APIs are still available
+kubectl api-versions | grep -E "^(extensions|networking.k8s.io)/v1beta1$"
 
 # If not found, you need to update manifests to networking.k8s.io/v1
 ```
 
 For example, these APIs were removed in recent Kubernetes versions:
 
-- `extensions/v1beta1` for Ingress (use `networking.k8s.io/v1`)
+- `extensions/v1beta1` and `networking.k8s.io/v1beta1` for Ingress (use `networking.k8s.io/v1`)
 - `policy/v1beta1` for PodDisruptionBudget (use `policy/v1`)
 - `batch/v1beta1` for CronJob (use `batch/v1`)
 
@@ -224,7 +224,7 @@ Different Kubernetes versions support different API groups. Check your cluster v
 
 ```bash
 # Get cluster version
-kubectl version --short
+kubectl version
 
 # Client Version: v1.28.0
 # Server Version: v1.28.3
@@ -245,18 +245,17 @@ kubectl api-versions | grep autoscaling
 # Output:
 # autoscaling/v1
 # autoscaling/v2
-# autoscaling/v2beta2
 ```
 
-Use the most stable version available:
+Use the stable version that supports the fields you need:
 
 ```yaml
-# Prefer this (stable)
+# Prefer this for current HorizontalPodAutoscaler manifests
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 
-# Over this (beta)
-apiVersion: autoscaling/v2beta2
+# Instead of older manifests that use autoscaling/v1
+apiVersion: autoscaling/v1
 kind: HorizontalPodAutoscaler
 ```
 
@@ -303,11 +302,9 @@ When writing custom controllers, discover available API versions programmaticall
 package main
 
 import (
-    "context"
     "fmt"
     "log"
 
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/tools/clientcmd"
 )
@@ -354,10 +351,10 @@ Some API groups have multiple versions, with one marked as preferred:
 # Use kubectl api-resources to see preferred versions
 kubectl api-resources --api-group=autoscaling
 
-# The APIVERSION column shows the preferred/storage version
+# The APIVERSION column shows the preferred version returned by discovery
 ```
 
-The preferred version is what the API server uses internally for storage.
+The preferred version is the version the API server recommends clients use for that API group. It is usually, but not guaranteed to be, the storage version.
 
 ## Best Practices
 
