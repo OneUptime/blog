@@ -74,7 +74,7 @@ Aggregations help you create alerts that consider multiple time series together.
 ```promql
 # Alert when more than 30% of pods are down
 (
-  count by (namespace) (kube_pod_status_phase{phase="Running"})
+  sum by (namespace) (kube_pod_status_phase{phase="Running"} == 1)
   /
   count by (namespace) (kube_pod_info)
 ) < 0.7
@@ -107,11 +107,11 @@ Detect unusual behavior by comparing current values to historical baselines.
 # Alert when latency is significantly higher than normal
 (
   histogram_quantile(0.95,
-    rate(http_request_duration_seconds_bucket[5m])
+    sum by (le) (rate(http_request_duration_seconds_bucket[5m]))
   )
   /
   histogram_quantile(0.95,
-    rate(http_request_duration_seconds_bucket[5m] offset 1h)
+    sum by (le) (rate(http_request_duration_seconds_bucket[5m] offset 1h))
   )
 ) > 2
 ```
@@ -185,8 +185,10 @@ Detect sudden changes in metrics, which often indicate problems.
 
 ```promql
 # Alert when request rate increases by more than 100 requests/sec in 5 minutes
-deriv(
-  sum(rate(http_requests_total[5m]))[5m:]
+(
+  sum(rate(http_requests_total[5m]))
+  -
+  sum(rate(http_requests_total[5m] offset 5m))
 ) > 100
 
 # Alert when disk usage is growing too quickly
@@ -219,7 +221,7 @@ Service Level Objective alerts help you maintain reliability targets.
   sum(rate(http_requests_total{status=~"5.."}[1h]))
   /
   sum(rate(http_requests_total[1h]))
-) > (0.001 * 2 / 30)
+) > (0.001 * 30 / 2)
 ```
 
 SLO alerts focus on user impact rather than arbitrary thresholds, aligning alerts with business objectives.
@@ -232,7 +234,7 @@ Alert annotations can include dynamic values from your queries to provide contex
 Summary: High CPU usage on {{ $labels.instance }}
 Description: |
 
-  CPU usage is {{ $values.A.Value | humanizePercentage }}
+  CPU usage is {{ $values.A.Value | humanize }}%
   on instance {{ $labels.instance }}.
 
   Current value: {{ $values.A.Value | humanize }}
