@@ -10,7 +10,7 @@ Description: Learn how to use ksniff to capture and analyze network traffic from
 
 Network packet captures are essential for diagnosing complex connectivity problems in Kubernetes. While you can manually run tcpdump in pods, ksniff simplifies the process by automating packet capture from any pod without modifying its configuration. It handles the complexity of deploying capture tools, collecting packets, and downloading them to your local machine.
 
-ksniff is a kubectl plugin that makes capturing pod network traffic as simple as running a single command. It works by temporarily deploying a privileged container on the target pod's node, capturing traffic from the pod's network interface, and streaming the capture to your local Wireshark or saving it to a file.
+ksniff is a kubectl plugin that makes capturing pod network traffic as simple as running a single command. By default, it uploads a statically compiled tcpdump binary into the target pod, captures traffic from the pod's network namespace, and streams the capture to your local Wireshark or saves it to a file. For containers that cannot run tcpdump directly, its privileged mode can create a helper pod that attaches to the target container's network namespace.
 
 ## Installing ksniff
 
@@ -42,7 +42,7 @@ kubectl sniff my-pod -n my-namespace
 # Press Ctrl+C to stop
 ```
 
-When you run this command, ksniff performs several actions automatically. It identifies which node hosts the pod, deploys a privileged sniffer container on that node, starts tcpdump to capture packets from the pod's network interface, and streams the packets to your local machine where Wireshark displays them in real time.
+When you run this command, ksniff performs several actions automatically. It selects the target container, uploads or uses tcpdump to capture packets from the pod's network namespace, and streams the packets to your local machine where Wireshark displays them in real time.
 
 ## Saving Captures to Files
 
@@ -96,21 +96,21 @@ kubectl sniff my-pod -n my-namespace -c sidecar-container
 kubectl sniff my-pod -n my-namespace -c istio-proxy
 ```
 
-This focuses the capture on the specific container's network activity, reducing noise from other containers in the pod.
+This selects the container where ksniff runs tcpdump or the container network namespace it attaches to. In normal Kubernetes pods, containers share the same network namespace, so this does not isolate traffic from other containers in the same pod.
 
 ## Using Different Capture Images
 
-ksniff uses a default container image with tcpdump. You can specify a different image:
+In privileged mode, ksniff uses container images for the helper pod and tcpdump. You can specify a different tcpdump image:
 
 ```bash
-# Use a specific ksniff image version
-kubectl sniff my-pod -n my-namespace -i docker.io/eldadru/ksniff:v1.6.2
+# Use a specific tcpdump image in privileged mode
+kubectl sniff my-pod -n my-namespace -p --tcpdump-image docker.io/maintained/tcpdump
 
 # Use a custom image from your registry
-kubectl sniff my-pod -n my-namespace -i my-registry.com/custom-sniffer:latest
+kubectl sniff my-pod -n my-namespace -p --tcpdump-image my-registry.com/custom-sniffer:latest
 ```
 
-Custom images are helpful when you need specific versions of tcpdump or additional network tools.
+Custom images are helpful in privileged mode when you need a specific tcpdump image or need to mirror images into a private registry.
 
 ## Capturing from Privileged Mode
 
@@ -120,11 +120,11 @@ Some environments require additional privileges for packet capture:
 # Use privileged mode explicitly
 kubectl sniff my-pod -n my-namespace -p
 
-# This is the default, but you can disable it if your cluster restricts privileged pods
-kubectl sniff my-pod -n my-namespace --privileged=false
+# Without -p, ksniff tries to upload and run tcpdump in the target container
+kubectl sniff my-pod -n my-namespace
 ```
 
-Non-privileged mode has limitations and may not work in all environments.
+Privileged mode has limitations and may not work in clusters that restrict privileged pods.
 
 ## Debugging ksniff Issues
 
@@ -246,13 +246,13 @@ After capturing traffic, analyze it without Wireshark using command-line tools:
 
 ```bash
 # Count packets by protocol
-tcpdump -r capture.pcap -n | awk '{print $3}' | cut -d. -f5 | sort | uniq -c
+tshark -r capture.pcap -T fields -e _ws.col.Protocol | sort | uniq -c
 
 # Extract HTTP requests
 tcpdump -r capture.pcap -A -s 0 'tcp port 80 and (((ip[2:2] - ((ip[0]&0xf)<<2)) - ((tcp[12]&0xf0)>>2)) != 0)'
 
 # Find retransmissions
-tcpdump -r capture.pcap 'tcp[tcpflags] & tcp-syn != 0' | wc -l
+tshark -r capture.pcap -Y 'tcp.analysis.retransmission'
 
 # Get timing statistics
 capinfos capture.pcap
@@ -270,20 +270,21 @@ Second, limit capture duration. Long-running captures consume disk space and pro
 
 Third, be mindful of sensitive data. Packet captures contain all transmitted data, including potentially sensitive information. Handle capture files securely and delete them after analysis.
 
-Fourth, test in development first. Verify ksniff works in your environment before relying on it for production troubleshooting.
+Fourth, test in development first. The ksniff project notes that it is not production ready, so verify it works in your environment before using it for production troubleshooting.
 
 ## Troubleshooting Common ksniff Problems
 
-If ksniff cannot create the sniffer pod, check pod security policies:
+If ksniff cannot create the privileged helper pod, check whether your cluster allows privileged pods:
 
 ```bash
-# Check if privileged pods are allowed
-kubectl auth can-i create pods/exec --as=system:serviceaccount:default:default
+# Check whether your user can create pods in the namespace
+kubectl auth can-i create pods -n my-namespace
 
-# Check PodSecurityPolicy
-kubectl get psp
+# Check Pod Security Admission labels on the namespace
+kubectl get namespace my-namespace --show-labels
 
-# Your cluster might restrict privileged containers
+# Your cluster might restrict privileged containers with Pod Security Admission
+# or another admission controller
 ```
 
 If packet capture is empty, verify the correct network interface is selected:
