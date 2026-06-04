@@ -104,6 +104,13 @@ export USER_ASSIGNED_CLIENT_ID=$(az identity show \
   --output tsv)
 
 echo $USER_ASSIGNED_CLIENT_ID
+
+# Get the principal ID for RBAC role assignments
+export USER_ASSIGNED_PRINCIPAL_ID=$(az identity show \
+  --name myPodIdentity \
+  --resource-group myResourceGroup \
+  --query 'principalId' \
+  --output tsv)
 ```
 
 Grant the managed identity permissions to access Azure resources:
@@ -118,7 +125,8 @@ export STORAGE_ACCOUNT_ID=$(az storage account show \
 
 az role assignment create \
   --role "Storage Blob Data Contributor" \
-  --assignee $USER_ASSIGNED_CLIENT_ID \
+  --assignee-object-id $USER_ASSIGNED_PRINCIPAL_ID \
+  --assignee-principal-type ServicePrincipal \
   --scope $STORAGE_ACCOUNT_ID
 
 # Grant access to Key Vault
@@ -130,7 +138,8 @@ export KEY_VAULT_ID=$(az keyvault show \
 
 az role assignment create \
   --role "Key Vault Secrets User" \
-  --assignee $USER_ASSIGNED_CLIENT_ID \
+  --assignee-object-id $USER_ASSIGNED_PRINCIPAL_ID \
+  --assignee-principal-type ServicePrincipal \
   --scope $KEY_VAULT_ID
 ```
 
@@ -168,14 +177,14 @@ metadata:
   namespace: production
   annotations:
     azure.workload.identity/client-id: YOUR_CLIENT_ID
-  labels:
-    azure.workload.identity/use: "true"
 ```
 
 Replace `YOUR_CLIENT_ID` with the managed identity client ID. Apply the service account:
 
 ```bash
 # Substitute the client ID
+kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
+
 cat > service-account.yaml <<EOF
 apiVersion: v1
 kind: ServiceAccount
@@ -184,8 +193,6 @@ metadata:
   namespace: production
   annotations:
     azure.workload.identity/client-id: ${USER_ASSIGNED_CLIENT_ID}
-  labels:
-    azure.workload.identity/use: "true"
 EOF
 
 kubectl apply -f service-account.yaml
@@ -194,7 +201,7 @@ kubectl apply -f service-account.yaml
 kubectl get sa azure-access -n production -o yaml
 ```
 
-The label `azure.workload.identity/use: "true"` triggers the webhook to inject identity configurations.
+The pod label `azure.workload.identity/use: "true"` triggers the webhook to inject identity configurations.
 
 ## Deploying Pods with Workload Identity
 
@@ -222,13 +229,11 @@ spec:
       containers:
       - name: app
         image: myregistry.azurecr.io/storage-app:latest
-        env:
-        - name: AZURE_CLIENT_ID
-          value: YOUR_CLIENT_ID
 ```
 
 The webhook automatically injects:
 - `AZURE_AUTHORITY_HOST`
+- `AZURE_CLIENT_ID`
 - `AZURE_FEDERATED_TOKEN_FILE`
 - `AZURE_TENANT_ID`
 - Volume mount for the service account token
@@ -250,8 +255,8 @@ Verify pods can authenticate to Azure:
 # Create test pod with Azure CLI
 kubectl run azure-cli-test -n production \
   --image=mcr.microsoft.com/azure-cli:latest \
-  --serviceaccount=azure-access \
   --labels="azure.workload.identity/use=true" \
+  --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"azure-access"}}' \
   --command -- sleep infinity
 
 # Wait for pod to be ready
@@ -338,7 +343,8 @@ Create separate managed identities for different access levels:
 # Create read-only identity
 az identity create \
   --name myReadOnlyIdentity \
-  --resource-group myResourceGroup
+  --resource-group myResourceGroup \
+  --location eastus
 
 export READONLY_CLIENT_ID=$(az identity show \
   --name myReadOnlyIdentity \
@@ -346,10 +352,17 @@ export READONLY_CLIENT_ID=$(az identity show \
   --query 'clientId' \
   --output tsv)
 
+export READONLY_PRINCIPAL_ID=$(az identity show \
+  --name myReadOnlyIdentity \
+  --resource-group myResourceGroup \
+  --query 'principalId' \
+  --output tsv)
+
 # Grant read-only access
 az role assignment create \
   --role "Storage Blob Data Reader" \
-  --assignee $READONLY_CLIENT_ID \
+  --assignee-object-id $READONLY_PRINCIPAL_ID \
+  --assignee-principal-type ServicePrincipal \
   --scope $STORAGE_ACCOUNT_ID
 
 # Create federated credential
@@ -365,8 +378,6 @@ az identity federated-credential create \
 kubectl create sa readonly-access -n production
 kubectl annotate sa readonly-access -n production \
   azure.workload.identity/client-id=$READONLY_CLIENT_ID
-kubectl label sa readonly-access -n production \
-  azure.workload.identity/use=true
 ```
 
 Different pods can now use different identities based on their requirements.
@@ -405,14 +416,16 @@ If authentication fails, ensure the service account namespace and name exactly m
 Enable Azure Monitor to track managed identity usage:
 
 ```bash
-# Query identity sign-in logs
+# Query Azure activity logs for resource operations by the identity
 az monitor activity-log list \
   --resource-group myResourceGroup \
-  --caller $USER_ASSIGNED_CLIENT_ID
+  --caller $USER_ASSIGNED_PRINCIPAL_ID
+
+# Review Microsoft Entra sign-in logs for managed identity authentication events
 
 # View resource access logs
 az monitor diagnostic-settings create \
-  --resource $STORAGE_ACCOUNT_ID \
+  --resource ${STORAGE_ACCOUNT_ID}/blobServices/default \
   --name storage-diagnostics \
   --logs '[{"category":"StorageRead","enabled":true}]' \
   --workspace /subscriptions/SUB_ID/resourceGroups/RG/providers/Microsoft.OperationalInsights/workspaces/WORKSPACE
@@ -429,6 +442,7 @@ If using the older pod managed identity approach, migrate to workload identity:
 az aks pod-identity delete \
   --cluster-name myAKSCluster \
   --resource-group myResourceGroup \
+  --namespace production \
   --name old-pod-identity
 
 # Remove NMI daemonset
@@ -436,7 +450,7 @@ kubectl delete daemonset nmi -n kube-system
 
 # Follow steps above to create federated credential
 # Update deployments to use new service account
-# Remove azure.identity/use label (old system)
+# Remove aadpodidbinding label (old system)
 # Add azure.workload.identity/use label (new system)
 ```
 
@@ -451,12 +465,12 @@ Regularly audit managed identity permissions:
 ```bash
 # List role assignments for an identity
 az role assignment list \
-  --assignee $USER_ASSIGNED_CLIENT_ID \
+  --assignee $USER_ASSIGNED_PRINCIPAL_ID \
   --all
 
 # Review and remove unnecessary permissions
 az role assignment delete \
-  --assignee $USER_ASSIGNED_CLIENT_ID \
+  --assignee $USER_ASSIGNED_PRINCIPAL_ID \
   --role "Contributor" \
   --scope $RESOURCE_ID
 ```
