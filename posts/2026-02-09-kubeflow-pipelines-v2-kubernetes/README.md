@@ -19,13 +19,13 @@ Install the standalone Kubeflow Pipelines deployment:
 ```bash
 # Set the pipeline version
 
-export PIPELINE_VERSION=2.0.5
+export PIPELINE_VERSION=2.16.1
 
 # Deploy Kubeflow Pipelines
 kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/cluster-scoped-resources?ref=$PIPELINE_VERSION"
 kubectl wait --for condition=established --timeout=60s crd/applications.app.k8s.io
 
-kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/env/platform-agnostic?ref=$PIPELINE_VERSION"
+kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/env/dev?ref=$PIPELINE_VERSION"
 
 # Wait for all pods to be ready
 kubectl wait --for=condition=ready pod -l application-crd-id=kubeflow-pipelines -n kubeflow --timeout=10m
@@ -53,7 +53,7 @@ kubectl port-forward -n kubeflow svc/ml-pipeline-ui 8080:80
 Install the Kubeflow Pipelines SDK:
 
 ```bash
-pip install kfp==2.5.0
+pip install kfp==2.16.1
 ```
 
 ## Creating Your First Pipeline
@@ -246,6 +246,7 @@ from kfp import dsl
 from kfp import compiler
 from kfp.dsl import Input, Output, Dataset, Model, Metrics, HTML
 from typing import NamedTuple
+from simple_pipeline import load_data
 
 @dsl.component(
     base_image='python:3.10',
@@ -353,7 +354,8 @@ def train_multiple_models(
     rf_model: Output[Model],
     lr_model: Output[Model],
     rf_metrics: Output[Metrics],
-    lr_metrics: Output[Metrics]
+    lr_metrics: Output[Metrics],
+    test_size: float = 0.2
 ):
     """Train multiple models and compare"""
     import pandas as pd
@@ -370,7 +372,7 @@ def train_multiple_models(
 
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
+        X, y, test_size=test_size, random_state=42
     )
 
     # Train Random Forest
@@ -457,7 +459,7 @@ def complete_ml_pipeline(
     )
 
     # Conditional: only proceed if data is valid
-    with dsl.Condition(validate_task.outputs['is_valid'] == True):
+    with dsl.If(validate_task.outputs['is_valid'] == True):
         # Feature engineering
         engineer_task = engineer_features(
             dataset=load_task.outputs['dataset_output']
@@ -465,7 +467,8 @@ def complete_ml_pipeline(
 
         # Train multiple models
         train_task = train_multiple_models(
-            dataset=engineer_task.outputs['transformed_dataset']
+            dataset=engineer_task.outputs['transformed_dataset'],
+            test_size=test_size
         )
 
         # Select best model
@@ -501,7 +504,7 @@ pipeline = client.upload_pipeline(
 
 # Create a recurring run (daily at 2 AM)
 recurring_run = client.create_recurring_run(
-    experiment_id=client.create_experiment('daily-training').id,
+    experiment_id=client.create_experiment('daily-training').experiment_id,
     job_name='daily-model-training',
     description='Daily model retraining',
     pipeline_package_path='complete_pipeline.yaml',
@@ -513,7 +516,7 @@ recurring_run = client.create_recurring_run(
     enable_caching=True
 )
 
-print(f"Recurring run created: {recurring_run.id}")
+print(f"Recurring run created: {recurring_run.recurring_run_id}")
 ```
 
 ## Using Pipeline Parameters and Artifacts
@@ -521,6 +524,14 @@ print(f"Recurring run created: {recurring_run.id}")
 Create a pipeline that uses conditional logic and artifact passing:
 
 ```python
+@dsl.component(base_image='python:3.10')
+def deploy_model(model: Input[Model]):
+    print(f"Deploying model from {model.path} to production")
+
+@dsl.component(base_image='python:3.10')
+def deploy_to_staging(model: Input[Model]):
+    print(f"Deploying model from {model.path} to staging")
+
 @dsl.pipeline(
     name='Conditional Pipeline',
     description='Pipeline with conditional execution'
@@ -530,15 +541,19 @@ def conditional_pipeline(
     deploy_to_production: bool = False
 ):
     # Previous tasks...
-    train_task = train_model()
+    load_data_task = load_data()
+    train_task = train_model(dataset=load_data_task.outputs['dataset_output'])
+    decision_task = evaluate_model(
+        model=train_task.outputs['model_output'],
+        metrics=train_task.outputs['metrics_output'],
+        threshold=accuracy_threshold
+    )
 
     # Deploy only if accuracy meets threshold
-    with dsl.Condition(
-        train_task.outputs['metrics_output'].metadata['accuracy'] >= accuracy_threshold
-    ):
-        if deploy_to_production:
+    with dsl.If(decision_task.output == "APPROVED"):
+        with dsl.If(deploy_to_production == True):
             deploy_model(model=train_task.outputs['model_output'])
-        else:
+        with dsl.Else():
             deploy_to_staging(model=train_task.outputs['model_output'])
 ```
 
@@ -556,21 +571,21 @@ client = kfp.Client(host='http://localhost:8080')
 runs = client.list_runs(page_size=10)
 
 for run in runs.runs:
-    print(f"Run: {run.name}")
-    print(f"  Status: {run.status}")
+    print(f"Run: {run.display_name}")
+    print(f"  State: {run.state}")
     print(f"  Created: {run.created_at}")
 
-    # Get metrics from run
-    run_detail = client.get_run(run.id)
-    if run_detail.run.status == 'Succeeded':
-        print(f"  ✓ Completed successfully")
-    elif run_detail.run.status == 'Failed':
-        print(f"  ✗ Failed")
+    # Get run details
+    run_detail = client.get_run(run.run_id)
+    if run_detail.state == 'SUCCEEDED':
+        print("  Completed successfully")
+    elif run_detail.state == 'FAILED':
+        print("  Failed")
 
-# Get specific run metrics
+# Get details for a specific run
 run_id = 'your-run-id'
-run_metrics = client.get_run_metrics(run_id)
-print(f"Metrics: {run_metrics}")
+run_detail = client.get_run(run_id)
+print(f"Run details: {run_detail}")
 ```
 
 ## Best Practices
@@ -592,7 +607,13 @@ def expensive_preprocessing(
 # In pipeline
 @dsl.pipeline(name='Cached Pipeline')
 def cached_pipeline():
-    preprocess_task = expensive_preprocessing()
+    input_data = dsl.importer(
+        artifact_uri='s3://my-bucket/input.csv',
+        artifact_class=Dataset
+    )
+    preprocess_task = expensive_preprocessing(
+        input_data=input_data.output
+    )
     # If input_data hasn't changed, this step will be skipped
     preprocess_task.set_caching_options(enable_caching=True)
 ```
@@ -610,7 +631,7 @@ def gpu_pipeline():
     train_task = gpu_training_component()
 
     # Set GPU requirements
-    train_task.set_gpu_limit(1)
+    train_task.set_gpu_limit("1")
     train_task.set_memory_limit('16Gi')
     train_task.set_cpu_limit('4')
 ```
