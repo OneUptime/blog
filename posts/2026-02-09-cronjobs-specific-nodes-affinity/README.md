@@ -130,7 +130,7 @@ spec:
             image: data-exporter:latest
 ```
 
-This prefers nodes labeled for batch workloads and avoids nodes running production API pods.
+This requires nodes labeled for batch workloads and prefers to avoid nodes running production API pods.
 
 ## Using Taints and Tolerations
 
@@ -140,6 +140,10 @@ Reserve nodes exclusively for batch workloads:
 # Taint batch nodes
 kubectl taint nodes batch-node-1 workload=batch:NoSchedule
 kubectl taint nodes batch-node-2 workload=batch:NoSchedule
+
+# Label batch nodes for the nodeSelector
+kubectl label nodes batch-node-1 workload=batch
+kubectl label nodes batch-node-2 workload=batch
 ```
 
 CronJobs must tolerate the taint:
@@ -251,7 +255,7 @@ spec:
               claimName: regional-data-pvc
 ```
 
-This ensures the backup job runs in the same zone as the persistent volume.
+This ensures the backup job runs in us-west-2a, which should match the persistent volume's zone.
 
 ## Verifying Node Placement
 
@@ -259,17 +263,18 @@ Check where CronJob pods are scheduled:
 
 ```bash
 # Get recent job pods with node info
-kubectl get pods -l cronjob-name=batch-processor -o wide
+JOB=$(kubectl get jobs --sort-by=.metadata.creationTimestamp -o name | grep '^job.batch/batch-processor-' | tail -n 1)
+kubectl get pods -l batch.kubernetes.io/job-name="${JOB#job.batch/}" -o wide
 
 # See node labels
 kubectl get nodes --show-labels
 
 # Verify pod placement
-POD=$(kubectl get pod -l job-name=batch-processor-12345 -o name)
-kubectl get $POD -o jsonpath='{.spec.nodeName}'
+POD=$(kubectl get pod -l batch.kubernetes.io/job-name="${JOB#job.batch/}" -o name | head -n 1)
+kubectl get "$POD" -o jsonpath='{.spec.nodeName}'
 
-# Check if affinity was satisfied
-kubectl describe $POD | grep -A 10 "Node-Selectors\|Affinity"
+# Check the pod's placement constraints
+kubectl get "$POD" -o jsonpath='{.spec.nodeSelector}{"\n"}{.spec.affinity}{"\n"}'
 ```
 
 Node affinity, selectors, and taints provide flexible control over CronJob pod placement. Use them to optimize resource utilization, access specialized hardware, and ensure jobs run in appropriate locations.
