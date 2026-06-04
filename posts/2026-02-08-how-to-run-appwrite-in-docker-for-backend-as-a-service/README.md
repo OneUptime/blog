@@ -18,7 +18,9 @@ Before starting, make sure you have:
 
 - Docker Engine 20.10+
 - Docker Compose v2
-- At least 2GB of free RAM
+- At least 2 CPU cores
+- At least 4GB of free RAM
+- At least 2GB of swap memory
 - A domain name (optional, for production with SSL)
 
 ```bash
@@ -35,135 +37,27 @@ Appwrite provides a one-line installation command that downloads the Docker Comp
 ```bash
 # Run the Appwrite installation script
 docker run -it --rm \
+  --publish 20080:20080 \
   --volume /var/run/docker.sock:/var/run/docker.sock \
   --volume "$(pwd)"/appwrite:/usr/src/code/appwrite:rw \
   --entrypoint="install" \
-  appwrite/appwrite:1.5
+  appwrite/appwrite:1.9.0
 ```
 
-This interactive installer asks for your domain, port settings, and other configuration options. It generates a `docker-compose.yml` and `.env` file in the `appwrite` directory.
+Once the installer is running, open `http://localhost:20080` in your browser. The web-based setup wizard asks for your domain, port settings, database backend, and other configuration options. It generates a `docker-compose.yml` and `.env` file in the `appwrite` directory.
 
 ## Manual Setup
 
-If you prefer to configure things manually, create the Docker Compose file yourself.
+If you prefer to configure things manually, use the generated `docker-compose.yml` and `.env` templates from the official Appwrite installation docs. Appwrite's current self-hosted stack includes Traefik, the Appwrite API containers, background workers, an executor, Redis, and your selected database backend, so a minimal single-service Compose file is not enough.
 
-```yaml
-# docker-compose.yml - Appwrite self-hosted stack
-version: "3.8"
-
-services:
-  # Main Appwrite application server
-  appwrite:
-    image: appwrite/appwrite:1.5
-    container_name: appwrite
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - appwrite-uploads:/storage/uploads
-      - appwrite-cache:/storage/cache
-      - appwrite-config:/storage/config
-      - appwrite-certificates:/storage/certificates
-      - appwrite-functions:/storage/functions
-    environment:
-      - _APP_ENV=production
-      - _APP_LOCALE=en
-      - _APP_CONSOLE_WHITELIST_ROOT=enabled
-      - _APP_CONSOLE_WHITELIST_EMAILS=
-      - _APP_CONSOLE_WHITELIST_IPS=
-      - _APP_SYSTEM_EMAIL_NAME=Appwrite
-      - _APP_SYSTEM_EMAIL_ADDRESS=team@appwrite.io
-      - _APP_SYSTEM_RESPONSE_FORMAT=
-      - _APP_OPTIONS_ABUSE=enabled
-      - _APP_OPTIONS_FORCE_HTTPS=disabled
-      - _APP_OPENSSL_KEY_V1=your-secret-key-change-me
-      - _APP_DOMAIN=localhost
-      - _APP_DOMAIN_TARGET=localhost
-      - _APP_REDIS_HOST=redis
-      - _APP_REDIS_PORT=6379
-      - _APP_DB_HOST=mariadb
-      - _APP_DB_PORT=3306
-      - _APP_DB_SCHEMA=appwrite
-      - _APP_DB_USER=appwrite
-      - _APP_DB_PASS=appwrite_password
-      - _APP_INFLUXDB_HOST=influxdb
-      - _APP_INFLUXDB_PORT=8086
-      - _APP_STATSD_HOST=telegraf
-      - _APP_STATSD_PORT=8125
-    depends_on:
-      - redis
-      - mariadb
-      - influxdb
-    networks:
-      - appwrite-network
-
-  # MariaDB stores all application data
-  mariadb:
-    image: mariadb:10.11
-    container_name: appwrite-mariadb
-    restart: unless-stopped
-    volumes:
-      - appwrite-mariadb:/var/lib/mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: root_password
-      MYSQL_DATABASE: appwrite
-      MYSQL_USER: appwrite
-      MYSQL_PASSWORD: appwrite_password
-    command: >
-      --innodb-flush-method=fsync
-      --innodb-flush-log-at-trx-commit=0
-    networks:
-      - appwrite-network
-
-  # Redis handles caching and pub/sub messaging
-  redis:
-    image: redis:7-alpine
-    container_name: appwrite-redis
-    restart: unless-stopped
-    volumes:
-      - appwrite-redis:/data
-    networks:
-      - appwrite-network
-
-  # InfluxDB stores usage metrics and analytics
-  influxdb:
-    image: influxdb:1.8-alpine
-    container_name: appwrite-influxdb
-    restart: unless-stopped
-    volumes:
-      - appwrite-influxdb:/var/lib/influxdb
-    networks:
-      - appwrite-network
-
-  # Telegraf collects StatsD metrics from Appwrite
-  telegraf:
-    image: appwrite/telegraf:1.4.0
-    container_name: appwrite-telegraf
-    restart: unless-stopped
-    networks:
-      - appwrite-network
-
-volumes:
-  appwrite-uploads:
-  appwrite-cache:
-  appwrite-config:
-  appwrite-certificates:
-  appwrite-functions:
-  appwrite-mariadb:
-  appwrite-redis:
-  appwrite-influxdb:
-
-networks:
-  appwrite-network:
-    driver: bridge
-```
+Create a directory named `appwrite`, place both files inside it, and edit the `.env` file before starting the stack. At minimum, replace `_APP_OPENSSL_KEY_V1` and `_APP_EXECUTOR_SECRET` with unique secret values. During setup you can choose MongoDB, which is the default database backend in Appwrite 1.9, or MariaDB if you prefer a relational backend.
 
 ## Starting the Stack
 
 ```bash
 # Start all Appwrite services in the background
-docker compose up -d
+cd appwrite
+docker compose up -d --remove-orphans
 
 # Check that all containers are running
 docker compose ps
@@ -185,7 +79,7 @@ When you first access the Appwrite console, you need to create your admin accoun
 
 ## Creating Your First Project
 
-After logging in, create a project from the console or use the CLI.
+After logging in, create a project from the console and initialize the CLI for that project.
 
 ```bash
 # Install the Appwrite CLI
@@ -194,8 +88,8 @@ npm install -g appwrite-cli
 # Log in to your Appwrite instance
 appwrite login --endpoint http://localhost/v1
 
-# Create a new project
-appwrite projects create --projectId "my-app" --name "My Application"
+# Initialize the CLI for the project you created in the console
+appwrite init project
 ```
 
 ## Working with the Database
@@ -231,7 +125,7 @@ Appwrite supports multiple authentication methods out of the box, including emai
 
 ```javascript
 // Example: Using the Appwrite Web SDK for authentication
-import { Client, Account } from "appwrite";
+import { Client, Account, ID } from "appwrite";
 
 const client = new Client();
 client
@@ -242,21 +136,21 @@ const account = new Account(client);
 
 // Create a new user account
 async function createUser() {
-  const user = await account.create(
-    "unique()",           // Let Appwrite generate the user ID
-    "user@example.com",
-    "securepassword123",
-    "John Doe"
-  );
+  const user = await account.create({
+    userId: ID.unique(),
+    email: "user@example.com",
+    password: "securepassword123",
+    name: "John Doe"
+  });
   console.log("User created:", user);
 }
 
 // Log in with email and password
 async function login() {
-  const session = await account.createEmailPasswordSession(
-    "user@example.com",
-    "securepassword123"
-  );
+  const session = await account.createEmailPasswordSession({
+    email: "user@example.com",
+    password: "securepassword123"
+  });
   console.log("Session created:", session);
 }
 ```
@@ -293,27 +187,31 @@ Appwrite can run serverless functions written in multiple languages. Deploy a fu
 ```bash
 # Create a new function
 appwrite functions create \
-  --functionId "hello-world" \
+  --function-id "hello-world" \
   --name "Hello World" \
-  --runtime "node-18.0"
+  --runtime "node-18.0" \
+  --entrypoint "index.js" \
+  --commands "npm install"
 
 # Deploy function code from a directory
-appwrite functions createDeployment \
-  --functionId "hello-world" \
+appwrite functions create-deployment \
+  --function-id "hello-world" \
   --entrypoint "index.js" \
-  --code "./my-function"
+  --commands "npm install" \
+  --code "./my-function" \
+  --activate true
 ```
 
 ## Backup and Restore
 
-Regularly back up your MariaDB database.
+Regularly back up your database. If you chose MariaDB during setup, back up all MariaDB databases with `mysqldump`.
 
 ```bash
 # Create a database backup
-docker compose exec mariadb mysqldump -u appwrite -pappwrite_password appwrite > appwrite_backup.sql
+docker compose exec mariadb sh -c 'exec mysqldump --all-databases --add-drop-database --single-transaction --routines --triggers -uroot -p"$MYSQL_ROOT_PASSWORD"' > appwrite_backup.sql
 
 # Restore from backup
-cat appwrite_backup.sql | docker compose exec -T mariadb mysql -u appwrite -pappwrite_password appwrite
+cat appwrite_backup.sql | docker compose exec -T mariadb sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD"'
 ```
 
 ## Upgrading Appwrite
@@ -321,13 +219,19 @@ cat appwrite_backup.sql | docker compose exec -T mariadb mysql -u appwrite -papp
 To upgrade to a newer version of Appwrite, follow these steps.
 
 ```bash
-# Pull the latest images
-docker compose pull
+# From the parent directory that contains the appwrite folder, run the upgrade tool
+docker run -it --rm \
+  --publish 20080:20080 \
+  --volume /var/run/docker.sock:/var/run/docker.sock \
+  --volume "$(pwd)"/appwrite:/usr/src/code/appwrite:rw \
+  --entrypoint="upgrade" \
+  appwrite/appwrite:<APPWRITE_VERSION>
 
-# Restart the stack with the new images
-docker compose up -d
+# Run database migrations from the Appwrite directory
+cd appwrite
+docker compose exec appwrite migrate
 
-# Appwrite automatically runs database migrations on startup
+# Watch the main Appwrite logs
 docker compose logs -f appwrite
 ```
 
