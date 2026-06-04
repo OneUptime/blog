@@ -139,11 +139,11 @@ For multi-container applications, start each service in detached mode.
 
 ```bash
 # Start a complete development stack in the background
-docker run -d --name redis -p 6379:6379 redis:7-alpine
-docker run -d --name postgres -p 5432:5432 \
+docker network create app-network
+docker run -d --name redis --network app-network -p 6379:6379 redis:7-alpine
+docker run -d --name postgres --network app-network -p 5432:5432 \
   -e POSTGRES_PASSWORD=devpass postgres:16-alpine
-docker run -d --name app -p 3000:3000 \
-  --link redis --link postgres myapp:latest
+docker run -d --name app --network app-network -p 3000:3000 myapp:latest
 ```
 
 For production use, Docker Compose handles multi-container setups more elegantly:
@@ -241,7 +241,7 @@ Add health checks so Docker can monitor whether your background container is act
 docker run -d \
   --name web \
   -p 8080:80 \
-  --health-cmd "curl -f http://localhost/ || exit 1" \
+  --health-cmd "nginx -t || exit 1" \
   --health-interval 30s \
   --health-timeout 10s \
   --health-retries 3 \
