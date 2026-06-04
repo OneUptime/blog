@@ -34,16 +34,18 @@ Before setting up ClusterMesh, ensure:
 
 ## Installing Cilium with ClusterMesh Support
 
-Install Cilium on each cluster with ClusterMesh enabled:
+Install the Cilium CLI, then install Cilium on each cluster with a unique cluster name and ID:
 
 ```bash
 # Install Cilium CLI
 
-CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/master/stable.txt)
-curl -L --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz{,.sha256sum}
-sha256sum --check cilium-linux-amd64.tar.gz.sha256sum
-sudo tar xzvfC cilium-linux-amd64.tar.gz /usr/local/bin
-rm cilium-linux-amd64.tar.gz{,.sha256sum}
+CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+CLI_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
+curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 ```
 
 Install Cilium on the first cluster:
@@ -52,20 +54,20 @@ Install Cilium on the first cluster:
 # Switch to first cluster context
 kubectl config use-context cluster-1
 
-# Install Cilium with ClusterMesh enabled
+# Install Cilium with a ClusterMesh-ready name and ID
 cilium install \
-  --cluster-name cluster-1 \
-  --cluster-id 1 \
-  --ipam kubernetes \
-  --kube-proxy-replacement strict
+  --set cluster.name=cluster-1 \
+  --set cluster.id=1 \
+  --set ipam.mode=kubernetes \
+  --set kubeProxyReplacement=true
 ```
 
 Important configuration values:
 
-- `cluster-name`: Unique identifier for the cluster (DNS-compatible)
-- `cluster-id`: Unique integer ID (1-255)
-- `ipam`: IP address management mode (kubernetes, cluster-pool, or azure)
-- `kube-proxy-replacement`: Use Cilium for kube-proxy functionality
+- `cluster.name`: Unique identifier for the cluster (up to 32 lowercase alphanumeric characters and dashes)
+- `cluster.id`: Unique integer ID (1-255 by default)
+- `ipam.mode`: IP address management mode
+- `kubeProxyReplacement`: Use Cilium for kube-proxy functionality
 
 Verify installation:
 
@@ -80,10 +82,10 @@ Install on the second cluster with different ID and pod CIDR:
 kubectl config use-context cluster-2
 
 cilium install \
-  --cluster-name cluster-2 \
-  --cluster-id 2 \
-  --ipam kubernetes \
-  --kube-proxy-replacement strict
+  --set cluster.name=cluster-2 \
+  --set cluster.id=2 \
+  --set ipam.mode=kubernetes \
+  --set kubeProxyReplacement=true
 ```
 
 ## Enabling ClusterMesh
@@ -121,7 +123,7 @@ Connect the two clusters:
 ```bash
 # From cluster-1, connect to cluster-2
 kubectl config use-context cluster-1
-cilium clustermesh connect --context cluster-2
+cilium clustermesh connect --context cluster-1 --destination-context cluster-2
 
 # Verify connection
 cilium clustermesh status
@@ -201,7 +203,7 @@ kubectl config use-context cluster-1
 kubectl run test-client --image=curlimages/curl -it --rm -- sh
 
 # Inside the pod
-for i in {1..10}; do
+for i in $(seq 1 10); do
   curl http://echo-server.default.svc.cluster.local
   sleep 1
 done
@@ -222,7 +224,7 @@ metadata:
   name: api-global
   annotations:
     service.cilium.io/global: "true"
-    service.cilium.io/shared: "true"  # Share service definition across clusters
+    service.cilium.io/shared: "true"  # Share local endpoints across clusters
 spec:
   selector:
     app: api
@@ -331,25 +333,28 @@ Monitor ClusterMesh health:
 cilium clustermesh status
 
 # View detailed connection info
-kubectl exec -n kube-system ds/cilium -- cilium clustermesh status --verbose
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status --all-clusters
 ```
 
-Export Prometheus metrics:
+Export Prometheus metrics by enabling Cilium and ClusterMesh API server metrics:
 
 ```bash
-# Port forward to Cilium agent
-kubectl port-forward -n kube-system ds/cilium 9090:9090
+# Enable metrics when installing Cilium
+cilium install \
+  --set prometheus.enabled=true \
+  --set operator.prometheus.enabled=true \
+  --set clustermesh.apiserver.metrics.enabled=true \
+  --set clustermesh.apiserver.metrics.kvstoremesh.enabled=true
 
-# Query metrics
-curl http://localhost:9090/metrics | grep clustermesh
+# Query metrics from your Prometheus server or ServiceMonitor
 ```
 
 Key metrics:
 
-- `cilium_clustermesh_remote_clusters`: Number of connected clusters
-- `cilium_clustermesh_endpoints_total`: Total endpoints across clusters
-- `cilium_clustermesh_global_services`: Number of global services
-- `cilium_clustermesh_remote_cluster_readiness`: Cluster connection status
+- `cilium_feature_adv_connect_and_lb_clustermesh_enabled`: Whether ClusterMesh is enabled on the Cilium agent
+- `cilium_kvstoremesh_remote_clusters`: Number of connected remote clusters when KVStoreMesh is enabled
+- `cilium_kvstoremesh_remote_cluster_readiness_status`: Readiness status of each remote cluster when KVStoreMesh is enabled
+- `cilium_clustermesh_apiserver_kvstore_sync_errors_total`: ClusterMesh API server synchronization failures
 
 ## Troubleshooting ClusterMesh
 
@@ -368,13 +373,13 @@ Look for:
 
 ### Verify Network Connectivity
 
-Test connectivity between cluster API servers:
+Test connectivity between ClusterMesh API servers:
 
 ```bash
 # Get ClusterMesh API server IPs
 kubectl get svc -n kube-system clustermesh-apiserver
 
-# From cluster-1 node, test connectivity to cluster-2 API server
+# From cluster-1 node, test connectivity to cluster-2 ClusterMesh API server
 telnet <cluster-2-apiserver-ip> 2379
 ```
 
@@ -423,11 +428,13 @@ Useful when clusters are in different networks without direct node connectivity.
 
 ### Configuring External IPs
 
-For clusters behind NAT:
+For clusters behind NAT or when the automatically detected address is not reachable:
 
 ```bash
-cilium clustermesh enable \
-  --apiserver-advertise-address <external-ip>
+cilium clustermesh connect \
+  --context cluster-1 \
+  --destination-context cluster-2 \
+  --destination-endpoint <reachable-cluster-2-clustermesh-ip>
 ```
 
 ### IPsec Encryption
@@ -436,16 +443,17 @@ Enable encryption for cross-cluster traffic:
 
 ```bash
 cilium install \
-  --cluster-name cluster-1 \
-  --cluster-id 1 \
-  --encryption ipsec
+  --set cluster.name=cluster-1 \
+  --set cluster.id=1 \
+  --set encryption.enabled=true \
+  --set encryption.type=ipsec
 ```
 
 Generate and share IPsec keys across clusters:
 
 ```bash
 kubectl create secret generic cilium-ipsec-keys \
-  --from-literal=keys="3 rfc4106(gcm(aes)) $(echo $(dd if=/dev/urandom count=20 bs=1 2> /dev/null | xxd -p -c 64)) 128"
+  --from-literal=keys="3+ rfc4106(gcm(aes)) $(dd if=/dev/urandom count=20 bs=1 2> /dev/null | xxd -p -c 64) 128"
 ```
 
 ## Best Practices
