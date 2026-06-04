@@ -18,7 +18,7 @@ This guide shows you how to build custom schedulers using the Kubernetes schedul
 
 The Kubernetes scheduling framework provides extension points where you can inject custom logic. These extension points are called plugins, and they run at different stages of the scheduling cycle.
 
-The scheduling cycle has several phases. The queue sort phase orders pods waiting to be scheduled. The pre-filter phase performs preliminary checks. The filter phase eliminates unsuitable nodes. The score phase ranks remaining nodes. Finally, the bind phase assigns the pod to the selected node.
+Each scheduling attempt has several phases. The queue sort phase orders pods waiting to be scheduled. The pre-filter phase performs preliminary checks. The filter phase eliminates unsuitable nodes. The score phase ranks remaining nodes. Finally, the binding cycle assigns the pod to the selected node.
 
 Each phase has a corresponding plugin interface. Your custom scheduler implements these interfaces to inject specialized logic. The framework handles the infrastructure concerns like watching for new pods, caching node information, and updating the API server.
 
@@ -37,8 +37,8 @@ require (
     k8s.io/apimachinery v0.29.0
     k8s.io/client-go v0.29.0
     k8s.io/component-base v0.29.0
-    k8s.io/kube-scheduler v0.29.0
     k8s.io/kubernetes v1.29.0
+    k8s.io/klog/v2 v2.110.1
 )
 ```
 
@@ -81,10 +81,11 @@ package plugins
 import (
     "context"
     "fmt"
+    "strconv"
 
     v1 "k8s.io/api/core/v1"
     "k8s.io/apimachinery/pkg/runtime"
-    "k8s.io/kube-scheduler/framework"
+    "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
 const (
@@ -97,7 +98,7 @@ type GPUAwarePlugin struct {
     handle framework.Handle
 }
 
-func NewGPUAwarePlugin(obj runtime.Object, handle framework.Handle) (framework.Plugin, error) {
+func NewGPUAwarePlugin(ctx context.Context, obj runtime.Object, handle framework.Handle) (framework.Plugin, error) {
     return &GPUAwarePlugin{
         handle: handle,
     }, nil
@@ -188,6 +189,19 @@ func (g *GPUAwarePlugin) Score(
     return score, framework.NewStatus(framework.Success)
 }
 
+func (g *GPUAwarePlugin) ScoreExtensions() framework.ScoreExtensions {
+    return g
+}
+
+func (g *GPUAwarePlugin) NormalizeScore(
+    ctx context.Context,
+    state *framework.CycleState,
+    pod *v1.Pod,
+    scores framework.NodeScoreList,
+) *framework.Status {
+    return normalizeScores(scores)
+}
+
 // Helper functions to extract GPU information from nodes
 func getGPURequest(pod *v1.Pod) int64 {
     var total int64
@@ -243,8 +257,11 @@ func getGPUGeneration(node *v1.Node) int64 {
 }
 
 func parseMemoryValue(val string) int64 {
-    // Simplified parsing - implement proper parsing
-    return 16 // Default to 16GB
+    memory, err := strconv.ParseInt(val, 10, 64)
+    if err != nil {
+        return 0
+    }
+    return memory
 }
 
 func parseGPUGeneration(val string) int64 {
@@ -271,10 +288,11 @@ package plugins
 import (
     "context"
     "strconv"
+    "strings"
 
     v1 "k8s.io/api/core/v1"
     "k8s.io/apimachinery/pkg/runtime"
-    "k8s.io/kube-scheduler/framework"
+    "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
 const CostOptimizedName = "CostOptimized"
@@ -283,7 +301,7 @@ type CostOptimizedPlugin struct {
     handle framework.Handle
 }
 
-func NewCostOptimizedPlugin(obj runtime.Object, handle framework.Handle) (framework.Plugin, error) {
+func NewCostOptimizedPlugin(ctx context.Context, obj runtime.Object, handle framework.Handle) (framework.Plugin, error) {
     return &CostOptimizedPlugin{
         handle: handle,
     }, nil
@@ -317,7 +335,9 @@ func (c *CostOptimizedPlugin) Score(
     if costPerHour > 0 {
         // Invert cost - lower cost = higher score
         // Normalize to 0-100 range
-        score += (100 - costPerHour)
+        if costPerHour < 100 {
+            score += (100 - costPerHour)
+        }
     }
 
     // Factor 3: Current utilization (pack efficiently)
@@ -329,18 +349,42 @@ func (c *CostOptimizedPlugin) Score(
     return score, framework.NewStatus(framework.Success)
 }
 
+func (c *CostOptimizedPlugin) ScoreExtensions() framework.ScoreExtensions {
+    return c
+}
+
+func (c *CostOptimizedPlugin) NormalizeScore(
+    ctx context.Context,
+    state *framework.CycleState,
+    pod *v1.Pod,
+    scores framework.NodeScoreList,
+) *framework.Status {
+    return normalizeScores(scores)
+}
+
 func isSpotInstance(node *v1.Node) bool {
-    val, ok := node.Labels["node.kubernetes.io/instance-type"]
-    if !ok {
-        return false
+    spotLabels := map[string][]string{
+        "karpenter.sh/capacity-type":              {"spot"},
+        "eks.amazonaws.com/capacityType":          {"spot"},
+        "cloud.google.com/gke-spot":               {"true"},
+        "cloud.google.com/gke-provisioning":       {"spot", "preemptible"},
+        "kubernetes.azure.com/scalesetpriority":   {"spot"},
+        "node.kubernetes.io/instance-lifecycle":   {"spot"},
     }
-    // Check for spot/preemptible indicators
-    spotIndicators := []string{"spot", "preemptible", "low-priority"}
-    for _, indicator := range spotIndicators {
-        if contains(val, indicator) {
-            return true
+
+    for label, expectedValues := range spotLabels {
+        val, ok := node.Labels[label]
+        if !ok {
+            continue
+        }
+        normalized := strings.ToLower(val)
+        for _, expected := range expectedValues {
+            if normalized == expected {
+                return true
+            }
         }
     }
+
     return false
 }
 
@@ -388,9 +432,23 @@ func getMemoryUtilization(nodeInfo *framework.NodeInfo) int64 {
     return (memRequested * 100) / memCapacity
 }
 
-func contains(s, substr string) bool {
-    // Simple substring check - implement proper string search
-    return len(s) > 0 && len(substr) > 0
+func normalizeScores(scores framework.NodeScoreList) *framework.Status {
+    var highest int64
+    for _, nodeScore := range scores {
+        if nodeScore.Score > highest {
+            highest = nodeScore.Score
+        }
+    }
+
+    if highest == 0 {
+        return framework.NewStatus(framework.Success)
+    }
+
+    for i := range scores {
+        scores[i].Score = scores[i].Score * framework.MaxNodeScore / highest
+    }
+
+    return framework.NewStatus(framework.Success)
 }
 ```
 
@@ -401,24 +459,33 @@ Create a scheduler configuration that enables your custom plugins:
 ```yaml
 # scheduler-config.yaml
 
-apiVersion: kubescheduler.config.k8s.io/v1
-kind: KubeSchedulerConfiguration
-profiles:
-  - schedulerName: gpu-aware-scheduler
-    plugins:
-      filter:
-        enabled:
-          - name: GPUAware
-      score:
-        enabled:
-          - name: GPUAware
-            weight: 5
-  - schedulerName: cost-optimized-scheduler
-    plugins:
-      score:
-        enabled:
-          - name: CostOptimized
-            weight: 5
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduler-config
+  namespace: kube-system
+data:
+  scheduler-config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1
+    kind: KubeSchedulerConfiguration
+    leaderElection:
+      leaderElect: false
+    profiles:
+      - schedulerName: gpu-aware-scheduler
+        plugins:
+          filter:
+            enabled:
+              - name: GPUAware
+          score:
+            enabled:
+              - name: GPUAware
+                weight: 5
+      - schedulerName: cost-optimized-scheduler
+        plugins:
+          score:
+            enabled:
+              - name: CostOptimized
+                weight: 5
 ```
 
 Deploy the scheduler as a Deployment:
@@ -517,6 +584,7 @@ spec:
           requests:
             memory: "2Gi"
             cpu: "1"
+      restartPolicy: OnFailure
 ```
 
 ## Testing and Debugging
