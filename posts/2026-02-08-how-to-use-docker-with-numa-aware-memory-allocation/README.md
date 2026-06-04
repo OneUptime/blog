@@ -44,7 +44,7 @@ node   0   1
   1:  21  10
 ```
 
-The distance matrix tells the story. Accessing local memory (distance 10) is roughly twice as fast as remote memory (distance 21).
+The distance matrix tells the story. Lower values are closer, so local memory (distance 10) is preferred over remote memory (distance 21), but the numbers are relative costs rather than exact latency multipliers.
 
 You can also check NUMA statistics to spot problems:
 
@@ -84,7 +84,7 @@ docker run -d \
   redis:7-alpine
 ```
 
-This ensures each Redis instance accesses only local memory, eliminating cross-node latency.
+This ensures each Redis instance allocates memory from its local NUMA node, reducing cross-node memory latency.
 
 ## Using Docker Compose with NUMA Pinning
 
@@ -94,8 +94,6 @@ This Compose file pins two services to separate NUMA nodes:
 
 ```yaml
 # docker-compose.yml - NUMA-aware service placement
-version: "3.9"
-
 services:
   # Database pinned to NUMA node 0
   postgres-primary:
@@ -125,20 +123,17 @@ volumes:
   pgdata:
 ```
 
-Note that `cpuset` in Compose maps to `--cpuset-cpus`. For `--cpuset-mems`, you need to use the deploy section or set it through the Docker daemon configuration.
+Note that `cpuset` in Compose maps to `--cpuset-cpus`. The Compose Specification does not provide a standard service field for Docker's `--cpuset-mems`, and `deploy.resources` controls CPU and memory limits rather than NUMA memory nodes. If you need to restrict memory nodes, use `docker run --cpuset-mems` or an orchestrator/runtime integration that exposes cpuset memory placement.
 
 ## Configuring the Docker Daemon for NUMA
 
-You can also set NUMA policies at the daemon level through `/etc/docker/daemon.json`.
+Docker daemon settings live in `/etc/docker/daemon.json` on a regular Linux Docker Engine installation, but Docker does not provide daemon-wide `default-cpus` or `default-mems` options for setting NUMA placement for every container.
 
-This configuration sets default NUMA behavior for all containers:
+You can still keep normal daemon defaults, such as the runtime, storage driver, and logging policy, in that file:
 
 ```json
 {
   "default-runtime": "runc",
-  "cpu-rt-runtime": 950000,
-  "default-cpus": "0-7",
-  "default-mems": "0",
   "storage-driver": "overlay2",
   "log-driver": "json-file",
   "log-opts": {
@@ -147,6 +142,8 @@ This configuration sets default NUMA behavior for all containers:
   }
 }
 ```
+
+Set NUMA CPU and memory placement per container with `--cpuset-cpus` and `--cpuset-mems`.
 
 After editing, restart the Docker daemon:
 
