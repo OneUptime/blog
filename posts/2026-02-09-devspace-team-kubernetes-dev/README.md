@@ -29,11 +29,17 @@ This architecture balances isolation with resource efficiency.
 Install DevSpace CLI:
 
 ```bash
-# macOS or Linux
+# macOS (Apple Silicon)
+curl -L -o devspace "https://github.com/loft-sh/devspace/releases/latest/download/devspace-darwin-arm64" && sudo install -c -m 0755 devspace /usr/local/bin
 
-curl -s -L "https://github.com/loft-sh/devspace/releases/latest" | sed -nE 's!.*"([^"]*devspace-linux-amd64)".*!https://github.com\1!p' | xargs -n 1 curl -L -o devspace
-chmod +x devspace
-sudo mv devspace /usr/local/bin
+# macOS (Intel)
+curl -L -o devspace "https://github.com/loft-sh/devspace/releases/latest/download/devspace-darwin-amd64" && sudo install -c -m 0755 devspace /usr/local/bin
+
+# Linux (AMD64)
+curl -L -o devspace "https://github.com/loft-sh/devspace/releases/latest/download/devspace-linux-amd64" && sudo install -c -m 0755 devspace /usr/local/bin
+
+# Linux (ARM64)
+curl -L -o devspace "https://github.com/loft-sh/devspace/releases/latest/download/devspace-linux-arm64" && sudo install -c -m 0755 devspace /usr/local/bin
 ```
 
 Initialize DevSpace in your project:
@@ -92,7 +98,7 @@ deployments:
 Deploy shared dependencies once:
 
 ```bash
-devspace deploy --profile shared -n shared-services
+DEVSPACE_CONFIG=devspace-shared.yaml devspace deploy -n shared-services
 ```
 
 ## Creating Developer-Specific Configurations
@@ -106,7 +112,7 @@ version: v2beta1
 name: api-service
 
 vars:
-  DEVELOPER_NAME: ${DEVSPACE_USERNAME}
+  DEVELOPER_NAME: $(whoami)
   NAMESPACE: dev-${DEVELOPER_NAME}
   IMAGE: myregistry/api-service:dev-${DEVELOPER_NAME}
 
@@ -142,21 +148,18 @@ dev:
         excludePaths:
           - node_modules/
           - .git/
-        printLogs: true
         disableDownload: true
+        onUpload:
+          restartContainer: true
+
+    # Override command for development
+    command: ["npm", "run", "dev"]
+    restartHelper:
+      inject: true
 
     # Port forwarding
     ports:
       - port: "3000"
-
-    # Override command for development
-    command: ["npm", "run", "dev"]
-
-    # Auto reload on changes
-    autoReload:
-      paths:
-        - ./src/**/*.js
-        - ./package.json
 
 profiles:
   - name: shared
@@ -204,7 +207,8 @@ kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -
 kubectl label namespace "$NAMESPACE" \
     developer="$DEVELOPER" \
     environment="development" \
-    team="engineering"
+    team="engineering" \
+    --overwrite
 
 # Create resource quota
 cat <<EOF | kubectl apply -f -
@@ -236,11 +240,11 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: shared-services
+              kubernetes.io/metadata.name: shared-services
     - to:
         - namespaceSelector:
             matchLabels:
-              name: kube-system
+              kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: TCP
           port: 53
@@ -269,7 +273,7 @@ version: v2beta1
 name: frontend
 
 vars:
-  DEVELOPER_NAME: ${DEVSPACE_USERNAME}
+  DEVELOPER_NAME: $(whoami)
   NAMESPACE: dev-${DEVELOPER_NAME}
   API_ENDPOINT: http://api.dev-${DEVELOPER_NAME}.svc.cluster.local:3000
 
@@ -294,10 +298,10 @@ dev:
 
 dependencies:
   # Ensure API service is deployed first
-  - name: api
+  api:
     git: https://github.com/company/api-service
-    devSpace:
-      profile: dev
+    pipeline: deploy
+    namespace: ${NAMESPACE}
 ```
 
 ## Building Cross-Developer Collaboration
@@ -306,6 +310,10 @@ Enable developers to share test environments:
 
 ```yaml
 # devspace.yaml
+vars:
+  DEVELOPER_NAME: $(whoami)
+  NAMESPACE: dev-${DEVELOPER_NAME}
+
 pipelines:
   dev:
     run: |-
@@ -315,24 +323,23 @@ pipelines:
   dev-team:
     run: |-
       # Deploy with team-accessible ingress
-      set_var TEAM_MODE=true
       create_deployments --all
-      create_ingress
+      kubectl apply -f k8s/team-ingress.yaml -n ${NAMESPACE}
 
 commands:
-  - name: share
+  share:
     command: |-
       echo "Creating shareable link..."
 
       # Get ingress URL
-      INGRESS=$(kubectl get ingress api-${DEVSPACE_USERNAME} -n dev-${DEVSPACE_USERNAME} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+      INGRESS=$(kubectl get ingress api-${DEVELOPER_NAME} -n ${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 
       echo "Your environment is accessible at:"
-      echo "  https://${DEVSPACE_USERNAME}.dev.company.com"
+      echo "  https://${DEVELOPER_NAME}.dev.company.com"
 
       # Update team status
       curl -X POST https://dev-status.company.com/api/share \
-        -d "{\"developer\": \"${DEVSPACE_USERNAME}\", \"url\": \"https://${DEVSPACE_USERNAME}.dev.company.com\"}"
+        -d "{\"developer\": \"${DEVELOPER_NAME}\", \"url\": \"https://${DEVELOPER_NAME}.dev.company.com\"}"
 ```
 
 ## Managing Database Migrations
@@ -341,21 +348,24 @@ Handle database schemas across developers:
 
 ```yaml
 # devspace.yaml
+vars:
+  DEVELOPER_NAME: $(whoami)
+
 hooks:
   - command: |-
       # Run migrations before starting dev mode
-      kubectl exec -n shared-services deployment/postgres-postgresql -- \
+      kubectl exec -n shared-services statefulset/postgres-postgresql -- \
         psql -U devuser -d devdb -c "
-          CREATE SCHEMA IF NOT EXISTS dev_${DEVSPACE_USERNAME};
-          GRANT ALL ON SCHEMA dev_${DEVSPACE_USERNAME} TO devuser;
+          CREATE SCHEMA IF NOT EXISTS dev_${DEVELOPER_NAME};
+          GRANT ALL ON SCHEMA dev_${DEVELOPER_NAME} TO devuser;
         "
 
       # Run application migrations
-      kubectl run migrate-${DEVSPACE_USERNAME} \
-        --image=myregistry/api-service:dev-${DEVSPACE_USERNAME} \
+      kubectl run migrate-${DEVELOPER_NAME} \
+        --image=myregistry/api-service:dev-${DEVELOPER_NAME} \
         --restart=Never \
         --rm -i \
-        --env="DATABASE_SCHEMA=dev_${DEVSPACE_USERNAME}" \
+        --env="DATABASE_SCHEMA=dev_${DEVELOPER_NAME}" \
         --env="DATABASE_HOST=postgres-postgresql.shared-services.svc.cluster.local" \
         -- npm run migrate
 
@@ -442,19 +452,17 @@ kc.loadFromDefault();
 const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
 
 app.get('/api/dev-spaces', async (req, res) => {
-  const namespaces = await k8sApi.listNamespace(
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    'environment=development'
-  );
+  const namespaces = await k8sApi.listNamespace({
+    labelSelector: 'environment=development'
+  });
 
   const devSpaces = await Promise.all(
-    namespaces.body.items.map(async (ns) => {
-      const pods = await k8sApi.listNamespacedPod(ns.metadata.name);
+    namespaces.items.map(async (ns) => {
+      const pods = await k8sApi.listNamespacedPod({
+        namespace: ns.metadata.name
+      });
 
-      const runningPods = pods.body.items.filter(
+      const runningPods = pods.items.filter(
         p => p.status.phase === 'Running'
       ).length;
 
@@ -463,7 +471,7 @@ app.get('/api/dev-spaces', async (req, res) => {
         developer: ns.metadata.labels?.developer,
         created: ns.metadata.creationTimestamp,
         active: runningPods > 0,
-        podCount: pods.body.items.length
+        podCount: pods.items.length
       };
     })
   );
