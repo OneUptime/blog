@@ -14,9 +14,9 @@ This guide explains how the SHELL instruction works, when you need it, and how t
 
 ## The Default Shell Problem
 
-On Linux, the default shell for RUN instructions is `/bin/sh`. In many Docker base images (especially Alpine), `/bin/sh` is actually `ash` or `dash`, not `bash`. These shells lack features that many developers take for granted:
+On Linux, the default shell for RUN instructions is `/bin/sh`. In many Docker base images, `/bin/sh` is actually `ash` or `dash`, not `bash`. These shells lack features that many developers take for granted:
 
-- No `pipefail` option (pipe failures go undetected)
+- No portable `pipefail` option (some shells support it, but others such as `dash` do not)
 - No arrays
 - No `[[ ]]` extended test syntax
 - No process substitution
@@ -192,7 +192,7 @@ CMD ["python", "server.py"]
 
 ### Node.js with NVM
 
-NVM (Node Version Manager) requires bash. The SHELL instruction makes this work in a Dockerfile:
+NVM (Node Version Manager) is a shell function, so Docker builds need to make sure the NVM initialization script is sourced in each non-interactive `RUN` shell. The SHELL instruction makes this work in a Dockerfile:
 
 ```dockerfile
 FROM ubuntu:22.04
@@ -200,11 +200,13 @@ FROM ubuntu:22.04
 # Install prerequisites
 RUN apt-get update && apt-get install -y curl bash
 
-# Switch to bash for NVM compatibility
-SHELL ["/bin/bash", "--login", "-c"]
+# Switch to bash and source BASH_ENV for non-interactive RUN shells
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV BASH_ENV=/root/.bash_env
+RUN touch "${BASH_ENV}" && echo '. "${BASH_ENV}"' >> ~/.bashrc
 
 # Install NVM
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | PROFILE="${BASH_ENV}" bash
 
 # Install Node.js through NVM
 RUN nvm install 20 && nvm use 20 && nvm alias default 20
@@ -213,7 +215,7 @@ RUN nvm install 20 && nvm use 20 && nvm alias default 20
 RUN node --version && npm --version
 ```
 
-The `--login` flag sources the bash profile, which is where NVM installs itself.
+The `BASH_ENV` variable tells non-interactive bash shells to source the file where NVM installs its initialization snippet.
 
 ### Rust with Cargo
 
