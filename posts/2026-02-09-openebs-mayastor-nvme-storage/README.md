@@ -29,15 +29,15 @@ echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 echo "vm.nr_hugepages = 1024" | sudo tee -a /etc/sysctl.conf
 
 # Load required kernel modules
-sudo modprobe nvme_tcp
-sudo modprobe nvme_fabrics
+sudo modprobe nvme-tcp
+sudo modprobe nvme-fabrics
 
 # Make persistent
-echo "nvme_tcp" | sudo tee -a /etc/modules-load.d/mayastor.conf
-echo "nvme_fabrics" | sudo tee -a /etc/modules-load.d/mayastor.conf
+echo "nvme-tcp" | sudo tee -a /etc/modules-load.d/mayastor.conf
+echo "nvme-fabrics" | sudo tee -a /etc/modules-load.d/mayastor.conf
 
-# Disable SELinux or configure appropriately
-sudo setenforce 0
+# Restart kubelet or reboot after changing HugePages so Kubernetes sees the new allocation
+sudo systemctl restart kubelet
 ```
 
 Label nodes designated for Mayastor storage:
@@ -52,26 +52,26 @@ Deploy Mayastor using Helm.
 
 ```bash
 # Add OpenEBS Helm repository
-helm repo add mayastor https://openebs.github.io/mayastor-extensions
+helm repo add openebs https://openebs.github.io/openebs
 helm repo update
 
 # Create namespace
-kubectl create namespace mayastor
+kubectl create namespace openebs
 
 # Install Mayastor
-helm install mayastor mayastor/mayastor \
-  --namespace mayastor \
-  --set csi.node.kubeletDir="/var/lib/kubelet"
+helm install openebs openebs/openebs \
+  --namespace openebs \
+  --set mayastor.csi.node.kubeletDir="/var/lib/kubelet"
 
 # Verify installation
-kubectl get pods -n mayastor
+kubectl get pods -n openebs
 ```
 
 Expected pods:
-- mayastor-csi-controller: CSI driver controller
-- mayastor-csi-node: CSI driver on each node
+- openebs-csi-controller: CSI driver controller
+- openebs-csi-node: CSI driver on each node
 - mayastor-io-engine: SPDK-based storage engine
-- mayastor-etcd: Metadata storage
+- openebs-agent-core: Mayastor control plane agent
 
 ## Creating Storage Pools
 
@@ -79,35 +79,35 @@ Define storage pools backed by NVMe devices.
 
 ```yaml
 # mayastor-pool.yaml
-apiVersion: openebs.io/v1alpha1
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-on-node1
-  namespace: mayastor
+  namespace: openebs
 spec:
   node: node1
   disks:
-  - /dev/nvme0n1
+  - aio:///dev/disk/by-id/nvme-node1-disk
 ---
-apiVersion: openebs.io/v1alpha1
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-on-node2
-  namespace: mayastor
+  namespace: openebs
 spec:
   node: node2
   disks:
-  - /dev/nvme0n1
+  - aio:///dev/disk/by-id/nvme-node2-disk
 ---
-apiVersion: openebs.io/v1alpha1
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-on-node3
-  namespace: mayastor
+  namespace: openebs
 spec:
   node: node3
   disks:
-  - /dev/nvme0n1
+  - aio:///dev/disk/by-id/nvme-node3-disk
 ```
 
 Apply and verify:
@@ -116,10 +116,10 @@ Apply and verify:
 kubectl apply -f mayastor-pool.yaml
 
 # Check pool status
-kubectl get diskpool -n mayastor
+kubectl get diskpool -n openebs
 
 # View pool details
-kubectl describe diskpool pool-on-node1 -n mayastor
+kubectl describe diskpool pool-on-node1 -n openebs
 ```
 
 ## Creating StorageClass
@@ -135,7 +135,6 @@ metadata:
 parameters:
   protocol: nvmf
   repl: "3"
-  ioTimeout: "60"
   fsType: ext4
 provisioner: io.openebs.csi-mayastor
 volumeBindingMode: Immediate
@@ -146,7 +145,6 @@ allowVolumeExpansion: true
 Parameters explained:
 - `protocol: nvmf`: Use NVMe-oF for network access
 - `repl: "3"`: Three replicas for high availability
-- `ioTimeout: "60"`: I/O timeout in seconds
 - `fsType: ext4`: Filesystem type
 
 Apply the StorageClass:
@@ -226,8 +224,8 @@ kubectl apply -f postgres-mayastor.yaml
 kubectl get pvc postgres-data
 
 # Verify replicas are distributed
-kubectl get volumes -n mayastor
-kubectl describe volume <volume-id> -n mayastor
+kubectl mayastor get volumes -n openebs
+kubectl mayastor get volume-replica-topology <volume-id> -n openebs
 
 # Check pod status
 kubectl get pods -l app=postgres
@@ -312,14 +310,14 @@ Mayastor automatically manages replicas for high availability.
 
 ```bash
 # View volume and replicas
-kubectl get volumes -n mayastor
-kubectl describe volume <volume-id> -n mayastor
+kubectl mayastor get volumes -n openebs
+kubectl mayastor get volume-replica-topology <volume-id> -n openebs
 
-# Manually trigger rebuild if needed
-kubectl mayastor -n mayastor volume rebuild <volume-id>
+# View rebuild history
+kubectl mayastor get rebuild-history <volume-id> -n openebs
 
-# Check rebuild progress
-kubectl mayastor -n mayastor volume status <volume-id>
+# Check volume details
+kubectl mayastor get volume <volume-id> -n openebs
 ```
 
 ## Monitoring Mayastor
@@ -332,7 +330,9 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: mayastor-metrics
-  namespace: mayastor
+  namespace: openebs
+  labels:
+    app: mayastor
 spec:
   selector:
     matchLabels:
@@ -346,21 +346,21 @@ Key metrics:
 
 ```promql
 # Pool capacity
-mayastor_pool_capacity_bytes
+disk_pool_total_size_bytes
 
 # Pool usage
-mayastor_pool_used_bytes
+disk_pool_used_size_bytes
 
 # Volume IOPS
-rate(mayastor_volume_read_ops_total[5m])
-rate(mayastor_volume_write_ops_total[5m])
+delta(volume_num_read_ops[5m]) / 300
+delta(volume_num_write_ops[5m]) / 300
 
 # Volume throughput
-rate(mayastor_volume_read_bytes_total[5m])
-rate(mayastor_volume_write_bytes_total[5m])
+delta(volume_bytes_read[5m]) / 300
+delta(volume_bytes_written[5m]) / 300
 
 # Replica status
-mayastor_replica_state
+disk_pool_status
 ```
 
 Create alerts:
@@ -370,21 +370,21 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: mayastor-alerts
-  namespace: mayastor
+  namespace: openebs
 spec:
   groups:
   - name: mayastor
     rules:
-    - alert: MayastorReplicaDegraded
-      expr: mayastor_replica_state{state!="online"} > 0
+    - alert: MayastorPoolDegraded
+      expr: disk_pool_status > 1
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Mayastor replica degraded"
+        summary: "Mayastor pool degraded or faulted"
 
     - alert: MayastorPoolAlmostFull
-      expr: (mayastor_pool_used_bytes / mayastor_pool_capacity_bytes) > 0.85
+      expr: (disk_pool_used_size_bytes / disk_pool_total_size_bytes) > 0.85
       for: 10m
       labels:
         severity: warning
@@ -396,6 +396,12 @@ spec:
 
 Configure topology constraints for replica placement.
 
+```bash
+kubectl mayastor label node node1 zone=zone-a -n openebs
+kubectl mayastor label node node2 zone=zone-b -n openebs
+kubectl mayastor label node node3 zone=zone-c -n openebs
+```
+
 ```yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -404,18 +410,11 @@ metadata:
 parameters:
   protocol: nvmf
   repl: "3"
-  ioTimeout: "60"
   fsType: ext4
-  topology: "kubernetes.io/hostname"
+  nodeSpreadTopologyKey: |
+    zone
 provisioner: io.openebs.csi-mayastor
 volumeBindingMode: WaitForFirstConsumer
-allowedTopologies:
-- matchLabelExpressions:
-  - key: kubernetes.io/hostname
-    values:
-    - node1
-    - node2
-    - node3
 ```
 
 ## Volume Snapshots
@@ -467,22 +466,22 @@ Common issues and solutions:
 
 ```bash
 # Check Mayastor component health
-kubectl get pods -n mayastor
-kubectl logs -n mayastor -l app=mayastor-io-engine
+kubectl get pods -n openebs
+kubectl logs -n openebs daemonset/mayastor-io-engine -c mayastor
 
 # Verify HugePages configuration
 grep HugePages /proc/meminfo
 
 # Check NVMe devices are accessible
-kubectl exec -n mayastor <mayastor-pod> -- nvme list
+kubectl exec -n openebs <mayastor-io-engine-pod> -c mayastor -- nvme list
 
 # View pool status
-kubectl get diskpool -n mayastor
-kubectl describe diskpool <pool-name> -n mayastor
+kubectl get diskpool -n openebs
+kubectl describe diskpool <pool-name> -n openebs
 
 # Check volume health
-kubectl mayastor -n mayastor volume list
-kubectl mayastor -n mayastor volume status <volume-id>
+kubectl mayastor get volumes -n openebs
+kubectl mayastor get volume <volume-id> -n openebs
 
 # Verify CSI driver
 kubectl get csidrivers
@@ -502,7 +501,6 @@ metadata:
 parameters:
   protocol: nvmf
   repl: "2"  # Reduce replicas for better write performance
-  ioTimeout: "30"
   fsType: xfs  # XFS for large files
 provisioner: io.openebs.csi-mayastor
 mountOptions:
