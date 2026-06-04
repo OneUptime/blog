@@ -4,24 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Loki, Kubernetes, Logging
 
-Description: Discover how to extract labels dynamically from log content in Loki to create flexible indexes for Kubernetes logs without predefined label schemas.
+Description: Discover how to extract labels from log content in Loki to query Kubernetes logs flexibly while keeping label cardinality under control.
 
 ---
 
 Loki's label-based indexing is powerful, but static labels assigned during log collection can be limiting. When your log content contains valuable metadata that you want to query by, extracting labels dynamically from log lines opens up new possibilities for log analysis and filtering.
 
-This guide demonstrates how to use Loki's label extraction features to create dynamic indexes based on log content, enabling more flexible queries without modifying your log collection pipeline.
+This guide demonstrates how to use Loki's label extraction features to create labels at ingestion time or parse fields at query time, enabling more flexible queries while keeping your log collection pipeline manageable.
 
 ## Understanding Loki's Label Architecture
 
 Loki uses labels as its primary indexing mechanism. Unlike traditional log systems that index the entire log content, Loki only indexes labels and stores logs as compressed chunks. This design makes Loki extremely efficient but requires thoughtful label design.
 
-Labels in Loki come from two sources:
+Labels in Loki come from two common sources:
 
 1. **Static labels**: Added by log collectors (Promtail, Fluent Bit) based on metadata like pod name, namespace, and container name
-2. **Dynamic labels**: Extracted from log content using parsers and label extraction expressions
+2. **Extracted labels**: Parsed from log content during ingestion using pipeline stages, or parsed at query time using LogQL
 
-Dynamic label extraction allows you to index fields within your logs without redeploying your log collection agents.
+Ingestion-time extraction creates indexed labels and requires collector configuration. Query-time extraction does not change the index, but it lets you filter and aggregate parsed fields without redeploying your log collection agents.
 
 ## Label Extraction in LogQL
 
@@ -44,7 +44,7 @@ This query parses JSON logs, extracts the `level` field as a label, and filters 
 
 ## Configuring Promtail for Label Extraction
 
-While you can extract labels in queries, configuring Promtail to extract labels during collection creates persistent indexes. This approach improves query performance for frequently accessed fields.
+While you can extract labels in queries, configuring your collector to extract labels during collection creates indexed labels. This approach improves query performance for frequently accessed fields. Promtail reached end-of-life on March 2, 2026, so use Grafana Alloy for new deployments and Promtail only when maintaining existing Promtail installations.
 
 Create a Promtail configuration that extracts labels from JSON logs:
 
@@ -81,6 +81,10 @@ data:
             target_label: pod
           - source_labels: [__meta_kubernetes_pod_container_name]
             target_label: container
+          - source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
+            separator: /
+            target_label: __path__
+            replacement: /var/log/pods/*$1/*.log
 
         pipeline_stages:
           # Parse JSON logs
@@ -210,10 +214,6 @@ pipeline_stages:
 
   - labels:
       level:
-
-  # Keep trace_id in log line but not as label
-  - output:
-      source: message
 ```
 
 ## Query-Time Label Extraction
@@ -239,8 +239,12 @@ Create derived labels from multiple fields:
 pipeline_stages:
   - json:
       expressions:
+        level: level
         http_status: response.status
         error_type: error.type
+
+  - labels:
+      level:
 
   # Create composite label for error classification
   - template:
@@ -276,7 +280,7 @@ pipeline_stages:
       selector: '{namespace=""}'
       stages:
         - labels:
-            k8s_namespace: namespace
+            namespace: k8s_namespace
 ```
 
 ## Testing Label Extraction
@@ -337,9 +341,9 @@ sum by (status_code) (
 Query Loki to check label cardinality:
 
 ```logql
-# Check unique values for each label
-{namespace="production"} | json | stats count() by level
-{namespace="production"} | json | stats count() by service
+# Count log entries by parsed fields
+sum by (level) (count_over_time({namespace="production"} | json | __error__="" [5m]))
+sum by (service) (count_over_time({namespace="production"} | json | __error__="" [5m]))
 ```
 
 Use Loki's series API to monitor cardinality:
