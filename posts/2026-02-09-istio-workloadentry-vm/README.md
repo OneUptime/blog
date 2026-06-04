@@ -25,7 +25,7 @@ Download the Istio sidecar installation files to your VM:
 ```bash
 # On your VM
 
-curl -LO https://storage.googleapis.com/istio-release/releases/1.20.0/deb/istio-sidecar.deb
+curl -LO https://storage.googleapis.com/istio-release/releases/1.30.0/deb/istio-sidecar.deb
 sudo dpkg -i istio-sidecar.deb
 ```
 
@@ -34,20 +34,20 @@ Next, configure the VM to connect to your Istio control plane. You need the mesh
 ```bash
 # Generate files from your Kubernetes cluster
 istioctl x workload entry configure \
-  -f workloadentry.yaml \
+  -f workloadgroup.yaml \
   -o vm-config \
   --clusterID "cluster1" \
   --autoregister
 ```
 
-This command creates a configuration directory with everything the VM needs to join the mesh. Copy these files to your VM and place them in `/etc/certs` and `/var/run/secrets/istio`.
+This command creates a configuration directory with everything the VM needs to join the mesh. Copy these files to your VM and place `root-cert.pem` in `/etc/certs`, `istio-token` in `/var/run/secrets/tokens`, `cluster.env` in `/var/lib/istio/envoy`, and `mesh.yaml` in `/etc/istio/config/mesh`.
 
 ## Creating a Basic WorkloadEntry
 
 Let's integrate a VM running a database into your mesh. First, define the WorkloadEntry resource:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: postgres-vm-1
@@ -128,10 +128,10 @@ Look for certificate rotation messages and successful connection events.
 
 ## Advanced WorkloadEntry Configuration
 
-For production deployments, you will need more sophisticated configurations. Add health checks to ensure Istio only routes traffic to healthy VMs:
+For production deployments, you will need more sophisticated configurations. Add network, locality, and weight settings so Istio can make better routing decisions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: postgres-vm-1
@@ -161,7 +161,7 @@ Locality enables geographic traffic distribution. Set it to match your cloud pro
 For services running on multiple VMs, create a WorkloadEntry for each instance:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: postgres-vm-1
@@ -176,7 +176,7 @@ spec:
     instance: vm-1
   serviceAccount: postgres-vm
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: postgres-vm-2
@@ -198,9 +198,9 @@ Both VMs share the same labels and service account but have unique names and add
 
 Manual WorkloadEntry creation becomes tedious with many VMs. Istio supports automatic registration where VMs register themselves when the sidecar starts:
 
-```bash
+```yaml
 # On your Kubernetes cluster, create a WorkloadGroup template
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: postgres-vms
@@ -216,12 +216,19 @@ spec:
     serviceAccount: postgres-vm
 ```
 
+Apply the WorkloadGroup before generating VM configuration:
+
+```bash
+kubectl apply -f workloadgroup.yaml
+```
+
 Configure your VMs with auto-registration enabled:
 
 ```bash
 istioctl x workload entry configure \
   -f workloadgroup.yaml \
   -o vm-config \
+  --clusterID "cluster1" \
   --autoregister
 ```
 
@@ -261,7 +268,7 @@ VM integration adds network hops for east-west traffic. The sidecar proxy on the
 For latency-sensitive workloads, consider using locality-aware routing to keep traffic within the same datacenter or availability zone. Configure appropriate DestinationRule policies:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: postgres
