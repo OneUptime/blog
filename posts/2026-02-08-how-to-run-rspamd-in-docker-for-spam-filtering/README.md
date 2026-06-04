@@ -69,6 +69,8 @@ services:
       # Custom configuration overrides
       - ./config/rspamd/local.d:/etc/rspamd/local.d
       - ./config/rspamd/override.d:/etc/rspamd/override.d
+      # DKIM private keys for signing
+      - ./config/rspamd/dkim:/var/lib/rspamd/dkim:ro
     depends_on:
       - redis
     networks:
@@ -111,8 +113,8 @@ networks:
 Create the configuration directory structure.
 
 ```bash
-# Create directories for Rspamd configuration overrides
-mkdir -p config/rspamd/local.d config/rspamd/override.d
+# Create directories for Rspamd configuration overrides and DKIM keys
+mkdir -p config/rspamd/local.d config/rspamd/override.d config/rspamd/dkim
 ```
 
 ### Redis Configuration
@@ -159,9 +161,14 @@ Configure Rspamd to sign outgoing emails with DKIM.
 
 ```bash
 # Generate a DKIM key pair
-mkdir -p config/rspamd/dkim
-openssl genrsa -out config/rspamd/dkim/yourdomain.com.key 2048
-openssl rsa -in config/rspamd/dkim/yourdomain.com.key -pubout -out config/rspamd/dkim/yourdomain.com.pub
+docker run --rm \
+  -v "$PWD/config/rspamd/dkim:/dkim" \
+  rspamd/rspamd rspamadm dkim_keygen \
+  -b 2048 -s dkim -d yourdomain.com \
+  -k /dkim/yourdomain.com.dkim.key \
+  > config/rspamd/dkim/yourdomain.com.dkim.txt
+
+# Publish the TXT record from yourdomain.com.dkim.txt in DNS
 ```
 
 ```bash
@@ -171,14 +178,13 @@ cat > config/rspamd/local.d/dkim_signing.conf << 'EOF'
 enabled = true;
 
 # DKIM signing configuration
-path = "/var/lib/rspamd/dkim/$domain.key";
+path = "/var/lib/rspamd/dkim/$domain.$selector.key";
 selector = "dkim";
 
 # Sign messages from these domains
 allow_username_mismatch = true;
 
-# Use relaxed canonicalization
-sign_headers = "from:sender:reply-to:subject:date:message-id:to:cc:mime-version:content-type:content-transfer-encoding:resent-to:resent-cc:resent-from:resent-sender:resent-message-id:in-reply-to:references:list-id:list-owner:list-unsubscribe:list-subscribe:list-post";
+# Rspamd uses relaxed/relaxed canonicalization for DKIM signing by default
 EOF
 ```
 
@@ -277,7 +283,7 @@ docker compose up -d
 # Check the logs
 docker compose logs -f rspamd
 
-# Verify all containers are healthy
+# Verify all containers are running
 docker compose ps
 ```
 
@@ -318,10 +324,10 @@ Rspamd learns from messages you classify as spam or ham (not spam).
 
 ```bash
 # Learn a message as spam
-docker exec rspamd rspamc learn_spam < spam_message.eml
+docker exec -i rspamd rspamc learn_spam < spam_message.eml
 
 # Learn a message as ham (not spam)
-docker exec rspamd rspamc learn_ham < ham_message.eml
+docker exec -i rspamd rspamc learn_ham < ham_message.eml
 
 # Check the learning statistics
 docker exec rspamd rspamc stat
@@ -344,7 +350,7 @@ docker exec -i rspamd rspamc < test_message.eml
 docker exec -i rspamd rspamc symbols < test_message.eml
 
 # Check a specific URL or domain
-docker exec rspamd rspamc urls < test_message.eml
+docker exec -i rspamd rspamc urls < test_message.eml
 ```
 
 ## Monitoring and Statistics
