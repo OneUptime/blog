@@ -37,7 +37,7 @@ on:
     branches: [main]
 
 env:
-  NODE_VERSION: '18'
+  NODE_VERSION: '22'
   CLUSTER_NAME: production-cluster
 
 jobs:
@@ -68,7 +68,7 @@ jobs:
         run: npm run synth
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: manifests
           path: infrastructure/dist/
@@ -83,7 +83,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: manifests
           path: manifests/
@@ -97,16 +97,6 @@ jobs:
         run: |
           kubeconform -summary -output json manifests/*.yaml
 
-      - name: Setup kubeval
-        run: |
-          wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
-          tar xf kubeval-linux-amd64.tar.gz
-          sudo mv kubeval /usr/local/bin
-
-      - name: Validate with kubeval
-        run: |
-          kubeval --strict manifests/*.yaml
-
   deploy-staging:
     name: Deploy to Staging
     needs: validate
@@ -115,7 +105,7 @@ jobs:
     environment: staging
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: manifests
           path: manifests/
@@ -135,7 +125,7 @@ jobs:
         run: |
           kubectl apply -f manifests/ --dry-run=client
           kubectl apply -f manifests/
-          kubectl rollout status deployment --namespace=staging --timeout=5m
+          kubectl rollout status deployment/app --namespace=staging --timeout=5m
 
   deploy-production:
     name: Deploy to Production
@@ -145,7 +135,7 @@ jobs:
     environment: production
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: manifests
           path: manifests/
@@ -168,7 +158,7 @@ jobs:
       - name: Deploy to production
         run: |
           kubectl apply -f manifests/
-          kubectl rollout status deployment --namespace=production --timeout=10m
+          kubectl rollout status deployment/app --namespace=production --timeout=10m
 
       - name: Verify deployment
         run: |
@@ -185,8 +175,8 @@ Create a GitLab CI configuration:
 ```yaml
 # .gitlab-ci.yml
 variables:
-  NODE_VERSION: "18"
-  DOCKER_IMAGE: node:18-alpine
+  NODE_VERSION: "22"
+  DOCKER_IMAGE: node:22-alpine
   CLUSTER_NAME: production-cluster
 
 stages:
@@ -231,13 +221,19 @@ validate-schema:
 
 validate-policies:
   stage: validate
-  image: openpolicyagent/opa:latest
+  image: alpine:latest
   dependencies:
     - build
+  before_script:
+    - apk add --no-cache curl
+    - curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64
+    - chmod 755 opa
+    - mv opa /usr/local/bin/
   script:
     - opa test policies/
-    - for file in infrastructure/dist/*.yaml; do
-        opa eval -d policies/ -i $file "data.kubernetes.admission.deny" | grep -q "\[\]" || exit 1;
+    - |
+      for file in infrastructure/dist/*.yaml; do
+        opa eval --fail-defined -d policies/ -i "$file" "data.kubernetes.admission.deny[_]"
       done
 
 deploy-staging:
@@ -256,7 +252,7 @@ deploy-staging:
   script:
     - kubectl apply -f infrastructure/dist/ --dry-run=client
     - kubectl apply -f infrastructure/dist/
-    - kubectl rollout status deployment --namespace=staging --timeout=5m
+    - kubectl rollout status deployment/app --namespace=staging --timeout=5m
     - kubectl get pods --namespace=staging
 
 deploy-production:
@@ -277,11 +273,11 @@ deploy-production:
     - echo "Deploying to production cluster $CLUSTER_NAME"
     - kubectl apply -f infrastructure/dist/ --dry-run=server
     - kubectl apply -f infrastructure/dist/
-    - kubectl rollout status deployment --namespace=production --timeout=10m
+    - kubectl rollout status deployment/app --namespace=production --timeout=10m
     - kubectl get all --namespace=production
   after_script:
     - echo "Production deployment complete"
-    - kubectl describe deployment --namespace=production
+    - kubectl describe deployment/app --namespace=production
 ```
 
 ## Implementing a Jenkins Pipeline
@@ -293,7 +289,7 @@ Create a Jenkinsfile:
 pipeline {
     agent {
         docker {
-            image 'node:18-alpine'
+            image 'node:22-alpine'
             args '-v /var/run/docker.sock:/var/run/docker.sock'
         }
     }
@@ -352,14 +348,18 @@ pipeline {
                 stage('Policy Validation') {
                     agent {
                         docker {
-                            image 'openpolicyagent/opa:latest'
+                            image 'alpine:latest'
                         }
                     }
                     steps {
                         sh '''
+                            apk add --no-cache curl
+                            curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64
+                            chmod 755 opa
+                            mv opa /usr/local/bin/
                             opa test policies/
                             for file in infrastructure/dist/*.yaml; do
-                                opa eval -d policies/ -i $file "data.kubernetes.admission.deny"
+                                opa eval --fail-defined -d policies/ -i "$file" "data.kubernetes.admission.deny[_]"
                             done
                         '''
                     }
@@ -369,7 +369,7 @@ pipeline {
 
         stage('Deploy to Staging') {
             when {
-                branch 'PR-*'
+                changeRequest()
             }
             agent {
                 docker {
@@ -381,7 +381,7 @@ pipeline {
                     sh '''
                         kubectl apply -f infrastructure/dist/ --dry-run=client
                         kubectl apply -f infrastructure/dist/
-                        kubectl rollout status deployment --namespace=staging --timeout=5m
+                        kubectl rollout status deployment/app --namespace=staging --timeout=5m
                     '''
                 }
             }
@@ -405,7 +405,7 @@ pipeline {
                     sh '''
                         kubectl apply -f infrastructure/dist/ --dry-run=server
                         kubectl apply -f infrastructure/dist/
-                        kubectl rollout status deployment --namespace=production --timeout=10m
+                        kubectl rollout status deployment/app --namespace=production --timeout=10m
                         kubectl get all --namespace=production
                     '''
                 }
@@ -443,19 +443,21 @@ Create Open Policy Agent policies:
 # policies/required-labels.rego
 package kubernetes.admission
 
-deny[msg] {
+import rego.v1
+
+deny contains msg if {
     input.kind == "Deployment"
     not input.metadata.labels["app"]
     msg := "Deployments must have an 'app' label"
 }
 
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     not input.metadata.labels["environment"]
     msg := "Deployments must have an 'environment' label"
 }
 
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     not input.metadata.labels["owner"]
     msg := "Deployments must have an 'owner' label"
@@ -466,14 +468,16 @@ deny[msg] {
 # policies/resource-limits.rego
 package kubernetes.admission
 
-deny[msg] {
+import rego.v1
+
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.resources.limits
     msg := sprintf("Container %s must have resource limits", [container.name])
 }
 
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.resources.requests
@@ -524,7 +528,7 @@ synthesize-staging:
       run: |
         npm ci
         npm run synth
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: manifests-staging
         path: infrastructure/dist/
@@ -542,7 +546,7 @@ synthesize-production:
       run: |
         npm ci
         npm run synth
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: manifests-production
         path: infrastructure/dist/
@@ -559,7 +563,7 @@ deploy-production:
   runs-on: ubuntu-latest
   steps:
     - name: Download artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: manifests-production
         path: manifests/
@@ -570,14 +574,14 @@ deploy-production:
 
     - name: Save current state
       run: |
-        kubectl get deployment --namespace=production -o yaml > deployment-backup.yaml
+        kubectl get deployment/app --namespace=production -o yaml > deployment-backup.yaml
 
     - name: Deploy
       id: deploy
       continue-on-error: true
       run: |
         kubectl apply -f manifests/
-        kubectl rollout status deployment --namespace=production --timeout=10m
+        kubectl rollout status deployment/app --namespace=production --timeout=10m
 
     - name: Verify deployment
       id: verify
@@ -592,7 +596,7 @@ deploy-production:
       run: |
         echo "Deployment failed, rolling back..."
         kubectl apply -f deployment-backup.yaml
-        kubectl rollout status deployment --namespace=production
+        kubectl rollout status deployment/app --namespace=production
 
     - name: Fail job if deployment failed
       if: steps.deploy.outcome == 'failure' || steps.verify.outcome == 'failure'
