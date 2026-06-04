@@ -44,21 +44,20 @@ This Compose file sets up Jellyfin with volume mounts for configuration and medi
 
 ```yaml
 # docker-compose.yml - Jellyfin media server
-version: "3.8"
-
 services:
   jellyfin:
     image: jellyfin/jellyfin:latest
     container_name: jellyfin
+    # Run as your user to avoid permission issues
+    user: 1000:1000
     restart: unless-stopped
     ports:
       # Web UI port
       - "8096:8096"
       # HTTPS port (optional, for direct SSL)
       - "8920:8920"
-      # Service discovery ports
+      # Local service discovery port
       - "7359:7359/udp"
-      - "1900:1900/udp"
     volumes:
       # Jellyfin configuration and metadata
       - ./config:/config
@@ -69,9 +68,6 @@ services:
       - /mnt/media/shows:/media/shows:ro
       - /mnt/media/music:/media/music:ro
     environment:
-      # Run as your user to avoid permission issues
-      - PUID=1000
-      - PGID=1000
       # Set your timezone
       - TZ=America/New_York
 ```
@@ -91,8 +87,8 @@ services:
       # Pass through the Intel GPU render device
       - /dev/dri/renderD128:/dev/dri/renderD128
     group_add:
-      # Add the render group for GPU access
-      - "109"
+      # Add your host render group ID for GPU access
+      - "122"
 ```
 
 For NVIDIA GPUs, you need the NVIDIA Container Toolkit installed, then add:
@@ -103,9 +99,13 @@ services:
   jellyfin:
     # ... other settings from above ...
     runtime: nvidia
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 ```
 
 Check that your GPU device is accessible:
@@ -113,6 +113,9 @@ Check that your GPU device is accessible:
 ```bash
 # Verify the render device exists on the host
 ls -la /dev/dri/
+
+# Find the host render group ID to use in group_add
+getent group render | cut -d: -f3
 ```
 
 ## Starting Jellyfin
@@ -140,7 +143,7 @@ The wizard walks through these steps:
 1. **Language selection** - Pick your preferred language.
 2. **Admin account** - Create a username and password for the admin user.
 3. **Media libraries** - Add your media folders. For each library, set the content type (Movies, Shows, Music) and point it to the corresponding mount path inside the container (`/media/movies`, `/media/shows`, `/media/music`).
-4. **Metadata settings** - Choose your preferred metadata providers. TheMovieDB and TheTVDB are good defaults.
+4. **Metadata settings** - Choose your preferred metadata providers. The Movie Database and OMDb are built-in defaults, and TheTVDB is available from the official plugin catalog.
 5. **Remote access** - Enable remote access if you plan to stream outside your local network.
 
 After completing the wizard, Jellyfin begins scanning your media and downloading metadata. This takes a while depending on your library size.
@@ -172,7 +175,7 @@ Consistent naming lets Jellyfin match files to metadata accurately. Misnamed fil
 After adding the GPU device to Docker, you still need to enable transcoding in Jellyfin's settings:
 
 1. Go to Dashboard > Playback > Transcoding
-2. Select your hardware acceleration method (VAAPI for Intel, NVENC for NVIDIA)
+2. Select your hardware acceleration method (Intel Quick Sync or VAAPI for Intel, NVENC for NVIDIA)
 3. Set the hardware device path to `/dev/dri/renderD128` for Intel
 4. Enable the codecs you want to accelerate (H.264 and HEVC are the most common)
 5. Save and test by playing a file that requires transcoding
@@ -186,13 +189,13 @@ Here is an Nginx configuration for Jellyfin:
 ```nginx
 # /etc/nginx/sites-available/jellyfin
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name media.your-domain.com;
 
     ssl_certificate /etc/letsencrypt/live/media.your-domain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/media.your-domain.com/privkey.pem;
 
-    # WebSocket support is required for Jellyfin
     location / {
         proxy_pass http://127.0.0.1:8096;
         proxy_set_header Host $host;
@@ -201,6 +204,20 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
 
         # WebSocket headers
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+    }
+
+    # WebSocket support is required for Jellyfin
+    location /socket {
+        proxy_pass http://127.0.0.1:8096;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
