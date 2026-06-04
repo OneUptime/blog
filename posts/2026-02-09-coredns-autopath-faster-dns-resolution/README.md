@@ -8,7 +8,7 @@ Description: Optimize DNS resolution performance in Kubernetes by configuring Co
 
 ---
 
-DNS resolution in Kubernetes can become a performance bottleneck when applications make frequent service lookups. Every unqualified domain name triggers multiple DNS queries as the resolver walks through the search path. The CoreDNS autopath plugin solves this by intelligently caching and optimizing these search path queries.
+DNS resolution in Kubernetes can become a performance bottleneck when applications make frequent service lookups. Every unqualified domain name triggers multiple DNS queries as the resolver walks through the search path. The CoreDNS autopath plugin solves this with server-side search path completion.
 
 ## Understanding the DNS Search Path Problem
 
@@ -39,9 +39,9 @@ That's potentially four DNS queries for a single service lookup. Multiply this b
 
 ## How Autopath Solves This
 
-The autopath plugin eliminates redundant queries by serving responses based on the source IP of the requesting pod. It determines which namespace the pod belongs to and returns the correct FQDN immediately, bypassing the search path walk.
+The autopath plugin reduces redundant queries by serving responses based on the source IP of the requesting pod. It determines which namespace the pod belongs to, follows the search path on the server side, and returns the first non-NXDOMAIN result with a CNAME to the resolved name.
 
-This reduces DNS query volume significantly. Instead of four queries, you get one. The latency improvement can be dramatic, especially for applications that make frequent service calls.
+This can reduce DNS query volume significantly. For positive answers that match the configured search path, several client-side search queries can become one DNS exchange. The latency improvement can be dramatic, especially for applications that make frequent service calls.
 
 ## Enabling Autopath in CoreDNS
 
@@ -100,7 +100,7 @@ data:
         }
         ready
         kubernetes cluster.local in-addr.arpa ip6.arpa {
-           pods insecure
+           pods verified
            fallthrough in-addr.arpa ip6.arpa
            ttl 30
         }
@@ -117,6 +117,8 @@ data:
 ```
 
 The `@kubernetes` syntax tells autopath to use the kubernetes plugin for backend queries.
+
+The `pods verified` setting is required for autopath to map the client IP address back to the requesting pod. CoreDNS must also receive the DNS packet with the original pod IP as the remote address.
 
 Apply the configuration:
 
@@ -140,14 +142,12 @@ If you have custom DNS zones, configure autopath to handle them:
     health
     ready
     kubernetes cluster.local in-addr.arpa ip6.arpa {
-       pods insecure
+       pods verified
        fallthrough in-addr.arpa ip6.arpa
        ttl 30
     }
-    autopath @kubernetes {
-       # Only apply autopath to cluster.local zone
-       cluster.local
-    }
+    # Only apply autopath to the cluster.local zone
+    autopath cluster.local @kubernetes
     prometheus :9153
     forward . /etc/resolv.conf
     cache 30
@@ -247,10 +247,11 @@ Look for these key metrics:
 
 ## Combining Autopath with NodeLocal DNSCache
 
-For maximum DNS performance, combine autopath with NodeLocal DNSCache. This deploys a DNS cache on each node, eliminating network hops to CoreDNS:
+For maximum DNS performance, evaluate NodeLocal DNSCache alongside autopath. This deploys a DNS cache on each node, reducing network hops to CoreDNS. Be careful with this combination: autopath only works when CoreDNS sees the original pod IP as the DNS request's remote address. If a node-local cache forwards queries to the main CoreDNS pods without preserving that source IP, autopath in the main CoreDNS deployment cannot identify the client pod correctly.
+
+Start from the official NodeLocal DNSCache manifest for your Kubernetes version and kube-proxy mode. The Corefile portion looks like this:
 
 ```yaml
-# nodelocaldns-daemonset.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -281,56 +282,9 @@ data:
         forward . __PILLAR__UPSTREAM__SERVERS__
         prometheus :9253
     }
----
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: nodelocaldns
-  namespace: kube-system
-  labels:
-    k8s-app: nodelocaldns
-spec:
-  selector:
-    matchLabels:
-      k8s-app: nodelocaldns
-  template:
-    metadata:
-      labels:
-        k8s-app: nodelocaldns
-    spec:
-      priorityClassName: system-node-critical
-      serviceAccountName: nodelocaldns
-      hostNetwork: true
-      dnsPolicy: Default
-      tolerations:
-      - effect: NoSchedule
-        operator: Exists
-      - effect: NoExecute
-        operator: Exists
-      containers:
-      - name: node-cache
-        image: registry.k8s.io/dns/k8s-dns-node-cache:1.22.20
-        resources:
-          requests:
-            cpu: 25m
-            memory: 5Mi
-        args: [ "-localip", "169.254.20.10", "-conf", "/etc/coredns/Corefile" ]
-        volumeMounts:
-        - name: config-volume
-          mountPath: /etc/coredns
-        - name: xtables-lock
-          mountPath: /run/xtables.lock
-      volumes:
-      - name: config-volume
-        configMap:
-          name: nodelocaldns
-      - name: xtables-lock
-        hostPath:
-          path: /run/xtables.lock
-          type: FileOrCreate
 ```
 
-Apply this after configuring autopath in the main CoreDNS config. Pods will automatically use the node-local cache.
+Substitute the manifest placeholders before applying it. In kube-proxy iptables mode, the node-local DNS pods listen on both the kube-dns service IP and the node-local address, so existing pods can use the cache through the kube-dns service IP. In IPVS mode, update the kubelet `--cluster-dns` setting to the node-local address so newly created pods use the cache.
 
 ## Troubleshooting Autopath Issues
 
@@ -342,7 +296,7 @@ If autopath isn't working as expected:
 kubectl logs -n kube-system -l k8s-app=kube-dns | grep autopath
 ```
 
-2. **Check plugin order**: Autopath must come after the kubernetes plugin in the Corefile. The order matters.
+2. **Check Kubernetes plugin settings**: Autopath must be in the same server block as the kubernetes plugin, and the kubernetes plugin must use `pods verified`.
 
 3. **Validate pod IP detection**: Autopath relies on detecting the pod's namespace from its IP. Ensure your CNI properly assigns pod IPs:
 
@@ -353,7 +307,7 @@ kubectl get pods -o wide --all-namespaces | head -20
 4. **Monitor query patterns**: Use tcpdump to see actual DNS queries:
 
 ```bash
-# On a node running CoreDNS
+# Inside a CoreDNS pod, if tcpdump is available
 kubectl exec -n kube-system coredns-xxxxx -- tcpdump -i any -n port 53 -v
 ```
 
@@ -363,7 +317,7 @@ To get the most out of autopath:
 
 - Enable it cluster-wide, not just for specific zones
 - Combine with appropriate cache TTL settings (30-60 seconds typically)
-- Use NodeLocal DNSCache for additional latency reduction
+- Use NodeLocal DNSCache for additional latency reduction, but verify it does not prevent autopath from seeing the original pod IP
 - Monitor DNS query patterns and adjust ndots if needed
 - Consider reducing ndots value from 5 to 2 or 3 for applications that mostly query cluster services
 
