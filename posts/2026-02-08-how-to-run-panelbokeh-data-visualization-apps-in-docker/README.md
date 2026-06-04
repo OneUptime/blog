@@ -43,7 +43,7 @@ p = figure(
     tools="pan,wheel_zoom,box_zoom,reset,save"
 )
 
-p.circle("x", "y", source=source, color="color", size=8, alpha=0.6)
+p.scatter("x", "y", source=source, color="color", size=8, alpha=0.6)
 
 hover = HoverTool(tooltips=[("X", "@x{0.2f}"), ("Y", "@y{0.2f}")])
 p.add_tools(hover)
@@ -111,13 +111,13 @@ data = pd.DataFrame({
 
 # Create interactive widgets
 date_range = pn.widgets.DateRangeSlider(
-    name="Date Range",
+    label="Date Range",
     start=dates[0], end=dates[-1],
     value=(dates[0], dates[-1])
 )
 
 metric_select = pn.widgets.Select(
-    name="Metric",
+    label="Metric",
     options=["revenue", "users", "errors"],
     value="revenue"
 )
@@ -135,7 +135,7 @@ def create_plot(date_range_val, metric):
         width=700, height=400
     )
     p.line(filtered["date"], filtered[metric], line_width=2, color="#1976D2")
-    p.circle(filtered["date"], filtered[metric], size=3, color="#1976D2")
+    p.scatter(filtered["date"], filtered[metric], size=3, color="#1976D2")
     return p
 
 # Reactive summary statistics
@@ -200,8 +200,6 @@ When you have multiple dashboards, Docker Compose organizes them:
 
 ```yaml
 # docker-compose.yml - multiple Panel/Bokeh apps behind a proxy
-version: "3.8"
-
 services:
   sales-dashboard:
     build:
@@ -214,6 +212,8 @@ services:
     environment:
       - DB_HOST=postgres
       - DB_NAME=analytics
+      - DB_USER=panel
+      - DB_PASS=panelpass
     restart: unless-stopped
 
   ops-dashboard:
