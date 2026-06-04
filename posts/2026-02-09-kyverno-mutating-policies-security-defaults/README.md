@@ -41,7 +41,10 @@ helm repo update
 helm install kyverno kyverno/kyverno \
   --namespace kyverno \
   --create-namespace \
-  --set replicaCount=3
+  --set admissionController.replicas=3 \
+  --set backgroundController.replicas=2 \
+  --set cleanupController.replicas=2 \
+  --set reportsController.replicas=2
 ```
 
 Verify installation:
@@ -73,19 +76,19 @@ spec:
       patchStrategicMerge:
         spec:
           securityContext:
-            runAsNonRoot: true
-            runAsUser: 1000
-            fsGroup: 3000
-            seccompProfile:
+            +(runAsNonRoot): true
+            +(runAsUser): 1000
+            +(fsGroup): 3000
+            +(seccompProfile):
               type: RuntimeDefault
           containers:
           - (name): "*"
             securityContext:
-              allowPrivilegeEscalation: false
-              capabilities:
+              +(allowPrivilegeEscalation): false
+              +(capabilities):
                 drop:
                 - ALL
-              readOnlyRootFilesystem: true
+              +(readOnlyRootFilesystem): true
 ```
 
 This policy automatically adds security settings to any pod that doesn't already have them.
@@ -95,7 +98,7 @@ Test the mutation:
 ```bash
 # Create a pod without security context
 
-kubectl run test --image=nginx:1.25
+kubectl run test --image=busybox:1.36 --restart=Never -- sleep 3600
 
 # Check the created pod - security context should be automatically added
 kubectl get pod test -o yaml | grep -A 20 securityContext
@@ -125,14 +128,14 @@ spec:
       patchStrategicMerge:
         spec:
           securityContext:
-            runAsNonRoot: true
-            runAsUser: 1000
+            +(runAsNonRoot): true
+            +(runAsUser): 1000
           containers:
           - (name): "*"
             securityContext:
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: true
-              capabilities:
+              +(allowPrivilegeEscalation): false
+              +(readOnlyRootFilesystem): true
+              +(capabilities):
                 drop:
                 - ALL
 ```
@@ -169,11 +172,11 @@ spec:
           - (name): "*"
             resources:
               requests:
-                memory: "128Mi"
-                cpu: "100m"
+                +(memory): "128Mi"
+                +(cpu): "100m"
               limits:
-                memory: "512Mi"
-                cpu: "500m"
+                +(memory): "512Mi"
+                +(cpu): "500m"
 ```
 
 ## Injecting Sidecar Containers
@@ -206,9 +209,9 @@ spec:
               - name: security-scanner
                 image: aquasec/trivy:latest
                 args:
-                - scan
-                - --severity
-                - HIGH,CRITICAL
+                - server
+                - --listen
+                - 0.0.0.0:4954
                 volumeMounts:
                 - name: scan-results
                   mountPath: /results
@@ -223,10 +226,10 @@ Verify mutations before enforcement:
 
 ```bash
 # Create test deployment
-kubectl create deployment test-mutation --image=nginx:1.25
+kubectl create deployment test-mutation --image=busybox:1.36 -- sleep 3600
 
-# Check if mutations were applied
-kubectl get deployment test-mutation -o yaml | grep -A 30 securityContext
+# Check if mutations were applied to the Pods created by the Deployment
+kubectl get pod -l app=test-mutation -o yaml | grep -A 30 securityContext
 ```
 
 ## Monitoring Mutation Activity
