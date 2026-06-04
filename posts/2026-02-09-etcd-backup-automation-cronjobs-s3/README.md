@@ -12,7 +12,7 @@ The etcd key-value store contains all Kubernetes cluster state, making it the si
 
 ## Understanding etcd Backup Strategy
 
-etcd supports snapshot-based backups that capture the entire database at a specific point in time. These snapshots are consistent and can restore your cluster to the exact state at backup time. Regular automated backups ensure you always have recent recovery points, while S3 storage provides durable, geographically redundant storage for backup files.
+etcd supports snapshot-based backups that capture the entire database at a specific point in time. These snapshots are consistent and can restore your cluster to the exact state at backup time. Regular automated backups ensure you always have recent recovery points, while S3 storage provides durable, multi-Availability Zone storage for backup files.
 
 A comprehensive backup strategy includes frequent snapshots with appropriate retention policies, secure storage with encryption, and regular restore testing to validate backup integrity.
 
@@ -58,7 +58,7 @@ ETCDCTL_API=3 etcdctl \
 
 # Verify snapshot integrity
 echo "Verifying snapshot integrity..."
-ETCDCTL_API=3 etcdctl snapshot status ${BACKUP_PATH} -w table
+etcdutl snapshot status ${BACKUP_PATH} -w table
 
 # Compress snapshot
 echo "Compressing snapshot..."
@@ -69,7 +69,7 @@ BACKUP_PATH="${BACKUP_PATH}.gz"
 echo "Uploading to S3..."
 aws s3 cp ${BACKUP_PATH} s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_FILE}.gz \
   --storage-class STANDARD_IA \
-  --server-side-encryption AES256
+  --sse AES256
 
 # Verify upload
 if aws s3 ls s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_FILE}.gz &>/dev/null; then
@@ -88,8 +88,8 @@ echo "Cleaning up old S3 backups..."
 CUTOFF_DATE=$(date -d "${RETENTION_DAYS} days ago" +%Y%m%d)
 
 aws s3 ls s3://${S3_BUCKET}/${S3_PREFIX}/ | while read -r line; do
-  FILE_DATE=$(echo $line | awk '{print $4}' | grep -oP '\d{8}' | head -1)
-  FILE_NAME=$(echo $line | awk '{print $4}')
+  FILE_DATE=$(echo "$line" | awk '{print $4}' | grep -oE '[0-9]{8}' | head -1)
+  FILE_NAME=$(echo "$line" | awk '{print $4}')
 
   if [ ! -z "$FILE_DATE" ] && [ "$FILE_DATE" -lt "$CUTOFF_DATE" ]; then
     echo "Deleting old backup: ${FILE_NAME}"
@@ -144,7 +144,7 @@ data:
       snapshot save ${BACKUP_PATH}
 
     echo "Verifying snapshot integrity..."
-    ETCDCTL_API=3 etcdctl snapshot status ${BACKUP_PATH} -w table
+    etcdutl snapshot status ${BACKUP_PATH} -w table
 
     echo "Compressing snapshot..."
     gzip ${BACKUP_PATH}
@@ -153,7 +153,7 @@ data:
     echo "Uploading to S3..."
     aws s3 cp ${BACKUP_PATH} s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_FILE}.gz \
       --storage-class STANDARD_IA \
-      --server-side-encryption AES256
+      --sse AES256
 
     if aws s3 ls s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_FILE}.gz &>/dev/null; then
       echo "Backup uploaded successfully"
@@ -167,8 +167,8 @@ data:
     CUTOFF_DATE=$(date -d "${RETENTION_DAYS} days ago" +%Y%m%d)
 
     aws s3 ls s3://${S3_BUCKET}/${S3_PREFIX}/ | while read -r line; do
-      FILE_DATE=$(echo $line | awk '{print $4}' | grep -oP '\d{8}' | head -1)
-      FILE_NAME=$(echo $line | awk '{print $4}')
+      FILE_DATE=$(echo "$line" | awk '{print $4}' | grep -oE '[0-9]{8}' | head -1)
+      FILE_NAME=$(echo "$line" | awk '{print $4}')
 
       if [ ! -z "$FILE_DATE" ] && [ "$FILE_DATE" -lt "$CUTOFF_DATE" ]; then
         echo "Deleting old backup: ${FILE_NAME}"
@@ -196,7 +196,6 @@ stringData:
     [default]
     aws_access_key_id = YOUR_ACCESS_KEY_ID
     aws_secret_access_key = YOUR_SECRET_ACCESS_KEY
-    region = us-east-1
 ```
 
 Create the secret from a file:
@@ -231,7 +230,7 @@ spec:
           nodeName: master-node  # Replace with your control plane node name
           containers:
           - name: backup
-            image: amazon/aws-cli:latest
+            image: myregistry/etcd-backup:latest
             command:
             - /bin/bash
             - /scripts/backup.sh
@@ -242,6 +241,8 @@ spec:
               value: "etcd-snapshots"
             - name: RETENTION_DAYS
               value: "30"
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
             - name: AWS_SHARED_CREDENTIALS_FILE
               value: /root/.aws/credentials
             volumeMounts:
@@ -280,11 +281,11 @@ kubectl apply -f etcd-backup-cronjob.yaml
 
 ## Using a Custom Docker Image
 
-For better control, create a custom Docker image:
+The CronJob above uses a custom image so the container includes both AWS CLI and the etcd tools. Create the image with this Dockerfile:
 
 ```dockerfile
 # Dockerfile
-FROM alpine:3.19
+FROM alpine:3.22
 
 # Install required tools
 RUN apk add --no-cache \
@@ -293,11 +294,12 @@ RUN apk add --no-cache \
     gzip \
     aws-cli
 
-# Install etcdctl
-ARG ETCD_VERSION=v3.5.11
+# Install etcdctl and etcdutl
+ARG ETCD_VERSION=v3.6.11
 RUN curl -L https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-amd64.tar.gz -o etcd.tar.gz && \
     tar xzf etcd.tar.gz && \
     mv etcd-${ETCD_VERSION}-linux-amd64/etcdctl /usr/local/bin/ && \
+    mv etcd-${ETCD_VERSION}-linux-amd64/etcdutl /usr/local/bin/ && \
     rm -rf etcd.tar.gz etcd-${ETCD_VERSION}-linux-amd64
 
 # Copy backup script
@@ -314,14 +316,6 @@ docker build -t myregistry/etcd-backup:latest .
 docker push myregistry/etcd-backup:latest
 ```
 
-Update the CronJob to use the custom image:
-
-```yaml
-containers:
-- name: backup
-  image: myregistry/etcd-backup:latest
-```
-
 ## Monitoring Backup Success
 
 Create a monitoring script that checks backup freshness:
@@ -336,6 +330,10 @@ MAX_AGE_HOURS=12
 
 # Get latest backup timestamp
 LATEST_BACKUP=$(aws s3 ls s3://${S3_BUCKET}/${S3_PREFIX}/ | sort | tail -n 1 | awk '{print $1, $2}')
+if [ -z "$LATEST_BACKUP" ]; then
+  echo "ERROR: No backups found"
+  exit 1
+fi
 LATEST_TIMESTAMP=$(date -d "$LATEST_BACKUP" +%s)
 CURRENT_TIMESTAMP=$(date +%s)
 AGE_HOURS=$(( ($CURRENT_TIMESTAMP - $LATEST_TIMESTAMP) / 3600 ))
@@ -378,7 +376,9 @@ spec:
 
     - alert: EtcdBackupMissing
       expr: |
-        time() - kube_job_status_completion_time{job_name=~"etcd-backup.*"} > 43200
+        absent(kube_job_status_completion_time{namespace="kube-system", job_name=~"etcd-backup-.*"})
+        or
+        time() - max(kube_job_status_completion_time{namespace="kube-system", job_name=~"etcd-backup-.*"}) > 43200
       labels:
         severity: critical
       annotations:
@@ -406,7 +406,9 @@ Configure S3 to automatically manage backup lifecycle:
     {
       "Id": "etcd-backup-lifecycle",
       "Status": "Enabled",
-      "Prefix": "etcd-snapshots/",
+      "Filter": {
+        "Prefix": "etcd-snapshots/"
+      },
       "Transitions": [
         {
           "Days": 30,
@@ -447,7 +449,12 @@ RESTORE_DIR="/tmp/etcd-restore-test"
 
 # Download latest backup
 echo "Downloading latest backup..."
+mkdir -p ${RESTORE_DIR}
 LATEST_BACKUP=$(aws s3 ls s3://${S3_BUCKET}/${S3_PREFIX}/ | sort | tail -n 1 | awk '{print $4}')
+if [ -z "$LATEST_BACKUP" ]; then
+  echo "ERROR: No backups found"
+  exit 1
+fi
 aws s3 cp s3://${S3_BUCKET}/${S3_PREFIX}/${LATEST_BACKUP} ${RESTORE_DIR}/${LATEST_BACKUP}
 
 # Decompress
@@ -456,7 +463,7 @@ SNAPSHOT_FILE=${RESTORE_DIR}/${LATEST_BACKUP%.gz}
 
 # Verify snapshot
 echo "Verifying snapshot..."
-ETCDCTL_API=3 etcdctl snapshot status ${SNAPSHOT_FILE} -w table
+etcdutl snapshot status ${SNAPSHOT_FILE} -w table
 
 if [ $? -eq 0 ]; then
   echo "Snapshot verification successful"
@@ -487,11 +494,17 @@ spec:
             image: myregistry/etcd-backup:latest
             command:
             - /scripts/test-etcd-restore.sh
+            env:
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+            - name: AWS_SHARED_CREDENTIALS_FILE
+              value: /root/.aws/credentials
             volumeMounts:
             - name: test-script
               mountPath: /scripts
             - name: aws-credentials
               mountPath: /root/.aws
+              readOnly: true
           volumes:
           - name: test-script
             configMap:
