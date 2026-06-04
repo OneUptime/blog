@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Native Sidecars, RestartPolicy, Container Lifecycle, Init Container
 
-Description: Master native sidecar containers introduced in Kubernetes 1.29, using restartPolicy to create sidecars with proper lifecycle management and startup ordering.
+Description: Master native sidecar containers enabled by default in Kubernetes 1.29, using restartPolicy to create sidecars with proper lifecycle management and startup ordering.
 
 ---
 
@@ -34,6 +34,18 @@ spec:
       labels:
         app: example
     spec:
+      initContainers:
+      - name: log-shipper
+        image: busybox:1.36
+        restartPolicy: Always
+        command: ['sh', '-c', 'while true; do echo "shipping logs"; sleep 30; done']
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
       containers:
       - name: app
         image: myapp:latest
@@ -81,9 +93,22 @@ spec:
         app: advanced
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "9090"
+        prometheus.io/port: "9102"
     spec:
       serviceAccountName: app-service-account
+      initContainers:
+      - name: metrics-sidecar
+        image: prom/statsd-exporter:v0.26.1
+        restartPolicy: Always
+        ports:
+        - containerPort: 9102
+          name: metrics
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: metrics
+          initialDelaySeconds: 5
+          periodSeconds: 10
       containers:
       - name: main
         image: myapp:latest
@@ -218,11 +243,11 @@ metadata:
     app: myapp
 spec:
   selector:
-    app: myapp
+    app: advanced
   ports:
   - name: metrics
-    port: 9090
-    targetPort: 9090
+    port: 9102
+    targetPort: metrics
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -231,7 +256,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: myapp
+      app: advanced
   endpoints:
   - port: metrics
     interval: 30s
@@ -301,8 +326,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: azure/k8s-set-context@v3
+      - uses: actions/checkout@v6
+      - uses: azure/k8s-set-context@v5
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
