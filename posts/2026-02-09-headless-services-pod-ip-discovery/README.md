@@ -48,11 +48,8 @@ spec:
     app: my-app
   ports:
   - name: http
-    port: 8080
-    targetPort: 8080
-  - name: metrics
-    port: 9090
-    targetPort: 9090
+    port: 80
+    targetPort: 80
 ```
 
 Deploy with matching pods:
@@ -75,12 +72,10 @@ spec:
     spec:
       containers:
       - name: app
-        image: nginx:1.21
+        image: nginx:1.27
         ports:
-        - containerPort: 8080
+        - containerPort: 80
           name: http
-        - containerPort: 9090
-          name: metrics
 ```
 
 Apply the configuration:
@@ -94,8 +89,8 @@ kubectl apply -f deployment.yaml
 # Verify service
 kubectl get svc my-headless-service
 
-# Check endpoints
-kubectl get endpoints my-headless-service
+# Check EndpointSlices
+kubectl get endpointslice -l kubernetes.io/service-name=my-headless-service
 ```
 
 ## DNS Resolution with Headless Services
@@ -104,7 +99,7 @@ Query the headless service to get all pod IPs:
 
 ```bash
 # Deploy test pod
-kubectl run test --image=nicolaka/netshoot --rm -it -- bash
+kubectl run test --image=nicolaka/netshoot --rm -it --command -- bash
 
 # Inside test pod, query headless service
 nslookup my-headless-service.default.svc.cluster.local
@@ -187,7 +182,7 @@ Test StatefulSet DNS resolution:
 
 ```bash
 # From within cluster
-kubectl run test -n database --image=nicolaka/netshoot --rm -it -- bash
+kubectl run test -n database --image=nicolaka/netshoot --rm -it --command -- bash
 
 # Resolve individual pods
 nslookup cassandra-0.cassandra.database.svc.cluster.local
@@ -246,8 +241,8 @@ func (lb *CustomLoadBalancer) SelectPod() (string, error) {
     }
 
     // Random selection (implement your own logic)
-    rand.Seed(time.Now().UnixNano())
-    return ips[rand.Intn(len(ips))], nil
+    r := rand.New(rand.NewSource(time.Now().UnixNano()))
+    return ips[r.Intn(len(ips))], nil
 }
 
 func main() {
@@ -273,6 +268,18 @@ func main() {
 Implement peer discovery using headless services:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app
+spec:
+  clusterIP: None
+  selector:
+    app: my-app
+  ports:
+  - name: http
+    port: 80
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -334,7 +341,7 @@ spec:
 
 ## Headless Services for Database Clusters
 
-Configure a MySQL cluster with headless service:
+Configure MySQL instances with a headless service:
 
 ```yaml
 apiVersion: v1
@@ -378,14 +385,6 @@ spec:
             secretKeyRef:
               name: mysql-secret
               key: password
-        # Configure replication
-        - name: MYSQL_REPLICATION_USER
-          value: replicator
-        - name: MYSQL_REPLICATION_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secret
-              key: replication-password
         volumeMounts:
         - name: data
           mountPath: /var/lib/mysql
@@ -402,11 +401,11 @@ spec:
 Connect to specific MySQL instances:
 
 ```bash
-# Connect to primary
+# Connect to the first instance
 kubectl run mysql-client -it --rm --image=mysql:8.0 -- \
   mysql -h mysql-0.mysql.database.svc.cluster.local -u root -p
 
-# Connect to replica
+# Connect to the second instance
 kubectl run mysql-client -it --rm --image=mysql:8.0 -- \
   mysql -h mysql-1.mysql.database.svc.cluster.local -u root -p
 ```
@@ -443,7 +442,7 @@ data:
 
         # Check connectivity to each pod
         for ip in $IPS; do
-            if nc -zv $ip 8080 2>&1 | grep -q succeeded; then
+            if nc -zv $ip 80 2>&1 | grep -q succeeded; then
                 echo "  $ip - OK"
             else
                 echo "  $ip - UNREACHABLE"
@@ -553,7 +552,7 @@ data:
     # Test 2: Each IP is reachable
     echo "Test 2: Connectivity"
     for ip in $IPS; do
-        if nc -zv $ip 8080 2>&1 | grep -q succeeded; then
+        if nc -zv $ip 80 2>&1 | grep -q succeeded; then
             echo "PASS: $ip is reachable"
         else
             echo "FAIL: $ip is not reachable"
@@ -568,6 +567,32 @@ data:
         echo "FAIL: Service has cluster IP (not headless)"
     fi
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: headless-service-test
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: headless-service-test
+rules:
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: headless-service-test
+subjects:
+- kind: ServiceAccount
+  name: headless-service-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: headless-service-test
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -575,6 +600,7 @@ metadata:
 spec:
   template:
     spec:
+      serviceAccountName: headless-service-test
       containers:
       - name: test
         image: nicolaka/netshoot
