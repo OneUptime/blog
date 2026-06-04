@@ -15,11 +15,11 @@ Scaling stateful applications presents unique challenges compared to stateless w
 StatefulSets differ from Deployments in critical ways that affect autoscaling:
 
 - Pods have stable, predictable names (app-0, app-1, app-2)
-- Each pod gets its own persistent volume that persists across restarts
-- Pods are created and deleted in order (0, 1, 2 when scaling up; 2, 1, 0 when scaling down)
+- Each pod gets its own persistent volume that persists across restarts when you use volume claim templates
+- With the default `OrderedReady` pod management policy, pods are created and deleted in order (0, 1, 2 when scaling up; 2, 1, 0 when scaling down)
 - Network identities remain stable across rescheduling
 
-These guarantees mean scaling is slower than Deployments. When HPA requests 10 replicas, StatefulSet creates them one at a time, waiting for each to become ready before starting the next. This ordered scaling protects state consistency but can delay capacity additions during traffic spikes.
+These guarantees mean scaling can be slower than Deployments. With the default `OrderedReady` policy, when HPA requests 10 replicas, StatefulSet creates them one at a time, waiting for each to become ready before starting the next. This ordered scaling protects state consistency but can delay capacity additions during traffic spikes.
 
 ## When to Use HPA with StatefulSets
 
@@ -39,9 +39,24 @@ Avoid HPA for StatefulSets that:
 
 ## Basic HPA Configuration for StatefulSets
 
-Create a StatefulSet for a sharded cache service:
+Create a headless Service and StatefulSet for a sharded cache service:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: cache-cluster
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    app: cache-cluster
+  ports:
+  - port: 6379
+    name: client
+  - port: 16379
+    name: gossip
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -148,7 +163,6 @@ import (
     "fmt"
     "hash/fnv"
     "log"
-    "os"
     "strconv"
     "strings"
     "time"
@@ -247,13 +261,13 @@ func (cm *ClusterManager) migrateKey(key, targetPod string) {
 }
 ```
 
-This code watches for StatefulSet replica count changes and redistributes data using consistent hashing.
+This code watches for StatefulSet replica count changes and redistributes data using hash-based ownership.
 
 ## Using Custom Metrics for Stateful Workloads
 
 CPU and memory metrics often don't reflect the actual load on stateful systems. Consider using application-specific metrics like:
 
-- Cache hit rate (scale up when hit rate drops)
+- Cache miss rate (scale up when miss rate increases)
 - Query latency (scale up when latency increases)
 - Data shard size (scale up when shards grow too large)
 - Replication lag (scale up read replicas when lag increases)
@@ -277,10 +291,10 @@ spec:
   - type: Pods
     pods:
       metric:
-        name: cache_hit_rate
+        name: cache_miss_rate
       target:
         type: AverageValue
-        averageValue: "80"
+        averageValue: "20"
   - type: Pods
     pods:
       metric:
@@ -333,7 +347,7 @@ lifecycle:
 
 ### 2. PodDisruptionBudget
 
-Prevent too many pods from being removed simultaneously:
+Prevent too many pods from being evicted simultaneously during voluntary disruptions such as node drains:
 
 ```yaml
 apiVersion: policy/v1
@@ -348,7 +362,7 @@ spec:
       app: cache-cluster
 ```
 
-This ensures at least 2 pods remain available during any disruption, including HPA scale-down.
+This ensures at least 2 pods remain available during eviction-based voluntary disruptions. It does not prevent HPA or the StatefulSet controller from reducing the replica count; use conservative HPA scale-down behavior and application-level drain logic for that path.
 
 ## Monitoring StatefulSet Scaling
 
@@ -367,7 +381,7 @@ data:
       interval: 30s
       rules:
       - alert: StatefulSetScalingTooFast
-        expr: rate(kube_statefulset_replicas[5m]) > 0.1
+        expr: changes(kube_statefulset_replicas[5m]) > 1
         annotations:
           summary: "StatefulSet {{ $labels.statefulset }} scaling too rapidly"
 
@@ -386,7 +400,7 @@ data:
 
 ## Advanced: Per-Pod Scaling Metrics
 
-For fine-grained control, use per-pod metrics to identify which specific pods are overloaded:
+For fine-grained control, use selected per-pod metric series to scale the StatefulSet based on application-specific load:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -413,7 +427,7 @@ spec:
         averageValue: "50"
 ```
 
-This scales based on the average shard size across pods, ensuring no single pod becomes a hotspot.
+This scales based on the average selected shard size across pods. HPA still changes the replica count of the whole StatefulSet, so you need application-level rebalancing to resolve individual hot shards.
 
 ## Conclusion
 
