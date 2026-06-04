@@ -87,7 +87,6 @@ spec:
       queueURL: https://sqs.us-east-1.amazonaws.com/123456789/my-queue
       queueLength: "10"  # Target 10 messages per pod
       awsRegion: us-east-1
-      identityOwner: operator  # Use credentials from TriggerAuthentication
 
   advanced:
     horizontalPodAutoscalerConfig:
@@ -174,7 +173,7 @@ This scales workers based on the number of messages in the Azure Service Bus que
 
 ## Scaling with GCP Pub/Sub
 
-Use GCP Pub/Sub subscription metrics for autoscaling.
+Use GCP Pub/Sub subscription metrics for autoscaling. KEDA currently marks this scaler as deprecated, but the current syntax uses `mode` and `value` instead of the older `subscriptionSize` field.
 
 ```yaml
 apiVersion: v1
@@ -221,8 +220,8 @@ spec:
       name: gcp-pubsub-auth
     metadata:
       subscriptionName: workers-subscription
-      subscriptionSize: "15"  # Target 15 unacked messages per pod
       mode: SubscriptionSize
+      value: "15"  # Target 15 unacked messages per pod
 
   advanced:
     horizontalPodAutoscalerConfig:
@@ -273,6 +272,7 @@ spec:
       metricName: PendingRequests
       targetMetricValue: "100"
       minMetricValue: "0"
+      metricCollectionTime: "300"
       metricStatPeriod: "60"
       metricStat: "Average"
 
@@ -373,6 +373,7 @@ spec:
       namespace: AWS/RDS
       metricName: DatabaseConnections
       targetMetricValue: "50"  # Scale when connections exceed 50 per pod
+      metricCollectionTime: "300"
       metricStatPeriod: "60"
       metricStat: "Average"
       dimensionName: DBInstanceIdentifier
@@ -430,11 +431,14 @@ spec:
     authenticationRef:
       name: azure-credentials
     metadata:
-      resourceURI: /subscriptions/sub-id/resourceGroups/rg/providers/Microsoft.Web/sites/webapp
+      resourceURI: Microsoft.Web/sites/webapp
+      tenantId: tenant-id
+      subscriptionId: sub-id
+      resourceGroupName: rg
       metricName: Http5xx
       targetValue: "10"
       metricAggregationType: Average
-      metricAggregationInterval: "1:0"
+      metricAggregationInterval: "0:1:0"
       metricFilter: ""
 ```
 
