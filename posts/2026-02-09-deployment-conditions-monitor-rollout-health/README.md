@@ -8,7 +8,7 @@ Description: Learn how to use Kubernetes deployment conditions to monitor rollou
 
 ---
 
-Your deployment shows as "running" in kubectl, but you don't know if the rollout actually completed successfully or if it's stuck in a bad state. You need a programmatic way to check deployment health beyond just counting pods.
+Your deployment shows up in kubectl output, but you don't know if the rollout actually completed successfully or if it's stuck in a bad state. You need a programmatic way to check deployment health beyond just counting pods.
 
 Deployment conditions provide structured status information that tells you exactly what's happening with your rollout.
 
@@ -27,7 +27,7 @@ These conditions have:
 - Status: True, False, or Unknown
 - Reason: Machine-readable reason code
 - Message: Human-readable description
-- LastUpdateTime: When the condition last changed
+- LastUpdateTime: When the condition was last updated
 - LastTransitionTime: When the status last changed
 
 ## Checking Deployment Conditions
@@ -103,7 +103,8 @@ conditions:
 
 Common reasons:
 - **NewReplicaSetAvailable**: Rollout completed successfully
-- **ReplicaSetUpdated**: Creating new ReplicaSet
+- **NewReplicaSetCreated**: Created a new ReplicaSet
+- **ReplicaSetUpdated**: Scaling the new ReplicaSet up or old ReplicaSets down
 - **ProgressDeadlineExceeded**: Rollout took too long
 - **FoundNewReplicaSet**: Started new rollout
 
@@ -194,6 +195,7 @@ Use in CI/CD:
 ```bash
 # Deploy and wait
 kubectl apply -f deployment.yaml
+kubectl rollout status deployment/api-server -n production --timeout=10m
 
 # Check health
 if ./check-deployment-health.sh api-server production; then
@@ -215,6 +217,7 @@ kube_deployment_status_condition{
   condition="Available",
   deployment="api-server",
   namespace="production",
+  reason="MinimumReplicasAvailable",
   status="true"
 } 1
 ```
@@ -269,7 +272,7 @@ groups:
 
 ## Automated Rollback Based on Conditions
 
-Build a controller that watches conditions and takes action:
+Build a scheduled job that checks conditions and takes action:
 
 ```yaml
 apiVersion: v1
@@ -279,36 +282,33 @@ metadata:
 data:
   monitor.sh: |
     #!/bin/bash
-    while true; do
-      # Find deployments with progress deadline exceeded
-      FAILED_DEPLOYMENTS=$(kubectl get deployments --all-namespaces -o json | \
-        jq -r '.items[] |
-          select(
-            .status.conditions[]? |
-            select(.type=="Progressing" and .status=="False" and .reason=="ProgressDeadlineExceeded")
-          ) |
-          "\(.metadata.namespace) \(.metadata.name)"')
+    # Find deployments with progress deadline exceeded
+    FAILED_DEPLOYMENTS=$(kubectl get deployments --all-namespaces -o json | \
+      jq -r '.items[] |
+        select(
+          .status.conditions[]? |
+          select(.type=="Progressing" and .status=="False" and .reason=="ProgressDeadlineExceeded")
+        ) |
+        "\(.metadata.namespace) \(.metadata.name)"')
 
-      echo "$FAILED_DEPLOYMENTS" | while read namespace deployment; do
-        if [ -n "$deployment" ]; then
-          echo "$(date): Deployment $namespace/$deployment exceeded deadline, rolling back"
+    echo "$FAILED_DEPLOYMENTS" | while read -r namespace deployment; do
+      if [ -n "$deployment" ]; then
+        echo "$(date): Deployment $namespace/$deployment exceeded deadline, rolling back"
 
-          # Annotate for audit
-          kubectl annotate deployment/$deployment -n $namespace \
-            auto-rollback-reason="Progress deadline exceeded" \
-            auto-rollback-time="$(date -Iseconds)"
+        # Annotate for audit
+        kubectl annotate deployment/$deployment -n $namespace \
+          auto-rollback-reason="Progress deadline exceeded" \
+          auto-rollback-time="$(date -Iseconds)" \
+          --overwrite
 
-          # Rollback
-          kubectl rollout undo deployment/$deployment -n $namespace
+        # Rollback
+        kubectl rollout undo deployment/$deployment -n $namespace
 
-          # Send notification (example: Slack webhook)
-          curl -X POST $SLACK_WEBHOOK \
-            -H 'Content-Type: application/json' \
-            -d "{\"text\":\"Auto-rolled back $namespace/$deployment due to progress deadline\"}"
-        fi
-      done
-
-      sleep 60
+        # Send notification (example: Slack webhook)
+        curl -X POST $SLACK_WEBHOOK \
+          -H 'Content-Type: application/json' \
+          -d "{\"text\":\"Auto-rolled back $namespace/$deployment due to progress deadline\"}"
+      fi
     done
 ---
 apiVersion: batch/v1
@@ -392,14 +392,14 @@ sum(kube_deployment_status_condition{condition="Available",status="true"})
 sum(kube_deployment_status_condition{condition="Available"})
 
 # Count of unhealthy deployments
-count(kube_deployment_status_condition{condition="Available",status="false"})
+sum(kube_deployment_status_condition{condition="Available",status="false"} == 1)
 
 # Deployments in progress
-count(kube_deployment_status_condition{
+sum(kube_deployment_status_condition{
   condition="Progressing",
   status="true",
   reason!="NewReplicaSetAvailable"
-})
+} == 1)
 ```
 
 ## Best Practices
