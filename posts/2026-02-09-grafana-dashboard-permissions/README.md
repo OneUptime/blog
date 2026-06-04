@@ -31,6 +31,7 @@ curl -X POST http://grafana:3000/api/folders \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
+    "uid": "production-dashboards",
     "title": "Production Dashboards"
   }'
 
@@ -132,11 +133,8 @@ Now all Platform Team members can edit dashboards in the infrastructure folder.
 
 Public dashboards allow external viewing without authentication. Enable this feature carefully as it exposes your data.
 
-```yaml
+```ini
 # grafana.ini
-[security]
-allow_embedding = true
-
 [public_dashboards]
 enabled = true
 ```
@@ -170,7 +168,7 @@ curl -X POST http://grafana:3000/api/snapshots \
   -d '{
     "dashboard": {
       "title": "CPU Usage Report",
-      "panels": [...]
+      "panels": []
     },
     "expires": 3600,
     "external": false
@@ -184,22 +182,16 @@ The snapshot contains rendered data but no queries or data source information, m
 Restrict which users can query specific data sources to prevent unauthorized data access.
 
 ```bash
-# Update data source permissions
-curl -X POST http://grafana:3000/api/datasources/1/permissions \
+# Grant query permission on a data source to a team
+curl -X POST http://grafana:3000/api/access-control/datasources/prometheus/teams/2 \
   -H "Authorization: Bearer YOUR_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "enabled": true,
-    "permissions": [
-      {
-        "teamId": 2,
-        "permission": 1
-      }
-    ]
+    "permission": "Query"
   }'
 ```
 
-With data source permissions enabled, only authorized teams can create or edit panels using that data source.
+Data source permissions are available in Grafana Enterprise and Grafana Cloud. With data source permissions configured, only authorized teams can query that data source.
 
 ## Configuring Organization-Level Permissions
 
@@ -314,21 +306,22 @@ Anonymous users get Viewer role by default. Combine this with folder permissions
 
 Track who changes permissions to maintain security accountability.
 
-```bash
-# Query audit logs for permission changes
-curl -X GET "http://grafana:3000/api/access-control/audit" \
-  -H "Authorization: Bearer YOUR_API_TOKEN" \
-  -G \
-  -d "action=dashboards.permissions.update" \
-  -d "from=2026-02-01" \
-  -d "to=2026-02-09"
+```ini
+[auditing]
+enabled = true
+loggers = file
+
+[auditing.logs.file]
+path = data/log
+max_files = 5
+max_file_size_mb = 256
 ```
 
-Regular audit reviews help you detect unauthorized permission changes.
+Grafana Enterprise and Grafana Cloud audit logs record API requests and UI actions that trigger API requests. Regular audit reviews help you detect unauthorized permission changes.
 
 ## Implementing Row-Level Permissions
 
-Use dashboard variables with data source query restrictions to implement row-level security.
+Do not rely on dashboard variables alone for row-level security. Variables such as `${__user.id}` can personalize queries, but they are not an authorization boundary. Use data source permissions, data source-native access controls, or Grafana's Label Based Access Control (LBAC) for supported Prometheus and Loki data sources.
 
 ```json
 {
@@ -338,9 +331,9 @@ Use dashboard variables with data source query restrictions to implement row-lev
         "name": "tenant",
         "type": "query",
         "datasource": "Prometheus",
-        "query": "label_values(metric{user_id=\"$__user.id\"}, tenant)",
+        "query": "label_values(metric{user_id=\"${__user.id}\"}, tenant)",
         "current": {
-          "value": "$__user.tenant"
+          "value": ""
         }
       }
     ]
@@ -348,7 +341,7 @@ Use dashboard variables with data source query restrictions to implement row-lev
 }
 ```
 
-Users only see data for tenants they have access to, filtered by the variable.
+This can make dashboards more convenient, but the actual tenant restriction must be enforced by the data source or an access-control feature such as LBAC.
 
 ## Managing Permissions at Scale
 
