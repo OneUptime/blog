@@ -8,7 +8,7 @@ Description: Master kubectl cp to transfer files between your local machine and 
 
 ---
 
-Moving files in and out of containers is essential for debugging, backups, and deployments. kubectl cp provides tar-based file transfer between your local filesystem and running pods without requiring additional tools inside containers.
+Moving files in and out of containers is essential for debugging, backups, and deployments. kubectl cp provides tar-based file transfer between your local filesystem and running pods, and it requires the `tar` binary to be present inside the container.
 
 ## Basic kubectl cp Syntax
 
@@ -83,21 +83,21 @@ kubectl cp ./config.json webapp:/app/config.json -c main-app
 # Copy from specific container
 kubectl cp webapp:/logs/error.log ./error.log -c sidecar
 
-# Without -c flag, kubectl uses the first container
+# Without -c flag, kubectl uses the kubectl.kubernetes.io/default-container annotation or the first container
 ```
 
 Always use `-c` when working with multi-container pods to avoid ambiguity.
 
 ## Preserving Permissions
 
-By default, cp preserves file permissions:
+When copying into a container, kubectl cp preserves ownership and file permissions unless you use `--no-preserve`:
 
 ```bash
 # Copy preserving permissions
-kubectl cp webapp:/app/script.sh ./script.sh
+kubectl cp ./script.sh webapp:/app/script.sh
 
-# Check copied permissions
-ls -l script.sh
+# Copy without preserving ownership and permissions in the container
+kubectl cp --no-preserve ./script.sh webapp:/app/script.sh
 
 # Copy executable and run locally
 kubectl cp webapp:/bin/custom-tool ./custom-tool
@@ -105,17 +105,17 @@ chmod +x ./custom-tool  # May need to restore execute bit
 ./custom-tool
 ```
 
-Some permission attributes might not transfer perfectly due to user ID differences.
+When copying from a container to your local machine, file mode preservation is not guaranteed; use a manual tar stream for exact control.
 
 ## Handling Symbolic Links
 
-kubectl cp does not follow symbolic links by default:
+kubectl cp does not handle symbolic links as a fully preserved copy operation:
 
 ```bash
-# Symbolic links are copied as links, not their targets
+# Symbolic links copied from a pod are skipped with a warning
 kubectl cp webapp:/app/current ./current
 
-# To copy link targets, use tar manually
+# To copy link targets, use tar manually with -h
 kubectl exec webapp -- tar cf - -h /app/current | tar xf - -C ./
 
 # Or resolve links before copying
@@ -127,10 +127,10 @@ This prevents accidentally copying large directory trees through symlinks.
 
 ## Copying Large Files
 
-Large file transfers can timeout. Monitor progress and adjust timeouts:
+Large file transfers can be interrupted. Monitor progress and retry downloads when needed:
 
 ```bash
-# Copy large file with default timeout
+# Copy large file
 kubectl cp webapp:/data/backup.tar.gz ./backup.tar.gz
 
 # Check file size first
@@ -138,6 +138,9 @@ kubectl exec webapp -- ls -lh /data/backup.tar.gz
 
 # Monitor transfer with verbose output
 kubectl cp webapp:/data/large-file.bin ./large-file.bin -v=8
+
+# Retry an interrupted copy from a container
+kubectl cp --retries=3 webapp:/data/large-file.bin ./large-file.bin
 
 # Split large files before copying
 kubectl exec webapp -- split -b 100M /data/huge-file.bin /tmp/part-
@@ -321,28 +324,57 @@ metadata:
   name: data-transfer
 spec:
   accessModes:
-  - ReadWriteOnce
+  - ReadWriteMany
   resources:
     requests:
       storage: 10Gi
 EOF
 
-# Mount to source pod
-kubectl set volume pod/source --add --name=transfer \
-  --claim-name=data-transfer --mount-path=/transfer
+# Create source and destination pods that mount the PVC
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: source
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["sleep", "3600"]
+    volumeMounts:
+    - name: transfer
+      mountPath: /transfer
+  volumes:
+  - name: transfer
+    persistentVolumeClaim:
+      claimName: data-transfer
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: destination
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["sleep", "3600"]
+    volumeMounts:
+    - name: transfer
+      mountPath: /transfer
+  volumes:
+  - name: transfer
+    persistentVolumeClaim:
+      claimName: data-transfer
+EOF
 
 # Copy data inside pod
 kubectl exec source -- cp -r /data/* /transfer/
-
-# Mount to destination pod
-kubectl set volume pod/destination --add --name=transfer \
-  --claim-name=data-transfer --mount-path=/transfer
 
 # Copy from shared volume
 kubectl exec destination -- cp -r /transfer/* /data/
 ```
 
-This avoids network transfer overhead for large datasets.
+This avoids network transfer overhead for large datasets. Your storage class must support `ReadWriteMany` when two pods mount the claim for read-write access at the same time.
 
 ## Security Considerations
 
@@ -402,7 +434,7 @@ kubectl cp ./temp-file.txt pod2:/data/file.txt
 rm ./temp-file.txt
 
 # Or use a pipeline
-kubectl exec pod1 -- tar cf - /data/file.txt | \
+kubectl exec pod1 -- tar cf - -C /data file.txt | \
 kubectl exec -i pod2 -- tar xf - -C /data/
 ```
 
