@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Factorio, Game Server, Container, Self-Hosted, Gaming, Multiplayer, Automation
 
-Description: Deploy a dedicated Factorio multiplayer server in Docker with save management, mod support, RCON access, and automated backups for your factory empire.
+Description: Deploy a dedicated Factorio multiplayer server in Docker with save management, mod support, RCON access, and backups for your factory empire.
 
 ---
 
 Factorio is a game about building and maintaining automated factories on an alien planet. Its multiplayer mode lets teams collaborate on massive factory designs that would be overwhelming for a single player. Running a dedicated server keeps the factory running around the clock, so the assembly lines never stop.
 
-The official Factorio Docker image, maintained by the Factorio team and community contributors, makes server setup trivial. The `factoriotools/factorio` image handles server binaries, save file management, and mod loading. This guide covers the complete setup process.
+The community-maintained `factoriotools/factorio` Docker image makes server setup straightforward. The image handles server binaries, save file management, and mod loading. This guide covers the complete setup process.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ You need:
 - Docker Engine 20.10+
 - Docker Compose v2
 - At least 1GB of RAM (more for megabases)
-- A Factorio account (for downloading the server and using mods)
+- A Factorio account (for public server listings and using mods)
 - Factorio game client for testing
 
 ```bash
@@ -51,7 +51,6 @@ A complete setup with all the important options.
 
 ```yaml
 # docker-compose.yml - Factorio dedicated server
-version: "3.8"
 
 services:
   factorio:
@@ -69,11 +68,9 @@ services:
 
       # Server settings
       UPDATE_MODS_ON_START: "true"
+      LOAD_LATEST_SAVE: "false"
       PORT: 34197
       RCON_PORT: 27015
-
-      # RCON password for remote management
-      RCON_PASSWORD: "factorio_rcon_pass"
 
       # Token for mod downloads (from factorio.com profile)
       # USERNAME: "your_factorio_username"
@@ -103,7 +100,7 @@ The first startup generates a world and creates configuration files in the volum
 
 ## Server Configuration
 
-After the first run, configuration files are created in the volume. You can edit them to customize the server.
+After the first run, the main configuration files are created in the volume. You can edit them to customize the server.
 
 ```bash
 # Copy the config files to your host for editing
@@ -111,10 +108,11 @@ docker cp factorio-server:/factorio/config ./factorio-config
 
 # Key files:
 # server-settings.json - Main server configuration
-# server-adminlist.json - Admin players
-# server-banlist.json - Banned players
+# server-adminlist.json - Admin players (create if needed)
+# server-banlist.json - Banned players (create if needed)
 # map-gen-settings.json - World generation settings
 # map-settings.json - Map runtime settings
+# rconpw - RCON password
 ```
 
 ### Server Settings
@@ -166,8 +164,6 @@ Customize world generation by editing `map-gen-settings.json`.
 
 ```json
 {
-  "terrain_segmentation": 1,
-  "water": 1,
   "width": 0,
   "height": 0,
   "starting_area": 1,
@@ -179,14 +175,26 @@ Customize world generation by editing `map-gen-settings.json`.
     "iron-ore": {"frequency": 1, "size": 1, "richness": 1},
     "uranium-ore": {"frequency": 1, "size": 1, "richness": 1},
     "crude-oil": {"frequency": 1, "size": 1, "richness": 1},
-    "trees": {"frequency": 1, "size": 1, "richness": 1},
-    "enemy-base": {"frequency": 1, "size": 1, "richness": 1}
+    "water": {"frequency": 1, "size": 1},
+    "trees": {"frequency": 1, "size": 1},
+    "enemy-base": {"frequency": 1, "size": 1}
   },
-  "seed": null,
+  "cliff_settings": {
+    "name": "cliff",
+    "cliff_elevation_0": 10,
+    "cliff_elevation_interval": 40,
+    "richness": 1
+  },
   "property_expression_names": {
-    "control-setting:moisture:bias": "0",
-    "control-setting:aux:bias": "0"
-  }
+    "control:moisture:frequency": "1",
+    "control:moisture:bias": "0",
+    "control:aux:frequency": "1",
+    "control:aux:bias": "0"
+  },
+  "starting_points": [
+    {"x": 0, "y": 0}
+  ],
+  "seed": null
 }
 ```
 
@@ -220,13 +228,16 @@ If the server is on your local network and `lan` visibility is `true`, it appear
 Manage the server remotely using RCON.
 
 ```bash
+# Show the generated RCON password
+docker exec factorio-server cat /factorio/config/rconpw
+
 # Using mcrcon (install separately) or any RCON client
-mcrcon -H localhost -P 27015 -p factorio_rcon_pass
+mcrcon -H localhost -P 27015 -p "$(docker exec factorio-server cat /factorio/config/rconpw)"
 
 # Common RCON commands:
 
 # Send a message to all players
-/server-message "Server will restart in 5 minutes"
+/shout "Server will restart in 5 minutes"
 
 # List connected players
 /players
@@ -306,10 +317,11 @@ docker cp factorio-server:/factorio/saves/docker-factory.zip ./factory-backup-$(
 docker cp my-save.zip factorio-server:/factorio/saves/my-save.zip
 ```
 
-To load a specific save, set the `SAVE_NAME` environment variable.
+To load a specific save, disable latest-save loading and set the `SAVE_NAME` environment variable.
 
 ```yaml
 environment:
+  LOAD_LATEST_SAVE: "false"
   SAVE_NAME: "my-save"
 ```
 
