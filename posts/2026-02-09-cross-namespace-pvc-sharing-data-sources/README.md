@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, DevOps
 
-Description: Discover how to share persistent volume data across Kubernetes namespaces using volume data sources and cross-namespace references for efficient storage management.
+Description: Discover how to copy persistent volume data across Kubernetes namespaces using volume data sources and cross-namespace references for efficient storage management.
 
 ---
 
-Kubernetes namespaces provide logical isolation between workloads, but this isolation creates challenges when you need to share persistent data across namespace boundaries. The PersistentVolume data source feature allows you to reference volumes from other namespaces, enabling data sharing without breaking namespace isolation.
+Kubernetes namespaces provide logical isolation between workloads, but this isolation creates challenges when you need to copy persistent data across namespace boundaries. The PersistentVolumeClaim dataSourceRef feature allows you to reference volume data sources from other namespaces, enabling controlled data cloning or restore workflows without breaking namespace isolation.
 
 ## The Cross-Namespace Challenge
 
 Traditionally, PersistentVolumeClaims (PVCs) can only reference resources within the same namespace. If you have a dataset in namespace-a that applications in namespace-b need to access, you face several awkward workarounds:
 
 - Duplicating the data by creating separate PVCs in each namespace
-- Using ReadWriteMany volumes and mounting them across namespace boundaries
+- Using separate PVCs that point at the same ReadWriteMany-capable storage backend
 - Implementing external data synchronization mechanisms
 - Breaking namespace isolation by sharing credentials
 
@@ -23,16 +23,16 @@ None of these solutions feel natural or maintain proper Kubernetes resource boun
 
 ## Understanding Volume Data Sources
 
-Kubernetes 1.22 introduced cross-namespace volume data sources as a beta feature. This mechanism allows a PVC in one namespace to reference a PVC in another namespace as its data source, creating a clone or snapshot of the original volume.
+Kubernetes 1.26 introduced cross-namespace volume data sources as an alpha feature. This mechanism allows a PVC in one namespace to reference a PVC or VolumeSnapshot in another namespace as its data source, creating a clone from the source PVC or restoring from the source snapshot.
 
-The feature works with CSI drivers that support volume cloning. When you create a PVC with a cross-namespace data source, the CSI driver creates a new volume populated with data from the source volume.
+The feature works with CSI drivers and sidecars that support the relevant data source operation, such as volume cloning or snapshot restore. When you create a PVC with a cross-namespace data source, the CSI driver creates a new volume populated with data from the source.
 
 ## Enabling Cross-Namespace Data Sources
 
-First, enable the AnyVolumeDataSource and CrossNamespaceVolumeDataSource feature gates on your cluster:
+First, enable the AnyVolumeDataSource and CrossNamespaceVolumeDataSource feature gates on the kube-apiserver and kube-controller-manager, and enable CrossNamespaceVolumeDataSource on the CSI external-provisioner:
 
 ```yaml
-# For kubeadm clusters, add to kube-apiserver manifest
+# For kubeadm clusters, add to the kube-apiserver and kube-controller-manager manifests
 
 apiVersion: v1
 kind: Pod
@@ -48,14 +48,20 @@ spec:
     # ... other flags
 ```
 
-For managed Kubernetes services, check if the feature is available and enabled by default in newer versions.
+For the CSI external-provisioner, add:
+
+```yaml
+- --feature-gates=CrossNamespaceVolumeDataSource=true
+```
+
+You must also install the Gateway API ReferenceGrant CRD and grant the CSI external-provisioner permission to get, list, and watch ReferenceGrant resources. For managed Kubernetes services, check whether alpha feature gates and the required CSI sidecar configuration are available.
 
 ## Creating a ReferenceGrant
 
 Cross-namespace access requires explicit authorization using a ReferenceGrant resource. This prevents unauthorized access to volumes across namespace boundaries:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-data-sharing
@@ -92,7 +98,7 @@ spec:
   storageClassName: csi-driver
 ---
 # ReferenceGrant in source namespace
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-app-access
@@ -147,7 +153,7 @@ spec:
   storageClassName: fast-nvme
 ---
 # Grant access to development namespace
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-dev-access
@@ -163,7 +169,7 @@ spec:
     name: imagenet-dataset
 ---
 # Grant access to production namespace
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-prod-access
@@ -246,7 +252,7 @@ spec:
     persistentVolumeClaimName: production-database
 ---
 # ReferenceGrant for snapshot access
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-restore-access
@@ -287,7 +293,7 @@ This pattern enables centralized backup management with distributed restore capa
 ReferenceGrants provide fine-grained access control. You can restrict access to specific source PVCs:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: selective-access
@@ -307,21 +313,17 @@ Without specifying a name in the "to" section, the grant allows access to all PV
 
 ## CSI Driver Requirements
 
-Not all CSI drivers support cross-namespace volume cloning. Check your driver's capabilities:
+Not all CSI drivers support volume cloning or snapshot restore, and cross-namespace data sources also require a CSI external-provisioner version and deployment configured for the feature. Check your driver's documentation and the external-provisioner deployment:
 
 ```bash
-# Check CSI driver capabilities
+# Check installed CSI drivers
 kubectl get csidrivers
 
-# Describe specific driver
-kubectl describe csidriver csi.example.com
+# Check the CSI external-provisioner feature gates
+kubectl get deployment -n kube-system -l app=csi-provisioner -o yaml
 ```
 
-Look for these capabilities in the driver spec:
-- Volume cloning support
-- Cross-namespace reference support
-
-Popular drivers with support include AWS EBS CSI, GCE PD CSI, and Azure Disk CSI drivers.
+Look for volume cloning or snapshot restore support in the driver's documentation. The Kubernetes CSIDriver object does not expose a standard field for clone support, so `kubectl describe csidriver` is not enough to confirm this.
 
 ## Monitoring and Troubleshooting
 
@@ -349,8 +351,8 @@ Document cross-namespace dependencies in your cluster documentation. Other opera
 
 Consider using VolumeSnapshots as the data source rather than live PVCs. Snapshots provide point-in-time consistency and don't impact the source volume's performance.
 
-Monitor storage costs carefully. Cross-namespace cloning creates full copies of data, which can quickly consume storage budgets if overused.
+Monitor storage costs carefully. Cross-namespace cloning usually creates independent volumes, which can quickly consume storage budgets if overused. Some storage systems may optimize copies internally, but you should not assume that without checking your driver and storage backend.
 
 ## Conclusion
 
-Cross-namespace PVC sharing through data sources provides a clean, Kubernetes-native way to share persistent data across namespace boundaries. By using ReferenceGrants and dataSourceRef, you maintain proper security boundaries while enabling flexible data access patterns. This approach works well for sharing datasets, creating test environments from production snapshots, and implementing disaster recovery workflows.
+Cross-namespace PVC data sources provide a clean, Kubernetes-native way to copy persistent data across namespace boundaries. By using ReferenceGrants and dataSourceRef, you maintain proper security boundaries while enabling flexible data access patterns. This approach works well for distributing datasets, creating test environments from production snapshots, and implementing disaster recovery workflows.
