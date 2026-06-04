@@ -52,12 +52,12 @@ spec:
   retentionPeriod: "12"  # months
   replicaCount: 1
   storage:
-    volumeClaimTemplate:
-      spec:
-        storageClassName: fast-ssd
-        resources:
-          requests:
-            storage: 100Gi
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: fast-ssd
+    resources:
+      requests:
+        storage: 100Gi
   resources:
     requests:
       cpu: "1"
@@ -78,18 +78,24 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=vmsingle -n mon
 
 ## Migrating Historical Data
 
-Export data from Prometheus using remote read:
+Export data from Prometheus using a snapshot:
 
 ```bash
 # Install vmctl tool for data migration
-wget https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.93.0/vmutils-linux-amd64.tar.gz
-tar xvf vmutils-linux-amd64.tar.gz
+wget https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.144.0/vmutils-linux-amd64-v1.144.0.tar.gz
+tar xzf vmutils-linux-amd64-v1.144.0.tar.gz
 chmod +x vmctl-prod
+
+# Create a Prometheus snapshot and copy it locally
+SNAPSHOT_NAME=$(kubectl exec -n monitoring prometheus-0 -- \
+  wget -qO- --post-data='' http://localhost:9090/api/v1/admin/tsdb/snapshot \
+  | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')
+kubectl cp monitoring/prometheus-0:/prometheus/snapshots/$SNAPSHOT_NAME ./prometheus-snapshot
 
 # Migrate data from Prometheus to Victoria Metrics
 ./vmctl-prod prometheus \
-  --prom-snapshot http://prometheus.monitoring.svc:9090/api/v1 \
-  --vm-addr http://vmsingle-vmsingle.monitoring.svc:8429 \
+  --prom-snapshot ./prometheus-snapshot \
+  --vm-addr http://vmsingle-vmsingle.monitoring.svc:8428 \
   --vm-concurrency 4 \
   --prom-concurrency 4
 ```
@@ -102,8 +108,8 @@ START_DATE="2025-01-01T00:00:00Z"
 END_DATE="2025-02-01T00:00:00Z"
 
 ./vmctl-prod prometheus \
-  --prom-snapshot http://prometheus.monitoring.svc:9090/api/v1 \
-  --vm-addr http://vmsingle-vmsingle.monitoring.svc:8429 \
+  --prom-snapshot ./prometheus-snapshot \
+  --vm-addr http://vmsingle-vmsingle.monitoring.svc:8428 \
   --prom-filter-time-start $START_DATE \
   --prom-filter-time-end $END_DATE \
   --prom-concurrency 8 \
@@ -128,7 +134,7 @@ spec:
   probeNamespaceSelector: {}
   selectAllByDefault: true
   remoteWrite:
-    - url: "http://vmsingle-vmsingle.monitoring.svc:8429/api/v1/write"
+    - url: "http://vmsingle-vmsingle.monitoring.svc:8428/api/v1/write"
   resources:
     requests:
       cpu: "500m"
@@ -144,7 +150,7 @@ Apply the vmagent configuration:
 kubectl apply -f vmagent.yaml
 ```
 
-VMAgent automatically discovers ServiceMonitor and PodMonitor resources, maintaining compatibility with Prometheus Operator CRDs.
+VMAgent discovers VMServiceScrape and VMPodScrape resources. The Victoria Metrics Operator can also convert existing Prometheus Operator ServiceMonitor and PodMonitor resources into the corresponding Victoria Metrics resources when those Prometheus CRDs are installed.
 
 ## Converting Prometheus Rules to VMAlert
 
@@ -160,9 +166,9 @@ metadata:
 spec:
   replicaCount: 1
   datasource:
-    url: "http://vmsingle-vmsingle.monitoring.svc:8429"
-  notifier:
-    url: "http://alertmanager.monitoring.svc:9093"
+    url: "http://vmsingle-vmsingle.monitoring.svc:8428"
+  notifiers:
+    - url: "http://alertmanager.monitoring.svc:9093"
   evaluationInterval: "30s"
   ruleNamespaceSelector: {}
   selectAllByDefault: true
@@ -175,15 +181,16 @@ spec:
 Migrate existing Prometheus rules:
 
 ```bash
-# Export Prometheus rules
+# Optional: keep a backup of the original Prometheus rules
 kubectl get prometheusrules --all-namespaces -o yaml > prometheus-rules.yaml
 
-# Convert to VMRule (format is compatible, just change the Kind)
-sed 's/kind: PrometheusRule/kind: VMRule/g' prometheus-rules.yaml > vmrules.yaml
-sed 's/apiVersion: monitoring.coreos.com\/v1/apiVersion: operator.victoriametrics.com\/v1beta1/g' vmrules.yaml > vmrules-final.yaml
+# Convert to VMRule (the spec.groups rule format is compatible)
+kubectl get prometheusrules --all-namespaces -o json \
+  | jq 'del(.items[].status) | .items[].apiVersion="operator.victoriametrics.com/v1beta1" | .items[].kind="VMRule"' \
+  > vmrules-final.json
 
 # Apply VMRules
-kubectl apply -f vmrules-final.yaml
+kubectl apply -f vmrules-final.json
 ```
 
 Example VMRule:
@@ -232,7 +239,7 @@ data:
     - name: VictoriaMetrics
       type: prometheus
       access: proxy
-      url: http://vmsingle-vmsingle.monitoring.svc:8429
+      url: http://vmsingle-vmsingle.monitoring.svc:8428
       isDefault: true
       editable: false
 ```
@@ -277,7 +284,7 @@ data:
       evaluation_interval: 30s
 
     remote_write:
-      - url: http://vmsingle-vmsingle.monitoring.svc:8429/api/v1/write
+      - url: http://vmsingle-vmsingle.monitoring.svc:8428/api/v1/write
         queue_config:
           max_samples_per_send: 10000
           capacity: 20000
@@ -305,12 +312,12 @@ metadata:
 spec:
   retentionPeriod: "12"
   storage:
-    volumeClaimTemplate:
-      spec:
-        storageClassName: fast-ssd
-        resources:
-          requests:
-            storage: 200Gi
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: fast-ssd
+    resources:
+      requests:
+        storage: 200Gi
   extraArgs:
     dedup.minScrapeInterval: 30s
     search.maxUniqueTimeseries: 1000000
@@ -338,12 +345,12 @@ Create dashboards to compare Prometheus and Victoria Metrics:
         "title": "Query Performance",
         "targets": [
           {
-            "expr": "histogram_quantile(0.99, prometheus_api_request_duration_seconds_bucket)",
+            "expr": "histogram_quantile(0.99, sum(rate(prometheus_http_request_duration_seconds_bucket[5m])) by (le))",
             "legendFormat": "Prometheus p99",
             "datasource": "Prometheus"
           },
           {
-            "expr": "histogram_quantile(0.99, vm_api_request_duration_seconds_bucket)",
+            "expr": "histogram_quantile(0.99, sum(rate(vm_http_request_duration_seconds_bucket[5m])) by (le))",
             "legendFormat": "VictoriaMetrics p99",
             "datasource": "VictoriaMetrics"
           }
@@ -374,13 +381,13 @@ Create dashboards to compare Prometheus and Victoria Metrics:
 After validating Victoria Metrics for at least two weeks:
 
 ```bash
+# Take final backup
+kubectl exec -n monitoring prometheus-0 -- tar czf /prometheus/backup-final.tar.gz /prometheus/data
+
 # Stop Prometheus scraping
 kubectl scale statefulset prometheus --replicas=0 -n monitoring
 
 # Wait 24 hours to ensure no issues
-
-# Take final backup
-kubectl exec -n monitoring prometheus-0 -- tar czf /prometheus/backup-final.tar.gz /prometheus/data
 
 # Delete Prometheus resources
 helm uninstall prometheus-operator -n monitoring
@@ -399,7 +406,7 @@ kubectl edit vmsingle vmsingle -n monitoring
 # Add: search.maxQueryDuration: 300s
 ```
 
-**High memory usage**: Enable deduplication
+**Duplicate samples from parallel scraping**: Enable deduplication
 ```bash
 # Add to extraArgs:
 dedup.minScrapeInterval: 30s
