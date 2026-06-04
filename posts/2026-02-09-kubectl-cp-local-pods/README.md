@@ -124,7 +124,7 @@ Extract data from containers:
 
 ```bash
 # Backup database dump
-kubectl exec postgres-pod -- pg_dump mydb > /tmp/backup.sql
+kubectl exec postgres-pod -- sh -c 'pg_dump mydb > /tmp/backup.sql'
 kubectl cp postgres-pod:/tmp/backup.sql ./db-backup.sql
 
 # Backup application data
@@ -185,7 +185,7 @@ Copy multiple files:
 
 ```bash
 # Copy all log files (requires tar in pod)
-kubectl exec my-pod -- tar cf - /var/log/*.log | tar xf - -C ./logs/
+kubectl exec my-pod -- sh -c 'tar cf - /var/log/*.log' | tar xf - -C ./logs/
 
 # Copy all config files
 kubectl exec my-pod -- sh -c 'cd /etc/app && tar cf - *.yaml' | tar xf - -C ./configs/
@@ -320,7 +320,11 @@ while [ $# -gt 0 ]; do
         echo "✗ Copy failed"
     fi
 
-    shift 2
+    if [ $# -ge 2 ]; then
+        shift 2
+    else
+        shift
+    fi
 done
 
 # Usage:
