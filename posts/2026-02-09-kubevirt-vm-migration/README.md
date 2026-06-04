@@ -18,20 +18,16 @@ Deploy KubeVirt operators and custom resource definitions to enable VM managemen
 #!/bin/bash
 # Install KubeVirt
 
-KUBEVIRT_VERSION="v1.1.1"
-
-# Check if nodes support hardware virtualization
-
-kubectl get nodes -o json | jq '.items[].status.capacity' | grep -i "devices.kubevirt.io/kvm"
+KUBEVIRT_VERSION=$(curl -fsSL https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt)
 
 # Install KubeVirt operator
-kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml
+kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml
 
 # Create KubeVirt CR to deploy components
-kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
+kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
 
 # Wait for deployment
-kubectl wait --for=condition=available --timeout=600s deployment/virt-operator -n kubevirt
+kubectl wait --for=condition=Available --timeout=600s kubevirt/kubevirt -n kubevirt
 
 # Install virtctl CLI tool
 ARCH=$(uname -m)
@@ -46,7 +42,7 @@ echo "KubeVirt installation complete"
 virtctl version
 ```
 
-KubeVirt requires nodes with hardware virtualization support (Intel VT-x or AMD-V).
+KubeVirt normally requires nodes with hardware virtualization support (Intel VT-x or AMD-V); software emulation is available for testing but is not recommended for production workloads.
 
 ## Creating Your First Virtual Machine
 
@@ -60,7 +56,7 @@ metadata:
   name: ubuntu-vm
   namespace: default
 spec:
-  running: true
+  runStrategy: Always
   template:
     metadata:
       labels:
@@ -91,7 +87,7 @@ spec:
       volumes:
       - name: containerdisk
         containerDisk:
-          image: quay.io/kubevirt/ubuntu-container-disk:latest
+          image: quay.io/containerdisks/ubuntu:22.04
       - name: cloudinitdisk
         cloudInitNoCloud:
           userData: |
@@ -121,39 +117,43 @@ DISK_IMAGE="legacy-app.qcow2"
 NAMESPACE="production"
 
 # Install CDI (Containerized Data Importer) for disk management
-CDI_VERSION="v1.58.0"
-kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-operator.yaml
-kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-cr.yaml
+CDI_LATEST=$(curl -s -w '%{redirect_url}' https://github.com/kubevirt/containerized-data-importer/releases/latest)
+CDI_VERSION=${CDI_LATEST##*/}
+kubectl apply -f https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-operator.yaml
+kubectl apply -f https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-cr.yaml
 
 # Wait for CDI to be ready
 kubectl wait --for=condition=available --timeout=600s deployment/cdi-operator -n cdi
 
-# Create PVC for VM disk
+# Create a DataVolume for VM disk import
 cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
 metadata:
   name: ${VM_NAME}-disk
   namespace: ${NAMESPACE}
-  annotations:
-    cdi.kubevirt.io/storage.import.endpoint: "http://file-server/${DISK_IMAGE}"
 spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 50Gi
-  storageClassName: standard
+  source:
+    http:
+      url: "http://file-server/${DISK_IMAGE}"
+  storage:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 50Gi
+    storageClassName: standard
 EOF
 
 # Wait for import to complete
-kubectl wait --for=condition=ready --timeout=3600s pvc/${VM_NAME}-disk -n ${NAMESPACE}
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded --timeout=3600s datavolume/${VM_NAME}-disk -n ${NAMESPACE}
 
 # Alternative: Upload disk directly
 virtctl image-upload pvc ${VM_NAME}-disk \
   --image-path=${DISK_IMAGE} \
   --size=50Gi \
   --namespace=${NAMESPACE} \
+  --uploadproxy-url=https://cdi-uploadproxy.example.com \
   --insecure
 
 echo "Disk import complete"
@@ -176,21 +176,23 @@ metadata:
     app: legacy-app
     tier: backend
 spec:
-  running: true
+  runStrategy: Always
   dataVolumeTemplates:
-  - metadata:
+  - apiVersion: cdi.kubevirt.io/v1beta1
+    kind: DataVolume
+    metadata:
       name: legacy-app-disk
     spec:
       pvc:
         accessModes:
-        - ReadWriteOnce
+        - ReadWriteMany
         resources:
           requests:
             storage: 100Gi
         storageClassName: fast-ssd
       source:
         pvc:
-          name: legacy-app-disk
+          name: legacy-app-imported-disk
           namespace: production
   template:
     metadata:
@@ -220,7 +222,7 @@ spec:
               bus: virtio
           interfaces:
           - name: default
-            bridge: {}
+            masquerade: {}
             ports:
             - name: http
               port: 8080
@@ -236,8 +238,7 @@ spec:
               spinlocks: 8191
       networks:
       - name: default
-        multus:
-          networkName: vm-network
+        pod: {}
       volumes:
       - name: datavolumedisk
         dataVolume:
@@ -315,7 +316,7 @@ metadata:
   name: app-with-db-access
   namespace: production
 spec:
-  running: true
+  runStrategy: Always
   template:
     spec:
       domain:
@@ -323,9 +324,11 @@ spec:
           disks:
           - name: disk
             disk: {}
+          - name: cloudinitdisk
+            disk: {}
           interfaces:
           - name: default
-            bridge: {}
+            masquerade: {}
         resources:
           requests:
             memory: 4Gi
@@ -371,7 +374,7 @@ virtctl start ${VM_NAME} -n ${NAMESPACE}
 virtctl stop ${VM_NAME} -n ${NAMESPACE}
 
 # Force stop VM
-virtctl stop ${VM_NAME} -n ${NAMESPACE} --force
+virtctl stop ${VM_NAME} -n ${NAMESPACE} --grace-period 0 --force
 
 # Restart VM
 virtctl restart ${VM_NAME} -n ${NAMESPACE}
@@ -389,7 +392,7 @@ virtctl console ${VM_NAME} -n ${NAMESPACE}
 virtctl vnc ${VM_NAME} -n ${NAMESPACE}
 
 # SSH into VM (if guest agent installed)
-virtctl ssh admin@${VM_NAME} -n ${NAMESPACE}
+virtctl ssh admin@vm/${VM_NAME}/${NAMESPACE}
 
 # Get VM status
 kubectl get vm ${VM_NAME} -n ${NAMESPACE}
@@ -415,7 +418,7 @@ metadata:
 spec:
   configuration:
     migrations:
-      nodeDrainTaintKey: node.kubernetes.io/drain
+      nodeDrainTaintKey: kubevirt.io/drain
       parallelMigrationsPerCluster: 5
       parallelOutboundMigrationsPerNode: 2
       bandwidthPerMigration: 64Mi
@@ -432,16 +435,14 @@ spec:
   vmiName: legacy-app-vm
 ```
 
-Live migration enables zero-downtime node maintenance and load balancing.
+Live migration enables node maintenance with the guest workload remaining accessible, provided the VM uses live-migratable storage and networking.
 
 ```bash
 #!/bin/bash
-# Migrate VM to specific node
+# Migrate VM to another eligible node
 
 VM_NAME="legacy-app-vm"
 NAMESPACE="production"
-TARGET_NODE="worker-node-02"
-
 # Create migration
 cat <<EOF | kubectl apply -f -
 apiVersion: kubevirt.io/v1
@@ -460,7 +461,7 @@ kubectl get vmim ${VM_NAME}-migration -n ${NAMESPACE} -w
 kubectl get vmi ${VM_NAME} -n ${NAMESPACE} -o jsonpath='{.status.nodeName}'
 ```
 
-Live migration moves VMs seamlessly between nodes.
+Live migration moves VMs between scheduler-selected nodes; choose eligible nodes with node placement rules on the VM rather than a target node field on the migration object.
 
 ## Setting Up VM Monitoring and Observability
 
@@ -476,7 +477,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      prometheus.kubevirt.io: "true"
+      prometheus.kubevirt.io: ""
   endpoints:
   - port: metrics
     interval: 30s
@@ -497,7 +498,7 @@ data:
             "title": "VM CPU Usage",
             "targets": [
               {
-                "expr": "kubevirt_vmi_vcpu_seconds_total"
+                "expr": "sum by (name, namespace) (rate(kubevirt_vmi_cpu_usage_seconds_total[5m]))"
               }
             ]
           },
@@ -513,7 +514,7 @@ data:
             "title": "VM Network Traffic",
             "targets": [
               {
-                "expr": "rate(kubevirt_vmi_network_receive_bytes_total[5m])"
+                "expr": "sum by (name, namespace) (rate(kubevirt_vmi_network_traffic_bytes_total{type=\"rx\"}[5m]))"
               }
             ]
           }
@@ -533,7 +534,7 @@ spec:
     interval: 30s
     rules:
     - alert: VMDown
-      expr: kubevirt_vmi_status_phase{phase="Running"} == 0
+      expr: kubevirt_vm_info unless on(name, namespace) kubevirt_vmi_info
       for: 5m
       labels:
         severity: critical
@@ -541,7 +542,7 @@ spec:
         summary: "VM {{ $labels.name }} is down"
 
     - alert: VMHighCPU
-      expr: kubevirt_vmi_vcpu_seconds_total > 0.9
+      expr: sum by (name, namespace) (rate(kubevirt_vmi_cpu_usage_seconds_total[5m])) > 0.9
       for: 10m
       labels:
         severity: warning
@@ -563,7 +564,7 @@ metadata:
   name: legacy-app-phase1
   namespace: migration
 spec:
-  running: true
+  runStrategy: Always
   template:
     spec:
       domain:
@@ -588,6 +589,9 @@ spec:
     matchLabels:
       app: frontend
   template:
+    metadata:
+      labels:
+        app: frontend
     spec:
       containers:
       - name: frontend
@@ -608,6 +612,9 @@ spec:
     matchLabels:
       app: legacy-app
   template:
+    metadata:
+      labels:
+        app: legacy-app
     spec:
       containers:
       - name: app
@@ -618,4 +625,4 @@ This phased approach minimizes risk during migration.
 
 ## Conclusion
 
-KubeVirt enables running traditional VM-based applications on Kubernetes without immediate containerization. Install KubeVirt and CDI to add VM management capabilities to your cluster. Import existing VM disk images into persistent volumes and define VMs using Kubernetes custom resources. VMs and containers communicate seamlessly using standard Kubernetes service discovery. Live migration provides zero-downtime node maintenance for VMs. Monitor VMs alongside containers using the same Prometheus and Grafana stack. Use KubeVirt as a migration path for legacy applications, progressively containerizing components while keeping critical parts as VMs during the transition. This hybrid approach lets you modernize infrastructure incrementally while maintaining compatibility with applications that cannot be immediately containerized.
+KubeVirt enables running traditional VM-based applications on Kubernetes without immediate containerization. Install KubeVirt and CDI to add VM management capabilities to your cluster. Import existing VM disk images into persistent volumes and define VMs using Kubernetes custom resources. VMs and containers communicate seamlessly using standard Kubernetes service discovery. Live migration helps with node maintenance when VMs use compatible storage and networking. Monitor VMs alongside containers using the same Prometheus and Grafana stack. Use KubeVirt as a migration path for legacy applications, progressively containerizing components while keeping critical parts as VMs during the transition. This hybrid approach lets you modernize infrastructure incrementally while maintaining compatibility with applications that cannot be immediately containerized.
