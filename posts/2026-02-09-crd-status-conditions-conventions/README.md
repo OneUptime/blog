@@ -58,6 +58,8 @@ type ApplicationStatus struct {
     Phase string `json:"phase,omitempty"`
 
     // Conditions represent detailed observations of the Application's state
+    // +listType=map
+    // +listMapKey=type
     Conditions []metav1.Condition `json:"conditions,omitempty"`
 
     // ObservedGeneration reflects the generation most recently observed by the controller
@@ -68,11 +70,11 @@ type ApplicationStatus struct {
 }
 ```
 
-## Standard Condition Types
+## Common Condition Types
 
-Use standard condition types when applicable:
+Use common condition types when applicable:
 
-**Ready**: Resource is ready to serve requests. Most resources should have this.
+**Ready**: Long-running resource is ready to serve requests.
 
 **Available**: Resource has minimum availability (e.g., minimum replicas running).
 
@@ -91,9 +93,17 @@ Use the meta package helpers to manage conditions:
 ```go
 import (
     "context"
+    "fmt"
 
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "github.com/go-logr/logr"
+    appsv1 "k8s.io/api/apps/v1"
     "k8s.io/apimachinery/pkg/api/meta"
+    apierrors "k8s.io/apimachinery/pkg/api/errors"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/runtime"
+    "k8s.io/utils/ptr"
+
+    examplev1 "example.com/application/api/v1"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -101,6 +111,7 @@ import (
 type ApplicationReconciler struct {
     client.Client
     Scheme *runtime.Scheme
+    Log    logr.Logger
 }
 
 func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -133,12 +144,30 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
                 ObservedGeneration: app.Generation,
             })
 
+            meta.SetStatusCondition(&app.Status.Conditions, metav1.Condition{
+                Type:               "Available",
+                Status:             metav1.ConditionFalse,
+                Reason:             "DeploymentNotFound",
+                Message:            "Deployment has not been created yet",
+                ObservedGeneration: app.Generation,
+            })
+
+            meta.SetStatusCondition(&app.Status.Conditions, metav1.Condition{
+                Type:               "Degraded",
+                Status:             metav1.ConditionFalse,
+                Reason:             "DeploymentPending",
+                Message:            "Deployment is still being created",
+                ObservedGeneration: app.Generation,
+            })
+
             app.Status.Phase = "Pending"
+        } else {
+            return ctrl.Result{}, err
         }
     } else {
         // Deployment exists, check its status
         availableReplicas := deployment.Status.AvailableReplicas
-        desiredReplicas := *deployment.Spec.Replicas
+        desiredReplicas := ptr.Deref(deployment.Spec.Replicas, int32(1))
 
         app.Status.AvailableReplicas = availableReplicas
 
@@ -165,6 +194,14 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
                 Status:             metav1.ConditionFalse,
                 Reason:             "DeploymentComplete",
                 Message:            "Deployment has completed successfully",
+                ObservedGeneration: app.Generation,
+            })
+
+            meta.SetStatusCondition(&app.Status.Conditions, metav1.Condition{
+                Type:               "Degraded",
+                Status:             metav1.ConditionFalse,
+                Reason:             "AllReplicasReady",
+                Message:            "Application is running at full capacity",
                 ObservedGeneration: app.Generation,
             })
 
@@ -230,6 +267,14 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
                 ObservedGeneration: app.Generation,
             })
 
+            meta.SetStatusCondition(&app.Status.Conditions, metav1.Condition{
+                Type:               "Degraded",
+                Status:             metav1.ConditionTrue,
+                Reason:             "NoReplicasAvailable",
+                Message:            "Application is currently unavailable",
+                ObservedGeneration: app.Generation,
+            })
+
             app.Status.Phase = "Pending"
         }
     }
@@ -258,6 +303,7 @@ Check if a condition is true:
 ```go
 import (
     "k8s.io/apimachinery/pkg/api/meta"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func isApplicationReady(app *examplev1.Application) bool {
@@ -401,10 +447,16 @@ func (r *ApplicationReconciler) healthHandler(w http.ResponseWriter, req *http.R
     } else {
         w.WriteHeader(http.StatusServiceUnavailable)
         condition := meta.FindStatusCondition(app.Status.Conditions, "Ready")
+        reason := "ReadyConditionMissing"
+        message := "Ready condition has not been set"
+        if condition != nil {
+            reason = condition.Reason
+            message = condition.Message
+        }
         json.NewEncoder(w).Encode(map[string]string{
             "status":  "not ready",
-            "reason":  condition.Reason,
-            "message": condition.Message,
+            "reason":  reason,
+            "message": message,
         })
     }
 }
@@ -420,6 +472,6 @@ Provide useful messages. "Deployment failed" is not helpful. "Deployment failed:
 
 Don't create conditions for every possible state. Focus on the most important aspects users need to monitor.
 
-Update conditions on every reconcile even if they don't change. This refreshes the timestamp and shows the controller is actively managing the resource.
+Evaluate conditions on every reconcile and call `meta.SetStatusCondition` with the current state. `LastTransitionTime` is updated when a condition's status changes, not as a heartbeat on every reconcile.
 
 Status conditions following Kubernetes conventions make your custom resources easier to understand, monitor, and integrate with existing tooling.
