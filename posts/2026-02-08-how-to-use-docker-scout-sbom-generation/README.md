@@ -10,11 +10,11 @@ Description: Learn how to generate Software Bills of Materials with Docker Scout
 
 A Software Bill of Materials (SBOM) is a complete inventory of every component inside your container image. Think of it like a nutritional label for software. It lists every package, library, and dependency along with version numbers and license information. Regulatory requirements, supply chain security concerns, and vulnerability management all drive the need for SBOMs in production environments.
 
-Docker Scout includes built-in SBOM generation that works directly with your existing Docker workflow. No extra tools needed.
+Docker Scout includes SBOM generation that works directly with your existing Docker workflow when the Docker Scout CLI plugin is installed. It comes pre-installed with Docker Desktop; Docker Engine users may need to install the plugin separately.
 
 ## Why SBOMs Matter
 
-The Executive Order on Improving the Nation's Cybersecurity (EO 14028) made SBOMs a federal requirement for software sold to the US government. But the practical benefits extend far beyond compliance. When a new vulnerability drops, an SBOM lets you instantly answer the question: "Are we affected?" Without one, you are scanning every image from scratch.
+The Executive Order on Improving the Nation's Cybersecurity (EO 14028) directed federal guidance around SBOMs, including minimum SBOM elements for software supply chain transparency. But the practical benefits extend far beyond compliance. When a new vulnerability drops, an SBOM lets you quickly answer the question: "Are we affected?" Without one, you are scanning every image from scratch.
 
 SBOMs also help with license compliance. If your legal team needs to verify that no GPL-licensed code has crept into your proprietary product, an SBOM gives them the answer in seconds.
 
@@ -25,15 +25,15 @@ Docker Scout generates SBOMs using the `docker scout sbom` command. It analyzes 
 Generate an SBOM for a local image:
 
 ```bash
-# Generate an SBOM in the default SPDX JSON format
+# Generate an SBOM in Docker Scout's default JSON format
 
 docker scout sbom myapp:latest
 
 # Generate an SBOM and save it to a file
-docker scout sbom myapp:latest --output myapp-sbom.spdx.json
+docker scout sbom myapp:latest --output myapp-sbom.json
 
 # Generate an SBOM for a remote image without pulling it locally
-docker scout sbom nginx:1.25 --output nginx-sbom.spdx.json
+docker scout sbom registry://nginx:1.25 --format spdx --output nginx-sbom.spdx.json
 ```
 
 ## SBOM Output Formats
@@ -45,7 +45,7 @@ Docker Scout supports multiple SBOM standards. The two most common are SPDX and 
 SPDX (Software Package Data Exchange) is an ISO standard maintained by the Linux Foundation. It is widely used in open-source compliance.
 
 ```bash
-# Generate SBOM in SPDX JSON format (default)
+# Generate SBOM in SPDX JSON format
 docker scout sbom --format spdx myapp:latest --output myapp-sbom.spdx.json
 
 # The output includes package information like this structure:
@@ -132,6 +132,11 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Install Docker Scout CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh -o install-scout.sh
+          sh install-scout.sh
+
       - name: Build image
         run: docker build -t myapp:${{ github.sha }} .
 
@@ -154,12 +159,12 @@ jobs:
 
 ### Attaching SBOMs to Images with BuildKit
 
-Docker BuildKit can embed SBOMs directly into the image manifest during the build process. This keeps the SBOM permanently attached to the image.
+Docker BuildKit can generate SBOM attestations during the build process and attach them to the image index when you push the image. Docker Scout can use these attestations during image analysis.
 
 ```bash
 # Build with SBOM attestation using BuildKit
 docker buildx build \
-  --sbom=true \
+  --attest type=sbom,generator=docker/scout-sbom-indexer:latest \
   --tag myapp:latest \
   --push \
   .
@@ -173,14 +178,14 @@ docker buildx imagetools inspect myapp:latest --format '{{ json .SBOM }}'
 Once you have an SBOM, you can feed it into vulnerability scanning tools without needing the original image.
 
 ```bash
-# Generate an SBOM and pipe it to analysis
+# Generate an SPDX SBOM for analysis
 docker scout sbom --format spdx myapp:latest --output myapp-sbom.json
 
 # Use the SBOM with Docker Scout CVE scanning
-docker scout cves --sbom myapp-sbom.json
+docker scout cves sbom://myapp-sbom.json
 
 # You can also use third-party tools like grype with the SBOM
-grype sbom:myapp-sbom.json
+grype myapp-sbom.json
 ```
 
 This approach is useful when the image is no longer available or when you want to re-scan historical images against updated vulnerability databases.
@@ -241,12 +246,12 @@ Keep these things in mind when working with Docker Scout SBOMs.
 
 First, generate SBOMs from final production images, not intermediate build stages. Multi-stage builds might include build tools in earlier stages that do not exist in the final image.
 
-Second, regenerate SBOMs whenever you rebuild. A cached image rebuild might pull in different package versions even if your Dockerfile has not changed.
+Second, regenerate SBOMs whenever you rebuild. A rebuild can pull in different package versions if mutable base image tags are updated or package installation layers are re-run, even if your Dockerfile has not changed.
 
 Third, store SBOMs with a reference to the exact image digest, not just the tag. Tags are mutable, but digests are permanent.
 
 ```bash
-# Get the image digest for accurate SBOM tracking
+# Get the repo digest for accurate SBOM tracking
 DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' myapp:latest)
 echo "SBOM generated for image: $DIGEST"
 docker scout sbom --format spdx myapp:latest --output "sbom-${DIGEST##*:}.json"
