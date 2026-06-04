@@ -30,9 +30,15 @@ webhook:
   # Webhook service configuration
   service:
     name: myapp-webhook
-    namespace: default
     port: 443
     path: /validate
+
+  image:
+    repository: myregistry/myapp-webhook
+    tag: v1.0.0
+    pullPolicy: IfNotPresent
+
+  resources: {}
 
   # Rules defining what resources to validate
   rules:
@@ -105,15 +111,15 @@ metadata:
   {{- end }}
 webhooks:
 - name: {{ .Values.webhook.name }}.{{ .Release.Namespace }}.svc
-  admissionReviewVersions: ["v1", "v1beta1"]
+  admissionReviewVersions: ["v1"]
 
   clientConfig:
     service:
       name: {{ .Values.webhook.service.name }}
-      namespace: {{ .Values.webhook.service.namespace | default .Release.Namespace }}
+      namespace: {{ .Release.Namespace }}
       port: {{ .Values.webhook.service.port }}
       path: {{ .Values.webhook.service.path }}
-    {{- if not .Values.webhook.certificates.certManager.enabled }}
+    {{- if .Values.webhook.certificates.existingSecret }}
     caBundle: {{ include "myapp.webhookCABundle" . }}
     {{- end }}
 
@@ -180,7 +186,7 @@ spec:
       serviceAccountName: {{ include "myapp.fullname" . }}-webhook-cert-sa
       containers:
       - name: create-cert
-        image: k8s.gcr.io/ingress-nginx/kube-webhook-certgen:v1.3.0
+        image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.6.9
         imagePullPolicy: IfNotPresent
         args:
           - create
@@ -194,6 +200,33 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "myapp.fullname" . }}-webhook-cert-patch
+  labels:
+    {{- include "myapp.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      name: {{ include "myapp.fullname" . }}-webhook-cert-patch
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "myapp.fullname" . }}-webhook-cert-sa
+      containers:
+      - name: patch-webhook
+        image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.6.9
+        imagePullPolicy: IfNotPresent
+        args:
+          - patch
+          - --webhook-name={{ include "myapp.fullname" . }}-webhook
+          - --namespace={{ .Release.Namespace }}
+          - --secret-name={{ include "myapp.fullname" . }}-webhook-cert
+          - --patch-mutating=false
 {{- end }}
 ```
 
@@ -209,7 +242,7 @@ metadata:
   labels:
     {{- include "myapp.labels" . | nindent 4 }}
   annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook": pre-install,pre-upgrade,post-install,post-upgrade
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -219,7 +252,7 @@ metadata:
   labels:
     {{- include "myapp.labels" . | nindent 4 }}
   annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook": pre-install,pre-upgrade,post-install,post-upgrade
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 rules:
 - apiGroups: [""]
@@ -233,12 +266,44 @@ metadata:
   labels:
     {{- include "myapp.labels" . | nindent 4 }}
   annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook": pre-install,pre-upgrade,post-install,post-upgrade
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ include "myapp.fullname" . }}-webhook-cert-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "myapp.fullname" . }}-webhook-cert-sa
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "myapp.fullname" . }}-webhook-cert-clusterrole
+  labels:
+    {{- include "myapp.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade,post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources: ["validatingwebhookconfigurations"]
+  verbs: ["get", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "myapp.fullname" . }}-webhook-cert-clusterrolebinding
+  labels:
+    {{- include "myapp.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade,post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "myapp.fullname" . }}-webhook-cert-clusterrole
 subjects:
 - kind: ServiceAccount
   name: {{ include "myapp.fullname" . }}-webhook-cert-sa
@@ -327,7 +392,6 @@ spec:
         {{- include "myapp.selectorLabels" . | nindent 8 }}
         component: webhook
     spec:
-      serviceAccountName: {{ include "myapp.fullname" . }}-webhook-sa
       containers:
       - name: webhook
         image: {{ .Values.webhook.image.repository }}:{{ .Values.webhook.image.tag }}
@@ -389,7 +453,6 @@ spec:
   subject:
     organizations:
     - {{ .Release.Namespace }}
-  commonName: {{ .Values.webhook.service.name }}.{{ .Release.Namespace }}.svc
   dnsNames:
   - {{ .Values.webhook.service.name }}
   - {{ .Values.webhook.service.name }}.{{ .Release.Namespace }}
@@ -416,13 +479,40 @@ package main
 import (
     "encoding/json"
     "fmt"
-    "io/ioutil"
+    "io"
     "net/http"
 
     admissionv1 "k8s.io/api/admission/v1"
     appsv1 "k8s.io/api/apps/v1"
+    corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func validatePodSpec(podSpec corev1.PodSpec) *admissionv1.AdmissionResponse {
+    for _, container := range podSpec.Containers {
+        if container.Resources.Limits == nil {
+            return &admissionv1.AdmissionResponse{
+                Allowed: false,
+                Result: &metav1.Status{
+                    Message: fmt.Sprintf("Container %s missing resource limits", container.Name),
+                },
+            }
+        }
+    }
+
+    if podSpec.SecurityContext == nil {
+        return &admissionv1.AdmissionResponse{
+            Allowed: false,
+            Result: &metav1.Status{
+                Message: "Pod must specify pod security context",
+            },
+        }
+    }
+
+    return &admissionv1.AdmissionResponse{
+        Allowed: true,
+    }
+}
 
 func validateDeployment(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
     deployment := &appsv1.Deployment{}
@@ -436,15 +526,9 @@ func validateDeployment(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionR
     }
 
     // Validation rule: Require resource limits
-    for _, container := range deployment.Spec.Template.Spec.Containers {
-        if container.Resources.Limits == nil {
-            return &admissionv1.AdmissionResponse{
-                Allowed: false,
-                Result: &metav1.Status{
-                    Message: fmt.Sprintf("Container %s missing resource limits", container.Name),
-                },
-            }
-        }
+    podSpecResponse := validatePodSpec(deployment.Spec.Template.Spec)
+    if !podSpecResponse.Allowed {
+        return podSpecResponse
     }
 
     // Validation rule: Require minimum replicas
@@ -457,23 +541,49 @@ func validateDeployment(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionR
         }
     }
 
-    // Validation rule: Require security context
-    if deployment.Spec.Template.Spec.SecurityContext == nil {
-        return &admissionv1.AdmissionResponse{
-            Allowed: false,
-            Result: &metav1.Status{
-                Message: "Deployment must specify pod security context",
-            },
-        }
-    }
-
     return &admissionv1.AdmissionResponse{
         Allowed: true,
     }
 }
 
+func validatePod(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
+    pod := &corev1.Pod{}
+    if err := json.Unmarshal(ar.Request.Object.Raw, pod); err != nil {
+        return &admissionv1.AdmissionResponse{
+            Allowed: false,
+            Result: &metav1.Status{
+                Message: fmt.Sprintf("Failed to decode pod: %v", err),
+            },
+        }
+    }
+
+    return validatePodSpec(pod.Spec)
+}
+
+func validateAdmissionReview(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
+    if ar.Request == nil {
+        return &admissionv1.AdmissionResponse{
+            Allowed: false,
+            Result: &metav1.Status{
+                Message: "AdmissionReview request is required",
+            },
+        }
+    }
+
+    switch ar.Request.Kind.Kind {
+    case "Deployment":
+        return validateDeployment(ar)
+    case "Pod":
+        return validatePod(ar)
+    default:
+        return &admissionv1.AdmissionResponse{
+            Allowed: true,
+        }
+    }
+}
+
 func handleValidate(w http.ResponseWriter, r *http.Request) {
-    body, err := ioutil.ReadAll(r.Body)
+    body, err := io.ReadAll(r.Body)
     if err != nil {
         http.Error(w, "Failed to read request body", http.StatusBadRequest)
         return
@@ -485,8 +595,10 @@ func handleValidate(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    response := validateDeployment(ar)
-    response.UID = ar.Request.UID
+    response := validateAdmissionReview(ar)
+    if ar.Request != nil {
+        response.UID = ar.Request.UID
+    }
 
     responseAR := &admissionv1.AdmissionReview{
         TypeMeta: metav1.TypeMeta{
