@@ -10,7 +10,7 @@ Description: Learn how to use controller-gen to automatically generate Custom Re
 
 Writing CRD manifests by hand is tedious and error-prone. You define your Go structs, then manually translate them to OpenAPI schemas. You forget a field or get the type wrong. When you update the struct, you have to remember to update the YAML. Your CRD and code drift out of sync.
 
-controller-gen solves this by generating CRD manifests from your Go code. Add annotations to your structs and it produces complete CRDs with validation, printer columns, and subresources. It also generates RBAC rules from your controller's API calls. This guide shows you how to use it.
+controller-gen solves this by generating CRD manifests from your Go code. Add annotations to your structs and it produces complete CRDs with validation, printer columns, and subresources. It also generates RBAC rules from markers in your controller code. This guide shows you how to use it.
 
 ## Installing controller-gen
 
@@ -230,7 +230,11 @@ Add RBAC markers to your controller.
 package controllers
 
 import (
+    "context"
+
+    "k8s.io/apimachinery/pkg/runtime"
     ctrl "sigs.k8s.io/controller-runtime"
+    "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // +kubebuilder:rbac:groups=apps.example.com,resources=applications,verbs=get;list;watch;create;update;patch;delete
@@ -269,41 +273,46 @@ Add webhook markers for admission webhooks.
 package v1
 
 import (
-    "k8s.io/apimachinery/pkg/runtime"
-    ctrl "sigs.k8s.io/controller-runtime"
-    "sigs.k8s.io/controller-runtime/pkg/webhook"
+    "context"
+
+    "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // +kubebuilder:webhook:path=/mutate-apps-example-com-v1-application,mutating=true,failurePolicy=fail,groups=apps.example.com,resources=applications,verbs=create;update,versions=v1,name=mapplication.kb.io,sideEffects=None,admissionReviewVersions=v1
 
-var _ webhook.Defaulter = &Application{}
+type ApplicationDefaulter struct{}
 
-func (r *Application) Default() {
-    if r.Spec.Replicas == 0 {
-        r.Spec.Replicas = 1
+var _ admission.Defaulter[*Application] = &ApplicationDefaulter{}
+
+func (d *ApplicationDefaulter) Default(ctx context.Context, app *Application) error {
+    if app.Spec.Replicas == 0 {
+        app.Spec.Replicas = 1
     }
-    if r.Spec.Environment == "" {
-        r.Spec.Environment = "dev"
+    if app.Spec.Environment == "" {
+        app.Spec.Environment = "dev"
     }
+    return nil
 }
 
 // +kubebuilder:webhook:path=/validate-apps-example-com-v1-application,mutating=false,failurePolicy=fail,groups=apps.example.com,resources=applications,verbs=create;update,versions=v1,name=vapplication.kb.io,sideEffects=None,admissionReviewVersions=v1
 
-var _ webhook.Validator = &Application{}
+type ApplicationValidator struct{}
 
-func (r *Application) ValidateCreate() error {
-    return r.validateApplication()
+var _ admission.Validator[*Application] = &ApplicationValidator{}
+
+func (v *ApplicationValidator) ValidateCreate(ctx context.Context, app *Application) (admission.Warnings, error) {
+    return nil, v.validateApplication(app)
 }
 
-func (r *Application) ValidateUpdate(old runtime.Object) error {
-    return r.validateApplication()
+func (v *ApplicationValidator) ValidateUpdate(ctx context.Context, oldObj, newObj *Application) (admission.Warnings, error) {
+    return nil, v.validateApplication(newObj)
 }
 
-func (r *Application) ValidateDelete() error {
-    return nil
+func (v *ApplicationValidator) ValidateDelete(ctx context.Context, app *Application) (admission.Warnings, error) {
+    return nil, nil
 }
 
-func (r *Application) validateApplication() error {
+func (v *ApplicationValidator) validateApplication(app *Application) error {
     // Validation logic
     return nil
 }
@@ -323,6 +332,8 @@ Automate code generation with make.
 
 ```makefile
 # Makefile
+CONTROLLER_GEN ?= controller-gen
+
 .PHONY: generate
 generate: controller-gen
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
