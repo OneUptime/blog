@@ -8,7 +8,7 @@ Description: Learn how to deploy production-ready MongoDB replica sets on Kubern
 
 ---
 
-MongoDB replica sets provide high availability and data redundancy by maintaining multiple copies of data across different servers. When running MongoDB on Kubernetes, the MongoDB Community Operator simplifies replica set management by automating deployment, configuration, and lifecycle operations.
+MongoDB replica sets provide high availability and data redundancy by maintaining multiple copies of data across different servers. When running MongoDB on Kubernetes, the MongoDB Community Operator simplifies replica set management by automating deployment, configuration, and lifecycle operations. MongoDB has deprecated the original Community Operator repository in favor of MongoDB Controllers for Kubernetes, so use the newer controller for new production deployments and treat the commands below as the legacy Community Operator workflow.
 
 In this comprehensive guide, we'll deploy MongoDB replica sets using the MongoDB Community Operator on Kubernetes. We'll cover operator installation, replica set configuration, automated failover testing, and monitoring strategies.
 
@@ -29,7 +29,7 @@ Benefits of replica sets include:
 First, install the MongoDB Community Operator in your Kubernetes cluster:
 
 ```bash
-# Add MongoDB Kubernetes repository
+# Clone the MongoDB Community Operator repository
 
 git clone https://github.com/mongodb/mongodb-kubernetes-operator.git
 cd mongodb-kubernetes-operator
@@ -155,12 +155,12 @@ Create password secrets:
 ```bash
 # Create admin password secret
 kubectl create secret generic mongodb-admin-password \
-  --from-literal="password=SecureAdminPassword123!" \
+  --from-literal='password=SecureAdminPassword123!' \
   -n mongodb
 
 # Create app user password secret
 kubectl create secret generic mongodb-app-password \
-  --from-literal="password=SecureAppPassword123!" \
+  --from-literal='password=SecureAppPassword123!' \
   -n mongodb
 
 # Deploy replica set
@@ -179,7 +179,7 @@ metadata:
   name: mongodb-prod
   namespace: mongodb
 spec:
-  members: 5  # Increased for better fault tolerance
+  members: 4  # Combined with one arbiter for five voting members
   type: ReplicaSet
   version: "6.0.5"
 
@@ -209,6 +209,15 @@ spec:
         - name: backup
           db: admin
       scramCredentialsSecretName: mongodb-admin-scram
+
+    - name: app-user
+      db: app-database
+      passwordSecretRef:
+        name: mongodb-app-password
+      roles:
+        - name: readWrite
+          db: app-database
+      scramCredentialsSecretName: mongodb-app-scram
 
   additionalMongodConfig:
     # Storage configuration
@@ -274,28 +283,6 @@ spec:
                   cpu: "8000m"
                   memory: "16Gi"
 
-              # Readiness probe
-              readinessProbe:
-                exec:
-                  command:
-                    - /bin/bash
-                    - -c
-                    - mongo --eval "db.adminCommand('ping')"
-                initialDelaySeconds: 30
-                periodSeconds: 10
-                timeoutSeconds: 5
-
-              # Liveness probe
-              livenessProbe:
-                exec:
-                  command:
-                    - /bin/bash
-                    - -c
-                    - mongo --eval "db.adminCommand('ping')"
-                initialDelaySeconds: 60
-                periodSeconds: 30
-                timeoutSeconds: 10
-
       volumeClaimTemplates:
         - metadata:
             name: data-volume
@@ -318,6 +305,8 @@ spec:
 Deploy the production replica set:
 
 ```bash
+# Create mongodb-tls-cert as a kubernetes.io/tls Secret and mongodb-ca-cert
+# as a ConfigMap containing ca.crt before applying this TLS-enabled resource.
 kubectl apply -f mongodb-production-replicaset.yaml
 ```
 
@@ -329,8 +318,9 @@ The operator creates a service for connecting to the replica set. Create a conne
 # Get the service name
 kubectl get svc -n mongodb
 
-# Connection string format
-MONGODB_URI="mongodb://app-user:SecureAppPassword123!@mongodb-prod-0.mongodb-prod-svc.mongodb.svc.cluster.local:27017,mongodb-prod-1.mongodb-prod-svc.mongodb.svc.cluster.local:27017,mongodb-prod-2.mongodb-prod-svc.mongodb.svc.cluster.local:27017/app-database?replicaSet=mongodb-prod"
+# Get the operator-generated connection strings for app-user
+kubectl get secret mongodb-prod-app-database-app-user -n mongodb \
+  -o jsonpath='{.data.connectionString\.standardSrv}' | base64 --decode
 ```
 
 Test connection from a pod:
@@ -349,7 +339,18 @@ spec:
     command: ["sleep", "infinity"]
     env:
     - name: MONGODB_URI
-      value: "mongodb://app-user:SecureAppPassword123!@mongodb-prod-svc.mongodb.svc.cluster.local:27017/app-database?replicaSet=mongodb-prod"
+      valueFrom:
+        secretKeyRef:
+          name: mongodb-prod-app-database-app-user
+          key: connectionString.standardSrv
+    volumeMounts:
+    - name: mongodb-ca
+      mountPath: /etc/mongodb-tls/ca
+      readOnly: true
+  volumes:
+  - name: mongodb-ca
+    configMap:
+      name: mongodb-ca-cert
 ```
 
 Deploy and test:
@@ -358,7 +359,8 @@ Deploy and test:
 kubectl apply -f test-connection.yaml
 
 # Connect to the replica set
-kubectl exec -it mongodb-client -n mongodb -- mongo "$MONGODB_URI"
+kubectl exec -it mongodb-client -n mongodb -- \
+  sh -c 'mongosh "$MONGODB_URI" --tlsCAFile /etc/mongodb-tls/ca/ca.crt'
 
 # Check replica set status
 rs.status()
@@ -373,13 +375,15 @@ Simulate a primary failure to verify automatic failover:
 
 ```bash
 # Identify the current primary
-kubectl exec -it mongodb-prod-0 -n mongodb -- mongo -u admin-user -p SecureAdminPassword123! --eval "rs.isMaster()"
+kubectl exec -it mongodb-prod-0 -c mongod -n mongodb -- \
+  sh -c 'mongosh --tls --tlsCAFile /var/lib/tls/ca/ca.crt --tlsCertificateKeyFile /var/lib/tls/server/*.pem --username admin-user --password "SecureAdminPassword123!" --authenticationDatabase admin --eval "db.hello()"'
 
 # Delete the primary pod (assuming it's mongodb-prod-0)
 kubectl delete pod mongodb-prod-0 -n mongodb
 
 # Watch the election process
-kubectl exec -it mongodb-prod-1 -n mongodb -- mongo -u admin-user -p SecureAdminPassword123! --eval "rs.status()" | grep stateStr
+kubectl exec -it mongodb-prod-1 -c mongod -n mongodb -- \
+  sh -c 'mongosh --tls --tlsCAFile /var/lib/tls/ca/ca.crt --tlsCertificateKeyFile /var/lib/tls/server/*.pem --username admin-user --password "SecureAdminPassword123!" --authenticationDatabase admin --eval "rs.status()"' | grep stateStr
 
 # Verify new primary is elected within 10-15 seconds
 ```
@@ -398,9 +402,8 @@ kubectl patch mongodbcommunity mongodb-prod -n mongodb \
 kubectl get pods -n mongodb -w
 
 # Verify new members joined
-kubectl exec -it mongodb-prod-0 -n mongodb -- \
-  mongo -u admin-user -p SecureAdminPassword123! \
-  --eval "rs.status().members.length"
+kubectl exec -it mongodb-prod-0 -c mongod -n mongodb -- \
+  sh -c 'mongosh --tls --tlsCAFile /var/lib/tls/ca/ca.crt --tlsCertificateKeyFile /var/lib/tls/server/*.pem --username admin-user --password "SecureAdminPassword123!" --authenticationDatabase admin --eval "rs.status().members.length"'
 ```
 
 ## Monitoring Replica Set Health
@@ -430,13 +433,13 @@ for i in $(seq 0 $((MEMBERS-1))); do
 
   # Check MongoDB status
   if [ "$POD_STATUS" = "Running" ]; then
-    STATE=$(kubectl exec $POD -n $NAMESPACE -- mongo --quiet --eval "rs.status().members.find(m => m.name.includes('$POD')).stateStr" 2>/dev/null)
+    STATE=$(kubectl exec $POD -c mongod -n $NAMESPACE -- sh -c "mongosh --quiet --tls --tlsCAFile /var/lib/tls/ca/ca.crt --tlsCertificateKeyFile /var/lib/tls/server/*.pem --username admin-user --password 'SecureAdminPassword123!' --authenticationDatabase admin --eval \"rs.status().members.find(m => m.name.includes('$POD')).stateStr\"" 2>/dev/null)
     echo "MongoDB state: $STATE"
   fi
 done
 
 # Check for primary
-PRIMARY=$(kubectl exec ${REPLICA_SET}-0 -n $NAMESPACE -- mongo --quiet --eval "rs.status().members.find(m => m.state === 1).name" 2>/dev/null)
+PRIMARY=$(kubectl exec ${REPLICA_SET}-0 -c mongod -n $NAMESPACE -- sh -c "mongosh --quiet --tls --tlsCAFile /var/lib/tls/ca/ca.crt --tlsCertificateKeyFile /var/lib/tls/server/*.pem --username admin-user --password 'SecureAdminPassword123!' --authenticationDatabase admin --eval \"rs.status().members.find(m => m.state === 1).name\"" 2>/dev/null)
 echo "Current primary: $PRIMARY"
 ```
 
