@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Window, Troubleshooting
+Tags: Kubernetes, Windows, Troubleshooting
 
 Description: Complete troubleshooting guide for debugging Windows pods stuck in CrashLoopBackOff state with Windows Event Log analysis and diagnostic techniques.
 
@@ -12,7 +12,7 @@ CrashLoopBackOff is one of the most frustrating states for Kubernetes pods. When
 
 ## Understanding CrashLoopBackOff
 
-When a Windows container exits with a non-zero code or crashes, Kubernetes automatically restarts it. If crashes continue, Kubernetes increases the delay between restart attempts exponentially, up to 5 minutes. This is the CrashLoopBackOff state.
+When a Windows container exits with a non-zero code or crashes and the pod restart policy allows restarts, Kubernetes restarts it. The default pod restart policy is `Always`. If crashes continue, Kubernetes increases the delay between restart attempts exponentially, up to 5 minutes by default. This is the CrashLoopBackOff state.
 
 Common causes include application errors, missing dependencies, misconfigured environment variables, insufficient resources, permission issues, or incompatible Windows versions.
 
@@ -61,6 +61,8 @@ kind: Pod
 metadata:
   name: exit-code-checker
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   containers:
@@ -107,7 +109,7 @@ kubectl exec <pod-name> -- powershell -Command "Get-WinEvent -LogName Applicatio
 kubectl exec <pod-name> -- powershell -Command "Get-WinEvent -LogName System -MaxEvents 50 | Format-List"
 
 # Filter for errors only
-kubectl exec <pod-name> -- powershell -Command "Get-WinEvent -LogName Application -MaxEvents 100 | Where-Object {$_.LevelDisplayName -eq 'Error'} | Format-Table TimeCreated, Id, Message -AutoSize"
+kubectl exec <pod-name> -- powershell -Command 'Get-WinEvent -LogName Application -MaxEvents 100 | Where-Object {$_.LevelDisplayName -eq "Error"} | Format-Table TimeCreated, Id, Message -AutoSize'
 ```
 
 For pods that crash too quickly to exec:
@@ -119,6 +121,8 @@ kind: Pod
 metadata:
   name: windows-app-debug
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   containers:
@@ -131,9 +135,11 @@ spec:
       # Wrapper script that captures event logs before exit
       $ErrorActionPreference = "Continue"
 
-      # Start logging event logs to stdout
-      Start-Job -ScriptBlock {
-        while ($true) {
+      # Run the actual application and print recent event logs while it is running
+      try {
+        $process = Start-Process -FilePath "C:\app\myapp.exe" -PassThru -ErrorAction Stop
+
+        while (-not $process.HasExited) {
           Get-WinEvent -LogName Application -MaxEvents 10 |
             Where-Object {$_.TimeCreated -gt (Get-Date).AddSeconds(-60)} |
             ForEach-Object {
@@ -141,11 +147,10 @@ spec:
             }
           Start-Sleep -Seconds 10
         }
-      }
 
-      # Run the actual application
-      try {
-        & C:\app\myapp.exe
+        Get-WinEvent -LogName Application -MaxEvents 50 | Format-List
+        Write-Host "Application exited with code: $($process.ExitCode)"
+        exit $process.ExitCode
       }
       catch {
         Write-Host "FATAL ERROR: $_"
@@ -165,6 +170,8 @@ kind: Pod
 metadata:
   name: dependency-debug
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   containers:
@@ -185,31 +192,33 @@ spec:
       }
 
       # Use dumpbin or dependency walker (if available)
-      # For production, use PowerShell to check DLLs
+      # For managed .NET applications, check assembly metadata
       try {
-        $assembly = [System.Reflection.Assembly]::LoadFile($appPath)
-        Write-Host "Assembly loaded successfully: $($assembly.FullName)"
+        $assemblyName = [System.Reflection.AssemblyName]::GetAssemblyName($appPath)
+        Write-Host "Managed assembly detected: $($assemblyName.FullName)"
+      }
+      catch [System.BadImageFormatException] {
+        Write-Host "Application is not a managed .NET assembly; skipping .NET assembly metadata check."
       }
       catch {
-        Write-Host "Failed to load assembly: $_"
+        Write-Host "Failed to read assembly metadata: $_"
+      }
 
-        # Check for missing DLLs
-        $dependencies = @(
-          "msvcr120.dll",
-          "msvcp120.dll",
-          "vcruntime140.dll",
-          "ucrtbase.dll"
-        )
+      # Check for common runtime DLLs
+      $dependencies = @(
+        "msvcr120.dll",
+        "msvcp120.dll",
+        "vcruntime140.dll",
+        "ucrtbase.dll"
+      )
 
-        foreach ($dll in $dependencies) {
-          $found = Get-ChildItem -Path C:\Windows\System32 -Filter $dll -ErrorAction SilentlyContinue
-          if ($found) {
-            Write-Host "FOUND: $dll"
-          } else {
-            Write-Host "MISSING: $dll"
-          }
+      foreach ($dll in $dependencies) {
+        $found = Get-ChildItem -Path C:\Windows\System32 -Filter $dll -ErrorAction SilentlyContinue
+        if ($found) {
+          Write-Host "FOUND: $dll"
+        } else {
+          Write-Host "MISSING: $dll"
         }
-        exit 1
       }
 
       # Check .NET Framework version
@@ -220,6 +229,7 @@ spec:
 
       # Now run the application
       & $appPath
+      exit $LASTEXITCODE
 ```
 
 ## Debugging Configuration Issues
@@ -233,6 +243,8 @@ kind: Pod
 metadata:
   name: config-debug
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   containers:
@@ -282,6 +294,7 @@ spec:
 
       Write-Host "`n=== Starting Application ==="
       & C:\app\myapp.exe
+      exit $LASTEXITCODE
     env:
     - name: DATABASE_URL
       value: "server=db;database=app"
@@ -305,6 +318,8 @@ kind: Pod
 metadata:
   name: resource-debug
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   containers:
@@ -332,23 +347,18 @@ spec:
       Write-Host "Free Disk Space: $diskFree GB"
 
       # Monitor resources while app runs
-      $job = Start-Job -ScriptBlock {
-        param($appPath)
-        & $appPath
-      } -ArgumentList "C:\app\myapp.exe"
+      $process = Start-Process -FilePath "C:\app\myapp.exe" -PassThru -ErrorAction Stop
 
-      while ($job.State -eq 'Running') {
-        $proc = Get-Process -Id $job.Id -ErrorAction SilentlyContinue
-        if ($proc) {
-          $mem = [math]::Round($proc.WorkingSet64 / 1MB, 2)
-          $cpu = $proc.CPU
-          Write-Host "App Memory: $mem MB | CPU Time: $cpu seconds"
-        }
+      while (-not $process.HasExited) {
+        $process.Refresh()
+        $mem = [math]::Round($process.WorkingSet64 / 1MB, 2)
+        $cpu = $process.CPU
+        Write-Host "App Memory: $mem MB | CPU Time: $cpu seconds"
         Start-Sleep -Seconds 5
       }
 
-      $result = Receive-Job $job
-      $exitCode = $job.ChildJobs[0].Output[-1]
+      $process.WaitForExit()
+      $exitCode = $process.ExitCode
       Write-Host "Application exited with code: $exitCode"
       exit $exitCode
     resources:
@@ -381,6 +391,8 @@ kind: Pod
 metadata:
   name: permission-debug
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   securityContext:
@@ -444,6 +456,8 @@ kind: Pod
 metadata:
   name: windows-debug-shell
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   containers:
