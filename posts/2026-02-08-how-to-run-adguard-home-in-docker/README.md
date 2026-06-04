@@ -29,9 +29,12 @@ This command disables the stub listener so port 53 becomes available:
 
 ```bash
 # Stop systemd-resolved from binding to port 53
-
-sudo sed -i 's/#DNSStubListener=yes/DNSStubListener=no/' /etc/systemd/resolved.conf
-sudo systemctl restart systemd-resolved
+sudo mkdir -p /etc/systemd/resolved.conf.d
+printf "[Resolve]\nDNS=127.0.0.1\nDNSStubListener=no\n" | \
+  sudo tee /etc/systemd/resolved.conf.d/adguardhome.conf
+sudo mv /etc/resolv.conf /etc/resolv.conf.backup
+sudo ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf
+sudo systemctl reload-or-restart systemd-resolved
 ```
 
 Verify the port is free:
@@ -57,37 +60,31 @@ Create a `docker-compose.yml` file that defines the AdGuard Home service with al
 
 ```yaml
 # docker-compose.yml - AdGuard Home deployment
-version: "3.8"
-
 services:
   adguard:
     image: adguard/adguardhome:latest
     container_name: adguard-home
     restart: unless-stopped
-    # Use host network mode for DNS to work properly,
-    # or map individual ports as shown below
+    # Map individual ports for DNS, the setup wizard, and encrypted DNS
     ports:
       # DNS ports - these handle all DNS queries
       - "53:53/tcp"
       - "53:53/udp"
       # Web UI and API
+      - "80:80/tcp"
       - "3000:3000/tcp"
       # DNS-over-TLS
       - "853:853/tcp"
       # DNS-over-HTTPS
       - "443:443/tcp"
-      # DHCP server (optional, only if replacing router DHCP)
-      - "67:67/udp"
-      - "68:68/udp"
     volumes:
       # Persist configuration across container restarts
       - ./conf:/opt/adguardhome/conf
       # Persist work data including query logs and filters
       - ./work:/opt/adguardhome/work
-    # Cap add is needed if you want to use DHCP functionality
-    cap_add:
-      - NET_ADMIN
 ```
+
+If you want AdGuard Home to replace your router's DHCP server, use `network_mode: host` on Linux instead of the `ports` mappings above, and add `cap_add: [NET_ADMIN]`.
 
 ## Starting AdGuard Home
 
@@ -112,7 +109,7 @@ You should see the container listed with a status of "Up." The initial setup wiz
 The web-based setup wizard walks you through five steps:
 
 1. **Welcome screen** - Click "Get Started"
-2. **Admin interface** - Choose the listen address and port for the web UI. The default (port 80) works fine, or change it to 8080 if port 80 is taken.
+2. **Admin interface** - Choose the listen address and port for the web UI. The default (port 80) works fine with the Compose file above.
 3. **DNS server** - Keep the default settings. AdGuard Home will listen on all interfaces for DNS queries.
 4. **Authentication** - Set a strong username and password. This protects your DNS settings from unauthorized changes.
 5. **Configure devices** - The wizard shows instructions for pointing your devices to the AdGuard Home DNS server.
@@ -167,7 +164,7 @@ tls://dns.quad9.net
 8.8.8.8
 ```
 
-Setting multiple upstreams gives you redundancy. AdGuard Home queries the fastest available server by default.
+Setting multiple upstreams gives you redundancy. AdGuard Home uses load balancing by default, favoring upstreams with fewer failures and lower average lookup time.
 
 ## Pointing Your Network to AdGuard Home
 
@@ -248,6 +245,7 @@ For containers that start but the web UI is unreachable, check your firewall rul
 # Allow DNS and web UI ports through the firewall
 sudo ufw allow 53/tcp
 sudo ufw allow 53/udp
+sudo ufw allow 80/tcp
 sudo ufw allow 3000/tcp
 ```
 
