@@ -8,13 +8,13 @@ Description: Configure probe initialDelaySeconds correctly to prevent Kubernetes
 
 ---
 
-The `initialDelaySeconds` parameter tells Kubernetes how long to wait after a container starts before beginning health checks. Set it too low, and Kubernetes kills your pods before they finish starting. Set it too high, and you delay detection of real startup failures. Finding the right value is critical for reliable deployments.
+The `initialDelaySeconds` parameter tells Kubernetes how long to wait after a container starts before beginning health checks. Set it too low on liveness or startup probes, and Kubernetes kills your pods before they finish starting. Set it too high, and you delay detection of real startup failures. Finding the right value is critical for reliable deployments.
 
 This guide shows you how to measure startup time, calculate appropriate initial delays, and use startup probes to eliminate the need for long initial delays altogether.
 
 ## Understanding initialDelaySeconds
 
-When a container starts, Kubernetes waits `initialDelaySeconds` before running the first probe. During this grace period, failed probes don't count against the failure threshold. Once the initial delay passes, probes run at their configured interval.
+When a container starts, Kubernetes waits `initialDelaySeconds` before running the first probe. During this grace period, no probes run. Once the initial delay passes, probes run at their configured interval.
 
 ```yaml
 livenessProbe:
@@ -29,7 +29,7 @@ livenessProbe:
 After the container starts:
 - 0-30 seconds: No health checks
 - 30 seconds: First health check
-- 40 seconds: Second health check (if first passed)
+- 40 seconds: Second health check
 - And so on every 10 seconds
 
 ## Measuring Your Application Startup Time
@@ -153,7 +153,7 @@ livenessProbe:
 ```
 
 Problems with this approach:
-- Containers that crash during startup won't be detected for 5 minutes
+- Containers that stay running but unhealthy during startup won't be detected by the liveness probe for 5 minutes
 - Delayed rollout detection if new version fails to start
 - Longer recovery time from failed deployments
 - Wastes resources on broken containers
@@ -174,14 +174,14 @@ spec:
     ports:
     - containerPort: 8080
 
-    # Startup probe allows up to 5 minutes
+    # Startup probe allows about 5 minutes after the initial delay
     startupProbe:
       httpGet:
         path: /healthz
         port: 8080
       initialDelaySeconds: 10
       periodSeconds: 10
-      failureThreshold: 30  # 30 * 10s = 5 minutes
+      failureThreshold: 30  # 30 * 10s = 5 minutes after the 10s initial delay
 
     # Aggressive liveness checking after startup
     livenessProbe:
@@ -239,8 +239,8 @@ spec:
       failureThreshold: 2
 ```
 
-Liveness checks if the process is alive (longer startup).
-Readiness checks if the HTTP server responds (faster startup).
+Liveness checks whether the container should be restarted.
+Readiness checks whether the container is ready to receive traffic.
 
 ## Adjusting for Resource Constraints
 
@@ -299,7 +299,7 @@ spec:
         port: 8080
       initialDelaySeconds: 30
       periodSeconds: 15
-      failureThreshold: 40  # Up to 10 minutes
+      failureThreshold: 40  # Up to 10 minutes after the 30s initial delay
 
     livenessProbe:
       httpGet:
@@ -318,8 +318,8 @@ def startup_check():
         return "Ready", 200
     else:
         progress = get_startup_progress()
-        # Return 200 to show we're making progress
-        return f"Loading: {progress}%", 200
+        # Return a failure status until startup is complete
+        return f"Loading: {progress}%", 503
 ```
 
 ## Environment-Specific Initial Delays
