@@ -8,13 +8,15 @@ Description: Configure Elasticsearch rollup jobs to create downsampled summaries
 
 ---
 
+Elasticsearch rollups are deprecated as of Elasticsearch 8.11 and will be removed in a future version. In Elasticsearch 8.15 and later, creating a new rollup job fails on clusters that do not already contain a rollup job or rollup index. Use downsampling for new time series deployments; the examples below apply to existing rollup deployments and older clusters where rollup job creation is still allowed.
+
 Elasticsearch rollup jobs aggregate historical data into statistical summaries, dramatically reducing storage requirements while preserving the ability to analyze long-term trends. Instead of keeping every individual log event from months ago, rollups store only aggregated metrics like averages, sums, and counts. This approach makes it economical to retain years of data for compliance and trend analysis without the cost of full-resolution storage.
 
 ## Understanding Rollup Concepts
 
 Raw logs contain every detail of every event. For recent data, this granularity is essential for debugging and investigation. However, after weeks or months, you rarely need individual events. You want to know trends like "What was the average response time in March?" or "How many errors occurred per day last quarter?"
 
-Rollups answer these questions by pre-calculating aggregations over time intervals. A rollup job might process daily logs and create hourly summaries showing error counts, response time percentiles, and request volumes. These summaries occupy a fraction of the space while still supporting historical analysis.
+Rollups answer these questions by pre-calculating aggregations over time intervals. A rollup job might process daily logs and create hourly summaries showing error counts, response time averages, min/max values, and request volumes. These summaries occupy a fraction of the space while still supporting historical analysis.
 
 The trade-off is losing ability to query individual events. You cannot retrieve the exact log entry from three months ago. You can query aggregated statistics about that time period. For most analytical use cases, this trade-off is acceptable and enables cost-effective long-term retention.
 
@@ -30,14 +32,15 @@ curl -X PUT "http://elasticsearch:9200/_rollup/job/app-logs-daily-rollup" \
   -u elastic:password \
   -d '{
     "index_pattern": "application-logs-*",
-    "rollup_index": "application-logs-rollup",
+    "rollup_index": "rollup-application-logs",
     "cron": "0 0 * * * ?",
     "page_size": 1000,
     "groups": {
       "date_histogram": {
         "field": "@timestamp",
         "calendar_interval": "1d",
-        "time_zone": "UTC"
+        "time_zone": "UTC",
+        "delay": "7d"
       },
       "terms": {
         "fields": ["service.name", "log.level", "host.name"]
@@ -56,7 +59,7 @@ curl -X PUT "http://elasticsearch:9200/_rollup/job/app-logs-daily-rollup" \
   }'
 ```
 
-This job runs daily at midnight, processing logs into daily summaries grouped by service, log level, and hostname, while calculating response time and size statistics.
+This job runs daily at midnight, processing complete log buckets older than the 7-day delay into daily summaries grouped by service, log level, and hostname, while calculating response time and size statistics.
 
 ## Configuring Rollup Groups
 
@@ -148,7 +151,7 @@ Available metric types:
 - avg: Average value
 - value_count: Count of values
 
-Choose metrics based on your analysis needs. For percentile calculations in rollup queries, you need min, max, sum, and value_count to compute approximations.
+Choose metrics based on your analysis needs. Rollup jobs support only min, max, sum, avg, and value_count metrics for numeric fields, so percentile aggregations are not available from rollup data unless you model an approximate distribution with supported bucket groups such as histograms.
 
 ## Scheduling Rollup Jobs
 
@@ -232,7 +235,7 @@ Query rollup indices using the rollup search API:
 
 ```bash
 # Query rolled up data
-curl -X GET "http://elasticsearch:9200/application-logs-rollup/_rollup_search" \
+curl -X GET "http://elasticsearch:9200/rollup-application-logs/_rollup_search" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
@@ -282,16 +285,27 @@ Search across both raw and rolled up data for seamless transitions:
 
 ```bash
 # Query both indices
-curl -X GET "http://elasticsearch:9200/application-logs-*,application-logs-rollup/_rollup_search" \
+curl -X GET "http://elasticsearch:9200/application-logs-*,rollup-application-logs/_rollup_search" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
     "size": 0,
     "query": {
-      "range": {
-        "@timestamp": {
-          "gte": "now-90d"
-        }
+      "bool": {
+        "filter": [
+          {
+            "range": {
+              "@timestamp": {
+                "gte": "now-90d"
+              }
+            }
+          },
+          {
+            "term": {
+              "log.level": "ERROR"
+            }
+          }
+        ]
       }
     },
     "aggs": {
@@ -319,7 +333,7 @@ Elasticsearch automatically merges results from raw indices (recent data) and ro
 Coordinate rollups with Index Lifecycle Management:
 
 ```bash
-# Create ILM policy that rolls up old data
+# Create ILM policy for the raw log indices
 curl -X PUT "http://elasticsearch:9200/_ilm/policy/logs-with-rollup" \
   -H "Content-Type: application/json" \
   -u elastic:password \
@@ -363,25 +377,25 @@ curl -X PUT "http://elasticsearch:9200/_ilm/policy/logs-with-rollup" \
   }'
 ```
 
-Schedule rollup jobs to process data in the warm phase before it moves to cold storage. This ensures you roll up complete, immutable data.
+Schedule rollup jobs separately from ILM so they process data after it has reached the warm phase and before the raw data is archived or deleted. ILM does not create rollup summaries for you; the rollup job writes the summary index, and ILM manages the raw index lifecycle.
 
 ## Visualizing Rollup Data in Kibana
 
-Create index patterns that include rollup indices:
+Create a rollup data view that includes the rollup index and the raw index:
 
 ```bash
-# In Kibana, create index pattern:
-# Pattern: application-logs-*,application-logs-rollup
+# In Kibana, create a Rollup data view:
+# Data view: rollup-application-logs,application-logs-*
 # This includes both raw and rollup data
 ```
 
-Build visualizations using the combined index pattern. Kibana automatically queries rollup data when appropriate.
+Build visualizations using the combined data view. If rollup data views are disabled, enable the `rollups:enableIndexPatterns` advanced setting first.
 
 Create a dashboard showing long-term trends:
 
 ```bash
 # Time series visualization
-# Index pattern: application-logs-*,application-logs-rollup
+# Data view: rollup-application-logs,application-logs-*
 # Time range: Last 6 months
 # Metric: Average of http.response.time
 # Split series: service.name
@@ -468,12 +482,9 @@ curl -X POST "http://elasticsearch:9200/_rollup/job/app-logs-daily-rollup/_start
 Remove rollup jobs that are no longer needed:
 
 ```bash
-# Stop the job first
-curl -X POST "http://elasticsearch:9200/_rollup/job/app-logs-daily-rollup/_stop" \
+# Stop the job first and wait for it to stop
+curl -X POST "http://elasticsearch:9200/_rollup/job/app-logs-daily-rollup/_stop?wait_for_completion=true&timeout=30s" \
   -u elastic:password
-
-# Wait for job to stop
-sleep 5
 
 # Delete the job
 curl -X DELETE "http://elasticsearch:9200/_rollup/job/app-logs-daily-rollup" \
@@ -484,4 +495,4 @@ The rollup index remains after deleting the job, preserving historical summaries
 
 ## Conclusion
 
-Elasticsearch rollup jobs enable cost-effective long-term log retention by trading detailed event data for statistical summaries. By configuring appropriate time intervals, groupings, and metrics, you create rollups that support analytical queries while reducing storage by 80-95%. Integrate rollups with ILM policies to automatically transition aged data from raw logs to compact summaries, then to deletion. This layered approach to data lifecycle management ensures you retain the detail you need when you need it while keeping storage costs under control. Start with simple rollups on non-critical indices to understand the trade-offs, then expand to production data as you validate that rollup summaries meet your analysis requirements.
+Elasticsearch rollup jobs enable cost-effective long-term log retention by trading detailed event data for statistical summaries in legacy rollup deployments. By configuring appropriate time intervals, groupings, and metrics, you create rollups that support analytical queries while reducing storage by 80-95%. Coordinate rollup jobs with ILM policies so raw logs are summarized before they are archived or deleted. This layered approach to data lifecycle management ensures you retain the detail you need when you need it while keeping storage costs under control. Start with simple rollups on non-critical indices to understand the trade-offs, then expand to production data as you validate that rollup summaries meet your analysis requirements.
