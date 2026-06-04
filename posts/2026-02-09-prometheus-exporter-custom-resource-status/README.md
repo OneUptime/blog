@@ -14,7 +14,7 @@ This guide covers creating an exporter that converts CRD status to Prometheus me
 
 ## Understanding CRD Status Fields
 
-CRDs use status subresources to track operational state. For example, a Backup CRD might have:
+CRDs often use status subresources to track operational state. For example, a Backup CRD might have:
 
 ```yaml
 apiVersion: backup.example.com/v1
@@ -37,8 +37,8 @@ An exporter transforms this into metrics:
 backup_phase{name="daily-backup",namespace="default",phase="Completed"} 1
 backup_duration_seconds{name="daily-backup",namespace="default"} 900
 backup_size_bytes{name="daily-backup",namespace="default"} 1073741824
-backup_success_total{name="daily-backup",namespace="default"} 42
-backup_failures_total{name="daily-backup",namespace="default"} 1
+backup_success_count{name="daily-backup",namespace="default"} 42
+backup_failure_count{name="daily-backup",namespace="default"} 1
 ```
 
 ## Building the Exporter in Go
@@ -57,7 +57,6 @@ import (
 
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promhttp"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
     "k8s.io/apimachinery/pkg/runtime/schema"
     "k8s.io/client-go/dynamic"
@@ -71,7 +70,7 @@ var (
     backupPhase = prometheus.NewGaugeVec(
         prometheus.GaugeOpts{
             Name: "backup_phase",
-            Help: "Current phase of backup (1=running, 2=completed, 3=failed)",
+            Help: "Current phase of backup (1 when the backup is in this phase)",
         },
         []string{"namespace", "name", "phase"},
     )
@@ -94,20 +93,31 @@ var (
 
     backupSuccess = prometheus.NewGaugeVec(
         prometheus.GaugeOpts{
-            Name: "backup_success_total",
-            Help: "Total successful backups",
+            Name: "backup_success_count",
+            Help: "Successful backup count reported by the custom resource",
         },
         []string{"namespace", "name"},
     )
 
     backupFailures = prometheus.NewGaugeVec(
         prometheus.GaugeOpts{
-            Name: "backup_failures_total",
-            Help: "Total failed backups",
+            Name: "backup_failure_count",
+            Help: "Failed backup count reported by the custom resource",
         },
         []string{"namespace", "name"},
     )
 )
+
+var backupPhases = []string{"Running", "Completed", "Failed"}
+
+func isKnownBackupPhase(status string) bool {
+    for _, phase := range backupPhases {
+        if status == phase {
+            return true
+        }
+    }
+    return false
+}
 
 func init() {
     // Register metrics
@@ -170,7 +180,11 @@ func main() {
 }
 
 func handleBackupUpdate(obj interface{}) {
-    backup := obj.(*unstructured.Unstructured)
+    backup, ok := obj.(*unstructured.Unstructured)
+    if !ok {
+        log.Printf("unexpected object type: %T", obj)
+        return
+    }
     namespace := backup.GetNamespace()
     name := backup.GetName()
 
@@ -179,29 +193,35 @@ func handleBackupUpdate(obj interface{}) {
     if !found {
         return
     }
+    if !isKnownBackupPhase(status) {
+        log.Printf("unknown phase for %s/%s: %s", namespace, name, status)
+        return
+    }
 
     // Set phase metric
-    backupPhase.Reset()
-    phaseValue := 0.0
-    switch status {
-    case "Running":
-        phaseValue = 1.0
-    case "Completed":
-        phaseValue = 2.0
-    case "Failed":
-        phaseValue = 3.0
+    for _, phase := range backupPhases {
+        backupPhase.DeleteLabelValues(namespace, name, phase)
     }
-    backupPhase.WithLabelValues(namespace, name, status).Set(phaseValue)
+    backupPhase.WithLabelValues(namespace, name, status).Set(1)
 
     // Extract and set duration
     startTime, _, _ := unstructured.NestedString(backup.Object, "status", "startTime")
     completionTime, _, _ := unstructured.NestedString(backup.Object, "status", "completionTime")
 
     if startTime != "" && completionTime != "" {
-        start, _ := time.Parse(time.RFC3339, startTime)
-        completion, _ := time.Parse(time.RFC3339, completionTime)
-        duration := completion.Sub(start).Seconds()
-        backupDuration.WithLabelValues(namespace, name).Set(duration)
+        start, err := time.Parse(time.RFC3339, startTime)
+        if err != nil {
+            log.Printf("invalid startTime for %s/%s: %v", namespace, name, err)
+            return
+        }
+
+        completion, err := time.Parse(time.RFC3339, completionTime)
+        if err != nil {
+            log.Printf("invalid completionTime for %s/%s: %v", namespace, name, err)
+            return
+        }
+
+        backupDuration.WithLabelValues(namespace, name).Set(completion.Sub(start).Seconds())
     }
 
     // Extract and set size
@@ -210,7 +230,7 @@ func handleBackupUpdate(obj interface{}) {
         backupSize.WithLabelValues(namespace, name).Set(float64(size))
     }
 
-    // Extract counters
+    // Extract counts
     successCount, found, _ := unstructured.NestedInt64(backup.Object, "status", "successCount")
     if found {
         backupSuccess.WithLabelValues(namespace, name).Set(float64(successCount))
@@ -223,12 +243,27 @@ func handleBackupUpdate(obj interface{}) {
 }
 
 func handleBackupDelete(obj interface{}) {
-    backup := obj.(*unstructured.Unstructured)
+    backup, ok := obj.(*unstructured.Unstructured)
+    if !ok {
+        tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+        if !ok {
+            log.Printf("unexpected delete object type: %T", obj)
+            return
+        }
+
+        backup, ok = tombstone.Obj.(*unstructured.Unstructured)
+        if !ok {
+            log.Printf("unexpected tombstone object type: %T", tombstone.Obj)
+            return
+        }
+    }
     namespace := backup.GetNamespace()
     name := backup.GetName()
 
     // Remove metrics for deleted backup
-    backupPhase.DeleteLabelValues(namespace, name, "")
+    for _, phase := range backupPhases {
+        backupPhase.DeleteLabelValues(namespace, name, phase)
+    }
     backupDuration.DeleteLabelValues(namespace, name)
     backupSize.DeleteLabelValues(namespace, name)
     backupSuccess.DeleteLabelValues(namespace, name)
@@ -241,7 +276,7 @@ func handleBackupDelete(obj interface{}) {
 Package the exporter as a container:
 
 ```dockerfile
-FROM golang:1.21 AS builder
+FROM golang:1.26 AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -250,7 +285,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o exporter .
 
-FROM alpine:3.18
+FROM alpine:3.22
 RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
@@ -374,7 +409,7 @@ func main() {
     // ... existing code ...
 
     http.HandleFunc("/health", healthCheck)
-    http.HandleFunc("/ready", readyCheck)
+    http.HandleFunc("/ready", readyCheck(informer.HasSynced))
     http.Handle("/metrics", promhttp.Handler())
 
     log.Fatal(http.ListenAndServe(":8080", nil))
@@ -385,14 +420,16 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
     w.Write([]byte("healthy"))
 }
 
-func readyCheck(w http.ResponseWriter, r *http.Request) {
-    // Check if informer is synced
-    if informerSynced {
-        w.WriteHeader(http.StatusOK)
-        w.Write([]byte("ready"))
-    } else {
-        w.WriteHeader(http.StatusServiceUnavailable)
-        w.Write([]byte("not ready"))
+func readyCheck(isSynced func() bool) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        // Check if informer is synced
+        if isSynced() {
+            w.WriteHeader(http.StatusOK)
+            w.Write([]byte("ready"))
+        } else {
+            w.WriteHeader(http.StatusServiceUnavailable)
+            w.Write([]byte("not ready"))
+        }
     }
 }
 ```
@@ -432,8 +469,8 @@ spec:
     - alert: BackupFailureRate
       expr: |
         (
-          backup_failures_total /
-          (backup_failures_total + backup_success_total)
+          backup_failure_count /
+          (backup_failure_count + backup_success_count)
         ) > 0.1
       for: 1h
       labels:
@@ -466,8 +503,16 @@ func startWatcher(client dynamic.Interface, config CRDConfig) {
     informer := factory.ForResource(gvr).Informer()
 
     informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-        AddFunc:    config.Handler,
-        UpdateFunc: func(_, newObj interface{}) { config.Handler(newObj) },
+        AddFunc: func(obj interface{}) {
+            if resource, ok := obj.(*unstructured.Unstructured); ok {
+                config.Handler(resource)
+            }
+        },
+        UpdateFunc: func(_, newObj interface{}) {
+            if resource, ok := newObj.(*unstructured.Unstructured); ok {
+                config.Handler(resource)
+            }
+        },
     })
 
     go informer.Run(context.Background().Done())
