@@ -22,7 +22,7 @@ There are three types of ephemeral storage:
 
 **Log storage**: Container logs written to stdout/stderr are stored on the node's filesystem until rotated or cleaned up.
 
-**emptyDir volumes**: Temporary volumes that exist for the lifetime of a pod share the node's ephemeral storage pool.
+**emptyDir volumes**: Temporary volumes that exist for the lifetime of a pod share the node's ephemeral storage pool, unless they are memory-backed `emptyDir` volumes that count against memory usage.
 
 ## Setting Ephemeral Storage Requests and Limits
 
@@ -44,11 +44,11 @@ spec:
         ephemeral-storage: "4Gi"
 ```
 
-This configuration tells the scheduler that the pod needs at least 2Gi of ephemeral storage and prevents it from using more than 4Gi. The kubelet enforces these limits by monitoring the container's writable layer and any emptyDir volumes.
+This configuration tells the scheduler that the pod needs at least 2Gi of ephemeral storage. If the container's writable layer and logs exceed the 4Gi limit, the kubelet marks the pod for eviction.
 
 ## Handling emptyDir Volume Storage
 
-When you use emptyDir volumes, their storage consumption counts against the pod's ephemeral storage limit. If you specify a `sizeLimit` on the emptyDir, Kubernetes tracks that volume's usage independently.
+When you use disk-backed emptyDir volumes, their storage consumption counts against the pod's ephemeral storage limit. If you specify a `sizeLimit` on the emptyDir, Kubernetes tracks that volume's usage independently.
 
 ```yaml
 apiVersion: v1
@@ -77,7 +77,7 @@ In this example, the cache volume can use up to 3Gi, and the total pod ephemeral
 
 Beyond pod-level limits, you should configure kubelet eviction thresholds to protect nodes from running out of disk space entirely. These settings prevent nodes from becoming unresponsive due to full disks.
 
-Add these flags to your kubelet configuration:
+Add these fields to your kubelet configuration:
 
 ```yaml
 # kubelet-config.yaml
@@ -100,11 +100,11 @@ evictionSoftGracePeriod:
 
 Hard eviction thresholds trigger immediate pod eviction when crossed. Soft eviction thresholds allow a grace period before evicting pods, giving applications time to clean up or shut down gracefully.
 
-The `nodefs` refers to the filesystem used for ephemeral storage and logs, while `imagefs` refers to the filesystem used for container images and writable layers (if separate).
+The `nodefs` refers to the node's main filesystem, including local volumes, disk-backed emptyDir volumes, logs, and other ephemeral storage. The optional `imagefs` refers to the filesystem used for container images and, when there is no separate `containerfs`, container writable layers.
 
 ## Monitoring Ephemeral Storage Usage
 
-Deploy monitoring to track ephemeral storage consumption before it becomes a problem. The kubelet exposes metrics through its `/metrics` endpoint that you can scrape with Prometheus.
+Deploy monitoring to track ephemeral storage consumption before it becomes a problem. The kubelet exposes metrics through its `/metrics` and `/metrics/resource` endpoints that you can scrape with Prometheus. For alerts that use pod resource limits or node conditions, also scrape kube-state-metrics.
 
 ```yaml
 # ServiceMonitor for kubelet metrics
@@ -119,7 +119,10 @@ spec:
     scheme: https
     tlsConfig:
       insecureSkipVerify: true
-    bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+    authorization:
+      credentials:
+        name: prometheus-kubelet-token
+        key: token
     relabelings:
     - sourceLabels: [__metrics_path__]
       targetLabel: metrics_path
@@ -130,6 +133,8 @@ spec:
     matchLabels:
       app.kubernetes.io/name: kubelet
 ```
+
+This example assumes the `prometheus-kubelet-token` Secret exists in the `monitoring` namespace and contains a `token` key that Prometheus can use for kubelet authentication.
 
 Create alerts based on storage consumption trends:
 
@@ -144,14 +149,18 @@ spec:
   - name: ephemeral-storage
     interval: 30s
     rules:
-    - alert: PodNearEphemeralStorageLimit
+    - alert: ContainerLogsNearEphemeralStorageLimit
       expr: |
-        (kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes) > 0.8
+        (
+          sum by (namespace, pod, container) (kubelet_container_log_filesystem_used_bytes)
+          /
+          sum by (namespace, pod, container) (kube_pod_container_resource_limits{resource="ephemeral_storage",unit="byte"})
+        ) > 0.8
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} using 80% of ephemeral storage"
+        summary: "Container logs for {{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }} are using 80% of the ephemeral storage limit"
     - alert: NodeDiskPressure
       expr: |
         kube_node_status_condition{condition="DiskPressure",status="true"} == 1
