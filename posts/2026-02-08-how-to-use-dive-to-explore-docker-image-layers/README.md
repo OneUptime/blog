@@ -65,11 +65,12 @@ Navigate with these keyboard shortcuts:
 Tab         - Switch between layers and file tree panels
 Up/Down     - Navigate within the current panel
 Space       - Collapse/expand directories in the file tree
-Ctrl+A      - Toggle showing only added/modified files
-Ctrl+R      - Toggle showing only removed files
-Ctrl+U      - Toggle showing unmodified files
-Ctrl+L      - Toggle showing layer changes only
-Ctrl+C      - Exit dive
+Ctrl+A      - Toggle aggregated changes in the layers panel, or added files in the file tree
+Ctrl+R      - Toggle removed files in the file tree
+Ctrl+M      - Toggle modified files in the file tree
+Ctrl+U      - Toggle unmodified files in the file tree
+Ctrl+L      - Show current-layer changes in the layers panel
+Ctrl+C/Q    - Exit dive
 ```
 
 ## Analyzing Layer Sizes
@@ -152,8 +153,8 @@ Create a `.dive-ci` file in your project root to configure analysis rules.
 rules:
   # Fail if efficiency drops below this threshold
   lowestEfficiency: 0.95
-  # Fail if wasted space exceeds this amount (in bytes)
-  highestWastedBytes: 20000000
+  # Fail if wasted space exceeds this amount
+  highestWastedBytes: 20MB
   # Fail if wasted space percentage exceeds this value
   highestUserWastedPercent: 0.10
 ```
@@ -176,7 +177,7 @@ WORKDIR /app
 COPY . .
 RUN npm install
 RUN npm run build
-RUN npm prune --production
+RUN npm prune --omit=dev
 CMD ["node", "dist/index.js"]
 ```
 
@@ -214,7 +215,7 @@ WORKDIR /app
 
 # Copy only production dependencies
 COPY package.json package-lock.json ./
-RUN npm ci --production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy built application
 COPY --from=builder /app/dist ./dist
@@ -246,7 +247,7 @@ When Dive shows a large layer, examine the file tree to identify exactly what fi
 
 # Layer from "npm install" - check for cache and dev deps
 # Look for: node_modules/.cache/ and large dev-only packages
-# Fix: Use npm ci --production and clean the cache
+# Fix: Use npm ci --omit=dev and clean the cache
 
 # Layer from "COPY" - check for unnecessary files
 # Look for: .git/, tests/, docs/, *.md files
