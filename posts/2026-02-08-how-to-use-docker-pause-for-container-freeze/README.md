@@ -14,17 +14,15 @@ This is different from `docker stop`, which sends a SIGTERM signal and shuts dow
 
 ## How Docker Pause Works Under the Hood
 
-Docker pause uses the Linux cgroup freezer subsystem. When you pause a container, the kernel moves all of the container's processes into the `FROZEN` state. Frozen processes do not receive any CPU time at all. They do not execute instructions, they do not respond to signals (except SIGKILL), and they do not consume CPU resources.
+On Linux, Docker pause uses the cgroup freezer. When you pause a container, the kernel freezes all of the container's processes. Frozen processes do not receive any CPU time at all. They do not execute instructions or consume CPU resources. Fatal signals can still kill frozen processes, but normal signal handling does not run until the container is unfrozen.
 
 This is fundamentally different from reducing a container's CPU priority. Paused processes are completely suspended at the kernel level.
 
-Verify the cgroup freezer state:
+Verify Docker's paused state:
 
 ```bash
-# Check if cgroup freezer is available on your system
-
-cat /sys/fs/cgroup/freezer/docker/*/freezer.state 2>/dev/null || \
-  echo "Using cgroup v2 (freezer is integrated)"
+# After pausing a container, check whether Docker reports it as paused
+docker inspect -f '{{.State.Paused}}' busy-worker
 ```
 
 ## Basic Pause and Unpause
@@ -117,13 +115,13 @@ The key advantage over `docker stop` is that stopping a container triggers clean
 
 ## Use Case: Consistent Backups
 
-Taking a backup of a database volume while the database is writing data can produce an inconsistent snapshot. Pausing the database container freezes all I/O, giving you a clean backup window.
+Taking a backup of a database volume while the database is writing data can produce an inconsistent snapshot. Pausing the database container stops the database processes from making more writes, giving you a short crash-consistent backup window. For production databases, prefer the database's native backup tooling or a filesystem snapshot that meets the database's backup requirements.
 
 ```bash
-# Pause the database to ensure data consistency
+# Pause the database to stop writes while the copy runs
 docker pause postgres-db
 
-# Take a snapshot of the volume while no writes are happening
+# Copy the volume while no new writes are happening
 sudo cp -a /var/lib/docker/volumes/pgdata/_data /backup/pgdata-$(date +%Y%m%d)
 
 # Resume the database
@@ -188,7 +186,7 @@ Paused containers maintain their TCP connections, but they cannot process any in
 - TCP connections stay open but become unresponsive
 - Clients will experience timeouts if the pause exceeds their timeout settings
 - Short pauses (a few seconds) are usually transparent to clients that have reasonable retry logic
-- UDP packets sent to a paused container are dropped
+- UDP packets sent to a paused container cannot be processed until it resumes and may be dropped if buffers fill
 
 Test this behavior:
 
@@ -211,24 +209,24 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:8080
 
 ## Docker Pause in Compose
 
-Docker Compose does not have a built-in `pause` subcommand, but you can pause services by their container names:
+Docker Compose has built-in `pause` and `unpause` subcommands:
 
 ```bash
-# Find the container name for a Compose service
-docker compose ps --format "{{.Name}}" web
+# Pause a specific Compose service
+docker compose pause web
 
-# Pause a specific Compose service container
-docker pause myproject-web-1
+# Resume a specific Compose service
+docker compose unpause web
 
-# Or use docker compose's container naming pattern
+# Or use the Docker CLI with the service's container ID
 docker pause $(docker compose ps -q web)
 ```
 
 To pause all containers in a Compose project:
 
 ```bash
-# Pause every container in the current Compose project
-docker compose ps -q | xargs docker pause
+# Pause every service in the current Compose project
+docker compose pause
 ```
 
 ## Monitoring Paused Containers
@@ -279,8 +277,8 @@ There are some things `docker pause` cannot do:
 
 - You cannot exec into a paused container. `docker exec` will fail with "container is paused."
 - You cannot pause a container that is already stopped.
-- Health checks do not run while the container is paused, which may trigger orchestrator restarts if you use Docker Swarm or Kubernetes.
-- The cgroup freezer does not work on all storage drivers equally. Overlay2 (the default) works fine.
+- Health checks cannot complete while the container is paused, which may trigger orchestrator restarts if you use Docker Swarm or Kubernetes.
+- `docker pause` is platform-dependent. On Linux it uses the freezer cgroup; on Windows, Docker supports pausing only Hyper-V containers.
 
 ```bash
 # This will fail on a paused container
@@ -295,4 +293,4 @@ docker exec busy-worker ls
 
 ## Summary
 
-`docker pause` freezes container processes at the kernel level using the cgroup freezer, preserving the complete state including memory and open connections. It is useful for creating consistent backup windows, debugging misbehaving containers without losing state, and temporarily freeing up CPU for higher-priority services. Unlike `docker stop`, paused containers resume instantly with no cold start penalty. Remember that network connections stay open but become unresponsive during the pause, so keep pause durations short for user-facing services.
+`docker pause` freezes container processes at the kernel level using the cgroup freezer on Linux, preserving the process state including memory and open connections. It is useful for creating short crash-consistent backup windows, debugging misbehaving containers without losing state, and temporarily freeing up CPU for higher-priority services. Unlike `docker stop`, paused containers resume instantly with no cold start penalty. Remember that network connections stay open but become unresponsive during the pause, so keep pause durations short for user-facing services.
