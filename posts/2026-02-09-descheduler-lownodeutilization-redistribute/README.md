@@ -14,11 +14,11 @@ The Descheduler's LowNodeUtilization strategy addresses this by identifying unde
 
 ## How LowNodeUtilization Works
 
-The LowNodeUtilization strategy evaluates each node's resource utilization (CPU, memory, and pods) and categorizes nodes into three groups:
+The LowNodeUtilization strategy evaluates each node's requested resource utilization (CPU, memory, and pods) and categorizes nodes into three groups:
 
-- **Underutilized nodes**: Nodes below the defined threshold
+- **Underutilized nodes**: Nodes below all defined thresholds
 - **Normally utilized nodes**: Nodes within acceptable range
-- **Overutilized nodes**: Nodes above the target utilization threshold
+- **Overutilized nodes**: Nodes above any target utilization threshold
 
 The descheduler then evicts pods from overutilized nodes, allowing the scheduler to place them on underutilized nodes, creating a more balanced distribution.
 
@@ -53,8 +53,8 @@ data:
               cpu: 50
               memory: 50
               pods: 50
-            # Number of nodes that can be processed in parallel
-            numberOfNodes: 0  # 0 means all nodes
+            # Run only when more than this number of nodes are underutilized
+            numberOfNodes: 0  # 0 means no minimum
         plugins:
           balance:
             enabled:
@@ -62,13 +62,13 @@ data:
 ```
 
 In this configuration:
-- Nodes using less than 20% CPU, memory, or pods are underutilized
-- Nodes using more than 50% CPU, memory, or pods are overutilized
+- Nodes with requested usage below 20% CPU, memory, and pods are underutilized
+- Nodes with requested usage above 50% CPU, memory, or pods are overutilized
 - The descheduler will move pods to achieve better balance
 
 ## Understanding Thresholds
 
-The threshold values are percentages based on the node's allocatable resources:
+The threshold values are percentages based on the pod requests on the node compared with the node's allocatable resources:
 
 ```yaml
 # Example: For a node with 4 CPU cores and 16Gi memory
@@ -83,9 +83,9 @@ The threshold values are percentages based on the node's allocatable resources:
 #   memory: 50 = 7.5Gi (15 * 0.50)
 ```
 
-## Advanced Configuration with Resource Weights
+## Advanced Configuration with Filters
 
-You can customize which resources matter most for your workload:
+You can customize the thresholds and eviction filters for your workload:
 
 ```yaml
 apiVersion: v1
@@ -100,26 +100,26 @@ data:
     profiles:
       - name: production
         pluginConfig:
+        - name: "DefaultEvictor"
+          args:
+            # Evict only pods below this priority value
+            priorityThreshold:
+              value: 10000
+            # Check that evicted pods can fit on another node
+            nodeFit: true
         - name: "LowNodeUtilization"
           args:
             thresholds:
               cpu: 30
               memory: 30
-              pods: 20
             targetThresholds:
               cpu: 70
               memory: 70
-              pods: 50
-            # Only consider CPU and memory, ignore pod count
+            # Treat thresholds as absolute percentages, not deviations from cluster mean
             useDeviationThresholds: false
-            # Namespaces to include
-            namespaces:
-              include: ["production", "staging"]
-            # Evict pods with priority lower than this
+            # Namespaces to exclude from eviction
             evictableNamespaces:
               exclude: ["kube-system"]
-            # Node fit checking
-            nodeFit: true
         plugins:
           balance:
             enabled:
@@ -143,11 +143,14 @@ kind: ClusterRole
 metadata:
   name: descheduler
 rules:
-- apiGroups: [""]
+- apiGroups: ["events.k8s.io"]
   resources: ["events"]
   verbs: ["create", "update"]
 - apiGroups: [""]
   resources: ["nodes"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: [""]
+  resources: ["namespaces"]
   verbs: ["get", "watch", "list"]
 - apiGroups: [""]
   resources: ["pods"]
@@ -183,6 +186,9 @@ spec:
   jobTemplate:
     spec:
       template:
+        metadata:
+          labels:
+            app: descheduler
         spec:
           serviceAccountName: descheduler
           restartPolicy: Never
@@ -231,7 +237,7 @@ spec:
         app: resource-heavy
     spec:
       affinity:
-        # Force initial placement on specific nodes
+        # Prefer initial placement on a specific node
         nodeAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
           - weight: 100
@@ -252,7 +258,7 @@ spec:
             memory: 2Gi
 ```
 
-Check node utilization before descheduling:
+Check actual node usage as a rough signal before descheduling:
 
 ```bash
 # View node resource usage
@@ -263,6 +269,12 @@ kubectl top nodes
 # worker-node-1   2800m        70%    12Gi            75%
 # worker-node-2   400m         10%    2Gi             12%
 # worker-node-3   600m         15%    3Gi             18%
+```
+
+For LowNodeUtilization decisions, compare pod requests with node allocatable resources:
+
+```bash
+kubectl describe node worker-node-1
 ```
 
 ## Monitoring Descheduler Actions
@@ -342,21 +354,26 @@ pluginConfig:
 Prevent certain nodes from being descheduled:
 
 ```yaml
-pluginConfig:
-- name: "LowNodeUtilization"
-  args:
-    thresholds:
-      cpu: 30
-      memory: 30
-      pods: 20
-    targetThresholds:
-      cpu: 70
-      memory: 70
-      pods: 50
-    # Exclude nodes with specific taints
-    excludeNodeTaints:
-    - "node-role.kubernetes.io/master"
-    - "dedicated=database:NoSchedule"
+apiVersion: "descheduler/v1alpha2"
+kind: "DeschedulerPolicy"
+nodeSelector: "node-role.kubernetes.io/worker="
+profiles:
+- name: default
+  pluginConfig:
+  - name: "LowNodeUtilization"
+    args:
+      thresholds:
+        cpu: 30
+        memory: 30
+        pods: 20
+      targetThresholds:
+        cpu: 70
+        memory: 70
+        pods: 50
+  plugins:
+    balance:
+      enabled:
+        - "LowNodeUtilization"
 ```
 
 ## Metrics and Observability
@@ -375,9 +392,9 @@ metadata:
 spec:
   ports:
   - name: metrics
-    port: 8080
+    port: 10258
     protocol: TCP
-    targetPort: 8080
+    targetPort: 10258
   selector:
     app: descheduler
 ---
@@ -393,6 +410,9 @@ spec:
   endpoints:
   - port: metrics
     interval: 30s
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true
 ```
 
 ## Best Practices
@@ -402,7 +422,7 @@ spec:
 3. **Use PDBs**: Always protect critical applications with PodDisruptionBudgets
 4. **Test in Staging**: Validate threshold values in non-production environments
 5. **Schedule Wisely**: Run during low-traffic periods initially to minimize disruption
-6. **Check Node Fit**: Enable nodeFit to ensure evicted pods can actually be rescheduled
+6. **Check Node Fit**: Enable nodeFit in the DefaultEvictor to ensure evicted pods can actually be rescheduled
 7. **Combine Strategies**: Use alongside other descheduler strategies for comprehensive optimization
 
 ## Troubleshooting Common Issues
@@ -424,4 +444,3 @@ kubectl logs -n kube-system -l app=descheduler --tail=200
 ```
 
 The LowNodeUtilization strategy is essential for maintaining efficient resource usage in dynamic Kubernetes clusters. By automatically rebalancing workloads across nodes, it prevents resource hotspots and ensures your cluster operates at optimal efficiency without manual intervention.
-
