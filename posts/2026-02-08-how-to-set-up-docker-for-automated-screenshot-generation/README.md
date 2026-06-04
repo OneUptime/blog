@@ -34,6 +34,7 @@ FROM node:20-slim
 # Install Chromium and required system libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
+    curl \
     fonts-liberation \
     fonts-noto-cjk \
     fonts-noto-color-emoji \
@@ -53,7 +54,7 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 COPY src/ ./src/
 
@@ -166,7 +167,7 @@ async function getBrowser() {
 
   browserInstance = await puppeteer.launch({
     executablePath: CHROMIUM_PATH,
-    headless: 'new',
+    headless: true,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -207,7 +208,8 @@ async function captureScreenshot({ url, width, height, fullPage, format, quality
       screenshotOptions.quality = quality;
     }
 
-    return await page.screenshot(screenshotOptions);
+    const screenshot = await page.screenshot(screenshotOptions);
+    return Buffer.from(screenshot);
   } finally {
     await page.close();
   }
@@ -220,8 +222,6 @@ module.exports = { captureScreenshot };
 
 ```yaml
 # docker-compose.yml - Screenshot service with shared volume for output
-version: "3.8"
-
 services:
   screenshot-service:
     build: .
@@ -325,10 +325,10 @@ Compare screenshots before and after deployments to detect visual changes:
 ```javascript
 // src/compare.js - Compare two screenshots using pixel-level diffing
 const { PNG } = require('pngjs');
-const pixelmatch = require('pixelmatch');
 const fs = require('fs');
 
-function compareScreenshots(imagePath1, imagePath2, diffOutputPath) {
+async function compareScreenshots(imagePath1, imagePath2, diffOutputPath) {
+  const { default: pixelmatch } = await import('pixelmatch');
   const img1 = PNG.sync.read(fs.readFileSync(imagePath1));
   const img2 = PNG.sync.read(fs.readFileSync(imagePath2));
 
