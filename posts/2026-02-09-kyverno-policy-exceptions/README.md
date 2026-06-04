@@ -12,9 +12,9 @@ Policy exceptions are necessary in real-world Kubernetes environments. Some work
 
 ## Understanding PolicyException Resources
 
-PolicyException is a Kyverno custom resource that exempts specific resources from policy enforcement. Exceptions work by matching resources and listing which policies or rules should not apply. They provide an audit trail of who requested exceptions and why, making governance more transparent.
+PolicyException is a Kyverno custom resource that exempts specific resources from policy enforcement. Exceptions work by matching resources and listing which policies or rules should not apply. When documented with annotations and managed through GitOps or approval workflows, they provide an audit trail of who requested exceptions and why, making governance more transparent.
 
-Exceptions are scoped to namespaces, so you need cluster-scoped policies but namespace-scoped exceptions. This gives namespace administrators control over exceptions within their scope while platform teams maintain policy definitions.
+PolicyException resources are namespaced, but they can exempt resources in any matched namespace and can also apply to cluster-scoped resources. Kyverno disables PolicyExceptions by default, so administrators must enable them and configure the namespaces where exception resources are allowed before these examples will take effect.
 
 ## Creating Your First Exception
 
@@ -26,7 +26,6 @@ kind: ClusterPolicy
 metadata:
   name: require-run-as-nonroot
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-runAsNonRoot
@@ -36,6 +35,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Running as root is not allowed."
         pattern:
           spec:
@@ -47,7 +47,7 @@ spec:
 Now create an exception for a specific pod:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: allow-root-for-database
@@ -75,7 +75,7 @@ This exception allows pods whose names start with `postgres-` in the production 
 Create exceptions that apply to all resources in specific namespaces, useful for system or infrastructure namespaces:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: system-namespace-exception
@@ -106,7 +106,7 @@ This exception exempts all pods in kube-system from multiple policies, acknowled
 Target exceptions using labels instead of names for more flexible matching:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: legacy-app-exception
@@ -137,7 +137,7 @@ This requires two labels to match, ensuring exceptions are explicitly approved. 
 Document temporary exceptions by adding expiration information in annotations:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: temp-privileged-exception
@@ -169,7 +169,7 @@ While Kyverno does not automatically expire exceptions, the annotations provide 
 Create a single exception that covers multiple related policies:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: monitoring-stack-exception
@@ -204,12 +204,13 @@ This exception grants node-exporter the privileges it needs while keeping polici
 Restrict who can create resources that use exceptions by matching on subjects:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: admin-only-exception
   namespace: production
 spec:
+  background: false
   exceptions:
     - policyName: require-resource-limits
       ruleNames:
@@ -237,7 +238,7 @@ This exception only applies when specific users create the resources, preventing
 Create exceptions that apply to background scans of existing resources:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: existing-workload-exception
@@ -264,21 +265,26 @@ spec:
               legacy: "true"
 ```
 
-The `background: true` setting applies the exception to resources that already exist, preventing policy violations for workloads deployed before policy enforcement began.
+The `background: true` setting applies the exception to background scans of existing resources, preventing policy report violations for workloads deployed before policy enforcement began. This is also the default when the field is omitted.
 
 ## Wildcard Exceptions for Development
 
 Allow broader exceptions in development environments while maintaining strict enforcement in production:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: development-exception
-  namespace: dev-*
+  namespace: policy-exceptions
 spec:
   exceptions:
-    - policyName: "*"  # Exempt from all policies
+    - policyName: require-run-as-nonroot
+      ruleNames:
+        - "*"  # Exempt from all rules in this policy
+    - policyName: require-resource-limits
+      ruleNames:
+        - "*"
   match:
     any:
       - resources:
@@ -288,14 +294,14 @@ spec:
             - dev-*
 ```
 
-Use wildcard exceptions sparingly and only in non-production environments. They bypass all governance controls and should never apply to production workloads.
+Use wildcard rule exceptions sparingly and only in non-production environments. They bypass all rules in the selected policies and should never apply to production workloads.
 
 ## Documenting Exception Rationale
 
 Add comprehensive documentation to exception resources:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: gpu-workload-exception
@@ -334,7 +340,7 @@ Create a GitOps workflow for exception management:
 ```yaml
 # exceptions/production/database-exception.yaml
 
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: database-root-exception
@@ -398,7 +404,7 @@ kubectl get pods -A -l exception-approved=true
 
 # View Kyverno metrics for exceptions
 kubectl port-forward -n kyverno svc/kyverno-svc-metrics 8000
-curl localhost:8000/metrics | grep policy_exception
+curl localhost:8000/metrics | grep kyverno_policy_results
 ```
 
 High exception usage might indicate policies that are too strict or need refinement.
