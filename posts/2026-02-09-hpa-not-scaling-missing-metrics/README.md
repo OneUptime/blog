@@ -16,7 +16,7 @@ This guide covers diagnosing metric collection failures, fixing metrics server i
 
 HPA makes scaling decisions based on metrics. Resource metrics like CPU and memory come from metrics-server. Custom metrics come from custom metrics APIs backed by adapters like Prometheus Adapter. External metrics come from external metrics APIs for cloud provider or third-party metrics.
 
-When metrics are unavailable, HPA shows "unknown" for current metrics and won't scale. The controller needs baseline metrics to calculate target replica counts. Without metrics, it assumes the safest action is no action, leaving replica counts unchanged even as load increases.
+When all configured metrics are unavailable, HPA shows "unknown" for current metrics and won't scale. The controller needs baseline metrics to calculate target replica counts. If multiple metrics are configured, HPA can still scale up when at least one available metric recommends more replicas, but it skips scale-down decisions when another metric can't be fetched.
 
 ## Identifying Missing Metrics
 
@@ -85,10 +85,10 @@ spec:
     spec:
       containers:
       - name: metrics-server
-        image: registry.k8s.io/metrics-server/metrics-server:v0.6.4
+        image: registry.k8s.io/metrics-server/metrics-server:v0.8.1
         args:
         - --cert-dir=/tmp
-        - --secure-port=4443
+        - --secure-port=10250
         - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
         - --kubelet-use-node-status-port
         - --metric-resolution=15s
@@ -198,6 +198,7 @@ helm repo update
 
 helm install prometheus-adapter prometheus-community/prometheus-adapter \
   --namespace monitoring \
+  --create-namespace \
   --set prometheus.url=http://prometheus-server.monitoring.svc \
   --set prometheus.port=80
 ```
@@ -291,7 +292,7 @@ kubectl get hpa myapp-hpa -n default -w
 
 # Should show metrics:
 # NAME        REFERENCE          TARGETS                                  MINPODS   MAXPODS   REPLICAS
-# myapp-hpa   Deployment/myapp   500/1000 (http_requests), 45%/70% (cpu)  2         10        3
+# myapp-hpa   Deployment/myapp   500/1000 (http_requests_per_second), 45%/70% (cpu)  2         10        3
 ```
 
 ## Troubleshooting External Metrics
@@ -302,8 +303,10 @@ External metrics from cloud providers require additional configuration.
 # For GCP external metrics
 kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/k8s-stackdriver/master/custom-metrics-stackdriver-adapter/deploy/production/adapter.yaml
 
-# For AWS CloudWatch metrics
-kubectl apply -f https://github.com/kubernetes/kube-state-metrics/tree/main/examples/standard
+# For AWS CloudWatch metrics with KEDA
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
+helm install keda kedacore/keda --namespace keda --create-namespace
 
 # Verify external metrics API
 kubectl get apiservices | grep external.metrics
@@ -353,7 +356,7 @@ data:
       rules:
       - alert: HPAMissingMetrics
         expr: |
-          kube_horizontalpodautoscaler_status_condition{condition="ScalingLimited",status="true"} > 0
+          kube_horizontalpodautoscaler_status_condition{condition="ScalingActive",status="false"} > 0
         for: 10m
         labels:
           severity: warning
@@ -387,8 +390,8 @@ Create a dashboard showing HPA metrics and scaling activity.
 kubectl get hpa -A -o json | \
   jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name): \(.status.currentReplicas)/\(.spec.maxReplicas)"'
 
-# Monitor scaling events
-kubectl get events -A --field-selector reason=ScalingReplicaSet --watch
+# Monitor HPA scaling events
+kubectl get events -A --field-selector reason=SuccessfulRescale --watch
 ```
 
 ## Testing HPA Scaling
