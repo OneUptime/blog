@@ -30,7 +30,8 @@ data:
 
     # Baseline: Minimally restrictive
     - Prevents known privilege escalations
-    - Allows hostNetwork, hostPorts (with restrictions)
+    - Blocks host namespaces, including hostNetwork
+    - Blocks hostPorts unless they are unset or 0
     - Blocks hostPath volumes
     - Blocks privileged containers
 
@@ -204,8 +205,8 @@ Review violations discovered in audit mode.
 
 echo "=== PSA Audit Violations ==="
 
-# Check API server audit logs
-kubectl logs -n kube-system kube-apiserver-* | grep "pod-security.kubernetes.io/audit"
+# Check API server audit logs for self-hosted or static-pod control planes
+kubectl logs -n kube-system -l component=kube-apiserver --all-containers --tail=-1 | grep "pod-security.kubernetes.io/audit"
 
 # Query for pods that would violate restricted
 echo -e "\n=== Pods Violating Restricted Standard ==="
@@ -276,35 +277,41 @@ Add security contexts to meet PSA standards.
 #!/bin/bash
 # Batch update deployments for PSA compliance
 
-for DEPLOY in $(kubectl get deployments -n production -o name); do
+for DEPLOY in $(kubectl get deployments -n production -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
   echo "Updating $DEPLOY..."
 
-  kubectl patch $DEPLOY -n production --type='strategic' -p '{
-    "spec": {
-      "template": {
-        "spec": {
-          "securityContext": {
-            "runAsNonRoot": true,
-            "runAsUser": 1000,
-            "fsGroup": 2000,
-            "seccompProfile": {
-              "type": "RuntimeDefault"
-            }
-          },
-          "containers": [{
-            "name": "*",
-            "securityContext": {
-              "allowPrivilegeEscalation": false,
-              "capabilities": {
-                "drop": ["ALL"]
-              },
-              "readOnlyRootFilesystem": true
-            }
-          }]
+  CONTAINER_COUNT=$(kubectl get deployment "$DEPLOY" -n production -o json | jq '.spec.template.spec.containers | length')
+
+  PATCH='[
+    {
+      "op": "add",
+      "path": "/spec/template/spec/securityContext",
+      "value": {
+        "runAsNonRoot": true,
+        "runAsUser": 1000,
+        "fsGroup": 2000,
+        "seccompProfile": {
+          "type": "RuntimeDefault"
         }
       }
     }
-  }'
+  ]'
+
+  for INDEX in $(seq 0 $((CONTAINER_COUNT - 1))); do
+    PATCH=$(echo "$PATCH" | jq ". + [{
+      \"op\": \"add\",
+      \"path\": \"/spec/template/spec/containers/$INDEX/securityContext\",
+      \"value\": {
+        \"allowPrivilegeEscalation\": false,
+        \"capabilities\": {
+          \"drop\": [\"ALL\"]
+        },
+        \"readOnlyRootFilesystem\": true
+      }
+    }]")
+  done
+
+  kubectl patch deployment "$DEPLOY" -n production --type='json' -p "$PATCH"
 done
 ```
 
@@ -342,11 +349,23 @@ for NS in $NAMESPACES; do
   echo "Enabling PSA enforcement for $NS..."
 
   # Get current PSA level
-  LEVEL=$(kubectl get ns $NS -o jsonpath='{.metadata.labels.pod-security\.kubernetes\.io/audit}')
+  LEVEL=$(kubectl get ns "$NS" -o json | jq -r '.metadata.labels["pod-security.kubernetes.io/audit"] // empty')
+
+  if [ -z "$LEVEL" ]; then
+    echo "WARNING: $NS has no audit level label; skipping"
+    continue
+  fi
+
+  # Dry-run first so existing pod violations are reported as warnings
+  kubectl label namespace "$NS" \
+    pod-security.kubernetes.io/enforce="$LEVEL" \
+    pod-security.kubernetes.io/enforce-version=latest \
+    --overwrite \
+    --dry-run=server
 
   # Enable enforcement
-  kubectl label namespace $NS \
-    pod-security.kubernetes.io/enforce=$LEVEL \
+  kubectl label namespace "$NS" \
+    pod-security.kubernetes.io/enforce="$LEVEL" \
     pod-security.kubernetes.io/enforce-version=latest \
     --overwrite
 
@@ -394,8 +413,13 @@ kubectl get psp -o yaml > psp-backup.yaml
 echo "Deleting Pod Security Policies..."
 kubectl delete psp --all
 
-# Delete PSP-related RoleBindings
-kubectl delete rolebinding -A -l psp=true
+# Review PSP-related RBAC before cleanup
+kubectl get clusterrole,role -A -o json | jq -r '
+  .items[]
+  | select(.rules[]? | (.resources // []) | index("podsecuritypolicies"))
+  | "\(.kind) \(.metadata.namespace // "-")/\(.metadata.name)"'
+
+echo "Remove PSP-related Roles, ClusterRoles, RoleBindings, and ClusterRoleBindings after review"
 
 echo "PSPs removed successfully"
 ```
@@ -459,8 +483,9 @@ spec:
     rules:
     - alert: PSAViolationDetected
       expr: |
-        increase(apiserver_admission_webhook_rejection_count{
-          name="pod-security.kubernetes.io"
+        increase(pod_security_evaluations_total{
+          decision="deny",
+          mode="enforce"
         }[5m]) > 0
       labels:
         severity: warning
@@ -470,7 +495,9 @@ spec:
 
     - alert: NamespaceMissingPSA
       expr: |
-        kube_namespace_labels{label_pod_security_kubernetes_io_enforce=""} == 1
+        kube_namespace_status_phase{phase="Active"}
+          unless on(namespace)
+        kube_namespace_labels{label_pod_security_kubernetes_io_enforce=~".+"}
       labels:
         severity: warning
       annotations:
