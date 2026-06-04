@@ -50,10 +50,11 @@ docker run -d \
   --name buildkite-agent \
   --restart unless-stopped \
   -e BUILDKITE_AGENT_TOKEN=${BUILDKITE_AGENT_TOKEN} \
-  -e BUILDKITE_AGENT_NAME="docker-agent-%n" \
+  -e BUILDKITE_AGENT_NAME="docker-agent-%hostname-%spawn" \
   -e BUILDKITE_AGENT_TAGS="queue=default,docker=true" \
+  -e BUILDKITE_BUILD_PATH=/var/lib/buildkite/builds \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v buildkite-builds:/buildkite/builds \
+  -v /var/lib/buildkite/builds:/var/lib/buildkite/builds \
   buildkite/agent:3
 ```
 
@@ -65,8 +66,6 @@ Run multiple agents to process builds in parallel.
 
 ```yaml
 # docker-compose.yml - Buildkite agent pool
-version: "3.8"
-
 services:
   # Primary build agent with Docker access
   agent:
@@ -74,14 +73,14 @@ services:
     restart: unless-stopped
     environment:
       - BUILDKITE_AGENT_TOKEN=${BUILDKITE_AGENT_TOKEN}
-      # Use %n to auto-number multiple instances
-      - BUILDKITE_AGENT_NAME=docker-agent-%hostname-%n
+      # Use %spawn to number agents spawned inside the same container
+      - BUILDKITE_AGENT_NAME=docker-agent-%hostname-%spawn
       # Tags determine which pipelines this agent can run
       - BUILDKITE_AGENT_TAGS=queue=default,docker=true,os=linux
       # Set the number of parallel jobs per agent container
       - BUILDKITE_AGENT_SPAWN=1
       # Build directory
-      - BUILDKITE_BUILD_PATH=/buildkite/builds
+      - BUILDKITE_BUILD_PATH=/var/lib/buildkite/builds
       # Hooks directory for custom lifecycle scripts
       - BUILDKITE_HOOKS_PATH=/buildkite/hooks
       # Plugins directory
@@ -91,8 +90,8 @@ services:
     volumes:
       # Docker socket for running Docker commands in builds
       - /var/run/docker.sock:/var/run/docker.sock
-      # Persistent build cache
-      - buildkite-builds:/buildkite/builds
+      # Keep the build path identical on the host and in the agent container
+      - /var/lib/buildkite/builds:/var/lib/buildkite/builds
       # Custom hooks
       - ./hooks:/buildkite/hooks
     # Scale this service to run multiple agents
@@ -114,20 +113,16 @@ services:
       - BUILDKITE_AGENT_NAME=deploy-agent-%hostname
       # This agent only picks up deploy jobs
       - BUILDKITE_AGENT_TAGS=queue=deploy
-      - BUILDKITE_BUILD_PATH=/buildkite/builds
+      - BUILDKITE_BUILD_PATH=/var/lib/buildkite/deploy-builds
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - buildkite-deploy-builds:/buildkite/builds
+      - /var/lib/buildkite/deploy-builds:/var/lib/buildkite/deploy-builds
       # Mount deployment credentials
       - ./deploy-keys:/root/.ssh:ro
     deploy:
       replicas: 1
     networks:
       - buildkite
-
-volumes:
-  buildkite-builds:
-  buildkite-deploy-builds:
 
 networks:
   buildkite:
@@ -224,17 +219,20 @@ volumes:
 
 ## Build Caching
 
-Efficient caching speeds up your builds dramatically. Use Docker volume mounts to persist caches between builds.
+Efficient caching speeds up your builds dramatically. With the host Docker socket approach above, Docker layer cache lives in the host Docker daemon. Use Docker volume mounts to persist dependency caches between builds, and keep the DinD data volume if you use the separate DinD daemon shown earlier.
 
 ```yaml
 agent:
   volumes:
-    # Persist Docker layer cache
-    - docker-cache:/var/lib/docker
     # Persist dependency caches
     - npm-cache:/root/.npm
     - pip-cache:/root/.cache/pip
     - go-cache:/root/go
+
+docker:
+  volumes:
+    # Persist Docker layer cache for the DinD sidecar
+    - dind-data:/var/lib/docker
 ```
 
 In your Buildkite pipeline, use the Docker Compose plugin or cache plugin for more control.
