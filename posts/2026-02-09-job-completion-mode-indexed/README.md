@@ -8,7 +8,7 @@ Description: Master the Indexed completion mode in Kubernetes Jobs to assign spe
 
 ---
 
-The Indexed completion mode transforms how you distribute work in Kubernetes Jobs. Instead of pods pulling tasks from a shared queue, each pod receives a unique completion index from 0 to N-1. This index tells the pod exactly which work item to process, creating a deterministic, predictable work distribution pattern.
+The Indexed completion mode transforms how you distribute work in Kubernetes Jobs. Instead of pods pulling tasks from a shared queue, each completion index runs from 0 to N-1. This index tells the pod exactly which work item to process, creating a deterministic, predictable work distribution pattern.
 
 This pattern excels when you have a known list of work items that can be mapped to indexes. Processing files from a numbered list, handling database partitions, or running parameter sweeps for simulations all benefit from indexed jobs where each pod knows its exact assignment upfront.
 
@@ -84,7 +84,7 @@ def process_file(filepath):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     with open(output_path, 'w') as f:
-        f.write('\\n'.join(results))
+        f.write('\n'.join(results))
 
     print(f"Completed: {filepath} -> {output_path}")
     return len(results)
@@ -134,7 +134,7 @@ spec:
         command: ["python3", "/app/process.py"]
 ```
 
-Each pod processes exactly one file, with no coordination needed.
+Each successful index processes one file, with no coordination needed.
 
 ## Database Partition Processing
 
@@ -276,11 +276,11 @@ func getConfigurations() []SimConfig {
 }
 
 func runSimulation(config SimConfig) error {
-    fmt.Printf("Running simulation %d\\n", config.Index)
-    fmt.Printf("  Temperature: %.2f K\\n", config.Temperature)
-    fmt.Printf("  Pressure: %.2f kPa\\n", config.Pressure)
-    fmt.Printf("  Catalyst: %s\\n", config.Catalyst)
-    fmt.Printf("  Duration: %d s\\n", config.Duration)
+    fmt.Printf("Running simulation %d\n", config.Index)
+    fmt.Printf("  Temperature: %.2f K\n", config.Temperature)
+    fmt.Printf("  Pressure: %.2f kPa\n", config.Pressure)
+    fmt.Printf("  Catalyst: %s\n", config.Catalyst)
+    fmt.Printf("  Duration: %d s\n", config.Duration)
 
     // Your simulation code here
     // ...
@@ -289,7 +289,7 @@ func runSimulation(config SimConfig) error {
     filename := fmt.Sprintf("/results/simulation_%03d.json", config.Index)
     // Write results to file
 
-    fmt.Printf("Simulation %d complete, results saved to %s\\n",
+    fmt.Printf("Simulation %d complete, results saved to %s\n",
         config.Index, filename)
 
     return nil
@@ -304,19 +304,19 @@ func main() {
 
     index, err := strconv.Atoi(indexStr)
     if err != nil {
-        fmt.Printf("Error parsing index: %v\\n", err)
+        fmt.Printf("Error parsing index: %v\n", err)
         os.Exit(1)
     }
 
     configs := getConfigurations()
     if index >= len(configs) {
-        fmt.Printf("Error: Index %d exceeds configuration count\\n", index)
+        fmt.Printf("Error: Index %d exceeds configuration count\n", index)
         os.Exit(1)
     }
 
     config := configs[index]
     if err := runSimulation(config); err != nil {
-        fmt.Printf("Simulation failed: %v\\n", err)
+        fmt.Printf("Simulation failed: %v\n", err)
         os.Exit(1)
     }
 }
@@ -355,9 +355,7 @@ spec:
   - name: processor
     image: processor:latest
     env:
-    - name: JOB_COMPLETION_INDEX  # Automatically available
-      # Don't need to specify - Kubernetes sets this
-    - name: INDEX_FROM_ANNOTATION
+    - name: COMPLETION_INDEX
       valueFrom:
         fieldRef:
           fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
@@ -384,7 +382,7 @@ kubectl get pods -l job-name=indexed-processor \
   -o jsonpath='{range .items[*]}{.metadata.annotations.batch\.kubernetes\.io/job-completion-index}{"\n"}{end}' | \
   sort -n
 
-# Check logs for specific index
+# Check logs for specific index on Kubernetes v1.28+ with the PodIndexLabel feature enabled
 kubectl logs -l job-name=indexed-processor,batch.kubernetes.io/job-completion-index=5
 ```
 
@@ -401,7 +399,7 @@ spec:
   completions: 100
   parallelism: 10
   completionMode: Indexed
-  backoffLimit: 3
+  backoffLimitPerIndex: 3
   podFailurePolicy:
     rules:
     # If this specific index has bad input, fail just this index
@@ -416,7 +414,7 @@ spec:
         values: [2]  # Config error
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: processor
         image: processor:latest
@@ -497,5 +495,7 @@ output_file = f"/results/index_{index:04d}_output.json"
 # Bad: all indexes write to same file
 output_file = "/results/output.json"  # Race condition!
 ```
+
+Make index-based processing idempotent when possible. Although rare, Kubernetes can start more than one pod for the same index after events such as node failures, kubelet restarts, or pod evictions; only the first successful pod for that index counts toward Job completion.
 
 Indexed completion mode provides deterministic work assignment perfect for batch processing known sets of items. Each pod knows exactly which work item it should handle, eliminating coordination overhead and simplifying failure recovery.
