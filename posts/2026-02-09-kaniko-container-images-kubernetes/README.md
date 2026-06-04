@@ -8,7 +8,7 @@ Description: Learn how to use Kaniko to build container images inside Kubernetes
 
 ---
 
-Building container images in Kubernetes traditionally requires running Docker-in-Docker or mounting the Docker socket, both of which create security risks. Kaniko solves this by building container images without a Docker daemon, running entirely in userspace. This makes it perfect for secure CI/CD pipelines running inside Kubernetes.
+Building container images in Kubernetes traditionally requires running Docker-in-Docker or mounting the Docker socket, both of which create security risks. Kaniko solves this by building container images without a Docker daemon, running entirely in userspace. The original GoogleContainerTools Kaniko repository was archived on June 3, 2025, so pin a known image version or use a maintained fork if you adopt it for new CI/CD pipelines.
 
 This guide shows you how to build images with Kaniko in your Kubernetes clusters.
 
@@ -24,7 +24,7 @@ Traditional image building in Kubernetes has problems:
 Kaniko advantages:
 
 - No daemon required
-- Runs as non-root user
+- Can run without privileged containers
 - Works in standard Kubernetes pods
 - Supports multi-stage builds
 - Compatible with Dockerfiles
@@ -65,7 +65,7 @@ Create secret for registry authentication:
 
 ```bash
 kubectl create secret docker-registry docker-credentials \
-  --docker-server=docker.io \
+  --docker-server=https://index.docker.io/v1/ \
   --docker-username=youruser \
   --docker-password=yourpass \
   --docker-email=your@email.com
@@ -76,7 +76,7 @@ kubectl create secret docker-registry docker-credentials \
 Integrate Kaniko into Tekton pipelines:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: kaniko-build
@@ -91,6 +91,10 @@ spec:
   workspaces:
     - name: source
       description: Source code workspace
+
+  results:
+    - name: image-url
+      description: Image reference pushed by Kaniko
 
   steps:
     - name: build-and-push
@@ -108,6 +112,11 @@ spec:
       volumeMounts:
         - name: docker-config
           mountPath: /kaniko/.docker
+    - name: write-image-url
+      image: busybox:1.36
+      script: |
+        #!/bin/sh
+        echo -n "$(params.image-name):$(params.image-tag)" | tee "$(results.image-url.path)"
 
   volumes:
     - name: docker-config
@@ -121,7 +130,7 @@ spec:
 Complete pipeline:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: build-push-pipeline
@@ -181,19 +190,20 @@ Kaniko stores cache layers in the cache repository, dramatically speeding up sub
 
 ## Multi-Architecture Builds
 
-Build for multiple platforms:
+Build for multiple platforms on nodes that can run each target architecture:
 
 ```yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: multi-arch-build
+  name: build-amd64
 spec:
   template:
     spec:
       restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/arch: amd64
       containers:
-      # Build for AMD64
       - name: build-amd64
         image: gcr.io/kaniko-project/executor:latest
         args:
@@ -204,8 +214,22 @@ spec:
         volumeMounts:
         - name: docker-config
           mountPath: /kaniko/.docker
-
-      # Build for ARM64
+      volumes:
+      - name: docker-config
+        secret:
+          secretName: docker-credentials
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: build-arm64
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      containers:
       - name: build-arm64
         image: gcr.io/kaniko-project/executor:latest
         args:
@@ -343,11 +367,16 @@ kubectl logs -f kaniko-build
 Combine with Trivy for vulnerability scanning:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: secure-build
 spec:
+  params:
+    - name: image-name
+    - name: image-tag
+      default: latest
+
   workspaces:
     - name: source
 
@@ -355,6 +384,11 @@ spec:
     - name: build
       taskRef:
         name: kaniko-build
+      params:
+        - name: image-name
+          value: $(params.image-name)
+        - name: image-tag
+          value: $(params.image-tag)
       workspaces:
         - name: source
           workspace: source
@@ -372,7 +406,7 @@ spec:
 Trivy task:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: trivy-scan
@@ -399,10 +433,10 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: git-credentials
-type: kubernetes.io/basic-auth
+type: Opaque
 stringData:
-  username: git
-  password: ghp_your_github_token
+  GIT_USERNAME: git
+  GIT_PASSWORD: ghp_your_github_token
 ---
 apiVersion: v1
 kind: Pod
@@ -416,16 +450,13 @@ spec:
       - "--dockerfile=Dockerfile"
       - "--context=git://github.com/yourorg/private-repo.git"
       - "--destination=myregistry.io/app:latest"
+    envFrom:
+    - secretRef:
+        name: git-credentials
     volumeMounts:
-    - name: git-credentials
-      mountPath: /root/.git-credentials
-      subPath: .git-credentials
     - name: docker-config
       mountPath: /kaniko/.docker
   volumes:
-  - name: git-credentials
-    secret:
-      secretName: git-credentials
   - name: docker-config
     secret:
       secretName: docker-credentials
@@ -481,8 +512,7 @@ args:
 
 **Permission denied:**
 ```yaml
-# Kaniko runs as non-root by default
-# If you need root, add:
+# Kaniko may need root to unpack some base images or run Dockerfile commands
 securityContext:
   runAsUser: 0
 ```
@@ -495,4 +525,4 @@ kubectl get secret docker-credentials -o jsonpath='{.data.\.dockerconfigjson}' |
 
 ## Conclusion
 
-Kaniko brings secure container image building to Kubernetes without requiring privileged access or Docker daemons. It integrates seamlessly with Tekton pipelines, supports standard Dockerfiles, and provides layer caching for fast builds. For CI/CD running inside Kubernetes, Kaniko is the secure choice that doesn't compromise on features or performance. Start with simple builds, enable caching, and integrate vulnerability scanning for production-ready container image pipelines.
+Kaniko brings container image building to Kubernetes without requiring privileged access or Docker daemons. It integrates with Tekton pipelines, supports standard Dockerfiles, and provides layer caching for fast builds. For CI/CD running inside Kubernetes, Kaniko can still be useful when you understand its maintenance status and security boundaries. Start with simple builds, enable caching, and integrate vulnerability scanning for production-ready container image pipelines.
