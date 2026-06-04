@@ -8,11 +8,11 @@ Description: Deploy KeyDB in Docker as a multi-threaded drop-in Redis replacemen
 
 ---
 
-KeyDB is a multi-threaded fork of Redis that maintains full compatibility with the Redis protocol. It uses multiple CPU cores for request processing, which gives it significantly higher throughput than single-threaded Redis on modern hardware. Since it speaks the same protocol, every Redis client library, tool, and command works with KeyDB without modification. Docker is the quickest way to try it.
+KeyDB is a multi-threaded fork of Redis that maintains compatibility with the Redis protocol. It uses multiple CPU cores for request processing, which gives it significantly higher throughput than Redis's mostly single-threaded command execution model on modern hardware. Since it speaks the same protocol, Redis client libraries, tools, and standard commands work with KeyDB without modification. Docker is the quickest way to try it.
 
 ## Why KeyDB Over Redis?
 
-Redis processes commands on a single thread. On a server with 16 or 32 cores, most of that CPU capacity sits idle. KeyDB removes this limitation by handling connections and processing commands across multiple threads.
+Redis processes commands mostly on a single thread. On a server with 16 or 32 cores, most of that CPU capacity can sit idle for command execution. KeyDB removes this limitation by handling connections and processing commands across multiple threads.
 
 Benchmarks show KeyDB achieving 2-5x higher throughput than Redis on the same hardware, depending on the workload. It also adds features that Redis lacks, including active-active replication (called "Active Rep") and sub-key expires.
 
@@ -52,9 +52,6 @@ INFO server
 A complete setup with persistence, tuning, and health checks.
 
 ```yaml
-# docker-compose.yml
-version: "3.8"
-
 services:
   keydb:
     image: eqalpha/keydb:latest
@@ -103,14 +100,14 @@ The `--server-threads` flag controls how many threads KeyDB uses for network I/O
 # Check available CPU cores on your system
 nproc
 
-# General guideline: set server-threads to (CPU cores - 2)
-# On an 8-core machine, use 6 threads
+# General guideline: start with 2-4 threads, then benchmark
+# before increasing further for your workload and hardware
 docker run -d \
   --name keydb \
   -p 6379:6379 \
-  --cpus="8.0" \
+  --cpus="4.0" \
   eqalpha/keydb:latest \
-  keydb-server --server-threads 6
+  keydb-server --server-threads 4
 ```
 
 Verify the thread configuration from inside the container.
@@ -125,9 +122,6 @@ docker exec keydb keydb-cli INFO server | grep -E "server_threads|redis_version|
 KeyDB supports active-active replication where both nodes accept writes. This is a step beyond Redis's master-replica model where replicas are read-only.
 
 ```yaml
-# docker-compose-replication.yml
-version: "3.8"
-
 services:
   keydb-node1:
     image: eqalpha/keydb:latest
@@ -267,12 +261,15 @@ On a multi-core machine, you should see KeyDB handle significantly more operatio
 
 KeyDB adds several features beyond standard Redis.
 
-Sub-key expires let you set TTL on individual hash fields.
+Sub-key expires let you set TTL on individual set members.
 
 ```bash
-# Set expiration on a specific hash field (not available in Redis)
+# Set expiration on a specific set member (not available in Redis)
 docker exec keydb keydb-cli -a strongpassword123 \
-  EXPIREMEMBER myhash field1 3600
+  SADD myset member1
+
+docker exec keydb keydb-cli -a strongpassword123 \
+  EXPIREMEMBER myset member1 3600
 ```
 
 MVCC (Multi-Version Concurrency Control) enables snapshot-based reads that do not block writes.
@@ -320,4 +317,4 @@ docker exec keydb keydb-cli -a strongpassword123 BGREWRITEAOF
 
 ## Summary
 
-KeyDB in Docker gives you a multi-threaded Redis alternative that uses the same protocol, the same commands, and the same client libraries. Set `--server-threads` to match your available CPU cores for higher throughput. The active replication feature allows true multi-master setups where both nodes accept writes. For most workloads, switching from Redis to KeyDB means changing only the Docker image name. Your application code, client libraries, and operational tools all continue to work unchanged.
+KeyDB in Docker gives you a multi-threaded Redis alternative that uses the same protocol, the same commands, and the same client libraries. Start with a small `--server-threads` value and benchmark your workload before increasing it further. The active replication feature allows true multi-master setups where both nodes accept writes. For most workloads, switching from Redis to KeyDB means changing only the Docker image name. Your application code, client libraries, and operational tools all continue to work unchanged.
