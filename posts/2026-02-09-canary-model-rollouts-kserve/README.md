@@ -36,9 +36,10 @@ Build a predictor that exports detailed metrics:
 import kserve
 import logging
 from typing import Dict
+import os
 import time
 import numpy as np
-from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import Counter, Histogram
 
 logging.basicConfig(level=logging.INFO)
 
@@ -77,9 +78,12 @@ class MetricsPredictor(kserve.Model):
         self.ready = False
 
     def load(self):
-        # Load model
+        # Load model. Replace this demo training data with your model artifact.
         from sklearn.ensemble import RandomForestClassifier
         self.model = RandomForestClassifier()
+        X_train = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
+        y_train = np.array([0, 0, 1, 1])
+        self.model.fit(X_train, y_train)
         self.ready = True
         logging.info(f"Model {self.model_version} loaded")
 
@@ -133,8 +137,7 @@ class MetricsPredictor(kserve.Model):
             ).observe(latency)
 
 if __name__ == "__main__":
-    import sys
-    model_version = sys.argv[1] if len(sys.argv) > 1 else "v1"
+    model_version = os.getenv("MODEL_VERSION", "v1")
 
     predictor = MetricsPredictor("canary-model", model_version)
     predictor.load()
@@ -170,16 +173,20 @@ metadata:
   name: canary-model
   namespace: ml-serving
   annotations:
-    serving.kserve.io/revisionTag: "v1-stable"
+    serving.kserve.io/enable-prometheus-scraping: "true"
+    prometheus.kserve.io/port: "8080"
+    prometheus.kserve.io/path: "/metrics"
 spec:
   predictor:
     containers:
     - name: kserve-container
       image: your-registry/canary-model:v1
-      args: ["v1"]
+      env:
+      - name: MODEL_VERSION
+        value: "v1"
       ports:
-      - containerPort: 8000
-        name: metrics
+      - containerPort: 8080
+        name: http1
         protocol: TCP
       resources:
         requests:
@@ -199,7 +206,8 @@ spec:
     matchLabels:
       serving.kserve.io/inferenceservice: canary-model
   endpoints:
-  - port: metrics
+  - targetPort: 8080
+    path: /metrics
     interval: 15s
 ```
 
@@ -223,15 +231,22 @@ kind: InferenceService
 metadata:
   name: canary-model
   namespace: ml-serving
+  annotations:
+    serving.kserve.io/enable-prometheus-scraping: "true"
+    prometheus.kserve.io/port: "8080"
+    prometheus.kserve.io/path: "/metrics"
 spec:
   predictor:
+    canaryTrafficPercent: 5
     containers:
     - name: kserve-container
       image: your-registry/canary-model:v2
-      args: ["v2"]
+      env:
+      - name: MODEL_VERSION
+        value: "v2"
       ports:
-      - containerPort: 8000
-        name: metrics
+      - containerPort: 8080
+        name: http1
       resources:
         requests:
           cpu: "1"
@@ -240,22 +255,7 @@ spec:
           cpu: "2"
           memory: "4Gi"
 
-  # Traffic configuration
-  traffic:
-    # 95% to stable v1
-    - revisionName: canary-model-v1-stable
-      percent: 95
-      tag: stable
-
-    # 5% to canary v2
-    - revisionName: canary-model-v2-canary
-      percent: 5
-      tag: canary
-
-    # Latest for testing
-    - latestRevision: true
-      percent: 0
-      tag: latest
+    # KServe sends 5% of traffic to the latest ready revision and 95% to the last rolled-out revision.
 ```
 
 Apply the canary deployment:
@@ -264,7 +264,7 @@ Apply the canary deployment:
 kubectl apply -f canary-deployment.yaml
 
 # Verify traffic split
-kubectl get inferenceservice canary-model -n ml-serving -o jsonpath='{.status.traffic[*]}'
+kubectl get inferenceservice canary-model -n ml-serving
 ```
 
 ## Creating Prometheus Alert Rules
@@ -304,11 +304,11 @@ spec:
       expr: |
         (
           histogram_quantile(0.95,
-            rate(model_prediction_latency_seconds_bucket{model_version="v2"}[2m])
+            sum by (le) (rate(model_prediction_latency_seconds_bucket{model_version="v2"}[2m]))
           )
           /
           histogram_quantile(0.95,
-            rate(model_prediction_latency_seconds_bucket{model_version="v1"}[2m])
+            sum by (le) (rate(model_prediction_latency_seconds_bucket{model_version="v1"}[2m]))
           )
         ) > 1.5
       for: 3m
@@ -322,9 +322,17 @@ spec:
     # Low confidence predictions in canary
     - alert: CanaryLowConfidence
       expr: |
-        avg(model_prediction_confidence{model_version="v2"})
+        (
+          sum(rate(model_prediction_confidence_sum{model_version="v2"}[2m]))
+          /
+          sum(rate(model_prediction_confidence_count{model_version="v2"}[2m]))
+        )
         <
-        avg(model_prediction_confidence{model_version="v1"}) * 0.8
+        (
+          sum(rate(model_prediction_confidence_sum{model_version="v1"}[2m]))
+          /
+          sum(rate(model_prediction_confidence_count{model_version="v1"}[2m]))
+        ) * 0.8
       for: 5m
       labels:
         severity: warning
@@ -348,6 +356,7 @@ Create a controller that monitors metrics and manages rollout:
 # canary_controller.py
 import time
 import logging
+import os
 from prometheus_api_client import PrometheusConnect
 import kubernetes.client
 from kubernetes import config
@@ -385,11 +394,11 @@ class CanaryController:
         """Get latency ratio between canary and stable"""
         query = '''
         histogram_quantile(0.95,
-          rate(model_prediction_latency_seconds_bucket{model_version="v2"}[2m])
+          sum by (le) (rate(model_prediction_latency_seconds_bucket{model_version="v2"}[2m]))
         )
         /
         histogram_quantile(0.95,
-          rate(model_prediction_latency_seconds_bucket{model_version="v1"}[2m])
+          sum by (le) (rate(model_prediction_latency_seconds_bucket{model_version="v1"}[2m]))
         )
         '''
 
@@ -417,29 +426,13 @@ class CanaryController:
 
     def update_traffic_split(self, canary_percent: int):
         """Update traffic split"""
-        stable_percent = 100 - canary_percent
-
-        inference_service = self.custom_api.get_namespaced_custom_object(
-            group="serving.kserve.io",
-            version="v1beta1",
-            namespace=self.namespace,
-            plural="inferenceservices",
-            name=self.model_name
-        )
-
-        # Update traffic configuration
-        inference_service['spec']['traffic'] = [
-            {
-                "revisionName": f"{self.model_name}-v1-stable",
-                "percent": stable_percent,
-                "tag": "stable"
-            },
-            {
-                "revisionName": f"{self.model_name}-v2-canary",
-                "percent": canary_percent,
-                "tag": "canary"
+        body = {
+            "spec": {
+                "predictor": {
+                    "canaryTrafficPercent": canary_percent
+                }
             }
-        ]
+        }
 
         self.custom_api.patch_namespaced_custom_object(
             group="serving.kserve.io",
@@ -447,9 +440,10 @@ class CanaryController:
             namespace=self.namespace,
             plural="inferenceservices",
             name=self.model_name,
-            body=inference_service
+            body=body
         )
 
+        stable_percent = 100 - canary_percent
         logging.info(f"Updated traffic: stable={stable_percent}%, canary={canary_percent}%")
 
     def rollback(self):
@@ -463,11 +457,10 @@ class CanaryController:
         """Promote canary to stable"""
         logging.info("Canary successful! Promoting to stable.")
 
-        # Update traffic to 100% canary
+        # Update traffic to 100% latest revision
         self.update_traffic_split(100)
 
-        # Tag canary as new stable
-        # (In production, update revision tags)
+        # KServe records the latest ready revision as the rolled-out revision when it receives 100% traffic.
 
     def run_canary_rollout(self):
         """Execute canary rollout"""
@@ -498,9 +491,9 @@ class CanaryController:
 
 if __name__ == "__main__":
     controller = CanaryController(
-        prometheus_url="http://monitoring-prometheus.monitoring.svc:9090",
-        namespace="ml-serving",
-        model_name="canary-model"
+        prometheus_url=os.getenv("PROMETHEUS_URL", "http://monitoring-kube-prometheus-prometheus.monitoring.svc:9090"),
+        namespace=os.getenv("NAMESPACE", "ml-serving"),
+        model_name=os.getenv("MODEL_NAME", "canary-model")
     )
 
     success = controller.run_canary_rollout()
@@ -530,7 +523,7 @@ spec:
         image: your-registry/canary-controller:v1
         env:
         - name: PROMETHEUS_URL
-          value: "http://monitoring-prometheus.monitoring.svc:9090"
+          value: "http://monitoring-kube-prometheus-prometheus.monitoring.svc:9090"
         - name: NAMESPACE
           value: "ml-serving"
         - name: MODEL_NAME
@@ -603,13 +596,13 @@ Visualize the canary metrics:
       {
         "title": "P95 Latency Comparison",
         "targets": [{
-          "expr": "histogram_quantile(0.95, rate(model_prediction_latency_seconds_bucket[2m])) by (model_version)"
+          "expr": "histogram_quantile(0.95, sum by (model_version, le) (rate(model_prediction_latency_seconds_bucket[2m])))"
         }]
       },
       {
         "title": "Prediction Confidence",
         "targets": [{
-          "expr": "avg(model_prediction_confidence) by (model_version)"
+          "expr": "sum by (model_version) (rate(model_prediction_confidence_sum[2m])) / sum by (model_version) (rate(model_prediction_confidence_count[2m]))"
         }]
       }
     ]
