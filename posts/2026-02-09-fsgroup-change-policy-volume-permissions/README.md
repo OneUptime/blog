@@ -8,20 +8,20 @@ Description: Learn how to optimize volume mount performance in Kubernetes using 
 
 ---
 
-When you mount volumes to Kubernetes pods with a specified fsGroup, the kubelet changes ownership and permissions of all files in the volume to match the fsGroup value. For large volumes with thousands of files, this recursive permission change can significantly slow down pod startup times. The fsGroupChangePolicy feature provides control over this behavior.
+When you mount supported volume types to Kubernetes pods with a specified fsGroup, the kubelet changes ownership and permissions of files in the volume to match the fsGroup value. For large volumes with thousands of files, this recursive permission change can significantly slow down pod startup times. The fsGroupChangePolicy feature provides control over this behavior.
 
 ## Understanding the Problem
 
-By default, when you specify an fsGroup in a pod's security context, Kubernetes recursively applies ownership changes to every file and directory in the mounted volume. For a volume containing 100,000 files, this operation can take several minutes, delaying your application startup.
+By default, when you specify an fsGroup in a pod's security context, Kubernetes recursively applies ownership and permission changes to supported mounted volumes. For a volume containing 100,000 files, this operation can take several minutes, delaying your application startup.
 
 This happens because the kubelet must traverse the entire directory tree and modify metadata for each file. The operation blocks pod startup until completion, creating a bottleneck for workloads that need quick scaling or frequent restarts.
 
 ## The fsGroupChangePolicy Solution
 
-Kubernetes 1.20 introduced the fsGroupChangePolicy field in the pod security context. This field controls when and how volume ownership changes occur. It accepts two values:
+Kubernetes 1.20 introduced the fsGroupChangePolicy field in the pod security context, and the field became stable in Kubernetes 1.23. This field controls when and how volume ownership and permission changes occur for volume types that support fsGroup-based ownership. It accepts two values:
 
-- **OnRootMismatch**: Changes permissions only if the root directory's ownership doesn't match the fsGroup
-- **Always**: Changes permissions recursively on every mount (default behavior)
+- **OnRootMismatch**: Changes ownership and permissions only if the root directory's ownership or permissions don't match the expected values
+- **Always**: Changes ownership and permissions recursively on every mount (default behavior)
 
 The OnRootMismatch policy assumes that if the root directory has correct permissions, the entire volume already has the correct ownership. This dramatically reduces mount time for volumes that were previously mounted with the same fsGroup.
 
@@ -50,7 +50,7 @@ spec:
       claimName: nginx-pvc
 ```
 
-This configuration tells Kubernetes to check the root directory of the mounted volume first. If the root directory already has group ownership set to 2000, Kubernetes skips the recursive permission change.
+This configuration tells Kubernetes to check the root directory of the mounted volume first. If the root directory already has the expected group ownership and permissions, Kubernetes skips the recursive permission change.
 
 ## When to Use OnRootMismatch
 
@@ -121,11 +121,13 @@ In this example, when a PostgreSQL pod restarts, the volume already has the corr
 
 The OnRootMismatch policy requires careful consideration of your volume lifecycle:
 
-**Initial volume creation**: On first mount, OnRootMismatch behaves identically to Always because the root directory won't match the fsGroup. The performance benefit appears on subsequent mounts.
+**Initial volume creation**: On first mount, OnRootMismatch typically behaves like Always because the root directory won't match the expected fsGroup ownership and permissions. The performance benefit appears on subsequent mounts.
 
 **Shared volumes**: If multiple pods with different fsGroups mount the same volume, OnRootMismatch can cause permission issues. Each pod expects different ownership, and the policy only checks the root directory.
 
 **Manual permission changes**: If you or your application modifies file permissions inside the volume, OnRootMismatch won't detect or correct these changes on remount.
+
+**Unsupported volume types and CSI delegation**: fsGroupChangePolicy has no effect on ephemeral volume types such as secret, ConfigMap, and emptyDir. Starting with Kubernetes 1.26, CSI drivers that advertise the VOLUME_MOUNT_GROUP capability handle fsGroup during mount, so kubelet does not apply fsGroupChangePolicy for those volumes.
 
 ## Monitoring Mount Performance
 
@@ -160,26 +162,20 @@ kubectl apply -f pod-onrootmismatch.yaml
 time kubectl wait --for=condition=Ready pod/nginx-optimized --timeout=300s
 ```
 
-## Storage Class Integration
+## CSI Driver Integration
 
-Some CSI drivers support setting default fsGroupChangePolicy behavior at the StorageClass level:
+CSI drivers can declare whether their volumes support fsGroup-based ownership and permission changes by setting fsGroupPolicy on the CSIDriver object:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
-kind: StorageClass
+kind: CSIDriver
 metadata:
-  name: fast-ssd-optimized
-provisioner: csi.example.com
-parameters:
-  type: ssd
-  fsType: ext4
-mountOptions:
-  - noatime
-volumeBindingMode: WaitForFirstConsumer
-allowVolumeExpansion: true
+  name: csi.example.com
+spec:
+  fsGroupPolicy: File
 ```
 
-Check your CSI driver documentation for specific support and configuration options.
+This setting is configured by the CSI driver, not on individual StorageClass objects. Check your CSI driver documentation for specific support and configuration options.
 
 ## Troubleshooting Permission Issues
 
