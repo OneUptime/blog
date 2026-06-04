@@ -16,14 +16,14 @@ LibreOffice is a large application with many dependencies. Installing it on a pr
 
 ## Quick Start
 
-Convert a Word document to PDF with a single Docker command:
+After building the custom image below as `lo-converter`, convert a Word document to PDF with a single Docker command:
 
 ```bash
 # Convert a DOCX file to PDF using LibreOffice in headless mode
 
 docker run --rm \
-  -v $(pwd)/docs:/docs \
-  libreoffice/libreoffice:latest \
+  -v "$(pwd)/docs:/docs" \
+  lo-converter \
   --headless --convert-to pdf --outdir /docs /docs/report.docx
 ```
 
@@ -62,6 +62,12 @@ USER converter
 WORKDIR /docs
 
 ENTRYPOINT ["libreoffice", "--headless", "--norestore"]
+```
+
+Build the image:
+
+```bash
+docker build -t lo-converter .
 ```
 
 The font packages are critical. Without `fonts-crosextra-carlito` and `fonts-crosextra-caladea`, LibreOffice substitutes Calibri and Cambria (common Microsoft fonts) with Liberation fonts, which changes the document layout. Carlito and Caladea are metrically compatible replacements that preserve formatting.
@@ -103,10 +109,11 @@ For a web application, wrap LibreOffice in an HTTP API:
 ```python
 # server.py - Flask-based document conversion API
 import os
-import uuid
 import subprocess
 import tempfile
+from pathlib import Path
 from flask import Flask, request, send_file, jsonify
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
@@ -129,7 +136,7 @@ def convert():
         return jsonify({'error': 'No file uploaded'}), 400
 
     file = request.files['file']
-    target_format = request.form.get('format', 'pdf')
+    target_format = request.form.get('format', 'pdf').lower()
 
     if not allowed_file(file.filename):
         return jsonify({'error': f'Unsupported file type: {file.filename}'}), 400
@@ -137,16 +144,22 @@ def convert():
     if target_format not in OUTPUT_FORMATS:
         return jsonify({'error': f'Unsupported output format: {target_format}'}), 400
 
+    filename = secure_filename(file.filename)
+    if not filename:
+        return jsonify({'error': 'Invalid file name'}), 400
+
     # Save the uploaded file to a temporary directory
     with tempfile.TemporaryDirectory() as tmpdir:
-        input_path = os.path.join(tmpdir, file.filename)
+        input_path = os.path.join(tmpdir, filename)
         file.save(input_path)
+        profile_dir = os.path.join(tmpdir, 'lo-profile')
 
         # Run LibreOffice conversion
         result = subprocess.run([
             'libreoffice',
             '--headless',
             '--norestore',
+            f'-env:UserInstallation={Path(profile_dir).as_uri()}',
             '--convert-to', target_format,
             '--outdir', tmpdir,
             input_path
@@ -156,7 +169,7 @@ def convert():
             return jsonify({'error': 'Conversion failed', 'details': result.stderr}), 500
 
         # Find the converted output file
-        base_name = os.path.splitext(file.filename)[0]
+        base_name = os.path.splitext(filename)[0]
         output_path = os.path.join(tmpdir, f'{base_name}.{target_format}')
 
         if not os.path.exists(output_path):
@@ -216,16 +229,14 @@ The Python requirements:
 
 ```txt
 # requirements.txt
-flask==3.0.2
-gunicorn==21.2.0
+flask==3.1.3
+gunicorn==26.0.0
 ```
 
 ## Docker Compose Configuration
 
 ```yaml
 # docker-compose.yml - Document conversion service
-version: "3.8"
-
 services:
   converter:
     build: .
@@ -299,8 +310,6 @@ LibreOffice is single-threaded per instance. For concurrent conversions, run mul
 
 ```yaml
 # docker-compose.yml - Scaled conversion service
-version: "3.8"
-
 services:
   converter:
     build: .
