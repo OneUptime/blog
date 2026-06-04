@@ -183,14 +183,14 @@ There is an important detail here. From your host machine, you push to `localhos
 
 ## Method 3: Connect an Existing Registry
 
-If you already have a registry running (maybe shared across multiple clusters), connect it when creating the cluster.
+If you already have a k3d-managed registry running (maybe shared across multiple clusters), connect it when creating the cluster.
 
 ```bash
-# Start a standalone registry if you do not already have one
-docker run -d -p 5000:5000 --name shared-registry registry:2
+# Create a reusable k3d-managed registry if you do not already have one
+k3d registry create shared-registry --port 5000
 
-# Create a k3d cluster that uses the existing registry
-k3d cluster create dev --registry-use shared-registry:5000
+# Create a k3d cluster that uses the existing k3d-managed registry
+k3d cluster create dev --registry-use k3d-shared-registry:5000
 ```
 
 ## Verifying Images Inside the Cluster
@@ -226,21 +226,22 @@ Create a simple build script:
 
 ```bash
 #!/bin/bash
-# build-and-deploy.sh - Build, push, and restart the deployment
+# build-and-deploy.sh - Build, push, and update the deployment
 
 # Set variables
-REGISTRY="localhost:5111"
+HOST_REGISTRY="localhost:5111"
+CLUSTER_REGISTRY="dev-registry:5111"
 IMAGE="myapi"
 TAG="${1:-latest}"
 
 # Build the Docker image
-docker build -t ${REGISTRY}/${IMAGE}:${TAG} .
+docker build -t ${HOST_REGISTRY}/${IMAGE}:${TAG} .
 
 # Push to the local registry
-docker push ${REGISTRY}/${IMAGE}:${TAG}
+docker push ${HOST_REGISTRY}/${IMAGE}:${TAG}
 
-# Restart the deployment to pull the latest image
-kubectl rollout restart deployment/myapi
+# Update the deployment to use the image from inside the cluster
+kubectl set image deployment/myapi myapi=${CLUSTER_REGISTRY}/${IMAGE}:${TAG}
 
 # Follow the rollout progress
 kubectl rollout status deployment/myapi
