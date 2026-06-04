@@ -8,7 +8,7 @@ Description: Learn how to enable and configure GKE Dataplane V2 with Cilium for 
 
 ---
 
-GKE Dataplane V2 replaces the traditional iptables-based networking with Cilium, an eBPF-based networking solution. This architecture provides better performance, scalability, and observability compared to the default kube-proxy implementation. eBPF programs run directly in the Linux kernel, reducing context switches and improving packet processing efficiency.
+GKE Dataplane V2 replaces the traditional iptables-based networking with a Google-managed dataplane implemented using Cilium and eBPF. This architecture provides better scalability and observability compared to the default kube-proxy implementation. eBPF programs run directly in the Linux kernel, reducing context switches and improving packet processing efficiency.
 
 ## Understanding Dataplane V2 Architecture
 
@@ -16,7 +16,7 @@ Traditional Kubernetes networking uses iptables rules for service load balancing
 
 Dataplane V2 uses Cilium with eBPF programs that process packets in kernel space. eBPF provides programmable packet filtering and forwarding without the overhead of iptables. It uses efficient hash tables instead of sequential rule evaluation, maintaining consistent performance regardless of cluster size.
 
-Cilium in GKE handles pod networking, service load balancing, network policies, and observability. It replaces kube-proxy entirely, using eBPF programs attached to network interfaces for service traffic routing.
+Cilium in GKE handles pod networking, service load balancing, network policies, and observability through the GKE-managed `anetd` DaemonSet. It replaces kube-proxy for Kubernetes Services on Linux node pools, using eBPF programs attached to network interfaces for service traffic routing.
 
 ## Creating Clusters with Dataplane V2
 
@@ -48,7 +48,8 @@ For production clusters, combine Dataplane V2 with other features:
 gcloud container clusters create production-cluster \
   --enable-dataplane-v2 \
   --enable-ip-alias \
-  --enable-stackdriver-kubernetes \
+  --logging=SYSTEM,WORKLOAD \
+  --monitoring=SYSTEM \
   --enable-autorepair \
   --enable-autoupgrade \
   --enable-autoscaling \
@@ -69,27 +70,24 @@ After cluster creation, verify Cilium pods are running:
 kubectl get pods -n kube-system -l k8s-app=cilium
 
 # Verify Cilium agent status
-kubectl exec -n kube-system -it cilium-xxxxx -- cilium status
+kubectl exec -n kube-system -it anetd-xxxxx -- cilium status
 
 # Check eBPF maps
-kubectl exec -n kube-system -it cilium-xxxxx -- cilium bpf lb list
+kubectl exec -n kube-system -it anetd-xxxxx -- cilium bpf lb list
 ```
 
 Cilium status output shows the configuration, including enabled features, kube-proxy replacement status, and connected nodes.
 
-View eBPF program statistics:
+View service load balancing entries:
 
 ```bash
-# Get eBPF program details
-kubectl exec -n kube-system cilium-xxxxx -- cilium bpf metrics list
-
 # Check service load balancing entries
-kubectl exec -n kube-system cilium-xxxxx -- cilium service list
+kubectl exec -n kube-system anetd-xxxxx -- cilium service list
 ```
 
 ## Implementing Network Policies with Cilium
 
-Dataplane V2 supports both standard Kubernetes NetworkPolicy resources and Cilium-specific policies. Cilium NetworkPolicy provides additional features like DNS-based policies and Layer 7 filtering.
+Dataplane V2 supports standard Kubernetes NetworkPolicy resources. GKE versions 1.21.5-gke.1300 and later do not support the CiliumNetworkPolicy or CiliumClusterwideNetworkPolicy CRD APIs, so use Kubernetes NetworkPolicy for Pod-to-Pod rules and GKE FQDNNetworkPolicy for DNS-based egress rules.
 
 Create a basic Kubernetes NetworkPolicy:
 
@@ -124,149 +122,131 @@ spec:
       port: 5432
 ```
 
-Cilium converts these policies to efficient eBPF programs:
+GKE Dataplane V2 converts these policies to efficient eBPF programs:
 
 ```bash
 kubectl apply -f network-policy.yaml
 
 # Verify policy is applied
-kubectl exec -n kube-system cilium-xxxxx -- cilium policy get
+kubectl exec -n kube-system anetd-xxxxx -- cilium policy get
 ```
 
-Use Cilium NetworkPolicy for advanced features:
+Use GKE FQDNNetworkPolicy for DNS-based egress rules:
 
 ```yaml
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
 metadata:
-  name: dns-based-policy
+  name: allow-googleapis
   namespace: production
 spec:
-  endpointSelector:
+  podSelector:
     matchLabels:
       app: web
   egress:
-  - toEndpoints:
-    - matchLabels:
-        app: api
-  - toFQDNs:
-    - matchName: "*.googleapis.com"
-    - matchPattern: "*.cloudflare.com"
-  - toPorts:
-    - ports:
-      - port: "443"
-        protocol: TCP
+  - matches:
+    - pattern: "*.googleapis.com"
+    ports:
+    - protocol: TCP
+      port: 443
 ```
 
-This policy allows web pods to communicate with API pods and specific external domains, blocking all other egress traffic.
+This policy allows selected web pods to communicate with matching Google APIs on TCP port 443. Use a separate Kubernetes NetworkPolicy for in-cluster Pod-to-Pod traffic.
 
-## Configuring Layer 7 Network Policies
+## Configuring DNS-Based Egress Policies
 
-Cilium supports HTTP-aware policies that filter based on HTTP methods, paths, and headers:
+FQDN network policies require GKE Dataplane V2 and must be enabled on the cluster. They cannot be enabled on the same cluster as inter-node transparent encryption:
+
+```bash
+gcloud container clusters update production-cluster \
+  --enable-fqdn-network-policy \
+  --location us-central1
+
+kubectl rollout restart ds -n kube-system anetd
+```
+
+Create a DNS-based policy for HTTPS access:
 
 ```yaml
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
+apiVersion: networking.gke.io/v1alpha1
+kind: FQDNNetworkPolicy
 metadata:
-  name: l7-http-policy
+  name: googleapis-egress
   namespace: production
 spec:
-  endpointSelector:
+  podSelector:
     matchLabels:
       app: frontend
   egress:
-  - toEndpoints:
-    - matchLabels:
-        app: api
-    toPorts:
-    - ports:
-      - port: "8080"
-        protocol: TCP
-      rules:
-        http:
-        - method: "GET"
-          path: "/api/v1/.*"
-        - method: "POST"
-          path: "/api/v1/resources"
+  - matches:
+    - pattern: "*.googleapis.com"
+    ports:
+    - port: 443
+      protocol: TCP
 ```
 
-This policy allows frontend pods to make GET requests to any /api/v1/ endpoint and POST requests only to /api/v1/resources.
+This policy allows frontend pods to access Google APIs over HTTPS.
 
 Test the policy:
 
 ```bash
 # Allowed request
-kubectl exec frontend-pod -- curl http://api-service:8080/api/v1/users
+kubectl exec -n production frontend-pod -- curl https://storage.googleapis.com
 
-# Blocked request (wrong method)
-kubectl exec frontend-pod -- curl -X DELETE http://api-service:8080/api/v1/users
+# Blocked request when no other egress policy allows it
+kubectl exec -n production frontend-pod -- curl https://example.com
 
 # Check policy violations
-kubectl exec -n kube-system cilium-xxxxx -- cilium monitor --type drop
+kubectl exec -n kube-system anetd-xxxxx -- cilium monitor --type drop
 ```
 
 ## Monitoring with Hubble
 
-Hubble provides observability into network traffic and policy decisions. It is built into Dataplane V2:
+Hubble provides observability into network traffic and policy decisions. GKE Dataplane V2 observability tools are disabled by default and can be enabled on a GKE Dataplane V2 cluster:
 
 ```bash
-# Enable Hubble UI
-kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/v1.14/install/kubernetes/quick-hubble-install.yaml
+# Enable GKE Dataplane V2 flow observability
+gcloud container clusters update production-cluster \
+  --enable-dataplane-v2-flow-observability \
+  --location us-central1
 
-# Port-forward to Hubble UI
-kubectl port-forward -n kube-system svc/hubble-ui 12000:80
-
-# Access UI at http://localhost:12000
+# Use the managed Hubble CLI container
+alias hubble="kubectl exec -it -n gke-managed-dpv2-observability deployment/hubble-relay -c hubble-cli -- hubble"
 ```
 
 Use Hubble CLI for network flow inspection:
 
 ```bash
-# Install Hubble CLI
-curl -L --remote-name-all https://github.com/cilium/hubble/releases/latest/download/hubble-linux-amd64.tar.gz
-tar xzvf hubble-linux-amd64.tar.gz
-sudo mv hubble /usr/local/bin/
-
-# Port-forward Hubble relay
-kubectl port-forward -n kube-system svc/hubble-relay 4245:80
-
 # Query network flows
-hubble observe --server localhost:4245
+hubble observe
 
 # Filter by namespace
-hubble observe --namespace production --server localhost:4245
+hubble observe --namespace production
 
 # Show only dropped packets
-hubble observe --verdict DROPPED --server localhost:4245
+hubble observe --verdict DROPPED
 ```
 
 Monitor specific pods:
 
 ```bash
 # Watch traffic for a specific pod
-hubble observe --pod production/frontend-xxxxx --server localhost:4245
+hubble observe --pod production/frontend-xxxxx
 
 # Show HTTP flows only
-hubble observe --protocol http --server localhost:4245
+hubble observe --protocol http
 ```
 
 ## Optimizing Service Load Balancing
 
-Dataplane V2 uses eBPF for service load balancing instead of kube-proxy. This provides direct server return (DSR) capabilities and better performance:
+Dataplane V2 uses eBPF for service load balancing instead of kube-proxy on Linux node pools:
 
 ```bash
 # Check service load balancing mode
-kubectl exec -n kube-system cilium-xxxxx -- cilium config view | grep bpf-lb-mode
+kubectl exec -n kube-system anetd-xxxxx -- cilium config view | grep bpf-lb
 
 # View service backend mapping
-kubectl exec -n kube-system cilium-xxxxx -- cilium service list
-```
-
-For external traffic optimization, enable Maglev consistent hashing:
-
-```bash
-# Maglev is enabled by default in GKE Dataplane V2
-kubectl exec -n kube-system cilium-xxxxx -- cilium config view | grep enable-service-topology
+kubectl exec -n kube-system anetd-xxxxx -- cilium service list
 ```
 
 Create a service to test load balancing:
@@ -287,18 +267,18 @@ spec:
   externalTrafficPolicy: Local
 ```
 
-Setting externalTrafficPolicy to Local preserves client source IP and reduces network hops.
+Setting externalTrafficPolicy to Local preserves the client source IP and routes external traffic only to nodes with local ready endpoints.
 
 ## Implementing Network Encryption
 
-Cilium supports transparent network encryption using WireGuard or IPsec. In GKE Dataplane V2, encryption is configured at the cluster level:
+GKE supports inter-node transparent encryption using WireGuard on GKE Dataplane V2 clusters. Encryption is configured at the cluster level:
 
 ```bash
-# Create cluster with WireGuard encryption
+# Create cluster with inter-node transparent encryption
 gcloud container clusters create secure-cluster \
   --enable-dataplane-v2 \
-  --enable-intra-node-visibility \
-  --region us-central1 \
+  --in-transit-encryption inter-node-transparent \
+  --location us-central1 \
   --machine-type n2-standard-4
 ```
 
@@ -306,10 +286,7 @@ Verify encryption status:
 
 ```bash
 # Check if encryption is active
-kubectl exec -n kube-system cilium-xxxxx -- cilium status | grep Encryption
-
-# View encrypted tunnels
-kubectl exec -n kube-system cilium-xxxxx -- cilium encrypt status
+kubectl exec -n kube-system anetd-xxxxx -- cilium status | grep Encryption
 ```
 
 Test encrypted communication:
@@ -319,8 +296,8 @@ Test encrypted communication:
 kubectl run client --image=nicolaka/netshoot -- sleep infinity
 kubectl run server --image=nginx
 
-# Capture traffic (should be encrypted)
-kubectl exec -n kube-system cilium-xxxxx -- cilium monitor --type capture
+# Confirm WireGuard peers
+kubectl exec -n kube-system anetd-xxxxx -- cilium status | grep Encryption
 ```
 
 ## Troubleshooting Connectivity Issues
@@ -329,26 +306,27 @@ When pods cannot communicate, use Cilium debugging tools:
 
 ```bash
 # Check endpoint status
-kubectl exec -n kube-system cilium-xxxxx -- cilium endpoint list
+kubectl exec -n kube-system anetd-xxxxx -- cilium endpoint list
 
 # Get details for specific endpoint
-kubectl exec -n kube-system cilium-xxxxx -- cilium endpoint get <endpoint-id>
+kubectl exec -n kube-system anetd-xxxxx -- cilium endpoint get <endpoint-id>
 
 # Verify network policies
-kubectl exec -n kube-system cilium-xxxxx -- cilium policy get
+kubectl exec -n kube-system anetd-xxxxx -- cilium policy get
 
-# Check connectivity between endpoints
-kubectl exec -n kube-system cilium-xxxxx -- cilium connectivity test
+# Check anetd logs in Cloud Logging when service or policy enforcement fails
+gcloud logging read 'resource.type="k8s_container" AND labels."k8s-pod/k8s-app"="cilium"' \
+  --limit 20
 ```
 
 Monitor real-time policy verdicts:
 
 ```bash
 # Watch policy decisions
-kubectl exec -n kube-system cilium-xxxxx -- cilium monitor --type policy-verdict
+kubectl exec -n kube-system anetd-xxxxx -- cilium monitor --type policy-verdict
 
 # Debug specific pod connectivity
-kubectl exec -n kube-system cilium-xxxxx -- cilium endpoint log <endpoint-id>
+kubectl exec -n kube-system anetd-xxxxx -- cilium endpoint log <endpoint-id>
 ```
 
 ## Performance Comparison
@@ -356,17 +334,14 @@ kubectl exec -n kube-system cilium-xxxxx -- cilium endpoint log <endpoint-id>
 Benchmark eBPF vs iptables performance in your cluster:
 
 ```bash
-# Deploy benchmarking tool
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/perf-tests/master/network/benchmarks/netperf/netperf.yaml
-
-# Run throughput test
-kubectl exec netperf-client -- netperf -H netperf-server -t TCP_STREAM
-
-# Run latency test
-kubectl exec netperf-client -- netperf -H netperf-server -t TCP_RR
+# Deploy a simple iperf3 server and client
+kubectl create deployment iperf-server --image=networkstatic/iperf3 -- iperf3 -s
+kubectl expose deployment iperf-server --port 5201
+kubectl run iperf-client --rm -it --image=networkstatic/iperf3 --restart=Never -- \
+  iperf3 -c iperf-server -p 5201
 ```
 
-eBPF-based networking typically shows 20-30% better throughput and lower latency compared to iptables, with improvements scaling as cluster size increases.
+eBPF-based networking removes several iptables-related scaling bottlenecks, especially in clusters with many Services. Actual throughput and latency improvements depend on workload, node type, cluster size, and traffic pattern.
 
 ## Migrating from Standard to Dataplane V2
 
