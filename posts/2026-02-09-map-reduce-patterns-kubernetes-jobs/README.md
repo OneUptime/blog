@@ -17,8 +17,34 @@ This pattern works exceptionally well for data analysis, log processing, report 
 A Kubernetes-based map-reduce consists of three phases: split the input data into chunks, run parallel map jobs to process each chunk, and run a reduce job to aggregate the results.
 
 ```yaml
+# Service account used by init containers that wait for earlier phases
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-waiter
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-reader
+rules:
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-waiter
+subjects:
+- kind: ServiceAccount
+  name: job-waiter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: job-reader
+---
 # Phase 1: Split data (one-time job)
-
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -51,10 +77,15 @@ spec:
   template:
     spec:
       restartPolicy: OnFailure
+      serviceAccountName: job-waiter
       volumes:
       - name: data
         persistentVolumeClaim:
           claimName: mapreduce-data
+      initContainers:
+      - name: wait-for-splitter
+        image: bitnami/kubectl:latest
+        command: ["kubectl", "wait", "--for=condition=complete", "--timeout=2h", "job/splitter"]
       containers:
       - name: mapper
         image: mapper:latest
@@ -299,6 +330,7 @@ def reduce_log_stats():
         combined['avg_duration'] = combined['total_duration'] / combined['total_requests']
         combined['error_rate'] = combined['errors'] / combined['total_requests']
 
+    os.makedirs('/data/output', exist_ok=True)
     with open('/data/output/log_summary.json', 'w') as f:
         json.dump(combined, f, indent=2)
 
@@ -351,6 +383,7 @@ async function mapDatabasePartition() {
     stats: result.rows
   };
 
+  fs.mkdirSync('/data/intermediate', { recursive: true });
   fs.writeFileSync(
     `/data/intermediate/db_${index.toString().padStart(4, '0')}.json`,
     JSON.stringify(output, null, 2)
@@ -410,6 +443,7 @@ function reduceDatabaseStats() {
     };
   }
 
+  fs.mkdirSync('/data/output', { recursive: true });
   fs.writeFileSync(
     '/data/output/database_summary.json',
     JSON.stringify(final, null, 2)
@@ -431,12 +465,16 @@ Track mapper completion:
 # monitor-mapreduce.sh
 
 JOB_NAME="mapper"
-TOTAL_COMPLETIONS=$(kubectl get job $JOB_NAME -o jsonpath='{.spec.completions}')
+TOTAL_COMPLETIONS=$(kubectl get job "$JOB_NAME" -o jsonpath='{.spec.completions}')
 
 while true; do
-  SUCCEEDED=$(kubectl get job $JOB_NAME -o jsonpath='{.status.succeeded}')
-  ACTIVE=$(kubectl get job $JOB_NAME -o jsonpath='{.status.active}')
-  FAILED=$(kubectl get job $JOB_NAME -o jsonpath='{.status.failed}')
+  SUCCEEDED=$(kubectl get job "$JOB_NAME" -o jsonpath='{.status.succeeded}')
+  ACTIVE=$(kubectl get job "$JOB_NAME" -o jsonpath='{.status.active}')
+  FAILED=$(kubectl get job "$JOB_NAME" -o jsonpath='{.status.failed}')
+
+  SUCCEEDED=${SUCCEEDED:-0}
+  ACTIVE=${ACTIVE:-0}
+  FAILED=${FAILED:-0}
 
   PERCENT=$((SUCCEEDED * 100 / TOTAL_COMPLETIONS))
 
