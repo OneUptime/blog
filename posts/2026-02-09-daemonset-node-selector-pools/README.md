@@ -12,7 +12,7 @@ Not all nodes in a Kubernetes cluster are identical. You might have GPU nodes, h
 
 ## Understanding Node Selectors in DaemonSets
 
-By default, DaemonSets schedule pods on every node. Node selectors restrict this behavior, matching nodes by labels. When you add a node selector to a DaemonSet, Kubernetes only schedules pods on nodes with matching labels. This enables targeted deployment of specialized workloads.
+By default, DaemonSets schedule pods on every eligible node. Node selectors restrict this behavior, matching nodes by labels. When you add a node selector to a DaemonSet, Kubernetes only schedules pods on nodes with matching labels. This enables targeted deployment of specialized workloads.
 
 Common use cases include GPU monitoring agents on GPU nodes, high-performance storage drivers on storage nodes, compliance agents on nodes handling sensitive data, and regional log collectors for geo-specific log routing.
 
@@ -258,7 +258,7 @@ spec:
       serviceAccountName: ceph-csi
       containers:
       - name: driver-registrar
-        image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0
+        image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.5.0
         args:
         - --csi-address=/csi/csi.sock
         - --kubelet-registration-path=/var/lib/kubelet/plugins/ceph.csi.cephfs.k8s.io/csi.sock
@@ -364,10 +364,8 @@ package main
 import (
     "context"
     "strings"
-    corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
-    "k8s.io/client-go/rest"
 )
 
 func labelNodesByInstanceType(clientset *kubernetes.Clientset) error {
@@ -393,6 +391,9 @@ func labelNodesByInstanceType(clientset *kubernetes.Clientset) error {
         }
 
         // Apply label
+        if node.Labels == nil {
+            node.Labels = map[string]string{}
+        }
         node.Labels["node-category"] = nodeType
 
         _, err := clientset.CoreV1().Nodes().Update(context.TODO(), &node, metav1.UpdateOptions{})
@@ -405,9 +406,37 @@ func labelNodesByInstanceType(clientset *kubernetes.Clientset) error {
 }
 ```
 
-Deploy as a CronJob:
+Deploy with RBAC as a CronJob:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-labeler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-labeler
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: node-labeler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: node-labeler
+subjects:
+- kind: ServiceAccount
+  name: node-labeler
+  namespace: kube-system
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -457,7 +486,7 @@ data:
       - alert: DaemonSetNotOnAllTargetNodes
         expr: |
           kube_daemonset_status_desired_number_scheduled{daemonset="gpu-exporter"}
-          != kube_node_labels{label_node_type="gpu"}
+          != count(kube_node_labels{label_node_type="gpu"})
         for: 10m
         labels:
           severity: warning
