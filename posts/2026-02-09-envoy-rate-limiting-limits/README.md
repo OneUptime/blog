@@ -35,7 +35,7 @@ http_filters:
         numerator: 100
         denominator: HUNDRED
     response_headers_to_add:
-    - append: false
+    - append_action: OVERWRITE_IF_EXISTS_OR_ADD
       header:
         key: x-local-rate-limit
         value: 'true'
@@ -111,7 +111,7 @@ spec:
         ports:
         - containerPort: 8081
           name: grpc
-        - containerPort: 6070
+        - containerPort: 8080
           name: http
         env:
         - name: REDIS_SOCKET_TYPE
@@ -151,7 +151,7 @@ data:
         rate_limit:
           unit: hour
           requests_per_unit: 10000
-      - key: client_ip
+      - key: remote_address
         rate_limit:
           unit: second
           requests_per_unit: 10
@@ -165,7 +165,7 @@ spec:
   ports:
   - port: 8081
     name: grpc
-  - port: 6070
+  - port: 8080
     name: http
   selector:
     app: ratelimit
@@ -196,7 +196,11 @@ clusters:
   connect_timeout: 1s
   type: STRICT_DNS
   lb_policy: ROUND_ROBIN
-  http2_protocol_options: {}
+  typed_extension_protocol_options:
+    envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+      "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+      explicit_http_config:
+        http2_protocol_options: {}
   load_assignment:
     cluster_name: ratelimit_cluster
     endpoints:
@@ -229,7 +233,6 @@ routes:
           descriptor_key: "api_key"
     - actions:
       - remote_address: {}
-        descriptor_key: "client_ip"
 ```
 
 ## Combining Multiple Descriptors
@@ -311,23 +314,18 @@ typed_config:
   domain: apis
   failure_mode_deny: false
   rate_limited_as_resource_exhausted: true
+  rate_limited_status:
+    code: 429
+  enable_x_ratelimit_headers: DRAFT_VERSION_03
   rate_limit_service:
     grpc_service:
       envoy_grpc:
         cluster_name: ratelimit_cluster
   response_headers_to_add:
-  - append: false
+  - append_action: OVERWRITE_IF_EXISTS_OR_ADD
     header:
-      key: x-ratelimit-limit
-      value: "%RATE_LIMIT_LIMIT%"
-  - append: false
-    header:
-      key: x-ratelimit-remaining
-      value: "%RATE_LIMIT_REMAINING%"
-  - append: false
-    header:
-      key: x-ratelimit-reset
-      value: "%RATE_LIMIT_RESET%"
+      key: x-rate-limited
+      value: "true"
 ```
 
 ## Shadow Mode
@@ -340,14 +338,21 @@ typed_config:
   domain: apis
   failure_mode_deny: false
   enable_x_ratelimit_headers: DRAFT_VERSION_03
+  filter_enabled:
+    default_value:
+      numerator: 100
+      denominator: HUNDRED
+  filter_enforced:
+    default_value:
+      numerator: 0
+      denominator: HUNDRED
   rate_limit_service:
     grpc_service:
       envoy_grpc:
         cluster_name: ratelimit_cluster
-  request_type: shadow
 ```
 
-Shadow mode calls the rate limit service but doesn't enforce limits, useful for testing.
+This configuration calls the rate limit service but doesn't enforce limits, useful for testing. If you use Envoy's reference rate limit service, you can also set `shadow_mode: true` on individual descriptor rules.
 
 ## Monitoring Rate Limiting
 
@@ -356,11 +361,11 @@ Track these metrics:
 ```promql
 # Local rate limit rejections
 
-envoy_http_local_rate_limit_rate_limited
+envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited
 
 # Global rate limit calls
-envoy_cluster_ratelimit_ok
-envoy_cluster_ratelimit_over_limit
+envoy_cluster_api_service_ratelimit_ok
+envoy_cluster_api_service_ratelimit_over_limit
 
 # Rate limit service latency
 envoy_cluster_upstream_rq_time{cluster="ratelimit_cluster"}
@@ -373,7 +378,7 @@ groups:
 - name: rate_limiting
   rules:
   - alert: HighRateLimitRejections
-    expr: rate(envoy_http_local_rate_limit_rate_limited[5m]) > 100
+    expr: rate(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited[5m]) > 100
     annotations:
       summary: "High rate limit rejection rate"
 
