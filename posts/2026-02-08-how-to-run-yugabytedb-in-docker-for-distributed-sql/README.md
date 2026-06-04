@@ -45,10 +45,10 @@ docker run -d \
   -p 9000:9000 \
   -p 15433:15433 \
   -v yb_data:/home/yugabyte/yb_data \
-  yugabytedb/yugabyte:2.21.1.0-b271 \
+  yugabytedb/yugabyte:2025.2.3.2-b1 \
   bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data \
-    --daemon=false
+    --background=false
 ```
 
 Port reference:
@@ -67,7 +67,7 @@ version: "3.8"
 
 services:
   yb-node1:
-    image: yugabytedb/yugabyte:2.21.1.0-b271
+    image: yugabytedb/yugabyte:2025.2.3.2-b1
     container_name: yb-node1
     hostname: yb-node1
     ports:
@@ -83,7 +83,7 @@ services:
           --advertise_address=yb-node1 \
           --cloud_location=cloud.region.zone1 \
           --fault_tolerance=zone \
-          --daemon=false
+          --background=false
     volumes:
       - yb_data1:/home/yugabyte/yb_data
     networks:
@@ -94,7 +94,7 @@ services:
           memory: 2G
 
   yb-node2:
-    image: yugabytedb/yugabyte:2.21.1.0-b271
+    image: yugabytedb/yugabyte:2025.2.3.2-b1
     container_name: yb-node2
     hostname: yb-node2
     command:
@@ -107,7 +107,7 @@ services:
           --join=yb-node1 \
           --cloud_location=cloud.region.zone2 \
           --fault_tolerance=zone \
-          --daemon=false
+          --background=false
     volumes:
       - yb_data2:/home/yugabyte/yb_data
     depends_on:
@@ -120,7 +120,7 @@ services:
           memory: 2G
 
   yb-node3:
-    image: yugabytedb/yugabyte:2.21.1.0-b271
+    image: yugabytedb/yugabyte:2025.2.3.2-b1
     container_name: yb-node3
     hostname: yb-node3
     command:
@@ -133,7 +133,7 @@ services:
           --join=yb-node1 \
           --cloud_location=cloud.region.zone3 \
           --fault_tolerance=zone \
-          --daemon=false
+          --background=false
     volumes:
       - yb_data3:/home/yugabyte/yb_data
     depends_on:
@@ -162,6 +162,11 @@ docker compose up -d
 # Wait for nodes to join (about 30-45 seconds)
 sleep 45
 
+# Configure zone-aware data placement
+docker exec yb-node1 bin/yugabyted configure data_placement \
+  --base_dir=/home/yugabyte/yb_data \
+  --fault_tolerance=zone
+
 # Check cluster status
 docker exec yb-node1 bin/yugabyted status --base_dir=/home/yugabyte/yb_data
 ```
@@ -186,6 +191,8 @@ YugabyteDB automatically shards tables. You can control the sharding strategy.
 -- Create a database
 CREATE DATABASE myapp;
 \c myapp
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Hash-sharded table (default, distributes rows evenly)
 CREATE TABLE users (
@@ -228,6 +235,8 @@ CREATE TABLE cities (
 Standard PostgreSQL SQL works as expected.
 
 ```sql
+\c myapp
+
 -- Insert data
 INSERT INTO users (email, name) VALUES
     ('alice@example.com', 'Alice Johnson'),
@@ -259,6 +268,8 @@ GROUP BY event_type, action;
 YugabyteDB supports distributed ACID transactions that span multiple tablets and nodes.
 
 ```sql
+\c myapp
+
 -- Transaction spanning multiple tables on potentially different nodes
 BEGIN;
 
@@ -288,7 +299,7 @@ docker exec yb-node1 bin/ysqlsh -h yb-node1 -c "SELECT * FROM yb_servers();"
 ```
 
 ```sql
--- Check tablet leaders and their locations
+-- Check table properties such as tablet count and colocation
 SELECT * FROM yb_table_properties('users'::regclass);
 ```
 
@@ -301,7 +312,7 @@ With three nodes, the cluster survives one node failure. Test it.
 docker stop yb-node3
 
 # The cluster continues to work (queries still succeed)
-docker exec yb-node1 bin/ysqlsh -h yb-node1 -c "SELECT COUNT(*) FROM myapp.users;"
+docker exec yb-node1 bin/ysqlsh -h yb-node1 -d myapp -c "SELECT COUNT(*) FROM users;"
 
 # Bring the node back
 docker start yb-node3
