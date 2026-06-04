@@ -8,7 +8,7 @@ Description: Learn how to configure and use the CoreDNS loop detection plugin to
 
 ---
 
-DNS loops occur when queries cycle indefinitely through DNS servers without resolution. These loops cause query timeouts, waste resources, and create difficult-to-diagnose issues. The CoreDNS loop plugin detects potential loops by checking if queries would route back to CoreDNS itself, preventing infinite resolution cycles.
+DNS loops occur when queries cycle indefinitely through DNS servers without resolution. These loops cause query timeouts, waste resources, and create difficult-to-diagnose issues. The CoreDNS loop plugin detects simple static forwarding loops by checking whether a startup probe routes back to CoreDNS itself, preventing CoreDNS from running with an infinite resolution cycle.
 
 This guide shows you how to configure loop detection and resolve DNS loop issues in Kubernetes environments.
 
@@ -57,24 +57,25 @@ data:
            max_concurrent 1000
         }
         cache 30
-        loop  # Loop detection plugin
+        # Loop detection plugin
+        loop
         reload
         loadbalance
     }
 ```
 
-The loop plugin tests upstream DNS servers during startup and periodically afterward.
+The loop plugin tests for simple static forwarding loops during startup. After it successfully sends its probe, it disables itself to avoid creating a query-of-death loop.
 
 ## How Loop Detection Works
 
 When CoreDNS starts, the loop plugin:
 
-1. Queries a random name (e.g., `test-1234.loop.local`)
-2. Sends query to configured upstream servers
-3. Checks if query comes back to CoreDNS
-4. If detected, CoreDNS exits with error
+1. Sends a random HINFO probe query to itself (for example, `<random>.<random>.zone`)
+2. Tracks how many times CoreDNS sees that query
+3. Treats seeing the same probe more than twice as a forwarding loop
+4. If detected, CoreDNS exits with an error
 
-This prevents starting with a loop configuration.
+This prevents starting with a simple static loop configuration. The loop must be present at startup and must affect HINFO queries for the plugin to detect it.
 
 Test loop detection:
 
@@ -132,28 +133,21 @@ Or configure CoreDNS to use specific upstreams:
 
 Problem: Service mesh intercepts DNS, routes back to CoreDNS
 
-Solution: Exclude CoreDNS from mesh traffic:
+Solution: Exclude CoreDNS pods from mesh traffic:
 
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: kube-dns
-  namespace: kube-system
-  annotations:
-    # Istio: exclude from mesh
-    traffic.sidecar.istio.io/excludeInboundPorts: "53"
-    traffic.sidecar.istio.io/excludeOutboundPorts: "53"
-spec:
-  selector:
-    k8s-app: kube-dns
-  ports:
-  - port: 53
-    protocol: UDP
-    targetPort: 53
-  - port: 53
-    protocol: TCP
-    targetPort: 53
+```bash
+kubectl patch deployment coredns -n kube-system --type merge -p '{
+  "spec": {
+    "template": {
+      "metadata": {
+        "annotations": {
+          "traffic.sidecar.istio.io/excludeInboundPorts": "53",
+          "traffic.sidecar.istio.io/excludeOutboundPorts": "53"
+        }
+      }
+    }
+  }
+}'
 ```
 
 **Scenario 3: Nested Forwarding Loops**
@@ -213,12 +207,46 @@ Identify the loop source:
 
 ```yaml
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dns-loop-debugger
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dns-loop-debugger
+  namespace: kube-system
+rules:
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dns-loop-debugger
+  namespace: kube-system
+subjects:
+- kind: ServiceAccount
+  name: dns-loop-debugger
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dns-loop-debugger
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: loop-debug
+  namespace: kube-system
 data:
   debug.sh: |
     #!/bin/bash
+    TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+    CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
 
     echo "=== DNS Loop Debugging ==="
 
@@ -229,7 +257,9 @@ data:
 
     # Check CoreDNS service IP
     echo "CoreDNS Service IP:"
-    kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}'
+    COREDNS_IP=$(curl -sS --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+        "$API/api/v1/namespaces/kube-system/services/kube-dns" | jq -r '.spec.clusterIP')
+    echo "$COREDNS_IP"
     echo ""
 
     # Test upstream DNS
@@ -242,8 +272,7 @@ data:
 
     # Check for circular references
     echo "Checking for circular references:"
-    COREDNS_IP=$(kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}')
-    if grep -q $COREDNS_IP /etc/resolv.conf; then
+    if grep -Fq "$COREDNS_IP" /etc/resolv.conf; then
         echo "WARNING: resolv.conf contains CoreDNS IP - potential loop!"
     else
         echo "No obvious circular reference found"
@@ -253,9 +282,11 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: debug-dns-loop
+  namespace: kube-system
 spec:
   template:
     spec:
+      serviceAccountName: dns-loop-debugger
       containers:
       - name: debug
         image: nicolaka/netshoot
@@ -307,27 +338,65 @@ Create monitoring to detect loop conditions:
 
 ```yaml
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dns-loop-monitor
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dns-loop-monitor
+  namespace: kube-system
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dns-loop-monitor
+  namespace: kube-system
+subjects:
+- kind: ServiceAccount
+  name: dns-loop-monitor
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dns-loop-monitor
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: loop-monitor
+  namespace: kube-system
 data:
   monitor.sh: |
     #!/bin/bash
+    TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+    CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
 
     while true; do
         echo "=== $(date) ==="
 
         # Check CoreDNS health
-        if kubectl get pods -n kube-system -l k8s-app=kube-dns | grep -q Running; then
+        PODS_JSON=$(curl -sS --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/namespaces/kube-system/pods?labelSelector=k8s-app%3Dkube-dns")
+        if echo "$PODS_JSON" | jq -e '.items[] | select(.status.phase == "Running")' >/dev/null; then
             echo "CoreDNS Status: Running"
         else
             echo "CoreDNS Status: NOT RUNNING - Check for loop!"
         fi
 
         # Check for loop-related errors
-        if kubectl logs -n kube-system -l k8s-app=kube-dns --tail=10 | grep -qi loop; then
-            echo "WARNING: Loop-related messages in logs!"
-        fi
+        for pod in $(echo "$PODS_JSON" | jq -r '.items[].metadata.name'); do
+            curl -sS --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+                "$API/api/v1/namespaces/kube-system/pods/$pod/log?tailLines=10" | grep -qi loop && \
+                echo "WARNING: Loop-related messages in logs for $pod!"
+        done
 
         # Test DNS resolution
         if nslookup kubernetes.default.svc.cluster.local >/dev/null 2>&1; then
@@ -344,6 +413,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: loop-monitor
+  namespace: kube-system
 spec:
   replicas: 1
   selector:
@@ -354,6 +424,7 @@ spec:
       labels:
         app: loop-monitor
     spec:
+      serviceAccountName: dns-loop-monitor
       containers:
       - name: monitor
         image: nicolaka/netshoot
@@ -394,27 +465,66 @@ Create a comprehensive verification test:
 
 ```yaml
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dns-loop-verifier
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dns-loop-verifier
+  namespace: kube-system
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dns-loop-verifier
+  namespace: kube-system
+subjects:
+- kind: ServiceAccount
+  name: dns-loop-verifier
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dns-loop-verifier
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: verify-no-loops
+  namespace: kube-system
 data:
   verify.sh: |
     #!/bin/bash
+    TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+    CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
 
     echo "Verifying DNS configuration is loop-free..."
 
     # Test 1: CoreDNS is running
-    if ! kubectl get pods -n kube-system -l k8s-app=kube-dns | grep -q Running; then
+    PODS_JSON=$(curl -sS --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+        "$API/api/v1/namespaces/kube-system/pods?labelSelector=k8s-app%3Dkube-dns")
+    if ! echo "$PODS_JSON" | jq -e '.items[] | select(.status.phase == "Running")' >/dev/null; then
         echo "FAIL: CoreDNS pods not running"
         exit 1
     fi
     echo "PASS: CoreDNS is running"
 
     # Test 2: No loop errors in logs
-    if kubectl logs -n kube-system -l k8s-app=kube-dns --tail=100 | grep -qi "loop detected"; then
-        echo "FAIL: Loop detected in logs"
-        exit 1
-    fi
+    for pod in $(echo "$PODS_JSON" | jq -r '.items[].metadata.name'); do
+        if curl -sS --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+            "$API/api/v1/namespaces/kube-system/pods/$pod/log?tailLines=100" | grep -qi "loop detected"; then
+            echo "FAIL: Loop detected in logs for $pod"
+            exit 1
+        fi
+    done
     echo "PASS: No loop errors in logs"
 
     # Test 3: DNS resolution works
@@ -438,9 +548,11 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: verify-no-loops
+  namespace: kube-system
 spec:
   template:
     spec:
+      serviceAccountName: dns-loop-verifier
       containers:
       - name: verify
         image: nicolaka/netshoot
