@@ -29,16 +29,18 @@ First, ensure your cluster has GPU nodes and the NVIDIA device plugin:
 
 ```bash
 # Verify GPU nodes
-
-kubectl get nodes -l nvidia.com/gpu.present=true
+kubectl get nodes -l feature.node.kubernetes.io/pci-10de.present=true
 
 # Check GPU capacity
 kubectl describe node <gpu-node-name> | grep nvidia.com/gpu
 
 # Install NVIDIA GPU Operator if not already installed
-helm install gpu-operator nvidia/gpu-operator \
-  --namespace gpu-operator \
-  --create-namespace
+helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+helm repo update
+helm install --wait --generate-name \
+  -n gpu-operator \
+  --create-namespace \
+  nvidia/gpu-operator
 ```
 
 ## Installing the Kubeflow Training Operator
@@ -47,7 +49,7 @@ The Training Operator simplifies distributed training setup:
 
 ```bash
 # Install Training Operator
-kubectl apply -k "github.com/kubeflow/training-operator/manifests/overlays/standalone?ref=v1.7.0"
+kubectl apply --server-side -k "github.com/kubeflow/training-operator.git/manifests/overlays/standalone?ref=v1.8.1"
 
 # Verify installation
 kubectl get pods -n kubeflow
@@ -64,6 +66,7 @@ Create a TensorFlow script that uses MultiWorkerMirroredStrategy:
 # distributed_train.py
 import os
 import json
+import tempfile
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
@@ -90,6 +93,31 @@ def get_strategy():
         strategy = tf.distribute.MirroredStrategy()
 
     return strategy
+
+def is_chief(task_type, task_index, tf_config):
+    """
+    Determine whether this task should write chief-only artifacts.
+    Some TF_CONFIG layouts use a dedicated chief task; others treat worker 0 as chief.
+    """
+    cluster = tf_config.get('cluster', {})
+
+    if task_type == 'chief':
+        return True
+
+    if 'chief' in cluster:
+        return task_type == 'chief'
+
+    return task_type == 'worker' and task_index == 0
+
+def write_filepath(base_path, task_type, task_index, tf_config):
+    """
+    MultiWorkerMirroredStrategy save operations must run on every worker.
+    Non-chief workers write to unique temporary paths to avoid file contention.
+    """
+    if is_chief(task_type, task_index, tf_config):
+        return base_path
+
+    return os.path.join(tempfile.gettempdir(), f'worker_{task_index}', base_path.lstrip('/'))
 
 def create_model():
     """Create a simple CNN model"""
@@ -137,6 +165,7 @@ def train():
     task_index = tf_config.get('task', {}).get('index', 0)
 
     logging.info(f"Starting training: task_type={task_type}, task_index={task_index}")
+    chief = is_chief(task_type, task_index, tf_config)
 
     # Initialize strategy
     strategy = get_strategy()
@@ -150,10 +179,6 @@ def train():
     # Load dataset
     train_dataset, test_dataset = get_dataset(global_batch_size)
 
-    # Distribute datasets
-    train_dist_dataset = strategy.experimental_distribute_dataset(train_dataset)
-    test_dist_dataset = strategy.experimental_distribute_dataset(test_dataset)
-
     # Create model within strategy scope
     with strategy.scope():
         model = create_model()
@@ -165,21 +190,12 @@ def train():
         )
 
     # Callbacks
-    callbacks = []
+    callbacks = [
+        keras.callbacks.BackupAndRestore(backup_dir='/models/backup')
+    ]
 
-    # Only chief worker saves checkpoints
-    if task_type == 'chief' or task_index == 0:
-        checkpoint_dir = '/models/checkpoints'
-        os.makedirs(checkpoint_dir, exist_ok=True)
-
-        callbacks.append(
-            keras.callbacks.ModelCheckpoint(
-                filepath=os.path.join(checkpoint_dir, 'model_{epoch:02d}.h5'),
-                save_freq='epoch',
-                save_best_only=False
-            )
-        )
-
+    # Only chief worker writes TensorBoard summaries
+    if chief:
         callbacks.append(
             keras.callbacks.TensorBoard(
                 log_dir='/models/logs',
@@ -191,22 +207,27 @@ def train():
     logging.info("Starting training...")
 
     history = model.fit(
-        train_dist_dataset,
+        train_dataset,
         epochs=10,
-        validation_data=test_dist_dataset,
+        validation_data=test_dataset,
         callbacks=callbacks,
-        verbose=1 if task_type == 'chief' else 0
+        verbose=1 if chief else 0
     )
 
     # Evaluate
-    if task_type == 'chief' or task_index == 0:
+    if chief:
         logging.info("Evaluating model...")
-        test_loss, test_acc = model.evaluate(test_dist_dataset)
+        test_loss, test_acc = model.evaluate(test_dataset)
         logging.info(f"Test accuracy: {test_acc:.4f}")
 
-        # Save final model
-        model.save('/models/final_model')
-        logging.info("Model saved to /models/final_model")
+    # Save final model. All workers must participate, but only chief's output is kept.
+    final_model_path = write_filepath('/models/final_model.keras', task_type, task_index, tf_config)
+    model.save(final_model_path)
+
+    if not chief:
+        tf.io.gfile.rmtree(os.path.dirname(final_model_path))
+    else:
+        logging.info("Model saved to /models/final_model.keras")
 
     logging.info("Training completed successfully!")
 
@@ -378,7 +399,7 @@ Horovod provides optimized all-reduce operations:
 import os
 import tensorflow as tf
 from tensorflow import keras
-import horovod.tensorflow as hvd
+import horovod.tensorflow.keras as hvd
 
 # Initialize Horovod
 hvd.init()
@@ -387,6 +408,8 @@ print(f"Horovod initialized: rank={hvd.rank()}, size={hvd.size()}, local_rank={h
 
 # Pin GPU to be used to process local rank
 gpus = tf.config.experimental.list_physical_devices('GPU')
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
 if gpus:
     tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
 
@@ -410,7 +433,8 @@ opt = hvd.DistributedOptimizer(opt)
 model.compile(
     optimizer=opt,
     loss='sparse_categorical_crossentropy',
-    metrics=['accuracy']
+    metrics=['accuracy'],
+    experimental_run_tf_function=False
 )
 
 # Load data
@@ -448,33 +472,57 @@ model.fit(
 )
 ```
 
-Deploy with Horovod:
+Build and push a Horovod image that includes `horovod_train.py` at `/app/horovod_train.py`, then deploy it with MPIJob:
 
 ```yaml
-# tfjob-horovod.yaml
-apiVersion: kubeflow.org/v1
-kind: TFJob
+# mpijob-horovod.yaml
+apiVersion: kubeflow.org/v2beta1
+kind: MPIJob
 metadata:
   name: tensorflow-horovod
   namespace: training
 spec:
-  tfReplicaSpecs:
-    Worker:
-      replicas: 4
-      restartPolicy: OnFailure
+  slotsPerWorker: 2
+  runPolicy:
+    cleanPodPolicy: Running
+  mpiReplicaSpecs:
+    Launcher:
+      replicas: 1
       template:
         spec:
           containers:
           - name: tensorflow
-            image: horovod/horovod:0.28.0-tf2.14.0-torch2.0.0-mxnet1.9.1-py3.10-gpu
+            image: your-registry/horovod-tensorflow:v1
             command:
-            - horovodrun
+            - mpirun
+            - --allow-run-as-root
             - -np
-            - "8"  # 4 nodes * 2 GPUs
-            - -H
-            - localhost:2
+            - "8"
+            - -bind-to
+            - none
+            - -map-by
+            - slot
+            - -x
+            - NCCL_DEBUG=INFO
+            - -x
+            - LD_LIBRARY_PATH
+            - -x
+            - PATH
             - python
             - /app/horovod_train.py
+            resources:
+              requests:
+                memory: "4Gi"
+              limits:
+                memory: "4Gi"
+
+    Worker:
+      replicas: 4
+      template:
+        spec:
+          containers:
+          - name: tensorflow
+            image: your-registry/horovod-tensorflow:v1
             resources:
               requests:
                 nvidia.com/gpu: 2
