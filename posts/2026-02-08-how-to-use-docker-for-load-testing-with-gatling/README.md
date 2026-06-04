@@ -14,26 +14,26 @@ This guide covers setting up Gatling in Docker, writing simulations, scaling loa
 
 ## Why Gatling
 
-Gatling uses an asynchronous, non-blocking architecture based on Akka and Netty. This means a single Gatling instance can simulate thousands of concurrent users without needing thousands of threads. Its Scala-based DSL reads almost like plain English, making simulations easy to write and maintain. And the HTML reports it generates are genuinely useful, with detailed percentile breakdowns and request-by-request analysis.
+Gatling uses a fully asynchronous architecture where virtual users are modeled as lightweight messages instead of one thread per user. This means a single Gatling instance can simulate thousands of concurrent users with minimal system resources. Gatling supports Java, JavaScript, TypeScript, Scala, and Kotlin; this guide uses the Scala DSL, which reads almost like plain English and makes simulations easy to write and maintain. And the HTML reports it generates are genuinely useful, with detailed percentile breakdowns and request-by-request analysis.
 
 ## Running Gatling in Docker
 
-Gatling provides official Docker images. Start with a quick test to confirm everything works.
+Use a current Gatling Docker image, or build your own image from the official Gatling bundle. Start with a quick test to confirm everything works.
 
 ```bash
 # Run Gatling's built-in computer database simulation
 
 docker run --rm \
   -v "$(pwd)/results:/opt/gatling/results" \
-  denvazh/gatling \
+  ladamalina/gatling:3.15.0 \
   -s computerdatabase.BasicSimulation
 ```
 
-After the simulation completes, Gatling writes an HTML report to the `results` directory. Open the `index.html` file to see response time distributions, throughput, and error rates.
+After the simulation completes, Gatling writes an HTML report under the `results` directory. Open the generated `index.html` file to see response time distributions, throughput, and error rates.
 
 ## Writing a Custom Simulation
 
-Create a simulation that tests a REST API. Gatling simulations are Scala files, but you do not need to be a Scala expert. The DSL is straightforward.
+Create a Scala simulation that tests a REST API. You do not need to be a Scala expert. The DSL is straightforward.
 
 ```scala
 // simulations/ApiLoadTest.scala - Load test for a REST API
@@ -95,11 +95,11 @@ class ApiLoadTest extends Simulation {
     browseAndCreate.inject(
       // Ramp up to 50 users over 30 seconds
       rampUsers(50).during(30.seconds),
-      // Hold at 50 users for 2 minutes
+      // Continue at 10 new users per second for 2 minutes
       constantUsersPerSec(10).during(2.minutes)
     ),
     readHeavy.inject(
-      // Ramp up to 200 users over 1 minute
+      // Inject 200 users over 1 minute
       rampUsers(200).during(1.minute)
     )
   ).protocols(httpProtocol)
@@ -118,6 +118,7 @@ Organize your Gatling project with the correct directory structure.
 ```bash
 # Create the Gatling project structure
 mkdir -p gatling-tests/simulations
+mkdir -p gatling-tests/conf
 mkdir -p gatling-tests/resources
 mkdir -p gatling-tests/results
 ```
@@ -126,8 +127,9 @@ mkdir -p gatling-tests/results
 gatling-tests/
   simulations/
     ApiLoadTest.scala
-  resources/
+  conf/
     gatling.conf
+  resources/
     test-data.csv
   results/
   docker-compose.yml
@@ -139,8 +141,6 @@ Set up Gatling alongside the application under test using Docker Compose.
 
 ```yaml
 # docker-compose.yml - Application + Gatling load test
-version: "3.8"
-
 services:
   # The application under test
   api:
@@ -172,8 +172,9 @@ services:
 
   # Gatling load test runner
   gatling:
-    image: denvazh/gatling:latest
+    image: ladamalina/gatling:3.15.0
     volumes:
+      - ./conf:/opt/gatling/conf
       - ./simulations:/opt/gatling/user-files/simulations
       - ./resources:/opt/gatling/user-files/resources
       - ./results:/opt/gatling/results
@@ -189,8 +190,11 @@ services:
 # Run the load test
 docker compose up --abort-on-container-exit --exit-code-from gatling
 
-# Open the report
+# Open the report on macOS
 open results/*/index.html
+
+# Open the report on Linux
+xdg-open results/*/index.html
 ```
 
 ## Configuring Gatling
@@ -198,28 +202,27 @@ open results/*/index.html
 Customize Gatling's behavior through a configuration file.
 
 ```conf
-# resources/gatling.conf - Gatling configuration
+# conf/gatling.conf - Gatling configuration
 gatling {
   core {
-    # Number of threads for running simulations
-    outputDirectoryBaseName = "api-load-test"
-    runDescription = "API Load Test"
+    encoding = "utf-8"
+  }
+
+  socket {
+    connectTimeout = 10000
   }
 
   http {
-    # Connection pool settings
-    ahc {
-      connectTimeout = 10000
-      requestTimeout = 60000
-      pooledConnectionIdleTimeout = 60000
-      maxConnectionsPerHost = 100
-    }
+    # HTTP client timeout settings
+    requestTimeout = 60000
+    pooledConnectionIdleTimeout = 60000
   }
 
   data {
     # Console reporting interval
     console {
       light = false
+      writePeriod = 5
     }
   }
 }
