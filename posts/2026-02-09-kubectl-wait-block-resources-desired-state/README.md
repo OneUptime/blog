@@ -70,7 +70,7 @@ kubectl wait --for=condition=podscheduled pod/nginx
 kubectl wait --for=condition=containersready pod/nginx
 ```
 
-The `ready` condition indicates all containers passed readiness probes. Use this before sending traffic to pods.
+The `ready` condition indicates the pod can serve requests and should be added to matching Service load-balancing pools. It depends on container readiness and any configured readiness gates. Use this before sending traffic to pods.
 
 ## Waiting for Deployments
 
@@ -322,11 +322,11 @@ This verifies rollbacks complete successfully before declaring success.
 Services and endpoints have readiness implications:
 
 ```bash
-# Wait for service to have endpoints
-kubectl wait --for=condition=ready endpoints/webapp
+# Wait for service endpoint slices to have ready endpoints
+kubectl wait --for=jsonpath='{.endpoints[0].conditions.ready}'=true endpointslice -l kubernetes.io/service-name=webapp --timeout=300s
 
 # Wait for ingress to get address
-kubectl wait --for=jsonpath='{.status.loadBalancer.ingress[0].ip}' ingress/webapp --timeout=300s
+kubectl wait --for=jsonpath='{.status.loadBalancer.ingress}' ingress/webapp --timeout=300s
 ```
 
 These ensure network connectivity is established before proceeding.
@@ -356,10 +356,10 @@ This provides comprehensive debugging information when waits timeout.
 
 ## Performance Considerations
 
-kubectl wait polls the API server. Waiting for many resources increases API load:
+Running many separate wait commands creates more client and API server work:
 
 ```bash
-# Heavy API load - polls every resource individually
+# More client/API work - starts a separate wait for each resource
 for pod in pod1 pod2 pod3 pod4 pod5; do
     kubectl wait --for=condition=ready pod/$pod
 done
@@ -368,7 +368,7 @@ done
 kubectl wait --for=condition=ready pod -l app=myapp
 ```
 
-Use selectors to reduce API calls and improve performance.
+Use selectors to reduce command overhead and improve performance.
 
 ## Wait vs Rollout Status
 
