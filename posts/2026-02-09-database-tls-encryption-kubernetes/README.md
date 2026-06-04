@@ -23,18 +23,12 @@ Certificate management becomes critical in dynamic Kubernetes environments. Cert
 Deploy cert-manager to handle certificate generation and renewal:
 
 ```bash
-# Add Jetstack Helm repository
-
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
 # Install cert-manager with CRDs
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.crds.yaml
-
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.20.2 \
   --namespace cert-manager \
   --create-namespace \
-  --version v1.14.0
+  --set crds.enabled=true
 ```
 
 Verify installation:
@@ -145,8 +139,8 @@ metadata:
 data:
   pg_hba.conf: |
     # TYPE  DATABASE        USER            ADDRESS                 METHOD
-    hostssl all             all             0.0.0.0/0               md5
-    hostssl all             all             ::/0                    md5
+    hostssl all             all             0.0.0.0/0               md5 clientcert=verify-ca
+    hostssl all             all             ::/0                    md5 clientcert=verify-ca
     local   all             all                                     trust
 
   postgresql.conf: |
@@ -156,7 +150,7 @@ data:
     ssl_ca_file = '/etc/postgresql/certs/ca.crt'
     ssl_min_protocol_version = 'TLSv1.2'
     ssl_prefer_server_ciphers = on
-    ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL'
+    ssl_ciphers = 'HIGH:!aNULL:!MD5'
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -174,6 +168,8 @@ spec:
       labels:
         app: postgres
     spec:
+      securityContext:
+        fsGroup: 999
       containers:
         - name: postgres
           image: postgres:15
@@ -207,8 +203,7 @@ spec:
             - name: postgres-config
               mountPath: /etc/postgresql/pg_hba.conf
               subPath: pg_hba.conf
-          command:
-            - postgres
+          args:
             - -c
             - config_file=/etc/postgresql/postgresql.conf
             - -c
@@ -229,7 +224,7 @@ spec:
                 path: tls.crt
               - key: tls.key
                 path: tls.key
-                mode: 0600
+                mode: 0640
               - key: ca.crt
                 path: ca.crt
         - name: postgres-config
@@ -391,6 +386,8 @@ spec:
       labels:
         app: mysql
     spec:
+      securityContext:
+        fsGroup: 999
       containers:
         - name: mysql
           image: mysql:8.0
@@ -430,7 +427,7 @@ spec:
                 path: tls.crt
               - key: tls.key
                 path: tls.key
-                mode: 0600
+                mode: 0640
               - key: ca.crt
                 path: ca.crt
         - name: mysql-config
@@ -446,6 +443,19 @@ spec:
         resources:
           requests:
             storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: databases
+spec:
+  ports:
+    - port: 3306
+      name: mysql
+  clusterIP: None
+  selector:
+    app: mysql
 ```
 
 ## Configuring MongoDB with TLS
@@ -500,6 +510,8 @@ spec:
       labels:
         app: mongodb
     spec:
+      securityContext:
+        fsGroup: 999
       initContainers:
         - name: prepare-certs
           image: busybox:1.36
@@ -508,7 +520,8 @@ spec:
             - -c
             - |
               cat /etc/mongodb/certs/tls.crt /etc/mongodb/certs/tls.key > /etc/mongodb/combined/mongodb.pem
-              chmod 0600 /etc/mongodb/combined/mongodb.pem
+              chgrp 999 /etc/mongodb/combined/mongodb.pem
+              chmod 0640 /etc/mongodb/combined/mongodb.pem
               cp /etc/mongodb/certs/ca.crt /etc/mongodb/combined/
           volumeMounts:
             - name: tls-certs
@@ -532,11 +545,11 @@ spec:
                 secretKeyRef:
                   name: mongodb-credentials
                   key: password
-          command:
-            - mongod
+          args:
             - --tlsMode=requireTLS
             - --tlsCertificateKeyFile=/etc/mongodb/combined/mongodb.pem
             - --tlsCAFile=/etc/mongodb/combined/ca.crt
+            - --tlsAllowConnectionsWithoutCertificates
             - --bind_ip_all
           volumeMounts:
             - name: mongodb-storage
@@ -567,6 +580,19 @@ spec:
         resources:
           requests:
             storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: databases
+spec:
+  ports:
+    - port: 27017
+      name: mongodb
+  clusterIP: None
+  selector:
+    app: mongodb
 ```
 
 ## Testing TLS Connections
@@ -574,13 +600,13 @@ spec:
 Verify PostgreSQL TLS connection:
 
 ```bash
-kubectl exec -it -n databases postgres-0 -- psql "postgresql://appuser:password@localhost:5432/appdb?sslmode=require" -c "\conninfo"
+kubectl exec -it -n databases postgres-0 -- psql "postgresql://appuser:password@postgres.databases.svc.cluster.local:5432/appdb?sslmode=verify-full&sslcert=/etc/postgresql/certs/tls.crt&sslkey=/etc/postgresql/certs/tls.key&sslrootcert=/etc/postgresql/certs/ca.crt" -c "\conninfo"
 ```
 
 Test MySQL TLS:
 
 ```bash
-kubectl exec -it -n databases mysql-0 -- mysql -u root -p -e "SHOW VARIABLES LIKE '%ssl%';"
+kubectl exec -it -n databases mysql-0 -- mysql -h mysql.databases.svc.cluster.local --ssl-mode=VERIFY_IDENTITY --ssl-ca=/etc/mysql/certs/ca.crt -u root -p -e "SHOW SESSION STATUS LIKE 'Ssl_cipher';"
 ```
 
 Verify MongoDB TLS:
