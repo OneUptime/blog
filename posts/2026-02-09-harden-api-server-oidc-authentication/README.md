@@ -8,7 +8,7 @@ Description: Learn how to configure Kubernetes API server OIDC authentication fo
 
 ---
 
-Kubernetes service account tokens provide basic authentication but lack the security features of modern identity providers like multi-factor authentication, short-lived tokens, and centralized audit logging. OpenID Connect (OIDC) integration enables Kubernetes to delegate authentication to external identity providers like Google, Azure AD, or Okta, significantly improving security posture.
+Long-lived or shared Kubernetes service account tokens provide bearer-token authentication but lack the security features of modern identity providers like multi-factor authentication and centralized audit logging. OpenID Connect (OIDC) integration enables Kubernetes to delegate authentication to external identity providers like Google, Azure AD, or Okta, significantly improving security posture.
 
 This guide demonstrates how to configure and harden Kubernetes API server authentication using OIDC.
 
@@ -64,6 +64,8 @@ spec:
     - --oidc-issuer-url=https://accounts.google.com
     - --oidc-client-id=<your-client-id>.apps.googleusercontent.com
     - --oidc-username-claim=email
+    - --oidc-username-prefix=google:
+    # Only set group flags if your IdP includes a groups claim in ID tokens
     - --oidc-groups-claim=groups
     - --oidc-groups-prefix=google:
     # ... other flags ...
@@ -185,7 +187,8 @@ kubectl krew install oidc-login
 
 # Configure kubectl context
 kubectl config set-credentials oidc-user \
-  --exec-api-version=client.authentication.k8s.io/v1beta1 \
+  --exec-api-version=client.authentication.k8s.io/v1 \
+  --exec-interactive-mode=IfAvailable \
   --exec-command=kubectl \
   --exec-arg=oidc-login \
   --exec-arg=get-token \
@@ -231,7 +234,7 @@ spec:
     # Require specific claim values
     - --oidc-required-claim=hd=example.com
 
-    # Sign token requests
+    # Accept specific JWT signing algorithms
     - --oidc-signing-algs=RS256,ES256
 
     # Use specific username prefix
@@ -254,12 +257,27 @@ In Google Workspace:
 In Azure AD:
 
 ```bash
-# Enable conditional access policy
-az ad conditional-access policy create \
-  --display-name "Require MFA for Kubernetes" \
-  --state enabled \
-  --conditions '{"applications":{"includeApplications":["<app-id>"]}}' \
-  --grant-controls '{"builtInControls":["mfa"]}'
+# Enable a Conditional Access policy with Microsoft Graph
+az rest --method POST \
+  --uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies" \
+  --headers "Content-Type=application/json" \
+  --body '{
+    "displayName": "Require MFA for Kubernetes",
+    "state": "enabled",
+    "conditions": {
+      "clientAppTypes": ["browser", "mobileAppsAndDesktopClients"],
+      "applications": {
+        "includeApplications": ["<app-id>"]
+      },
+      "users": {
+        "includeUsers": ["All"]
+      }
+    },
+    "grantControls": {
+      "operator": "OR",
+      "builtInControls": ["mfa"]
+    }
+  }'
 ```
 
 ## Token Validation and Security
@@ -281,11 +299,7 @@ spec:
     # CA bundle for OIDC issuer validation
     - --oidc-ca-file=/etc/kubernetes/pki/oidc-ca.crt
 
-    # Skip insecure TLS (never use in production)
-    # - --oidc-insecure-skip-verify=true  # DANGEROUS
-
-    # Token expiry handling
-    - --oidc-max-token-expiration=86400  # 24 hours max
+    # Require short-lived ID tokens in your identity provider policy
 ```
 
 ## Monitoring OIDC Authentication
@@ -293,7 +307,7 @@ spec:
 Track authentication events:
 
 ```yaml
-# Enable audit logging for authentication events
+# Enable audit logging for TokenReview requests
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
@@ -310,10 +324,10 @@ metadata:
 data:
   query.promql: |
     # Failed OIDC authentications
-    increase(apiserver_authentication_attempts_total{result="error"}[5m])
+    increase(authentication_attempts{result="error"}[5m])
 
-    # Successful OIDC authentications by user
-    sum by (username) (increase(apiserver_authentication_attempts_total{result="success"}[1h]))
+    # Authenticated requests by user
+    sum by (username) (increase(authenticated_user_requests[1h]))
 ```
 
 ## Troubleshooting OIDC
@@ -328,7 +342,7 @@ kubectl logs -n kube-system kube-apiserver-<node>
 curl -H "Authorization: Bearer <oidc-token>" \
   https://api-server:6443/api/v1/namespaces
 
-# Verify OIDC configuration
+# Verify API server reachability
 kubectl get --raw /api/v1 | jq '.serverAddressByClientCIDRs'
 
 # Check certificate validation
@@ -353,6 +367,6 @@ kubectl get rolebindings,clusterrolebindings --all-namespaces \
 
 ## Conclusion
 
-Implementing OIDC authentication for the Kubernetes API server provides enterprise-grade security through centralized identity management, multi-factor authentication, and short-lived tokens. By delegating authentication to proven identity providers, you eliminate the security risks of long-lived service account tokens and gain comprehensive audit capabilities.
+Implementing OIDC authentication for the Kubernetes API server provides enterprise-grade security through centralized identity management, multi-factor authentication, and short-lived ID tokens. By delegating authentication to proven identity providers, you eliminate the security risks of using long-lived service account tokens for human users and gain comprehensive audit capabilities.
 
 Configure OIDC with your organization's identity provider, create RBAC bindings for users and groups, enable MFA requirements, and monitor authentication events. Use OneUptime to track authentication failures and ensure continuous access to your Kubernetes clusters.
