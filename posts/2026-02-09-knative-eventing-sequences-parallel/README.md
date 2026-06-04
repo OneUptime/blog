@@ -108,6 +108,10 @@ app.post('/', (req, res) => {
   console.log(`Validated user: ${event.email}`);
 
   // Return modified event as CloudEvent
+  res.set('Ce-Id', `${req.get('ce-id') || Date.now()}-validated`);
+  res.set('Ce-Specversion', '1.0');
+  res.set('Ce-Type', 'user.registration.validated');
+  res.set('Ce-Source', 'validate-user');
   res.set('Content-Type', 'application/json');
   res.status(200).json(event);
 });
@@ -124,6 +128,15 @@ const express = require('express');
 const axios = require('axios');
 const app = express();
 app.use(express.json());
+
+function sendCloudEvent(req, res, type, source, data) {
+  res.set('Ce-Id', `${req.get('ce-id') || Date.now()}-${source}`);
+  res.set('Ce-Specversion', '1.0');
+  res.set('Ce-Type', type);
+  res.set('Ce-Source', source);
+  res.set('Content-Type', 'application/json');
+  res.status(200).json(data);
+}
 
 app.post('/', async (req, res) => {
   const event = req.body;
@@ -145,12 +158,12 @@ app.post('/', async (req, res) => {
 
     console.log(`Enriched user: ${event.email} from ${event.location.country}`);
 
-    res.status(200).json(event);
+    sendCloudEvent(req, res, 'user.registration.enriched', 'enrich-user-data', event);
   } catch (error) {
     console.error('Enrichment failed:', error.message);
     // Pass through without enrichment on error
     event.enrichmentFailed = true;
-    res.status(200).json(event);
+    sendCloudEvent(req, res, 'user.registration.enrichment-failed', 'enrich-user-data', event);
   }
 });
 
@@ -259,51 +272,31 @@ spec:
           apiVersion: serving.knative.dev/v1
           kind: Service
           name: virus-scanner
-      reply:
-        ref:
-          apiVersion: serving.knative.dev/v1
-          kind: Service
-          name: result-aggregator
 
     - subscriber:
         ref:
           apiVersion: serving.knative.dev/v1
           kind: Service
           name: content-classifier
-      reply:
-        ref:
-          apiVersion: serving.knative.dev/v1
-          kind: Service
-          name: result-aggregator
 
     - subscriber:
         ref:
           apiVersion: serving.knative.dev/v1
           kind: Service
           name: ocr-extractor
-      reply:
-        ref:
-          apiVersion: serving.knative.dev/v1
-          kind: Service
-          name: result-aggregator
 
     - subscriber:
         ref:
           apiVersion: serving.knative.dev/v1
           kind: Service
           name: metadata-extractor
-      reply:
-        ref:
-          apiVersion: serving.knative.dev/v1
-          kind: Service
-          name: result-aggregator
 
-  # Optional filter to pre-process events
+  # Shared destination for branch results when a branch has no reply
   reply:
     ref:
       apiVersion: serving.knative.dev/v1
       kind: Service
-      name: final-processor
+      name: result-aggregator
 ```
 
 Each branch processes the document independently:
@@ -311,10 +304,21 @@ Each branch processes the document independently:
 ```python
 # virus-scanner/app.py
 from flask import Flask, request, jsonify
+from datetime import datetime
 import hashlib
 import requests
 
 app = Flask(__name__)
+
+def cloud_event_response(data, event_type):
+    response = jsonify(data)
+    source_id = request.headers.get('ce-id', 'document')
+    response.headers['Ce-Id'] = f"{source_id}-virus-scanner"
+    response.headers['Ce-Specversion'] = '1.0'
+    response.headers['Ce-Type'] = event_type
+    response.headers['Ce-Source'] = 'virus-scanner'
+    response.headers['Content-Type'] = 'application/json'
+    return response
 
 @app.route('/', methods=['POST'])
 def scan_document():
@@ -338,13 +342,13 @@ def scan_document():
             'scannedAt': datetime.now().isoformat()
         }
 
-        return jsonify(result), 200
+        return cloud_event_response(result, 'document.virus-scanned'), 200
     except Exception as e:
-        return jsonify({
+        return cloud_event_response({
             'branch': 'virus-scanner',
             'error': str(e),
             'documentId': event.get('documentId')
-        }), 200  # Return 200 to not fail the workflow
+        }, 'document.virus-scan-failed'), 200  # Return 200 to not fail the workflow
 
 def check_virus_database(file_hash):
     # Check against virus signature database
@@ -362,6 +366,15 @@ The result aggregator collects responses from all branches:
 const express = require('express');
 const app = express();
 app.use(express.json());
+
+function sendCloudEvent(req, res, type, source, data) {
+  res.set('Ce-Id', `${req.get('ce-id') || Date.now()}-${source}`);
+  res.set('Ce-Specversion', '1.0');
+  res.set('Ce-Type', type);
+  res.set('Ce-Source', source);
+  res.set('Content-Type', 'application/json');
+  res.status(200).json(data);
+}
 
 // Store partial results
 const results = new Map();
@@ -386,11 +399,14 @@ app.post('/', (req, res) => {
     results.delete(docId);
 
     // Return aggregated result
-    return res.status(200).json(aggregated);
+    return sendCloudEvent(req, res, 'document.analysis-complete', 'result-aggregator', aggregated);
   }
 
   // More results pending
-  res.status(200).json({ status: 'partial', count: docResults.length });
+  sendCloudEvent(req, res, 'document.analysis-partial', 'result-aggregator', {
+    status: 'partial',
+    count: docResults.length
+  });
 });
 
 function aggregateResults(branchResults) {
