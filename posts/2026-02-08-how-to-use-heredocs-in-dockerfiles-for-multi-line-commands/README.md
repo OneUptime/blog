@@ -8,7 +8,7 @@ Description: Learn how to use heredoc syntax in Dockerfiles to write cleaner mul
 
 ---
 
-Heredocs (here documents) in Dockerfiles let you write multi-line strings directly inside RUN, COPY, and other instructions. Before heredocs, writing multi-line shell scripts in Dockerfiles required awkward backslash continuation or separate script files. With heredoc support, you can embed entire scripts and configuration files inline, making Dockerfiles more readable and self-contained.
+Heredocs (here documents) in Dockerfiles let you write multi-line strings directly inside RUN and COPY instructions. Before heredocs, writing multi-line shell scripts in Dockerfiles required awkward backslash continuation or separate script files. With heredoc support, you can embed entire scripts and configuration files inline, making Dockerfiles more readable and self-contained.
 
 Heredoc syntax requires BuildKit, which is the default builder in Docker 23.0 and later. This guide covers the syntax, practical use cases, and patterns for getting the most out of heredocs in your Dockerfiles.
 
@@ -69,7 +69,7 @@ By default, heredocs in RUN use `/bin/sh`. You can specify a different shell:
 FROM ubuntu:22.04
 
 # Use bash for the heredoc script
-RUN <<EOF bash
+RUN <<'EOF' bash
 set -euo pipefail
 declare -A config
 config[host]="localhost"
@@ -98,7 +98,7 @@ One of the most useful heredoc features is the ability to create files directly 
 FROM nginx:alpine
 
 # Create an nginx configuration file inline
-COPY <<EOF /etc/nginx/conf.d/default.conf
+COPY <<"EOF" /etc/nginx/conf.d/default.conf
 server {
     listen 80;
     server_name localhost;
@@ -157,7 +157,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Create an entrypoint script inline
-COPY --chmod=755 <<EOF /app/entrypoint.sh
+COPY --chmod=755 <<'EOF' /app/entrypoint.sh
 #!/bin/bash
 set -euo pipefail
 
@@ -189,7 +189,7 @@ Heredocs make it easy to write proper shell scripts with error handling:
 FROM ubuntu:22.04
 
 # A proper build script with error handling and logging
-RUN <<EOF bash -e
+RUN <<'EOF' bash -e
 echo "=== Installing system dependencies ==="
 apt-get update
 apt-get install -y --no-install-recommends \
@@ -267,7 +267,7 @@ CMD ["server", "--config", "/etc/server/config.yaml"]
 
 ## Suppressing Variable Expansion
 
-By default, heredocs in RUN instructions expand shell variables. If you need literal dollar signs (common in nginx configs or cron entries), quote the delimiter:
+By default, heredocs can expand variables before the content reaches the command or file. If you need literal dollar signs (common in nginx configs or cron entries), quote the delimiter:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -287,12 +287,12 @@ server {
 EOF
 ```
 
-Without the quotes around `EOF`, the shell would try to expand `$host` and `$proxy_add_x_forwarded_for` as shell variables, resulting in empty strings.
+Without the quotes around `EOF`, the Dockerfile frontend would try to expand `$host` and `$proxy_add_x_forwarded_for`, resulting in empty strings unless matching build variables exist.
 
-For RUN heredocs, the same quoting works:
+For RUN heredocs, the quoted delimiter prevents expansion while the heredoc is passed to the command. The script itself still follows normal shell quoting rules when it runs:
 
 ```dockerfile
-# No expansion - literal dollar signs preserved
+# Literal dollar signs preserved by shell quoting inside the script
 RUN <<'EOF'
 echo '$HOME is not expanded'
 echo 'The cost is $5.00'
