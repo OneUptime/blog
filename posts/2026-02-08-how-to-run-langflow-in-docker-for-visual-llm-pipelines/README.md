@@ -33,6 +33,7 @@ docker run -d \
   --name langflow \
   -p 7860:7860 \
   -v langflow_data:/app/langflow \
+  -e LANGFLOW_CONFIG_DIR=/app/langflow \
   langflowai/langflow:latest
 ```
 
@@ -57,6 +58,8 @@ services:
       # Persist flows, database, and configuration
       - langflow_data:/app/langflow
     environment:
+      # Store LangFlow configuration and logs in the mounted volume
+      - LANGFLOW_CONFIG_DIR=/app/langflow
       # Database configuration (SQLite by default)
       - LANGFLOW_DATABASE_URL=sqlite:////app/langflow/langflow.db
       # Auto-login for development (disable for production)
@@ -99,8 +102,12 @@ services:
     environment:
       # PostgreSQL connection string
       - LANGFLOW_DATABASE_URL=postgresql://langflow:securepassword@postgres:5432/langflow
+      # Store LangFlow configuration and logs in the mounted volume
+      - LANGFLOW_CONFIG_DIR=/app/langflow
       # Disable auto-login for production
       - LANGFLOW_AUTO_LOGIN=false
+      # Set a stable secret key in production for encryption and JWT signing
+      - LANGFLOW_SECRET_KEY=replace-with-a-generated-secret-key
       # Superuser credentials
       - LANGFLOW_SUPERUSER=admin
       - LANGFLOW_SUPERUSER_PASSWORD=your-admin-password
@@ -159,6 +166,7 @@ services:
     volumes:
       - langflow_data:/app/langflow
     environment:
+      - LANGFLOW_CONFIG_DIR=/app/langflow
       - LANGFLOW_AUTO_LOGIN=true
     depends_on:
       - ollama
@@ -186,7 +194,7 @@ services:
     image: chromadb/chroma:latest
     container_name: langflow-chroma
     volumes:
-      - chroma_data:/chroma/chroma
+      - chroma_data:/data
     ports:
       - "8000:8000"
     restart: unless-stopped
@@ -270,11 +278,13 @@ graph TD
 Every flow gets an API endpoint automatically.
 
 ```bash
-# Get the flow ID from the LangFlow UI (bottom of the flow editor)
+# Get the flow ID and create an API key from the LangFlow UI
+export LANGFLOW_API_KEY="your-api-key"
 
 # Run a flow via the API
 curl -X POST http://localhost:7860/api/v1/run/<flow-id> \
   -H "Content-Type: application/json" \
+  -H "x-api-key: $LANGFLOW_API_KEY" \
   -d '{
     "input_value": "What is containerization?",
     "output_type": "chat",
@@ -289,6 +299,7 @@ import requests
 
 LANGFLOW_URL = "http://localhost:7860"
 FLOW_ID = "your-flow-id"
+LANGFLOW_API_KEY = "your-api-key"
 
 def run_flow(message, tweaks=None):
     """Send a message to a LangFlow flow and get the response."""
@@ -302,8 +313,11 @@ def run_flow(message, tweaks=None):
 
     response = requests.post(
         f"{LANGFLOW_URL}/api/v1/run/{FLOW_ID}",
-        json=payload
+        headers={"x-api-key": LANGFLOW_API_KEY},
+        json=payload,
+        timeout=60,
     )
+    response.raise_for_status()
     data = response.json()
 
     # Extract the output text
@@ -319,14 +333,14 @@ answer = run_flow("Explain Docker volumes in simple terms")
 print(f"Response: {answer}")
 ```
 
-## Exporting Flows as Python Code
+## Exporting Flows and API Code
 
-One of LangFlow's strongest features is the ability to export any visual flow as standalone Python code. Click the "Code" button in the flow editor to see the generated code. This is valuable for:
+One of LangFlow's strongest features is the ability to export any visual flow as a JSON file and generate Python, JavaScript, or curl API snippets from the Share menu. This is valuable for:
 
 - Moving from prototype to production
 - Version controlling your flows in git
 - Customizing behavior beyond what the visual editor supports
-- Running flows in environments without the LangFlow UI
+- Running flows from applications without opening the LangFlow UI
 
 ## Custom Components
 
@@ -335,26 +349,30 @@ LangFlow supports custom components written in Python.
 ```python
 # custom_component.py
 # A custom LangFlow component that adds logging to LLM responses
-from langflow import CustomComponent
-from langchain.schema import Document
+from lfx.custom import Component
+from lfx.io import MessageTextInput, Output, StrInput
+from lfx.schema import Message
 
-class ResponseLogger(CustomComponent):
+class ResponseLogger(Component):
     display_name = "Response Logger"
     description = "Logs LLM responses to a file"
 
-    def build_config(self):
-        return {
-            "input_text": {"display_name": "Input Text"},
-            "log_file": {"display_name": "Log File Path", "value": "/app/langflow/responses.log"},
-        }
+    inputs = [
+        MessageTextInput(name="input_text", display_name="Input Text"),
+        StrInput(name="log_file", display_name="Log File Path", value="/app/langflow/responses.log"),
+    ]
 
-    def build(self, input_text: str, log_file: str) -> str:
-        with open(log_file, "a") as f:
-            f.write(f"{input_text}\n---\n")
-        return input_text
+    outputs = [
+        Output(name="logged_message", display_name="Logged Message", method="log_response"),
+    ]
+
+    def log_response(self) -> Message:
+        with open(self.log_file, "a") as f:
+            f.write(f"{self.input_text}\n---\n")
+        return Message(text=self.input_text)
 ```
 
-Place custom components in the custom components directory and they appear in the sidebar.
+Place custom components in a category folder under the directory configured by `LANGFLOW_COMPONENTS_PATH`, and include an `__init__.py` file so they appear in the sidebar.
 
 ## Backup and Monitoring
 
@@ -371,8 +389,8 @@ docker stats langflow
 # View logs
 docker compose logs -f langflow
 
-# Check health
-curl http://localhost:7860/health
+# Check service health
+curl http://localhost:7860/health_check
 ```
 
 ## Updating LangFlow
