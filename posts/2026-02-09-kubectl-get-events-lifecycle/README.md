@@ -8,7 +8,7 @@ Description: Learn how to use kubectl get events to track Kubernetes pod lifecyc
 
 ---
 
-Kubernetes events provide a time-ordered log of state changes and actions taken by the system. They are crucial for understanding what happened to your pods, why they failed, or how they transitioned through different states.
+Kubernetes events provide a best-effort, time-oriented record of state changes and actions taken by the system. They are crucial for understanding what happened to your pods, why they failed, or how they transitioned through different states.
 
 ## Understanding Kubernetes Events
 
@@ -88,7 +88,7 @@ kubectl get events -n production --field-selector involvedObject.name=myapp-pod,
 
 ## Filtering by Event Type
 
-View only warnings or errors:
+View only warnings:
 
 ```bash
 # Warning events only
@@ -226,9 +226,9 @@ if echo "$EVENTS" | jq -e '.items[] | select(.reason=="FailedScheduling")' > /de
   echo "$EVENTS" | jq -r '.items[] | select(.reason=="FailedScheduling") | .message'
 fi
 
-# Check for image pull issues
+# Check for image pull and restart backoff issues
 if echo "$EVENTS" | jq -e '.items[] | select(.reason=="Failed" or .reason=="BackOff")' > /dev/null; then
-  echo "ISSUE: Image pull problem"
+  echo "ISSUE: Image pull or restart backoff problem"
   echo "$EVENTS" | jq -r '.items[] | select(.reason=="Failed" or .reason=="BackOff") | .message' | head -3
 fi
 
@@ -251,7 +251,7 @@ fi
 # Find pods with Back-off events
 kubectl get events --field-selector reason=BackOff --all-namespaces
 
-# Count restarts per pod
+# Count BackOff event occurrences per pod
 kubectl get events --field-selector reason=BackOff -o json | \
   jq -r '.items[] | "\(.involvedObject.name) \(.count)"' | \
   awk '{sum[$1]+=$2} END {for (pod in sum) print sum[pod], pod}' | \
@@ -266,8 +266,8 @@ kubectl get events --field-selector involvedObject.name=myapp-pod,reason=BackOff
 ```bash
 # Events during deployment
 DEPLOY_TIME=$(kubectl get deployment myapp -o jsonpath='{.metadata.creationTimestamp}')
-kubectl get events --field-selector involvedObject.kind=Pod --sort-by='.lastTimestamp' | \
-  awk -v dt="$DEPLOY_TIME" '$1 >= dt'
+kubectl get events --field-selector involvedObject.kind=Pod -o json | \
+  jq -r --arg dt "$DEPLOY_TIME" '.items[] | select(.lastTimestamp >= $dt) | [.lastTimestamp, .type, .reason, .involvedObject.name, .message] | @tsv'
 
 # Watch deployment events
 kubectl get events --watch --field-selector involvedObject.kind=ReplicaSet
@@ -309,6 +309,8 @@ echo "Namespace: ${1:-default}"
 NAMESPACE_FLAG=""
 if [ "$1" != "all" ]; then
   NAMESPACE_FLAG="-n ${1:-default}"
+else
+  NAMESPACE_FLAG="--all-namespaces"
 fi
 
 echo ""
@@ -388,7 +390,7 @@ kubectl get events --field-selector type=Warning -o json | \
 Events expire after one hour by default. To extend or reduce:
 
 ```bash
-# Check current event retention (from API server flags)
+# Check current event retention on self-managed clusters (from API server flags)
 kubectl get pod -n kube-system kube-apiserver-<node> -o yaml | grep event-ttl
 
 # Events are automatically cleaned up
