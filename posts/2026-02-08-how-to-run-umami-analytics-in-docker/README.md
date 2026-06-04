@@ -31,12 +31,10 @@ docker compose version
 
 ## Docker Compose Setup
 
-Umami needs a database backend. It supports both PostgreSQL and MySQL. PostgreSQL is recommended.
+Umami needs a database backend. Current self-hosted Umami releases use PostgreSQL, which is the recommended database.
 
 ```yaml
 # docker-compose.yml - Umami Analytics with PostgreSQL
-version: "3.8"
-
 services:
   umami:
     image: ghcr.io/umami-software/umami:postgresql-latest
@@ -47,7 +45,7 @@ services:
     environment:
       # PostgreSQL connection string
       DATABASE_URL: postgresql://umami:${POSTGRES_PASSWORD}@umami-postgres:5432/umami
-      # Hash salt for anonymizing data (generate a random string)
+      # Secret for securing authentication tokens (generate a random string)
       APP_SECRET: ${APP_SECRET}
       # Disable telemetry
       DISABLE_TELEMETRY: 1
@@ -55,7 +53,7 @@ services:
       umami-postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/heartbeat"]
+      test: ["CMD-SHELL", "curl http://localhost:3000/api/heartbeat"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -122,23 +120,22 @@ The tracking snippet looks like this:
 <script defer src="https://analytics.yourdomain.com/script.js" data-website-id="your-website-id"></script>
 ```
 
-Add this to the `<head>` section of every page you want to track. For static site generators, add it to your base template. For Next.js:
+Add this to the `<head>` section of every page you want to track. For static site generators, add it to your base template. For a Next.js App Router layout:
 
-```jsx
-// pages/_app.js or app/layout.tsx - Add Umami tracking to Next.js
+```tsx
+// app/layout.tsx - Add Umami tracking to Next.js
 import Script from 'next/script';
 
-export default function RootLayout({ children }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html>
-      <head>
+      <body>
+        {children}
         <Script
-          defer
           src="https://analytics.yourdomain.com/script.js"
           data-website-id="your-website-id"
         />
-      </head>
-      <body>{children}</body>
+      </body>
     </html>
   );
 }
@@ -159,7 +156,7 @@ document.getElementById('signup-form').addEventListener('submit', function(e) {
     umami.track('Form Submit', { form: 'signup', plan: 'pro' });
 });
 
-// Track a page view with custom data
+// Track a custom event with data
 umami.track('Product View', { product_id: '123', category: 'electronics' });
 ```
 
@@ -201,7 +198,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ## Dashboard Sharing
 
-You can share individual website dashboards publicly without requiring login. Go to Settings > Websites > your site > Share URL. This generates a public link that shows the dashboard in read-only mode.
+You can share individual website dashboards publicly without requiring login. Go to Websites, edit your site, and add a Share URL. This generates a public link that shows the dashboard in read-only mode.
 
 This is useful for sharing analytics with clients or stakeholders who do not need a Umami account.
 
@@ -220,6 +217,7 @@ curl -X POST http://localhost:3000/api/users \
 Roles include:
 - **Admin**: full access to all settings and websites
 - **User**: can view assigned websites and manage their own settings
+- **View-only**: can view assigned analytics without management access
 
 ## Environment Variables for Configuration
 
@@ -234,10 +232,10 @@ environment:
   TRACKER_SCRIPT_NAME: custom-script-name
   COLLECT_API_ENDPOINT: /api/send
   # Disable bot detection if you want to count bots
-  DISABLE_BOT_CHECK: "false"
+  DISABLE_BOT_CHECK: 1
   # Force SSL
-  FORCE_SSL: "true"
-  # Allowed origins for the tracking script (CORS)
+  FORCE_SSL: 1
+  # Allowed URLs for embedding Umami in an iframe
   ALLOWED_FRAME_URLS: "https://yourdomain.com"
 ```
 
@@ -295,7 +293,7 @@ docker exec -i umami-postgres psql -U umami umami < umami-backup-20260208.sql
 docker compose pull
 
 # Recreate the container (migrations run automatically)
-docker compose up -d
+docker compose up --force-recreate -d
 
 # Verify the update
 docker compose logs -f umami
