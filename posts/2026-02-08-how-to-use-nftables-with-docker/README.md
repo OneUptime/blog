@@ -8,7 +8,7 @@ Description: Configure Docker to work with nftables, the modern Linux firewall f
 
 ---
 
-Linux distributions are moving from iptables to nftables. Debian 10+, Ubuntu 20.04+, RHEL 8+, and Fedora have all made nftables the default firewall backend. Docker, however, was built around iptables. This creates friction: Docker inserts iptables rules, but the system expects nftables. The two frameworks can coexist through a compatibility layer, but understanding how they interact prevents subtle networking bugs.
+Linux distributions are moving from iptables to nftables. Debian 10+, Ubuntu 20.04+, RHEL 8+, and Fedora have all made nftables the default firewall backend. Docker, however, was built around iptables. This creates friction: Docker inserts iptables rules, but the system expects nftables. The two frameworks can coexist through a compatibility layer, and Docker 29.0.0 added an experimental native nftables firewall backend. Understanding which mode you are using prevents subtle networking bugs.
 
 This guide covers how to run Docker alongside nftables, configure nftables rules for Docker containers, and handle the transition from iptables cleanly.
 
@@ -57,7 +57,7 @@ sudo iptables-legacy -t mangle -F
 
 ## Setting Up Docker with nftables
 
-Docker version 20.10 and later work with the iptables-nft backend. Ensure the alternatives system points to the nft version:
+Docker works with the iptables-nft backend. Ensure the alternatives system points to the nft version:
 
 ```bash
 # Set iptables to use the nft backend on Debian/Ubuntu
@@ -76,9 +76,11 @@ sudo nft list table ip filter
 sudo nft list table ip nat
 ```
 
+Docker 29.0.0 and later also include an experimental native nftables firewall backend for bridge networks. If you enable it with `"firewall-backend": "nftables"` in `/etc/docker/daemon.json` or with the `--firewall-backend=nftables` dockerd option, Docker creates tables such as `ip docker-bridges` and `ip6 docker-bridges` instead of the iptables compatibility tables. This mode does not support Swarm mode, and Docker does not create a `DOCKER-USER` chain in native nftables mode.
+
 ## Writing Native nftables Rules for Docker
 
-Instead of using iptables commands in the DOCKER-USER chain, you can write native nftables rules. First, understand the table structure:
+When Docker is using the iptables backend through iptables-nft, you can inspect and modify the translated `DOCKER-USER` chain with nftables syntax. First, understand the table structure:
 
 ```bash
 # Show the filter table structure created by Docker (via iptables-nft)
@@ -147,7 +149,7 @@ nftables has built-in set support (no need for ipset):
 ```bash
 # Create a named set of allowed IP addresses
 sudo nft add table ip docker-acl
-sudo nft add set ip docker-acl allowed_ips '{ type ipv4_addr; }'
+sudo nft add set ip docker-acl allowed_ips '{ type ipv4_addr; flags interval; }'
 
 # Populate the set
 sudo nft add element ip docker-acl allowed_ips '{ 203.0.113.10, 203.0.113.20, 198.51.100.0/24 }'
@@ -180,16 +182,19 @@ Implement port knocking to hide Docker services:
 table ip port-knock {
     set knock-stage1 {
         type ipv4_addr
+        flags timeout
         timeout 10s
     }
 
     set knock-stage2 {
         type ipv4_addr
+        flags timeout
         timeout 10s
     }
 
     set allowed {
         type ipv4_addr
+        flags timeout
         timeout 300s
     }
 
@@ -197,17 +202,17 @@ table ip port-knock {
         type filter hook forward priority -2; policy accept;
 
         # Stage 1: knock on port 7000
-        iifname "eth0" tcp dport 7000 set add ip saddr @knock-stage1 drop
+        iifname "eth0" tcp dport 7000 update @knock-stage1 { ip saddr } drop
 
         # Stage 2: knock on port 8000 (must have completed stage 1)
         iifname "eth0" tcp dport 8000 ip saddr @knock-stage1 \
-            set add ip saddr @knock-stage2 drop
+            update @knock-stage2 { ip saddr } drop
 
         # Stage 3: knock on port 9000 (must have completed stage 2)
         iifname "eth0" tcp dport 9000 ip saddr @knock-stage2 \
-            set add ip saddr @allowed drop
+            update @allowed { ip saddr } drop
 
-        # Allow access to Docker port 8080 only for IPs that completed the knock sequence
+        # Allow access to the container's port 80 only for IPs that completed the knock sequence
         iifname "eth0" oifname "docker0" tcp dport 80 ip saddr @allowed accept
         iifname "eth0" oifname "docker0" tcp dport 80 drop
     }
@@ -242,7 +247,7 @@ Unlike iptables, nftables has a straightforward persistence model:
 
 ```bash
 # Save the entire ruleset to the main configuration file
-sudo nft list ruleset > /etc/nftables.conf
+sudo nft list ruleset | sudo tee /etc/nftables.conf > /dev/null
 
 # On Debian/Ubuntu, enable the nftables service
 sudo systemctl enable nftables
@@ -273,17 +278,22 @@ sudo chmod 700 /etc/nftables.d
 Common issues and their fixes:
 
 ```bash
-# Problem: Docker containers cannot reach the internet
+# Problem: Docker containers cannot reach the internet (iptables-nft backend)
 # Check if masquerading is configured
 sudo nft list table ip nat | grep masquerade
 
-# Problem: Published ports not accessible
+# Problem: Published ports not accessible (iptables-nft backend)
 # Verify DNAT rules exist
 sudo nft list chain ip nat DOCKER
 
-# Problem: Containers on different networks can communicate (isolation broken)
+# Problem: Containers on different networks can communicate (iptables-nft backend)
 # Check isolation chains
 sudo nft list chain ip filter DOCKER-ISOLATION-STAGE-1
+
+# Problem: Docker rules are not in ip filter/ip nat
+# If you enabled Docker's native nftables backend, inspect Docker's native tables
+sudo nft list table ip docker-bridges
+sudo nft list table ip6 docker-bridges
 
 # Problem: Rules duplicated after Docker restart
 # Check for duplicate chains
@@ -307,4 +317,4 @@ cat /tmp/nftables-import.nft
 
 ## Conclusion
 
-Docker and nftables work together through the iptables-nft compatibility layer. For most setups, this is transparent and requires no special configuration. When you need custom firewall rules, writing native nftables rules offers advantages over iptables: sets without external tools, better performance with large rulesets, atomic rule updates, and cleaner syntax. The key is understanding that Docker's rules appear in the nftables ruleset through the compatibility layer, and your custom rules should live in separate tables to avoid conflicts.
+Docker and nftables work together through the iptables-nft compatibility layer, or through Docker's experimental native nftables backend in newer releases. For most compatibility-layer setups, this is transparent and requires no special configuration. When you need custom firewall rules, writing native nftables rules offers advantages over iptables: sets without external tools, better performance with large rulesets, atomic rule updates, and cleaner syntax. The key is understanding which firewall backend Docker is using, and keeping your custom rules in separate tables to avoid conflicts.
