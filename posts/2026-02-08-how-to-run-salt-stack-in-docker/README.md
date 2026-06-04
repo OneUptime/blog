@@ -29,11 +29,12 @@ FROM ubuntu:22.04
 
 # Install Salt master packages
 RUN apt-get update && \
-    apt-get install -y curl gnupg2 && \
-    curl -fsSL https://repo.saltproject.io/salt/py3/ubuntu/22.04/amd64/SALT-PROJECT-GPG-PUBKEY-2023.gpg | \
-      gpg --dearmor -o /usr/share/keyrings/salt-archive-keyring.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/salt-archive-keyring.gpg] https://repo.saltproject.io/salt/py3/ubuntu/22.04/amd64/latest jammy main" \
-      > /etc/apt/sources.list.d/salt.list && \
+    apt-get install -y curl ca-certificates gnupg && \
+    mkdir -m 755 -p /etc/apt/keyrings && \
+    curl -fsSL https://packages.broadcom.com/artifactory/api/security/keypair/SaltProjectKey/public | \
+      gpg --dearmor -o /etc/apt/keyrings/salt-archive-keyring.pgp && \
+    curl -fsSL https://github.com/saltstack/salt-install-guide/releases/latest/download/salt.sources \
+      -o /etc/apt/sources.list.d/salt.sources && \
     apt-get update && \
     apt-get install -y salt-master salt-minion && \
     apt-get clean && \
@@ -45,8 +46,8 @@ RUN mkdir -p /srv/salt /srv/pillar
 # Expose Salt master ports
 EXPOSE 4505 4506
 
-# Start the Salt master in the foreground
-CMD ["salt-master", "-l", "info"]
+# Start the Salt master in the foreground without Salt's keepalive wrapper
+CMD ["salt-master", "--disable-keepalive", "-l", "info"]
 ```
 
 ## Setting Up the Salt Minion Container
@@ -59,18 +60,19 @@ FROM ubuntu:22.04
 
 # Install Salt minion
 RUN apt-get update && \
-    apt-get install -y curl gnupg2 && \
-    curl -fsSL https://repo.saltproject.io/salt/py3/ubuntu/22.04/amd64/SALT-PROJECT-GPG-PUBKEY-2023.gpg | \
-      gpg --dearmor -o /usr/share/keyrings/salt-archive-keyring.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/salt-archive-keyring.gpg] https://repo.saltproject.io/salt/py3/ubuntu/22.04/amd64/latest jammy main" \
-      > /etc/apt/sources.list.d/salt.list && \
+    apt-get install -y curl ca-certificates gnupg && \
+    mkdir -m 755 -p /etc/apt/keyrings && \
+    curl -fsSL https://packages.broadcom.com/artifactory/api/security/keypair/SaltProjectKey/public | \
+      gpg --dearmor -o /etc/apt/keyrings/salt-archive-keyring.pgp && \
+    curl -fsSL https://github.com/saltstack/salt-install-guide/releases/latest/download/salt.sources \
+      -o /etc/apt/sources.list.d/salt.sources && \
     apt-get update && \
     apt-get install -y salt-minion && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Start the Salt minion in the foreground
-CMD ["salt-minion", "-l", "info"]
+# Start the Salt minion in the foreground without Salt's keepalive wrapper
+CMD ["salt-minion", "--disable-keepalive", "-l", "info"]
 ```
 
 ## Docker Compose for the Full Stack
@@ -79,8 +81,6 @@ Docker Compose ties everything together. The master and minions share a network,
 
 ```yaml
 # docker-compose.yml - SaltStack master with multiple minions
-version: "3.8"
-
 services:
   salt-master:
     build:
@@ -105,8 +105,6 @@ services:
       dockerfile: Dockerfile.minion
     container_name: minion-web
     hostname: minion-web
-    environment:
-      - SALT_MASTER=salt-master
     volumes:
       - ./salt/minion.d:/etc/salt/minion.d
     depends_on:
@@ -120,8 +118,6 @@ services:
       dockerfile: Dockerfile.minion
     container_name: minion-db
     hostname: minion-db
-    environment:
-      - SALT_MASTER=salt-master
     volumes:
       - ./salt/minion.d:/etc/salt/minion.d
     depends_on:
@@ -183,11 +179,12 @@ nginx_package:
     - name: nginx
 
 nginx_service:
-  service.running:
+  cmd.run:
     - name: nginx
-    - enable: True
+    - unless: pgrep -x nginx
     - require:
       - pkg: nginx_package
+      - file: nginx_config
 
 nginx_config:
   file.managed:
@@ -196,8 +193,6 @@ nginx_config:
     - template: jinja
     - require:
       - pkg: nginx_package
-    - watch_in:
-      - service: nginx_service
 ```
 
 Create the Nginx config template.
@@ -222,7 +217,7 @@ Apply the state to the web minion.
 docker exec salt-master salt 'minion-web' state.apply nginx
 
 # Verify Nginx is running on the minion
-docker exec minion-web systemctl status nginx
+docker exec minion-web pgrep -a nginx
 ```
 
 ## Using Salt Pillar for Configuration Data
@@ -267,7 +262,8 @@ docker exec salt-master salt 'minion-web' pillar.items
 Need to test a state against many minions? Docker Compose makes scaling straightforward.
 
 ```bash
-# Scale minions to 5 instances
+# Before scaling a service, remove any fixed container_name and hostname
+# from that service so each replica can get a unique container and minion ID.
 docker compose up -d --scale minion-web=5
 
 # After a few seconds, list all connected minions
@@ -280,8 +276,6 @@ For simpler use cases, you can run Salt without a master. The minion applies sta
 
 ```yaml
 # docker-compose-masterless.yml - Masterless Salt setup
-version: "3.8"
-
 services:
   salt-local:
     build:
