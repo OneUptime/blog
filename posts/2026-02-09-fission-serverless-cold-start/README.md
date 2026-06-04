@@ -31,8 +31,11 @@ helm repo update
 # Create namespace
 kubectl create namespace fission
 
+# Install Fission CRDs
+kubectl create -k "github.com/fission/fission/crds/v1?ref=v1.24.0"
+
 # Install Fission with default settings
-helm install fission fission-charts/fission-all \
+helm install --version 1.24.0 fission fission-charts/fission-all \
   --namespace fission \
   --set serviceType=NodePort \
   --set routerServiceType=NodePort
@@ -41,15 +44,13 @@ helm install fission fission-charts/fission-all \
 For production deployments with better cold-start optimization:
 
 ```bash
-# Install with pool manager optimizations
-helm install fission fission-charts/fission-all \
+# Install with external router access and canary support
+helm install --version 1.24.0 fission fission-charts/fission-all \
   --namespace fission \
   --set serviceType=LoadBalancer \
   --set routerServiceType=LoadBalancer \
-  --set poolmgr.minReadyPools=3 \
-  --set poolmgr.maxColdStartRetries=3 \
-  --set prometheus.enabled=true \
-  --set canary.enabled=true
+  --set prometheus.serviceEndpoint=http://prometheus-server.monitoring.svc.cluster.local \
+  --set canaryDeployment.enabled=true
 ```
 
 Verify the installation:
@@ -59,7 +60,7 @@ Verify the installation:
 kubectl get pods -n fission
 
 # Install Fission CLI
-curl -Lo fission https://github.com/fission/fission/releases/download/v1.19.0/fission-v1.19.0-linux-amd64
+curl -Lo fission https://github.com/fission/fission/releases/download/v1.24.0/fission-v1.24.0-linux-amd64
 chmod +x fission
 sudo mv fission /usr/local/bin/
 
@@ -75,7 +76,7 @@ Environments define the runtime for your functions. Configure pool sizes to mini
 # Create a Node.js environment with pre-warmed pool
 fission environment create \
   --name nodejs \
-  --image fission/node-env:latest \
+  --image ghcr.io/fission/node-env \
   --poolsize 3 \
   --mincpu 100 \
   --maxcpu 500 \
@@ -87,7 +88,7 @@ fission environment create \
 # Create Python environment with larger pool
 fission environment create \
   --name python \
-  --image fission/python-env:latest \
+  --image ghcr.io/fission/python-env \
   --poolsize 5 \
   --mincpu 100 \
   --maxcpu 1000 \
@@ -97,9 +98,9 @@ fission environment create \
 # Create Go environment (very fast cold starts)
 fission environment create \
   --name go \
-  --image fission/go-env:latest \
+  --image ghcr.io/fission/go-env \
   --poolsize 2 \
-  --builder fission/go-builder:latest
+  --builder ghcr.io/fission/go-builder
 ```
 
 The poolsize parameter determines how many warm containers are maintained. Higher values reduce cold starts but consume more resources.
@@ -111,10 +112,10 @@ Create a simple Node.js function with minimal overhead:
 ```javascript
 // hello.js
 module.exports = async function(context) {
-    const { request, response } = context;
+    const { request } = context;
 
     // Get request parameters
-    const name = request.query.name || request.body.name || 'World';
+    const name = request.query.name || (request.body && request.body.name) || 'World';
 
     // Measure execution time
     const startTime = Date.now();
@@ -129,8 +130,7 @@ module.exports = async function(context) {
         status: 200,
         body: {
             message: message,
-            executionTime: `${executionTime}ms`,
-            coldStart: request.headers['x-fission-function-coldstart'] === 'true'
+            executionTime: `${executionTime}ms`
         },
         headers: {
             'Content-Type': 'application/json'
@@ -174,8 +174,7 @@ Use the newdeploy executor for functions that need guaranteed low latency:
 # Create environment with newdeploy executor
 fission environment create \
   --name nodejs-newdeploy \
-  --image fission/node-env:latest \
-  --executortype newdeploy \
+  --image ghcr.io/fission/node-env \
   --mincpu 100 \
   --maxcpu 500 \
   --minmemory 128 \
@@ -202,6 +201,7 @@ Optimize your function code to minimize startup overhead:
 # fast-function.py
 import json
 import time
+import flask
 
 # Initialize expensive resources at module level (runs once)
 import redis
@@ -351,11 +351,18 @@ Reduce latency for async workloads using message queue triggers:
 fission mqtrigger create \
   --name process-events \
   --function event-processor \
+  --mqtype nats-jetstream \
+  --mqtkind keda \
   --topic user.events \
   --resptopic user.events.response \
   --errortopic user.events.errors \
   --maxretries 3 \
-  --contenttype application/json
+  --contenttype application/json \
+  --metadata stream=user \
+  --metadata natsServerMonitoringEndpoint=nats-jetstream.default.svc.cluster.local:8222 \
+  --metadata natsServer=nats://nats-jetstream.default.svc.cluster.local:4222 \
+  --metadata consumer=fission_consumer \
+  --metadata account=\$G
 
 # The function remains warm in the pool
 # Processing starts immediately when messages arrive
@@ -421,23 +428,23 @@ kubectl get pods -n fission-function -l functionName=hello
 kubectl get pods -n fission-function -l environmentName=nodejs
 
 # View logs including cold start indicators
-fission function logs --name hello --follow
+fission function log --name hello --follow
 ```
 
 Create a monitoring dashboard query:
 
 ```promql
 # Cold start rate
-rate(fission_function_coldstarts_total[5m])
+rate(fission_function_cold_starts_total[5m])
 
-# Function execution time (includes cold starts)
-histogram_quantile(0.95, rate(fission_function_duration_seconds_bucket[5m]))
+# Function call rate
+rate(fission_function_calls_total[5m])
 
-# Pool specialization time
-histogram_quantile(0.95, rate(fission_poolmgr_specialize_duration_seconds_bucket[5m]))
+# Function error rate
+rate(fission_function_errors_total[5m])
 
-# Available warm pods
-fission_environment_pool_size{state="ready"}
+# Function overhead introduced by Fission
+fission_function_overhead_seconds
 ```
 
 ## Advanced Pool Configuration
@@ -454,30 +461,25 @@ metadata:
 spec:
   version: 3
   runtime:
-    image: fission/node-env:latest
-    container:
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
+    image: ghcr.io/fission/node-env
 
   # Pool manager settings
   poolsize: 5
-  poolmgr:
-    minReadyPools: 3
-    maxReadyPools: 10
+
+  # Resource requests and limits for pool manager pods
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
   # Specialization timeout
   terminationGracePeriod: 360
 
   # Keep specialized pods for faster subsequent calls
   keeparchive: true
-
-  # Image pull policy for faster startup
-  imagepullpolicy: IfNotPresent
 ```
 
 Apply the configuration:
