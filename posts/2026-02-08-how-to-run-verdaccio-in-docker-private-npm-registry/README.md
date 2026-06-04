@@ -28,7 +28,7 @@ docker run -d \
   verdaccio/verdaccio:6
 ```
 
-Access the web UI at http://localhost:4873. The interface shows all hosted and cached packages.
+Access the web UI at http://localhost:4873. The interface shows published private packages.
 
 ## Docker Compose Setup
 
@@ -110,12 +110,12 @@ server:
   keepAliveTimeout: 60
 
 # Logging
-logs:
+log:
   type: stdout
   format: pretty
   level: warn
 
-# Rate limiting
+# Audit middleware
 middlewares:
   audit:
     enabled: true
@@ -142,8 +142,8 @@ Configure npm to use your Verdaccio instance:
 # Point npm at your Verdaccio registry
 npm set registry http://localhost:4873
 
-# Create a user account
-npm adduser --registry http://localhost:4873
+# Create a user account and save credentials
+npm adduser --registry http://localhost:4873 --auth-type=legacy
 
 # Verify you are logged in
 npm whoami --registry http://localhost:4873
@@ -245,13 +245,16 @@ Or use a project-level `.npmrc` file:
 Verdaccio works with all Node.js package managers:
 
 ```bash
-# Yarn - set registry
+# Yarn Classic - set registry
 yarn config set registry http://localhost:4873
+
+# Yarn modern - set registry
+yarn config set npmRegistryServer http://localhost:4873
 
 # pnpm - set registry
 pnpm config set registry http://localhost:4873
 
-# Or use .npmrc (works with all package managers)
+# Or use .npmrc (works with npm, pnpm, and Yarn Classic)
 echo "registry=http://localhost:4873" > .npmrc
 ```
 
