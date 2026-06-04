@@ -20,7 +20,7 @@ Unlike application-level encryption, LUKS encryption happens at the block device
 
 You need several components to implement LUKS encryption for Kubernetes volumes:
 
-A CSI driver that supports LUKS encryption (such as TopoLVM, Longhorn, or custom drivers). The cryptsetup package installed on all Kubernetes nodes where encrypted volumes will mount. A secure key management system for storing and retrieving encryption keys.
+A CSI driver that supports LUKS encryption (such as Longhorn or custom drivers). The cryptsetup package installed on all Kubernetes nodes where encrypted volumes will mount. A secure key management system for storing and retrieving encryption keys.
 
 First, ensure cryptsetup is available on your nodes:
 
@@ -45,21 +45,25 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: encrypted-storage
-provisioner: topolvm.io
+provisioner: driver.longhorn.io
 parameters:
-  # Enable LUKS encryption
   csi.storage.k8s.io/fstype: "ext4"
-  topolvm.io/device-class: "ssd"
-  encryption: "luks"
-  # Encryption parameters
-  encryptionCipher: "aes-xts-plain64"
-  encryptionKeySize: "512"
-  encryptionHash: "sha256"
+  encrypted: "true"
+  numberOfReplicas: "3"
+  staleReplicaTimeout: "2880"
+  csi.storage.k8s.io/provisioner-secret-name: "luks-encryption-key"
+  csi.storage.k8s.io/provisioner-secret-namespace: "longhorn-system"
+  csi.storage.k8s.io/node-publish-secret-name: "luks-encryption-key"
+  csi.storage.k8s.io/node-publish-secret-namespace: "longhorn-system"
+  csi.storage.k8s.io/node-stage-secret-name: "luks-encryption-key"
+  csi.storage.k8s.io/node-stage-secret-namespace: "longhorn-system"
+  csi.storage.k8s.io/node-expand-secret-name: "luks-encryption-key"
+  csi.storage.k8s.io/node-expand-secret-namespace: "longhorn-system"
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 ```
 
-The encryption parameters control the cryptographic algorithms. AES-XTS with 512-bit keys provides strong security suitable for most compliance requirements.
+The encryption parameters in the Secret control the cryptographic algorithms. AES-XTS provides strong security suitable for most compliance requirements.
 
 ## Key Management with Kubernetes Secrets
 
@@ -70,22 +74,30 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: luks-encryption-key
-  namespace: kube-system
+  namespace: longhorn-system
 type: Opaque
 stringData:
-  key: "your-base64-encoded-encryption-key"
+  CRYPTO_KEY_VALUE: "your encryption passphrase"
+  CRYPTO_KEY_PROVIDER: "secret"
+  CRYPTO_KEY_CIPHER: "aes-xts-plain64"
+  CRYPTO_KEY_HASH: "sha256"
+  CRYPTO_KEY_SIZE: "256"
 ```
 
 Generate a strong encryption key:
 
 ```bash
-# Generate a random 512-bit key
-dd if=/dev/urandom bs=64 count=1 2>/dev/null | base64 -w 0 > luks-key.txt
+# Generate a random passphrase
+openssl rand -base64 64 > luks-key.txt
 
 # Create the secret
 kubectl create secret generic luks-encryption-key \
-  --from-file=key=luks-key.txt \
-  -n kube-system
+  --from-file=CRYPTO_KEY_VALUE=luks-key.txt \
+  --from-literal=CRYPTO_KEY_PROVIDER=secret \
+  --from-literal=CRYPTO_KEY_CIPHER=aes-xts-plain64 \
+  --from-literal=CRYPTO_KEY_HASH=sha256 \
+  --from-literal=CRYPTO_KEY_SIZE=256 \
+  -n longhorn-system
 
 # Securely delete the key file
 shred -vfz -n 10 luks-key.txt
@@ -184,77 +196,69 @@ KEY_FILE="/etc/luks-keys/volume-key"
 
 # Create LUKS container
 echo "Creating LUKS container on $DEVICE"
-cryptsetup luksFormat $DEVICE $KEY_FILE \
+cryptsetup luksFormat \
+  --batch-mode \
   --cipher aes-xts-plain64 \
   --key-size 512 \
   --hash sha256 \
-  --use-random
+  --use-random \
+  "$DEVICE" "$KEY_FILE"
 
 # Open the LUKS container
 echo "Opening LUKS container"
-cryptsetup luksOpen $DEVICE $MAPPER_NAME --key-file $KEY_FILE
+cryptsetup luksOpen "$DEVICE" "$MAPPER_NAME" --key-file "$KEY_FILE"
 
 # Create filesystem
 echo "Creating ext4 filesystem"
-mkfs.ext4 /dev/mapper/$MAPPER_NAME
+mkfs.ext4 "/dev/mapper/$MAPPER_NAME"
 
 # Mount the volume
-mkdir -p $MOUNT_POINT
-mount /dev/mapper/$MAPPER_NAME $MOUNT_POINT
+mkdir -p "$MOUNT_POINT"
+mount "/dev/mapper/$MAPPER_NAME" "$MOUNT_POINT"
 
 echo "Encrypted volume ready at $MOUNT_POINT"
 ```
 
 ## Implementing a Custom CSI Driver with LUKS
 
-For advanced use cases, implement LUKS encryption in a custom CSI driver:
+For advanced use cases, implement LUKS encryption in the node-side staging logic of a custom CSI driver:
 
 ```go
 package main
 
 import (
+    "bytes"
     "context"
     "fmt"
     "os/exec"
 )
 
-// CreateVolume handles volume provisioning with LUKS encryption
-func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-    // Provision underlying block device
-    devicePath, err := d.provisionBlockDevice(req.GetCapacityRange().GetRequiredBytes())
-    if err != nil {
-        return nil, fmt.Errorf("failed to provision device: %v", err)
-    }
-
+// stageEncryptedDevice opens the LUKS device and prepares its filesystem
+func (d *Driver) stageEncryptedDevice(ctx context.Context, volumeID, devicePath string) error {
     // Get encryption key from Kubernetes secret
     key, err := d.getEncryptionKey(ctx)
     if err != nil {
-        return nil, fmt.Errorf("failed to get encryption key: %v", err)
+        return fmt.Errorf("failed to get encryption key: %v", err)
     }
 
     // Create LUKS container
     if err := d.luksFormat(devicePath, key); err != nil {
-        return nil, fmt.Errorf("failed to format LUKS: %v", err)
+        return fmt.Errorf("failed to format LUKS: %v", err)
     }
 
     // Open LUKS device
-    mapperName := fmt.Sprintf("luks-%s", req.GetName())
+    mapperName := fmt.Sprintf("luks-%s", volumeID)
     if err := d.luksOpen(devicePath, mapperName, key); err != nil {
-        return nil, fmt.Errorf("failed to open LUKS: %v", err)
+        return fmt.Errorf("failed to open LUKS: %v", err)
     }
 
     // Create filesystem on encrypted device
     mapperPath := fmt.Sprintf("/dev/mapper/%s", mapperName)
     if err := d.makeFilesystem(mapperPath, "ext4"); err != nil {
-        return nil, fmt.Errorf("failed to create filesystem: %v", err)
+        return fmt.Errorf("failed to create filesystem: %v", err)
     }
 
-    return &csi.CreateVolumeResponse{
-        Volume: &csi.Volume{
-            VolumeId:      req.GetName(),
-            CapacityBytes: req.GetCapacityRange().GetRequiredBytes(),
-        },
-    }, nil
+    return nil
 }
 
 // luksFormat creates a LUKS encrypted container
@@ -316,6 +320,8 @@ Configure the CSI driver to retrieve keys from Vault:
 
 ```go
 import (
+    "fmt"
+
     vault "github.com/hashicorp/vault/api"
 )
 
@@ -339,7 +345,16 @@ func (d *Driver) getEncryptionKeyFromVault(volumeID string) ([]byte, error) {
         return nil, err
     }
 
-    keyData, ok := secret.Data["key"].(string)
+    if secret == nil || secret.Data == nil {
+        return nil, fmt.Errorf("key not found in vault")
+    }
+
+    data, ok := secret.Data["data"].(map[string]interface{})
+    if !ok {
+        return nil, fmt.Errorf("key data not found in vault")
+    }
+
+    keyData, ok := data["key"].(string)
     if !ok {
         return nil, fmt.Errorf("key not found in vault")
     }
@@ -356,26 +371,33 @@ Implement periodic key rotation for compliance:
 #!/bin/bash
 # LUKS key rotation script
 
-DEVICE="/dev/mapper/encrypted-volume"
+LUKS_DEVICE="/dev/sdb"
 OLD_KEY_FILE="/etc/luks-keys/old-key"
 NEW_KEY_FILE="/etc/luks-keys/new-key"
 
 # Generate new key
-dd if=/dev/urandom bs=64 count=1 2>/dev/null > $NEW_KEY_FILE
+openssl rand -base64 64 > "$NEW_KEY_FILE"
 
 # Add new key to LUKS header (key slot 1)
-cryptsetup luksAddKey $DEVICE $NEW_KEY_FILE --key-file $OLD_KEY_FILE
+cryptsetup luksAddKey "$LUKS_DEVICE" "$NEW_KEY_FILE" \
+  --key-file "$OLD_KEY_FILE" \
+  --new-key-slot 1
 
 # Remove old key (key slot 0)
-cryptsetup luksRemoveKey $DEVICE --key-file $OLD_KEY_FILE
+cryptsetup luksRemoveKey "$LUKS_DEVICE" --key-file "$OLD_KEY_FILE"
 
 # Update key in Kubernetes secret or Vault
 kubectl create secret generic luks-encryption-key \
-  --from-file=key=$NEW_KEY_FILE \
+  --from-file=CRYPTO_KEY_VALUE="$NEW_KEY_FILE" \
+  --from-literal=CRYPTO_KEY_PROVIDER=secret \
+  --from-literal=CRYPTO_KEY_CIPHER=aes-xts-plain64 \
+  --from-literal=CRYPTO_KEY_HASH=sha256 \
+  --from-literal=CRYPTO_KEY_SIZE=256 \
+  -n longhorn-system \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Securely delete key files
-shred -vfz -n 10 $OLD_KEY_FILE $NEW_KEY_FILE
+shred -vfz -n 10 "$OLD_KEY_FILE" "$NEW_KEY_FILE"
 ```
 
 ## Monitoring Encrypted Volumes
