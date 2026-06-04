@@ -72,6 +72,7 @@ kind: Job
 metadata:
   name: db-migrate-20260209
 spec:
+  backoffLimit: 3
   template:
     spec:
       restartPolicy: OnFailure
@@ -97,7 +98,6 @@ spec:
             secretKeyRef:
               name: db-credentials
               key: url
-      backoffLimit: 3
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -129,7 +129,7 @@ spec:
         - containerPort: 8000
 ```
 
-The Deployment waits for the migration Job to complete before starting application pods.
+The Deployment waits for the migration Job to complete before starting application pods. The service account used by the init container must have RBAC permissions to read the Job status.
 
 ## Using Helm Hooks
 
@@ -162,7 +162,7 @@ spec:
               key: url
 ```
 
-This job runs automatically before Helm installs or upgrades the release. The hook-weight ensures it runs before other resources. The delete-policy cleans up old migration jobs.
+This job runs automatically before Helm installs or upgrades the release. The hook-weight controls ordering relative to other hooks. The delete-policy cleans up old migration jobs before creating a new hook resource.
 
 ## Database Migration Script with Safety Checks
 
@@ -354,6 +354,9 @@ metadata:
   name: myapp
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: myapp
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -366,25 +369,16 @@ spec:
     spec:
       initContainers:
       - name: wait-migration
-        image: busybox
+        image: bitnami/kubectl:latest
         command:
-        - sh
-        - -c
-        - |
-          # Wait for migration job to complete
-          while ! test -f /shared/migration-complete; do
-            echo "Waiting for migration..."
-            sleep 5
-          done
-        volumeMounts:
-        - name: shared
-          mountPath: /shared
+        - kubectl
+        - wait
+        - --for=condition=complete
+        - --timeout=300s
+        - job/db-migrate-20260209
       containers:
       - name: app
         image: myapp:v2.0
-      volumes:
-      - name: shared
-        emptyDir: {}
 ```
 
 ## Monitoring Migration Progress
