@@ -104,7 +104,7 @@ spec:
         - --runtime=60
         - --time_based
         - --group_reporting
-        - --directory=/data/fio-test
+        - --directory=/data
         volumeMounts:
         - name: test-volume
           mountPath: /data
@@ -165,7 +165,7 @@ spec:
         - --runtime=60
         - --time_based
         - --group_reporting
-        - --directory=/data/fio-test
+        - --directory=/data
         volumeMounts:
         - name: test-volume
           mountPath: /data
@@ -204,7 +204,7 @@ spec:
         - --runtime=60
         - --time_based
         - --group_reporting
-        - --directory=/data/fio-test
+        - --directory=/data
         volumeMounts:
         - name: test-volume
           mountPath: /data
@@ -245,7 +245,7 @@ spec:
         - --runtime=60
         - --time_based
         - --group_reporting
-        - --directory=/data/fio-test
+        - --directory=/data
         volumeMounts:
         - name: test-volume
           mountPath: /data
@@ -285,7 +285,7 @@ spec:
         - --runtime=60
         - --time_based
         - --group_reporting
-        - --directory=/data/fio-test
+        - --directory=/data
         volumeMounts:
         - name: test-volume
           mountPath: /data
@@ -328,7 +328,7 @@ spec:
         - --time_based
         - --group_reporting
         - --lat_percentiles=1
-        - --directory=/data/fio-test
+        - --directory=/data
         volumeMounts:
         - name: test-volume
           mountPath: /data
@@ -356,7 +356,7 @@ data:
     [global]
     ioengine=libaio
     direct=1
-    directory=/data/fio-test
+    directory=/data
     runtime=60
     time_based=1
     group_reporting=1
@@ -406,7 +406,6 @@ spec:
         - fio
         - /config/test-suite.fio
         - --output-format=json
-        - --output=/data/results.json
         volumeMounts:
         - name: test-volume
           mountPath: /data
@@ -431,20 +430,20 @@ Extract key metrics from fio output:
 #!/bin/bash
 # parse-fio-results.sh
 
-POD=$(kubectl get pods -l job-name=fio-comprehensive-test -o name | head -1)
+POD=$(kubectl get pods -l job-name=fio-comprehensive-test -o jsonpath='{.items[0].metadata.name}')
 
-kubectl logs $POD | jq -r '
+kubectl logs "$POD" | jq -r '
   .jobs[] |
   {
     test: .jobname,
     read_iops: .read.iops,
     read_bw_mbs: (.read.bw / 1024),
-    read_lat_avg_us: .read.lat_ns.mean / 1000,
-    read_lat_p99_us: .read.lat_ns.percentile."99.000000" / 1000,
+    read_clat_avg_us: .read.clat_ns.mean / 1000,
+    read_clat_p99_us: .read.clat_ns.percentile."99.000000" / 1000,
     write_iops: .write.iops,
     write_bw_mbs: (.write.bw / 1024),
-    write_lat_avg_us: .write.lat_ns.mean / 1000,
-    write_lat_p99_us: .write.lat_ns.percentile."99.000000" / 1000
+    write_clat_avg_us: .write.clat_ns.mean / 1000,
+    write_clat_p99_us: .write.clat_ns.percentile."99.000000" / 1000
   } |
   to_entries |
   map("\(.key): \(.value)") |
@@ -480,9 +479,6 @@ spec:
   storageClassName: $sc
 EOF
 
-  # Wait for PVC to be bound
-  kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/fio-test-$sc --timeout=120s
-
   # Run test
   cat <<EOF | kubectl apply -f -
 apiVersion: batch/v1
@@ -502,6 +498,7 @@ spec:
         - --direct=1
         - --bs=4k
         - --rw=randread
+        - --size=10G
         - --numjobs=4
         - --runtime=60
         - --time_based
@@ -540,25 +537,27 @@ Watch storage metrics during fio tests:
 # Monitor pod resource usage
 kubectl top pod -l job-name=fio-comprehensive-test
 
-# Watch volume metrics
+# Watch CPU and memory metrics
 kubectl get --raw /apis/metrics.k8s.io/v1beta1/pods | jq -r '
   .items[] |
   select(.metadata.name | startswith("fio-")) |
   {
     pod: .metadata.name,
-    volumes: [.containers[].volumeUsage[]? | {name: .name, used: .usedBytes, capacity: .capacityBytes}]
+    containers: [.containers[] | {name: .name, usage: .usage}]
   }
 '
 ```
 
-Use Prometheus to track I/O metrics:
+Use Prometheus with cAdvisor metrics to track container filesystem I/O:
 
 ```promql
-# Volume I/O operations
-rate(kubelet_volume_stats_inodes_used[5m])
+# Filesystem read and write operations
+sum by (pod) (rate(container_fs_reads_total{pod=~"fio-.*"}[5m]))
+sum by (pod) (rate(container_fs_writes_total{pod=~"fio-.*"}[5m]))
 
-# Volume throughput
-rate(kubelet_volume_stats_used_bytes[5m])
+# Filesystem read and write throughput
+sum by (pod) (rate(container_fs_reads_bytes_total{pod=~"fio-.*"}[5m]))
+sum by (pod) (rate(container_fs_writes_bytes_total{pod=~"fio-.*"}[5m]))
 ```
 
 ## Best Practices for Benchmarking
