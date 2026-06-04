@@ -1,24 +1,24 @@
-# How to Set Up Kubernetes Audit Sink for Real-Time Audit Event Streaming
+# How to Set Up Kubernetes Audit Webhooks for Real-Time Audit Event Streaming
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Audit, Compliance
 
-Description: Learn how to configure Kubernetes audit sinks to stream audit events in real-time to external systems for security monitoring, compliance tracking, and threat detection.
+Description: Learn how to configure Kubernetes audit webhooks to stream audit events in real-time to external systems for security monitoring, compliance tracking, and threat detection.
 
 ---
 
-Kubernetes audit logging captures all requests made to the API server, but writing audit logs to files has limitations. Audit sinks enable real-time streaming of audit events to external systems like SIEM tools, security monitoring platforms, or custom applications. This allows immediate detection of suspicious activity and compliance violations.
+Kubernetes audit logging captures all requests made to the API server, but writing audit logs to files has limitations. The audit webhook backend enables real-time streaming of audit events to external systems like SIEM tools, security monitoring platforms, or custom applications. This allows immediate detection of suspicious activity and compliance violations.
 
-## Understanding Audit Sinks vs Audit Logs
+## Understanding Audit Webhooks vs Audit Logs
 
 Traditional audit logging writes events to log files on disk. The API server processes audit events, formats them according to policy, and writes them to files. You must then ship these files to analysis systems using log collectors.
 
-Audit sinks send events directly to webhooks as they occur. The API server makes HTTP POST requests to configured endpoints with audit event batches. This eliminates the need for file-based log collection and provides near-instant event delivery.
+Audit webhooks send events directly to a webhook endpoint as they occur. The API server makes HTTP POST requests to the configured endpoint with audit event batches. This eliminates the need for file-based log collection and provides near-instant event delivery.
 
-## Configuring Dynamic Audit Sinks
+## Configuring the Audit Webhook Backend
 
-Kubernetes supports dynamic audit configuration through AuditSink resources. Enable the dynamic auditing feature:
+Kubernetes no longer supports dynamic audit configuration through `AuditSink` resources. Configure the supported audit webhook backend on the API server instead:
 
 ```bash
 # Edit API server manifest
@@ -26,7 +26,7 @@ Kubernetes supports dynamic audit configuration through AuditSink resources. Ena
 sudo nano /etc/kubernetes/manifests/kube-apiserver.yaml
 ```
 
-Add the feature gate and audit configuration:
+Add the audit policy, webhook kubeconfig, and batching configuration:
 
 ```yaml
 apiVersion: v1
@@ -38,10 +38,13 @@ spec:
   containers:
   - command:
     - kube-apiserver
-    # Enable dynamic auditing
-    - --feature-gates=DynamicAuditing=true
     # Configure audit policy
     - --audit-policy-file=/etc/kubernetes/audit/policy.yaml
+    # Configure audit webhook backend
+    - --audit-webhook-config-file=/etc/kubernetes/audit/webhook-kubeconfig.yaml
+    - --audit-webhook-mode=batch
+    - --audit-webhook-batch-throttle-qps=10
+    - --audit-webhook-batch-throttle-burst=15
     # Other flags...
     volumeMounts:
     - name: audit-policy
@@ -84,7 +87,7 @@ rules:
   - level: RequestResponse
     userGroups: ["system:unauthenticated"]
 
-  # Don't log read-only requests
+  # Don't log other read-only requests
   - level: None
     verbs: ["get", "list", "watch"]
 
@@ -92,7 +95,7 @@ rules:
   - level: Metadata
 ```
 
-## Creating an Audit Sink Webhook Receiver
+## Creating an Audit Webhook Receiver
 
 Deploy a webhook service to receive audit events. Here's a simple receiver using Go:
 
@@ -142,10 +145,17 @@ func (h *AuditEventHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func processAuditEvent(event *auditv1.Event) {
+    resource := ""
+    name := ""
+    if event.ObjectRef != nil {
+        resource = event.ObjectRef.Resource
+        name = event.ObjectRef.Name
+    }
+
     log.Printf("Audit Event: %s %s %s by %s at %v",
         event.Verb,
-        event.ObjectRef.Resource,
-        event.ObjectRef.Name,
+        resource,
+        name,
         event.User.Username,
         event.RequestReceivedTimestamp.Time)
 
@@ -162,7 +172,7 @@ func main() {
         WriteTimeout: 10 * time.Second,
     }
 
-    log.Println("Audit sink receiver listening on :8443")
+    log.Println("Audit webhook receiver listening on :8443")
     log.Fatal(server.ListenAndServeTLS("/certs/tls.crt", "/certs/tls.key"))
 }
 ```
@@ -233,16 +243,27 @@ spec:
 Generate TLS certificates for the webhook:
 
 ```bash
-# Generate private key
+# Generate a CA key and certificate
+openssl genrsa -out ca.key 2048
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 365 \
+  -out ca.crt \
+  -subj "/CN=audit-webhook-ca"
+
+# Generate server private key
 openssl genrsa -out tls.key 2048
 
-# Generate certificate signing request
+# Generate certificate signing request with DNS SANs
 openssl req -new -key tls.key -out tls.csr \
-  -subj "/CN=audit-receiver.kube-system.svc"
+  -subj "/CN=audit-receiver.kube-system.svc" \
+  -addext "subjectAltName=DNS:audit-receiver.kube-system.svc,DNS:audit-receiver.kube-system.svc.cluster.local"
 
-# Generate self-signed certificate
+# Sign the server certificate with the CA
 openssl x509 -req -days 365 -in tls.csr \
-  -signkey tls.key -out tls.crt
+  -CA ca.crt \
+  -CAkey ca.key \
+  -CAcreateserial \
+  -out tls.crt \
+  -copy_extensions copy
 
 # Create Kubernetes secret
 kubectl create secret tls audit-receiver-tls \
@@ -251,53 +272,41 @@ kubectl create secret tls audit-receiver-tls \
   -n kube-system
 ```
 
-## Defining the AuditSink Resource
+## Defining the Audit Webhook Kubeconfig
 
-Create an AuditSink to stream events to your webhook:
+Create a kubeconfig that tells the API server where to send audit events:
 
 ```yaml
-apiVersion: auditregistration.k8s.io/v1alpha1
-kind: AuditSink
-metadata:
-  name: security-monitoring
-spec:
-  policy:
-    # Stream events at RequestResponse level for security analysis
-    level: RequestResponse
-    # Only send specific events
-    stages:
-    - ResponseComplete
-  webhook:
-    # Batch events to reduce overhead
-    throttle:
-      qps: 10
-      burst: 15
-    clientConfig:
-      # Reference to the webhook service
-      service:
-        namespace: kube-system
-        name: audit-receiver
-        path: /audit
-      # CA bundle for TLS verification
-      caBundle: <base64-encoded-ca-cert>
+apiVersion: v1
+kind: Config
+clusters:
+- name: audit-webhook
+  cluster:
+    server: https://audit-receiver.kube-system.svc/audit
+    certificate-authority: /etc/kubernetes/audit/ca.crt
+users:
+- name: audit-webhook
+  user: {}
+contexts:
+- name: audit-webhook
+  context:
+    cluster: audit-webhook
+    user: audit-webhook
+current-context: audit-webhook
 ```
 
-Get the CA bundle:
+Copy the CA certificate and create the kubeconfig on every API server node. If the API server cannot resolve cluster DNS names, use another HTTPS URL that is reachable from the API server host network.
 
 ```bash
-# Get CA bundle from the secret
-kubectl get secret audit-receiver-tls -n kube-system \
-  -o jsonpath='{.data.tls\.crt}'
+sudo cp ca.crt /etc/kubernetes/audit/ca.crt
+sudo nano /etc/kubernetes/audit/webhook-kubeconfig.yaml
 ```
 
-Apply the AuditSink:
+The API server loads this file from `--audit-webhook-config-file`. If you run the API server as a static pod, saving the manifest change restarts the pod automatically.
 
 ```bash
-kubectl apply -f audit-sink.yaml
-
-# Verify it's created
-kubectl get auditsinks
-kubectl describe auditsink security-monitoring
+# Verify API server metrics include audit events
+kubectl get --raw /metrics | grep apiserver_audit
 ```
 
 ## Streaming to Elasticsearch
@@ -316,6 +325,7 @@ import (
     "net/http"
 
     "github.com/elastic/go-elasticsearch/v8"
+    "github.com/elastic/go-elasticsearch/v8/esapi"
     auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 )
 
@@ -355,7 +365,7 @@ func (s *ElasticsearchSink) indexEvent(event *auditv1.Event) error {
         return err
     }
 
-    req := elasticsearch.IndexRequest{
+    req := esapi.IndexRequest{
         Index: s.index,
         Body:  bytes.NewReader(data),
     }
@@ -403,52 +413,33 @@ func main() {
 
 ## Filtering Events with Policies
 
-Create targeted audit sinks for different use cases:
+Create targeted audit policy rules for different use cases:
 
 ```yaml
-# Security-focused sink for authentication and authorization
-apiVersion: auditregistration.k8s.io/v1alpha1
-kind: AuditSink
-metadata:
-  name: security-events
-spec:
-  policy:
-    level: RequestResponse
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  # Security-focused events for authentication and authorization
+  - level: RequestResponse
+    userGroups: ["system:unauthenticated"]
     stages:
     - ResponseComplete
     omitStages:
     - RequestReceived
-  webhook:
-    throttle:
-      qps: 10
-      burst: 15
-    clientConfig:
-      service:
-        namespace: security
-        name: security-analytics
-        path: /audit/security
-      caBundle: <ca-bundle>
----
-# Compliance-focused sink for resource changes
-apiVersion: auditregistration.k8s.io/v1alpha1
-kind: AuditSink
-metadata:
-  name: compliance-events
-spec:
-  policy:
-    level: Request
+
+  # Compliance-focused events for resource changes
+  - level: Request
+    verbs: ["create", "update", "patch", "delete"]
+    resources:
+    - group: ""
+      resources: ["pods", "services", "configmaps", "secrets"]
+    - group: "apps"
+      resources: ["deployments", "daemonsets", "statefulsets"]
     stages:
     - ResponseComplete
-  webhook:
-    throttle:
-      qps: 20
-      burst: 30
-    clientConfig:
-      service:
-        namespace: compliance
-        name: compliance-tracker
-        path: /audit/compliance
-      caBundle: <ca-bundle>
+
+  # Log everything else at Metadata level
+  - level: Metadata
 ```
 
 ## Integrating with Falco for Runtime Security
@@ -456,22 +447,21 @@ spec:
 Stream audit events to Falco for runtime security monitoring:
 
 ```yaml
-apiVersion: auditregistration.k8s.io/v1alpha1
-kind: AuditSink
-metadata:
-  name: falco-audit
-spec:
-  policy:
-    level: RequestResponse
-    stages:
-    - ResponseComplete
-  webhook:
-    throttle:
-      qps: 50
-      burst: 100
-    clientConfig:
-      url: https://falco.security.svc:8765/k8s-audit
-      caBundle: <falco-ca-bundle>
+apiVersion: v1
+kind: Config
+clusters:
+- name: falco-audit
+  cluster:
+    server: http://falco-k8saudit-webhook.security.svc:9765/k8s-audit
+users:
+- name: falco-audit
+  user: {}
+contexts:
+- name: falco-audit
+  context:
+    cluster: falco-audit
+    user: falco-audit
+current-context: falco-audit
 ```
 
 Deploy Falco to receive events:
@@ -481,22 +471,18 @@ Deploy Falco to receive events:
 helm repo add falcosecurity https://falcosecurity.github.io/charts
 helm repo update
 
-# Install Falco with audit webhook enabled
+# Install Falco with the k8saudit plugin values
 helm install falco falcosecurity/falco \
   --namespace security \
   --create-namespace \
-  --set webserver.enabled=true \
-  --set webserver.k8sAuditEndpoint=/k8s-audit
+  --values https://raw.githubusercontent.com/falcosecurity/charts/master/charts/falco/values-k8saudit.yaml
 ```
 
-## Monitoring Audit Sink Performance
+## Monitoring Audit Webhook Performance
 
-Track audit sink health and performance:
+Track audit webhook health and performance:
 
 ```bash
-# Check audit sink status
-kubectl get auditsinks -o wide
-
 # View API server metrics for audit events
 kubectl get --raw /metrics | grep audit
 
@@ -507,38 +493,36 @@ kubectl logs -n kube-system -l app=audit-receiver -f
 kubectl top pods -n kube-system -l app=audit-receiver
 ```
 
-Create alerts for audit sink failures:
+Create alerts for audit webhook failures:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: audit-sink-alerts
+  name: audit-webhook-alerts
   namespace: monitoring
 spec:
   groups:
-  - name: audit-sinks
+  - name: audit-webhook
     rules:
-    - alert: AuditSinkWebhookFailure
+    - alert: AuditWebhookFailure
       expr: |
-        rate(apiserver_audit_error_total{plugin="webhook"}[5m]) > 0
+        rate(apiserver_audit_error_total[5m]) > 0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Audit sink webhook is failing"
-        description: "Audit events are not being delivered to sink"
+        summary: "Audit webhook is failing"
+        description: "Audit events are being dropped during export"
 
-    - alert: AuditSinkHighLatency
+    - alert: AuditEventsNotExported
       expr: |
-        histogram_quantile(0.99,
-          rate(apiserver_audit_event_total[5m])
-        ) > 1.0
+        absent(apiserver_audit_event_total)
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "Audit sink latency is high"
+        summary: "Audit event metric is missing"
 ```
 
 ## Implementing Event Buffering
@@ -550,6 +534,7 @@ Handle bursts and prevent event loss with buffering:
 package main
 
 import (
+    "log"
     "sync"
     "time"
 
@@ -638,9 +623,9 @@ func (s *BufferedSink) Stop() {
 }
 ```
 
-## Troubleshooting Audit Sinks
+## Troubleshooting Audit Webhooks
 
-Debug common audit sink issues:
+Debug common audit webhook issues:
 
 ```bash
 # Check API server logs for webhook errors
@@ -657,10 +642,11 @@ kubectl get secret audit-receiver-tls -n kube-system \
   base64 -d | \
   openssl x509 -text -noout
 
-# Test audit sink manually
-curl -k -X POST https://audit-receiver.kube-system.svc/audit \
-  -H "Content-Type: application/json" \
-  -d '{"apiVersion":"audit.k8s.io/v1","kind":"EventList","items":[]}'
+# Test audit webhook manually from inside the cluster
+kubectl run audit-test --rm -it --image=curlimages/curl -- \
+  curl -k -X POST https://audit-receiver.kube-system.svc/audit \
+    -H "Content-Type: application/json" \
+    -d '{"apiVersion":"audit.k8s.io/v1","kind":"EventList","items":[]}'
 ```
 
-Audit sinks provide real-time visibility into Kubernetes API activity. Configure multiple sinks for different purposes, implement proper error handling and buffering, and monitor sink health to ensure reliable audit event delivery.
+Audit webhooks provide real-time visibility into Kubernetes API activity. Route events through a receiver or collector when you need to fan out to multiple destinations, implement proper error handling and buffering, and monitor webhook health to ensure reliable audit event delivery.
