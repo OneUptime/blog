@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Init Container, Database Migration, Schema Management, DevOps
 
-Description: Learn how to use Kubernetes init containers to run database schema migrations safely before application deployment, ensuring schema compatibility and zero-downtime updates.
+Description: Learn how to use Kubernetes init containers to run database schema migrations before application containers start, helping maintain schema compatibility during deployments.
 
 ---
 
 Database schema migrations are a critical part of application deployments. Running migrations at the wrong time or in the wrong order can cause application failures, data corruption, or downtime. Init containers provide a reliable way to run migrations before your application starts.
 
-By running migrations in an init container, you ensure that the database schema is up to date before any application pods begin serving traffic. This prevents version mismatches and ensures smooth deployments.
+By running migrations in an init container, you ensure that the database schema is up to date before each new pod's application container begins serving traffic. This helps prevent version mismatches and supports smoother deployments.
 
 ## Understanding Migration Challenges in Kubernetes
 
@@ -308,7 +308,7 @@ main() {
 main
 ```
 
-Use this script in a ConfigMap:
+Use this script in a ConfigMap with an image that includes `psql` and the selected migration tool:
 
 ```yaml
 apiVersion: v1
@@ -335,7 +335,7 @@ spec:
     spec:
       initContainers:
       - name: run-migrations
-        image: postgres:16-alpine
+        image: myapp-migrations:latest
         command: ["/bin/sh", "/scripts/migration-runner.sh"]
         env:
         - name: DB_HOST
@@ -510,4 +510,4 @@ spec:
   backoffLimit: 3
 ```
 
-Init containers provide a robust mechanism for running database migrations in Kubernetes. By ensuring migrations complete before application pods start, you eliminate race conditions and maintain schema consistency across your deployment.
+Init containers provide a robust mechanism for running database migrations in Kubernetes. By ensuring migrations complete before application containers start, and by using migration tooling with proper concurrency controls, you reduce race conditions and maintain schema consistency across your deployment.
