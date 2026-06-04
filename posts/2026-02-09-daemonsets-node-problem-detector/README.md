@@ -8,7 +8,7 @@ Description: Implement node problem detector as a DaemonSet to automatically ide
 
 ---
 
-Node Problem Detector (NPD) is a critical monitoring component that runs on every Kubernetes node to detect hardware and kernel issues. By deploying it as a DaemonSet, you ensure comprehensive node health monitoring across your entire cluster. NPD can identify disk pressure, memory corruption, network problems, and other node-level failures before they impact workloads.
+Node Problem Detector (NPD) is a critical monitoring component that runs on every Kubernetes node to detect hardware and kernel issues. By deploying it as a DaemonSet, you ensure comprehensive node health monitoring across your entire cluster. NPD can identify filesystem errors, memory corruption, network problems, and other node-level failures before they impact workloads.
 
 ## Understanding Node Problem Detector
 
@@ -47,8 +47,7 @@ spec:
         command:
         - /node-problem-detector
         - --logtostderr
-        - --config.system-log-monitor=/config/kernel-monitor.json
-        - --config.custom-plugin-monitor=/config/docker-monitor.json
+        - --config.system-log-monitor=/config/kernel-monitor.json,/config/docker-monitor.json,/config/containerd-monitor.json
         securityContext:
           privileged: true
         env:
@@ -92,7 +91,7 @@ spec:
           name: node-problem-detector-config
 ```
 
-This configuration enables NPD to monitor kernel logs and Docker daemon logs.
+This configuration enables NPD to monitor kernel logs and container runtime logs.
 
 ## Custom problem detector configuration
 
@@ -248,7 +247,7 @@ spec:
         - /bin/sh
         - -c
         - |
-          apk add --no-cache curl jq
+          apk add --no-cache curl jq util-linux
 
           while true; do
             # Check node conditions via Kubernetes API
@@ -369,7 +368,7 @@ spec:
         - /bin/sh
         - -c
         - |
-          apk add --no-cache curl
+          apk add --no-cache curl kubectl
 
           while true; do
             # Read problem reports from shared directory
@@ -379,7 +378,7 @@ spec:
                 -H "Content-Type: application/json" \
                 -d @/shared/problems.json
 
-              # Update node condition
+              # Update node label
               kubectl label nodes $NODE_NAME custom-problem=detected --overwrite
             fi
 
@@ -541,12 +540,18 @@ spec:
         - name: log
           mountPath: /var/log
           readOnly: true
+        - name: kmsg
+          mountPath: /dev/kmsg
+          readOnly: true
         - name: config
           mountPath: /config
       volumes:
       - name: log
         hostPath:
           path: /var/log/
+      - name: kmsg
+        hostPath:
+          path: /dev/kmsg
       - name: config
         configMap:
           name: node-problem-detector-config
