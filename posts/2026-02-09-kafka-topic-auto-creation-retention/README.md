@@ -28,15 +28,34 @@ The `auto.create.topics.enable` broker configuration controls this behavior.
 For production environments, disable auto-creation and manage topics explicitly. Configure Kafka brokers:
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: production-cluster
+spec:
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+    - id: 0
+      type: persistent-claim
+      size: 100Gi
+      deleteClaim: false
+---
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: production-cluster
   namespace: kafka
 spec:
   kafka:
-    version: 3.6.0
-    replicas: 3
+    version: 4.2.0
     listeners:
       - name: plain
         port: 9092
@@ -60,19 +79,6 @@ spec:
       # Set default retention
       log.retention.hours: 168  # 7 days
       log.retention.bytes: -1   # Unlimited by size
-    storage:
-      type: jbod
-      volumes:
-      - id: 0
-        type: persistent-claim
-        size: 100Gi
-        deleteClaim: false
-  zookeeper:
-    replicas: 3
-    storage:
-      type: persistent-claim
-      size: 10Gi
-      deleteClaim: false
   entityOperator:
     topicOperator: {}
     userOperator: {}
@@ -85,7 +91,7 @@ kubectl apply -f kafka-cluster.yaml
 
 # Verify auto-creation is disabled
 
-kubectl exec -n kafka production-cluster-kafka-0 -- bin/kafka-configs.sh \
+kubectl exec -n kafka production-cluster-dual-role-0 -- bin/kafka-configs.sh \
   --bootstrap-server localhost:9092 \
   --entity-type brokers \
   --entity-default \
@@ -97,7 +103,7 @@ kubectl exec -n kafka production-cluster-kafka-0 -- bin/kafka-configs.sh \
 Use Kubernetes custom resources to declaratively manage topics:
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: user-events
@@ -133,7 +139,7 @@ kubectl apply -f user-events-topic.yaml
 kubectl get kafkatopic -n kafka user-events
 
 # Check topic configuration
-kubectl exec -n kafka production-cluster-kafka-0 -- bin/kafka-topics.sh \
+kubectl exec -n kafka production-cluster-dual-role-0 -- bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --describe --topic user-events
 ```
@@ -143,7 +149,7 @@ kubectl exec -n kafka production-cluster-kafka-0 -- bin/kafka-topics.sh \
 Configure topics to retain messages for specific time periods:
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: application-logs
@@ -161,7 +167,7 @@ spec:
     # Check every 5 minutes for segments to delete
     segment.ms: 300000
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: audit-events
@@ -176,7 +182,7 @@ spec:
     retention.ms: 7776000000
     cleanup.policy: delete
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: real-time-metrics
@@ -199,7 +205,7 @@ spec:
 Limit topic storage by size rather than time:
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: large-files
@@ -225,7 +231,7 @@ spec:
 Use both time and size limits - whichever is reached first triggers cleanup:
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: hybrid-retention
@@ -247,7 +253,7 @@ spec:
 For topics storing latest state (like database change logs), use compaction:
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: user-profiles
@@ -277,7 +283,7 @@ Compaction keeps the latest value for each key indefinitely while removing older
 Combine compaction with time-based deletion:
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: session-data
@@ -345,9 +351,11 @@ Use a script to create topics from templates:
 
 TOPIC_NAME=$1
 TEMPLATE=$2
+TEMPLATE_KEY="${TEMPLATE}-template.yaml"
+TOPIC_SPEC=$(kubectl get configmap kafka-topic-templates -n kafka -o "jsonpath={.data['${TEMPLATE_KEY}']}")
 
 kubectl apply -f - <<EOF
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: ${TOPIC_NAME}
@@ -356,7 +364,7 @@ metadata:
     strimzi.io/cluster: production-cluster
     template: ${TEMPLATE}
 spec:
-  $(kubectl get configmap kafka-topic-templates -n kafka -o jsonpath="{.data.${TEMPLATE}-template\.yaml}")
+$(printf '%s\n' "${TOPIC_SPEC}" | sed 's/^/  /')
 EOF
 ```
 
@@ -405,7 +413,7 @@ spec:
           name: metrics
 ```
 
-Create Prometheus alerts for storage issues:
+Create Prometheus alerts for offset growth issues:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -417,14 +425,14 @@ spec:
   groups:
   - name: kafka-storage
     rules:
-    - alert: KafkaTopicStorageHigh
+    - alert: KafkaTopicOffsetGrowthHigh
       expr: |
         kafka_topic_partition_current_offset - kafka_topic_partition_oldest_offset > 1000000
       for: 30m
       labels:
         severity: warning
       annotations:
-        summary: "Kafka topic storage high"
+        summary: "Kafka topic offset range high"
         description: "Topic {{ $labels.topic }} has over 1M messages"
 
     - alert: KafkaRetentionNotWorking
@@ -446,14 +454,16 @@ Create a custom controller to manage topic lifecycle:
 ```python
 # kafka-topic-lifecycle-controller.py
 from kubernetes import client, config, watch
-import time
+from datetime import datetime, timezone
 
 def should_delete_topic(topic):
     """Check if topic should be deleted based on labels/annotations"""
-    if 'auto-delete-after' in topic.metadata.annotations:
-        created = topic.metadata.creation_timestamp
-        retention_days = int(topic.metadata.annotations['auto-delete-after'])
-        age_days = (time.time() - created.timestamp()) / 86400
+    annotations = topic.get('metadata', {}).get('annotations', {})
+    if 'auto-delete-after' in annotations:
+        created = topic['metadata']['creationTimestamp']
+        retention_days = int(annotations['auto-delete-after'])
+        created_time = datetime.fromisoformat(created.replace("Z", "+00:00"))
+        age_days = (datetime.now(timezone.utc) - created_time).total_seconds() / 86400
         return age_days > retention_days
     return False
 
@@ -462,23 +472,41 @@ def watch_topics():
     v1 = client.CustomObjectsApi()
 
     w = watch.Watch()
-    for event in w.stream(
-        v1.list_namespaced_custom_object,
-        group="kafka.strimzi.io",
-        version="v1beta2",
-        namespace="kafka",
-        plural="kafkatopics"
-    ):
-        topic = event['object']
-        if should_delete_topic(topic):
-            print(f"Deleting topic {topic['metadata']['name']}")
-            v1.delete_namespaced_custom_object(
-                group="kafka.strimzi.io",
-                version="v1beta2",
-                namespace="kafka",
-                plural="kafkatopics",
-                name=topic['metadata']['name']
-            )
+    while True:
+        for event in w.stream(
+            v1.list_namespaced_custom_object,
+            group="kafka.strimzi.io",
+            version="v1",
+            namespace="kafka",
+            plural="kafkatopics",
+            timeout_seconds=300
+        ):
+            topic = event['object']
+            if should_delete_topic(topic):
+                print(f"Deleting topic {topic['metadata']['name']}")
+                v1.delete_namespaced_custom_object(
+                    group="kafka.strimzi.io",
+                    version="v1",
+                    namespace="kafka",
+                    plural="kafkatopics",
+                    name=topic['metadata']['name']
+                )
+        topics = v1.list_namespaced_custom_object(
+            group="kafka.strimzi.io",
+            version="v1",
+            namespace="kafka",
+            plural="kafkatopics"
+        )
+        for topic in topics.get('items', []):
+            if should_delete_topic(topic):
+                print(f"Deleting topic {topic['metadata']['name']}")
+                v1.delete_namespaced_custom_object(
+                    group="kafka.strimzi.io",
+                    version="v1",
+                    namespace="kafka",
+                    plural="kafkatopics",
+                    name=topic['metadata']['name']
+                )
 
 if __name__ == '__main__':
     watch_topics()
@@ -487,6 +515,36 @@ if __name__ == '__main__':
 Deploy the lifecycle controller:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kafka-topic-lifecycle
+  namespace: kafka
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kafka-topic-lifecycle
+  namespace: kafka
+rules:
+- apiGroups: ["kafka.strimzi.io"]
+  resources: ["kafkatopics"]
+  verbs: ["get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kafka-topic-lifecycle
+  namespace: kafka
+subjects:
+- kind: ServiceAccount
+  name: kafka-topic-lifecycle
+  namespace: kafka
+roleRef:
+  kind: Role
+  name: kafka-topic-lifecycle
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -533,12 +591,12 @@ kubectl describe kafkatopic user-events -n kafka
 kubectl logs -n kafka production-cluster-entity-operator -c topic-operator
 
 # Retention not working
-kubectl exec -n kafka production-cluster-kafka-0 -- \
+kubectl exec -n kafka production-cluster-dual-role-0 -- \
   bin/kafka-log-dirs.sh --bootstrap-server localhost:9092 \
   --describe --topic-list user-events
 
 # Check cleanup configuration
-kubectl exec -n kafka production-cluster-kafka-0 -- \
+kubectl exec -n kafka production-cluster-dual-role-0 -- \
   bin/kafka-configs.sh --bootstrap-server localhost:9092 \
   --entity-type topics --entity-name user-events --describe
 ```
