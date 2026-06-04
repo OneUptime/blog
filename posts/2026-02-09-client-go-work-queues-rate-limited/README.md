@@ -8,7 +8,7 @@ Description: Learn how to use client-go work queues with rate limiting and expon
 
 ---
 
-Informer event handlers run synchronously. If your handler does heavy processing, it blocks other events. If it fails, the event is lost. If the same resource changes rapidly, you process every intermediate state even though you only care about the final one.
+Informer event handlers for a single handler are delivered sequentially. If your handler does heavy processing, it blocks later events for that handler. If it fails, there is no return value for the informer to retry. If the same resource changes rapidly, you can do redundant work even though you usually only care about reconciling the latest cached state.
 
 Work queues solve these problems. Event handlers add items to a queue and return immediately. Worker goroutines process items from the queue with rate limiting and retry logic. This decouples event detection from event processing, making controllers robust and efficient.
 
@@ -29,20 +29,17 @@ import (
     "fmt"
     "time"
 
-    "k8s.io/client-go/tools/cache"
     "k8s.io/client-go/util/workqueue"
 )
 
 func main() {
     // Create a simple work queue
-    queue := workqueue.New()
+    queue := workqueue.NewTyped[string]()
+    defer queue.ShutDown()
 
     // Start workers
-    stopCh := make(chan struct{})
-    defer close(stopCh)
-
     for i := 0; i < 3; i++ {
-        go worker(i, queue, stopCh)
+        go worker(i, queue)
     }
 
     // Add items to queue
@@ -53,7 +50,7 @@ func main() {
     time.Sleep(5 * time.Second)
 }
 
-func worker(id int, queue workqueue.Interface, stopCh <-chan struct{}) {
+func worker(id int, queue workqueue.TypedInterface[string]) {
     for {
         item, shutdown := queue.Get()
         if shutdown {
@@ -86,14 +83,12 @@ import (
 
 func main() {
     // Create rate-limiting queue with exponential backoff
-    queue := workqueue.NewRateLimitingQueue(
-        workqueue.DefaultControllerRateLimiter(),
+    queue := workqueue.NewTypedRateLimitingQueue(
+        workqueue.DefaultTypedControllerRateLimiter[string](),
     )
+    defer queue.ShutDown()
 
-    stopCh := make(chan struct{})
-    defer close(stopCh)
-
-    go worker(queue, stopCh)
+    go worker(queue)
 
     // Add items
     queue.Add("task-1")
@@ -103,7 +98,7 @@ func main() {
     time.Sleep(30 * time.Second)
 }
 
-func worker(queue workqueue.RateLimitingInterface, stopCh <-chan struct{}) {
+func worker(queue workqueue.TypedRateLimitingInterface[string]) {
     for {
         item, shutdown := queue.Get()
         if shutdown {
@@ -133,9 +128,7 @@ func worker(queue workqueue.RateLimitingInterface, stopCh <-chan struct{}) {
     }
 }
 
-func processItem(item interface{}) error {
-    key := item.(string)
-
+func processItem(key string) error {
     if key == "failing-task" {
         return fmt.Errorf("simulated failure")
     }
@@ -166,15 +159,15 @@ import (
 type Controller struct {
     clientset      *kubernetes.Clientset
     podInformer    cache.SharedIndexInformer
-    queue          workqueue.RateLimitingInterface
+    queue          workqueue.TypedRateLimitingInterface[string]
 }
 
 func NewController(clientset *kubernetes.Clientset) *Controller {
     informerFactory := informers.NewSharedInformerFactory(clientset, 30*time.Second)
     podInformer := informerFactory.Core().V1().Pods().Informer()
 
-    queue := workqueue.NewRateLimitingQueue(
-        workqueue.DefaultControllerRateLimiter(),
+    queue := workqueue.NewTypedRateLimitingQueue(
+        workqueue.DefaultTypedControllerRateLimiter[string](),
     )
 
     controller := &Controller{
@@ -184,7 +177,7 @@ func NewController(clientset *kubernetes.Clientset) *Controller {
     }
 
     // Add event handlers that enqueue items
-    podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+    _, _ = podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
         AddFunc: func(obj interface{}) {
             key, err := cache.MetaNamespaceKeyFunc(obj)
             if err == nil {
@@ -240,7 +233,7 @@ func (c *Controller) processNextItem() bool {
     }
     defer c.queue.Done(item)
 
-    key := item.(string)
+    key := item
     err := c.reconcile(key)
 
     if err != nil {
@@ -294,27 +287,28 @@ package main
 import (
     "time"
 
+    "golang.org/x/time/rate"
     "k8s.io/client-go/util/workqueue"
 )
 
 // Create a custom rate limiter with specific parameters
-func createCustomRateLimiter() workqueue.RateLimiter {
-    return workqueue.NewItemExponentialFailureRateLimiter(
+func createCustomRateLimiter() workqueue.TypedRateLimiter[string] {
+    return workqueue.NewTypedItemExponentialFailureRateLimiter[string](
         500*time.Millisecond, // Base delay
         30*time.Second,       // Max delay
     )
 }
 
 // Combine multiple rate limiters
-func createCombinedRateLimiter() workqueue.RateLimiter {
-    return workqueue.NewMaxOfRateLimiter(
+func createCombinedRateLimiter() workqueue.TypedRateLimiter[string] {
+    return workqueue.NewTypedMaxOfRateLimiter(
         // Exponential backoff
-        workqueue.NewItemExponentialFailureRateLimiter(
+        workqueue.NewTypedItemExponentialFailureRateLimiter[string](
             5*time.Millisecond,
             1000*time.Second,
         ),
         // Bucket rate limiter (10 qps, 100 burst)
-        &workqueue.BucketRateLimiter{
+        &workqueue.TypedBucketRateLimiter[string]{
             Limiter: rate.NewLimiter(rate.Limit(10), 100),
         },
     )
@@ -322,24 +316,25 @@ func createCombinedRateLimiter() workqueue.RateLimiter {
 
 // Use custom rate limiter
 func main() {
-    queue := workqueue.NewRateLimitingQueue(createCustomRateLimiter())
+    queue := workqueue.NewTypedRateLimitingQueue(createCustomRateLimiter())
+    defer queue.ShutDown()
 
     // Add and process items
     queue.Add("item-1")
 
     item, _ := queue.Get()
     // Process fails
-    queue.AddRateLimited(item) // Waits 500ms
+    queue.AddRateLimited(item) // Schedules after 500ms
     queue.Done(item)
 
     item, _ = queue.Get()
     // Process fails again
-    queue.AddRateLimited(item) // Waits 1s (2x)
+    queue.AddRateLimited(item) // Schedules after 1s (2x)
     queue.Done(item)
 
     item, _ = queue.Get()
     // Process fails again
-    queue.AddRateLimited(item) // Waits 2s (4x)
+    queue.AddRateLimited(item) // Schedules after 2s (4x)
     queue.Done(item)
 }
 ```
@@ -359,7 +354,8 @@ import (
 )
 
 func main() {
-    queue := workqueue.NewDelayingQueue()
+    queue := workqueue.NewTypedDelayingQueue[string]()
+    defer queue.ShutDown()
 
     go worker(queue)
 
@@ -373,7 +369,7 @@ func main() {
     time.Sleep(15 * time.Second)
 }
 
-func worker(queue workqueue.DelayingInterface) {
+func worker(queue workqueue.TypedDelayingInterface[string]) {
     for {
         item, shutdown := queue.Get()
         if shutdown {
@@ -405,7 +401,7 @@ const (
 )
 
 type RetryableController struct {
-    queue workqueue.RateLimitingInterface
+    queue workqueue.TypedRateLimitingInterface[string]
 }
 
 func (c *RetryableController) processItem(key string) error {
@@ -441,7 +437,7 @@ func (c *RetryableController) runWorker() {
             return
         }
 
-        key := item.(string)
+        key := item
         err := c.processItem(key)
         c.handleError(key, err)
         c.queue.Done(item)
@@ -463,7 +459,7 @@ import (
     "k8s.io/client-go/util/workqueue"
 )
 
-func monitorQueue(queue workqueue.RateLimitingInterface) {
+func monitorQueue(queue workqueue.TypedRateLimitingInterface[string]) {
     ticker := time.NewTicker(5 * time.Second)
     defer ticker.Stop()
 
@@ -477,7 +473,7 @@ func monitorQueue(queue workqueue.RateLimitingInterface) {
 }
 
 // Register Prometheus metrics for the queue
-func setupQueueMetrics(queue workqueue.RateLimitingInterface) {
+func setupQueueMetrics(queue workqueue.TypedRateLimitingInterface[string]) {
     // Example metrics setup (pseudo-code)
     // workqueue.SetProvider(prometheusMetricsProvider{})
 }
@@ -489,7 +485,7 @@ Always call Done() after processing an item, even if it fails. This prevents dea
 
 Use Forget() when successfully processing an item or giving up after max retries. This clears the rate limiter's tracking.
 
-Keep workers lightweight. Offload heavy processing to separate goroutines if needed.
+Keep event handlers lightweight. Put reconciliation work in queue workers and tune the worker count for your controller.
 
 Set appropriate max retries based on your use case. Transient errors might resolve quickly, but persistent errors shouldn't loop forever.
 
