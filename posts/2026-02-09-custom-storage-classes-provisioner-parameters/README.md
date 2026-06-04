@@ -44,9 +44,9 @@ parameters:
   # Specify KMS key
   kmsKeyId: "arn:aws:kms:us-east-1:123456789012:key/xxxxx"
   # Add tags for cost allocation
-  tagSpecification_1: "Name=Application|Value=Database"
-  tagSpecification_2: "Name=Environment|Value=Production"
-  tagSpecification_3: "Name=Performance|Value=High"
+  tagSpecification_1: "Application=Database"
+  tagSpecification_2: "Environment=Production"
+  tagSpecification_3: "Performance=High"
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -66,7 +66,7 @@ parameters:
   iops: "3000"
   throughput: "125"
   encrypted: "false"
-  tagSpecification_1: "Name=Environment|Value=Development"
+  tagSpecification_1: "Environment=Development"
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
@@ -85,7 +85,7 @@ parameters:
   # Maximum IOPS for io2 (up to 64000)
   iops: "50000"
   encrypted: "true"
-  tagSpecification_1: "Name=Tier|Value=Premium"
+  tagSpecification_1: "Tier=Premium"
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -104,9 +104,9 @@ metadata:
 provisioner: pd.csi.storage.gke.io
 parameters:
   type: pd-balanced
-  # Replication type (regional or zonal)
+  # Replication type (regional-pd or none)
   replication-type: regional-pd
-  # Labels for organization
+  # Customer-managed encryption key
   disk-encryption-kms-key: projects/PROJECT_ID/locations/LOCATION/keyRings/KEYRING/cryptoKeys/KEY
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -152,7 +152,7 @@ reclaimPolicy: Delete
 Configure Azure managed disk options:
 
 ```yaml
-# Premium SSD with caching
+# Premium SSD with read caching
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -161,13 +161,10 @@ provisioner: disk.csi.azure.com
 parameters:
   storageaccounttype: Premium_LRS
   # Enable disk caching (ReadOnly, ReadWrite, None)
-  cachingMode: ReadWrite
-  kind: Managed
+  cachingMode: ReadOnly
+  kind: managed
   # Add tags
-  tags: |
-    Environment=Production
-    Application=Database
-    CostCenter=Engineering
+  tags: "Environment=Production,Application=Database,CostCenter=Engineering"
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -283,10 +280,6 @@ parameters:
   backendType: solidfire-san
   # QoS parameters
   IOPS: "1000"
-  # Snapshot policy
-  snapshotPolicy: default
-  # Export policy
-  exportPolicy: default
 allowVolumeExpansion: true
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
@@ -441,8 +434,8 @@ EOF
 kubectl get pvc test-pvc
 kubectl describe pvc test-pvc
 
-# Verify parameters were applied
-kubectl get pv -o yaml | grep -A 20 "parameters"
+# Inspect the bound PV and backing volume details
+kubectl describe pv "$(kubectl get pvc test-pvc -o jsonpath='{.spec.volumeName}')"
 ```
 
 ## Cost Optimization with StorageClasses
@@ -499,13 +492,17 @@ STORAGECLASS:.spec.storageClassName,\
 CAPACITY:.status.capacity.storage
 
 # Count PVCs per StorageClass
-kubectl get pvc -A -o json | jq -r '.items[] | .spec.storageClassName' | sort | uniq -c
+kubectl get pvc -A -o json | jq -r '.items[] | (.spec.storageClassName // "<none>")' | sort | uniq -c
 
-# Total storage per StorageClass
-kubectl get pvc -A -o json | jq -r '.items[] |
-  select(.status.phase == "Bound") |
-  "\(.spec.storageClassName) \(.status.capacity.storage)"' |
-  awk '{sum[$1]+=$2} END {for (sc in sum) print sc, sum[sc]}'
+# Total bound storage per StorageClass, reported in Gi
+kubectl get pvc -A -o json | jq -r '
+  def to_bytes:
+    capture("(?<n>[0-9.]+)(?<u>[KMGTE]i)?") |
+    (.n | tonumber) * ({"Ki":1024,"Mi":1048576,"Gi":1073741824,"Ti":1099511627776,"Pi":1125899906842624,"Ei":1152921504606846976}[.u] // 1);
+  [.items[] | select(.status.phase == "Bound") |
+    {sc: (.spec.storageClassName // "<none>"), bytes: (.status.capacity.storage | to_bytes)}] |
+  group_by(.sc)[] |
+  "\(.[0].sc) \((map(.bytes) | add) / 1073741824)Gi"'
 ```
 
 Custom StorageClasses give you fine-grained control over storage behavior, allowing you to optimize for performance, cost, compliance, and reliability based on your specific application requirements.
