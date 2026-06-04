@@ -60,10 +60,16 @@ spec:
     privateKeySecretRef:
       name: letsencrypt-prod-key
     solvers:
-    - http01:
+    - selector:
+        dnsNames:
+        - api.example.com
+      http01:
         ingress:
           class: istio
-    - dns01:
+    - selector:
+        dnsZones:
+        - api.example.com
+      dns01:
         cloudflare:
           email: ops@example.com
           apiTokenSecretRef:
@@ -71,7 +77,7 @@ spec:
             key: api-token
 ```
 
-The http01 solver validates domain ownership by serving a challenge file. The dns01 solver works better for wildcard certificates but requires DNS provider credentials.
+The http01 solver validates domain ownership by serving a challenge file. The dns01 solver is required for wildcard certificates and requires DNS provider credentials.
 
 Create the Cloudflare API token secret if using dns01:
 
@@ -119,7 +125,7 @@ kubectl get secret -n istio-system api-gateway-tls
 Reference the cert-manager-provisioned certificate in your Istio Gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: api-gateway
@@ -144,7 +150,7 @@ spec:
       protocol: HTTP
     hosts:
     - api.example.com
-    redirect:
+    tls:
       httpsRedirect: true
 ```
 
@@ -208,23 +214,63 @@ spec:
   commonName: Istio CA
   duration: 87600h  # 10 years
   renewBefore: 8760h  # 1 year before expiration
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: istio-ca-issuer
+  namespace: istio-system
+spec:
+  ca:
+    secretName: istio-ca-secret
+```
+
+Copy the CA certificate into the cert-manager namespace so istio-csr can mount a static trust root:
+
+```bash
+kubectl get secret istio-ca-secret -n istio-system \
+  -o jsonpath='{.data.tls\.crt}' | base64 -d > ca.pem
+
+kubectl create secret generic istio-root-ca \
+  -n cert-manager \
+  --from-file=ca.pem=ca.pem
+```
+
+Install the cert-manager CSR controller for Istio before installing Istio. It bridges Istio's certificate requests to cert-manager:
+
+```bash
+helm install cert-manager-istio-csr jetstack/cert-manager-istio-csr \
+  --namespace cert-manager \
+  --set app.certmanager.issuer.name=istio-ca-issuer \
+  --set app.certmanager.issuer.kind=Issuer \
+  --set app.certmanager.issuer.group=cert-manager.io \
+  --set app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem \
+  --set volumeMounts[0].name=root-ca \
+  --set volumeMounts[0].mountPath=/var/run/secrets/istio-csr \
+  --set volumes[0].name=root-ca \
+  --set volumes[0].secret.secretName=istio-root-ca \
+  --set app.server.maxCertificateDuration=48h
 ```
 
 Configure Istio to use this CA during installation:
 
 ```bash
-istioctl install --set values.pilot.env.CITADEL_ENABLE_NAMESPACED_CA=false \
-  --set values.global.caAddress="cert-manager-istio-csr.cert-manager.svc:443"
-```
-
-This requires the cert-manager CSR controller for Istio, which bridges Istio's certificate requests to cert-manager:
-
-```bash
-helm install cert-manager-istio-csr jetstack/cert-manager-istio-csr \
-  --namespace cert-manager \
-  --set app.certmanager.issuer.name=corporate-ca-issuer \
-  --set app.certmanager.issuer.kind=ClusterIssuer \
-  --set app.server.maxCertificateDuration=48h
+istioctl install -f - <<'EOF'
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  namespace: istio-system
+spec:
+  values:
+    global:
+      caAddress: cert-manager-istio-csr.cert-manager.svc:443
+  components:
+    pilot:
+      k8s:
+        env:
+        - name: ENABLE_CA_SERVER
+          value: "false"
+EOF
 ```
 
 Now Istio workload certificates come from your corporate CA through cert-manager, maintaining the same automatic rotation Istio provides.
@@ -263,7 +309,7 @@ spec:
   - admin.example.com
 ---
 # Gateway for public API
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: public-api-gateway
@@ -283,7 +329,7 @@ spec:
     - api.example.com
 ---
 # Gateway for admin portal
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: admin-portal-gateway
@@ -359,21 +405,14 @@ Check the certificate's subject, validity dates, and SAN entries match your expe
 
 ## Monitoring Certificate Health
 
-Create ServiceMonitor resources for cert-manager metrics:
+Enable the chart-managed ServiceMonitor resource for cert-manager metrics:
 
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: cert-manager
-  namespace: cert-manager
-spec:
-  selector:
-    matchLabels:
-      app: cert-manager
-  endpoints:
-  - port: tcp-prometheus-servicemonitor
-    interval: 60s
+```bash
+helm upgrade cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --version v1.14.0 \
+  --reuse-values \
+  --set prometheus.servicemonitor.enabled=true
 ```
 
 Query certificate metrics in Prometheus:
@@ -382,8 +421,8 @@ Query certificate metrics in Prometheus:
 # Certificates expiring in 7 days
 (certmanager_certificate_expiration_timestamp_seconds - time()) < 7*24*3600
 
-# Failed certificate requests
-rate(certmanager_certificate_request_count{condition="False"}[5m]) > 0
+# Failed controller syncs
+rate(certmanager_controller_sync_error_count[5m]) > 0
 
 # Certificate ready status
 certmanager_certificate_ready_status{condition="True"} == 0
@@ -398,23 +437,13 @@ Cert-manager adds minimal overhead to certificate operations. Certificate reques
 The cert-manager controller watches Certificate resources and Secret objects. In large clusters with thousands of certificates, consider resource limits:
 
 ```yaml
-apiVersion: v1
-kind: Deployment
-metadata:
-  name: cert-manager
-  namespace: cert-manager
-spec:
-  template:
-    spec:
-      containers:
-      - name: cert-manager
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            cpu: 1000m
-            memory: 512Mi
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
 ```
 
 Monitor cert-manager pod resource usage and adjust limits as needed. The controller is generally lightweight but memory usage increases with certificate count.
