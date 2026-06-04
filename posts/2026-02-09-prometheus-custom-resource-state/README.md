@@ -41,7 +41,7 @@ spec:
       serviceAccountName: kube-state-metrics
       containers:
       - name: kube-state-metrics
-        image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.10.1
+        image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0
         args:
           - --custom-resource-state-config-file=/config/custom-resource-state.yaml
           - --custom-resource-state-only=false
@@ -80,6 +80,10 @@ data:
             group: apps.example.com
             version: v1
             kind: Application
+          metricNamePrefix: kube
+          labelsFromPath:
+            namespace: [metadata, namespace]
+            name: [metadata, name]
           metrics:
             - name: application_info
               help: "Information about Application custom resource"
@@ -98,9 +102,6 @@ data:
                 type: Gauge
                 gauge:
                   path: [spec, replicas]
-                  labelsFromPath:
-                    namespace: [metadata, namespace]
-                    name: [metadata, name]
 ```
 
 This configuration creates two metrics for an Application CRD:
@@ -172,6 +173,10 @@ spec:
         group: apps.example.com
         version: v1
         kind: Application
+      metricNamePrefix: kube
+      labelsFromPath:
+        namespace: [metadata, namespace]
+        name: [metadata, name]
       metrics:
         # Gauge metric from spec field
         - name: application_spec_replicas
@@ -195,15 +200,13 @@ spec:
           each:
             type: StateSet
             stateSet:
+              labelName: phase
               path: [status, phase]
               list:
                 - Pending
                 - Running
                 - Failed
                 - Succeeded
-              labelsFromPath:
-                namespace: [metadata, namespace]
-                name: [metadata, name]
 
         # Info metric with multiple labels
         - name: application_info
@@ -229,6 +232,10 @@ spec:
         group: apps.example.com
         version: v1
         kind: Application
+      metricNamePrefix: kube
+      labelsFromPath:
+        namespace: [metadata, namespace]
+        name: [metadata, name]
       metrics:
         - name: application_status_condition
           help: "Application status conditions"
@@ -239,8 +246,6 @@ spec:
               valueFrom: [status]
               labelsFromPath:
                 type: [type]
-                namespace: [metadata, namespace]
-                name: [metadata, name]
           commonLabels:
             custom_resource: application
 ```
@@ -258,11 +263,11 @@ status:
       lastTransitionTime: "2026-02-09T09:00:00Z"
 ```
 
-This generates metrics showing each condition's status.
+This generates one metric per condition, with `True` converted to `1` and `False` converted to `0`.
 
-## Using Label Selectors and Field Selectors
+## Adding Labels for Prometheus Filtering
 
-Filter which custom resources get monitored:
+Expose custom resource labels so you can filter the resulting metrics in Prometheus:
 
 ```yaml
 spec:
@@ -271,13 +276,11 @@ spec:
         group: apps.example.com
         version: v1
         kind: Application
-      # Only monitor resources with this label
+      metricNamePrefix: kube
       labelsFromPath:
-        - [metadata, labels, monitor]
-      # Only monitor in these namespaces
-      namespaces:
-        - production
-        - staging
+        namespace: [metadata, namespace]
+        name: [metadata, name]
+        monitor: [metadata, labels, monitor]
       metrics:
         - name: application_replicas
           help: "Replica count for monitored applications"
@@ -298,6 +301,10 @@ spec:
         group: apps.example.com
         version: v1
         kind: Application
+      metricNamePrefix: kube
+      labelsFromPath:
+        namespace: [metadata, namespace]
+        name: [metadata, name]
       metrics:
         - name: application_resource_requests_cpu
           help: "CPU resource requests"
@@ -306,18 +313,14 @@ spec:
             gauge:
               # Navigate nested structure
               path: [spec, resources, requests, cpu]
-              labelsFromPath:
-                namespace: [metadata, namespace]
-                name: [metadata, name]
 
         - name: application_resource_limits_memory
           help: "Memory resource limits"
           each:
             type: Gauge
             gauge:
+              # Quantity strings such as "512Mi" are converted to bytes
               path: [spec, resources, limits, memory]
-              # Convert memory strings to bytes
-              valueFrom: [spec, resources, limits, memory]
 ```
 
 ## Monitoring Multiple CRDs
@@ -332,6 +335,10 @@ spec:
         group: apps.example.com
         version: v1
         kind: Application
+      metricNamePrefix: kube
+      labelsFromPath:
+        namespace: [metadata, namespace]
+        name: [metadata, name]
       metrics:
         - name: application_info
           # ... metrics config
@@ -341,6 +348,10 @@ spec:
         group: databases.example.com
         version: v1
         kind: Database
+      metricNamePrefix: kube
+      labelsFromPath:
+        namespace: [metadata, namespace]
+        name: [metadata, name]
       metrics:
         - name: database_info
           help: "Database information"
@@ -365,6 +376,10 @@ spec:
         group: queues.example.com
         version: v1
         kind: Queue
+      metricNamePrefix: kube
+      labelsFromPath:
+        namespace: [metadata, namespace]
+        name: [metadata, name]
       metrics:
         - name: queue_depth
           help: "Number of messages in queue"
@@ -392,6 +407,10 @@ spec:
         group: apps.example.com
         version: v1
         kind: Application
+      metricNamePrefix: kube
+      labelsFromPath:
+        namespace: [metadata, namespace]
+        name: [metadata, name]
       # These labels added to all metrics from this CRD
       commonLabels:
         custom_resource_group: apps.example.com
@@ -402,9 +421,6 @@ spec:
             type: Gauge
             gauge:
               path: [spec, replicas]
-              labelsFromPath:
-                namespace: [metadata, namespace]
-                name: [metadata, name]
 ```
 
 Resulting metrics will include the common labels automatically.
@@ -425,6 +441,15 @@ kind: ClusterRole
 metadata:
   name: kube-state-metrics-custom
 rules:
+  # Permission to discover custom resource definitions
+  - apiGroups:
+      - apiextensions.k8s.io
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - list
+      - watch
+
   # Permission to read custom resources
   - apiGroups:
       - apps.example.com
@@ -472,18 +497,11 @@ kube_application_spec_replicas - kube_application_status_ready_replicas
 # Count applications by version
 count by (version) (kube_application_info)
 
-# Alert on missing replicas
-ALERT ApplicationReplicasMissing
-  IF kube_application_spec_replicas - kube_application_status_ready_replicas > 0
-  FOR 5m
-  LABELS { severity = "warning" }
-  ANNOTATIONS {
-    summary = "Application {{ $labels.name }} is missing replicas",
-    description = "{{ $labels.name }} wants {{ $value }} more replicas"
-  }
+# Alert expression for missing replicas
+kube_application_spec_replicas - kube_application_status_ready_replicas > 0
 
 # Monitor CRD status conditions
-kube_application_status_condition{type="Ready",status="True"} == 0
+kube_application_status_condition{type="Ready"} == 0
 ```
 
 ## Debugging Custom Resource State Configuration
@@ -519,25 +537,25 @@ curl http://localhost:8080/metrics | grep "test-app"
 Monitor large numbers of CRDs efficiently:
 
 ```yaml
-# Limit to specific namespaces
 spec:
   resources:
     - groupVersionKind:
         group: apps.example.com
         version: v1
         kind: Application
-      namespaces:
-        - production
-        - staging
-
-# Use label selectors to filter
-      labelSelector:
-        matchLabels:
-          monitor: "true"
-
-# Disable metrics you don't need
-# Only include essential fields in labelsFromPath
+      metricNamePrefix: kube
+      metrics:
+        # Disable metrics you don't need
+        # Only include essential fields in labelsFromPath
+        - name: application_replicas
+          help: "Replica count for applications"
+          each:
+            type: Gauge
+            gauge:
+              path: [spec, replicas]
 ```
+
+To limit kube-state-metrics to specific namespaces, use the kube-state-metrics `--namespaces` flag on the deployment rather than per-resource fields in the custom resource state configuration.
 
 ## Real-World Example: Monitoring Argo CD Applications
 
@@ -550,6 +568,10 @@ spec:
         group: argoproj.io
         version: v1alpha1
         kind: Application
+      metricNamePrefix: kube
+      labelsFromPath:
+        namespace: [metadata, namespace]
+        name: [metadata, name]
       metrics:
         - name: argocd_application_info
           help: "Information about Argo CD application"
@@ -568,20 +590,19 @@ spec:
           each:
             type: StateSet
             stateSet:
+              labelName: sync_status
               path: [status, sync, status]
               list:
                 - Synced
                 - OutOfSync
                 - Unknown
-              labelsFromPath:
-                namespace: [metadata, namespace]
-                name: [metadata, name]
 
         - name: argocd_application_health_status
           help: "Health status of Argo CD application"
           each:
             type: StateSet
             stateSet:
+              labelName: health_status
               path: [status, health, status]
               list:
                 - Healthy
@@ -590,9 +611,6 @@ spec:
                 - Suspended
                 - Missing
                 - Unknown
-              labelsFromPath:
-                namespace: [metadata, namespace]
-                name: [metadata, name]
 ```
 
 ## Conclusion
