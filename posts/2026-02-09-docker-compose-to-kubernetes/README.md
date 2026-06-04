@@ -17,11 +17,9 @@ Docker Compose and Kubernetes use different terminology for similar concepts.
 ```yaml
 # Docker Compose example - docker-compose.yml
 
-version: '3.8'
-
 services:
   web:
-    image: nginx:1.21
+    image: nginx:1.28
     ports:
       - "8080:80"
     environment:
@@ -40,8 +38,10 @@ services:
           memory: 512M
 
   api:
-    image: node:18
+    image: node:22
     command: npm start
+    expose:
+      - "3000"
     environment:
       - DATABASE_URL=postgresql://db:5432/myapp
       - REDIS_URL=redis://cache:6379
@@ -62,6 +62,8 @@ services:
 
   db:
     image: postgres:15
+    expose:
+      - "5432"
     environment:
       - POSTGRES_PASSWORD=secret
       - POSTGRES_DB=myapp
@@ -72,6 +74,8 @@ services:
 
   cache:
     image: redis:7
+    expose:
+      - "6379"
     networks:
       - backend
 
@@ -87,7 +91,7 @@ This Compose file defines a typical web application with frontend, API, database
 
 ## Converting Services to Deployments
 
-Each Compose service becomes a Kubernetes Deployment.
+Stateless Compose services become Kubernetes Deployments. Stateful services, such as databases, usually become StatefulSets.
 
 ```yaml
 # web-deployment.yaml
@@ -111,7 +115,7 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: nginx:1.21
+        image: nginx:1.28
         ports:
         - containerPort: 80
           name: http
@@ -156,7 +160,7 @@ spec:
     spec:
       containers:
       - name: node
-        image: node:18
+        image: node:22
         command: ["npm", "start"]
         ports:
         - containerPort: 3000
@@ -282,7 +286,7 @@ spec:
   selector:
     app: web
   ports:
-  - port: 80
+  - port: 8080
     targetPort: 80
     protocol: TCP
     name: http
@@ -365,7 +369,7 @@ metadata:
   name: db-secrets
 type: Opaque
 stringData:
-  password: "secret"  # Should be base64 encoded in production
+  password: "secret"  # stringData is encoded by the Kubernetes API server
 ---
 # Updated deployment using ConfigMap and Secret
 apiVersion: apps/v1
@@ -384,7 +388,7 @@ spec:
     spec:
       containers:
       - name: node
-        image: node:18
+        image: node:22
         command: ["npm", "start"]
         envFrom:
         - configMapRef:
@@ -450,7 +454,7 @@ For production, use dynamic provisioning with StorageClasses instead of hostPath
 
 ## Implementing Dependency Management
 
-Compose `depends_on` translates to init containers and readiness probes.
+Compose `depends_on` often translates to readiness probes and, when startup gating is necessary, init containers.
 
 ```yaml
 # api-deployment-with-dependencies.yaml
@@ -495,7 +499,7 @@ spec:
           echo "Cache is ready"
       containers:
       - name: node
-        image: node:18
+        image: node:22
         command: ["npm", "start"]
         ports:
         - containerPort: 3000
@@ -526,32 +530,38 @@ Build a script to automate the conversion process for complex applications.
 COMPOSE_FILE=${1:-docker-compose.yml}
 OUTPUT_DIR=${2:-k8s-manifests}
 
-mkdir -p $OUTPUT_DIR
+mkdir -p "$OUTPUT_DIR"
 
 echo "Converting $COMPOSE_FILE to Kubernetes manifests..."
 
+COMPOSE_CONFIG=$(docker compose -f "$COMPOSE_FILE" config)
+
 # Extract service names
-SERVICES=$(docker-compose -f $COMPOSE_FILE config --services)
+SERVICES=$(docker compose -f "$COMPOSE_FILE" config --services)
 
 for SERVICE in $SERVICES; do
   echo "Processing service: $SERVICE"
 
   # Extract service configuration
-  IMAGE=$(docker-compose -f $COMPOSE_FILE config | yq eval ".services.$SERVICE.image" -)
-  REPLICAS=$(docker-compose -f $COMPOSE_FILE config | yq eval ".services.$SERVICE.deploy.replicas // 1" -)
-  CPU_LIMIT=$(docker-compose -f $COMPOSE_FILE config | yq eval ".services.$SERVICE.deploy.resources.limits.cpus // \"500m\"" -)
-  MEM_LIMIT=$(docker-compose -f $COMPOSE_FILE config | yq eval ".services.$SERVICE.deploy.resources.limits.memory // \"512Mi\"" -)
+  IMAGE=$(echo "$COMPOSE_CONFIG" | yq eval ".services.\"$SERVICE\".image" -)
+  REPLICAS=$(echo "$COMPOSE_CONFIG" | yq eval ".services.\"$SERVICE\".deploy.replicas // 1" -)
+  CPU_LIMIT=$(echo "$COMPOSE_CONFIG" | yq eval ".services.\"$SERVICE\".deploy.resources.limits.cpus // \"0.5\"" -)
+  MEM_LIMIT=$(echo "$COMPOSE_CONFIG" | yq eval ".services.\"$SERVICE\".deploy.resources.limits.memory // \"512Mi\"" -)
+  CPU_LIMIT_M=$(awk -v cpu="$CPU_LIMIT" 'BEGIN { printf "%dm", cpu * 1000 }')
+  CPU_REQUEST_M=$(awk -v cpu="$CPU_LIMIT" 'BEGIN { printf "%dm", cpu * 500 }')
 
   # Detect if service needs StatefulSet
-  VOLUMES=$(docker-compose -f $COMPOSE_FILE config | yq eval ".services.$SERVICE.volumes[]" - 2>/dev/null | grep -c ":")
+  VOLUMES=$(echo "$COMPOSE_CONFIG" | yq eval ".services.\"$SERVICE\".volumes // [] | length" -)
   if [ "$VOLUMES" -gt 0 ] && [[ "$SERVICE" =~ (db|database|postgres|mysql|mongo) ]]; then
     KIND="StatefulSet"
+    SERVICE_NAME="  serviceName: $SERVICE"
   else
     KIND="Deployment"
+    SERVICE_NAME=""
   fi
 
   # Generate deployment manifest
-  cat > $OUTPUT_DIR/${SERVICE}-deployment.yaml <<EOF
+  cat > "$OUTPUT_DIR/${SERVICE}-deployment.yaml" <<EOF
 apiVersion: apps/v1
 kind: $KIND
 metadata:
@@ -559,6 +569,7 @@ metadata:
   labels:
     app: $SERVICE
 spec:
+${SERVICE_NAME}
   replicas: $REPLICAS
   selector:
     matchLabels:
@@ -573,24 +584,30 @@ spec:
         image: $IMAGE
         resources:
           limits:
-            cpu: "$CPU_LIMIT"
+            cpu: "$CPU_LIMIT_M"
             memory: "$MEM_LIMIT"
           requests:
-            cpu: "$(echo $CPU_LIMIT | sed 's/[^0-9]//g' | awk '{print $1/2}')m"
-            memory: "$(echo $MEM_LIMIT | sed 's/[^0-9]//g' | awk '{print $1/2}')Mi"
+            cpu: "$CPU_REQUEST_M"
+            memory: "$MEM_LIMIT"
 EOF
 
   # Generate service manifest
-  PORTS=$(docker-compose -f $COMPOSE_FILE config | yq eval ".services.$SERVICE.ports[]" - 2>/dev/null | head -1)
-  if [ -n "$PORTS" ]; then
-    TARGET_PORT=$(echo $PORTS | cut -d: -f2)
+  PUBLISHED_PORT=$(echo "$COMPOSE_CONFIG" | yq eval ".services.\"$SERVICE\".ports[0].published // \"\"" -)
+  TARGET_PORT=$(echo "$COMPOSE_CONFIG" | yq eval ".services.\"$SERVICE\".ports[0].target // .services.\"$SERVICE\".expose[0] // \"\"" -)
+  if [ -z "$TARGET_PORT" ]; then
+    echo "No port found for $SERVICE; skipping Service manifest"
+    continue
+  fi
+
+  if [ -n "$PUBLISHED_PORT" ]; then
+    SERVICE_PORT=$PUBLISHED_PORT
     SERVICE_TYPE="LoadBalancer"
   else
-    TARGET_PORT="80"
+    SERVICE_PORT=$TARGET_PORT
     SERVICE_TYPE="ClusterIP"
   fi
 
-  cat > $OUTPUT_DIR/${SERVICE}-service.yaml <<EOF
+  cat > "$OUTPUT_DIR/${SERVICE}-service.yaml" <<EOF
 apiVersion: v1
 kind: Service
 metadata:
@@ -602,7 +619,7 @@ spec:
   selector:
     app: $SERVICE
   ports:
-  - port: $TARGET_PORT
+  - port: $SERVICE_PORT
     targetPort: $TARGET_PORT
     protocol: TCP
 EOF
