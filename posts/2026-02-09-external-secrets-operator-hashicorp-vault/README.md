@@ -115,10 +115,11 @@ Create a Vault role that binds to the Kubernetes service account:
 
 ```bash
 vault write auth/kubernetes/role/external-secrets \
-  bound_service_account_names=external-secrets \
-  bound_service_account_namespaces=external-secrets-system \
-  policies=external-secrets-policy \
-  ttl=1h
+  bound_service_account_names=external-secrets,vault-auth \
+  bound_service_account_namespaces=external-secrets-system,production \
+  audience=vault \
+  token_policies=external-secrets-policy \
+  token_ttl=1h
 ```
 
 ### Method 2: AppRole Authentication
@@ -134,7 +135,7 @@ vault write auth/approle/role/external-secrets \
   secret_id_ttl=0 \
   token_ttl=20m \
   token_max_ttl=30m \
-  policies=external-secrets-policy
+  token_policies=external-secrets-policy
 
 # Get role ID
 vault read auth/approle/role/external-secrets/role-id
@@ -147,7 +148,7 @@ Store the credentials in Kubernetes:
 
 ```bash
 kubectl create secret generic vault-approle \
-  --namespace external-secrets-system \
+  --namespace production \
   --from-literal=role-id=abc-123-def \
   --from-literal=secret-id=xyz-789-uvw
 ```
@@ -168,10 +169,14 @@ kubectl create secret generic vault-token \
 
 ## Creating SecretStore with Kubernetes Auth
 
-Create a SecretStore that connects to Vault using Kubernetes authentication:
+Create a service account and a SecretStore that connects to Vault using Kubernetes authentication:
+
+```bash
+kubectl create serviceaccount vault-auth --namespace production
+```
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -187,13 +192,15 @@ spec:
           mountPath: "kubernetes"
           role: "external-secrets"
           serviceAccountRef:
-            name: external-secrets
+            name: vault-auth
+            audiences:
+            - vault
 ```
 
 For a ClusterSecretStore accessible from all namespaces:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -210,6 +217,8 @@ spec:
           serviceAccountRef:
             name: external-secrets
             namespace: external-secrets-system
+            audiences:
+            - vault
 ```
 
 ## Creating SecretStore with AppRole Auth
@@ -217,7 +226,7 @@ spec:
 For AppRole authentication:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -235,7 +244,6 @@ spec:
           secretRef:
             name: vault-approle
             key: secret-id
-            namespace: external-secrets-system
 ```
 
 ## Creating ExternalSecret Resources
@@ -245,7 +253,7 @@ spec:
 Sync database credentials from Vault:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -282,7 +290,7 @@ spec:
 Extract all fields from a Vault secret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-keys
@@ -307,7 +315,7 @@ This creates a Kubernetes Secret with keys: `stripe_key`, `sendgrid_key`, `datad
 Combine data from multiple Vault paths into one Kubernetes Secret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-config
@@ -343,7 +351,7 @@ spec:
 Create complex secret formats using templates:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-connection
@@ -394,7 +402,7 @@ spec:
 
 ## Working with Dynamic Secrets
 
-Vault can generate dynamic secrets like database credentials. Configure ESO to fetch them:
+Vault can generate dynamic secrets like database credentials. Configure ESO to fetch them with the Vault dynamic secret generator:
 
 First, enable and configure the database secrets engine in Vault:
 
@@ -432,34 +440,48 @@ path "database/creds/readonly" {
 EOF
 ```
 
-Create an ExternalSecret for dynamic credentials:
+Create a VaultDynamicSecret generator and an ExternalSecret for dynamic credentials:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: postgres-dynamic-creds
+  namespace: production
+spec:
+  path: "/database/creds/readonly"
+  method: "GET"
+  resultType: "Data"
+  provider:
+    server: "https://vault.example.com"
+    auth:
+      kubernetes:
+        mountPath: "kubernetes"
+        role: "external-secrets"
+        serviceAccountRef:
+          name: vault-auth
+          audiences:
+          - vault
+---
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: postgres-dynamic-creds
   namespace: production
 spec:
   refreshInterval: 30m  # Refresh before credentials expire
-  secretStoreRef:
-    name: vault-backend
-    kind: SecretStore
   target:
     name: postgres-dynamic-creds
     creationPolicy: Owner
-  data:
-  - secretKey: username
-    remoteRef:
-      key: database/creds/readonly
-      property: username
-  - secretKey: password
-    remoteRef:
-      key: database/creds/readonly
-      property: password
+  dataFrom:
+  - sourceRef:
+      generatorRef:
+        apiVersion: generators.external-secrets.io/v1alpha1
+        kind: VaultDynamicSecret
+        name: postgres-dynamic-creds
 ```
 
-The operator generates new credentials every 30 minutes. Use Reloader to restart pods when credentials change:
+The generator fetches new credentials every 30 minutes. Use Reloader to restart pods when credentials change:
 
 ```yaml
 apiVersion: apps/v1
@@ -493,7 +515,7 @@ spec:
 If using Vault Enterprise with namespaces:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -510,7 +532,9 @@ spec:
           mountPath: "kubernetes"
           role: "external-secrets"
           serviceAccountRef:
-            name: external-secrets
+            name: vault-auth
+            audiences:
+            - vault
 ```
 
 ## Using CA Certificates for TLS
@@ -520,14 +544,14 @@ If Vault uses a custom CA:
 ```bash
 # Create ConfigMap with CA certificate
 kubectl create configmap vault-ca \
-  --namespace external-secrets-system \
+  --namespace production \
   --from-file=ca.crt=vault-ca.pem
 ```
 
 Reference it in the SecretStore:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -544,13 +568,14 @@ spec:
         type: ConfigMap
         name: vault-ca
         key: ca.crt
-        namespace: external-secrets-system
       auth:
         kubernetes:
           mountPath: "kubernetes"
           role: "external-secrets"
           serviceAccountRef:
-            name: external-secrets
+            name: vault-auth
+            audiences:
+            - vault
 ```
 
 ## Monitoring and Troubleshooting
