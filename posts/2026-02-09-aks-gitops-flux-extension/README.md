@@ -23,7 +23,7 @@ Flux consists of multiple controllers: source-controller fetches artifacts from 
 Enable the extension on AKS clusters:
 
 ```bash
-# Register required providers
+# Register providers used by the AKS and Arc GitOps examples
 
 az provider register --namespace Microsoft.Kubernetes
 az provider register --namespace Microsoft.KubernetesConfiguration
@@ -59,7 +59,7 @@ kubectl get pods -n flux-system
 kubectl get deploy -n flux-system
 ```
 
-The flux-system namespace contains all Flux controllers and CRDs.
+The flux-system namespace contains the Flux controllers. The Flux CRDs are cluster-scoped resources.
 
 ## Creating Git Source Configuration
 
@@ -76,8 +76,8 @@ az k8s-configuration flux create \
   --scope cluster \
   --url https://github.com/myorg/k8s-configs \
   --branch main \
-  --kustomization name=infrastructure path=./infrastructure prune=true \
-  --kustomization name=apps path=./apps prune=true depends_on=["infrastructure"]
+  --kustomization "name=infrastructure path=./infrastructure prune=true" \
+  --kustomization 'name=apps path=./apps prune=true depends_on=["infrastructure"]'
 ```
 
 This creates a GitRepository source and two Kustomizations. The infrastructure kustomization deploys cluster-level resources, and apps deploys applications after infrastructure is ready.
@@ -103,7 +103,7 @@ az k8s-configuration flux create \
   --branch main \
   --ssh-private-key-file ./flux-key \
   --known-hosts-file ~/.ssh/known_hosts \
-  --kustomization name=infrastructure path=./infrastructure prune=true
+  --kustomization "name=infrastructure path=./infrastructure prune=true"
 ```
 
 Verify the configuration:
@@ -177,10 +177,10 @@ resources:
 
 ## Deploying Helm Charts
 
-Configure Flux to deploy Helm charts from repositories:
+Configure Flux to deploy Helm charts from Git-tracked manifests:
 
 ```bash
-# Add Helm repository source
+# Create a Flux configuration that applies the HelmRepository and HelmRelease manifests
 az k8s-configuration flux create \
   --cluster-name production-cluster \
   --resource-group production-rg \
@@ -188,12 +188,25 @@ az k8s-configuration flux create \
   --name nginx-ingress \
   --namespace ingress-system \
   --scope cluster \
-  --kind HelmRepository \
-  --url https://kubernetes.github.io/ingress-nginx \
-  --kustomization name=nginx-ingress path=./charts/nginx-ingress prune=true
+  --kind git \
+  --url https://github.com/myorg/k8s-configs \
+  --branch main \
+  --kustomization "name=nginx-ingress path=./charts/nginx-ingress prune=true"
 ```
 
-Create HelmRelease manifest in your repository:
+Create HelmRepository and HelmRelease manifests in your repository:
+
+```yaml
+# charts/nginx-ingress/repository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: ingress-nginx
+  namespace: ingress-system
+spec:
+  interval: 10m
+  url: https://kubernetes.github.io/ingress-nginx
+```
 
 ```yaml
 # charts/nginx-ingress/release.yaml
@@ -211,7 +224,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: ingress-nginx
-        namespace: flux-system
+        namespace: ingress-system
   values:
     controller:
       replicaCount: 3
@@ -231,7 +244,7 @@ spec:
 Commit and push:
 
 ```bash
-git add charts/nginx-ingress/release.yaml
+git add charts/nginx-ingress/repository.yaml charts/nginx-ingress/release.yaml
 git commit -m "Add nginx ingress HelmRelease"
 git push origin main
 ```
@@ -300,11 +313,11 @@ spec:
 # overlays/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
 - ../../base
-patchesStrategicMerge:
-- replica-count.yaml
-- resource-limits.yaml
+patches:
+- path: replica-count.yaml
+- path: resource-limits.yaml
 namespace: production
 ```
 
@@ -320,7 +333,7 @@ az k8s-configuration flux create \
   --scope namespace \
   --url https://github.com/myorg/k8s-configs \
   --branch main \
-  --kustomization name=production path=./overlays/production prune=true
+  --kustomization "name=production path=./overlays/production prune=true"
 ```
 
 ## Managing Secrets with External Secrets Operator
@@ -329,7 +342,7 @@ Integrate External Secrets Operator to avoid storing secrets in Git:
 
 ```yaml
 # infrastructure/external-secrets/secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: azure-keyvault
@@ -345,7 +358,7 @@ spec:
 
 ```yaml
 # apps/web-app/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -397,17 +410,26 @@ kubectl get gitrepository cluster-config -n cluster-config -o jsonpath='{.status
 Enable notifications for sync failures:
 
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: teams-webhook
+  namespace: flux-system
+stringData:
+  address: https://prod-xx.logic.azure.com/workflows/...
+---
 # infrastructure/alerts/provider.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: teams
   namespace: flux-system
 spec:
   type: msteams
-  address: https://outlook.office.com/webhook/...
+  secretRef:
+    name: teams-webhook
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: flux-alerts
@@ -479,7 +501,7 @@ az k8s-configuration flux create \
   --scope cluster \
   --url https://github.com/myorg/k8s-configs \
   --branch main \
-  --kustomization name=infrastructure path=./infrastructure prune=true
+  --kustomization "name=infrastructure path=./infrastructure prune=true"
 ```
 
 Use cluster-specific overlays:
@@ -517,8 +539,13 @@ Common issues and fixes:
 
 ```bash
 # Refresh Git credentials
-kubectl delete secret flux-system -n flux-system
-# Recreate configuration with new credentials
+az k8s-configuration flux update \
+  --cluster-name production-cluster \
+  --resource-group production-rg \
+  --cluster-type managedClusters \
+  --name cluster-config \
+  --ssh-private-key-file ./flux-key \
+  --known-hosts-file ~/.ssh/known_hosts
 
 # Force reconciliation
 flux reconcile source git cluster-config -n cluster-config
