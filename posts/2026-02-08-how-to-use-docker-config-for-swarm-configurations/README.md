@@ -12,7 +12,7 @@ Hardcoding configuration files into Docker images is a bad practice. Environment
 
 ## What Is docker config?
 
-Docker configs store non-sensitive configuration data in the Swarm's Raft log, which replicates it across all manager nodes. When you attach a config to a service, Docker mounts it as a file inside the container. The config is encrypted at rest in the Raft log and transmitted securely to the containers that need it.
+Docker configs store non-sensitive configuration data in the Swarm's Raft log, which replicates it across all manager nodes. When you attach a config to a service, Docker mounts it as a file inside the container. Docker sends configs to the swarm manager over mutual TLS and stores them in the Raft log, but configs are still for non-sensitive data because their content is visible through inspection and they are mounted directly into the container filesystem.
 
 Key characteristics:
 - Configs are stored centrally in the Swarm
@@ -92,10 +92,10 @@ docker config ls
 # abc123def456...             nginx-config       2 hours ago
 # ghi789jkl012...             app-config-v1      1 day ago
 
-# Inspect a config (shows metadata but not the content by default)
+# Inspect a config (shows metadata and base64-encoded content)
 docker config inspect nginx-config
 
-# View the config content (base64 encoded)
+# Decode the config content
 docker config inspect --format '{{json .Spec.Data}}' nginx-config | jq -r . | base64 -d
 
 # Pretty inspection
@@ -226,7 +226,7 @@ services:
 configs:
   app-config:
     file: ./config.yml
-    # Each deploy creates a new config if the content changed
+    # Changing CONFIG_VERSION creates a new config name for the deploy
     name: app-config-${CONFIG_VERSION:-v1}
 ```
 
@@ -349,7 +349,7 @@ Docker provides three ways to pass configuration into containers. Choose the rig
 | Feature | Configs | Secrets | Environment Variables |
 |---|---|---|---|
 | For sensitive data | No | Yes | No (visible in inspect) |
-| Stored encrypted at rest | In Raft log | Yes (encrypted) | No |
+| Stored encrypted at rest | Raft log is encrypted, but content is inspectable | Yes (encrypted) | No |
 | Mounted as files | Yes | Yes (in /run/secrets/) | No |
 | Max size | 500KB | 500KB | No hard limit |
 | Available outside Swarm | No | No | Yes |
