@@ -38,12 +38,16 @@ spec:
   - name: v1alpha1
     served: true
     storage: true
+    subresources:
+      status: {}
     schema:
       openAPIV3Schema:
         type: object
         properties:
           spec:
             type: object
+            required:
+            - nodePoolPreferences
             properties:
               workloadType:
                 type: string
@@ -57,6 +61,7 @@ spec:
                 type: boolean
               nodePoolPreferences:
                 type: array
+                minItems: 1
                 items:
                   type: string
           status:
@@ -150,6 +155,7 @@ package controller
 import (
     "context"
 
+    appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
@@ -217,6 +223,16 @@ func (r *WorkloadPlacementReconciler) selectNodePool(placement *schedulingv1alph
     return placement.Spec.NodePoolPreferences[0]
 }
 
+func (r *WorkloadPlacementReconciler) selectCostOptimizedPool(placement *schedulingv1alpha1.WorkloadPlacement) string {
+    // Replace this placeholder with cloud/provider-specific spot or price checks.
+    return placement.Spec.NodePoolPreferences[0]
+}
+
+func (r *WorkloadPlacementReconciler) hasCapacity(pool, workloadType string) bool {
+    // Replace this placeholder with real node, quota, or metrics checks.
+    return true
+}
+
 func (r *WorkloadPlacementReconciler) applyPlacementPolicy(
     deploy *appsv1.Deployment,
     placement *schedulingv1alpha1.WorkloadPlacement,
@@ -230,14 +246,17 @@ func (r *WorkloadPlacementReconciler) applyPlacementPolicy(
 
     // Add tolerations based on workload type
     if placement.Spec.WorkloadType == "gpu" {
-        deploy.Spec.Template.Spec.Tolerations = append(
-            deploy.Spec.Template.Spec.Tolerations,
-            corev1.Toleration{
-                Key:      "workload",
-                Operator: "Equal",
-                Value:    "gpu",
-                Effect:   "NoSchedule",
-            })
+        gpuToleration := corev1.Toleration{
+            Key:      "workload",
+            Operator: corev1.TolerationOpEqual,
+            Value:    "gpu",
+            Effect:   corev1.TaintEffectNoSchedule,
+        }
+        if !hasToleration(deploy.Spec.Template.Spec.Tolerations, gpuToleration) {
+            deploy.Spec.Template.Spec.Tolerations = append(
+                deploy.Spec.Template.Spec.Tolerations,
+                gpuToleration)
+        }
     }
 
     // Add topology spread constraints for multi-zone
@@ -246,7 +265,7 @@ func (r *WorkloadPlacementReconciler) applyPlacementPolicy(
             {
                 MaxSkew:           1,
                 TopologyKey:       "topology.kubernetes.io/zone",
-                WhenUnsatisfiable: "DoNotSchedule",
+                WhenUnsatisfiable: corev1.DoNotSchedule,
                 LabelSelector: &metav1.LabelSelector{
                     MatchLabels: deploy.Spec.Selector.MatchLabels,
                 },
@@ -255,6 +274,19 @@ func (r *WorkloadPlacementReconciler) applyPlacementPolicy(
     }
 
     return *deploy
+}
+
+func hasToleration(existing []corev1.Toleration, target corev1.Toleration) bool {
+    for _, toleration := range existing {
+        if toleration.Key == target.Key &&
+            toleration.Operator == target.Operator &&
+            toleration.Value == target.Value &&
+            toleration.Effect == target.Effect {
+            return true
+        }
+    }
+
+    return false
 }
 
 func (r *WorkloadPlacementReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -448,6 +480,11 @@ Create the operator deployment:
 ```yaml
 # operator-deployment.yaml
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: scheduling-system
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: scheduling-operator
@@ -563,4 +600,3 @@ kubectl get workloadplacement ml-training-placement -o yaml
 ```
 
 Operators enable you to build powerful scheduling automation tailored to your organization's needs. By creating custom resources and controllers, you can abstract complex scheduling requirements into simple declarative configurations that your teams can easily use.
-
