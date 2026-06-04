@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, Reliability
 
-Description: Configure retry policies in Kubernetes Gateway API HTTPRoute to handle transient failures automatically with exponential backoff, retry conditions.
+Description: Configure HTTPRoute and gateway retry policies to handle transient failures automatically with exponential backoff and retry conditions.
 
 ---
 
-Network failures happen. Transient errors, temporary overload, and brief connectivity issues are inevitable in distributed systems. Retry policies at the gateway level provide automatic retry logic without requiring changes to application code. The Kubernetes Gateway API supports retry configuration in HTTPRoute, allowing you to specify retry conditions, backoff strategies, and retry limits. This guide shows you how to implement effective retry policies.
+Network failures happen. Transient errors, temporary overload, and brief connectivity issues are inevitable in distributed systems. Retry policies at the gateway level provide automatic retry logic without requiring changes to application code. Kubernetes Gateway API includes experimental retry configuration on HTTPRoute rules, and some gateway implementations also provide implementation-specific policy resources. This guide shows you how to implement effective retry policies.
 
 ## Understanding Gateway API Retries
 
@@ -25,12 +25,12 @@ Retries happen transparently to clients, improving success rates without applica
 
 Retry policy support varies by gateway implementation. Check your gateway documentation:
 
-- **Envoy Gateway**: Full retry support via BackendTrafficPolicy
-- **Kong Gateway**: Retry support via annotations and plugins
+- **Envoy Gateway**: Retry support via HTTPRoute retry fields and BackendTrafficPolicy
+- **Kong Gateway**: Retry count support via Service annotations
 - **Istio Gateway**: Retry support via VirtualService
 - **Traefik**: Retry support via middleware
 
-This guide covers common patterns that work across implementations.
+This guide covers common patterns, but the exact fields are implementation-specific.
 
 ## Basic Retry Configuration with Envoy Gateway
 
@@ -45,8 +45,8 @@ metadata:
   name: retry-policy
   namespace: default
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: api-route
   retry:
@@ -59,6 +59,7 @@ spec:
       - connect-failure
       - refused-stream
       - reset
+      - retriable-status-codes
 ```
 
 Create the HTTPRoute:
@@ -98,15 +99,15 @@ kind: BackendTrafficPolicy
 metadata:
   name: backoff-retry-policy
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: api-route
   retry:
     numRetries: 3
-    perRetryPolicy:
+    perRetry:
       timeout: 10s  # Timeout per retry attempt
-      backoff:
+      backOff:
         baseInterval: 1s  # Initial backoff
         maxInterval: 10s  # Maximum backoff
     retryOn:
@@ -114,25 +115,40 @@ spec:
       - 502
       - 503
       - 504
+      triggers:
+      - retriable-status-codes
 ```
 
-Retry schedule:
+Envoy Gateway uses a fully jittered exponential backoff algorithm for retries. With these intervals, retry attempts wait at least the configured base interval and are capped by the maximum interval.
+
+Approximate retry schedule:
 - First retry: 1s delay
 - Second retry: 2s delay
 - Third retry: 4s delay
 
 ## Kong Gateway Retry Configuration
 
-Kong Gateway uses annotations for retry configuration:
+Kong Gateway uses Service annotations for retry count configuration. This configures the Kong Service `retries` value and applies to transport-level errors and timeouts; Kong Gateway does not retry upstream responses such as HTTP 503 by default:
 
 ```yaml
-# kong-retry-route.yaml
+# kong-retry-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  annotations:
+    konghq.com/retries: "3"
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: api-service
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: kong-retry-route
-  annotations:
-    konghq.com/retries: "3"
 spec:
   parentRefs:
   - name: kong-gateway
@@ -146,28 +162,30 @@ spec:
       port: 8080
 ```
 
-For more advanced retry configuration with Kong, use the Retry plugin:
+For more advanced retry behavior in Kong, adjust the Service-level timeout and retry settings, or use custom NGINX configuration or a custom plugin if you need to change what counts as a retryable error:
 
 ```yaml
-# kong-retry-plugin.yaml
-apiVersion: configuration.konghq.com/v1
-kind: KongPlugin
+# kong-service-retry.yaml
+apiVersion: v1
+kind: Service
 metadata:
-  name: request-retry
-config:
-  retries: 3
-  retry_condition:
-  - 500
-  - 502
-  - 503
-  - 504
+  name: api-service
+  annotations:
+    konghq.com/retries: "3"
+    konghq.com/connect-timeout: "5000"
+    konghq.com/read-timeout: "10000"
+    konghq.com/write-timeout: "10000"
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: api-service
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: kong-retry-route
-  annotations:
-    konghq.com/plugins: request-retry
 spec:
   parentRefs:
   - name: kong-gateway
@@ -188,8 +206,8 @@ kind: BackendTrafficPolicy
 metadata:
   name: selective-retry
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: api-route
   retry:
@@ -200,7 +218,8 @@ spec:
       - connect-failure
       - refused-stream
       - reset
-      - retriable-4xx  # Only 429 Too Many Requests
+      - retriable-4xx  # Envoy currently treats 409 Conflict as retriable
+      - retriable-status-codes
       # Retry specific server errors
       httpStatusCodes:
       - 503  # Service Unavailable
@@ -237,8 +256,8 @@ kind: BackendTrafficPolicy
 metadata:
   name: read-retry-policy
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: mixed-retry-route
   retry:
@@ -248,6 +267,8 @@ spec:
       - 502
       - 503
       - 504
+      triggers:
+      - retriable-status-codes
 ```
 
 For write operations, be more conservative:
@@ -276,8 +297,8 @@ kind: BackendTrafficPolicy
 metadata:
   name: write-retry-policy
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: write-route
   retry:
@@ -353,7 +374,7 @@ func processCreateUser(r *http.Request) string {
 }
 ```
 
-Configure gateway to add idempotency keys:
+Require clients to send idempotency keys, and forward them unchanged through the gateway. Gateway API's standard `RequestHeaderModifier` filter can add literal header values, but it does not define portable request ID variable substitution:
 
 ```yaml
 # idempotency-route.yaml
@@ -373,17 +394,17 @@ spec:
     filters:
     - type: RequestHeaderModifier
       requestHeaderModifier:
-        add:
-        - name: Idempotency-Key
-          value: "${request_id}"  # If supported by gateway
+        set:
+        - name: X-Idempotency-Required
+          value: "true"
     backendRefs:
     - name: user-service
       port: 8080
 ```
 
-## Retry Budget Limits
+## Parallel Retry Limits
 
-Prevent retry storms by limiting total retry percentage:
+Prevent retry storms by limiting parallel retries with Envoy Gateway circuit breaking:
 
 ```yaml
 # retry-budget.yaml
@@ -392,25 +413,23 @@ kind: BackendTrafficPolicy
 metadata:
   name: retry-budget-policy
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: api-route
+  circuitBreaker:
+    maxParallelRetries: 10
   retry:
     numRetries: 3
     retryOn:
       httpStatusCodes:
       - 503
       - 504
-    # Retry budget (implementation-specific)
-    budget:
-      # Max 20% of requests can be retries
-      maxRetryRatio: 0.2
-      # At least 10 requests before enforcing ratio
-      minRetryConcurrency: 10
+      triggers:
+      - retriable-status-codes
 ```
 
-This prevents overwhelming backends when failure rates are high.
+This caps the number of concurrent retry requests Envoy Gateway will make to the referenced backend.
 
 ## Monitoring Retry Behavior
 
@@ -435,18 +454,18 @@ Query retry metrics:
 
 ```promql
 # Total retry rate
-sum(rate(envoy_cluster_upstream_rq_retry[5m])) by (route)
+sum(rate(envoy_cluster_upstream_rq_retry[5m])) by (envoy_cluster_name)
 
 # Retry success rate
-sum(rate(envoy_cluster_upstream_rq_retry_success[5m])) by (route) /
-sum(rate(envoy_cluster_upstream_rq_retry[5m])) by (route)
+sum(rate(envoy_cluster_upstream_rq_retry_success[5m])) by (envoy_cluster_name) /
+sum(rate(envoy_cluster_upstream_rq_retry[5m])) by (envoy_cluster_name)
 
-# Retry overflow (budget exceeded)
-sum(rate(envoy_cluster_upstream_rq_retry_overflow[5m])) by (route)
+# Retry overflow (circuit breaker exceeded)
+sum(rate(envoy_cluster_upstream_rq_retry_overflow[5m])) by (envoy_cluster_name)
 
 # Requests with retries vs total
-(sum(rate(envoy_cluster_upstream_rq_retry[5m])) by (route)) /
-(sum(rate(envoy_cluster_upstream_rq_total[5m])) by (route))
+(sum(rate(envoy_cluster_upstream_rq_retry[5m])) by (envoy_cluster_name)) /
+(sum(rate(envoy_cluster_upstream_rq_total[5m])) by (envoy_cluster_name))
 ```
 
 Create alerts for retry issues:
@@ -463,20 +482,20 @@ spec:
     interval: 30s
     rules:
     - alert: HighRetryRate
-      expr: sum(rate(envoy_cluster_upstream_rq_retry[5m])) by (route) / sum(rate(envoy_cluster_upstream_rq_total[5m])) by (route) > 0.1
+      expr: sum(rate(envoy_cluster_upstream_rq_retry[5m])) by (envoy_cluster_name) / sum(rate(envoy_cluster_upstream_rq_total[5m])) by (envoy_cluster_name) > 0.1
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "High retry rate on route {{ $labels.route }}"
+        summary: "High retry rate on cluster {{ $labels.envoy_cluster_name }}"
         description: "{{ $value | humanizePercentage }} of requests are being retried"
     - alert: LowRetrySuccess
-      expr: sum(rate(envoy_cluster_upstream_rq_retry_success[5m])) by (route) / sum(rate(envoy_cluster_upstream_rq_retry[5m])) by (route) < 0.5
+      expr: sum(rate(envoy_cluster_upstream_rq_retry_success[5m])) by (envoy_cluster_name) / sum(rate(envoy_cluster_upstream_rq_retry[5m])) by (envoy_cluster_name) < 0.5
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "Low retry success rate on route {{ $labels.route }}"
+        summary: "Low retry success rate on cluster {{ $labels.envoy_cluster_name }}"
         description: "Only {{ $value | humanizePercentage }} of retries succeed"
 ```
 
@@ -491,25 +510,27 @@ kind: BackendTrafficPolicy
 metadata:
   name: circuit-breaker-retry
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: api-route
   # Circuit breaker configuration
   circuitBreaker:
     maxConnections: 100
     maxPendingRequests: 50
-    maxRequests: 200
-    maxRetries: 10  # Max concurrent retries
+    maxParallelRequests: 200
+    maxParallelRetries: 10  # Max concurrent retries
   # Retry configuration
   retry:
     numRetries: 2
-    perRetryPolicy:
+    perRetry:
       timeout: 5s
     retryOn:
       httpStatusCodes:
       - 503
       - 504
+      triggers:
+      - retriable-status-codes
 ```
 
 The circuit breaker limits total retry load on the backend.
@@ -575,21 +596,21 @@ done
 
 Follow these guidelines for effective retry configuration:
 
-1. **Only retry idempotent operations**: GET, HEAD, OPTIONS are safe
+1. **Only retry idempotent operations**: GET, HEAD, OPTIONS are safe; PUT and DELETE are idempotent by HTTP semantics but still need application-specific review
 2. **Use exponential backoff**: Avoid overwhelming failing services
-3. **Set retry budgets**: Limit retry storm impact
+3. **Limit parallel retries**: Limit retry storm impact
 4. **Configure appropriate timeouts**: Per-retry timeout < total timeout
 5. **Monitor retry metrics**: Track retry rates and success
 
-Calculate optimal retry count:
+Estimate a retry count that fits within your latency budget by using the cumulative backoff delay:
 
 ```text
-Max retries = log(max_acceptable_latency / base_latency) / log(backoff_multiplier)
+Max retries = floor(log((max_acceptable_delay * (backoff_multiplier - 1) / base_interval) + 1) / log(backoff_multiplier))
 ```
 
 Example: 30s max latency, 1s base, 2x backoff:
 ```text
-Max retries = log(30/1) / log(2) = 4.9 ≈ 5 retries
+Max retries = floor(log((30 * (2 - 1) / 1) + 1) / log(2)) = 4 retries
 ```
 
 ## Avoiding Retry Storms
@@ -603,22 +624,20 @@ kind: BackendTrafficPolicy
 metadata:
   name: jittered-retry
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: api-route
   retry:
     numRetries: 3
-    perRetryPolicy:
+    perRetry:
       timeout: 10s
-      backoff:
+      backOff:
         baseInterval: 1s
         maxInterval: 10s
-        # Add random jitter (implementation-specific)
-        jitterPercent: 50  # +/- 50% randomization
 ```
 
-Jitter spreads retry attempts over time, reducing thundering herd effects.
+Envoy Gateway uses fully jittered exponential backoff for retries, which spreads retry attempts over time and reduces thundering herd effects.
 
 ## Troubleshooting Retry Issues
 
@@ -634,16 +653,16 @@ kubectl logs -n gateway-system -l app=envoy-gateway --tail=100 | grep retry
 # Check backend pod logs for retry attempts
 kubectl logs -l app=api-service | grep "X-Envoy-Attempt-Count"
 
-# Test retry manually
-curl -v http://api.example.com/api/test -H "X-Envoy-Force-Retry: true"
+# Test retry manually against an endpoint that returns a retriable status code
+curl -v http://api.example.com/api/test
 ```
 
 Common retry problems:
 
 1. **Retrying non-idempotent operations**: Add idempotency keys
-2. **Retry storms**: Implement retry budgets and jitter
+2. **Retry storms**: Limit parallel retries and use jittered backoff
 3. **Cascading failures**: Add circuit breakers
 4. **High latency**: Reduce retry count or use faster backoff
 5. **No effect**: Verify gateway implementation supports retries
 
-HTTPRoute retry policies provide automatic failure recovery at the gateway level, improving application resilience without code changes. Configure retries based on operation idempotency, implement exponential backoff to avoid overwhelming backends, set retry budgets to prevent retry storms, and monitor retry metrics to tune configuration. Proper retry policies significantly improve success rates in distributed systems while maintaining good performance characteristics.
+HTTPRoute retry policies provide automatic failure recovery at the gateway level, improving application resilience without code changes. Configure retries based on operation idempotency, implement exponential backoff to avoid overwhelming backends, limit parallel retries to prevent retry storms, and monitor retry metrics to tune configuration. Proper retry policies significantly improve success rates in distributed systems while maintaining good performance characteristics.
