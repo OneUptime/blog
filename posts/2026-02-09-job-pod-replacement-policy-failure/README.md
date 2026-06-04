@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Job, Pod Management
 
-Description: Configure Kubernetes Job pod replacement policy to control when failed pods are recreated, improving failure recovery time and reducing resource waste in batch processing workloads.
+Description: Configure Kubernetes Job pod replacement policy to control when terminating pods are recreated, improving recovery time and reducing resource waste in batch processing workloads.
 
 ---
 
-When Kubernetes Job pods fail, the default behavior keeps failed pods around for debugging while creating replacement pods. This can consume significant cluster resources and slow down failure recovery for large batch jobs. The pod replacement policy gives you fine-grained control over this behavior.
+When Kubernetes Job pods are terminating, the default behavior can create replacement pods before the old pods have fully exited. This keeps work moving, but it can temporarily consume extra cluster resources for large batch jobs. The pod replacement policy gives you fine-grained control over this behavior.
 
-Introduced in Kubernetes 1.26, the podReplacementPolicy field lets you specify when failed pods should be replaced. This is particularly valuable for jobs with many parallel workers where quick failure recovery matters more than preserving every failed pod for debugging.
+Introduced as an alpha feature in Kubernetes 1.28 and stable in Kubernetes 1.34, the podReplacementPolicy field lets you specify when terminating pods should be replaced. This is particularly valuable for jobs with many parallel workers where quick recovery from deletion, eviction, or preemption matters more than strictly avoiding temporary pod overlap.
 
 ## Understanding Pod Replacement Policy
 
-The pod replacement policy controls whether Kubernetes creates replacement pods immediately when a pod fails or waits until the failed pod terminates. There are two options: TerminatingOrFailed and Failed.
+The pod replacement policy controls whether Kubernetes creates replacement pods immediately when a pod is terminating or waits until that pod reaches a terminal phase. There are two options: TerminatingOrFailed and Failed.
 
-With the TerminatingOrFailed policy, Kubernetes creates replacement pods as soon as it detects a failure, even while the failed pod is still terminating. This minimizes downtime but may temporarily exceed your parallelism setting. With the Failed policy, Kubernetes waits for the pod to fully terminate before creating a replacement, which is the default behavior.
+With the TerminatingOrFailed policy, Kubernetes creates replacement pods as soon as a pod is terminating or failed. This minimizes downtime but may temporarily exceed your parallelism setting. With the Failed policy, Kubernetes waits for the pod to fully terminate before creating a replacement. For Jobs without a podFailurePolicy, TerminatingOrFailed is the default; for Jobs with a podFailurePolicy, Failed is the default and the only allowed value.
 
 ## Configuring Pod Replacement Policy
 
@@ -62,11 +62,11 @@ spec:
           print(f"Worker {worker_id} completed successfully")
 ```
 
-With TerminatingOrFailed, when a pod fails, Kubernetes immediately creates a replacement pod instead of waiting for the termination grace period to expire. This keeps your job running at full parallelism even during failures.
+With TerminatingOrFailed, when a pod starts terminating, Kubernetes can create a replacement pod instead of waiting for the termination grace period to expire. This keeps your job running at full parallelism during deletions, evictions, and preemptions.
 
 ## Impact on Resource Usage
 
-The pod replacement policy affects how many pods exist simultaneously. With TerminatingOrFailed, you might temporarily have more pods than your parallelism setting because replacement pods start while failed pods are still terminating.
+The pod replacement policy affects how many pods exist simultaneously. With TerminatingOrFailed, you might temporarily have more pods than your parallelism setting because replacement pods start while old pods are still terminating.
 
 ```yaml
 apiVersion: batch/v1
@@ -95,11 +95,11 @@ spec:
             cpu: "1000m"
 ```
 
-If a pod fails, the replacement starts immediately. During the 30-second grace period, you might have 21 pods instead of 20. Account for this temporary resource usage when planning cluster capacity.
+If a pod starts terminating, the replacement can start immediately. During the 30-second grace period, you might have 21 pods instead of 20. Account for this temporary resource usage when planning cluster capacity.
 
 ## Combining with Backoff Limit
 
-The backoff limit controls total retry attempts, while pod replacement policy controls timing. These settings work together to determine failure handling behavior.
+The backoff limit controls retry attempts, while pod replacement policy controls when terminating pods are replaced. These settings work together to determine failure handling behavior.
 
 ```yaml
 apiVersion: batch/v1
@@ -122,7 +122,7 @@ spec:
         args: ["--retries=3", "--timeout=300"]
 ```
 
-With this configuration, individual pod failures trigger immediate replacement, and the job continues until either all work completes or 10 total pod failures occur. This balances fast recovery with failure limits.
+With this configuration, terminating pods can be replaced immediately, and failed pods count toward the Job's backoff limit. The job continues until either all work completes or the backoff limit is reached. This balances fast recovery with failure limits.
 
 ## Handling Preemption Scenarios
 
@@ -189,7 +189,7 @@ kubectl get pods -l job-name=fast-recovery-job \
   --field-selector status.phase=Succeeded | wc -l
 ```
 
-Monitor the time between pod failure and replacement pod creation. With TerminatingOrFailed, replacement pods should appear within seconds of the original pod failure.
+Monitor the time between pod termination and replacement pod creation. With TerminatingOrFailed, replacement pods should appear quickly when the original pod starts terminating, although retries after failed pods are still subject to the Job controller's backoff behavior.
 
 ## Cleanup Strategies
 
@@ -276,13 +276,13 @@ spec:
               command: ["/bin/sh", "-c", "sleep 5"]
 ```
 
-A shorter termination grace period reduces the overlap window between failed and replacement pods. Ensure your application can shut down cleanly within this time.
+A shorter termination grace period reduces the overlap window between terminating and replacement pods. Ensure your application can shut down cleanly within this time.
 
 ## Comparison with Default Behavior
 
 Understanding the difference helps you choose the right policy for your workload.
 
-With the default Failed policy, when a pod fails at 10:00:00 and takes 30 seconds to terminate, the replacement pod starts at 10:00:30. Your effective parallelism drops from 10 to 9 during termination.
+With the Failed policy, when a pod starts terminating at 10:00:00 and takes 30 seconds to terminate, the replacement pod starts at 10:00:30. Your effective parallelism drops from 10 to 9 during termination.
 
 With TerminatingOrFailed policy, the replacement pod starts at 10:00:00. From 10:00:00 to 10:00:30, you have 11 pods (10 running + 1 terminating). This maintains full parallelism but uses slightly more resources temporarily.
 
@@ -290,7 +290,7 @@ With TerminatingOrFailed policy, the replacement pod starts at 10:00:00. From 10
 
 Use TerminatingOrFailed when job completion time is critical and you can tolerate temporary resource spikes. This works well for time-sensitive batch processing, data pipelines with SLAs, and jobs on preemptible infrastructure.
 
-Use the default Failed policy when resource limits are strict, when you need failed pods available for debugging, or when pod failures are rare and don't impact overall completion time significantly.
+Use the Failed policy when resource limits are strict, when you use podFailurePolicy, or when terminating pods are rare and don't impact overall completion time significantly.
 
 ## Best Practices
 
@@ -298,10 +298,10 @@ Set appropriate resource requests and limits that account for potential pod coun
 
 Combine pod replacement policy with proper backoff limits to prevent runaway retries. Implement checkpointing in your workload so replacement pods can resume from where failed pods left off.
 
-Use pod disruption budgets carefully with TerminatingOrFailed policy, as the temporary parallelism spike might conflict with PDB constraints. Test your configuration under failure scenarios to ensure it behaves as expected.
+Use resource quotas and workload queueing systems carefully with TerminatingOrFailed policy, as the temporary parallelism spike might conflict with capacity assumptions. Test your configuration under failure scenarios to ensure it behaves as expected.
 
 ## Conclusion
 
-The pod replacement policy gives you control over Kubernetes Job failure recovery timing. By configuring TerminatingOrFailed policy, you can minimize the impact of pod failures on batch job completion time, which is especially valuable for large-scale parallel processing workloads.
+The pod replacement policy gives you control over Kubernetes Job pod replacement timing. By configuring TerminatingOrFailed policy, you can minimize the impact of terminating pods on batch job completion time, which is especially valuable for large-scale parallel processing workloads.
 
 Choose the right policy based on your requirements for completion time, resource constraints, and debugging needs. Combined with appropriate backoff limits, termination grace periods, and cleanup strategies, pod replacement policy helps you build more resilient and efficient batch processing systems.
