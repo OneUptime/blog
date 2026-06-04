@@ -16,7 +16,7 @@ This approach gives you better integration with Kubernetes features like resourc
 
 The Spark Operator is a Kubernetes operator that extends the Kubernetes API with a SparkApplication custom resource. When you create a SparkApplication, the operator automatically provisions the driver pod, manages executor pods, monitors the application lifecycle, and cleans up resources when jobs complete.
 
-The operator handles several tasks automatically. It creates the driver pod with the correct configuration, sets up role-based access control for the driver to manage executor pods, monitors application status, and restarts failed applications based on your restart policy.
+The operator handles several tasks automatically. It submits the application with the correct configuration, uses the configured driver service account to manage executor pods, monitors application status, and restarts failed applications based on your restart policy.
 
 ## Installing the Spark Operator
 
@@ -25,18 +25,21 @@ You can install the Spark Operator using Helm, which is the recommended approach
 ```bash
 # Add the Spark Operator Helm repository
 
-helm repo add spark-operator https://googlecloudplatform.github.io/spark-on-k8s-operator
+kubectl create namespace data-processing --dry-run=client -o yaml | kubectl apply -f -
+
+helm repo add spark-operator https://kubeflow.github.io/spark-operator
 helm repo update
 
 # Install the Spark Operator
 helm install spark-operator spark-operator/spark-operator \
   --namespace spark-operator \
   --create-namespace \
+  --set "spark.jobNamespaces={data-processing}" \
   --set webhook.enable=true \
   --set metrics.enable=true
 ```
 
-The webhook validates SparkApplication manifests before they are applied, catching configuration errors early. The metrics endpoint exposes Prometheus-compatible metrics for monitoring operator health.
+The webhook customizes Spark driver and executor pods based on SparkApplication fields, such as volume mounts, ConfigMaps, affinity, and tolerations. The metrics endpoint exposes Prometheus-compatible metrics for monitoring operator health.
 
 Verify the operator is running correctly.
 
@@ -85,7 +88,19 @@ spec:
     labels:
       version: "3.1.1"
       app: "batch-processor"
-    serviceAccount: spark-driver
+    serviceAccount: spark-operator-spark
+
+    env:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: s3-credentials
+            key: access-key-id
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: s3-credentials
+            key: secret-access-key
 
     # Volume mounts for driver
     volumeMounts:
@@ -100,6 +115,18 @@ spec:
     labels:
       version: "3.1.1"
       app: "batch-processor"
+
+    env:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: s3-credentials
+            key: access-key-id
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: s3-credentials
+            key: secret-access-key
 
     # Volume mounts for executors
     volumeMounts:
@@ -120,16 +147,14 @@ spec:
     "spark.sql.shuffle.partitions": "200"
     "spark.dynamicAllocation.enabled": "false"
     "spark.executor.memoryOverhead": "1g"
-    "spark.hadoop.fs.s3a.access.key": "$(AWS_ACCESS_KEY_ID)"
-    "spark.hadoop.fs.s3a.secret.key": "$(AWS_SECRET_ACCESS_KEY)"
 
   # Hadoop configuration
   hadoopConf:
     "fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem"
-    "fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
+    "fs.s3a.aws.credentials.provider": "com.amazonaws.auth.EnvironmentVariableCredentialsProvider"
 ```
 
-This configuration defines a batch processing job with specific resource allocations for the driver and executors. The restart policy ensures failed jobs retry automatically with exponential backoff.
+This configuration defines a batch processing job with specific resource allocations for the driver and executors. The restart policy ensures failed jobs retry automatically with the configured retry intervals.
 
 ## Configuring Resource Management
 
@@ -185,7 +210,7 @@ spec:
     initialExecutors: 2
     minExecutors: 1
     maxExecutors: 20
-    shuffleTrackingTimeout: 60s
+    shuffleTrackingTimeout: 60000
 
   sparkConf:
     "spark.dynamicAllocation.enabled": "true"
@@ -194,7 +219,7 @@ spec:
     "spark.dynamicAllocation.schedulerBacklogTimeout": "5s"
 ```
 
-Dynamic allocation requires shuffle tracking to determine when executors can be safely removed without losing shuffle data.
+Dynamic allocation on Kubernetes requires shuffle tracking because Kubernetes does not support Spark's external shuffle service.
 
 ## Monitoring Batch Jobs
 
