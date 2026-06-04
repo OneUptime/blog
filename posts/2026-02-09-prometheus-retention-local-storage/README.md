@@ -14,7 +14,7 @@ Prometheus stores all metrics locally in a time series database. Without proper 
 
 Prometheus stores data in blocks on disk:
 - Active data is in the head block (in-memory)
-- Older data is in persisted blocks (2-hour chunks by default)
+- Older data is in persisted blocks (2-hour blocks by default)
 - Each block contains index files and chunk files
 - WAL (Write-Ahead Log) provides crash recovery
 
@@ -33,7 +33,7 @@ Configure retention by time or size:
 
 prometheus:
   prometheusSpec:
-    # Time-based retention (default: 15d)
+    # Time-based retention (Prometheus default: 15d, kube-prometheus-stack default: 10d)
     retention: 30d
 
     # Size-based retention (takes precedence if reached first)
@@ -204,11 +204,9 @@ prometheus:
     # Enable WAL compression (recommended)
     walCompression: true
 
-    # WAL settings via extraArgs
-    additionalArgs:
-      - --storage.tsdb.wal-compression
-      - --storage.tsdb.retention.time=30d
-      - --storage.tsdb.retention.size=50GB
+    # Retention settings
+    retention: 30d
+    retentionSize: "50GB"
 ```
 
 ## Block Compaction
@@ -218,13 +216,8 @@ Control compaction behavior:
 ```yaml
 prometheus:
   prometheusSpec:
-    # Disable compaction if using Thanos sidecar
-    disableCompaction: false
-
-    # Compaction settings via extraArgs
-    additionalArgs:
-      - --storage.tsdb.min-block-duration=2h
-      - --storage.tsdb.max-block-duration=36h
+    # Disable compaction only when block uploads require it
+    disableCompaction: true
 ```
 
 ## Multi-Tier Retention Strategy
@@ -433,7 +426,7 @@ spec:
 
 ## Backup and Recovery
 
-Backup Prometheus data:
+Backup Prometheus data (requires `prometheus.prometheusSpec.enableAdminAPI: true` when using kube-prometheus-stack):
 
 ```bash
 # Create snapshot
@@ -454,8 +447,8 @@ Restore from snapshot:
 # Stop Prometheus
 kubectl scale statefulset prometheus-prometheus-stack-kube-prom-prometheus -n monitoring --replicas=0
 
-# Copy snapshot to data directory
-kubectl cp ./prometheus-backup monitoring/prometheus-pod:/prometheus/
+# Copy snapshot data into the Prometheus PVC using a temporary recovery pod
+kubectl cp ./prometheus-backup/. monitoring/prometheus-recovery:/prometheus/
 
 # Start Prometheus
 kubectl scale statefulset prometheus-prometheus-stack-kube-prom-prometheus -n monitoring --replicas=1
@@ -466,14 +459,14 @@ kubectl scale statefulset prometheus-prometheus-stack-kube-prom-prometheus -n mo
 Manual cleanup (emergency):
 
 ```bash
-# Access Prometheus pod
-kubectl exec -it -n monitoring prometheus-pod -- sh
+# Stop Prometheus first
+kubectl scale statefulset prometheus-prometheus-stack-kube-prom-prometheus -n monitoring --replicas=0
 
-# Clean old blocks (dangerous!)
-rm -rf /prometheus/01234567890ABCDEF/
+# Remove corrupted block directories from the PVC using a temporary recovery pod
+kubectl exec -it -n monitoring prometheus-recovery -- rm -rf /prometheus/01234567890ABCDEF/
 
-# Reload Prometheus
-curl -X POST http://localhost:9090/-/reload
+# Start Prometheus
+kubectl scale statefulset prometheus-prometheus-stack-kube-prom-prometheus -n monitoring --replicas=1
 ```
 
 Automated cleanup with retention policies is safer than manual intervention.
