@@ -45,18 +45,49 @@ ZONE_ID=$(az network private-dns zone show \
   --name privatelink.eastus.azmk8s.io \
   --query id -o tsv)
 
+# Create or use a user-assigned managed identity with access to the DNS zone and VNet
+az identity create \
+  --resource-group myResourceGroup \
+  --name aks-private-dns-identity
+
+IDENTITY_ID=$(az identity show \
+  --resource-group myResourceGroup \
+  --name aks-private-dns-identity \
+  --query id -o tsv)
+
+IDENTITY_PRINCIPAL_ID=$(az identity show \
+  --resource-group myResourceGroup \
+  --name aks-private-dns-identity \
+  --query principalId -o tsv)
+
+VNET_ID=$(az network vnet show \
+  --resource-group myResourceGroup \
+  --name aks-vnet \
+  --query id -o tsv)
+
+az role assignment create \
+  --assignee $IDENTITY_PRINCIPAL_ID \
+  --role "Private DNS Zone Contributor" \
+  --scope $ZONE_ID
+
+az role assignment create \
+  --assignee $IDENTITY_PRINCIPAL_ID \
+  --role "Network Contributor" \
+  --scope $VNET_ID
+
 # Create cluster with custom zone
 az aks create \
   --resource-group myResourceGroup \
   --name private-aks \
   --enable-private-cluster \
+  --assign-identity $IDENTITY_ID \
   --private-dns-zone $ZONE_ID \
   --network-plugin azure
 ```
 
 ## Updating Existing Cluster to Private
 
-Convert public cluster to private:
+Enable private cluster mode on an existing cluster that uses API Server VNet Integration:
 
 ```bash
 az aks update \
@@ -65,7 +96,7 @@ az aks update \
   --enable-private-cluster
 ```
 
-Note: This operation requires cluster restart and causes brief downtime.
+Note: Standard private AKS clusters are created as private clusters at deployment time. For existing clusters, enabling or disabling private cluster mode is supported for clusters configured with API Server VNet Integration.
 
 ## Configuring Private Endpoint
 
@@ -78,10 +109,10 @@ az aks show \
   --name private-aks \
   --query '{privateFqdn:privateFqdn,fqdn:fqdn}'
 
-# Get private endpoint details
+# Get private endpoint details in the AKS-managed node resource group
 az network private-endpoint list \
   --resource-group MC_myResourceGroup_private-aks_eastus \
-  --query "[?contains(name, 'kube-apiserver')]"
+  --query "[].{name:name,provisioningState:provisioningState,privateLinkServiceConnections:privateLinkServiceConnections[].privateLinkServiceId}"
 ```
 
 ## Accessing from VNet
@@ -93,7 +124,7 @@ Deploy a VM in the same VNet for access:
 az vm create \
   --resource-group myResourceGroup \
   --name jumpbox \
-  --image UbuntuLTS \
+  --image Ubuntu2204 \
   --vnet-name aks-vnet \
   --subnet default \
   --admin-username azureuser \
@@ -135,7 +166,8 @@ az network vnet subnet create \
 az network public-ip create \
   --resource-group myResourceGroup \
   --name vpn-gateway-ip \
-  --allocation-method Dynamic
+  --allocation-method Static \
+  --sku Standard
 
 # Create VPN gateway (takes 30-45 minutes)
 az network vnet-gateway create \
@@ -234,8 +266,20 @@ resource "azurerm_kubernetes_cluster" "private" {
   }
 
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.aks.id]
   }
+
+  depends_on = [
+    azurerm_role_assignment.aks_private_dns,
+    azurerm_role_assignment.aks_network
+  ]
+}
+
+resource "azurerm_user_assigned_identity" "aks" {
+  name                = "aks-private-dns-identity"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
 }
 
 resource "azurerm_private_dns_zone" "aks" {
@@ -248,6 +292,18 @@ resource "azurerm_private_dns_zone_virtual_network_link" "aks" {
   resource_group_name   = azurerm_resource_group.main.name
   private_dns_zone_name = azurerm_private_dns_zone.aks.name
   virtual_network_id    = azurerm_virtual_network.main.id
+}
+
+resource "azurerm_role_assignment" "aks_private_dns" {
+  scope                = azurerm_private_dns_zone.aks.id
+  role_definition_name = "Private DNS Zone Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks.principal_id
+}
+
+resource "azurerm_role_assignment" "aks_network" {
+  scope                = azurerm_virtual_network.main.id
+  role_definition_name = "Network Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks.principal_id
 }
 ```
 
@@ -265,7 +321,8 @@ resource "azurerm_public_ip" "vpn" {
   name                = "vpn-gateway-ip"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  allocation_method   = "Dynamic"
+  allocation_method   = "Static"
+  sku                 = "Standard"
 }
 
 resource "azurerm_virtual_network_gateway" "vpn" {
@@ -297,7 +354,7 @@ az aks show \
   --name private-aks \
   --query privateFqdn
 
-# Configure on-premises DNS to forward queries
+# Configure on-premises DNS to forward queries to Azure DNS forwarders
 # Example for BIND:
 zone "privatelink.eastus.azmk8s.io" {
     type forward;
@@ -305,15 +362,15 @@ zone "privatelink.eastus.azmk8s.io" {
 };
 ```
 
-Or use Azure Private DNS:
+Or link the Azure Private DNS zone to another Azure VNet that is connected to on-premises:
 
 ```bash
-# Link private DNS zone to on-premises VNet
+# Link private DNS zone to a connected Azure VNet
 az network private-dns link vnet create \
   --resource-group myResourceGroup \
   --zone-name privatelink.eastus.azmk8s.io \
-  --name onprem-link \
-  --virtual-network onprem-vnet \
+  --name hub-vnet-link \
+  --virtual-network hub-vnet \
   --registration-enabled false
 ```
 
@@ -344,9 +401,9 @@ Check private endpoint status:
 
 ```bash
 # View private endpoint
-az network private-endpoint show \
+az network private-endpoint list \
   --resource-group MC_myResourceGroup_private-aks_eastus \
-  --name kube-apiserver-xxxxx
+  --query "[].{name:name,provisioningState:provisioningState,privateLinkServiceConnections:privateLinkServiceConnections[].privateLinkServiceId}"
 
 # Check DNS records
 az network private-dns record-set list \
