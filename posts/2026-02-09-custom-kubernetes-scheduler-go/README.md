@@ -42,15 +42,10 @@ Create the main scheduler structure:
 package main
 
 import (
-    "context"
     "fmt"
     "log"
-    "os"
     "path/filepath"
 
-    corev1 "k8s.io/api/core/v1"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/apimachinery/pkg/labels"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
     "k8s.io/client-go/tools/clientcmd"
@@ -112,6 +107,18 @@ The main scheduling loop watches for unscheduled pods and processes them:
 
 ```go
 // scheduler.go
+package main
+
+import (
+    "context"
+    "log"
+    "time"
+
+    corev1 "k8s.io/api/core/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/fields"
+)
+
 func (s *CustomScheduler) Run() {
     ctx := context.Background()
 
@@ -150,22 +157,20 @@ func (s *CustomScheduler) Run() {
 }
 
 func (s *CustomScheduler) getUnscheduledPods(ctx context.Context) ([]corev1.Pod, error) {
+    selector := fields.AndSelectors(
+        fields.OneTermEqualSelector("spec.nodeName", ""),
+        fields.OneTermEqualSelector("spec.schedulerName", schedulerName),
+        fields.OneTermEqualSelector("status.phase", string(corev1.PodPending)),
+    ).String()
+
     podList, err := s.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{
-        FieldSelector: "spec.nodeName=",
+        FieldSelector: selector,
     })
     if err != nil {
         return nil, err
     }
 
-    var unscheduledPods []corev1.Pod
-    for _, pod := range podList.Items {
-        // Only handle pods assigned to our scheduler
-        if pod.Spec.SchedulerName == schedulerName {
-            unscheduledPods = append(unscheduledPods, pod)
-        }
-    }
-
-    return unscheduledPods, nil
+    return podList.Items, nil
 }
 ```
 
@@ -175,8 +180,25 @@ Filter nodes that can't run the pod based on requirements:
 
 ```go
 // filter.go
+package main
+
+import (
+    "context"
+
+    corev1 "k8s.io/api/core/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/labels"
+)
+
 func (s *CustomScheduler) filterNodes(ctx context.Context, pod *corev1.Pod) ([]corev1.Node, error) {
     nodeList, err := s.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+    if err != nil {
+        return nil, err
+    }
+
+    scheduledPodList, err := s.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+        FieldSelector: "spec.nodeName!=",
+    })
     if err != nil {
         return nil, err
     }
@@ -195,7 +217,7 @@ func (s *CustomScheduler) filterNodes(ctx context.Context, pod *corev1.Pod) ([]c
         }
 
         // Check resource requirements
-        if !hasEnoughResources(&node, pod) {
+        if !hasEnoughResources(&node, pod, scheduledPodList.Items) {
             continue
         }
 
@@ -224,22 +246,66 @@ func isNodeReady(node *corev1.Node) bool {
     return false
 }
 
-func hasEnoughResources(node *corev1.Node, pod *corev1.Pod) bool {
+func hasEnoughResources(node *corev1.Node, pod *corev1.Pod, scheduledPods []corev1.Pod) bool {
     // Get allocatable resources
     allocatable := node.Status.Allocatable
 
-    // Calculate pod resource requests
+    cpuRequest, memoryRequest := podRequests(pod)
+    usedCPU, usedMemory := nodeAllocatedResources(node.Name, scheduledPods)
+
+    // Check if node has enough resources
+    nodeCPU := allocatable.Cpu().MilliValue()
+    nodeMemory := allocatable.Memory().Value()
+
+    return nodeCPU-usedCPU >= cpuRequest && nodeMemory-usedMemory >= memoryRequest
+}
+
+func nodeAllocatedResources(nodeName string, pods []corev1.Pod) (int64, int64) {
+    var cpu, memory int64
+    for _, pod := range pods {
+        if pod.Spec.NodeName != nodeName ||
+            pod.Status.Phase == corev1.PodSucceeded ||
+            pod.Status.Phase == corev1.PodFailed {
+            continue
+        }
+
+        podCPU, podMemory := podRequests(&pod)
+        cpu += podCPU
+        memory += podMemory
+    }
+    return cpu, memory
+}
+
+func podRequests(pod *corev1.Pod) (int64, int64) {
     var cpuRequest, memoryRequest int64
     for _, container := range pod.Spec.Containers {
         cpuRequest += container.Resources.Requests.Cpu().MilliValue()
         memoryRequest += container.Resources.Requests.Memory().Value()
     }
 
-    // Check if node has enough resources
-    nodeCPU := allocatable.Cpu().MilliValue()
-    nodeMemory := allocatable.Memory().Value()
+    var maxInitCPU, maxInitMemory int64
+    for _, container := range pod.Spec.InitContainers {
+        if cpu := container.Resources.Requests.Cpu().MilliValue(); cpu > maxInitCPU {
+            maxInitCPU = cpu
+        }
+        if memory := container.Resources.Requests.Memory().Value(); memory > maxInitMemory {
+            maxInitMemory = memory
+        }
+    }
 
-    return nodeCPU >= cpuRequest && nodeMemory >= memoryRequest
+    if maxInitCPU > cpuRequest {
+        cpuRequest = maxInitCPU
+    }
+    if maxInitMemory > memoryRequest {
+        memoryRequest = maxInitMemory
+    }
+
+    if pod.Spec.Overhead != nil {
+        cpuRequest += pod.Spec.Overhead.Cpu().MilliValue()
+        memoryRequest += pod.Spec.Overhead.Memory().Value()
+    }
+
+    return cpuRequest, memoryRequest
 }
 
 func matchesNodeSelector(node *corev1.Node, pod *corev1.Pod) bool {
@@ -284,6 +350,18 @@ Score filtered nodes to select the best placement:
 
 ```go
 // score.go
+package main
+
+import (
+    "context"
+    "fmt"
+    "sort"
+    "time"
+
+    corev1 "k8s.io/api/core/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
 type NodeScore struct {
     Node  corev1.Node
     Score int
@@ -294,10 +372,17 @@ func (s *CustomScheduler) scoreNodes(ctx context.Context, pod *corev1.Pod, nodes
         return "", fmt.Errorf("no nodes available")
     }
 
+    scheduledPodList, err := s.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+        FieldSelector: "spec.nodeName!=",
+    })
+    if err != nil {
+        return "", err
+    }
+
     var nodeScores []NodeScore
 
     for _, node := range nodes {
-        score := s.calculateNodeScore(ctx, pod, &node)
+        score := s.calculateNodeScore(ctx, pod, &node, scheduledPodList.Items)
         nodeScores = append(nodeScores, NodeScore{
             Node:  node,
             Score: score,
@@ -313,11 +398,11 @@ func (s *CustomScheduler) scoreNodes(ctx context.Context, pod *corev1.Pod, nodes
     return nodeScores[0].Node.Name, nil
 }
 
-func (s *CustomScheduler) calculateNodeScore(ctx context.Context, pod *corev1.Pod, node *corev1.Node) int {
+func (s *CustomScheduler) calculateNodeScore(ctx context.Context, pod *corev1.Pod, node *corev1.Node, scheduledPods []corev1.Pod) int {
     var score int
 
     // Score based on available resources (0-100)
-    resourceScore := s.scoreResources(node, pod)
+    resourceScore := s.scoreResources(node, pod, scheduledPods)
     score += resourceScore
 
     // Score based on pod affinity (0-50)
@@ -331,22 +416,18 @@ func (s *CustomScheduler) calculateNodeScore(ctx context.Context, pod *corev1.Po
     return score
 }
 
-func (s *CustomScheduler) scoreResources(node *corev1.Node, pod *corev1.Pod) int {
+func (s *CustomScheduler) scoreResources(node *corev1.Node, pod *corev1.Pod, scheduledPods []corev1.Pod) int {
     allocatable := node.Status.Allocatable
 
-    // Calculate pod requests
-    var cpuRequest, memoryRequest int64
-    for _, container := range pod.Spec.Containers {
-        cpuRequest += container.Resources.Requests.Cpu().MilliValue()
-        memoryRequest += container.Resources.Requests.Memory().Value()
-    }
+    cpuRequest, memoryRequest := podRequests(pod)
+    usedCPU, usedMemory := nodeAllocatedResources(node.Name, scheduledPods)
 
     // Calculate remaining resources after scheduling this pod
     nodeCPU := allocatable.Cpu().MilliValue()
     nodeMemory := allocatable.Memory().Value()
 
-    cpuRemaining := float64(nodeCPU-cpuRequest) / float64(nodeCPU)
-    memoryRemaining := float64(nodeMemory-memoryRequest) / float64(nodeMemory)
+    cpuRemaining := float64(nodeCPU-usedCPU-cpuRequest) / float64(nodeCPU)
+    memoryRemaining := float64(nodeMemory-usedMemory-memoryRequest) / float64(nodeMemory)
 
     // Higher score for more remaining resources
     return int((cpuRemaining + memoryRemaining) / 2 * 100)
@@ -391,6 +472,15 @@ func (s *CustomScheduler) scoreBusinessLogic(pod *corev1.Pod, node *corev1.Node)
 Combine filtering and scoring:
 
 ```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    corev1 "k8s.io/api/core/v1"
+)
+
 func (s *CustomScheduler) schedule(ctx context.Context, pod *corev1.Pod) (string, error) {
     // Filter nodes
     nodes, err := s.filterNodes(ctx, pod)
@@ -418,6 +508,19 @@ Create the binding to assign the pod:
 
 ```go
 // bind.go
+package main
+
+import (
+    "context"
+    "fmt"
+    "os"
+    "time"
+
+    corev1 "k8s.io/api/core/v1"
+    eventsv1 "k8s.io/api/events/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
 func (s *CustomScheduler) bind(ctx context.Context, pod *corev1.Pod, nodeName string) error {
     binding := &corev1.Binding{
         ObjectMeta: metav1.ObjectMeta{
@@ -443,28 +546,33 @@ func (s *CustomScheduler) bind(ctx context.Context, pod *corev1.Pod, nodeName st
 
 func (s *CustomScheduler) emitScheduledEvent(ctx context.Context, pod *corev1.Pod, nodeName string) {
     timestamp := time.Now()
-    event := &corev1.Event{
+    reportingInstance, err := os.Hostname()
+    if err != nil {
+        reportingInstance = schedulerName
+    }
+
+    event := &eventsv1.Event{
         ObjectMeta: metav1.ObjectMeta{
             GenerateName: pod.Name + "-",
             Namespace:    pod.Namespace,
         },
-        InvolvedObject: corev1.ObjectReference{
+        EventTime: metav1.MicroTime{Time: timestamp},
+        Regarding: corev1.ObjectReference{
+            APIVersion: "v1",
             Kind:      "Pod",
             Name:      pod.Name,
             Namespace: pod.Namespace,
             UID:       pod.UID,
         },
-        Reason:  "Scheduled",
-        Message: fmt.Sprintf("Successfully assigned %s/%s to %s", pod.Namespace, pod.Name, nodeName),
-        Source: corev1.EventSource{
-            Component: schedulerName,
-        },
-        FirstTimestamp: metav1.Time{Time: timestamp},
-        LastTimestamp:  metav1.Time{Time: timestamp},
-        Type:           corev1.EventTypeNormal,
+        Reason:              "Scheduled",
+        Action:              "Binding",
+        Note:                fmt.Sprintf("Successfully assigned %s/%s to %s", pod.Namespace, pod.Name, nodeName),
+        ReportingController: schedulerName,
+        ReportingInstance:   reportingInstance,
+        Type:                corev1.EventTypeNormal,
     }
 
-    s.clientset.CoreV1().Events(pod.Namespace).Create(ctx, event, metav1.CreateOptions{})
+    s.clientset.EventsV1().Events(pod.Namespace).Create(ctx, event, metav1.CreateOptions{})
 }
 ```
 
@@ -478,7 +586,7 @@ go build -o custom-scheduler .
 
 # Build Docker image
 cat > Dockerfile <<'EOF'
-FROM golang:1.21 AS builder
+FROM golang:1.26 AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
