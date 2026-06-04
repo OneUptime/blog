@@ -8,17 +8,16 @@ Description: Understand how Docker uses iptables to manage container networking,
 
 ---
 
-Docker relies heavily on iptables to implement container networking. Every time you publish a port, create a network, or start a container, Docker inserts iptables rules behind the scenes. These rules handle NAT (Network Address Translation), packet forwarding, and traffic isolation. If you manage Docker on a Linux host, understanding these rules is essential for troubleshooting network issues and securing your infrastructure.
+Docker relies heavily on iptables to implement bridge networking. Every time you publish a port, create a bridge network, or start a container attached to one, Docker may insert iptables rules behind the scenes. These rules handle NAT (Network Address Translation), packet forwarding, and traffic isolation. If you manage Docker on a Linux host, understanding these rules is essential for troubleshooting network issues and securing your infrastructure.
 
-This guide walks through every iptables chain Docker creates, explains what each rule does, and shows you how to read and interpret the full rule set.
+This guide walks through the main iptables chains Docker creates, explains what each rule does, and shows you how to read and interpret the rule set.
 
 ## How iptables Works (Quick Refresher)
 
-iptables organizes rules into tables and chains. Docker uses three tables:
+iptables organizes rules into tables and chains. Docker primarily uses two tables for bridge networking:
 
 - **filter** - Decides whether to accept or drop packets
 - **nat** - Rewrites source or destination addresses
-- **mangle** - Modifies packet headers (rarely used by Docker)
 
 Each table contains chains that process packets at different stages:
 
@@ -48,12 +47,16 @@ sudo iptables -L -n | grep -E "^Chain (DOCKER|FORWARD)"
 sudo iptables -t nat -L -n | grep "^Chain"
 ```
 
-The main chains Docker uses:
+The main chains Docker uses vary by Docker version and firewall backend. With the iptables backend on current Docker Engine releases, the filter table can include:
 
-- **DOCKER** (filter) - Container-specific allow rules
-- **DOCKER-ISOLATION-STAGE-1** and **DOCKER-ISOLATION-STAGE-2** (filter) - Network isolation rules
+- **DOCKER-USER** (filter) - User-defined rules processed before Docker's forwarding rules
+- **DOCKER-FORWARD** (filter) - First-stage forwarding rules for Docker networks
+- **DOCKER**, **DOCKER-BRIDGE**, and **DOCKER-INTERNAL** (filter) - Rules that accept forwarded traffic for published ports and bridge networks
+- **DOCKER-CT** (filter) - Per-bridge connection tracking rules
+- **DOCKER-INGRESS** (filter) - Swarm ingress rules, when Swarm is in use
 - **DOCKER** (nat) - DNAT rules for published ports
-- **DOCKER-USER** (filter) - User-defined rules that Docker respects
+
+Older Docker releases commonly used **DOCKER-ISOLATION-STAGE-1** and **DOCKER-ISOLATION-STAGE-2** in the filter table for bridge network isolation.
 
 ## The NAT Table: Port Publishing
 
@@ -129,6 +132,8 @@ The filter table's FORWARD chain controls whether packets can traverse between i
 sudo iptables -L FORWARD -n -v --line-numbers
 ```
 
+On older Docker releases, output may look like this:
+
 ```text
 Chain FORWARD (policy DROP)
 num   pkts bytes target                    prot opt in      out      source       destination
@@ -151,7 +156,7 @@ Reading these rules in order:
 
 ## Network Isolation Rules
 
-Docker prevents containers on different networks from communicating:
+Docker prevents containers on different bridge networks from communicating unless routing and firewall rules allow it. On older Docker releases, you may see the isolation logic in these chains:
 
 ```bash
 # View isolation rules
@@ -171,11 +176,11 @@ DROP    all  --  *      docker0 0.0.0.0/0    0.0.0.0/0
 RETURN  all  --  *      *       0.0.0.0/0    0.0.0.0/0
 ```
 
-These two stages work together: if a packet enters from one bridge and is headed for a different bridge, drop it. This prevents cross-network traffic between Docker networks.
+These two stages work together: if a packet enters from one bridge and is headed for a different bridge, drop it. This prevents cross-network traffic between Docker bridge networks. On current Docker releases, related isolation and forwarding logic may appear in chains such as DOCKER-FORWARD, DOCKER-BRIDGE, DOCKER-INTERNAL, and DOCKER-CT instead.
 
 ## The DOCKER-USER Chain
 
-This is where you should add your own rules. Docker never modifies DOCKER-USER:
+This is where you should add your own forwarding rules. Docker creates DOCKER-USER as a placeholder so your rules can run before Docker's own forwarding rules:
 
 ```bash
 # View the DOCKER-USER chain (initially just a RETURN rule)
@@ -194,10 +199,12 @@ Add custom rules before the RETURN:
 # Block external access to published ports from a specific IP range
 sudo iptables -I DOCKER-USER -s 10.0.0.0/8 -j DROP
 
-# Allow only specific IPs to access a published port
-sudo iptables -I DOCKER-USER -p tcp --dport 8080 -s 192.168.1.0/24 -j ACCEPT
-sudo iptables -I DOCKER-USER -p tcp --dport 8080 -j DROP
+# Allow only specific IPs to access a published host port
+sudo iptables -I DOCKER-USER 1 -p tcp -m conntrack --ctorigdstport 8080 -s 192.168.1.0/24 -j ACCEPT
+sudo iptables -I DOCKER-USER 2 -p tcp -m conntrack --ctorigdstport 8080 -j DROP
 ```
+
+Packets in DOCKER-USER have already passed through DNAT, so matching the original published host port requires the conntrack match. Without conntrack, match the container IP and container port instead.
 
 ## Tracing a Packet Through the Rules
 
@@ -208,9 +215,9 @@ Let's trace what happens when an external client connects to a published port:
 sudo iptables -t nat -I DOCKER -p tcp --dport 8080 -j LOG --log-prefix "DOCKER-NAT: "
 sudo iptables -I FORWARD -p tcp --dport 80 -d 172.17.0.2 -j LOG --log-prefix "DOCKER-FWD: "
 
-# Watch the logs while making a request
+# Watch the logs while making a request from another host or to the host's external IP
 sudo journalctl -f -k | grep DOCKER &
-curl http://localhost:8080
+curl http://<host-ip>:8080
 
 # Clean up the logging rules when done
 sudo iptables -t nat -D DOCKER -p tcp --dport 8080 -j LOG --log-prefix "DOCKER-NAT: "
@@ -225,8 +232,9 @@ Docker regenerates its iptables rules on restart. Your custom rules in DOCKER-US
 # Save current iptables rules including Docker-generated ones
 sudo iptables-save > /tmp/iptables-backup.txt
 
-# To persist only your DOCKER-USER rules, save them separately
-sudo iptables-save -t filter | grep DOCKER-USER > /etc/iptables/docker-user.rules
+# To persist only your DOCKER-USER rules as a restorable excerpt,
+# keep the table header, chain definition, chain rules, and COMMIT line
+sudo iptables-save -t filter | awk '/^\*filter|^:DOCKER-USER|^-A DOCKER-USER|^COMMIT/' > /etc/iptables/docker-user.rules
 ```
 
 ## Common Troubleshooting
