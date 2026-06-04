@@ -31,6 +31,18 @@ Deploy Mosquitto MQTT broker on your edge K3s cluster:
 ```yaml
 # mosquitto-edge.yaml
 
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mosquitto-data
+  namespace: mqtt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -94,6 +106,9 @@ data:
     listener 1883
     allow_anonymous true
 
+    listener 9001
+    protocol websockets
+
     # Enable bridging to cloud
     connection edge-to-cloud
     address cloud-mqtt.example.com:1883
@@ -119,13 +134,33 @@ Deploy a scalable MQTT broker in the cloud cluster:
 
 ```yaml
 # emqx-cloud.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: emqx-headless
+  namespace: mqtt-cloud
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: emqx
+  ports:
+    - name: mqtt
+      port: 1883
+    - name: dashboard
+      port: 18083
+    - name: ekka
+      port: 4370
+    - name: cluster-rpc
+      port: 5369
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: emqx
   namespace: mqtt-cloud
 spec:
-  serviceName: emqx
+  serviceName: emqx-headless
   replicas: 3
   selector:
     matchLabels:
@@ -145,13 +180,21 @@ spec:
               name: ws
             - containerPort: 18083
               name: dashboard
+            - containerPort: 4370
+              name: ekka
+            - containerPort: 5369
+              name: cluster-rpc
           env:
-            - name: EMQX_NAME
-              value: emqx
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: EMQX_NODE_NAME
+              value: emqx@$(POD_NAME).emqx-headless.mqtt-cloud.svc.cluster.local
             - name: EMQX_CLUSTER__DISCOVERY_STRATEGY
               value: dns
             - name: EMQX_CLUSTER__DNS__RECORD_TYPE
-              value: srv
+              value: a
             - name: EMQX_CLUSTER__DNS__NAME
               value: emqx-headless.mqtt-cloud.svc.cluster.local
 ---
@@ -171,6 +214,13 @@ spec:
   type: LoadBalancer
 ```
 
+Apply the cloud broker:
+
+```bash
+kubectl create namespace mqtt-cloud
+kubectl apply -f emqx-cloud.yaml
+```
+
 ## Implementing Edge Data Publisher
 
 Create an edge application that publishes sensor data:
@@ -185,8 +235,9 @@ import random
 MQTT_BROKER = "mosquitto.mqtt.svc.cluster.local"
 MQTT_PORT = 1883
 
-client = mqtt.Client("edge-publisher")
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="edge-publisher")
 client.connect(MQTT_BROKER, MQTT_PORT)
+client.loop_start()
 
 while True:
     data = {
@@ -208,7 +259,14 @@ while True:
     time.sleep(10)
 ```
 
-Deploy as Kubernetes job:
+Deploy as Kubernetes Deployment after creating a ConfigMap for the script:
+
+```bash
+kubectl create configmap publisher-script \
+  --from-file=edge-publisher.py \
+  -n mqtt
+kubectl apply -f edge-publisher.yaml
+```
 
 ```yaml
 # edge-publisher.yaml
@@ -266,7 +324,7 @@ def on_message(client, userdata, message):
     if data['temperature'] > 30:
         print(f"ALERT: High temperature {data['temperature']}")
 
-client = mqtt.Client("cloud-consumer")
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="cloud-consumer")
 client.on_message = on_message
 client.connect("emqx.mqtt-cloud.svc.cluster.local", 1883)
 client.subscribe("sensors/#", qos=1)
@@ -282,8 +340,9 @@ Send commands from cloud to edge:
 import paho.mqtt.client as mqtt
 import json
 
-client = mqtt.Client("cloud-commander")
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="cloud-commander")
 client.connect("emqx.mqtt-cloud.svc.cluster.local", 1883)
+client.loop_start()
 
 # Send configuration update to edge
 command = {
@@ -292,12 +351,15 @@ command = {
     "new_rate": 30
 }
 
-client.publish(
+info = client.publish(
     "commands/config",
     json.dumps(command),
     qos=2,  # QoS 2 for exactly-once delivery
-    retain=True  # Persist for offline edge nodes
+    retain=True  # Persist the latest command for offline edge nodes
 )
+info.wait_for_publish()
+client.loop_stop()
+client.disconnect()
 
 print(f"Command sent: {command}")
 ```
@@ -320,7 +382,7 @@ def on_message(client, userdata, message):
         print(f"Updating {sensor_id} sampling rate to {new_rate}s")
         # Update sensor configuration...
 
-client = mqtt.Client("edge-command-handler")
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="edge-command-handler")
 client.on_message = on_message
 client.connect("mosquitto.mqtt.svc.cluster.local", 1883)
 client.subscribe("commands/#", qos=2)
@@ -369,16 +431,18 @@ def publish_aggregates():
     aggregation_window.clear()
 
 # Subscribe to raw readings
-client = mqtt.Client("edge-aggregator")
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="edge-aggregator")
 client.on_message = on_message
 client.connect("mosquitto.mqtt.svc.cluster.local", 1883)
 client.subscribe("sensors/temperature", qos=1)
 
 # Publish aggregates every 5 minutes
+next_publish = time.time() + 300
 while True:
     client.loop(timeout=1.0)
-    if int(time.time()) % 300 == 0:
+    if time.time() >= next_publish:
         publish_aggregates()
+        next_publish = time.time() + 300
 ```
 
 ## Handling Offline Scenarios
@@ -391,8 +455,8 @@ connection edge-to-cloud
 address cloud-mqtt.example.com:1883
 
 # Queue messages when offline
-bridge_queue_size 10000
-bridge_max_queued_bytes 100000000
+max_queued_messages 10000
+max_queued_bytes 100000000
 
 # Retry connection
 restart_timeout 30
