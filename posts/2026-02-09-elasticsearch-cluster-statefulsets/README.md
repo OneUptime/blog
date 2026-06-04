@@ -34,12 +34,12 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: elasticsearch-storage
-provisioner: kubernetes.io/aws-ebs  # Adjust for your cloud provider
+provisioner: ebs.csi.aws.com  # Adjust for your cloud provider
 parameters:
   type: gp3
   iops: "3000"
   throughput: "125"
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Retain
@@ -84,11 +84,6 @@ spec:
           command: ["sysctl", "-w", "vm.max_map_count=262144"]
           securityContext:
             privileged: true
-        - name: increase-fd-ulimit
-          image: busybox:1.35
-          command: ["sh", "-c", "ulimit -n 65536"]
-          securityContext:
-            privileged: true
       containers:
         - name: elasticsearch
           image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
@@ -109,11 +104,15 @@ spec:
             - name: discovery.seed_hosts
               value: "elasticsearch-master-0.elasticsearch-master,elasticsearch-master-1.elasticsearch-master,elasticsearch-master-2.elasticsearch-master"
             - name: cluster.initial_master_nodes
-              value: "elasticsearch-master-0,elasticsearch-master-1,elasticsearch-master-2"
+              value: "elasticsearch-master-0,elasticsearch-master-1,elasticsearch-master-2" # Bootstrap only; remove after the first cluster formation
             - name: ES_JAVA_OPTS
               value: "-Xms2g -Xmx2g"
             - name: xpack.security.enabled
               value: "true"
+            - name: xpack.security.http.ssl.enabled
+              value: "true"
+            - name: xpack.security.http.ssl.keystore.path
+              value: "/usr/share/elasticsearch/config/certs/elastic-certificates.p12"
             - name: xpack.security.transport.ssl.enabled
               value: "true"
             - name: xpack.security.transport.ssl.verification_mode
@@ -146,10 +145,8 @@ spec:
             initialDelaySeconds: 90
             periodSeconds: 10
           readinessProbe:
-            httpGet:
-              path: /_cluster/health?local=true
+            tcpSocket:
               port: 9200
-              scheme: HTTPS
             initialDelaySeconds: 90
             periodSeconds: 10
       volumes:
@@ -239,12 +236,14 @@ spec:
               value: "data,ingest"
             - name: discovery.seed_hosts
               value: "elasticsearch-master-0.elasticsearch-master,elasticsearch-master-1.elasticsearch-master,elasticsearch-master-2.elasticsearch-master"
-            - name: cluster.initial_master_nodes
-              value: "elasticsearch-master-0,elasticsearch-master-1,elasticsearch-master-2"
             - name: ES_JAVA_OPTS
               value: "-Xms4g -Xmx4g"
             - name: xpack.security.enabled
               value: "true"
+            - name: xpack.security.http.ssl.enabled
+              value: "true"
+            - name: xpack.security.http.ssl.keystore.path
+              value: "/usr/share/elasticsearch/config/certs/elastic-certificates.p12"
             - name: xpack.security.transport.ssl.enabled
               value: "true"
             - name: xpack.security.transport.ssl.verification_mode
@@ -277,10 +276,8 @@ spec:
             initialDelaySeconds: 90
             periodSeconds: 10
           readinessProbe:
-            httpGet:
-              path: /_cluster/health?local=true
+            tcpSocket:
               port: 9200
-              scheme: HTTPS
             initialDelaySeconds: 90
             periodSeconds: 10
       volumes:
@@ -323,15 +320,25 @@ spec:
 Generate TLS certificates for secure cluster communication:
 
 ```bash
-# Create certificates using Elasticsearch cert utility
+# Create a CA and certificates using Elasticsearch cert utility
+docker run --rm -v $(pwd):/certs \
+  docker.elastic.co/elasticsearch/elasticsearch:8.11.0 \
+  bin/elasticsearch-certutil ca \
+  --out /certs/elastic-stack-ca.p12 \
+  --pass ""
+
 docker run --rm -v $(pwd):/certs \
   docker.elastic.co/elasticsearch/elasticsearch:8.11.0 \
   bin/elasticsearch-certutil cert \
+  --ca /certs/elastic-stack-ca.p12 \
+  --ca-pass "" \
   --name elasticsearch-cluster \
   --out /certs/elastic-certificates.p12 \
   --pass ""
 
 # Create Kubernetes secret
+kubectl create namespace logging --dry-run=client -o yaml | kubectl apply -f -
+
 kubectl create secret generic elasticsearch-certs \
   --from-file=elastic-certificates.p12=./elastic-certificates.p12 \
   -n logging
@@ -391,6 +398,10 @@ spec:
               value: "-Xms1g -Xmx1g"
             - name: xpack.security.enabled
               value: "true"
+            - name: xpack.security.http.ssl.enabled
+              value: "true"
+            - name: xpack.security.http.ssl.keystore.path
+              value: "/usr/share/elasticsearch/config/certs/elastic-certificates.p12"
             - name: xpack.security.transport.ssl.enabled
               value: "true"
             - name: xpack.security.transport.ssl.verification_mode
@@ -480,7 +491,7 @@ Deploy all components in order:
 
 ```bash
 # Create namespace
-kubectl create namespace logging
+kubectl create namespace logging --dry-run=client -o yaml | kubectl apply -f -
 
 # Deploy certificates and secrets (already created above)
 
@@ -515,17 +526,17 @@ Check the Elasticsearch cluster:
 ```bash
 # Get cluster health
 kubectl exec -it elasticsearch-master-0 -n logging -- \
-  curl -k -u elastic:$ELASTIC_PASSWORD \
+  curl -k -u elastic:$(kubectl get secret elasticsearch-credentials -n logging -o jsonpath='{.data.password}' | base64 -d) \
   https://localhost:9200/_cluster/health?pretty
 
 # List nodes
 kubectl exec -it elasticsearch-master-0 -n logging -- \
-  curl -k -u elastic:$ELASTIC_PASSWORD \
+  curl -k -u elastic:$(kubectl get secret elasticsearch-credentials -n logging -o jsonpath='{.data.password}' | base64 -d) \
   https://localhost:9200/_cat/nodes?v
 
 # Check indices
 kubectl exec -it elasticsearch-master-0 -n logging -- \
-  curl -k -u elastic:$ELASTIC_PASSWORD \
+  curl -k -u elastic:$(kubectl get secret elasticsearch-credentials -n logging -o jsonpath='{.data.password}' | base64 -d) \
   https://localhost:9200/_cat/indices?v
 ```
 
@@ -573,7 +584,7 @@ Configure snapshot repository for backups:
 # Then register repository in Elasticsearch
 
 kubectl exec -it elasticsearch-master-0 -n logging -- \
-  curl -k -u elastic:$ELASTIC_PASSWORD -X PUT \
+  curl -k -u elastic:$(kubectl get secret elasticsearch-credentials -n logging -o jsonpath='{.data.password}' | base64 -d) -X PUT \
   "https://localhost:9200/_snapshot/backup_repository?pretty" \
   -H 'Content-Type: application/json' \
   -d '{
