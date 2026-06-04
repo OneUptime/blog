@@ -12,9 +12,9 @@ Knative Serving's autoscaler automatically adjusts the number of pods serving yo
 
 ## Understanding Knative Autoscaling
 
-Knative uses two autoscaling metrics: concurrency and requests-per-second (RPS). Concurrency measures the number of simultaneous requests a pod handles. RPS measures the rate of incoming requests. The autoscaler continuously monitors these metrics and adjusts replica counts to maintain targets.
+The default Knative Pod Autoscaler uses two autoscaling metrics: concurrency and requests-per-second (RPS). Concurrency measures the number of simultaneous requests a pod handles. RPS measures the rate of incoming requests. The autoscaler continuously monitors these metrics and adjusts replica counts to maintain targets.
 
-The autoscaler operates in two modes. Knative Pod Autoscaler (KPA) scales based on request metrics and supports scale-to-zero. Horizontal Pod Autoscaler (HPA) uses CPU and memory metrics but doesn't support scale-to-zero. Most serverless workloads use KPA for its scale-to-zero capability.
+Knative Serving supports two autoscaler implementations. Knative Pod Autoscaler (KPA) scales based on request metrics and supports scale-to-zero. Horizontal Pod Autoscaler (HPA) uses CPU, memory, or custom metrics but doesn't support scale-to-zero. Most serverless workloads use KPA for its scale-to-zero capability.
 
 ## Configuring Basic Autoscaling
 
@@ -46,7 +46,7 @@ spec:
 
     spec:
       containers:
-      - image: gcr.io/knative-samples/helloworld-go
+      - image: ghcr.io/knative/helloworld-go:latest
         ports:
         - containerPort: 8080
         resources:
@@ -88,16 +88,13 @@ spec:
         # Target concurrent requests per pod
         autoscaling.knative.dev/target: "100"
 
-        # Target utilization percentage (0.7 = 70%)
+        # Target utilization percentage (70 = 70%)
         autoscaling.knative.dev/target-utilization-percentage: "70"
 
-        # Hard limit of concurrent requests per pod
-        # Requests beyond this are queued or rejected
-        autoscaling.knative.dev/container-concurrency: "150"
-
     spec:
-      # Soft limit - recommended concurrent requests
-      containerConcurrency: 100
+      # Hard limit of concurrent requests per pod
+      # Requests beyond this are queued until capacity is available
+      containerConcurrency: 150
 
       containers:
       - image: your-registry/api-service:latest
@@ -109,8 +106,8 @@ The relationship between these settings:
 
 - `target` - Desired average concurrent requests per pod
 - `target-utilization-percentage` - Scale when utilization exceeds this percentage
-- `containerConcurrency` (soft limit) - Recommendation, can be exceeded temporarily
-- `container-concurrency` (hard limit) - Absolute maximum, enforced by Knative
+- `target` as a soft limit - Targeted concurrency for autoscaling and can be exceeded temporarily
+- `containerConcurrency` (hard limit) - Absolute maximum enforced by Knative
 
 ## Configuring RPS-Based Scaling
 
@@ -132,10 +129,6 @@ spec:
 
         # Target requests per second per pod
         autoscaling.knative.dev/target: "100"
-
-        # Scale up/down behavior
-        autoscaling.knative.dev/scale-up-rate: "2.0"
-        autoscaling.knative.dev/scale-down-rate: "2.0"
 
         # Minimum scale (prevent cold starts)
         autoscaling.knative.dev/min-scale: "2"
@@ -161,10 +154,10 @@ spec:
   template:
     metadata:
       annotations:
-        # Enable scale-to-zero
+        # Allow scale-to-zero when KPA scale-to-zero is enabled globally
         autoscaling.knative.dev/min-scale: "0"
 
-        # Time window with no traffic before scaling to zero
+        # Minimum time to retain the last pod after scaling to zero is selected
         autoscaling.knative.dev/scale-to-zero-pod-retention-period: "5m"
 
         # Target for scaling decisions
@@ -196,13 +189,13 @@ metadata:
   name: config-autoscaler
   namespace: knative-serving
 data:
-  # Scale to zero after 30 seconds of no traffic
+  # Upper bound for internal scale-to-zero network programming
   scale-to-zero-grace-period: "30s"
 
-  # Keep pod running for at least this long after last request
+  # Keep the last pod running for at least this long after scale-to-zero is selected
   scale-to-zero-pod-retention-period: "5m"
 
-  # Stable window for making scaling decisions
+  # Stable window for making scaling decisions; the last pod is removed after no traffic for this window
   stable-window: "60s"
 
   # Panic window for rapid scale-up
@@ -273,12 +266,12 @@ spec:
   template:
     metadata:
       annotations:
-        # Use custom metric
+        # Use a custom metric through the HPA autoscaler
         autoscaling.knative.dev/class: "hpa.autoscaling.knative.dev"
-        autoscaling.knative.dev/metric: "cpu"
+        autoscaling.knative.dev/metric: "queue_depth"
 
-        # Target CPU utilization
-        autoscaling.knative.dev/target: "70"
+        # Target average metric value across the revision's pods
+        autoscaling.knative.dev/target: "100"
 
         # Scale bounds
         autoscaling.knative.dev/min-scale: "2"
@@ -355,11 +348,11 @@ spec:
 
 Key metrics to monitor:
 
-- `autoscaler_desired_pods` - Target replica count
-- `autoscaler_actual_pods` - Current replica count
-- `autoscaler_panic_mode` - Whether in panic mode
-- `revision_app_request_count` - Request rate
-- `revision_app_request_latencies` - Request latency
+- `kn.revision.pods.desired` - Target replica count
+- `kn.revision.pods.count` - Current allocated pod count
+- `kn.revision.concurrency.panic` - Panic-window concurrency
+- `kn.revision.rps.stable` - Stable-window request rate
+- `http.server.request.duration` - Request latency
 
 Create alerts for autoscaling issues:
 
@@ -375,26 +368,26 @@ spec:
   - name: autoscaling
     interval: 30s
     rules:
-    - alert: AutoscalerAtMaxScale
-      expr: autoscaler_actual_pods >= autoscaler_max_pods
+    - alert: AutoscalerWaitingForPods
+      expr: kn_revision_pods_requested > kn_revision_pods_count
       for: 5m
       annotations:
-        summary: "Service at maximum scale"
-        description: "{{ $labels.service }} has been at max scale for 5 minutes"
+        summary: "Autoscaler waiting for pods"
+        description: "The autoscaler has requested more pods than are currently allocated"
 
     - alert: FrequentScaling
-      expr: rate(autoscaler_desired_pods[5m]) > 0.5
+      expr: changes(kn_revision_pods_desired[5m]) > 5
       for: 10m
       annotations:
         summary: "Frequent scaling activity"
-        description: "{{ $labels.service }} is scaling frequently"
+        description: "The autoscaler desired pod count is changing frequently"
 
-    - alert: PanicModeActive
-      expr: autoscaler_panic_mode == 1
+    - alert: PanicWindowConcurrencyHigh
+      expr: kn_revision_concurrency_panic > kn_revision_concurrency_target * 2
       for: 5m
       annotations:
-        summary: "Autoscaler in panic mode"
-        description: "{{ $labels.service }} autoscaler is in panic mode"
+        summary: "Panic-window concurrency is high"
+        description: "Panic-window concurrency is above twice the target concurrency"
 ```
 
 ## Tuning for Different Workload Patterns
@@ -409,9 +402,10 @@ spec:
       annotations:
         # Lower concurrency for CPU-heavy tasks
         autoscaling.knative.dev/target: "5"
-        autoscaling.knative.dev/container-concurrency: "10"
         autoscaling.knative.dev/min-scale: "2"
         autoscaling.knative.dev/max-scale: "20"
+    spec:
+      containerConcurrency: 10
 ```
 
 Configure for I/O-intensive workloads:
@@ -424,9 +418,10 @@ spec:
       annotations:
         # Higher concurrency for I/O-bound tasks
         autoscaling.knative.dev/target: "200"
-        autoscaling.knative.dev/container-concurrency: "500"
         autoscaling.knative.dev/min-scale: "1"
         autoscaling.knative.dev/max-scale: "10"
+    spec:
+      containerConcurrency: 500
 ```
 
 Configure for long-running requests:
@@ -439,13 +434,13 @@ spec:
       annotations:
         # Low concurrency for long requests
         autoscaling.knative.dev/target: "1"
-        autoscaling.knative.dev/container-concurrency: "1"
         autoscaling.knative.dev/min-scale: "3"
         autoscaling.knative.dev/max-scale: "10"
 
         # Longer stable window
         autoscaling.knative.dev/window: "120s"
     spec:
+      containerConcurrency: 1
       timeoutSeconds: 600  # 10-minute timeout
 ```
 
@@ -486,7 +481,7 @@ watch -n 2 'kubectl get pods -l serving.knative.dev/service=api-service | grep R
 
 # Watch autoscaler metrics
 kubectl port-forward -n knative-serving svc/autoscaler 9090:9090 &
-curl http://localhost:9090/metrics | grep autoscaler_desired_pods
+curl http://localhost:9090/metrics | grep kn_revision_pods_desired
 ```
 
 ## Best Practices
