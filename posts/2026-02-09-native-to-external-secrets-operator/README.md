@@ -8,7 +8,7 @@ Description: Comprehensive guide to migrating from native Kubernetes Secrets to 
 
 ---
 
-Native Kubernetes Secrets work for development environments, but they create security and operational challenges in production. Secrets are base64 encoded rather than encrypted at rest by default, they live in etcd alongside cluster state, GitOps workflows expose them in version control, and there's no built-in rotation or audit trail. External Secrets Operator solves these problems by syncing secrets from external secret management systems into Kubernetes. This guide shows you how to migrate existing Secrets to External Secrets Operator.
+Native Kubernetes Secrets work for development environments, but they create security and operational challenges in production. Secrets are base64 encoded rather than encrypted at rest by default, they live in etcd alongside cluster state, GitOps workflows expose them in version control, and there's no built-in rotation or audit trail. External Secrets Operator helps address these problems by syncing secrets from external secret management systems into Kubernetes while workloads continue to consume native Kubernetes Secrets. This guide shows you how to migrate existing Secrets to External Secrets Operator.
 
 ## Understanding External Secrets Operator
 
@@ -76,7 +76,7 @@ Create an IAM policy for the operator:
         "secretsmanager:GetSecretValue",
         "secretsmanager:DescribeSecret"
       ],
-      "Resource": "arn:aws:secretsmanager:us-east-1:123456789:secret:production/*"
+      "Resource": "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/*"
     }
   ]
 }
@@ -90,7 +90,7 @@ eksctl create iamserviceaccount \
   --name external-secrets-sa \
   --namespace production \
   --cluster my-cluster \
-  --attach-policy-arn arn:aws:iam::123456789:policy/ExternalSecretsPolicy \
+  --attach-policy-arn arn:aws:iam::123456789012:policy/ExternalSecretsPolicy \
   --approve
 ```
 
@@ -98,7 +98,7 @@ Create a SecretStore:
 
 ```yaml
 # secretstore-aws.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secretsmanager
@@ -175,7 +175,7 @@ Create ExternalSecret resources:
 
 ```yaml
 # externalsecret-database.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: postgres-credentials
@@ -201,7 +201,7 @@ For JSON secrets with multiple keys:
 
 ```yaml
 # externalsecret-api-keys.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-credentials
@@ -232,7 +232,7 @@ kubectl get secrets -n production
 
 ## HashiCorp Vault Integration
 
-For organizations using Vault, the setup is similar but uses Vault-specific authentication:
+For organizations using Vault, the setup is similar but uses Vault-specific authentication. Run the configuration command from a pod that has the Kubernetes service account files mounted, or replace those file references with values from your cluster:
 
 ```bash
 # Enable Kubernetes auth in Vault
@@ -263,7 +263,7 @@ Create SecretStore for Vault:
 
 ```yaml
 # secretstore-vault.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -286,7 +286,7 @@ Create ExternalSecret for Vault:
 
 ```yaml
 # externalsecret-vault.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-config
@@ -316,7 +316,7 @@ For Azure environments, use Azure Key Vault:
 
 ```yaml
 # secretstore-azure.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: azure-keyvault
@@ -348,7 +348,7 @@ ExternalSecret for Azure:
 
 ```yaml
 # externalsecret-azure.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: azure-secrets
@@ -376,7 +376,7 @@ For GCP environments:
 
 ```yaml
 # secretstore-gcp.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: gcpsm-secretstore
@@ -408,7 +408,7 @@ ExternalSecret for GCP:
 
 ```yaml
 # externalsecret-gcp.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: gcp-secrets
@@ -484,7 +484,7 @@ def generate_external_secret_yaml(secret_name: str, keys: List[str],
                                    namespace: str, prefix: str) -> Dict:
     """Generate ExternalSecret YAML"""
     external_secret = {
-        'apiVersion': 'external-secrets.io/v1beta1',
+        'apiVersion': 'external-secrets.io/v1',
         'kind': 'ExternalSecret',
         'metadata': {
             'name': secret_name,
@@ -621,7 +621,7 @@ spec:
   - name: external-secrets
     rules:
     - alert: ExternalSecretSyncFailed
-      expr: externalsecret_sync_calls_error > 0
+      expr: increase(externalsecret_sync_calls_error[5m]) > 0
       for: 5m
       annotations:
         summary: "ExternalSecret {{ $labels.name }} sync failed"
@@ -629,4 +629,4 @@ spec:
 
 ## Conclusion
 
-Migrating from native Kubernetes Secrets to External Secrets Operator centralizes secret management, enables automated rotation, provides audit trails, and integrates with enterprise secret management systems. The migration requires careful planning and phased rollout, but the security and operational benefits make it worthwhile for production Kubernetes environments.
+Migrating from native Kubernetes Secrets to External Secrets Operator centralizes secret management, integrates with providers that support rotation and audit trails, and works with enterprise secret management systems. The migration requires careful planning and phased rollout, but the security and operational benefits make it worthwhile for production Kubernetes environments.
