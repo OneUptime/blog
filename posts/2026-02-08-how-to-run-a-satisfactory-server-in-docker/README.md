@@ -39,9 +39,9 @@ docker run -d \
   --name satisfactory \
   -p 7777:7777/udp \
   -p 7777:7777/tcp \
+  -p 8888:8888/tcp \
   -v satisfactory-data:/config \
   -e MAXPLAYERS=8 \
-  -e AUTOPAUSE=true \
   wolveix/satisfactory-server:latest
 ```
 
@@ -51,8 +51,6 @@ A complete Docker Compose setup with all relevant settings.
 
 ```yaml
 # docker-compose.yml - Satisfactory dedicated server
-version: "3.8"
-
 services:
   satisfactory:
     image: wolveix/satisfactory-server:latest
@@ -62,38 +60,28 @@ services:
       # Game port (TCP and UDP required)
       - "7777:7777/udp"
       - "7777:7777/tcp"
+      # Reliable messaging port (TCP required)
+      - "8888:8888/tcp"
     environment:
       # Maximum number of concurrent players
       MAXPLAYERS: 8
 
-      # Auto-pause when no players are connected
-      AUTOPAUSE: "true"
-
-      # Auto-save interval in seconds (300 = 5 minutes)
-      AUTOSAVEINTERVAL: 300
-
       # Maximum auto-save files to keep
       AUTOSAVENUM: 5
 
-      # Crash reporting
+      # Disable seasonal events such as FICSMAS
       DISABLESEASONALEVENTS: "false"
 
-      # Network quality: 0 = low, 1 = medium, 2 = high, 3 = ultra
-      NETWORKQUALITY: 3
-
-      # Server query port
-      SERVERQUERYPORT: 15777
-
-      # Beacon port
-      BEACONPORT: 15000
-
       # Game port
-      GAMEPORT: 7777
+      SERVERGAMEPORT: 7777
+
+      # Reliable messaging port
+      SERVERMESSAGINGPORT: 8888
 
       # Set to true to skip update check on startup
       SKIPUPDATE: "false"
 
-      # Timeout for SteamCMD updates (seconds)
+      # Set to true to run the experimental branch
       STEAMBETA: "false"
 
     volumes:
@@ -120,8 +108,8 @@ docker compose up -d
 # Follow the logs to monitor the download and startup
 docker compose logs -f satisfactory
 
-# First startup downloads ~5GB of server files
-# Wait for the "Server is ready" message
+# First startup downloads the server files
+# Wait for the logs to show that startup and save loading are complete
 ```
 
 The first launch takes several minutes as SteamCMD downloads the Satisfactory dedicated server. Subsequent starts are much faster.
@@ -150,30 +138,28 @@ Administration is primarily done through the in-game Server Manager interface. C
 
 ### Admin Password
 
-The admin password is set during initial server claim. To reset it, you can modify the server settings file.
+The admin password is set during initial server claim. To reset it, stop the server and remove the server settings save for the game port, then start the server and claim it again.
 
 ```bash
-# Find and edit the game settings file
-docker exec -it satisfactory-server bash
-# The settings are stored in:
-# /config/gamefiles/FactoryGame/Saved/Config/LinuxServer/Game.ini
-# /config/gamefiles/FactoryGame/Saved/Config/LinuxServer/ServerSettings.ini
+# Stop the server before changing server settings files
+docker compose down
+docker run --rm -v satisfactory-data:/config alpine \
+  rm -f /config/saved/server/ServerSettings.7777.sav
+docker compose up -d
 ```
 
 ### Server Settings File
 
 ```bash
 # View the current server settings
-docker exec satisfactory-server cat /config/gamefiles/FactoryGame/Saved/Config/LinuxServer/ServerSettings.ini
+docker exec satisfactory-server ls -la /config/saved/server/
 ```
 
-Key settings you can modify.
+Most server settings, including auto-pause and autosave interval, should be changed through the in-game Server Manager.
 
 ```ini
-; ServerSettings.ini
-[/Script/FactoryGame.FGServerSubsystem]
-mAutoSaveInterval=300.000000
-mServerName=Docker Factory Server
+; Dedicated server configuration files are generated under:
+; /config/gamefiles/FactoryGame/Saved/Config/LinuxServer/
 ```
 
 ## Save Management
@@ -182,13 +168,13 @@ Satisfactory saves are stored inside the Docker volume.
 
 ```bash
 # List available save files
-docker exec satisfactory-server ls -la /config/gamefiles/FactoryGame/Saved/SaveGames/server/
+docker exec satisfactory-server ls -la /config/saved/server/
 
 # Copy a save to the host for backup
-docker cp satisfactory-server:/config/gamefiles/FactoryGame/Saved/SaveGames ./satisfactory-saves-backup
+docker cp satisfactory-server:/config/saved/server ./satisfactory-saves-backup
 
 # Upload a save from a local game
-docker cp your-save-file.sav satisfactory-server:/config/gamefiles/FactoryGame/Saved/SaveGames/server/
+docker cp your-save-file.sav satisfactory-server:/config/saved/server/
 ```
 
 ### Uploading a Single-Player Save
@@ -200,7 +186,7 @@ If you want to migrate a single-player world to the dedicated server, follow the
 
 ```bash
 # Copy your single-player save into the server
-docker cp "MySave_autosave_0.sav" satisfactory-server:/config/gamefiles/FactoryGame/Saved/SaveGames/server/
+docker cp "MySave_autosave_0.sav" satisfactory-server:/config/saved/server/
 
 # Restart the server
 docker compose restart satisfactory
@@ -217,7 +203,7 @@ Set up a cron job for regular backups.
 # backup-satisfactory.sh - Automated backup script
 BACKUP_DIR="/backups/satisfactory"
 DATE=$(date +%Y%m%d-%H%M)
-SAVE_DIR="/config/gamefiles/FactoryGame/Saved/SaveGames"
+SAVE_DIR="/config/saved/server"
 
 mkdir -p "$BACKUP_DIR"
 
@@ -225,7 +211,7 @@ mkdir -p "$BACKUP_DIR"
 docker cp satisfactory-server:"$SAVE_DIR" "$BACKUP_DIR/saves-$DATE"
 
 # Remove backups older than 14 days
-find "$BACKUP_DIR" -type d -mtime +14 -exec rm -rf {} +
+find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name "saves-*" -mtime +14 -exec rm -rf {} +
 
 echo "Satisfactory backup completed: $DATE"
 ```
@@ -263,7 +249,7 @@ deploy:
 
 ### Network Quality
 
-Set the network quality based on your server's bandwidth.
+Network quality is a client-side setting. Players can set it in the game's options based on their connection quality.
 
 | Setting | Value | Recommended For |
 |---------|-------|----------------|
@@ -274,18 +260,13 @@ Set the network quality based on your server's bandwidth.
 
 ### Auto-Pause
 
-Enable auto-pause to reduce resource usage when no one is playing.
-
-```yaml
-environment:
-  AUTOPAUSE: "true"
-```
+Enable auto-pause in the in-game Server Manager to reduce resource usage when no one is playing.
 
 This pauses the game simulation when no players are connected, saving CPU and preventing unnecessary world updates.
 
 ## Updating the Server
 
-Satisfactory receives regular updates during early access.
+Satisfactory receives regular updates.
 
 ```bash
 # The server checks for updates on startup by default
@@ -304,7 +285,7 @@ For major game updates, it is a good idea to back up your saves first.
 
 ```bash
 # Back up before updating
-docker cp satisfactory-server:/config/gamefiles/FactoryGame/Saved/SaveGames ./pre-update-backup
+docker cp satisfactory-server:/config/saved/server ./pre-update-backup
 docker compose pull
 docker compose up -d
 ```
@@ -315,8 +296,6 @@ You can run multiple Satisfactory servers on different ports.
 
 ```yaml
 # docker-compose.yml - Multiple Satisfactory servers
-version: "3.8"
-
 services:
   satisfactory-main:
     image: wolveix/satisfactory-server:latest
@@ -324,9 +303,11 @@ services:
     ports:
       - "7777:7777/udp"
       - "7777:7777/tcp"
+      - "8888:8888/tcp"
     environment:
       MAXPLAYERS: 8
-      AUTOPAUSE: "true"
+      SERVERGAMEPORT: 7777
+      SERVERMESSAGINGPORT: 8888
     volumes:
       - main-data:/config
     restart: unless-stopped
@@ -335,11 +316,13 @@ services:
     image: wolveix/satisfactory-server:latest
     container_name: satisfactory-creative
     ports:
-      - "7778:7777/udp"
-      - "7778:7777/tcp"
+      - "7778:7778/udp"
+      - "7778:7778/tcp"
+      - "8889:8889/tcp"
     environment:
       MAXPLAYERS: 4
-      AUTOPAUSE: "true"
+      SERVERGAMEPORT: 7778
+      SERVERMESSAGINGPORT: 8889
     volumes:
       - creative-data:/config
     restart: unless-stopped
@@ -360,8 +343,8 @@ docker compose ps
 # Check for errors in the logs
 docker compose logs satisfactory | tail -50
 
-# Make sure both TCP and UDP on port 7777 are open
-# This is a common mistake - Satisfactory needs both protocols
+# Make sure TCP and UDP on port 7777 and TCP on port 8888 are open
+# This is a common mistake - Satisfactory needs both ports
 ```
 
 ### Server Crashes Under Load
