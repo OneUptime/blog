@@ -36,49 +36,15 @@ version = 2
     SystemdCgroup = true
     # Standard configuration
 
-# Hardened runtime for production workloads
+# Production runtime handler for policy and scheduling
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc-production]
   runtime_type = "io.containerd.runc.v2"
   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc-production.options]
     SystemdCgroup = true
-    # Enforce stricter resource limits
-    CpuQuota = 100000
-    # Disable privileged containers
-    NoNewPrivileges = true
-    # Enable SELinux enforcement
-    SelinuxLabel = "system_u:system_r:container_runtime_t:s0"
 
-# Isolated runtime for untrusted workloads
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc-isolated]
-  runtime_type = "io.containerd.runc.v2"
-  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc-isolated.options]
-    SystemdCgroup = true
-    # Maximum isolation settings
-    NoNewPrivileges = true
-    # Drop all capabilities by default
-    DefaultCapabilities = []
-    # Mask sensitive paths
-    MaskedPaths = [
-      "/proc/acpi",
-      "/proc/kcore",
-      "/proc/keys",
-      "/proc/latency_stats",
-      "/proc/timer_list",
-      "/proc/timer_stats",
-      "/proc/sched_debug",
-      "/proc/scsi",
-      "/sys/firmware",
-      "/sys/devices/virtual/powercap"
-    ]
-    # Set readonly paths
-    ReadonlyPaths = [
-      "/proc/asound",
-      "/proc/bus",
-      "/proc/fs",
-      "/proc/irq",
-      "/proc/sys",
-      "/proc/sysrq-trigger"
-    ]
+# Isolated runtime for untrusted workloads using gVisor
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc-isolated]
+  runtime_type = "io.containerd.runsc.v1"
 
 # Development runtime with relaxed settings
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc-dev]
@@ -136,8 +102,8 @@ overhead:
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
-  name: runc-isolated
-handler: runc-isolated
+  name: runsc-isolated
+handler: runsc-isolated
 scheduling:
   nodeSelector:
     isolation: high
@@ -209,7 +175,7 @@ spec:
             - ALL
 ```
 
-The pod will use the hardened runtime configuration defined in the `runc-production` handler.
+The pod will use the runtime configuration defined in the `runc-production` handler, with security restrictions enforced through the pod security context and admission policy.
 
 ## Implementing Namespace-Level Defaults
 
@@ -253,22 +219,32 @@ webhooks:
 Create a webhook that injects the appropriate Runtime Class:
 
 ```go
-// webhook/main.go
-package main
+// webhook/mutate.go
+package webhook
 
 import (
     "encoding/json"
-    "net/http"
 
-    corev1 "k8s.io/api/core/v1"
     admissionv1 "k8s.io/api/admission/v1"
+    corev1 "k8s.io/api/core/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func mutatePod(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
+    if ar.Request == nil {
+        return &admissionv1.AdmissionResponse{
+            Allowed: false,
+            Result: &metav1.Status{
+                Message: "missing admission request",
+            },
+        }
+    }
+
     pod := &corev1.Pod{}
     if err := json.Unmarshal(ar.Request.Object.Raw, pod); err != nil {
         return &admissionv1.AdmissionResponse{
             Allowed: false,
+            UID:     ar.Request.UID,
             Result: &metav1.Status{
                 Message: err.Error(),
             },
@@ -277,7 +253,10 @@ func mutatePod(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 
     // Skip if runtime class already set
     if pod.Spec.RuntimeClassName != nil {
-        return &admissionv1.AdmissionResponse{Allowed: true}
+        return &admissionv1.AdmissionResponse{
+            Allowed: true,
+            UID:     ar.Request.UID,
+        }
     }
 
     // Determine runtime class based on namespace and labels
@@ -288,7 +267,7 @@ func mutatePod(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
     case "production":
         runtimeClass = "runc-production"
     case "untrusted-workloads":
-        runtimeClass = "runc-isolated"
+        runtimeClass = "runsc-isolated"
     case "development":
         runtimeClass = "runc-development"
     default:
@@ -308,6 +287,7 @@ func mutatePod(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
     if err != nil {
         return &admissionv1.AdmissionResponse{
             Allowed: false,
+            UID:     ar.Request.UID,
             Result: &metav1.Status{
                 Message: err.Error(),
             },
@@ -316,6 +296,7 @@ func mutatePod(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 
     return &admissionv1.AdmissionResponse{
         Allowed: true,
+        UID:     ar.Request.UID,
         Patch:   patchBytes,
         PatchType: func() *admissionv1.PatchType {
             pt := admissionv1.PatchTypeJSONPatch
@@ -344,11 +325,11 @@ kubectl get pods --all-namespaces -o json | \
   jq -r '.items[] | .spec.runtimeClassName // "default"' | \
   sort | uniq -c
 
-# Check runtime handler stats from containerd
-sudo crictl stats --runtime-class=runc-production
+# Check container resource usage from the CRI
+sudo crictl stats
 ```
 
-Monitor containerd metrics to track runtime-specific resource usage:
+Monitor containerd metrics and combine them with pod labels from Kubernetes metrics to track runtime-specific resource usage:
 
 ```yaml
 # prometheus-containerd-monitor.yaml
@@ -363,14 +344,13 @@ data:
       scrape_interval: 15s
     scrape_configs:
     - job_name: 'containerd'
+      metrics_path: /v1/metrics
       static_configs:
       - targets: ['localhost:1338']
       metric_relabel_configs:
       - source_labels: [__name__]
-        regex: 'containerd_runtime_.*'
+        regex: 'containerd_.*'
         action: keep
-      - source_labels: [runtime]
-        target_label: runtime_class
 ```
 
 ## Optimizing Runtime Configurations
@@ -383,25 +363,14 @@ Tune runtime handler configurations based on workload characteristics.
   runtime_type = "io.containerd.runc.v2"
   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc-batch.options]
     SystemdCgroup = true
-    # Allow higher CPU usage for batch workloads
-    CpuQuota = 400000
-    # Optimize for throughput
-    CpuPeriod = 100000
-    # Larger memory limits
-    MemoryLimit = 8589934592  # 8GB
+    # Use an alternate OCI runtime binary if installed
+    BinaryName = "/usr/local/bin/crun"
 
-# Latency-optimized runtime for real-time workloads
+# Runtime handler for latency-sensitive workloads
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc-realtime]
   runtime_type = "io.containerd.runc.v2"
   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc-realtime.options]
     SystemdCgroup = true
-    # CPU pinning for predictable performance
-    CpuQuota = 200000
-    CpuPeriod = 50000  # Shorter period for lower latency
-    # Reserve CPU cores
-    CpusetCpus = "4-7"
-    # Lock memory to prevent swapping
-    MemorySwap = 0
 ```
 
 Create corresponding Runtime Classes:
@@ -437,7 +406,6 @@ kind: ClusterPolicy
 metadata:
   name: require-runtime-class
 spec:
-  validationFailureAction: enforce
   background: false
   rules:
   - name: production-requires-hardened-runtime
@@ -449,6 +417,7 @@ spec:
           namespaces:
           - production
     validate:
+      failureAction: Enforce
       message: "Production pods must use runc-production runtime class"
       pattern:
         spec:
@@ -464,10 +433,11 @@ spec:
             matchLabels:
               security.policy: untrusted
     validate:
-      message: "Untrusted workloads must use runc-isolated runtime class"
+      failureAction: Enforce
+      message: "Untrusted workloads must use runsc-isolated runtime class"
       pattern:
         spec:
-          runtimeClassName: "runc-isolated"
+          runtimeClassName: "runsc-isolated"
 ```
 
 This ensures pods use appropriate runtime isolation based on policy.
@@ -492,7 +462,7 @@ kubectl run test-production --image=alpine --restart=Never \
 
 echo "Testing isolated runtime..."
 kubectl run test-isolated --image=alpine --restart=Never \
-  --overrides='{"spec":{"runtimeClassName":"runc-isolated"}}' \
+  --overrides='{"spec":{"runtimeClassName":"runsc-isolated"}}' \
   -- sh -c "cat /proc/self/status | grep Cap"
 
 # Check which capabilities are available
@@ -504,7 +474,7 @@ for pod in test-standard test-production test-isolated; do
 done
 ```
 
-Compare capabilities to verify isolation differences between runtime configurations.
+Compare capabilities and pod events to verify isolation differences between runtime configurations.
 
 ## Troubleshooting Runtime Class Issues
 
@@ -523,10 +493,10 @@ kubectl describe pod <pod-name>
 # View containerd logs for runtime-specific errors
 sudo journalctl -u containerd -f --grep "runtime="
 
-# Test runtime handler directly
-sudo ctr run --runtime io.containerd.runc.v2 \
-  --runtime-config-path /etc/containerd/config.toml \
-  docker.io/library/alpine:latest test-container sh
+# Test a RuntimeClass through Kubernetes
+kubectl run runtime-test --image=alpine --restart=Never \
+  --overrides='{"spec":{"runtimeClassName":"runsc-isolated"}}' \
+  -- sh -c "uname -a"
 ```
 
 Common issues include misconfigured handler names, missing runtime binaries, or incorrect node selectors preventing pod scheduling.
