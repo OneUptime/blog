@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Kubernetes, Operator, Auto-Instrumentation, Observability
 
-Description: Learn how to deploy and configure the OpenTelemetry Operator for Kubernetes to enable automatic instrumentation of applications without modifying container images or deployment manifests.
+Description: Learn how to deploy and configure the OpenTelemetry Operator for Kubernetes to enable automatic instrumentation of applications without modifying container images.
 
 ---
 
-The OpenTelemetry Operator for Kubernetes automates instrumentation injection into application pods. This approach eliminates the need to modify container images or manually configure instrumentation, making it easier to enable observability across your cluster.
+The OpenTelemetry Operator for Kubernetes automates instrumentation injection into application pods. This approach eliminates the need to modify container images and reduces manual instrumentation configuration, making it easier to enable observability across your cluster.
 
 ## Understanding the OpenTelemetry Operator
 
@@ -74,6 +74,9 @@ spec:
   python:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:latest
     env:
+      # Python auto-instrumentation uses OTLP/HTTP by default.
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: http://otel-collector.observability.svc.cluster.local:4318
       - name: OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED
         value: "true"
 
@@ -81,13 +84,16 @@ spec:
   nodejs:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:latest
     env:
-      - name: OTEL_NODEJS_DEBUG
-        value: "false"
+      - name: OTEL_LOG_LEVEL
+        value: "info"
 
   # .NET auto-instrumentation
   dotnet:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-dotnet:latest
     env:
+      # .NET auto-instrumentation uses OTLP/HTTP by default.
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: http://otel-collector.observability.svc.cluster.local:4318
       - name: OTEL_DOTNET_AUTO_TRACES_ENABLED
         value: "true"
 ```
@@ -122,7 +128,7 @@ spec:
         app: java-app
       annotations:
         # Enable Java instrumentation
-        instrumentation.opentelemetry.io/inject-java: "true"
+        instrumentation.opentelemetry.io/inject-java: "my-instrumentation"
     spec:
       containers:
       - name: app
@@ -133,7 +139,7 @@ spec:
         - name: OTEL_SERVICE_NAME
           value: "java-app"
         - name: OTEL_RESOURCE_ATTRIBUTES
-          value: "environment=production,team=backend"
+          value: "deployment.environment.name=production,team=backend"
 ```
 
 Deploy the application and verify instrumentation injection.
@@ -172,7 +178,7 @@ spec:
         app: python-app
       annotations:
         # Enable Python instrumentation
-        instrumentation.opentelemetry.io/inject-python: "true"
+        instrumentation.opentelemetry.io/inject-python: "my-instrumentation"
     spec:
       containers:
       - name: app
@@ -187,7 +193,7 @@ spec:
         - app.py
 ```
 
-The operator injects environment variables and modifies the container command to enable instrumentation.
+The operator injects environment variables and instrumentation files to enable instrumentation.
 
 ```bash
 # Deploy Python application
@@ -221,7 +227,7 @@ spec:
         app: nodejs-app
       annotations:
         # Enable Node.js instrumentation
-        instrumentation.opentelemetry.io/inject-nodejs: "true"
+        instrumentation.opentelemetry.io/inject-nodejs: "my-instrumentation"
     spec:
       containers:
       - name: app
@@ -242,12 +248,12 @@ kubectl apply -f nodejs-deployment.yaml
 # Check NODE_OPTIONS injection
 kubectl exec -it deploy/nodejs-app -- sh -c 'echo $NODE_OPTIONS'
 
-# Expected output includes: --require /otel-auto-instrumentation/autoinstrumentation.js
+# Expected output includes: --require /otel-auto-instrumentation-nodejs/autoinstrumentation.js
 ```
 
 ## Multi-Language Application Support
 
-Applications with multiple language containers in a single pod can specify instrumentation per container.
+Applications with multiple language containers in a single pod can specify instrumentation per container when the operator's multi-instrumentation feature is enabled.
 
 ```yaml
 # multi-language-deployment.yaml
@@ -267,8 +273,10 @@ spec:
         app: multi-lang-app
       annotations:
         # Specify instrumentation per container
-        instrumentation.opentelemetry.io/inject-java: "java-container"
-        instrumentation.opentelemetry.io/inject-python: "python-container"
+        instrumentation.opentelemetry.io/inject-java: "my-instrumentation"
+        instrumentation.opentelemetry.io/java-container-names: "java-container"
+        instrumentation.opentelemetry.io/inject-python: "my-instrumentation"
+        instrumentation.opentelemetry.io/python-container-names: "python-container"
     spec:
       containers:
       - name: java-container
@@ -289,14 +297,14 @@ Deploy a collector to receive telemetry data from instrumented applications. The
 
 ```yaml
 # collector.yaml
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: otel-collector
   namespace: observability
 spec:
   mode: deployment
-  config: |
+  config:
     receivers:
       otlp:
         protocols:
@@ -315,8 +323,8 @@ spec:
         spike_limit_mib: 128
 
     exporters:
-      logging:
-        loglevel: debug
+      debug:
+        verbosity: detailed
       otlp:
         endpoint: tempo:4317
         tls:
@@ -327,11 +335,11 @@ spec:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [logging, otlp]
+          exporters: [debug, otlp]
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [logging]
+          exporters: [debug]
 ```
 
 Deploy the collector using kubectl.
@@ -369,7 +377,7 @@ spec:
   # Common environment variables for all languages
   env:
     - name: OTEL_RESOURCE_ATTRIBUTES
-      value: "cluster.name=production-cluster,deployment.environment=production"
+      value: "cluster.name=production-cluster,deployment.environment.name=production"
 
   java:
     image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:latest
