@@ -17,32 +17,26 @@ This enables performance-driven autoscaling where you scale up when Apdex scores
 Deploy the New Relic Kubernetes integration with metrics adapter.
 
 ```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: newrelic-config
-  namespace: newrelic
-type: Opaque
-stringData:
-  license_key: "your-new-relic-license-key"
-  account_id: "your-account-id"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: newrelic-adapter-config
-  namespace: newrelic
-data:
-  config.yaml: |
+# values.yaml
+global:
+  licenseKey: "your-new-relic-license-key"
+  cluster: "your-cluster-name"
+
+newrelic-k8s-metrics-adapter:
+  personalAPIKey: "your-personal-api-key"
+  config:
+    accountID: "your-account-id"
     externalMetrics:
-      - name: apdex_score
-        query: "SELECT apdex(duration) FROM Transaction WHERE appName = '{{.Labels.app}}'"
-      - name: average_response_time
-        query: "SELECT average(duration) FROM Transaction WHERE appName = '{{.Labels.app}}'"
-      - name: throughput
-        query: "SELECT rate(count(*), 1 minute) FROM Transaction WHERE appName = '{{.Labels.app}}'"
-      - name: error_rate
-        query: "SELECT percentage(count(*), WHERE error IS true) FROM Transaction WHERE appName = '{{.Labels.app}}'"
+      apdex_deficit:
+        query: "FROM Transaction SELECT 1 - apdex(duration, t: 0.5) SINCE 2 MINUTES AGO"
+      average_response_time_ms:
+        query: "FROM Transaction SELECT average(duration) * 1000 SINCE 2 MINUTES AGO"
+      throughput_rpm:
+        query: "FROM Transaction SELECT rate(count(*), 1 minute) SINCE 2 MINUTES AGO"
+      error_rate_percent:
+        query: "FROM Transaction SELECT percentage(count(*), WHERE error IS true) SINCE 2 MINUTES AGO"
+      custom_queue_depth:
+        query: "FROM BatchProcessing SELECT latest(queueDepth) SINCE 2 MINUTES AGO"
 ```
 
 Install with Helm.
@@ -54,20 +48,17 @@ helm repo update
 helm install newrelic-bundle newrelic/nri-bundle \
   --namespace newrelic \
   --create-namespace \
-  --set global.licenseKey="your-license-key" \
-  --set global.cluster="your-cluster-name" \
   --set infrastructure.enabled=true \
   --set prometheus.enabled=true \
   --set webhook.enabled=true \
   --set ksm.enabled=true \
   --set kubeEvents.enabled=true \
   --set newrelic-k8s-metrics-adapter.enabled=true \
-  --set newrelic-k8s-metrics-adapter.personalAPIKey="your-api-key" \
-  --set newrelic-k8s-metrics-adapter.accountID="your-account-id"
+  --values values.yaml
 
 # Verify external metrics API
 
-kubectl get apiservice | grep newrelic
+kubectl get apiservice v1beta1.external.metrics.k8s.io
 ```
 
 ## Scaling Based on Apdex Score
@@ -92,14 +83,14 @@ spec:
   - type: External
     external:
       metric:
-        name: newrelic.apdex_score
+        name: apdex_deficit
         selector:
           matchLabels:
-            app: web-application
+            appName: web-application
             env: production
       target:
         type: Value
-        value: "0.85"  # Scale up if Apdex drops below 0.85
+        value: "0.15"  # Scale up if Apdex drops below 0.85
 
   behavior:
     scaleUp:
@@ -116,7 +107,7 @@ spec:
         periodSeconds: 180
 ```
 
-When Apdex scores drop below 0.85, indicating declining user satisfaction, HPA adds capacity to improve performance.
+When the Apdex deficit rises above 0.15, indicating an Apdex score below 0.85 and declining user satisfaction, HPA adds capacity to improve performance.
 
 ## Scaling on Transaction Throughput
 
@@ -138,10 +129,10 @@ spec:
   - type: External
     external:
       metric:
-        name: newrelic.throughput
+        name: throughput_rpm
         selector:
           matchLabels:
-            app: api-service
+            appName: api-service
       target:
         type: AverageValue
         averageValue: "100"  # 100 requests per minute per pod
@@ -181,11 +172,11 @@ spec:
   - type: External
     external:
       metric:
-        name: newrelic.average_response_time_ms
+        name: average_response_time_ms
         selector:
           matchLabels:
-            app: transaction-service
-            transaction: checkout
+            appName: transaction-service
+            name: checkout
       target:
         type: Value
         value: "200"  # Scale when avg response time exceeds 200ms
@@ -225,10 +216,10 @@ spec:
   - type: External
     external:
       metric:
-        name: newrelic.error_rate_percent
+        name: error_rate_percent
         selector:
           matchLabels:
-            app: payment-processor
+            appName: payment-processor
       target:
         type: Value
         value: "2"  # Scale when error rate exceeds 2%
@@ -298,10 +289,7 @@ spec:
   - type: External
     external:
       metric:
-        name: newrelic.custom.queue_depth
-        selector:
-          matchLabels:
-            eventType: BatchProcessing
+        name: custom_queue_depth
       target:
         type: AverageValue
         averageValue: "500"  # 500 items per pod
@@ -328,22 +316,22 @@ spec:
   - type: External
     external:
       metric:
-        name: newrelic.apdex_score
+        name: apdex_deficit
         selector:
           matchLabels:
-            app: comprehensive-app
+            appName: comprehensive-app
       target:
         type: Value
-        value: "0.9"
+        value: "0.1"
 
   # Throughput
   - type: External
     external:
       metric:
-        name: newrelic.throughput_rpm
+        name: throughput_rpm
         selector:
           matchLabels:
-            app: comprehensive-app
+            appName: comprehensive-app
       target:
         type: AverageValue
         averageValue: "120"
@@ -352,10 +340,10 @@ spec:
   - type: External
     external:
       metric:
-        name: newrelic.response_time_ms
+        name: average_response_time_ms
         selector:
           matchLabels:
-            app: comprehensive-app
+            appName: comprehensive-app
       target:
         type: Value
         value: "150"
@@ -375,16 +363,16 @@ Verify metrics and scaling behavior.
 
 ```bash
 # List available New Relic metrics
-kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1" | jq '.resources[].name' | grep newrelic
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/" | jq '.resources[].name'
 
 # Check specific metric value
-kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/production/newrelic.apdex_score?labelSelector=app%3Dweb-application" | jq .
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/production/apdex_deficit?labelSelector=appName%3Dweb-application" | jq .
 
 # View HPA status
 kubectl describe hpa apdex-based-hpa
 
 # Check adapter logs
-kubectl logs -n newrelic -l app=newrelic-k8s-metrics-adapter
+kubectl logs -n newrelic -l app.kubernetes.io/name=newrelic-k8s-metrics-adapter
 ```
 
 ## Best Practices
@@ -397,7 +385,7 @@ Combine performance metrics with resource metrics. New Relic provides applicatio
 
 Use New Relic's transaction segmentation to scale different service tiers independently based on their specific performance characteristics.
 
-Monitor metric query costs in New Relic. Each HPA evaluation runs a NRQL query. Ensure your account has sufficient query limits.
+Monitor metric query costs in New Relic. Each uncached metric fetch runs a NRQL query. Ensure your account has sufficient query limits.
 
 Test metric lag. New Relic metrics may have 30-60 second delay. Account for this in stabilization windows.
 
@@ -406,11 +394,11 @@ Test metric lag. New Relic metrics may have 30-60 second delay. Account for this
 **Metrics not available**: Verify New Relic license key is valid and metrics adapter is running.
 
 ```bash
-kubectl get pods -n newrelic -l app=newrelic-k8s-metrics-adapter
-kubectl logs -n newrelic -l app=newrelic-k8s-metrics-adapter
+kubectl get pods -n newrelic -l app.kubernetes.io/name=newrelic-k8s-metrics-adapter
+kubectl logs -n newrelic -l app.kubernetes.io/name=newrelic-k8s-metrics-adapter
 ```
 
-**HPA shows unknown values**: Check that your NRQL queries return numeric values and app labels match.
+**HPA shows unknown values**: Check that your NRQL queries return numeric values and label selectors match New Relic attributes.
 
 **Scaling doesn't match New Relic dashboard**: Ensure HPA metric queries use same filters and time windows as your dashboards.
 
