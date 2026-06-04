@@ -74,8 +74,6 @@ For a more complete environment with a database for data analysis:
 
 ```yaml
 # docker-compose.yml - RStudio with PostgreSQL for data analysis
-version: "3.8"
-
 services:
   rstudio:
     image: rocker/tidyverse:4.4.1
@@ -258,7 +256,20 @@ docker run --rm \
 
 ## Shiny Apps Alongside RStudio
 
-If you develop Shiny apps, expose an additional port:
+If you develop Shiny apps, build a small custom image with Shiny Server installed and expose an additional port:
+
+```dockerfile
+# Dockerfile.shiny - RStudio with Shiny Server
+FROM rocker/tidyverse:4.4.1
+
+RUN /rocker_scripts/install_shiny_server.sh
+```
+
+Build it:
+
+```bash
+docker build -t rstudio-shiny:4.4.1 -f Dockerfile.shiny .
+```
 
 ```bash
 # RStudio with Shiny server port exposed
@@ -267,11 +278,10 @@ docker run -d \
   -p 8787:8787 \
   -p 3838:3838 \
   -e PASSWORD=yourpassword \
-  -e ADD=shiny \
-  rocker/tidyverse:4.4.1
+  rstudio-shiny:4.4.1
 ```
 
-The `-e ADD=shiny` flag installs and starts Shiny Server alongside RStudio. Access Shiny apps at http://localhost:3838.
+The `/rocker_scripts/install_shiny_server.sh` script installs Shiny Server, which starts alongside RStudio. Access Shiny apps at http://localhost:3838.
 
 ## Conclusion
 
