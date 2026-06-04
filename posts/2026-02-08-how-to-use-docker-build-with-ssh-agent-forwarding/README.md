@@ -68,7 +68,7 @@ FROM node:20-alpine
 # Install git and openssh-client (required for SSH git operations)
 RUN apk add --no-cache git openssh-client
 
-# Configure SSH to skip host key verification for known services
+# Pre-populate host keys for known services
 # This prevents the build from hanging on "Are you sure you want to continue?"
 RUN mkdir -p /root/.ssh && \
     ssh-keyscan github.com >> /root/.ssh/known_hosts && \
@@ -158,19 +158,19 @@ git+ssh://git@github.com/myorg/private-package.git@v1.0.0
 git+ssh://git@github.com/myorg/shared-models.git@main
 ```
 
-## Named SSH Agents
+## Named SSH Identities
 
-If you need multiple SSH identities during the build, use named SSH agents:
+If you need multiple SSH identities during the build, use named SSH mounts:
 
 ```bash
-# Build with named SSH agents
+# Build with named SSH identities
 docker buildx build \
   --ssh github=~/.ssh/github_key \
   --ssh gitlab=~/.ssh/gitlab_key \
   -t myapp:latest .
 ```
 
-Reference specific agents in the Dockerfile:
+Reference specific mount IDs in the Dockerfile:
 
 ```dockerfile
 # Use the github key for GitHub repos
@@ -186,7 +186,6 @@ Docker Compose supports SSH agent forwarding in the build configuration:
 
 ```yaml
 # docker-compose.yml - builds with SSH forwarding
-version: "3.8"
 
 services:
   app:
@@ -306,10 +305,11 @@ jobs:
 
 ```yaml
 build:
-  image: docker:latest
+  image: docker:24.0.5
   services:
-    - docker:dind
+    - docker:24.0.5-dind
   before_script:
+    - apk add --no-cache openssh-client
     - eval $(ssh-agent -s)
     - echo "$SSH_PRIVATE_KEY" | ssh-add -
     - mkdir -p ~/.ssh
@@ -322,7 +322,7 @@ build:
 
 ## Troubleshooting
 
-**"Could not resolve host" errors:** Make sure `ssh-keyscan` ran for the target host:
+**"Host key verification failed" errors:** Make sure `ssh-keyscan` ran for the target host:
 
 ```dockerfile
 # Add host keys for all services you connect to
