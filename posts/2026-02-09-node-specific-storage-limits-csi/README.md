@@ -8,17 +8,17 @@ Description: Learn how to configure node-specific storage limits using CSI drive
 
 ---
 
-Kubernetes nodes have varying storage capacities based on their hardware configuration. Without proper limits, storage-intensive workloads can exhaust node storage, causing failures for other pods. CSI drivers expose node allocatable storage resources that allow fine-grained control over storage provisioning per node.
+Kubernetes nodes have varying storage capacities based on their hardware configuration. Without proper limits, storage-intensive workloads can exhaust node storage, causing failures for other pods. CSI storage capacity tracking and CSI node allocatable volume counts help Kubernetes make better scheduling decisions for storage provisioning and volume attachment per node.
 
 ## Understanding Node Allocatable Storage
 
-Each Kubernetes node has a finite amount of storage capacity. The kubelet reports allocatable storage resources that can be consumed by pods. CSI drivers extend this mechanism by reporting how much storage they can provision on each specific node.
+Each Kubernetes node has a finite amount of storage capacity. The kubelet reports allocatable ephemeral storage resources that can be consumed by pods. CSI drivers extend scheduling with `CSIStorageCapacity` objects, which report how much persistent storage can be provisioned for a storage class in a topology segment.
 
-When a CSI driver registers with a node, it reports maximum attachable volumes and total storage capacity available for provisioning. The scheduler uses this information during pod placement to avoid assigning pods to nodes that cannot provision the required storage.
+When a CSI driver registers with a node, it can report the maximum number of volumes that can be used on that node. Separately, a CSI driver and the external-provisioner can publish storage capacity information. The scheduler uses this information during pod placement to avoid assigning pods to nodes that cannot provision or attach the required storage.
 
 ## How CSI Drivers Report Storage Capacity
 
-CSI drivers implement the GetCapacity RPC to report available storage on each node. The CSI node plugin runs as a DaemonSet and periodically updates capacity information:
+CSI drivers implement the `GetCapacity` RPC to report available storage for a topology segment and storage class parameters. The CSI external-provisioner can poll this RPC and publish `CSIStorageCapacity` objects:
 
 ```go
 // Example CSI driver capacity reporting
@@ -44,7 +44,7 @@ func (d *Driver) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (
 
 ## Enabling CSI Storage Capacity Tracking
 
-Enable the CSIStorageCapacity feature gate and configure the CSI driver to report capacity:
+On current Kubernetes releases, the `CSIStorageCapacity` API is stable. Configure the `CSIDriver` object and run the external-provisioner with capacity publishing enabled:
 
 ```yaml
 # CSI driver configuration with storage capacity tracking
@@ -112,7 +112,7 @@ Check reported storage capacity across nodes:
 kubectl get csistoragecapacities --all-namespaces
 
 # Get detailed capacity for specific driver
-kubectl get csistoragecapacities -n kube-system -l storage.kubernetes.io/csidriver=example.csi.driver -o yaml
+kubectl get csistoragecapacities -n kube-system -l csi.storage.k8s.io/drivername=example.csi.driver -o yaml
 
 # Show capacity per node
 kubectl get csistoragecapacities -n kube-system -o custom-columns=\
@@ -163,9 +163,23 @@ spec:
   storageCapacity: true
   attachRequired: true
   podInfoOnMount: false
-  # Set maximum volumes per node
-  # If not specified, defaults to 0 (unlimited)
-  # Common values: 39 for AWS EBS, 256 for most other drivers
+  # Optional: refresh the node allocatable volume count periodically.
+  # The actual maximum is reported by the CSI driver's NodeGetInfo response
+  # and stored in CSINode.spec.drivers[].allocatable.count.
+  nodeAllocatableUpdatePeriodSeconds: 60
+```
+
+If `allocatable.count` is not specified for a driver on a `CSINode`, Kubernetes treats the supported number of volumes on that node as unbounded.
+
+Check reported CSI volume limits per node:
+
+```bash
+kubectl get csinode -o json | jq -r '
+  .items[] as $node |
+  $node.spec.drivers[] |
+  select(.name == "example.csi.driver") |
+  "\($node.metadata.name) \(.allocatable.count // "unbounded")"
+'
 ```
 
 Check current volume attachment count per node:
@@ -174,6 +188,7 @@ Check current volume attachment count per node:
 # Count volume attachments per node
 kubectl get volumeattachments -o json | jq -r '
   .items |
+  sort_by(.spec.nodeName) |
   group_by(.spec.nodeName) |
   map({node: .[0].spec.nodeName, count: length}) |
   .[]
@@ -191,7 +206,6 @@ import (
     "context"
     "encoding/json"
     "fmt"
-    "net/http"
 
     admissionv1 "k8s.io/api/admission/v1"
     corev1 "k8s.io/api/core/v1"
@@ -270,15 +284,35 @@ func (w *StorageLimitWebhook) getNodeCapacities(storageClass *string) (map[strin
             continue
         }
 
-        // Extract node name from topology
-        if nodeName, ok := cap.NodeTopology.MatchLabels["kubernetes.io/hostname"]; ok {
-            if cap.Capacity != nil {
-                capacities[nodeName] = *cap.Capacity
+        // Extract node name from topology when capacity is reported per node.
+        if cap.NodeTopology != nil {
+            if nodeName, ok := cap.NodeTopology.MatchLabels["kubernetes.io/hostname"]; ok {
+                capacity := reportedCapacity(cap.Capacity, cap.MaximumVolumeSize)
+                if capacity != nil {
+                    capacities[nodeName] = *capacity
+                }
             }
         }
     }
 
     return capacities, nil
+}
+
+func reportedCapacity(capacity, maximumVolumeSize *resource.Quantity) *resource.Quantity {
+    if maximumVolumeSize != nil {
+        return maximumVolumeSize
+    }
+    return capacity
+}
+
+func maxCapacity(capacities map[string]resource.Quantity) resource.Quantity {
+    max := resource.MustParse("0")
+    for _, capacity := range capacities {
+        if capacity.Cmp(max) > 0 {
+            max = capacity
+        }
+    }
+    return max
 }
 ```
 
@@ -304,7 +338,7 @@ evictionSoftGracePeriod:
   imagefs.available: "1m"
 ```
 
-This configuration prevents pods from consuming storage beyond the specified thresholds.
+This configuration evicts pods when node filesystem availability crosses the specified thresholds, which helps prevent complete node storage exhaustion.
 
 ## Monitoring Node Storage Usage
 
@@ -316,7 +350,7 @@ kubectl get nodes -o custom-columns=\
 NAME:.metadata.name,\
 CAPACITY:.status.capacity.ephemeral-storage,\
 ALLOCATABLE:.status.allocatable.ephemeral-storage,\
-USED:.status.conditions[?(@.type==\"DiskPressure\")].status
+DISK_PRESSURE:.status.conditions[?(@.type==\"DiskPressure\")].status
 
 # Check CSI storage capacity across all nodes
 kubectl get csistoragecapacities --all-namespaces -o json | jq -r '
@@ -332,7 +366,8 @@ Set up Prometheus queries:
 # Available storage per node
 kubelet_volume_stats_available_bytes
 
-# Storage capacity by storage class and node
+# Storage capacity by storage class and node, if you export CSIStorageCapacity
+# objects through kube-state-metrics custom resources or another exporter
 sum by (node, storage_class) (
   kube_csistoragecapacity_capacity_bytes
 )
@@ -362,7 +397,7 @@ kind: Pod
 metadata:
   name: storage-aware-app
 spec:
-  # Use affinity to prefer nodes with more storage capacity
+  # Use affinity to prefer nodes labeled with more storage capacity
   affinity:
     nodeAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
@@ -438,7 +473,7 @@ spec:
 
     - alert: MaxVolumesPerNodeReached
       expr: |
-        count by (node) (kube_pod_spec_volumes_persistentvolumeclaims_info) >= 100
+        count by (node) (kube_volumeattachment_info) >= 100
       for: 5m
       labels:
         severity: critical
