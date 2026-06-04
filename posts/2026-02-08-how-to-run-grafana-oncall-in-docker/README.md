@@ -8,13 +8,13 @@ Description: Deploy Grafana OnCall in Docker to manage on-call schedules, alert 
 
 ---
 
-Grafana OnCall is an open-source incident response and on-call management tool. It handles alert routing, escalation policies, on-call schedules, and notifications through multiple channels like Slack, phone calls, SMS, and email. Originally developed by Amixr and acquired by Grafana Labs, it integrates tightly with the Grafana ecosystem but also works as a standalone incident management tool.
+Grafana OnCall is an open-source incident response and on-call management tool. It handles alert routing, escalation policies, on-call schedules, and notifications through multiple channels like Slack, phone calls, SMS, and email. Originally developed by Amixr and acquired by Grafana Labs, it integrates tightly with the Grafana ecosystem but also works as a standalone incident management tool. Grafana OnCall OSS entered maintenance mode on March 11, 2025 and was archived on March 24, 2026, so new production deployments should evaluate a maintained fork or Grafana Cloud IRM.
 
-This guide covers deploying Grafana OnCall in Docker using the OSS (open-source) engine, connecting it to Grafana, and configuring alert routing and schedules.
+This guide covers deploying Grafana OnCall in Docker using the archived OSS (open-source) engine, connecting it to Grafana, and configuring alert routing and schedules.
 
 ## Architecture
 
-Grafana OnCall consists of several components: the engine (Django-based API server), a Celery worker for background tasks, Redis for caching and task queuing, and a MySQL or PostgreSQL database. The Grafana OnCall plugin in Grafana provides the user interface.
+Grafana OnCall consists of several components: the engine (Django-based API server), a Celery worker for background tasks, Redis for caching and task queuing, and a database. The hobby Docker Compose setup uses SQLite, while reliable production deployments should use the official Helm chart with an external database, Redis, and RabbitMQ. The Grafana OnCall plugin in Grafana provides the user interface.
 
 ```mermaid
 graph LR
@@ -24,7 +24,7 @@ graph LR
     D --> E[Slack]
     D --> F[Phone/SMS]
     D --> G[Email]
-    B --> H[MySQL/PostgreSQL]
+    B --> H[Database]
     B --> I[Redis]
     J[Grafana UI] --> B
 ```
@@ -45,17 +45,12 @@ Create the complete `docker-compose.yml` with all necessary services.
 ```yaml
 # docker-compose.yml - Grafana OnCall stack
 
-version: "3.8"
-
 services:
   # Grafana OnCall Engine - the main API server
   oncall-engine:
-    image: grafana/oncall:latest
+    image: grafana/oncall
     restart: unless-stopped
-    command: >
-      sh -c "python manage.py migrate &&
-             python manage.py oncall_setup &&
-             uwsgi --ini uwsgi.ini"
+    command: sh -c "uwsgi --ini uwsgi.ini"
     environment: &oncall-env
       # Database configuration
       DATABASE_TYPE: sqlite3
@@ -71,7 +66,10 @@ services:
       REDIS_URI: redis://redis:6379/0
 
       # Secret key for Django (change this in production)
-      SECRET_KEY: your-secret-key-change-in-production
+      SECRET_KEY: your-secret-key-change-in-production-32-chars-minimum
+
+      # Hobby Docker settings
+      DJANGO_SETTINGS_MODULE: settings.hobby
 
       # Base URL where OnCall is accessible
       BASE_URL: http://localhost:8080
@@ -81,11 +79,18 @@ services:
 
       # Celery broker
       BROKER_TYPE: redis
-      CELERY_WORKER_QUEUE: default,critical,long,slack,telegram,webhook
+      CELERY_WORKER_QUEUE: default,critical,long,slack,telegram,mattermost,webhook,retry,celery,grafana
+      CELERY_WORKER_CONCURRENCY: "1"
+      CELERY_WORKER_MAX_TASKS_PER_CHILD: "100"
+      CELERY_WORKER_SHUTDOWN_INTERVAL: 65m
+      CELERY_WORKER_BEAT_ENABLED: "True"
     volumes:
       - oncall-data:/var/lib/oncall
     depends_on:
-      - redis
+      oncall-db-migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     ports:
       - "8080:8080"
     networks:
@@ -93,41 +98,61 @@ services:
 
   # Celery worker for background tasks (notifications, escalations)
   oncall-celery:
-    image: grafana/oncall:latest
+    image: grafana/oncall
     restart: unless-stopped
-    command: >
-      sh -c "python manage.py migrate --run-syncdb &&
-             celery -A engine worker -l info -c 4 -Q default,critical,long,slack,telegram,webhook"
+    command: sh -c "./celery_with_exporter.sh"
     environment:
       <<: *oncall-env
     volumes:
       - oncall-data:/var/lib/oncall
     depends_on:
-      - redis
-      - oncall-engine
+      oncall-db-migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - oncall-net
+
+  # Run database migrations before starting the engine and worker
+  oncall-db-migration:
+    image: grafana/oncall
+    command: python manage.py migrate --noinput
+    environment:
+      <<: *oncall-env
+    volumes:
+      - oncall-data:/var/lib/oncall
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - oncall-net
 
   # Redis - task queue and caching
   redis:
-    image: redis:7-alpine
+    image: redis:7.0.15
     restart: unless-stopped
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 5s
+      interval: 5s
+      retries: 10
     networks:
       - oncall-net
 
   # Grafana with the OnCall plugin
   grafana:
-    image: grafana/grafana:10.4.0
+    image: grafana/grafana:latest
     restart: unless-stopped
     environment:
       # Install the OnCall plugin on startup
-      - GF_INSTALL_PLUGINS=grafana-oncall-app
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      # Allow embedding for the OnCall UI
-      - GF_SECURITY_ALLOW_EMBEDDING=true
-      - GF_SECURITY_COOKIE_SAMESITE=lax
+      GF_INSTALL_PLUGINS: grafana-oncall-app
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_FEATURE_TOGGLES_ENABLE: externalServiceAccounts
+      GF_AUTH_MANAGED_SERVICE_ACCOUNTS_ENABLED: "true"
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: grafana-oncall-app
     ports:
       - "3000:3000"
     volumes:
@@ -209,23 +234,27 @@ receivers:
     webhook_configs:
       - url: "http://oncall-engine:8080/integrations/v1/alertmanager/YOUR_INTEGRATION_TOKEN/"
         send_resolved: true
+        max_alerts: 100
 ```
 
-For direct Grafana Alert integration, simply select OnCall as a contact point in Grafana's alerting configuration. This is the easiest path since everything runs in the same stack.
+For direct Grafana Alert integration, create a Grafana Alerting integration from OnCall's Integrations tab and use its Quick connect flow to create a Grafana contact point. Then connect that contact point to a notification policy in Grafana Alerting.
 
 ## Slack Integration
 
 Slack integration enables alerts, acknowledgments, and resolution directly from Slack channels.
 
 1. Create a Slack app at `https://api.slack.com/apps`
-2. Add the required OAuth scopes: `channels:read`, `chat:write`, `users:read`, `users:read.email`
-3. Install the app to your workspace
-4. Add the Slack bot token and signing secret to OnCall's environment variables
+2. Enable the Slack integration in OnCall by setting `FEATURE_SLACK_INTEGRATION_ENABLED=True`
+3. Configure the Slack app credentials in OnCall's environment variables
+4. Install the integration from OnCall's ChatOps settings
 
 ```yaml
 # Add these to the environment section of oncall-engine and oncall-celery
-- SLACK_API_TOKEN=xoxb-your-slack-bot-token
-- SLACK_SIGNING_SECRET=your-slack-signing-secret
+FEATURE_SLACK_INTEGRATION_ENABLED: "True"
+SLACK_CLIENT_OAUTH_ID: your-slack-client-id
+SLACK_CLIENT_OAUTH_SECRET: your-slack-client-secret
+SLACK_SIGNING_SECRET: your-slack-signing-secret
+SLACK_INSTALL_RETURN_REDIRECT_HOST: https://your-public-oncall-url
 ```
 
 ## Testing the Alert Pipeline
@@ -249,6 +278,8 @@ The alert should appear in OnCall's alert groups, and the configured escalation 
 ## Production Considerations
 
 For production use, switch from SQLite to MySQL or PostgreSQL for better performance under concurrent load. Set a strong `SECRET_KEY` and enable HTTPS on the reverse proxy. Configure proper backup schedules for the database and Redis data.
+
+Cloud Connection for Grafana OnCall OSS ended on March 24, 2026. If you continue to run the archived OSS project, configure third-party providers such as Twilio for phone and SMS notifications and use a third-party push notification path instead of Grafana Cloud relay.
 
 ## Cleanup
 
