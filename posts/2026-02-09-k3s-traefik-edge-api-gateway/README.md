@@ -14,7 +14,7 @@ In this guide, we'll configure K3s with Traefik to serve as an edge API gateway 
 
 ## Understanding K3s and Traefik Integration
 
-K3s automatically installs and configures Traefik during cluster initialization. Unlike standard Kubernetes distributions where you manually install an ingress controller, K3s handles this for you. The default Traefik installation includes the core functionality needed for API gateway operations, including routing, middleware, and service mesh capabilities.
+K3s automatically installs and configures Traefik during cluster initialization. Unlike standard Kubernetes distributions where you manually install an ingress controller, K3s handles this for you. The default Traefik installation includes the core functionality needed for API gateway operations, including routing and middleware capabilities.
 
 Traefik operates as both an ingress controller and an API gateway. It watches Kubernetes resources and automatically configures routes based on IngressRoute custom resources. The middleware system in Traefik allows you to add rate limiting, authentication, circuit breakers, and other API gateway features to your routes.
 
@@ -30,11 +30,13 @@ curl -sfL https://get.k3s.io | sh -
 # Verify K3s is running
 sudo systemctl status k3s
 
+# Get kubeconfig for kubectl access
+mkdir -p ~/.kube
+sudo cat /etc/rancher/k3s/k3s.yaml > ~/.kube/config
+chmod 600 ~/.kube/config
+
 # Check that Traefik is deployed
 kubectl get pods -n kube-system | grep traefik
-
-# Get kubeconfig for kubectl access
-sudo cat /etc/rancher/k3s/k3s.yaml > ~/.kube/config
 ```
 
 The default installation creates a Traefik deployment in the kube-system namespace. This deployment runs with a minimal resource footprint suitable for edge environments.
@@ -53,17 +55,23 @@ metadata:
 spec:
   valuesContent: |-
     # Enable Traefik dashboard for monitoring
-    dashboard:
-      enabled: true
-      domain: traefik.local
+    api:
+      dashboard: true
+
+    ingressRoute:
+      dashboard:
+        enabled: true
+        matchRule: Host(`traefik.local`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))
+        entryPoints:
+          - web
 
     # Configure ports for API gateway
     ports:
       web:
-        port: 80
+        port: 8000
         exposedPort: 80
       websecure:
-        port: 443
+        port: 8443
         exposedPort: 443
       metrics:
         port: 9100
@@ -74,11 +82,6 @@ spec:
       access:
         enabled: true
         format: json
-
-    # Configure middleware plugins
-    experimental:
-      plugins:
-        enabled: true
 
     # Resource limits for edge deployment
     resources:
@@ -107,7 +110,7 @@ Create a RateLimit middleware that enforces request limits per client:
 
 ```yaml
 # rate-limit-middleware.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: rate-limit
@@ -120,13 +123,9 @@ spec:
     burst: 50
     # Time period for rate calculation
     period: 1s
-    # Source for rate limit identification (IP address)
-    sourceCriterion:
-      ipStrategy:
-        depth: 1
 ```
 
-This configuration allows 100 requests per second on average with burst capacity for 50 additional requests. The `sourceCriterion` uses the client IP address for rate limit enforcement.
+This configuration allows 100 requests per second on average with burst capacity for 50 requests. With no explicit `sourceCriterion`, Traefik uses the request's remote address for rate limit enforcement.
 
 Apply the middleware:
 
@@ -171,6 +170,7 @@ spec:
       - name: api
         image: hashicorp/http-echo:latest
         args:
+          - "-listen=:8080"
           - "-text=API Response"
         ports:
         - containerPort: 8080
@@ -187,7 +187,7 @@ Now create the IngressRoute with rate limiting:
 
 ```yaml
 # api-ingress-route.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: api-gateway
@@ -218,7 +218,7 @@ For more sophisticated API gateway scenarios, implement different rate limits fo
 
 ```yaml
 # tiered-rate-limits.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: rate-limit-public
@@ -229,7 +229,7 @@ spec:
     burst: 5
     period: 1s
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: rate-limit-premium
@@ -245,7 +245,7 @@ Apply different rate limits based on request paths or headers:
 
 ```yaml
 # multi-tier-ingress.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: api-gateway-tiered
@@ -274,7 +274,7 @@ spec:
 
 ## Monitoring Rate Limit Metrics
 
-Traefik exposes Prometheus metrics that include rate limiting information. Enable metrics collection to monitor rate limit enforcement:
+Traefik exposes Prometheus request metrics that you can use to monitor rate limit enforcement by tracking HTTP 429 responses. Enable metrics collection to monitor the gateway:
 
 ```yaml
 # metrics-service.yaml
@@ -300,8 +300,8 @@ Access rate limit metrics at the Traefik metrics endpoint:
 # Forward metrics port locally
 kubectl port-forward -n kube-system svc/traefik-metrics 9100:9100
 
-# Query rate limit metrics
-curl http://localhost:9100/metrics | grep rate
+# Query request metrics, including 429 responses when rate limits are exceeded
+curl http://localhost:9100/metrics | grep -E 'traefik_(service|entrypoint|router)_requests_total'
 ```
 
 Key metrics to monitor include `traefik_service_requests_total` and `traefik_entrypoint_requests_total` which show request counts that you can correlate with rate limit configurations.
@@ -324,11 +324,19 @@ When rate limits are exceeded, Traefik returns HTTP 429 (Too Many Requests) resp
 
 ## Combining Rate Limiting with Other Middleware
 
-Traefik's middleware chain allows you to combine rate limiting with authentication, circuit breakers, and other API gateway features. Stack multiple middleware components:
+Traefik's middleware chain allows you to combine rate limiting with compression and other API gateway features. Stack multiple middleware components:
 
 ```yaml
 # combined-middleware.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: compress
+  namespace: default
+spec:
+  compress: {}
+---
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: api-protection
@@ -337,8 +345,7 @@ spec:
   chain:
     middlewares:
     - name: rate-limit
-    - name: auth-headers
-    - name: compression
+    - name: compress
 ```
 
 This approach creates comprehensive API gateway protection at the edge without requiring separate gateway infrastructure.
