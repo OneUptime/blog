@@ -31,9 +31,9 @@ kubectl get csr
 This shows all certificate requests, their status, and requester information. The output looks like this:
 
 ```text
-NAME        AGE   SIGNERNAME                      REQUESTOR          CONDITION
-user-1-csr  5m    kubernetes.io/kube-apiserver   admin              Pending
-node-csr    2h    kubernetes.io/kubelet-serving  system:node:node1  Approved,Issued
+NAME        AGE   SIGNERNAME                                REQUESTOR          CONDITION
+user-1-csr  5m    kubernetes.io/kube-apiserver-client       admin              Pending
+node-csr    2h    kubernetes.io/kube-apiserver-client-kubelet  system:node:node1  Approved,Issued
 ```
 
 To see detailed information about a specific CSR:
@@ -113,13 +113,13 @@ Once you have reviewed a CSR and determined it is legitimate, approve it:
 kubectl certificate approve user-1-csr
 ```
 
-The cluster CA signs the certificate immediately. Check the status:
+A signing controller can then issue the certificate. Check the status:
 
 ```bash
 kubectl get csr user-1-csr
 ```
 
-The condition should show "Approved,Issued".
+After the signer issues the certificate, the condition should show "Approved,Issued".
 
 Retrieve the signed certificate:
 
@@ -133,7 +133,9 @@ Now you have a signed certificate that can be used for cluster authentication.
 You can approve multiple CSRs at once:
 
 ```bash
-kubectl certificate approve csr-1 csr-2 csr-3
+for CSR in csr-1 csr-2 csr-3; do
+  kubectl certificate approve "$CSR"
+done
 ```
 
 ## Denying Certificate Signing Requests
@@ -146,27 +148,30 @@ kubectl certificate deny user-suspicious-csr
 
 Once denied, the requester cannot use that CSR. They must create a new request if they still need a certificate.
 
-Add a message explaining why you denied the request:
+Record the reason for denial separately, for example with an annotation, before denying the request:
 
 ```bash
-kubectl certificate deny user-suspicious-csr \
-  --reason="Unauthorized request from unknown source"
+kubectl annotate csr user-suspicious-csr \
+  csr-review.example.com/denial-reason="Unauthorized request from unknown source"
+
+kubectl certificate deny user-suspicious-csr
 ```
 
 Check denied CSRs:
 
 ```bash
-kubectl get csr --field-selector status.conditions[*].type=Denied
+kubectl get csr -o json | \
+  jq -r '.items[] | select(any(.status.conditions[]?; .type == "Denied")) | .metadata.name'
 ```
 
 ## Automating CSR Approval
 
 For trusted automated systems like kubelet node certificates, you can set up automatic approval. Kubernetes includes a controller that auto-approves certain types of CSRs based on configurable rules.
 
-The kubelet-serving CSRs for nodes are often auto-approved if they meet specific criteria:
+The kubelet client certificate CSRs for nodes can be auto-approved if they meet specific criteria:
 
 ```bash
-kubectl get csr --field-selector spec.signerName=kubernetes.io/kubelet-serving
+kubectl get csr --field-selector spec.signerName=kubernetes.io/kube-apiserver-client-kubelet
 ```
 
 You can write a custom controller or script to auto-approve CSRs that match your criteria:
@@ -178,7 +183,7 @@ You can write a custom controller or script to auto-approve CSRs that match your
 while true; do
   # Get pending node CSRs
   PENDING_CSRS=$(kubectl get csr -o json | \
-    jq -r '.items[] | select(.status.conditions == null) | select(.spec.signerName == "kubernetes.io/kubelet-serving") | .metadata.name')
+    jq -r '.items[] | select((.status.conditions // []) | length == 0) | select(.spec.signerName == "kubernetes.io/kube-apiserver-client-kubelet") | .metadata.name')
 
   for CSR in $PENDING_CSRS; do
     # Validate the CSR meets your criteria
@@ -327,19 +332,25 @@ kubectl get csr pending-csr -o jsonpath='{.spec.signerName}'
 
 Common signer names include:
 - kubernetes.io/kube-apiserver-client
+- kubernetes.io/kube-apiserver-client-kubelet
 - kubernetes.io/kubelet-serving
-- kubernetes.io/legacy-unknown
 
-If the CSR was denied, check the reason:
+If the CSR was denied, check the condition message:
 
 ```bash
 kubectl get csr denied-csr -o jsonpath='{.status.conditions[*].message}'
 ```
 
+If you recorded a separate denial reason as an annotation, check that annotation:
+
+```bash
+kubectl get csr denied-csr -o jsonpath='{.metadata.annotations.csr-review\.example\.com/denial-reason}'
+```
+
 If an approved CSR does not have a certificate, check the controller manager logs:
 
 ```bash
-kubectl logs -n kube-system kube-controller-manager-master-node | grep certificate
+kubectl logs -n kube-system -l component=kube-controller-manager --tail=200 | grep certificate
 ```
 
 The controller manager is responsible for signing approved CSRs. Errors here indicate issues with the CA configuration.
@@ -351,7 +362,7 @@ Old CSRs accumulate over time. Clean them up regularly:
 ```bash
 # Delete all approved and issued CSRs older than 30 days
 kubectl get csr -o json | \
-  jq -r '.items[] | select(.status.conditions[].type == "Approved") | select(.metadata.creationTimestamp < "'$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)'") | .metadata.name' | \
+  jq -r '.items[] | select(any(.status.conditions[]?; .type == "Approved")) | select(.metadata.creationTimestamp < "'$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)'") | .metadata.name' | \
   xargs kubectl delete csr
 ```
 
@@ -359,7 +370,7 @@ Delete denied CSRs:
 
 ```bash
 kubectl get csr -o json | \
-  jq -r '.items[] | select(.status.conditions[].type == "Denied") | .metadata.name' | \
+  jq -r '.items[] | select(any(.status.conditions[]?; .type == "Denied")) | .metadata.name' | \
   xargs kubectl delete csr
 ```
 
