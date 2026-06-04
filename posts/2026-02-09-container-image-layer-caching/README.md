@@ -12,7 +12,7 @@ Pod startup latency directly impacts application responsiveness and scaling effi
 
 ## Understanding Image Layer Architecture
 
-Container images consist of read-only layers stacked on top of each other. Each instruction in a Dockerfile creates a new layer. When you pull an image, the runtime downloads only layers not already cached locally. Understanding this layering model is key to optimization.
+Container images consist of read-only layers stacked on top of each other. Filesystem-changing Dockerfile instructions such as `RUN`, `COPY`, and `ADD` create new layers. When you pull an image, the runtime downloads only layers not already cached locally. Understanding this layering model is key to optimization.
 
 Layers are content-addressable, identified by SHA256 digests. If two images share layers, they're stored only once. This makes layer reuse critical for caching efficiency. By structuring Dockerfiles to maximize layer sharing and implementing aggressive caching policies, you minimize data transfer and storage requirements.
 
@@ -23,7 +23,7 @@ Structure Dockerfiles to maximize cache hits across builds and deployments.
 ```dockerfile
 # Optimized Dockerfile with layer caching in mind
 
-FROM node:18-alpine AS base
+FROM node:22-alpine AS base
 
 # Create app directory first (rarely changes)
 WORKDIR /app
@@ -32,17 +32,18 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies in separate layer
-RUN npm ci --only=production && \
+RUN npm ci && \
     npm cache clean --force
 
 # Copy source code last (changes most frequently)
 COPY . .
 
 # Build in separate layer
-RUN npm run build
+RUN npm run build && \
+    npm prune --omit=dev
 
 # Production stage
-FROM node:18-alpine
+FROM node:22-alpine
 WORKDIR /app
 
 # Copy only necessary files from build stage
@@ -58,7 +59,7 @@ This structure ensures dependency layers cache effectively while code changes in
 
 ## Implementing Registry Mirrors
 
-Deploy local registry mirrors to cache images closer to your clusters.
+Deploy a local registry mirror to cache images closer to your clusters.
 
 ```yaml
 # registry-mirror-deployment.yaml
@@ -68,7 +69,7 @@ metadata:
   name: registry-mirror
   namespace: kube-system
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: registry-mirror
@@ -129,16 +130,22 @@ spec:
   storageClassName: fast-ssd
 ```
 
-Configure containerd to use the mirror:
+Configure containerd to use the mirror. The mirror endpoint must be reachable from each node's host network; a Kubernetes service DNS name is usually not resolvable by the host-level container runtime unless you explicitly configure node DNS for it.
 
 ```toml
 # /etc/containerd/config.toml
+version = 2
+
 [plugins."io.containerd.grpc.v1.cri".registry]
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-      endpoint = ["http://registry-mirror.kube-system.svc.cluster.local:5000"]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."gcr.io"]
-      endpoint = ["http://registry-mirror.kube-system.svc.cluster.local:5000"]
+  config_path = "/etc/containerd/certs.d"
+```
+
+```toml
+# /etc/containerd/certs.d/docker.io/hosts.toml
+server = "https://registry-1.docker.io"
+
+[host."http://registry-mirror.example.internal:5000"]
+  capabilities = ["pull", "resolve"]
 ```
 
 ## Implementing Image Pre-Pulling Strategy
@@ -168,7 +175,7 @@ spec:
       initContainers:
       # Pull base images
       - name: pull-base-alpine
-        image: alpine:3.18
+        image: alpine:3.22
         command: ["sh", "-c", "echo 'Pulled alpine'"]
       - name: pull-base-ubuntu
         image: ubuntu:22.04
@@ -189,7 +196,7 @@ spec:
         command: ["sh", "-c", "echo 'Pulled fluent-bit'"]
       containers:
       - name: pause
-        image: registry.k8s.io/pause:3.9
+        image: registry.k8s.io/pause:3.10
         resources:
           limits:
             cpu: 10m
@@ -283,23 +290,19 @@ func (ip *ImagePrepuller) createPullPod(nodeName, image string) {
 
 Balance cache retention with storage capacity through intelligent garbage collection.
 
-```toml
-# /etc/containerd/config.toml
-[plugins."io.containerd.gc.v1.scheduler"]
-  # Run garbage collection periodically
-  pause_threshold = 0.02
-  deletion_threshold = 0
-  mutation_threshold = 100
-  schedule_delay = "0s"
-  startup_delay = "100ms"
+```yaml
+# /var/lib/kubelet/config.yaml
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
 
-[plugins."io.containerd.grpc.v1.cri"]
-  # Configure image garbage collection
-  [plugins."io.containerd.grpc.v1.cri".containerd]
-    # Don't GC images if disk usage is below threshold
-    disk_usage_low_threshold = 80
-    # Start GC when disk usage exceeds threshold
-    disk_usage_high_threshold = 90
+# Start image GC when disk usage exceeds this threshold
+imageGCHighThresholdPercent: 90
+
+# Continue image GC until disk usage falls below this threshold
+imageGCLowThresholdPercent: 80
+
+# Keep recently unused images for at least this long
+imageMinimumGCAge: 2m
 ```
 
 Implement custom GC policies:
@@ -308,28 +311,14 @@ Implement custom GC policies:
 #!/bin/bash
 # image-gc-policy.sh
 
-# Keep images used in last 24 hours
-RETENTION_HOURS=24
+# Kubelet should remain the primary owner of image GC on Kubernetes nodes.
+# For emergency cleanup, inspect image filesystem usage and remove dangling images.
+crictl imagefsinfo
 
-# Get all images
-all_images=$(crictl images -q)
-
-for image in $all_images; do
-  # Check image last used time
-  last_used=$(crictl inspecti $image | jq -r '.status.usedAt')
-
-  if [ -n "$last_used" ]; then
-    last_used_ts=$(date -d "$last_used" +%s)
-    current_ts=$(date +%s)
-    age_hours=$(( ($current_ts - $last_used_ts) / 3600 ))
-
-    if [ $age_hours -gt $RETENTION_HOURS ]; then
-      # Check if any pod is using this image
-      if ! crictl ps -a | grep -q $image; then
-        echo "Removing unused image: $image (age: ${age_hours}h)"
-        crictl rmi $image
-      fi
-    fi
+crictl images --filter dangling=true -q | while read -r image; do
+  if [ -n "$image" ]; then
+    echo "Removing dangling image: $image"
+    crictl rmi "$image"
   fi
 done
 ```
@@ -341,7 +330,7 @@ Use BuildKit's advanced caching features for faster image builds.
 ```dockerfile
 # syntax=docker/dockerfile:1.4
 
-FROM golang:1.21 AS builder
+FROM golang:1.26 AS builder
 
 WORKDIR /src
 
@@ -356,7 +345,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -o /app/server .
 
-FROM alpine:3.18
+FROM alpine:3.22
 COPY --from=builder /app/server /server
 ENTRYPOINT ["/server"]
 ```
@@ -378,10 +367,10 @@ data:
       enabled = true
       namespace = "k8s.io"
 
-    [[registry."docker.io"]]
-      mirrors = ["registry-mirror.kube-system.svc.cluster.local:5000"]
+    [registry."docker.io"]
+      mirrors = ["registry-mirror.example.internal:5000"]
 
-    [registry."registry-mirror.kube-system.svc.cluster.local:5000"]
+    [registry."registry-mirror.example.internal:5000"]
       http = true
       insecure = true
 ```
@@ -406,53 +395,45 @@ data:
       - record: image_pull_duration_seconds
         expr: |
           histogram_quantile(0.95,
-            rate(containerd_image_pull_duration_seconds_bucket[5m])
+            rate(kubelet_image_pull_duration_seconds_bucket[5m])
           )
 
       # Cache hit rate
       - record: image_cache_hit_rate
         expr: |
-          sum(rate(containerd_image_pull_cache_hit[5m])) /
-          sum(rate(containerd_image_pull_total[5m]))
+          sum(rate(kubelet_image_manager_ensure_image_requests_total{present_locally="true"}[5m])) /
+          sum(rate(kubelet_image_manager_ensure_image_requests_total[5m]))
 
-      # Layer reuse efficiency
-      - record: image_layer_reuse_ratio
+      # Pull required rate
+      - record: image_pull_required_rate
         expr: |
-          1 - (
-            sum(rate(containerd_image_layers_downloaded[5m])) /
-            sum(rate(containerd_image_layers_required[5m]))
-          )
+          sum(rate(kubelet_image_manager_ensure_image_requests_total{pull_required="true"}[5m])) /
+          sum(rate(kubelet_image_manager_ensure_image_requests_total[5m]))
 ```
 
 Query metrics:
 
 ```bash
 # Check image pull times
-kubectl top nodes --sort-by=image_pull_duration
+kubectl get events -A --sort-by=.lastTimestamp | grep -E 'Pulled|Pulling|Failed'
 
-# View cache statistics
-crictl stats --image-cache
+# View image filesystem usage
+crictl imagefsinfo
 
-# Analyze layer sharing
-crictl images -v | awk '{layers+=$4; size+=$5} END {print "Avg layers per image:", layers/NR}'
+# List local images with digests
+crictl images --digests
 ```
 
 ## Implementing Layer Deduplication
 
-Enable content-addressable storage deduplication to maximize sharing.
+Use containerd's content-addressable image store and the overlayfs snapshotter to maximize sharing. Layers are stored by digest, so identical content is stored once without a separate "enable deduplication" flag.
 
 ```toml
 # /etc/containerd/config.toml
-[plugins."io.containerd.snapshotter.v1.overlayfs"]
-  # Enable layer deduplication
-  root_path = "/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs"
+version = 2
 
-  # Use hard links for layer deduplication
-  mount_options = ["nodev"]
-
-[plugins."io.containerd.content.v1.content"]
-  # Enable content deduplication
-  discard = false
+[plugins."io.containerd.grpc.v1.cri".containerd]
+  snapshotter = "overlayfs"
 ```
 
 Implement deduplication analysis:
@@ -463,34 +444,12 @@ Implement deduplication analysis:
 
 echo "Analyzing layer deduplication..."
 
-# Get all layer digests
-layer_digests=$(crictl images -v | grep -oP 'sha256:[a-f0-9]{64}' | sort | uniq)
+image_count=$(ctr -n k8s.io images ls -q | wc -l)
+content_count=$(ctr -n k8s.io content ls -q | wc -l)
 
-total_layers=0
-unique_layers=0
-total_size=0
-deduplicated_size=0
-
-for digest in $layer_digests; do
-  # Count references to this layer
-  refs=$(crictl images -v | grep -c $digest)
-
-  # Get layer size
-  size=$(crictl inspecti $(crictl images -q | head -1) | jq -r ".info.imageSpec.rootfs.diff_ids[] | select(. == \"$digest\")") || echo "0"
-
-  total_layers=$((total_layers + refs))
-  unique_layers=$((unique_layers + 1))
-
-  if [ $refs -gt 1 ]; then
-    saved=$((size * (refs - 1)))
-    deduplicated_size=$((deduplicated_size + saved))
-  fi
-done
-
-echo "Total layer references: $total_layers"
-echo "Unique layers: $unique_layers"
-echo "Deduplication ratio: $(echo "scale=2; $unique_layers / $total_layers" | bc)"
-echo "Storage saved: $(numfmt --to=iec $deduplicated_size)"
+echo "Images: $image_count"
+echo "Unique content objects: $content_count"
+ctr -n k8s.io content ls
 ```
 
 ## Implementing Cache Warming on Node Join
@@ -509,7 +468,7 @@ spec:
       nodeSelector:
         node.kubernetes.io/instance-type: t3.large
       initContainers:
-      # Pull critical images in parallel
+      # Init containers pull critical images sequentially
       - name: warm-cache-1
         image: mycompany/api:latest
         command: ["true"]
@@ -521,7 +480,7 @@ spec:
         command: ["true"]
       containers:
       - name: complete
-        image: alpine:3.18
+        image: alpine:3.22
         command: ["echo", "Cache warmed"]
       restartPolicy: Never
 ```
@@ -544,6 +503,13 @@ func handleNodeAdd(node *corev1.Node) {
                     InitContainers: []corev1.Container{
                         // Pull critical images
                     },
+                    Containers: []corev1.Container{
+                        {
+                            Name:    "complete",
+                            Image:   "registry.k8s.io/pause:3.10",
+                        },
+                    },
+                    RestartPolicy: corev1.RestartPolicyNever,
                 },
             },
         },
