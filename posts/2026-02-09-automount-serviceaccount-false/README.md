@@ -98,6 +98,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: no-api-pod
+  namespace: production
 spec:
   serviceAccountName: flexible-sa
   automountServiceAccountToken: false  # This pod opts out
@@ -109,6 +110,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: api-pod
+  namespace: production
 spec:
   serviceAccountName: flexible-sa
   # automountServiceAccountToken not specified, inherits from SA (true)
@@ -210,7 +212,7 @@ Even with minimal RBAC permissions, tokens provide a foothold. Eliminating unnec
 
 ## Implementing with Pod Security Standards
 
-Pod Security Standards can enforce token mounting policies:
+Pod Security Standards do not enforce `automountServiceAccountToken`. They are still useful alongside this setting because the restricted profile enforces other pod hardening controls:
 
 ```yaml
 # namespace-with-pss.yaml
@@ -224,7 +226,7 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
 ```
 
-The restricted Pod Security Standard encourages (but doesn't require) disabling automatic token mounting. Pair this with policy enforcement for comprehensive security.
+Pair Pod Security Standards with a policy engine such as OPA Gatekeeper when you need to require `automountServiceAccountToken: false`.
 
 ## Using OPA Gatekeeper for Enforcement
 
@@ -232,7 +234,7 @@ Enforce token mounting policies across the cluster with OPA Gatekeeper:
 
 ```yaml
 # gatekeeper-constraint-template.yaml
-apiVersion: templates.gatekeeper.sh/v1beta1
+apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: k8srequireautomountfalse
@@ -241,6 +243,9 @@ spec:
     spec:
       names:
         kind: K8sRequireAutomountFalse
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -291,7 +296,9 @@ Verify whether a token is actually mounted:
 kubectl exec pod-name -n production -- test -f /var/run/secrets/kubernetes.io/serviceaccount/token && echo "Token exists" || echo "No token"
 
 # Check the pod spec
+# Empty output means the pod does not set an override; check the ServiceAccount too.
 kubectl get pod pod-name -n production -o jsonpath='{.spec.automountServiceAccountToken}'
+kubectl get serviceaccount service-account-name -n production -o jsonpath='{.automountServiceAccountToken}'
 ```
 
 ## Migration Strategy
@@ -321,13 +328,24 @@ Use this script to audit your cluster:
 # audit-token-mounting.sh
 
 echo "Pods with automatic token mounting:"
-kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] |
-    select(.spec.automountServiceAccountToken != false) |
-    "\(.metadata.namespace)/\(.metadata.name)"'
+kubectl get pods,serviceaccounts --all-namespaces -o json | \
+  jq -r '
+    .items as $items |
+    ($items |
+      map(select(.kind == "ServiceAccount") |
+        {key: (.metadata.namespace + "/" + .metadata.name), value: (.automountServiceAccountToken // null)}) |
+      from_entries) as $serviceAccounts |
+    $items[] |
+    select(.kind == "Pod") |
+    .metadata.namespace as $namespace |
+    (.spec.serviceAccountName // "default") as $serviceAccount |
+    .spec.automountServiceAccountToken as $podAutomount |
+    ($serviceAccounts[$namespace + "/" + $serviceAccount]) as $serviceAccountAutomount |
+    select($podAutomount == true or ($podAutomount == null and $serviceAccountAutomount != false)) |
+    "\($namespace)/\(.metadata.name) (serviceAccount: \($serviceAccount))"'
 
 echo ""
-echo "ServiceAccounts with automatic token mounting:"
+echo "ServiceAccounts that allow automatic token mounting:"
 kubectl get serviceaccounts --all-namespaces -o json | \
   jq -r '.items[] |
     select(.automountServiceAccountToken != false) |
