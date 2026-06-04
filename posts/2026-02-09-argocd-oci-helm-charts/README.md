@@ -47,7 +47,7 @@ metadata:
 stringData:
   type: helm
   name: my-oci-registry
-  url: oci://registry.example.com
+  url: registry.example.com/helm-charts
   username: myuser
   password: mypassword
   enableOCI: "true"
@@ -63,10 +63,10 @@ argocd repo list
 ```
 
 For different registries, adjust the URL format:
-- Docker Hub: `oci://registry-1.docker.io`
-- GitHub: `oci://ghcr.io`
-- ECR: `oci://123456789.dkr.ecr.us-east-1.amazonaws.com`
-- Harbor: `oci://harbor.example.com`
+- Docker Hub: `registry-1.docker.io/myorg/charts`
+- GitHub: `ghcr.io/myorg/charts`
+- ECR: `123456789.dkr.ecr.us-east-1.amazonaws.com/helm-charts`
+- Harbor: `harbor.example.com/library/charts`
 
 ## Creating an Application with OCI Helm charts
 
@@ -82,7 +82,7 @@ spec:
   project: default
   source:
     chart: my-application
-    repoURL: oci://registry.example.com/helm-charts
+    repoURL: registry.example.com/helm-charts
     targetRevision: 1.2.3
     helm:
       values: |
@@ -112,8 +112,8 @@ spec:
 ```
 
 Key differences from traditional Helm repos:
-- `repoURL` uses `oci://` protocol
-- `chart` specifies the chart name (repository path)
+- `repoURL` points to the OCI registry path without the `oci://` protocol when ArgoCD is using a Helm OCI repository
+- `chart` specifies the chart name
 - `targetRevision` is the chart version (OCI tag)
 
 ## Using AWS ECR for Helm charts
@@ -122,37 +122,28 @@ For AWS ECR, authentication requires special handling:
 
 ```bash
 # Get ECR login token
-aws ecr get-login-password --region us-east-1 | \
-  argocd repo add oci://123456789.dkr.ecr.us-east-1.amazonaws.com \
+ECR_PASSWORD="$(aws ecr get-login-password --region us-east-1)"
+
+argocd repo add 123456789.dkr.ecr.us-east-1.amazonaws.com/helm-charts \
   --type helm \
   --name aws-ecr \
   --username AWS \
-  --password-stdin \
+  --password "$ECR_PASSWORD" \
   --enable-oci
 ```
 
-For automated token refresh, use IRSA (IAM Roles for Service Accounts):
+For EKS deployments with an ArgoCD integration that supports IAM-backed ECR access, attach an IRSA (IAM Roles for Service Accounts) role to the repo server:
 
-```yaml
-# argocd-repo-server-service-account.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: argocd-repo-server
-  namespace: argocd
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/argocd-ecr-access
----
-# Patch argocd-repo-server deployment to use this SA
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-repo-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      serviceAccountName: argocd-repo-server
+```bash
+kubectl annotate serviceaccount argocd-repo-server \
+  -n argocd \
+  eks.amazonaws.com/role-arn=arn:aws:iam::123456789:role/argocd-ecr-access \
+  --overwrite
+
+kubectl patch deployment argocd-repo-server \
+  -n argocd \
+  --type='merge' \
+  -p '{"spec":{"template":{"spec":{"serviceAccountName":"argocd-repo-server"}}}}'
 ```
 
 Create the IAM role with ECR permissions:
@@ -192,7 +183,7 @@ metadata:
 stringData:
   type: helm
   name: google-artifact-registry
-  url: oci://us-central1-docker.pkg.dev
+  url: us-central1-docker.pkg.dev/my-project/helm-charts
   username: _json_key
   password: |
     {
@@ -218,9 +209,10 @@ metadata:
   name: gar-helm-app
   namespace: argocd
 spec:
+  project: default
   source:
     chart: my-app
-    repoURL: oci://us-central1-docker.pkg.dev/my-project/helm-charts
+    repoURL: us-central1-docker.pkg.dev/my-project/helm-charts
     targetRevision: 2.1.0
     helm:
       valueFiles:
@@ -245,7 +237,7 @@ metadata:
 stringData:
   type: helm
   name: github-registry
-  url: oci://ghcr.io
+  url: ghcr.io/myorg/charts
   username: github-username
   password: ghp_YourGitHubPersonalAccessToken
   enableOCI: "true"
@@ -260,9 +252,10 @@ metadata:
   name: ghcr-app
   namespace: argocd
 spec:
+  project: default
   source:
     chart: myapp
-    repoURL: oci://ghcr.io/myorg/charts
+    repoURL: ghcr.io/myorg/charts
     targetRevision: 1.0.5
     helm:
       parameters:
@@ -346,9 +339,10 @@ metadata:
   name: version-tracking-app
   namespace: argocd
 spec:
+  project: default
   source:
     chart: my-app
-    repoURL: oci://registry.example.com/helm-charts
+    repoURL: registry.example.com/helm-charts
     # Use specific version
     targetRevision: 1.2.3
     # Or use version constraint (requires additional tooling)
@@ -362,7 +356,7 @@ spec:
       selfHeal: true
 ```
 
-To auto-update to latest versions, use ArgoCD Image Updater:
+To auto-update container image tags rendered by Helm, use ArgoCD Image Updater:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -376,10 +370,14 @@ metadata:
     argocd-image-updater.argoproj.io/myapp.helm.image-tag: image.tag
     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
 spec:
+  project: default
   source:
     chart: my-app
-    repoURL: oci://registry.example.com/helm-charts
+    repoURL: registry.example.com/helm-charts
     targetRevision: 1.2.3
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
 ## Using multiple OCI registries
@@ -398,7 +396,7 @@ metadata:
     argocd.argoproj.io/secret-type: repository
 stringData:
   type: helm
-  url: oci://registry-1.docker.io
+  url: registry-1.docker.io/charts
   username: dockerhub-user
   password: dockerhub-token
   enableOCI: "true"
@@ -412,7 +410,7 @@ metadata:
     argocd.argoproj.io/secret-type: repository
 stringData:
   type: helm
-  url: oci://harbor.company.com
+  url: harbor.company.com/library/charts
   username: harbor-user
   password: harbor-password
   enableOCI: "true"
@@ -426,22 +424,32 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: app-from-dockerhub
+  namespace: argocd
 spec:
+  project: default
   source:
     chart: public-chart
-    repoURL: oci://registry-1.docker.io/charts
+    repoURL: registry-1.docker.io/charts
     targetRevision: 1.0.0
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
 ---
 # App from Harbor
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: app-from-harbor
+  namespace: argocd
 spec:
+  project: default
   source:
     chart: private-chart
-    repoURL: oci://harbor.company.com/library/charts
+    repoURL: harbor.company.com/library/charts
     targetRevision: 2.3.1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
 ## Combining OCI Helm charts with multi-source applications
@@ -459,7 +467,7 @@ spec:
   sources:
     # Helm chart from OCI registry
     - chart: my-app
-      repoURL: oci://registry.example.com/helm-charts
+      repoURL: registry.example.com/helm-charts
       targetRevision: 1.2.3
       helm:
         valueFiles:
@@ -512,7 +520,7 @@ spec:
                   helm registry login internal-registry.com -u $INT_USER -p $INT_PASS
 
                   for chart in app-a app-b app-c; do
-                    helm pull oci://external-registry.com/charts/$chart --version latest
+                    helm pull oci://external-registry.com/charts/$chart --version 1.2.3
                     helm push $chart-*.tgz oci://internal-registry.com/mirror
                   done
               envFrom:
@@ -529,10 +537,10 @@ Common issues and solutions:
 
 ```bash
 # Test registry authentication
-helm registry login oci://registry.example.com -u username -p password
+helm registry login registry.example.com -u username -p password
 
 # Verify ArgoCD has credentials
-argocd repo list | grep oci://
+argocd repo list | grep registry.example.com
 
 # Check repo server logs
 kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server
@@ -552,18 +560,12 @@ curl -u username:password \
 
 **Slow chart fetches:**
 
-Configure a pull-through cache or increase ArgoCD timeouts:
+Configure a pull-through cache or increase the repo-server execution timeout:
 
-```yaml
-# argocd-cm ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  timeout.reconciliation: 300s
-  helm.oci.timeout: 180s
+```bash
+kubectl set env deployment/argocd-repo-server \
+  -n argocd \
+  ARGOCD_EXEC_TIMEOUT=180s
 ```
 
 ## Best practices for OCI Helm charts
