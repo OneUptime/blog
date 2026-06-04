@@ -23,18 +23,17 @@ Install the stargz-snapshotter plugin for containerd on all Kubernetes nodes.
 ```bash
 # Download and install stargz-snapshotter
 
-STARGZ_VERSION="v0.15.0"
+STARGZ_VERSION="v0.18.1"
 wget https://github.com/containerd/stargz-snapshotter/releases/download/${STARGZ_VERSION}/stargz-snapshotter-${STARGZ_VERSION}-linux-amd64.tar.gz
 
-tar xzf stargz-snapshotter-${STARGZ_VERSION}-linux-amd64.tar.gz
-sudo cp stargz-snapshotter/containerd-stargz-grpc /usr/local/bin/
-sudo chmod +x /usr/local/bin/containerd-stargz-grpc
+sudo tar -C /usr/local/bin -xzf stargz-snapshotter-${STARGZ_VERSION}-linux-amd64.tar.gz containerd-stargz-grpc ctr-remote
 
 # Create systemd service
-sudo cat > /etc/systemd/system/stargz-snapshotter.service <<EOF
+sudo tee /etc/systemd/system/stargz-snapshotter.service >/dev/null <<EOF
 [Unit]
 Description=stargz snapshotter
 After=network.target
+Before=containerd.service
 
 [Service]
 Type=notify
@@ -63,16 +62,13 @@ version = 2
   [proxy_plugins.stargz]
     type = "snapshot"
     address = "/run/containerd-stargz-grpc/containerd-stargz-grpc.sock"
+  [proxy_plugins.stargz.exports]
+    root = "/var/lib/containerd-stargz-grpc/"
 
 [plugins."io.containerd.grpc.v1.cri"]
   [plugins."io.containerd.grpc.v1.cri".containerd]
     snapshotter = "stargz"
     disable_snapshot_annotations = false
-
-[plugins."io.containerd.grpc.v1.cri".registry]
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-      endpoint = ["https://registry-1.docker.io"]
 ```
 
 Restart containerd:
@@ -86,21 +82,17 @@ sudo systemctl restart containerd
 Convert existing images to eStargz format that supports lazy pulling.
 
 ```bash
-# Install ctr-remote
-wget https://github.com/containerd/stargz-snapshotter/releases/download/v0.15.0/ctr-remote-v0.15.0-linux-amd64.tar.gz
-tar xzf ctr-remote-v0.15.0-linux-amd64.tar.gz
-sudo cp ctr-remote /usr/local/bin/
-sudo chmod +x /usr/local/bin/ctr-remote
+# ctr-remote is included in the stargz-snapshotter release archive above
 
 # Convert an image to eStargz
-ctr-remote images optimize \
+ctr-remote image optimize \
   --oci \
-  --period-msec=10 \
+  --period=10 \
   mycompany/app:v1.0.0 \
   mycompany/app:v1.0.0-esgz
 
 # Push the optimized image
-ctr-remote images push mycompany/app:v1.0.0-esgz
+ctr-remote image push mycompany/app:v1.0.0-esgz
 ```
 
 Optimize during build with Docker Buildx:
@@ -109,7 +101,7 @@ Optimize during build with Docker Buildx:
 # Build image with eStargz layers
 docker buildx build \
   --platform linux/amd64 \
-  --output type=image,name=mycompany/app:latest,compression=estargz,oci-mediatypes=true,push=true \
+  --output type=image,name=mycompany/app:latest,compression=estargz,oci-mediatypes=true,force-compression=true,push=true \
   .
 ```
 
@@ -129,27 +121,26 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
+      uses: docker/setup-qemu-action@v3
     
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@v3
     
     - name: Login to Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
     
     - name: Build and push eStargz image
-      uses: docker/build-push-action@v4
+      uses: docker/build-push-action@v7
       with:
         context: .
-        push: true
         tags: mycompany/app:${{ github.sha }}-esgz
-        outputs: type=image,compression=estargz,oci-mediatypes=true
+        outputs: type=image,compression=estargz,oci-mediatypes=true,force-compression=true,push=true
 ```
 
 ## Deploying Workloads with Lazy Pulling
@@ -162,8 +153,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: fast-startup-app
-  annotations:
-    io.containerd.image.pull-policy: "lazy"
 spec:
   replicas: 5
   selector:
@@ -173,9 +162,6 @@ spec:
     metadata:
       labels:
         app: fast-startup
-      annotations:
-        # Enable stargz lazy pulling
-        io.containerd.cri.runtime-handler: "stargz"
     spec:
       containers:
       - name: app
@@ -198,6 +184,8 @@ spec:
           initialDelaySeconds: 2
           periodSeconds: 5
 ```
+
+Lazy pulling is selected by the node's containerd snapshotter configuration. The pod only needs to reference an eStargz image on nodes where `snapshotter = "stargz"` is configured.
 
 ## Optimizing Image Structure for Lazy Pulling
 
@@ -233,15 +221,18 @@ EXPOSE 8080
 CMD ["/app/app"]
 ```
 
-File ordering matters because stargz-snapshotter fetches files in the order they're accessed. Place frequently accessed files earlier in layers.
+Image structure matters because startup files that are grouped into small, stable layers are easier to prioritize and prefetch during eStargz optimization. Use `ctr-remote image optimize` or BuildKit eStargz compression to encode the optimized file order.
 
 ## Monitoring Lazy Pull Performance
 
 Track lazy pulling effectiveness and performance.
 
 ```bash
+# Enable metrics in /etc/containerd-stargz-grpc/config.toml:
+# metrics_address = "127.0.0.1:8234"
+
 # Check stargz-snapshotter metrics
-curl http://localhost:50051/metrics
+curl http://127.0.0.1:8234/metrics
 
 # View snapshotter logs
 sudo journalctl -u stargz-snapshotter -f
@@ -250,7 +241,7 @@ sudo journalctl -u stargz-snapshotter -f
 kubectl get events --sort-by='.lastTimestamp' | grep "Started container"
 ```
 
-Create Prometheus metrics:
+Create a Prometheus scrape configuration:
 
 ```yaml
 # stargz-metrics.yaml
@@ -259,60 +250,33 @@ kind: ConfigMap
 metadata:
   name: stargz-metrics
 data:
-  queries.yml: |
-    groups:
-    - name: stargz
-      rules:
-      - record: stargz_fetch_duration_seconds
-        expr: histogram_quantile(0.99, rate(stargz_fs_operation_duration_seconds_bucket{operation="read"}[5m]))
-      
-      - record: stargz_cache_hit_rate
-        expr: rate(stargz_cache_hits_total[5m]) / rate(stargz_cache_requests_total[5m])
-      
-      - record: stargz_bytes_fetched
-        expr: rate(stargz_bytes_downloaded_total[5m])
+  prometheus.yml: |
+    scrape_configs:
+    - job_name: stargz-snapshotter
+      static_configs:
+      - targets:
+        - 127.0.0.1:8234
 ```
 
 ## Implementing Prefetch Hints
 
-Optimize lazy pulling with prefetch hints for predictable access patterns.
+Optimize lazy pulling with a prefetch list for predictable access patterns.
 
-```yaml
-# Add prefetch annotations to images
-apiVersion: v1
-kind: Pod
-metadata:
-  name: optimized-lazy-pull
-  annotations:
-    # Prefetch specific paths
-    io.containerd.image.prefetch: |
-      [
-        "/app/app",
-        "/app/config/*",
-        "/usr/lib/x86_64-linux-gnu/libssl.so.3"
-      ]
-spec:
-  containers:
-  - name: app
-    image: mycompany/app:v1.0.0-esgz
+```text
+# prefetch-list.txt
+/app/app
+/app/config/*
+/usr/lib/x86_64-linux-gnu/libssl.so.3
 ```
 
-Create prefetch profiles:
+Use the prefetch list when optimizing the image:
 
-```json
-{
-  "prefetch": {
-    "landmarks": [
-      "/app/app",
-      "/app/config/default.yaml",
-      "/lib/x86_64-linux-gnu/libc.so.6"
-    ],
-    "patterns": [
-      "/app/config/*.yaml",
-      "/usr/lib/*.so*"
-    ]
-  }
-}
+```bash
+ctr-remote image optimize \
+  --oci \
+  --prefetch-list=prefetch-list.txt \
+  mycompany/app:v1.0.0 \
+  mycompany/app:v1.0.0-esgz
 ```
 
 ## Troubleshooting Lazy Pull Issues
@@ -323,8 +287,8 @@ Debug problems with stargz-snapshotter.
 # Check snapshotter status
 systemctl status stargz-snapshotter
 
-# Test eStargz image compatibility
-ctr-remote images check mycompany/app:v1.0.0-esgz
+# Check whether local image content is available
+ctr-remote image check mycompany/app:v1.0.0-esgz
 
 # View detailed fetch logs
 sudo journalctl -u stargz-snapshotter --since "1 hour ago" | grep fetch
