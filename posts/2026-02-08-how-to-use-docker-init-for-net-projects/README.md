@@ -17,11 +17,11 @@ Create a basic ASP.NET Core Web API:
 ```bash
 # Create a new Web API project
 
-dotnet new webapi -n DotnetDockerDemo
+dotnet new webapi -n DotnetDockerDemo --use-controllers
 cd DotnetDockerDemo
 ```
 
-The default template generates a WeatherForecast API. Let's add a health endpoint:
+The controller-based template generates a WeatherForecast API. Let's add a health endpoint:
 
 ```csharp
 // Program.cs - ASP.NET Core Web API with health check
@@ -61,14 +61,14 @@ Docker init detects the .csproj file and identifies the project as .NET:
 
 ```text
 ? What application platform does your project use? ASP.NET Core
+? What's the name of your solution's main project? DotnetDockerDemo
 ? What version of .NET do you want to use? 8.0
-? What port does your server listen on? 8080
-? What is your project name? DotnetDockerDemo
+? What local port do you want to use to access your server? 8080
 ```
 
 ## Understanding the Generated Dockerfile
 
-The generated Dockerfile uses three stages: restore, build, and runtime:
+The generated Dockerfile uses separate build and runtime stages, with dependency restore separated so Docker can cache the NuGet layer:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -157,7 +157,7 @@ Copying project files separately before the full source copy lets Docker cache t
 
 ## Using Native AOT Compilation
 
-.NET 8 supports Ahead-of-Time (AOT) compilation, which produces a native binary without needing the .NET runtime. This creates much smaller images.
+.NET 8 supports Ahead-of-Time (AOT) compilation for compatible ASP.NET Core apps, especially minimal API services created with the `webapiaot` template. AOT produces a native binary without needing the .NET runtime and can create much smaller images. Controller-based APIs and reflection-heavy packages often need additional changes before they can be published with Native AOT.
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -247,13 +247,13 @@ services:
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
       - ACCEPT_EULA=Y
-      - SA_PASSWORD=YourStrong!Passw0rd
+      - MSSQL_SA_PASSWORD=YourStrong!Passw0rd
     ports:
       - "1433:1433"
     volumes:
       - sqldata:/var/opt/mssql
     healthcheck:
-      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "YourStrong!Passw0rd" -Q "SELECT 1"
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourStrong!Passw0rd" -C -Q "SELECT 1"
       interval: 10s
       timeout: 5s
       retries: 5
@@ -358,11 +358,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 ```
 
-For chiseled images (which lack curl), use a .NET-based health check:
-
-```dockerfile
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["dotnet", "DotnetDockerDemo.dll", "--health-check"]
-```
+For chiseled images (which lack curl and a shell), prefer orchestrator HTTP probes such as Kubernetes liveness and readiness probes, or copy a small dedicated health-check binary into the image. The application above does not implement a `--health-check` command, so running the app DLL from a Dockerfile health check would not be a valid probe.
 
 Docker init gives .NET developers a well-structured starting point with proper SDK and runtime separation. From there, consider chiseled images for production, AOT compilation for smaller binaries, and layered NuGet restore for faster builds. The .NET container ecosystem is mature and well-documented, and docker init captures the best practices in its generated files.
