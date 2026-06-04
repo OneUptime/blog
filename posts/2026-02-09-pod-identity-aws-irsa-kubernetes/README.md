@@ -25,8 +25,9 @@ First, verify your EKS cluster has an OIDC provider configured:
 ```bash
 # Get cluster OIDC issuer URL
 
-aws eks describe-cluster --name my-cluster \
-  --query "cluster.identity.oidc.issuer" --output text
+OIDC_URL=$(aws eks describe-cluster --name my-cluster \
+  --query "cluster.identity.oidc.issuer" --output text)
+echo $OIDC_URL
 
 # Example output: https://oidc.eks.us-west-2.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE
 
@@ -42,11 +43,6 @@ eksctl utils associate-iam-oidc-provider \
   --cluster my-cluster \
   --region us-west-2 \
   --approve
-
-# Or use AWS CLI
-aws eks update-cluster-config \
-  --name my-cluster \
-  --region us-west-2
 ```
 
 ## Creating an IAM Role for a Service Account
@@ -57,6 +53,9 @@ Create an IAM role that pods can assume. This role needs a trust policy allowing
 # Store your cluster's OIDC provider URL
 OIDC_PROVIDER=$(aws eks describe-cluster --name my-cluster \
   --query "cluster.identity.oidc.issuer" --output text | sed 's/https:\/\///')
+
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity \
+  --query Account --output text)
 
 # Define the namespace and service account
 NAMESPACE="production"
@@ -156,6 +155,7 @@ metadata:
 Apply the service account:
 
 ```bash
+kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f service-account.yaml
 
 # Verify the annotation
@@ -193,11 +193,6 @@ spec:
         # AWS SDK will automatically use IRSA credentials
         - name: AWS_REGION
           value: us-west-2
-        # Optional: Override default web identity token file path
-        - name: AWS_WEB_IDENTITY_TOKEN_FILE
-          value: /var/run/secrets/eks.amazonaws.com/serviceaccount/token
-        - name: AWS_ROLE_ARN
-          value: arn:aws:iam::123456789012:role/eks-pod-s3-access
 ```
 
 When you deploy this, the EKS pod identity webhook automatically injects environment variables and mounts the service account token that AWS SDKs use to authenticate.
@@ -210,7 +205,7 @@ Verify that pods can access AWS services:
 # Deploy a test pod with AWS CLI
 kubectl run aws-cli -n production \
   --image=amazon/aws-cli \
-  --serviceaccount=s3-access \
+  --overrides='{"spec":{"serviceAccountName":"s3-access"}}' \
   --command -- sleep infinity
 
 # Exec into the pod and test AWS access
@@ -336,11 +331,8 @@ kubectl exec -it pod-name -n production -- env | grep AWS
 # Verify service account token is mounted
 kubectl exec -it pod-name -n production -- ls -la /var/run/secrets/eks.amazonaws.com/serviceaccount/
 
-# Check EKS pod identity webhook is running
+# Check EKS pod identity webhook configuration
 kubectl get mutatingwebhookconfiguration pod-identity-webhook
-
-# View webhook logs
-kubectl logs -n kube-system -l app.kubernetes.io/name=aws-pod-identity-webhook
 ```
 
 If credentials aren't working, verify the IAM role trust policy allows the specific service account and the OIDC provider is correctly configured.
@@ -350,12 +342,10 @@ If credentials aren't working, verify the IAM role trust policy allows the speci
 Limit IAM roles to only the permissions pods actually need. Use separate roles for different workloads rather than sharing a single role. Regularly audit role usage to identify over-permissioned pods:
 
 ```bash
-# Generate IAM credential report
-aws iam generate-credential-report
-aws iam get-credential-report --output text | base64 -d > iam-report.csv
-
-# Review which roles are being used
-grep eks-pod iam-report.csv
+# Review when each pod IAM role was last used
+aws iam get-role \
+  --role-name eks-pod-s3-access \
+  --query "Role.RoleLastUsed"
 ```
 
 Enable CloudTrail to log all API calls made by pod identities. This provides an audit trail of what AWS resources your pods accessed.
