@@ -32,12 +32,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the crontab file into the container
-COPY crontab /etc/cron.d/app-cron
+COPY crontab /tmp/app-cron
 
 # Set proper permissions (cron requires specific file permissions)
-RUN chmod 0644 /etc/cron.d/app-cron && \
-    crontab /etc/cron.d/app-cron
+RUN chmod 0644 /tmp/app-cron && \
+    crontab /tmp/app-cron
 
 # Copy job scripts
 COPY scripts/ /scripts/
@@ -46,7 +45,7 @@ RUN chmod +x /scripts/*.sh
 # Create log file that cron will write to
 RUN touch /var/log/cron.log
 
-# Start cron in the foreground and tail the log file
+# Start cron and tail the log file
 CMD cron && tail -f /var/log/cron.log
 ```
 
@@ -82,11 +81,13 @@ FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cron \
     curl \
+    jq \
+    postgresql-client \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-COPY crontab /etc/cron.d/app-cron
-RUN chmod 0644 /etc/cron.d/app-cron
+COPY crontab /tmp/app-cron
+RUN chmod 0644 /tmp/app-cron
 
 COPY scripts/ /scripts/
 RUN chmod +x /scripts/*.sh
@@ -103,18 +104,15 @@ The entrypoint script captures environment variables and makes them available to
 #!/bin/bash
 # entrypoint.sh - Dump environment variables for cron, then start cron
 
-# Export all current environment variables to a file that cron jobs can source
-printenv | grep -v "no_proxy" > /etc/environment
-
-# Alternative: write env vars directly into the crontab
-env >> /etc/environment
+# Export all current environment variables to a file that Bash cron jobs can source
+export -p > /etc/cron.env
 
 # Install the crontab
-crontab /etc/cron.d/app-cron
+crontab /tmp/app-cron
 
 echo "Starting cron scheduler..."
 echo "Loaded environment variables:"
-cat /etc/environment
+cat /etc/cron.env
 
 # Start cron in the foreground
 cron -f
@@ -127,7 +125,7 @@ Now your scripts can access environment variables:
 # scripts/health-check.sh - Check service health using env vars
 
 # Source environment variables that cron cannot access natively
-source /etc/environment
+source /etc/cron.env
 
 echo "[$(date)] Running health check..."
 
@@ -149,8 +147,6 @@ fi
 
 ```yaml
 # docker-compose.yml - Cron scheduler with application services
-version: "3.8"
-
 services:
   app:
     image: myapp:latest
@@ -213,7 +209,12 @@ log_json() {
   local message="$3"
   local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-  echo "{\"timestamp\": \"${timestamp}\", \"level\": \"${level}\", \"job\": \"${job}\", \"message\": \"${message}\"}"
+  jq -nc \
+    --arg timestamp "$timestamp" \
+    --arg level "$level" \
+    --arg job "$job" \
+    --arg message "$message" \
+    '{timestamp: $timestamp, level: $level, job: $job, message: $message}'
 }
 
 log_info() {
@@ -236,7 +237,7 @@ Use these helpers in your job scripts:
 # scripts/db-cleanup.sh - Database cleanup with structured logging
 
 source /scripts/lib/log.sh
-source /etc/environment
+source /etc/cron.env
 
 JOB_NAME="db-cleanup"
 
@@ -264,29 +265,36 @@ Prevent jobs from running concurrently if a previous execution is still in progr
 
 ```bash
 #!/bin/bash
-# scripts/lib/lock.sh - File-based job locking to prevent overlap
+# scripts/lib/lock.sh - Directory-based job locking to prevent overlap
 
 acquire_lock() {
-  local lock_file="/tmp/cron_${1}.lock"
+  local lock_dir="/tmp/cron_${1}.lock"
 
-  if [ -f "$lock_file" ]; then
-    local pid=$(cat "$lock_file")
+  if mkdir "$lock_dir" 2>/dev/null; then
+    echo $$ > "$lock_dir/pid"
+    return 0
+  fi
+
+  if [ -f "$lock_dir/pid" ]; then
+    local pid=$(cat "$lock_dir/pid")
     if kill -0 "$pid" 2>/dev/null; then
       echo "Job $1 is already running (PID $pid). Skipping."
       return 1
     else
       # Stale lock file from a crashed process - remove it
-      rm -f "$lock_file"
+      rm -rf "$lock_dir"
+      mkdir "$lock_dir" || return 1
+      echo $$ > "$lock_dir/pid"
+      return 0
     fi
   fi
 
-  echo $$ > "$lock_file"
-  return 0
+  return 1
 }
 
 release_lock() {
-  local lock_file="/tmp/cron_${1}.lock"
-  rm -f "$lock_file"
+  local lock_dir="/tmp/cron_${1}.lock"
+  rm -rf "$lock_dir"
 }
 ```
 
@@ -304,7 +312,7 @@ JOB_NAME="generate-report"
 # Acquire lock or exit if job is already running
 acquire_lock "$JOB_NAME" || exit 0
 
-# Ensure lock is released even if the script crashes
+# Ensure lock is released when the script exits
 trap "release_lock '$JOB_NAME'" EXIT
 
 log_info "$JOB_NAME" "Generating daily report..."
