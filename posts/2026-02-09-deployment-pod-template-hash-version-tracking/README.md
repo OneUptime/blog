@@ -8,11 +8,11 @@ Description: Learn how to use Kubernetes pod template hash for precise version t
 
 ---
 
-You have multiple pods running and need to know exactly which configuration each one uses. Image tags tell part of the story, but environment variables, volumes, and other configuration also matter. The pod template hash gives you a unique identifier for the exact configuration.
+You have multiple pods running and need to know exactly which configuration each one uses. Image tags tell part of the story, but environment variables, volumes, and other configuration also matter. The pod template hash gives you a controller-generated identifier for the pod template.
 
 ## Understanding Pod Template Hash
 
-Kubernetes generates a hash of the pod template spec and adds it as a label to pods and ReplicaSets. This hash uniquely identifies the exact configuration:
+Kubernetes generates a hash of the pod template and adds it as a label to pods and ReplicaSets. This hash identifies the ReplicaSet's pod template:
 
 ```bash
 # View pod labels
@@ -25,11 +25,11 @@ api-server-7d8f9c5b4d-abc123  1/1     Running   10m   app=api-server,pod-templat
 api-server-7d8f9c5b4d-def456  1/1     Running   10m   app=api-server,pod-template-hash=7d8f9c5b4d
 ```
 
-The `pod-template-hash=7d8f9c5b4d` label means these pods use identical configurations.
+The `pod-template-hash=7d8f9c5b4d` label means these pods came from the same ReplicaSet pod template.
 
 ## How the Hash is Generated
 
-Kubernetes hashes the entire pod template spec:
+Kubernetes hashes the ReplicaSet's pod template:
 
 ```yaml
 template:
@@ -43,9 +43,9 @@ template:
       env:
       - name: LOG_LEVEL
         value: info
-    resources:
-      limits:
-        memory: "512Mi"
+      resources:
+        limits:
+          memory: "512Mi"
 ```
 
 Any change to this template generates a different hash:
@@ -138,8 +138,9 @@ Output during rollout:
 Identify pods running unexpected configurations:
 
 ```bash
-# Get current deployment's template hash
-CURRENT_HASH=$(kubectl get deployment api-server -o jsonpath='{.spec.template.metadata.labels.pod-template-hash}')
+# Get the latest ReplicaSet's template hash
+CURRENT_HASH=$(kubectl get replicaset -l app=api-server -o json | \
+  jq -r '[.items[] | select(.metadata.annotations["deployment.kubernetes.io/revision"])] | max_by(.metadata.annotations["deployment.kubernetes.io/revision"] | tonumber) | .metadata.labels["pod-template-hash"]')
 
 # Find pods not matching current hash
 kubectl get pods -l app=api-server -o json | \
@@ -177,13 +178,12 @@ Query metrics by hash:
 
 ```promql
 # Request rate by pod template hash
-sum(rate(http_requests_total[5m])) by (pod_template_hash)
+sum by (pod_template_hash) (rate(http_requests_total[5m]))
 
 # Compare error rates between hashes
-rate(http_requests_total{status=~"5.."}[5m])
+sum by (pod_template_hash) (rate(http_requests_total{status=~"5.."}[5m]))
   /
-rate(http_requests_total[5m])
-by (pod_template_hash)
+sum by (pod_template_hash) (rate(http_requests_total[5m]))
 ```
 
 ## Automated Rollback Based on Hash
@@ -230,14 +230,16 @@ deploy:
     # Deploy
     - kubectl apply -f deployment.yaml
 
+    # Verify rollout
+    - kubectl rollout status deployment/api-server
+
     # Get new hash
-    - NEW_HASH=$(kubectl get deployment api-server -o jsonpath='{.spec.template.metadata.labels.pod-template-hash}')
+    - |
+      NEW_HASH=$(kubectl get replicaset -l app=api-server -o json | \
+        jq -r '[.items[] | select(.metadata.annotations["deployment.kubernetes.io/revision"])] | max_by(.metadata.annotations["deployment.kubernetes.io/revision"] | tonumber) | .metadata.labels["pod-template-hash"]')
 
     # Store hash
     - echo $NEW_HASH > deployment-hash.txt
-
-    # Verify rollout
-    - kubectl rollout status deployment/api-server
 
     # Verify all pods have new hash
     - |
@@ -296,7 +298,7 @@ spec:
   - name: stable-hash
   metrics:
   - name: canary-success-rate
-    successCondition: result >= 0.95
+    successCondition: result[0] >= 0.95
     provider:
       prometheus:
         address: http://prometheus:9090
@@ -315,21 +317,21 @@ spec:
           ))
 
   - name: canary-vs-stable-latency
-    successCondition: result <= 1.2  # Canary latency no more than 20% higher
+    successCondition: result[0] <= 1.2  # Canary latency no more than 20% higher
     provider:
       prometheus:
         address: http://prometheus:9090
         query: |
           histogram_quantile(0.95,
-            rate(http_request_duration_seconds_bucket{
+            sum by (le) (rate(http_request_duration_seconds_bucket{
               pod_template_hash="{{ args.canary-hash }}"
-            }[5m])
+            }[5m]))
           )
           /
           histogram_quantile(0.95,
-            rate(http_request_duration_seconds_bucket{
+            sum by (le) (rate(http_request_duration_seconds_bucket{
               pod_template_hash="{{ args.stable-hash }}"
-            }[5m])
+            }[5m]))
           )
 ```
 
@@ -369,7 +371,7 @@ Given a pod, find its exact configuration:
 ```bash
 # Get pod's template hash
 POD_HASH=$(kubectl get pod api-server-7d8f9c5b4d-abc123 \
-  -o jsonpath='{.metadata.labels.pod-template-hash}')
+  -o jsonpath='{.metadata.labels["pod-template-hash"]}')
 
 # Find corresponding ReplicaSet
 kubectl get replicaset -l pod-template-hash=$POD_HASH -o yaml
