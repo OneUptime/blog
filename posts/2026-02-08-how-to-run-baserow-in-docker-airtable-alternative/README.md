@@ -10,7 +10,7 @@ Description: Deploy Baserow in Docker as a self-hosted, open-source Airtable alt
 
 Baserow is an open-source, no-code database platform that provides a spreadsheet-like interface backed by a real PostgreSQL database. It competes directly with Airtable, but you own the data and the infrastructure. Unlike some alternatives that feel like thin wrappers around SQL, Baserow offers genuine features like real-time collaboration, row-level comments, form views, and a plugin system for extending functionality.
 
-Running Baserow in Docker gives you the simplest deployment path. The official Docker images bundle everything you need, including the web frontend, the API backend, a Celery worker for background tasks, and PostgreSQL. This guide walks through the full setup, from quick testing to production-ready deployment.
+Running Baserow in Docker gives you the simplest deployment path. The official all-in-one Docker image bundles everything you need, including the web frontend, the API backend, Celery workers for background tasks, Redis, and PostgreSQL. This guide walks through the full setup, from quick testing to production-ready deployment.
 
 ## What Makes Baserow Different
 
@@ -45,7 +45,7 @@ Wait about 30-60 seconds for all services to start, then open `http://localhost:
 
 ## Production Setup with Docker Compose
 
-For production, use the standalone services configuration. This gives you separate containers for the web frontend, API backend, Celery workers, and the database. Each can be scaled and monitored independently.
+For production, keep PostgreSQL and Redis in separate containers while Baserow runs from the all-in-one image. This gives you external database and queue services that can be backed up and monitored independently. If you need separate web frontend, API, and Celery containers for horizontal scaling, use Baserow's official Docker Compose file with the standalone `baserow/backend` and `baserow/web-frontend` images.
 
 ```yaml
 # docker-compose.yml - Baserow production setup
@@ -81,8 +81,6 @@ services:
       EMAIL_SMTP_USER: ${SMTP_USER}
       EMAIL_SMTP_PASSWORD: ${SMTP_PASSWORD}
       FROM_EMAIL: baserow@yourdomain.com
-      # Disable telemetry
-      BASEROW_DISABLE_ANONYMOUS_TELEMETRY: "true"
     depends_on:
       baserow-postgres:
         condition: service_healthy
@@ -228,12 +226,13 @@ Baserow supports webhooks for real-time notifications when data changes.
 ```bash
 # Create a webhook via the API
 curl -X POST \
-  -H "Authorization: Token your-api-token" \
+  -H "Authorization: JWT your-jwt-token" \
   -H "Content-Type: application/json" \
   -d '{
+    "name": "n8n row changes",
     "url": "https://n8n.yourdomain.com/webhook/baserow-events",
     "events": ["rows.created", "rows.updated", "rows.deleted"],
-    "table_id": 1
+    "request_method": "POST"
   }' \
   "http://localhost:8080/api/database/webhooks/table/TABLE_ID/"
 ```
@@ -248,10 +247,14 @@ Invite team members through the workspace settings. Baserow supports these roles
 ```bash
 # Invite a user via the API
 curl -X POST \
-  -H "Authorization: Token your-api-token" \
+  -H "Authorization: JWT your-jwt-token" \
   -H "Content-Type: application/json" \
-  -d '{"email": "colleague@example.com"}' \
-  "http://localhost:8080/api/workspaces/WORKSPACE_ID/invitations/"
+  -d '{
+    "email": "colleague@example.com",
+    "base_url": "https://baserow.yourdomain.com",
+    "permissions": "MEMBER"
+  }' \
+  "http://localhost:8080/api/workspaces/invitations/workspace/WORKSPACE_ID/"
 ```
 
 ## Backup Strategy
