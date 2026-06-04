@@ -10,7 +10,7 @@ Description: Configure multiple HPA autoscaling policies with different paramete
 
 HPA allows defining multiple scaling policies within a single behavior configuration, each with different parameters for scaling velocity. By combining multiple policies with different pod counts, percentages, and period seconds, you create nuanced autoscaling behavior that adapts to different situations automatically.
 
-Multiple policies provide flexibility across deployment sizes and scaling scenarios. You might want to add at least 10 pods but no more than 50% of current count, or remove at most 10% but never more than 5 pods at once. Using selectPolicy (Max, Min, or Disabled), you control which policy applies when multiple policies recommend different scaling amounts.
+Multiple policies provide flexibility across deployment sizes and scaling scenarios. You might want to add at least 10 pods by choosing the policy that allows the largest change, or cap growth to 50% of the current count by choosing the policy that allows the smallest change. For scale-down, you might remove at most 10% but never more than 5 pods at once. Using selectPolicy (Max, Min, or Disabled), you control which policy applies when multiple policies recommend different scaling amounts.
 
 ## Understanding Policy Selection
 
@@ -112,7 +112,7 @@ spec:
       - type: Percent
         value: 50
         periodSeconds: 60
-      # Cap maximum growth for large deployments
+      # Additional fixed-pod policy for large changes
       - type: Pods
         value: 100
         periodSeconds: 60
@@ -132,7 +132,7 @@ spec:
       selectPolicy: Min  # Use most conservative for scale-down
 ```
 
-At 10 pods, adding 15 is more than 50%, so absolute policy wins. At 100 pods, 50% is 50 pods, so percentage wins. At 250 pods, 50% is 125 pods, but absolute cap of 100 wins.
+At 10 pods, adding 15 is more than 50%, so the 15-pod policy wins. At 100 pods, 50% is 50 pods, so the percentage policy wins. At 250 pods, 50% is 125 pods, so the percentage policy still wins because selectPolicy is Max.
 
 ## Time-Based Policy Strategies
 
@@ -190,11 +190,11 @@ spec:
       selectPolicy: Min
 ```
 
-This enables fast initial response with progressively more conservative scaling.
+This enables a fast short-period response while also allowing longer-period policies to participate when they permit the largest change.
 
-## Policies for Different Metric Types
+## Policies with Different Metric Types
 
-Configure different policies based on which metric triggers scaling.
+Configure shared policies for an HPA that scales from multiple metric types.
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -266,9 +266,9 @@ spec:
 
 Though HPA doesn't track which metric triggered scaling, policies that allow aggressive response help any metric-driven scale-up.
 
-## Combining Percentage Caps and Floors
+## Choosing Percentage Caps or Floors
 
-Use both upper and lower bounds for scaling velocity.
+Choose whether policy selection should favor a lower bound or an upper bound for scaling velocity.
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -302,11 +302,11 @@ spec:
       - type: Pods
         value: 15
         periodSeconds: 60
-      # And never more than this many
+      # Another fixed-pod option for larger immediate changes
       - type: Pods
         value: 80
         periodSeconds: 60
-      selectPolicy: Max  # Respects the floor and ceiling
+      selectPolicy: Max  # Favors the largest allowed scale-up
 
     scaleDown:
       stabilizationWindowSeconds: 600
@@ -319,14 +319,14 @@ spec:
       - type: Pods
         value: 1
         periodSeconds: 180
-      # And never more than this
+      # Cap absolute removal for larger deployments
       - type: Pods
         value: 15
         periodSeconds: 180
       selectPolicy: Min
 ```
 
-This creates bounded scaling that respects minimum meaningful changes and maximum safe velocity.
+With selectPolicy set to Max, scale-up favors the largest allowed change, which acts like a floor when percentage-based scaling would be smaller. With selectPolicy set to Min, scale-down favors the smallest allowed change, which acts like a cap when another policy would remove more pods.
 
 ## Monitoring Multiple Policies
 
@@ -338,7 +338,7 @@ Track which policies are effective in different scenarios.
 kubectl get hpa multi-policy-hpa -o yaml | grep -A 20 behavior
 
 # Monitor scaling events over time
-kubectl get events --field-selector involvedObject.name=multi-policy-hpa | grep "Scaled"
+kubectl get events --field-selector involvedObject.name=multi-policy-hpa,reason=SuccessfulRescale
 
 # Track replica changes to infer which policy applied
 watch -n 5 'kubectl get hpa multi-policy-hpa -o json | jq "{current: .status.currentReplicas, desired: .status.desiredReplicas, metrics: .status.currentMetrics}"'
@@ -369,9 +369,9 @@ kubectl get events --field-selector involvedObject.name=multi-policy-hpa
 
 Use Max selectPolicy for scale-up to enable responsive scaling, and Min selectPolicy for scale-down to ensure conservative capacity reduction.
 
-Define at least three policies for scale-up: percentage-based for proportional scaling, absolute minimum for small deployments, and absolute maximum for safety.
+Define scale-up policies deliberately: use percentage-based policies for proportional scaling, fixed pod policies for minimum meaningful changes, and selectPolicy: Min when you need a hard cap on scale-up velocity.
 
-For scale-down, always include both percentage and absolute policies to prevent removing too many pods from large deployments or too few from small ones.
+For scale-down, include both percentage and absolute policies when you need to limit removals across different deployment sizes. Use selectPolicy: Min to prevent removing too many pods at once.
 
 Test policies across different deployment sizes. Start at minReplicas, scale to maxReplicas, and observe behavior at various points.
 
