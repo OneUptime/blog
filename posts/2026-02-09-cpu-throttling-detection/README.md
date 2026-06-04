@@ -59,6 +59,8 @@ data:
       relabel_configs:
       - action: labelmap
         regex: __meta_kubernetes_node_label_(.+)
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: node
       - target_label: __address__
         replacement: kubernetes.default.svc:443
       - source_labels: [__meta_kubernetes_node_name]
@@ -149,7 +151,13 @@ kind: Deployment
 metadata:
   name: web-app
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
       - name: app
@@ -163,7 +171,7 @@ spec:
             memory: "1Gi"
 ```
 
-The increased limit allows the container to burst higher without throttling. However, this isn't always the right solution - it increases the pod's resource footprint and might cause scheduling issues.
+The increased limit allows the container to burst higher without throttling. However, this isn't always the right solution - increasing requests affects scheduling, and higher limits allow the workload to consume more node CPU.
 
 ## Removing CPU Limits Entirely
 
@@ -175,7 +183,13 @@ kind: Deployment
 metadata:
   name: batch-processor
 spec:
+  selector:
+    matchLabels:
+      app: batch-processor
   template:
+    metadata:
+      labels:
+        app: batch-processor
     spec:
       containers:
       - name: processor
@@ -217,7 +231,13 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
       - name: api
@@ -232,7 +252,7 @@ spec:
       priorityClassName: high-priority
 ```
 
-Use priorityClassName to ensure critical workloads aren't evicted during resource pressure.
+Use priorityClassName to reduce the likelihood that critical workloads are evicted before lower-priority pods during resource pressure.
 
 ## Adjusting CFS Quota Period
 
@@ -256,7 +276,7 @@ Restart the kubelet after changes:
 systemctl restart kubelet
 ```
 
-Increasing the period allows longer bursts but reduces scheduling fairness. This is an advanced tuning option with tradeoffs.
+Increasing the period allows longer bursts but reduces scheduling fairness. This requires the `CustomCPUCFSQuotaPeriod` feature gate and is an advanced tuning option with tradeoffs.
 
 ## Implementing Automated Limit Adjustment
 
@@ -272,7 +292,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: web-app
-  updateMode: "Auto"
+  updatePolicy:
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: app
@@ -283,10 +304,11 @@ spec:
         cpu: "4000m"
         memory: "8Gi"
       controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsAndLimits
       mode: Auto
 ```
 
-VPA monitors throttling and adjusts limits to prevent it while staying within bounds you configure.
+VPA monitors CPU and memory usage and can adjust requests and limits while staying within bounds you configure.
 
 ## Building a Throttling Dashboard
 
@@ -304,7 +326,7 @@ Create a Grafana dashboard for throttling visibility:
             "expr": "topk(10, rate(container_cpu_cfs_throttled_periods_total{container!=\"\"}[5m]) / rate(container_cpu_cfs_periods_total{container!=\"\"}[5m]))"
           }
         ],
-        "type": "graph"
+        "type": "timeseries"
       },
       {
         "title": "Total Throttled Time",
@@ -313,7 +335,7 @@ Create a Grafana dashboard for throttling visibility:
             "expr": "sum(rate(container_cpu_cfs_throttled_seconds_total{container!=\"\"}[5m])) by (namespace, pod, container)"
           }
         ],
-        "type": "graph"
+        "type": "timeseries"
       },
       {
         "title": "CPU Usage vs Limit",
@@ -327,7 +349,7 @@ Create a Grafana dashboard for throttling visibility:
             "legendFormat": "Limit - {{ namespace }}/{{ pod }}"
           }
         ],
-        "type": "graph"
+        "type": "timeseries"
       }
     ]
   }
@@ -359,7 +381,7 @@ spec:
 EOF
 
 # Monitor throttling during test
-watch -n 1 'kubectl exec -it prometheus-pod -n monitoring -- promtool query instant \
+watch -n 1 'kubectl exec -n monitoring prometheus-pod -- promtool query instant http://localhost:9090 \
   "rate(container_cpu_cfs_throttled_periods_total{pod=\"throttle-test\"}[1m]) / \
    rate(container_cpu_cfs_periods_total{pod=\"throttle-test\"}[1m])"'
 
