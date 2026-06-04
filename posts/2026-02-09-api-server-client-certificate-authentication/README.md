@@ -187,7 +187,7 @@ kubectl get pods -n development  # Should work
 kubectl get pods -n production   # May fail depending on RBAC
 ```
 
-## Automation with Service Account Certificates
+## Automation with Client Certificates
 
 Create certificates for automation systems:
 
@@ -195,7 +195,7 @@ Create certificates for automation systems:
 # Generate certificate for CI/CD system
 openssl genrsa -out ci-bot.key 2048
 openssl req -new -key ci-bot.key -out ci-bot.csr \
-  -subj "/CN=system:ci-bot/O=system:automation"
+  -subj "/CN=ci-bot/O=automation"
 
 sudo openssl x509 -req -in ci-bot.csr \
   -CA /etc/kubernetes/pki/ca.crt \
@@ -230,7 +230,7 @@ roleRef:
   name: ci-deployer
 subjects:
 - kind: User
-  name: system:ci-bot
+  name: ci-bot
   apiGroup: rbac.authorization.k8s.io
 ```
 
@@ -276,7 +276,7 @@ if [ $DAYS_UNTIL_EXPIRY -lt $DAYS_BEFORE_EXPIRY ]; then
   echo "Certificate expires in $DAYS_UNTIL_EXPIRY days, rotating..."
 
   # Generate new CSR with same subject
-  SUBJECT=$(openssl x509 -in ${USER}.crt -noout -subject | sed 's/subject=//')
+  SUBJECT=$(openssl x509 -in ${USER}.crt -noout -subject -nameopt compat | sed 's/^subject=//')
   openssl req -new -key ${USER}.key -out ${USER}-new.csr -subj "$SUBJECT"
 
   # Submit for signing
@@ -301,9 +301,12 @@ Kubernetes doesn't support CRL (Certificate Revocation Lists), so revocation req
 Remove access immediately:
 
 ```bash
-# Delete all RBAC for user
-kubectl delete clusterrolebindings,rolebindings --all-namespaces \
-  --field-selector subjects[*].name=alice
+# Find RBAC bindings that reference the user, then delete the matching objects
+kubectl get clusterrolebindings -o jsonpath='{range .items[?(@.subjects[*].name=="alice")]}{.metadata.name}{"\n"}{end}'
+kubectl get rolebindings --all-namespaces -o jsonpath='{range .items[?(@.subjects[*].name=="alice")]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}'
+
+kubectl delete clusterrolebinding alice-admin
+kubectl delete rolebinding developers-edit -n development
 
 # Verify user has no access
 kubectl auth can-i --list --as=alice
@@ -317,8 +320,9 @@ openssl genrsa -out new-ca.key 2048
 openssl req -x509 -new -nodes -key new-ca.key \
   -days 3650 -out new-ca.crt -subj "/CN=kubernetes"
 
-# Update API server to trust both CAs temporarily
-# --client-ca-file=/etc/kubernetes/pki/ca.crt,/etc/kubernetes/pki/new-ca.crt
+# Update API server to trust both CAs temporarily by using a CA bundle
+cat /etc/kubernetes/pki/ca.crt /etc/kubernetes/pki/new-ca.crt > /etc/kubernetes/pki/client-ca-bundle.crt
+# --client-ca-file=/etc/kubernetes/pki/client-ca-bundle.crt
 
 # Reissue all client certificates with new CA
 # Switch API server to only trust new CA
@@ -339,7 +343,7 @@ rules:
   - RequestReceived
   users:
   - alice
-  - system:ci-bot
+  - ci-bot
 ---
 # Prometheus query for certificate auth
 apiVersion: v1
@@ -348,14 +352,11 @@ metadata:
   name: cert-auth-monitoring
 data:
   queries.promql: |
-    # Certificate authentication attempts
-    sum by (username) (apiserver_authentication_attempts_total{authenticator="x509"})
+    # Authenticated API requests by certificate username
+    sum by (username) (authenticated_user_requests{username=~"alice|ci-bot"})
 
-    # Failed certificate authentications
-    sum by (username) (apiserver_authentication_attempts_total{
-      authenticator="x509",
-      result="error"
-    })
+    # Remaining lifetime for client certificates used to authenticate requests
+    histogram_quantile(0.05, sum by (le) (rate(apiserver_client_certificate_expiration_seconds_bucket[5m])))
 ```
 
 ## Best Practices
