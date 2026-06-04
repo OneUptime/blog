@@ -8,7 +8,7 @@ Description: Configure Prometheus Alertmanager to send alerts for Docker contain
 
 ---
 
-Running Docker containers without alerting is like driving without a dashboard. Everything seems fine until it suddenly is not. Prometheus Alertmanager integrates with Prometheus to evaluate alert rules against your container metrics and send notifications through Slack, email, PagerDuty, or webhooks. This guide sets up a complete alerting pipeline for Docker containers.
+Running Docker containers without alerting is like driving without a dashboard. Everything seems fine until it suddenly is not. Prometheus evaluates alert rules against your container metrics and sends firing alerts to Alertmanager, which routes notifications through Slack, email, PagerDuty, or webhooks. This guide sets up a complete alerting pipeline for Docker containers.
 
 ## Architecture
 
@@ -31,8 +31,6 @@ Create a Docker Compose file for the full stack:
 
 ```yaml
 # docker-compose.monitoring.yml - Complete monitoring and alerting stack
-
-version: "3.9"
 
 services:
   # cAdvisor collects container metrics from the Docker daemon
@@ -136,23 +134,22 @@ Create a comprehensive set of alert rules for Docker containers:
 groups:
   - name: container_health
     rules:
-      # Alert when a container stops running
-      - alert: ContainerDown
+      # Alert when an expected container stops being scraped
+      # Duplicate this rule for each critical container name you expect to run
+      - alert: ContainerMissing
         expr: |
-          absent(container_last_seen{name=~".+"})
-          or
-          time() - container_last_seen{name=~".+"} > 60
+          absent(container_last_seen{name="app"})
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Container {{ $labels.name }} is down"
-          description: "Container {{ $labels.name }} has not been seen for more than 60 seconds."
+          summary: "Container {{ $labels.name }} is missing"
+          description: "Expected container {{ $labels.name }} is not being reported by cAdvisor."
 
       # Alert when a container restarts repeatedly
       - alert: ContainerRestarting
         expr: |
-          increase(container_start_time_seconds{name=~".+"}[15m]) > 3
+          changes(container_start_time_seconds{name=~".+"}[15m]) > 3
         for: 5m
         labels:
           severity: warning
@@ -165,9 +162,12 @@ groups:
       # Alert when a container uses more than 85% of its memory limit
       - alert: ContainerHighMemoryUsage
         expr: |
-          container_memory_usage_bytes{name=~".+"}
-          / container_spec_memory_limit_bytes{name=~".+"}
-          * 100 > 85
+          (
+            container_memory_usage_bytes{name=~".+"}
+            / container_spec_memory_limit_bytes{name=~".+"}
+            * 100
+          ) > 85
+          and container_spec_memory_limit_bytes{name=~".+"} > 0
         for: 5m
         labels:
           severity: warning
@@ -178,9 +178,12 @@ groups:
       # Alert when a container hits its memory limit (OOM risk)
       - alert: ContainerMemoryNearLimit
         expr: |
-          container_memory_usage_bytes{name=~".+"}
-          / container_spec_memory_limit_bytes{name=~".+"}
-          * 100 > 95
+          (
+            container_memory_usage_bytes{name=~".+"}
+            / container_spec_memory_limit_bytes{name=~".+"}
+            * 100
+          ) > 95
+          and container_spec_memory_limit_bytes{name=~".+"} > 0
         for: 2m
         labels:
           severity: critical
@@ -188,7 +191,7 @@ groups:
           summary: "Container {{ $labels.name }} is near OOM"
           description: "Container {{ $labels.name }} is using {{ $value | printf \"%.1f\" }}% of memory. OOM kill is imminent."
 
-      # Alert when CPU usage is sustained above 80%
+      # Alert when CPU usage is sustained above 0.8 CPU cores
       - alert: ContainerHighCPU
         expr: |
           rate(container_cpu_usage_seconds_total{name=~".+"}[5m]) * 100 > 80
@@ -197,7 +200,7 @@ groups:
           severity: warning
         annotations:
           summary: "Container {{ $labels.name }} CPU usage is high"
-          description: "Container {{ $labels.name }} CPU usage has been above 80% for 10 minutes."
+          description: "Container {{ $labels.name }} CPU usage has been above 0.8 CPU cores for 10 minutes."
 
       # Alert when a container's disk write rate is unusually high
       - alert: ContainerHighDiskIO
@@ -276,15 +279,15 @@ route:
   # Child routes for specific alert types
   routes:
     # Critical alerts go to PagerDuty and Slack
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: "critical-alerts"
       group_wait: 10s
       repeat_interval: 1h
 
     # Warning alerts go to Slack only
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: "slack-warnings"
       repeat_interval: 4h
 
@@ -313,7 +316,7 @@ receivers:
           *Details:* {{ .Annotations.description }}
           {{ end }}
     pagerduty_configs:
-      - service_key: "your-pagerduty-service-key"
+      - routing_key: "your-pagerduty-routing-key"
         severity: critical
 
   - name: "slack-warnings"
@@ -330,11 +333,11 @@ receivers:
 # Inhibition rules - suppress less important alerts when critical ones fire
 inhibit_rules:
   # If a critical alert is firing, suppress the warning version
-  - source_match:
-      severity: critical
-    target_match:
-      severity: warning
-    equal: ["alertname"]
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: ["name"]
 ```
 
 ## Starting the Stack
@@ -372,8 +375,8 @@ Trigger a test alert by running a container that will exceed its memory limit:
 docker run -d \
   --name memory-stress-test \
   --memory="100m" \
-  ubuntu:22.04 \
-  bash -c "dd if=/dev/zero of=/dev/null bs=1M"
+  python:3.12-alpine \
+  python -c "a = bytearray(80 * 1024 * 1024); import time; time.sleep(600)"
 ```
 
 Within a few minutes, the ContainerHighMemoryUsage alert should fire. Check Alertmanager:
@@ -396,14 +399,17 @@ When performing maintenance, silence specific alerts to avoid noise:
 
 ```bash
 # Create a silence for all alerts on a specific container for 2 hours
+START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+END=$(date -u -d "+2 hours" +"%Y-%m-%dT%H:%M:%SZ")
+
 curl -s -X POST http://localhost:9093/api/v2/silences \
   -H "Content-Type: application/json" \
   -d '{
     "matchers": [
       {"name": "name", "value": "app", "isRegex": false}
     ],
-    "startsAt": "2026-02-08T00:00:00Z",
-    "endsAt": "2026-02-08T02:00:00Z",
+    "startsAt": "'"${START}"'",
+    "endsAt": "'"${END}"'",
     "createdBy": "admin",
     "comment": "Maintenance window for app container"
   }'
