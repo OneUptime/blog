@@ -8,7 +8,7 @@ Description: Learn how to pause and resume Kubernetes deployments to perform mul
 
 ---
 
-When you need to make multiple related changes to a Kubernetes deployment, you don't want each change triggering a separate rollout. Pausing deployments gives you control over when rollouts happen, letting you batch changes together and roll them out as a single atomic operation.
+When you need to make multiple related changes to a Kubernetes deployment, you don't want each change triggering a separate rollout. Pausing deployments gives you control over when rollouts happen, letting you batch changes together and roll them out as a single rollout.
 
 ## Why Pause Deployments
 
@@ -238,7 +238,8 @@ You can annotate the change for better tracking:
 ```bash
 # Before resuming, add annotation
 kubectl annotate deployment/my-app \
-  kubernetes.io/change-cause="Update to v2.0.0 with new config"
+  kubernetes.io/change-cause="Update to v2.0.0 with new config" \
+  --overwrite
 
 # Then resume
 kubectl rollout resume deployment/my-app
@@ -276,7 +277,8 @@ Keep these guidelines in mind when using pause and resume:
 
 ```bash
 kubectl annotate deployment/my-app \
-  pause-reason="Staging multi-step update for v2.0.0 release"
+  pause-reason="Staging multi-step update for v2.0.0 release" \
+  --overwrite
 ```
 
 **Combine with proper testing**. Pause-resume doesn't replace proper staging environments. Test your changes in a non-production environment first.
@@ -288,11 +290,8 @@ Create alerts for deployments that remain paused too long:
 ```yaml
 # Prometheus alert rule
 - alert: DeploymentPausedTooLong
-  expr: |
-    kube_deployment_spec_paused == 1
-    and
-    time() - kube_deployment_status_condition_last_transition_time{condition="Progressing",reason="DeploymentPaused"} > 3600
-  for: 5m
+  expr: kube_deployment_spec_paused == 1
+  for: 1h
   annotations:
     summary: "Deployment {{ $labels.deployment }} paused for over 1 hour"
 ```
@@ -303,4 +302,4 @@ This catches deployments that were paused and forgotten.
 
 Pausing and resuming deployments gives you fine-grained control over when changes roll out. Use it when you need to coordinate multiple updates, when you want to review changes before they take effect, or when you need to freeze a rollout in progress.
 
-The pattern is simple: pause, make all your changes, verify they look correct, and resume. All your changes deploy as one atomic operation, giving you cleaner rollout history and more predictable behavior.
+The pattern is simple: pause, make all your changes, verify they look correct, and resume. All your changes deploy through one rollout, giving you cleaner rollout history and more predictable behavior.
