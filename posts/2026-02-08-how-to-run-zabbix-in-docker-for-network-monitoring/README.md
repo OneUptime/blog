@@ -42,7 +42,6 @@ Here is a complete Docker Compose setup that runs the entire Zabbix stack.
 # docker-compose.yml - Full Zabbix monitoring stack
 
 # Includes server, web UI, PostgreSQL, and SNMP trap handling
-version: "3.8"
 
 services:
   # PostgreSQL database for Zabbix data storage
@@ -83,6 +82,7 @@ services:
       ZBX_STARTPINGERS: 5
       ZBX_STARTTRAPPERS: 5
       ZBX_STARTDISCOVERERS: 3
+      ZBX_ENABLE_SNMP_TRAPS: "true"
     volumes:
       - zabbix-alertscripts:/usr/lib/zabbix/alertscripts
       - zabbix-externalscripts:/usr/lib/zabbix/externalscripts
@@ -122,6 +122,7 @@ services:
       - "162:1162/udp"  # SNMP trap port
     volumes:
       - zabbix-snmptraps:/var/lib/zabbix/snmptraps
+      - zabbix-snmptrapd-config:/var/lib/zabbix/snmptrapd_config
       - zabbix-mibs:/usr/share/snmp/mibs
     networks:
       - zabbix-net
@@ -151,6 +152,7 @@ volumes:
   zabbix-alertscripts:
   zabbix-externalscripts:
   zabbix-snmptraps:
+  zabbix-snmptrapd-config:
   zabbix-mibs:
 
 networks:
@@ -185,7 +187,7 @@ Add hosts to monitor through the web interface or the Zabbix API.
 # Add a host using the Zabbix API
 # First, authenticate and get a session token
 curl -s -X POST http://localhost:8080/api_jsonrpc.php \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json-rpc" \
   -d '{
     "jsonrpc": "2.0",
     "method": "user.login",
@@ -198,7 +200,8 @@ curl -s -X POST http://localhost:8080/api_jsonrpc.php \
 
 # Create a new monitored host using the session token
 curl -s -X POST http://localhost:8080/api_jsonrpc.php \
-  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json-rpc" \
   -d '{
     "jsonrpc": "2.0",
     "method": "host.create",
@@ -215,7 +218,6 @@ curl -s -X POST http://localhost:8080/api_jsonrpc.php \
         "groups": [{"groupid": "2"}],
         "templates": [{"templateid": "10001"}]
     },
-    "auth": "YOUR_AUTH_TOKEN",
     "id": 2
 }'
 ```
@@ -225,15 +227,11 @@ curl -s -X POST http://localhost:8080/api_jsonrpc.php \
 Monitor network devices like switches and routers through SNMP.
 
 ```bash
-# Add SNMP community strings to the Zabbix SNMP traps configuration
-# Edit the snmptrapd.conf in the snmptraps container
-docker exec -it zabbix-snmptraps sh -c 'cat > /etc/snmp/snmptrapd.conf << EOF
+# Add SNMP community strings to the persistent custom snmptrapd configuration
+docker exec -it zabbix-snmptraps sh -c 'cat > /var/lib/zabbix/snmptrapd_config/snmptrapd_custom.conf << EOF
 # Accept SNMP traps from any device using these community strings
 authCommunity log,execute,net public
 authCommunity log,execute,net private
-
-# Forward traps to the Zabbix SNMP trap processor
-traphandle default /usr/sbin/zabbix_trap_receiver.pl
 EOF'
 
 # Restart the SNMP traps container to apply changes
@@ -244,12 +242,13 @@ To add an SNMP-monitored device through the web interface, create a host with an
 
 ## Setting Up Alerts
 
-Configure alert notifications through the web interface under Administration > Media types. Here is an example of setting up a webhook alert.
+Configure alert notifications through the web interface under Alerts > Media types. Here is an example of setting up a webhook alert.
 
 ```bash
 # Create a custom webhook media type using the API
 curl -s -X POST http://localhost:8080/api_jsonrpc.php \
-  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -H "Content-Type: application/json-rpc" \
   -d '{
     "jsonrpc": "2.0",
     "method": "mediatype.create",
@@ -263,7 +262,6 @@ curl -s -X POST http://localhost:8080/api_jsonrpc.php \
         ],
         "script": "var params = JSON.parse(value);\nvar req = new HttpRequest();\nreq.addHeader(\"Content-Type: application/json\");\nvar payload = JSON.stringify({text: params.alert_subject + \"\\n\" + params.alert_message});\nreq.post(params.URL, payload);\nreturn \"OK\";"
     },
-    "auth": "YOUR_AUTH_TOKEN",
     "id": 3
 }'
 ```
@@ -304,6 +302,9 @@ For large or distributed environments, deploy Zabbix Proxies to collect data loc
       ZBX_PROXYMODE: 0  # Active proxy
     volumes:
       - proxy-data:/var/lib/zabbix/db_data
+
+volumes:
+  proxy-data:
 ```
 
 ## Backup Strategy
