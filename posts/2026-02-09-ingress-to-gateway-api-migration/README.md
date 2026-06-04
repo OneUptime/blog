@@ -28,7 +28,7 @@ data:
       +-- Gateway (Cluster Operator)
             |
             +-- HTTPRoute (Application Developer)
-            +-- TCPRoute (Application Developer)
+            +-- GRPCRoute (Application Developer)
             +-- TLSRoute (Application Developer)
 
     Ingress equivalent:
@@ -48,36 +48,43 @@ Deploy Gateway API CRDs and a compatible controller.
 # Install Gateway API
 
 # Install Gateway API CRDs
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 
 # Verify CRDs
 kubectl get crd | grep gateway
 
-# Install a Gateway controller (example: Istio)
+# Install one Gateway controller (example: Istio)
 istioctl install --set profile=minimal -y
 
-# Or use nginx-gateway-fabric
-kubectl apply -f https://raw.githubusercontent.com/nginxinc/nginx-gateway-fabric/main/deploy/manifests/nginx-gateway.yaml
+# Or install NGINX Gateway Fabric with Helm
+helm install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric --create-namespace -n nginx-gateway
 
 # Verify installation
 kubectl get gatewayclass
-kubectl get pods -n gateway-system
+kubectl get pods -n istio-system   # if you installed Istio
+kubectl get pods -n nginx-gateway  # if you installed NGINX Gateway Fabric
 ```
 
-Gateway API CRDs are now built into Kubernetes 1.29+.
+Gateway API is an add-on in upstream Kubernetes. Install the CRDs or follow the installation instructions for your selected Gateway API implementation.
 
 ## Creating GatewayClass and Gateway
 
 Define infrastructure-level Gateway resources.
 
 ```yaml
+# Namespace for shared Gateway resources
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-system
+---
 # GatewayClass (managed by platform team)
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
   name: nginx
 spec:
-  controllerName: nginx.org/gateway-controller
+  controllerName: gateway.nginx.org/gateway-controller
 ---
 # Gateway (managed by cluster operators)
 apiVersion: gateway.networking.k8s.io/v1
@@ -105,16 +112,8 @@ spec:
       namespaces:
         from: All
 ---
-# TLS certificate secret
-apiVersion: v1
-kind: Secret
-metadata:
-  name: production-tls
-  namespace: gateway-system
-type: kubernetes.io/tls
-data:
-  tls.crt: LS0tLS1CRUd... # base64 encoded
-  tls.key: LS0tLS1CRUd... # base64 encoded
+# Create the referenced TLS certificate secret separately:
+# kubectl create secret tls production-tls -n gateway-system --cert=./tls.crt --key=./tls.key
 ```
 
 Gateway defines how external traffic enters the cluster.
@@ -130,9 +129,6 @@ kind: Ingress
 metadata:
   name: myapp
   namespace: production
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
   tls:
@@ -187,7 +183,7 @@ spec:
       port: 80
 ```
 
-HTTPRoute provides more explicit routing configuration.
+HTTPRoute provides more explicit routing configuration. TLS termination moves to the Gateway listener, and controller-specific Ingress annotations need separate mapping to Gateway API filters or implementation-specific policy resources.
 
 ## Implementing Advanced Routing
 
@@ -248,7 +244,7 @@ spec:
     - name: myapp-stable
       port: 80
 ---
-# HTTPRoute with request/response modification
+# HTTPRoute with request modification
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -313,20 +309,22 @@ spec:
   parentRefs:
   - name: $GATEWAY_NAME
     namespace: $GATEWAY_NAMESPACE
-  hostnames:
 EOF
 
   # Extract hostnames
-  kubectl get ingress $INGRESS_NAME -n $NAMESPACE -o jsonpath='{.spec.rules[*].host}' | \
-    tr ' ' '\n' | sed 's/^/  - /' >> /tmp/httproute-$INGRESS_NAME.yaml
+  HOSTS=$(kubectl get ingress $INGRESS_NAME -n $NAMESPACE -o jsonpath='{.spec.rules[*].host}')
+  if [ -n "$HOSTS" ]; then
+    echo "  hostnames:" >> /tmp/httproute-$INGRESS_NAME.yaml
+    echo "$HOSTS" | tr ' ' '\n' | sed 's/^/  - /' >> /tmp/httproute-$INGRESS_NAME.yaml
+  fi
 
   # Add rules
   echo "  rules:" >> /tmp/httproute-$INGRESS_NAME.yaml
 
   # Extract paths and backends
   kubectl get ingress $INGRESS_NAME -n $NAMESPACE -o json | \
-    jq -r '.spec.rules[].http.paths[] | 
-      "  - matches:\n    - path:\n        type: PathPrefix\n        value: \(.path)\n    backendRefs:\n    - name: \(.backend.service.name)\n      port: \(.backend.service.port.number)"' \
+    jq -r '.spec.rules[].http.paths[] | select(.backend.service.port.number != null) |
+      "  - matches:\n    - path:\n        type: \(if .pathType == "Exact" then "Exact" else "PathPrefix" end)\n        value: \(.path)\n    backendRefs:\n    - name: \(.backend.service.name)\n      port: \(.backend.service.port.number)"' \
     >> /tmp/httproute-$INGRESS_NAME.yaml
 
   # Apply HTTPRoute
@@ -338,7 +336,7 @@ done
 echo "Migration complete. Review HTTPRoutes before deleting Ingress resources."
 ```
 
-This script provides automated conversion with manual review.
+This script provides automated conversion for host/path rules that use numeric Service ports, with manual review.
 
 ## Running Parallel Ingress and HTTPRoute
 
@@ -425,12 +423,12 @@ Update DNS to point to Gateway load balancer.
 # DNS cutover
 
 OLD_INGRESS_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-NEW_GATEWAY_IP=$(kubectl get gateway production-gateway -n gateway-system -o jsonpath='{.status.addresses[0].value}')
+NEW_GATEWAY_ADDRESS=$(kubectl get gateway production-gateway -n gateway-system -o jsonpath='{.status.addresses[0].value}')
 
 echo "Old Ingress IP: $OLD_INGRESS_IP"
-echo "New Gateway IP: $NEW_GATEWAY_IP"
+echo "New Gateway address: $NEW_GATEWAY_ADDRESS"
 
-# Update DNS
+# Update DNS. Use an A record for an IP address; use a CNAME or provider-specific alias for a hostname.
 aws route53 change-resource-record-sets \
   --hosted-zone-id Z123456 \
   --change-batch '{
@@ -440,7 +438,7 @@ aws route53 change-resource-record-sets \
         "Name": "api.example.com",
         "Type": "A",
         "TTL": 60,
-        "ResourceRecords": [{"Value": "'$NEW_GATEWAY_IP'"}]
+        "ResourceRecords": [{"Value": "'$NEW_GATEWAY_ADDRESS'"}]
       }
     }]
   }'
@@ -484,4 +482,4 @@ Only remove Ingress after Gateway API proves stable.
 
 ## Conclusion
 
-Gateway API is the future of Kubernetes traffic management. Install Gateway API CRDs and a compatible controller like Istio or NGINX Gateway Fabric. Create GatewayClass and Gateway resources for infrastructure-level configuration. Convert Ingress resources to HTTPRoute with more expressive routing rules. Leverage advanced features like traffic splitting, header-based routing, and request/response modification. Run Ingress and HTTPRoute in parallel during testing on different hostnames. Validate all HTTPRoute endpoints thoroughly. Switch DNS to point to the Gateway load balancer. Remove Ingress resources only after a successful soak period. Gateway API provides better extensibility, role-oriented design, and more powerful routing than Ingress while maintaining Kubernetes-native semantics.
+Gateway API is the future of Kubernetes traffic management. Install Gateway API CRDs and a compatible controller like Istio or NGINX Gateway Fabric. Create GatewayClass and Gateway resources for infrastructure-level configuration. Convert Ingress resources to HTTPRoute with more expressive routing rules. Leverage advanced features like traffic splitting, header-based routing, and request modification. Run Ingress and HTTPRoute in parallel during testing on different hostnames. Validate all HTTPRoute endpoints thoroughly. Switch DNS to point to the Gateway load balancer. Remove Ingress resources only after a successful soak period. Gateway API provides better extensibility, role-oriented design, and more powerful routing than Ingress while maintaining Kubernetes-native semantics.
