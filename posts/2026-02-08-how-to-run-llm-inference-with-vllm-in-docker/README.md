@@ -16,7 +16,7 @@ This guide walks you through setting up vLLM in Docker from scratch, covering GP
 
 Before you begin, make sure you have the following:
 
-- A Linux host with an NVIDIA GPU (compute capability 7.0 or higher)
+- A Linux host with an NVIDIA GPU (compute capability 7.5 or higher)
 - Docker Engine 24.0+ installed
 - The NVIDIA Container Toolkit installed and configured
 - At least 16 GB of GPU VRAM for smaller models (7B parameter class)
@@ -40,6 +40,7 @@ The fastest way to get started is to pull the official vLLM Docker image and run
 docker run -d \
   --name vllm-server \
   --gpus all \
+  --ipc=host \
   -p 8000:8000 \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   vllm/vllm-openai:latest \
@@ -87,7 +88,8 @@ services:
       # Persist downloaded model weights on the host
       - model-cache:/root/.cache/huggingface
     environment:
-      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+      - HF_TOKEN=${HF_TOKEN}
+    ipc: host
     deploy:
       resources:
         reservations:
@@ -131,8 +133,9 @@ Some models on Hugging Face require you to accept a license before downloading. 
 docker run -d \
   --name vllm-llama \
   --gpus all \
+  --ipc=host \
   -p 8000:8000 \
-  -e HUGGING_FACE_HUB_TOKEN=hf_your_token_here \
+  -e HF_TOKEN=hf_your_token_here \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   vllm/vllm-openai:latest \
   --model meta-llama/Meta-Llama-3-8B-Instruct \
@@ -169,6 +172,7 @@ When GPU memory is limited, quantized models let you run larger models on smalle
 docker run -d \
   --name vllm-quantized \
   --gpus all \
+  --ipc=host \
   -p 8000:8000 \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   vllm/vllm-openai:latest \
@@ -177,7 +181,7 @@ docker run -d \
   --max-model-len 4096
 ```
 
-A 4-bit AWQ model typically uses around 25% of the VRAM that the full-precision version requires.
+A 4-bit AWQ model typically uses around 25% of the memory for model weights compared with a full-precision version, though total VRAM usage also depends on KV cache, context length, and concurrency.
 
 ## Monitoring with Prometheus
 
@@ -195,7 +199,7 @@ scrape_configs:
     metrics_path: /metrics
 ```
 
-Key metrics to watch include `vllm:num_requests_running`, `vllm:num_requests_waiting`, and `vllm:avg_generation_throughput_toks_per_s`. These tell you whether your server is keeping up with demand or if you need to scale.
+Key metrics to watch include `vllm:num_requests_running`, `vllm:num_requests_waiting`, `vllm:generation_tokens`, and `vllm:request_queue_time_seconds`. These tell you whether your server is keeping up with demand or if you need to scale.
 
 ## Building a Custom Image
 
@@ -206,7 +210,7 @@ If you need additional Python packages or custom model loading logic, build your
 FROM vllm/vllm-openai:latest
 
 # Install additional packages for custom post-processing
-RUN pip install --no-cache-dir langchain tiktoken
+RUN uv pip install --system --no-cache-dir langchain tiktoken
 
 # Copy custom entrypoint script
 COPY entrypoint.sh /entrypoint.sh
@@ -222,13 +226,14 @@ Several configuration flags affect vLLM throughput significantly:
 - `--max-num-batched-tokens`: Controls the maximum batch size. Higher values improve throughput but increase latency and VRAM usage.
 - `--max-num-seqs`: Limits concurrent sequences. Set this based on your expected concurrency.
 - `--enable-prefix-caching`: Reuses KV cache for prompts that share a common prefix. Useful for chatbots where system prompts repeat.
-- `--disable-log-requests`: Reduces I/O overhead in production.
+- `--disable-uvicorn-access-log`: Reduces HTTP access-log I/O overhead in production.
 
 ```bash
 # Tuned production configuration for high throughput
 docker run -d \
   --name vllm-tuned \
   --gpus all \
+  --ipc=host \
   -p 8000:8000 \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   vllm/vllm-openai:latest \
@@ -238,7 +243,7 @@ docker run -d \
   --max-num-batched-tokens 8192 \
   --max-num-seqs 128 \
   --enable-prefix-caching \
-  --disable-log-requests
+  --disable-uvicorn-access-log
 ```
 
 ## Conclusion
