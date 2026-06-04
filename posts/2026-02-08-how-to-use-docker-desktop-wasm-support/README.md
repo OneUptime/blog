@@ -8,7 +8,7 @@ Description: Run WebAssembly workloads alongside traditional containers using Do
 
 ---
 
-WebAssembly (Wasm) is expanding beyond the browser. Docker Desktop now supports running Wasm workloads alongside traditional Linux containers, letting you use the same `docker run` commands and Compose files you already know. Wasm modules start faster, use less memory, and provide stronger sandboxing than traditional containers, making them attractive for specific workloads like serverless functions, edge computing, and lightweight microservices.
+WebAssembly (Wasm) is expanding beyond the browser. Docker Desktop supports running Wasm workloads alongside traditional Linux containers, letting you use the same `docker run` commands and Compose files you already know. This Docker Desktop feature is currently beta and Docker's documentation says it is deprecated and will be removed in a future release, so use it for experimentation rather than new production designs. Wasm modules start faster, use less memory, and provide stronger sandboxing than traditional containers, making them attractive for specific workloads like serverless functions, edge computing, and lightweight microservices.
 
 This guide covers enabling Wasm support in Docker Desktop, building and running Wasm containers, and understanding when Wasm makes sense versus traditional containers.
 
@@ -25,9 +25,9 @@ The key differences from regular containers:
 
 ## Enabling Wasm Support in Docker Desktop
 
-Open Docker Desktop, go to Settings > Features in development, and enable "Use containerd for pulling and storing images" if it is not already enabled. Then enable "Enable Wasm."
+Open Docker Desktop, go to Settings > General, and enable "Use containerd for pulling and storing images" if it is not already enabled. Then go to Settings > Features in development and enable "Enable Wasm."
 
-Docker Desktop installs the containerd-wasm-shims that allow running Wasm workloads through the standard Docker interface.
+Docker Desktop installs the Wasm containerd shims that allow running Wasm workloads through the standard Docker interface.
 
 Verify the setup is working.
 
@@ -41,7 +41,7 @@ docker run --rm --runtime=io.containerd.wasmedge.v1 --platform=wasi/wasm \
   secondstate/rust-example-hello:latest
 ```
 
-If you see "Hello, world!" in the output, Wasm support is working correctly.
+If you see the example's hello output, Wasm support is working correctly.
 
 ## Building Your First Wasm Container
 
@@ -117,62 +117,20 @@ docker run --rm \
   hello-wasm:latest
 ```
 
-## Building a Wasm Web Server
+## Running a Wasm Web Server
 
-Wasm containers can serve HTTP traffic. Here is a Rust web server using the `warp` framework compiled to WASI.
-
-```rust
-// src/main.rs - Simple HTTP server targeting WASI
-use std::net::SocketAddr;
-use warp::Filter;
-
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
-    // Health check endpoint
-    let health = warp::path("health")
-        .map(|| warp::reply::json(&serde_json::json!({"status": "ok"})));
-
-    // Hello endpoint with a name parameter
-    let hello = warp::path!("hello" / String)
-        .map(|name: String| {
-            warp::reply::json(&serde_json::json!({"message": format!("Hello, {}!", name)}))
-        });
-
-    let routes = health.or(hello);
-
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
-    println!("Server starting on {}", addr);
-    warp::serve(routes).run(addr).await;
-}
-```
-
-```toml
-# Cargo.toml - Dependencies for the Wasm web server
-[package]
-name = "wasm-server"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-tokio = { version = "1", features = ["rt", "macros", "net"] }
-warp = "0.3"
-serde_json = "1"
-```
+Wasm containers can serve HTTP traffic when the runtime and application are built for the WASI networking support they need. The standard Rust `wasm32-wasip1` target does not make every Linux networking crate work automatically, so use a Wasm-ready server example or a framework that explicitly supports your target runtime.
 
 ```bash
-# Build and run the Wasm web server
-cargo build --target wasm32-wasip1 --release
-docker buildx build --platform wasi/wasm -t wasm-server:latest .
-
+# Run a prebuilt WasmEdge HTTP server example
 docker run -d --name wasm-web \
   --runtime=io.containerd.wasmedge.v1 \
   --platform=wasi/wasm \
   -p 8080:8080 \
-  wasm-server:latest
+  secondstate/rust-example-server:latest
 
-# Test the endpoints
-curl http://localhost:8080/health
-curl http://localhost:8080/hello/Docker
+# Test the endpoint
+curl http://localhost:8080/
 ```
 
 ## Mixing Wasm and Linux Containers in Compose
@@ -196,7 +154,7 @@ services:
 
   # Wasm container for the API service
   api:
-    image: wasm-server:latest
+    image: secondstate/rust-example-server:latest
     runtime: io.containerd.wasmedge.v1
     platform: wasi/wasm
     ports:
@@ -270,7 +228,7 @@ Since Wasm images typically build from `scratch` with no OS packages, they have 
 
 Wasm in Docker is powerful but has constraints you should understand before adopting it.
 
-**WASI support is still evolving.** Not all system calls are available. Networking, file I/O, and threading work, but features like GPU access, raw sockets, and some advanced filesystem operations are not yet supported.
+**WASI support is still evolving.** Not all system calls are available. Basic file I/O is supported, but networking support depends on the runtime and libraries you use, and the standard Rust `wasm32-wasip1` target does not support native thread spawning. Features like GPU access, raw sockets, and some advanced filesystem operations are not yet supported.
 
 **Not all languages compile to WASI equally well.** Rust, C, C++, Go (with TinyGo), and AssemblyScript have good support. Python and JavaScript support exists but requires more effort.
 
