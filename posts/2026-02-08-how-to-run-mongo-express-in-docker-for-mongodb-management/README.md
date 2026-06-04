@@ -18,13 +18,21 @@ Running it in Docker means zero installation on your host machine and easy clean
 
 ## Quick Start with Docker Run
 
-The fastest way to get Mongo Express running is with two Docker commands. First, start MongoDB:
+The fastest way to get Mongo Express running is with a few Docker commands. First, create a shared Docker network:
+
+```bash
+# Create a user-defined bridge network for MongoDB and Mongo Express
+docker network create mongo-network
+```
+
+Then start MongoDB on that network:
 
 ```bash
 # Start a MongoDB container with authentication enabled
 
 docker run -d \
   --name mongodb \
+  --network mongo-network \
   -e MONGO_INITDB_ROOT_USERNAME=admin \
   -e MONGO_INITDB_ROOT_PASSWORD=adminpass \
   -v mongodata:/data/db \
@@ -32,16 +40,16 @@ docker run -d \
   mongo:7
 ```
 
-Then start Mongo Express, linking it to the MongoDB container:
+Then start Mongo Express and connect it to the MongoDB container by service name:
 
 ```bash
 # Start Mongo Express and connect it to the MongoDB container
 docker run -d \
   --name mongo-express \
-  --link mongodb:mongo \
-  -e ME_CONFIG_MONGODB_ADMINUSERNAME=admin \
-  -e ME_CONFIG_MONGODB_ADMINPASSWORD=adminpass \
-  -e ME_CONFIG_MONGODB_URL=mongodb://admin:adminpass@mongo:27017/ \
+  --network mongo-network \
+  -e ME_CONFIG_MONGODB_ENABLE_ADMIN=true \
+  -e ME_CONFIG_MONGODB_URL=mongodb://admin:adminpass@mongodb:27017/ \
+  -e ME_CONFIG_BASICAUTH_ENABLED=true \
   -e ME_CONFIG_BASICAUTH_USERNAME=webuser \
   -e ME_CONFIG_BASICAUTH_PASSWORD=webpass \
   -p 8081:8081 \
@@ -56,8 +64,6 @@ For a cleaner, reproducible setup, Docker Compose is the way to go. Here is a co
 
 ```yaml
 # docker-compose.yml - MongoDB with Mongo Express admin interface
-version: "3.8"
-
 services:
   mongodb:
     image: mongo:7
@@ -85,13 +91,13 @@ services:
       - mongodb
     environment:
       # MongoDB connection settings
-      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
-      ME_CONFIG_MONGODB_ADMINPASSWORD: adminpass
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
       ME_CONFIG_MONGODB_URL: mongodb://admin:adminpass@mongodb:27017/
       # Basic auth protects the web UI from unauthorized access
+      ME_CONFIG_BASICAUTH_ENABLED: "true"
       ME_CONFIG_BASICAUTH_USERNAME: webuser
       ME_CONFIG_BASICAUTH_PASSWORD: webpass
-      # Optional: set the site name displayed in the UI header
+      # Optional: set secrets used for signed cookies and sessions
       ME_CONFIG_SITE_COOKIESECRET: changethissecret
       ME_CONFIG_SITE_SESSIONSECRET: changethissecrettoo
     ports:
@@ -156,14 +162,14 @@ Mongo Express offers several environment variables to customize its behavior. He
 ```yaml
 # Key configuration environment variables for Mongo Express
 environment:
-  # Restrict which databases are visible (comma-separated list)
+  # Disable admin access when connecting to a specific database
   ME_CONFIG_MONGODB_ENABLE_ADMIN: "false"
 
-  # Connect to a specific database instead of showing all
-  ME_CONFIG_MONGODB_AUTH_DATABASE: myapp
+  # Connect to a specific database instead of using admin access
+  ME_CONFIG_MONGODB_URL: mongodb://appuser:apppass@mongodb:27017/myapp?authSource=myapp
 
   # Set the number of documents displayed per page
-  ME_CONFIG_OPTIONS_EDITORTHEME: monokai
+  ME_CONFIG_DOCUMENTS_PER_PAGE: "25"
 
   # Read-only mode prevents accidental modifications
   ME_CONFIG_OPTIONS_READONLY: "false"
@@ -182,6 +188,7 @@ Mongo Express does not need to run on the same host as MongoDB. You can point it
 # Connect Mongo Express to a remote MongoDB instance or Atlas cluster
 environment:
   ME_CONFIG_MONGODB_URL: mongodb+srv://admin:password@cluster0.abc123.mongodb.net/?retryWrites=true&w=majority
+  ME_CONFIG_BASICAUTH_ENABLED: "true"
   ME_CONFIG_BASICAUTH_USERNAME: webuser
   ME_CONFIG_BASICAUTH_PASSWORD: webpass
 ```
@@ -192,7 +199,7 @@ This works with MongoDB Atlas, self-hosted clusters, or any MongoDB instance acc
 
 Mongo Express should never be exposed to the public internet without protection. Here are several layers of security to apply.
 
-First, always set basic auth credentials. Never run Mongo Express without the `ME_CONFIG_BASICAUTH_USERNAME` and `ME_CONFIG_BASICAUTH_PASSWORD` variables set.
+First, always enable basic auth and set credentials. Never run Mongo Express without `ME_CONFIG_BASICAUTH_ENABLED`, `ME_CONFIG_BASICAUTH_USERNAME`, and `ME_CONFIG_BASICAUTH_PASSWORD` set.
 
 Second, bind to localhost only in production:
 
@@ -231,8 +238,6 @@ During development, Mongo Express shines as a quick way to inspect your applicat
 
 ```yaml
 # docker-compose.dev.yml - Development stack with Mongo Express
-version: "3.8"
-
 services:
   app:
     build: .
@@ -258,11 +263,10 @@ services:
   mongo-express:
     image: mongo-express:latest
     environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
-      ME_CONFIG_MONGODB_ADMINPASSWORD: devpass
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
       ME_CONFIG_MONGODB_URL: mongodb://admin:devpass@mongodb:27017/
       # No basic auth needed in local dev
-      ME_CONFIG_BASICAUTH: "false"
+      ME_CONFIG_BASICAUTH_ENABLED: "false"
     ports:
       - "8081:8081"
     depends_on:
