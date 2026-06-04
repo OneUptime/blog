@@ -42,7 +42,7 @@ kubectl create secret generic argocd-notifications-secret \
   -n argocd \
   --from-literal=github-app-id=YOUR_APP_ID \
   --from-literal=github-installation-id=YOUR_INSTALLATION_ID \
-  --from-file=github-private-key=path/to/private-key.pem
+  --from-file=github-privateKey=path/to/private-key.pem
 ```
 
 Configure the GitHub service in ArgoCD Notifications:
@@ -59,7 +59,7 @@ data:
   service.github: |
     appID: $github-app-id
     installationID: $github-installation-id
-    privateKey: $github-private-key
+    privateKey: $github-privateKey
 
   # Template for deployment started
   template.github-deployment-started: |
@@ -103,18 +103,18 @@ data:
 
   # Triggers for GitHub status updates
   trigger.on-deployment-started: |
-    - when: app.status.operationState != nil and app.status.operationState.phase in ['Running']
-      oncePer: app.status.operationState.startedAt
+    - when: app.status?.operationState.phase in ['Running']
+      oncePer: app.status?.operationState.startedAt
       send: [github-deployment-started]
 
   trigger.on-deployment-success: |
-    - when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded']
-      oncePer: app.status.operationState.finishedAt
+    - when: app.status?.operationState.phase in ['Succeeded']
+      oncePer: app.status?.operationState.finishedAt
       send: [github-deployment-success]
 
   trigger.on-deployment-failure: |
-    - when: app.status.operationState != nil and app.status.operationState.phase in ['Failed', 'Error']
-      oncePer: app.status.operationState.finishedAt
+    - when: app.status?.operationState.phase in ['Failed', 'Error']
+      oncePer: app.status?.operationState.finishedAt
       send: [github-deployment-failure]
 
   trigger.on-health-degraded: |
@@ -161,7 +161,7 @@ spec:
       selfHeal: true
 ```
 
-The empty string after the service name tells ArgoCD to use the commit SHA from the application's source repository.
+The empty string after the service name subscribes to the GitHub service without a recipient value. Because the templates omit `github.repoURLPath` and `github.revisionPath`, ArgoCD uses the application's source repository and the sync operation revision for the commit status.
 
 ## Environment-Specific Status Labels
 
@@ -206,15 +206,15 @@ data:
         targetURL: "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}"
 
   trigger.on-production-success: |
-    - when: app.status.operationState.phase == 'Succeeded' and app.metadata.namespace == 'production'
+    - when: app.status?.operationState.phase == 'Succeeded' and app.spec.destination.namespace == 'production'
       send: [github-production-success]
 
   trigger.on-staging-success: |
-    - when: app.status.operationState.phase == 'Succeeded' and app.metadata.namespace == 'staging'
+    - when: app.status?.operationState.phase == 'Succeeded' and app.spec.destination.namespace == 'staging'
       send: [github-staging-success]
 
   trigger.on-dev-success: |
-    - when: app.status.operationState.phase == 'Succeeded' and app.metadata.namespace == 'development'
+    - when: app.status?.operationState.phase == 'Succeeded' and app.spec.destination.namespace == 'development'
       send: [github-dev-success]
 ```
 
@@ -251,11 +251,11 @@ data:
         targetURL: "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}"
 
   trigger.on-pr-preview-deployed: |
-    - when: app.status.operationState.phase == 'Succeeded' and app.metadata.labels['preview'] == 'true'
+    - when: app.status?.operationState.phase == 'Succeeded' and app.metadata.labels['preview'] == 'true'
       send: [github-pr-preview-deployed]
 
   trigger.on-pr-preview-failed: |
-    - when: app.status.operationState.phase in ['Failed', 'Error'] and app.metadata.labels['preview'] == 'true'
+    - when: app.status?.operationState.phase in ['Failed', 'Error'] and app.metadata.labels['preview'] == 'true'
       send: [github-pr-preview-failed]
 ```
 
@@ -307,7 +307,7 @@ data:
         label: "argocd/deployment"
         targetURL: "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}"
         description: |
-          Deployed {{.app.status.sync.revision | trunc 7}} to {{.app.spec.destination.namespace}}
+          Deployed {{printf "%.7s" .app.status.operationState.syncResult.revision}} to {{.app.spec.destination.namespace}}
           Health: {{.app.status.health.status}}
           Synced at: {{.app.status.operationState.finishedAt}}
 
@@ -320,8 +320,8 @@ data:
         label: "argocd/deployment"
         targetURL: "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}"
         description: |
-          Failed to deploy {{.app.status.sync.revision | trunc 7}}
-          Error: {{.app.status.operationState.message | trunc 100}}
+          Failed to deploy {{printf "%.7s" .app.status.operationState.syncResult.revision}}
+          Error: {{printf "%.100s" .app.status.operationState.message}}
           Check ArgoCD for details
 
   template.github-sync-progress: |
@@ -333,7 +333,7 @@ data:
         label: "argocd/deployment"
         targetURL: "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}"
         description: |
-          Deploying {{.app.status.sync.revision | trunc 7}} to {{.app.spec.destination.namespace}}
+          Deploying {{printf "%.7s" .app.status.operationState.syncResult.revision}} to {{.app.spec.destination.namespace}}
           Started at: {{.app.status.operationState.startedAt}}
 ```
 
@@ -365,8 +365,8 @@ data:
           Health: {{.app.status.health.status}}
 
   trigger.on-monorepo-sync: |
-    - when: app.status.operationState != nil
-      oncePer: app.status.operationState.finishedAt
+    - when: app.status?.operationState != nil
+      oncePer: app.status?.operationState.finishedAt
       send: [github-monorepo-status]
 ```
 
@@ -376,34 +376,22 @@ This creates unique status checks for each application in your monorepo, making 
 
 While ArgoCD Notifications push status to GitHub, you can also configure webhooks for GitHub to trigger syncs:
 
-```yaml
-# github-webhook-secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: github-webhook-secret
-  namespace: argocd
-type: Opaque
-stringData:
-  webhook.github.secret: your-webhook-secret
-```
-
-Configure the webhook in ArgoCD:
-
 ```bash
-# Add webhook configuration to argocd-cm
-kubectl patch configmap argocd-cm -n argocd --type merge -p '{
-  "data": {
-    "webhook.github.secret": "github-webhook-secret"
+# Add the GitHub webhook shared secret to argocd-secret
+kubectl patch secret argocd-secret -n argocd --type merge -p '{
+  "stringData": {
+    "webhook.github.secret": "your-webhook-secret"
   }
 }'
 ```
+
+ArgoCD reads the GitHub webhook shared secret from the `webhook.github.secret` key in `argocd-secret`.
 
 Set up the webhook in GitHub repository settings:
 - Payload URL: `https://argocd.example.com/api/webhook`
 - Content type: `application/json`
 - Secret: Your webhook secret
-- Events: Push events, Pull request events
+- Events: Push events. Add pull request events only if you also use ApplicationSet Pull Request generators.
 
 This enables push-based synchronization in addition to status updates.
 
@@ -449,7 +437,7 @@ spec:
     - name: github-status-updates
       rules:
         - alert: GitHubStatusUpdateFailures
-          expr: rate(argocd_notifications_deliveries_total{service="github",status="failed"}[5m]) > 0.1
+          expr: rate(argocd_notifications_deliveries_total{notifier="github",succeeded="false"}[5m]) > 0.1
           annotations:
             summary: "High rate of GitHub status update failures"
 ```
