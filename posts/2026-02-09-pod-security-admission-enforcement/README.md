@@ -83,7 +83,7 @@ spec:
       runAsUser: 1000
 ```
 
-Baseline standard blocks privileged containers, host namespace sharing, and dangerous capabilities. It requires `allowPrivilegeEscalation: false` but allows running as root and writable root filesystems.
+Baseline standard blocks privileged containers, host namespace sharing, hostPath volumes, hostPorts, and dangerous added capabilities. It allows the default pod configuration, including running as root and using writable root filesystems, so settings such as `allowPrivilegeEscalation: false` and `runAsNonRoot: true` are recommended hardening but not required by baseline.
 
 ## Restricted Standard Requirements
 
@@ -127,7 +127,7 @@ spec:
     emptyDir: {}
 ```
 
-Restricted standard requires everything from baseline plus running as non-root, read-only root filesystem, dropping all capabilities, and seccomp profile. This provides maximum security but requires careful application design.
+Restricted standard requires everything from baseline plus running as non-root, disallowing privilege escalation, dropping all capabilities, using only allowed volume types, and setting a seccomp profile. It does not require a read-only root filesystem, but `readOnlyRootFilesystem: true` is a useful hardening setting when the application supports it.
 
 ## Version-Specific Policy Enforcement
 
@@ -167,7 +167,7 @@ plugins:
       warn: restricted
     exemptions:
       usernames:
-      - system:serviceaccount:kube-system:replicaset-controller
+      - system:serviceaccount:monitoring:node-agent-operator
       runtimeClasses:
       - kata-containers
       namespaces:
@@ -175,7 +175,7 @@ plugins:
       - monitoring
 ```
 
-This configuration exempts the kube-system namespace, specific service accounts, and pods using the kata-containers runtime class. Use exemptions sparingly and document the security implications.
+This configuration exempts the kube-system namespace, the named service account when it is the authenticated API requester, and pods using the kata-containers runtime class. Use exemptions sparingly and document the security implications.
 
 ## Cluster-Wide Default Policies
 
@@ -205,9 +205,8 @@ These defaults ensure that even newly created namespaces without labels get secu
 Track policy violations through audit logs and warnings. Configure your logging infrastructure to alert on violations:
 
 ```bash
-# View admission webhook decisions in audit log
-
-kubectl get events --all-namespaces | grep "PodSecurity"
+# Search audit log output for Pod Security annotations
+grep "pod-security.kubernetes.io" /var/log/kubernetes/audit.log
 
 # Check for warning messages in kubectl output
 kubectl apply -f pod.yaml
@@ -275,7 +274,7 @@ kubectl run test --image=nginx --namespace=policy-test
 kubectl get pods -n policy-test
 
 # Check audit logs for violations
-kubectl logs -n kube-system -l component=kube-apiserver | grep PodSecurity
+grep "pod-security.kubernetes.io" /var/log/kubernetes/audit.log
 ```
 
 ## Handling Special Workload Types
@@ -289,7 +288,7 @@ metadata:
   name: system-daemons
   labels:
     # More permissive for infrastructure pods
-    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/audit: baseline
     pod-security.kubernetes.io/warn: restricted
 ---
@@ -307,8 +306,8 @@ spec:
       labels:
         app: node-monitor
     spec:
-      hostNetwork: true  # Allowed by baseline
-      hostPID: true      # Allowed by baseline
+      hostNetwork: true  # Requires privileged enforcement or an exemption
+      hostPID: true      # Requires privileged enforcement or an exemption
       containers:
       - name: monitor
         image: monitoring-agent:1.0
