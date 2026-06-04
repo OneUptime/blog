@@ -12,7 +12,7 @@ Flannel provides simple overlay networking for Kubernetes, but Cilium offers adv
 
 ## Understanding the Migration Strategy
 
-CNI migration requires careful planning because you cannot run two CNI plugins simultaneously on the same node.
+CNI migration requires careful planning because you cannot run two independent CNI plugins simultaneously on the same node unless you are using a supported CNI chaining mode.
 
 ```yaml
 # Migration approach overview
@@ -51,7 +51,7 @@ data:
     - Document new networking setup
 ```
 
-This phased approach minimizes risk by running both CNIs temporarily during migration.
+This phased approach minimizes risk by running both CNIs temporarily on separate node pools during migration. Cross-CNI pod connectivity must be validated in your environment before moving production workloads, because it depends on compatible PodCIDR allocation, routing, encapsulation, and firewall rules.
 
 ## Preparing the Cluster for Migration
 
@@ -81,13 +81,14 @@ kubectl get all -A -o yaml > pre-migration-state.yaml
 kubectl get netpol -A -o yaml > network-policies-backup.yaml
 
 # Test current connectivity
-kubectl run test-pod --image=nicolaka/netshoot -it --rm -- /bin/bash <<'EOF'
+SAMPLE_IP=$(kubectl get pod -l app=sample -o jsonpath='{.items[0].status.podIP}')
+kubectl run test-pod --image=nicolaka/netshoot -it --rm --env SAMPLE_IP="$SAMPLE_IP" -- /bin/bash <<'EOF'
 # Test DNS
 nslookup kubernetes.default
 # Test external connectivity
 curl -I https://www.google.com
 # Test pod-to-pod
-ping -c 3 $(kubectl get pod -l app=sample -o jsonpath='{.items[0].status.podIP}')
+ping -c 3 "$SAMPLE_IP"
 EOF
 
 echo "Pre-migration audit complete. Review output before proceeding."
@@ -110,7 +111,16 @@ MIN_SIZE=3
 MAX_SIZE=10
 DESIRED_SIZE=3
 
-# Create new node group without Flannel
+# Label existing Flannel nodes for tracking before adding the new node group
+kubectl label nodes --all cni=flannel --overwrite
+
+# Restrict the Flannel DaemonSet to the existing Flannel nodes so it does not
+# install Flannel CNI configuration on the new Cilium nodes.
+kubectl -n kube-flannel patch daemonset kube-flannel-ds \
+    --type='merge' \
+    -p '{"spec":{"template":{"spec":{"nodeSelector":{"cni":"flannel"}}}}}'
+
+# Create new node group for Cilium
 aws eks create-nodegroup \
     --cluster-name ${CLUSTER_NAME} \
     --nodegroup-name ${NODE_GROUP_NAME} \
@@ -119,16 +129,15 @@ aws eks create-nodegroup \
     --scaling-config minSize=${MIN_SIZE},maxSize=${MAX_SIZE},desiredSize=${DESIRED_SIZE} \
     --node-role arn:aws:iam::ACCOUNT_ID:role/EKSNodeRole \
     --labels cni=cilium,node-type=new \
-    --taints key=cilium,value=true,effect=NoSchedule
+    --taints key=node.cilium.io/agent-not-ready,value=true,effect=NO_EXECUTE
 
 # Wait for nodes to be ready
 aws eks wait nodegroup-active \
     --cluster-name ${CLUSTER_NAME} \
     --nodegroup-name ${NODE_GROUP_NAME}
 
-# Label Flannel nodes for tracking
-kubectl label nodes --all cni=flannel --overwrite
-kubectl label nodes -l cni=cilium cni-
+# Ensure the new nodes have the expected labels after they join
+kubectl label nodes -l eks.amazonaws.com/nodegroup=${NODE_GROUP_NAME} cni=cilium node-type=new --overwrite
 
 echo "New node pool created with label cni=cilium"
 ```
@@ -146,16 +155,17 @@ Deploy Cilium to the new node pool without affecting Flannel nodes.
 helm repo add cilium https://helm.cilium.io/
 helm repo update
 
-# Get current cluster pod CIDR (must match)
-POD_CIDR=$(kubectl get nodes -o jsonpath='{.items[0].spec.podCIDR}' | cut -d'/' -f1 | sed 's/\.[0-9]*$/\.0/')
+# Confirm Kubernetes is assigning per-node PodCIDRs
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDR}{"\n"}{end}'
 
-# Install Cilium with configuration matching Flannel
+# Install Cilium using the Kubernetes-assigned PodCIDR for each node
 helm install cilium cilium/cilium \
-    --version 1.14.5 \
+    --version 1.19.4 \
     --namespace kube-system \
-    --set ipam.mode=cluster-pool \
-    --set ipam.operator.clusterPoolIPv4PodCIDRList="${POD_CIDR}/16" \
-    --set tunnel=vxlan \
+    --set ipam.mode=kubernetes \
+    --set k8s.requireIPv4PodCIDR=true \
+    --set routingMode=tunnel \
+    --set tunnelProtocol=vxlan \
     --set nodeSelector."cni"=cilium \
     --set operator.nodeSelector."cni"=cilium \
     --set hubble.enabled=true \
@@ -167,11 +177,11 @@ helm install cilium cilium/cilium \
 # Wait for Cilium to be ready
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
 
-# Remove taint from Cilium nodes
-kubectl taint nodes -l cni=cilium cilium:NoSchedule-
+# Remove the startup taint from Cilium nodes after Cilium is ready
+kubectl taint nodes -l cni=cilium node.cilium.io/agent-not-ready:NoExecute-
 
-# Verify Cilium installation
-kubectl -n kube-system exec -it ds/cilium -- cilium status
+# Verify Cilium installation from a workstation with the Cilium CLI installed
+cilium status --wait
 ```
 
 This installs Cilium only on the new nodes using node selectors.
@@ -287,7 +297,7 @@ for NODE in $FLANNEL_NODES; do
     echo "Validating application health..."
     sleep 30
 
-    ERROR_RATE=$(kubectl top pods -n production --containers | grep -c "Error\|CrashLoop")
+    ERROR_RATE=$(kubectl get pods -n production -o json | jq '[.items[] | select(.status.phase != "Running" and .status.phase != "Succeeded")] | length')
     if [ $ERROR_RATE -gt 0 ]; then
         echo "ERROR: Applications showing errors. Uncordoning $NODE for rollback"
         kubectl uncordon $NODE
@@ -372,12 +382,17 @@ spec:
     - ports:
       - port: "443"
         protocol: TCP
-  - toEntities:
-    - world
+  - toEndpoints:
+    - matchLabels:
+        "k8s:io.kubernetes.pod.namespace": kube-system
+        "k8s:k8s-app": kube-dns
     toPorts:
     - ports:
       - port: "53"
-        protocol: UDP
+        protocol: ANY
+      rules:
+        dns:
+        - matchPattern: "*"
 ```
 
 Cilium policies offer FQDN-based rules and entity matching unavailable in standard NetworkPolicies.
@@ -421,8 +436,9 @@ for NODE in $FLANNEL_NODES; do
     fi
 done
 
-# Clean up Flannel CNI configuration from nodes
-kubectl get nodes -o name | xargs -I {} kubectl debug {} -it --image=busybox -- rm -rf /etc/cni/net.d/10-flannel.conflist
+# If you reuse old nodes instead of terminating them, clean host CNI config
+# before rejoining them to the cluster:
+# kubectl debug node/$NODE -it --image=busybox -- chroot /host rm -f /etc/cni/net.d/10-flannel.conflist
 
 echo "Flannel removal complete"
 ```
@@ -461,7 +477,7 @@ helm upgrade cilium cilium/cilium \
 helm upgrade cilium cilium/cilium \
     --namespace kube-system \
     --reuse-values \
-    --set kubeProxyReplacement=strict
+    --set kubeProxyReplacement=true
 
 echo "Advanced features enabled. Access Hubble UI:"
 kubectl port-forward -n kube-system svc/hubble-ui 12000:80
@@ -478,10 +494,10 @@ Confirm networking functions correctly after migration.
 # Post-migration validation
 
 echo "=== Cilium Status ==="
-kubectl -n kube-system exec ds/cilium -- cilium status
+cilium status --wait
 
 echo -e "\n=== Connectivity Test ==="
-kubectl -n kube-system exec ds/cilium -- cilium connectivity test
+cilium connectivity test
 
 echo -e "\n=== Network Policies ==="
 kubectl get ciliumnetworkpolicies -A
@@ -496,7 +512,7 @@ echo -e "\n=== DNS Resolution ==="
 kubectl run test --image=busybox --rm -it --restart=Never -- nslookup kubernetes.default
 
 echo -e "\n=== Hubble Flows ==="
-kubectl -n kube-system exec ds/cilium -- hubble observe --last 100
+hubble observe --last 100
 
 echo "Post-migration validation complete"
 ```
@@ -505,4 +521,4 @@ This comprehensive test ensures all networking functions work correctly.
 
 ## Conclusion
 
-Migrating from Flannel to Cilium requires careful planning to avoid cluster-wide networking outages. Create a new node pool without Flannel and install Cilium using node selectors to run both CNIs in parallel. Validate cross-CNI connectivity between pods before migrating workloads. Gradually drain Flannel nodes one at a time, moving workloads to Cilium nodes with health checks at each step. Convert standard NetworkPolicies to CiliumNetworkPolicies to leverage advanced features like FQDN-based rules. Remove Flannel only after confirming all workloads run successfully on Cilium. Enable advanced Cilium features like Hubble observability, L7 policies, and kube-proxy replacement. This rolling node replacement strategy minimizes risk and provides rollback capability at every stage, ensuring safe CNI migration without cluster downtime.
+Migrating from Flannel to Cilium requires careful planning to avoid cluster-wide networking outages. Create a new node pool without Flannel and install Cilium using node selectors to run both CNIs on separate node pools in parallel. Validate cross-CNI connectivity between pods before migrating workloads. Gradually drain Flannel nodes one at a time, moving workloads to Cilium nodes with health checks at each step. Convert standard NetworkPolicies to CiliumNetworkPolicies to leverage advanced features like FQDN-based rules. Remove Flannel only after confirming all workloads run successfully on Cilium. Enable advanced Cilium features like Hubble observability, L7 policies, and kube-proxy replacement. This rolling node replacement strategy minimizes risk and provides rollback capability at every stage, ensuring safe CNI migration without cluster downtime.
