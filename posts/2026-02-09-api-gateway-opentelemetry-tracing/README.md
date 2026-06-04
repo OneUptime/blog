@@ -8,11 +8,11 @@ Description: Integrate OpenTelemetry tracing in API gateways to track request fl
 
 ---
 
-OpenTelemetry provides vendor-neutral instrumentation for distributed tracing, enabling you to track requests as they flow through multiple services. API gateways are critical trace initiation points, creating root spans that capture the entire request lifecycle. Proper instrumentation at the gateway level provides complete visibility into API performance, latency distribution, and error propagation across your microservices architecture.
+OpenTelemetry provides vendor-neutral instrumentation for distributed tracing, enabling you to track requests as they flow through multiple services. API gateways are critical trace entry points, creating or continuing server spans that capture the gateway portion of the request lifecycle. Proper instrumentation at the gateway level provides visibility into API performance, latency distribution, and error propagation across your microservices architecture.
 
 ## Understanding Distributed Tracing
 
-Distributed tracing follows a single request across multiple services, recording timing information and metadata at each hop. A trace consists of spans, with each span representing a unit of work. The API gateway creates the root span when a request arrives, and downstream services create child spans as they process the request.
+Distributed tracing follows a single request across multiple services, recording timing information and metadata at each hop. A trace consists of spans, with each span representing a unit of work. The API gateway creates a server span when a request arrives, either as a root span for a new trace or as a child span when incoming trace context is present, and downstream services create child spans as they process the request.
 
 Context propagation ensures spans connect properly across service boundaries. The gateway injects trace context into outgoing requests using standard headers like `traceparent` and `tracestate` defined by the W3C Trace Context specification.
 
@@ -56,15 +56,15 @@ data:
         endpoint: jaeger:4317
         tls:
           insecure: true
-      logging:
-        loglevel: debug
+      debug:
+        verbosity: detailed
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, batch, attributes]
-          exporters: [otlp, logging]
+          exporters: [otlp, debug]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -83,7 +83,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector:0.91.0
+        image: otel/opentelemetry-collector:0.153.0
         args:
         - --config=/etc/otel/collector.yaml
         ports:
@@ -170,19 +170,17 @@ Build NGINX with OpenTelemetry module:
 
 ```dockerfile
 # Dockerfile
-FROM nginx:1.25-alpine
+FROM nginx:1.29-alpine
 
-# Install OpenTelemetry module
-RUN apk add --no-cache curl && \
-    curl -L https://github.com/open-telemetry/opentelemetry-cpp-contrib/releases/download/v1.0.0/ngx_otel_module.so \
-    -o /usr/lib/nginx/modules/ngx_otel_module.so
+# Install the prebuilt OpenTelemetry dynamic module from the official NGINX repository
+RUN apk add --no-cache nginx-module-otel
 
 COPY nginx-otel.conf /etc/nginx/nginx.conf
 ```
 
 ## Envoy OpenTelemetry Configuration
 
-Envoy has native OpenTelemetry support with comprehensive tracing capabilities.
+Envoy has native OpenTelemetry tracer support, though the OpenTelemetry tracer extension is still documented as work-in-progress.
 
 ```yaml
 # envoy-otel-config.yaml
@@ -201,6 +199,7 @@ static_resources:
           stat_prefix: ingress_http
           generate_request_id: true
           tracing:
+            spawn_upstream_span: true
             provider:
               name: envoy.tracers.opentelemetry
               typed_config:
@@ -222,14 +221,10 @@ static_resources:
                   cluster: backend_service
                 decorator:
                   operation: "api_request"
-                typed_per_filter_config:
-                  envoy.filters.http.router:
-                    "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
           http_filters:
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
-              start_child_span: true
 
   clusters:
   - name: backend_service
@@ -302,7 +297,7 @@ spec:
 Configure Telemetry resource for fine-grained control:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: gateway-tracing
@@ -331,12 +326,21 @@ Kong supports OpenTelemetry through a plugin that exports traces to OTLP endpoin
 ```bash
 # Enable OpenTelemetry plugin
 curl -X POST http://kong-admin:8001/plugins \
-  --data "name=opentelemetry" \
-  --data "config.endpoint=http://otel-collector.observability.svc.cluster.local:4318/v1/traces" \
-  --data "config.resource_attributes.service.name=api-gateway" \
-  --data "config.resource_attributes.environment=production" \
-  --data "config.batch_span_count=100" \
-  --data "config.batch_flush_delay=1"
+  --header "Content-Type: application/json" \
+  --data '{
+    "name": "opentelemetry",
+    "config": {
+      "traces_endpoint": "http://otel-collector.observability.svc.cluster.local:4318/v1/traces",
+      "resource_attributes": {
+        "service.name": "api-gateway",
+        "environment": "production"
+      },
+      "queue": {
+        "max_batch_size": 100,
+        "max_coalescing_delay": 1
+      }
+    }
+  }'
 ```
 
 Declarative configuration:
@@ -348,13 +352,14 @@ _format_version: "3.0"
 plugins:
 - name: opentelemetry
   config:
-    endpoint: http://otel-collector.observability.svc.cluster.local:4318/v1/traces
+    traces_endpoint: http://otel-collector.observability.svc.cluster.local:4318/v1/traces
     resource_attributes:
       service.name: api-gateway
       service.version: "1.0.0"
       deployment.environment: production
-    batch_span_count: 100
-    batch_flush_delay: 1
+    queue:
+      max_batch_size: 100
+      max_coalescing_delay: 1
     headers:
       X-Custom-Header: custom-value
     propagation:
@@ -416,25 +421,18 @@ Add custom attributes to spans for richer context.
 
 ```yaml
 # Envoy custom span attributes
-route_config:
-  virtual_hosts:
-  - name: backend
-    routes:
-    - match:
-        prefix: "/api/users"
-      route:
-        cluster: user_service
-      decorator:
-        operation: "get_users"
-      request_headers_to_add:
-      - header:
-          key: x-trace-user-id
-          value: "%REQ(x-user-id)%"
-      metadata:
-        filter_metadata:
-          envoy.filters.http.router:
-            endpoint: "users"
-            version: "v1"
+tracing:
+  custom_tags:
+  - tag: endpoint
+    literal:
+      value: "users"
+  - tag: version
+    literal:
+      value: "v1"
+  - tag: user_id
+    request_header:
+      name: "x-user-id"
+      default_value: "anonymous"
 ```
 
 ## Monitoring Trace Pipeline
@@ -445,15 +443,15 @@ Monitor the health of your tracing infrastructure.
 # Prometheus metrics for OTEL Collector
 
 # Traces received
-rate(otelcol_receiver_accepted_spans[5m])
+rate(otelcol_receiver_accepted_spans_total[5m])
 
 # Traces dropped
-rate(otelcol_processor_dropped_spans[5m])
+rate(otelcol_receiver_refused_spans_total[5m])
 
 # Export failures
-rate(otelcol_exporter_send_failed_spans[5m])
+rate(otelcol_exporter_send_failed_spans_total[5m])
 
-# Pipeline latency
+# Batch send size
 histogram_quantile(0.95, otelcol_processor_batch_batch_send_size_bucket)
 ```
 
@@ -470,7 +468,7 @@ spec:
     rules:
     - alert: HighTraceDropRate
       expr: |
-        rate(otelcol_processor_dropped_spans[5m]) > 100
+        rate(otelcol_receiver_refused_spans_total[5m]) > 100
       for: 5m
       labels:
         severity: warning
@@ -479,7 +477,7 @@ spec:
 
     - alert: OTELExporterFailures
       expr: |
-        rate(otelcol_exporter_send_failed_spans[5m]) > 10
+        rate(otelcol_exporter_send_failed_spans_total[5m]) > 10
       for: 5m
       labels:
         severity: critical
@@ -504,4 +502,4 @@ curl "http://jaeger-query:16686/api/traces?service=api-gateway&tags={\"error\":\
 
 ## Conclusion
 
-OpenTelemetry instrumentation at the API gateway level provides comprehensive visibility into request flows across your microservices architecture. By creating root spans at the gateway and propagating trace context to downstream services, you can track requests end-to-end and identify performance bottlenecks, error sources, and architectural issues. Modern API gateways like Envoy, Istio, Kong, and NGINX support OpenTelemetry natively or through plugins. Implement intelligent sampling strategies to balance observability needs with infrastructure costs, and monitor your trace pipeline health to ensure reliable data collection.
+OpenTelemetry instrumentation at the API gateway level provides comprehensive visibility into request flows across your microservices architecture. By creating or continuing server spans at the gateway and propagating trace context to downstream services, you can track requests end-to-end and identify performance bottlenecks, error sources, and architectural issues. Modern API gateways like Envoy, Istio, Kong, and NGINX support OpenTelemetry natively or through plugins. Implement intelligent sampling strategies to balance observability needs with infrastructure costs, and monitor your trace pipeline health to ensure reliable data collection.
