@@ -211,7 +211,7 @@ metadata:
   namespace: backup-system
 rules:
 - apiGroups: [""]
-  resources: ["persistentvolumeclaims", "persistentvolumes"]
+  resources: ["persistentvolumeclaims"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources: ["pods"]
@@ -326,7 +326,8 @@ Find all pods with mounted service account tokens:
 # Check which pods have tokens mounted
 kubectl get pods --all-namespaces -o json | \
   jq -r '.items[] |
-    select(.spec.automountServiceAccountToken != false) |
+    select([.spec.volumes[]? |
+      select(.projected.sources[]?.serviceAccountToken)] | length > 0) |
     "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
@@ -356,8 +357,15 @@ def audit_token_mounts():
     pods = v1.list_pod_for_all_namespaces(watch=False)
 
     for pod in pods.items:
-        # Skip if explicitly disabled
-        if pod.spec.automount_service_account_token == False:
+        # Skip if no service account token volume is mounted
+        has_token_volume = any(
+            volume.projected and any(
+                source.service_account_token
+                for source in (volume.projected.sources or [])
+            )
+            for volume in (pod.spec.volumes or [])
+        )
+        if not has_token_volume:
             continue
 
         # Check if pod actually uses the API
