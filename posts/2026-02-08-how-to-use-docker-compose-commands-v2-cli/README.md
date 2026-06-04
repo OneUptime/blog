@@ -76,7 +76,7 @@ docker compose up -d --no-recreate
 
 ## Stopping Services
 
-Stop and remove all containers, networks, and volumes created by `up`:
+Stop and remove containers and networks created by `up`:
 
 ```bash
 docker compose down
@@ -88,7 +88,7 @@ Stop and also remove volumes (careful, this deletes data):
 docker compose down -v
 ```
 
-Stop and remove everything including images:
+Stop and remove containers, networks, and service images:
 
 ```bash
 docker compose down --rmi all
@@ -320,7 +320,7 @@ The API container will not start until the database passes its health check. Thi
 
 ## Watching for Changes
 
-Compose v2 includes a `watch` command for development that automatically rebuilds and restarts services when source files change.
+Compose v2 includes a `watch` command for development that syncs files, rebuilds images, or restarts services when source files change, depending on the watch rule.
 
 Enable file watching for live development:
 
@@ -367,8 +367,6 @@ Here is a complete Compose file for a typical web application development enviro
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   api:
     build:
@@ -444,4 +442,4 @@ volumes:
 
 ## Conclusion
 
-Docker Compose v2 streamlines multi-container application development. The `up` and `down` commands handle the full lifecycle. Profiles let you keep optional services dormant until needed. Health check dependencies prevent race conditions during startup. The watch command replaces external file-watching tools. Migrate from v1 by simply replacing `docker-compose` with `docker compose` in your scripts and CI pipelines. The new CLI is faster and more reliable.
+Docker Compose v2 streamlines multi-container application development. The `up` and `down` commands handle the full lifecycle. Profiles let you keep optional services dormant until needed. Health check dependencies prevent race conditions during startup. The watch command can reduce the need for external file-watching tools. Migrate from v1 by replacing `docker-compose` with `docker compose` in your scripts and CI pipelines, then check Docker's migration notes for edge cases such as command flags, environment variables, and container names. The new CLI is faster and more reliable.
