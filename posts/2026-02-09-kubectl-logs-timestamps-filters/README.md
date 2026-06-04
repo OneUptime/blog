@@ -72,9 +72,9 @@ kubectl logs myapp-pod --since-time="2026-02-09T10:00:00Z" --timestamps
 This is invaluable when investigating incidents:
 
 ```bash
-# Investigate logs after a deployment
-DEPLOY_TIME=$(kubectl get deploy myapp -o jsonpath='{.metadata.creationTimestamp}')
-kubectl logs -l app=myapp --since-time="$DEPLOY_TIME" --timestamps
+# Investigate logs after the Deployment resource was created
+CREATED_TIME=$(kubectl get deploy myapp -o jsonpath='{.metadata.creationTimestamp}')
+kubectl logs -l app=myapp --since-time="$CREATED_TIME" --timestamps --tail=-1
 
 # Check logs after a known incident
 kubectl logs myapp-pod --since-time="2026-02-09T14:23:00Z" --timestamps | grep -i error
@@ -104,10 +104,10 @@ Combine with timestamps for precise debugging:
 kubectl logs myapp-pod --since=30m --timestamps | grep -i error
 
 # Get recent logs from all pods in a deployment
-kubectl logs -l app=myapp --since=15m --timestamps --prefix
+kubectl logs -l app=myapp --since=15m --timestamps --prefix --tail=-1
 
 # Monitor recent logs across a namespace
-kubectl logs -n production --since=10m --all-containers --timestamps --selector=tier=frontend
+kubectl logs -n production --since=10m --all-containers --timestamps --selector=tier=frontend --tail=-1
 ```
 
 ## Controlling Log Output Volume
@@ -134,7 +134,7 @@ kubectl logs myapp-pod --tail=20
 # Get last hour but limit to 1000 lines
 kubectl logs myapp-pod --since=1h --tail=1000
 
-# Check initialization logs
+# Check the earliest lines from the last 50 log entries
 kubectl logs myapp-pod --tail=50 | head -20
 ```
 
@@ -183,7 +183,7 @@ kubectl logs myapp-pod --since=1h --timestamps | grep -i error | cut -d':' -f1-2
 # Extract logs between two timestamps
 kubectl logs myapp-pod --timestamps | awk '/2026-02-09T10:00/,/2026-02-09T11:00/'
 
-# Find the busiest 5-minute window
+# Find the busiest minute
 kubectl logs myapp-pod --since=1h --timestamps | cut -d':' -f1-2 | sort | uniq -c | sort -nr | head -1
 ```
 
@@ -275,7 +275,7 @@ for pod in $(kubectl get pods -l app=myapp -o name); do
 done
 
 # Aggregate logs by label with timestamps
-kubectl logs -l app=myapp --since=30m --timestamps --prefix | sort
+kubectl logs -l app=myapp --since=30m --timestamps --prefix --tail=-1 | sort
 
 # Save logs from all pods to files
 for pod in $(kubectl get pods -l app=myapp -o jsonpath='{.items[*].metadata.name}'); do
@@ -349,12 +349,12 @@ Export logs to external systems:
 ```bash
 # Export to JSON format
 kubectl logs myapp-pod --since=1h --timestamps | \
-  awk '{timestamp=$1; $1=""; print "{\"timestamp\":\""timestamp"\",\"message\":\""$0"\"}"}' > logs.json
+  jq -R -c 'capture("^(?<timestamp>[^ ]+) (?<message>.*)$")' > logs.json
 
 # Stream to log aggregator
 kubectl logs myapp-pod --follow --timestamps | \
-  while read line; do
-    curl -X POST https://logs.example.com/ingest -d "$line"
+  while IFS= read -r line; do
+    curl -X POST https://logs.example.com/ingest --data-binary "$line"
   done
 
 # Export with metadata
