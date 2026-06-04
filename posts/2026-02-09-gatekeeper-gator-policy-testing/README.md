@@ -130,9 +130,7 @@ Run tests:
 gator test -f .
 
 # Expected output:
-# ok	templates/require-labels.yaml	0.5s
-# FAIL	constraints/require-team-label.yaml
-#   invalid-pod: You must provide labels: {"team", "environment"}
+# v1/Pod invalid-pod: ["require-team-label"] Message: "You must provide labels: {\"environment\", \"team\"}"
 ```
 
 ## Structured Test Suites
@@ -168,7 +166,7 @@ gator verify suite.yaml
 
 ## Testing Multiple Constraints
 
-Test how multiple policies interact:
+Run multiple independent policy tests in one suite:
 
 ```yaml
 # suite-multi.yaml
@@ -180,20 +178,7 @@ tests:
     constraint: constraints/require-team-label.yaml
     cases:
       - name: fully-compliant-pod
-        object: |
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: test-pod
-            labels:
-              team: platform
-              environment: production
-          spec:
-            containers:
-              - name: nginx
-                image: registry.company.com/nginx:1.21
-                securityContext:
-                  runAsNonRoot: true
+        object: resources/fully-compliant-pod.yaml
         assertions:
           - violations: no
 
@@ -202,18 +187,7 @@ tests:
     constraint: constraints/require-nonroot.yaml
     cases:
       - name: pod-without-security-context
-        object: |
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: test-pod
-            labels:
-              team: platform
-              environment: production
-          spec:
-            containers:
-              - name: nginx
-                image: nginx:1.21
+        object: resources/pod-without-security-context.yaml
         assertions:
           - violations: yes
           - message: "must run as non-root"
@@ -231,7 +205,12 @@ stages:
 
 policy-tests:
   stage: test
-  image: openpolicyagent/gatekeeper:v3.15.0
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache curl tar
+    - VERSION=v3.15.0
+    - curl -L https://github.com/open-policy-agent/gatekeeper/releases/download/${VERSION}/gator-${VERSION}-linux-amd64.tar.gz | tar xz
+    - mv gator /usr/local/bin/
   script:
     - gator test -f policies/
     - gator verify policies/suite.yaml
@@ -290,41 +269,19 @@ tests:
   - name: unique-ingress-host
     template: templates/unique-ingress-host.yaml
     constraint: constraints/unique-ingress-host.yaml
-    inventory:
-      - |
-        apiVersion: networking.k8s.io/v1
-        kind: Ingress
-        metadata:
-          name: existing-ingress
-          namespace: production
-        spec:
-          rules:
-            - host: app.example.com
     cases:
       - name: duplicate-host
-        object: |
-          apiVersion: networking.k8s.io/v1
-          kind: Ingress
-          metadata:
-            name: new-ingress
-            namespace: staging
-          spec:
-            rules:
-              - host: app.example.com
+        object: resources/duplicate-host-ingress.yaml
+        inventory:
+          - resources/existing-ingress.yaml
         assertions:
           - violations: yes
           - message: "host is already in use"
 
       - name: unique-host
-        object: |
-          apiVersion: networking.k8s.io/v1
-          kind: Ingress
-          metadata:
-            name: new-ingress
-            namespace: staging
-          spec:
-            rules:
-              - host: staging.example.com
+        object: resources/unique-host-ingress.yaml
+        inventory:
+          - resources/existing-ingress.yaml
         assertions:
           - violations: no
 ```
@@ -344,65 +301,22 @@ tests:
     cases:
       # Test each security control individually
       - name: missing-run-as-nonroot
-        object: |
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: test
-          spec:
-            containers:
-              - name: nginx
-                image: nginx
+        object: resources/missing-run-as-nonroot.yaml
         assertions:
           - violations: yes
 
       - name: privileged-container
-        object: |
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: test
-          spec:
-            containers:
-              - name: nginx
-                image: nginx
-                securityContext:
-                  privileged: true
+        object: resources/privileged-container.yaml
         assertions:
           - violations: yes
 
       - name: host-network
-        object: |
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: test
-          spec:
-            hostNetwork: true
-            containers:
-              - name: nginx
-                image: nginx
+        object: resources/host-network.yaml
         assertions:
           - violations: yes
 
       - name: fully-secure-pod
-        object: |
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: test
-          spec:
-            securityContext:
-              runAsNonRoot: true
-              runAsUser: 1000
-            containers:
-              - name: nginx
-                image: nginx
-                securityContext:
-                  runAsNonRoot: true
-                  allowPrivilegeEscalation: false
-                  capabilities:
-                    drop: ["ALL"]
+        object: resources/fully-secure-pod.yaml
         assertions:
           - violations: no
 ```
@@ -412,7 +326,7 @@ tests:
 Test policy performance with gator:
 
 ```bash
-# Generate large test suite
+# Generate a large set of resources
 for i in {1..1000}; do
   cat <<EOF > resources/pod-$i.yaml
 apiVersion: v1
@@ -441,10 +355,10 @@ Create detailed test reports:
 
 ```bash
 # Run tests with verbose output
-gator test -f policies/ --verbose > test-results.txt
+gator verify policies/suite.yaml --verbose > test-results.txt
 
-# Generate JUnit XML for CI integration
-gator test -f policies/ --output=junit > test-results.xml
+# Generate structured JSON output for CI integration
+gator test -f policies/ --output=json > test-results.json
 ```
 
 Parse results in CI:
@@ -456,8 +370,8 @@ if grep -q "FAIL" test-results.txt; then
   exit 1
 fi
 
-# Count violations
-VIOLATIONS=$(grep -c "violations: yes" test-results.txt)
+# Count expected violation assertions
+VIOLATIONS=$(grep -c "violations: yes" policies/suite.yaml)
 echo "Found $VIOLATIONS expected violations"
 ```
 
@@ -498,15 +412,15 @@ test:
 	@gator test -f policies/
 
 test-verbose:
-	@gator test -f policies/ --verbose
+	@gator verify policies/tests/suites/... --verbose
 
 test-ci:
-	@gator test -f policies/ --output=junit > test-results.xml
-	@gator verify policies/tests/suites/*.yaml
+	@gator test -f policies/ --output=json > test-results.json
+	@gator verify policies/tests/suites/...
 
 lint:
-	@echo "Linting Rego policies..."
-	@opa fmt -d policies/templates/
+	@echo "Validating policy suites..."
+	@gator verify policies/tests/suites/...
 ```
 
 ## Conclusion
