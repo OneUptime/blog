@@ -12,7 +12,7 @@ When nodes experience resource pressure, Kubernetes evicts pods to reclaim resou
 
 ## Understanding Pod Priority and Preemption
 
-Priority classes assign numeric priorities to pods. During scheduling, higher priority pods can preempt lower priority pods if resources are insufficient. During eviction, lower priority pods are killed first. This ensures critical infrastructure remains operational when resources become scarce.
+Priority classes assign numeric priorities to pods. During scheduling, higher priority pods can preempt lower priority pods if resources are insufficient. During node-pressure eviction, kubelet ranks pods first by whether their usage exceeds requests, then by priority, then by usage relative to requests. This ensures critical infrastructure remains more likely to remain operational when resources become scarce.
 
 Kubernetes includes built-in priority classes: system-cluster-critical (priority 2000000000) for cluster infrastructure and system-node-critical (priority 2000001000) for node infrastructure. Custom priority classes enable fine-grained control over eviction ordering.
 
@@ -46,7 +46,7 @@ spec:
       - operator: Exists
       containers:
       - name: kube-proxy
-        image: k8s.gcr.io/kube-proxy:v1.28.0
+        image: registry.k8s.io/kube-proxy:v1.28.0
         command:
         - /usr/local/bin/kube-proxy
         - --config=/var/lib/kube-proxy/config.conf
@@ -205,7 +205,7 @@ spec:
       serviceAccountName: csi-node
       containers:
       - name: driver-registrar
-        image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0
+        image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.5.0
         args:
         - --csi-address=/csi/csi.sock
         - --kubelet-registration-path=/var/lib/kubelet/plugins/csi-driver/csi.sock
@@ -412,7 +412,8 @@ data:
 
     # Track evictions by priority
     sum by (priority_class) (
-      rate(kube_pod_container_status_terminated_reason{reason="Evicted"}[5m])
+      kube_pod_status_reason{reason="Evicted"} * on(namespace, pod, uid)
+      group_left(priority_class) kube_pod_info
     )
   alerts.yaml: |
     groups:
@@ -420,10 +421,8 @@ data:
       rules:
       - alert: CriticalPodEvicted
         expr: |
-          kube_pod_container_status_terminated_reason{
-            reason="Evicted",
-            priority_class=~"system-.*-critical"
-          } > 0
+          kube_pod_status_reason{reason="Evicted"} * on(namespace, pod, uid)
+          group_left(priority_class) kube_pod_info{priority_class=~"system-.*-critical"} > 0
         labels:
           severity: critical
         annotations:
@@ -431,11 +430,11 @@ data:
 
       - alert: DaemonSetMissingPriority
         expr: |
-          kube_daemonset_labels{priority_class=""} > 0
+          kube_pod_info{created_by_kind="DaemonSet", priority_class=""} > 0
         labels:
           severity: warning
         annotations:
-          summary: "DaemonSet {{ $labels.daemonset }} missing priority class"
+          summary: "DaemonSet pod {{ $labels.namespace }}/{{ $labels.pod }} missing priority class"
 ```
 
 ## Implementing Admission Control
@@ -447,7 +446,8 @@ package main
 
 import (
     "fmt"
-    corev1 "k8s.io/api/core/v1"
+    "strings"
+
     appsv1 "k8s.io/api/apps/v1"
 )
 
