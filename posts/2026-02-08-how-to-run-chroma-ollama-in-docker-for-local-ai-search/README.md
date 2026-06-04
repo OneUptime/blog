@@ -29,8 +29,6 @@ Create a project directory and add a `docker-compose.yml` file that runs both Ch
 ```yaml
 # docker-compose.yml - Defines the Chroma + Ollama stack
 
-version: "3.8"
-
 services:
   # Ollama serves local LLMs for generating embeddings and completions
   ollama:
@@ -109,14 +107,14 @@ Before wiring everything together, confirm that Ollama generates embeddings corr
 
 ```bash
 # Generate an embedding vector for a test string
-curl http://localhost:11434/api/embeddings \
+curl http://localhost:11434/api/embed \
   -d '{
     "model": "nomic-embed-text",
-    "prompt": "Docker makes containerization simple"
+    "input": "Docker makes containerization simple"
   }'
 ```
 
-You should see a JSON response with a large array of floating-point numbers. That array is the embedding vector representing the semantic meaning of the input text.
+You should see a JSON response with an `embeddings` field containing an array of embedding vectors. The first vector represents the semantic meaning of the input text.
 
 ## Connecting to Chroma and Indexing Documents
 
@@ -134,16 +132,16 @@ client = chromadb.HttpClient(host="localhost", port=8000)
 # Create or get a collection for our documents
 collection = client.get_or_create_collection(
     name="knowledge_base",
-    metadata={"hnsw:space": "cosine"}  # Use cosine similarity for search
+    configuration={"hnsw": {"space": "cosine"}}  # Use cosine similarity for search
 )
 
 def get_embedding(text):
     """Generate an embedding vector using Ollama's nomic-embed-text model."""
     response = requests.post(
-        "http://localhost:11434/api/embeddings",
-        json={"model": "nomic-embed-text", "prompt": text}
+        "http://localhost:11434/api/embed",
+        json={"model": "nomic-embed-text", "input": text}
     )
-    return response.json()["embedding"]
+    return response.json()["embeddings"][0]
 
 # Sample documents to index
 documents = [
@@ -192,10 +190,10 @@ collection = client.get_collection("knowledge_base")
 def get_embedding(text):
     """Generate an embedding for the search query."""
     response = requests.post(
-        "http://localhost:11434/api/embeddings",
-        json={"model": "nomic-embed-text", "prompt": text}
+        "http://localhost:11434/api/embed",
+        json={"model": "nomic-embed-text", "input": text}
     )
-    return response.json()["embedding"]
+    return response.json()["embeddings"][0]
 
 def search(query, n_results=3):
     """Search for documents matching the query."""
@@ -230,10 +228,10 @@ collection = client.get_collection("knowledge_base")
 
 def get_embedding(text):
     response = requests.post(
-        "http://localhost:11434/api/embeddings",
-        json={"model": "nomic-embed-text", "prompt": text}
+        "http://localhost:11434/api/embed",
+        json={"model": "nomic-embed-text", "input": text}
     )
-    return response.json()["embedding"]
+    return response.json()["embeddings"][0]
 
 def generate_answer(query, context_docs):
     """Use Ollama to generate an answer based on retrieved documents."""
@@ -284,7 +282,7 @@ print(client.list_collections())
 
 ## Production Considerations
 
-For a production deployment, consider adding authentication to Chroma using the `CHROMA_SERVER_AUTH_CREDENTIALS` environment variable. Set resource limits on the Ollama container to prevent it from consuming all available memory during inference. And if you index large document sets, batch your embedding calls to avoid overwhelming Ollama.
+For a production deployment, consider adding authentication to Chroma using the `CHROMA_SERVER_AUTHN_CREDENTIALS` environment variable. Set resource limits on the Ollama container to prevent it from consuming all available memory during inference. And if you index large document sets, batch your embedding calls to avoid overwhelming Ollama.
 
 ```yaml
 # Production additions to docker-compose.yml
