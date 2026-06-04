@@ -48,12 +48,10 @@ The Magento stack requires several services working together: the PHP applicatio
 
 ```yaml
 # docker-compose.yml - Full Magento 2 stack
-version: "3.8"
-
 services:
   # Nginx serves as the reverse proxy and static file server
   nginx:
-    image: nginx:1.25-alpine
+    image: nginx:1.26-alpine
     ports:
       - "80:80"
     volumes:
@@ -66,7 +64,7 @@ services:
 
   # PHP-FPM runs the Magento application code
   php-fpm:
-    image: magento/magento-cloud-docker-php:8.2-fpm
+    image: magento/magento-cloud-docker-php:8.2-fpm-1.4.8
     volumes:
       - magento-data:/var/www/html
       - ./config/php/php.ini:/usr/local/etc/php/conf.d/custom.ini
@@ -105,7 +103,7 @@ services:
 
   # Elasticsearch powers Magento's catalog search functionality
   elasticsearch:
-    image: elasticsearch:7.17.15
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.15
     environment:
       - discovery.type=single-node
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
@@ -124,7 +122,7 @@ services:
 
   # Redis handles session storage and page caching
   redis:
-    image: redis:7-alpine
+    image: redis:7.2-alpine
     ports:
       - "6379:6379"
     volumes:
@@ -169,9 +167,20 @@ server {
         log_not_found off;
         add_header Cache-Control "public";
 
+        location ~ ^/static/version {
+            rewrite ^/static/(version\d*/)?(.*)$ /static/$2 last;
+        }
+
         location ~* \.(ico|jpg|jpeg|png|gif|svg|js|css|swf|eot|ttf|otf|woff|woff2|html|json)$ {
+            if (!-f $request_filename) {
+                rewrite ^/static/(version\d*/)?(.*)$ /static.php?resource=$2 last;
+            }
             expires +1y;
             add_header Cache-Control "public";
+        }
+
+        if (!-f $request_filename) {
+            rewrite ^/static/(version\d*/)?(.*)$ /static.php?resource=$2 last;
         }
     }
 
@@ -247,11 +256,11 @@ docker compose exec php-fpm bash
 
 # Install Magento via Composer (run inside the container)
 composer create-project --repository-url=https://repo.magento.com/ \
-  magento/project-community-edition=2.4.7 /var/www/html
+  magento/project-community-edition=2.4.7-p6 /var/www/html
 
 # Run the Magento setup installer
 bin/magento setup:install \
-  --base-url=http://localhost \
+  --base-url=http://localhost/ \
   --db-host=mysql \
   --db-name=magento \
   --db-user=magento \
@@ -260,10 +269,11 @@ bin/magento setup:install \
   --admin-lastname=User \
   --admin-email=admin@example.com \
   --admin-user=admin \
-  --admin-password=Admin123! \
+  --admin-password='Admin123!' \
   --language=en_US \
   --currency=USD \
   --timezone=America/New_York \
+  --use-rewrites=1 \
   --search-engine=elasticsearch7 \
   --elasticsearch-host=elasticsearch \
   --elasticsearch-port=9200 \
