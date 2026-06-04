@@ -14,18 +14,15 @@ This guide shows you how to access and interpret Envoy's admin endpoints to diag
 
 ## Accessing the Envoy Admin Interface
 
-The admin interface runs on port 15000 in Istio sidecars and port 4191 in Linkerd proxies. Access it using port forwarding:
+The Envoy admin interface runs on port 15000 in Istio sidecars. Linkerd's proxy is not Envoy; its default port 4191 exposes Linkerd proxy metrics rather than the Envoy admin endpoints shown in this guide. Access Envoy using port forwarding:
 
 ```bash
 # For Istio
 
 kubectl port-forward -n production deploy/api-gateway 15000:15000
-
-# For Linkerd
-kubectl port-forward -n production deploy/api-gateway 4191:4191
 ```
 
-Open your browser to `http://localhost:15000` (Istio) or `http://localhost:4191` (Linkerd).
+Open your browser to `http://localhost:15000`.
 
 Alternatively, exec into the pod:
 
@@ -76,7 +73,7 @@ kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
 # View cluster configuration
 kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
   curl -s localhost:15000/config_dump | \
-  jq '.configs[].dynamic_active_clusters[] | select(.cluster.name | contains("backend-service"))'
+  jq '.configs[] | .dynamic_active_clusters[]? | select(.cluster.name | contains("backend-service"))'
 ```
 
 ## Checking Upstream Health Status
@@ -97,7 +94,7 @@ Health flags indicate problems:
 - `/failed_active_hc` - Active health check failed
 - `/failed_outlier_check` - Outlier detection ejected the endpoint
 - `/failed_eds_health` - Marked unhealthy by endpoint discovery
-- `/degraded` - Endpoint is degraded
+- `failed_active_degraded_check` - Endpoint is degraded by active health checking in `/clusters?format=json`
 
 Filter unhealthy endpoints:
 
@@ -152,7 +149,7 @@ Check if a specific port is configured:
 ```bash
 kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
   curl -s localhost:15000/config_dump | \
-  jq '.configs[].dynamic_listeners[] | select(.active_state.listener.address.socket_address.port_value == 8080)'
+  jq '.configs[] | .dynamic_listeners[]? | select(.active_state.listener.address.socket_address.port_value == 8080)'
 ```
 
 Examine filter chains:
@@ -160,7 +157,7 @@ Examine filter chains:
 ```bash
 kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
   curl -s localhost:15000/config_dump | \
-  jq '.configs[].dynamic_listeners[].active_state.listener.filter_chains[].filters[]'
+  jq '.configs[] | .dynamic_listeners[]? | .active_state.listener.filter_chains[]?.filters[]?'
 ```
 
 ## Enabling Debug Logging
@@ -185,12 +182,12 @@ View current log levels:
 
 ```bash
 kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
-  curl -s localhost:15000/logging
+  curl -s -X POST localhost:15000/logging
 ```
 
 ## Tracing Individual Requests
 
-Enable request tracing with headers:
+Enable request tracing with headers when tracing is configured:
 
 ```bash
 # Send request with trace header
@@ -213,16 +210,16 @@ Check route configuration:
 ```bash
 kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
   curl -s localhost:15000/config_dump | \
-  jq '.configs[].dynamic_route_configs[].route_config.virtual_hosts[]'
+  jq '.configs[] | .dynamic_route_configs[]? | .route_config.virtual_hosts[]?'
 ```
 
-Test route matching without sending real traffic:
+Inspect route configuration without sending real traffic:
 
 ```bash
-# Simulate route lookup
+# Show active dynamic route configurations
 kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
-  curl -s "localhost:15000/config_dump?resource=routes" | \
-  jq '.configs[].dynamic_route_configs[].route_config.virtual_hosts[] | select(.domains[] == "*")'
+  curl -s "localhost:15000/config_dump?resource=dynamic_route_configs" | \
+  jq '.configs[] | .dynamic_route_configs[]? | .route_config.virtual_hosts[]? | select(.domains[]? == "*")'
 ```
 
 ## Checking Certificate Status
@@ -238,10 +235,10 @@ Extract certificate expiration:
 
 ```bash
 kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
-  curl -s localhost:15000/certs | jq '.[].cert_chain[].days_until_expiration'
+  curl -s localhost:15000/certs | jq '.certificates[].cert_chain[].days_until_expiration'
 ```
 
-Verify mTLS is active:
+Look for TLS handshakes:
 
 ```bash
 kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
@@ -299,18 +296,19 @@ chmod +x debug-envoy.sh
 
 ## Comparing Configurations
 
-Compare expected vs actual configuration:
+Compare Envoy configuration between two pods:
 
 ```bash
-# Dump current config
+# Dump current config from the first pod
 kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
-  curl -s localhost:15000/config_dump > actual-config.json
+  curl -s localhost:15000/config_dump > api-gateway-config.json
 
-# Generate expected config from Istio
-istioctl proxy-config all api-gateway-xxxxx.production -o json > expected-config.json
+# Dump current config from another pod
+kubectl exec -n production api-gateway-yyyyy -c istio-proxy -- \
+  curl -s localhost:15000/config_dump > api-gateway-other-config.json
 
 # Compare
-diff <(jq -S . expected-config.json) <(jq -S . actual-config.json)
+diff <(jq -S . api-gateway-config.json) <(jq -S . api-gateway-other-config.json)
 ```
 
 ## Debugging Sidecar Injection
