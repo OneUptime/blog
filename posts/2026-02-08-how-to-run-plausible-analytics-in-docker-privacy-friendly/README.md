@@ -10,7 +10,7 @@ Description: Deploy Plausible Analytics in Docker for privacy-friendly, cookie-f
 
 Google Analytics is powerful, but it comes with baggage. Cookie consent banners, complex privacy policies, data being sent to Google's servers, and a bloated tracking script that slows down your pages. Plausible Analytics takes a different approach. It provides clean, useful web analytics without cookies, without personal data collection, and without needing consent banners under GDPR, CCPA, or PECR.
 
-Self-hosting Plausible in Docker gives you all these privacy benefits while keeping your analytics data entirely on your own infrastructure. The tracking script is under 1 KB, so it has negligible impact on page load times. This guide covers deploying Plausible with Docker Compose, configuring it for your sites, and getting the most out of its features.
+Self-hosting Plausible in Docker gives you all these privacy benefits while keeping your analytics data entirely on your own infrastructure. The tracking script is lightweight, so it has negligible impact on page load times. This guide covers deploying Plausible with Docker Compose, configuring it for your sites, and getting the most out of its features.
 
 ## Why Self-Host Plausible
 
@@ -24,7 +24,7 @@ Plausible offers a hosted service at plausible.io, which is a great option if yo
 
 ## Prerequisites
 
-Docker and Docker Compose are required. Plausible uses ClickHouse for analytics data storage, which benefits from at least 2 GB of RAM. A small VPS or dedicated server works well.
+Docker and Docker Compose are required. Plausible uses ClickHouse for analytics data storage, which benefits from at least 2 GB of RAM and a CPU with SSE 4.2 or NEON support. A small VPS or dedicated server works well.
 
 ```bash
 # Verify Docker installation
@@ -37,20 +37,26 @@ docker compose version
 
 Plausible's self-hosted version requires three services: the Plausible web application, a PostgreSQL database for user accounts and site configuration, and a ClickHouse database for analytics event storage.
 
-Clone the official hosting repository or create the configuration from scratch.
+Clone the official Community Edition repository or create the configuration from scratch.
 
 ```yaml
 # docker-compose.yml - Plausible Analytics self-hosted
-version: "3.8"
-
 services:
   plausible:
-    image: ghcr.io/plausible/community-edition:v2.1
+    image: ghcr.io/plausible/community-edition:v3.2.1
     container_name: plausible
     restart: unless-stopped
+    command: sh -c "/entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run"
     ports:
       - "8000:8000"
+    volumes:
+      - plausible-data:/var/lib/plausible
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     environment:
+      TMPDIR: /var/lib/plausible/tmp
       # Base URL where Plausible will be accessible
       BASE_URL: https://analytics.yourdomain.com
       # Secret key for session encryption (generate with openssl)
@@ -68,7 +74,6 @@ services:
       SMTP_USER_NAME: ${SMTP_USER}
       SMTP_USER_PWD: ${SMTP_PASSWORD}
       SMTP_HOST_SSL_ENABLED: "false"
-      SMTP_RETRIES: 2
       # Disable registration after creating your account
       DISABLE_REGISTRATION: invite_only
     depends_on:
@@ -94,20 +99,25 @@ services:
       retries: 5
 
   plausible-clickhouse:
-    image: clickhouse/clickhouse-server:24.3-alpine
+    image: clickhouse/clickhouse-server:24.12-alpine
     container_name: plausible-clickhouse
     restart: unless-stopped
     volumes:
       - plausible-clickhouse-data:/var/lib/clickhouse
+      - plausible-clickhouse-logs:/var/log/clickhouse-server
       # ClickHouse configuration for Plausible
-      - ./clickhouse-config.xml:/etc/clickhouse-server/config.d/logging.xml:ro
-      - ./clickhouse-user-config.xml:/etc/clickhouse-server/users.d/logging.xml:ro
+      - ./clickhouse/logs.xml:/etc/clickhouse-server/config.d/logs.xml:ro
+      - ./clickhouse/ipv4-only.xml:/etc/clickhouse-server/config.d/ipv4-only.xml:ro
+      - ./clickhouse/low-resources.xml:/etc/clickhouse-server/config.d/low-resources.xml:ro
+      - ./clickhouse/default-profile-low-resources-overrides.xml:/etc/clickhouse-server/users.d/default-profile-low-resources-overrides.xml:ro
     ulimits:
       nofile:
         soft: 262144
         hard: 262144
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O - http://127.0.0.1:8123/ping || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -115,35 +125,67 @@ services:
 volumes:
   plausible-postgres-data:
   plausible-clickhouse-data:
+  plausible-clickhouse-logs:
+  plausible-data:
 ```
 
 Create the ClickHouse configuration files to reduce log verbosity.
 
 ```xml
-<!-- clickhouse-config.xml - Reduce ClickHouse logging -->
+<!-- clickhouse/logs.xml - Reduce ClickHouse logging -->
 <clickhouse>
     <logger>
         <level>warning</level>
         <console>true</console>
     </logger>
-    <query_thread_log remove="remove"/>
-    <query_log remove="remove"/>
-    <text_log remove="remove"/>
-    <trace_log remove="remove"/>
-    <metric_log remove="remove"/>
-    <asynchronous_metric_log remove="remove"/>
-    <session_log remove="remove"/>
-    <part_log remove="remove"/>
+
+    <query_log replace="1">
+        <database>system</database>
+        <table>query_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        <engine>
+            ENGINE = MergeTree
+            PARTITION BY event_date
+            ORDER BY (event_time)
+            TTL event_date + interval 30 day
+            SETTINGS ttl_only_drop_parts=1
+        </engine>
+    </query_log>
+
+    <metric_log remove="remove" />
+    <asynchronous_metric_log remove="remove" />
+    <query_thread_log remove="remove" />
+    <text_log remove="remove" />
+    <trace_log remove="remove" />
+    <session_log remove="remove" />
+    <part_log remove="remove" />
 </clickhouse>
 ```
 
 ```xml
-<!-- clickhouse-user-config.xml - User-level logging settings -->
+<!-- clickhouse/ipv4-only.xml - Bind ClickHouse to IPv4 inside Docker -->
+<clickhouse>
+    <listen_host>0.0.0.0</listen_host>
+</clickhouse>
+```
+
+```xml
+<!-- clickhouse/low-resources.xml - Lower ClickHouse memory use on small servers -->
+<clickhouse>
+    <mark_cache_size>524288000</mark_cache_size>
+</clickhouse>
+```
+
+```xml
+<!-- clickhouse/default-profile-low-resources-overrides.xml - User-level resource settings -->
 <clickhouse>
     <profiles>
         <default>
-            <log_queries>0</log_queries>
-            <log_query_threads>0</log_query_threads>
+            <max_threads>1</max_threads>
+            <max_block_size>8192</max_block_size>
+            <max_download_threads>1</max_download_threads>
+            <input_format_parallel_parsing>0</input_format_parallel_parsing>
+            <output_format_parallel_formatting>0</output_format_parallel_formatting>
         </default>
     </profiles>
 </clickhouse>
@@ -155,10 +197,10 @@ Create the environment file.
 # .env - Sensitive configuration
 
 # Generate with: openssl rand -base64 48
-SECRET_KEY_BASE=your-64-char-secret-key-base
+SECRET_KEY_BASE=your-64-byte-secret-key-base
 
 # Generate with: openssl rand -base64 32
-TOTP_VAULT_KEY=your-32-char-totp-vault-key
+TOTP_VAULT_KEY=your-base64-totp-vault-key
 
 POSTGRES_PASSWORD=your-secure-postgres-password
 SMTP_USER=your-email@gmail.com
@@ -168,10 +210,10 @@ SMTP_PASSWORD=your-app-specific-password
 Generate the required secrets.
 
 ```bash
-# Generate SECRET_KEY_BASE (must be at least 64 characters)
+# Generate SECRET_KEY_BASE (must be at least 64 bytes)
 openssl rand -base64 48
 
-# Generate TOTP_VAULT_KEY (must be exactly 32 bytes, base64 encoded)
+# Generate TOTP_VAULT_KEY (32 random bytes, base64 encoded)
 openssl rand -base64 32
 ```
 
@@ -195,18 +237,28 @@ After the first startup, navigate to `http://your-server-ip:8000` and create you
 
 ## Adding the Tracking Script
 
-Plausible's tracking script is tiny and privacy-respecting. Add it to the `<head>` section of your website.
+Plausible's tracking script is lightweight and privacy-respecting. Add it to the `<head>` section of your website.
 
 ```html
-<!-- Plausible Analytics tracking script - under 1 KB, no cookies -->
+<!-- Plausible Analytics tracking script - lightweight, no cookies -->
 <script defer data-domain="yourdomain.com" src="https://analytics.yourdomain.com/js/script.js"></script>
 ```
 
-For enhanced features like outbound link tracking, file download tracking, and 404 error tracking, use the extended script variants.
+For enhanced features like outbound link tracking, file download tracking, and form submission tracking, enable optional measurements in the site settings or initialize the script with the relevant options.
 
 ```html
-<!-- Extended tracking with outbound links, file downloads, and custom events -->
-<script defer data-domain="yourdomain.com" src="https://analytics.yourdomain.com/js/script.outbound-links.file-downloads.tagged-events.js"></script>
+<!-- Extended tracking with outbound links, file downloads, and form submissions -->
+<script defer data-domain="yourdomain.com" src="https://analytics.yourdomain.com/js/script.js"></script>
+<script>
+  window.plausible = window.plausible || function() {
+    (window.plausible.q = window.plausible.q || []).push(arguments)
+  }
+  plausible.init({
+    outboundLinks: true,
+    fileDownloads: true,
+    formSubmissions: true
+  })
+</script>
 ```
 
 ## Tracking Custom Events
@@ -242,13 +294,25 @@ location = /api/event {
     proxy_pass https://analytics.yourdomain.com/api/event;
     proxy_set_header Host analytics.yourdomain.com;
     proxy_buffering on;
+    proxy_http_version 1.1;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
 }
 ```
 
 Then update your tracking script to use the proxied paths.
 
 ```html
-<script defer data-domain="yourdomain.com" data-api="/api/event" src="/js/script.js"></script>
+<script defer data-domain="yourdomain.com" src="/js/script.js"></script>
+<script>
+  window.plausible = window.plausible || function() {
+    (window.plausible.q = window.plausible.q || []).push(arguments)
+  }
+  plausible.init({
+    endpoint: "/api/event"
+  })
+</script>
 ```
 
 ## Using the Stats API
@@ -257,21 +321,30 @@ Plausible provides an API for pulling analytics data programmatically.
 
 ```bash
 # Get overall stats for a site
-curl -H "Authorization: Bearer your-api-key" \
-  "https://analytics.yourdomain.com/api/v1/stats/realtime/visitors?site_id=yourdomain.com"
+curl --request POST \
+  --header "Authorization: Bearer your-api-key" \
+  --header "Content-Type: application/json" \
+  --url "https://analytics.yourdomain.com/api/v2/query" \
+  --data '{ "site_id": "yourdomain.com", "metrics": ["visitors"], "date_range": "24h" }'
 
 # Get aggregate stats for a time period
-curl -H "Authorization: Bearer your-api-key" \
-  "https://analytics.yourdomain.com/api/v1/stats/aggregate?site_id=yourdomain.com&period=30d&metrics=visitors,pageviews,bounce_rate,visit_duration"
+curl --request POST \
+  --header "Authorization: Bearer your-api-key" \
+  --header "Content-Type: application/json" \
+  --url "https://analytics.yourdomain.com/api/v2/query" \
+  --data '{ "site_id": "yourdomain.com", "metrics": ["visitors", "pageviews", "bounce_rate", "visit_duration"], "date_range": "30d" }'
 
 # Get top pages
-curl -H "Authorization: Bearer your-api-key" \
-  "https://analytics.yourdomain.com/api/v1/stats/breakdown?site_id=yourdomain.com&period=7d&property=event:page&limit=10"
+curl --request POST \
+  --header "Authorization: Bearer your-api-key" \
+  --header "Content-Type: application/json" \
+  --url "https://analytics.yourdomain.com/api/v2/query" \
+  --data '{ "site_id": "yourdomain.com", "metrics": ["visitors"], "date_range": "7d", "dimensions": ["event:page"], "pagination": { "limit": 10 } }'
 ```
 
 ## Importing Existing Google Analytics Data
 
-If you are migrating from Google Analytics, Plausible can import your historical data. Go to the site settings in Plausible and use the Google Analytics import feature, which reads from a Google Analytics export file.
+If you are migrating from Google Analytics, Plausible can import your historical GA4 data. Configure `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, then go to the site settings in Plausible and use the Google Analytics import feature to link your Google account and select the property to import.
 
 ## Backup Strategy
 
@@ -304,4 +377,4 @@ labels:
 
 ## Summary
 
-Plausible Analytics in Docker gives you privacy-friendly web analytics without the complexity and privacy concerns of Google Analytics. The sub-1KB tracking script, cookie-free operation, and GDPR compliance out of the box mean you can add analytics to any site without consent banners. Self-hosting keeps your data under your control, and the ClickHouse backend handles millions of events efficiently. Monitor the stack with OneUptime to catch any ClickHouse or PostgreSQL issues before they affect your analytics data collection.
+Plausible Analytics in Docker gives you privacy-friendly web analytics without the complexity and privacy concerns of Google Analytics. The lightweight tracking script, cookie-free operation, and GDPR compliance out of the box mean you can add analytics to any site without consent banners. Self-hosting keeps your data under your control, and the ClickHouse backend handles millions of events efficiently. Monitor the stack with OneUptime to catch any ClickHouse or PostgreSQL issues before they affect your analytics data collection.
