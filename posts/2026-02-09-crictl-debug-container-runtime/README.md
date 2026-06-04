@@ -27,7 +27,7 @@ crictl --version
 If not installed, download it manually:
 
 ```bash
-VERSION="v1.29.0"
+VERSION="v1.36.0"
 wget https://github.com/kubernetes-sigs/cri-tools/releases/download/$VERSION/crictl-$VERSION-linux-amd64.tar.gz
 sudo tar zxvf crictl-$VERSION-linux-amd64.tar.gz -C /usr/local/bin
 rm -f crictl-$VERSION-linux-amd64.tar.gz
@@ -175,8 +175,8 @@ sudo crictl pods --state NotReady
 # Inspect the sandbox
 sudo crictl inspectp <sandbox-id> | jq '.status.state'
 
-# Check why sandbox failed
-sudo crictl inspectp <sandbox-id> | jq '.status.message'
+# Check verbose runtime information for clues
+sudo crictl inspectp <sandbox-id> | jq '.info'
 
 # View sandbox logs (if available)
 sudo journalctl -u containerd | grep <sandbox-id>
@@ -199,7 +199,7 @@ sudo crictl images | grep nginx
 # Inspect an image
 sudo crictl inspecti nginx:latest
 
-# View image layers
+# View image digests
 sudo crictl inspecti nginx:latest | jq '.status.repoDigests'
 
 # Check image size
@@ -215,18 +215,18 @@ sudo crictl pull nginx:latest
 # Pull with authentication
 sudo crictl pull --creds username:password private-registry.com/myapp:v1.0
 
-# Pull from specific registry
+# Pull with pod sandbox configuration context
 sudo crictl pull --pod-config pod.json myimage:tag
 
-# View pull progress
-sudo crictl pull --debug nginx:latest 2>&1 | tee pull.log
+# View debug output
+sudo crictl --debug pull nginx:latest 2>&1 | tee pull.log
 ```
 
 Check image pull secrets and authentication:
 
 ```bash
-# Inspect pod for image pull secrets
-sudo crictl inspectp $POD_ID | jq '.info.config.metadata.annotations["io.kubernetes.pod.imagePullSecrets"]'
+# Inspect the Kubernetes pod spec for image pull secrets
+kubectl get pod myapp -o jsonpath='{.spec.imagePullSecrets}'
 
 # Verify containerd registry configuration
 sudo cat /etc/containerd/config.toml | grep -A 10 registry
@@ -246,11 +246,11 @@ sudo crictl exec -it $CONTAINER_ID /bin/sh
 # Run a specific command
 sudo crictl exec $CONTAINER_ID ps aux
 
-# Execute with environment variables
-sudo crictl exec -e VAR=value $CONTAINER_ID env
+# Execute with a timeout
+sudo crictl exec --timeout 10 $CONTAINER_ID env
 
-# Execute as a specific user
-sudo crictl exec -u 1000 $CONTAINER_ID id
+# Execute in the most recently created container
+sudo crictl exec --latest id
 ```
 
 ## Monitoring Resource Usage
@@ -279,8 +279,8 @@ sudo crictl inspect $CONTAINER_ID | jq '.info.runtimeSpec.linux.resources.memory
 sudo crictl inspect $CONTAINER_ID | jq '.info.runtimeSpec.linux.resources.cpu'
 
 # Compare with actual usage
-sudo crictl stats $CONTAINER_ID -o json | jq '.linux.memory'
-sudo crictl stats $CONTAINER_ID -o json | jq '.linux.cpu'
+sudo crictl stats $CONTAINER_ID -o json | jq '.stats[0].memory'
+sudo crictl stats $CONTAINER_ID -o json | jq '.stats[0].cpu'
 ```
 
 ## Troubleshooting Common Issues
@@ -310,7 +310,7 @@ sudo crictl inspect $CONTAINER_ID | jq '.status.reason'
 sudo crictl inspectp $POD_ID | jq '.status.network.ip'
 
 # Check network namespace
-sudo crictl inspectp $POD_ID | jq '.info.runtimeSpec.linux.namespaces[] | select(.type=="network")'
+sudo crictl inspectp $POD_ID | jq '.status.linux.namespaces'
 
 # Execute network debugging in container
 sudo crictl exec $CONTAINER_ID ip addr
@@ -343,10 +343,10 @@ sudo crictl inspect $CONTAINER_ID | jq '.info.runtimeSpec.linux.resources.cpu.qu
 sudo crictl inspect $CONTAINER_ID | jq '.info.runtimeSpec.linux.resources.cpu.period'
 
 # View actual CPU usage
-sudo crictl stats $CONTAINER_ID -o json | jq '.linux.cpu.usageCoreNanoSeconds'
+sudo crictl stats $CONTAINER_ID -o json | jq '.stats[0].cpu.usageCoreNanoSeconds.value'
 
 # Check memory pressure
-sudo crictl stats $CONTAINER_ID -o json | jq '.linux.memory.workingSetBytes'
+sudo crictl stats $CONTAINER_ID -o json | jq '.stats[0].memory.workingSetBytes.value'
 ```
 
 ## Advanced Debugging Techniques
@@ -362,6 +362,7 @@ cat > pod-config.json <<EOF
     "namespace": "default",
     "uid": "debug-pod-uid"
   },
+  "log_directory": "/tmp",
   "linux": {
     "security_context": {
       "namespace_options": {
