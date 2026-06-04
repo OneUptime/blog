@@ -56,22 +56,26 @@ Query historical node resource usage to understand capacity trends.
 
 ```yaml
 # CPU usage trends
-node_cpu_usage_percent = |
-  (
-    1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))
-  ) * 100
+groups:
+  - name: capacity_planning
+    rules:
+      - record: node_cpu_usage_percent
+        expr: |
+          (
+            1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))
+          ) * 100
 
-# Memory usage trends
-node_memory_usage_percent = |
-  (
-    1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
-  ) * 100
+      - record: node_memory_usage_percent
+        expr: |
+          (
+            1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+          ) * 100
 
-# Storage usage
-node_disk_usage_percent = |
-  (
-    1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)
-  ) * 100
+      - record: node_disk_usage_percent
+        expr: |
+          (
+            1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)
+          ) * 100
 ```
 
 These queries show current utilization as percentages.
@@ -80,30 +84,27 @@ These queries show current utilization as percentages.
 
 Calculate resource growth rates over time to forecast future needs.
 
-```yaml
+```promql
 # CPU growth rate (% increase per month)
-cpu_growth_rate = |
-  (
-    avg(node_cpu_usage_percent)
-    -
-    avg(node_cpu_usage_percent offset 30d)
-  ) / avg(node_cpu_usage_percent offset 30d) * 100
+(
+  avg(node_cpu_usage_percent)
+  -
+  avg(node_cpu_usage_percent offset 30d)
+) / avg(node_cpu_usage_percent offset 30d) * 100
 
 # Memory growth rate
-memory_growth_rate = |
-  (
-    avg(node_memory_usage_percent)
-    -
-    avg(node_memory_usage_percent offset 30d)
-  ) / avg(node_memory_usage_percent offset 30d) * 100
+(
+  avg(node_memory_usage_percent)
+  -
+  avg(node_memory_usage_percent offset 30d)
+) / avg(node_memory_usage_percent offset 30d) * 100
 
 # Pod count growth
-pod_count_growth = |
-  (
-    sum(kube_pod_info)
-    -
-    sum(kube_pod_info offset 30d)
-  ) / sum(kube_pod_info offset 30d) * 100
+(
+  sum(kube_pod_info)
+  -
+  sum(kube_pod_info offset 30d)
+) / sum(kube_pod_info offset 30d) * 100
 ```
 
 Positive growth rates indicate increasing resource demand.
@@ -211,13 +212,15 @@ This script forecasts when resources will reach capacity.
 Determine how many nodes to add based on forecasts.
 
 ```python
+import numpy as np
+
 def calculate_node_requirements(current_pods, growth_rate_monthly, months=6):
     """Calculate required node capacity"""
     # Project pod count
     projected_pods = current_pods * ((1 + growth_rate_monthly) ** months)
 
     # Average pods per node (with headroom)
-    pods_per_node = 100  # Kubernetes default max
+    pods_per_node = 110  # Kubernetes kubelet default max-pods
     effective_pods_per_node = pods_per_node * 0.8  # 80% utilization target
 
     # Calculate required nodes
@@ -248,18 +251,16 @@ This calculates node requirements accounting for growth and utilization targets.
 
 Many workloads have seasonal patterns that affect capacity planning.
 
-```yaml
-# Prometheus query for weekly patterns
-weekly_cpu_pattern = |
-  avg_over_time(
-    avg(node_cpu_usage_percent)[1w:1h]
-  ) by (hour, weekday)
+```promql
+# Weekly peak
+max_over_time(
+  avg(node_cpu_usage_percent)[1w:1h]
+)
 
-# Monthly patterns
-monthly_pattern = |
-  avg_over_time(
-    avg(node_cpu_usage_percent)[30d:1d]
-  ) by (day)
+# Monthly peak
+max_over_time(
+  avg(node_cpu_usage_percent)[30d:1d]
+)
 ```
 
 Account for seasonal peaks when planning capacity additions.
@@ -268,20 +269,17 @@ Account for seasonal peaks when planning capacity additions.
 
 Analyze capacity needs per namespace or application.
 
-```yaml
+```promql
 # CPU usage by namespace
-namespace_cpu_usage = |
-  sum(rate(container_cpu_usage_seconds_total[5m])) by (namespace)
+sum(rate(container_cpu_usage_seconds_total[5m])) by (namespace)
 
 # Memory usage by namespace
-namespace_memory_usage = |
-  sum(container_memory_working_set_bytes) by (namespace)
+sum(container_memory_working_set_bytes) by (namespace)
 
 # Identify top consumers
-top_cpu_consumers = |
-  topk(10,
-    sum(rate(container_cpu_usage_seconds_total[1h])) by (namespace, pod)
-  )
+topk(10,
+  sum(rate(container_cpu_usage_seconds_total[1h])) by (namespace, pod)
+)
 ```
 
 Understanding which workloads drive growth helps target capacity additions.
@@ -290,21 +288,19 @@ Resource Waste Analysis
 
 Identify over-provisioned resources to reclaim capacity.
 
-```yaml
+```promql
 # Pods with excessive resource requests
-overprovisioned_pods = |
-  (
-    kube_pod_container_resource_requests{resource="cpu"}
-    -
-    rate(container_cpu_usage_seconds_total[1h])
-  ) / kube_pod_container_resource_requests{resource="cpu"} * 100
-  > 50
+(
+  kube_pod_container_resource_requests{resource="cpu"}
+  -
+  rate(container_cpu_usage_seconds_total[1h])
+) / kube_pod_container_resource_requests{resource="cpu"} * 100
+> 50
 
 # Unused persistent volumes
-unused_pvs = |
-  kube_persistentvolume_info
-  unless
-  on(persistentvolume) kube_persistentvolumeclaim_info
+kube_persistentvolume_info
+unless
+on(persistentvolume) kube_persistentvolumeclaim_info
 ```
 
 Rightsizing and cleanup can defer capacity additions.
@@ -391,7 +387,7 @@ data:
         - alert: NodeCPUCapacityWarning
           expr: |
             predict_linear(
-              avg(node_cpu_usage_percent)[7d],
+              avg(node_cpu_usage_percent)[7d:1h],
               30 * 86400
             ) > 80
           for: 1h
@@ -404,7 +400,7 @@ data:
         - alert: NodeMemoryCapacityWarning
           expr: |
             predict_linear(
-              avg(node_memory_usage_percent)[7d],
+              avg(node_memory_usage_percent)[7d:1h],
               30 * 86400
             ) > 80
           for: 1h
@@ -416,7 +412,7 @@ data:
         - alert: PodCapacityWarning
           expr: |
             predict_linear(
-              sum(kube_pod_info)[7d],
+              sum(kube_pod_info)[7d:1h],
               30 * 86400
             ) > (sum(kube_node_status_capacity{resource="pods"}) * 0.8)
           for: 1h
