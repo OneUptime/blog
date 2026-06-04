@@ -8,17 +8,17 @@ Description: Learn how to use Policy Report CRDs to aggregate policy violations,
 
 ---
 
-Policy Report CRDs provide a standardized way to collect and query policy evaluation results from admission controllers like Kyverno, OPA Gatekeeper, and others. These reports aggregate violations, track compliance trends, and integrate with dashboards for visibility. This guide shows you how to configure policy reports and build compliance monitoring infrastructure.
+Policy Report CRDs provide a standardized way to collect and query policy evaluation results from policy engines like Kyverno and other tools that emit PolicyReport resources. These reports aggregate violations, track compliance trends, and integrate with dashboards for visibility. This guide shows you how to configure policy reports and build compliance monitoring infrastructure.
 
 ## Understanding Policy Report CRDs
 
 Policy Reports are Kubernetes custom resources defined by the Kubernetes Policy Working Group. They provide a standard schema for reporting policy results, making it easy to build tooling that works with any policy engine. Reports come in two types: PolicyReport for namespace-scoped results and ClusterPolicyReport for cluster-wide results.
 
-Policy engines automatically create and update these reports as they evaluate resources, providing real-time compliance visibility.
+Policy engines such as Kyverno automatically create and update these reports as they evaluate resources, providing real-time compliance visibility.
 
 ## Installing Policy Report Support
 
-Most policy engines automatically create PolicyReport resources. Install Policy Reporter for dashboard visualization:
+Some policy engines automatically create PolicyReport resources. Install Policy Reporter for dashboard visualization:
 
 ```bash
 # Add Helm repository
@@ -31,7 +31,8 @@ helm install policy-reporter policy-reporter/policy-reporter \
     --namespace policy-reporter \
     --create-namespace \
     --set ui.enabled=true \
-    --set kyvernoPlugin.enabled=true \
+    --set plugin.kyverno.enabled=true \
+    --set metrics.enabled=true \
     --set rest.enabled=true
 ```
 
@@ -119,12 +120,7 @@ data:
   config.yaml: |
     metrics:
       enabled: true
-      mode: detailed  # or summary
-
-    targets:
-      prometheus:
-        enabled: true
-        port: 2112
+      mode: detailed  # or simple/custom
 
     rest:
       enabled: true
@@ -143,7 +139,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: policy-reporter
   endpoints:
-    - port: metrics
+    - port: http
       interval: 30s
 ```
 
@@ -151,17 +147,17 @@ Query metrics in Prometheus:
 
 ```promql
 # Total policy violations
-sum(policy_report_result{status="fail"})
+sum({__name__=~"policy_report_result|cluster_policy_report_result",status="fail"})
 
 # Violations by policy
-sum by (policy) (policy_report_result{status="fail"})
+sum by (policy) ({__name__=~"policy_report_result|cluster_policy_report_result",status="fail"})
 
 # Violations by namespace
 sum by (namespace) (policy_report_result{status="fail"})
 
 # Policy pass rate
-sum(policy_report_result{status="pass"}) /
-(sum(policy_report_result{status="pass"}) + sum(policy_report_result{status="fail"})) * 100
+sum({__name__=~"policy_report_result|cluster_policy_report_result",status="pass"}) /
+(sum({__name__=~"policy_report_result|cluster_policy_report_result",status="pass"}) + sum({__name__=~"policy_report_result|cluster_policy_report_result",status="fail"})) * 100
 ```
 
 ## Building Grafana Dashboards
@@ -177,25 +173,25 @@ Create a compliance dashboard:
         "title": "Policy Violations Over Time",
         "targets": [
           {
-            "expr": "sum(policy_report_result{status='fail'})"
+            "expr": "sum({__name__=~\"policy_report_result|cluster_policy_report_result\",status=\"fail\"})"
           }
         ],
-        "type": "graph"
+        "type": "timeseries"
       },
       {
         "title": "Violations by Namespace",
         "targets": [
           {
-            "expr": "sum by (namespace) (policy_report_result{status='fail'})"
+            "expr": "sum by (namespace) (policy_report_result{status=\"fail\"})"
           }
         ],
-        "type": "bar"
+        "type": "barchart"
       },
       {
         "title": "Top Failed Policies",
         "targets": [
           {
-            "expr": "topk(10, sum by (policy) (policy_report_result{status='fail'}))"
+            "expr": "topk(10, sum by (policy) ({__name__=~\"policy_report_result|cluster_policy_report_result\",status=\"fail\"}))"
           }
         ],
         "type": "table"
@@ -204,7 +200,7 @@ Create a compliance dashboard:
         "title": "Compliance Score",
         "targets": [
           {
-            "expr": "sum(policy_report_result{status='pass'}) / (sum(policy_report_result{status='pass'}) + sum(policy_report_result{status='fail'})) * 100"
+            "expr": "sum({__name__=~\"policy_report_result|cluster_policy_report_result\",status=\"pass\"}) / (sum({__name__=~\"policy_report_result|cluster_policy_report_result\",status=\"pass\"}) + sum({__name__=~\"policy_report_result|cluster_policy_report_result\",status=\"fail\"})) * 100"
           }
         ],
         "type": "stat"
@@ -226,32 +222,28 @@ metadata:
   namespace: policy-reporter
 data:
   config.yaml: |
-    targets:
-      slack:
-        enabled: true
-        webhook: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-        channel: "#security-alerts"
-        minimumPriority: "warning"
-        skipExistingOnStartup: true
+    slack:
+      webhook: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+      channel: "#security-alerts"
+      minimumPriority: "warning"
+      skipExistingOnStartup: true
 ```
 
 Send to Elasticsearch for long-term storage:
 
 ```yaml
-targets:
-  elasticsearch:
-    enabled: true
-    host: "https://elasticsearch.example.com:9200"
-    index: "policy-reports"
-    rotation: "daily"
-    minimumPriority: "info"
-    username: "policy-reporter"
-    password: "secret"
+elasticsearch:
+  host: "https://elasticsearch.example.com:9200"
+  index: "policy-reports"
+  rotation: "daily"
+  minimumPriority: "info"
+  username: "policy-reporter"
+  password: "secret"
 ```
 
 ## Filtering and Customization
 
-Customize which policies generate reports:
+Customize which reports Policy Reporter processes:
 
 ```yaml
 # policy-reporter-config.yaml
@@ -267,13 +259,8 @@ data:
         include: ["production", "staging"]
         exclude: ["kube-system"]
 
-      priorities:
-        exclude: ["info", "debug"]
-
-      sources:
-        include: ["kyverno", "gatekeeper"]
-
-      disableClusterReports: false
+      clusterReports:
+        disabled: false
 ```
 
 This filters reports to focus on important violations.
@@ -296,17 +283,18 @@ spec:
         spec:
           containers:
             - name: report-generator
-              image: curlimages/curl:latest
+              image: alpine:3.20
               command:
                 - /bin/sh
                 - -c
                 - |
                   # Query Policy Reporter API
-                  RESULTS=$(curl -s http://policy-reporter:8080/v1/policy-reports)
+                  apk add --no-cache curl jq >/dev/null
+                  RESULTS=$(curl -s http://policy-reporter:8080/v1/namespaced-resources/status-counts)
 
                   # Generate HTML report
                   echo "<html><body><h1>Weekly Compliance Report</h1>" > /tmp/report.html
-                  echo "$RESULTS" | jq -r '.items[] | "<p>Policy: \(.policy), Failures: \(.summary.fail)</p>"' >> /tmp/report.html
+                  echo "$RESULTS" | jq -r '.[] | select(.status == "fail") | .items[] | "<p>Namespace: \(.namespace), Failures: \(.count)</p>"' >> /tmp/report.html
                   echo "</body></html>" >> /tmp/report.html
 
                   # Send email (requires SMTP configuration)
@@ -319,31 +307,31 @@ spec:
 Query Policy Reporter API programmatically:
 
 ```bash
-# Get all policy reports
-curl http://policy-reporter:8080/v1/policy-reports
+# Get all namespace-scoped policy results
+curl http://policy-reporter:8080/v1/namespaced-resources/results
 
 # Get reports for specific namespace
-curl http://policy-reporter:8080/v1/namespaced-resources/targets?namespace=production
+curl "http://policy-reporter:8080/v1/namespaced-resources/results?namespaces=production"
 
 # Get cluster policy reports
-curl http://policy-reporter:8080/v1/cluster-resources/targets
+curl http://policy-reporter:8080/v1/cluster-resources/results
 
 # Filter by severity
-curl "http://policy-reporter:8080/v1/policy-reports?severity=high"
+curl "http://policy-reporter:8080/v1/namespaced-resources/results?severities=high"
 ```
 
 Use in automation scripts:
 
 ```python
 import requests
-import json
 
 def get_compliance_score():
-    response = requests.get('http://policy-reporter:8080/v1/policy-reports')
-    data = response.json()
+    response = requests.get('http://policy-reporter:8080/v1/namespaced-resources/status-counts')
+    response.raise_for_status()
 
-    total_pass = sum(r['summary']['pass'] for r in data['items'])
-    total_fail = sum(r['summary']['fail'] for r in data['items'])
+    counts = {item['status']: sum(ns['count'] for ns in item['items']) for item in response.json()}
+    total_pass = counts.get('pass', 0)
+    total_fail = counts.get('fail', 0)
 
     if total_pass + total_fail == 0:
         return 100
@@ -352,12 +340,15 @@ def get_compliance_score():
     return round(score, 2)
 
 def alert_on_violations():
-    response = requests.get('http://policy-reporter:8080/v1/policy-reports')
-    data = response.json()
+    response = requests.get('http://policy-reporter:8080/v1/namespaced-resources/status-counts?status=fail')
+    response.raise_for_status()
 
-    for report in data['items']:
-        if report['summary']['fail'] > 10:
-            send_alert(f"High violations in {report['metadata']['namespace']}")
+    for status in response.json():
+        if status['status'] != 'fail':
+            continue
+        for namespace in status['items']:
+            if namespace['count'] > 10:
+                print(f"High violations in {namespace['namespace']}")
 
 if __name__ == "__main__":
     score = get_compliance_score()
@@ -369,7 +360,7 @@ if __name__ == "__main__":
 
 ## Creating Custom Reports
 
-Define custom report formats:
+Define custom report templates for your own report generator:
 
 ```yaml
 apiVersion: v1
