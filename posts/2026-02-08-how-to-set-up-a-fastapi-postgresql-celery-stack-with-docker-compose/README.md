@@ -48,7 +48,7 @@ fastapi-celery/
 
 ## The Dockerfile
 
-Build a single image that serves both the FastAPI app and the Celery worker. The entrypoint determines which process runs.
+Build a single image that serves both the FastAPI app and the Celery worker. The default command runs the web server, and Docker Compose overrides it for the worker and scheduler services.
 
 ```dockerfile
 # Python 3.11 slim image for smaller footprint
@@ -91,14 +91,13 @@ celery[redis]==5.3.6
 redis==5.0.1
 alembic==1.13.1
 pydantic-settings==2.1.0
+flower==2.0.1
 ```
 
 ## Docker Compose Configuration
 
 ```yaml
 # Full stack: FastAPI + PostgreSQL + Redis + Celery
-version: "3.8"
-
 services:
   # FastAPI web application
   web:
@@ -217,7 +216,7 @@ Notice that the `celery-worker` and `celery-beat` services use the same Docker i
 
 ```python
 # app/config.py - Centralized configuration using pydantic-settings
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str = "postgresql://appuser:apppassword@localhost:5432/appdb"
@@ -225,8 +224,7 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env")
 
 settings = Settings()
 ```
@@ -234,14 +232,14 @@ settings = Settings()
 ## Database Setup
 
 ```python
-# app/database.py - SQLAlchemy async engine and session setup
+# app/database.py - SQLAlchemy engine and session setup
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from app.config import settings
 
 engine = create_engine(settings.database_url)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(engine, autoflush=False)
 Base = declarative_base()
 
 def get_db():
