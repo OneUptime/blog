@@ -144,7 +144,7 @@ This creates a clear deployment pipeline: CRDs → Operators → Infrastructure 
 
 ## Using Wait and Health Checks
 
-The `wait` field is crucial for dependencies. When enabled, Flux waits for all resources to become ready:
+Use `wait` or explicit `healthChecks` for dependencies that must be ready before other Kustomizations run. When `wait` is enabled, Flux waits for all reconciled resources to become ready. When `healthChecks` is set without `wait`, Flux waits for the listed resources:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -158,7 +158,7 @@ spec:
     kind: GitRepository
     name: fleet-infra
   path: ./infrastructure/database
-  wait: true  # Wait for resources to be ready
+  prune: true
   timeout: 10m  # Maximum wait time
   healthChecks:
     - apiVersion: apps/v1
@@ -186,6 +186,7 @@ spec:
     kind: GitRepository
     name: fleet-infra
   path: ./apps/config
+  prune: true
   wait: true
   dependsOn:
     - name: vault-secrets
@@ -200,8 +201,9 @@ Repository structure:
 
 ```text
 clusters/production/
+├── namespace/
+│   └── namespace.yaml
 ├── infrastructure/
-│   ├── namespace.yaml
 │   ├── postgres.yaml
 │   └── redis.yaml
 ├── config/
@@ -230,7 +232,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: fleet-infra
-  path: ./clusters/production/infrastructure
+  path: ./clusters/production/namespace
   prune: true
   wait: true
 ---
@@ -247,7 +249,6 @@ spec:
     name: fleet-infra
   path: ./clusters/production/infrastructure
   prune: true
-  wait: true
   timeout: 15m
   healthChecks:
     - apiVersion: apps/v1
@@ -315,11 +316,7 @@ spec:
 
 ## Handling Circular Dependencies
 
-Flux detects circular dependencies and will fail reconciliation. If you see this error:
-
-```text
-Kustomization reconciliation failed: circular dependency detected
-```
+Flux Kustomizations with circular dependencies will not be applied because none of the interdependent Kustomizations can become ready first.
 
 Review your dependency graph. Common causes:
 
@@ -340,8 +337,14 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: monitoring
+  namespace: flux-system
 spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: fleet-infra
   path: ./infrastructure/monitoring
+  prune: true
   dependsOn:
     - name: crds
 ---
@@ -349,8 +352,14 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: logging
+  namespace: flux-system
 spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: fleet-infra
   path: ./infrastructure/logging
+  prune: true
   dependsOn:
     - name: crds
 ---
@@ -359,8 +368,14 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: app-a
+  namespace: flux-system
 spec:
+  interval: 5m
+  sourceRef:
+    kind: GitRepository
+    name: fleet-infra
   path: ./apps/app-a
+  prune: true
   dependsOn:
     - name: monitoring
     - name: logging
@@ -369,8 +384,14 @@ apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: app-b
+  namespace: flux-system
 spec:
+  interval: 5m
+  sourceRef:
+    kind: GitRepository
+    name: fleet-infra
   path: ./apps/app-b
+  prune: true
   dependsOn:
     - name: monitoring
     - name: logging
@@ -422,6 +443,7 @@ spec:
     kind: GitRepository
     name: fleet-infra
   path: ./migrations
+  prune: true
   wait: true
 ```
 
