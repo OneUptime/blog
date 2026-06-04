@@ -17,17 +17,17 @@ Policy attachment follows these principles:
 1. **Separation of concerns**: Core routing stays in HTTPRoute, advanced features in policies
 2. **Vendor extensibility**: Gateway implementations can add custom policies
 3. **Hierarchy and precedence**: Policies can attach at different levels with clear precedence rules
-4. **Target reference**: Policies reference Gateway API resources via targetRef
+4. **Target reference**: Policies reference Gateway API resources via targetRefs or targetRef
 
-Policy attachment points:
+Common Gateway API policy attachment points:
 - **Gateway**: Applies to all traffic through the gateway
 - **HTTPRoute**: Applies to specific routes
 - **Service**: Applies to traffic to specific backends
-- **Namespace**: Applies to all resources in a namespace
+- **Namespace**: Implementation-specific policies can use namespace-scoped targeting for defaults, but this is not a standard Gateway API attachment point
 
 ## Basic Policy Attachment Pattern
 
-Policies use the targetRef field to specify what they apply to:
+Policies use targetRefs, or targetRef for policy types that only support one target, to specify what they apply to:
 
 ```yaml
 # Example policy structure
@@ -38,11 +38,10 @@ metadata:
   name: my-policy
   namespace: default
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: my-route
-    namespace: default  # Optional if same namespace
   # Policy-specific configuration
   configuration:
     setting1: value1
@@ -62,12 +61,11 @@ metadata:
   namespace: default
 spec:
   # Attach to HTTPRoute
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: api-route
   rateLimit:
-    type: Global
     global:
       rules:
       - clientSelectors:
@@ -96,6 +94,7 @@ spec:
 ```
 
 The HTTPRoute remains clean and focused on routing, while the policy adds rate limiting.
+For Envoy Gateway global rate limiting, also configure the Envoy Gateway rate limit service backend.
 
 ## Attaching Policies to Gateways
 
@@ -110,8 +109,8 @@ metadata:
   namespace: gateway-system
 spec:
   # Attach to Gateway
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: Gateway
     name: production-gateway
   cors:
@@ -126,7 +125,7 @@ spec:
     allowHeaders:
     - Content-Type
     - Authorization
-    maxAge: 86400
+    maxAge: 24h
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -141,11 +140,11 @@ spec:
     port: 80
 ```
 
-All routes through this Gateway inherit the CORS policy.
+All routes through this Gateway use the CORS policy unless a more specific SecurityPolicy applies.
 
 ## Multi-Level Policy Attachment
 
-Attach policies at different levels with inheritance:
+Attach policies at different levels with inheritance, when your policy type defines that hierarchy:
 
 ```yaml
 # namespace-level-policy.yaml
@@ -155,8 +154,8 @@ metadata:
   name: namespace-timeout
   namespace: production
 spec:
-  targetRef:
-    group: ""
+  targetRefs:
+  - group: ""
     kind: Namespace
     name: production
   timeout:
@@ -170,8 +169,8 @@ metadata:
   name: gateway-timeout
   namespace: gateway-system
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: Gateway
     name: production-gateway
   timeout:
@@ -185,15 +184,15 @@ metadata:
   name: slow-route-timeout
   namespace: production
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: slow-route
   timeout:
     request: 300s  # Overrides gateway and namespace
 ```
 
-Precedence: Route-level > Gateway-level > Namespace-level
+For a defaults-style policy hierarchy, precedence is commonly: Route-level > Gateway-level > Namespace-level.
 
 ## Authentication Policy Attachment
 
@@ -207,8 +206,8 @@ metadata:
   name: jwt-authentication
   namespace: default
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: authenticated-api-route
   jwt:
@@ -258,15 +257,15 @@ metadata:
   name: circuit-breaker
   namespace: default
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: unstable-service-route
   circuitBreaker:
     maxConnections: 100
     maxPendingRequests: 50
-    maxRequests: 200
-    maxRetries: 3
+    maxParallelRequests: 200
+    maxParallelRetries: 3
 ```
 
 ## Request Transformation Policy
@@ -281,8 +280,8 @@ metadata:
   name: api-transform
   namespace: default
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: legacy-api-route
   requestTransform:
@@ -318,8 +317,8 @@ metadata:
   name: tracing-policy
   namespace: default
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: Gateway
     name: production-gateway
   tracing:
@@ -378,6 +377,27 @@ spec:
                     type: string
                   feature2:
                     type: boolean
+          status:
+            type: object
+            properties:
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    reason:
+                      type: string
+                    message:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+    subresources:
+      status: {}
   scope: Namespaced
   names:
     plural: custompolicies
@@ -406,7 +426,7 @@ spec:
 
 ## Implementing Policy Controller
 
-Build a controller that watches for policy resources:
+Build a controller that watches for policy resources. In a real controller, `CustomPolicy` would be the Go type generated from your CRD:
 
 ```go
 // policy-controller.go
@@ -494,7 +514,7 @@ Handle policy conflicts with clear precedence:
 
 ```yaml
 # precedence-example.yaml
-# Most specific wins: Route > Gateway > Namespace
+# For a defaults-style policy hierarchy, most specific wins: Route > Gateway > Namespace
 
 # Namespace default: 30s timeout
 apiVersion: vendor.example.com/v1alpha1
@@ -540,7 +560,7 @@ spec:
     request: 120s
 ```
 
-Document precedence rules in your policy CRD.
+Document precedence and merge rules in your policy CRD.
 
 ## Policy Status and Conditions
 
