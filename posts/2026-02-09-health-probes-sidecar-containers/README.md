@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Health Probe, Sidecar Containers, Multi-Container Pods, Service Mesh
 
-Description: Learn how to properly configure health probes for sidecar containers in multi-container pods, ensuring coordinated startup and graceful shutdown across all containers in your Kubernetes workloads.
+Description: Learn how to properly configure health probes for sidecar containers in multi-container pods, ensuring coordinated startup and reliable traffic handling across all containers in your Kubernetes workloads.
 
 ---
 
@@ -14,11 +14,11 @@ Improperly configured health probes in multi-container pods can lead to race con
 
 ## Understanding Multi-Container Health Dynamics
 
-In a multi-container pod, Kubernetes checks each container independently. The pod is only marked ready when all containers pass their readiness probes. This creates coordination challenges when containers depend on each other.
+In a multi-container pod, Kubernetes checks each container independently. The pod is only marked ready when all containers are ready, including any containers with readiness probes that must pass. This creates coordination challenges when containers depend on each other.
 
 Consider a web application with an Envoy proxy sidecar. The application container shouldn't receive traffic until both the application and Envoy are ready. If the application becomes ready first but Envoy is still initializing, incoming requests will fail.
 
-Similarly, during shutdown, you want to drain the proxy before stopping the application. Health probes help orchestrate this sequence.
+Similarly, during shutdown, you want to stop routing traffic before the application exits and let the proxy drain existing connections. Readiness probes help remove the pod from Service endpoints, while lifecycle hooks and sidecar lifecycle ordering handle the shutdown sequence.
 
 ## Basic Multi-Container Pod with Health Probes
 
@@ -100,9 +100,9 @@ spec:
     metadata:
       labels:
         app: web-service
-      annotations:
         # Enable Istio sidecar injection
         sidecar.istio.io/inject: "true"
+      annotations:
         # Configure probe rewrite
         sidecar.istio.io/rewriteAppHTTPProbers: "true"
     spec:
@@ -309,7 +309,7 @@ if __name__ == '__main__':
 
 ## Advanced Sidecar Pattern with Init Container
 
-For sidecars that must be fully initialized before the main app starts, use init containers:
+For configuration that must be fully initialized before the main app starts, use init containers:
 
 ```yaml
 apiVersion: v1
@@ -317,25 +317,23 @@ kind: Pod
 metadata:
   name: app-with-init-and-sidecar
 spec:
-  # Init container waits for sidecar prerequisites
+  # Init container prepares required configuration
   initContainers:
-  - name: wait-for-config
-    image: busybox:1.36
+  - name: init-config
+    image: config-syncer:latest
     command:
     - sh
     - -c
     - |
-      echo "Waiting for configuration to be ready..."
-      until [ -f /config/ready ]; do
-        sleep 2
-      done
+      /sync-config.sh
+      touch /config/ready
       echo "Configuration ready"
     volumeMounts:
     - name: config
       mountPath: /config
 
   containers:
-  # Sidecar that prepares configuration
+  # Sidecar that keeps configuration updated
   - name: config-sync
     image: config-syncer:latest
     command:
@@ -400,7 +398,7 @@ spec:
 
 ## Native Sidecar Containers (Kubernetes 1.29+)
 
-Kubernetes 1.29 introduced native sidecar support with the `restartPolicy` field:
+Kubernetes 1.29 enabled native sidecar support by default with the `restartPolicy` field on init containers:
 
 ```yaml
 apiVersion: v1
@@ -411,11 +409,11 @@ spec:
   initContainers:
   # Native sidecar - starts before main container and stays running
   - name: istio-proxy
-    image: istio/proxyv2:1.20
+    image: istio/proxyv2:1.30.0
     restartPolicy: Always  # This makes it a native sidecar
     ports:
-    - containerPort: 15001
-      name: envoy-admin
+    - containerPort: 15021
+      name: status-port
     livenessProbe:
       httpGet:
         path: /healthz/ready
@@ -468,7 +466,7 @@ spec:
     rules:
     - alert: SidecarContainerNotReady
       expr: |
-        kube_pod_container_status_ready{container=~".*-sidecar|istio-proxy|envoy"} == 0
+        kube_pod_container_status_ready{container=~".*-sidecar|.*-shipper|config-sync|istio-proxy|envoy"} == 0
       for: 5m
       labels:
         severity: warning
@@ -478,15 +476,19 @@ spec:
 
     - alert: MainContainerReadyButSidecarNot
       expr: |
-        (kube_pod_container_status_ready{container!~".*-sidecar|istio-proxy|envoy"} == 1)
+        max by (pod, namespace) (
+          kube_pod_container_status_ready{container!~".*-sidecar|.*-shipper|config-sync|istio-proxy|envoy"} == 1
+        )
         and on(pod, namespace)
-        (kube_pod_container_status_ready{container=~".*-sidecar|istio-proxy|envoy"} == 0)
+        max by (pod, namespace) (
+          kube_pod_container_status_ready{container=~".*-sidecar|.*-shipper|config-sync|istio-proxy|envoy"} == 0
+        )
       for: 2m
       labels:
         severity: warning
       annotations:
         summary: "Container ready but sidecar not ready"
-        description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} main container ready but sidecar not ready"
+        description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has a ready main container but at least one sidecar is not ready"
 
     - alert: PodRestartingFrequently
       expr: |
