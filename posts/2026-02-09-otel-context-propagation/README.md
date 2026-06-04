@@ -34,7 +34,7 @@ HTTP client and server instrumentation handles context propagation automatically
 ```python
 # service_a.py - Python service making HTTP calls
 
-from flask import Flask, request
+from flask import Flask
 import requests
 from opentelemetry import trace
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
@@ -83,7 +83,7 @@ def validate():
     with tracer.start_as_current_span("validate_data") as span:
         span.set_attribute("validation.type", "schema")
 
-        # This span is automatically linked to the parent span from service A
+        # This span is part of the same trace as the request from service A
         result = perform_validation()
         span.set_attribute("validation.result", result)
 
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
 ```
 
-The receiving service extracts trace context automatically and creates child spans linked to the parent trace.
+The receiving service extracts trace context automatically and creates child spans under the same trace.
 
 ## Manual Context Propagation
 
@@ -170,6 +170,7 @@ gRPC services require metadata for context propagation. OpenTelemetry gRPC instr
 # grpc_service.py - gRPC server
 import grpc
 from concurrent import futures
+from opentelemetry import trace
 from opentelemetry.instrumentation.grpc import GrpcInstrumentorServer
 
 import order_pb2
@@ -193,10 +194,10 @@ class OrderService(order_pb2_grpc.OrderServiceServicer):
             )
 
 def serve():
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-
     # Instrument gRPC server
-    GrpcInstrumentorServer().instrument_server(server)
+    GrpcInstrumentorServer().instrument()
+
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
 
     order_pb2_grpc.add_OrderServiceServicer_to_server(
         OrderService(), server
@@ -240,7 +241,7 @@ def create_order(order_data):
 
 ## Kafka Message Propagation
 
-Kafka messages require manual context injection into message headers for propagation.
+When you are not using Kafka instrumentation, Kafka messages require manual context injection into message headers for propagation.
 
 ```python
 # kafka_producer.py
@@ -359,7 +360,10 @@ Verify context propagation works correctly by checking trace IDs across service 
 ```python
 # test_propagation.py
 from opentelemetry import trace
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
 import requests
+
+RequestsInstrumentor().instrument()
 
 def test_context_propagation():
     """Test that trace context propagates correctly"""
