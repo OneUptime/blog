@@ -23,7 +23,7 @@ Deploy the controller to your cluster:
 ```bash
 # Install using kubectl
 
-kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.24.0/controller.yaml
+kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.37.0/controller.yaml
 
 # Verify installation
 kubectl get pods -n kube-system -l name=sealed-secrets-controller
@@ -36,8 +36,8 @@ Install the kubeseal CLI:
 
 ```bash
 # Linux
-wget https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.24.0/kubeseal-0.24.0-linux-amd64.tar.gz
-tar xfz kubeseal-0.24.0-linux-amd64.tar.gz
+curl -OL https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.37.0/kubeseal-0.37.0-linux-amd64.tar.gz
+tar -xvzf kubeseal-0.37.0-linux-amd64.tar.gz kubeseal
 sudo install -m 755 kubeseal /usr/local/bin/kubeseal
 
 # macOS
@@ -132,18 +132,23 @@ SENSITIVE_CONFIGMAPS=("myapp-config" "database-config" "api-config")
 for cm_name in "${SENSITIVE_CONFIGMAPS[@]}"; do
   echo "Processing ConfigMap: $cm_name"
 
-  # Extract data from ConfigMap
-  kubectl get configmap $cm_name -n $NAMESPACE -o json | \
-    jq -r '.data | to_entries | map("--from-literal=\(.key)=\(.value)") | join(" ")' > /tmp/cm-data.txt
-
-  # Create Secret
+  # Create Secret manifest from ConfigMap data
   SECRET_NAME="${cm_name}-secret"
-  kubectl create secret generic $SECRET_NAME -n $NAMESPACE \
-    $(cat /tmp/cm-data.txt) \
-    --dry-run=client -o yaml > /tmp/secret.yaml
+  kubectl get configmap "$cm_name" -n "$NAMESPACE" -o json | \
+    jq --arg name "$SECRET_NAME" --arg namespace "$NAMESPACE" \
+      '{
+        apiVersion: "v1",
+        kind: "Secret",
+        metadata: {
+          name: $name,
+          namespace: $namespace
+        },
+        type: "Opaque",
+        data: (((.data // {}) | with_entries(.value |= @base64)) + (.binaryData // {}))
+      }' > /tmp/secret.json
 
   # Seal the Secret
-  kubeseal --format yaml < /tmp/secret.yaml > "sealedsecret-${cm_name}.yaml"
+  kubeseal --format yaml < /tmp/secret.json > "sealedsecret-${cm_name}.yaml"
 
   echo "Created sealedsecret-${cm_name}.yaml"
 
@@ -154,7 +159,7 @@ for cm_name in "${SENSITIVE_CONFIGMAPS[@]}"; do
 done
 
 # Clean up temporary files
-rm /tmp/cm-data.txt /tmp/secret.yaml
+rm -f /tmp/secret.json
 ```
 
 Make it executable and run:
@@ -292,29 +297,23 @@ Backup the sealing key for disaster recovery:
 
 ```bash
 # Backup sealing key
-kubectl get secret -n kube-system sealed-secrets-key -o yaml > sealed-secrets-key-backup.yaml
+kubectl get secret -n kube-system \
+  -l sealedsecrets.bitnami.com/sealed-secrets-key \
+  -o yaml > sealed-secrets-key-backup.yaml
 
 # Store securely (e.g., encrypted in vault)
 gpg --encrypt sealed-secrets-key-backup.yaml
 ```
 
-Rotate sealing keys periodically:
+Sealing keys are renewed automatically every 30 days by default. If you need to force early key renewal, set the cutoff time on the controller:
 
 ```bash
-# Generate new key
-kubectl create secret tls sealed-secrets-key-new -n kube-system \
-  --cert=new-cert.pem \
-  --key=new-key.pem
-
-# Label as active key
-kubectl label secret sealed-secrets-key-new -n kube-system \
-  sealedsecrets.bitnami.com/sealed-secrets-key=active
-
-# Restart controller to pick up new key
-kubectl rollout restart deployment sealed-secrets-controller -n kube-system
+# Force early key renewal
+kubectl set env deployment/sealed-secrets-controller -n kube-system \
+  SEALED_SECRETS_KEY_CUTOFF_TIME="$(date -R)"
 ```
 
-The controller supports multiple keys, allowing gradual rotation without resealing all secrets immediately.
+The controller supports multiple active keys. Old keys are not deleted automatically, so existing SealedSecrets can still be decrypted after key renewal.
 
 ## Handling Secret Updates
 
