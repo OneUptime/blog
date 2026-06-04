@@ -73,7 +73,7 @@ Configure maxPods during cluster initialization:
 
 ```yaml
 # kubeadm-config.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 ---
 apiVersion: kubelet.config.k8s.io/v1beta1
@@ -81,14 +81,11 @@ kind: KubeletConfiguration
 maxPods: 200
 ```
 
-Initialize or join cluster:
+Initialize the cluster:
 
 ```bash
 # Initialize control plane
 sudo kubeadm init --config kubeadm-config.yaml
-
-# Join worker nodes
-sudo kubeadm join <endpoint> --config kubeadm-config.yaml
 ```
 
 ## Calculating Appropriate maxPods Values
@@ -173,8 +170,8 @@ sudo systemctl restart kubelet
 The `podPidsLimit` setting controls the maximum number of processes (PIDs) a pod can create. This prevents fork bombs and runaway processes from consuming all available PIDs on the node.
 
 Default behavior varies by system:
-- If not set, inherits from node's PID cgroup limit
-- Common default: 4096 PIDs per pod
+- If not set, the kubelet default is `-1`
+- With `-1`, the kubelet defaults to the node allocatable PID capacity
 
 ## Configuring podPidsLimit
 
@@ -208,29 +205,32 @@ podPidsLimit: -1
 Track PID usage per pod:
 
 ```bash
-# View PID usage on a node
-for pod in $(crictl pods -q); do
-  echo "Pod: $pod"
-  crictl inspect $pod | jq -r '.info.runtimeSpec.linux.resources.pids.limit'
-  crictl stats $pod | grep -i pid
+# Count processes in a pod
+kubectl exec <pod-name> -- ps -e -o pid= | wc -l
+
+# View configured PID limits through the container runtime
+for container in $(crictl ps -q); do
+  echo "Container: $container"
+  crictl inspect $container | jq -r '.info.runtimeSpec.linux.resources.pids.limit'
 done
 
 # Check system-wide PID usage
 cat /proc/sys/kernel/pid_max
 ps aux | wc -l
 
-# View cgroup PID limits
+# View cgroup PID limits (cgroup v1 or v2)
 cat /sys/fs/cgroup/pids/pids.max
+cat /sys/fs/cgroup/pids.max
 ```
 
-Create Prometheus queries:
+Create Prometheus queries if cAdvisor process metrics are enabled:
 
 ```promql
 # PID usage per container
 container_processes
 
-# Pods approaching PID limit
-container_processes / container_spec_pids_limit > 0.8
+# Containers approaching their thread/PID limit
+container_threads / container_threads_max > 0.8
 ```
 
 ## Setting Up Alerts for Capacity Issues
@@ -251,7 +251,7 @@ data:
       - alert: NodeApproachingMaxPods
         expr: |
           (kube_node_status_allocatable{resource="pods"}
-          - on(node) kube_pod_info) < 10
+          - on(node) count by (node) (kube_pod_info)) < 10
         for: 10m
         labels:
           severity: warning
@@ -260,7 +260,7 @@ data:
           description: "Node {{ $labels.node }} has less than 10 pod slots available"
 
       - alert: PodNearPIDLimit
-        expr: container_processes / container_spec_pids_limit > 0.9
+        expr: container_threads / container_threads_max > 0.9
         for: 5m
         labels:
           severity: warning
@@ -271,7 +271,7 @@ data:
       - alert: NodeAtMaxPods
         expr: |
           kube_node_status_allocatable{resource="pods"}
-          == on(node) count(kube_pod_info) by (node)
+          == on(node) count by (node) (kube_pod_info)
         for: 30m
         labels:
           severity: info
@@ -286,8 +286,10 @@ Test the maxPods limit:
 
 ```bash
 # Create many test pods
+kubectl label node <node-name> maxpods-test=true
+
 for i in {1..200}; do
-  kubectl run test-pod-$i --image=nginx --restart=Never --overrides='{"spec":{"nodeName":"<node-name>"}}' &
+  kubectl run test-pod-$i --image=nginx --restart=Never --overrides='{"spec":{"nodeSelector":{"maxpods-test":"true"}}}' &
 done
 
 # Check how many actually scheduled
@@ -302,6 +304,7 @@ kubectl describe pod <pending-pod-name>
 
 # Cleanup
 kubectl delete pod -l run=test-pod
+kubectl label node <node-name> maxpods-test-
 ```
 
 ## Testing podPidsLimit
