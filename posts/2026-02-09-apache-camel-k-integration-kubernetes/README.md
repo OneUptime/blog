@@ -12,31 +12,51 @@ Apache Camel K brings the power of Apache Camel's integration patterns to Kubern
 
 ## Understanding Apache Camel K
 
-Apache Camel K extends the traditional Camel framework with Kubernetes-native capabilities. Instead of deploying monolithic integration servers, you deploy individual integration routes as independent services. Each route becomes a container that can scale independently based on load.
+Apache Camel K extends the traditional Camel framework with Kubernetes-native capabilities. Instead of deploying monolithic integration servers, you deploy integrations as independent workloads. Each integration is built into a container that can scale independently based on load.
 
 Camel K supports multiple DSLs including Java, XML, YAML, and Groovy. You can write simple routes in a single file and deploy them directly to Kubernetes without building container images manually. The Camel K operator handles compilation, containerization, and deployment automatically.
 
-Integration with Knative provides serverless scaling. Routes can scale to zero when idle and automatically activate when messages arrive. This dramatically reduces resource consumption compared to always-running integration servers.
+Integration with Knative provides serverless scaling for HTTP-based routes deployed as Knative Services. Event-driven or queue-based workloads can also use serverless-style scaling, but they need Knative Eventing or KEDA configuration that matches the event source. This can reduce resource consumption compared to always-running integration servers.
 
 ## Installing Camel K
 
-Install the Camel K operator using the CLI:
+Install the Camel K CLI and operator:
 
 ```bash
 # Download and install Camel K CLI (kamel)
 
-curl -L https://github.com/apache/camel-k/releases/download/v2.0.0/camel-k-client-2.0.0-linux-64bit.tar.gz | tar xz
+curl -L https://downloads.apache.org/camel/camel-k/2.10.1/camel-k-client-2.10.1-linux-amd64.tar.gz | tar xz
 sudo mv kamel /usr/local/bin/
 
 # Verify installation
 kamel version
 
-# Install Camel K operator
-kamel install --cluster-setup
+# Install the Camel K operator
+kubectl create ns camel-k
+kubectl apply -k github.com/apache/camel-k/install/overlays/kubernetes/descoped?ref=v2.10.1 --server-side
 
 # Check operator status
-kubectl get pods -n camel-k-operator
-kubectl get integrationplatform
+kubectl get pods -n camel-k
+```
+
+Create an `IntegrationPlatform` with your container registry settings. Replace the registry values with the registry your cluster can push to and pull from:
+
+```bash
+kubectl apply -n camel-k -f - <<'EOF'
+apiVersion: camel.apache.org/v1
+kind: IntegrationPlatform
+metadata:
+  name: camel-k
+  namespace: camel-k
+spec:
+  build:
+    registry:
+      address: registry.example.com
+      organization: camel-k
+EOF
+
+kubectl wait --for jsonpath='{.status.phase}'=Ready integrationplatform/camel-k -n camel-k --timeout=60s
+kubectl get integrationplatform -A
 ```
 
 For Knative integration:
@@ -45,12 +65,20 @@ For Knative integration:
 # Install Knative Serving first
 kubectl apply -f https://github.com/knative/serving/releases/latest/download/serving-crds.yaml
 kubectl apply -f https://github.com/knative/serving/releases/latest/download/serving-core.yaml
+kubectl apply -f https://github.com/knative-extensions/net-kourier/releases/latest/download/kourier.yaml
+kubectl patch configmap/config-network \
+  --namespace knative-serving \
+  --type merge \
+  --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
 
-# Install Camel K with Knative support
-kamel install --cluster-setup --trait-profile knative
+# Install Knative Eventing for channels and event routing
+kubectl apply -f https://github.com/knative/eventing/releases/latest/download/eventing.yaml
+
+# If Camel K was already installed before Knative, restart the operator
+kubectl rollout restart deployment/camel-k-operator -n camel-k
 
 # Verify Knative integration
-kubectl get integrationplatform -o yaml | grep knative
+kubectl get integrationplatform -A -o yaml | grep knative
 ```
 
 ## Creating Your First Integration
@@ -71,7 +99,7 @@ Create a simple file-based integration that reads files and sends them to a REST
           message: "Processing file: ${header.CamelFileName}"
 
       # Transform the data
-      - set-header:
+      - setHeader:
           name: Content-Type
           constant: application/json
 
@@ -89,12 +117,10 @@ Create a simple file-based integration that reads files and sends them to a REST
 Deploy the integration:
 
 ```bash
-# Deploy with ConfigMap for data directory
-kubectl create configmap inbox-volume --from-literal=dummy=data
+# Deploy with an EmptyDir mounted as the data directory
 
 kamel run file-to-api.yaml \
-  --resource configmap:inbox-volume@/data \
-  --trait mount.configs=configmap:inbox-volume
+  --trait mount.empty-dirs=inbox-volume:/data
 
 # Check integration status
 kamel get
@@ -110,10 +136,17 @@ Consume messages from Kafka and insert into a database:
 ```java
 // kafka-to-database.java
 import org.apache.camel.builder.RouteBuilder;
+import java.util.Map;
 
 public class KafkaToDatabase extends RouteBuilder {
     @Override
     public void configure() throws Exception {
+        // Handle errors
+        onException(Exception.class)
+            .log("Error processing order: ${exception.message}")
+            .handled(true)
+            .to("kafka:orders-dlq?brokers=kafka:9092");
+
         // Consume from Kafka
         from("kafka:orders?brokers=kafka:9092&groupId=order-consumer")
             .routeId("kafka-to-postgres")
@@ -137,16 +170,10 @@ public class KafkaToDatabase extends RouteBuilder {
             })
 
             // Execute SQL
-            .to("jdbc:dataSource")
+            .to("jdbc:camel")
 
             // Log success
-            .log("Inserted order: ${body}")
-
-            // Handle errors
-            .onException(Exception.class)
-                .log("Error processing order: ${exception.message}")
-                .handled(true)
-                .to("kafka:orders-dlq?brokers=kafka:9092");
+            .log("Inserted order, rows affected: ${header.CamelJdbcUpdateCount}");
     }
 }
 ```
@@ -156,20 +183,20 @@ Deploy with database credentials:
 ```bash
 # Create secret for database connection
 kubectl create secret generic db-credentials \
-  --from-literal=username=dbuser \
-  --from-literal=password=dbpass
+  --from-literal=quarkus.datasource.camel.username=dbuser \
+  --from-literal=quarkus.datasource.camel.password=dbpass
 
 # Deploy integration
 kamel run kafka-to-database.java \
-  --property quarkus.datasource.jdbc.url=jdbc:postgresql://postgres:5432/mydb \
-  --property quarkus.datasource.username=secret:db-credentials/username \
-  --property quarkus.datasource.password=secret:db-credentials/password \
+  --property quarkus.datasource.camel.db-kind=postgresql \
+  --property quarkus.datasource.camel.jdbc.url=jdbc:postgresql://postgres:5432/mydb \
+  --config secret:db-credentials \
   --dependency camel:jdbc \
   --dependency camel:kafka \
-  --dependency mvn:org.postgresql:postgresql:42.5.0
+  --dependency mvn:org.postgresql:postgresql:42.7.11
 
 # Monitor the integration
-kubectl logs -f integration-kafka-to-database
+kamel logs kafka-to-database
 ```
 
 ## Implementing the Content-Based Router Pattern
@@ -212,6 +239,7 @@ Deploy the content-based router:
 
 ```bash
 kamel run content-router.yaml \
+  --profile knative \
   --trait knative-service.enabled=true \
   --trait knative-service.min-scale=0 \
   --trait knative-service.max-scale=10
@@ -223,32 +251,30 @@ Aggregate data from multiple APIs:
 
 ```groovy
 // api-aggregator.groovy
+import org.apache.camel.Exchange
+import org.apache.camel.AggregationStrategy
+
 from('timer:trigger?period=60000')
     .routeId('api-aggregator')
 
-    // Call multiple APIs in parallel
-    .multicast()
-        .parallelProcessing()
-        .to('direct:fetch-users', 'direct:fetch-orders', 'direct:fetch-inventory')
-    .end()
-
-    // Aggregate results
-    .aggregate(constant(true), new AggregationStrategy() {
-        Object aggregate(Exchange oldExchange, Exchange newExchange) {
+    // Call multiple APIs in parallel and aggregate results
+    .multicast(new AggregationStrategy() {
+        Exchange aggregate(Exchange oldExchange, Exchange newExchange) {
             if (oldExchange == null) {
                 return newExchange
             }
 
-            Map<String, Object> aggregated = oldExchange.getIn().getBody(Map)
-            Map<String, Object> newData = newExchange.getIn().getBody(Map)
+            Map<String, Object> aggregated = oldExchange.getMessage().getBody(Map)
+            Map<String, Object> newData = newExchange.getMessage().getBody(Map)
             aggregated.putAll(newData)
 
-            oldExchange.getIn().setBody(aggregated)
+            oldExchange.getMessage().setBody(aggregated)
             return oldExchange
         }
     })
-        .completionSize(3)
-        .completionTimeout(5000)
+        .parallelProcessing()
+        .to('direct:fetch-users', 'direct:fetch-orders', 'direct:fetch-inventory')
+    .end()
 
     // Process aggregated data
     .to('direct:process-aggregated')
@@ -299,6 +325,7 @@ Transform messages between different formats:
 // message-transformer.java
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.model.dataformat.JsonLibrary;
+import java.util.Map;
 
 public class MessageTransformer extends RouteBuilder {
     @Override
@@ -332,7 +359,7 @@ public class MessageTransformer extends RouteBuilder {
             .to("kafka:enriched-events?brokers=kafka:9092");
 
         // Protocol conversion
-        from("mqtt:sensor-data?host=tcp://mqtt-broker:1883")
+        from("paho-mqtt5:sensor-data?serverURIs=tcp://mqtt-broker:1883")
             .convertBodyTo(String.class)
             .to("amqp:queue:sensor-data");
     }
@@ -345,31 +372,33 @@ Implement robust error handling:
 
 ```yaml
 # error-handling.yaml
+- onException:
+    exception:
+      - "java.lang.Exception"
+    # Mark as handled so message is acknowledged
+    handled:
+      constant:
+        expression: "true"
+    # Use exponential backoff for retries
+    redeliveryPolicy:
+      maximumRedeliveries: 3
+      redeliveryDelay: 1000
+      backOffMultiplier: 2
+      useExponentialBackOff: true
+    steps:
+      - log: "Error processing message: ${exception.message}"
+      - setHeader:
+          name: error-message
+          simple: "${exception.message}"
+      - setHeader:
+          name: error-stacktrace
+          simple: "${exception.stacktrace}"
+      # Send to dead letter queue
+      - to: "kafka:orders-dlq?brokers=kafka:9092"
+
 - from:
     uri: "kafka:orders?brokers=kafka:9092"
     steps:
-      # Global error handler
-      - on-exception:
-          exceptions:
-            - "java.lang.Exception"
-          steps:
-            - log: "Error processing message: ${exception.message}"
-            - set-header:
-                name: error-message
-                simple: "${exception.message}"
-            - set-header:
-                name: error-stacktrace
-                simple: "${exception.stacktrace}"
-            # Send to dead letter queue
-            - to: "kafka:orders-dlq?brokers=kafka:9092"
-          # Mark as handled so message is acknowledged
-          handled: true
-          # Use exponential backoff for retries
-          redelivery-policy:
-            maximum-redeliveries: 3
-            redelivery-delay: 1000
-            backoff-multiplier: 2
-
       # Main processing logic
       - log: "Processing order: ${body}"
       - to: "http://order-service/process"
@@ -404,6 +433,7 @@ Add custom metrics:
 // custom-metrics.java
 import org.apache.camel.builder.RouteBuilder;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.util.concurrent.TimeUnit;
 
 public class CustomMetrics extends RouteBuilder {
     @Override
@@ -416,6 +446,11 @@ public class CustomMetrics extends RouteBuilder {
 
         from("kafka:orders?brokers=kafka:9092")
             .routeId("order-processor")
+
+            // Capture processing start time
+            .process(exchange -> {
+                exchange.setProperty("start_time", System.currentTimeMillis());
+            })
 
             // Increment counter
             .process(exchange -> {
