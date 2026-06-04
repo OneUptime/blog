@@ -30,10 +30,12 @@ import (
     "context"
     "log"
     "net/http"
+    "sync"
     "time"
 
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promhttp"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
     "k8s.io/apimachinery/pkg/runtime/schema"
     "k8s.io/client-go/dynamic"
@@ -62,7 +64,7 @@ func NewBackupCollector(client dynamic.Interface) *BackupCollector {
     return &BackupCollector{
         backupStatus: prometheus.NewDesc(
             "backup_status",
-            "Status of backup (1=success, 0=failure)",
+            "Status of backup (1=completed, 0=not completed)",
             []string{"namespace", "name", "target"},
             nil,
         ),
@@ -159,8 +161,14 @@ func (c *BackupCollector) collectBackupMetrics(ch chan<- prometheus.Metric, back
     endTime, _, _ := unstructured.NestedString(backup.Object, "status", "endTime")
 
     if startTime != "" && endTime != "" {
-        start, _ := time.Parse(time.RFC3339, startTime)
-        end, _ := time.Parse(time.RFC3339, endTime)
+        start, err := time.Parse(time.RFC3339, startTime)
+        if err != nil {
+            return
+        }
+        end, err := time.Parse(time.RFC3339, endTime)
+        if err != nil {
+            return
+        }
         duration := end.Sub(start).Seconds()
 
         ch <- prometheus.MustNewConstMetric(
@@ -210,7 +218,17 @@ func (c *CachedCollector) startInformer(ctx context.Context) {
             c.mutex.Unlock()
         },
         DeleteFunc: func(obj interface{}) {
-            u := obj.(*unstructured.Unstructured)
+            u, ok := obj.(*unstructured.Unstructured)
+            if !ok {
+                tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+                if !ok {
+                    return
+                }
+                u, ok = tombstone.Obj.(*unstructured.Unstructured)
+                if !ok {
+                    return
+                }
+            }
             c.mutex.Lock()
             delete(c.backups, u.GetNamespace()+"/"+u.GetName())
             c.mutex.Unlock()
@@ -282,6 +300,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: backup-exporter
+  namespace: monitoring
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -379,12 +398,13 @@ metadata:
   namespace: default
 spec:
   target: s3://my-bucket
-status:
-  phase: Completed
-  sizeBytes: 1048576
-  startTime: "2026-02-09T10:00:00Z"
-  endTime: "2026-02-09T10:05:00Z"
 EOF
+
+kubectl patch backups.backup.example.com test-backup \
+  -n default \
+  --subresource=status \
+  --type=merge \
+  -p '{"status":{"phase":"Completed","sizeBytes":1048576,"startTime":"2026-02-09T10:00:00Z","endTime":"2026-02-09T10:05:00Z"}}'
 
 # Query the metrics endpoint
 
