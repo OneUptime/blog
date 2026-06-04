@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Prometheus, Database, Monitoring, Observability
 
-Description: Set up comprehensive database monitoring using Prometheus exporters on Kubernetes, including PostgreSQL, MySQL, MongoDB, and Redis metrics collection, alerting rules, and Grafana dashboards.
+Description: Set up comprehensive database monitoring using Prometheus exporters on Kubernetes, including PostgreSQL, MySQL, MongoDB, and Redis metrics collection, alerting rules, and verification steps.
 
 ---
 
@@ -25,6 +25,25 @@ Add the postgres_exporter as a sidecar to your PostgreSQL StatefulSet:
 ```yaml
 # postgres-with-exporter.yaml
 
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: databases
+  labels:
+    app: postgres
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+    - name: metrics
+      port: 9187
+      targetPort: metrics
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -83,14 +102,14 @@ spec:
             - containerPort: 9187
               name: metrics
           env:
-            - name: DATA_SOURCE_NAME
-              value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:5432/appdb?sslmode=disable
-            - name: POSTGRES_USER
+            - name: DATA_SOURCE_URI
+              value: localhost:5432/appdb?sslmode=disable
+            - name: DATA_SOURCE_USER
               valueFrom:
                 secretKeyRef:
                   name: postgres-credentials
                   key: username
-            - name: POSTGRES_PASSWORD
+            - name: DATA_SOURCE_PASS
               valueFrom:
                 secretKeyRef:
                   name: postgres-credentials
@@ -154,7 +173,7 @@ data:
         SELECT
           schemaname,
           tablename,
-          pg_total_relation_size(schemaname||'.'||tablename) AS size_bytes
+          pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass) AS size_bytes
         FROM pg_tables
         WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
       metrics:
@@ -192,12 +211,12 @@ data:
             description: "Number of slow queries"
 
     # Query for replication lag
-    pg_replication_lag:
+    pg_replication:
       query: |
         SELECT
           CASE
-            WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0
-            ELSE EXTRACT(EPOCH FROM NOW() - pg_last_xact_replay_timestamp())
+            WHEN pg_is_in_recovery() THEN COALESCE(EXTRACT(EPOCH FROM NOW() - pg_last_xact_replay_timestamp()), 0)
+            ELSE 0
           END AS lag_seconds
       metrics:
         - lag_seconds:
@@ -235,6 +254,25 @@ Add mysqld_exporter to a MySQL deployment:
 
 ```yaml
 # mysql-with-exporter.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: databases
+  labels:
+    app: mysql
+spec:
+  clusterIP: None
+  selector:
+    app: mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+    - name: metrics
+      port: 9104
+      targetPort: metrics
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -268,9 +306,27 @@ spec:
                   key: root-password
             - name: MYSQL_DATABASE
               value: appdb
+            - name: EXPORTER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-exporter-credentials
+                  key: password
           volumeMounts:
             - name: mysql-storage
               mountPath: /var/lib/mysql
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - |
+                    until mysqladmin ping -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD" --silent; do sleep 2; done
+                    mysql -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD" <<EOF
+                    CREATE USER IF NOT EXISTS 'exporter'@'%' IDENTIFIED BY '$EXPORTER_PASSWORD' WITH MAX_USER_CONNECTIONS 3;
+                    GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'exporter'@'%';
+                    FLUSH PRIVILEGES;
+                    EOF
           resources:
             requests:
               memory: "1Gi"
@@ -284,14 +340,14 @@ spec:
             - containerPort: 9104
               name: metrics
           env:
-            - name: DATA_SOURCE_NAME
-              value: exporter:$(EXPORTER_PASSWORD)@(localhost:3306)/
-            - name: EXPORTER_PASSWORD
+            - name: MYSQLD_EXPORTER_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: mysql-exporter-credentials
                   key: password
           args:
+            - --mysqld.address=127.0.0.1:3306
+            - --mysqld.username=exporter
             - --collect.info_schema.tables
             - --collect.info_schema.innodb_tablespaces
             - --collect.info_schema.innodb_metrics
@@ -306,29 +362,6 @@ spec:
             limits:
               memory: "128Mi"
               cpu: "100m"
-      initContainers:
-        - name: create-exporter-user
-          image: mysql:8.0
-          command:
-            - sh
-            - -c
-            - |
-              mysql -h localhost -u root -p$MYSQL_ROOT_PASSWORD <<EOF
-              CREATE USER IF NOT EXISTS 'exporter'@'localhost' IDENTIFIED BY '$EXPORTER_PASSWORD' WITH MAX_USER_CONNECTIONS 3;
-              GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'exporter'@'localhost';
-              FLUSH PRIVILEGES;
-              EOF
-          env:
-            - name: MYSQL_ROOT_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: mysql-credentials
-                  key: root-password
-            - name: EXPORTER_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: mysql-exporter-credentials
-                  key: password
   volumeClaimTemplates:
     - metadata:
         name: mysql-storage
@@ -355,6 +388,25 @@ Add mongodb_exporter for MongoDB monitoring:
 
 ```yaml
 # mongodb-with-exporter.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: databases
+  labels:
+    app: mongodb
+spec:
+  clusterIP: None
+  selector:
+    app: mongodb
+  ports:
+    - name: mongodb
+      port: 27017
+      targetPort: mongodb
+    - name: metrics
+      port: 9216
+      targetPort: metrics
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -408,13 +460,13 @@ spec:
               name: metrics
           env:
             - name: MONGODB_URI
-              value: mongodb://$(MONGO_USER):$(MONGO_PASSWORD)@localhost:27017
-            - name: MONGO_USER
+              value: mongodb://localhost:27017/admin
+            - name: MONGODB_USER
               valueFrom:
                 secretKeyRef:
                   name: mongodb-credentials
                   key: username
-            - name: MONGO_PASSWORD
+            - name: MONGODB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: mongodb-credentials
@@ -447,6 +499,24 @@ Add redis_exporter for Redis monitoring:
 
 ```yaml
 # redis-with-exporter.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: databases
+  labels:
+    app: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+    - name: metrics
+      port: 9121
+      targetPort: metrics
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -495,7 +565,7 @@ spec:
               name: metrics
           env:
             - name: REDIS_ADDR
-              value: localhost:6379
+              value: redis://localhost:6379
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -682,7 +752,7 @@ spec:
             description: "Redis instance {{ $labels.instance }} is down"
 
         - alert: RedisHighMemoryUsage
-          expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+          expr: redis_memory_max_bytes > 0 and redis_memory_used_bytes / redis_memory_max_bytes > 0.9
           for: 5m
           labels:
             severity: warning
