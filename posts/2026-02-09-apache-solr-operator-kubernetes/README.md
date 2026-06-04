@@ -28,8 +28,11 @@ helm repo update
 
 # Install the operator
 kubectl create namespace solr
+kubectl create namespace solr-operator-system
+kubectl create -f https://solr.apache.org/operator/downloads/crds/v0.9.1/all-with-dependencies.yaml
 helm install solr-operator apache-solr/solr-operator \
-  --namespace solr-operator-system
+  --namespace solr-operator-system \
+  --version 0.9.1
 
 # Verify installation
 kubectl get pods -n solr-operator-system
@@ -300,6 +303,12 @@ curl -X POST "http://localhost:8983/solr/products/schema" \
         "type": "boolean",
         "stored": true,
         "indexed": true
+      },
+      {
+        "name": "location",
+        "type": "location",
+        "stored": true,
+        "indexed": true
       }
     ]
   }'
@@ -373,6 +382,7 @@ import org.apache.solr.common.SolrInputDocument;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class BulkIndexer {
     public static void main(String[] args) throws Exception {
@@ -431,7 +441,10 @@ curl "http://localhost:8983/solr/products/select?q=*:*&facet=true&facet.field=ca
 curl "http://localhost:8983/solr/products/select?q=*:*&facet=true&facet.range=price&facet.range.start=0&facet.range.end=1000&facet.range.gap=100"
 
 # Geospatial search
-curl "http://localhost:8983/solr/products/select?q=*:*&fq={!geofilt pt=40.7,-74.0 sfield=location d=10}&rows=10"
+curl -G "http://localhost:8983/solr/products/select" \
+  --data-urlencode "q=*:*" \
+  --data-urlencode "fq={!geofilt pt=40.7,-74.0 sfield=location d=10}" \
+  --data-urlencode "rows=10"
 ```
 
 ## Scaling the Cluster
@@ -463,17 +476,17 @@ Create backups to S3:
 
 ```bash
 # Create backup
-curl "http://localhost:8983/solr/admin/collections?action=BACKUP&name=products-backup-$(date +%Y%m%d)&collection=products&location=s3://solr-backups/prod&repository=s3-backup"
+curl "http://localhost:8983/solr/admin/collections?action=BACKUP&name=products-backup-$(date +%Y%m%d)&collection=products&location=prod&repository=s3-backup&async=products-backup"
 
 # Check backup status
-curl "http://localhost:8983/solr/admin/collections?action=REQUESTSTATUS&requestid=<request-id>"
+curl "http://localhost:8983/solr/admin/collections?action=REQUESTSTATUS&requestid=products-backup"
 ```
 
 Restore from backup:
 
 ```bash
 # Restore collection
-curl "http://localhost:8983/solr/admin/collections?action=RESTORE&name=products-backup-20260209&collection=products_restored&location=s3://solr-backups/prod&repository=s3-backup"
+curl "http://localhost:8983/solr/admin/collections?action=RESTORE&name=products-backup-20260209&collection=products_restored&location=prod&repository=s3-backup&async=products-restore"
 ```
 
 ## Monitoring Solr Performance
@@ -527,11 +540,11 @@ spec:
 
 Key metrics to monitor:
 
-- `solr_metrics_core_query_requests` - Query rate
-- `solr_metrics_core_query_time` - Query latency
+- `solr_metrics_core_query_requests_total` - Query count
+- `solr_metrics_core_query_median_ms` - Query latency
 - `solr_metrics_core_index_size_bytes` - Index size
-- `solr_metrics_jvm_memory_heap_used_bytes` - Memory usage
-- `solr_metrics_core_searcher_warmup_time` - Searcher warmup time
+- `solr_metrics_jvm_memory_heap_bytes` - Memory usage
+- `solr_metrics_core_searcher_warmup_time_seconds` - Searcher warmup time
 
 ## Best Practices
 
@@ -545,7 +558,7 @@ Follow these guidelines:
 6. **Monitor cache hit rates** - Tune cache sizes based on usage
 7. **Use filters for faceting** - Better performance than queries
 8. **Batch index updates** - Improve indexing throughput
-9. **Optimize collections** - Run optimize after bulk indexing
+9. **Optimize collections selectively** - Use optimize only for mostly static indexes where the merge cost is justified
 
 ## Conclusion
 
