@@ -40,8 +40,6 @@ The directories serve different purposes:
 
 ```yaml
 # docker-compose.yml - Transmission BitTorrent Client
-version: "3.8"
-
 services:
   transmission:
     image: lscr.io/linuxserver/transmission:latest
@@ -153,7 +151,7 @@ mkdir -p ~/transmission/downloads/{complete,incomplete}
 mkdir -p ~/transmission/downloads/complete/{movies,tv,music,other}
 ```
 
-Configure category-based download paths through the Transmission settings or use automation tools like Sonarr and Radarr to manage file organization.
+Configure per-torrent download paths through Transmission, or use automation tools like Sonarr and Radarr to manage file organization.
 
 ## Port Forwarding
 
@@ -178,9 +176,13 @@ Transmission's RPC API enables programmatic control. Here are common operations:
 
 ```bash
 # Add a torrent via magnet link
+SESSION_ID=$(curl -s -D - -o /dev/null -u admin:your_password \
+  http://localhost:9091/transmission/rpc \
+  -d '{}' | awk -F': ' '/X-Transmission-Session-Id/ {gsub(/\r/, "", $2); print $2}')
+
 curl -u admin:your_password \
   http://localhost:9091/transmission/rpc \
-  -H "X-Transmission-Session-Id: $(curl -s -u admin:your_password http://localhost:9091/transmission/rpc | grep -oP 'X-Transmission-Session-Id: \K[^<]+')" \
+  -H "X-Transmission-Session-Id: $SESSION_ID" \
   -d '{"method":"torrent-add","arguments":{"filename":"magnet:?xt=urn:btih:HASH"}}'
 
 # List all torrents
@@ -206,9 +208,10 @@ Transmission supports alternative web interfaces. Flood for Transmission is a po
 
 ```bash
 # Download and install the Flood UI
-mkdir -p ~/transmission/config/flood-for-transmission
-wget -qO- https://github.com/johman10/flood-for-transmission/releases/latest/download/flood-for-transmission.tar.gz | \
-  tar xz -C ~/transmission/config/flood-for-transmission/
+mkdir -p ~/transmission/config
+wget -O flood-for-transmission.zip https://github.com/johman10/flood-for-transmission/releases/latest/download/flood-for-transmission.zip
+unzip -o flood-for-transmission.zip -d ~/transmission/config/
+rm flood-for-transmission.zip
 ```
 
 Then uncomment the `TRANSMISSION_WEB_HOME` line in your docker-compose.yml and restart.
