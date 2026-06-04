@@ -60,9 +60,6 @@ docker exec gitlab cat /etc/gitlab/initial_root_password
 A production-ready setup should use Docker Compose with proper configuration:
 
 ```yaml
-# docker-compose.yml - GitLab CE production deployment
-version: "3.8"
-
 services:
   gitlab:
     image: gitlab/gitlab-ce:17.4.0-ce.0
@@ -178,6 +175,9 @@ GitLab CI/CD requires a Runner to execute pipeline jobs. Run the GitLab Runner a
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - gitlab
+
+volumes:
+  runner-config:
 ```
 
 Register the runner with your GitLab instance:
@@ -186,14 +186,14 @@ Register the runner with your GitLab instance:
 # Register the runner (interactive)
 docker exec -it gitlab-runner gitlab-runner register \
   --url https://gitlab.example.com \
-  --registration-token YOUR_REGISTRATION_TOKEN \
+  --token YOUR_RUNNER_AUTHENTICATION_TOKEN \
   --executor docker \
   --docker-image alpine:latest \
   --description "Docker Runner" \
   --tag-list "docker,linux"
 ```
 
-Get the registration token from GitLab's Admin Area under CI/CD > Runners.
+Create an instance, group, or project runner in GitLab and use the runner authentication token, which starts with `glrt-`. Legacy runner registration tokens are deprecated and disabled by default in GitLab 17.0 and later.
 
 ## SSL with Let's Encrypt
 
@@ -258,10 +258,10 @@ Check GitLab's internal health endpoints:
 
 ```bash
 # Check overall health
-curl -s http://localhost/-/health | python3 -m json.tool
+curl -s http://localhost/-/health
 
 # Check readiness (all sub-services)
-curl -s http://localhost/-/readiness | python3 -m json.tool
+curl -s "http://localhost/-/readiness?all=1" | python3 -m json.tool
 
 # Check liveness
 curl -s http://localhost/-/liveness
