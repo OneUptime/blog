@@ -116,18 +116,57 @@ path "pki_int/issue/example-dot-com" {
 EOF
 ```
 
-Create a Kubernetes auth role binding the policy to cert-manager's service account:
+Create a service account for the Issuer and allow cert-manager to request tokens for it:
+
+```bash
+kubectl create serviceaccount vault-issuer -n default
+```
+
+```yaml
+# vault-issuer-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-issuer
+  namespace: default
+rules:
+- apiGroups: [""]
+  resources: ["serviceaccounts/token"]
+  resourceNames: ["vault-issuer"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-issuer
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: cert-manager
+  namespace: cert-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-issuer
+```
+
+```bash
+kubectl apply -f vault-issuer-rbac.yaml
+```
+
+Create a Kubernetes auth role binding the policy to the Issuer's service account:
 
 ```bash
 # Create role binding service account to policy
 vault write auth/kubernetes/role/cert-manager \
-  bound_service_account_names=cert-manager \
-  bound_service_account_namespaces=cert-manager \
+  bound_service_account_names=vault-issuer \
+  bound_service_account_namespaces=default \
+  audience="vault://default/vault-issuer" \
   policies=cert-manager \
   ttl=1h
 ```
 
-Now cert-manager's service account can authenticate to Vault and request certificates.
+Now cert-manager can request a token for the Issuer's service account, authenticate to Vault, and request certificates.
 
 ## Creating a Vault Issuer
 
@@ -159,7 +198,7 @@ spec:
 
         # Service account to use for authentication
         serviceAccountRef:
-          name: cert-manager
+          name: vault-issuer
 ```
 
 Apply the Issuer:
@@ -188,10 +227,10 @@ spec:
       kubernetes:
         mountPath: /v1/auth/kubernetes
         role: cert-manager
-        # For ClusterIssuer, specify the namespace of service account
-        secretRef:
-          name: cert-manager-vault-token
-          key: token
+        # For ClusterIssuer, create this service account and RBAC in
+        # cert-manager's cluster resource namespace.
+        serviceAccountRef:
+          name: vault-issuer
 ```
 
 ## Requesting Certificates from Vault
@@ -250,7 +289,7 @@ cert-manager authenticates to Vault using the Kubernetes auth method, requests a
 
 ## Using Vault CA Bundle
 
-Applications often need to trust certificates issued by your Vault CA. Configure cert-manager to include the CA certificate:
+Applications often need to trust certificates issued by your Vault CA. When Vault returns the issuing CA, cert-manager stores it in the target secret as `ca.crt`. You can also allow that CA data to be injected into supported Kubernetes resources:
 
 ```yaml
 # certificate-with-ca-bundle.yaml
@@ -268,7 +307,7 @@ spec:
   dnsNames:
   - app.example.com
 
-  # Include CA certificate in secret
+  # Allow cainjector to copy ca.crt from this secret into supported resources
   secretTemplate:
     annotations:
       cert-manager.io/allow-direct-injection: "true"
@@ -277,7 +316,7 @@ spec:
 The resulting secret contains:
 - tls.crt: the issued certificate
 - tls.key: the private key
-- ca.crt: the CA certificate chain
+- ca.crt: the issuing CA certificate, if Vault provides it
 
 Applications can use ca.crt to trust certificates issued by the same Vault CA.
 
@@ -310,7 +349,7 @@ Create a secret with AppRole credentials:
 kubectl create secret generic vault-approle \
   --from-literal=roleId=<role-id> \
   --from-literal=secretId=<secret-id> \
-  -n cert-manager
+  -n default
 ```
 
 Configure the Issuer to use AppRole:
@@ -328,7 +367,7 @@ spec:
     path: pki_int/sign/example-dot-com
     auth:
       appRole:
-        path: /v1/auth/approle
+        path: approle
         roleId: <role-id>
         secretRef:
           name: vault-approle
@@ -346,7 +385,7 @@ vault token create -policy=cert-manager -period=24h
 # Create secret with token
 kubectl create secret generic vault-token \
   --from-literal=token=<vault-token> \
-  -n cert-manager
+  -n default
 ```
 
 Configure Issuer with token auth:
@@ -394,7 +433,7 @@ spec:
         mountPath: /v1/auth/kubernetes
         role: cert-manager
         serviceAccountRef:
-          name: cert-manager
+          name: vault-issuer
 ```
 
 Get the CA bundle:
@@ -422,6 +461,8 @@ spec:
       kubernetes:
         mountPath: /v1/auth/kubernetes
         role: cert-manager
+        serviceAccountRef:
+          name: vault-issuer
 ---
 # Long-lived certificates for infrastructure
 apiVersion: cert-manager.io/v1
@@ -436,6 +477,8 @@ spec:
       kubernetes:
         mountPath: /v1/auth/kubernetes
         role: cert-manager
+        serviceAccountRef:
+          name: vault-issuer
 ```
 
 Applications choose the appropriate issuer based on their certificate lifetime requirements.
@@ -458,9 +501,9 @@ Debug cert-manager Vault integration:
 # Check cert-manager logs
 kubectl logs -n cert-manager deployment/cert-manager | grep vault
 
-# Verify service account can authenticate
-kubectl exec -it -n cert-manager deployment/cert-manager -- /bin/sh
-vault login -method=kubernetes role=cert-manager
+# Verify the Issuer service account can authenticate
+TOKEN=$(kubectl create token vault-issuer -n default --audience=vault://default/vault-issuer)
+vault write auth/kubernetes/login role=cert-manager jwt="$TOKEN"
 ```
 
 Common issues:
