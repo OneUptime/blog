@@ -152,8 +152,8 @@ RUN --mount=type=cache,target=/root/.npm \
 
 ```dockerfile
 # Cache apt package downloads
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt/lists \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y curl git
 ```
 
@@ -203,7 +203,7 @@ COPY . .
 
 ## Setting Shell Options for Safety
 
-By default, shell form RUN instructions use `/bin/sh -c`, which does not fail on individual command failures in a pipeline. Use `set -e` and `set -o pipefail` for safer scripts:
+By default, shell form RUN instructions use `/bin/sh -c`, which does not fail on individual command failures in a pipeline. Use `set -e` for safer multi-command scripts, and use a shell that supports `pipefail` (such as bash) for pipelines:
 
 ```dockerfile
 # Enable strict error handling
