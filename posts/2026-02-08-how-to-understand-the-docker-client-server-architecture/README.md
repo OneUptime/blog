@@ -88,7 +88,7 @@ Let's trace what actually happens when you execute `docker run -d -p 8080:80 ngi
 8. The daemon sets up networking (port mapping 8080:80)
 9. The container process begins executing
 
-This entire chain happens in milliseconds, but each step is a distinct operation.
+With a cached image this chain can happen very quickly, but each step is a distinct operation. Pulling a missing image can take longer because it depends on network speed and image size.
 
 ## Connecting to a Remote Docker Daemon
 
@@ -96,7 +96,7 @@ The client-server split means you can point your local Docker CLI at a remote da
 
 ```bash
 # Connect to a remote Docker daemon over TCP
-export DOCKER_HOST=tcp://192.168.1.100:2376
+export DOCKER_HOST=tcp://192.168.1.100:2375
 
 # Now all docker commands go to the remote daemon
 docker ps
@@ -117,11 +117,9 @@ docker info
 
 ## Configuring the Docker Daemon for Remote Access
 
-To allow remote connections, you need to configure the daemon to listen on a TCP socket in addition to the Unix socket.
+To allow remote connections, you need to configure the daemon to listen on a TCP socket in addition to the Unix socket. On Linux systems where `dockerd` is already configured with `-H` flags in the systemd unit, configure hosts in the systemd unit instead of also setting `hosts` in `daemon.json`, because setting the same option in both places prevents Docker from starting.
 
 ```json
-// /etc/docker/daemon.json
-// Enable both Unix socket (for local) and TCP socket (for remote) access
 {
   "hosts": ["unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"],
   "tls": true,
@@ -155,7 +153,7 @@ docker context create production \
 
 # Create a context for a staging server
 docker context create staging \
-  --docker "host=tcp://staging-server:2376"
+  --docker "host=tcp://staging-server:2376,ca=~/.docker/certs/ca.pem,cert=~/.docker/certs/cert.pem,key=~/.docker/certs/key.pem"
 
 # List all available contexts
 docker context ls
@@ -172,7 +170,6 @@ docker ps
 The Docker daemon accepts many configuration options that affect its behavior. Here are some commonly used settings:
 
 ```json
-// /etc/docker/daemon.json - a typical production configuration
 {
   "storage-driver": "overlay2",
   "log-driver": "json-file",
@@ -198,8 +195,8 @@ When something goes wrong, you can enable debug logging to see exactly what the 
 # Enable debug output on the client side to see API calls
 docker --debug info
 
-# You can also set it via environment variable
-export DOCKER_CLI_EXPERIMENTAL=enabled
+# The shorthand global flag works the same way
+docker -D info
 ```
 
 For daemon-side debugging:
@@ -247,24 +244,24 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/docker/docker/client"
-    "github.com/docker/docker/api/types"
+    "github.com/moby/moby/client"
 )
 
 func main() {
     // Create a new Docker client that connects to the local daemon
-    cli, err := client.NewClientWithOpts(client.FromEnv)
+    cli, err := client.New(client.FromEnv)
     if err != nil {
         panic(err)
     }
+    defer cli.Close()
 
     // List all running containers
-    containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{})
+    containers, err := cli.ContainerList(context.Background(), client.ContainerListOptions{})
     if err != nil {
         panic(err)
     }
 
-    for _, container := range containers {
+    for _, container := range containers.Items {
         fmt.Printf("%s %s\n", container.ID[:12], container.Image)
     }
 }
