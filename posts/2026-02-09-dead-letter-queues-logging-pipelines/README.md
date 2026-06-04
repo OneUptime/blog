@@ -31,7 +31,7 @@ DLQs enable you to:
 
 ## Implementing DLQ with Fluent Bit
 
-Configure Fluent Bit to write failed deliveries to a DLQ:
+Fluent Bit does not expose failed output delivery as a separate stream that can be routed to another output. Configure filesystem buffering so transient Loki failures are retried from disk instead of only from memory:
 
 ```yaml
 apiVersion: v1
@@ -45,6 +45,9 @@ data:
         Flush           5
         Daemon          off
         Log_Level       info
+        storage.path    /var/lib/fluent-bit
+        storage.sync    normal
+        storage.checksum off
 
     [INPUT]
         Name              tail
@@ -54,6 +57,7 @@ data:
         Refresh_Interval  5
         Mem_Buf_Limit     5MB
         DB                /var/log/flb-kube.db
+        storage.type      filesystem
 
     [FILTER]
         Name                kubernetes
@@ -69,35 +73,27 @@ data:
         Port                3100
         Labels              job=kubernetes
         Retry_Limit         5
+        storage.total_limit_size 1G
 
-    # DLQ: Write failed logs to file
-    [OUTPUT]
-        Name                file
-        Match               kube.*
-        Path                /var/log/dlq
-        File                dlq-logs.json
-        Format              json
-        # Only write if primary output fails
-        Storage.total_limit_size 1G
 ```
 
-However, Fluent Bit doesn't natively support conditional outputs based on failure. Use a more sophisticated approach with rewrite tags:
+If you need a file copy for later analysis, add a second output. This mirrors matching logs; it is not conditional on the Loki output failing:
 
 ```yaml
 [FILTER]
     Name         rewrite_tag
     Match        kube.*
-    Rule         $log .* primary-$TAG false
-    Emitter_Name primary_emitter
+    Rule         $log .* dlq.$TAG true
+    Emitter_Name dlq_emitter
+    Emitter_Storage.type filesystem
 
 [OUTPUT]
     Name                loki
-    Match               primary.*
+    Match               kube.*
     Host                loki.logging.svc.cluster.local
     Port                3100
     Retry_Limit         3
-    # Tag failed logs
-    Storage.pause_on_chunks_overlimit on
+    storage.total_limit_size 1G
 
 [OUTPUT]
     Name                file
@@ -109,7 +105,7 @@ However, Fluent Bit doesn't natively support conditional outputs based on failur
 
 ## Implementing DLQ with Vector
 
-Vector provides built-in support for dead letter queues:
+Vector provides per-sink buffering and retry controls, but it does not automatically route Loki sink failures into another sink. Use a durable primary sink buffer and, when required, a parallel archival sink for reprocessing:
 
 ```yaml
 apiVersion: v1
@@ -137,6 +133,7 @@ data:
     inputs = ["prepare_logs"]
     endpoint = "http://loki.logging.svc.cluster.local:3100"
     encoding.codec = "json"
+    labels.job = "kubernetes"
 
     # Buffer configuration
     buffer.type = "disk"
@@ -149,18 +146,18 @@ data:
     request.retry_max_duration_secs = 300
     request.timeout_secs = 60
 
-    # Dead letter queue for failed deliveries
+    # Archive copy for later reprocessing
     [sinks.dlq_file]
     type = "file"
     inputs = ["prepare_logs"]
     path = "/var/log/dlq/failed-logs-%Y-%m-%d-%H.json"
     encoding.codec = "json"
 
-    # Route to DLQ based on healthcheck
+    # Don't healthcheck the archive sink at startup
     [sinks.dlq_file.healthcheck]
-    enabled = false  # Don't healthcheck DLQ itself
+    enabled = false
 
-    # Create a dead letter topic for analysis
+    # Create an archive topic for analysis
     [sinks.dlq_kafka]
     type = "kafka"
     inputs = ["prepare_logs"]
@@ -168,7 +165,7 @@ data:
     topic = "log-delivery-failures"
     encoding.codec = "json"
 
-    # Only write to Kafka DLQ when primary fails
+    # Batch archived events
     [sinks.dlq_kafka.batch]
     max_bytes = 1048576
     max_events = 1000
@@ -184,25 +181,25 @@ type = "loki"
 inputs = ["kubernetes_logs"]
 endpoint = "http://loki.logging.svc.cluster.local:3100"
 
-# Exponential backoff retry
+# Fibonacci backoff retry
 
 [sinks.loki_with_retry.request]
 retry_attempts = 10
 retry_initial_backoff_secs = 1
 retry_max_duration_secs = 600
-# Exponential backoff: 1s, 2s, 4s, 8s, etc.
-retry_jitter_mode = "full"
+# Full jitter is the default, but it can be set explicitly.
+retry_jitter_mode = "Full"
 
-# Adaptive request timeout
+# Request timeout and rate limit
 timeout_secs = 60
 rate_limit_duration_secs = 1
 rate_limit_num = 100
 
-# Circuit breaker configuration
+# Adaptive concurrency is the default for HTTP sinks.
+concurrency = "adaptive"
+
 [sinks.loki_with_retry.request.adaptive_concurrency]
-enabled = true
 initial_concurrency = 10
-max_concurrency = 100
 ```
 
 ## File-Based DLQ with Rotation
@@ -238,7 +235,7 @@ spec:
 
       # Sidecar for DLQ processing
       - name: dlq-processor
-        image: busybox:latest
+        image: python:3.12-alpine
         command:
         - /bin/sh
         - -c
@@ -247,14 +244,46 @@ spec:
             # Process DLQ files older than 5 minutes
             find /var/log/dlq -name "*.json" -mmin +5 -exec sh -c '
               echo "Processing DLQ file: $1"
-              # Attempt to resend to primary destination
-              cat "$1" | curl -X POST \
-                -H "Content-Type: application/json" \
-                --data-binary @- \
-                http://loki.logging.svc.cluster.local:3100/loki/api/v1/push
+              # Convert JSON log lines into Loki push payloads
+              python - "$1" << "PY"
+          import json
+          import sys
+          import time
+          import urllib.request
+
+          url = "http://loki.logging.svc.cluster.local:3100/loki/api/v1/push"
+          ok = True
+
+          with open(sys.argv[1], "r", encoding="utf-8") as handle:
+              for raw in handle:
+                  event = json.loads(raw)
+                  timestamp = str(event.get("timestamp_ns") or time.time_ns())
+                  line = event.get("message") or event.get("log") or json.dumps(event)
+                  payload = json.dumps({
+                      "streams": [{
+                          "stream": {"job": "kubernetes-dlq"},
+                          "values": [[timestamp, line]]
+                      }]
+                  }).encode("utf-8")
+                  request = urllib.request.Request(
+                      url,
+                      data=payload,
+                      headers={"Content-Type": "application/json"},
+                      method="POST",
+                  )
+                  try:
+                      with urllib.request.urlopen(request, timeout=30) as response:
+                          ok = ok and 200 <= response.status < 300
+                  except Exception as exc:
+                      print(f"Failed to send to Loki: {exc}")
+                      ok = False
+
+          sys.exit(0 if ok else 1)
+          PY
 
               # Move to archive if successful
               if [ $? -eq 0 ]; then
+                mkdir -p /var/log/dlq/archive
                 mv "$1" /var/log/dlq/archive/
               fi
             ' sh {} \;
@@ -279,10 +308,10 @@ spec:
 
 ## Kafka-Based DLQ for Distributed Systems
 
-Use Kafka as a DLQ for better durability:
+Use Kafka as an archive topic for better durability:
 
-```yaml
-# Vector configuration with Kafka DLQ
+```toml
+# Vector configuration with Kafka archive
 [sinks.loki_primary]
 type = "loki"
 inputs = ["kubernetes_logs"]
@@ -291,37 +320,25 @@ endpoint = "http://loki.logging.svc.cluster.local:3100"
 [sinks.loki_primary.request]
 retry_attempts = 3
 
-# Route failures to Kafka
-[transforms.route_on_failure]
-type = "route"
-inputs = ["kubernetes_logs"]
-
-# Default route: send to Loki
-[transforms.route_on_failure.route.success]
-type = "vrl"
-source = 'true'
-
-# Kafka DLQ topic
-[sinks.kafka_dlq]
-type = "kafka"
-inputs = ["kubernetes_logs"]
-bootstrap_servers = "kafka.logging.svc.cluster.local:9092"
-topic = "logging-dlq"
-compression = "gzip"
-encoding.codec = "json"
-
-[sinks.kafka_dlq.encoding]
-timestamp_format = "rfc3339"
-
-# Add failure metadata
+# Add archive metadata
 [transforms.add_failure_metadata]
 type = "remap"
 inputs = ["kubernetes_logs"]
 source = '''
-  .dlq_timestamp = now()
-  .dlq_reason = "loki_delivery_failure"
+  .dlq_archived_at = now()
+  .dlq_reason = "loki_delivery_replay_copy"
   .dlq_retry_count = 0
 '''
+
+# Kafka archive topic
+[sinks.kafka_dlq]
+type = "kafka"
+inputs = ["add_failure_metadata"]
+bootstrap_servers = "kafka.logging.svc.cluster.local:9092"
+topic = "logging-dlq"
+compression = "gzip"
+encoding.codec = "json"
+encoding.timestamp_format = "rfc3339"
 ```
 
 ## DLQ Consumer for Reprocessing
@@ -349,10 +366,21 @@ RETRY_DELAY = 60  # seconds
 
 def send_to_loki(log_entry):
     """Attempt to send log entry to Loki"""
+    timestamp = str(log_entry.get("timestamp_ns") or time.time_ns())
+    line = log_entry.get("message") or log_entry.get("log") or json.dumps(log_entry)
+    payload = {
+        "streams": [
+            {
+                "stream": {"job": "kubernetes-dlq"},
+                "values": [[timestamp, line]]
+            }
+        ]
+    }
+
     try:
         response = requests.post(
             LOKI_URL,
-            json=log_entry,
+            json=payload,
             timeout=30
         )
         response.raise_for_status()
@@ -369,30 +397,30 @@ def process_dlq():
 
         print(f"Processing DLQ message (retry {retry_count})")
 
+        while retry_count < MAX_RETRIES:
+            if send_to_loki(log_entry):
+                print("Successfully redelivered log entry")
+                consumer.commit()
+                break
+
+            retry_count += 1
+            log_entry['dlq_retry_count'] = retry_count
+            print("Delivery failed, retrying later")
+            time.sleep(RETRY_DELAY)
+
         if retry_count >= MAX_RETRIES:
-            print(f"Max retries exceeded, moving to permanent failure queue")
+            print("Max retries exceeded, moving to permanent failure queue")
             # Send to permanent failure storage
             with open('/var/log/permanent-failures.json', 'a') as f:
                 f.write(json.dumps(log_entry) + '\n')
             consumer.commit()
-            continue
-
-        # Attempt delivery
-        if send_to_loki(log_entry):
-            print("Successfully redelivered log entry")
-            consumer.commit()
-        else:
-            # Increment retry count and wait
-            log_entry['dlq_retry_count'] = retry_count + 1
-            print(f"Delivery failed, will retry later")
-            time.sleep(RETRY_DELAY)
 
 if __name__ == "__main__":
     print("Starting DLQ consumer...")
     process_dlq()
 ```
 
-Deploy as a Kubernetes Job:
+Deploy as a Kubernetes CronJob:
 
 ```yaml
 apiVersion: batch/v1
@@ -408,7 +436,7 @@ spec:
         spec:
           containers:
           - name: dlq-consumer
-            image: python:3.9
+            image: your-registry/dlq-reprocessor:latest
             command:
             - python
             - /scripts/dlq_consumer.py
@@ -432,11 +460,11 @@ Track DLQ metrics:
   rules:
     # DLQ size growth rate
     - record: dlq:size:rate
-      expr: rate(vector_buffer_byte_size{component_kind="sink",component_name="dlq_file"}[5m])
+      expr: rate(vector_component_sent_event_bytes_total{component_kind="sink",component_id="dlq_file"}[5m])
 
     # Failed delivery rate
     - record: dlq:failures:rate
-      expr: rate(vector_sink_send_errors_total{component_name="loki_primary"}[5m])
+      expr: rate(vector_component_errors_total{component_kind="sink",component_id="loki_primary"}[5m])
 
     # Alert on high DLQ growth
     - alert: DLQGrowthHigh
@@ -450,11 +478,10 @@ Track DLQ metrics:
 
     # Alert on DLQ not being processed
     - alert: DLQNotProcessed
-      expr: increase(vector_buffer_events{component_name="dlq_file"}[1h]) > 0
+      expr: |
+        increase(vector_component_received_events_total{component_kind="sink",component_id="dlq_file"}[1h]) > 0
         and
-        increase(vector_buffer_events{component_name="dlq_file"}[1h] offset 1h)
-        ==
-        increase(vector_buffer_events{component_name="dlq_file"}[1h])
+        increase(vector_component_sent_events_total{component_kind="sink",component_id="dlq_file"}[1h]) == 0
       labels:
         severity: critical
       annotations:
@@ -465,7 +492,7 @@ Track DLQ metrics:
 ## Best Practices
 
 1. **Set appropriate retry limits**: Balance persistence with resource consumption
-2. **Implement exponential backoff**: Avoid overwhelming recovering services
+2. **Implement bounded retry backoff**: Avoid overwhelming recovering services
 3. **Monitor DLQ size**: Alert on unexpected growth
 4. **Archive old DLQ data**: Prevent disk exhaustion
 5. **Add metadata**: Tag DLQ entries with failure reasons
