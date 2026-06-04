@@ -18,18 +18,25 @@ Set up a management cluster to provision the target EKS cluster.
 #!/bin/bash
 # Install Cluster API on management cluster
 
-# Install clusterctl
+# Install clusterctl and clusterawsadm
 
-curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.6.1/clusterctl-linux-amd64 -o clusterctl
+curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.12.7/clusterctl-linux-amd64 -o clusterctl
 sudo install -o root -g root -m 0755 clusterctl /usr/local/bin/clusterctl
+
+curl -L https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/download/v2.9.2/clusterawsadm-linux-amd64 -o clusterawsadm
+sudo install -o root -g root -m 0755 clusterawsadm /usr/local/bin/clusterawsadm
 
 # Initialize Cluster API with AWS provider
 export AWS_REGION=us-east-1
 export AWS_ACCESS_KEY_ID=your-access-key
 export AWS_SECRET_ACCESS_KEY=your-secret-key
+
+# Create or update the IAM roles and policies required by CAPA
+clusterawsadm bootstrap iam create-cloudformation-stack
+
 export AWS_B64ENCODED_CREDENTIALS=$(clusterawsadm bootstrap credentials encode-as-profile)
 
-clusterctl init --infrastructure aws
+EXP_EKS=true clusterctl init --infrastructure aws
 
 # Verify installation
 kubectl get pods -n capi-system
@@ -42,101 +49,23 @@ The management cluster orchestrates EKS cluster creation.
 
 ## Defining Target EKS Cluster
 
-Create Cluster API manifests for the target EKS cluster.
+Generate Cluster API manifests for the target EKS cluster and review the output before applying it.
 
-```yaml
-# eks-cluster.yaml
-apiVersion: cluster.x-k8s.io/v1beta1
-kind: Cluster
-metadata:
-  name: production-eks
-  namespace: default
-spec:
-  clusterNetwork:
-    pods:
-      cidrBlocks:
-      - 192.168.0.0/16
-  controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
-    kind: AWSManagedControlPlane
-    name: production-eks-control-plane
-  infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-    kind: AWSManagedCluster
-    name: production-eks
----
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
-kind: AWSManagedControlPlane
-metadata:
-  name: production-eks-control-plane
-spec:
-  region: us-east-1
-  sshKeyName: eks-nodes
-  version: v1.28
-  eksClusterName: production-eks
-  networking:
-    cni:
-      cniIngressRules:
-      - description: Allow nodes to communicate with each other
-        fromPort: 0
-        protocol: "-1"
-        toPort: 65535
-  iamAuthenticatorConfig:
-    mapRoles:
-    - rolearn: arn:aws:iam::ACCOUNT_ID:role/KubernetesAdmin
-      username: kubernetes-admin
-      groups:
-      - system:masters
----
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: AWSManagedCluster
-metadata:
-  name: production-eks
-spec: {}
----
-apiVersion: cluster.x-k8s.io/v1beta1
-kind: MachineDeployment
-metadata:
-  name: production-eks-md-0
-spec:
-  clusterName: production-eks
-  replicas: 3
-  selector:
-    matchLabels: {}
-  template:
-    spec:
-      bootstrap:
-        configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
-          kind: EKSConfigTemplate
-          name: production-eks-md-0
-      clusterName: production-eks
-      infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-        kind: AWSMachineTemplate
-        name: production-eks-md-0
-      version: v1.28.0
----
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: AWSMachineTemplate
-metadata:
-  name: production-eks-md-0
-spec:
-  template:
-    spec:
-      instanceType: t3.xlarge
-      iamInstanceProfile: nodes.cluster-api-provider-aws.sigs.k8s.io
-      sshKeyName: eks-nodes
----
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
-kind: EKSConfigTemplate
-metadata:
-  name: production-eks-md-0
-spec:
-  template: {}
+```bash
+#!/bin/bash
+# Generate eks-cluster.yaml
+
+export AWS_REGION=us-east-1
+export AWS_SSH_KEY_NAME=eks-nodes
+
+clusterctl generate cluster production-eks \
+  --flavor eks \
+  --kubernetes-version v1.35.0 \
+  --worker-machine-count=3 \
+  > eks-cluster.yaml
 ```
 
-This declarative specification creates a production-ready EKS cluster.
+This declarative specification creates a baseline EKS cluster that you can tune for your production requirements.
 
 ## Provisioning EKS Cluster
 
@@ -156,11 +85,12 @@ kubectl get cluster production-eks --watch
 # Wait for control plane to be ready
 kubectl wait --for=condition=ControlPlaneReady cluster/production-eks --timeout=20m
 
-# Wait for nodes to be ready
-kubectl wait --for=condition=NodeHealthy=true machinedeployment/production-eks-md-0 --timeout=15m
+# Wait for worker machines to be available
+kubectl wait --for=condition=Available machinedeployment/production-eks-md-0 --timeout=15m
 
 # Get kubeconfig for new EKS cluster
-clusterctl get kubeconfig production-eks > eks-kubeconfig.yaml
+kubectl get secret production-eks-user-kubeconfig \
+  -o jsonpath='{.data.value}' | base64 --decode > eks-kubeconfig.yaml
 
 # Verify EKS cluster
 export KUBECONFIG=eks-kubeconfig.yaml
@@ -187,19 +117,22 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n kube-system \
   --set clusterName=production-eks \
   --set serviceAccount.create=true \
-  --set serviceAccount.name=aws-load-balancer-controller
+  --set serviceAccount.name=aws-load-balancer-controller \
+  --set 'serviceAccount.annotations.eks\.amazonaws\.com/role-arn=arn:aws:iam::ACCOUNT_ID:role/AWSLoadBalancerControllerRole'
 
 # Install EBS CSI Driver
 helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
 helm install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver \
-  -n kube-system
+  -n kube-system \
+  --set 'controller.serviceAccount.annotations.eks\.amazonaws\.com/role-arn=arn:aws:iam::ACCOUNT_ID:role/AmazonEKS_EBS_CSI_DriverRole'
 
 # Install Cluster Autoscaler
 helm repo add autoscaler https://kubernetes.github.io/autoscaler
 helm install cluster-autoscaler autoscaler/cluster-autoscaler \
   -n kube-system \
   --set autoDiscovery.clusterName=production-eks \
-  --set awsRegion=us-east-1
+  --set awsRegion=us-east-1 \
+  --set 'rbac.serviceAccount.annotations.eks\.amazonaws\.com/role-arn=arn:aws:iam::ACCOUNT_ID:role/ClusterAutoscalerRole'
 
 # Install CoreDNS autoscaler
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/cluster-proportional-autoscaler/master/examples/dns-autoscaler.yaml
@@ -225,7 +158,7 @@ aws s3 mb s3://eks-migration-backup --region us-east-1
 # Install Velero
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --plugins velero/velero-plugin-for-aws:v1.13.0 \
   --bucket eks-migration-backup \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
@@ -236,7 +169,7 @@ export KUBECONFIG=eks-kubeconfig.yaml
 
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --plugins velero/velero-plugin-for-aws:v1.13.0 \
   --bucket eks-migration-backup \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
@@ -287,28 +220,48 @@ metadata:
   name: eks-transformations
   namespace: velero
 data:
-  storage-class-mappings.yaml: |
-    # On-prem to EKS storage class mappings
-    local-path: gp3
-    nfs-storage: efs-sc
-    block-storage: gp3
-
-  ingress-annotations.yaml: |
-    # Update ingress for ALB
-    annotations:
-      kubernetes.io/ingress.class: nginx
-    transforms_to:
-      kubernetes.io/ingress.class: alb
-      alb.ingress.kubernetes.io/scheme: internet-facing
-      alb.ingress.kubernetes.io/target-type: ip
-
-  service-annotations.yaml: |
-    # Update services for NLB
-    annotations:
-      service.beta.kubernetes.io/external-traffic: OnlyLocal
-    transforms_to:
-      service.beta.kubernetes.io/aws-load-balancer-type: nlb
-      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+  resource-modifier.yaml: |
+    version: v1
+    resourceModifierRules:
+    - conditions:
+        groupResource: persistentvolumeclaims
+        resourceNameRegex: ".*"
+        namespaces:
+        - production
+        - staging
+      patches:
+      - operation: replace
+        path: "/spec/storageClassName"
+        value: "gp3"
+    - conditions:
+        groupResource: ingresses.networking.k8s.io
+        resourceNameRegex: ".*"
+        namespaces:
+        - production
+        - staging
+      patches:
+      - operation: replace
+        path: "/metadata/annotations/kubernetes.io~1ingress.class"
+        value: "alb"
+      - operation: add
+        path: "/metadata/annotations/alb.ingress.kubernetes.io~1scheme"
+        value: "internet-facing"
+      - operation: add
+        path: "/metadata/annotations/alb.ingress.kubernetes.io~1target-type"
+        value: "ip"
+    - conditions:
+        groupResource: services
+        resourceNameRegex: ".*"
+        namespaces:
+        - production
+        - staging
+      patches:
+      - operation: add
+        path: "/metadata/annotations/service.beta.kubernetes.io~1aws-load-balancer-type"
+        value: "nlb"
+      - operation: add
+        path: "/metadata/annotations/service.beta.kubernetes.io~1aws-load-balancer-nlb-target-type"
+        value: "ip"
 ```
 
 These mappings adapt resources for AWS infrastructure.
@@ -327,6 +280,7 @@ export KUBECONFIG=eks-kubeconfig.yaml
 velero restore create onprem-to-eks-restore \
   --from-backup onprem-to-eks-migration \
   --namespace-mappings production:production-eks,staging:staging-eks \
+  --resource-modifier-configmap eks-transformations \
   --restore-volumes=true \
   --wait
 
@@ -375,7 +329,13 @@ metadata:
   name: app
   namespace: production-eks
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       serviceAccountName: app-sa
       containers:
@@ -406,11 +366,11 @@ NOT_RUNNING=$(kubectl get pods -A --field-selector status.phase!=Running,status.
 echo "Pods not running: $NOT_RUNNING"
 
 # Verify services have endpoints
-NO_ENDPOINTS=$(kubectl get endpoints -A -o json | jq '[.items[] | select(.subsets | length == 0)] | length')
+NO_ENDPOINTS=$(kubectl get endpoints -A -o json | jq '[.items[] | select((.subsets // []) | length == 0)] | length')
 echo "Services without endpoints: $NO_ENDPOINTS"
 
 # Check PVC binding
-UNBOUND_PVCS=$(kubectl get pvc -A --field-selector status.phase!=Bound | tail -n +2 | wc -l)
+UNBOUND_PVCS=$(kubectl get pvc -A -o json | jq '[.items[] | select(.status.phase != "Bound")] | length')
 echo "Unbound PVCs: $UNBOUND_PVCS"
 
 # Test application endpoints
