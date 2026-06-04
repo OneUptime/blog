@@ -109,7 +109,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: notification-controller
+            name: webhook-receiver
             port:
               number: 80
 ```
@@ -163,8 +163,8 @@ metadata:
 spec:
   type: gitlab
   events:
-    - push
-    - tag_push
+    - Push Hook
+    - Tag Push Hook
   secretRef:
     name: webhook-token
   resources:
@@ -270,14 +270,14 @@ spec:
     !/apps/
 ```
 
-Webhooks for non-main branches won't trigger reconciliation.
+Webhooks for non-main branches can still call the receiver, but the GitRepository only fetches the configured `main` branch. If `main` has not changed, Flux reports the artifact as up to date.
 
 For tag-based deployments:
 
 ```yaml
 spec:
   ref:
-    tag: v1.*
+    semver: ">=1.0.0 <2.0.0"
 ```
 
 ## Verifying Webhook Deliveries
@@ -304,10 +304,10 @@ Triggering reconciliation for GitRepository/flux-system/flux-system
 Check GitRepository for recent reconciliation:
 
 ```bash
-kubectl get gitrepository flux-system -n flux-system
+kubectl describe gitrepository flux-system -n flux-system
 ```
 
-Look at the "Last Update" timestamp. It should match when you pushed.
+Look at the artifact "Last Update Time" and "Revision" fields. They should match the change you pushed.
 
 ## Security Considerations
 
@@ -345,16 +345,16 @@ spec:
 
 ## Alternative: Generic Webhooks
 
-For Git providers without native support:
+For Git providers without native support but with HMAC signing:
 
 ```yaml
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
 metadata:
-  name: generic-receiver
+  name: generic-hmac-receiver
   namespace: flux-system
 spec:
-  type: generic
+  type: generic-hmac
   secretRef:
     name: webhook-token
   resources:
@@ -366,13 +366,17 @@ spec:
 Send a POST request to trigger:
 
 ```bash
+BODY='{"ref":"refs/heads/main"}'
+SIGNATURE=$(printf '%s' "$BODY" | openssl dgst -sha256 -r -hmac '<token>' | awk '{print $1}')
+
 curl -X POST https://flux.yourdomain.com/hook/<path> \
-  -H "X-Signature: sha1=$(echo -n '<path>' | openssl sha1 -hmac '<token>' | cut -d' ' -f2)"
+  -H "X-Signature: sha256=$SIGNATURE" \
+  -d "$BODY"
 ```
 
 ## Webhook for Specific Paths
 
-Reconcile only when specific paths change using commit message filters:
+Limit the source artifact to specific paths using ignore rules:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -390,7 +394,7 @@ spec:
     !/apps/production/
 ```
 
-This limits reconciliation to changes in the apps/production/ directory.
+This limits the generated GitRepository artifact to the apps/production/ directory. Webhooks still trigger reconciliation, but Flux only exposes matching files to downstream Kustomizations.
 
 ## Debugging Failed Webhooks
 
@@ -398,7 +402,7 @@ Common issues:
 
 **Webhook not triggering:**
 - Check receiver status: `kubectl get receiver -n flux-system`
-- Verify ingress routes to notification-controller
+- Verify ingress routes to the webhook-receiver service
 - Check notification-controller logs
 - Test webhook manually from Git provider
 
