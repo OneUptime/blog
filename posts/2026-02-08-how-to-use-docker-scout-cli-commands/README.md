@@ -10,7 +10,7 @@ Description: A complete reference guide to Docker Scout CLI commands for vulnera
 
 Docker Scout's CLI gives you full control over image analysis, vulnerability scanning, and policy evaluation from the terminal. While Docker Desktop's GUI provides a visual overview, the CLI is where you get the precision needed for scripting, CI/CD integration, and detailed investigation of specific vulnerabilities.
 
-This guide covers every Docker Scout CLI command with practical examples, common flags, and real-world usage patterns.
+This guide covers the most common Docker Scout CLI commands with practical examples, common flags, and real-world usage patterns.
 
 ## Installation and Setup
 
@@ -19,7 +19,7 @@ Docker Scout CLI comes bundled with Docker Desktop 4.17+. If you need to install
 ```bash
 # Install Docker Scout CLI plugin
 
-curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh
+curl -sSfL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh -s --
 
 # Verify installation
 docker scout version
@@ -28,7 +28,7 @@ docker scout version
 docker login
 ```
 
-Docker Scout requires authentication with Docker Hub to access vulnerability databases and policy features. Some basic scanning works without login, but recommendations and policy evaluation need it.
+Docker Scout CLI uses Docker Hub authentication for access to Docker Scout services. Login is especially important in CI/CD, and policy evaluation and organizational features need it.
 
 ## docker scout cves
 
@@ -40,8 +40,8 @@ The `cves` command is the core scanning command. It analyzes an image and report
 # Scan a local image
 docker scout cves myapp:latest
 
-# Scan a remote image without pulling it
-docker scout cves nginx:1.25
+# Scan a remote image from a registry
+docker scout cves registry://nginx:1.25
 
 # Scan a specific image by digest
 docker scout cves myapp@sha256:abc123def456
@@ -62,7 +62,7 @@ docker scout cves myapp:latest --only-unfixed
 # Filter by specific package
 docker scout cves myapp:latest --only-package openssl
 
-# Filter by package type (os, npm, pip, gem, etc.)
+# Filter by package type (apk, deb, rpm, npm, pypi, golang, etc.)
 docker scout cves myapp:latest --only-package-type npm
 
 # Filter by specific CVE ID
@@ -72,26 +72,29 @@ docker scout cves myapp:latest --only-cve-id CVE-2024-1234
 docker scout cves myapp:latest \
   --only-severity critical,high \
   --only-fixed \
-  --only-package-type os
+  --only-package-type apk
 ```
 
 ### Output Formats
 
 ```bash
-# Default table format (human-readable)
+# Default package-grouped text format (human-readable)
 docker scout cves myapp:latest
 
-# JSON format for programmatic processing
-docker scout cves myapp:latest --format json
+# GitLab format for GitLab vulnerability report integration
+docker scout cves myapp:latest --format gitlab --output gl-container-scanning-report.json
 
 # SARIF format for GitHub Code Scanning integration
-docker scout cves myapp:latest --format sarif --output results.sarif
+docker scout cves myapp:latest --format sarif --output results.sarif.json
+
+# SPDX format for vulnerability data in SPDX JSON
+docker scout cves myapp:latest --format spdx --output vulnerabilities.spdx.json
 
 # Markdown format for documentation or PR comments
 docker scout cves myapp:latest --format markdown
 
 # Write output to a file
-docker scout cves myapp:latest --format json --output scan-results.json
+docker scout cves myapp:latest --format markdown --output scan-results.md
 ```
 
 ### Exit Codes for CI/CD
@@ -146,20 +149,17 @@ docker scout sbom myapp:latest --format spdx --output sbom.spdx.json
 ### Analyzing the SBOM
 
 ```bash
-# Count total packages in an image
-docker scout sbom myapp:latest --format json | jq '.packages | length'
+# Generate a human-readable package list
+docker scout sbom myapp:latest --format list
 
-# List all OS packages
-docker scout sbom myapp:latest --format json | \
-  jq '.packages[] | select(.type == "os") | {name: .name, version: .version}'
+# List all APK packages
+docker scout sbom myapp:latest --format list --only-package-type apk
 
-# List all application dependencies
-docker scout sbom myapp:latest --format json | \
-  jq '.packages[] | select(.type != "os") | {name: .name, version: .version, type: .type}'
+# List all npm dependencies
+docker scout sbom myapp:latest --format list --only-package-type npm
 
-# Find a specific package
-docker scout sbom myapp:latest --format json | \
-  jq '.packages[] | select(.name == "openssl")'
+# Save the default JSON SBOM for custom processing
+docker scout sbom myapp:latest --format json --output sbom.json
 ```
 
 ## docker scout compare
@@ -176,8 +176,8 @@ docker scout compare myapp:latest --to node:20-alpine
 # Compare against a remote image
 docker scout compare myapp:latest --to registry.example.com/myapp:production
 
-# JSON output for detailed analysis
-docker scout compare myapp:v2.0 --to myapp:v1.0 --format json
+# Markdown output for reports or PR comments
+docker scout compare myapp:v2.0 --to myapp:v1.0 --format markdown --output comparison.md
 
 # Filter comparison to specific severities
 docker scout compare myapp:v2.0 --to myapp:v1.0 --only-severity critical,high
@@ -192,13 +192,11 @@ docker scout compare myapp:v2.0 --to myapp:v1.0 --only-severity critical,high
 # - Unchanged vulnerabilities (present in both)
 # - Package changes (added, removed, updated)
 
-# Extract just the fixed vulnerabilities
-docker scout compare myapp:v2.0 --to myapp:v1.0 --format json | \
-  jq '.fixed[]'
+# Show only fixable vulnerabilities
+docker scout compare myapp:v2.0 --to myapp:v1.0 --only-fixed
 
-# Extract just the new vulnerabilities
-docker scout compare myapp:v2.0 --to myapp:v1.0 --format json | \
-  jq '.introduced[]'
+# Hide unchanged packages to focus on differences
+docker scout compare myapp:v2.0 --to myapp:v1.0 --ignore-unchanged
 ```
 
 ## docker scout recommendations
@@ -209,12 +207,11 @@ Get actionable recommendations for reducing vulnerabilities.
 # Get recommendations for an image
 docker scout recommendations myapp:latest
 
-# JSON format for processing
-docker scout recommendations myapp:latest --format json
+# Save recommendations to a file
+docker scout recommendations myapp:latest --output recommendations.txt
 
-# Focus on base image recommendations
-docker scout recommendations myapp:latest --format json | \
-  jq '.baseImageRecommendations'
+# Focus on base image update recommendations
+docker scout recommendations myapp:latest --only-update
 ```
 
 ### Applying Recommendations
@@ -245,11 +242,11 @@ docker scout policy myapp:latest
 # Evaluate for a specific organization
 docker scout policy myapp:latest --org myorg
 
-# Evaluate for a specific environment
-docker scout policy myapp:latest --env production
+# Compare policy results for a repository in a specific environment
+docker scout policy myorg/myapp --to-env production
 
-# JSON output for CI/CD processing
-docker scout policy myapp:latest --format json
+# Write policy output to a file
+docker scout policy myapp:latest --output policy-results.txt
 
 # Exit with non-zero code if policies fail
 docker scout policy myapp:latest --exit-code
@@ -266,11 +263,8 @@ docker scout quickview myapp:latest
 # Quick view of a remote image
 docker scout quickview nginx:latest
 
-# This provides a condensed summary:
-#   Image: myapp:latest
-#   Base: node:20-alpine
-#   Vulnerabilities: 2C 5H 12M 23L
-#   Policy status: 3/4 passed
+# This provides a condensed summary of image and base-image vulnerabilities,
+# plus base image refresh or update recommendations when available.
 ```
 
 ## docker scout enroll and docker scout repo
@@ -282,12 +276,12 @@ Manage Scout enrollment for your repositories.
 docker scout enroll myorg
 
 # Enable Scout for a specific repository
-docker scout repo enable --org myorg myapp
+docker scout repo enable myorg/myapp
 
 # Disable Scout for a repository
-docker scout repo disable --org myorg myapp
+docker scout repo disable myorg/myapp
 
-# List enrolled repositories
+# List Scout repositories
 docker scout repo list --org myorg
 ```
 
@@ -296,11 +290,11 @@ docker scout repo list --org myorg
 Manage the local Scout cache for faster repeated scans.
 
 ```bash
-# Clear the local Scout analysis cache
+# Clear temporary Scout data
 docker scout cache prune
 
-# The cache stores SBOM and vulnerability data locally
-# Clearing it forces a fresh analysis on the next scan
+# Clear temporary data and cached SBOMs
+docker scout cache prune --sboms
 ```
 
 ## Practical Command Combinations
@@ -320,9 +314,8 @@ echo "--- Quick Overview ---"
 docker scout quickview "$IMAGE"
 echo ""
 
-echo "--- SBOM Summary ---"
-TOTAL_PACKAGES=$(docker scout sbom "$IMAGE" --format json 2>/dev/null | jq '.packages | length' 2>/dev/null || echo "unknown")
-echo "Total packages: $TOTAL_PACKAGES"
+echo "--- SBOM Package List ---"
+docker scout sbom "$IMAGE" --format list
 echo ""
 
 echo "--- Vulnerability Scan ---"
@@ -352,20 +345,24 @@ AFTER="${2:?Usage: $0 <before-image> <after-image>}"
 echo "Comparing: $AFTER (new) vs $BEFORE (old)"
 echo ""
 
-# Count vulnerabilities in each
+# Check whether vulnerabilities exist in each severity
 echo "Before:"
 for sev in critical high medium low; do
-    count=$(docker scout cves "$BEFORE" --format json 2>/dev/null | \
-      jq "[.vulnerabilities[] | select(.severity == \"$sev\")] | length" 2>/dev/null || echo "?")
-    echo "  $sev: $count"
+    if docker scout cves "$BEFORE" --only-severity "$sev" --exit-code >/dev/null 2>&1; then
+        echo "  $sev: none detected"
+    else
+        echo "  $sev: detected"
+    fi
 done
 
 echo ""
 echo "After:"
 for sev in critical high medium low; do
-    count=$(docker scout cves "$AFTER" --format json 2>/dev/null | \
-      jq "[.vulnerabilities[] | select(.severity == \"$sev\")] | length" 2>/dev/null || echo "?")
-    echo "  $sev: $count"
+    if docker scout cves "$AFTER" --only-severity "$sev" --exit-code >/dev/null 2>&1; then
+        echo "  $sev: none detected"
+    else
+        echo "  $sev: detected"
+    fi
 done
 
 echo ""
@@ -393,13 +390,14 @@ for IMAGE in "${IMAGES[@]}"; do
     echo "Scanning $IMAGE..."
 
     # Run scan and save results
-    docker scout cves "$IMAGE" --format json > "$REPORT_DIR/${SAFE_NAME}.json" 2>/dev/null
+    docker scout cves "$IMAGE" --format sarif --output "$REPORT_DIR/${SAFE_NAME}.sarif.json" 2>/dev/null
 
-    # Count critical and high vulnerabilities
-    CRITICAL=$(jq '[.vulnerabilities[] | select(.severity == "critical")] | length' "$REPORT_DIR/${SAFE_NAME}.json" 2>/dev/null || echo "error")
-    HIGH=$(jq '[.vulnerabilities[] | select(.severity == "high")] | length' "$REPORT_DIR/${SAFE_NAME}.json" 2>/dev/null || echo "error")
-
-    echo "  $IMAGE: critical=$CRITICAL, high=$HIGH"
+    # Check critical and high vulnerabilities for alerting
+    if docker scout cves "$IMAGE" --only-severity critical,high --exit-code >/dev/null 2>&1; then
+        echo "  $IMAGE: no critical or high vulnerabilities detected"
+    else
+        echo "  $IMAGE: critical or high vulnerabilities detected"
+    fi
 done
 
 echo ""
