@@ -8,11 +8,11 @@ Description: Deploy BorgBackup in Docker as a centralized backup server with enc
 
 ---
 
-BorgBackup (Borg) is a deduplicating backup program with support for compression and encryption. It is one of the most storage-efficient backup tools available, often achieving deduplication ratios that save 50-90% of storage compared to full backups. Running a Borg server in Docker lets you centralize backup storage and accept connections from multiple client machines over SSH.
+BorgBackup (Borg) is a deduplicating backup program with support for compression and encryption. It is one of the most storage-efficient backup tools available, often achieving significant savings compared to full backups. Running a Borg server in Docker lets you centralize backup storage and accept connections from multiple client machines over SSH.
 
 ## Why Borg?
 
-Borg excels at space efficiency. Its chunking algorithm breaks files into variable-size blocks and stores each unique block only once. If you back up a 10 GB database that changes by 100 MB between backups, Borg stores only the new 100 MB, not another 10 GB copy. Compression further reduces storage requirements. Combined with AES-256 encryption, Borg provides a complete backup solution that is both efficient and secure.
+Borg excels at space efficiency. Its chunking algorithm breaks files into variable-size blocks and stores each unique block only once. If you back up a 10 GB database that changes by 100 MB between backups, Borg stores the changed chunks rather than another 10 GB copy. Compression further reduces storage requirements. Combined with authenticated encryption, Borg provides a complete backup solution that is both efficient and secure.
 
 ## How Borg Works
 
@@ -42,51 +42,16 @@ The client does all the heavy lifting: chunking, deduplication, compression, and
 ```bash
 # Create the Borg server project directory
 
-mkdir -p ~/borg-server/{data,ssh}
+mkdir -p ~/borg-server/{data,sshkeys/clients}
 cd ~/borg-server
 ```
 
 ## Docker Compose Configuration
 
-There is no official Borg Docker image, but the community maintains solid options. We will use a setup based on the borgmatic image that includes the Borg server:
+There is no official Borg Docker image, but the community maintains solid options. We will use a purpose-built Borg server image:
 
 ```yaml
-# docker-compose.yml - Borg Backup Server
-version: "3.8"
-
-services:
-  borg-server:
-    image: ghcr.io/borgmatic-collective/borgmatic:latest
-    container_name: borg-server
-    restart: unless-stopped
-    ports:
-      # SSH port for Borg connections
-      - "2222:22"
-    environment:
-      - TZ=America/New_York
-    volumes:
-      # Backup repository storage
-      - ./data:/backup
-      # SSH host keys and authorized keys
-      - ./ssh:/root/.ssh
-      # Borg configuration
-      - ./borgmatic.d:/etc/borgmatic.d
-    entrypoint: /bin/sh
-    command: >
-      -c "
-      apk add --no-cache openssh-server &&
-      ssh-keygen -A &&
-      echo 'PermitRootLogin prohibit-password' >> /etc/ssh/sshd_config &&
-      echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config &&
-      /usr/sbin/sshd -D
-      "
-```
-
-Alternatively, use a purpose-built Borg server image for a cleaner setup:
-
-```yaml
-# docker-compose.yml - Dedicated Borg Server
-version: "3.8"
+# compose.yaml - Borg Backup Server
 
 services:
   borg-server:
@@ -96,17 +61,16 @@ services:
     ports:
       - "2222:22"
     environment:
-      # Restrict clients to borg commands only
-      - BORG_SERVE_ARGS=--restrict-to-repository /backup
+      # Additional borg serve arguments
+      - BORG_SERVE_ARGS=
+      - BORG_APPEND_ONLY=no
       - PUID=1000
       - PGID=1000
     volumes:
       # Backup repositories
       - ./data:/backup
-      # SSH authorized keys for clients
-      - ./ssh/authorized_keys:/home/borg/.ssh/authorized_keys:ro
-      # SSH host keys (persist across restarts)
-      - ./ssh/host_keys:/etc/ssh/host_keys
+      # Client public keys and SSH host keys
+      - ./sshkeys:/sshkeys
 ```
 
 ## Setting Up Client Authentication
@@ -118,15 +82,15 @@ Each client machine needs an SSH key pair. Generate one on the client:
 ssh-keygen -t ed25519 -f ~/.ssh/borg_backup -N "" -C "borg-backup-client"
 ```
 
-Copy the public key to the server's authorized keys file:
+Copy the public key to the server's client keys directory. With this image, the public key filename becomes the client directory name under `/backup`:
 
 ```bash
 # On the server, add the client's public key
-mkdir -p ~/borg-server/ssh
-echo "command=\"borg serve --restrict-to-repository /backup/clientname\",restrict $(cat client_public_key.pub)" >> ~/borg-server/ssh/authorized_keys
+mkdir -p ~/borg-server/sshkeys/clients
+cp client_public_key.pub ~/borg-server/sshkeys/clients/clientname
 ```
 
-The `command=` prefix in the authorized_keys entry restricts the key to only running `borg serve` commands, preventing SSH shell access. The `--restrict-to-repository` flag limits the client to its own backup repository.
+The container turns each client key into a restricted `borg serve` SSH login, preventing normal shell access and limiting the client to its own directory under `/backup`.
 
 ## Starting the Server
 
@@ -157,7 +121,7 @@ export BORG_RSH="ssh -i ~/.ssh/borg_backup"
 borg init --encryption=repokey-blake2
 ```
 
-The `repokey-blake2` encryption mode stores the encryption key in the repository (encrypted with your passphrase) and uses the BLAKE2b hash for better performance. Alternative modes:
+The `repokey-blake2` encryption mode stores the encryption key in the repository (encrypted with your passphrase) and uses BLAKE2b authentication, which is often faster on CPUs without hardware-accelerated SHA-256. Alternative modes:
 
 - `repokey` - Same as repokey-blake2 but uses SHA-256
 - `keyfile` - Stores the key on the client instead of the repository
@@ -195,7 +159,7 @@ Create a comprehensive backup script:
 #!/bin/bash
 # /usr/local/bin/borg-backup.sh - Automated Borg backup
 
-export BORG_REPO="ssh://borg@your-server:2222/backup/$(hostname)"
+export BORG_REPO="ssh://borg@your-server:2222/backup/clientname"
 export BORG_PASSPHRASE="your_passphrase"
 export BORG_RSH="ssh -i /root/.ssh/borg_backup"
 
@@ -288,7 +252,7 @@ This displays total size, compressed size, and deduplicated size, letting you se
 
 ## Monitoring with OneUptime
 
-Monitor your Borg server with OneUptime by setting up a TCP monitor on port 2222 (SSH). If the backup server becomes unreachable, scheduled backups from all client machines will fail silently. Proactive monitoring ensures you catch issues before they compound into data loss.
+Monitor your Borg server with OneUptime by setting up a TCP monitor on port 2222 (SSH). If the backup server becomes unreachable, scheduled backups from all client machines may fail without alerting you. Proactive monitoring ensures you catch issues before they compound into data loss.
 
 ## Wrapping Up
 
