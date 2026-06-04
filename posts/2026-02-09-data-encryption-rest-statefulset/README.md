@@ -16,7 +16,7 @@ Cloud provider encryption uses managed keys to encrypt volumes transparently. AW
 
 LUKS (Linux Unified Key Setup) provides block-level encryption at the OS level. You control the keys and encryption happens before data reaches the cloud provider. This offers stronger guarantees but adds operational complexity.
 
-Application-level encryption encrypts data before writing to disk. Databases like PostgreSQL support Transparent Data Encryption (TDE). This provides the strongest protection but requires application support.
+Application-level encryption encrypts data before writing to disk. Some database products support Transparent Data Encryption (TDE); PostgreSQL commonly uses extensions such as pgcrypto for column-level encryption rather than built-in TDE. This provides the strongest protection but requires application support.
 
 ## Enabling Cloud Provider Encryption
 
@@ -71,9 +71,8 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuName: Premium_LRS
-  # Enable encryption at rest
-  encrypted: "true"
-  # Use customer-managed key
+  # Azure managed disks are encrypted at rest by default.
+  # Use a customer-managed key with a Disk Encryption Set.
   diskEncryptionSetID: "/subscriptions/SUBSCRIPTION_ID/resourceGroups/RG_NAME/providers/Microsoft.Compute/diskEncryptionSets/DES_NAME"
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -83,6 +82,19 @@ Deploy a StatefulSet with encrypted storage:
 
 ```yaml
 # postgres-encrypted.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: database
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+  - name: postgres
+    port: 5432
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -155,122 +167,22 @@ kubectl describe pv <pv-name> | grep -i encrypt
 
 ## Implementing LUKS Encryption
 
-For scenarios requiring OS-level encryption, use LUKS with init containers:
+For scenarios requiring OS-level encryption, use a CSI driver or storage operator that implements LUKS during the node staging or publishing path. Do not format a mounted PVC from an init container: Kubernetes mounts PVCs as filesystems by default, raw block access requires `volumeMode: Block` and `volumeDevices`, and dm-crypt mappings created inside one container are not a portable way to provide the filesystem mounted in another container.
 
 ```yaml
-# postgres-luks-encrypted.yaml
-apiVersion: apps/v1
-kind: StatefulSet
+# luks-encrypted-storage.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
 metadata:
-  name: postgres-luks
-  namespace: database
-spec:
-  serviceName: postgres-luks
-  replicas: 1
-  selector:
-    matchLabels:
-      app: postgres-luks
-  template:
-    metadata:
-      labels:
-        app: postgres-luks
-    spec:
-      securityContext:
-        fsGroup: 999
-      initContainers:
-      # Setup LUKS encryption
-      - name: setup-luks
-        image: ubuntu:22.04
-        securityContext:
-          privileged: true
-        command:
-        - sh
-        - -c
-        - |
-          set -e
-
-          # Install cryptsetup
-          apt-get update && apt-get install -y cryptsetup
-
-          # Check if already encrypted
-          if cryptsetup isLuks /dev/nvme1n1; then
-            echo "Volume already encrypted"
-          else
-            echo "Setting up LUKS encryption..."
-
-            # Get encryption key from secret
-            LUKS_KEY=$(cat /secrets/luks-key)
-
-            # Format with LUKS
-            echo -n "$LUKS_KEY" | cryptsetup luksFormat \
-              --type luks2 \
-              --cipher aes-xts-plain64 \
-              --key-size 512 \
-              --hash sha256 \
-              --pbkdf argon2id \
-              /dev/nvme1n1 -
-
-            echo "LUKS encryption setup complete"
-          fi
-
-          # Open encrypted volume
-          LUKS_KEY=$(cat /secrets/luks-key)
-          echo -n "$LUKS_KEY" | cryptsetup open /dev/nvme1n1 pgdata -
-
-          # Create filesystem if needed
-          if ! blkid /dev/mapper/pgdata; then
-            mkfs.ext4 /dev/mapper/pgdata
-          fi
-
-          # Mount encrypted volume
-          mkdir -p /mnt/encrypted
-          mount /dev/mapper/pgdata /mnt/encrypted
-
-          # Set permissions
-          chown -R 999:999 /mnt/encrypted
-
-        volumeMounts:
-        - name: secrets
-          mountPath: /secrets
-          readOnly: true
-        - name: raw-volume
-          mountPath: /dev/nvme1n1
-
-      containers:
-      - name: postgres
-        image: postgres:15
-        env:
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: postgres-password
-              key: password
-        - name: PGDATA
-          value: /var/lib/postgresql/data/pgdata
-        volumeMounts:
-        - name: encrypted-data
-          mountPath: /var/lib/postgresql/data
-
-      volumes:
-      - name: secrets
-        secret:
-          secretName: luks-key
-      - name: raw-volume
-        persistentVolumeClaim:
-          claimName: postgres-raw-volume
-      - name: encrypted-data
-        hostPath:
-          path: /mnt/encrypted
-          type: Directory
-
-  volumeClaimTemplates:
-  - metadata:
-      name: postgres-raw-volume
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      resources:
-        requests:
-          storage: 100Gi
+  name: luks-encrypted-storage
+provisioner: example.csi.driver
+parameters:
+  # Driver-specific parameter; verify the exact name in your CSI driver docs.
+  encrypted: "true"
+  csi.storage.k8s.io/node-stage-secret-name: luks-key
+  csi.storage.k8s.io/node-stage-secret-namespace: database
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
 ```
 
 Create the LUKS key secret:
@@ -301,35 +213,17 @@ metadata:
   namespace: database
 ---
 apiVersion: v1
-kind: ConfigMap
+kind: Service
 metadata:
-  name: vault-agent-config
+  name: postgres-vault
   namespace: database
-data:
-  vault-agent-config.hcl: |
-    exit_after_auth = true
-
-    auto_auth {
-      method "kubernetes" {
-        mount_path = "auth/kubernetes"
-        config = {
-          role = "postgres-role"
-        }
-      }
-
-      sink "file" {
-        config = {
-          path = "/vault/secrets/encryption-key"
-        }
-      }
-    }
-
-    template {
-      destination = "/vault/secrets/encryption-key"
-      contents = <<EOT
-{{ with secret "secret/data/postgres/encryption-key" }}{{ .Data.data.key }}{{ end }}
-EOT
-    }
+spec:
+  clusterIP: None
+  selector:
+    app: postgres-vault
+  ports:
+  - name: postgres
+    port: 5432
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -366,14 +260,8 @@ spec:
               name: postgres-password
               key: password
         volumeMounts:
-        - name: vault-secrets
-          mountPath: /vault/secrets
         - name: data
           mountPath: /var/lib/postgresql/data
-      volumes:
-      - name: vault-secrets
-        emptyDir:
-          medium: Memory
   volumeClaimTemplates:
   - metadata:
       name: data
@@ -440,6 +328,37 @@ Create a monitoring job to verify encryption:
 
 ```yaml
 # encryption-check-job.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: encryption-checker
+  namespace: database
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: encryption-checker
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "list"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: encryption-checker
+subjects:
+- kind: ServiceAccount
+  name: encryption-checker
+  namespace: database
+roleRef:
+  kind: ClusterRole
+  name: encryption-checker
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -454,23 +373,25 @@ spec:
           serviceAccountName: encryption-checker
           containers:
           - name: checker
-            image: amazon/aws-cli:latest
+            image: your-registry/aws-kubectl-jq:latest
             command:
             - sh
             - -c
             - |
-              # Check all PVs are encrypted
+              ENCRYPTED_STORAGE_CLASSES=$(kubectl get storageclass -o json | \
+                jq -c '[.items[] | select((.parameters.encrypted // "") == "true" or (.parameters["disk-encryption-kms-key"] // "") != "" or (.parameters.diskEncryptionSetID // "") != "") | .metadata.name]')
+
+              # Check PVs that use encrypted storage classes
               kubectl get pv -o json | \
-                jq -r '.items[] | select(.spec.storageClassName=="encrypted-storage") | .metadata.name' | \
+                jq -r --argjson encrypted "$ENCRYPTED_STORAGE_CLASSES" '.items[] | select(.spec.storageClassName as $sc | $encrypted | index($sc)) | .metadata.name' | \
                 while read pv; do
                   echo "Checking $pv..."
-                  kubectl describe pv $pv | grep -i encrypt || echo "WARNING: $pv may not be encrypted!"
+                  kubectl describe pv $pv
                 done
 
               # For AWS EBS volumes
               VOLUME_IDS=$(kubectl get pv -o json | \
-                jq -r '.items[].spec.awsElasticBlockStore.volumeID' | \
-                sed 's|aws://[^/]*/||')
+                jq -r '.items[] | select(.spec.csi.driver=="ebs.csi.aws.com") | .spec.csi.volumeHandle | split("/") | last')
 
               for vol in $VOLUME_IDS; do
                 ENCRYPTED=$(aws ec2 describe-volumes \
@@ -486,7 +407,7 @@ spec:
 
 ## Rotating Encryption Keys
 
-Implement key rotation for compliance:
+For AWS EBS, create replacement volumes encrypted with the new key as part of a controlled storage migration:
 
 ```bash
 #!/bin/bash
@@ -555,26 +476,31 @@ echo ""
 
 # Check storage classes
 echo "Encrypted Storage Classes:"
-kubectl get storageclass -o json | \
-  jq -r '.items[] | select(.parameters.encrypted=="true") | .metadata.name'
+ENCRYPTED_STORAGE_CLASSES_JSON=$(kubectl get storageclass -o json | \
+  jq -c '[.items[] | select((.parameters.encrypted // "") == "true" or (.parameters["disk-encryption-kms-key"] // "") != "" or (.parameters.diskEncryptionSetID // "") != "") | .metadata.name]')
+echo "$ENCRYPTED_STORAGE_CLASSES_JSON" | jq -r '.[]'
 
 echo ""
 
 # Check PVCs using encrypted storage
 echo "PVCs with Encrypted Storage:"
 kubectl get pvc --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.storageClassName | contains("encrypted")) | "\(.metadata.namespace)/\(.metadata.name)"'
+  jq -r --argjson encrypted "$ENCRYPTED_STORAGE_CLASSES_JSON" '.items[] | select(.spec.storageClassName as $sc | $encrypted | index($sc)) | "\(.metadata.namespace)/\(.metadata.name)"'
 
 echo ""
 
 # Generate metrics
 TOTAL_PVCS=$(kubectl get pvc --all-namespaces -o json | jq '.items | length')
 ENCRYPTED_PVCS=$(kubectl get pvc --all-namespaces -o json | \
-  jq '[.items[] | select(.spec.storageClassName | contains("encrypted"))] | length')
+  jq --argjson encrypted "$ENCRYPTED_STORAGE_CLASSES_JSON" '[.items[] | select(.spec.storageClassName as $sc | $encrypted | index($sc))] | length')
 
 echo "Total PVCs: $TOTAL_PVCS"
 echo "Encrypted PVCs: $ENCRYPTED_PVCS"
-echo "Encryption Rate: $(( ENCRYPTED_PVCS * 100 / TOTAL_PVCS ))%"
+if [ "$TOTAL_PVCS" -gt 0 ]; then
+  echo "Encryption Rate: $(( ENCRYPTED_PVCS * 100 / TOTAL_PVCS ))%"
+else
+  echo "Encryption Rate: N/A"
+fi
 ```
 
 ## Conclusion
