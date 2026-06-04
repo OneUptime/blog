@@ -14,9 +14,9 @@ Grafana's provisioning feature combined with Kubernetes ConfigMaps gives you das
 
 ## Understanding Dashboard Provisioning
 
-Grafana can automatically load dashboards from files at startup. The provisioning system watches these files and updates dashboards when they change.
+Grafana can automatically load dashboards from files at startup. The provisioning system checks these files and updates dashboards when they change.
 
-In Kubernetes, you store dashboard JSON in ConfigMaps and mount them into the Grafana pod. When ConfigMaps update, Grafana reloads the dashboards.
+In Kubernetes, you store dashboard JSON in ConfigMaps and mount them into the Grafana pod. When the mounted ConfigMap volume updates, Grafana reloads the dashboards on its next provisioning scan.
 
 ## Basic Dashboard Provisioning Setup
 
@@ -89,7 +89,7 @@ data:
           {
             "id": 2,
             "title": "Pod Count by Namespace",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [
               {
                 "expr": "count(kube_pod_info) by (namespace)",
@@ -102,21 +102,12 @@ data:
               "y": 0,
               "w": 18,
               "h": 8
-            },
-            "yaxes": [
-              {
-                "format": "short",
-                "label": "Pods"
-              },
-              {
-                "format": "short"
-              }
-            ]
+            }
           },
           {
             "id": 3,
             "title": "CPU Usage",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [
               {
                 "expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"\"}[5m])) by (namespace)",
@@ -134,7 +125,7 @@ data:
           {
             "id": 4,
             "title": "Memory Usage",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [
               {
                 "expr": "sum(container_memory_working_set_bytes{container!=\"\"}) by (namespace)",
@@ -213,7 +204,7 @@ data:
       "dashboard": {
         "title": "Node Metrics",
         "uid": "node-metrics",
-        "panels": [...]
+        "panels": []
       }
     }
 ---
@@ -230,7 +221,7 @@ data:
       "dashboard": {
         "title": "Pod Metrics",
         "uid": "pod-metrics",
-        "panels": [...]
+        "panels": []
       }
     }
 ---
@@ -247,12 +238,12 @@ data:
       "dashboard": {
         "title": "Network Metrics",
         "uid": "network-metrics",
-        "panels": [...]
+        "panels": []
       }
     }
 ```
 
-Mount all dashboards using a script:
+Mount all dashboards using a projected volume:
 
 ```yaml
 apiVersion: apps/v1
@@ -261,27 +252,18 @@ metadata:
   name: grafana
   namespace: monitoring
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
   template:
+    metadata:
+      labels:
+        app: grafana
     spec:
-      initContainers:
-      # Copy all dashboard ConfigMaps to shared volume
-      - name: dashboard-loader
-        image: busybox
-        command:
-        - sh
-        - -c
-        - |
-          # Create dashboard directory
-          mkdir -p /dashboards
-          # Copy all mounted dashboard files
-          cp /tmp/dashboards/*/*.json /dashboards/ || true
-        volumeMounts:
-        - name: dashboards-temp
-          mountPath: /tmp/dashboards
-        - name: dashboards
-          mountPath: /dashboards
       containers:
       - name: grafana
+        image: grafana/grafana:10.2.0
         volumeMounts:
         - name: dashboards
           mountPath: /var/lib/grafana/dashboards
@@ -292,8 +274,6 @@ spec:
         configMap:
           name: grafana-dashboard-provider
       - name: dashboards
-        emptyDir: {}
-      - name: dashboards-temp
         projected:
           sources:
           - configMap:
@@ -383,9 +363,9 @@ Export dashboards from Grafana to create ConfigMaps:
 
 DASHBOARD_UID="cluster-overview"
 GRAFANA_URL="http://grafana.example.com"
-API_KEY="your-api-key"
+SERVICE_ACCOUNT_TOKEN="your-service-account-token"
 
-curl -H "Authorization: Bearer $API_KEY" \
+curl -H "Authorization: Bearer $SERVICE_ACCOUNT_TOKEN" \
   "$GRAFANA_URL/api/dashboards/uid/$DASHBOARD_UID" | \
   jq '.dashboard' > dashboard.json
 
@@ -403,19 +383,19 @@ Automate exporting all dashboards:
 # export-dashboards.sh - Export all Grafana dashboards
 
 GRAFANA_URL="http://grafana.example.com"
-API_KEY="your-api-key"
+SERVICE_ACCOUNT_TOKEN="your-service-account-token"
 OUTPUT_DIR="./dashboards"
 
-mkdir -p $OUTPUT_DIR
+mkdir -p "$OUTPUT_DIR"
 
 # Get all dashboard UIDs
-curl -s -H "Authorization: Bearer $API_KEY" \
+curl -s -H "Authorization: Bearer $SERVICE_ACCOUNT_TOKEN" \
   "$GRAFANA_URL/api/search?type=dash-db" | \
   jq -r '.[] | .uid' | while read uid; do
 
   # Export dashboard
   echo "Exporting $uid..."
-  curl -s -H "Authorization: Bearer $API_KEY" \
+  curl -s -H "Authorization: Bearer $SERVICE_ACCOUNT_TOKEN" \
     "$GRAFANA_URL/api/dashboards/uid/$uid" | \
     jq '.dashboard' > "$OUTPUT_DIR/$uid.json"
 
@@ -471,7 +451,7 @@ data:
           },
           {
             "title": "CPU Usage in $namespace",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [
               {
                 "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\"}[5m])) by (pod)",
@@ -517,7 +497,7 @@ configMapGenerator:
   - dashboards/pods.json
 ```
 
-Deploy with Flux or ArgoCD:
+Deploy with Flux:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -577,15 +557,17 @@ data:
 Track dashboard provisioning status:
 
 ```bash
+SERVICE_ACCOUNT_TOKEN="your-service-account-token"
+
 # Check Grafana logs for provisioning events
 kubectl logs -n monitoring -l app=grafana | grep -i provision
 
 # List all dashboards
-curl -H "Authorization: Bearer $API_KEY" \
+curl -H "Authorization: Bearer $SERVICE_ACCOUNT_TOKEN" \
   http://grafana.example.com/api/search?type=dash-db | jq
 
 # Check dashboard metadata
-curl -H "Authorization: Bearer $API_KEY" \
+curl -H "Authorization: Bearer $SERVICE_ACCOUNT_TOKEN" \
   http://grafana.example.com/api/dashboards/uid/cluster-overview | \
   jq '.meta'
 ```
