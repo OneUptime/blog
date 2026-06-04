@@ -10,7 +10,7 @@ Description: Learn how to monitor Kubernetes CronJobs for missed schedules and f
 
 A CronJob that silently fails to run can cause serious problems. Missed backups mean lost data. Skipped data syncs leave systems out of date. Failed report generation breaks business processes. Monitoring CronJobs proactively catches these issues before they impact your operations.
 
-Kubernetes provides several mechanisms to track CronJob health: status fields showing last schedule time, events recording execution history, and metrics exposed through the metrics server. Combining these with proper alerting ensures you know immediately when scheduled jobs don't run as expected.
+Kubernetes provides several mechanisms to track CronJob health: status fields showing last schedule time, events recording execution history, and object-state metrics exposed through kube-state-metrics. Combining these with proper alerting ensures you know immediately when scheduled jobs don't run as expected.
 
 ## Understanding CronJob Status Fields
 
@@ -32,7 +32,7 @@ Check these programmatically:
 ```python
 #!/usr/bin/env python3
 from kubernetes import client, config
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def check_cronjob_health(cronjob_name, namespace='default', max_age_minutes=60):
     """Check if CronJob has run recently"""
@@ -48,18 +48,18 @@ def check_cronjob_health(cronjob_name, namespace='default', max_age_minutes=60):
     last_schedule = cj.status.last_schedule_time
     last_successful = cj.status.last_successful_time
 
-    now = datetime.now(last_schedule.tzinfo) if last_schedule else datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Check if we've scheduled recently
     if last_schedule:
-        age = now - last_schedule
+        age = now - last_schedule.astimezone(timezone.utc)
         if age > timedelta(minutes=max_age_minutes):
             print(f"WARNING: {cronjob_name} hasn't scheduled in {age}")
             return False
 
     # Check if last run succeeded
     if last_successful:
-        success_age = now - last_successful
+        success_age = now - last_successful.astimezone(timezone.utc)
         if success_age > timedelta(minutes=max_age_minutes * 2):
             print(f"WARNING: {cronjob_name} hasn't succeeded in {success_age}")
             return False
@@ -114,15 +114,15 @@ spec:
     # Alert if last job failed
     - alert: CronJobFailed
       expr: |
-        kube_job_status_failed{job_name=~".*"} > 0
-        and
-        kube_job_owner{owner_kind="CronJob"} == 1
+        (kube_job_status_failed{job_name=~".*"} > 0)
+        * on(namespace, job_name) group_left(owner_name)
+        (kube_job_owner{owner_kind="CronJob", owner_is_controller="true"} == 1)
       for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "CronJob {{ $labels.job_name }} failed"
-        description: "Job {{ $labels.job_name }} from CronJob failed"
+        summary: "CronJob {{ $labels.owner_name }} failed"
+        description: "Job {{ $labels.job_name }} from CronJob {{ $labels.owner_name }} failed"
 
     # Alert if no successful run in expected window
     - alert: CronJobNeverSucceeded
@@ -196,7 +196,7 @@ The monitoring script:
 ```python
 #!/usr/bin/env python3
 from kubernetes import client, config
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import requests
 import os
 
@@ -204,6 +204,22 @@ def parse_cron_schedule(schedule):
     """Estimate interval from cron schedule (simplified)"""
     # This is a basic parser - production code should use croniter
     parts = schedule.split()
+
+    if schedule == '@hourly':
+        return timedelta(hours=1)
+    if schedule in ('@daily', '@midnight'):
+        return timedelta(days=1)
+
+    if len(parts) != 5:
+        return timedelta(days=1)
+
+    # Every N minutes
+    if parts[0].startswith('*/') and parts[1] == '*':
+        return timedelta(minutes=int(parts[0][2:]))
+
+    # Every N hours
+    if parts[1].startswith('*/') and parts[2] == '*':
+        return timedelta(hours=int(parts[1][2:]))
 
     # Hourly if minute is specified but hour is *
     if parts[1] == '*':
@@ -227,7 +243,7 @@ def send_alert(cronjob_name, namespace, message):
         'cronjob': cronjob_name,
         'namespace': namespace,
         'message': message,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }
 
     try:
@@ -242,7 +258,7 @@ def check_all_cronjobs():
     batch_v1 = client.BatchV1Api()
 
     cronjobs = batch_v1.list_cron_job_for_all_namespaces()
-    now = datetime.now(datetime.timezone.utc)
+    now = datetime.now(timezone.utc)
 
     issues_found = 0
 
@@ -263,7 +279,7 @@ def check_all_cronjobs():
         # Check last schedule time
         last_schedule = cj.status.last_schedule_time
         if last_schedule:
-            age = now - last_schedule.replace(tzinfo=datetime.timezone.utc)
+            age = now - last_schedule.astimezone(timezone.utc)
             if age > expected_window:
                 send_alert(name, namespace,
                           f"No schedule in {age.total_seconds()/3600:.1f}h (expected every {interval.total_seconds()/3600:.1f}h)")
@@ -272,7 +288,7 @@ def check_all_cronjobs():
         # Check last successful time
         last_successful = cj.status.last_successful_time
         if last_successful:
-            success_age = now - last_successful.replace(tzinfo=datetime.timezone.utc)
+            success_age = now - last_successful.astimezone(timezone.utc)
             if success_age > expected_window * 3:  # More lenient for success
                 send_alert(name, namespace,
                           f"No success in {success_age.total_seconds()/3600:.1f}h")
@@ -308,9 +324,11 @@ if [ -n "$SUSPENDED" ]; then
   echo "$SUSPENDED"
 
   # Send alert
-  curl -X POST $ALERT_WEBHOOK \
+  jq -n --arg message "Suspended CronJobs: $SUSPENDED" \
+    '{message: $message}' | \
+  curl -X POST "$ALERT_WEBHOOK" \
     -H "Content-Type: application/json" \
-    -d "{\"message\": \"Suspended CronJobs: $SUSPENDED\"}"
+    -d @-
 
   exit 1
 fi
@@ -326,14 +344,14 @@ Track failed jobs from CronJobs:
 ```python
 #!/usr/bin/env python3
 from kubernetes import client, config
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def check_recent_failures(hours=24):
     """Find failed jobs from CronJobs in last N hours"""
     config.load_kube_config()
     batch_v1 = client.BatchV1Api()
 
-    cutoff = datetime.now(datetime.timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     jobs = batch_v1.list_job_for_all_namespaces()
 
     failures = []
@@ -349,14 +367,19 @@ def check_recent_failures(hours=24):
 
         # Check if failed
         if job.status.failed and job.status.failed > 0:
+            failed_at = None
+            for condition in job.status.conditions or []:
+                if condition.type == 'Failed' and condition.status == 'True':
+                    failed_at = condition.last_transition_time
+                    break
+
             # Check if recent
-            completion_time = job.status.completion_time
-            if completion_time and completion_time.replace(tzinfo=datetime.timezone.utc) > cutoff:
+            if failed_at and failed_at.astimezone(timezone.utc) > cutoff:
                 failures.append({
                     'cronjob': owner.name,
                     'job': job.metadata.name,
                     'namespace': job.metadata.namespace,
-                    'failed_at': completion_time,
+                    'failed_at': failed_at,
                     'failed_count': job.status.failed
                 })
 
@@ -387,9 +410,9 @@ kubectl get events -A --sort-by='.lastTimestamp' | grep -i "missed"
 
 # Get events programmatically
 kubectl get events -o json | \
-  jq -r '.items[] |
+    jq -r '.items[] |
     select(.involvedObject.kind=="CronJob") |
-    select(.reason=="FailedScheduling" or .reason=="MissSchedule") |
+    select(.reason=="FailedNeedsStart" or .reason=="MissSchedule" or .reason=="TooManyMissedTimes") |
     "\(.involvedObject.name): \(.message)"'
 ```
 
@@ -404,12 +427,14 @@ Create Grafana dashboard panels:
 # Number of active jobs from CronJob
 kube_cronjob_status_active{cronjob="backup-job"}
 
-# Jobs created by CronJob (rate over 1h)
-rate(kube_cronjob_status_last_schedule_time{cronjob="backup-job"}[1h])
+# Schedule timestamp changes over 1h
+changes(kube_cronjob_status_last_schedule_time{cronjob="backup-job"}[1h])
 
 # Failed jobs from CronJobs
-sum by (cronjob) (
-  kube_job_status_failed{job_name=~"backup-job-.*"} > 0
+sum by (owner_name) (
+  (kube_job_status_failed > 0)
+  * on(namespace, job_name) group_left(owner_name)
+  (kube_job_owner{owner_kind="CronJob", owner_is_controller="true"} == 1)
 )
 ```
 
