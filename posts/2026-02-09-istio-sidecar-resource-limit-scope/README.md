@@ -8,22 +8,22 @@ Description: Learn how to use Istio Sidecar resources to limit the scope of serv
 
 ---
 
-By default, every Envoy proxy in your Istio mesh receives configuration for all services across all namespaces. A cluster with 500 services pushes configuration for all 500 services to every sidecar, consuming massive amounts of memory and CPU cycles processing updates.
+By default, every Envoy proxy in your Istio mesh receives configuration needed to reach services across the mesh. A cluster with 500 services can push configuration for all 500 services to every sidecar, consuming large amounts of memory and CPU cycles processing updates.
 
-The Sidecar resource lets you explicitly define which services a workload needs to communicate with, reducing configuration size by 80-95% in typical deployments.
+The Sidecar resource lets you explicitly define which services are imported into a workload's proxy configuration, often reducing configuration size substantially in large deployments.
 
 ## Understanding Sidecar Resource Scope
 
-Without Sidecar resources, Istio implements a full mesh topology where every proxy knows about every service. This works for small clusters but doesn't scale beyond a few hundred services.
+Without Sidecar resources, Istio implements a full mesh topology where every proxy knows about every service exported to its namespace. This works for small clusters but can become expensive as the number of services grows.
 
-The Sidecar resource creates a partial mesh by limiting egress traffic destinations. Each proxy only receives configuration for services it actually communicates with, drastically reducing memory and configuration push overhead.
+The Sidecar resource creates a partial mesh configuration by limiting the services imported into egress listeners. Each proxy only receives configuration for services it actually communicates with, drastically reducing memory and configuration push overhead. This is configuration scoping, not a standalone security boundary for enforcing all outbound traffic.
 
 ## Creating a Basic Sidecar Configuration
 
-Start with a restrictive default policy:
+Start with a restrictive default configuration scope:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -31,18 +31,18 @@ metadata:
 spec:
   egress:
   - hosts:
-    - "./same-namespace-only"
-    - "istio-system/*"  # Always include control plane
+    - "./*"
+    - "istio-system/*"  # Include Istio-system services if workloads call them
 ```
 
-This configuration restricts services in the production namespace to only communicate with other services in the same namespace, plus the Istio control plane.
+This configuration imports services from the production namespace, plus services in the Istio system namespace, into sidecar proxy configuration.
 
 ## Allowing Specific Cross-Namespace Communication
 
 Open up communication to specific external services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: api-gateway-sidecar
@@ -59,17 +59,17 @@ spec:
     - "data-layer/database-proxy"
     - "istio-system/*"
   outboundTrafficPolicy:
-    mode: REGISTRY_ONLY  # Block unregistered traffic
+    mode: REGISTRY_ONLY  # Block unknown external traffic without a ServiceEntry
 ```
 
-This explicitly defines the four services that api-gateway communicates with, ignoring all other services in the mesh.
+This explicitly defines the services imported into the api-gateway proxy configuration, ignoring configuration for unrelated services in the mesh.
 
 ## Configuring Ingress and Egress Listeners
 
 Control both inbound and outbound traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: payment-service-sidecar
@@ -109,14 +109,14 @@ spec:
     mode: REGISTRY_ONLY
 ```
 
-This configuration limits inbound traffic to port 8080, restricts outbound to specific services, and blocks access to unregistered external services.
+This configuration limits explicit inbound listener configuration to port 8080, imports only the listed outbound services, and blocks unknown external services that are not registered with ServiceEntry.
 
 ## Namespace-Wide Default Sidecars
 
 Apply sensible defaults for an entire namespace:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -161,14 +161,14 @@ kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
   curl -s localhost:15000/config_dump | wc -c
 ```
 
-Typical reductions range from 70-90% for configuration size and 40-60% for memory usage.
+Large meshes often see meaningful reductions in configuration size and proxy memory usage, but the exact savings depend on service count, endpoint count, and how narrowly you scope each workload.
 
 ## Handling External Service Access
 
 Allow specific external hosts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: external-integrations
@@ -192,7 +192,7 @@ spec:
   outboundTrafficPolicy:
     mode: REGISTRY_ONLY
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-payment-api
@@ -215,7 +215,7 @@ The Sidecar references the external-services namespace, which contains ServiceEn
 Configure for event-driven architectures:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: event-consumer
@@ -238,7 +238,7 @@ spec:
 For batch processing workloads:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: batch-job
@@ -262,16 +262,21 @@ spec:
 Track configuration push metrics:
 
 ```promql
-# Number of clusters pushed to proxies
-pilot_xds_eds_instances
+# Distribution of generated configuration sizes
+histogram_quantile(0.99,
+  rate(pilot_xds_config_size_bytes_bucket[5m])
+)
 
 # Configuration push time
 histogram_quantile(0.99,
   rate(pilot_xds_push_time_bucket[5m])
 )
 
-# Rejected configurations
-pilot_total_xds_rejects
+# Rejected configurations by xDS type
+pilot_xds_cds_reject
+pilot_xds_eds_reject
+pilot_xds_lds_reject
+pilot_xds_rds_reject
 ```
 
 Monitor proxy memory by service:
@@ -298,7 +303,9 @@ spec:
     rules:
     - alert: ProxyConfigurationTooLarge
       expr: |
-        pilot_xds_eds_instances > 500
+        histogram_quantile(0.99,
+          rate(pilot_xds_config_size_bytes_bucket[5m])
+        ) > 10000000
       for: 5m
       annotations:
         summary: "Proxy receiving too many service configurations"
@@ -316,7 +323,7 @@ kubectl run test-client -n production --image=curlimages/curl -it --rm -- sh
 # Test allowed service
 curl http://backend-service:8080/health
 
-# Test blocked service (should fail)
+# Test service omitted from Sidecar hosts
 curl http://blocked-service:8080/health
 ```
 
@@ -339,7 +346,7 @@ Start with permissive defaults:
 
 ```yaml
 # Phase 1: Observe traffic patterns
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -363,7 +370,7 @@ Apply restrictive Sidecars based on observed patterns:
 
 ```yaml
 # Phase 2: Restrict based on actual usage
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -382,11 +389,11 @@ spec:
 
 ## Best Practices
 
-Always include "istio-system/*" in egress hosts. Without it, proxies can't communicate with the control plane, breaking telemetry and configuration updates.
+Include "istio-system/*" in egress hosts when workloads need to call services in the Istio system namespace. This matches common Istio examples and avoids accidentally pruning configuration for mesh add-ons that your applications use.
 
 Use workloadSelector for per-service customization. Avoid putting all services behind one generic Sidecar that allows everything.
 
-Set outboundTrafficPolicy to REGISTRY_ONLY in production. This prevents accidental communication with unregistered external services.
+Set outboundTrafficPolicy to REGISTRY_ONLY when you want unknown external destinations to require ServiceEntry registration. Treat Sidecar host scoping as configuration pruning; use authorization policy, egress gateways, or Kubernetes NetworkPolicy when you need stronger traffic enforcement.
 
 Start with namespace-wide defaults, then add workload-specific overrides. This provides baseline security while allowing flexibility.
 
