@@ -16,9 +16,9 @@ Understanding kubelet eviction mechanisms and implementing proper resource manag
 
 The kubelet monitors node resource usage and triggers evictions when consumption crosses configured thresholds. Two types of thresholds exist: hard thresholds that trigger immediate evictions, and soft thresholds that allow grace periods before evicting pods.
 
-Memory pressure occurs when available memory drops below thresholds. Disk pressure happens when filesystem usage or inodes exceed limits. The kubelet tracks multiple disk metrics including the root filesystem, the container image filesystem, and volume filesystems.
+Memory pressure occurs when available memory drops below thresholds. Disk pressure happens when available filesystem space or free inodes drop below thresholds. The kubelet tracks disk metrics for `nodefs`, `imagefs`, and, on supported configurations, `containerfs`.
 
-When eviction triggers, kubelet selects pods based on priority and resource usage. Pods exceeding resource requests get evicted first, followed by pods using fewer resources relative to their requests. Critical system pods with specific priority classes never get evicted.
+When eviction triggers, kubelet selects pods based on whether usage exceeds requests, then pod priority, then usage relative to requests. Pods using less than their requests are evicted last; high-priority system pods are strongly protected, but they are not absolutely immune if the node cannot reclaim resources any other way.
 
 ## Identifying Pods Evicted Due to Resource Pressure
 
@@ -70,13 +70,15 @@ Memory pressure evictions happen when node memory usage exceeds thresholds. Chec
 ssh worker-1
 sudo cat /var/lib/kubelet/config.yaml | grep -A 10 eviction
 
-# Default thresholds:
+# Default hard thresholds on Linux nodes:
 # evictionHard:
 #   memory.available: 100Mi
-# evictionSoft:
-#   memory.available: 200Mi
-# evictionSoftGracePeriod:
-#   memory.available: 1m30s
+#   nodefs.available: 10%
+#   nodefs.inodesFree: 5%
+#   imagefs.available: 15%
+#   imagefs.inodesFree: 5%
+#
+# evictionSoft and evictionSoftGracePeriod default to nil.
 ```
 
 Monitor actual memory usage on nodes.
@@ -86,19 +88,20 @@ Monitor actual memory usage on nodes.
 kubectl top nodes
 
 # Output:
-# NAME       CPU    MEMORY
-# worker-1   45%    7800Mi/8000Mi   # 97% memory usage
-# worker-2   30%    4200Mi/8000Mi   # 52% memory usage
+# NAME       CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
+# worker-1   450m         45%    7800Mi         97%
+# worker-2   300m         30%    4200Mi         52%
 
 # Check which pods are consuming memory
 kubectl top pods --all-namespaces --sort-by=memory
 
-# Identify pods exceeding requests
+# List configured memory requests and limits by container
 kubectl get pods -A -o json | \
-  jq -r '.items[] | select(.status.phase == "Running") |
-  "\(.metadata.namespace)/\(.metadata.name):
-   Request: \(.spec.containers[0].resources.requests.memory // "none")
-   Limit: \(.spec.containers[0].resources.limits.memory // "none")"'
+  jq -r '.items[] | select(.status.phase == "Running") as $pod |
+  $pod.spec.containers[] |
+  "\($pod.metadata.namespace)/\($pod.metadata.name) container=\(.name):
+   Request: \(.resources.requests.memory // "none")
+   Limit: \(.resources.limits.memory // "none")"'
 ```
 
 ## Fixing Memory Pressure Issues
@@ -125,16 +128,16 @@ spec:
         image: myapp:v1.0
         resources:
           requests:
-            memory: "256Mi"  # Guaranteed memory
+            memory: "256Mi"  # Used for scheduling and eviction decisions
             cpu: "100m"
           limits:
-            memory: "512Mi"  # Maximum memory before OOMKill
+            memory: "512Mi"  # Memory limit enforced reactively by OOM kills
             cpu: "500m"
 ```
 
-The difference between requests and limits defines burstable behavior. Pods using memory above requests but below limits are first candidates for eviction during memory pressure.
+Pods that have at least one request or limit but do not meet the Guaranteed QoS requirements are Burstable. Pods using memory above requests are candidates for eviction during memory pressure, with pod priority also affecting the final order.
 
-Configure resource quotas at the namespace level to prevent total resource consumption from exceeding node capacity.
+Configure resource quotas at the namespace level to cap aggregate requests, limits, and pod counts for that namespace.
 
 ```yaml
 apiVersion: v1
@@ -153,7 +156,7 @@ spec:
 
 ## Diagnosing Disk Pressure Evictions
 
-Disk pressure triggers when filesystem usage or inode consumption exceeds thresholds. Common causes include container logs, emptyDir volumes, and image layer accumulation.
+Disk pressure triggers when available filesystem space or free inodes fall below thresholds. Common causes include container logs, emptyDir volumes, and image layer accumulation.
 
 ```bash
 # Check kubelet disk pressure thresholds
@@ -165,6 +168,7 @@ sudo cat /var/lib/kubelet/config.yaml | grep -A 10 eviction
 #   nodefs.available: 10%
 #   nodefs.inodesFree: 5%
 #   imagefs.available: 15%
+#   imagefs.inodesFree: 5%
 ```
 
 Monitor disk usage on nodes.
@@ -200,21 +204,17 @@ sudo du -sh /var/lib/kubelet/pods/*/volumes/kubernetes.io~empty-dir/*
 
 ## Fixing Disk Pressure Issues
 
-Configure log rotation to prevent log accumulation.
+Configure kubelet container log rotation to prevent log accumulation.
 
 ```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: log-managed-app
-spec:
-  containers:
-  - name: app
-    image: myapp:v1.0
-    # Send logs to stdout/stderr for container runtime management
-    command: ["/app/start.sh"]
-    # Logs are automatically rotated by container runtime
+# /var/lib/kubelet/config.yaml
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+containerLogMaxSize: "10Mi"
+containerLogMaxFiles: 5
 ```
+
+Applications should write logs to stdout and stderr so the kubelet can manage the container log files through the CRI logging path.
 
 Set ephemeral storage limits on pods to prevent unbounded disk usage.
 
@@ -243,61 +243,46 @@ spec:
       sizeLimit: "1Gi"  # Limit emptyDir size
 ```
 
-Implement a DaemonSet to clean up disk space regularly.
+Implement a DaemonSet only for cleanup paths you explicitly own. Do not delete kubelet-managed pod volumes or container runtime state directly.
 
 ```yaml
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: disk-cleanup
+  name: app-cache-cleanup
   namespace: kube-system
 spec:
   selector:
     matchLabels:
-      app: disk-cleanup
+      app: app-cache-cleanup
   template:
     metadata:
       labels:
-        app: disk-cleanup
+        app: app-cache-cleanup
     spec:
       containers:
       - name: cleanup
-        image: alpine:latest
+        image: busybox:1.36
         command:
         - /bin/sh
         - -c
         - |
           while true; do
-            # Clean old container images
-            crictl rmi --prune
-
-            # Remove unused volumes (be careful with this)
-            find /var/lib/kubelet/pods/*/volumes -type d -empty -delete
-
-            # Clean old logs
-            find /var/log/pods -type f -name "*.log" -mtime +7 -delete
+            # Clean only files owned by your workload or node bootstrap process
+            find /var/cache/myapp -type f -mtime +7 -delete
 
             sleep 3600  # Run hourly
           done
         securityContext:
           privileged: true
         volumeMounts:
-        - name: containerd
-          mountPath: /var/lib/containerd
-        - name: kubelet
-          mountPath: /var/lib/kubelet
-        - name: logs
-          mountPath: /var/log/pods
+        - name: app-cache
+          mountPath: /var/cache/myapp
       volumes:
-      - name: containerd
+      - name: app-cache
         hostPath:
-          path: /var/lib/containerd
-      - name: kubelet
-        hostPath:
-          path: /var/lib/kubelet
-      - name: logs
-        hostPath:
-          path: /var/log/pods
+          path: /var/cache/myapp
+          type: DirectoryOrCreate
 ```
 
 ## Tuning Eviction Thresholds
@@ -313,16 +298,19 @@ evictionHard:
   nodefs.available: "10%"
   nodefs.inodesFree: "5%"
   imagefs.available: "15%"
+  imagefs.inodesFree: "5%"
 evictionSoft:
   memory.available: "500Mi"
   nodefs.available: "15%"
   nodefs.inodesFree: "10%"
   imagefs.available: "20%"
+  imagefs.inodesFree: "10%"
 evictionSoftGracePeriod:
   memory.available: "2m"
   nodefs.available: "2m"
   nodefs.inodesFree: "2m"
   imagefs.available: "2m"
+  imagefs.inodesFree: "2m"
 evictionMaxPodGracePeriod: 90
 ```
 
@@ -360,7 +348,14 @@ kind: Deployment
 metadata:
   name: critical-api
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: critical-api
   template:
+    metadata:
+      labels:
+        app: critical-api
     spec:
       priorityClassName: high-priority
       containers:
@@ -375,12 +370,13 @@ spec:
   template:
     spec:
       priorityClassName: low-priority
+      restartPolicy: OnFailure
       containers:
       - name: processor
         image: batch:v1.0
 ```
 
-During eviction, low-priority pods are terminated before high-priority ones, protecting critical services.
+For pods in the same eviction category, lower-priority pods are terminated before higher-priority ones, protecting critical services.
 
 ## Monitoring and Alerting for Resource Pressure
 
