@@ -8,13 +8,13 @@ Description: Learn how runc works as the low-level OCI container runtime that ac
 
 ---
 
-runc is the tool that actually creates and runs containers. While Docker and containerd handle the high-level orchestration, image management, and networking, runc is the component that interacts with the Linux kernel to set up namespaces, configure cgroups, and launch the container process. It is the reference implementation of the OCI Runtime Specification, and nearly every container you have ever run was started by runc.
+runc is the tool that actually creates and runs many Linux containers. While Docker and containerd handle the high-level orchestration, image management, and networking, runc is the component that interacts with the Linux kernel to set up namespaces, configure cgroups, and launch the container process. It is the reference implementation of the OCI Runtime Specification, and it is the default OCI runtime used by Docker Engine on Linux.
 
 ## What runc Actually Does
 
 When containerd needs to start a container, it prepares an OCI bundle (a root filesystem plus a config.json) and hands it to runc. runc then performs these steps:
 
-1. Creates Linux namespaces for isolation (pid, network, mount, ipc, uts, user)
+1. Creates Linux namespaces for isolation (pid, network, mount, ipc, uts, cgroup, and user if configured)
 2. Sets up cgroups for resource limits (CPU, memory, I/O)
 3. Mounts the root filesystem and special filesystems (proc, sysfs, etc.)
 4. Applies security settings (seccomp, AppArmor, SELinux)
@@ -38,13 +38,13 @@ graph TD
 runc can be used independently of Docker. This is useful for learning and debugging.
 
 ```bash
-# Check if runc is installed (it comes with Docker)
+# Check if runc is installed
 
 runc --version
 
 # If you need to install it separately
 # Download the latest release from GitHub
-curl -LO https://github.com/opencontainers/runc/releases/download/v1.1.12/runc.amd64
+curl -LO https://github.com/opencontainers/runc/releases/download/v1.4.2/runc.amd64
 
 # Install it
 sudo install -m 755 runc.amd64 /usr/local/sbin/runc
@@ -92,8 +92,22 @@ You are now inside a container created directly by runc, without Docker or conta
 runc supports a multi-step lifecycle that allows for more control than a simple "run" command.
 
 ```bash
-# Step 1: Create the container without starting the user process
+# For this lifecycle example, make the default spec non-interactive
 cd /tmp/runc-demo
+python3 - <<'PY'
+import json
+
+with open("config.json") as f:
+    config = json.load(f)
+
+config["process"]["terminal"] = False
+config["process"]["args"] = ["sleep", "60"]
+
+with open("config.json", "w") as f:
+    json.dump(config, f, indent=2)
+PY
+
+# Step 1: Create the container without starting the user process
 sudo runc create demo
 
 # Step 2: Check the container state (should be "created")
@@ -133,7 +147,7 @@ sudo ls -la /proc/$CONTAINER_PID/ns/pid
 
 ### Network Namespace
 
-Each container gets its own network stack with its own interfaces, routing table, and iptables rules.
+By default, each container gets its own network stack with its own interfaces, routing table, and firewall rules.
 
 ```bash
 # List network namespaces on the system
@@ -193,7 +207,7 @@ This configuration limits the container to 256 MB of memory, 50% CPU time (50000
 # Verify cgroup limits for a Docker container
 CONTAINER_ID=$(docker inspect --format '{{.Id}}' my-container)
 
-# On cgroup v2
+# On cgroup v2 with Docker's systemd cgroup driver
 cat /sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope/memory.max
 cat /sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope/cpu.max
 cat /sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope/pids.max
@@ -264,21 +278,21 @@ runc is the reference implementation, but several alternatives exist:
 | runc | Go | Reference implementation, most widely used |
 | crun | C | Faster startup, lower memory usage |
 | youki | Rust | Memory safety, modern language |
-| gVisor (runsc) | Go | Kernel-level sandboxing |
+| gVisor (runsc) | Go | User-space kernel sandboxing |
 | Kata Containers | Go | Hardware virtualization for each container |
 
 You can configure Docker or containerd to use an alternative runtime:
 
 ```bash
-# Run a container with gVisor for extra isolation
-docker run --runtime=runsc nginx:latest
+# Run a container with gVisor for extra isolation, using its containerd shim
+docker run --runtime=io.containerd.runsc.v1 nginx:latest
 
 # Or configure the default runtime in /etc/docker/daemon.json
 # {
-#   "default-runtime": "runc",
+#   "default-runtime": "runsc",
 #   "runtimes": {
 #     "runsc": {
-#       "path": "/usr/local/bin/runsc"
+#       "runtimeType": "io.containerd.runsc.v1"
 #     },
 #     "crun": {
 #       "path": "/usr/local/bin/crun"
@@ -314,4 +328,4 @@ sudo rm -rf /tmp/runc-demo
 
 ## Summary
 
-runc is the workhorse at the bottom of the container stack. It translates the OCI runtime specification into actual Linux kernel operations: namespaces for isolation, cgroups for resource limits, seccomp and capabilities for security. Every container you run through Docker, Kubernetes, or Podman ultimately goes through an OCI-compliant runtime like runc. Understanding runc gives you the ability to debug container issues at the lowest level and make informed decisions about security and performance.
+runc is the workhorse at the bottom of many Linux container stacks. It translates the OCI runtime specification into actual Linux kernel operations: namespaces for isolation, cgroups for resource limits, seccomp and capabilities for security. Linux containers you run through Docker, Kubernetes, or Podman ultimately go through an OCI-compliant runtime like runc, crun, youki, runsc, or Kata Containers. Understanding runc gives you the ability to debug container issues at the lowest level and make informed decisions about security and performance.
