@@ -26,7 +26,7 @@ Each recommendation is classified as either "Scored" (counts toward your securit
 
 ## Running Docker Bench
 
-Docker Bench runs as a container itself. It needs access to the Docker socket and various host paths to inspect the configuration:
+Docker Bench can run from the host or as a container. It needs access to the Docker socket and various host paths to inspect the configuration:
 
 ```bash
 # Clone the repository
@@ -41,7 +41,9 @@ sudo sh docker-bench-security.sh
 Or run it directly as a container:
 
 ```bash
-# Run Docker Bench for Security as a container
+# Build and run Docker Bench for Security as a container
+docker build --no-cache -t docker-bench-security .
+
 docker run --rm --net host --pid host --userns host --cap-add audit_control \
   -e DOCKER_CONTENT_TRUST=$DOCKER_CONTENT_TRUST \
   -v /etc:/etc:ro \
@@ -50,7 +52,8 @@ docker run --rm --net host --pid host --userns host --cap-add audit_control \
   -v /usr/lib/systemd:/usr/lib/systemd:ro \
   -v /var/lib:/var/lib:ro \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  docker/docker-bench-security
+  --label docker_bench_security \
+  docker-bench-security
 ```
 
 The output is color-coded: green for PASS, red for WARN, blue for INFO, and yellow for NOTE.
@@ -66,7 +69,7 @@ A typical run produces output like this:
 [WARN] 1.1.3 - Ensure auditing is configured for the Docker daemon
 ...
 [INFO] 2 - Docker daemon configuration
-[WARN] 2.1 - Run the Docker daemon as a non-root user
+[INFO] 2.1 - Run the Docker daemon as a non-root user, if possible
 [WARN] 2.2 - Ensure network traffic is restricted between containers
 [PASS] 2.3 - Ensure the logging level is set to 'info'
 ...
@@ -78,7 +81,7 @@ Each check has a number corresponding to the CIS benchmark section. Let's walk t
 
 ### 1.1.1 - Separate Partition for Containers
 
-Docker stores images, containers, and volumes in `/var/lib/docker`. On a shared partition, a runaway container can fill the disk and crash the host.
+Docker's daemon data root is commonly `/var/lib/docker`, and Docker Bench checks the active Docker root directory. On fresh Docker Engine 29 and later installations using the containerd image store, image contents and container snapshots are stored under `/var/lib/containerd` while other daemon data remains under `/var/lib/docker`. On a shared partition, a runaway container can fill the disk and crash the host.
 
 ```bash
 # Check current Docker data directory
@@ -137,7 +140,7 @@ Docker needs iptables access for port mapping and inter-container communication:
 }
 ```
 
-### 2.8 - Enable User Namespace Support
+### 2.9 - Enable User Namespace Support
 
 User namespace remapping prevents container root from being host root:
 
@@ -147,7 +150,7 @@ User namespace remapping prevents container root from being host root:
 }
 ```
 
-### 2.11 - Enable Live Restore
+### 2.15 - Enable Live Restore
 
 Live restore keeps containers running during daemon upgrades:
 
@@ -200,26 +203,32 @@ These checks verify file permissions on Docker-related configuration files:
 
 ```bash
 # Fix file permissions for Docker configuration files
-# 3.1 - docker.service file permissions
+# 3.1 and 3.2 - docker.service file ownership and permissions
+sudo chown root:root /usr/lib/systemd/system/docker.service
 sudo chmod 644 /usr/lib/systemd/system/docker.service
 
-# 3.2 - docker.socket file permissions
+# 3.3 and 3.4 - docker.socket file ownership and permissions
+sudo chown root:root /usr/lib/systemd/system/docker.socket
 sudo chmod 644 /usr/lib/systemd/system/docker.socket
 
-# 3.3 - /etc/docker directory permissions
+# 3.5 and 3.6 - /etc/docker directory ownership and permissions
+sudo chown root:root /etc/docker
 sudo chmod 755 /etc/docker
 
-# 3.4 - Registry certificate permissions
+# 3.7 and 3.8 - Registry certificate ownership and permissions
 if [ -d /etc/docker/certs.d ]; then
-    sudo chmod 444 /etc/docker/certs.d/*/*
+    sudo find /etc/docker/certs.d -type f -exec chown root:root {} \;
+    sudo find /etc/docker/certs.d -type f -exec chmod 444 {} \;
 fi
 
-# 3.15 - daemon.json file permissions
+# 3.17 and 3.18 - daemon.json file ownership and permissions
+sudo chown root:root /etc/docker/daemon.json
 sudo chmod 644 /etc/docker/daemon.json
 
-# 3.17 - Docker socket file permissions
-sudo chmod 660 /var/run/docker.sock
+# 3.15 and 3.16 - Docker socket file ownership and permissions
+sudo chown root:docker /var/run/docker.sock
 sudo chgrp docker /var/run/docker.sock
+sudo chmod 660 /var/run/docker.sock
 ```
 
 ## Section 4: Container Images and Build Files
@@ -245,31 +254,31 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 Runtime checks verify how containers are launched. Fix these by changing your `docker run` commands:
 
 ```bash
-# 5.1 - Do not disable AppArmor profile
+# 5.2 - Do not disable AppArmor profile
 docker run -d --security-opt apparmor=docker-default myapp:latest
 
-# 5.2 - Ensure SELinux security options are set (if SELinux is enabled)
+# 5.3 - Ensure SELinux security options are set (if SELinux is enabled)
 docker run -d --security-opt label=level:s0:c100,c200 myapp:latest
 
-# 5.4 - Do not run containers in privileged mode
+# 5.5 - Do not run containers in privileged mode
 # BAD:
 docker run -d --privileged myapp:latest
 # GOOD:
 docker run -d --cap-drop ALL --cap-add NET_BIND_SERVICE myapp:latest
 
-# 5.10 - Set memory limits
+# 5.11 - Set memory limits
 docker run -d --memory=512m --memory-swap=1g myapp:latest
 
-# 5.11 - Set CPU limits
+# 5.12 - Set CPU limits
 docker run -d --cpus=1.0 myapp:latest
 
-# 5.12 - Mount root filesystem as read-only
+# 5.13 - Mount root filesystem as read-only
 docker run -d --read-only --tmpfs /tmp myapp:latest
 
-# 5.25 - Restrict container from acquiring additional privileges
+# 5.26 - Restrict container from acquiring additional privileges
 docker run -d --security-opt no-new-privileges myapp:latest
 
-# 5.28 - Ensure PIDs cgroup limit is set
+# 5.29 - Ensure PIDs cgroup limit is set
 docker run -d --pids-limit 100 myapp:latest
 ```
 
@@ -321,12 +330,16 @@ jobs:
     steps:
       - name: Run Docker Bench Security
         run: |
+          git clone https://github.com/docker/docker-bench-security.git
+          cd docker-bench-security
+          docker build --no-cache -t docker-bench-security .
           docker run --rm --net host --pid host --userns host \
             --cap-add audit_control \
             -v /etc:/etc:ro \
             -v /var/lib:/var/lib:ro \
             -v /var/run/docker.sock:/var/run/docker.sock:ro \
-            docker/docker-bench-security 2>&1 | tee bench-results.txt
+            --label docker_bench_security \
+            docker-bench-security 2>&1 | tee ../bench-results.txt
 
       - name: Check for Critical Warnings
         run: |
@@ -346,16 +359,17 @@ jobs:
 
 ## Tracking Progress Over Time
 
-Save benchmark results in a structured format and track improvements:
+Save benchmark results in a simple summary format and track improvements:
 
 ```bash
-# Run Docker Bench and save results as JSON
+# Run Docker Bench and save a short result summary
 docker run --rm --net host --pid host --userns host \
   --cap-add audit_control \
   -v /etc:/etc:ro \
   -v /var/lib:/var/lib:ro \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  docker/docker-bench-security -l /dev/stdout 2>/dev/null | \
+  --label docker_bench_security \
+  docker-bench-security -l /dev/stdout 2>/dev/null | \
   grep -E '(PASS|WARN|INFO|NOTE)' | \
   awk '{print $1, $2, $3}' > bench-summary.txt
 
