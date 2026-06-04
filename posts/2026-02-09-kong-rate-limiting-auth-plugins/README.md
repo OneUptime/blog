@@ -34,9 +34,7 @@ helm repo update
 # Install Kong Ingress Controller
 helm install kong kong/ingress \
   --namespace kong \
-  --create-namespace \
-  --set ingressController.installCRDs=true \
-  --set proxy.type=LoadBalancer
+  --create-namespace
 ```
 
 Verify the installation:
@@ -115,13 +113,15 @@ config:
   minute: 100        # 100 requests per minute
   hour: 1000         # 1000 requests per hour
   policy: redis      # Use Redis for distributed rate limiting
-  redis_host: redis-service.default.svc.cluster.local
-  redis_port: 6379
+  redis:
+    host: redis-service.default.svc.cluster.local
+    port: 6379
+  sync_rate: 0       # Synchronous counter updates for strongest accuracy
   limit_by: ip       # Rate limit by client IP
 plugin: rate-limiting
 ```
 
-The Redis-backed policy is essential for multi-replica deployments to ensure accurate rate limiting across all Kong instances.
+The Redis-backed policy is essential for multi-replica deployments when you need shared counters across Kong instances. For the strongest accuracy, use synchronous counter updates with `sync_rate: 0`.
 
 ## Configuring Authentication Plugins
 
@@ -192,7 +192,6 @@ metadata:
     konghq.com/credential: key-auth
 stringData:
   key: my-super-secret-api-key-12345
-  kongCredType: key-auth
 ```
 
 Associate the credential with the consumer:
@@ -246,12 +245,15 @@ stringData:
   algorithm: HS256
   key: my-jwt-issuer
   secret: super-secret-key-change-in-production
-  kongCredType: jwt
 ```
+
+Attach this Secret to a KongConsumer's `credentials` list, just like the API key credential above.
 
 ### OAuth2 Authentication
 
 For OAuth2 flows, Kong provides a comprehensive plugin:
+
+The OAuth2 plugin requires a traditional Kong Gateway deployment and is not compatible with Konnect or the default DB-less KIC deployment. For DB-less or Konnect deployments, use the OpenID Connect plugin or JWT validation with an external authorization server instead.
 
 ```yaml
 # oauth2-plugin.yaml
@@ -310,8 +312,10 @@ config:
   minute: 1000
   hour: 10000
   policy: redis
-  redis_host: redis-service.default.svc.cluster.local
-  redis_port: 6379
+  redis:
+    host: redis-service.default.svc.cluster.local
+    port: 6379
+  sync_rate: 0
   limit_by: consumer
 plugin: rate-limiting
 ---
@@ -321,6 +325,7 @@ metadata:
   name: premium-user
   namespace: default
   annotations:
+    kubernetes.io/ingress.class: kong
     konghq.com/plugins: premium-rate-limit
 username: premium-user
 ```
@@ -359,19 +364,19 @@ Monitor plugin execution using Kong's admin API:
 
 ```bash
 # Port-forward to Kong admin service
-kubectl port-forward -n kong svc/kong-admin 8001:8001
+kubectl port-forward -n kong svc/kong-gateway-admin 8444:8444
 
 # Check plugin status
-curl http://localhost:8001/plugins
+curl -k https://localhost:8444/plugins
 
 # View consumer information
-curl http://localhost:8001/consumers
+curl -k https://localhost:8444/consumers
 ```
 
 Check Kong Ingress Controller logs:
 
 ```bash
-kubectl logs -n kong -l app.kubernetes.io/name=ingress-kong --follow
+kubectl logs -n kong deploy/kong-controller --follow
 ```
 
 Common issues and solutions:
