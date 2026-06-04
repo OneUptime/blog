@@ -8,7 +8,7 @@ Description: Learn how to create and manage Alertmanager silences to suppress al
 
 ---
 
-Planned maintenance generates expected alerts that create noise and alert fatigue. Alertmanager silences temporarily suppress matching alerts during maintenance windows. Unlike disabling alerts entirely, silences preserve alert history and automatically expire. This guide covers creating, managing, and automating silences for planned maintenance, deployments, and operational tasks.
+Planned maintenance generates expected alerts that create noise and alert fatigue. Alertmanager silences temporarily suppress matching alerts during maintenance windows. Unlike disabling alerts entirely, silences preserve alert visibility and automatically expire. This guide covers creating, managing, and automating silences for planned maintenance, deployments, and operational tasks.
 
 ## Understanding Alertmanager Silences
 
@@ -396,8 +396,8 @@ alertmanager_silences
 alertmanager_silences{state="active"}
 alertmanager_silences{state="expired"}
 
-# Silence creations
-rate(alertmanager_silences_created_total[1h])
+# Silence API queries
+rate(alertmanager_silences_queries_total[1h])
 ```
 
 Create alerts for silence issues:
@@ -422,14 +422,14 @@ spec:
             summary: "Too many active silences"
             description: "{{ $value }} active silences may indicate problems."
 
-        - alert: LongRunningSilence
+        - alert: SilenceMaintenanceErrors
           expr: |
-            time() - alertmanager_silence_start_time_seconds > 86400
+            rate(alertmanager_silences_maintenance_errors_total[15m]) > 0
           labels:
             severity: warning
           annotations:
-            summary: "Silence has been active for >24h"
-            description: "Silence {{ $labels.silence_id }} may need review."
+            summary: "Alertmanager silence maintenance errors"
+            description: "Alertmanager is reporting silence maintenance errors."
 ```
 
 ## Silence Documentation
