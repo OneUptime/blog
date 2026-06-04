@@ -24,8 +24,8 @@ Docker Build Cloud provides native arm64 and amd64 builders, persistent build ca
 ## Prerequisites
 
 You need:
-- A Docker account with a Docker Build Cloud subscription (available on Team and Business plans)
-- Docker Desktop 4.26+ or Docker Engine with buildx 0.12+
+- A Docker account with access to Docker Build Cloud (included with paid Docker subscriptions, with trial access available for personal accounts)
+- Docker Desktop 4.26+ or Docker Engine with a version of Buildx that supports the `cloud` driver
 - An internet connection for communicating with the cloud builders
 
 ## Setting Up Docker Build Cloud
@@ -40,14 +40,14 @@ docker login
 
 ### Step 2: Create a Cloud Builder
 
-Create a cloud builder instance through the Docker Dashboard or CLI:
+Create a cloud builder in the Docker Build Cloud Dashboard, then add the cloud builder endpoint to your local environment:
 
 ```bash
-# Create a new cloud builder
+# Add the cloud builder endpoint
 docker buildx create --driver cloud myorg/mybuilder
 ```
 
-Replace `myorg` with your Docker organization name. The builder name `mybuilder` can be anything you choose.
+Replace `myorg` with your Docker organization name or Docker Hub username. Replace `mybuilder` with the builder name you chose in the Docker Build Cloud Dashboard. This creates a local builder instance named `cloud-myorg-mybuilder`.
 
 ### Step 3: Verify the Builder
 
@@ -56,7 +56,7 @@ Replace `myorg` with your Docker organization name. The builder name `mybuilder`
 docker buildx ls
 
 # Inspect the cloud builder details
-docker buildx inspect myorg/mybuilder
+docker buildx inspect cloud-myorg-mybuilder
 ```
 
 The output shows the available platforms (typically `linux/amd64` and `linux/arm64`) and the builder status.
@@ -65,7 +65,7 @@ The output shows the available platforms (typically `linux/amd64` and `linux/arm
 
 ```bash
 # Make the cloud builder the default for all builds
-docker buildx use myorg/mybuilder
+docker buildx use cloud-myorg-mybuilder --global
 ```
 
 Now every `docker buildx build` and `docker buildx bake` command uses the cloud builder automatically.
@@ -93,7 +93,7 @@ Docker Compose can use the cloud builder when building images:
 
 ```bash
 # Set the builder for compose builds
-export BUILDX_BUILDER=myorg/mybuilder
+export BUILDX_BUILDER=cloud-myorg-mybuilder
 
 # Build images defined in docker-compose.yml
 docker compose build
@@ -166,20 +166,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Set up Docker Build Cloud
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
-          version: "lab:latest"
           driver: cloud
           endpoint: "myorg/mybuilder"
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -198,7 +197,7 @@ build:
   services:
     - docker:dind
   before_script:
-    - docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
+    - echo "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin
     - docker buildx create --driver cloud myorg/mybuilder --use
   script:
     - docker buildx build
@@ -218,7 +217,7 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                sh 'docker login -u $DOCKER_USER -p $DOCKER_PASS'
+                sh 'echo "$DOCKER_PASS" | docker login --username "$DOCKER_USER" --password-stdin'
                 sh 'docker buildx create --driver cloud myorg/mybuilder --use'
                 sh '''
                     docker buildx build \
@@ -261,27 +260,27 @@ time docker buildx build -t myapp:test .
 
 ```bash
 # List recent builds on the cloud builder
-docker buildx history myorg/mybuilder
+docker buildx history ls --builder cloud-myorg-mybuilder
 ```
 
 ### Remove the Cloud Builder
 
 ```bash
 # Remove the cloud builder when no longer needed
-docker buildx rm myorg/mybuilder
+docker buildx rm cloud-myorg-mybuilder
 ```
 
 ### Switch Between Local and Cloud Builders
 
 ```bash
 # Use cloud builder
-docker buildx use myorg/mybuilder
+docker buildx use cloud-myorg-mybuilder
 
 # Switch back to local builder
 docker buildx use default
 
 # Use a specific builder for a single build without switching
-docker buildx build --builder myorg/mybuilder -t myapp:latest .
+docker buildx build --builder cloud-myorg-mybuilder -t myapp:latest .
 ```
 
 ## Cost and Performance Considerations
@@ -322,7 +321,7 @@ Set up a fallback so builds work even without cloud access:
 #!/bin/bash
 # build.sh - try cloud builder, fall back to local
 
-CLOUD_BUILDER="myorg/mybuilder"
+CLOUD_BUILDER="cloud-myorg-mybuilder"
 
 # Check if cloud builder is available
 if docker buildx inspect "$CLOUD_BUILDER" > /dev/null 2>&1; then
