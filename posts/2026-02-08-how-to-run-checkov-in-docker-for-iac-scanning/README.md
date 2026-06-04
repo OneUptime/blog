@@ -98,7 +98,7 @@ FROM ubuntu:latest
 # Running as root (Checkov flags this)
 RUN apt-get update && apt-get install -y python3
 
-# Hardcoded secret (Checkov detects this pattern)
+# Hardcoded secret (detected when the secrets framework is included)
 ENV DATABASE_PASSWORD=supersecret123
 
 # Adding all files including potentially sensitive ones
@@ -210,12 +210,12 @@ docker run --rm \
   -d /tf \
   --check CKV_AWS_145,CKV_AWS_144
 
-# Filter by severity
+# Run checks at HIGH severity and above
 docker run --rm \
   -v "$(pwd):/tf" \
   bridgecrew/checkov \
   -d /tf \
-  --check-severity HIGH
+  --check HIGH
 ```
 
 You can also skip checks inline using comments in your IaC files.
@@ -235,7 +235,7 @@ Write custom Checkov policies in Python or YAML to enforce organization-specific
 ```yaml
 # custom-policies/naming-convention.yaml - Custom naming policy
 metadata:
-  id: "CUSTOM_001"
+  id: "CKV2_CUSTOM_1"
   name: "Ensure S3 bucket names follow naming convention"
   category: "CONVENTION"
   severity: "MEDIUM"
@@ -260,18 +260,17 @@ docker run --rm \
 
 ## Compliance Framework Scanning
 
-Checkov maps checks to compliance frameworks. Scan against specific standards.
+Checkov maps many checks to compliance frameworks. Run the relevant framework and review the reported check IDs and guides for compliance mappings.
 
 ```bash
-# Scan against CIS AWS Foundations Benchmark
+# Run Terraform checks that include compliance mappings
 docker run --rm \
   -v "$(pwd):/tf" \
   bridgecrew/checkov \
   -d /tf \
-  --check-type terraform \
   --framework terraform
 
-# List all available checks for a specific compliance framework
+# List all available Terraform checks
 docker run --rm \
   bridgecrew/checkov \
   --list \
@@ -292,6 +291,10 @@ on:
       - "terraform/**"
       - "kubernetes/**"
       - "Dockerfile*"
+
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
   checkov:
@@ -321,7 +324,7 @@ jobs:
             -v "${{ github.workspace }}:/tf" \
             bridgecrew/checkov \
             -d /tf \
-            --check-severity CRITICAL
+            --hard-fail-on CRITICAL
 ```
 
 ## Baseline File for Existing Projects
@@ -348,10 +351,10 @@ This approach lets you adopt Checkov incrementally. The team fixes existing issu
 
 ## Scanning Helm Charts
 
-Checkov can scan Helm charts by rendering them first.
+Checkov can scan Helm charts by rendering them with the Helm binary first.
 
 ```bash
-# Render the Helm chart and pipe the output to Checkov
+# Scan a Helm chart directory
 docker run --rm \
   -v "$(pwd):/tf" \
   bridgecrew/checkov \
