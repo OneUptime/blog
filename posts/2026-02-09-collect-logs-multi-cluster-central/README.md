@@ -16,9 +16,9 @@ In this guide, you'll learn practical approaches to centralize logs from multipl
 
 A typical multi-cluster log collection architecture has three layers. The collection layer runs in each Kubernetes cluster and gathers logs from containers, nodes, and system components. The aggregation layer receives logs from all clusters and stores them in a centralized backend. The query layer provides interfaces for searching and analyzing logs.
 
-The key decision is choosing between push-based and pull-based architectures. Push-based systems like Fluentd or Fluent Bit send logs directly from each cluster to the central backend. Pull-based systems like Promtail query for logs periodically. Most Kubernetes deployments use push-based architectures for lower latency and better reliability.
+The key decision is choosing between node-local collection and API-based collection. Node-local agents like Fluentd, Fluent Bit, and Grafana Alloy tail log files on each node and send logs directly to the central backend. API-based collectors can read Pod logs through the Kubernetes API, which avoids privileged node filesystem access but increases API server and kubelet traffic. Most production Kubernetes deployments use node-local collection for lower overhead and better scalability.
 
-## Approach 1: Loki with Promtail
+## Approach 1: Loki with Grafana Alloy
 
 Grafana Loki provides a cost-effective log aggregation system inspired by Prometheus. It indexes only metadata rather than full text, significantly reducing storage costs compared to Elasticsearch.
 
@@ -26,31 +26,33 @@ Deploy Loki as a central log backend:
 
 ```yaml
 # loki-values.yaml
+deploymentMode: Distributed
 
 loki:
   auth_enabled: true  # Enable multi-tenancy
+  tenants:
+  - name: cluster-1
+    password: "change-me"  # Change per cluster and store securely
   schemaConfig:
     configs:
-    - from: 2024-01-01
-      store: boltdb-shipper
+    - from: 2024-04-01
+      store: tsdb
       object_store: s3
-      schema: v11
+      schema: v13
       index:
         prefix: loki_index_
         period: 24h
 
-  storageConfig:
-    boltdb_shipper:
-      active_index_directory: /loki/index
-      cache_location: /loki/cache
-      shared_store: s3
-    aws:
-      s3: s3://us-east-1/loki-chunks
-      bucketnames: loki-chunks
+  storage:
+    type: s3
+    bucketNames:
+      chunks: loki-chunks
+      ruler: loki-ruler
+      admin: loki-admin
+    s3:
       region: us-east-1
 
   limits_config:
-    enforce_metric_name: false
     reject_old_samples: true
     reject_old_samples_max_age: 168h
     ingestion_rate_mb: 50
@@ -58,12 +60,11 @@ loki:
 
 # Scale for multi-cluster
 ingester:
+  enabled: true
   replicas: 6
-  persistence:
-    enabled: true
-    size: 50Gi
 
 querier:
+  enabled: true
   replicas: 4
   resources:
     requests:
@@ -71,11 +72,14 @@ querier:
       memory: 2Gi
 
 distributor:
+  enabled: true
   replicas: 3
 
 gateway:
   enabled: true
   replicas: 2
+  basicAuth:
+    enabled: true
   ingress:
     enabled: true
     hosts:
@@ -86,73 +90,105 @@ Deploy Loki:
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
-helm install loki grafana/loki-distributed \
+helm repo update
+helm install loki grafana/loki \
   -n logging \
   --create-namespace \
   -f loki-values.yaml
 ```
 
-Deploy Promtail in each Kubernetes cluster to collect and forward logs:
+Deploy Grafana Alloy in each Kubernetes cluster to collect and forward logs:
 
 ```yaml
-# promtail-values.yaml
-config:
-  clients:
-  - url: https://loki.example.com/loki/api/v1/push
-    tenant_id: cluster-1  # Change per cluster
-    backoff_config:
-      min_period: 500ms
-      max_period: 5m
-      max_retries: 10
+# alloy-values.yaml
+alloy:
+  configMap:
+    content: |
+      discovery.kubernetes "pod" {
+        role = "pod"
+        selectors {
+          role = "pod"
+          field = "spec.nodeName=" + coalesce(sys.env("HOSTNAME"), constants.hostname)
+        }
+      }
 
-  snippets:
-    extraClientConfigs: |
-      basic_auth:
-        username: cluster-1
-        password: ${LOKI_PASSWORD}
+      discovery.relabel "pod_logs" {
+        targets = discovery.kubernetes.pod.targets
 
-    extraScrapeConfigs: |
-      # Add cluster label to all logs
-      - job_name: kubernetes-pods
-        pipeline_stages:
-        - docker: {}
-        - labeldrop:
-          - filename
-          - stream
-        - static_labels:
-            cluster: cluster-1
-            region: us-east-1
-        kubernetes_sd_configs:
-        - role: pod
-        relabel_configs:
-        - source_labels: [__meta_kubernetes_pod_node_name]
-          target_label: node_name
-        - source_labels: [__meta_kubernetes_namespace]
-          target_label: namespace
-        - source_labels: [__meta_kubernetes_pod_name]
-          target_label: pod
-        - source_labels: [__meta_kubernetes_pod_container_name]
-          target_label: container
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
 
-resources:
-  requests:
-    cpu: 200m
-    memory: 256Mi
-  limits:
-    memory: 512Mi
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
 
-tolerations:
-- operator: Exists
-  effect: NoSchedule
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "node_name"
+        }
+      }
+
+      loki.source.kubernetes "pod_logs" {
+        targets    = discovery.relabel.pod_logs.output
+        forward_to = [loki.process.pod_logs.receiver]
+      }
+
+      loki.process "pod_logs" {
+        stage.static_labels {
+          values = {
+            cluster = "cluster-1",
+            region  = "us-east-1",
+          }
+        }
+
+        forward_to = [loki.write.central.receiver]
+      }
+
+      loki.write "central" {
+        endpoint {
+          url       = "https://loki.example.com/loki/api/v1/push"
+          tenant_id = "cluster-1"
+          basic_auth {
+            username = "cluster-1"
+            password = sys.env("LOKI_PASSWORD")
+          }
+        }
+      }
+
+  extraEnv:
+  - name: LOKI_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: loki-credentials
+        key: password
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+controller:
+  tolerations:
+  - operator: Exists
+    effect: NoSchedule
 ```
 
-Deploy Promtail in each cluster:
+Deploy Alloy in each cluster:
 
 ```bash
-helm install promtail grafana/promtail \
+helm install alloy grafana/alloy \
   -n logging \
   --create-namespace \
-  -f promtail-values.yaml
+  -f alloy-values.yaml
 ```
 
 Query logs from all clusters in Grafana:
@@ -165,10 +201,10 @@ Query logs from all clusters in Grafana:
 {namespace="production", app="myapp"}
 
 # Compare error rates between clusters
-sum(rate({} |= "error" [5m])) by (cluster)
+sum by (cluster) (rate({cluster=~".+"} |= "error" [5m]))
 
 # Find logs containing specific text across all clusters
-{cluster=~".*"} |= "database connection failed"
+{cluster=~".+"} |= "database connection failed"
 ```
 
 ## Approach 2: Elasticsearch with Fluent Bit
@@ -247,11 +283,14 @@ data:
         Daemon        Off
         Log_Level     info
         Parsers_File  parsers.conf
+        HTTP_Server   On
+        HTTP_Listen   0.0.0.0
+        HTTP_Port     2020
 
     [INPUT]
         Name              tail
         Path              /var/log/containers/*.log
-        Parser            docker
+        Parser            cri
         Tag               kube.*
         Refresh_Interval  5
         Mem_Buf_Limit     50MB
@@ -288,8 +327,9 @@ data:
 
   parsers.conf: |
     [PARSER]
-        Name        docker
-        Format      json
+        Name        cri
+        Format      regex
+        Regex       ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<flags>[^ ]*) (?<log>.*)$
         Time_Key    time
         Time_Format %Y-%m-%dT%H:%M:%S.%L%z
 
@@ -315,9 +355,6 @@ spec:
         volumeMounts:
         - name: varlog
           mountPath: /var/log
-        - name: varlibdockercontainers
-          mountPath: /var/lib/docker/containers
-          readOnly: true
         - name: config
           mountPath: /fluent-bit/etc/
         env:
@@ -336,9 +373,6 @@ spec:
       - name: varlog
         hostPath:
           path: /var/log
-      - name: varlibdockercontainers
-        hostPath:
-          path: /var/lib/docker/containers
       - name: config
         configMap:
           name: fluent-bit-config
@@ -429,17 +463,25 @@ Ensure applications emit structured logs that are easier to query:
 
 ```go
 // Good: Structured logging in Go
-import "go.uber.org/zap"
+package main
 
-logger, _ := zap.NewProduction()
-defer logger.Sync()
+import (
+    "time"
 
-logger.Info("user login",
-    zap.String("user_id", "12345"),
-    zap.String("ip_address", "192.168.1.1"),
-    zap.String("cluster", "cluster-1"),
-    zap.Duration("response_time", duration),
+    "go.uber.org/zap"
 )
+
+func main() {
+    logger, _ := zap.NewProduction()
+    defer logger.Sync()
+
+    logger.Info("user login",
+        zap.String("user_id", "12345"),
+        zap.String("ip_address", "192.168.1.1"),
+        zap.String("cluster", "cluster-1"),
+        zap.Duration("response_time", 230*time.Millisecond),
+    )
+}
 ```
 
 ```python
@@ -493,7 +535,9 @@ limits_config:
       "cold": {
         "min_age": "30d",
         "actions": {
-          "freeze": {}
+          "searchable_snapshot": {
+            "snapshot_repository": "logs-snapshots"
+          }
         }
       },
       "delete": {
@@ -521,20 +565,20 @@ spec:
   groups:
   - name: logging
     rules:
-    - alert: HighLogIngestionLatency
-      expr: histogram_quantile(0.99, rate(fluentbit_output_proc_records_bucket[5m])) > 30
+    - alert: FluentBitOutputErrors
+      expr: rate(fluentbit_output_errors_total[5m]) > 0
       for: 10m
       annotations:
-        summary: "High log ingestion latency"
+        summary: "Fluent Bit output errors detected"
 
     - alert: LogsNotBeingCollected
       expr: rate(fluentbit_input_records_total[5m]) == 0
       for: 5m
       annotations:
-        summary: "Logs not being collected from {{ $labels.pod }}"
+        summary: "No Fluent Bit input records received"
 
     - alert: BackpressureDetected
-      expr: fluentbit_output_retries_total > 1000
+      expr: rate(fluentbit_output_retries_total[5m]) > 0
       for: 5m
       annotations:
         summary: "Log shipping backpressure detected"
