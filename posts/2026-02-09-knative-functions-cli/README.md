@@ -12,7 +12,7 @@ Knative Functions provides a developer-friendly CLI that simplifies creating and
 
 ## Understanding Knative Functions
 
-Knative Functions extends Knative Serving with a function-as-a-service experience. Instead of writing Dockerfile and YAML manifests, you write handler code and let func handle deployment. The CLI supports Node.js, Python, Go, Java, TypeScript, Rust, and more.
+Knative Functions extends Knative Serving with a function-as-a-service experience. Instead of writing Dockerfile and YAML manifests, you write handler code and let func handle deployment. The CLI includes templates for Node.js, Python, Go, Quarkus, Spring Boot, TypeScript, Rust, and more through language packs.
 
 Functions can be triggered by HTTP requests or CloudEvents. The CLI generates boilerplate code and manages the build-deploy lifecycle. This reduces the barrier to entry for developers new to Kubernetes while remaining powerful enough for production workloads.
 
@@ -25,7 +25,7 @@ Install func on your system:
 ```bash
 # macOS
 
-brew tap knative-sandbox/kn-plugins
+brew tap knative-extensions/kn-plugins
 brew install func
 
 # Linux
@@ -40,10 +40,10 @@ func version
 Configure func for your environment:
 
 ```bash
-# Set default registry
-func config registries add --default-registry docker.io/your-username
+# Provide a registry when running, building, or deploying
+func deploy --registry docker.io/your-username
 
-# Or set per-project
+# Or set it through the environment
 export FUNC_REGISTRY=docker.io/your-username
 ```
 
@@ -63,7 +63,8 @@ ls -la
 # func.yaml - function configuration
 # index.js - handler code
 # package.json - dependencies
-# .funcignore - build exclusions
+# README.md - generated function documentation
+# test/ - generated tests
 ```
 
 The generated handler:
@@ -72,31 +73,31 @@ The generated handler:
 // index.js
 /**
  * Your HTTP handling function, invoked with each request. This is an example
- * function that logs the incoming request and echoes its input to the caller.
+ * function that returns "OK" for all requests.
  *
  * It can be invoked with 'func invoke'
  * It can be tested with 'npm test'
  *
- * @param {Context} context a context object.
- * @param {object} context.body the request body if any
- * @param {object} context.query the query string deserialalized as an object, if any
- * @param {object} context.log logging object with methods for 'info', 'warn', 'error', etc.
- * @param {object} context.headers the HTTP request headers
- * @param {string} context.method the HTTP request method
- * @param {string} context.httpVersion the HTTP protocol version
- * See: https://github.com/knative/func/blob/main/docs/reference/nodejs-context.md
+ * @param {Context} context - A context object.
+ * @param {object} context.query - The query string deserialized as an object, if any.
+ * @param {object} context.log - Logging object with methods for 'info', 'warn', 'error', etc.
+ * @param {object} context.headers - The HTTP request headers.
+ * @param {string} context.method - The HTTP request method.
+ * @param {string} context.httpVersion - The HTTP protocol version.
+ * @param {object} body - The request body if any.
+ * @returns {object} HTTP response object.
+ *
+ * See: https://github.com/knative/func/blob/main/docs/function-templates/nodejs.md#the-context-object
  */
-const handle = async (context) => {
-  context.log.info('Function invoked');
-  context.log.info(`Method: ${context.method}`);
-
-  // Your business logic
-  const name = context.body?.name || context.query?.name || 'World';
+const handle = async (context, body) => {
+  context.log.info("query", context.query);
+  context.log.info("body", body);
 
   return {
-    message: `Hello, ${name}!`,
-    timestamp: new Date().toISOString(),
-    headers: context.headers
+    body: "OK",
+    headers: {
+      'content-type': 'text/plain'
+    }
   };
 };
 
@@ -107,14 +108,15 @@ Customize the handler:
 
 ```javascript
 // index.js - Enhanced version
-const handle = async (context) => {
-  const { body, query, headers, log, method } = context;
+const handle = async (context, body) => {
+  const { query, headers, log, method } = context;
+  const requestBody = body ?? context.body;
 
   log.info(`Processing ${method} request`);
 
   try {
     // Extract input
-    const name = body?.name || query?.name || 'World';
+    const name = requestBody?.name || query?.name || 'World';
     const format = query?.format || 'json';
 
     // Process request
@@ -179,7 +181,7 @@ Add dependencies:
 ```bash
 # Add npm packages
 cd hello-node
-npm install axios uuid
+npm install axios
 
 # Update handler to use dependencies
 ```
@@ -187,12 +189,13 @@ npm install axios uuid
 ```javascript
 // index.js with dependencies
 const axios = require('axios');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
-const handle = async (context) => {
-  const { body, log } = context;
+const handle = async (context, body) => {
+  const { log } = context;
+  const requestBody = body ?? context.body;
 
-  const requestId = uuidv4();
+  const requestId = randomUUID();
   log.info(`Processing request ${requestId}`);
 
   try {
@@ -201,6 +204,7 @@ const handle = async (context) => {
 
     return {
       requestId,
+      input: requestBody,
       data: response.data,
       processedAt: new Date().toISOString()
     };
@@ -244,6 +248,7 @@ name: hello-node
 runtime: node
 registry: docker.io/your-username
 image: docker.io/your-username/hello-node:latest
+created: 2026-06-04T00:00:00Z
 
 # Knative Service configuration
 build:
@@ -251,16 +256,15 @@ build:
     - name: BP_NODE_VERSION
       value: "18.*"
 
-deploy:
-  # Resource limits
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
+run:
+  # Environment variables
+  envs:
+    - name: LOG_LEVEL
+      value: info
+    - name: API_KEY
+      value: '{{ secret:api-credentials:key }}'
 
+deploy:
   # Scaling configuration
   options:
     scale:
@@ -269,21 +273,21 @@ deploy:
       metric: concurrency
       target: 10
       utilization: 70
-
-  # Environment variables
-  envs:
-    - name: LOG_LEVEL
-      value: info
-    - name: API_KEY
-      value: secret:api-credentials:key
+    # Resource limits
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
 
   # Labels and annotations
   labels:
     - key: app
       value: hello-node
   annotations:
-    - key: autoscaling.knative.dev/class
-      value: kpa.autoscaling.knative.dev
+    autoscaling.knative.dev/class: kpa.autoscaling.knative.dev
 ```
 
 ## Creating CloudEvents Functions
@@ -292,44 +296,59 @@ Create a function that handles CloudEvents:
 
 ```bash
 # Create CloudEvents function
-func create event-processor --language python
+func create event-processor --language python --template cloudevents
 cd event-processor
 ```
 
 Implement the handler:
 
 ```python
-# func.py
-from parliament import Context
-from cloudevents.http import CloudEvent
-import json
+# function/func.py
+import logging
+from cloudevents.core.v1.event import CloudEvent
 
-def main(context: Context):
-    """
-    Handle incoming CloudEvent
-    """
-    # Access CloudEvent attributes
-    event_type = context.cloud_event.get_type()
-    event_source = context.cloud_event.get_source()
-    event_id = context.cloud_event.get_id()
 
-    context.log.info(f"Processing event {event_id}")
-    context.log.info(f"Type: {event_type}, Source: {event_source}")
+def new():
+    return Function()
 
-    # Get event data
-    data = context.cloud_event.get_data()
 
-    # Process based on event type
-    if event_type == "order.created":
-        result = process_order(data)
-    elif event_type == "user.registered":
-        result = process_user(data)
-    else:
-        context.log.warn(f"Unknown event type: {event_type}")
-        result = {"status": "ignored"}
+class Function:
+    async def handle(self, scope, receive, send):
+        """
+        Handle incoming CloudEvent
+        """
+        event = scope["event"]
 
-    # Return response (will be wrapped in CloudEvent)
-    return result
+        # Access CloudEvent attributes
+        event_type = event.get_type()
+        event_source = event.get_source()
+        event_id = event.get_id()
+
+        logging.info("Processing event %s", event_id)
+        logging.info("Type: %s, Source: %s", event_type, event_source)
+
+        # Get event data
+        data = event.data or {}
+
+        # Process based on event type
+        if event_type == "order.created":
+            result = process_order(data)
+        elif event_type == "user.registered":
+            result = process_user(data)
+        else:
+            logging.warning("Unknown event type: %s", event_type)
+            result = {"status": "ignored"}
+
+        # Return response as a CloudEvent
+        response = CloudEvent(
+            attributes={
+                "type": "function.response",
+                "source": "event-processor",
+                "id": f"response-{event_id or 'unknown'}",
+            },
+            data=result,
+        )
+        await send(response)
 
 def process_order(order_data):
     """Process order creation event"""
@@ -361,8 +380,8 @@ Configure for CloudEvents:
 specVersion: 0.35.0
 name: event-processor
 runtime: python
-invocation:
-  format: cloudevent
+created: 2026-06-04T00:00:00Z
+invoke: cloudevent
 
 deploy:
   options:
@@ -386,44 +405,60 @@ Create a function with database connectivity:
 
 ```python
 # func.py with database
-from parliament import Context
-import psycopg2
 from psycopg2 import pool
 import os
+import json
+import logging
 
-# Create connection pool (reused across invocations)
-db_pool = psycopg2.pool.SimpleConnectionPool(
-    1, 20,
-    host=os.getenv('DB_HOST'),
-    database=os.getenv('DB_NAME'),
-    user=os.getenv('DB_USER'),
-    password=os.getenv('DB_PASSWORD')
-)
 
-def main(context: Context):
-    """Query database and return results"""
+def new():
+    return Function()
 
-    conn = db_pool.getconn()
-    try:
-        with conn.cursor() as cur:
-            query = context.body.get('query', 'SELECT NOW()')
-            cur.execute(query)
-            results = cur.fetchall()
 
-            return {
-                "status": "success",
-                "results": results
+class Function:
+    def start(self, cfg):
+        # Create connection pool (reused across invocations)
+        self.db_pool = pool.SimpleConnectionPool(
+            1, 20,
+            host=cfg.get('DB_HOST'),
+            database=cfg.get('DB_NAME'),
+            user=cfg.get('DB_USER'),
+            password=cfg.get('DB_PASSWORD')
+        )
+
+    async def handle(self, scope, receive, send):
+        """Query database and return results"""
+
+        conn = self.db_pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute('SELECT NOW()')
+                results = cur.fetchall()
+
+                response = {
+                    "status": "success",
+                    "results": results
+                }
+
+        except Exception as e:
+            logging.error("Database error: %s", str(e))
+            response = {
+                "status": "error",
+                "message": str(e)
             }
 
-    except Exception as e:
-        context.log.error(f"Database error: {str(e)}")
-        return {
-            "status": "error",
-            "message": str(e)
-        }
+        finally:
+            self.db_pool.putconn(conn)
 
-    finally:
-        db_pool.putconn(conn)
+        await send({
+            'type': 'http.response.start',
+            'status': 200,
+            'headers': [[b'content-type', b'application/json']],
+        })
+        await send({
+            'type': 'http.response.body',
+            'body': json.dumps(response, default=str).encode(),
+        })
 ```
 
 ## Managing Function Lifecycle
@@ -437,8 +472,8 @@ func list
 # Get function details
 func describe hello-node
 
-# View function logs
-func logs --follow
+# Stream function logs
+func logs
 
 # Update function
 # Modify code, then
