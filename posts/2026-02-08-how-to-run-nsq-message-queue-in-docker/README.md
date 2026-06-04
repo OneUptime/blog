@@ -102,7 +102,7 @@ services:
       # HTTP port for the nsqd API
       - "4151:4151"
     volumes:
-      # Persist message data to disk
+      # Persist disk-backed message data
       - nsqd_data:/data
     depends_on:
       - nsqlookupd
@@ -128,7 +128,7 @@ Start the complete stack:
 # Launch all NSQ components
 docker compose up -d
 
-# Verify all services are healthy
+# Verify all services are running
 docker compose ps
 ```
 
@@ -367,7 +367,7 @@ volumes:
 
 ```bash
 # View topic and channel statistics
-curl -s http://localhost:4151/stats | python3 -m json.tool
+curl -s "http://localhost:4151/stats?format=json" | python3 -m json.tool
 
 # Check which nsqd nodes are registered with nsqlookupd
 curl -s http://localhost:4161/nodes | python3 -m json.tool
