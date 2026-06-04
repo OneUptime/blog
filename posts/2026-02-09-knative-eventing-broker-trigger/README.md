@@ -18,23 +18,38 @@ Events follow the CloudEvents specification, providing a standard format for eve
 
 ## Installing Knative Eventing
 
-Install Knative Eventing components:
+Install Knative components:
 
 ```bash
-# Install Eventing CRDs
+# Install Serving CRDs and core components for Knative Services used by the examples
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.21.2/serving-crds.yaml
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.21.2/serving-core.yaml
 
-kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.12.0/eventing-crds.yaml
+# Install and configure Kourier as the Knative Serving networking layer
+kubectl apply -f https://github.com/knative-extensions/net-kourier/releases/download/knative-v1.21.0/kourier.yaml
+kubectl patch configmap/config-network \
+  --namespace knative-serving \
+  --type merge \
+  --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
+
+# Install Eventing CRDs
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.21.3/eventing-crds.yaml
 
 # Install Eventing core
-kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.12.0/eventing-core.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.21.3/eventing-core.yaml
 
 # Install In-Memory Channel (for development)
-kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.12.0/in-memory-channel.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.21.3/in-memory-channel.yaml
 
 # Install MT (Multi-Tenant) Channel Broker
-kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.12.0/mt-channel-broker.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.21.3/mt-channel-broker.yaml
+
+# Install Apache Kafka Source support if you use the KafkaSource example later
+kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.21.4/eventing-kafka-controller.yaml
+kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.21.4/eventing-kafka-source.yaml
 
 # Verify installation
+kubectl get pods -n knative-serving
 kubectl get pods -n knative-eventing
 ```
 
@@ -51,12 +66,6 @@ metadata:
   namespace: default
   annotations:
     eventing.knative.dev/broker.class: MTChannelBasedBroker
-spec:
-  config:
-    apiVersion: v1
-    kind: ConfigMap
-    name: config-br-default-channel
-    namespace: knative-eventing
 ```
 
 Apply the broker:
@@ -167,8 +176,8 @@ metadata:
   namespace: default
 spec:
   broker: default
-  filter:
-    attributes:
+  filters:
+  - exact:
       type: com.example.order.created
   subscriber:
     ref:
@@ -176,16 +185,16 @@ spec:
       kind: Service
       name: order-processor
 ---
-# Send notifications for high-value orders
+# Send notifications for order events from the orders API
 apiVersion: eventing.knative.dev/v1
 kind: Trigger
 metadata:
-  name: high-value-order-notification
+  name: order-api-notification
   namespace: default
 spec:
   broker: default
-  filter:
-    attributes:
+  filters:
+  - exact:
       type: com.example.order.created
       source: /orders/api
   subscriber:
@@ -264,23 +273,23 @@ Use filters to route events based on attributes:
 
 ```yaml
 # filtered-triggers.yaml
-# Process only high-value orders
+# Process order-created events; inspect amount in the subscriber
 apiVersion: eventing.knative.dev/v1
 kind: Trigger
 metadata:
-  name: high-value-orders
+  name: order-created-events
   namespace: default
 spec:
   broker: default
-  filter:
-    attributes:
+  filters:
+  - exact:
       type: com.example.order.created
-    # Note: Advanced filtering requires custom implementation
+  # Note: Trigger filters match CloudEvents attributes and extensions, not the data body
   subscriber:
     ref:
       apiVersion: serving.knative.dev/v1
       kind: Service
-      name: high-value-processor
+      name: order-created-processor
 ---
 # Route by source
 apiVersion: eventing.knative.dev/v1
@@ -290,8 +299,8 @@ metadata:
   namespace: default
 spec:
   broker: default
-  filter:
-    attributes:
+  filters:
+  - exact:
       source: /orders/api
   subscriber:
     ref:
@@ -306,7 +315,7 @@ Integrate external systems as event sources:
 
 ```yaml
 # kafka-source.yaml
-apiVersion: sources.knative.dev/v1beta1
+apiVersion: sources.knative.dev/v1
 kind: KafkaSource
 metadata:
   name: kafka-orders
@@ -350,6 +359,7 @@ from flask import Flask, request, jsonify
 import json
 import os
 import requests
+import uuid
 
 app = Flask(__name__)
 BROKER_URL = os.getenv("BROKER_URL")
@@ -443,8 +453,8 @@ metadata:
   namespace: default
 spec:
   broker: default
-  filter:
-    attributes:
+  filters:
+  - exact:
       type: com.example.order.created
   subscriber:
     ref:
@@ -509,7 +519,10 @@ data:
     events_processed = Counter('events_processed_total', 'Total events processed', ['type', 'status'])
     processing_duration = Histogram('event_processing_duration_seconds', 'Event processing duration', ['type'])
 
-    # Your event processing logic here
+    def handle_event(event):
+        # Add your event handling logic here
+        return True
+
     def process_event(event):
         event_type = event.get('type')
         events_received.labels(type=event_type).inc()
@@ -517,7 +530,7 @@ data:
         start_time = time.time()
         try:
             # Process event
-            result = handle_event(event)
+            handle_event(event)
             events_processed.labels(type=event_type, status='success').inc()
         except Exception as e:
             events_processed.labels(type=event_type, status='error').inc()
@@ -528,6 +541,8 @@ data:
 
     if __name__ == '__main__':
         start_http_server(8000)
+        while True:
+            time.sleep(60)
 ```
 
 ## Best Practices
