@@ -79,11 +79,15 @@ curl -v http://my-service.my-namespace.svc.cluster.local:8080
 # Test with service short name (if in same namespace)
 curl -v http://my-service:8080
 
-# Check service endpoints
-nslookup my-service.my-namespace.svc.cluster.local | grep Address
+# Check the service ClusterIP
+kubectl get service my-service -n my-namespace -o wide
+
+# Check service backend endpoints
+kubectl get endpointslices -n my-namespace \
+  -l kubernetes.io/service-name=my-service -o wide
 ```
 
-Compare the resolved IPs with the service's actual endpoints.
+For a normal ClusterIP Service, compare the resolved IP with the Service's ClusterIP. Then compare the Service's EndpointSlices with the pods that should receive traffic.
 
 ## Debugging DNS Issues
 
@@ -113,13 +117,13 @@ The /etc/resolv.conf file shows which DNS servers the pod uses. Verify they poin
 
 ## Testing with Target Process Namespace
 
-Share the process namespace with the target container to see its exact network environment:
+Target the application container's process namespace so process-aware tools can see the application process:
 
 ```bash
 # Debug with shared process namespace
 kubectl debug -it pod/my-app --image=nicolaka/netshoot --target=my-app-container
 
-# This shares the network namespace exactly as the app sees it
+# Containers in the same pod already share the network namespace
 
 # Check what ports the app is listening on
 netstat -tlnp
@@ -131,15 +135,16 @@ ss -tanp
 ip route show
 ```
 
-The `--target` flag is crucial when debugging distroless or minimal images without networking tools.
+The `--target` flag is useful when process-aware tools need to inspect the target container's processes. It depends on container runtime support.
 
 ## Capturing Network Traffic
 
 Use tcpdump to capture and analyze traffic:
 
 ```bash
-# Attach debug container
-kubectl debug -it pod/my-app --image=nicolaka/netshoot --target=my-app-container
+# Attach debug container with a known container name
+kubectl debug -it pod/my-app --image=nicolaka/netshoot \
+  --target=my-app-container --container=netdebug
 
 # Capture all traffic
 tcpdump -i any -w /tmp/capture.pcap
@@ -152,7 +157,7 @@ tcpdump -i any -A -s 0 'tcp port 80'
 
 # Save and exit (Ctrl+C), then copy file
 # From another terminal:
-kubectl cp my-app:/tmp/capture.pcap ./capture.pcap
+kubectl cp -c netdebug my-app:/tmp/capture.pcap ./capture.pcap
 ```
 
 Analyze captured packets locally with Wireshark or tcpdump for detailed protocol inspection.
@@ -231,7 +236,7 @@ Debug node-level networking:
 
 ```bash
 # Create debug pod on specific node
-kubectl debug node/my-node -it --image=nicolaka/netshoot
+kubectl debug node/my-node -it --image=nicolaka/netshoot --profile=sysadmin
 
 # This creates a pod with access to node network namespace
 
@@ -241,7 +246,7 @@ ip link show
 # View node routing
 ip route show
 
-# Check iptables rules (if privileged)
+# Check iptables rules
 iptables -L -n -v
 
 # Test connectivity from node perspective
@@ -326,8 +331,9 @@ tcpdump -i any port 8080
 kubectl debug -it pod/source-pod --image=nicolaka/netshoot
 curl -v http://dest-pod-ip:8080
 
-# Terminal 3: Check service endpoints
-kubectl get endpoints my-service -o yaml --watch
+# Terminal 3: Check service backend endpoints
+kubectl get endpointslices -l kubernetes.io/service-name=my-service \
+  -o yaml --watch
 ```
 
 Simultaneous debugging from multiple angles quickly identifies issues.
@@ -374,7 +380,7 @@ For long-running pods, ephemeral containers accumulate. This is usually not a pr
 
 When using kubectl debug for network troubleshooting, follow these practices.
 
-First, use `--target` to share the process namespace when debugging minimal or distroless images. This ensures you see the exact network environment the application uses.
+First, use `--target` when process-aware tools need to inspect a specific application container. Containers in the same pod already share the pod network namespace.
 
 Second, choose appropriate debug images. nicolaka/netshoot is comprehensive but large. Use smaller images like busybox or alpine when size matters.
 
