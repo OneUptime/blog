@@ -21,20 +21,21 @@ Consolidation happens automatically in the background without manual interventio
 Install Karpenter on EKS:
 
 ```bash
-# Create Karpenter namespace
-
-kubectl create namespace karpenter
+# Set installation variables
+export KARPENTER_VERSION="1.12.1"
+export CLUSTER_NAME="my-cluster"
+export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 
 # Install using Helm
-helm repo add karpenter https://charts.karpenter.sh
-helm repo update
+helm registry logout public.ecr.aws
 
-helm install karpenter karpenter/karpenter \
+helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
+  --version "${KARPENTER_VERSION}" \
   --namespace karpenter \
-  --set settings.aws.clusterName=my-cluster \
-  --set settings.aws.clusterEndpoint=$(aws eks describe-cluster --name my-cluster --query "cluster.endpoint" --output text) \
-  --set settings.aws.defaultInstanceProfile=KarpenterNodeInstanceProfile \
-  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::123456789:role/KarpenterControllerRole
+  --create-namespace \
+  --set "settings.clusterName=${CLUSTER_NAME}" \
+  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="arn:aws:iam::${AWS_ACCOUNT_ID}:role/KarpenterControllerRole" \
+  --wait
 
 # Verify installation
 kubectl get pods -n karpenter
@@ -46,7 +47,7 @@ Create a NodePool with consolidation enabled:
 
 ```yaml
 # nodepool-consolidated.yaml
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: default
@@ -68,12 +69,14 @@ spec:
         - m6i.large
         - m6i.xlarge
       nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
         name: default
+      expireAfter: 720h      # Replace nodes after 30 days
 
   disruption:
-    consolidationPolicy: WhenUnderutilized
+    consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 30s  # Consolidate quickly
-    expireAfter: 720h      # Replace nodes after 30 days
 
   limits:
     cpu: "1000"
@@ -82,7 +85,7 @@ spec:
 
 Consolidation policies:
 
-- `WhenUnderutilized`: Consolidate when nodes are underutilized (default)
+- `WhenEmptyOrUnderutilized`: Consolidate when nodes are empty or underutilized (default)
 - `WhenEmpty`: Only consolidate completely empty nodes
 
 ## Optimizing Bin Packing Efficiency
@@ -136,20 +139,20 @@ Track consolidation events:
 
 ```bash
 # Watch for consolidation activity
-kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter -f | grep consolidation
+kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter -c controller -f | grep -i consolidation
 ```
 
 Create Prometheus queries:
 
 ```promql
-# Nodes removed by consolidation
-sum(increase(karpenter_nodes_terminated_total{reason="consolidation"}[24h]))
+# Consolidation decisions
+sum(increase(karpenter_voluntary_disruption_decisions_total{reason=~"Empty|Underutilized"}[24h]))
 
-# Consolidation savings estimate
-sum(karpenter_consolidation_actions_performed_total) * avg_node_cost_per_hour * 730
+# Nodes terminated by Karpenter
+sum(increase(karpenter_nodes_terminated_total[24h]))
 
-# Pods disrupted by consolidation
-sum(increase(karpenter_pods_disrupted_total{reason="consolidation"}[24h]))
+# Pods drained during node termination
+sum(increase(karpenter_pods_drained_total[24h]))
 ```
 
 ## Preventing Consolidation Disruptions
@@ -163,10 +166,15 @@ kind: Deployment
 metadata:
   name: critical-service
 spec:
+  selector:
+    matchLabels:
+      app: critical-service
   template:
     metadata:
+      labels:
+        app: critical-service
       annotations:
-        karpenter.sh/do-not-evict: "true"  # Prevent consolidation eviction
+        karpenter.sh/do-not-disrupt: "true"  # Prevent voluntary disruption
     spec:
       containers:
       - name: service
@@ -194,7 +202,7 @@ Configure multi-node consolidation:
 
 ```yaml
 # aggressive-consolidation.yaml
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: batch-processing
@@ -206,10 +214,12 @@ spec:
         operator: In
         values: ["spot"]
       nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
         name: default
 
   disruption:
-    consolidationPolicy: WhenUnderutilized
+    consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 10s    # Aggressive consolidation
     budgets:
     - nodes: "10%"           # Allow disrupting 10% of nodes at once
