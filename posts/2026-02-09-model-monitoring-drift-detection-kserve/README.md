@@ -35,7 +35,8 @@ helm repo update
 helm install monitoring prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
   --create-namespace \
-  --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
+  --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
+  --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false
 
 # Wait for pods to be ready
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=prometheus -n monitoring --timeout=5m
@@ -106,7 +107,10 @@ class MonitoredPredictor(kserve.Model):
 
         # For demo, create a simple model
         from sklearn.ensemble import RandomForestClassifier
+        X_train = np.random.rand(100, 10)
+        y_train = (X_train[:, 0] + X_train[:, 1] > 1).astype(int)
         self.model = RandomForestClassifier()
+        self.model.fit(X_train, y_train)
 
         self.feature_names = [f'feature_{i}' for i in range(10)]
         self.ready = True
@@ -121,6 +125,8 @@ class MonitoredPredictor(kserve.Model):
 
             # Convert to numpy array
             X = np.array(instances)
+            if X.ndim == 1:
+                X = X.reshape(1, -1)
 
             # Log feature statistics
             for i, feature_name in enumerate(self.feature_names):
@@ -146,7 +152,9 @@ class MonitoredPredictor(kserve.Model):
                 model_version=self.model_version
             ).inc(len(instances))
 
-            return {"predictions": predictions}
+            response = {"predictions": predictions}
+            self.log_prediction_data(request, response)
+            return response
 
         finally:
             # Record latency
@@ -185,14 +193,13 @@ FROM python:3.10-slim
 WORKDIR /app
 
 RUN pip install --no-cache-dir \
-    kserve==0.11.0 \
-    scikit-learn==1.3.0 \
-    prometheus-client==0.19.0 \
-    numpy==1.24.0
+    kserve==0.18.0 \
+    scikit-learn==1.8.0 \
+    prometheus-client==0.25.0
 
 COPY monitored_predictor.py /app/
 
-EXPOSE 8080 8000
+EXPOSE 8080
 
 CMD ["python", "monitored_predictor.py"]
 ```
@@ -207,9 +214,9 @@ metadata:
   name: monitored-model
   namespace: ml-serving
   annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "8000"
-    prometheus.io/path: "/metrics"
+    serving.kserve.io/enable-prometheus-scraping: "true"
+    prometheus.kserve.io/port: "8080"
+    prometheus.kserve.io/path: "/metrics"
 spec:
   predictor:
     containers:
@@ -218,9 +225,6 @@ spec:
       ports:
       - containerPort: 8080
         name: http
-        protocol: TCP
-      - containerPort: 8000
-        name: metrics
         protocol: TCP
       resources:
         requests:
@@ -231,23 +235,26 @@ spec:
           memory: "4Gi"
 ```
 
-Create a ServiceMonitor for Prometheus:
+Create a PodMonitor for Prometheus:
 
 ```yaml
-# servicemonitor.yaml
+# podmonitor.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: kserve-model-monitor
-  namespace: ml-serving
+  namespace: monitoring
   labels:
     release: monitoring
 spec:
+  namespaceSelector:
+    matchNames:
+    - ml-serving
   selector:
     matchLabels:
       serving.kserve.io/inferenceservice: monitored-model
-  endpoints:
-  - port: metrics
+  podMetricsEndpoints:
+  - port: http
     interval: 30s
     path: /metrics
 ```
@@ -260,13 +267,15 @@ Create a drift detection service using Evidently AI:
 # drift_detector.py
 import pandas as pd
 import numpy as np
-from evidently.report import Report
-from evidently.metric_preset import DataDriftPreset
-from evidently.metrics import DatasetDriftMetric, ColumnDriftMetric
+from evidently import DataDefinition, Dataset, Report
+from evidently.presets import DataDriftPreset
 import logging
-import time
+import os
 from prometheus_client import Gauge, start_http_server
-from datetime import datetime, timedelta
+from datetime import datetime
+from fastapi import FastAPI
+from pydantic import BaseModel
+import uvicorn
 
 logging.basicConfig(level=logging.INFO)
 
@@ -322,21 +331,30 @@ class DriftDetector:
         logging.info(f"Checking drift with {len(current_data)} samples")
 
         # Create Evidently report
-        report = Report(metrics=[
+        report = Report([
             DataDriftPreset(),
-        ])
+        ], include_tests=True)
 
-        report.run(
-            reference_data=self.reference_data,
-            current_data=current_data
+        data_definition = DataDefinition(numerical_columns=self.feature_names)
+        reference_dataset = Dataset.from_pandas(
+            self.reference_data,
+            data_definition=data_definition
+        )
+        current_dataset = Dataset.from_pandas(
+            current_data,
+            data_definition=data_definition
+        )
+        snapshot = report.run(
+            current_data=current_dataset,
+            reference_data=reference_dataset
         )
 
         # Extract metrics
-        results = report.as_dict()
+        results = snapshot.dict()
 
         # Overall drift score
-        drift_detected = results['metrics'][0]['result']['dataset_drift']
-        drift_score = results['metrics'][0]['result']['drift_share']
+        drift_score = self.find_metric_value(results, "share_of_drifted_columns", 0.0)
+        drift_detected = self.find_metric_value(results, "dataset_drift", drift_score >= 0.5)
 
         # Update Prometheus metrics
         DRIFT_SCORE.labels(model_name=self.model_name).set(drift_score)
@@ -360,8 +378,24 @@ class DriftDetector:
 
         # Alert if drift detected
         if drift_detected:
-            logging.warning(f"⚠️  DRIFT DETECTED for model {self.model_name}!")
+            logging.warning(f"DRIFT DETECTED for model {self.model_name}!")
             self.send_alert(drift_score, report_path)
+
+    def find_metric_value(self, data, key: str, default):
+        """Find a metric in Evidently's nested snapshot dictionary."""
+        if isinstance(data, dict):
+            if key in data:
+                return data[key]
+            for value in data.values():
+                found = self.find_metric_value(value, key, None)
+                if found is not None:
+                    return found
+        elif isinstance(data, list):
+            for item in data:
+                found = self.find_metric_value(item, key, None)
+                if found is not None:
+                    return found
+        return default
 
     def send_alert(self, drift_score: float, report_path: str):
         """Send alert when drift is detected"""
@@ -383,15 +417,23 @@ if __name__ == "__main__":
 
     # Initialize drift detector
     detector = DriftDetector(
-        model_name="monitored-model",
-        reference_data_path="/data/reference_data.parquet"
+        model_name=os.getenv("MODEL_NAME", "monitored-model"),
+        reference_data_path=os.getenv("REFERENCE_DATA_PATH", "/data/reference_data.parquet")
     )
 
-    logging.info("Drift detector started on port 8001")
+    app = FastAPI()
 
-    # Keep running
-    while True:
-        time.sleep(60)
+    class PredictionPayload(BaseModel):
+        features: list[float]
+
+    @app.post("/predictions")
+    def add_prediction(payload: PredictionPayload):
+        detector.add_prediction(np.array(payload.features))
+        return {"accepted": True, "window_size": len(detector.current_window)}
+
+    logging.info("Drift detector metrics started on port 8001 and API on port 8080")
+
+    uvicorn.run(app, host="0.0.0.0", port=8080)
 ```
 
 Deploy the drift detector:
@@ -403,6 +445,8 @@ kind: Deployment
 metadata:
   name: drift-detector
   namespace: ml-serving
+  labels:
+    app: drift-detector
 spec:
   replicas: 1
   selector:
@@ -421,6 +465,8 @@ spec:
       - name: detector
         image: your-registry/drift-detector:v1
         ports:
+        - containerPort: 8080
+          name: http
         - containerPort: 8001
           name: metrics
         env:
@@ -457,9 +503,31 @@ spec:
   selector:
     app: drift-detector
   ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
   - port: 8001
     targetPort: 8001
     name: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: drift-detector-monitor
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+    - ml-serving
+  selector:
+    matchLabels:
+      app: drift-detector
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
 ```
 
 ## Creating Grafana Dashboards
@@ -474,23 +542,23 @@ Create a comprehensive monitoring dashboard:
       {
         "title": "Predictions Per Minute",
         "targets": [{
-          "expr": "rate(model_predictions_total[1m])"
+          "expr": "sum by (model_name, model_version) (rate(model_predictions_total[1m])) * 60"
         }],
-        "type": "graph"
+        "type": "timeseries"
       },
       {
         "title": "P95 Prediction Latency",
         "targets": [{
-          "expr": "histogram_quantile(0.95, rate(model_prediction_latency_seconds_bucket[5m]))"
+          "expr": "histogram_quantile(0.95, sum by (le, model_name, model_version) (rate(model_prediction_latency_seconds_bucket[5m])))"
         }],
-        "type": "graph"
+        "type": "timeseries"
       },
       {
         "title": "Data Drift Score",
         "targets": [{
           "expr": "model_drift_score"
         }],
-        "type": "graph",
+        "type": "timeseries",
         "alert": {
           "conditions": [{
             "evaluator": {
@@ -512,7 +580,7 @@ Create a comprehensive monitoring dashboard:
         "targets": [{
           "expr": "model_feature_mean"
         }],
-        "type": "graph"
+        "type": "timeseries"
       },
       {
         "title": "Prediction Distribution",
@@ -552,6 +620,8 @@ kind: PrometheusRule
 metadata:
   name: model-monitoring-alerts
   namespace: monitoring
+  labels:
+    release: monitoring
 spec:
   groups:
   - name: model-drift
@@ -581,7 +651,7 @@ spec:
     interval: 1m
     rules:
     - alert: HighPredictionLatency
-      expr: histogram_quantile(0.95, rate(model_prediction_latency_seconds_bucket[5m])) > 1.0
+      expr: histogram_quantile(0.95, sum by (le, model_name, model_version) (rate(model_prediction_latency_seconds_bucket[5m]))) > 1.0
       for: 5m
       labels:
         severity: warning
@@ -686,7 +756,7 @@ class RetrainingController:
 
 if __name__ == "__main__":
     controller = RetrainingController(
-        prometheus_url="http://monitoring-prometheus.monitoring.svc:9090",
+        prometheus_url="http://monitoring-kube-prometheus-prometheus.monitoring.svc:9090",
         drift_threshold=0.6
     )
 
