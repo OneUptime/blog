@@ -17,7 +17,7 @@ Local volumes differ from network storage in key ways:
 1. **Node-local** - Data exists only on one node
 2. **No replication** - Application must handle data redundancy
 3. **Higher performance** - Direct access to local disks
-4. **Pod affinity required** - Pods must run where data lives
+4. **Node affinity required** - Pods must run where data lives
 
 Use cases for local volumes:
 
@@ -258,11 +258,19 @@ spec:
           value: "512M"
         - name: HEAP_NEWSIZE
           value: "100M"
-  # Do not use volumeClaimTemplates with local storage
-  # Instead, create PVCs manually for each replica
+  volumeClaimTemplates:
+  - metadata:
+      name: cassandra-data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: local-storage
+      resources:
+        requests:
+          storage: 500Gi
 ```
 
-Create PVs for each StatefulSet replica:
+Create one available PV for each StatefulSet replica:
 
 ```yaml
 # Node 1 - PV for cassandra-0
@@ -436,7 +444,7 @@ Run the benchmark:
 kubectl apply -f benchmark.yaml
 
 # Wait for completion
-kubectl wait --for=condition=Ready pod/disk-benchmark --timeout=300s
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/disk-benchmark --timeout=300s
 
 # View results
 kubectl logs disk-benchmark
@@ -506,7 +514,7 @@ kubectl get pv -o json | jq -r '.items[] |
 # Check disk usage on nodes
 kubectl get nodes -o json | jq -r '.items[] | .metadata.name' | while read node; do
   echo "Node: $node"
-  kubectl debug node/$node -it --image=alpine -- df -h
+  kubectl debug node/$node -it --image=alpine -- df -h /host/mnt/local-ssd-1
 done
 
 # Monitor PVC binding issues
