@@ -22,8 +22,8 @@ Check cluster status:
 export ETCDCTL_API=3
 export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
 export ETCDCTL_CACERT=/etc/kubernetes/pki/etcd/ca.crt
-export ETCDCTL_CERT=/etc/kubernetes/pki/etcd/server.crt
-export ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key
+export ETCDCTL_CERT=/etc/kubernetes/pki/apiserver-etcd-client.crt
+export ETCDCTL_KEY=/etc/kubernetes/pki/apiserver-etcd-client.key
 
 # Check cluster health
 etcdctl endpoint health --cluster
@@ -41,9 +41,9 @@ Expected output for a healthy 3-member cluster:
 +------------------+---------+--------+-------+---------+
 |    ENDPOINT      | HEALTHY | TOOK   | ERROR | VERSION |
 +------------------+---------+--------+-------+---------+
-| 10.0.1.10:2379   | true    | 12ms   |       | 3.5.9   |
-| 10.0.1.11:2379   | true    | 14ms   |       | 3.5.9   |
-| 10.0.1.12:2379   | true    | 13ms   |       | 3.5.9   |
+| https://10.0.1.10:2379 | true    | 12ms   |       | 3.5.9   |
+| https://10.0.1.11:2379 | true    | 14ms   |       | 3.5.9   |
+| https://10.0.1.12:2379 | true    | 13ms   |       | 3.5.9   |
 +------------------+---------+--------+-------+---------+
 ```
 
@@ -56,7 +56,7 @@ Determine which member failed and whether the cluster has quorum:
 etcdctl member list -w json | jq '.'
 
 # Check if any members are unresponsive
-for endpoint in 10.0.1.10:2379 10.0.1.11:2379 10.0.1.12:2379; do
+for endpoint in https://10.0.1.10:2379 https://10.0.1.11:2379 https://10.0.1.12:2379; do
   echo "Checking $endpoint"
   etcdctl --endpoints=$endpoint endpoint health || echo "$endpoint is down"
 done
@@ -70,7 +70,7 @@ journalctl -u etcd | grep -i "leader\|election\|lost"
 
 ## Removing an Unhealthy Member
 
-If a member is permanently failed and the cluster has quorum, remove it:
+If a member is permanently failed and the cluster has quorum, stop the failed process if it is still running, then remove it:
 
 ```bash
 # Get the member ID
@@ -88,7 +88,7 @@ etcdctl member remove 91bc3c398fb3c146
 etcdctl member list
 ```
 
-Stop etcd on the removed member to prevent it from rejoining:
+Keep etcd stopped on the removed member to prevent it from trying to rejoin:
 
 ```bash
 # On the failed node, stop etcd
@@ -184,20 +184,27 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 ```
 
-Copy certificates from existing etcd members:
+Install certificates for the new member. For kubeadm-managed certificates, generate server and peer certificates whose SANs include the new node's IP address or hostname; do not reuse another member's server or peer certificate unless it is valid for the new member:
 
 ```bash
-# On an existing etcd node, copy certificates to the new node
+# On an existing control plane node, copy the shared etcd CA and API server etcd client certificate
 sudo scp /etc/kubernetes/pki/etcd/ca.crt 10.0.1.20:/etc/kubernetes/pki/etcd/
-sudo scp /etc/kubernetes/pki/etcd/server.crt 10.0.1.20:/etc/kubernetes/pki/etcd/
-sudo scp /etc/kubernetes/pki/etcd/server.key 10.0.1.20:/etc/kubernetes/pki/etcd/
-sudo scp /etc/kubernetes/pki/etcd/peer.crt 10.0.1.20:/etc/kubernetes/pki/etcd/
-sudo scp /etc/kubernetes/pki/etcd/peer.key 10.0.1.20:/etc/kubernetes/pki/etcd/
+sudo scp /etc/kubernetes/pki/apiserver-etcd-client.crt 10.0.1.20:/etc/kubernetes/pki/
+sudo scp /etc/kubernetes/pki/apiserver-etcd-client.key 10.0.1.20:/etc/kubernetes/pki/
+
+# Copy newly generated member-specific certificates for 10.0.1.20
+sudo scp /tmp/10.0.1.20/etcd/server.crt 10.0.1.20:/etc/kubernetes/pki/etcd/
+sudo scp /tmp/10.0.1.20/etcd/server.key 10.0.1.20:/etc/kubernetes/pki/etcd/
+sudo scp /tmp/10.0.1.20/etcd/peer.crt 10.0.1.20:/etc/kubernetes/pki/etcd/
+sudo scp /tmp/10.0.1.20/etcd/peer.key 10.0.1.20:/etc/kubernetes/pki/etcd/
 
 # On the new node, set proper permissions
 sudo chown -R root:root /etc/kubernetes/pki/etcd
+sudo chown root:root /etc/kubernetes/pki/apiserver-etcd-client.*
 sudo chmod 600 /etc/kubernetes/pki/etcd/*.key
 sudo chmod 644 /etc/kubernetes/pki/etcd/*.crt
+sudo chmod 600 /etc/kubernetes/pki/apiserver-etcd-client.key
+sudo chmod 644 /etc/kubernetes/pki/apiserver-etcd-client.crt
 ```
 
 Start the new member:
@@ -239,7 +246,7 @@ Test cluster functionality:
 etcdctl put /test/key "test value"
 
 # Read from each member
-for endpoint in 10.0.1.10:2379 10.0.1.11:2379 10.0.1.20:2379; do
+for endpoint in https://10.0.1.10:2379 https://10.0.1.11:2379 https://10.0.1.20:2379; do
   echo "Reading from $endpoint"
   etcdctl --endpoints=$endpoint get /test/key
 done
@@ -250,36 +257,33 @@ etcdctl del /test/key
 
 ## Handling Split-Brain Scenarios
 
-If the cluster loses quorum due to network partitions, recover carefully:
+If the cluster loses quorum due to network partitions, recover carefully. If a majority can be restored by fixing the network or restarting existing members, do that instead of creating a new cluster:
 
 ```bash
-# Identify which members are in the majority partition
-etcdctl member list
+# Confirm the cluster cannot make progress
+etcdctl endpoint status --cluster -w table
 
-# If no partition has quorum, force a new cluster from a healthy member
-# WARNING: This can cause data loss. Only do this as a last resort.
+# If quorum is permanently lost, restore from a recent snapshot.
+# Stop API servers first so Kubernetes clients do not use stale watches during restore.
+sudo mv /etc/kubernetes/manifests/kube-apiserver.yaml \
+  /etc/kubernetes/manifests/kube-apiserver.yaml.disabled
 
-# On the member with the most recent data:
+# Stop etcd on all members
 sudo systemctl stop etcd
+sudo mv /var/lib/etcd /var/lib/etcd.failed-$(date +%Y%m%d-%H%M%S)
 
-# Add this flag to etcd configuration
-ETCD_FORCE_NEW_CLUSTER=true
+# Restore the same snapshot on each replacement member with updated membership.
+etcdutl snapshot restore snapshot.db \
+  --name etcd-0 \
+  --data-dir /var/lib/etcd \
+  --initial-cluster etcd-0=https://10.0.1.10:2380,etcd-1=https://10.0.1.11:2380,etcd-2=https://10.0.1.20:2380 \
+  --initial-cluster-token etcd-cluster-1 \
+  --initial-advertise-peer-urls https://10.0.1.10:2380
 
-# Start etcd
+# Start restored etcd members, then start API servers again
 sudo systemctl start etcd
-
-# Verify single-member cluster
-etcdctl member list
-
-# Remove the forced flag
-# Edit /etc/etcd/etcd.conf and remove ETCD_FORCE_NEW_CLUSTER
-
-# Restart etcd
-sudo systemctl restart etcd
-
-# Now add other members back one at a time
-etcdctl member add etcd-1 --peer-urls=https://10.0.1.11:2380
-# Configure and start etcd on the second node...
+sudo mv /etc/kubernetes/manifests/kube-apiserver.yaml.disabled \
+  /etc/kubernetes/manifests/kube-apiserver.yaml
 ```
 
 ## Replacing Multiple Members
@@ -289,7 +293,7 @@ When replacing multiple members, do it one at a time:
 ```bash
 # Never replace more members than the cluster can tolerate
 # For a 3-member cluster, replace only 1 at a time
-# For a 5-member cluster, replace only 2 at a time
+# For a 5-member cluster, replace only 1 at a time and wait for the replacement to become healthy
 
 # Step 1: Remove first failed member
 etcdctl member remove <member-1-id>
