@@ -8,20 +8,20 @@ Description: Learn how to deploy MySQL using the Percona XtraDB Cluster Operator
 
 ---
 
-Traditional MySQL replication uses a single-master architecture that creates bottlenecks for write-heavy workloads. Percona XtraDB Cluster provides multi-master MySQL replication based on Galera, where all nodes accept writes simultaneously with synchronous replication. The Percona Operator for Kubernetes automates XtraDB cluster deployment, making multi-master MySQL accessible for production use.
+Traditional MySQL replication uses a single-master architecture that creates bottlenecks for write-heavy workloads. Percona XtraDB Cluster provides multi-master MySQL replication based on Galera, where all nodes can accept writes with synchronous certification and replication. The Percona Operator for Kubernetes automates XtraDB cluster deployment, making multi-master MySQL accessible for production use.
 
 ## Understanding Percona XtraDB Cluster
 
 Percona XtraDB Cluster offers:
 
 - Synchronous replication across all nodes
-- Multi-master topology (all nodes accept writes)
+- Multi-master topology (all nodes can accept writes)
 - Automatic node provisioning and failure handling
 - Built-in load balancing with ProxySQL or HAProxy
 - Automated backups with Percona XtraBackup
-- Zero data loss on node failures
+- No loss of committed transactions on single-node failures
 
-This makes it ideal for applications requiring high write throughput and high availability.
+This makes it ideal for applications requiring high availability, near-zero replication lag, and the ability to fail over writes to another node. Multi-master writes do not provide linear write scaling; conflicting writes can still be certified and aborted.
 
 ## Installing the Percona Operator
 
@@ -30,11 +30,12 @@ Install the Percona XtraDB Cluster Operator:
 ```bash
 # Clone the Percona operator repository
 
-git clone -b v1.14.0 https://github.com/percona/percona-xtradb-cluster-operator
+git clone -b v1.19.1 https://github.com/percona/percona-xtradb-cluster-operator
 cd percona-xtradb-cluster-operator
 
 # Deploy operator
-kubectl apply -f deploy/bundle.yaml
+kubectl create namespace pxc-operator
+kubectl apply -f deploy/bundle.yaml -n pxc-operator
 
 # Verify installation
 kubectl get pods -n pxc-operator
@@ -60,7 +61,7 @@ metadata:
   name: mysql-cluster
   namespace: database
 spec:
-  crVersion: 1.14.0
+  crVersion: 1.19.1
   secretsName: mysql-cluster-secrets
   allowUnsafeConfigurations: false
   updateStrategy: SmartUpdate
@@ -70,7 +71,7 @@ spec:
 
   pxc:
     size: 3
-    image: percona/percona-xtradb-cluster:8.0.35-27.1
+    image: percona/percona-xtradb-cluster:8.4.7-7.1
     resources:
       requests:
         memory: 1Gi
@@ -92,7 +93,7 @@ spec:
   haproxy:
     enabled: true
     size: 3
-    image: percona/percona-xtradb-cluster-operator:1.14.0-haproxy
+    image: percona/haproxy:2.8.17
     resources:
       requests:
         memory: 256Mi
@@ -102,7 +103,7 @@ spec:
         cpu: 500m
 
   backup:
-    image: percona/percona-xtradb-cluster-operator:1.14.0-pxc8.0-backup
+    image: percona/percona-xtrabackup:8.4.0-5.1
     storages:
       s3:
         type: s3
@@ -120,15 +121,17 @@ spec:
 Create required secrets:
 
 ```bash
+# Create namespace for the cluster
+kubectl create namespace database
+
 # Create cluster secrets
 kubectl create secret generic mysql-cluster-secrets \
   --from-literal=root=rootPassword123 \
   --from-literal=xtrabackup=backupPassword123 \
   --from-literal=monitor=monitorPassword123 \
-  --from-literal=clustercheck=clustercheckPassword123 \
   --from-literal=proxyadmin=proxyadminPassword123 \
-  --from-literal=pmmserver=pmmserverPassword123 \
   --from-literal=operator=operatorPassword123 \
+  --from-literal=replication=replicationPassword123 \
   -n database
 
 # Create AWS credentials for backups
@@ -209,23 +212,23 @@ kubectl exec mysql-cluster-pxc-0 -n database -- \
   "
 ```
 
-All writes are immediately visible on all nodes due to synchronous replication.
+Committed writes are visible on all synced nodes due to synchronous replication.
 
 ## Using HAProxy for Load Balancing
 
-HAProxy distributes connections across cluster nodes:
+HAProxy provides stable services for cluster access:
 
 ```bash
 # Get HAProxy service
 kubectl get svc mysql-cluster-haproxy -n database
 
 # Connect through HAProxy
-kubectl run mysql-client -it --rm --image=mysql:8.0 -- \
+kubectl run mysql-client -it --rm --restart=Never --image=mysql:8.0 -- \
   mysql -h mysql-cluster-haproxy.database.svc.cluster.local \
   -uroot -prootPassword123
 ```
 
-HAProxy automatically routes connections to healthy nodes and removes failed nodes from the pool.
+The `mysql-cluster-haproxy` service routes read/write traffic to one available writer node and fails over when needed. The separate `mysql-cluster-haproxy-replicas` service uses round-robin load balancing for read traffic and should not be used for writes.
 
 ## Configuring ProxySQL Alternative
 
@@ -238,17 +241,20 @@ metadata:
   name: mysql-cluster
   namespace: database
 spec:
-  crVersion: 1.14.0
+  crVersion: 1.19.1
   secretsName: mysql-cluster-secrets
 
   pxc:
     size: 3
-    image: percona/percona-xtradb-cluster:8.0.35-27.1
+    image: percona/percona-xtradb-cluster:8.4.7-7.1
+
+  haproxy:
+    enabled: false
 
   proxysql:
     enabled: true
     size: 3
-    image: percona/percona-xtradb-cluster-operator:1.14.0-proxysql
+    image: percona/proxysql2:2.7.3-1.2
     resources:
       requests:
         memory: 512Mi
@@ -282,7 +288,7 @@ metadata:
   namespace: database
 spec:
   backup:
-    image: percona/percona-xtradb-cluster-operator:1.14.0-pxc8.0-backup
+    image: percona/percona-xtrabackup:8.4.0-5.1
     storages:
       s3:
         type: s3
@@ -434,10 +440,10 @@ kubectl exec mysql-cluster-pxc-0 -n database -- \
 
 If cluster loses quorum (less than majority of nodes), writes are blocked to prevent data inconsistency.
 
-Bootstrap cluster after total failure:
+Make sure automatic crash recovery is enabled for full cluster crash recovery:
 
 ```bash
-# Set bootstrap node
+# Enable automatic crash recovery
 kubectl patch pxc mysql-cluster -n database \
   --type='merge' \
   -p '{"spec":{"pxc":{"autoRecovery":true}}}'
@@ -454,13 +460,13 @@ metadata:
   name: mysql-production
   namespace: database
 spec:
-  crVersion: 1.14.0
+  crVersion: 1.19.1
   secretsName: mysql-cluster-secrets
   allowUnsafeConfigurations: false
 
   pxc:
     size: 5  # 5 nodes for better availability
-    image: percona/percona-xtradb-cluster:8.0.35-27.1
+    image: percona/percona-xtradb-cluster:8.4.7-7.1
     configuration: |
       [mysqld]
       max_connections=500
@@ -497,7 +503,7 @@ spec:
   haproxy:
     enabled: true
     size: 3
-    image: percona/percona-xtradb-cluster-operator:1.14.0-haproxy
+    image: percona/haproxy:2.8.17
     resources:
       requests:
         memory: 512Mi
@@ -507,7 +513,7 @@ spec:
         cpu: 1000m
 
   backup:
-    image: percona/percona-xtradb-cluster-operator:1.14.0-pxc8.0-backup
+    image: percona/percona-xtrabackup:8.4.0-5.1
     storages:
       s3:
         type: s3
@@ -515,8 +521,6 @@ spec:
           bucket: mysql-backups-production
           region: us-east-1
           credentialsSecret: aws-credentials
-          serverSideEncryption:
-            kmsKeyID: alias/mysql-backups
     schedule:
     - name: hourly-backup
       schedule: "0 * * * *"
@@ -531,18 +535,18 @@ spec:
 ## Best Practices
 
 1. **Use odd number of nodes**: Minimum 3, recommended 5 for production
-2. **Disable autocommit**: Use transactions for better performance
+2. **Use explicit transactions**: Group related changes to reduce certification overhead
 3. **Monitor flow control**: High flow control events indicate slow nodes
 4. **Tune gcache size**: Larger gcache prevents IST failures
 5. **Use separate networks**: Separate client and cluster traffic
 6. **Regular backups**: Automated daily backups minimum
 7. **Test failover**: Regular failover drills
-8. **Monitor replication lag**: Should be near-zero
+8. **Monitor replication queues and flow control**: Sustained queue growth or flow control indicates slow nodes
 
 ## Conclusion
 
 Percona XtraDB Cluster provides true multi-master MySQL replication with synchronous replication and automatic failover. The Percona Operator automates deployment, scaling, backup, and recovery operations on Kubernetes, making enterprise-grade MySQL clustering accessible and manageable.
 
-Start with a three-node cluster, configure automated backups, and test failover scenarios. As your workload grows, scale to five nodes for better availability and performance. The multi-master architecture eliminates write bottlenecks while maintaining data consistency through synchronous replication.
+Start with a three-node cluster, configure automated backups, and test failover scenarios. As your workload grows, scale to five nodes for better availability and read capacity. The multi-master architecture improves availability for writes while maintaining data consistency through synchronous replication.
 
 For more database management strategies, see https://oneuptime.com/blog/post/2026-01-21-postgresql-vs-mysql/view for database comparison insights.
