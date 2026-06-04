@@ -30,21 +30,26 @@ spec:
   validations:
     # String operations
     - expression: |
-        has(object.data.name) &&
-        object.data.name.size() >= 3 &&
-        object.data.name.size() <= 63
+        has(object.data) &&
+        'name' in object.data &&
+        object.data['name'].size() >= 3 &&
+        object.data['name'].size() <= 63
       message: "Name must be between 3 and 63 characters"
 
     # Type checking and conversion
     - expression: |
-        !has(object.data.port) ||
-        int(object.data.port) > 0 && int(object.data.port) <= 65535
+        !has(object.data) ||
+        !('port' in object.data) ||
+        object.data['port'].matches('^[0-9]+$') &&
+        int(object.data['port']) > 0 &&
+        int(object.data['port']) <= 65535
       message: "Port must be between 1 and 65535"
 
     # Boolean validation
     - expression: |
-        !has(object.data.enabled) ||
-        object.data.enabled in ['true', 'false']
+        !has(object.data) ||
+        !('enabled' in object.data) ||
+        object.data['enabled'] in ['true', 'false']
       message: "enabled must be 'true' or 'false'"
 ```
 
@@ -84,13 +89,18 @@ spec:
           has(c.resources) &&
           has(c.resources.limits) &&
           has(c.resources.requests) &&
-          int(c.resources.limits.memory.replace('Mi', '')) >=
-          int(c.resources.requests.memory.replace('Mi', ''))
+          'memory' in c.resources.limits &&
+          'memory' in c.resources.requests &&
+          isQuantity(c.resources.limits['memory']) &&
+          isQuantity(c.resources.requests['memory']) &&
+          quantity(c.resources.limits['memory']).compareTo(
+            quantity(c.resources.requests['memory'])
+          ) >= 0
         )
       message: "Memory limits must be greater than or equal to requests"
 ```
 
-The `replace()` function strips units from resource quantities for numeric comparison. This validates that limits exceed requests.
+The Kubernetes `quantity()` function parses resource quantities for numeric comparison. This validates that limits exceed requests.
 
 ## Cross-Field Validation
 
@@ -119,20 +129,24 @@ spec:
 
     # Validate matching labels and selectors
     - expression: |
-        object.spec.selector.matchLabels.subsetOf(
-          object.spec.template.metadata.labels
+        !has(object.spec.selector.matchLabels) ||
+        object.spec.selector.matchLabels.all(k, v,
+          has(object.spec.template.metadata.labels) &&
+          k in object.spec.template.metadata.labels &&
+          object.spec.template.metadata.labels[k] == v
         )
       message: "Deployment selector must be a subset of pod labels"
 
     # Check PDB alignment
     - expression: |
         object.spec.replicas < 2 ||
-        has(object.metadata.annotations['pdb.required']) &&
+        has(object.metadata.annotations) &&
+        'pdb.required' in object.metadata.annotations &&
         object.metadata.annotations['pdb.required'] == 'true'
       message: "Deployments with 2+ replicas must have PDB annotation"
 ```
 
-The `subsetOf()` method checks if all keys in one map exist in another, ensuring selector labels match pod template labels.
+The map `all()` macro checks that every selector key and value also exists in the pod template labels.
 
 ## Using Optional Chaining
 
@@ -161,8 +175,8 @@ spec:
 
     # Check optional annotation
     - expression: |
-        object.metadata.?annotations.?['cost-center'].orValue('') != '' ||
-        object.metadata.?labels.?environment.orValue('') == 'dev'
+        object.metadata.?annotations[?'cost-center'].orValue('') != '' ||
+        object.metadata.?labels[?'environment'].orValue('') == 'dev'
       message: "Non-dev pods must have cost-center annotation"
 ```
 
@@ -205,12 +219,13 @@ spec:
 
     # Check unique container names
     - expression: |
-        object.spec.containers.map(c, c.name).unique() ==
-        object.spec.containers.map(c, c.name)
+        object.spec.containers.all(c,
+          object.spec.containers.filter(other, other.name == c.name).size() == 1
+        )
       message: "Container names must be unique"
 ```
 
-The `exists()` function checks if any element matches a condition. The `map()` function transforms collections, and `unique()` removes duplicates.
+The `exists()` function checks if any element matches a condition. The `map()` function transforms collections, and `filter()` creates subsets matching a condition.
 
 ## String Pattern Matching
 
@@ -237,14 +252,17 @@ spec:
 
     # Check annotation URL format
     - expression: |
-        !has(object.metadata.annotations.documentation) ||
-        object.metadata.annotations.documentation.startsWith('https://')
+        !has(object.metadata.annotations) ||
+        !('documentation' in object.metadata.annotations) ||
+        object.metadata.annotations['documentation'].startsWith('https://')
       message: "Documentation URL must use HTTPS"
 
     # Validate label values
     - expression: |
+        !has(object.metadata.labels) ||
         object.metadata.labels.all(key, value,
-          value.matches('^[a-zA-Z0-9]([a-zA-Z0-9-_.]*[a-zA-Z0-9])?$') &&
+          (value == '' ||
+           value.matches('^[a-zA-Z0-9]([a-zA-Z0-9-_.]*[a-zA-Z0-9])?$')) &&
           value.size() <= 63
         )
       message: "Label values must match Kubernetes format and be <= 63 chars"
@@ -275,26 +293,24 @@ spec:
         object.spec.containers.all(c,
           !has(c.resources) ||
           !has(c.resources.limits) ||
-          !has(c.resources.limits.memory) ||
-          (
-            (c.resources.limits.memory.endsWith('Mi') &&
-             int(c.resources.limits.memory.replace('Mi', '')) <= 4096) ||
-            (c.resources.limits.memory.endsWith('Gi') &&
-             int(c.resources.limits.memory.replace('Gi', '')) <= 4)
-          )
+          !('memory' in c.resources.limits) ||
+          isQuantity(c.resources.limits['memory']) &&
+          quantity(c.resources.limits['memory']).compareTo(quantity('4Gi')) <= 0
         )
       message: "Memory limit must not exceed 4Gi"
 
     # Validate CPU millicore format
     - expression: |
         object.spec.containers.all(c,
-          !has(c.resources.requests.cpu) ||
-          c.resources.requests.cpu.matches('^[0-9]+m?$')
+          !has(c.resources) ||
+          !has(c.resources.requests) ||
+          !('cpu' in c.resources.requests) ||
+          isQuantity(c.resources.requests['cpu'])
         )
-      message: "CPU must be in format like '100m' or '1'"
+      message: "CPU must be a valid Kubernetes quantity like '100m' or '1'"
 ```
 
-Handle unit conversions carefully when comparing quantities. This example normalizes memory to GiB for consistent comparisons.
+Handle unit conversions carefully when comparing quantities. This example uses Kubernetes quantity parsing for consistent comparisons.
 
 ## Conditional Validation Based on Context
 
@@ -316,8 +332,9 @@ spec:
   validations:
     # Stricter rules for production
     - expression: |
-        !has(object.metadata.labels.environment) ||
-        object.metadata.labels.environment != 'production' ||
+        !has(object.metadata.labels) ||
+        !('environment' in object.metadata.labels) ||
+        object.metadata.labels['environment'] != 'production' ||
         (
           object.spec.replicas >= 2 &&
           has(object.spec.template.spec.affinity) &&
@@ -328,7 +345,11 @@ spec:
 
     # Different image policies per environment
     - expression: |
-        object.metadata.labels.environment == 'dev' ||
+        (
+          has(object.metadata.labels) &&
+          'environment' in object.metadata.labels &&
+          object.metadata.labels['environment'] == 'dev'
+        ) ||
         object.spec.template.spec.containers.all(c,
           !c.image.contains(':latest')
         )
@@ -357,6 +378,7 @@ spec:
   validations:
     # Ensure required keys exist
     - expression: |
+        has(object.data) &&
         ['database.host', 'database.port', 'database.name'].all(key,
           key in object.data
         )
@@ -396,9 +418,10 @@ spec:
     # Validate cron schedule format
     - expression: |
         object.spec.schedule.matches(
-          '^(@(annually|yearly|monthly|weekly|daily|hourly|reboot))|' +
-          '(@every (\\d+(ns|us|µs|ms|s|m|h))+)|' +
-          '((((\\d+,)+\\d+|(\\d+([/\\-])\\d+)|\\d+|\\*) ?){5,7})$'
+          '^@(annually|yearly|monthly|weekly|daily|midnight|hourly)$'
+        ) ||
+        object.spec.schedule.matches(
+          '^([0-9A-Za-z*,/\\-?]+\\s+){4}[0-9A-Za-z*,/\\-?]+$'
         )
       message: "Invalid cron schedule format"
 
@@ -432,7 +455,10 @@ spec:
     # Limit total CPU across all containers
     - expression: |
         object.spec.containers.map(c,
-          int(c.resources.requests.cpu.replace('m', '').orValue('0'))
+          !has(c.resources) || !has(c.resources.requests) ||
+          !('cpu' in c.resources.requests) ? 0 :
+          !isQuantity(c.resources.requests['cpu']) ? 2001 :
+          quantity(c.resources.requests['cpu']).asApproximateFloat() * 1000
         ).sum() <= 2000
       message: "Total pod CPU requests cannot exceed 2000m"
 
@@ -466,14 +492,16 @@ spec:
     # Safe navigation with defaults
     - expression: |
         object.spec.containers.all(c,
-          int(c.?resources.?limits.?cpu.replace('m', '').orValue('1000')) <= 2000
+          quantity(c.?resources.?limits[?'cpu'].orValue('1000m')).compareTo(
+            quantity('2000m')
+          ) <= 0
         )
       message: "Container CPU limit exceeds 2000m"
 
     # Handle missing annotations safely
     - expression: |
-        object.metadata.?annotations.?['max-pods'].orValue('10').matches('^\\d+$') &&
-        int(object.metadata.?annotations.?['max-pods'].orValue('10')) <= 100
+        object.metadata.?annotations[?'max-pods'].orValue('10').matches('^\\d+$') &&
+        int(object.metadata.?annotations[?'max-pods'].orValue('10')) <= 100
       message: "max-pods annotation must be a number <= 100"
 ```
 
