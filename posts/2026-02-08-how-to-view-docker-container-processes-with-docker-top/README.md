@@ -53,7 +53,7 @@ Sort processes by memory usage to find the hungriest process:
 
 ```bash
 # Sort container processes by memory consumption (descending)
-docker top web-server -o pid,pmem,cmd --sort=-pmem
+docker top web-server -eo pid,pmem,args --sort=-pmem
 ```
 
 Show the process tree to understand parent-child relationships:
@@ -150,10 +150,10 @@ You can see both perspectives by comparing:
 
 ```bash
 # Host PID as shown by docker top
-docker top my-container -o pid,cmd
+docker top my-container -o pid,args
 
 # Container PID as shown from inside the container
-docker exec my-container ps -o pid,cmd
+docker exec my-container ps -o pid,args
 ```
 
 The host PID is what you need if you want to use host-level tools like `strace`, `perf`, or `gdb` to debug a process running inside a container:
