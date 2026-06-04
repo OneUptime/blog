@@ -46,10 +46,20 @@ data:
       http_listen_port: 8080
       grpc_listen_port: 9095
 
+    memberlist:
+      join_members:
+        - cortex-memberlist.cortex.svc.cluster.local:7946
+
     distributor:
       ring:
         kvstore:
           store: memberlist
+
+    frontend_worker:
+      frontend_address: cortex-query-frontend.cortex.svc.cluster.local:9095
+
+    querier:
+      store_gateway_addresses: dns+cortex-store-gateway.cortex.svc.cluster.local:9095
 
     ingester:
       lifecycler:
@@ -58,9 +68,6 @@ data:
             store: memberlist
           replication_factor: 3
         num_tokens: 512
-      chunk_idle_period: 30m
-      max_chunk_idle: 1h
-      chunk_retain_period: 15m
 
     storage:
       engine: blocks
@@ -75,12 +82,25 @@ data:
         dir: /data/tsdb
         retention_period: 24h
 
+    runtime_config:
+      file: /etc/cortex-runtime/overrides.yaml
+      period: 10s
+
     limits:
       # Default limits for all tenants
       ingestion_rate: 25000
       ingestion_burst_size: 50000
       max_global_series_per_user: 1000000
       max_global_series_per_metric: 50000
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cortex-runtime-config
+  namespace: cortex
+data:
+  overrides.yaml: |
+    overrides: {}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -113,10 +133,15 @@ spec:
         volumeMounts:
         - name: config
           mountPath: /etc/cortex
+        - name: runtime-config
+          mountPath: /etc/cortex-runtime
       volumes:
       - name: config
         configMap:
           name: cortex-config
+      - name: runtime-config
+        configMap:
+          name: cortex-runtime-config
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -150,6 +175,8 @@ spec:
         volumeMounts:
         - name: config
           mountPath: /etc/cortex
+        - name: runtime-config
+          mountPath: /etc/cortex-runtime
         - name: data
           mountPath: /data
         resources:
@@ -163,6 +190,9 @@ spec:
       - name: config
         configMap:
           name: cortex-config
+      - name: runtime-config
+        configMap:
+          name: cortex-runtime-config
   volumeClaimTemplates:
   - metadata:
       name: data
@@ -201,10 +231,15 @@ spec:
         volumeMounts:
         - name: config
           mountPath: /etc/cortex
+        - name: runtime-config
+          mountPath: /etc/cortex-runtime
       volumes:
       - name: config
         configMap:
           name: cortex-config
+      - name: runtime-config
+        configMap:
+          name: cortex-runtime-config
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -232,13 +267,113 @@ spec:
         ports:
         - containerPort: 8080
           name: http
+        - containerPort: 9095
+          name: grpc
         volumeMounts:
         - name: config
           mountPath: /etc/cortex
+        - name: runtime-config
+          mountPath: /etc/cortex-runtime
       volumes:
       - name: config
         configMap:
           name: cortex-config
+      - name: runtime-config
+        configMap:
+          name: cortex-runtime-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cortex-store-gateway
+  namespace: cortex
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cortex
+      component: store-gateway
+  template:
+    metadata:
+      labels:
+        app: cortex
+        component: store-gateway
+    spec:
+      containers:
+      - name: store-gateway
+        image: quay.io/cortexproject/cortex:v1.16.0
+        args:
+          - -config.file=/etc/cortex/cortex.yaml
+          - -target=store-gateway
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 9095
+          name: grpc
+        volumeMounts:
+        - name: config
+          mountPath: /etc/cortex
+        - name: runtime-config
+          mountPath: /etc/cortex-runtime
+      volumes:
+      - name: config
+        configMap:
+          name: cortex-config
+      - name: runtime-config
+        configMap:
+          name: cortex-runtime-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cortex-compactor
+  namespace: cortex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cortex
+      component: compactor
+  template:
+    metadata:
+      labels:
+        app: cortex
+        component: compactor
+    spec:
+      containers:
+      - name: compactor
+        image: quay.io/cortexproject/cortex:v1.16.0
+        args:
+          - -config.file=/etc/cortex/cortex.yaml
+          - -target=compactor
+        ports:
+        - containerPort: 8080
+          name: http
+        volumeMounts:
+        - name: config
+          mountPath: /etc/cortex
+        - name: runtime-config
+          mountPath: /etc/cortex-runtime
+      volumes:
+      - name: config
+        configMap:
+          name: cortex-config
+      - name: runtime-config
+        configMap:
+          name: cortex-runtime-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cortex-memberlist
+  namespace: cortex
+spec:
+  clusterIP: None
+  selector:
+    app: cortex
+  ports:
+  - port: 7946
+    name: memberlist
 ---
 apiVersion: v1
 kind: Service
@@ -256,6 +391,33 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  name: cortex-ingester
+  namespace: cortex
+spec:
+  clusterIP: None
+  selector:
+    app: cortex
+    component: ingester
+  ports:
+  - port: 9095
+    name: grpc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cortex-store-gateway
+  namespace: cortex
+spec:
+  selector:
+    app: cortex
+    component: store-gateway
+  ports:
+  - port: 9095
+    name: grpc
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: cortex-query-frontend
   namespace: cortex
 spec:
@@ -265,6 +427,8 @@ spec:
   ports:
   - port: 8080
     name: http
+  - port: 9095
+    name: grpc
 ```
 
 ## Configuring Per-Tenant Limits
@@ -300,13 +464,13 @@ overrides:
     max_query_length: 168h  # 7 days
 ```
 
-Store overrides in a ConfigMap and mount it:
+Store runtime overrides in a ConfigMap and mount it:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cortex-overrides
+  name: cortex-runtime-config
   namespace: cortex
 data:
   overrides.yaml: |
@@ -319,9 +483,9 @@ data:
 Update cortex.yaml to load overrides:
 
 ```yaml
-limits:
-  per_tenant_override_config: /etc/cortex/overrides.yaml
-  per_tenant_override_period: 10s  # Reload every 10s
+runtime_config:
+  file: /etc/cortex-runtime/overrides.yaml
+  period: 10s  # Reload every 10s
 ```
 
 ## Configuring Prometheus Remote Write by Tenant
@@ -402,10 +566,26 @@ spec:
         volumeMounts:
         - name: config
           mountPath: /etc/nginx/conf.d
+        - name: htpasswd
+          mountPath: /etc/nginx/auth
+          readOnly: true
       volumes:
       - name: config
         configMap:
           name: nginx-auth-config
+      - name: htpasswd
+        secret:
+          secretName: cortex-auth-users
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cortex-auth-users
+  namespace: cortex
+type: Opaque
+stringData:
+  .htpasswd: |
+    tenant-prod:$apr1$UqSiympj$pgTapNBQ66n8EHLYdpNM40
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -420,7 +600,7 @@ data:
       location /api/v1/push {
         # Extract tenant from basic auth username
         auth_basic "Cortex";
-        auth_basic_user_file /etc/nginx/.htpasswd;
+        auth_basic_user_file /etc/nginx/auth/.htpasswd;
 
         # Set tenant ID header based on username
         proxy_set_header X-Scope-OrgID $remote_user;
@@ -429,7 +609,7 @@ data:
 
       location /prometheus {
         auth_basic "Cortex";
-        auth_basic_user_file /etc/nginx/.htpasswd;
+        auth_basic_user_file /etc/nginx/auth/.htpasswd;
 
         proxy_set_header X-Scope-OrgID $remote_user;
         proxy_pass http://cortex-query-frontend:8080;
@@ -520,7 +700,7 @@ groups:
 
 Ensure proper tenant isolation:
 
-1. **Network policies** to prevent cross-tenant queries:
+1. **Network policies** to restrict direct access to Cortex endpoints:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -551,21 +731,21 @@ server:
   log_level: info
   log_format: json
 
+frontend:
   # Log all queries with tenant info
-  log_queries_longer_than: 0s
+  log_queries_longer_than: -1s
 ```
 
 ## Tenant Cost Allocation
 
-Track storage and compute costs per tenant:
+Track storage access and compute costs per tenant:
 
 ```promql
-# Storage usage per tenant (bytes)
+# Store-gateway data fetched per tenant
 sum by (user) (cortex_bucket_store_series_data_fetched_total)
 
-# Query cost per tenant
-sum by (user) (rate(cortex_query_frontend_queries_total[1h])) *
-avg(cortex_query_frontend_request_duration_seconds_sum)
+# Query volume per tenant
+sum by (user) (rate(cortex_query_frontend_queries_total[1h]))
 
 # Ingestion cost per tenant
 sum by (user) (rate(cortex_distributor_received_samples_total[1h]))
