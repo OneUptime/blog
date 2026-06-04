@@ -148,10 +148,10 @@ kubectl annotate serviceaccount $KSA_NAME \
 
 ## Creating SecretStore with Workload Identity
 
-Create a SecretStore that uses Workload Identity:
+Create a SecretStore that uses the Workload Identity credentials from the External Secrets Operator controller:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: gcpsm-secret-store
@@ -160,19 +160,12 @@ spec:
   provider:
     gcpsm:
       projectID: "my-gcp-project"
-      auth:
-        workloadIdentity:
-          clusterLocation: us-central1
-          clusterName: my-gke-cluster
-          serviceAccountRef:
-            name: external-secrets
-            namespace: external-secrets-system
 ```
 
 For a ClusterSecretStore:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcpsm-secret-store
@@ -180,13 +173,6 @@ spec:
   provider:
     gcpsm:
       projectID: "my-gcp-project"
-      auth:
-        workloadIdentity:
-          clusterLocation: us-central1
-          clusterName: my-gke-cluster
-          serviceAccountRef:
-            name: external-secrets
-            namespace: external-secrets-system
 ```
 
 ## Creating ExternalSecret Resources
@@ -196,7 +182,7 @@ spec:
 Sync a single secret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-password
@@ -220,7 +206,7 @@ spec:
 Combine multiple GCP secrets into one Kubernetes Secret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secrets
@@ -250,7 +236,7 @@ spec:
 Parse JSON secrets and extract specific fields:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-credentials
@@ -283,7 +269,7 @@ spec:
 Import entire JSON secrets:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-credentials-full
@@ -306,7 +292,7 @@ spec:
 GCP Secret Manager supports versioning. Access specific versions:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: versioned-secret
@@ -341,9 +327,8 @@ Create version aliases in GCP:
 ```bash
 # Add version alias
 gcloud secrets versions enable 2 --secret=database-password
-gcloud secrets add-version-alias stable \
-  --secret=database-password \
-  --version=2
+gcloud secrets update database-password \
+  --update-version-aliases=stable=2
 ```
 
 ### Using Templates
@@ -351,7 +336,7 @@ gcloud secrets add-version-alias stable \
 Transform secrets with templates:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-config
@@ -430,7 +415,7 @@ spec:
 
 ## Implementing Secret Rotation
 
-GCP Secret Manager supports automatic rotation. Create a new version:
+GCP Secret Manager supports versioned rotation workflows. Create a new version:
 
 ```bash
 # Add new version
@@ -467,14 +452,14 @@ gcloud iam service-accounts keys create key.json \
 
 # Create Kubernetes secret
 kubectl create secret generic gcpsm-secret \
-  --namespace external-secrets-system \
+  --namespace production \
   --from-file=secret-access-credentials=key.json
 ```
 
 SecretStore with service account key:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: gcpsm-secret-store
@@ -488,7 +473,6 @@ spec:
           secretAccessKeySecretRef:
             name: gcpsm-secret
             key: secret-access-credentials
-            namespace: external-secrets-system
 ```
 
 ## Monitoring and Troubleshooting
@@ -519,7 +503,7 @@ View audit logs:
 
 ```bash
 # View Secret Manager audit logs
-gcloud logging read "resource.type=secretmanager.googleapis.com/Secret" \
+gcloud logging read 'protoPayload.serviceName="secretmanager.googleapis.com"' \
   --limit 50 \
   --format json
 ```
@@ -529,7 +513,7 @@ gcloud logging read "resource.type=secretmanager.googleapis.com/Secret" \
 For secrets across multiple GCP projects, create separate SecretStores:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: gcpsm-project-a
@@ -538,15 +522,8 @@ spec:
   provider:
     gcpsm:
       projectID: "project-a"
-      auth:
-        workloadIdentity:
-          clusterLocation: us-central1
-          clusterName: my-gke-cluster
-          serviceAccountRef:
-            name: external-secrets
-            namespace: external-secrets-system
 ---
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: gcpsm-project-b
@@ -555,13 +532,6 @@ spec:
   provider:
     gcpsm:
       projectID: "project-b"
-      auth:
-        workloadIdentity:
-          clusterLocation: us-central1
-          clusterName: my-gke-cluster
-          serviceAccountRef:
-            name: external-secrets
-            namespace: external-secrets-system
 ```
 
 ## Best Practices
@@ -580,7 +550,7 @@ spec:
 
 5. **Enable audit logging**: Monitor secret access:
    ```bash
-   gcloud logging read "protoPayload.serviceName=secretmanager.googleapis.com" \
+   gcloud logging read 'protoPayload.serviceName="secretmanager.googleapis.com"' \
      --limit 10
    ```
 
@@ -590,7 +560,7 @@ spec:
      --update-labels=env=production,team=platform
    ```
 
-7. **Set IAM conditions**: Restrict access by time or IP:
+7. **Set IAM conditions**: Restrict access with supported conditions, such as time-based expiration:
    ```bash
    gcloud secrets add-iam-policy-binding database-password \
      --member="serviceAccount:${GSA_EMAIL}" \
@@ -598,6 +568,6 @@ spec:
      --condition='expression=request.time < timestamp("2026-12-31T00:00:00Z"),title=temporary-access'
    ```
 
-8. **Use secret rotation**: Implement automatic rotation for sensitive credentials.
+8. **Use secret rotation**: Implement versioned rotation workflows for sensitive credentials.
 
 External Secrets Operator with GCP Secret Manager provides seamless integration between Google Cloud's secret management and Kubernetes. Your applications consume standard Kubernetes Secrets while benefiting from GCP's enterprise features like Workload Identity, automatic replication, and comprehensive audit logging.
