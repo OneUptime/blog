@@ -8,9 +8,9 @@ Description: Learn how to implement leader election in custom Kubernetes control
 
 ---
 
-When you run multiple replicas of a custom Kubernetes controller for high availability, you need leader election to ensure only one instance actively reconciles resources at a time. Without this mechanism, multiple controller instances would compete to update the same resources, leading to race conditions and conflicts.
+When you run multiple replicas of a custom Kubernetes controller for high availability, you need leader election so one instance is intended to actively reconcile resources at a time. Without this mechanism, multiple controller instances would compete to update the same resources, leading to race conditions and conflicts.
 
-Leader election ensures that only one replica holds the lease and performs reconciliation, while other replicas remain on standby. If the leader fails, another replica automatically takes over. This pattern is fundamental for building production-ready controllers.
+Leader election coordinates which replica holds the lease and performs reconciliation, while other replicas remain on standby. If the leader fails, another replica automatically takes over after the lease expires. This pattern is fundamental for building production-ready controllers.
 
 ## Why Leader Election Matters
 
@@ -65,7 +65,7 @@ func main() {
     // Create clientset
     client := kubernetes.NewForConfigOrDie(config)
 
-    // Create a context that will be cancelled when we lose leadership
+    // Create a root context for leader election
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
 
@@ -139,9 +139,11 @@ package main
 import (
     "os"
 
-    "k8s.io/apimachinery/pkg/runtime"
+    "k8s.io/client-go/kubernetes/scheme"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/log/zap"
+    metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+    "sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 func main() {
@@ -149,9 +151,9 @@ func main() {
     ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
     mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-        Scheme:                 scheme,
-        MetricsBindAddress:     ":8080",
-        Port:                   9443,
+        Scheme:                 scheme.Scheme,
+        Metrics:                metricsserver.Options{BindAddress: ":8080"},
+        WebhookServer:          webhook.NewServer(webhook.Options{Port: 9443}),
         HealthProbeBindAddress: ":8081",
         // Enable leader election
         LeaderElection:          true,
@@ -262,4 +264,4 @@ Always handle the `OnStoppedLeading` callback properly. When a controller loses 
 
 Ensure your controller can start and stop cleanly. When leadership changes, the old leader must release resources, and the new leader must initialize properly. Use contexts to propagate cancellation signals.
 
-Leader election protects against conflicts in distributed controller deployments, ensuring exactly one active reconciler while maintaining high availability through automatic failover.
+Leader election protects against conflicts in distributed controller deployments by coordinating active reconciliation while maintaining high availability through automatic failover. It is not a fencing mechanism, so your reconciler should still be idempotent and safe to retry.
