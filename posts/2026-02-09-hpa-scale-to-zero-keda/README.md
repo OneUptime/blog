@@ -8,13 +8,13 @@ Description: Implement scale-to-zero autoscaling with KEDA to reduce costs by sc
 
 ---
 
-Standard Kubernetes HPA requires at least one replica running at all times. For workloads that process intermittent tasks, this wastes resources during idle periods. KEDA (Kubernetes Event Driven Autoscaling) extends HPA to enable scale-to-zero, where deployments can scale down to zero replicas when no work is available and instantly scale up when events arrive.
+Standard Kubernetes HPA generally requires at least one replica running at all times. For workloads that process intermittent tasks, this wastes resources during idle periods. KEDA (Kubernetes Event Driven Autoscaling) extends HPA to enable scale-to-zero, where deployments can scale down to zero replicas when no work is available and automatically scale up when events arrive.
 
 Scale-to-zero makes economic sense for batch jobs, queue workers, scheduled tasks, and event-driven functions that don't need constant availability. By running zero pods during idle time, you eliminate resource costs while maintaining the ability to process work when needed. KEDA monitors event sources like message queues, databases, and external systems to determine when to scale from zero.
 
 ## Understanding KEDA Architecture
 
-KEDA consists of three main components. The KEDA Operator watches ScaledObject resources and creates HPA configurations. The Metrics Server exposes custom metrics to HPA based on event sources. The Scaler implementations connect to external systems like RabbitMQ, Kafka, or cloud services to retrieve metrics.
+KEDA's main components include the KEDA Operator, Metrics Server, and admission webhooks. The KEDA Operator watches ScaledObject resources and creates HPA configurations. The Metrics Server exposes external metrics to HPA based on event sources. The scaler implementations connect to external systems like RabbitMQ, Kafka, or cloud services to retrieve metrics.
 
 When no events are present, KEDA scales the deployment to zero. When events appear in the monitored source, KEDA activates the deployment before HPA takes over for scaling beyond one replica. This activation mechanism is what enables true scale-to-zero functionality.
 
@@ -40,7 +40,7 @@ kubectl get pods -n keda
 kubectl get deployment -n keda
 ```
 
-You should see the keda-operator and keda-metrics-apiserver pods running.
+You should see the keda-operator and keda-operator-metrics-apiserver pods running.
 
 ## Basic Scale-to-Zero Configuration
 
@@ -94,7 +94,8 @@ spec:
     metadata:
       queueName: tasks
       host: "amqp://guest:guest@rabbitmq.default.svc.cluster.local:5672/"
-      queueLength: "10"  # Target 10 messages per pod
+      mode: QueueLength
+      value: "10"  # Target 10 messages per pod
 ```
 
 Apply this configuration.
@@ -123,7 +124,7 @@ metadata:
   name: kafka-secrets
   namespace: workers
 stringData:
-  sasl: "plain"
+  sasl: "plaintext"
   username: "kafka-user"
   password: "kafka-password"
 ---
@@ -178,7 +179,8 @@ Use KEDA's HTTP Add-on for serverless-style HTTP workloads.
 # Install KEDA HTTP Add-on
 helm install http-add-on kedacore/keda-add-ons-http \
   --namespace keda \
-  --set interceptor.replicas=2
+  --set interceptor.replicas.min=2 \
+  --set interceptor.replicas.max=10
 ```
 
 Configure HTTP-based scaling.
@@ -221,25 +223,44 @@ spec:
   - port: 8080
     targetPort: 8080
 ---
-apiVersion: http.keda.sh/v1alpha1
-kind: HTTPScaledObject
+apiVersion: http.keda.sh/v1beta1
+kind: InterceptorRoute
+metadata:
+  name: http-function-route
+  namespace: functions
+spec:
+  target:
+    service: http-function
+    port: 8080
+  rules:
+  - hosts:
+    - function.example.com
+  scalingMetric:
+    requestRate:
+      targetValue: 100  # Target 100 requests per second per pod
+      window: 1m
+      granularity: 1s
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
 metadata:
   name: http-function-scaler
   namespace: functions
 spec:
   scaleTargetRef:
     name: http-function
-    service: http-function
-    port: 8080
-  minReplicas: 0
-  maxReplicas: 20
-  scalingMetric:
-    requestRate:
-      targetValue: 100  # Target 100 requests per second per pod
-      granularity: 1s
+    kind: Deployment
+    apiVersion: apps/v1
+  minReplicaCount: 0
+  maxReplicaCount: 20
+  triggers:
+  - type: external-push
+    metadata:
+      scalerAddress: keda-add-ons-http-external-scaler.keda:9090
+      interceptorRoute: http-function-route
 ```
 
-The HTTP interceptor queues requests while pods scale from zero, providing a seamless experience despite cold starts.
+Route ingress or gateway traffic to the HTTP Add-on interceptor service so the interceptor can hold requests while pods scale from zero, providing a seamless experience despite cold starts.
 
 ## Scheduled Scale-to-Zero
 
@@ -257,24 +278,16 @@ spec:
   maxReplicaCount: 10
 
   triggers:
-  # Scale to 1 during business hours
+  # Scale during business hours
   - type: cron
     metadata:
       timezone: America/New_York
       start: 0 8 * * 1-5      # 8 AM Monday-Friday
       end: 0 18 * * 1-5       # 6 PM Monday-Friday
       desiredReplicas: "5"
-
-  # Scale to 0 outside business hours
-  - type: cron
-    metadata:
-      timezone: America/New_York
-      start: 0 18 * * 1-5     # 6 PM Monday-Friday
-      end: 0 8 * * 1-5        # 8 AM Monday-Friday
-      desiredReplicas: "0"
 ```
 
-This keeps the deployment active during business hours and scales to zero overnight and weekends.
+This keeps the deployment active during business hours and scales to zero overnight and weekends after the cron window ends and the cooldown period passes.
 
 ## Combining Multiple Triggers
 
@@ -382,8 +395,8 @@ Set up Prometheus metrics to track KEDA behavior.
 # Time at zero replicas
 keda_scaler_active{scaledObject="queue-processor-scaler"} == 0
 
-# Scaling events
-rate(keda_scaler_errors_total[5m])
+# Scaler errors
+rate(keda_scaler_detail_errors_total[5m])
 
 # Current scaled object replicas
 kube_deployment_status_replicas{deployment="queue-processor"}
