@@ -12,9 +12,9 @@ Kibana Query Language provides an intuitive syntax for searching logs in Kibana 
 
 ## Understanding KQL Basics
 
-KQL queries consist of field-value pairs connected by logical operators. The simplest query searches for a value in any field. More specific queries target particular fields. KQL automatically handles field types, so you don't worry about whether a field is text, keyword, or numeric.
+KQL queries consist of field-value pairs connected by logical operators. The simplest query searches for a value in any field. More specific queries target particular fields. KQL uses the field mappings in Elasticsearch, so text, keyword, numeric, boolean, and date fields can behave differently.
 
-The query bar in Discover accepts KQL by default. Type your query, and results update in real-time as you type. This immediate feedback makes it easy to refine searches iteratively until you find exactly what you need.
+The query bar in Discover accepts KQL by default. Type your query, then press Enter or click the refresh button to run it. The query bar also prompts you with available fields and operators as you type, making it easier to refine searches iteratively until you find exactly what you need.
 
 KQL distinguishes between free text search across all fields and field-specific searches. Understanding this distinction helps you write precise queries that return relevant results quickly.
 
@@ -26,7 +26,7 @@ Search specific fields using colon syntax:
 log.level: ERROR
 ```
 
-This finds all logs where the level field equals ERROR. Field names are case-sensitive, but values match case-insensitively by default.
+This finds all logs where the level field equals ERROR. Field names are case-sensitive. Values on keyword, numeric, date, and boolean fields must match exactly, including case for keyword fields. Text fields are analyzed according to their mapping.
 
 Multiple field queries:
 
@@ -46,56 +46,46 @@ Finds logs with HTTP 500 status codes.
 
 ## Wildcard Searches
 
-Use wildcards for partial matching:
+Use wildcards for partial matching. KQL supports `*`, which matches zero or more characters:
 
 ```text
-message: *timeout*
+message: timeout*
 ```
 
-Matches messages containing "timeout" anywhere in the text.
+Matches messages with terms that start with "timeout".
 
-Wildcard at the beginning or end:
+Wildcard at the end:
 
 ```text
-# Find services starting with "user"
-
 service.name: user*
-
-# Find log messages ending with "failed"
-message: *failed
 ```
 
 Multiple wildcards:
 
 ```text
-url.path: */api/*/users
+url.path: /api/*/users
 ```
 
-Matches paths like /v1/api/internal/users or /v2/api/public/users.
+Matches paths like /api/internal/users or /api/public/users. Leading wildcards, such as `*timeout`, are disabled by default for performance reasons unless the `query:allowLeadingWildcards` advanced setting is enabled.
 
 ## Logical Operators
 
 Combine conditions with AND, OR, and NOT:
 
 ```text
-# AND: Both conditions must match
 log.level: ERROR AND service.name: database
 
-# OR: Either condition matches
 log.level: ERROR OR log.level: WARN
 
-# NOT: Exclude matches
-log.level: ERROR NOT service.name: healthcheck
+log.level: ERROR AND NOT service.name: healthcheck
 ```
 
 Group conditions with parentheses:
 
 ```text
-# Errors or warnings from critical services
 (log.level: ERROR OR log.level: WARN) AND (service.name: api OR service.name: database)
 
-# Exclude test and development environments
-environment: production NOT (user.name: test* OR user.name: dev*)
+environment: production AND NOT (user.name: test* OR user.name: dev*)
 ```
 
 Operator precedence follows standard logic rules: NOT, then AND, then OR. Use parentheses for clarity.
@@ -105,23 +95,18 @@ Operator precedence follows standard logic rules: NOT, then AND, then OR. Use pa
 Search numeric ranges:
 
 ```text
-# Response times over 1000ms
 http.response.time > 1000
 
-# Status codes in error range
 http.response.status_code >= 400 AND http.response.status_code < 600
 
-# Request size between 1MB and 10MB
 request.size >= 1048576 AND request.size <= 10485760
 ```
 
 Date range queries:
 
 ```text
-# Timestamp after a specific date
 @timestamp > "2024-02-09"
 
-# Events in February 2024
 @timestamp >= "2024-02-01" AND @timestamp < "2024-03-01"
 ```
 
@@ -132,46 +117,42 @@ The time picker at the top handles date ranges more conveniently, but range quer
 Match any value in an array field:
 
 ```text
-# Find logs with specific tags
 tags: error OR tags: critical OR tags: alert
 
-# Shortened syntax
 tags: (error OR critical OR alert)
 ```
 
 Check if array contains all values:
 
 ```text
-# Both tags must be present
 tags: production AND tags: critical
 ```
 
-## Nested Field Queries
+## Object and Nested Field Queries
 
-Search nested objects using dot notation:
+Search object fields using dot notation:
 
 ```text
-# User information in nested structure
-user.details.email: *@example.com
+user.details.email: alice@example.com
 
-# Kubernetes metadata
 kubernetes.pod.name: api-deployment-*
 
-# HTTP request details
-http.request.headers.user-agent: *Chrome*
+http.request.headers.user-agent: Chrome*
 ```
 
-Nested objects maintain their structure in KQL, making hierarchical data easy to query.
+For fields mapped as the Elasticsearch `nested` type, use KQL's nested query syntax so the conditions match the same nested object:
+
+```text
+user:{ first: "Alice" AND last: "White" }
+```
 
 ## Existence Queries
 
 Check if a field exists:
 
 ```text
-# Logs that have an error_code field
 error_code: *
 
-# Logs missing the user field
 NOT user: *
 ```
 
@@ -182,33 +163,26 @@ This works because wildcard matches any value, so the field must exist to match.
 Search for exact phrases in text fields:
 
 ```text
-# Exact phrase match
 message: "connection refused"
-
-# Partial phrase with wildcard
-message: "connection * failed"
 ```
 
-Quotes ensure words appear together in order, unlike separate terms that can appear anywhere.
+Quotes ensure words appear together in order, unlike separate terms that can appear anywhere. For wildcard matching, use unquoted wildcard terms instead of putting wildcards inside a quoted phrase.
 
 ## Case Sensitivity
 
-KQL is case-insensitive for values by default:
+KQL value matching depends on the field mapping. Keyword fields require an exact value, including case:
 
 ```text
-# These are equivalent
-log.level: error
 log.level: ERROR
-log.level: Error
 ```
+
+On text fields, the analyzer configured for the field controls how terms are normalized and matched.
 
 Field names remain case-sensitive:
 
 ```text
-# Correct
 log.level: ERROR
 
-# Wrong (field name must match exactly)
 Log.Level: ERROR
 ```
 
@@ -217,28 +191,20 @@ Log.Level: ERROR
 KQL treats some characters specially. Escape them with backslashes when searching for literals:
 
 ```text
-# Search for actual asterisk
 message: \*
 
-# Search for colon
-message: "http\://example.com"
+message: "http://example.com"
 
-# Search for parentheses
-message: "error\(code\)"
+message: error\(code\)
 ```
 
-Characters needing escaping include: *, ?, (, ), {, }, [, ], ", \, :, <, >
+Characters needing escaping outside quotes include: `\`, `(`, `)`, `:`, `<`, `>`, `"`, and `*`.
 
 ## Combining KQL with Filters
 
-Filters provide a visual way to build queries. Add filters through the UI, then convert to KQL:
+Filters provide a visual way to build queries. Add filters through the UI, then combine them with KQL:
 
 ```text
-# Add filter: log.level is ERROR
-# Add filter: service.name is api
-# Add filter: @timestamp is in the last 15 minutes
-
-# Equivalent KQL query
 log.level: ERROR AND service.name: api
 ```
 
@@ -246,38 +212,32 @@ The time range stays separate from KQL, controlled by the time picker.
 
 ## Saved Queries
 
-Save frequently used searches:
+Save frequently used queries:
 
 ```text
-# Click "Save" in the query bar
-# Name: "Production Errors"
-# Query: log.level: ERROR AND environment: production
-# Time filter: Last 24 hours
+log.level: ERROR AND environment: production
 ```
 
-Load saved queries quickly without retyping. Share them with team members by exporting and importing.
+Use the saved query menu in the query bar to save query text, filters, and optionally the time filter. Saved Discover sessions are separate and preserve the Discover view, including selected columns, sorting, filters, and the data view.
 
 ## Advanced Search Patterns
 
 Find logs missing expected fields:
 
 ```text
-# Requests without user authentication
 http.request.method: POST AND NOT user.id: *
 ```
 
 Search multiple fields for the same value:
 
 ```text
-# Username in any field
-simon OR message: *simon* OR user.name: simon OR client.name: *simon*
+simon OR message: simon* OR user.name: simon OR client.name: simon*
 ```
 
 Complex filtering for troubleshooting:
 
 ```text
-# Failed requests from mobile apps, excluding known issues
-http.response.status_code >= 500 AND user_agent: *Mobile* NOT message: "rate limit exceeded" NOT url.path: /health
+http.response.status_code >= 500 AND user_agent: Mobile* AND NOT message: "rate limit exceeded" AND NOT url.path: /health
 ```
 
 ## Performance Optimization
@@ -285,33 +245,26 @@ http.response.status_code >= 500 AND user_agent: *Mobile* NOT message: "rate lim
 Write efficient queries by being specific:
 
 ```text
-# Slow: Searches all fields
-*timeout*
+timeout
 
-# Fast: Searches specific field
-message: *timeout*
+message: timeout
 
-# Faster: Exact match instead of wildcard
 error_code: ETIMEDOUT
 ```
 
-Lead with indexed fields:
+Use exact indexed fields when possible:
 
 ```text
-# Good: Starts with indexed keyword field
-service.name: api AND message: *error*
+service.name: api AND message: error
 
-# Less efficient: Starts with text search
-message: *error* AND service.name: api
+service.name: api AND error_code: ETIMEDOUT
 ```
 
-Avoid leading wildcards when possible:
+Avoid leading wildcards when the setting allows them:
 
 ```text
-# Slow: Leading wildcard scans all terms
 url.path: *users
 
-# Fast: Trailing wildcard uses index efficiently
 url.path: /api/users*
 ```
 
@@ -320,13 +273,13 @@ url.path: /api/users*
 Find authentication failures:
 
 ```text
-log.level: ERROR AND (message: *authentication* OR message: *unauthorized* OR http.response.status_code: 401)
+log.level: ERROR AND (message: authentication* OR message: unauthorized* OR http.response.status_code: 401)
 ```
 
 Identify slow database queries:
 
 ```text
-service.name: database AND duration > 5000 AND NOT query: *SELECT*COUNT*
+service.name: database AND duration > 5000 AND NOT query: SELECT*COUNT*
 ```
 
 Debug specific user session:
@@ -344,7 +297,7 @@ http.response.status_code: 429 AND service.name: api AND NOT client.ip: 10.*
 Find memory-related errors:
 
 ```text
-(message: *OutOfMemory* OR message: *heap* OR message: *memory*) AND log.level: ERROR
+(message: OutOfMemory* OR message: heap* OR message: memory*) AND log.level: ERROR
 ```
 
 ## Discovering Available Fields
@@ -360,7 +313,6 @@ Explore available fields in the left sidebar:
 Search for field names:
 
 ```text
-# In the field filter box
 kubernetes
 ```
 
@@ -368,16 +320,11 @@ This shows all fields with "kubernetes" in their name, helping you discover the 
 
 ## Switching to Lucene Syntax
 
-Toggle between KQL and Lucene when needed:
+Toggle between KQL and Lucene when needed. Lucene syntax is selected from the query language menu in the query bar:
 
 ```text
-# Disable KQL in query options
-# Switch to Lucene for advanced features like fuzzy matching
-
-# Lucene fuzzy search
 message: timeout~2
 
-# Lucene proximity search
 message: "connection failed"~5
 ```
 
@@ -388,17 +335,13 @@ KQL covers most use cases, but Lucene offers additional operators for specialize
 Start broad and narrow down:
 
 ```text
-# Step 1: Find all errors
 log.level: ERROR
 
-# Step 2: From a specific service
 log.level: ERROR AND service.name: api
 
-# Step 3: Exclude expected errors
-log.level: ERROR AND service.name: api NOT message: *rate limit*
+log.level: ERROR AND service.name: api AND NOT message: "rate limit"
 
-# Step 4: In a specific time window
-log.level: ERROR AND service.name: api NOT message: *rate limit* AND @timestamp >= "2024-02-09T10:00:00"
+log.level: ERROR AND service.name: api AND NOT message: "rate limit" AND @timestamp >= "2024-02-09T10:00:00"
 ```
 
 This iterative approach helps you understand your data and build precise queries.
