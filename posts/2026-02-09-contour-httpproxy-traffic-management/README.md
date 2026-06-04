@@ -8,7 +8,7 @@ Description: Master Contour's HTTPProxy CRD to implement advanced traffic manage
 
 ---
 
-Contour is a Kubernetes Ingress controller built on Envoy Proxy that uses the HTTPProxy Custom Resource Definition for advanced traffic management. HTTPProxy provides capabilities beyond standard Ingress including weighted load balancing, multi-cluster routing, request mirroring, and sophisticated health checking. This guide explores how to leverage HTTPProxy for production-grade traffic management.
+Contour is a Kubernetes Ingress controller built on Envoy Proxy that uses the HTTPProxy Custom Resource Definition for advanced traffic management. HTTPProxy provides capabilities beyond standard Ingress including weighted load balancing, cross-namespace routing delegation, request mirroring, and sophisticated health checking. This guide explores how to leverage HTTPProxy for production-grade traffic management.
 
 ## Understanding Contour HTTPProxy
 
@@ -18,7 +18,7 @@ The HTTPProxy CRD is Contour's answer to the limitations of standard Kubernetes 
 - Request mirroring for testing
 - Path and header-based routing
 - Load balancing policies
-- Health checking and circuit breaking
+- Health checking and retry policies
 - TLS configuration including client certificate validation
 - Cross-namespace routing with delegation
 
@@ -34,14 +34,15 @@ Install Contour in your Kubernetes cluster:
 kubectl apply -f https://projectcontour.io/quickstart/contour.yaml
 
 # Or using Helm
-helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo add contour https://projectcontour.github.io/helm-charts/
 helm repo update
 
-helm install contour bitnami/contour \
+helm install contour contour/contour \
   --namespace projectcontour \
-  --create-namespace \
-  --set envoy.service.type=LoadBalancer
+  --create-namespace
 ```
+
+If you install with the Helm chart defaults, set `spec.ingressClassName: contour` on your HTTPProxy resources or configure the chart to watch unclassified resources.
 
 Verify installation:
 
@@ -104,6 +105,7 @@ spec:
   - services:
     - name: api-service
       port: 8080
+    loadBalancerPolicy:
       # Default load balancer policy
       strategy: RoundRobin
 ```
@@ -156,7 +158,8 @@ spec:
   - services:
     - name: backend-service
       port: 80
-      strategy: LeastRequest
+    loadBalancerPolicy:
+      strategy: WeightedLeastRequest
 ```
 
 ### Random Load Balancing
@@ -177,6 +180,7 @@ spec:
   - services:
     - name: backend-service
       port: 80
+    loadBalancerPolicy:
       strategy: Random
 ```
 
@@ -200,14 +204,13 @@ spec:
     services:
     - name: stateful-app
       port: 8080
+    loadBalancerPolicy:
       strategy: Cookie
-      cookieName: session-affinity
-      cookieMaxAge: 3600
 ```
 
 ## Health Check Configuration
 
-Configure active and passive health checking to ensure traffic only goes to healthy backends.
+Configure active health checking to ensure traffic only goes to healthy backends.
 
 ### HTTP Health Checks
 
@@ -246,7 +249,7 @@ spec:
 
 ### TCP Health Checks
 
-For non-HTTP services:
+For TLS-encapsulated TCP services:
 
 ```yaml
 # tcp-health-check.yaml
@@ -258,8 +261,10 @@ metadata:
 spec:
   virtualhost:
     fqdn: service.example.com
-  routes:
-  - services:
+    tls:
+      passthrough: true
+  tcpproxy:
+    services:
     - name: tcp-service
       port: 9000
     healthCheckPolicy:
@@ -270,12 +275,12 @@ spec:
       healthyThresholdCount: 2
 ```
 
-### Custom Health Check Headers
+### Custom Health Check Statuses
 
-Send specific headers during health checks:
+Configure additional status ranges that should be considered healthy:
 
 ```yaml
-# custom-health-headers.yaml
+# custom-health-statuses.yaml
 apiVersion: projectcontour.io/v1
 kind: HTTPProxy
 metadata:
@@ -294,12 +299,12 @@ spec:
       timeoutSeconds: 5
       unhealthyThresholdCount: 3
       healthyThresholdCount: 2
-      # Custom headers for health check
+      # Custom status ranges for health check
       expectedStatuses:
-      - min: 200
-        max: 299
-      - min: 300
-        max: 399
+      - start: 200
+        end: 300
+      - start: 300
+        end: 400
 ```
 
 ## Timeout Configuration
@@ -487,9 +492,9 @@ spec:
       mirror: true
 ```
 
-## Retry and Circuit Breaking
+## Retry Policies
 
-Configure retry policies and circuit breakers for resilience.
+Configure retry policies for resilience.
 
 ### Retry Policy
 
@@ -513,7 +518,7 @@ spec:
       port: 80
     retryPolicy:
       # Number of retries
-      numRetries: 3
+      count: 3
       # Per-try timeout
       perTryTimeout: 5s
       # Retry on these conditions
@@ -525,35 +530,9 @@ spec:
       - retriable-4xx
 ```
 
-### Connection Pool Settings
+## Delegation
 
-Control connection pooling for better resource management:
-
-```yaml
-# connection-pool.yaml
-apiVersion: projectcontour.io/v1
-kind: HTTPProxy
-metadata:
-  name: connection-pooling
-  namespace: default
-spec:
-  virtualhost:
-    fqdn: api.example.com
-  routes:
-  - services:
-    - name: backend-service
-      port: 80
-    # Circuit breaker settings
-    connectionPoolSettings:
-      maxConnections: 2048
-      maxPendingRequests: 1024
-      maxRequests: 1024
-      maxRetries: 3
-```
-
-## Multi-Cluster and Delegation
-
-Route traffic across multiple clusters or delegate routing to other HTTPProxy resources.
+Delegate routing to other HTTPProxy resources.
 
 ### HTTPProxy Delegation
 
