@@ -46,11 +46,13 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
       port: 53
-  # Allow all other traffic (adjust as needed)
+    - protocol: TCP
+      port: 53
+  # Allow same-namespace pod traffic (adjust as needed)
   - to:
     - podSelector: {}
 ```
@@ -69,7 +71,7 @@ kubectl run test -n production --image=curlimages/curl --rm -it -- \
 # Should timeout or fail
 ```
 
-Note that network policies require a CNI that supports them, such as Calico, Cilium, or Weave Net.
+Note that network policies require a CNI that supports them, such as Calico, Cilium, or Weave Net. Network policies also don't reliably protect pods running with `hostNetwork: true`, because those pods share the node network namespace.
 
 ## Using Calico GlobalNetworkPolicy
 
@@ -82,8 +84,9 @@ kind: GlobalNetworkPolicy
 metadata:
   name: block-cloud-metadata
 spec:
-  # Apply to all pods except those with specific label
-  selector: has(block-metadata)
+  # Apply to all pods in labeled namespaces except explicitly trusted pods
+  namespaceSelector: block-metadata == "true"
+  selector: '!has(metadata-access)'
   order: 100
   types:
   - Egress
@@ -114,7 +117,7 @@ kubectl label namespace production block-metadata=true
 kubectl label namespace staging block-metadata=true
 
 # Exempt specific pods that need metadata access
-kubectl label pod trusted-pod -n production block-metadata-
+kubectl label pod trusted-pod -n production metadata-access=allowed
 ```
 
 ## Implementing IP Tables Rules on Nodes
@@ -152,7 +155,7 @@ This creates a kernel-level block that prevents container traffic from reaching 
 
 ## Using Cilium Network Policies
 
-Cilium provides Layer 7 network policies with more granular control:
+Cilium provides explicit deny policies with more granular control:
 
 ```yaml
 # cilium-block-metadata.yaml
@@ -163,15 +166,15 @@ metadata:
   namespace: production
 spec:
   endpointSelector: {}
-  egress:
+  egressDeny:
   # Block metadata endpoint explicitly
-  - toCIDR:
-    - 169.254.169.254/32
+  - toCIDRSet:
+    - cidr: 169.254.169.254/32
     toPorts:
     - ports:
       - port: "80"
         protocol: TCP
-    action: Deny
+  egress:
   # Allow other egress traffic
   - toEntities:
     - world
@@ -200,18 +203,26 @@ On AWS, enable IMDSv2 which requires session tokens and prevents simple HTTP req
 aws ec2 modify-instance-metadata-options \
   --instance-id i-1234567890abcdef0 \
   --http-tokens required \
+  --http-put-response-hop-limit 1 \
   --http-endpoint enabled
 
-# Apply to all instances in Auto Scaling group
-aws autoscaling update-auto-scaling-group \
-  --auto-scaling-group-name my-asg \
-  --launch-template LaunchTemplateId=lt-xxx,Version='$Latest'
+# Create a new launch template version that requires IMDSv2
+NEW_VERSION=$(aws ec2 create-launch-template-version \
+  --launch-template-id lt-xxx \
+  --source-version '$Latest' \
+  --launch-template-data '{"MetadataOptions":{"HttpTokens":"required","HttpEndpoint":"enabled","HttpPutResponseHopLimit":1}}' \
+  --query 'LaunchTemplateVersion.VersionNumber' \
+  --output text)
 
-# Update launch template to require IMDSv2
+# Make the new launch template version the default
 aws ec2 modify-launch-template \
   --launch-template-id lt-xxx \
-  --default-version '$Latest' \
-  --launch-template-data '{"MetadataOptions":{"HttpTokens":"required","HttpEndpoint":"enabled"}}'
+  --default-version "$NEW_VERSION"
+
+# Point the Auto Scaling group at the updated default launch template version
+aws autoscaling update-auto-scaling-group \
+  --auto-scaling-group-name my-asg \
+  --launch-template LaunchTemplateId=lt-xxx,Version='$Default'
 ```
 
 IMDSv2 requires a two-step process to retrieve credentials, making it harder to exploit:
@@ -226,57 +237,62 @@ curl -H "X-aws-ec2-metadata-token: $TOKEN" \
   http://169.254.169.254/latest/meta-data/
 ```
 
-Most container images won't have the logic to perform this two-step process, effectively blocking access.
+Requiring IMDSv2 disables unauthenticated IMDSv1 requests and adds defense in depth. It is not a complete pod-level block by itself, because a workload that can make the IMDSv2 token request can still use metadata unless network controls or a hop limit prevent the response from reaching the pod.
 
-## GCP-Specific: Metadata Concealment
+## GCP-Specific: GKE Metadata Server
 
-On GKE, enable metadata concealment to hide node metadata from pods:
+On GKE, use Workload Identity Federation for GKE and the GKE metadata server instead of legacy metadata concealment:
 
 ```bash
-# Create GKE cluster with metadata concealment
+# Create GKE cluster with Workload Identity Federation for GKE
 gcloud container clusters create secure-cluster \
   --region us-central1 \
   --enable-ip-alias \
   --workload-pool=PROJECT_ID.svc.id.goog \
   --enable-shielded-nodes \
   --shielded-secure-boot \
-  --shielded-integrity-monitoring \
-  --metadata-from-file=disable-legacy-endpoints=true
+  --shielded-integrity-monitoring
 
-# Enable on existing cluster
+# Enable Workload Identity Federation for GKE on an existing cluster
 gcloud container clusters update existing-cluster \
   --region us-central1 \
-  --enable-shielded-nodes
+  --workload-pool=PROJECT_ID.svc.id.goog
 
-# Update node pool
+# Update an existing node pool to use the GKE metadata server
 gcloud container node-pools update default-pool \
   --cluster=existing-cluster \
   --region=us-central1 \
   --workload-metadata=GKE_METADATA
 ```
 
-With `GKE_METADATA` mode, pods cannot access the VM's service account credentials via metadata endpoint. They must use Workload Identity instead.
+With `GKE_METADATA` mode, pods use the GKE metadata server instead of the Compute Engine metadata server, except for pods running on the host network. Configure IAM permissions for Kubernetes service accounts through Workload Identity Federation for GKE.
 
 ## Azure-Specific: Instance Metadata Service Protection
 
-On AKS, restrict IMDS access using NSGs and network policies:
+On AKS, restrict IMDS access using the managed IMDS restriction feature where available:
 
 ```bash
-# Create NSG rule to restrict metadata access
-az network nsg rule create \
+# Register the preview feature and refresh the provider
+az extension add --name aks-preview
+az feature register \
+  --namespace Microsoft.ContainerService \
+  --name IMDSRestrictionPreview
+az provider register --namespace Microsoft.ContainerService
+
+# Enable IMDS restriction on an existing cluster
+az aks update \
   --resource-group myResourceGroup \
-  --nsg-name myNSG \
-  --name BlockMetadataFromContainers \
-  --priority 100 \
-  --source-address-prefixes VirtualNetwork \
-  --destination-address-prefixes 169.254.169.254/32 \
-  --destination-port-ranges '*' \
-  --direction Outbound \
-  --access Deny \
-  --protocol '*'
+  --name myAKSCluster \
+  --enable-imds-restriction
+
+# Reimage nodes so the restriction takes effect
+az aks upgrade \
+  --resource-group myResourceGroup \
+  --name myAKSCluster \
+  --node-image-only
 ```
 
-Configure AKS to use managed identity instead of IMDS for pod authentication:
+Configure AKS to use Microsoft Entra Workload ID instead of IMDS for pod authentication:
 
 ```bash
 # Enable workload identity on AKS
@@ -297,7 +313,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-metadata-for-trusted
-  namespace: system
+  namespace: kube-system
 spec:
   podSelector:
     matchLabels:
@@ -367,7 +383,7 @@ kubectl run metadata-test -n production --image=curlimages/curl --rm -it -- \
   curl -v --max-time 5 http://169.254.169.254/latest/meta-data/
 
 # Verify allowed pods can still access (if exceptions configured)
-kubectl run metadata-test -n system \
+kubectl run metadata-test -n kube-system \
   --labels="metadata-access=allowed" \
   --image=curlimages/curl --rm -it -- \
   curl -v --max-time 5 http://169.254.169.254/latest/meta-data/
@@ -375,7 +391,7 @@ kubectl run metadata-test -n system \
 
 ## Best Practices
 
-Implement multiple layers of defense: network policies, node-level iptables, and cloud-provider specific protections. Block metadata access by default and explicitly allow only trusted workloads that require it. Use cloud-native identity mechanisms like IRSA, Workload Identity, or Azure AD Workload Identity instead of instance credentials.
+Implement multiple layers of defense: network policies, node-level iptables, and cloud-provider specific protections. Block metadata access by default and explicitly allow only trusted workloads that require it. Use cloud-native identity mechanisms like IRSA, Workload Identity Federation for GKE, or Microsoft Entra Workload ID instead of instance credentials.
 
 Regularly audit which pods have metadata access permissions. Monitor and alert on attempts to access metadata endpoints, as these may indicate compromise. Test your blocking mechanisms regularly to ensure they remain effective as your cluster evolves.
 
@@ -385,6 +401,6 @@ Document why specific pods need metadata access and review these exceptions peri
 
 Blocking access to cloud metadata endpoints is a critical security control for Kubernetes clusters. By preventing pods from accessing instance credentials, you eliminate a common privilege escalation vector and reduce the blast radius of container compromises.
 
-Implement network policies as your primary defense, supplemented by cloud-provider specific protections like IMDSv2, metadata concealment, or workload identity. Use iptables rules on nodes for defense in depth. Monitor access attempts to detect potential attacks.
+Implement network policies as your primary defense, supplemented by cloud-provider specific protections like IMDSv2, the GKE metadata server, or workload identity. Use iptables rules on nodes for defense in depth. Monitor access attempts to detect potential attacks.
 
 Combined with proper RBAC, pod security standards, and runtime security tools, blocking metadata access forms an essential part of your Kubernetes security posture. The effort to implement these controls is minimal compared to the security benefits they provide.
