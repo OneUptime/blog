@@ -16,9 +16,9 @@ Pulsar consists of several layers working together. The broker layer handles mes
 
 BookKeeper's architecture uses a write-ahead log with automatic replication. When publishers send messages, brokers write to BookKeeper ledgers, which replicate entries across multiple bookies before acknowledging. This ensures durability without sacrificing throughput, as BookKeeper handles parallel writes efficiently.
 
-## Installing the Pulsar Operator
+## Installing Pulsar with Helm
 
-Deploy Pulsar using the official Helm chart managed by StreamNative:
+Deploy Pulsar using the official Apache Pulsar Helm chart:
 
 ```bash
 # Add the Pulsar Helm repository
@@ -33,6 +33,7 @@ kubectl create namespace pulsar
 helm install pulsar apache/pulsar \
   --namespace pulsar \
   --set initialize=true \
+  --set clusterName=pulsar-cluster \
   --set zookeeper.replicaCount=3 \
   --set zookeeper.resources.requests.memory=2Gi \
   --set zookeeper.resources.requests.cpu=1 \
@@ -46,7 +47,7 @@ helm install pulsar apache/pulsar \
   --set broker.replicaCount=3 \
   --set broker.resources.requests.memory=4Gi \
   --set broker.resources.requests.cpu=2 \
-  --set autorecovery.enableProvisionContainer=true
+  --set components.autorecovery=true
 
 # Wait for deployment (this takes 5-10 minutes)
 kubectl get pods -n pulsar -w
@@ -67,10 +68,10 @@ kubectl get pods -n pulsar
 # - pulsar-bookie-0,1,2 (BookKeeper storage)
 # - pulsar-broker-0,1,2 (message brokers)
 # - pulsar-proxy-0 (client proxy)
-# - pulsar-bastion-0 (admin tools)
+# - pulsar-toolset-0 (admin tools)
 
 # Verify cluster initialization
-kubectl exec -it -n pulsar pulsar-bastion-0 -- \
+kubectl exec -it -n pulsar pulsar-toolset-0 -- \
   bin/pulsar-admin clusters list
 
 # Should show 'pulsar-cluster'
@@ -82,9 +83,9 @@ Set up tenants and namespaces for workload isolation:
 
 ```bash
 # Access admin tools
-kubectl exec -it -n pulsar pulsar-bastion-0 -- bash
+kubectl exec -it -n pulsar pulsar-toolset-0 -- bash
 
-# Inside the bastion pod
+# Inside the toolset pod
 # Create tenant
 bin/pulsar-admin tenants create mycompany \
   --allowed-clusters pulsar-cluster \
@@ -102,15 +103,17 @@ bin/pulsar-admin namespaces set-message-ttl mycompany/production \
   --messageTTL 86400  # 24 hours
 
 # Configure replication
-bin/pulsar-admin namespaces set-replication-clusters mycompany/production \
+bin/pulsar-admin namespaces set-clusters mycompany/production \
   --clusters pulsar-cluster
 
-# Set resource quotas
-bin/pulsar-admin namespaces set-resource-quota mycompany/production \
-  --msgRateIn 1000 \
-  --msgRateOut 2000 \
-  --bandwidthIn 10485760 \
-  --bandwidthOut 20971520
+# Set namespace publish and dispatch rates
+bin/pulsar-admin namespaces set-publish-rate mycompany/production \
+  --msg-publish-rate 1000 \
+  --byte-publish-rate 10485760
+
+bin/pulsar-admin namespaces set-dispatch-rate mycompany/production \
+  --msg-dispatch-rate 2000 \
+  --byte-dispatch-rate 20971520
 ```
 
 This creates isolated environments with independent resource limits and retention policies.
@@ -122,21 +125,15 @@ Create topics with schema enforcement:
 ```bash
 # Create partitioned topic
 bin/pulsar-admin topics create-partitioned-topic \
-  persistent://mycompany/production/events \
+  persistent://mycompany/production/user-events \
   --partitions 6
 
 # Register Avro schema for type safety
 cat > user-schema.json <<EOF
 {
-  "type": "record",
-  "name": "User",
-  "namespace": "com.mycompany",
-  "fields": [
-    {"name": "id", "type": "string"},
-    {"name": "email", "type": "string"},
-    {"name": "name", "type": "string"},
-    {"name": "created_at", "type": "long", "logicalType": "timestamp-millis"}
-  ]
+  "type": "AVRO",
+  "schema": "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"com.mycompany\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"email\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"created_at\",\"type\":\"long\"}]}",
+  "properties": {}
 }
 EOF
 
@@ -149,41 +146,41 @@ bin/pulsar-admin schemas get \
   persistent://mycompany/production/user-events
 ```
 
-Schema enforcement prevents incompatible messages from entering topics.
+Schema-aware producers and consumers prevent incompatible messages from entering topics.
 
 ## Publishing and Consuming Messages
 
 Test the cluster with sample producers and consumers:
 
 ```python
-# producer.py - run from bastion pod
+# producer.py - run from toolset pod
+import time
 import pulsar
-import json
+from pulsar import schema
+
+
+class User(schema.Record):
+    _avro_namespace = "com.mycompany"
+
+    id = schema.String(required=True)
+    email = schema.String(required=True)
+    name = schema.String(required=True)
+    created_at = schema.Long(required=True)
 
 client = pulsar.Client('pulsar://pulsar-broker:6650')
 
 producer = client.create_producer(
     'persistent://mycompany/production/user-events',
-    schema=pulsar.schema.AvroSchema({
-        'type': 'record',
-        'name': 'User',
-        'fields': [
-            {'name': 'id', 'type': 'string'},
-            {'name': 'email', 'type': 'string'},
-            {'name': 'name', 'type': 'string'},
-            {'name': 'created_at', 'type': 'long'}
-        ]
-    })
+    schema=schema.AvroSchema(User)
 )
 
 # Publish message
-import time
-producer.send({
-    'id': '123',
-    'email': 'alice@example.com',
-    'name': 'Alice',
-    'created_at': int(time.time() * 1000)
-})
+producer.send(User(
+    id='123',
+    email='alice@example.com',
+    name='Alice',
+    created_at=int(time.time() * 1000)
+))
 
 producer.close()
 client.close()
@@ -192,22 +189,23 @@ client.close()
 ```python
 # consumer.py
 import pulsar
+from pulsar import schema
+
+
+class User(schema.Record):
+    _avro_namespace = "com.mycompany"
+
+    id = schema.String(required=True)
+    email = schema.String(required=True)
+    name = schema.String(required=True)
+    created_at = schema.Long(required=True)
 
 client = pulsar.Client('pulsar://pulsar-broker:6650')
 
 consumer = client.subscribe(
     'persistent://mycompany/production/user-events',
     subscription_name='user-processor',
-    schema=pulsar.schema.AvroSchema({
-        'type': 'record',
-        'name': 'User',
-        'fields': [
-            {'name': 'id', 'type': 'string'},
-            {'name': 'email', 'type': 'string'},
-            {'name': 'name', 'type': 'string'},
-            {'name': 'created_at', 'type': 'long'}
-        ]
-    })
+    schema=schema.AvroSchema(User)
 )
 
 while True:
@@ -227,32 +225,26 @@ client.close()
 Optimize BookKeeper for your workload:
 
 ```yaml
-# bookkeeper-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: bookkeeper-config
-  namespace: pulsar
-data:
-  BOOKIE_JOURNAL_DIRS: /bookkeeper/data/journal
-  BOOKIE_LEDGER_DIRS: /bookkeeper/data/ledgers
-  # Journal settings (write-ahead log)
-  BOOKIE_JOURNAL_WRITE_BUFFER_SIZE_KB: "4096"
-  BOOKIE_JOURNAL_SYNC_DATA: "true"
-  BOOKIE_JOURNAL_MAX_GROUP_WAIT_MSEC: "1"
+# bookkeeper-values.yaml
+bookkeeper:
+  configData:
+    # Journal settings (write-ahead log)
+    journalWriteBufferSizeKB: "4096"
+    journalSyncData: "true"
+    journalMaxGroupWaitMSec: "1"
 
-  # Ledger storage settings
-  BOOKIE_DB_STORAGE_ROCKSDB_WRITE_BUFFER_SIZE_MB: "256"
-  BOOKIE_DB_STORAGE_ROCKSDB_BLOCK_CACHE_SIZE_MB: "512"
+    # Ledger storage settings
+    dbStorage_rocksDB_writeBufferSizeMB: "256"
+    dbStorage_rocksDB_blockSize: "536870912"
 
-  # Performance tuning
-  BOOKIE_NUM_ADD_WORKER_THREADS: "8"
-  BOOKIE_NUM_READ_WORKER_THREADS: "8"
-  BOOKIE_READ_BUFFER_SIZE_BYTES: "4096"
+    # Performance tuning
+    numAddWorkerThreads: "8"
+    numReadWorkerThreads: "8"
+    readBufferSizeBytes: "4096"
 
-  # Disk usage management
-  BOOKIE_DISK_USAGE_THRESHOLD: "0.95"
-  BOOKIE_DISK_USAGE_WARN_THRESHOLD: "0.90"
+    # Disk usage management
+    diskUsageThreshold: "0.95"
+    diskUsageWarnThreshold: "0.90"
 ```
 
 Apply this configuration by upgrading the Helm release:
@@ -261,7 +253,7 @@ Apply this configuration by upgrading the Helm release:
 helm upgrade pulsar apache/pulsar \
   --namespace pulsar \
   --reuse-values \
-  --set bookkeeper.configData.BOOKIE_JOURNAL_WRITE_BUFFER_SIZE_KB=4096
+  -f bookkeeper-values.yaml
 ```
 
 ## Monitoring Pulsar and BookKeeper
@@ -292,7 +284,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      component: bookkeeper
+      component: bookie
   endpoints:
     - port: http
       path: /metrics
@@ -301,9 +293,9 @@ spec:
 
 Key metrics to monitor:
 
-- Message throughput: `pulsar_in_messages_total`, `pulsar_out_messages_total`
-- BookKeeper write latency: `bookie_ADD_ENTRY_REQUEST`
-- Storage usage: `bookkeeper_server_BOOKIES_ledger_disk_usage`
+- Message throughput: `pulsar_broker_rate_in`, `pulsar_broker_rate_out`
+- BookKeeper write latency: `bookkeeper_server_ADD_ENTRY_REQUEST`
+- Storage health: `bookie_ledgers_count`, `bookie_ledger_writable_dirs`
 - Subscription backlog: `pulsar_subscription_back_log`
 
 ## Implementing Tiered Storage
@@ -311,7 +303,7 @@ Key metrics to monitor:
 Configure tiered storage to offload old data to object storage:
 
 ```yaml
-# offload-config.yaml
+# offload-secret.yaml
 apiVersion: v1
 kind: Secret
 metadata:
@@ -321,31 +313,47 @@ type: Opaque
 stringData:
   AWS_ACCESS_KEY_ID: "your-access-key"
   AWS_SECRET_ACCESS_KEY: "your-secret-key"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: broker-offload-config
-  namespace: pulsar
-data:
-  PULSAR_PREFIX_managedLedgerOffloadDriver: "aws-s3"
-  PULSAR_PREFIX_s3ManagedLedgerOffloadBucket: "pulsar-offload"
-  PULSAR_PREFIX_s3ManagedLedgerOffloadRegion: "us-west-2"
-  PULSAR_PREFIX_managedLedgerOffloadThresholdInBytes: "10737418240"  # 10GB
-  PULSAR_PREFIX_managedLedgerOffloadDeletionLagInMillis: "3600000"  # 1 hour
+```
+
+```yaml
+# offload-values.yaml
+broker:
+  extraEnvs:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: offload-config
+          key: AWS_ACCESS_KEY_ID
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: offload-config
+          key: AWS_SECRET_ACCESS_KEY
+  configData:
+    managedLedgerOffloadDriver: "aws-s3"
+    offloadersDirectory: "offloaders"
+    s3ManagedLedgerOffloadBucket: "pulsar-offload"
+    s3ManagedLedgerOffloadRegion: "us-west-2"
 ```
 
 Update broker configuration:
 
 ```bash
+kubectl apply -f offload-secret.yaml
+
 helm upgrade pulsar apache/pulsar \
   --namespace pulsar \
   --reuse-values \
-  --set broker.configData.managedLedgerOffloadDriver=aws-s3 \
-  --set broker.configData.s3ManagedLedgerOffloadBucket=pulsar-offload
+  -f offload-values.yaml
+
+bin/pulsar-admin namespaces set-offload-threshold mycompany/production \
+  --size 10G
+
+bin/pulsar-admin namespaces set-offload-deletion-lag mycompany/production \
+  --lag 1h
 ```
 
-Topics automatically offload old segments to S3, reducing BookKeeper storage costs.
+After the namespace threshold is set, Pulsar offloads eligible old segments to S3, reducing BookKeeper storage costs.
 
 ## Scaling BookKeeper and Brokers
 
@@ -365,11 +373,11 @@ helm upgrade pulsar apache/pulsar \
   --set broker.replicaCount=6
 
 # Verify scaling
-kubectl get pods -n pulsar -l component=bookkeeper
+kubectl get pods -n pulsar -l component=bookie
 kubectl get pods -n pulsar -l component=broker
 ```
 
-Pulsar automatically rebalances topic partitions across new brokers.
+Pulsar's broker load manager assigns topics to available brokers and can unload bundles to redistribute load.
 
 ## Implementing Geo-Replication
 
@@ -397,16 +405,17 @@ Messages automatically replicate to the second cluster for disaster recovery.
 Back up BookKeeper ledgers and metadata:
 
 ```bash
-# Backup ZooKeeper metadata
-kubectl exec -it -n pulsar pulsar-zookeeper-0 -- \
-  zkCli.sh -server localhost:2181 dump /ledgers > zk-backup.txt
+# Inspect BookKeeper ledger metadata before a backup
+kubectl exec -it -n pulsar pulsar-bookie-0 -- \
+  bin/bookkeeper shell listledgers -meta > ledger-metadata.txt
 
-# BookKeeper ledgers are backed up via tiered storage
-# or snapshot the persistent volumes
+# Back up ZooKeeper and BookKeeper by snapshotting their persistent volumes
+kubectl get pvc -n pulsar -l component=zookeeper
+kubectl get pvc -n pulsar -l component=bookie
 
-# For disaster recovery, restore ZooKeeper data
-kubectl exec -it -n pulsar pulsar-zookeeper-0 -- \
-  zkCli.sh -server localhost:2181 < zk-backup.txt
+# Restore from coordinated volume snapshots and verify the ledger metadata
+kubectl exec -it -n pulsar pulsar-bookie-0 -- \
+  bin/bookkeeper shell listledgers
 ```
 
 ## Conclusion
