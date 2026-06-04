@@ -52,8 +52,6 @@ For real projects, Docker Compose provides a better workflow. Here is a basic se
 
 ```yaml
 # docker-compose.yml - Apache PHP development environment
-version: "3.8"
-
 services:
   app:
     image: php:8.3-apache
@@ -88,6 +86,7 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     libicu-dev \
     libonig-dev \
+    cron \
     unzip \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -163,8 +162,6 @@ Most PHP applications need a database. Here is a complete development stack:
 
 ```yaml
 # docker-compose.yml - Full PHP development stack
-version: "3.8"
-
 services:
   app:
     build:
@@ -180,6 +177,8 @@ services:
       DB_USERNAME: app_user
       DB_PASSWORD: secret
       REDIS_HOST: redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mysql:
         condition: service_healthy
@@ -270,7 +269,7 @@ For production, adjust the PHP and Apache settings:
 display_errors = Off
 error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
 log_errors = On
-error_log = /var/log/php/error.log
+error_log = /proc/self/fd/2
 
 ; Enable OPcache for production performance
 opcache.enable = 1
@@ -364,7 +363,7 @@ RUN pecl install xdebug && docker-php-ext-enable xdebug
 
 # Configure Xdebug for remote debugging
 RUN echo "xdebug.mode=debug" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini \
-    && echo "xdebug.client_host=host.docker" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini \
+    && echo "xdebug.client_host=host.docker.internal" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini \
     && echo "xdebug.client_port=9003" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini \
     && echo "xdebug.start_with_request=yes" >> /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
 ```
