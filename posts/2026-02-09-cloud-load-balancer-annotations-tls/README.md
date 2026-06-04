@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Load Balancer, TLS, Cloud
 
-Description: Master cloud-specific load balancer annotations for TLS termination and proxy protocol configuration on AWS, GCP, and Azure Kubernetes clusters.
+Description: Master cloud-specific load balancer annotations for TLS termination, client IP preservation, and proxy protocol configuration on AWS, GCP, and Azure Kubernetes clusters.
 
 ---
 
-Kubernetes Service objects with type LoadBalancer automatically provision cloud load balancers, but the default configuration rarely meets production requirements. Cloud providers expose advanced features through service annotations that control TLS termination, proxy protocol, connection draining, and health checks.
+Kubernetes Service objects with type LoadBalancer automatically provision cloud load balancers, but the default configuration rarely meets production requirements. Cloud providers expose advanced features through service annotations and related load balancing resources that control TLS termination, proxy protocol, connection draining, and health checks.
 
-This guide demonstrates how to configure load balancer annotations for TLS and proxy protocol across AWS EKS, Google GKE, and Azure AKS.
+This guide demonstrates how to configure load balancer annotations for TLS, client IP preservation, and proxy protocol where supported across AWS EKS, Google GKE, and Azure AKS.
 
 ## Understanding Load Balancer Annotations
 
@@ -22,7 +22,7 @@ kind: Service
 metadata:
   name: my-service
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
 spec:
   type: LoadBalancer
   ports:
@@ -36,7 +36,7 @@ Annotations control load balancer provisioning, SSL/TLS certificates, backend pr
 
 ## AWS Load Balancer TLS Configuration
 
-AWS supports both Network Load Balancers (NLB) and Application Load Balancers (ALB) through the AWS Load Balancer Controller. For TLS termination with ACM certificates:
+AWS Load Balancer Controller provisions Network Load Balancers (NLBs) for Service objects and Application Load Balancers (ALBs) for Ingress objects. For Service-level TLS termination with ACM certificates on an NLB:
 
 ```yaml
 apiVersion: v1
@@ -52,10 +52,10 @@ metadata:
     # TLS configuration
     service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-east-1:123456789:certificate/xxxxx"
     service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
-    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
 
     # SSL policy
-    service.beta.kubernetes.io/aws-load-balancer-ssl-negotiation-policy: "ELBSecurityPolicy-TLS-1-2-2017-01"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-negotiation-policy: "ELBSecurityPolicy-TLS13-1-2-2021-06"
 spec:
   type: LoadBalancer
   ports:
@@ -71,9 +71,9 @@ spec:
     app: web
 ```
 
-The load balancer terminates TLS using the ACM certificate and forwards unencrypted traffic to pods on port 8080. The SSL policy ensures only TLS 1.2+ connections.
+The load balancer terminates TLS using the ACM certificate and forwards plain TCP traffic to pods on port 8080. The SSL policy allows TLS 1.2 and TLS 1.3 connections.
 
-For Application Load Balancers with advanced features:
+For additional NLB features:
 
 ```yaml
 apiVersion: v1
@@ -85,17 +85,14 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
 
     # Multiple certificates
-    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: |
-      arn:aws:acm:us-east-1:123456789:certificate/cert1,
-      arn:aws:acm:us-east-1:123456789:certificate/cert2
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-east-1:123456789:certificate/cert1,arn:aws:acm:us-east-1:123456789:certificate/cert2"
 
-    # HTTPS listener with redirect
+    # TLS listener
     service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
-    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
 
-    # Connection draining
-    service.beta.kubernetes.io/aws-load-balancer-connection-draining-enabled: "true"
-    service.beta.kubernetes.io/aws-load-balancer-connection-draining-timeout: "60"
+    # Deregistration delay for connection draining
+    service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: "deregistration_delay.timeout_seconds=60"
 spec:
   type: LoadBalancer
   ports:
@@ -159,33 +156,49 @@ http {
 
 ## GCP Load Balancer TLS Configuration
 
-GKE uses Google Cloud Load Balancer with SSL certificates from Certificate Manager:
+GKE uses Google Cloud Application Load Balancers for HTTP and HTTPS traffic through Ingress or Gateway. With GKE Ingress, Google-managed certificates are attached to the Ingress, while backend settings are attached to the Service:
 
 ```yaml
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: myapp-cert
+spec:
+  domains:
+  - app.example.com
+---
 apiVersion: v1
 kind: Service
 metadata:
   name: web-service
   annotations:
-    # Use external load balancer
-    cloud.google.com/load-balancer-type: "External"
-
-    # SSL certificate from Certificate Manager
-    networking.gke.io/load-balancer-ssl-certificates: "myapp-cert"
-
-    # Backend protocol
+    # Backend settings for the Ingress-created load balancer
     cloud.google.com/backend-config: '{"default": "backend-config"}'
 
     # NEG (Network Endpoint Group) mode
     cloud.google.com/neg: '{"ingress": true}'
 spec:
-  type: LoadBalancer
+  type: NodePort
   ports:
-  - port: 443
+  - port: 80
     targetPort: 8080
-    name: https
+    name: http
   selector:
     app: web
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-ingress
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    networking.gke.io/managed-certificates: "myapp-cert"
+spec:
+  defaultBackend:
+    service:
+      name: web-service
+      port:
+        number: 80
 ```
 
 Create a backend config for advanced settings:
@@ -222,7 +235,7 @@ spec:
     - "X-Client-City:{client_city}"
 ```
 
-For internal load balancers with TLS:
+For internal L4 load balancers, a Service of type `LoadBalancer` creates an internal passthrough Network Load Balancer. It does not attach a TLS certificate to the load balancer, so TLS must be terminated in the workload or handled by an internal Ingress or Gateway:
 
 ```yaml
 apiVersion: v1
@@ -232,9 +245,6 @@ metadata:
   annotations:
     cloud.google.com/load-balancer-type: "Internal"
     networking.gke.io/internal-load-balancer-allow-global-access: "true"
-
-    # Use pre-created SSL certificate
-    networking.gke.io/load-balancer-ssl-certificates: "internal-cert"
 spec:
   type: LoadBalancer
   loadBalancerIP: 10.128.0.100
@@ -247,7 +257,7 @@ spec:
 
 ## GCP Proxy Protocol Configuration
 
-GCP load balancers support PROXY protocol for preserving client IPs:
+GKE Service load balancers are passthrough Network Load Balancers and do not use `BackendConfig` to enable PROXY protocol. Use `externalTrafficPolicy: Local` when you need the original client source IP to reach pods, or build a Google Cloud proxy Network Load Balancer with standalone NEGs if you specifically need PROXY protocol:
 
 ```yaml
 apiVersion: v1
@@ -255,10 +265,7 @@ kind: Service
 metadata:
   name: proxy-service
   annotations:
-    cloud.google.com/load-balancer-type: "External"
-
-    # Backend configuration with proxy protocol
-    cloud.google.com/backend-config: '{"default": "proxy-backend"}'
+    cloud.google.com/l4-rbs: "enabled"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -269,27 +276,9 @@ spec:
     app: web
 ```
 
-Backend config with proxy protocol:
-
-```yaml
-apiVersion: cloud.google.com/v1
-kind: BackendConfig
-metadata:
-  name: proxy-backend
-spec:
-  # Enable connection draining
-  connectionDraining:
-    drainingTimeoutSec: 30
-
-  # Logging
-  logging:
-    enable: true
-    sampleRate: 1.0
-```
-
 ## Azure Load Balancer TLS Configuration
 
-Azure Kubernetes Service uses Azure Load Balancer. For TLS, you typically use an ingress controller, but for L4 load balancers:
+Azure Kubernetes Service uses Azure Load Balancer for Services of type `LoadBalancer`. Azure Load Balancer is a layer 4 passthrough load balancer, so TLS termination typically belongs in an ingress controller, Azure Application Gateway, or the workload itself:
 
 ```yaml
 apiVersion: v1
@@ -302,17 +291,17 @@ metadata:
 
     # Resource group for public IP
     service.beta.kubernetes.io/azure-load-balancer-resource-group: "my-rg"
+    service.beta.kubernetes.io/azure-load-balancer-ipv4: "20.10.5.100"
 
     # Health check settings
-    service.beta.kubernetes.io/azure-load-balancer-health-probe-protocol: "tcp"
+    service.beta.kubernetes.io/port_443_health-probe_protocol: "Tcp"
     service.beta.kubernetes.io/azure-load-balancer-health-probe-interval: "5"
     service.beta.kubernetes.io/azure-load-balancer-health-probe-num-of-probe: "2"
 
-    # Session persistence
+    # TCP reset behavior
     service.beta.kubernetes.io/azure-load-balancer-disable-tcp-reset: "false"
 spec:
   type: LoadBalancer
-  loadBalancerIP: 20.10.5.100
   ports:
   - port: 443
     targetPort: 8080
@@ -347,7 +336,7 @@ spec:
 
 ## Azure Proxy Protocol Configuration
 
-Azure supports PROXY protocol through annotations:
+Azure Load Balancer does not provide a Service annotation to enable PROXY protocol. To preserve the client IP with an AKS LoadBalancer Service, use `externalTrafficPolicy: Local`:
 
 ```yaml
 apiVersion: v1
@@ -356,12 +345,6 @@ metadata:
   name: proxy-service
   annotations:
     service.beta.kubernetes.io/azure-load-balancer-internal: "false"
-
-    # Enable proxy protocol
-    service.beta.kubernetes.io/azure-load-balancer-enable-high-availability-ports: "false"
-
-    # Connection draining
-    service.beta.kubernetes.io/azure-load-balancer-disable-tcp-reset: "false"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -379,7 +362,7 @@ Verify TLS configuration:
 
 ```bash
 # Get load balancer address
-LB_ADDR=$(kubectl get svc web-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+LB_ADDR=$(kubectl get svc web-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}{.status.loadBalancer.ingress[0].ip}')
 
 # Test TLS connection
 openssl s_client -connect $LB_ADDR:443 -showcerts
@@ -392,7 +375,7 @@ Test proxy protocol:
 
 ```bash
 # Send request and check headers
-curl -v https://$LB_ADDR/
+curl -v http://$LB_ADDR/
 
 # Check client IP preservation
 kubectl logs -l app=web | grep "X-Forwarded-For"
@@ -400,6 +383,6 @@ kubectl logs -l app=web | grep "X-Forwarded-For"
 
 ## Conclusion
 
-Cloud load balancer annotations give you fine-grained control over TLS termination, proxy protocol, health checks, and connection handling. Each cloud provider offers different capabilities, so understanding the annotation syntax for AWS, GCP, and Azure ensures you can configure production-ready load balancers on any platform.
+Cloud load balancer annotations give you fine-grained control over TLS termination, client IP preservation, health checks, and connection handling. Each cloud provider offers different capabilities, so understanding the annotation syntax for AWS, GCP, and Azure ensures you can configure production-ready load balancers on any platform.
 
-The key is matching annotations to your requirements: TLS termination at the load balancer reduces CPU usage in pods, proxy protocol preserves client IPs for logging and security, and custom health checks ensure traffic only reaches healthy backends.
+The key is matching annotations to your requirements: TLS termination at the load balancer reduces CPU usage in pods, proxy protocol preserves client IPs where supported, and custom health checks ensure traffic only reaches healthy backends.
