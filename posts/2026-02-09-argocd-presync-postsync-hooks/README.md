@@ -8,13 +8,13 @@ Description: Learn how to implement ArgoCD PreSync and PostSync resource hooks t
 
 ---
 
-ArgoCD resource hooks let you execute specific tasks at different phases of the synchronization process. PreSync hooks run before applying application resources, while PostSync hooks execute after successful sync completion. These hooks enable sophisticated deployment workflows including database migrations, validation checks, and cleanup operations.
+ArgoCD resource hooks let you execute specific tasks at different phases of the synchronization process. PreSync hooks run before applying application resources, while PostSync hooks execute after application resources apply successfully and reach a Healthy state. These hooks enable sophisticated deployment workflows including database migrations, validation checks, and cleanup operations.
 
 ## Understanding Resource Hooks
 
 Resource hooks are standard Kubernetes resources with special annotations that tell ArgoCD when to execute them. Unlike regular application resources, hooks run as jobs or pods at specific sync phases and can block deployment progression until completion.
 
-ArgoCD supports multiple hook types: PreSync, Sync, PostSync, SyncFail, and Skip. This guide focuses on PreSync and PostSync hooks, the most commonly used for deployment workflows.
+ArgoCD supports multiple hook types: PreSync, Sync, PostSync, SyncFail, Skip, PreDelete, and PostDelete. This guide focuses on PreSync and PostSync hooks, the most commonly used for deployment workflows.
 
 ## Basic PreSync Hook
 
@@ -56,7 +56,7 @@ ArgoCD creates this job before applying any other resources. The sync operation 
 
 ## Basic PostSync Hook
 
-PostSync hooks execute after ArgoCD successfully applies all application resources. Use them for verification, notifications, or cleanup tasks:
+PostSync hooks execute after ArgoCD successfully applies all application resources and those resources reach a Healthy state. Use them for verification, notifications, or cleanup tasks:
 
 ```yaml
 # postsync-verification-job.yaml
@@ -138,7 +138,7 @@ metadata:
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
-    argocd.argoproj.io/sync-wave: "1"  # Run in first wave
+    argocd.argoproj.io/sync-wave: "0"  # Run in first PreSync wave
 spec:
   backoffLimit: 3  # Retry failed migrations
   template:
@@ -151,23 +151,13 @@ spec:
       containers:
         - name: migrate
           image: migrate/migrate:v4.15.2
-          command:
-            - sh
-            - -c
-            - |
-              # Run database migrations
-              migrate -path /migrations \
-                -database "$DATABASE_URL" \
-                up
-
-              # Verify migration success
-              if [ $? -eq 0 ]; then
-                echo "Migration completed successfully"
-                exit 0
-              else
-                echo "Migration failed"
-                exit 1
-              fi
+          command: ["migrate"]
+          args:
+            - "-path"
+            - "/migrations"
+            - "-database"
+            - "$(DATABASE_URL)"
+            - "up"
           env:
             - name: DATABASE_URL
               valueFrom:
@@ -254,7 +244,7 @@ spec:
             - sh
             - -c
             - |
-              curl -X POST https://api.slack.com/webhooks/YOUR_WEBHOOK \
+              curl -X POST https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX \
                 -H 'Content-Type: application/json' \
                 -d '{"text":"Deployment completed successfully for demo-app"}'
 ```
@@ -330,7 +320,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: health-check
-          image: curlimages/curl:latest
+          image: your-test-runner:latest  # Includes kubectl, curl, and smoke tests
           command:
             - sh
             - -c
@@ -426,7 +416,7 @@ Track hook execution through ArgoCD and Kubernetes:
 argocd app get demo-app
 
 # Check hook job status
-kubectl get jobs -n demo -l app=demo
+kubectl get jobs -n demo
 
 # View hook logs
 kubectl logs -n demo job/db-migration
@@ -434,8 +424,8 @@ kubectl logs -n demo job/db-migration
 # Describe hook job for detailed information
 kubectl describe job -n demo db-migration
 
-# List all hook resources
-kubectl get all -n demo -l argocd.argoproj.io/instance=demo-app
+# List application resources
+argocd app resources demo-app
 ```
 
 Monitor these outputs to troubleshoot hook failures and verify successful execution.
