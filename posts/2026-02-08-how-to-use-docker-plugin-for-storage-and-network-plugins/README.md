@@ -105,8 +105,6 @@ Use the volume in a Docker Compose file:
 
 ```yaml
 # Docker Compose with SSHFS volume
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -128,8 +126,6 @@ NFS is the standard for shared filesystem access across multiple hosts. Docker h
 
 ```yaml
 # NFS volume using Docker's built-in local driver
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -149,10 +145,11 @@ For more advanced NFS features, use a dedicated plugin:
 
 ```bash
 # Install an NFS plugin (example: NetApp Trident)
-docker plugin install netapp/trident-plugin:latest --grant-all-permissions
+docker plugin install --grant-all-permissions --alias netapp \
+  netapp/trident-plugin:<version> config=config.json
 
 # Create an NFS-backed volume
-docker volume create -d netapp/trident-plugin \
+docker volume create -d netapp \
   --name app-data \
   -o size=100g
 ```
@@ -190,11 +187,12 @@ volumes:
       volumeType: "gp3"
 ```
 
-#### Azure Disk
+#### Azure Cloudstor (legacy)
 
 ```bash
-# Install Azure Disk plugin
-docker plugin install cloudstor/azure-disk \
+# Install the legacy Cloudstor plugin for Docker Swarm clusters on Azure
+docker plugin install --alias cloudstor:azure --grant-all-permissions \
+  docker4x/cloudstor:<azure-plugin-version> \
   CLOUD_PLATFORM=AZURE \
   AZURE_STORAGE_ACCOUNT=mystorageaccount \
   AZURE_STORAGE_ACCOUNT_KEY=mykey
@@ -206,10 +204,10 @@ For distributed storage across multiple servers.
 
 ```bash
 # Install GlusterFS plugin
-docker plugin install glusterfs/glusterfs-plugin --grant-all-permissions
+docker plugin install --alias glusterfs urbitech/glusterfs:latest
 
 # Create a GlusterFS volume
-docker volume create -d glusterfs/glusterfs-plugin \
+docker volume create -d glusterfs \
   -o servers=server1,server2,server3 \
   -o volname=my-gluster-vol \
   my-distributed-volume
@@ -237,8 +235,6 @@ weave connect peer-host-1 peer-host-2
 
 ```yaml
 # Docker Compose using Weave network
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -255,11 +251,18 @@ networks:
 Calico provides high-performance networking with fine-grained network policy support.
 
 ```bash
-# Install the Calico Docker plugin
-docker plugin install calico/node:latest --grant-all-permissions
-
-# Create a Calico network
-docker network create --driver calico --ipam-driver calico-ipam my-calico-net
+# Run calico/node as a container on a non-cluster host
+docker run --net=host --privileged \
+  --name=calico-node \
+  -e DATASTORE_TYPE=etcdv3 \
+  -e ETCD_ENDPOINTS=https://calico-datastore.example.com:2379 \
+  -e CALICO_NETWORKING_BACKEND=bird \
+  -v /var/log/calico:/var/log/calico \
+  -v /var/lib/calico:/var/lib/calico \
+  -v /var/run/calico:/var/run/calico \
+  -v /run/docker/plugins:/run/docker/plugins \
+  -v /lib/modules:/lib/modules \
+  calico/node:v3.32.0 /bin/calico-node -felix
 ```
 
 ### Macvlan and IPvlan
@@ -268,8 +271,6 @@ These are built into Docker but worth mentioning as they solve common networking
 
 ```yaml
 # Macvlan network - containers get IPs on the physical network
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -318,7 +319,7 @@ docker plugin install my-plugin
 # Do you grant the above permissions? [y/N]
 ```
 
-Only grant permissions that make sense for the plugin's purpose. A volume plugin should not need network host access, for example.
+Only grant permissions that make sense for the plugin's purpose. For example, a plugin that only reads static policy from disk should not need broad device access.
 
 ## Building Custom Plugins
 
