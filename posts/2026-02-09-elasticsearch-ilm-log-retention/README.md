@@ -14,11 +14,12 @@ This guide covers implementing ILM policies for Kubernetes logs, including hot-w
 
 ## Understanding ILM phases
 
-ILM manages indices through four phases:
+ILM manages indices through five phases:
 
 **Hot phase:** Actively writing and querying recent data on fast SSDs
 **Warm phase:** Read-only older data on slower storage
 **Cold phase:** Rarely accessed historical data on cheapest storage
+**Frozen phase:** Rarely queried data mounted from searchable snapshots
 **Delete phase:** Remove data beyond retention period
 
 Each phase can trigger actions like rollover, shrink, force merge, or delete.
@@ -40,9 +41,9 @@ curl -X PUT "https://elasticsearch.logging.svc:9200/_ilm/policy/kubernetes-logs-
           "min_age": "0ms",
           "actions": {
             "rollover": {
-              "max_size": "50gb",
+              "max_primary_shard_size": "50gb",
               "max_age": "1d",
-              "max_docs": 50000000
+              "max_primary_shard_docs": 50000000
             },
             "set_priority": {
               "priority": 100
@@ -68,8 +69,7 @@ curl -X PUT "https://elasticsearch.logging.svc:9200/_ilm/policy/kubernetes-logs-
           "actions": {
             "set_priority": {
               "priority": 0
-            },
-            "freeze": {}
+            }
           }
         },
         "delete": {
@@ -84,9 +84,9 @@ curl -X PUT "https://elasticsearch.logging.svc:9200/_ilm/policy/kubernetes-logs-
 ```
 
 This policy:
-- Rolls over daily or at 50GB in hot phase
+- Rolls over daily or when the largest primary shard reaches 50GB in hot phase
 - Moves to warm after 3 days with optimization
-- Freezes in cold after 7 days
+- Lowers recovery priority in cold after 7 days
 - Deletes after 30 days
 
 ## Creating index template with ILM
@@ -104,8 +104,7 @@ curl -X PUT "https://elasticsearch.logging.svc:9200/_index_template/kubernetes-l
       "settings": {
         "number_of_shards": 3,
         "number_of_replicas": 1,
-        "index.lifecycle.name": "kubernetes-logs-policy",
-        "index.lifecycle.rollover_alias": "kubernetes-logs"
+        "index.lifecycle.name": "kubernetes-logs-policy"
       },
       "mappings": {
         "properties": {
@@ -135,65 +134,30 @@ curl -X PUT "https://elasticsearch.logging.svc:9200/_index_template/kubernetes-l
 Configure Elasticsearch nodes with different tiers:
 
 ```yaml
-# Hot tier data nodes
-apiVersion: apps/v1
-kind: StatefulSet
+# Hot, warm, and cold tier data nodes with Elastic Cloud on Kubernetes
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
 metadata:
-  name: elasticsearch-hot
+  name: elasticsearch
   namespace: logging
 spec:
-  serviceName: elasticsearch-hot
-  replicas: 3
-  template:
-    spec:
-      containers:
-        - name: elasticsearch
-          env:
-            - name: node.roles
-              value: "data_hot"
-            - name: node.attr.data
-              value: "hot"
-          # Fast SSD storage
----
-# Warm tier data nodes
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: elasticsearch-warm
-  namespace: logging
-spec:
-  serviceName: elasticsearch-warm
-  replicas: 3
-  template:
-    spec:
-      containers:
-        - name: elasticsearch
-          env:
-            - name: node.roles
-              value: "data_warm"
-            - name: node.attr.data
-              value: "warm"
-          # Standard SSD storage
----
-# Cold tier data nodes
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: elasticsearch-cold
-  namespace: logging
-spec:
-  serviceName: elasticsearch-cold
-  replicas: 2
-  template:
-    spec:
-      containers:
-        - name: elasticsearch
-          env:
-            - name: node.roles
-              value: "data_cold"
-            - name: node.attr.data
-              value: "cold"
-          # HDD storage
+  version: 8.19.0
+  nodeSets:
+    - name: hot
+      count: 3
+      config:
+        node.roles: ["data_hot", "data_content", "ingest"]
+      # Fast SSD storage
+    - name: warm
+      count: 3
+      config:
+        node.roles: ["data_warm"]
+      # Standard SSD storage
+    - name: cold
+      count: 2
+      config:
+        node.roles: ["data_cold"]
+      # HDD storage
 ```
 
 ## Advanced ILM policy with searchable snapshots
@@ -211,7 +175,7 @@ curl -X PUT "https://elasticsearch.logging.svc:9200/_ilm/policy/advanced-logs-po
           "min_age": "0ms",
           "actions": {
             "rollover": {
-              "max_size": "50gb",
+              "max_primary_shard_size": "50gb",
               "max_age": "1d"
             },
             "set_priority": {
@@ -227,10 +191,7 @@ curl -X PUT "https://elasticsearch.logging.svc:9200/_ilm/policy/advanced-logs-po
             },
             "readonly": {},
             "allocate": {
-              "number_of_replicas": 1,
-              "require": {
-                "data": "warm"
-              }
+              "number_of_replicas": 1
             },
             "set_priority": {
               "priority": 50
@@ -242,12 +203,6 @@ curl -X PUT "https://elasticsearch.logging.svc:9200/_ilm/policy/advanced-logs-po
           "actions": {
             "searchable_snapshot": {
               "snapshot_repository": "backup_repository"
-            },
-            "allocate": {
-              "number_of_replicas": 0,
-              "require": {
-                "data": "cold"
-              }
             }
           }
         },
@@ -275,12 +230,13 @@ curl "https://elasticsearch.logging.svc:9200/_ilm/status?pretty" \
 curl "https://elasticsearch.logging.svc:9200/kubernetes-000001/_ilm/explain?pretty" \
   -u elastic:$ELASTIC_PASSWORD
 
-# View all indices and their ILM phase
-curl "https://elasticsearch.logging.svc:9200/_cat/indices?v&h=index,health,status,pri,rep,docs.count,store.size,ilm.phase&s=index" \
-  -u elastic:$ELASTIC_PASSWORD
+# View managed indices and their ILM phase
+curl "https://elasticsearch.logging.svc:9200/kubernetes-*/_ilm/explain?only_managed=true" \
+  -u elastic:$ELASTIC_PASSWORD \
+  | jq -r '.indices | to_entries[] | [.key, .value.phase, .value.action, .value.step] | @tsv'
 ```
 
-Deploy monitoring dashboard:
+Summarize phases from ILM explain:
 
 ```yaml
 apiVersion: v1
@@ -289,25 +245,17 @@ metadata:
   name: elasticsearch-exporter-config
   namespace: logging
 data:
-  queries.yaml: |
-    ilm_phases:
-      query: |
-        {
-          "size": 0,
-          "aggs": {
-            "phases": {
-              "terms": {
-                "field": "ilm.phase"
-              }
-            }
-          }
-        }
+  ilm-phases.sh: |
+    #!/bin/sh
+    curl -s "https://elasticsearch.logging.svc:9200/kubernetes-*/_ilm/explain?only_managed=true" \
+      -u "elastic:${ELASTIC_PASSWORD}" \
+      | jq -r '.indices | to_entries[] | [.key, .value.phase, .value.action, .value.step] | @tsv'
 ```
 
 ## Best practices
 
 1. **Plan retention periods:** Balance compliance requirements with storage costs
-2. **Size rollover appropriately:** 50GB per index works well for most cases
+2. **Size rollover appropriately:** 50GB per primary shard works well for most cases
 3. **Use force merge in warm:** Reduces segment count for better performance
 4. **Implement replicas strategically:** Hot=2, Warm=1, Cold=0
 5. **Monitor ILM errors:** Set alerts for stuck indices
