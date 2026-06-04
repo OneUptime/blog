@@ -21,7 +21,7 @@ StatefulSets provide:
 - Ordered pod creation and deletion
 - Stable storage attachments
 
-DNS naming pattern:
+DNS naming pattern, assuming the default `cluster.local` cluster domain:
 
 ```text
 <pod-name>.<service-name>.<namespace>.svc.cluster.local
@@ -112,6 +112,20 @@ Deploy a PostgreSQL cluster with peer discovery:
 
 ```yaml
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: database
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: database
+type: Opaque
+stringData:
+  password: example-password
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: postgres
@@ -199,8 +213,6 @@ spec:
   ports:
   - name: cql
     port: 9042
-  - name: thrift
-    port: 9160
   - name: gossip
     port: 7000
 ---
@@ -346,6 +358,11 @@ Deploy Kafka using StatefulSet DNS:
 
 ```yaml
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: messaging
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: kafka
@@ -385,22 +402,26 @@ spec:
         - containerPort: 9093
           name: internal
         env:
-        - name: KAFKA_BROKER_ID
+        - name: POD_NAME
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
+        - name: POD_ORDINAL
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        - name: KAFKA_BROKER_ID
+          value: "$(POD_ORDINAL)"
         - name: KAFKA_ZOOKEEPER_CONNECT
-          value: "zookeeper:2181"
+          value: "zookeeper.messaging.svc.cluster.local:2181"
+        - name: KAFKA_LISTENERS
+          value: "INTERNAL://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092"
         - name: KAFKA_ADVERTISED_LISTENERS
           value: "INTERNAL://$(POD_NAME).kafka.messaging.svc.cluster.local:9093,EXTERNAL://$(POD_NAME).kafka.messaging.svc.cluster.local:9092"
         - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
           value: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
         - name: KAFKA_INTER_BROKER_LISTENER_NAME
           value: "INTERNAL"
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
         volumeMounts:
         - name: data
           mountPath: /var/lib/kafka/data
