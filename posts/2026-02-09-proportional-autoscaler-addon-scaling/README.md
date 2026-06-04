@@ -44,7 +44,7 @@ spec:
       serviceAccountName: dns-autoscaler
       containers:
       - name: autoscaler
-        image: registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.9
+        image: registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.10.3
         resources:
           requests:
             cpu: 20m
@@ -106,8 +106,8 @@ Linear mode calculates replicas using this formula:
 
 ```text
 replicas = max(ceil(cores * 1/coresPerReplica), ceil(nodes * 1/nodesPerReplica))
-replicas = max(replicas, min)
 replicas = min(replicas, max)
+replicas = max(replicas, min)
 ```
 
 The configuration parameters:
@@ -116,7 +116,7 @@ The configuration parameters:
 - **nodesPerReplica**: How many nodes per replica
 - **min**: Minimum replica count
 - **max**: Maximum replica count
-- **preventSinglePointFailure**: Ensure at least 2 replicas
+- **preventSinglePointFailure**: Ensure at least 2 replicas when the cluster has more than one node
 - **includeUnschedulableNodes**: Count unschedulable nodes in calculation
 
 Here's a ConfigMap for linear scaling:
@@ -208,7 +208,7 @@ spec:
       serviceAccountName: dns-autoscaler  # Reuse the same SA
       containers:
       - name: autoscaler
-        image: registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.9
+        image: registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.10.3
         command:
         - /cluster-proportional-autoscaler
         - --namespace=kube-system
@@ -248,13 +248,13 @@ Common issues:
 
 **Replicas not changing**: Check RBAC permissions. The autoscaler needs `get` and `update` on `deployments/scale`.
 
-**Unexpected replica counts**: Verify your ConfigMap syntax. JSON parsing errors fail silently and use default parameters instead.
+**Unexpected replica counts**: Verify your ConfigMap syntax and check autoscaler logs for JSON parsing errors.
 
 **Too frequent scaling**: The autoscaler polls every 10 seconds by default. Add `--poll-period-seconds=60` to reduce check frequency.
 
 ## Best Practices
 
-**Set appropriate minimums**: Always set `min` to at least 2 for high availability. Use `preventSinglePointFailure: true` to enforce this automatically.
+**Set appropriate minimums**: Always set `min` to at least 2 for high availability. Use `preventSinglePointFailure: true` to enforce this automatically when the cluster has more than one node.
 
 **Test scaling formulas**: Calculate expected replicas for your cluster sizes before deploying. Use ladder mode for non-linear scaling needs.
 
