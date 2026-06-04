@@ -8,7 +8,7 @@ Description: Learn how to enable and configure HTTP/2 and HTTP/3 support in Envo
 
 ---
 
-Modern HTTP protocols offer significant performance advantages over HTTP/1.1. HTTP/2 provides request multiplexing, header compression, and server push over a single TCP connection. HTTP/3 builds on HTTP/2's features but uses QUIC over UDP instead of TCP, eliminating head-of-line blocking and reducing connection establishment latency. Envoy supports both protocols with extensive configuration options.
+Modern HTTP protocols offer significant performance advantages over HTTP/1.1. HTTP/2 provides request multiplexing and header compression over a single TCP connection. HTTP/3 uses QUIC over UDP instead of TCP, reducing transport-level head-of-line blocking and connection establishment latency. Envoy supports both protocols with extensive configuration options.
 
 Enabling HTTP/2 and HTTP/3 in Envoy requires careful consideration of TLS configuration, protocol negotiation through ALPN (Application-Layer Protocol Negotiation), connection management, and client compatibility. The performance benefits are substantial, but you need to tune settings appropriately for your traffic patterns and ensure clients can fall back gracefully to HTTP/1.1 when needed.
 
@@ -41,10 +41,8 @@ static_resources:
             initial_stream_window_size: 65536  # 64KB
             # Initial connection window size
             initial_connection_window_size: 1048576  # 1MB
-            # Allow HTTP/2 metadata frames
-            allow_metadata: true
             # Stream error on invalid HTTP headers
-            stream_error_on_invalid_http_message: true
+            override_stream_error_on_invalid_http_message: true
             # Maximum frame size
             max_outbound_frames: 10000
             max_outbound_control_frames: 1000
@@ -106,12 +104,13 @@ static_resources:
     typed_extension_protocol_options:
       envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
         "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        common_http_protocol_options:
+          idle_timeout: 300s
         explicit_http_config:
           http2_protocol_options:
             max_concurrent_streams: 100
             initial_stream_window_size: 65536
             initial_connection_window_size: 1048576
-            allow_metadata: false
     # TLS with ALPN for upstream
     transport_socket:
       name: envoy.transport_sockets.tls
@@ -122,8 +121,6 @@ static_resources:
           - "h2"
           - "http/1.1"
     connect_timeout: 1s
-    common_http_protocol_options:
-      idle_timeout: 300s
 
 admin:
   address:
@@ -151,12 +148,8 @@ http2_protocol_options:
   # Allow connect method (for WebSocket over HTTP/2)
   allow_connect: true
 
-  # Allow HTTP/2 metadata
-  allow_metadata: true
-
   # Override stream error behavior
   override_stream_error_on_invalid_http_message: true
-  stream_error_on_invalid_http_message: false
 
   # Connection-level settings
   max_outbound_frames: 50000
@@ -169,10 +162,6 @@ http2_protocol_options:
   # Window update handling
   max_inbound_window_update_frames_per_data_frame_sent: 10
 
-  # Custom settings frame parameters
-  custom_settings_parameters:
-  - identifier: 0x4
-    value: 65536  # SETTINGS_INITIAL_WINDOW_SIZE
 ```
 
 ## Configuring HTTP/3 (QUIC) Support
@@ -312,7 +301,7 @@ Note that HTTP/3 requires TLS 1.3 and runs on UDP port 443 alongside TCP for fal
 
 ## Protocol Selection and Negotiation
 
-Handle multiple protocol versions gracefully:
+Handle HTTP/1.1 and HTTP/2 gracefully on the TCP listener, and advertise the separate HTTP/3 UDP listener shown earlier:
 
 ```yaml
 listeners:
@@ -329,12 +318,9 @@ listeners:
         stat_prefix: ingress_multi
         # Auto-detect protocol based on ALPN
         codec_type: AUTO
-        # Support all HTTP versions
+        # Support HTTP/1.1 and HTTP/2 on this TCP listener
         http2_protocol_options:
           max_concurrent_streams: 100
-        http3_protocol_options:
-          quic_protocol_options:
-            max_concurrent_streams: 100
         # Generate Alt-Svc header for HTTP/3 advertisement
         route_config:
           name: local_route
@@ -345,7 +331,7 @@ listeners:
             # Tell clients HTTP/3 is available
             - header:
                 key: "Alt-Svc"
-                value: 'h3=":443"; ma=86400, h2=":443"; ma=86400'
+                value: 'h3=":443"; ma=86400'
             routes:
             - match:
                 prefix: "/"
@@ -470,7 +456,7 @@ http2_protocol_options:
 1. **Enable HTTP/2 for both downstream and upstream**: Maximize performance benefits
 2. **Set appropriate window sizes**: Balance throughput and memory usage
 3. **Limit max_concurrent_streams**: Prevent resource exhaustion
-4. **Use TLS 1.2+**: Required for HTTP/2, TLS 1.3 for HTTP/3
+4. **Use TLS 1.2+ for HTTP/2 over TLS**: HTTP/3 uses QUIC with TLS 1.3
 5. **Configure ALPN correctly**: Ensures proper protocol negotiation
 6. **Monitor protocol adoption**: Track which clients use which protocols
 7. **Test fallback paths**: Ensure HTTP/1.1 clients still work
