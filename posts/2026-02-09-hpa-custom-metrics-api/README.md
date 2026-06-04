@@ -59,7 +59,8 @@ import (
     "os"
     "strings"
 
-    "github.com/go-redis/redis/v8"
+    "github.com/redis/go-redis/v9"
+    corev1 "k8s.io/api/core/v1"
     "k8s.io/apimachinery/pkg/api/resource"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/metrics/pkg/apis/custom_metrics/v1beta2"
@@ -126,9 +127,9 @@ func (s *MetricsServer) handleGetMetric(w http.ResponseWriter, r *http.Request) 
         return
     }
 
-    namespace := parts[6]
-    deploymentName := parts[8]
-    metricName := parts[9]
+    namespace := parts[5]
+    deploymentName := parts[7]
+    metricName := parts[8]
 
     if metricName != "queue_depth" {
         http.NotFound(w, r)
@@ -145,16 +146,20 @@ func (s *MetricsServer) handleGetMetric(w http.ResponseWriter, r *http.Request) 
     }
 
     // Build metric response
+    windowSeconds := int64(0)
     metric := v1beta2.MetricValue{
-        DescribedObject: v1beta2.ObjectReference{
+        DescribedObject: corev1.ObjectReference{
             APIVersion: "apps/v1",
             Kind:       "Deployment",
             Name:       deploymentName,
             Namespace:  namespace,
         },
-        MetricName: "queue_depth",
-        Timestamp:  metav1.Now(),
-        Value:      *resource.NewQuantity(queueLen, resource.DecimalSI),
+        Metric: v1beta2.MetricIdentifier{
+            Name: "queue_depth",
+        },
+        Timestamp:     metav1.Now(),
+        WindowSeconds: &windowSeconds,
+        Value:         *resource.NewQuantity(queueLen, resource.DecimalSI),
     }
 
     response := v1beta2.MetricValueList{
@@ -392,6 +397,9 @@ type metricCacheEntry struct {
 
 func (s *CachedMetricsServer) getQueueDepth(namespace, name string) int64 {
     key := fmt.Sprintf("%s/%s", namespace, name)
+    if s.cache == nil {
+        s.cache = make(map[string]metricCacheEntry)
+    }
 
     if entry, ok := s.cache[key]; ok {
         if time.Since(entry.timestamp) < s.cacheTTL {
@@ -406,6 +414,16 @@ func (s *CachedMetricsServer) getQueueDepth(namespace, name string) int64 {
         timestamp: time.Now(),
     }
 
+    return value
+}
+
+func (s *CachedMetricsServer) fetchFromRedis(namespace, name string) int64 {
+    ctx := context.Background()
+    queueKey := fmt.Sprintf("queue:%s:%s", namespace, name)
+    value, err := s.redisClient.LLen(ctx, queueKey).Result()
+    if err != nil {
+        return 0
+    }
     return value
 }
 ```
