@@ -23,8 +23,8 @@ The Windows implementation of Flannel runs as a native Windows service called `f
 Before installing Flannel on Windows nodes, ensure you have:
 
 - A Kubernetes cluster with at least one Linux control plane node (version 1.22 or later)
-- Windows Server 2019 or Windows Server 2022 nodes
-- ContainerD or Docker runtime installed on Windows nodes
+- Windows Server 2019 or Windows Server 2022 nodes. For VXLAN/overlay networking on Windows Server 2019, install KB4489899.
+- containerd installed on Windows nodes
 - Network connectivity between all nodes
 - PowerShell 5.1 or later on Windows nodes
 
@@ -35,7 +35,7 @@ First, deploy Flannel on your Linux nodes. This establishes the networking found
 ```bash
 # Download the Flannel manifest
 
-curl -LO https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+curl -LO https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 
 # Edit the manifest to configure pod CIDR if needed
 # Default is 10.244.0.0/16
@@ -75,7 +75,9 @@ data:
     {
       "Network": "10.244.0.0/16",
       "Backend": {
-        "Type": "vxlan"
+        "Type": "vxlan",
+        "VNI": 4096,
+        "Port": 4789
       }
     }
 ```
@@ -96,25 +98,33 @@ On each Windows node, install the required components:
 
 ```powershell
 # Run as Administrator
-# Install containerD or ensure Docker is installed
-# This example assumes containerD
+# Install containerd before joining the node
 
 # Create directory for Flannel
 New-Item -Path "C:\k" -ItemType Directory -Force
 New-Item -Path "C:\k\flannel" -ItemType Directory -Force
+New-Item -Path "C:\k\cni\bin" -ItemType Directory -Force
+New-Item -Path "C:\k\cni\config" -ItemType Directory -Force
 
 # Download Flannel for Windows
 $FlannelVersion = "v0.21.0"
 $DownloadURL = "https://github.com/flannel-io/flannel/releases/download/$FlannelVersion/flanneld.exe"
 Invoke-WebRequest -Uri $DownloadURL -OutFile "C:\k\flannel\flanneld.exe"
 
+# Download the Flannel CNI plugin for Windows
+$FlannelCNIVersion = "v1.2.0-flannel1"
+$FlannelCNIURL = "https://github.com/flannel-io/cni-plugin/releases/download/$FlannelCNIVersion/cni-plugin-flannel-windows-amd64-$FlannelCNIVersion.tgz"
+Invoke-WebRequest -Uri $FlannelCNIURL -OutFile "C:\k\flannel-cni.tgz"
+tar.exe -xzf "C:\k\flannel-cni.tgz" -C "C:\k\cni\bin"
+Move-Item -Path "C:\k\cni\bin\flannel-amd64.exe" -Destination "C:\k\cni\bin\flannel.exe" -Force
+
 # Download Windows CNI plugins
 $CNIVersion = "v1.2.0"
-$CNIPluginURL = "https://github.com/microsoft/windows-container-networking/releases/download/$CNIVersion/windows-container-networking-cni-amd64-$CNIVersion.zip"
-Invoke-WebRequest -Uri $CNIPluginURL -OutFile "C:\k\cni.zip"
+$CNIPluginURL = "https://github.com/containernetworking/plugins/releases/download/$CNIVersion/cni-plugins-windows-amd64-$CNIVersion.tgz"
+Invoke-WebRequest -Uri $CNIPluginURL -OutFile "C:\k\cni-plugins.tgz"
 
 # Extract CNI plugins
-Expand-Archive -Path "C:\k\cni.zip" -DestinationPath "C:\k\cni" -Force
+tar.exe -xzf "C:\k\cni-plugins.tgz" -C "C:\k\cni\bin"
 ```
 
 ## Joining Windows Nodes to the Cluster
@@ -136,7 +146,6 @@ If using a custom join script, ensure the kubelet service is configured correctl
 $KubeletConfig = @"
 kind: KubeletConfiguration
 apiVersion: kubelet.config.k8s.io/v1beta1
-cgroupDriver: systemd
 clusterDNS:
 - 10.96.0.10
 clusterDomain: cluster.local
@@ -167,7 +176,8 @@ $FlannelConfig = @"
   "Backend": {
     "Type": "vxlan",
     "VNI": 4096,
-    "Port": 4789
+    "Port": 4789,
+    "MacPrefix": "0E-2A"
   }
 }
 "@
@@ -232,66 +242,39 @@ $CNIConfig = @"
   "cniVersion": "0.2.0",
   "name": "flannel",
   "type": "flannel",
-  "capabilities": {
-    "portMappings": true,
-    "dns": true
-  },
   "delegate": {
-    "type": "win-bridge",
+    "type": "win-overlay",
+    "endpointMacPrefix": "0E-2A",
     "dns": {
       "nameservers": ["10.96.0.10"],
       "search": [
         "svc.cluster.local"
       ]
-    },
-    "policies": [
-      {
-        "Name": "EndpointPolicy",
-        "Value": {
-          "Type": "OutBoundNAT",
-          "ExceptionList": [
-            "10.244.0.0/16",
-            "10.96.0.0/12"
-          ]
-        }
-      },
-      {
-        "Name": "EndpointPolicy",
-        "Value": {
-          "Type": "ROUTE",
-          "DestinationPrefix": "10.96.0.0/12",
-          "NeedEncap": true
-        }
-      }
-    ]
+    }
   }
 }
 "@
 
-New-Item -Path "C:\k\cni\config" -ItemType Directory -Force
 $CNIConfig | Out-File -FilePath "C:\k\cni\config\cni.conf" -Encoding ASCII
 ```
 
-Configure kubelet to use the CNI:
+Configure containerd to use the CNI directories. Kubernetes 1.24 and later removed the kubelet `--network-plugin`, `--cni-bin-dir`, and `--cni-conf-dir` flags, so the container runtime must load the CNI configuration:
 
 ```powershell
-# Update kubelet arguments
-sc.exe stop kubelet
-sc.exe delete kubelet
+$ContainerdConfig = "$env:ProgramFiles\containerd\config.toml"
 
-$KubeletArgs = @(
-  "--config=C:\k\kubelet-config.yaml",
-  "--hostname-override=$env:COMPUTERNAME",
-  "--network-plugin=cni",
-  "--cni-bin-dir=C:\k\cni",
-  "--cni-conf-dir=C:\k\cni\config",
-  "--pod-infra-container-image=mcr.microsoft.com/oss/kubernetes/pause:3.6",
-  "--v=6"
-)
+# Generate a default config if the file does not exist
+if (-not (Test-Path $ContainerdConfig)) {
+  containerd.exe config default | Out-File $ContainerdConfig -Encoding ASCII
+}
 
-$BinPath = "C:\k\kubelet.exe " + ($KubeletArgs -join " ")
-sc.exe create kubelet start= auto binPath= $BinPath
-sc.exe start kubelet
+# Set these values in config.toml:
+# [plugins."io.containerd.grpc.v1.cri".cni]
+#   bin_dir = "C:\\k\\cni\\bin"
+#   conf_dir = "C:\\k\\cni\\config"
+
+Restart-Service containerd
+Restart-Service kubelet
 ```
 
 ## Testing Windows Pod Networking
@@ -388,10 +371,10 @@ $env:CNI_COMMAND = "ADD"
 $env:CNI_CONTAINERID = "test"
 $env:CNI_NETNS = "test"
 $env:CNI_IFNAME = "eth0"
-$env:CNI_PATH = "C:\k\cni"
+$env:CNI_PATH = "C:\k\cni\bin"
 
 # Test CNI plugin
-Get-Content C:\k\cni\config\cni.conf | C:\k\cni\flannel.exe
+Get-Content C:\k\cni\config\cni.conf | C:\k\cni\bin\flannel.exe
 ```
 
 **Review kubelet logs:**
@@ -414,15 +397,13 @@ $FlannelConfig = @"
     "Type": "vxlan",
     "VNI": 4096,
     "Port": 4789,
+    "MacPrefix": "0E-2A",
     "MTU": 1400
   }
 }
 "@
 
-# Disable unnecessary Windows features
-Disable-NetAdapterBinding -Name "Ethernet" -ComponentID ms_tcpip6
-
-# Configure Windows Firewall rules for better performance
+# Configure Windows Firewall rules for VXLAN and kubelet traffic
 New-NetFirewallRule -DisplayName "Flannel VXLAN" -Direction Inbound -Protocol UDP -LocalPort 4789 -Action Allow
 New-NetFirewallRule -DisplayName "Kubernetes API" -Direction Inbound -Protocol TCP -LocalPort 10250 -Action Allow
 ```
