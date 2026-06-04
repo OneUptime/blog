@@ -75,16 +75,18 @@ eksctl create nodegroup \
   --node-volume-type=gp3 \
   --node-volume-size=2000
 
-# Create cold node group with st1 volumes
+# Create cold node group with gp3 boot volumes
 eksctl create nodegroup \
   --cluster=logging-cluster \
   --name=es-cold \
   --node-type=m5.large \
   --nodes=2 \
   --node-labels="node-type=elasticsearch-cold,data-tier=cold" \
-  --node-volume-type=st1 \
+  --node-volume-type=gp3 \
   --node-volume-size=4000
 ```
+
+The EKS `--node-volume-*` flags configure the worker node boot volume. The Elasticsearch data volumes come from the StatefulSet PVCs and their StorageClasses.
 
 ## Deploying Hot Tier Elasticsearch Nodes
 
@@ -92,6 +94,34 @@ Create a StatefulSet for hot tier nodes with appropriate affinity rules:
 
 ```yaml
 # es-hot-statefulset.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: logging
+spec:
+  selector:
+    app: elasticsearch
+  ports:
+  - name: http
+    port: 9200
+    targetPort: 9200
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-hot
+  namespace: logging
+spec:
+  clusterIP: None
+  selector:
+    app: elasticsearch
+    tier: hot
+  ports:
+  - name: transport
+    port: 9300
+    targetPort: 9300
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -130,7 +160,7 @@ spec:
             topologyKey: kubernetes.io/hostname
       containers:
       - name: elasticsearch
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.4.0
         env:
         - name: cluster.name
           value: "logging-cluster"
@@ -146,6 +176,8 @@ spec:
           value: "elasticsearch-hot-0.elasticsearch-hot,elasticsearch-hot-1.elasticsearch-hot,elasticsearch-hot-2.elasticsearch-hot"
         - name: cluster.initial_master_nodes
           value: "elasticsearch-hot-0,elasticsearch-hot-1,elasticsearch-hot-2"
+        - name: xpack.security.enabled
+          value: "false"
         - name: ES_JAVA_OPTS
           value: "-Xms4g -Xmx4g"
         resources:
@@ -175,6 +207,21 @@ Warm tier StatefulSet:
 
 ```yaml
 # es-warm-statefulset.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-warm
+  namespace: logging
+spec:
+  clusterIP: None
+  selector:
+    app: elasticsearch
+    tier: warm
+  ports:
+  - name: transport
+    port: 9300
+    targetPort: 9300
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -204,14 +251,22 @@ spec:
                 - warm
       containers:
       - name: elasticsearch
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.4.0
         env:
+        - name: cluster.name
+          value: "logging-cluster"
+        - name: node.name
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         - name: node.roles
           value: "data_warm"
         - name: node.attr.data_tier
           value: "warm"
         - name: discovery.seed_hosts
           value: "elasticsearch-hot-0.elasticsearch-hot"
+        - name: xpack.security.enabled
+          value: "false"
         - name: ES_JAVA_OPTS
           value: "-Xms2g -Xmx2g"
         resources:
@@ -239,6 +294,21 @@ Cold tier StatefulSet:
 
 ```yaml
 # es-cold-statefulset.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-cold
+  namespace: logging
+spec:
+  clusterIP: None
+  selector:
+    app: elasticsearch
+    tier: cold
+  ports:
+  - name: transport
+    port: 9300
+    targetPort: 9300
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -268,14 +338,22 @@ spec:
                 - cold
       containers:
       - name: elasticsearch
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.4.0
         env:
+        - name: cluster.name
+          value: "logging-cluster"
+        - name: node.name
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         - name: node.roles
           value: "data_cold"
         - name: node.attr.data_tier
           value: "cold"
         - name: discovery.seed_hosts
           value: "elasticsearch-hot-0.elasticsearch-hot"
+        - name: xpack.security.enabled
+          value: "false"
         - name: ES_JAVA_OPTS
           value: "-Xms1g -Xmx1g"
         resources:
@@ -307,6 +385,8 @@ kubectl apply -f es-warm-statefulset.yaml
 kubectl apply -f es-cold-statefulset.yaml
 ```
 
+These examples disable Elasticsearch security so the plain HTTP `curl` commands work. For production, configure TLS, authentication, and transport certificates instead of disabling security.
+
 ## Configuring Index Lifecycle Management
 
 ILM automates data movement between tiers. Create a policy that transitions indices through hot-warm-cold lifecycle:
@@ -321,7 +401,7 @@ curl -X PUT "http://elasticsearch:9200/_ilm/policy/logs-lifecycle" -H 'Content-T
         "min_age": "0ms",
         "actions": {
           "rollover": {
-            "max_size": "50gb",
+            "max_primary_shard_size": "50gb",
             "max_age": "1d"
           },
           "set_priority": {
@@ -332,10 +412,8 @@ curl -X PUT "http://elasticsearch:9200/_ilm/policy/logs-lifecycle" -H 'Content-T
       "warm": {
         "min_age": "3d",
         "actions": {
-          "allocate": {
-            "require": {
-              "data_tier": "warm"
-            }
+          "migrate": {
+            "enabled": true
           },
           "forcemerge": {
             "max_num_segments": 1
@@ -348,11 +426,6 @@ curl -X PUT "http://elasticsearch:9200/_ilm/policy/logs-lifecycle" -H 'Content-T
       "cold": {
         "min_age": "30d",
         "actions": {
-          "allocate": {
-            "require": {
-              "data_tier": "cold"
-            }
-          },
           "searchable_snapshot": {
             "snapshot_repository": "cold-snapshots"
           },
@@ -388,8 +461,7 @@ curl -X PUT "http://elasticsearch:9200/_index_template/application-logs" -H 'Con
   "template": {
     "settings": {
       "index.lifecycle.name": "logs-lifecycle",
-      "index.lifecycle.rollover_alias": "application-logs",
-      "index.routing.allocation.require.data_tier": "hot",
+      "index.routing.allocation.include._tier_preference": "data_hot",
       "number_of_shards": 3,
       "number_of_replicas": 1,
       "refresh_interval": "5s"
@@ -449,8 +521,8 @@ metadata:
   namespace: logging
 type: Opaque
 stringData:
-  aws_access_key_id: YOUR_ACCESS_KEY
-  aws_secret_access_key: YOUR_SECRET_KEY
+  s3.client.default.access_key: YOUR_ACCESS_KEY
+  s3.client.default.secret_key: YOUR_SECRET_KEY
 ```
 
 Mount these credentials in cold tier pods and configure the Elasticsearch keystore accordingly.
@@ -461,7 +533,7 @@ Check which indices are on which tiers:
 
 ```bash
 # View index allocation by tier
-curl -X GET "http://elasticsearch:9200/_cat/shards?v&h=index,shard,prirep,state,node,disk.indices" | grep -E "hot|warm|cold"
+curl -X GET "http://elasticsearch:9200/_cat/shards?v&h=index,shard,prirep,state,node,store" | grep -E "hot|warm|cold"
 
 # Check ILM explain for specific index
 curl -X GET "http://elasticsearch:9200/application-logs-2024.02.01/_ilm/explain?pretty"
@@ -501,7 +573,7 @@ curl -X PUT "http://elasticsearch:9200/_watcher/watch/disk-usage-alert" -H 'Cont
   },
   "condition": {
     "script": {
-      "source": "return ctx.payload.nodes.values().stream().anyMatch(node -> node.fs.total.available_in_bytes < 50000000000L)"
+      "source": "for (node in ctx.payload.nodes.values()) { if (node.fs.total.available_in_bytes < 50000000000L) return true; } return false;"
     }
   },
   "actions": {
@@ -532,11 +604,21 @@ curl -X PUT "http://elasticsearch:9200/application-logs-2024.02.09/_settings" -H
 '
 
 # Optimize warm tier for search performance
+curl -X POST "http://elasticsearch:9200/application-logs-2024.01.01/_close"
+
 curl -X PUT "http://elasticsearch:9200/application-logs-2024.01.01/_settings" -H 'Content-Type: application/json' -d'
 {
   "index": {
-    "refresh_interval": "30s",
     "codec": "best_compression"
+  }
+}
+'
+
+curl -X POST "http://elasticsearch:9200/application-logs-2024.01.01/_open"
+curl -X PUT "http://elasticsearch:9200/application-logs-2024.01.01/_settings" -H 'Content-Type: application/json' -d'
+{
+  "index": {
+    "refresh_interval": "30s"
   }
 }
 '
@@ -545,7 +627,7 @@ curl -X PUT "http://elasticsearch:9200/application-logs-2024.01.01/_settings" -H
 Configure query routing preferences:
 
 ```bash
-# Prefer querying hot and warm tiers
+# Prefer local shards when they are available
 curl -X GET "http://elasticsearch:9200/application-logs-*/_search?preference=_local" -H 'Content-Type: application/json' -d'
 {
   "query": {
