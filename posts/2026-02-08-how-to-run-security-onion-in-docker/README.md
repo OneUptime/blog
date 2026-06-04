@@ -69,8 +69,6 @@ Suricata is the IDS engine that matches network traffic against signature rules.
 
 ```yaml
 # docker-compose-suricata.yml
-version: "3.8"
-
 services:
   suricata:
     image: jasonish/suricata:latest
@@ -90,11 +88,12 @@ services:
       # Configuration file
       - ./suricata/suricata.yaml:/etc/suricata/suricata.yaml
     # Specify the capture interface
-    command: -i eth1 --set outputs.eve-log.filetype=regular
+    command: -i eth1
     restart: unless-stopped
 
 volumes:
   suricata_logs:
+    name: suricata_logs
 ```
 
 Create a basic Suricata configuration.
@@ -108,6 +107,10 @@ vars:
   address-groups:
     HOME_NET: "[192.168.0.0/16,10.0.0.0/8,172.16.0.0/12]"
     EXTERNAL_NET: "!$HOME_NET"
+
+default-rule-path: /var/lib/suricata/rules
+rule-files:
+  - suricata.rules
 
 af-packet:
   - interface: eth1
@@ -135,8 +138,6 @@ Zeek generates detailed protocol logs from network traffic. It does not use sign
 
 ```yaml
 # docker-compose-zeek.yml
-version: "3.8"
-
 services:
   zeek:
     image: zeek/zeek:latest
@@ -147,14 +148,16 @@ services:
       - NET_RAW
     volumes:
       # Zeek log output
-      - zeek_logs:/opt/zeek/logs
+      - zeek_logs:/usr/local/zeek/logs
       # Custom Zeek scripts
-      - ./zeek/local.zeek:/opt/zeek/share/zeek/site/local.zeek
-    command: zeek -i eth1 local
+      - ./zeek/local.zeek:/usr/local/zeek/share/zeek/site/local.zeek
+    working_dir: /usr/local/zeek/logs
+    command: zeek -C -i eth1 local LogAscii::use_json=T
     restart: unless-stopped
 
 volumes:
   zeek_logs:
+    name: zeek_logs
 ```
 
 ### Centralizing Logs with Elasticsearch and Kibana
@@ -163,8 +166,6 @@ Both Suricata and Zeek produce structured log data. Collect it all in Elasticsea
 
 ```yaml
 # docker-compose-elk.yml - Elasticsearch and Kibana for log analysis
-version: "3.8"
-
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
@@ -203,7 +204,7 @@ services:
       # Mount Suricata logs
       - suricata_logs:/var/log/suricata:ro
       # Mount Zeek logs
-      - zeek_logs:/opt/zeek/logs:ro
+      - zeek_logs:/usr/local/zeek/logs:ro
     networks:
       - so-net
     restart: unless-stopped
@@ -233,19 +234,19 @@ filebeat.modules:
   - module: zeek
     connection:
       enabled: true
-      var.paths: ["/opt/zeek/logs/current/conn.log"]
+      var.paths: ["/usr/local/zeek/logs/conn.log"]
     dns:
       enabled: true
-      var.paths: ["/opt/zeek/logs/current/dns.log"]
+      var.paths: ["/usr/local/zeek/logs/dns.log"]
     http:
       enabled: true
-      var.paths: ["/opt/zeek/logs/current/http.log"]
+      var.paths: ["/usr/local/zeek/logs/http.log"]
     ssl:
       enabled: true
-      var.paths: ["/opt/zeek/logs/current/ssl.log"]
+      var.paths: ["/usr/local/zeek/logs/ssl.log"]
     files:
       enabled: true
-      var.paths: ["/opt/zeek/logs/current/files.log"]
+      var.paths: ["/usr/local/zeek/logs/files.log"]
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
@@ -263,13 +264,14 @@ Keep your detection capabilities current by regularly updating rules.
 
 ```bash
 # Update Suricata rules using suricata-update inside the container
-docker exec suricata suricata-update
+docker exec --user suricata suricata suricata-update -f
 
 # Add the Emerging Threats ruleset
-docker exec suricata suricata-update enable-source et/open
+docker exec --user suricata suricata suricata-update update-sources
+docker exec --user suricata suricata suricata-update enable-source et/open
 
 # Reload rules without restarting
-docker exec suricata suricatasc -c reload-rules
+docker exec --user suricata suricata suricata-update -f
 ```
 
 ## Threat Hunting Queries
