@@ -12,7 +12,7 @@ Locality-based load balancing in Istio prioritizes sending traffic to endpoints 
 
 ## Understanding Locality in Kubernetes
 
-Kubernetes assigns locality labels to nodes automatically when running on cloud providers. These labels follow a hierarchical structure: region, zone, and subzone. For example, a node might have:
+Kubernetes assigns region and zone labels to nodes automatically when running on cloud providers. Istio can also use the `topology.istio.io/subzone` node label when you need a third locality level. For example, a node might have:
 
 ```yaml
 topology.kubernetes.io/region: us-east-1
@@ -34,7 +34,7 @@ If labels are missing, your cluster might not be configured correctly or you are
 Istio enables locality load balancing through DestinationRule resources. Start with a simple configuration that keeps traffic within the same zone:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-locality
@@ -46,7 +46,7 @@ spec:
       localityLbSetting:
         enabled: true
     outlierDetection:
-      consecutiveErrors: 5
+      consecutive5xxErrors: 5
       interval: 30s
       baseEjectionTime: 30s
 ```
@@ -58,7 +58,7 @@ With this configuration, requests to the reviews service prefer endpoints in the
 Sometimes you want precise control over traffic distribution across localities. Use the distribute field to specify exact percentages:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -79,7 +79,7 @@ spec:
             "us-east-1/us-east-1b/*": 80
             "us-east-1/us-east-1a/*": 20
     outlierDetection:
-      consecutiveErrors: 3
+      consecutive5xxErrors: 3
       interval: 10s
       baseEjectionTime: 30s
       maxEjectionPercent: 50
@@ -94,7 +94,7 @@ The from and to fields use a three-part hierarchy: region/zone/subzone. The aste
 Define explicit failover behavior when local endpoints are unavailable:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: database-service
@@ -117,7 +117,7 @@ spec:
         http2MaxRequests: 1000
         maxRequestsPerConnection: 2
     outlierDetection:
-      consecutiveErrors: 5
+      consecutive5xxErrors: 5
       interval: 5s
       baseEjectionTime: 1m
       maxEjectionPercent: 100
@@ -132,7 +132,7 @@ Note the outlierDetection settings - they are more aggressive than previous exam
 Cross-region traffic incurs significant latency and cost penalties. Use locality load balancing to minimize it:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-gateway
@@ -153,19 +153,15 @@ spec:
         - from: eu-west-1/*/*
           to:
             "eu-west-1/*/*": 100
-        failoverPriority:
-        - "us-east-1/us-east-1a"
-        - "us-east-1/us-east-1b"
-        - "us-west-2/us-west-2a"
     outlierDetection:
-      consecutiveErrors: 10
+      consecutive5xxErrors: 10
       interval: 1m
       baseEjectionTime: 5m
 ```
 
-This strict configuration keeps all traffic within the same region. The double wildcards match any zone and subzone within the region. Only catastrophic regional failures trigger cross-region failover.
+This strict configuration keeps all traffic within the same region. The double wildcards match any zone and subzone within the region. Localities not listed in a `to` map receive no traffic for that source locality.
 
-The failoverPriority list defines which zones to try in order during failures. Istio attempts each zone before moving to the next region.
+The outlierDetection settings are still important because unhealthy endpoints must be detected before Envoy can stop sending traffic to them.
 
 ## Testing Locality Configuration
 
@@ -208,7 +204,7 @@ You should see most requests hitting local zone endpoints unless you configured 
 Locality load balancing works alongside other traffic management features. Combine it with traffic splitting for canary deployments:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-canary
@@ -235,7 +231,7 @@ spec:
         subset: v2
       weight: 10
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-locality-subsets
@@ -247,7 +243,7 @@ spec:
       localityLbSetting:
         enabled: true
     outlierDetection:
-      consecutiveErrors: 5
+      consecutive5xxErrors: 5
       interval: 30s
       baseEjectionTime: 30s
   subsets:
@@ -266,7 +262,7 @@ Traffic first splits between versions according to weights, then each version's 
 Track locality load balancing effectiveness with Prometheus queries:
 
 ```promql
-# Requests by source and destination locality
+# Requests by source workload and destination service
 sum(rate(istio_requests_total[5m])) by (
   source_workload_namespace,
   source_workload,
@@ -275,27 +271,27 @@ sum(rate(istio_requests_total[5m])) by (
   destination_canonical_revision
 )
 
-# Cross-zone traffic percentage
+# Cross-cluster traffic
 sum(rate(istio_requests_total{
   source_cluster!="",
   destination_cluster!=""
 }[5m])) by (source_cluster, destination_cluster)
 ```
 
-Create dashboards showing traffic flow between localities. Alert on unexpected cross-region traffic, which often indicates misconfigurations or capacity problems.
+Create dashboards showing traffic flow between clusters, or add custom telemetry dimensions if you need zone-level views. Alert on unexpected cross-region traffic, which often indicates misconfigurations or capacity problems.
 
 ## Debugging Locality Issues
 
-When locality load balancing does not work as expected, check several common problems. First, verify pods have locality labels:
+When locality load balancing does not work as expected, check several common problems. First, verify nodes have locality labels:
 
 ```bash
-kubectl get pods -n bookinfo -o custom-columns=\
+kubectl get nodes -o custom-columns=\
 NAME:.metadata.name,\
 REGION:.metadata.labels."topology\.kubernetes\.io/region",\
 ZONE:.metadata.labels."topology\.kubernetes\.io/zone"
 ```
 
-If pods lack these labels, Istio cannot make locality-aware decisions. Check that nodes have the labels and pods inherit them.
+If nodes lack these labels, Istio cannot make locality-aware decisions. For subzone-aware routing, add the `topology.istio.io/subzone` label to the nodes that need it.
 
 Next, examine the Envoy configuration directly:
 
@@ -310,30 +306,25 @@ Look for the locality field in each endpoint. It should match the node's localit
 Cloud providers charge for cross-zone and cross-region data transfer. Locality load balancing directly reduces these costs:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: cost-optimized
   namespace: production
 spec:
-  host: "*.production.svc.cluster.local"
+  host: payment.production.svc.cluster.local
   trafficPolicy:
     loadBalancer:
       localityLbSetting:
         enabled: true
-        # Keep everything local unless there's a failure
-        distribute:
-        - from: "*/*/*/*"
-          to:
-            "*/*/*/*": 100
     outlierDetection:
-      consecutiveErrors: 1
+      consecutive5xxErrors: 1
       interval: 1s
       baseEjectionTime: 3m
       maxEjectionPercent: 100
 ```
 
-This wildcard DestinationRule applies to all services in the production namespace. It aggressively keeps traffic local, ejecting unhealthy endpoints quickly to minimize unnecessary cross-zone traffic.
+This DestinationRule applies to the selected service in the production namespace. It aggressively prefers healthy local endpoints, ejecting unhealthy endpoints quickly to minimize unnecessary cross-zone traffic.
 
 Monitor your cloud provider's billing data to verify cost reductions. Most providers break down network charges by traffic type, making locality optimization benefits visible.
 
