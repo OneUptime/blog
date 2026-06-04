@@ -154,7 +154,7 @@ additionalPrinterColumns:
   type: date
   jsonPath: .metadata.creationTimestamp
 
-# Date with full timestamp
+# Date for another timestamp field
 - name: LastUpdated
   type: date
   jsonPath: .status.lastUpdateTime
@@ -331,9 +331,9 @@ spec:
       description: Application status
       jsonPath: .status.phase
     - name: Replicas
-      type: string
+      type: integer
       priority: 0
-      description: Available/Desired replicas
+      description: Available replicas
       jsonPath: .status.availableReplicas
     - name: URL
       type: string
@@ -431,7 +431,7 @@ Always include a Status or Phase column so users can quickly see resource health
 
 Use priority levels to separate essential information from nice-to-have details. This keeps default output clean while providing depth for users who need it.
 
-Document your columns with clear descriptions. These appear in kubectl explain and help users understand what they're looking at.
+Document your columns with clear descriptions. These are included in the Table column definitions returned by the API server and help clients understand what they're showing.
 
 ## Conclusion
 
