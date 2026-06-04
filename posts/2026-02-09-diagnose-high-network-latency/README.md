@@ -154,7 +154,7 @@ kubectl exec -n kube-system cilium-xxx -- cilium metrics list | grep latency
 kubectl exec -n kube-system cilium-xxx -- cilium endpoint list
 ```
 
-Some CNI plugins are faster than others. Calico and Cilium typically offer better performance than Flannel VXLAN due to more efficient encapsulation.
+Some CNI plugins are faster than others. Calico and Cilium can offer better performance than VXLAN-only overlays when configured for native routing, selective encapsulation, or eBPF datapaths, but actual performance depends on the CNI mode and the underlying network.
 
 ## Measuring Network Throughput
 
@@ -204,16 +204,16 @@ TCP retransmissions dramatically increase latency:
 
 ```bash
 # Capture traffic and analyze for retransmissions
-kubectl debug -it pod/source-pod --image=nicolaka/netshoot
+kubectl debug -it pod/source-pod --image=nicolaka/netshoot --container=debugger
 
 # Capture traffic to file
 tcpdump -i any host dest-pod-ip -w /tmp/capture.pcap
 
 # Copy file locally
-kubectl cp source-pod:/tmp/capture.pcap ./capture.pcap
+kubectl cp source-pod:/tmp/capture.pcap ./capture.pcap -c debugger
 
-# Analyze with tcpdump
-tcpdump -r capture.pcap | grep -i retransmission
+# Analyze with tshark
+tshark -r capture.pcap -Y 'tcp.analysis.retransmission'
 
 # Or use Wireshark and filter:
 # tcp.analysis.retransmission
@@ -269,8 +269,10 @@ Deploy NodeLocal DNSCache to reduce DNS latency if CoreDNS is slow.
 Network congestion increases latency:
 
 ```bash
-# Monitor network utilization on nodes
+# Check node CPU and memory pressure
 kubectl top nodes
+
+# Note: kubectl top shows CPU and memory, not interface bandwidth
 
 # Check interface bandwidth usage
 kubectl debug node/my-node -it --image=nicolaka/netshoot
@@ -289,11 +291,13 @@ If network utilization approaches interface capacity, congestion causes latency 
 Uneven load balancing sends traffic to slow backends:
 
 ```bash
-# Check service endpoints and their health
-kubectl get endpoints my-service -n my-namespace -o yaml
+# Check service EndpointSlices and their health
+kubectl get endpointslice -l kubernetes.io/service-name=my-service \
+  -n my-namespace -o yaml
 
 # Test latency to individual endpoints
-for ip in $(kubectl get endpoints my-service -n my-namespace -o jsonpath='{.subsets[0].addresses[*].ip}'); do
+for ip in $(kubectl get endpointslice -l kubernetes.io/service-name=my-service \
+  -n my-namespace -o jsonpath='{range .items[*].endpoints[*]}{.addresses[0]}{"\n"}{end}'); do
   echo "Testing $ip:"
   kubectl exec source-pod -- sh -c "time curl -o /dev/null -s http://$ip:8080/" 2>&1 | grep real
 done
@@ -317,10 +321,10 @@ iptables -S | wc -l
 # Check kube-proxy mode
 kubectl logs -n kube-system kube-proxy-xxx | grep "Using"
 
-# IPVS mode performs better than iptables for large clusters
+# nftables mode performs better than iptables for large clusters
 ```
 
-Consider switching from iptables to IPVS mode for better performance in large clusters.
+Consider switching from iptables to nftables mode for better performance in large clusters. On older clusters where nftables is unavailable, IPVS may still improve performance over iptables, but it is deprecated in Kubernetes 1.35 and later.
 
 ## Testing Network Policies Impact
 
