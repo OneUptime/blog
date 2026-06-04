@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Benthos, Bento, Stream Processing, Data Pipeline, ETL, DevOps
 
-Description: Set up Benthos (now Bento) in Docker for building stream processing pipelines that transform, filter, and route data between systems.
+Description: Set up Benthos, Bento, or Redpanda Connect in Docker for building stream processing pipelines that transform, filter, and route data between systems.
 
 ---
 
-Benthos, recently rebranded as Bento under Redpanda stewardship, is a stream processing tool that connects inputs to outputs with optional processing in between. Think of it as a Swiss Army knife for data pipelines. It reads data from one system, transforms it, and writes it to another. Everything is defined in a single YAML configuration file with no custom code required.
+Benthos, now Redpanda Connect after Redpanda's acquisition, is a stream processing tool that connects inputs to outputs with optional processing in between. Bento is the open source fork of Benthos. Think of these tools as Swiss Army knives for data pipelines. They read data from one system, transform it, and write it to another. Everything is defined in a single YAML configuration file with no custom code required.
 
-Bento supports over 200 connectors including Kafka, RabbitMQ, Redis, HTTP, databases, cloud storage, and more. Running it in Docker makes deployments consistent and lets you version your pipeline configurations alongside your infrastructure.
+Redpanda Connect and Bento support over 200 connectors including Kafka, RabbitMQ, Redis, HTTP, databases, cloud storage, and more. Running them in Docker makes deployments consistent and lets you version your pipeline configurations alongside your infrastructure.
 
 ## Core Concepts
 
-A Bento pipeline has three parts:
+A Redpanda Connect or Bento pipeline has three parts:
 
 - **Input** - Where data comes from (Kafka topic, HTTP endpoint, file, database, etc.)
 - **Pipeline** - Processors that transform, filter, or enrich the data
@@ -28,16 +28,18 @@ graph LR
 
 ## Quick Start
 
-Run Bento with a simple pipeline that reads from stdin and writes to stdout:
+Run Redpanda Connect with a simple pipeline that reads from stdin and writes to stdout:
 
 ```bash
-# Run Bento with a basic echo pipeline
+# Run Redpanda Connect with a basic echo pipeline
 
-docker run --rm -it ghcr.io/redpandadata/connect \
-  -c 'input: { stdin: {} } pipeline: { processors: [] } output: { stdout: {} }'
+docker run --rm docker.redpanda.com/redpandadata/connect create > connect.yaml
+
+docker run --rm -it -v $(pwd)/connect.yaml:/connect.yaml \
+  docker.redpanda.com/redpandadata/connect run /connect.yaml
 ```
 
-Type a message and press Enter. Bento echoes it back after passing through the (empty) pipeline.
+Type a message and press Enter. Redpanda Connect echoes it back after passing through the (empty) pipeline.
 
 ## Docker Compose Setup
 
@@ -49,10 +51,13 @@ version: "3.8"
 
 services:
   bento:
-    image: ghcr.io/redpandadata/connect
+    image: docker.redpanda.com/redpandadata/connect
+    command:
+      - run
+      - /connect.yaml
     volumes:
       # Mount the pipeline configuration
-      - ./config.yaml:/bento.yaml
+      - ./config.yaml:/connect.yaml
     restart: unless-stopped
 ```
 
@@ -64,8 +69,7 @@ A common use case is receiving webhooks over HTTP and forwarding them to Kafka:
 # config.yaml - HTTP webhook receiver that writes to Kafka
 input:
   http_server:
-    # Listen for incoming HTTP requests
-    address: "0.0.0.0:4195"
+    # Register this endpoint on the service-wide HTTP server
     path: /webhook
     allowed_verbs:
       - POST
@@ -103,11 +107,14 @@ version: "3.8"
 
 services:
   bento:
-    image: ghcr.io/redpandadata/connect
+    image: docker.redpanda.com/redpandadata/connect
+    command:
+      - run
+      - /connect.yaml
     ports:
       - "4195:4195"
     volumes:
-      - ./config.yaml:/bento.yaml
+      - ./config.yaml:/connect.yaml
     depends_on:
       redpanda:
         condition: service_healthy
@@ -116,7 +123,8 @@ services:
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:latest
     command:
-      - redpanda start
+      - redpanda
+      - start
       - --smp 1
       - --memory 256M
       - --overprovisioned
@@ -147,7 +155,7 @@ curl -X POST http://localhost:4195/webhook \
 
 ## Data Transformation Pipeline
 
-Bento's mapping language (Bloblang) is powerful for transforming data. Here is a pipeline that cleans and enriches log data:
+Bloblang is powerful for transforming data. Here is a pipeline that cleans and enriches log data:
 
 ```yaml
 # config.yaml - Log enrichment pipeline
@@ -184,17 +192,16 @@ pipeline:
           root = deleted()
         }
 
-    # Batch messages for efficient writes
-    - batching:
-        count: 100
-        period: 5s
-
 output:
-  elasticsearch:
+  elasticsearch_v8:
     urls:
       - "http://elasticsearch:9200"
     index: "logs-${! now().ts_format("2006.01.02") }"
-    type: "_doc"
+    action: "index"
+    id: ${! uuid_v4() }
+    batching:
+      count: 100
+      period: 5s
 ```
 
 ## Fan-Out Pattern: One Input, Multiple Outputs
@@ -298,13 +305,13 @@ output:
 
 ## Testing Pipelines
 
-Bento has a built-in testing framework. Create a test file:
+Redpanda Connect and Bento have built-in testing frameworks. Create a test file:
 
 ```yaml
 # config_test.yaml - Unit tests for the pipeline
 tests:
   - name: "Should enrich log with timestamp and environment"
-    target_processors: "/pipeline/processors"
+    target_processors: "config.yaml#/pipeline/processors"
     environment:
       ENVIRONMENT: "production"
     input_batch:
@@ -314,13 +321,13 @@ tests:
           ts: "2024-01-15T10:30:00Z"
           user_email: "test@example.com"
     output_batches:
-      - - json_equals:
+      - - json_contains:
             level: "ERROR"
             message: "Connection failed"
             env: "production"
 
   - name: "Should filter debug logs in production"
-    target_processors: "/pipeline/processors"
+    target_processors: "config.yaml#/pipeline/processors"
     environment:
       ENVIRONMENT: "production"
     input_batch:
@@ -328,6 +335,7 @@ tests:
           level: "debug"
           message: "Verbose output"
           ts: "2024-01-15T10:30:00Z"
+          user_email: "debug@example.com"
     output_batches: []
 ```
 
@@ -335,13 +343,13 @@ Run the tests:
 
 ```bash
 # Run pipeline unit tests
-docker run --rm -v $(pwd):/config ghcr.io/redpandadata/connect \
+docker run --rm -v $(pwd):/config docker.redpanda.com/redpandadata/connect \
   test /config/config_test.yaml
 ```
 
 ## Monitoring with Metrics
 
-Bento exposes Prometheus metrics by default:
+Redpanda Connect exposes Prometheus metrics by default:
 
 ```yaml
 # config.yaml - Pipeline with metrics and logging
@@ -362,8 +370,7 @@ output:
 
 # Expose Prometheus metrics on port 4195
 metrics:
-  prometheus:
-    prefix: bento
+  prometheus: {}
 
 # Configure structured logging
 logger:
@@ -375,4 +382,4 @@ Access metrics at `http://localhost:4195/metrics`.
 
 ## Summary
 
-Bento (formerly Benthos) is a versatile stream processing tool that replaces custom glue code with declarative YAML configurations. Its extensive connector library means you can pipe data between almost any two systems, and Bloblang provides enough transformation power to handle complex data manipulation. The Docker deployment model fits naturally into containerized architectures, and the built-in testing framework lets you validate pipeline logic before deploying. For teams that need to move data between systems without writing and maintaining custom ETL code, Bento is an excellent choice.
+Redpanda Connect and Bento are versatile stream processing tools that replace custom glue code with declarative YAML configurations. Their extensive connector libraries mean you can pipe data between almost any two systems, and Bloblang provides enough transformation power to handle complex data manipulation. The Docker deployment model fits naturally into containerized architectures, and the built-in testing framework lets you validate pipeline logic before deploying. For teams that need to move data between systems without writing and maintaining custom ETL code, these tools are excellent choices.
