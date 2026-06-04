@@ -175,7 +175,7 @@ Extract deployment name from pod name:
   "name": "deployment",
   "type": "query",
   "query": "query_result(topk(100, kube_pod_info{namespace=~\"$namespace\"}))",
-  "regex": "/.*pod=\"([^-]*-[^-]*).*/",
+  "regex": "/.*pod=\"(.+)-[a-z0-9]+-[a-z0-9]+\".*/",
   "includeAll": true,
   "multi": true
 }
@@ -204,7 +204,7 @@ Show busiest services:
 {
   "name": "top_services",
   "type": "query",
-  "query": "topk(10, sum by (service) (rate(http_requests_total[5m])))",
+  "query": "query_result(topk(10, sum by (service) (rate(http_requests_total[5m]))))",
   "regex": "/.*service=\"([^\"]*)\".*/",
   "includeAll": false,
   "multi": true
@@ -214,21 +214,23 @@ Show busiest services:
 ### Environment-Based Filtering
 
 ```json
-{
-  "name": "environment",
-  "type": "custom",
-  "query": "production,staging,development",
-  "current": {
-    "text": "production",
-    "value": "production"
+[
+  {
+    "name": "environment",
+    "type": "custom",
+    "query": "production,staging,development",
+    "current": {
+      "text": "production",
+      "value": "production"
+    }
+  },
+  {
+    "name": "namespace",
+    "type": "query",
+    "query": "label_values(kube_namespace_labels{label_environment=\"$environment\"}, namespace)",
+    "refresh": 2
   }
-},
-{
-  "name": "namespace",
-  "type": "query",
-  "query": "label_values(kube_namespace_labels{label_environment=\"$environment\"}, namespace)",
-  "refresh": 2
-}
+]
 ```
 
 ## Interval Variables
@@ -249,7 +251,7 @@ Create dynamic time intervals based on dashboard time range:
 Use in queries:
 
 ```promql
-rate(http_requests_total{namespace="$namespace"}[$interval])
+rate(http_requests_total{namespace=~"$namespace"}[$interval])
 ```
 
 ## Text Box Variables
@@ -314,10 +316,11 @@ sum(rate(http_requests_total{service=~"$service"}[5m])) by (service)
 ```json
 {
   "name": "namespace",
-  "sort": 1,  // 1 = alphabetical ascending, 2 = alphabetical descending
-  "sortValue": 3  // 3 = numerical ascending, 4 = numerical descending
+  "sort": 1
 }
 ```
+
+Use `sort: 1` for alphabetical ascending, `sort: 2` for alphabetical descending, `sort: 3` for numerical ascending, and `sort: 4` for numerical descending.
 
 ### Regex Transformation
 
@@ -327,10 +330,12 @@ Transform variable values:
 {
   "name": "instance",
   "query": "label_values(up, instance)",
-  "regex": "/([^:]+):.*/",  // Extract hostname before port
+  "regex": "/([^:]+):.*/",
   "includeAll": true
 }
 ```
+
+This regex extracts the hostname before the port.
 
 ## Using Variables in Queries
 
@@ -463,8 +468,9 @@ kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090
 # Test variable query
 curl -s 'http://localhost:9090/api/v1/label/namespace/values' | jq '.data'
 
-# Test with existing variables
-curl -s 'http://localhost:9090/api/v1/query?query=label_values(kube_pod_info{namespace="production"},pod)' | jq
+# Test with an equivalent label-values API query scoped by a series selector
+curl -sG 'http://localhost:9090/api/v1/label/pod/values' \
+  --data-urlencode 'match[]=kube_pod_info{namespace="production"}' | jq
 ```
 
 ## Best Practices
@@ -484,7 +490,7 @@ curl -s 'http://localhost:9090/api/v1/query?query=label_values(kube_pod_info{nam
 
 Optimize variable queries:
 
-```promql
+```text
 # Bad: Expensive aggregation
 query_result(sum by (namespace) (kube_pod_info))
 
