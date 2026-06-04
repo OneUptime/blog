@@ -21,7 +21,7 @@ Hubble Relay acts as a centralized aggregation point:
 - Clients connect to Relay for cluster-wide flow data
 - Relay handles load balancing and failover
 
-This architecture scales from small clusters to large multi-region deployments.
+This architecture scales from small clusters to large deployments, and can provide multi-cluster visibility when Cilium ClusterMesh is configured.
 
 ## Installing Hubble Relay
 
@@ -72,14 +72,15 @@ data:
     listen-address: ":4245"
     dial-timeout: 30s
     retry-timeout: 30s
-    sort-buffer-len-max: 10000
-    sort-buffer-drain-timeout: 30s
-    tls-hubble-server-ca-files: /var/lib/hubble-relay/tls/ca.crt
+    sort-buffer-len-max: 100
+    sort-buffer-drain-timeout: 1s
+    tls-hubble-server-ca-files: /var/lib/hubble-relay/tls/hubble-server-ca.crt
     tls-hubble-client-cert-file: /var/lib/hubble-relay/tls/client.crt
     tls-hubble-client-key-file: /var/lib/hubble-relay/tls/client.key
-    disable-server-tls: false
+    disable-server-tls: true
     pprof: true
-    pprof-address: "localhost:6060"
+    pprof-address: "localhost"
+    pprof-port: 6062
 ```
 
 Apply the configuration:
@@ -99,12 +100,10 @@ Generate certificates for Relay:
 # Create certificate signing request
 cat > hubble-relay-csr.json <<EOF
 {
-  "CN": "hubble-relay",
+  "CN": "hubble.hubble-relay.cilium.io",
   "hosts": [
-    "hubble-relay",
-    "hubble-relay.kube-system",
-    "hubble-relay.kube-system.svc",
-    "hubble-relay.kube-system.svc.cluster.local"
+    "hubble.hubble-relay.cilium.io",
+    "*.hubble-relay.cilium.io"
   ],
   "key": {
     "algo": "rsa",
@@ -122,10 +121,16 @@ cfssl gencert \
   hubble-relay-csr.json | cfssljson -bare hubble-relay
 
 # Create Kubernetes secret
-kubectl create secret tls hubble-relay-tls \
+kubectl create secret tls hubble-relay-server-certs \
   --cert=hubble-relay.pem \
   --key=hubble-relay-key.pem \
   -n kube-system
+
+# Enable TLS for clients connecting to Relay
+helm upgrade cilium cilium/cilium --version 1.14.5 \
+  --namespace kube-system \
+  --reuse-values \
+  --set hubble.relay.tls.server.enabled=true
 ```
 
 Or use cert-manager:
@@ -138,15 +143,13 @@ metadata:
   name: hubble-relay
   namespace: kube-system
 spec:
-  secretName: hubble-relay-tls
+  secretName: hubble-relay-server-certs
   duration: 8760h # 1 year
   renewBefore: 720h # 30 days
-  commonName: hubble-relay
+  commonName: hubble.hubble-relay.cilium.io
   dnsNames:
-  - hubble-relay
-  - hubble-relay.kube-system
-  - hubble-relay.kube-system.svc
-  - hubble-relay.kube-system.svc.cluster.local
+  - hubble.hubble-relay.cilium.io
+  - "*.hubble-relay.cilium.io"
   issuerRef:
     name: ca-issuer
     kind: ClusterIssuer
@@ -166,6 +169,15 @@ hubble observe --server localhost:4245
 # Or set environment variable
 export HUBBLE_SERVER=localhost:4245
 hubble observe
+```
+
+If you enabled TLS on the Relay server, include the TLS settings:
+
+```bash
+hubble observe --server localhost:4245 \
+  --tls \
+  --tls-ca-cert-files ./hubble-ca.crt \
+  --tls-server-name hubble.hubble-relay.cilium.io
 ```
 
 For production, expose Relay via load balancer:
@@ -205,9 +217,8 @@ spec:
       - name: hubble-relay
         args:
         - serve
-        - --config=/etc/hubble-relay/config.yaml
-        - --sort-buffer-len-max=50000
-        - --sort-buffer-drain-timeout=10s
+        - --sort-buffer-len-max=100
+        - --sort-buffer-drain-timeout=1s
         env:
         - name: GOMEMLIMIT
           value: "900MiB"
@@ -289,18 +300,13 @@ metadata:
   namespace: kube-system
 data:
   config.yaml: |
-    clusters:
-    - name: cluster-us-west
-      peer-service: "hubble-peer.kube-system.svc.cluster-us-west.local:443"
-      ca-cert: /var/lib/relay/ca-us-west.crt
-
-    - name: cluster-eu-central
-      peer-service: "hubble-peer.kube-system.svc.cluster-eu-central.local:443"
-      ca-cert: /var/lib/relay/ca-eu-central.crt
-
+    cluster-name: cluster-us-west
+    peer-service: "hubble-peer.kube-system.svc.cluster.local:443"
     listen-address: ":4245"
     dial-timeout: 30s
 ```
+
+Hubble Relay does not accept a `clusters` list in its configuration file. For multi-cluster visibility, configure Cilium ClusterMesh so the Hubble peer service returns peers from the connected clusters.
 
 ## Building a Flow Aggregation Service
 
@@ -313,10 +319,13 @@ package main
 import (
     "context"
     "fmt"
+    "io"
     "log"
 
-    "google.golang.org/grpc"
     observer "github.com/cilium/cilium/api/v1/observer"
+    flowpb "github.com/cilium/cilium/api/v1/flow"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
 )
 
 type FlowAggregator struct {
@@ -332,7 +341,7 @@ func NewFlowAggregator(relayAddress string) *FlowAggregator {
 }
 
 func (fa *FlowAggregator) Connect() error {
-    conn, err := grpc.Dial(fa.relayAddress, grpc.WithInsecure())
+    conn, err := grpc.Dial(fa.relayAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
     if err != nil {
         return fmt.Errorf("failed to connect: %w", err)
     }
@@ -358,11 +367,16 @@ func (fa *FlowAggregator) receiveFlows(stream observer.Observer_GetFlowsClient) 
     for {
         resp, err := stream.Recv()
         if err != nil {
+            if err == io.EOF {
+                return
+            }
             log.Printf("Error receiving flow: %v", err)
             return
         }
 
-        fa.flows <- resp.GetFlow()
+        if flow := resp.GetFlow(); flow != nil {
+            fa.flows <- flow
+        }
     }
 }
 
@@ -372,9 +386,26 @@ func (fa *FlowAggregator) ProcessFlows() {
         fmt.Printf("Flow: %s -> %s:%d [%s]\n",
             flow.GetSource().GetPodName(),
             flow.GetDestination().GetPodName(),
-            flow.GetDestination().GetPort(),
+            destinationPort(flow),
             flow.GetVerdict().String(),
         )
+    }
+}
+
+func destinationPort(flow *flowpb.Flow) uint32 {
+    l4 := flow.GetL4()
+    if l4 == nil {
+        return 0
+    }
+    switch {
+    case l4.GetTCP() != nil:
+        return l4.GetTCP().GetDestinationPort()
+    case l4.GetUDP() != nil:
+        return l4.GetUDP().GetDestinationPort()
+    case l4.GetSCTP() != nil:
+        return l4.GetSCTP().GetDestinationPort()
+    default:
+        return 0
     }
 }
 
@@ -398,24 +429,25 @@ Export to Elasticsearch:
 package main
 
 import (
+    "bytes"
     "context"
     "encoding/json"
 
+    flowpb "github.com/cilium/cilium/api/v1/flow"
     "github.com/elastic/go-elasticsearch/v8"
-    observer "github.com/cilium/cilium/api/v1/observer"
 )
 
 type FlowExporter struct {
     esClient *elasticsearch.Client
 }
 
-func (fe *FlowExporter) ExportFlow(flow *observer.Flow) error {
+func (fe *FlowExporter) ExportFlow(flow *flowpb.Flow) error {
     flowData := map[string]interface{}{
         "timestamp":   flow.GetTime(),
         "source":      flow.GetSource().GetPodName(),
         "destination": flow.GetDestination().GetPodName(),
-        "port":        flow.GetDestination().GetPort(),
-        "protocol":    flow.GetL4().GetProtocol(),
+        "port":        destinationPort(flow),
+        "protocol":    protocol(flow),
         "verdict":     flow.GetVerdict().String(),
     }
 
@@ -432,6 +464,44 @@ func (fe *FlowExporter) ExportFlow(flow *observer.Flow) error {
 
     return err
 }
+
+func destinationPort(flow *flowpb.Flow) uint32 {
+    l4 := flow.GetL4()
+    if l4 == nil {
+        return 0
+    }
+    switch {
+    case l4.GetTCP() != nil:
+        return l4.GetTCP().GetDestinationPort()
+    case l4.GetUDP() != nil:
+        return l4.GetUDP().GetDestinationPort()
+    case l4.GetSCTP() != nil:
+        return l4.GetSCTP().GetDestinationPort()
+    default:
+        return 0
+    }
+}
+
+func protocol(flow *flowpb.Flow) string {
+    l4 := flow.GetL4()
+    if l4 == nil {
+        return "UNKNOWN"
+    }
+    switch {
+    case l4.GetTCP() != nil:
+        return "TCP"
+    case l4.GetUDP() != nil:
+        return "UDP"
+    case l4.GetSCTP() != nil:
+        return "SCTP"
+    case l4.GetICMPv4() != nil:
+        return "ICMPv4"
+    case l4.GetICMPv6() != nil:
+        return "ICMPv6"
+    default:
+        return "UNKNOWN"
+    }
+}
 ```
 
 ## Monitoring Relay Health
@@ -440,10 +510,10 @@ Create health check endpoints:
 
 ```bash
 # Check Relay connectivity
-curl http://localhost:6060/debug/pprof/
+curl http://localhost:6062/debug/pprof/
 
 # View Relay metrics
-curl http://localhost:9965/metrics | grep hubble_relay
+curl http://localhost:9966/metrics | grep hubble_relay
 
 # Check connected peers
 hubble status --server localhost:4245
