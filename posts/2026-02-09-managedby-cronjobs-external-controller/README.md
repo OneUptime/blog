@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CronJob, Controller, Custom Resources
 
-Description: Learn how to use the managedBy field in Kubernetes CronJobs to integrate external controllers and implement custom scheduling logic beyond standard cron expressions.
+Description: Learn how to use the managedBy field in Kubernetes Jobs created by CronJobs to integrate external controllers and implement custom execution logic.
 
 ---
 
-The managedBy field in CronJobs tells Kubernetes which controller is responsible for managing the CronJob's scheduling and execution. By default, this is the built-in CronJob controller, but you can specify a custom controller to implement sophisticated scheduling logic that goes beyond standard cron expressions.
+The managedBy field in Kubernetes Jobs tells Kubernetes which controller is responsible for reconciling the Job. CronJobs do not have a top-level managedBy field, but they can set this field in their jobTemplate so every Job they create is delegated to an external Job controller.
 
-This enables advanced use cases like dynamic scheduling based on external conditions, complex dependencies between jobs, or integration with external scheduling systems like Apache Airflow or Temporal.
+This enables advanced use cases like dynamic execution based on external conditions, complex dependencies between jobs, or integration with external orchestration systems like Apache Airflow or Temporal.
 
 ## Understanding managedBy Field
 
-The managedBy field requires Kubernetes 1.28 or later with the JobManagedBy feature gate enabled. When set to a value other than the default, the built-in CronJob controller ignores the CronJob, letting your custom controller handle it.
+The managedBy field is a Job spec field. It was introduced by the JobManagedBy feature gate in Kubernetes 1.30, became beta and enabled by default in Kubernetes 1.32, and is stable in Kubernetes 1.35. When set to a value other than the default `kubernetes.io/job-controller`, the built-in Job controller skips the Job, letting your custom controller handle it.
 
 ```yaml
 apiVersion: batch/v1
@@ -22,10 +22,10 @@ kind: CronJob
 metadata:
   name: custom-scheduled-job
 spec:
-  schedule: "0 2 * * *"  # Default schedule (may be overridden by controller)
-  managedBy: "custom.example.com/scheduler"  # Custom controller
+  schedule: "0 2 * * *"
   jobTemplate:
     spec:
+      managedBy: "custom.example.com/scheduler"  # Custom Job controller
       template:
         spec:
           restartPolicy: OnFailure
@@ -34,26 +34,26 @@ spec:
             image: worker:latest
 ```
 
-With managedBy set, the built-in controller won't create Jobs. Your custom controller identified by "custom.example.com/scheduler" must watch this CronJob and create Jobs according to its own logic.
+With managedBy set in the jobTemplate, the built-in CronJob controller still creates Jobs on the configured cron schedule. The built-in Job controller will not reconcile those Jobs, so your custom controller identified by "custom.example.com/scheduler" must watch the Jobs and manage their execution and status.
 
 ## Building a Custom Controller
 
-A basic custom controller watches CronJobs:
+A basic custom controller watches delegated Jobs:
 
 ```python
 #!/usr/bin/env python3
-from kubernetes import client, config, watch
+from kubernetes import client, config
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 CONTROLLER_NAME = "custom.example.com/scheduler"
 
-def should_run_job(cronjob):
-    """Custom scheduling logic"""
+def should_start_job(job):
+    """Custom execution logic"""
     # Example: Only run on weekdays
     today = datetime.now().weekday()
     if today >= 5:  # Saturday=5, Sunday=6
-        print(f"Skipping {cronjob.metadata.name} on weekend")
+        print(f"Deferring {job.metadata.name} on weekend")
         return False
 
     # Example: Check external condition
@@ -62,63 +62,114 @@ def should_run_job(cronjob):
 
     return True
 
-def create_job_from_cronjob(cronjob):
-    """Create a Job from CronJob template"""
-    config.load_kube_config()
+def start_pod_for_job(job):
+    """Create a Pod from a delegated Job template"""
+    core_v1 = client.CoreV1Api()
     batch_v1 = client.BatchV1Api()
 
-    job_name = f"{cronjob.metadata.name}-{int(time.time())}"
-    namespace = cronjob.metadata.namespace
+    namespace = job.metadata.namespace
+    template_metadata = job.spec.template.metadata or client.V1ObjectMeta()
+    labels = dict(template_metadata.labels or {})
+    labels["batch.kubernetes.io/job-name"] = job.metadata.name
 
-    job = client.V1Job(
+    pod = client.V1Pod(
         metadata=client.V1ObjectMeta(
-            name=job_name,
+            generate_name=f"{job.metadata.name}-",
             namespace=namespace,
+            labels=labels,
             owner_references=[
                 client.V1OwnerReference(
-                    api_version=cronjob.api_version,
-                    kind=cronjob.kind,
-                    name=cronjob.metadata.name,
-                    uid=cronjob.metadata.uid
+                    api_version=job.api_version,
+                    kind=job.kind,
+                    name=job.metadata.name,
+                    uid=job.metadata.uid,
+                    controller=True
                 )
             ]
         ),
-        spec=cronjob.spec.job_template.spec
+        spec=job.spec.template.spec
     )
 
-    batch_v1.create_namespaced_job(namespace=namespace, body=job)
-    print(f"Created job {job_name}")
+    core_v1.create_namespaced_pod(namespace=namespace, body=pod)
+    print(f"Started pod for job {job.metadata.name}")
 
-    # Update CronJob status
-    cronjob.status.last_schedule_time = datetime.utcnow()
-    batch_v1.patch_namespaced_cron_job_status(
-        name=cronjob.metadata.name,
+    batch_v1.patch_namespaced_job_status(
+        name=job.metadata.name,
         namespace=namespace,
-        body=cronjob
+        body={
+            "status": {
+                "active": 1,
+                "startTime": datetime.now(timezone.utc).isoformat()
+            }
+        }
     )
 
-def process_cronjobs():
+def sync_job_status(job):
+    """Update basic Job status from owned Pods"""
+    core_v1 = client.CoreV1Api()
+    batch_v1 = client.BatchV1Api()
+    namespace = job.metadata.namespace
+
+    pods = core_v1.list_namespaced_pod(
+        namespace=namespace,
+        label_selector=f"batch.kubernetes.io/job-name={job.metadata.name}"
+    )
+
+    active = sum(1 for pod in pods.items if pod.status.phase in ("Pending", "Running"))
+    succeeded = sum(1 for pod in pods.items if pod.status.phase == "Succeeded")
+    failed = sum(1 for pod in pods.items if pod.status.phase == "Failed")
+
+    status = {"active": active, "succeeded": succeeded, "failed": failed}
+    if succeeded >= (job.spec.completions or 1):
+        status["completionTime"] = datetime.now(timezone.utc).isoformat()
+        status["conditions"] = [{
+            "type": "Complete",
+            "status": "True",
+            "reason": "PodsCompleted",
+            "message": "All delegated pods completed",
+            "lastTransitionTime": datetime.now(timezone.utc).isoformat()
+        }]
+    elif failed >= (job.spec.backoff_limit or 6):
+        status["conditions"] = [{
+            "type": "Failed",
+            "status": "True",
+            "reason": "BackoffLimitExceeded",
+            "message": "Delegated pods exceeded the backoff limit",
+            "lastTransitionTime": datetime.now(timezone.utc).isoformat()
+        }]
+
+    batch_v1.patch_namespaced_job_status(
+        name=job.metadata.name,
+        namespace=namespace,
+        body={"status": status}
+    )
+    return status
+
+def process_jobs():
     """Main controller loop"""
     config.load_kube_config()
     batch_v1 = client.BatchV1Api()
 
     while True:
-        # List CronJobs managed by this controller
-        cronjobs = batch_v1.list_cron_job_for_all_namespaces()
+        # List Jobs delegated to this controller
+        jobs = batch_v1.list_job_for_all_namespaces()
 
-        for cj in cronjobs.items:
-            if cj.spec.managed_by != CONTROLLER_NAME:
+        for job in jobs.items:
+            if job.spec.managed_by != CONTROLLER_NAME:
                 continue
 
-            # Check if it's time to run (simplified)
-            # Real implementation would parse cron schedule
-            if should_run_job(cj):
-                create_job_from_cronjob(cj)
+            current_status = sync_job_status(job)
+
+            if current_status["active"] or current_status["succeeded"] or current_status["failed"]:
+                continue
+
+            if should_start_job(job):
+                start_pod_for_job(job)
 
         time.sleep(60)  # Check every minute
 
 if __name__ == "__main__":
-    process_cronjobs()
+    process_jobs()
 ```
 
 Deploy the controller:
@@ -155,8 +206,11 @@ metadata:
   name: cronjob-controller-role
 rules:
 - apiGroups: ["batch"]
-  resources: ["cronjobs", "cronjobs/status", "jobs"]
-  verbs: ["get", "list", "watch", "create", "update", "patch"]
+  resources: ["jobs", "jobs/status"]
+  verbs: ["get", "list", "watch", "patch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -174,7 +228,7 @@ roleRef:
 
 ## Dynamic Scheduling Based on Metrics
 
-Schedule jobs based on cluster conditions:
+Start jobs based on cluster conditions:
 
 ```python
 #!/usr/bin/env python3
@@ -189,12 +243,12 @@ def get_cluster_cpu_usage():
     data = response.json()
     return float(data['data']['result'][0]['value'][1])
 
-def should_run_job(cronjob):
+def should_start_job(job):
     """Only run job if cluster has capacity"""
     cpu_usage = get_cluster_cpu_usage()
 
     if cpu_usage > 0.8:  # 80% CPU usage
-        print(f"Cluster busy ({cpu_usage:.0%}), deferring {cronjob.metadata.name}")
+        print(f"Cluster busy ({cpu_usage:.0%}), deferring {job.metadata.name}")
         return False
 
     return True
@@ -205,13 +259,14 @@ def should_run_job(cronjob):
 Run jobs only after dependencies complete:
 
 ```python
-def check_dependencies(cronjob):
+def check_dependencies(job):
     """Check if prerequisite jobs completed"""
     config.load_kube_config()
     batch_v1 = client.BatchV1Api()
 
     # Check annotation for dependencies
-    depends_on = cronjob.metadata.annotations.get('depends-on', '')
+    annotations = job.metadata.annotations or {}
+    depends_on = annotations.get('depends-on', '')
     if not depends_on:
         return True
 
@@ -219,8 +274,8 @@ def check_dependencies(cronjob):
         # Check if dependency job exists and succeeded
         try:
             jobs = batch_v1.list_namespaced_job(
-                namespace=cronjob.metadata.namespace,
-                label_selector=f'cronjob-name={dep_name.strip()}'
+                namespace=job.metadata.namespace,
+                label_selector=f'workflow-step={dep_name.strip()}'
             )
 
             if not jobs.items:
@@ -246,13 +301,16 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: dependent-job
-  annotations:
-    depends-on: "data-extract,data-transform"
 spec:
   schedule: "0 3 * * *"
-  managedBy: "custom.example.com/scheduler"
   jobTemplate:
+    metadata:
+      labels:
+        workflow-step: data-load
+      annotations:
+        depends-on: "data-extract,data-transform"
     spec:
+      managedBy: "custom.example.com/scheduler"
       template:
         spec:
           restartPolicy: OnFailure
@@ -284,7 +342,7 @@ def trigger_kubernetes_job(cronjob_name, namespace='default'):
     job_name = f"{cronjob_name}-airflow-{int(datetime.now().timestamp())}"
 
     job = client.V1Job(
-        metadata=client.V1ObjectMeta(name=job_name),
+        metadata=client.V1ObjectMeta(name=job_name, namespace=namespace),
         spec=cronjob.spec.job_template.spec
     )
 
@@ -292,7 +350,7 @@ def trigger_kubernetes_job(cronjob_name, namespace='default'):
     print(f"Created {job_name}")
 
 with DAG('kubernetes_jobs', start_date=datetime(2026, 1, 1),
-         schedule_interval='@daily') as dag:
+         schedule='@daily') as dag:
 
     task1 = PythonOperator(
         task_id='extract',
@@ -322,17 +380,17 @@ def health_check_endpoint():
 
     @app.route('/health')
     def health():
-        # Check controller is processing CronJobs
+        # Check controller is processing Jobs
         return jsonify({'status': 'healthy', 'controller': CONTROLLER_NAME})
 
     @app.route('/metrics')
     def metrics():
         # Expose Prometheus metrics
         return f"""
-# HELP cronjobs_managed Number of CronJobs managed
+# HELP jobs_managed Number of Jobs managed
 
-# TYPE cronjobs_managed gauge
-cronjobs_managed{{controller="{CONTROLLER_NAME}"}} {count_managed_cronjobs()}
+# TYPE jobs_managed gauge
+jobs_managed{{controller="{CONTROLLER_NAME}"}} {count_managed_jobs()}
 
 # HELP jobs_created_total Total jobs created
 # TYPE jobs_created_total counter
@@ -342,4 +400,4 @@ jobs_created_total{{controller="{CONTROLLER_NAME}"}} {jobs_created}
     app.run(host='0.0.0.0', port=8080)
 ```
 
-The managedBy field enables sophisticated CronJob scheduling beyond standard cron expressions. Use it to implement custom scheduling logic, integrate with external orchestrators, or build advanced workflow systems on top of Kubernetes primitives.
+The managedBy field enables sophisticated Job execution beyond the built-in Job controller. Use it with CronJob jobTemplates to integrate with external orchestrators or build advanced workflow systems on top of Kubernetes primitives.
