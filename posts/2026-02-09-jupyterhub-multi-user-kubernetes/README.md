@@ -30,7 +30,7 @@ Create a configuration file:
 ```yaml
 # jupyterhub-config.yaml
 proxy:
-  secretToken: "$(openssl rand -hex 32)"
+  secretToken: "REPLACE_WITH_OPENSSL_RAND_HEX_32"
   service:
     type: LoadBalancer
 
@@ -57,8 +57,9 @@ hub:
 
 singleuser:
   image:
-    name: jupyter/datascience-notebook
-    tag: "2024-01-01"
+    name: quay.io/jupyter/datascience-notebook
+    tag: "2026-06-02"
+  cmd: null
 
   defaultUrl: "/lab"
 
@@ -81,12 +82,12 @@ singleuser:
     description: "Python, R, Julia with common libraries"
     default: true
     kubespawner_override:
-      image: jupyter/datascience-notebook:2024-01-01
+      image: quay.io/jupyter/datascience-notebook:2026-06-02
 
   - display_name: "TensorFlow with GPU"
     description: "TensorFlow environment with GPU support"
     kubespawner_override:
-      image: jupyter/tensorflow-notebook:2024-01-01
+      image: quay.io/jupyter/tensorflow-notebook:cuda-2026-06-02
       extra_resource_limits:
         nvidia.com/gpu: "1"
       extra_resource_guarantees:
@@ -95,7 +96,7 @@ singleuser:
   - display_name: "PyTorch with GPU"
     description: "PyTorch environment with GPU support"
     kubespawner_override:
-      image: jupyter/pytorch-notebook:2024-01-01
+      image: quay.io/jupyter/pytorch-notebook:cuda12-2026-06-02
       extra_resource_limits:
         nvidia.com/gpu: "1"
 
@@ -137,7 +138,7 @@ Access JupyterHub:
 
 ```bash
 # Get the load balancer IP
-export JUPYTERHUB_URL=$(kubectl get svc -n jupyterhub proxy-public -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+export JUPYTERHUB_URL=$(kubectl get svc -n jupyterhub proxy-public -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 echo "JupyterHub URL: http://$JUPYTERHUB_URL"
 
 # Or port forward for testing
@@ -186,7 +187,7 @@ Build a custom notebook image:
 
 ```dockerfile
 # Dockerfile.custom-notebook
-FROM jupyter/datascience-notebook:2024-01-01
+FROM quay.io/jupyter/datascience-notebook:2026-06-02
 
 USER root
 
@@ -213,8 +214,8 @@ RUN pip install --no-cache-dir \
     plotly==5.18.0 \
     seaborn==0.13.0
 
-# Install JupyterLab extensions
-RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager
+# Install JupyterLab widget support
+RUN pip install --no-cache-dir ipywidgets jupyterlab_widgets
 
 # Copy custom configuration
 COPY jupyter_notebook_config.py /etc/jupyter/
@@ -363,10 +364,10 @@ metadata:
   name: jupyterhub
   namespace: jupyterhub
   annotations:
-    kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - jupyterhub.yourdomain.com
@@ -396,14 +397,11 @@ proxy:
 
 ## Monitoring JupyterHub
 
-Add Prometheus metrics:
+Allow Prometheus to scrape JupyterHub metrics:
 
 ```yaml
 hub:
-  extraConfig:
-    prometheus: |
-      from prometheus_client import start_http_server
-      start_http_server(9100)
+  authenticatePrometheus: false
 ```
 
 Query key metrics:
@@ -434,7 +432,7 @@ hub:
       admin_access: true
 ```
 
-Grant access to specific users or groups:
+Grant access to specific users:
 
 ```yaml
 hub:
@@ -443,8 +441,6 @@ hub:
       allowed_users:
         - user1
         - user2
-      allowed_groups:
-        - data-science-team
 ```
 
 ## Conclusion
