@@ -117,19 +117,18 @@ def call(Map config) {
 
     echo "Deploying ${deployment} to namespace ${namespace}"
 
-    withCredentials([file(credentialsId: config.kubeconfigId, variable: 'KUBECONFIG_FILE')]) {
+    def deploy = { kubeconfigPath ->
         sh """
-            export KUBECONFIG=${KUBECONFIG_FILE}
+            export KUBECONFIG=${kubeconfigPath}
 
             kubectl set image deployment/${deployment} \
                 ${deployment}=${image} \
-                --namespace=${namespace} \
-                --record
+                --namespace=${namespace}
         """
 
         if (waitForRollout) {
             sh """
-                export KUBECONFIG=${KUBECONFIG_FILE}
+                export KUBECONFIG=${kubeconfigPath}
 
                 kubectl rollout status deployment/${deployment} \
                     --namespace=${namespace} \
@@ -140,8 +139,8 @@ def call(Map config) {
         // Get deployment status
         def status = sh(
             script: """
-                export KUBECONFIG=${KUBECONFIG_FILE}
-                kubectl get deployment/${deployment} -n ${namespace} -o jsonpath='{.status.conditions[?(@.type=="Progressing")].status}'
+                export KUBECONFIG=${kubeconfigPath}
+                kubectl get deployment/${deployment} -n ${namespace} -o jsonpath='{.status.conditions[?(@.type=="Available")].status}'
             """,
             returnStdout: true
         ).trim()
@@ -151,6 +150,14 @@ def call(Map config) {
         }
 
         echo "✓ Deployment successful"
+    }
+
+    if (config.kubeconfigId) {
+        withCredentials([file(credentialsId: config.kubeconfigId, variable: 'KUBECONFIG_FILE')]) {
+            deploy(env.KUBECONFIG_FILE)
+        }
+    } else {
+        deploy(kubeconfig)
     }
 }
 ```
@@ -464,10 +471,10 @@ def call(Map config) {
 
 Add library in Jenkins configuration:
 
-```groovy
-// In Jenkins UI: Manage Jenkins > Configure System > Global Pipeline Libraries
+```yaml
+# In Jenkins UI: Manage Jenkins > Configure System > Global Pipeline Libraries
 
-// Or in Jenkins Configuration as Code:
+# Or in Jenkins Configuration as Code:
 unclassified:
   globalLibraries:
     libraries:
