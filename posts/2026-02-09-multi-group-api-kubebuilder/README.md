@@ -20,7 +20,7 @@ When you create multiple groups, each has its own:
 - Independent version history
 - Separate resource types
 - Distinct controllers
-- Own conversion webhooks
+- Optional conversion webhooks
 
 ## Creating a Multi-Group Project
 
@@ -32,12 +32,12 @@ Initialize a Kubebuilder project with multi-group support:
 kubebuilder init \
   --domain example.com \
   --repo github.com/myorg/myoperator \
-  --multi-group
+  --multigroup
 
 cd myoperator
 ```
 
-The `--multi-group` flag changes the project structure to organize APIs by group.
+The `--multigroup` flag changes the project structure to organize APIs by group.
 
 ## Adding Resources to Different Groups
 
@@ -107,16 +107,18 @@ myoperator/
 │           ├── gateway_types.go
 │           ├── groupversion_info.go
 │           └── zz_generated.deepcopy.go
-├── controllers/
-│   ├── compute/
-│   │   ├── application_controller.go
-│   │   └── environment_controller.go
-│   ├── storage/
-│   │   ├── database_controller.go
-│   │   └── backup_controller.go
-│   └── networking/
-│       └── gateway_controller.go
-└── main.go
+├── internal/
+│   └── controller/
+│       ├── compute/
+│       │   ├── application_controller.go
+│       │   └── environment_controller.go
+│       ├── storage/
+│       │   ├── database_controller.go
+│       │   └── backup_controller.go
+│       └── networking/
+│           └── gateway_controller.go
+└── cmd/
+    └── main.go
 ```
 
 ## Defining Resources in Different Groups
@@ -147,8 +149,13 @@ type ApplicationSpec struct {
     Image    string `json:"image"`
     Replicas int32  `json:"replicas"`
 
-    // Reference to storage group resource
-    DatabaseRef string `json:"databaseRef,omitempty"`
+    // Reference to a Database from the storage group
+    DatabaseRef *DatabaseReference `json:"databaseRef,omitempty"`
+}
+
+type DatabaseReference struct {
+    Name      string `json:"name"`
+    Namespace string `json:"namespace,omitempty"`
 }
 
 type ApplicationStatus struct {
@@ -214,7 +221,7 @@ func init() {
 }
 ```
 
-## Updating main.go for Multiple Groups
+## Updating cmd/main.go for Multiple Groups
 
 Register all groups in your main function:
 
@@ -230,6 +237,7 @@ import (
     clientgoscheme "k8s.io/client-go/kubernetes/scheme"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/log/zap"
+    metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
     // Import all API groups
     computev1 "github.com/myorg/myoperator/api/compute/v1"
@@ -237,9 +245,9 @@ import (
     networkingv1 "github.com/myorg/myoperator/api/networking/v1"
 
     // Import all controllers
-    computecontrollers "github.com/myorg/myoperator/controllers/compute"
-    storagecontrollers "github.com/myorg/myoperator/controllers/storage"
-    networkingcontrollers "github.com/myorg/myoperator/controllers/networking"
+    computecontrollers "github.com/myorg/myoperator/internal/controller/compute"
+    storagecontrollers "github.com/myorg/myoperator/internal/controller/storage"
+    networkingcontrollers "github.com/myorg/myoperator/internal/controller/networking"
 )
 
 var (
@@ -260,17 +268,17 @@ func main() {
     var metricsAddr string
     var enableLeaderElection bool
 
-    flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
+    flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. Use :8080 for HTTP, or leave as 0 to disable the metrics service.")
     flag.BoolVar(&enableLeaderElection, "leader-elect", false, "Enable leader election for controller manager.")
     flag.Parse()
 
     ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
     mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-        Scheme:             scheme,
-        MetricsBindAddress: metricsAddr,
-        LeaderElection:     enableLeaderElection,
-        LeaderElectionID:   "myoperator.example.com",
+        Scheme:           scheme,
+        Metrics:          metricsserver.Options{BindAddress: metricsAddr},
+        LeaderElection:   enableLeaderElection,
+        LeaderElectionID: "myoperator.example.com",
     })
     if err != nil {
         setupLog.Error(err, "unable to start manager")
@@ -351,9 +359,15 @@ type DatabaseReference struct {
 In the controller, fetch the referenced resource:
 
 ```go
-// controllers/compute/application_controller.go
+// internal/controller/compute/application_controller.go
 import (
+    "context"
+
+    computev1 "github.com/myorg/myoperator/api/compute/v1"
     storagev1 "github.com/myorg/myoperator/api/storage/v1"
+    "k8s.io/apimachinery/pkg/types"
+    ctrl "sigs.k8s.io/controller-runtime"
+    "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -369,14 +383,15 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
             Name:      app.Spec.DatabaseRef.Name,
             Namespace: app.Spec.DatabaseRef.Namespace,
         }
+        if dbName.Namespace == "" {
+            dbName.Namespace = req.Namespace
+        }
 
         if err := r.Get(ctx, dbName, db); err != nil {
             return ctrl.Result{}, err
         }
 
-        // Use database endpoint in application configuration
-        endpoint := db.Status.Endpoint
-        // ... configure application with database endpoint ...
+        // ... configure application with db.Status.Endpoint ...
     }
 
     return ctrl.Result{}, nil
@@ -458,10 +473,7 @@ kind: Gateway
 metadata:
   name: main-gateway
   namespace: default
-spec:
-  listeners:
-  - port: 80
-    protocol: HTTP
+spec: {}
 ```
 
 ## Versioning Groups Independently
