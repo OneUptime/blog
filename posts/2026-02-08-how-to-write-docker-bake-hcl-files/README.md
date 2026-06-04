@@ -48,25 +48,25 @@ Real projects have multiple images. Define each as a separate target:
 # docker-bake.hcl - multiple build targets
 
 target "frontend" {
-  dockerfile = "frontend/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "frontend"
   tags       = ["myapp/frontend:latest"]
 }
 
 target "api" {
-  dockerfile = "api/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "api"
   tags       = ["myapp/api:latest"]
 }
 
 target "worker" {
-  dockerfile = "worker/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "worker"
   tags       = ["myapp/worker:latest"]
 }
 
 target "nginx" {
-  dockerfile = "nginx/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "nginx"
   tags       = ["myapp/nginx:latest"]
 }
@@ -76,13 +76,13 @@ Build all targets at once:
 
 ```bash
 # Build all targets in parallel
-docker buildx bake
+docker buildx bake frontend api worker nginx
 
 # Build specific targets
 docker buildx bake frontend api
 ```
 
-By default, `docker buildx bake` builds all targets in the file. Bake parallelizes builds automatically when targets are independent.
+When you specify multiple targets, Bake parallelizes builds automatically when targets are independent. To make `docker buildx bake` build a set of targets with no arguments, define a `default` group.
 
 ## Groups
 
@@ -107,31 +107,31 @@ group "default" {
 }
 
 target "frontend" {
-  dockerfile = "frontend/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "frontend"
   tags       = ["myapp/frontend:latest"]
 }
 
 target "api" {
-  dockerfile = "api/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "api"
   tags       = ["myapp/api:latest"]
 }
 
 target "worker" {
-  dockerfile = "worker/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "worker"
   tags       = ["myapp/worker:latest"]
 }
 
 target "nginx" {
-  dockerfile = "nginx/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "nginx"
   tags       = ["myapp/nginx:latest"]
 }
 
 target "redis-custom" {
-  dockerfile = "redis/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "redis"
   tags       = ["myapp/redis:latest"]
 }
@@ -179,7 +179,7 @@ group "default" {
 }
 
 target "api" {
-  dockerfile = "api/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "api"
   tags       = ["${REGISTRY}/${IMAGE_PREFIX}/api:${TAG}"]
   args = {
@@ -188,7 +188,7 @@ target "api" {
 }
 
 target "worker" {
-  dockerfile = "worker/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "worker"
   tags       = ["${REGISTRY}/${IMAGE_PREFIX}/worker:${TAG}"]
   args = {
@@ -243,21 +243,21 @@ target "_production" {
 
 target "frontend" {
   inherits   = ["_production"]
-  dockerfile = "frontend/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "frontend"
   tags       = ["myapp/frontend:${TAG}"]
 }
 
 target "api" {
   inherits   = ["_production"]
-  dockerfile = "api/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "api"
   tags       = ["myapp/api:${TAG}"]
 }
 
 target "dev-tools" {
   inherits   = ["_base"]    # Inherits base but not production
-  dockerfile = "tools/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "tools"
   tags       = ["myapp/dev-tools:${TAG}"]
   args = {
@@ -351,6 +351,10 @@ The `mode=max` option caches all build layers, not just the final ones. This max
 Pass build arguments and mount secrets:
 
 ```hcl
+variable "HOME" {
+  default = null
+}
+
 target "api" {
   dockerfile = "Dockerfile"
   context    = "."
@@ -451,7 +455,7 @@ target "_labels" {
 
 target "frontend" {
   inherits   = ["_labels"]
-  dockerfile = "frontend/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "frontend"
   tags = [
     "${REGISTRY}/frontend:${TAG}",
@@ -468,7 +472,7 @@ target "frontend" {
 
 target "api" {
   inherits   = ["_labels"]
-  dockerfile = "api/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "api"
   tags = [
     "${REGISTRY}/api:${TAG}",
@@ -484,7 +488,7 @@ target "api" {
 
 target "worker" {
   inherits   = ["_labels"]
-  dockerfile = "worker/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "worker"
   tags = [
     "${REGISTRY}/worker:${TAG}",
@@ -498,7 +502,7 @@ target "worker" {
 
 target "migrations" {
   inherits   = ["_labels"]
-  dockerfile = "migrations/Dockerfile"
+  dockerfile = "Dockerfile"
   context    = "migrations"
   tags       = ["${REGISTRY}/migrations:${TAG}"]
   platforms  = ["linux/amd64", "linux/arm64"]
