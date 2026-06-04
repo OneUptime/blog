@@ -329,7 +329,7 @@ services:
 
 ```bash
 # Run the test suite and exit with the test container's exit code
-docker compose -f docker-compose.test.yml up --exit-code-from test --abort-on-container-exit
+docker compose -f docker-compose.test.yml up --exit-code-from test
 EXIT_CODE=$?
 
 # Cleanup
@@ -339,7 +339,7 @@ echo "Tests exited with code: $EXIT_CODE"
 exit $EXIT_CODE
 ```
 
-The `--abort-on-container-exit` flag stops all services when any container exits. Combined with `--exit-code-from`, it creates a clean test workflow.
+The `--exit-code-from` flag also implies `--abort-on-container-exit`, so Compose stops all services when any container exits.
 
 ## Handling OOM Kills
 
