@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Burp Suite, Security Testing, Penetration Testing, Web Security, OWASP, Proxy
 
-Description: Run Burp Suite Community Edition in Docker for web application security testing with proxy interception and vulnerability scanning.
+Description: Run Burp Suite Community Edition in Docker for web application security testing with proxy interception and manual testing workflows.
 
 ---
 
-Burp Suite is the industry standard tool for web application security testing. It acts as an intercepting proxy between your browser and a target web application, allowing you to inspect, modify, and replay HTTP requests. Security professionals use it to find vulnerabilities like SQL injection, cross-site scripting (XSS), authentication flaws, and insecure API endpoints.
+Burp Suite is the industry standard tool for web application security testing. It acts as an intercepting proxy between your browser and a target web application, allowing you to inspect, modify, and replay HTTP requests. Security professionals use it to investigate vulnerabilities like SQL injection, cross-site scripting (XSS), authentication flaws, and insecure API endpoints. Automated vulnerability scanning requires Burp Suite Professional or Burp Suite DAST; Community Edition is focused on manual testing.
 
-Running Burp Suite in Docker isolates the testing environment from your primary workstation and makes it easy to spin up consistent, disposable security testing setups. This guide covers running Burp Suite Community Edition in a Docker container with a graphical interface, headless scanning, and integration with CI/CD pipelines.
+Running Burp Suite in Docker isolates the testing environment from your primary workstation and makes it easy to spin up consistent, disposable security testing setups. This guide covers running Burp Suite Community Edition in a Docker container with a graphical interface, headless launch options, and notes on CI/CD pipelines for Burp Suite Professional or Burp Suite DAST.
 
 ## Why Dockerize Burp Suite?
 
-There are several practical reasons to run Burp Suite in Docker. It keeps your testing environment separate from your development setup. You can version your testing configuration and share it with your security team. Disposable containers prevent test artifacts from accumulating. And for CI/CD integration, Docker lets you run automated scans as part of your deployment pipeline.
+There are several practical reasons to run Burp Suite in Docker. It keeps your testing environment separate from your development setup. You can version your testing configuration and share it with your security team. Disposable containers prevent test artifacts from accumulating. And for CI/CD integration, Docker can package the tooling that drives Burp Suite Professional or Burp Suite DAST scans as part of your deployment pipeline.
 
 ## Running Burp Suite with a GUI
 
-Burp Suite is a graphical application, so running it in Docker requires forwarding the display. On Linux, you can share the X11 socket. On macOS, you need XQuartz.
+Burp Suite is a graphical application, so running it in Docker requires forwarding the display. On Linux, you can share the X11 socket. On macOS, you need XQuartz. The examples below use the custom image built in the next section.
 
 ```bash
 # Linux: Run Burp Suite with X11 forwarding
@@ -30,8 +30,7 @@ docker run -d \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v burp-data:/home/burp/data \
   -p 8080:8080 \
-  --network host \
-  burpsuite/burp:community
+  burp-suite-community
 ```
 
 For macOS with XQuartz:
@@ -49,17 +48,17 @@ docker run -d \
   -e DISPLAY=host.docker.internal:0 \
   -v burp-data:/home/burp/data \
   -p 8080:8080 \
-  burpsuite/burp:community
+  burp-suite-community
 ```
 
 ## Building a Custom Burp Suite Image
 
-Since official Docker images may not always be available, build your own.
+PortSwigger does not publish a Docker image for Burp Suite Community Edition, so build your own from the official JAR download.
 
 ```dockerfile
 # Dockerfile - Burp Suite Community Edition
-# Based on OpenJDK with necessary GUI libraries
-FROM openjdk:17-slim
+# Based on a Java 21 runtime with necessary GUI libraries
+FROM eclipse-temurin:21-jre-jammy
 
 # Install GUI libraries and utilities
 RUN apt-get update && apt-get install -y \
@@ -69,8 +68,8 @@ RUN apt-get update && apt-get install -y \
     libxi6 \
     libfreetype6 \
     fontconfig \
+    ca-certificates \
     curl \
-    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user for running Burp
@@ -81,7 +80,7 @@ RUN useradd -m -s /bin/bash burp
 RUN curl -L "https://portswigger-cdn.net/burp/releases/download?product=community&type=Jar" \
     -o /opt/burpsuite_community.jar
 
-# Create data directory for projects and configs
+# Create data directory for settings and exported files
 RUN mkdir -p /home/burp/data && chown -R burp:burp /home/burp
 
 USER burp
@@ -91,7 +90,7 @@ WORKDIR /home/burp
 EXPOSE 8080
 
 # Launch Burp Suite
-ENTRYPOINT ["java", "-jar", "/opt/burpsuite_community.jar"]
+ENTRYPOINT ["sh", "-c", "exec java ${JAVA_OPTS:-} -jar /opt/burpsuite_community.jar \"$@\"", "--"]
 ```
 
 ```bash
@@ -112,8 +111,7 @@ docker run -d \
 
 ```yaml
 # docker-compose.yml - Burp Suite security testing environment
-# Includes Burp Suite and a vulnerable test application
-version: "3.8"
+# Includes Burp Suite and vulnerable test applications
 
 services:
   burp-suite:
@@ -123,7 +121,7 @@ services:
     container_name: burp-suite
     ports:
       - "8080:8080"    # Proxy listener port
-      - "1337:1337"    # Intruder/Repeater results
+      - "1337:1337"    # Optional API port for Professional or extensions
     volumes:
       - burp-data:/home/burp/data
       - ./burp-config.json:/home/burp/config.json:ro
@@ -159,20 +157,18 @@ networks:
     driver: bridge
 ```
 
-## Headless Scanning with Burp Suite
+## Headless Startup with Burp Suite
 
-For CI/CD integration, run Burp Suite in headless mode using its REST API or command-line scanner.
+For scripted startup, run Burp Suite in headless mode using documented Java and Burp command-line options. Community Edition does not include Burp Scanner, so this starts Burp without a GUI but does not perform an automated vulnerability scan.
 
 ```bash
-# Run Burp Suite headless scan against a target
-# The --headless flag prevents the GUI from launching
+# Start Burp in headless mode with a project configuration file
 docker run --rm \
   --name burp-scan \
+  -e JAVA_OPTS="-Djava.awt.headless=true -Xmx2g" \
   -v $(pwd)/reports:/home/burp/reports \
+  -v $(pwd)/burp-config.json:/home/burp/config.json:ro \
   burp-suite-community \
-  java -jar /opt/burpsuite_community.jar \
-  --headless \
-  --project-file=/tmp/scan.burp \
   --config-file=/home/burp/config.json
 ```
 
@@ -208,12 +204,6 @@ Preconfigure Burp Suite settings for consistent testing.
                     "protocol": "http"
                 }
             ]
-        }
-    },
-    "scanner": {
-        "active_scanning_optimization": {
-            "scan_speed": "normal",
-            "scan_accuracy": "normal"
         }
     }
 }
@@ -261,11 +251,11 @@ update-ca-certificates
 
 ## Automated Scanning with Burp REST API
 
-Burp Suite Professional includes a REST API for automated scanning. For Community Edition, you can use extensions like Burp REST API.
+Burp Suite DAST includes APIs for automated scanning, and its REST API uses an API key in the URL. Burp Suite Professional has scanner automation features, but Community Edition does not include Burp Scanner.
 
 ```bash
-# Start a scan using the Burp REST API (Professional only)
-curl -X POST "http://localhost:1337/v0.1/scan" \
+# Start a scan using the Burp Suite DAST REST API
+curl -X POST "https://burp-dast.example.com/api/YOUR_API_KEY/v0.1/scan" \
   -H "Content-Type: application/json" \
   -d '{
     "urls": ["http://juice-shop:3000"],
@@ -276,52 +266,70 @@ curl -X POST "http://localhost:1337/v0.1/scan" \
   }'
 
 # Check scan status
-curl "http://localhost:1337/v0.1/scan/1"
+curl "https://burp-dast.example.com/api/YOUR_API_KEY/v0.1/scan/1"
 
 # Get scan results
-curl "http://localhost:1337/v0.1/scan/1/issues"
+curl "https://burp-dast.example.com/api/YOUR_API_KEY/v0.1/scan/1/issues"
 ```
 
 ## Integration with CI/CD
 
-Add security scanning to your deployment pipeline.
+Add security scanning to your deployment pipeline with Burp Suite DAST.
 
 ```yaml
 # .gitlab-ci.yml - Security scan stage using Burp Suite
 security_scan:
   stage: test
-  image: burp-suite-community:latest
+  image: docker:latest
   services:
+    - docker:dind
+  variables:
+    BURP_CONFIG_FILE_PATH: "$CI_PROJECT_DIR/burp-config.yml"
+    BURP_REPORT_FILE_PATH: "$CI_PROJECT_DIR/burp_junit_report.xml"
+    BURP_ENTERPRISE_SERVER_URL: "$BURP_ENTERPRISE_SERVER_URL"
+    BURP_ENTERPRISE_API_KEY: "$BURP_ENTERPRISE_API_KEY"
+  script:
+    - docker run --rm
+      -u $(id -u)
+      -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR:rw"
+      -w "$CI_PROJECT_DIR"
+      -e BURP_CONFIG_FILE_PATH
+      -e BURP_REPORT_FILE_PATH
+      -e BURP_ENTERPRISE_SERVER_URL
+      -e BURP_ENTERPRISE_API_KEY
+      public.ecr.aws/portswigger/enterprise-scan-container:latest
+  artifacts:
+    when: always
+    paths:
+      - burp_junit_report.xml
+    reports:
+      junit: burp_junit_report.xml
+```
+
+If you are running your target application as a GitLab service, give it a network alias and point the Burp DAST configuration file at that alias:
+
+```yaml
+security_scan:
+  stage: test
+  image: docker:latest
+  services:
+    - docker:dind
     - name: your-app:latest
       alias: target-app
-  script:
-    # Wait for the application to start
-    - sleep 10
-    # Run a basic crawl and passive scan
-    - java -jar /opt/burpsuite_community.jar
-      --headless
-      --project-file=/tmp/scan.burp
-      --config-file=burp-ci-config.json
-    # Export results
-    - cp /tmp/scan-report.html reports/
-  artifacts:
-    paths:
-      - reports/
-    when: always
 ```
 
 ## Working with Extensions
 
-Burp Suite supports extensions through the BApp Store. In a Docker environment, pre-install extensions by mounting them.
+Burp Suite supports extensions through the BApp Store. In a Docker environment, mount extension files and load them manually from Extensions > Installed, or import downloaded `.bapp` files from Extensions > BApp Store.
 
 ```bash
-# Download popular Burp extensions
+# Download or build Burp extension files
 mkdir -p burp-extensions
 
-# Mount extensions into the container
+# Mount extensions into the container for manual loading
 docker run -d \
   --name burp-suite \
-  -v $(pwd)/burp-extensions:/home/burp/.BurpSuite/bapps \
+  -v $(pwd)/burp-extensions:/home/burp/extensions \
   -v burp-data:/home/burp/data \
   -p 8080:8080 \
   burp-suite-community
@@ -333,6 +341,6 @@ Burp Suite is a powerful tool that should only be used against systems you own o
 
 ## Production Tips
 
-Set appropriate memory limits for the JVM using JAVA_OPTS - Burp can consume significant RAM during active scans. Use named volumes to persist project files and configuration between container restarts. Run vulnerable test applications (like OWASP Juice Shop or DVWA) in the same Docker network for safe practice without touching real infrastructure. Keep your Burp image updated to get the latest vulnerability checks. Monitor your testing containers with OneUptime to track resource usage during long-running scans.
+Set appropriate memory limits for the JVM using JAVA_OPTS - Burp can consume significant RAM during large projects and active scans in Professional or DAST. Use named volumes to persist settings and exported files between container restarts. Run vulnerable test applications (like OWASP Juice Shop or DVWA) in the same Docker network for safe practice without touching real infrastructure. Keep your Burp image updated to get the latest vulnerability checks in editions that include Burp Scanner. Monitor your testing containers with OneUptime to track resource usage during long-running scans.
 
 Burp Suite in Docker provides a portable, reproducible security testing environment. Whether you are running manual penetration tests or integrating security scans into your CI/CD pipeline, Docker keeps your testing setup clean, consistent, and disposable.
