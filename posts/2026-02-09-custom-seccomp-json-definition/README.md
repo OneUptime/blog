@@ -8,7 +8,7 @@ Description: Master the creation of custom seccomp profiles using JSON definitio
 
 ---
 
-Custom seccomp profiles give you complete control over which system calls your containers can execute. While runtime/default provides good baseline security, custom JSON profiles let you create minimalist allow lists tailored to your specific applications. This precision dramatically reduces attack surface by blocking unnecessary kernel interfaces at the source.
+Custom seccomp profiles give you complete control over which system calls your containers can execute. While `RuntimeDefault` provides good baseline security, custom JSON profiles let you create minimalist allow lists tailored to your specific applications. This precision dramatically reduces attack surface by blocking unnecessary kernel interfaces at the source.
 
 ## JSON Profile Structure
 
@@ -131,16 +131,30 @@ Control syscalls based on their arguments:
       "comment": "Allow only AF_INET sockets (value 2)"
     },
     {
-      "names": ["open", "openat"],
+      "names": ["open"],
       "action": "SCMP_ACT_ALLOW",
       "args": [
         {
           "index": 1,
-          "value": 64,
+          "value": 3,
+          "valueTwo": 0,
           "op": "SCMP_CMP_MASKED_EQ"
         }
       ],
       "comment": "Allow only O_RDONLY opens (flag 0)"
+    },
+    {
+      "names": ["openat"],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 2,
+          "value": 3,
+          "valueTwo": 0,
+          "op": "SCMP_CMP_MASKED_EQ"
+        }
+      ],
+      "comment": "Allow only O_RDONLY openat calls (flag 0)"
     }
   ]
 }
@@ -158,15 +172,15 @@ Seccomp supports multiple comparison operators:
   "architectures": ["SCMP_ARCH_X86_64"],
   "syscalls": [
     {
-      "names": ["fcntl"],
+      "names": ["clone"],
       "action": "SCMP_ACT_ALLOW",
       "args": [
         {
-          "index": 1,
-          "value": 1030,
-          "valueTwo": 1035,
+          "index": 0,
+          "value": 2114060288,
+          "valueTwo": 0,
           "op": "SCMP_CMP_MASKED_EQ",
-          "comment": "SCMP_CMP_NE - not equal"
+          "comment": "Allow clone only when namespace-creation flags are not set"
         }
       ]
     }
@@ -263,7 +277,7 @@ spec:
       allowPrivilegeEscalation: false
 ```
 
-The profile must exist at `/var/lib/kubelet/seccomp/profiles/minimal-app.json` on the node.
+The profile must exist at `/var/lib/kubelet/seccomp/profiles/minimal-app.json` on the node when kubelet uses its default root directory.
 
 ## Profile Distribution via DaemonSet
 
