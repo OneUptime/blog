@@ -51,14 +51,13 @@ netshoot provides a complete network debugging toolkit.
 Debug DNS resolution issues:
 
 ```bash
-# Run dnsutils for DNS debugging
-kubectl run dns-test --rm -it --image=gcr.io/kubernetes-e2e-test-images/dnsutils:1.3 -- /bin/sh
+# Run agnhost for DNS debugging
+kubectl run dns-test --rm -it --image=registry.k8s.io/e2e-test-images/agnhost:2.39 -- /bin/sh
 
 # Test DNS resolution
 / # nslookup kubernetes.default
 / # nslookup webapp-service
 / # nslookup webapp-service.production.svc.cluster.local
-/ # dig +short webapp-service.default.svc.cluster.local
 
 # Check DNS configuration
 / # cat /etc/resolv.conf
@@ -73,13 +72,13 @@ Verify services are reachable:
 
 ```bash
 # Test HTTP endpoints
-kubectl run curl-test --rm -it --image=curlimages/curl -- curl http://webapp-service/health
+kubectl run curl-test --rm -it --image=curlimages/curl --command -- curl http://webapp-service/health
 
 # Test with verbose output
-kubectl run curl-test --rm -it --image=curlimages/curl -- curl -v http://webapp-service
+kubectl run curl-test --rm -it --image=curlimages/curl --command -- curl -v http://webapp-service
 
 # Test POST requests
-kubectl run curl-test --rm -it --image=curlimages/curl -- \
+kubectl run curl-test --rm -it --image=curlimages/curl --command -- \
   curl -X POST http://api-service/endpoint -d '{"key":"value"}'
 
 # Pod deletes automatically after curl completes
@@ -133,8 +132,8 @@ Run with custom service accounts to test RBAC:
 # Run with specific service account
 kubectl run sa-test --rm -it \
   --image=bitnami/kubectl \
-  --serviceaccount=my-service-account \
-  -- /bin/bash
+  --overrides='{"spec":{"serviceAccountName":"my-service-account"}}' \
+  --command -- /bin/bash
 
 # Test what the service account can access
 bash-5.1$ kubectl get pods
@@ -190,8 +189,8 @@ Run with specific resource constraints:
 # Run with CPU and memory limits
 kubectl run resource-test --rm -it \
   --image=busybox \
-  --requests=cpu=100m,memory=128Mi \
-  --limits=cpu=200m,memory=256Mi \
+  --override-type=strategic \
+  --overrides='{"spec":{"containers":[{"name":"resource-test","resources":{"requests":{"cpu":"100m","memory":"128Mi"},"limits":{"cpu":"200m","memory":"256Mi"}}}]}}' \
   -- /bin/sh
 
 # Test application behavior under resource constraints
@@ -240,13 +239,13 @@ Execute single commands with automatic cleanup:
 
 ```bash
 # Run single command
-kubectl run ping-test --rm --image=busybox -- ping -c 4 google.com
+kubectl run ping-test --rm --attach --restart=Never --image=busybox --command -- ping -c 4 google.com
 
 # Download and display content
-kubectl run wget-test --rm --image=busybox -- wget -O- http://webapp-service/health
+kubectl run wget-test --rm --attach --restart=Never --image=busybox --command -- wget -O- http://webapp-service/health
 
 # DNS lookup
-kubectl run nslookup-test --rm --image=busybox -- nslookup webapp-service
+kubectl run nslookup-test --rm --attach --restart=Never --image=busybox --command -- nslookup webapp-service
 
 # No -it needed for non-interactive commands
 ```
@@ -259,15 +258,15 @@ Test certificate validation:
 
 ```bash
 # Test HTTPS endpoint with SSL verification
-kubectl run ssl-test --rm -it --image=curlimages/curl -- \
+kubectl run ssl-test --rm -it --image=curlimages/curl --command -- \
   curl https://secure-service
 
 # Test with certificate details
-kubectl run ssl-test --rm -it --image=curlimages/curl -- \
+kubectl run ssl-test --rm -it --image=curlimages/curl --command -- \
   curl -v https://secure-service
 
 # Skip certificate verification (debugging only)
-kubectl run ssl-test --rm -it --image=curlimages/curl -- \
+kubectl run ssl-test --rm -it --image=curlimages/curl --command -- \
   curl -k https://secure-service
 ```
 
@@ -321,10 +320,10 @@ kubectl run annotated-debug --rm -it \
   --annotations="purpose=network-debugging,ticket=INC-1234" \
   -- /bin/sh
 
-# Annotations provide context in events and logs
+# Annotations provide context in pod metadata
 ```
 
-Annotations create audit trails for debugging sessions.
+Annotations add context for debugging sessions.
 
 ## Chaining Multiple Debug Commands
 
@@ -336,15 +335,15 @@ Run sequential debugging operations:
 
 # Test DNS
 echo "Testing DNS..."
-kubectl run dns-test --rm --image=busybox -- nslookup webapp-service
+kubectl run dns-test --rm --attach --restart=Never --image=busybox --command -- nslookup webapp-service
 
 # Test HTTP
 echo "Testing HTTP..."
-kubectl run http-test --rm --image=curlimages/curl -- curl -I http://webapp-service
+kubectl run http-test --rm --attach --restart=Never --image=curlimages/curl --command -- curl -I http://webapp-service
 
 # Test TCP port
 echo "Testing TCP port..."
-kubectl run port-test --rm --image=busybox -- nc -zv webapp-service 80
+kubectl run port-test --rm --attach --restart=Never --image=busybox --command -- nc -zv webapp-service 80
 
 echo "Debugging complete"
 ```
@@ -390,7 +389,7 @@ Sometimes exec is unavailable, use run instead:
 # If existing pod lacks shell or tools
 # Instead of: kubectl exec -it webapp -- /bin/sh
 
-# Run sidecar debug pod
+# Run a standalone debug pod on the same node
 kubectl run debug-sidecar --rm -it \
   --image=nicolaka/netshoot \
   --overrides='{"spec":{"nodeName":"<node-running-webapp>"}}' \
@@ -407,7 +406,7 @@ Capture debug output for analysis:
 
 ```bash
 # Redirect output to file
-kubectl run debug-capture --rm --image=nicolaka/netshoot -- \
+kubectl run debug-capture --rm --attach --restart=Never --image=nicolaka/netshoot --command -- \
   sh -c "curl -v http://webapp-service 2>&1" | tee debug-output.txt
 
 # Output saved locally
@@ -420,7 +419,7 @@ Saved output aids troubleshooting documentation.
 
 Follow these guidelines:
 
-1. Always use --rm for automatic cleanup
+1. Always use --rm with -it or --attach for automatic cleanup
 2. Choose appropriate debug images for the task
 3. Use specific namespaces when debugging namespace-specific issues
 4. Add descriptive labels and annotations
