@@ -20,24 +20,24 @@ The key benefit is incremental adoption. You can add namespaces to the mesh with
 
 ## Prerequisites
 
-You need a Kubernetes cluster with kubectl access. Ambient Mesh requires Istio 1.18 or later. Check the Kubernetes version is 1.24 or newer:
+You need a Kubernetes cluster with kubectl access. Use a currently supported Istio release; Istio 1.30 supports Kubernetes 1.32 through 1.36. Check the Kubernetes version:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
-Make sure your cluster has CNI plugin support. Ambient Mesh uses native Kubernetes networking capabilities and requires a compatible CNI like Cilium, Calico, or the default CNI.
+Make sure your cluster has a working primary CNI plugin. Ambient Mesh requires the Istio CNI node agent, which is installed by the ambient profile and runs as a chained CNI plugin alongside the cluster's primary CNI.
 
 ## Installing Istio with Ambient Profile
 
 Install Istio using the ambient profile. This configures the control plane for ambient mesh mode and deploys ztunnel:
 
 ```bash
-# Download Istio 1.20 or later
+# Download Istio 1.30
 
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
 
-cd istio-1.20.0
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 
 # Install with ambient profile
@@ -166,25 +166,26 @@ kubectl exec deploy/sleep -- curl -s http://httpbin:8000/get
 The request succeeds. Check if mTLS is active using istioctl:
 
 ```bash
-istioctl x ztunnel-config workload
+istioctl ztunnel-config workloads
 ```
 
-This shows all workloads managed by ztunnel with their identity and mTLS status.
+This shows all workloads managed by ztunnel. Workloads using the ambient secure overlay show `HBONE` in the `PROTOCOL` column.
 
 Check the certificates used:
 
 ```bash
-kubectl exec -n istio-system daemonset/ztunnel -- pilot-agent request GET /debug/pprof/certificates
+ZTUNNEL_POD=$(kubectl get pod -n istio-system -l app=ztunnel -o jsonpath='{.items[0].metadata.name}')
+istioctl ztunnel-config certificates "$ZTUNNEL_POD".istio-system
 ```
 
 You'll see certificates issued by the Istio CA for workload identities.
 
 ## Examining Ztunnel Telemetry
 
-Ztunnel collects Layer 4 metrics automatically. Query Prometheus for basic metrics:
+Ztunnel collects Layer 4 metrics automatically. If you installed the Istio Prometheus addon, open Prometheus:
 
 ```bash
-kubectl port-forward -n istio-system svc/prometheus 9090:9090
+istioctl dashboard prometheus
 ```
 
 Query for connection metrics:
@@ -207,7 +208,7 @@ Apply authorization policies to control traffic between services. These work at 
 
 ```yaml
 # authz-policy.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: httpbin-access
@@ -293,7 +294,7 @@ Now deploy the same application with sidecar injection in a different namespace:
 kubectl create namespace sidecar-test
 kubectl label namespace sidecar-test istio-injection=enabled
 
-kubectl apply -f sleep-app.yaml -n sidecar-test
+sed 's/namespace: default/namespace: sidecar-test/g' sleep-app.yaml | kubectl apply -f -
 ```
 
 Check resource usage with sidecars:
@@ -364,7 +365,7 @@ Pods restart without sidecars. Ztunnel automatically handles their traffic. Test
 If pods can't communicate, check ztunnel status:
 
 ```bash
-istioctl x ztunnel-config workload | grep <pod-name>
+istioctl ztunnel-config workloads | grep <pod-name>
 ```
 
 Verify the namespace label is set correctly:
@@ -383,12 +384,12 @@ Ensure your CNI plugin is compatible. Some older CNI versions don't work with am
 
 ## Understanding Ztunnel's Traffic Interception
 
-Ztunnel uses the Istio CNI plugin to redirect traffic. Unlike sidecar mode which uses iptables in each pod, ambient mode intercepts traffic at the node level using eBPF or iptables.
+Ztunnel uses the Istio CNI plugin and node agent to redirect traffic. Ambient mode configures redirection rules inside the workload pod's network namespace and routes traffic through the node-local ztunnel.
 
-Check the CNI configuration:
+Check the CNI DaemonSet:
 
 ```bash
-kubectl get configmap -n kube-system istio-cni-config -o yaml
+kubectl get daemonset -n istio-system istio-cni-node
 ```
 
 The CNI plugin identifies pods in ambient namespaces and configures the network to route their traffic through ztunnel.
