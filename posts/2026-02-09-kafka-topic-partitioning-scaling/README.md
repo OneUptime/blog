@@ -16,8 +16,8 @@ This guide covers designing effective partitioning strategies for Kafka deployme
 
 Each Kafka topic is divided into one or more partitions, which serve as the unit of parallelism. Key concepts include:
 
-- Messages with the same key go to the same partition
-- Each partition is consumed by exactly one consumer in a consumer group
+- Messages with the same key go to the same partition while the partition count and partitioning strategy stay unchanged
+- Each partition is consumed by at most one consumer in a consumer group at a time
 - The number of partitions limits maximum consumer parallelism
 - Partitions can be replicated across brokers for fault tolerance
 - Partition reassignment requires data migration
@@ -123,7 +123,9 @@ package com.example.kafka;
 
 import org.apache.kafka.clients.producer.Partitioner;
 import org.apache.kafka.common.Cluster;
+import org.apache.kafka.common.utils.Utils;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class CustomPartitioner implements Partitioner {
 
@@ -134,8 +136,8 @@ public class CustomPartitioner implements Partitioner {
         int numPartitions = cluster.partitionCountForTopic(topic);
 
         if (key == null) {
-            // Round-robin for null keys
-            return (int) (Math.random() * numPartitions);
+            // Random distribution for null keys
+            return ThreadLocalRandom.current().nextInt(numPartitions);
         }
 
         String keyStr = key.toString();
@@ -144,19 +146,18 @@ public class CustomPartitioner implements Partitioner {
         if (keyStr.startsWith("priority:")) {
             // Use first 10% of partitions for priority messages
             int priorityPartitions = Math.max(1, numPartitions / 10);
-            return Math.abs(keyStr.hashCode()) % priorityPartitions;
+            return Utils.toPositive(keyStr.hashCode()) % priorityPartitions;
         }
 
         // Route tenant-specific messages
         if (keyStr.startsWith("tenant:")) {
             String tenantId = keyStr.split(":")[1];
             // Ensure same tenant always goes to same partition
-            return Math.abs(tenantId.hashCode()) % numPartitions;
+            return Utils.toPositive(tenantId.hashCode()) % numPartitions;
         }
 
         // Default murmur2 hash
-        return Math.abs(org.apache.kafka.common.utils.Utils.murmur2(keyBytes))
-               % numPartitions;
+        return Utils.toPositive(Utils.murmur2(keyBytes)) % numPartitions;
     }
 
     @Override
@@ -197,7 +198,7 @@ metadata:
   name: kafka-consumer
   namespace: processing
 spec:
-  replicas: 10  # Match or slightly exceed partition count
+  replicas: 10  # Keep at or below partition count for active consumers
   selector:
     matchLabels:
       app: kafka-consumer
@@ -241,7 +242,7 @@ spec:
     kind: Deployment
     name: kafka-consumer
   minReplicas: 5
-  maxReplicas: 30  # Match max partition count
+  maxReplicas: 40  # Match planned max partition count
   metrics:
   - type: Pods
     pods:
@@ -285,29 +286,38 @@ public class KafkaConsumerService {
     }
 
     public void consume(String topic) {
-        consumer.subscribe(Collections.singletonList(topic),
-            new ConsumerRebalanceListener() {
-                @Override
-                public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
-                    System.out.println("Partitions revoked: " + partitions);
-                    // Commit offsets before rebalance
-                    consumer.commitSync();
+        try {
+            consumer.subscribe(Collections.singletonList(topic),
+                new ConsumerRebalanceListener() {
+                    @Override
+                    public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+                        System.out.println("Partitions revoked: " + partitions);
+                        // Commit offsets before rebalance
+                        consumer.commitSync();
+                    }
+
+                    @Override
+                    public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+                        System.out.println("Partitions assigned: " + partitions);
+                    }
+                });
+
+            while (running) {
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
+
+                for (ConsumerRecord<String, String> record : records) {
+                    processRecord(record);
                 }
 
-                @Override
-                public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
-                    System.out.println("Partitions assigned: " + partitions);
-                }
-            });
-
-        while (running) {
-            ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
-
-            for (ConsumerRecord<String, String> record : records) {
-                processRecord(record);
+                consumer.commitAsync();
             }
-
-            consumer.commitAsync();
+        } catch (org.apache.kafka.common.errors.WakeupException e) {
+            if (running) {
+                throw e;
+            }
+        } finally {
+            consumer.commitSync();
+            consumer.close();
         }
     }
 
@@ -321,17 +331,23 @@ public class KafkaConsumerService {
 Configure pod lifecycle for graceful shutdown:
 
 ```yaml
-lifecycle:
-  preStop:
-    exec:
-      command:
-      - /bin/sh
-      - -c
-      - |
-        # Signal application to stop consuming
-        kill -TERM 1
-        # Wait for graceful shutdown
-        sleep 30
+spec:
+  template:
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: consumer
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - |
+                # Signal application to stop consuming
+                kill -TERM 1
+                # Wait for graceful shutdown
+                sleep 30
 ```
 
 ## Monitoring Partition Distribution
@@ -384,7 +400,7 @@ kafka-topics.sh --describe \
   --topic events
 ```
 
-Note: Adding partitions doesn't redistribute existing data. Only new messages use new partitions.
+Note: Adding partitions doesn't redistribute existing data. Only new messages can use new partitions, and keyed message partition mapping can change after the partition count increases.
 
 ## Handling Partition Hotspots
 
@@ -410,8 +426,8 @@ consumer.assignment().forEach(partition -> {
 Mitigate hotspots by improving key distribution:
 
 ```java
-// Add salt to keys with high cardinality
-String key = originalKey + "-" + (Math.abs(originalKey.hashCode()) % 10);
+// Add salt to hot keys when strict per-key ordering is not required
+String key = originalKey + "-" + ThreadLocalRandom.current().nextInt(10);
 
 // Or use composite keys
 String key = tenantId + ":" + userId + ":" + timestamp;
@@ -428,7 +444,7 @@ Follow these guidelines for optimal partitioning:
 5. Monitor partition size and growth rates
 6. Plan for partition expansion (you cannot reduce partition count)
 7. Balance partition count vs broker resources
-8. Use compacted topics for high-cardinality keys
+8. Use compacted topics for latest-value or changelog-style data
 9. Implement monitoring for partition lag and distribution
 10. Test rebalancing behavior under load
 
