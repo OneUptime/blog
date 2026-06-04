@@ -64,7 +64,7 @@ kubectl supports multiple output formats. Create aliases for common formatting n
 ```bash
 # YAML output
 alias kgy='kubectl get -o yaml'
-alias kdy='kubectl describe -o yaml'
+alias kgpy='kubectl get pods -o yaml'
 
 # JSON output
 alias kgj='kubectl get -o json'
@@ -110,9 +110,11 @@ When aliases become too limited, use shell functions. Functions accept arguments
 ```bash
 # Get logs from a pod by partial name match
 klog() {
-    local pod=$(kubectl get pods --all-namespaces -o name | grep -i "$1" | head -1 | cut -d/ -f2)
+    local match=$(kubectl get pods --all-namespaces --no-headers -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name | grep -i "$1" | head -1)
+    local namespace=$(echo "$match" | awk '{print $1}')
+    local pod=$(echo "$match" | awk '{print $2}')
     if [ -n "$pod" ]; then
-        kubectl logs "$pod" "${@:2}"
+        kubectl logs -n "$namespace" "$pod" "${@:2}"
     else
         echo "No pod found matching: $1"
     fi
@@ -133,7 +135,11 @@ Create a function that finds pods and opens shells:
 kexec() {
     local pod=$(kubectl get pods -o name | grep -i "$1" | head -1 | cut -d/ -f2)
     if [ -n "$pod" ]; then
-        kubectl exec -it "$pod" -- "${@:2:-/bin/bash}"
+        local command=("${@:2}")
+        if [ ${#command[@]} -eq 0 ]; then
+            command=(/bin/bash)
+        fi
+        kubectl exec -it "$pod" -- "${command[@]}"
     else
         echo "No pod found matching: $1"
     fi
