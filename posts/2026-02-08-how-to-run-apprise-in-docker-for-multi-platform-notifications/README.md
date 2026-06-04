@@ -8,7 +8,7 @@ Description: Deploy Apprise in Docker to send notifications to Slack, Discord, T
 
 ---
 
-Sending notifications to multiple platforms usually means juggling different APIs, authentication methods, and payload formats. Apprise solves this by providing a single, unified API that can deliver messages to over 80 different notification services. Slack, Discord, Telegram, email, Pushover, Microsoft Teams, Gotify, ntfy, and dozens more, all through one interface.
+Sending notifications to multiple platforms usually means juggling different APIs, authentication methods, and payload formats. Apprise solves this by providing a single, unified API that can deliver messages to over 80 different notification services. Slack, Discord, Telegram, email, Pushover, Microsoft Power Automate / Workflows, Gotify, ntfy, and dozens more, all through one interface.
 
 Running Apprise as a Docker container gives you a REST API endpoint that any script or application can call. Instead of hardcoding notification logic for each platform, you configure your notification targets once and send messages to all of them with a single HTTP request.
 
@@ -16,7 +16,7 @@ Running Apprise as a Docker container gives you a REST API endpoint that any scr
 
 The list of supported services is extensive. Here are some of the most commonly used ones:
 
-- Chat platforms: Slack, Discord, Microsoft Teams, Mattermost, Rocket.Chat
+- Chat platforms: Slack, Discord, Microsoft Power Automate / Workflows, Mattermost, Rocket.Chat
 - Messaging apps: Telegram, Signal, WhatsApp (via Twilio)
 - Push notifications: Pushover, Pushbullet, Gotify, ntfy
 - Email: SMTP, Gmail, SendGrid, Mailgun
@@ -45,6 +45,9 @@ docker run -d \
   --name apprise \
   -p 8000:8000 \
   -v apprise-config:/config \
+  -e APPRISE_STATEFUL_MODE=simple \
+  -e APPRISE_WORKER_COUNT=1 \
+  -e APPRISE_ADMIN=y \
   caronc/apprise:latest
 ```
 
@@ -80,15 +83,20 @@ services:
       # Persist saved notification configurations
       - apprise-config:/config
     environment:
-      # Secret key for the web interface
+      # Store configurations as human-readable files under /config
       APPRISE_STATEFUL_MODE: simple
-      # Enable the configuration manager in the web UI
+      # Use a single worker for low-resource deployments
+      APPRISE_WORKER_COUNT: "1"
+      # Enable listing saved keys in the web UI
+      APPRISE_ADMIN: "y"
+      # Keep the configuration API writable
       APPRISE_CONFIG_LOCK: "no"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/status"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/status >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 20s
 
 volumes:
   apprise-config:
@@ -111,7 +119,7 @@ curl -X POST http://localhost:8000/add/alerts \
     "urls": [
       "slack://tokenA/tokenB/tokenC",
       "discord://webhook_id/webhook_token",
-      "tgram://bot_token/chat_id",
+      "tgram://123456789:ABCdefGHIjklMNOpqrstUVWxyz/987654321",
       "mailto://user:password@gmail.com?to=admin@example.com"
     ]
   }'
@@ -163,9 +171,9 @@ ntfys://ntfy.yourdomain.com/server-alerts
 # Format: gotify://hostname/token
 gotify://gotify.yourdomain.com/your-app-token
 
-# Microsoft Teams (via webhook)
-# Format: msteams://tokenA/tokenB/tokenC/tokenD
-msteams://abcdef/ghijkl/mnopqr/stuvwx
+# Microsoft Power Automate / Workflows
+# Format: workflows://host/workflow_id/signature
+workflows://prod-00.westus.logic.azure.com/123ABC_abc/DEF456-def/
 
 # Generic webhook (JSON)
 # Format: json://hostname/path
@@ -180,26 +188,28 @@ Instead of adding URLs through the API, you can use a YAML configuration file. T
 # apprise.yml - Notification targets organized by tags
 
 # Critical alerts go to all channels
+version: 1
+
 urls:
-  - url: slack://tokenA/tokenB/tokenC
-    tag: critical, all
+  - slack://tokenA/tokenB/tokenC:
+      tag: critical, all
 
-  - url: discord://webhook_id/webhook_token
-    tag: critical, all
+  - discord://webhook_id/webhook_token:
+      tag: critical, all
 
-  - url: tgram://bot_token/chat_id
-    tag: critical, all
+  - tgram://123456789:ABCdefGHIjklMNOpqrstUVWxyz/987654321:
+      tag: critical, all
 
-  - url: mailto://sender:password@smtp.gmail.com?to=admin@example.com
-    tag: critical, email
+  - mailto://sender:password@smtp.gmail.com?to=admin@example.com:
+      tag: critical, email
 
   # Info-level messages only go to Slack
-  - url: slack://tokenA/tokenB/tokenC/#info-channel
-    tag: info
+  - slack://tokenA/tokenB/tokenC/#info-channel:
+      tag: info
 
   # Development team notifications
-  - url: discord://dev_webhook_id/dev_webhook_token
-    tag: dev
+  - discord://dev_webhook_id/dev_webhook_token:
+      tag: dev
 ```
 
 Mount the config file into the container.
@@ -207,7 +217,7 @@ Mount the config file into the container.
 ```yaml
 # Add to docker-compose.yml volumes
 volumes:
-  - ./apprise.yml:/config/apprise.yml:ro
+  - ./apprise.yml:/config/alerts.yml:ro
 ```
 
 ## Sending Notifications from Scripts
@@ -262,7 +272,7 @@ apobj = apprise.Apprise()
 
 # Add notification targets
 apobj.add("slack://tokenA/tokenB/tokenC")
-apobj.add("tgram://bot_token/chat_id")
+apobj.add("tgram://123456789:ABCdefGHIjklMNOpqrstUVWxyz/987654321")
 apobj.add("mailto://user:pass@gmail.com?to=admin@example.com")
 
 # Send a notification to all targets
