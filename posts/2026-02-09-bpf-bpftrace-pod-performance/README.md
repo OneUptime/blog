@@ -131,13 +131,12 @@ Analyze network performance for pods communicating with services:
 ```bash
 # TCP connection latency
 bpftrace -e '
-kprobe:tcp_v4_connect
+kprobe:tcp_v4_connect /pid == '$PID'/
 {
   @start[tid] = nsecs;
 }
 
-kretprobe:tcp_v4_connect
-/@start[tid]/
+kretprobe:tcp_v4_connect /pid == '$PID' && @start[tid]/
 {
   $duration_us = (nsecs - @start[tid]) / 1000;
   @connect_latency_us = hist($duration_us);
@@ -147,13 +146,12 @@ kretprobe:tcp_v4_connect
 
 # DNS query latency
 bpftrace -e '
-uprobe:/lib/x86_64-linux-gnu/libc.so.6:getaddrinfo
+uprobe:/lib/x86_64-linux-gnu/libc.so.6:getaddrinfo /pid == '$PID'/
 {
   @start[tid] = nsecs;
 }
 
-uretprobe:/lib/x86_64-linux-gnu/libc.so.6:getaddrinfo
-/@start[tid]/
+uretprobe:/lib/x86_64-linux-gnu/libc.so.6:getaddrinfo /pid == '$PID' && @start[tid]/
 {
   $duration_ms = (nsecs - @start[tid]) / 1000000;
   printf("DNS lookup took %d ms\n", $duration_ms);
@@ -163,23 +161,14 @@ uretprobe:/lib/x86_64-linux-gnu/libc.so.6:getaddrinfo
 '
 ```
 
-Track network packets for specific pods:
+Track network packet volume by node interface:
 
 ```bash
-# Get pod IP
-POD_IP=$(kubectl get pod myapp-xyz -o jsonpath='{.status.podIP}')
-
-# Convert IP to hex for BPF filter
-IP_HEX=$(printf '%02x%02x%02x%02x' $(echo $POD_IP | tr '.' ' '))
-
-# Trace packets
+# Trace received packets
 bpftrace -e "
 tracepoint:net:netif_receive_skb {
-  \$iph = (struct iphdr *) args->skbaddr;
-  if (\$iph->daddr == 0x$IP_HEX) {
-    @packets = count();
-    @bytes = sum(args->len);
-  }
+  @packets[args->name] = count();
+  @bytes[args->name] = sum(args->len);
 }
 interval:s:1 {
   print(@packets);
@@ -195,7 +184,7 @@ interval:s:1 {
 Monitor disk operations to identify I/O bottlenecks:
 
 ```bash
-# Track read/write latency by process
+# Track block read/write latency
 bpftrace -e '
 tracepoint:block:block_rq_issue
 {
@@ -275,7 +264,7 @@ bpftrace -e "
 profile:hz:49 /pid == $PID/ {
   @[ustack] = count();
 }
-" --unsafe
+"
 ```
 
 ## Memory Allocation Tracing
@@ -286,12 +275,12 @@ Track memory allocations to find memory leaks:
 # Trace malloc calls
 bpftrace -e '
 uprobe:/lib/x86_64-linux-gnu/libc.so.6:malloc /pid == '$PID'/ {
-  @allocs = count();
-  @alloc_bytes = sum(arg0);
+  @allocs = @allocs + 1;
+  @alloc_bytes = @alloc_bytes + arg0;
 }
 
 uprobe:/lib/x86_64-linux-gnu/libc.so.6:free /pid == '$PID'/ {
-  @frees = count();
+  @frees = @frees + 1;
 }
 
 interval:s:1 {
@@ -305,7 +294,8 @@ interval:s:1 {
 # Track large allocations
 bpftrace -e '
 uprobe:/lib/x86_64-linux-gnu/libc.so.6:malloc /pid == '$PID' && arg0 > 10485760/ {
-  printf("Large allocation: %d bytes at %s\n", arg0, ustack);
+  printf("Large allocation: %d bytes\n", arg0);
+  print(ustack);
   @large_allocs = count();
 }
 '
@@ -319,7 +309,7 @@ For applications with USDT (User Statically-Defined Tracing) probes:
 # List available probes
 bpftrace -l 'usdt:/path/to/binary:*'
 
-# Trace HTTP requests (example for Node.js)
+# Trace HTTP requests (example for Node.js builds that expose this USDT probe)
 bpftrace -e '
 usdt:/usr/bin/node:http__server__request {
   printf("%s %s\n", str(arg3), str(arg4));
@@ -350,26 +340,26 @@ Save common traces as scripts for repeated use:
 
 ```bash
 #!/usr/bin/env bpftrace
-# pod-latency.bt - Measure end-to-end latency for pod operations
+# pod-latency.bt - Measure TCP sendmsg kernel latency
 
 BEGIN {
-  printf("Tracing pod latency... Hit Ctrl-C to end.\n");
+  printf("Tracing TCP sendmsg latency... Hit Ctrl-C to end.\n");
 }
 
-// Trace HTTP request latency
+// Trace tcp_sendmsg kernel function latency
 kprobe:tcp_sendmsg {
   @send_start[tid] = nsecs;
 }
 
-kretprobe:tcp_recvmsg /@send_start[tid]/ {
+kretprobe:tcp_sendmsg /@send_start[tid]/ {
   $duration_ms = (nsecs - @send_start[tid]) / 1000000;
-  @http_latency_ms = hist($duration_ms);
+  @tcp_sendmsg_latency_ms = hist($duration_ms);
   delete(@send_start[tid]);
 }
 
 END {
-  printf("\nHTTP Request Latency Distribution:\n");
-  print(@http_latency_ms);
+  printf("\nTCP sendmsg Latency Distribution:\n");
+  print(@tcp_sendmsg_latency_ms);
 }
 ```
 
@@ -390,7 +380,7 @@ When using bpftrace in production:
 5. Clean up maps in END probe to avoid memory leaks in long-running traces
 
 Security considerations:
-- bpftrace requires CAP_BPF and CAP_PERFMON capabilities
+- bpftrace requires CAP_BPF and CAP_PERFMON on newer kernels, or CAP_SYS_ADMIN on older kernels and for some tracing operations
 - Restrict access to nodes and bpftrace pods
 - Be aware that bpftrace can read kernel and process memory
 - Audit bpftrace usage in production environments
