@@ -28,7 +28,7 @@ Start by installing Argo Workflows in your cluster. The recommended approach use
 kubectl create namespace argo
 
 # Install Argo Workflows
-kubectl apply -n argo -f https://github.com/argoproj/argo-workflows/releases/download/v3.4.4/install.yaml
+kubectl apply -n argo -f https://github.com/argoproj/argo-workflows/releases/download/v4.0.5/install.yaml
 
 # Verify installation
 kubectl get pods -n argo
@@ -240,6 +240,8 @@ spec:
       source: |
         import random
         size = random.randint(500, 2000)
+        with open('/tmp/size', 'w') as f:
+            f.write(str(size))
         print(size)
     outputs:
       parameters:
@@ -313,6 +315,8 @@ spec:
         import json
         # Generate list of partitions to process
         partitions = [f"partition-{i}" for i in range(10)]
+        with open('/tmp/partitions', 'w') as f:
+            json.dump(partitions, f)
         print(json.dumps(partitions))
     outputs:
       parameters:
@@ -371,8 +375,8 @@ argo list -n data-processing
 # Get workflow details
 argo get data-pipeline-abc123 -n data-processing
 
-# View logs for specific step
-argo logs data-pipeline-abc123 -n data-processing validate-input
+# View workflow logs
+argo logs data-pipeline-abc123 -n data-processing
 ```
 
 The UI shows the DAG structure visually, making it easy to understand workflow progress and identify bottlenecks.
@@ -388,7 +392,8 @@ metadata:
   name: daily-data-pipeline
   namespace: data-processing
 spec:
-  schedule: "0 2 * * *"
+  schedules:
+  - "0 2 * * *"
   timezone: "America/Los_Angeles"
   concurrencyPolicy: "Forbid"
   successfulJobsHistoryLimit: 3
