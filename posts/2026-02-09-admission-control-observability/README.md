@@ -21,11 +21,15 @@ metadata:
   name: kyverno-metrics
   namespace: kyverno
 spec:
+  namespaceSelector:
+    matchNames:
+      - kyverno
   selector:
     matchLabels:
-      app.kubernetes.io/name: kyverno
+      app.kubernetes.io/instance: kyverno
   endpoints:
-    - port: metrics
+    - targetPort: 8000
+      path: /metrics
       interval: 30s
       scrapeTimeout: 10s
 ```
@@ -40,14 +44,14 @@ histogram_quantile(0.95,
 )
 
 # Policy violations
-sum(rate(kyverno_policy_results_total{status="fail"}[5m])) by (policy_name)
+sum(rate(kyverno_policy_results{rule_result="fail"}[5m])) by (policy_name)
 
 # Admission requests
 rate(kyverno_admission_requests_total[5m])
 
 # Webhook latency
 histogram_quantile(0.99,
-  rate(kyverno_http_requests_duration_seconds_bucket[5m])
+  sum(rate(kyverno_admission_review_duration_seconds_bucket[5m])) by (le)
 )
 ```
 
@@ -95,7 +99,7 @@ sum(gatekeeper_violations{enforcement_action="deny"}) by (constraint_kind)
 gatekeeper_audit_duration_seconds
 
 # Webhook request count
-rate(gatekeeper_webhook_request_total[5m])
+rate(gatekeeper_validation_request_count[5m])
 
 # Constraint template count
 gatekeeper_constraint_templates
@@ -178,7 +182,7 @@ data:
     [FILTER]
         Name              grep
         Match             audit.*
-        Regex             objectRef.apiVersion kyverno|gatekeeper
+        Regex             $objectRef['apiVersion'] (kyverno|gatekeeper)
 
     [OUTPUT]
         Name              es
@@ -187,6 +191,7 @@ data:
         Port              9200
         Index             k8s-audit
         Type              _doc
+        Suppress_Type_Name On
         Logstash_Format   On
         Logstash_Prefix   k8s-audit
 ```
@@ -203,42 +208,42 @@ Create a comprehensive admission control dashboard:
       {
         "title": "Policy Violations by Type",
         "targets": [{
-          "expr": "sum(rate(kyverno_policy_results_total{status='fail'}[5m])) by (policy_validation_mode)"
+          "expr": "sum(rate(kyverno_policy_results{rule_result=\"fail\"}[5m])) by (policy_validation_mode)"
         }],
         "type": "timeseries"
       },
       {
         "title": "Top Violated Policies",
         "targets": [{
-          "expr": "topk(10, sum(rate(kyverno_policy_results_total{status='fail'}[5m])) by (policy_name))"
+          "expr": "topk(10, sum(rate(kyverno_policy_results{rule_result=\"fail\"}[5m])) by (policy_name))"
         }],
-        "type": "bar"
+        "type": "barchart"
       },
       {
         "title": "Admission Latency p95",
         "targets": [{
-          "expr": "histogram_quantile(0.95, rate(kyverno_http_requests_duration_seconds_bucket[5m]))"
+          "expr": "histogram_quantile(0.95, sum(rate(kyverno_admission_review_duration_seconds_bucket[5m])) by (le))"
         }],
         "type": "gauge"
       },
       {
         "title": "Policy Pass Rate",
         "targets": [{
-          "expr": "sum(rate(kyverno_policy_results_total{status='pass'}[5m])) / sum(rate(kyverno_policy_results_total[5m])) * 100"
+          "expr": "sum(rate(kyverno_policy_results{rule_result=\"pass\"}[5m])) / sum(rate(kyverno_policy_results[5m])) * 100"
         }],
         "type": "stat"
       },
       {
         "title": "Violations by Namespace",
         "targets": [{
-          "expr": "sum(rate(kyverno_policy_results_total{status='fail'}[5m])) by (resource_namespace)"
+          "expr": "sum(rate(kyverno_policy_results{rule_result=\"fail\"}[5m])) by (resource_namespace)"
         }],
         "type": "heatmap"
       },
       {
-        "title": "Webhook Timeout Errors",
+        "title": "Webhook Call Errors",
         "targets": [{
-          "expr": "sum(rate(apiserver_admission_webhook_admission_duration_seconds_count{name=~'.*kyverno.*|.*gatekeeper.*',type='timeout'}[5m]))"
+          "expr": "sum(rate(apiserver_admission_webhook_rejection_count{name=~\".*kyverno.*|.*gatekeeper.*\",error_type=\"calling_webhook_error\"}[5m])) by (name)"
         }],
         "type": "timeseries"
       }
@@ -264,7 +269,7 @@ spec:
       rules:
         - alert: HighPolicyViolationRate
           expr: |
-            rate(kyverno_policy_results_total{status="fail"}[5m]) > 10
+            sum by (policy_name) (rate(kyverno_policy_results{rule_result="fail"}[5m])) > 10
           for: 5m
           labels:
             severity: warning
@@ -274,7 +279,7 @@ spec:
 
         - alert: AdmissionWebhookTimeout
           expr: |
-            sum(rate(apiserver_admission_webhook_admission_duration_seconds_count{type="timeout"}[5m])) > 0.1
+            sum by (name) (rate(apiserver_admission_webhook_rejection_count{error_type="calling_webhook_error"}[5m])) > 0.1
           for: 2m
           labels:
             severity: critical
@@ -284,7 +289,7 @@ spec:
 
         - alert: AdmissionLatencyHigh
           expr: |
-            histogram_quantile(0.99, rate(kyverno_http_requests_duration_seconds_bucket[5m])) > 1
+            histogram_quantile(0.99, sum(rate(kyverno_admission_review_duration_seconds_bucket[5m])) by (le)) > 1
           for: 5m
           labels:
             severity: warning
@@ -309,6 +314,8 @@ Implement structured logging in custom webhooks:
 
 ```go
 import (
+    "time"
+
     "go.uber.org/zap"
 )
 
@@ -359,6 +366,7 @@ Query Policy Reports programmatically:
 import (
     "context"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/runtime/schema"
     "k8s.io/client-go/dynamic"
 )
 
@@ -393,7 +401,6 @@ Add OpenTelemetry tracing to webhooks:
 ```go
 import (
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/trace"
 )
 
 func validateHandler(w http.ResponseWriter, r *http.Request) {
@@ -439,7 +446,7 @@ Generate compliance reports:
 
 # Query metrics
 TOTAL_REQUESTS=$(curl -s 'http://prometheus:9090/api/v1/query?query=sum(kyverno_admission_requests_total)' | jq -r '.data.result[0].value[1]')
-VIOLATIONS=$(curl -s 'http://prometheus:9090/api/v1/query?query=sum(kyverno_policy_results_total{status="fail"})' | jq -r '.data.result[0].value[1]')
+VIOLATIONS=$(curl -s 'http://prometheus:9090/api/v1/query?query=sum(kyverno_policy_results{rule_result="fail"})' | jq -r '.data.result[0].value[1]')
 
 COMPLIANCE_RATE=$(echo "scale=2; (1 - ($VIOLATIONS / $TOTAL_REQUESTS)) * 100" | bc)
 
@@ -466,18 +473,12 @@ Profile policy execution:
 
 ```bash
 # Enable profiling in Kyverno
-kubectl patch deployment kyverno -n kyverno -p '
-spec:
-  template:
-    spec:
-      containers:
-      - name: kyverno
-        args:
-        - --profile=true
-'
+kubectl patch deployment kyverno-admission-controller -n kyverno --type='json' -p='[
+  {"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--profile=true"}
+]'
 
 # Access pprof endpoint
-kubectl port-forward -n kyverno svc/kyverno-svc 6060
+kubectl port-forward -n kyverno deployment/kyverno-admission-controller 6060:6060
 
 # Collect CPU profile
 curl http://localhost:6060/debug/pprof/profile?seconds=30 > cpu.prof
