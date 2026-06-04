@@ -61,7 +61,7 @@ kubectl logs myapp-6d5c4d8f9-x7k2p --previous
 
 ## Diagnosing Missing ConfigMap Volumes
 
-ConfigMaps mounted as volumes won't cause immediate pod failure if missing. Instead, the pod stays in ContainerCreating status. However, if the application expects specific files at startup, it will crash once the container starts.
+Required ConfigMaps mounted as volumes won't cause immediate container failure if missing. Instead, the pod stays in ContainerCreating status because Kubernetes cannot set up the volume. However, if the ConfigMap reference is optional, or if the ConfigMap exists but lacks a file the application expects, the container can start and then crash during application startup.
 
 ```bash
 # Check if ConfigMap exists
@@ -71,7 +71,7 @@ kubectl get configmap app-config
 kubectl describe configmap app-config
 
 # Check pod volume mounts
-kubectl get pod myapp-6d5c4d8f9-x7k2p -o jsonpath='{.spec.volumes[*]}' | jq
+kubectl get pod myapp-6d5c4d8f9-x7k2p -o json | jq '.spec.volumes'
 ```
 
 If the ConfigMap doesn't exist, create it before the pod can start successfully.
@@ -102,17 +102,17 @@ kubectl delete pod myapp-6d5c4d8f9-x7k2p
 
 ## Fixing Missing Secret References
 
-Secrets that don't exist cause different behavior depending on how they're referenced. Environment variables from missing secrets prevent the pod from starting at all, while missing secret volumes behave like ConfigMaps.
+Secrets that don't exist cause different behavior depending on how they're referenced. Required environment variables from missing secrets prevent the container from starting at all, while missing secret volumes behave like ConfigMap volumes.
 
 ```bash
 # Check if Secret exists
 kubectl get secret app-secrets
 
 # View Secret keys (not values)
-kubectl get secret app-secrets -o jsonpath='{.data}' | jq keys
+kubectl get secret app-secrets -o json | jq '.data | keys'
 
 # Check pod environment variables
-kubectl get pod myapp-6d5c4d8f9-x7k2p -o jsonpath='{.spec.containers[0].env[*]}' | jq
+kubectl get pod myapp-6d5c4d8f9-x7k2p -o json | jq '.spec.containers[0].env'
 ```
 
 Create the missing secret with required keys.
@@ -148,7 +148,7 @@ kubectl delete pod myapp-6d5c4d8f9-x7k2p
 Applications often crash when required environment variables are undefined. The application code might check for specific variables at startup and exit if they're missing.
 
 ```bash
-# Check defined environment variables in pod
+# Check defined environment variables in pod if the container stays running long enough
 kubectl exec myapp-6d5c4d8f9-x7k2p -- env
 
 # Compare against application requirements
@@ -216,7 +216,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       initContainers:
       - name: config-validator
@@ -257,11 +263,13 @@ spec:
             secretKeyRef:
               name: app-secrets
               key: database-url
+              optional: true
         - name: API_TOKEN
           valueFrom:
             secretKeyRef:
               name: app-secrets
               key: api-token
+              optional: true
         volumeMounts:
         - name: config
           mountPath: /etc/config
@@ -315,7 +323,7 @@ generatorOptions:
   disableNameSuffixHash: false
 ```
 
-The name suffix hash ensures that changes to configuration trigger rolling updates automatically.
+The name suffix hash ensures that changes to generated configuration create new ConfigMap and Secret names. Kustomize updates matching references in the rendered Deployment so those changes trigger rolling updates automatically.
 
 ```bash
 # Build and apply with Kustomize
@@ -336,7 +344,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
       - name: app
