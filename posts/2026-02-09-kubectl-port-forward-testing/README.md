@@ -12,7 +12,7 @@ The kubectl port-forward command creates a secure tunnel between your local mach
 
 ## Understanding Port Forwarding
 
-Port forwarding establishes a TCP connection from your local port to a port on a pod or service. The kubectl command acts as a proxy, forwarding all traffic through the Kubernetes API server to the target resource. This approach works even when pods aren't directly accessible due to network policies or cluster configuration.
+Port forwarding establishes a TCP connection from your local port to a port on a pod. The kubectl command acts as a proxy, forwarding traffic through the Kubernetes API server to the selected pod. This approach works even when pods aren't directly accessible due to network policies or cluster configuration.
 
 The tunnel remains active while the kubectl command runs. Close the command or disconnect, and the tunnel closes. This temporary nature makes port-forward perfect for testing and debugging but unsuitable for production traffic routing.
 
@@ -101,7 +101,7 @@ kubectl port-forward --address 0.0.0.0 pod/nginx-abc123 8080:80
 kubectl port-forward --address 192.168.1.100 pod/nginx-abc123 8080:80
 
 # Bind to multiple addresses
-kubectl port-forward --address 0.0.0.0 --address :: pod/nginx-abc123 8080:80
+kubectl port-forward --address 0.0.0.0,:: pod/nginx-abc123 8080:80
 ```
 
 Be cautious when binding to 0.0.0.0 as it exposes the forwarded port to your network. Use this only in trusted environments.
@@ -147,8 +147,8 @@ redis-cli -h localhost -p 6379
 # Forward to MongoDB
 kubectl port-forward service/mongodb 27017:27017
 
-# Connect with mongo client
-mongo mongodb://localhost:27017/mydb
+# Connect with mongosh
+mongosh mongodb://localhost:27017/mydb
 ```
 
 This lets you query databases directly from your local machine using familiar tools.
@@ -159,7 +159,7 @@ Forward to cluster dashboards and UIs:
 
 ```bash
 # Kubernetes Dashboard
-kubectl port-forward -n kubernetes-dashboard service/kubernetes-dashboard 8443:443
+kubectl port-forward -n kubernetes-dashboard service/kubernetes-dashboard-kong-proxy 8443:443
 open https://localhost:8443
 
 # Prometheus UI
