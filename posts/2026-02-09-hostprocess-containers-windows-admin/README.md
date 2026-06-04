@@ -8,26 +8,26 @@ Description: Learn how to use HostProcess containers to perform privileged admin
 
 ---
 
-HostProcess containers are a powerful Windows feature that allows containers to run with elevated privileges and access to the host operating system. Unlike standard Windows containers that run isolated from the host, HostProcess containers run in the host's process namespace with full access to the Windows node. This capability enables system administration tasks, monitoring agents, and security tools to run as Kubernetes workloads. This guide explains how to use HostProcess containers safely and effectively.
+HostProcess containers are a powerful Windows feature that allows containers to run with elevated privileges and access to the host operating system. Unlike standard Windows containers that run isolated from the host, HostProcess containers run as processes on the host with access to the host network namespace, storage, and devices based on the configured Windows user. This capability enables system administration tasks, monitoring agents, and security tools to run as Kubernetes workloads. This guide explains how to use HostProcess containers safely and effectively.
 
 ## Understanding HostProcess Containers
 
-Traditional Windows containers run in isolated environments with limited access to the host system. This isolation provides security but prevents certain administrative tasks. HostProcess containers break this isolation intentionally, running processes directly on the Windows host with SYSTEM privileges.
+Traditional Windows containers run in isolated environments with limited access to the host system. This isolation provides security but prevents certain administrative tasks. HostProcess containers break this isolation intentionally, running processes directly on the Windows host with the privileges of the Windows account specified in the pod security context.
 
 HostProcess containers are ideal for tasks that require host-level access such as installing software, configuring Windows services, managing networking, monitoring system metrics, or performing security scans. They run as regular Windows processes, not in container isolation, but Kubernetes manages their lifecycle.
 
-This feature requires Kubernetes 1.22 or later with Windows Server 2019 or newer. The containerd runtime must support HostProcess containers.
+HostProcess containers were introduced as an alpha feature in Kubernetes 1.22 and are stable in Kubernetes 1.26 and later. For current Kubernetes releases, use supported Windows Server worker nodes and containerd 1.6 or later; containerd 1.7 or later is recommended.
 
 ## Enabling HostProcess Container Support
 
 First, verify your cluster supports HostProcess containers:
 
 ```bash
-# Check Kubernetes version (must be 1.22+)
+# Check Kubernetes version (HostProcess is stable in 1.26+)
 
-kubectl version --short
+kubectl version -o yaml
 
-# Verify feature gate is enabled (enabled by default in 1.23+)
+# Check the kubelet versions on your nodes
 kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}'
 ```
 
@@ -37,8 +37,7 @@ On Windows nodes, verify containerd supports HostProcess:
 # Check containerd version
 containerd.exe --version
 
-# Verify HostProcess support in containerd config
-Get-Content C:\ProgramData\containerd\config.toml | Select-String -Pattern "hostprocess"
+# HostProcess requires containerd 1.6+; 1.7+ is recommended
 ```
 
 ## Creating a Basic HostProcess Container
@@ -227,7 +226,7 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: firewall-config
-        image: mcr.microsoft.com/windows/nanoserver:ltsc2022
+        image: mcr.microsoft.com/windows/servercore:ltsc2022
         command:
         - powershell.exe
         - -Command
@@ -330,8 +329,11 @@ spec:
             $netBytes = [math]::Round($net.CounterSamples[0].CookedValue / 1MB, 2)
 
             # Container metrics
-            $containers = docker ps --format "{{.Names}}" 2>$null | Measure-Object
-            $containerCount = $containers.Count
+            $containerCount = 0
+            if (Get-Command ctr.exe -ErrorAction SilentlyContinue) {
+              $containers = ctr.exe -n k8s.io containers list -q 2>$null | Measure-Object
+              $containerCount = $containers.Count
+            }
 
             # Format as Prometheus metrics
             $metrics = @"
@@ -392,7 +394,7 @@ spec:
     kubernetes.io/os: windows
   containers:
   - name: manager
-    image: mcr.microsoft.com/windows/nanoserver:ltsc2022
+    image: mcr.microsoft.com/windows/servercore:ltsc2022
     command:
     - powershell.exe
     - -Command
@@ -434,7 +436,7 @@ spec:
       }
 
       # Ensure critical services are running
-      $criticalServices = @('kubelet', 'containerd', 'docker')
+      $criticalServices = @('kubelet', 'containerd')
 
       foreach ($svc in $criticalServices) {
         Manage-WindowsService -ServiceName $svc -Action "status"
@@ -477,7 +479,7 @@ spec:
   serviceAccountName: hostprocess-admin  # Use dedicated service account
   containers:
   - name: admin
-    image: mcr.microsoft.com/windows/nanoserver:ltsc2022
+    image: mcr.microsoft.com/windows/servercore:ltsc2022
     command:
     - powershell.exe
     - -Command
