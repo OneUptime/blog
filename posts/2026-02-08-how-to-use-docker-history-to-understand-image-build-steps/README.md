@@ -8,7 +8,7 @@ Description: Learn how to use docker history to inspect image layers, debug buil
 
 ---
 
-Every Docker image is a stack of layers. Each instruction in your Dockerfile creates a new layer, and those layers accumulate into the final image. The `docker history` command lets you peel back those layers and see exactly what each build step contributed. You can find out which step added the most size, what commands ran during the build, and when something was created.
+Every Docker image is a stack of layers. Instructions like `RUN`, `COPY`, and `ADD` create filesystem layers, while metadata instructions like `ENV`, `EXPOSE`, and `CMD` appear in the image history without adding filesystem data. The `docker history` command lets you peel back those layers and history entries to see exactly what each build step contributed. You can find out which step added the most size, what commands ran during the build, and when something was created.
 
 This is invaluable for debugging build issues, optimizing image size, and understanding third-party images you did not build yourself.
 
@@ -39,16 +39,16 @@ IMAGE          CREATED       CREATED BY                                      SIZ
 <missing>      2 weeks ago   ENV DYNPKG_RELEASE=2~bookworm                   0B        buildkit
 ```
 
-Each row is a layer. The `CREATED BY` column shows the Dockerfile instruction, `SIZE` shows how much that layer added, and `IMAGE` shows the layer ID.
+Each row is a history entry. The `CREATED BY` column shows the Dockerfile instruction, `SIZE` shows how much that entry added, and `IMAGE` shows the image or intermediate image ID when available.
 
 ## Understanding the Output Columns
 
 The columns tell you specific things:
 
-- **IMAGE**: The layer's short ID. Layers from the base image show as `<missing>` because Docker does not store their IDs locally after pulling.
-- **CREATED**: When the layer was built. Useful for knowing if you are looking at a stale build.
-- **CREATED BY**: The Dockerfile instruction that created this layer. This is the most informative column.
-- **SIZE**: How many bytes this layer added to the image. Zero-byte layers come from metadata instructions like `ENV`, `EXPOSE`, and `CMD`.
+- **IMAGE**: The image or intermediate image short ID when available. `<missing>` means Docker does not have an image ID to display for that history entry.
+- **CREATED**: When the history entry was created. Useful for knowing if you are looking at a stale build.
+- **CREATED BY**: The Dockerfile instruction that created this history entry. This is the most informative column.
+- **SIZE**: How many bytes this entry added to the image. Zero-byte entries come from metadata instructions like `ENV`, `EXPOSE`, and `CMD`.
 - **COMMENT**: Usually shows `buildkit` for images built with BuildKit.
 
 ## Seeing Full Commands with --no-trunc
@@ -103,7 +103,7 @@ Sort layers by size to find the biggest contributors:
 docker history nginx:latest --format "{{.Size}}\t{{.CreatedBy}}" --no-trunc | sort -hr
 ```
 
-For a more readable approach, use the quiet flag with inspect:
+For a more readable approach, filter out zero-byte entries:
 
 ```bash
 # Show only layers that added more than 0 bytes
