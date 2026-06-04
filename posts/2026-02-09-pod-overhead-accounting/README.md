@@ -89,7 +89,7 @@ The scheduler sees this pod requires:
 - Runtime overhead: 250m CPU, 128Mi memory
 - Total scheduling requirement: 750m CPU, 640Mi memory
 
-The kubelet allocates the full 750m and 640Mi on the node, preventing overcommitment.
+The kubelet includes the overhead when sizing the pod cgroup on the node, preventing overcommitment.
 
 ## Measuring Actual Runtime Overhead
 
@@ -130,12 +130,13 @@ kubectl debug node/$NODE -it --image=ubuntu -- bash -c "
   pmap -x \$(pgrep -f overhead-test | head -1) | tail -1
 "
 
-# Query Prometheus for container overhead
+# Query Prometheus for pod-level memory not attributed to named containers
 kubectl exec -n monitoring prometheus-0 -- promtool query instant \
-  'container_memory_working_set_bytes{pod="overhead-test",container=""}'
+  http://localhost:9090 \
+  'pod_memory_working_set_bytes{pod="overhead-test"} - sum by (namespace,pod) (container_memory_working_set_bytes{pod="overhead-test",container!=""})'
 ```
 
-The container with an empty name ("") in Prometheus metrics represents the pod sandbox overhead.
+The difference between the pod working set and the named container working sets gives you a runtime-specific signal to compare with configured pod overhead.
 
 ## Configuring Overhead for Different Workload Types
 
@@ -187,9 +188,9 @@ scheduling:
 
 The `scheduling` section ensures pods using specific runtimes land on appropriately configured nodes.
 
-## Impact on Resource Requests and Limits
+## Impact on Resource Requests, Limits, and Pod Cgroups
 
-Pod overhead affects scheduling but not cgroup limits:
+Pod overhead affects scheduling and pod cgroup sizing:
 
 ```yaml
 apiVersion: v1
@@ -206,11 +207,11 @@ spec:
         cpu: "500m"      # Scheduler sees 750m (500m + 250m)
         memory: "512Mi"  # Scheduler sees 640Mi (512Mi + 128Mi)
       limits:
-        cpu: "1000m"     # Container still gets 1000m limit
-        memory: "1Gi"    # Container still gets 1Gi limit
+        cpu: "1000m"     # Container still has a 1000m limit
+        memory: "1Gi"    # Container still has a 1Gi limit
 ```
 
-The overhead is reserved on the node but doesn't reduce container limits. The container can still use its full limit allocation.
+The overhead is reserved on the node and included when kubelet sizes the pod cgroup. It doesn't reduce individual container limits; the container can still use its full limit allocation.
 
 ## Monitoring Overhead Accuracy
 
@@ -229,9 +230,11 @@ spec:
     - alert: ActualOverheadExceedsConfigured
       expr: |
         (
-          container_memory_working_set_bytes{container=""}
+          pod_memory_working_set_bytes
+          -
+          sum by (namespace, pod) (container_memory_working_set_bytes{container!=""})
           >
-          kube_pod_overhead{resource="memory"} * 1.2
+          on (namespace, pod) kube_pod_overhead_memory_bytes * 1.2
         )
       for: 10m
       labels:
@@ -242,9 +245,12 @@ spec:
 
     - alert: NodeOvercommittedDueToOverhead
       expr: |
-        sum(kube_pod_overhead{resource="memory"}) by (node)
+        sum by (node) (
+          kube_pod_overhead_memory_bytes
+          * on (namespace, pod) group_left(node) kube_pod_info
+        )
         /
-        sum(kube_node_status_allocatable{resource="memory"}) by (node)
+        kube_node_status_allocatable{resource="memory",unit="byte"}
         > 0.2
       for: 5m
       labels:
@@ -265,14 +271,24 @@ kubectl get pods --all-namespaces -o json | jq -r '
   {
     namespace: .metadata.namespace,
     pod: .metadata.name,
-    cpu_overhead: .spec.overhead.cpu,
-    memory_overhead: .spec.overhead.memory
+    cpu_overhead: (
+      if (.spec.overhead.cpu | endswith("m")) then (.spec.overhead.cpu | sub("m$"; "") | tonumber)
+      else (.spec.overhead.cpu | tonumber * 1000)
+      end
+    ),
+    memory_overhead: (
+      if (.spec.overhead.memory | endswith("Ki")) then (.spec.overhead.memory | sub("Ki$"; "") | tonumber / 1024)
+      elif (.spec.overhead.memory | endswith("Mi")) then (.spec.overhead.memory | sub("Mi$"; "") | tonumber)
+      elif (.spec.overhead.memory | endswith("Gi")) then (.spec.overhead.memory | sub("Gi$"; "") | tonumber * 1024)
+      else (.spec.overhead.memory | tonumber / 1024 / 1024)
+      end
+    )
   }
 ' | jq -s 'group_by(.namespace) | map({
   namespace: .[0].namespace,
   total_pods: length,
-  total_cpu_overhead: map(.cpu_overhead | gsub("m";"") | tonumber) | add,
-  total_memory_overhead: map(.memory_overhead | gsub("Mi";"") | tonumber) | add
+  total_cpu_overhead_millicores: map(.cpu_overhead) | add,
+  total_memory_overhead_mib: map(.memory_overhead) | add
 })'
 ```
 
@@ -375,23 +391,7 @@ RuntimeClass overhead and sidecar overhead compound. Account for both in resourc
 
 ## Default RuntimeClass
 
-Set a default RuntimeClass for all pods without explicit runtimeClassName:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubelet-config
-  namespace: kube-system
-data:
-  kubelet: |
-    apiVersion: kubelet.config.k8s.io/v1beta1
-    kind: KubeletConfiguration
-    runtimeClass:
-      default: standard
-```
-
-This ensures even pods without explicit RuntimeClass configuration get proper overhead accounting.
+Kubernetes does not provide a built-in kubelet configuration field for assigning a default RuntimeClass to pods. If you need pods without an explicit `runtimeClassName` to use a RuntimeClass with overhead, set `runtimeClassName` in your workload manifests or use a mutating admission webhook or policy to add it at admission time.
 
 ## Validating Overhead Configuration
 
@@ -427,7 +427,8 @@ CONFIGURED_MEMORY=$(kubectl get runtimeclass $RUNTIME_CLASS -o jsonpath='{.overh
 
 # Get actual overhead from metrics
 ACTUAL_MEMORY=$(kubectl exec -n monitoring prometheus-0 -- promtool query instant \
-  "container_memory_working_set_bytes{pod=\"$TEST_POD\",container=\"\"}" | \
+  http://localhost:9090 \
+  "pod_memory_working_set_bytes{pod=\"$TEST_POD\"} - sum by (namespace,pod) (container_memory_working_set_bytes{pod=\"$TEST_POD\",container!=\"\"})" | \
   grep -oP '\d+' | tail -1)
 
 echo "Configured overhead: $CONFIGURED_MEMORY"
