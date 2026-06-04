@@ -110,7 +110,6 @@ spec:
     name: team-alpha-repo
   serviceAccountName: flux-reconciler
   targetNamespace: team-alpha
-  validation: client
 ```
 
 The `serviceAccountName` ensures reconciliation uses tenant-specific RBAC.
@@ -180,10 +179,6 @@ rules:
 - apiGroups: ["kustomize.toolkit.fluxcd.io"]
   resources: ["*"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-# Deny cluster-wide resources
-- apiGroups: ["rbac.authorization.k8s.io"]
-  resources: ["clusterroles", "clusterrolebindings"]
-  verbs: []
 ```
 
 Bind to tenant ServiceAccount:
@@ -227,7 +222,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
   egress:
   # Allow to same namespace
   - to:
@@ -236,13 +231,14 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
       port: 53
   # Allow internet egress
   - to:
-    - namespaceSelector: {}
+    - ipBlock:
+        cidr: 0.0.0.0/0
     ports:
     - protocol: TCP
       port: 443
@@ -336,7 +332,7 @@ Usage:
 
 Always use `serviceAccountName` in tenant Kustomizations to enforce RBAC boundaries. Never allow tenants to create ClusterRole or ClusterRoleBinding resources.
 
-Set `targetNamespace` to prevent tenants from deploying to other namespaces. Enable `validation: client` to catch errors before applying to the cluster.
+Set `targetNamespace` to keep namespaced resources in the tenant namespace, and validate manifests in CI before they reach the cluster.
 
 Use separate Git repositories per tenant. Avoid monorepos where tenants could view each other's manifests.
 
