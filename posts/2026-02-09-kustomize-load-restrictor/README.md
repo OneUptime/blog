@@ -14,11 +14,11 @@ Load restrictions are particularly important when building kustomizations from u
 
 ## Understanding load restrictor levels
 
-Kustomize supports several load restrictor modes that control file access:
+Kustomize supports two load restrictor modes that control file access:
 
 - `LoadRestrictionsRootOnly`: Most restrictive, only allows loading files from the kustomization root
 - `LoadRestrictionsNone`: No restrictions, allows loading any files
-- Default behavior falls between these extremes
+- The default is `LoadRestrictionsRootOnly`
 
 The restrictor prevents path traversal attacks and accidental exposure of sensitive files:
 
@@ -35,7 +35,7 @@ resources:
 
 ## Default load behavior
 
-By default, Kustomize allows loading files within the kustomization root and its subdirectories:
+By default, Kustomize allows loading files within the kustomization root and its subdirectories. It can also load separate base directories through `resources`, but individual file references such as patches, generators, or resource files must stay under the root of the kustomization that references them:
 
 ```yaml
 # kustomization.yaml
@@ -45,20 +45,20 @@ kind: Kustomization
 resources:
 - ./deployment.yaml  # Allowed: same directory
 - ./services/api.yaml  # Allowed: subdirectory
-- ../base/common.yaml  # Allowed: parent if part of project
+- ../base/common.yaml  # Blocked: file outside this kustomization root
 ```
 
 This default strikes a balance between security and usability for most projects.
 
 ## Enabling strict restrictions
 
-Use the command-line flag to enforce strict restrictions:
+Use the command-line flag to explicitly enforce the default strict restrictions:
 
 ```bash
 kustomize build --load-restrictor LoadRestrictionsRootOnly .
 ```
 
-With this mode, only files in the kustomization directory are accessible:
+With this mode, file references must stay in or below the kustomization directory:
 
 ```yaml
 # kustomization.yaml
@@ -114,7 +114,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v5
 
     - name: Build with restrictions
       run: |
@@ -127,7 +127,7 @@ The strict mode prevents malicious commits from accessing sensitive files outsid
 
 ## Handling legitimate parent directory access
 
-Many projects organize bases in parent directories. Structure your project to work with restrictions:
+Many projects organize bases in sibling or parent directories. Structure your project to reference those bases as directories, not as individual files outside the overlay root:
 
 ```text
 project/
@@ -141,19 +141,17 @@ project/
         └── kustomization.yaml
 ```
 
-From the project root, build with restrictions:
+Build the overlay with restrictions:
 
 ```bash
-# Build from project root instead of overlay directory
-cd project
 kustomize build --load-restrictor LoadRestrictionsRootOnly overlays/production
 ```
 
-This approach keeps restrictions enabled while accessing bases in parent directories.
+This approach keeps restrictions enabled while allowing Kustomize to recurse into the base directory. Files referenced by each kustomization must still remain in or below that kustomization's own root.
 
 ## Configuring restrictions for remote bases
 
-Remote bases bypass local file restrictions since they're fetched via HTTP/Git:
+Remote bases are fetched via HTTP/Git and are evaluated in their own fetched root:
 
 ```yaml
 # kustomization.yaml
@@ -161,14 +159,14 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-# Remote bases work with any restriction level
+# Remote bases are restricted to their fetched root
 - https://github.com/example/configs//base?ref=v1.0.0
 
 # Local bases must follow restrictions
 - ../../local-base
 ```
 
-For projects using remote bases, strict local restrictions provide security without limiting functionality.
+For projects using remote bases, strict local restrictions still apply to local files, while remote kustomizations are prevented from loading files outside their fetched repository root.
 
 ## Validating restriction compliance
 
@@ -219,14 +217,14 @@ Layer restrictions with other security controls:
 #!/bin/bash
 # secure-build.sh
 
-# 1. Verify kustomization signature
-kustomize verify kustomization.yaml
+# 1. Verify signed source revision
+git verify-commit HEAD
 
 # 2. Build with restrictions
 OUTPUT=$(kustomize build --load-restrictor LoadRestrictionsRootOnly .)
 
-# 3. Validate output
-echo "$OUTPUT" | kubeval --strict
+# 3. Validate output against the Kubernetes API server
+echo "$OUTPUT" | kubectl apply --dry-run=server -f -
 
 # 4. Check for sensitive data
 if echo "$OUTPUT" | grep -i "password\|secret\|token"; then
@@ -268,7 +266,7 @@ When restrictions block legitimate access, the error message indicates the probl
 Error: security; file '/etc/config.yaml' is not in or below '/home/user/project'
 ```
 
-To fix, either restructure your project to keep files within the kustomization root or adjust your build process to run from an appropriate directory.
+To fix, either restructure your project to keep referenced files within the kustomization root, move the content behind a separate base directory, or use `LoadRestrictionsNone` only when the build environment is trusted.
 
 ## Multi-project repository structure
 
@@ -287,14 +285,13 @@ monorepo/
         └── overlays/
 ```
 
-Build from the monorepo root:
+Build the overlay with restrictions:
 
 ```bash
-cd monorepo
 kustomize build --load-restrictor LoadRestrictionsRootOnly projects/project-a/overlays/production
 ```
 
-This allows accessing shared bases while maintaining restrictions.
+This allows accessing shared base directories while maintaining root-only file restrictions within each kustomization.
 
 ## Container-based builds
 
@@ -327,10 +324,12 @@ Enforce restrictions through policy tools:
 # OPA policy
 package kustomize
 
-deny[msg] {
+import rego.v1
+
+deny contains msg if {
   # Detect kustomize build without restrictions
   input.command == "kustomize build"
-  not contains(input.args, "--load-restrictor")
+  not "--load-restrictor" in input.args
 
   msg := "Kustomize builds must specify --load-restrictor"
 }
