@@ -14,24 +14,25 @@ Managed Kubernetes pricing varies significantly across cloud providers. While th
 
 The Kubernetes control plane costs differ dramatically between providers.
 
-**Amazon EKS**: $0.10 per hour per cluster ($73/month). This applies to all clusters regardless of size. Running 10 small development clusters costs $730/month in control plane fees alone.
+**Amazon EKS**: $0.10 per hour per cluster ($73/month) for Kubernetes versions in standard support. Extended support clusters cost $0.60 per hour ($438/month). Running 10 small development clusters on standard support costs $730/month in control plane fees alone.
 
-**Google GKE**: Free for standard mode clusters. Autopilot mode charges $0.10 per hour ($73/month) but includes management overhead. GKE offers the best value for multi-cluster environments.
+**Google GKE**: $0.10 per hour per cluster for Standard and Autopilot clusters, with a $74.40 monthly free-tier credit per billing account that applies to one Autopilot or zonal Standard cluster. Regional Standard cluster fees are not covered by the free-tier credit. GKE includes multi-cluster management features such as Fleets, Config Management, Policy Controller, and Fleet dashboard at no extra cost.
 
-**Azure AKS**: Free control plane with standard tier. Premium tier costs $0.60 per hour ($438/month) but includes uptime SLA, larger cluster sizes, and advanced features. Most users start with free tier.
+**Azure AKS**: Free tier has free cluster management and no uptime SLA, and is intended for development, testing, and small non-production clusters. Standard tier costs $0.10 per hour ($73/month) and includes uptime SLA. Premium tier costs $0.60 per hour ($438/month) and adds long-term support for Kubernetes versions.
 
-**DigitalOcean DOKS**: Free control plane. No charges for cluster management regardless of cluster size or features.
+**DigitalOcean DOKS**: Free control plane. High availability for the control plane costs $40/month, prorated hourly.
 
 Cost comparison for 5 development clusters and 2 production clusters:
 
 ```text
 EKS:   7 clusters × $73 = $511/month
-GKE:   7 clusters × $0  = $0/month (standard mode)
-AKS:   7 clusters × $0  = $0/month (free tier)
+GKE:   (7 clusters × $74.40) - $74.40 free-tier credit = $446.40/month
+AKS:   7 clusters × $0  = $0/month (free tier, no SLA)
+AKS:   7 clusters × $73 = $511/month (standard tier)
 DOKS:  7 clusters × $0  = $0/month
 ```
 
-EKS becomes expensive for development and testing environments with many small clusters.
+EKS, GKE, and AKS Standard become expensive for development and testing environments with many small clusters.
 
 ## Node (Worker) Pricing
 
@@ -43,10 +44,10 @@ Compute costs form the largest portion of Kubernetes expenses. Compare equivalen
 AWS (t3.xlarge):      ~$121
 GCP (n2-standard-4):  ~$145
 Azure (D4s v5):       ~$140
-DigitalOcean (8GB):   ~$96
+DigitalOcean (General Purpose): ~$126
 ```
 
-AWS offers the lowest compute pricing with reserved instances:
+Committed use discounts and reserved capacity reduce compute pricing:
 
 ```text
 AWS 1-year reserved:   ~$76/month (37% discount)
@@ -61,7 +62,7 @@ Spot/preemptible instances reduce costs further:
 
 ```text
 AWS Spot:          60-90% discount (highly variable)
-GCP Preemptible:   ~$44/month (70% discount, max 24h runtime)
+GCP Spot VMs:      up to 91% discount (variable, no fixed maximum runtime)
 Azure Spot:        60-90% discount (variable)
 ```
 
@@ -70,11 +71,11 @@ For a production cluster with 10 nodes running 24/7:
 ```text
 AWS on-demand:         $1,210/month + $73 control plane = $1,283
 AWS 3-year reserved:   $490/month + $73 control plane = $563
-GCP on-demand:         $1,450/month
-GCP 3-year committed:  $640/month
-Azure on-demand:       $1,400/month
-Azure 3-year reserved: $550/month
-DigitalOcean:          $960/month
+GCP on-demand:         $1,450/month + $74 control plane = $1,524
+GCP 3-year committed:  $640/month + $74 control plane = $714
+Azure on-demand:       $1,400/month + $73 standard tier = $1,473
+Azure 3-year reserved: $550/month + $73 standard tier = $623
+DigitalOcean:          $1,260/month
 ```
 
 ## Load Balancer Costs
@@ -97,12 +98,12 @@ External service exposure costs vary significantly:
 - Average: $30-60/month
 
 **Azure Load Balancer**:
-- Basic: Free (limited features)
-- Standard: $0.025/hour ($18/month) + $0.005/GB processed
+- Basic: Retired on September 30, 2025
+- Standard: Charged by rules and data processed
 - Average: $25-45/month
 
-**DigitalOcean NodeBalancer**:
-- Flat $10/month per load balancer
+**DigitalOcean Load Balancer**:
+- Starts at $12/month per load balancer node
 - No data processing fees
 - Predictable cost regardless of traffic
 
@@ -112,7 +113,7 @@ For a cluster with 3 services exposed via load balancers:
 AWS (ALB):      3 × $40 = $120/month
 GCP:            3 × $45 = $135/month
 Azure:          3 × $35 = $105/month
-DigitalOcean:   3 × $10 = $30/month
+DigitalOcean:   3 × $12 = $36/month
 ```
 
 Using an Ingress controller reduces this to a single load balancer across all services.
@@ -145,7 +146,7 @@ Snapshot costs:
 AWS EBS snapshots:     $0.05/GB/month
 GCP snapshots:         $0.026/GB/month
 Azure snapshots:       $0.05/GB/month
-DigitalOcean:          $0.05/GB/month
+DigitalOcean:          $0.06/GB/month
 ```
 
 GCP provides the most affordable snapshot storage.
@@ -162,7 +163,7 @@ Egress charges can become significant for high-traffic applications:
 **GCP**:
 - First 1TB: $0.12/GB
 - Next 9TB: $0.11/GB
-- First 100GB/month free
+- Free-tier allowances vary by service and network tier
 
 **Azure**:
 - First 5GB: Free
@@ -192,13 +193,13 @@ DigitalOcean provides the best value for data-intensive applications due to incl
 - EKS Anywhere: Separate enterprise license
 
 **GKE Features**:
-- Autopilot: 25% markup on compute resources
+- Autopilot: Workload-based billing for requested CPU, memory, and ephemeral storage in most cases; node-based billing for workloads that request specific compute classes or hardware
 - Binary Authorization: Included
-- Config Sync: Included with Anthos Config Management
+- Config Sync: Included as part of GKE
 
 **AKS Features**:
-- Uptime SLA: $438/month premium tier
-- Defender for Containers: $15/node/month
+- Uptime SLA: Included in Standard and Premium tiers
+- Defender for Containers: Billed through Microsoft Defender for Cloud pricing
 - Azure Policy: Included
 
 **DigitalOcean**:
@@ -248,37 +249,37 @@ Total:                $1,173/month ($14,076/year)
 
 **GCP GKE**:
 ```text
-Control plane:        $0/month
+Control plane:        $74/month
 Nodes (committed):    $640/month
 Load balancers:       $135/month
 Storage:              $340/month
 Data transfer:        $240/month
 Cloud NAT:            $50/month
 Logging:              $50/month
-Total:                $1,455/month ($17,460/year)
+Total:                $1,529/month ($18,348/year)
 ```
 
 **Azure AKS**:
 ```text
-Control plane:        $0/month
+Control plane:        $73/month (standard tier)
 Nodes (reserved):     $550/month
 Load balancers:       $105/month
 Storage:              $300/month
 Data transfer:        $174/month
 NAT Gateway:          $50/month
 Monitoring:           $80/month
-Total:                $1,259/month ($15,108/year)
+Total:                $1,332/month ($15,984/year)
 ```
 
 **DigitalOcean DOKS**:
 ```text
 Control plane:        $0/month
-Nodes:                $960/month
-Load balancers:       $30/month
+Nodes:                $1,260/month
+Load balancers:       $36/month
 Storage:              $200/month
 Data transfer:        $20/month (mostly included)
 Monitoring:           $0/month
-Total:                $1,210/month ($14,520/year)
+Total:                $1,516/month ($18,192/year)
 ```
 
 ## Cost Optimization Strategies
@@ -289,7 +290,7 @@ Reduce costs across all providers:
 ```yaml
 # EKS managed node group with spot
 
-nodeGroups:
+managedNodeGroups:
 - name: spot-workers
   instanceTypes:
   - m5.large
