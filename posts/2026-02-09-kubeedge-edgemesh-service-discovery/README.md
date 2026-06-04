@@ -14,9 +14,9 @@ In this guide, we'll configure EdgeMesh to enable service discovery between edge
 
 ## Understanding EdgeMesh Architecture
 
-EdgeMesh operates as a distributed service mesh layer specifically designed for edge computing. Unlike traditional service meshes that rely on centralized control planes in the cloud, EdgeMesh uses a decentralized architecture where each edge node runs components that enable local service discovery and routing.
+EdgeMesh operates as a distributed service mesh layer specifically designed for edge computing. Unlike traditional service meshes that rely on centralized control planes in the cloud, current EdgeMesh releases use an agent-based architecture where each participating node runs components that enable local service discovery and routing.
 
-The key components include EdgeMesh-Server running in the cloud and EdgeMesh-Agent running on each edge node. Agents maintain local service registries synchronized from Kubernetes, establish peer-to-peer connections between edge nodes, and route traffic based on service discovery information.
+The key component is EdgeMesh-Agent. In EdgeMesh v1.12.0 and later, the former EdgeMesh-Server relay capability is merged into the agent's EdgeTunnel module, so agents can act as relay nodes when configured. Agents maintain service metadata, establish peer-to-peer or relayed connections between nodes, and route traffic based on service discovery information.
 
 When a service on one edge node needs to communicate with a service on another node, EdgeMesh handles the discovery and routing without requiring traffic to flow through the cloud. This reduces latency and ensures edge services remain operational during cloud connectivity disruptions.
 
@@ -38,11 +38,11 @@ kubectl get nodes -l node-role.kubernetes.io/edge=
 kubectl logs -n kubeedge -l app=cloudcore
 ```
 
-EdgeMesh requires specific network configurations on edge nodes. Ensure that nodes can establish direct connections or are configured for relay-based communication if direct connectivity is not possible.
+EdgeMesh requires specific network configurations on participating nodes. Ensure that nodes can establish direct connections or that `relayNodes` are configured in the EdgeTunnel module if direct connectivity is not possible.
 
 ## Installing EdgeMesh Components
 
-Deploy EdgeMesh to your KubeEdge cluster using the provided manifests. EdgeMesh requires both server components in the cloud and agent components on edge nodes.
+Deploy EdgeMesh to your KubeEdge cluster using the provided manifests. Current EdgeMesh releases deploy the agent components, with relay behavior configured through the agent's EdgeTunnel module.
 
 First, create the necessary namespace and configurations:
 
@@ -51,159 +51,24 @@ First, create the necessary namespace and configurations:
 git clone https://github.com/kubeedge/edgemesh.git
 cd edgemesh
 
-# Create namespace for EdgeMesh
-kubectl create namespace kubeedge
+# Create namespace for EdgeMesh if it does not already exist
+kubectl create namespace kubeedge --dry-run=client -o yaml | kubectl apply -f -
 
 # Apply CRDs
 kubectl apply -f build/crds/istio/
+
+# Add the service filter label to the Kubernetes API service so EdgeMesh does not proxy it
+kubectl label services kubernetes service.edgemesh.kubeedge.io/service-proxy-name="" --overwrite
 ```
 
-Deploy EdgeMesh server in the cloud:
-
-```yaml
-# edgemesh-server.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: edgemesh-server
-  namespace: kubeedge
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: edgemesh-server
-  template:
-    metadata:
-      labels:
-        app: edgemesh-server
-    spec:
-      # Run on cloud nodes only
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: node-role.kubernetes.io/edge
-                operator: DoesNotExist
-      containers:
-      - name: edgemesh-server
-        image: kubeedge/edgemesh-server:latest
-        env:
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        ports:
-        - containerPort: 20004
-          name: tunnel
-        - containerPort: 20006
-          name: relay
-        volumeMounts:
-        - name: config
-          mountPath: /etc/edgemesh/config
-      volumes:
-      - name: config
-        configMap:
-          name: edgemesh-server-cfg
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: edgemesh-server
-  namespace: kubeedge
-spec:
-  selector:
-    app: edgemesh-server
-  ports:
-  - port: 20004
-    name: tunnel
-  - port: 20006
-    name: relay
-  type: NodePort
-```
-
-Create the server configuration:
-
-```yaml
-# edgemesh-server-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: edgemesh-server-cfg
-  namespace: kubeedge
-data:
-  edgemesh-server.yaml: |
-    kubeAPIConfig:
-      kubeConfig: ""
-      master: ""
-    modules:
-      tunnel:
-        enable: true
-        listenPort: 20004
-        advertiseAddress:
-        - CLOUD_SERVER_IP
-      relay:
-        enable: true
-        listenPort: 20006
-        advertiseAddress:
-        - CLOUD_SERVER_IP
-```
-
-Replace `CLOUD_SERVER_IP` with your cloud server's external IP address that edge nodes can reach.
+If your nodes need a relay, edit `build/agent/resources/04-configmap.yaml` before deploying and set `modules.edgeTunnel.relayNodes` to the node names and advertised addresses that other nodes can reach. Regenerate the PSK in the same file before using it in production.
 
 ## Deploying EdgeMesh Agent to Edge Nodes
 
-Deploy EdgeMesh agents as a DaemonSet that runs on edge nodes only:
+Deploy EdgeMesh agents with the upstream resource manifests:
 
-```yaml
-# edgemesh-agent.yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: edgemesh-agent
-  namespace: kubeedge
-spec:
-  selector:
-    matchLabels:
-      app: edgemesh-agent
-  template:
-    metadata:
-      labels:
-        app: edgemesh-agent
-    spec:
-      # Run on edge nodes only
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: node-role.kubernetes.io/edge
-                operator: Exists
-      hostNetwork: true
-      containers:
-      - name: edgemesh-agent
-        image: kubeedge/edgemesh-agent:latest
-        env:
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: config
-          mountPath: /etc/edgemesh/config
-        - name: host-time
-          mountPath: /etc/localtime
-          readOnly: true
-      volumes:
-      - name: config
-        configMap:
-          name: edgemesh-agent-cfg
-      - name: host-time
-        hostPath:
-          path: /etc/localtime
-          type: ""
+```bash
+kubectl apply -f build/agent/resources/
 ```
 
 Configure the agent to enable service discovery:
@@ -217,34 +82,27 @@ metadata:
   namespace: kubeedge
 data:
   edgemesh-agent.yaml: |
-    kubeAPIConfig:
-      kubeConfig: ""
-      master: ""
     modules:
-      edgeDNS:
-        enable: true
-        listenPort: 53
       edgeProxy:
         enable: true
-        serviceFilterMode: "FilterIfLabelExists"
-      tunnel:
+      edgeTunnel:
         enable: true
-        listenPort: 20004
-      edgeGateway:
-        enable: false
+        relayNodes:
+        - nodeName: cloud-node-1
+          advertiseAddress:
+          - CLOUD_SERVER_IP
 ```
 
-Deploy both configurations:
+Replace `CLOUD_SERVER_IP` with the relay node address that other nodes can reach. If all nodes can connect directly, you can omit the `relayNodes` block.
+
+Apply the updated configuration and restart the DaemonSet so agents pick it up:
 
 ```bash
-kubectl apply -f edgemesh-server-config.yaml
-kubectl apply -f edgemesh-server.yaml
 kubectl apply -f edgemesh-agent-config.yaml
-kubectl apply -f edgemesh-agent.yaml
+kubectl rollout restart daemonset/edgemesh-agent -n kubeedge
 
 # Verify deployment
-kubectl get pods -n kubeedge -l app=edgemesh-agent
-kubectl get pods -n kubeedge -l app=edgemesh-server
+kubectl get pods -n kubeedge -l kubeedge=edgemesh-agent
 ```
 
 ## Enabling Service Discovery Between Edge Nodes
@@ -258,8 +116,6 @@ kind: Service
 metadata:
   name: service-a
   namespace: default
-  labels:
-    edgemesh.kubeedge.io/service: "true"
 spec:
   selector:
     app: service-a
@@ -288,6 +144,7 @@ spec:
       - name: app
         image: hashicorp/http-echo:latest
         args:
+          - "-listen=:8080"
           - "-text=Service A on Edge Node 1"
         ports:
         - containerPort: 8080
@@ -302,8 +159,6 @@ kind: Service
 metadata:
   name: service-b
   namespace: default
-  labels:
-    edgemesh.kubeedge.io/service: "true"
 spec:
   selector:
     app: service-b
@@ -332,12 +187,13 @@ spec:
       - name: app
         image: hashicorp/http-echo:latest
         args:
+          - "-listen=:8080"
           - "-text=Service B on Edge Node 2"
         ports:
         - containerPort: 8080
 ```
 
-The label `edgemesh.kubeedge.io/service: "true"` indicates that EdgeMesh should handle service discovery for these services.
+By default, EdgeMesh handles ClusterIP service traffic unless the service is filtered out. The test services do not need an opt-in label.
 
 Deploy both services:
 
@@ -367,7 +223,7 @@ EdgeMesh handles DNS resolution and routing automatically. The service name reso
 
 ## Configuring Service Discovery Filters
 
-EdgeMesh allows you to control which services participate in edge service discovery using label-based filtering. This prevents unnecessary synchronization of cloud services to edge nodes:
+EdgeMesh allows you to control which services are excluded from EdgeMesh proxying using label-based filtering. This prevents unnecessary proxying of services that should stay on the regular Kubernetes path:
 
 ```yaml
 # Update edgemesh-agent config
@@ -381,12 +237,15 @@ data:
     modules:
       edgeProxy:
         enable: true
-        # Only discover services with this label
+        # Default mode: services with this label are filtered out
         serviceFilterMode: "FilterIfLabelExists"
-        serviceFilterKey: "edgemesh.kubeedge.io/service"
 ```
 
-This configuration ensures that only services explicitly labeled for edge discovery are synchronized to edge nodes, reducing resource consumption.
+With the default `FilterIfLabelExists` mode, services that have the `service.edgemesh.kubeedge.io/service-proxy-name` label are not proxied by EdgeMesh. For example, the Kubernetes API service is commonly labeled this way so EdgeMesh does not intercept it:
+
+```bash
+kubectl label services kubernetes service.edgemesh.kubeedge.io/service-proxy-name="" --overwrite
+```
 
 ## Monitoring EdgeMesh Service Discovery
 
@@ -394,13 +253,13 @@ Monitor EdgeMesh operations to ensure service discovery works correctly:
 
 ```bash
 # Check EdgeMesh agent logs
-kubectl logs -n kubeedge -l app=edgemesh-agent
+kubectl logs -n kubeedge -l kubeedge=edgemesh-agent
 
 # View service synchronization status
-kubectl logs -n kubeedge -l app=edgemesh-agent | grep "service sync"
+kubectl logs -n kubeedge -l kubeedge=edgemesh-agent | grep "service"
 
 # Check tunnel connections between nodes
-kubectl logs -n kubeedge -l app=edgemesh-agent | grep "tunnel"
+kubectl logs -n kubeedge -l kubeedge=edgemesh-agent | grep -i "tunnel"
 ```
 
 EdgeMesh logs show service discovery events, tunnel establishment between nodes, and routing decisions. These logs help troubleshoot connectivity issues between edge nodes.
@@ -424,18 +283,24 @@ EdgeMesh maintains local service registries that continue operating during cloud
 
 ## Configuring Multi-Zone Edge Deployments
 
-For edge deployments spanning multiple geographic locations or network zones, configure EdgeMesh to optimize routing based on locality:
+For edge deployments spanning multiple geographic locations or network zones, configure EdgeMesh relay nodes with addresses that are reachable from the other zones:
 
 ```yaml
-# Add zone labels to nodes
-kubectl label node edge-node-1 topology.kubernetes.io/zone=zone-a
-kubectl label node edge-node-2 topology.kubernetes.io/zone=zone-b
-
-# EdgeMesh automatically prefers local zone routing
-# when multiple service endpoints exist
+modules:
+  edgeProxy:
+    enable: true
+  edgeTunnel:
+    enable: true
+    relayNodes:
+    - nodeName: edge-relay-zone-a
+      advertiseAddress:
+      - 203.0.113.10
+    - nodeName: edge-relay-zone-b
+      advertiseAddress:
+      - 198.51.100.20
 ```
 
-This configuration ensures that service discovery prefers endpoints in the same zone, reducing latency and bandwidth consumption across zones.
+This configuration gives EdgeMesh explicit relay candidates for cross-zone communication when direct connections or hole punching are not available. Kubernetes topology labels can still be useful for scheduling workloads, but EdgeMesh does not automatically use those labels as a locality-aware routing policy.
 
 ## Conclusion
 
