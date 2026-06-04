@@ -14,9 +14,9 @@ Amazon EKS control plane logging captures detailed logs from Kubernetes componen
 
 EKS offers five types of control plane logs, each serving different purposes:
 
-**API Server Logs**: Records all API requests to the Kubernetes API server, including who made the request, what resource was accessed, and the response. Essential for audit trails and debugging permission issues.
+**API Server Logs**: Contains diagnostic output from the Kubernetes API server, including startup flags and API server errors. Useful for debugging API server behavior.
 
-**Audit Logs**: Captures a chronological record of security-relevant events, tracking user activities and policy violations. Required for compliance in regulated environments.
+**Audit Logs**: Captures a chronological record of security-relevant events, tracking API requests, user activities, and policy violations. Often required for compliance in regulated environments.
 
 **Authenticator Logs**: Shows authentication attempts using AWS IAM credentials, helpful for troubleshooting access issues and detecting unauthorized access attempts.
 
@@ -105,15 +105,14 @@ The KMS policy must grant CloudWatch Logs permission to encrypt and decrypt:
       "Sid": "Allow CloudWatch Logs",
       "Effect": "Allow",
       "Principal": {
-        "Service": "logs.amazonaws.com"
+        "Service": "logs.us-east-1.amazonaws.com"
       },
       "Action": [
         "kms:Encrypt",
         "kms:Decrypt",
         "kms:ReEncrypt*",
         "kms:GenerateDataKey*",
-        "kms:CreateGrant",
-        "kms:DescribeKey"
+        "kms:Describe*"
       ],
       "Resource": "*",
       "Condition": {
@@ -126,9 +125,9 @@ The KMS policy must grant CloudWatch Logs permission to encrypt and decrypt:
 }
 ```
 
-## Querying API Server Logs
+## Querying Audit Logs for API Requests
 
-API server logs contain detailed information about every Kubernetes API request. Use CloudWatch Logs Insights to query specific activities:
+Audit logs contain detailed information about Kubernetes API requests. Use CloudWatch Logs Insights to query specific activities:
 
 ```sql
 # Find all pod creations in the last hour
@@ -165,7 +164,7 @@ This helps audit configuration changes and identify who modified sensitive resou
 
 ## Analyzing Audit Logs
 
-Audit logs provide security-focused event tracking. They follow the Kubernetes audit policy and capture more detailed information than API server logs:
+Audit logs provide security-focused event tracking. They use EKS's managed Kubernetes audit policy and capture more detailed information about API requests than API server logs:
 
 ```sql
 # Find privileged pod creations
@@ -223,7 +222,7 @@ Monitor authentication failures:
 aws logs put-metric-filter \
   --log-group-name /aws/eks/production-cluster/cluster \
   --filter-name AuthFailuresFilter \
-  --filter-pattern '{ $.responseStatus.code == 401 }' \
+  --filter-pattern '{ $.responseStatus.code = 401 }' \
   --metric-transformations \
     metricName=AuthenticationFailures,metricNamespace=EKS/ControlPlane,metricValue=1 \
   --region us-east-1
@@ -240,16 +239,17 @@ aws logs put-subscription-filter \
   --filter-name eks-to-firehose \
   --filter-pattern "" \
   --destination-arn arn:aws:firehose:us-east-1:123456789012:deliverystream/eks-logs-stream \
+  --role-arn arn:aws:iam::123456789012:role/cwl-to-firehose-role \
   --region us-east-1
 ```
 
-The Firehose delivery stream can send logs to Splunk, Elasticsearch, or S3 for long-term archival:
+The Firehose delivery stream can send logs to Splunk, Amazon OpenSearch Service, or S3 for long-term archival:
 
 ```bash
 # Create Firehose delivery stream to S3
 aws firehose create-delivery-stream \
   --delivery-stream-name eks-logs-stream \
-  --s3-destination-configuration \
+  --extended-s3-destination-configuration \
     RoleARN=arn:aws:iam::123456789012:role/firehose-delivery-role,\
     BucketARN=arn:aws:s3:::eks-audit-logs,\
     Prefix=control-plane/,\
@@ -296,27 +296,32 @@ aws eks update-cluster-config \
   --region us-east-1
 ```
 
-Use log sampling for high-volume environments:
+Use subscription filter patterns to limit downstream delivery volume in high-volume environments:
 
 ```bash
-# Create subscription filter with sampling
+# Forward only write-oriented audit events
 aws logs put-subscription-filter \
   --log-group-name /aws/eks/production-cluster/cluster \
-  --filter-name sampled-logs \
-  --filter-pattern '{ $.verb == "get" && random() < 0.1 }' \
-  --destination-arn arn:aws:lambda:us-east-1:123456789012:function:process-sampled-logs \
+  --filter-name write-audit-events \
+  --filter-pattern '{ $.verb != "get" && $.verb != "list" && $.verb != "watch" }' \
+  --destination-arn arn:aws:firehose:us-east-1:123456789012:deliverystream/eks-logs-stream \
+  --role-arn arn:aws:iam::123456789012:role/cwl-to-firehose-role \
   --region us-east-1
 ```
 
-This approach reduces costs while maintaining visibility into critical events.
+This approach reduces downstream processing and storage costs while maintaining visibility into critical events.
 
 ## Terraform Configuration
 
 Automate control plane logging configuration:
 
 ```hcl
+locals {
+  cluster_name = "production-cluster"
+}
+
 resource "aws_eks_cluster" "main" {
-  name     = "production-cluster"
+  name     = local.cluster_name
   role_arn = aws_iam_role.cluster.arn
 
   enabled_cluster_log_types = [
@@ -330,10 +335,12 @@ resource "aws_eks_cluster" "main" {
   vpc_config {
     subnet_ids = var.subnet_ids
   }
+
+  depends_on = [aws_cloudwatch_log_group.eks_cluster]
 }
 
 resource "aws_cloudwatch_log_group" "eks_cluster" {
-  name              = "/aws/eks/${aws_eks_cluster.main.name}/cluster"
+  name              = "/aws/eks/${local.cluster_name}/cluster"
   retention_in_days = 30
   kms_key_id        = aws_kms_key.logs.arn
 
