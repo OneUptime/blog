@@ -87,12 +87,12 @@ kubectl get svc -n webhook-system security-webhook
 # Check webhook pod logs
 kubectl logs -n webhook-system -l app=security-webhook --tail=50
 
-# Test connectivity from API server to webhook
+# Test basic in-cluster DNS/TLS connectivity to the webhook service
 kubectl run test-webhook --image=curlimages/curl --rm -it -- \
   curl -k https://security-webhook.webhook-system.svc:443/validate
 ```
 
-If the webhook pods are not ready or the service has no endpoints, that explains the timeouts.
+If the webhook pods are not ready or the service has no endpoints, that explains the timeouts. This pod-based curl check does not prove API server connectivity, but it helps catch service, DNS, and TLS issues inside the cluster.
 
 ## Adjusting Timeout Settings
 
@@ -154,13 +154,13 @@ Use `Ignore` for non-critical webhooks like audit logging where availability mat
 
 ## Temporarily Disabling Problematic Webhooks
 
-When a webhook is causing widespread issues, you can quickly disable it without deleting the entire configuration.
+When a webhook is causing widespread issues, you can quickly disable it by deleting the webhook configuration or by narrowing when it runs.
 
 ```bash
 # Delete the webhook configuration
 kubectl delete validatingwebhookconfiguration problematic-webhook
 
-# Or patch it to exclude certain namespaces
+# Or patch it to run only in explicitly labeled namespaces
 kubectl patch validatingwebhookconfiguration problematic-webhook --type=json \
   -p='[{"op": "add", "path": "/webhooks/0/namespaceSelector", "value": {
     "matchExpressions": [{
@@ -245,7 +245,7 @@ Cache validation results, avoid synchronous external API calls, and optimize dat
 
 ## Webhook Certificate Issues
 
-Expired or invalid TLS certificates cause webhook failures that manifest as timeouts. The API server can't establish a secure connection to the webhook service.
+Expired or invalid TLS certificates cause webhook failures that are often investigated alongside timeout errors. The API server can't establish a secure connection to the webhook service, so the request fails according to the webhook's failure policy.
 
 ```bash
 # Check webhook certificate validity
@@ -255,7 +255,7 @@ kubectl get validatingwebhookconfiguration my-webhook -o jsonpath='{.webhooks[0]
 
 # Check the webhook service's actual certificate
 kubectl exec -it webhook-pod-abc123 -n webhook-system -- \
-  openssl s_client -connect localhost:8443 -showcerts
+  openssl s_client -connect localhost:8443 -servername security-webhook.webhook-system.svc -showcerts </dev/null
 ```
 
 Webhooks often use cert-manager to automatically rotate certificates. Verify cert-manager is working correctly.
@@ -356,11 +356,12 @@ kubectl run test-pod --image=nginx --dry-run=server
 
 # Test with webhook service down
 kubectl scale deployment webhook-service -n webhook-system --replicas=0
-kubectl run test-pod --image=nginx
+kubectl run test-pod-down --image=nginx
 
-# Test with network issues
-kubectl run test-pod --image=nginx --overrides='
+# Test an explicit pod spec through the admission path
+kubectl run test-pod-override --image=nginx --overrides='
 {
+  "apiVersion": "v1",
   "spec": {
     "containers": [{
       "name": "nginx",
