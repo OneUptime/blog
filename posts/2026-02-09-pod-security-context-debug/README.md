@@ -8,7 +8,7 @@ Description: Learn how to configure pod security contexts with appropriate capab
 
 ---
 
-Pod security contexts control the privilege and access settings for pods and containers. For debugging, you may need specific capabilities like NET_ADMIN for network tools, SYS_PTRACE for process tracing, or SYS_ADMIN for advanced operations. Configure security contexts with minimal required capabilities rather than privileged mode. Use allowPrivilegeEscalation, runAsUser, and capability additions judiciously to enable debugging while maintaining security boundaries.
+Security contexts control the privilege and access settings for pods and containers. For debugging, you may need specific container capabilities like NET_ADMIN for network tools, SYS_PTRACE for process tracing, or SYS_ADMIN for advanced operations. Configure container security contexts with minimal required capabilities rather than privileged mode. Use allowPrivilegeEscalation and capability additions at the container level, and runAsUser at the pod or container level, judiciously to enable debugging while maintaining security boundaries. Be especially cautious with SYS_ADMIN because Kubernetes treats allowPrivilegeEscalation as always true when a container has CAP_SYS_ADMIN.
 
 This post has been created as part of a comprehensive Kubernetes troubleshooting and image management series. For detailed implementation guides, best practices, and complete examples, please refer to the official Kubernetes documentation and the specific tool documentation mentioned in this post.
 
