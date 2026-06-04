@@ -8,13 +8,13 @@ Description: Master fsGroup configuration in Kubernetes to control volume owners
 
 ---
 
-Managing file permissions in containerized environments presents unique challenges. Containers run as specific users, but volumes might be created with different ownership. The `fsGroup` security context setting solves this problem by automatically setting group ownership on mounted volumes, ensuring containers can access their data regardless of the original file ownership.
+Managing file permissions in containerized environments presents unique challenges. Containers run as specific users, but volumes might be created with different ownership. The `fsGroup` security context setting solves this problem by automatically setting group ownership on supported mounted volumes, ensuring containers can access their data through group-based permissions.
 
 ## Understanding fsGroup Behavior
 
-When you set `fsGroup` in a pod's security context, Kubernetes changes the group ownership of all files in mounted volumes to match the specified group ID. Additionally, the setgid bit is set on directories, ensuring new files inherit the group ownership.
+When you set `fsGroup` in a pod's security context, Kubernetes changes the group ownership of files in supported mounted volumes to match the specified group ID. Additionally, the setgid bit is set on directories, ensuring new files inherit the group ownership.
 
-This automatic permission management happens before containers start. The kubelet recursively walks through volume contents, changing ownership as needed. For large volumes, this initial setup can take significant time.
+This automatic permission management happens before containers start. For volume types that support ownership management, the kubelet recursively walks through volume contents, changing ownership as needed. For large volumes, this initial setup can take significant time.
 
 ## Basic fsGroup Configuration
 
@@ -174,7 +174,7 @@ spec:
   securityContext:
     fsGroup: 4000
     # Always: recursively change ownership every time (default for backward compatibility)
-    # OnRootMismatch: only change if root dir group doesn't match
+    # OnRootMismatch: only change if root dir ownership or permissions don't match
     fsGroupChangePolicy: OnRootMismatch
   containers:
   - name: app
@@ -188,7 +188,7 @@ spec:
       claimName: web-pvc
 ```
 
-Using `OnRootMismatch` dramatically improves pod startup time for volumes with many files. After the initial permission change, subsequent pod restarts skip the recursive walk.
+Using `OnRootMismatch` dramatically improves pod startup time for volumes with many files when the root directory already has the expected ownership and permissions. After the initial permission change, subsequent pod restarts can skip the recursive walk.
 
 ## Combining fsGroup with runAsUser
 
@@ -291,20 +291,20 @@ spec:
       mountPath: /secret
   volumes:
   - name: emptydir
-    emptyDir: {}  # fsGroup applies
+    emptyDir: {}  # fsGroup applies; fsGroupChangePolicy does not
   - name: configmap
     configMap:
-      name: my-config  # fsGroup applies to directory, not individual files
+      name: my-config  # read-only projected data; fsGroupChangePolicy does not apply
   - name: secret
     secret:
-      secretName: my-secret  # fsGroup applies to directory, not individual files
+      secretName: my-secret  # read-only projected data; fsGroupChangePolicy does not apply
 ```
 
-emptyDir volumes have their ownership fully controlled by fsGroup. ConfigMaps and Secrets have readonly files, but the mount directory gets the fsGroup ownership.
+emptyDir volumes can use fsGroup for ownership. ConfigMaps and Secrets are read-only projected data, and `fsGroupChangePolicy` does not affect `secret`, `configMap`, or `emptyDir` volumes.
 
 ## Security Considerations with fsGroup
 
-fsGroup affects security boundaries. Using the same fsGroup across multiple pods allows them to share data:
+fsGroup affects security boundaries. Using the same fsGroup across multiple pods can allow them to share data when they mount the same storage and the filesystem permissions allow group access:
 
 ```yaml
 # Pod 1 - writes data
@@ -353,7 +353,7 @@ spec:
       claimName: shared-pvc
 ```
 
-Treat fsGroup as a shared secret. Pods with the same fsGroup can access each other's files on shared volumes.
+Treat shared fsGroup values as shared access controls. Pods with the same fsGroup can access each other's files on shared volumes when the underlying storage and permissions allow it.
 
 ## Performance Impact of fsGroup
 
@@ -387,22 +387,20 @@ Monitor pod startup times. If they are excessive, check if permission changes ar
 
 ## CSI Driver Support for fsGroup
 
-Modern CSI drivers can delegate fsGroup management to the storage system rather than having kubelet change permissions:
+CSI drivers can advertise how Kubernetes should handle fsGroup-based ownership changes through the `CSIDriver` object:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
-kind: StorageClass
+kind: CSIDriver
 metadata:
-  name: csi-fsgroup
-provisioner: csi.example.com
-volumeBindingMode: WaitForFirstConsumer
-parameters:
-  fsType: ext4
-  # CSI driver handles fsGroup
-  csi.storage.k8s.io/fsgroup-policy: "File"
+  name: csi.example.com
+spec:
+  # Kubernetes may apply fsGroup ownership and permission changes
+  # regardless of fsType or access mode.
+  fsGroupPolicy: File
 ```
 
-When the CSI driver supports fsGroup delegation, it sets permissions at mount time rather than through recursive kubelet changes. This dramatically improves performance for large volumes.
+When a CSI driver supports the `VOLUME_MOUNT_GROUP` node service capability, the CSI driver performs the fsGroup handling at mount time rather than through recursive kubelet changes. This can dramatically improve performance for large volumes.
 
 ## Conclusion
 
