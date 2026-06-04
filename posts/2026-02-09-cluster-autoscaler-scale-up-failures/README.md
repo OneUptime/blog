@@ -92,8 +92,6 @@ cat <<EOF > required-permissions.json
         "autoscaling:DescribeLaunchConfigurations",
         "autoscaling:DescribeScalingActivities",
         "autoscaling:DescribeTags",
-        "autoscaling:SetDesiredCapacity",
-        "autoscaling:TerminateInstanceInAutoScalingGroup",
         "ec2:DescribeImages",
         "ec2:DescribeInstanceTypes",
         "ec2:DescribeLaunchTemplateVersions",
@@ -101,6 +99,20 @@ cat <<EOF > required-permissions.json
         "eks:DescribeNodegroup"
       ],
       "Resource": ["*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "autoscaling:SetDesiredCapacity",
+        "autoscaling:TerminateInstanceInAutoScalingGroup"
+      ],
+      "Resource": ["*"],
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/k8s.io/cluster-autoscaler/enabled": "true",
+          "aws:ResourceTag/k8s.io/cluster-autoscaler/my-cluster": "owned"
+        }
+      }
     }
   ]
 }
@@ -160,7 +172,11 @@ Look for "insufficient IP addresses" or "no available IPs" in cloud provider err
 Scale-up fails when requested instance types are unavailable in the zone.
 
 ```yaml
-# Configure fallback instance types in node group
+# Enable the priority expander and prioritize fallback node groups
+command:
+- ./cluster-autoscaler
+- --expander=priority
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -242,7 +258,7 @@ kubectl get pods --all-namespaces -o json | \
       {pod: .metadata.name, namespace: .metadata.namespace}'
 ```
 
-Resource Request Mismatches
+## Resource Request Mismatches
 
 Pods request more resources than any node type provides.
 
@@ -315,7 +331,7 @@ command:
 - --max-node-provision-time=15m
 - --max-total-unready-percentage=45
 - --ok-total-unready-count=3
-- --scale-up-from-zero-enabled=true
+- --scale-up-from-zero=true
 ```
 
 These settings control how long to wait for nodes and what counts as acceptable failure rates.
@@ -338,7 +354,7 @@ spec:
     rules:
     - alert: ClusterAutoscalerScaleUpFailed
       expr: |
-        rate(cluster_autoscaler_failed_scale_ups_total[5m]) > 0
+        increase(cluster_autoscaler_failed_scale_ups_total[5m]) > 0
       for: 10m
       labels:
         severity: warning
