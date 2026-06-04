@@ -12,7 +12,7 @@ Containers run with a default set of Linux capabilities that grant them specific
 
 ## Understanding Linux Capabilities
 
-Linux capabilities break the traditional root/non-root binary into granular permissions. Instead of giving a process full root access, you can grant it just the specific privileges it needs. For example, a web server might need to bind to port 80 (which requires `NET_BIND_SERVICE`) but has no reason to modify file ownership (which requires `CHOWN`).
+Linux capabilities break the traditional root/non-root binary into granular permissions. Instead of giving a process full root access, you can grant it just the specific privileges it needs. For example, on systems where ports below 1024 are privileged, a web server might need to bind to port 80 (which requires `NET_BIND_SERVICE`) but has no reason to modify file ownership (which requires `CHOWN`).
 
 Docker containers start with a default capability set that includes capabilities like `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`, `SETGID`, `SETUID`, `NET_BIND_SERVICE`, `SYS_CHROOT`, and several others. This is already a reduced set compared to full root, but it is still more than most applications need.
 
@@ -23,7 +23,7 @@ You can see the full list of Linux capabilities by checking the capabilities man
 
 man capabilities
 
-# Or view the abbreviated list
+# Or view the current process capability sets
 capsh --print
 ```
 
@@ -33,8 +33,6 @@ Security best practice says to give every process the minimum permissions it nee
 
 ```yaml
 # Drop all capabilities and add back only what is needed
-version: "3.8"
-
 services:
   web:
     image: nginx:alpine
@@ -67,26 +65,25 @@ services:
 You can also selectively drop specific capabilities while keeping the rest of the defaults.
 
 ```yaml
-# Selectively drop dangerous capabilities
+# Selectively drop dangerous default capabilities
 services:
   worker:
     image: my-worker:latest
     cap_drop:
-      - SYS_ADMIN
       - NET_RAW
-      - SYS_PTRACE
       - MKNOD
+      - AUDIT_WRITE
 ```
 
-Here are some capabilities you should almost always drop if you are not using `ALL`:
+Here are some capabilities to review carefully if you are not using `ALL`. Some are in Docker's default capability set and can be dropped directly; others are not granted by default and should usually not be added in the first place.
 
 | Capability | What It Allows | Why Drop It |
 |---|---|---|
-| SYS_ADMIN | Broad system administration | Overly powerful, nearly equivalent to root |
 | NET_RAW | Raw socket access | Enables network sniffing and spoofing |
-| SYS_PTRACE | Process tracing | Can be used to escape container isolation |
 | MKNOD | Create device files | Rarely needed, potential attack vector |
 | AUDIT_WRITE | Write to kernel audit log | Not needed for most applications |
+| SYS_ADMIN | Broad system administration | Overly powerful, nearly equivalent to root |
+| SYS_PTRACE | Process tracing | Can inspect or tamper with visible processes |
 | SYS_MODULE | Load kernel modules | Extremely dangerous in containers |
 
 ## cap_add: Granting Capabilities
@@ -109,7 +106,7 @@ Here are commonly needed capabilities for different types of applications.
 
 ### Web Servers
 
-Web servers that bind to ports below 1024 need `NET_BIND_SERVICE`.
+On Linux systems where ports below 1024 are privileged, web servers that bind to those ports need `NET_BIND_SERVICE`.
 
 ```yaml
 # Web server with minimal capabilities
@@ -172,15 +169,15 @@ docker run --cap-drop=ALL my-image:latest
 docker logs <container-id>
 ```
 
-You can also trace the capability checks using tools like `strace` or `auditd`.
+You can also use tools like `strace` or `auditd` to investigate failures. `strace` will not tell you the exact capability by name, but it can show which system call is failing with `EPERM` or `EACCES`.
 
 ```bash
-# Run with strace to see which capabilities are checked
-docker run --cap-drop=ALL --cap-add=SYS_PTRACE my-image:latest \
-  strace -f -e trace=capget,capset -p 1
+# If strace is installed in the image, run the application under strace
+docker run --cap-drop=ALL --entrypoint strace my-image:latest \
+  -f -e trace=%file,%network,%process <your-command>
 ```
 
-Another approach is to use the `pscap` tool from the `libcap-ng-utils` package.
+Another approach is to inspect the capability bitmasks exposed by `/proc`.
 
 ```bash
 # Check what capabilities a running container process has
@@ -196,8 +193,6 @@ Here is a complete Compose file demonstrating capability management across a mul
 
 ```yaml
 # Production stack with properly scoped capabilities
-version: "3.8"
-
 services:
   # Reverse proxy - needs to bind port 80/443 and manage workers
   proxy:
