@@ -79,13 +79,13 @@ spec:
         app: error-pages
     spec:
       containers:
-      - name: nginx
-        image: nginx:alpine
+      - name: error-server
+        image: registry.k8s.io/ingress-nginx/custom-error-pages:v1.2.9
         ports:
-        - containerPort: 80
+        - containerPort: 8080
         volumeMounts:
         - name: error-pages
-          mountPath: /usr/share/nginx/html
+          mountPath: /www
       volumes:
       - name: error-pages
         configMap:
@@ -101,6 +101,7 @@ spec:
     app: error-pages
   ports:
   - port: 80
+    targetPort: 8080
 ```
 
 ### Ingress with Custom Error Pages
@@ -135,7 +136,7 @@ spec:
 
 ## Advanced Error Page Patterns
 
-Implement sophisticated error handling.
+Implement sophisticated error handling by serving files that match the status code passed by Ingress-NGINX in the `X-Code` header.
 
 ### Dynamic Error Pages
 
@@ -147,37 +148,50 @@ metadata:
   name: dynamic-error-pages
   namespace: default
 data:
-  error.html: |
+  400.html: |
     <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Error - {{ERROR_CODE}}</title>
-      <script>
-        window.addEventListener('DOMContentLoaded', function() {
-          const code = '{{ERROR_CODE}}';
-          const messages = {
-            '400': 'Bad Request - Invalid request format',
-            '401': 'Unauthorized - Please log in',
-            '403': 'Forbidden - Access denied',
-            '404': 'Not Found - Page does not exist',
-            '429': 'Too Many Requests - Rate limit exceeded',
-            '500': 'Internal Server Error - Something went wrong',
-            '502': 'Bad Gateway - Upstream error',
-            '503': 'Service Unavailable - Temporary issue',
-            '504': 'Gateway Timeout - Request took too long'
-          };
-          document.getElementById('error-message').textContent =
-            messages[code] || 'An error occurred';
-          document.getElementById('error-code').textContent = code;
-        });
-      </script>
-    </head>
-    <body>
-      <h1 id="error-code"></h1>
-      <p id="error-message"></p>
-      <a href="javascript:history.back()">Go Back</a>
-    </body>
-    </html>
+    <html><head><title>400 Bad Request</title></head>
+    <body><h1>400 - Bad Request</h1><p>Invalid request format.</p></body></html>
+
+  401.html: |
+    <!DOCTYPE html>
+    <html><head><title>401 Unauthorized</title></head>
+    <body><h1>401 - Unauthorized</h1><p>Please log in.</p></body></html>
+
+  403.html: |
+    <!DOCTYPE html>
+    <html><head><title>403 Forbidden</title></head>
+    <body><h1>403 - Forbidden</h1><p>Access denied.</p></body></html>
+
+  404.html: |
+    <!DOCTYPE html>
+    <html><head><title>404 Not Found</title></head>
+    <body><h1>404 - Not Found</h1><p>Page does not exist.</p></body></html>
+
+  429.html: |
+    <!DOCTYPE html>
+    <html><head><title>429 Too Many Requests</title></head>
+    <body><h1>429 - Too Many Requests</h1><p>Rate limit exceeded.</p></body></html>
+
+  500.html: |
+    <!DOCTYPE html>
+    <html><head><title>500 Internal Server Error</title></head>
+    <body><h1>500 - Internal Server Error</h1><p>Something went wrong.</p></body></html>
+
+  502.html: |
+    <!DOCTYPE html>
+    <html><head><title>502 Bad Gateway</title></head>
+    <body><h1>502 - Bad Gateway</h1><p>Upstream error.</p></body></html>
+
+  503.html: |
+    <!DOCTYPE html>
+    <html><head><title>503 Service Unavailable</title></head>
+    <body><h1>503 - Service Unavailable</h1><p>Temporary issue.</p></body></html>
+
+  504.html: |
+    <!DOCTYPE html>
+    <html><head><title>504 Gateway Timeout</title></head>
+    <body><h1>504 - Gateway Timeout</h1><p>Request took too long.</p></body></html>
 ```
 
 ## Custom Redirects
@@ -287,15 +301,6 @@ metadata:
   name: complete-error-pages
   namespace: default
 data:
-  nginx.conf: |
-    server {
-      listen 80;
-      location / {
-        root /usr/share/nginx/html;
-        try_files /$1.html /error.html;
-      }
-    }
-
   400.html: |
     <!DOCTYPE html>
     <html><head><title>400 Bad Request</title></head>
