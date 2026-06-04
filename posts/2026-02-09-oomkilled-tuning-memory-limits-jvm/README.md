@@ -23,7 +23,7 @@ The JVM allocates memory for multiple areas, not just the heap:
 - **Direct buffers**: Off-heap NIO buffers
 - **Native memory**: JNI allocations, internal JVM structures
 
-A common mistake is setting the container memory limit equal to the max heap size. This ignores all other memory areas and guarantees OOMKilled errors.
+A common mistake is setting the container memory limit equal to the max heap size. This ignores all other memory areas and often leads to OOMKilled errors.
 
 ## Calculating Container Memory Limits
 
@@ -77,7 +77,7 @@ spec:
             memory: "3.5Gi"
             cpu: "2000m"
         env:
-        - name: JAVA_OPTS
+        - name: JDK_JAVA_OPTIONS
           value: >-
             -Xms2g
             -Xmx2g
@@ -89,7 +89,7 @@ spec:
             -XX:MaxRAMPercentage=75.0
 ```
 
-The `-XX:+UseContainerSupport` flag (default since Java 10) ensures the JVM recognizes container memory limits. The `MaxRAMPercentage=75.0` allocates 75% of container memory to heap when Xmx isn't specified.
+The `-XX:+UseContainerSupport` flag (default since Java 10) ensures the JVM recognizes container memory limits. The `MaxRAMPercentage=75.0` allocates up to 75% of container memory to heap when Xmx isn't specified. `JDK_JAVA_OPTIONS` is read by the Java launcher, so these options are applied even if the container image does not explicitly expand a `JAVA_OPTS` variable.
 
 ## Using Percentage-Based Heap Sizing
 
@@ -97,7 +97,7 @@ Instead of hardcoding heap sizes, use percentage-based allocation for flexibilit
 
 ```yaml
 env:
-- name: JAVA_OPTS
+- name: JDK_JAVA_OPTIONS
   value: >-
     -XX:+UseContainerSupport
     -XX:InitialRAMPercentage=50.0
@@ -118,7 +118,7 @@ Metaspace grows dynamically but should be capped to prevent runaway growth:
 
 ```yaml
 env:
-- name: JAVA_OPTS
+- name: JDK_JAVA_OPTIONS
   value: >-
     -Xmx2g
     -XX:MetaspaceSize=128m
@@ -126,7 +126,7 @@ env:
     -XX:+UseG1GC
 ```
 
-The `MetaspaceSize` sets the initial size, while `MaxMetaspaceSize` caps growth. For applications with many classes (like those using heavy frameworks), increase this limit:
+The `MetaspaceSize` sets the class metadata threshold that triggers the first garbage collection, while `MaxMetaspaceSize` caps growth. For applications with many classes (like those using heavy frameworks), increase this limit:
 
 ```bash
 # For large Spring applications
@@ -142,7 +142,7 @@ Each thread consumes memory for its stack. Reduce stack size if you have many th
 
 ```yaml
 env:
-- name: JAVA_OPTS
+- name: JDK_JAVA_OPTIONS
   value: >-
     -Xmx2g
     -Xss256k
@@ -165,7 +165,7 @@ G1GC is the default in modern Java and works well in containers:
 
 ```yaml
 env:
-- name: JAVA_OPTS
+- name: JDK_JAVA_OPTIONS
   value: >-
     -Xmx2g
     -XX:+UseG1GC
@@ -176,12 +176,12 @@ env:
     -XX:+UseStringDeduplication
 ```
 
-For low-latency requirements, consider ZGC (Java 11+) or Shenandoah:
+For low-latency requirements, consider ZGC (production-ready in Java 15+, or Java 11-14 with `-XX:+UnlockExperimentalVMOptions`) or Shenandoah:
 
 ```yaml
 # ZGC configuration
 env:
-- name: JAVA_OPTS
+- name: JDK_JAVA_OPTIONS
   value: >-
     -Xmx4g
     -XX:+UseZGC
@@ -195,7 +195,7 @@ NIO direct buffers live outside the heap but count toward container memory:
 
 ```yaml
 env:
-- name: JAVA_OPTS
+- name: JDK_JAVA_OPTIONS
   value: >-
     -Xmx2g
     -XX:MaxDirectMemorySize=512m
@@ -206,9 +206,13 @@ Applications using Netty, gRPC, or direct file I/O need substantial direct memor
 
 ```java
 // Check direct buffer usage in application
-MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
-MemoryUsage directMemory = memoryMXBean.getNonHeapMemoryUsage();
-System.out.println("Direct memory used: " + directMemory.getUsed() / (1024 * 1024) + "MB");
+long directMemory = ManagementFactory.getPlatformMXBeans(BufferPoolMXBean.class).stream()
+    .filter(pool -> "direct".equals(pool.getName()))
+    .mapToLong(BufferPoolMXBean::getMemoryUsed)
+    .findFirst()
+    .orElse(0L);
+
+System.out.println("Direct memory used: " + directMemory / (1024 * 1024) + "MB");
 ```
 
 ## Creating a Complete Production Configuration
@@ -241,10 +245,10 @@ spec:
             memory: "4Gi"
             cpu: "2000m"
         env:
-        - name: JAVA_OPTS
+        - name: JDK_JAVA_OPTIONS
           value: >-
-            -Xms3g
-            -Xmx3g
+            -Xms2g
+            -Xmx2g
             -XX:MaxMetaspaceSize=512m
             -XX:ReservedCodeCacheSize=256m
             -XX:MaxDirectMemorySize=256m
@@ -291,8 +295,7 @@ kubectl exec <pod-name> -- ls -lh /tmp/*.hprof
 # Copy heap dump locally for analysis
 kubectl cp <pod-name>:/tmp/heapdump.hprof ./heapdump.hprof
 
-# Analyze with jhat or Eclipse MAT
-jhat -J-Xmx4g heapdump.hprof
+# Analyze with Eclipse MAT or VisualVM
 ```
 
 ## Implementing Memory Monitoring
@@ -326,6 +329,9 @@ Create a test that validates your memory configuration:
 
 ```java
 // Memory stress test
+import java.util.ArrayList;
+import java.util.List;
+
 public class MemoryTest {
     public static void main(String[] args) throws InterruptedException {
         List<byte[]> memory = new ArrayList<>();
