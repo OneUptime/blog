@@ -8,7 +8,7 @@ Description: Identify and fix CNI plugin failures that prevent pods from startin
 
 ---
 
-Container Network Interface (CNI) plugins are responsible for configuring network interfaces when pods start. When CNI plugins fail, pods get stuck in ContainerCreating or CrashLoopBackOff state with network-related errors. These failures prevent applications from running and can be difficult to diagnose because the errors often provide limited context.
+Container Network Interface (CNI) plugins are responsible for configuring network interfaces when pods start. When CNI plugins fail, pods usually get stuck in ContainerCreating or Pending state with network-related errors. These failures prevent applications from running and can be difficult to diagnose because the errors often provide limited context.
 
 CNI plugin failures stem from various causes including plugin configuration errors, resource exhaustion, IP address pool depletion, or conflicts with node network configuration. Systematic diagnosis identifies the specific failure and guides you to the appropriate fix.
 
@@ -42,10 +42,10 @@ Kubelet logs contain detailed CNI error messages:
 
 ```bash
 # On the node where the pod is scheduled
-kubectl debug node/my-node -it --image=nicolaka/netshoot
+kubectl debug node/my-node -it --image=nicolaka/netshoot --profile=sysadmin
 
 # View kubelet logs
-journalctl -u kubelet -n 100 --no-pager | grep -i cni
+chroot /host journalctl -u kubelet -n 100 --no-pager | grep -i cni
 
 # Look for errors like:
 # Failed to create pod sandbox: failed to setup network
@@ -61,18 +61,18 @@ Ensure CNI plugins are properly installed:
 
 ```bash
 # Check CNI plugin binaries exist
-kubectl debug node/my-node -it --image=nicolaka/netshoot
-ls -la /opt/cni/bin/
+kubectl debug node/my-node -it --image=nicolaka/netshoot --profile=sysadmin
+ls -la /host/opt/cni/bin/
 
 # Should contain plugins like:
 # bridge, host-local, loopback, portmap, bandwidth, etc.
 # Plus CNI-specific plugins (calico, cilium, flannel, etc.)
 
 # Check CNI configuration
-ls -la /etc/cni/net.d/
+ls -la /host/etc/cni/net.d/
 
 # Should contain .conf or .conflist files
-cat /etc/cni/net.d/10-calico.conflist
+cat /host/etc/cni/net.d/10-calico.conflist
 ```
 
 Missing binaries or configuration files prevent CNI from working.
@@ -106,10 +106,13 @@ CNI plugins allocate IP addresses from configured pools. Pool exhaustion causes 
 # For Calico, check IP pool configuration
 kubectl get ippools
 
-# Check utilization
+# Check pool configuration
 kubectl get ippools default-ipv4-ippool -o yaml
 
-# Look for blockSize and available addresses
+# Check utilization if calicoctl is available
+calicoctl ipam show --show-blocks
+
+# Look for pool CIDRs, blockSize, and free addresses
 # If pool is exhausted, pods cannot get IPs
 
 # For Cilium, check IPAM status
@@ -127,16 +130,16 @@ Test CNI plugin execution directly:
 
 ```bash
 # Access node
-kubectl debug node/my-node -it --image=nicolaka/netshoot
+kubectl debug node/my-node -it --image=nicolaka/netshoot --profile=sysadmin
 
 # Create test network namespace
-ip netns add testns
+chroot /host ip netns add testns
 
-# Try running CNI plugin manually
+# Try running the CNI configuration manually if cnitool is available
 # For Calico:
-CNI_COMMAND=ADD CNI_CONTAINERID=test CNI_NETNS=/var/run/netns/testns \
-  CNI_IFNAME=eth0 CNI_PATH=/opt/cni/bin \
-  /opt/cni/bin/calico < /etc/cni/net.d/10-calico.conflist
+NETWORK_NAME=$(jq -r .name /host/etc/cni/net.d/10-calico.conflist)
+chroot /host sh -c "CNI_PATH=/opt/cni/bin NETCONFPATH=/etc/cni/net.d \
+  cnitool add '$NETWORK_NAME' /var/run/netns/testns"
 
 # Check for errors in output
 # Successful execution returns JSON with IP allocation
@@ -150,18 +153,18 @@ Node network misconfiguration causes CNI failures:
 
 ```bash
 # Check node IP configuration
-kubectl debug node/my-node -it --image=nicolaka/netshoot
+kubectl debug node/my-node -it --image=nicolaka/netshoot --profile=sysadmin
 ip addr show
 
 # Verify routing
 ip route show
 
 # Check if node has required kernel modules
-lsmod | grep -E "vxlan|ipip|wireguard"
+chroot /host lsmod | grep -E "vxlan|ipip|wireguard"
 
 # For overlay networks, ensure modules are loaded
-modprobe vxlan
-modprobe ipip
+chroot /host modprobe vxlan
+chroot /host modprobe ipip
 ```
 
 Missing kernel modules or incorrect routing prevents CNI plugins from working.
@@ -199,10 +202,10 @@ Invalid CNI configuration prevents plugin initialization:
 
 ```bash
 # View CNI configuration
-cat /etc/cni/net.d/10-calico.conflist
+cat /host/etc/cni/net.d/10-calico.conflist
 
 # Validate JSON syntax
-cat /etc/cni/net.d/10-calico.conflist | jq .
+cat /host/etc/cni/net.d/10-calico.conflist | jq .
 
 # If jq fails, configuration has JSON syntax errors
 
@@ -247,7 +250,7 @@ kubectl get pods --all-namespaces -o wide | awk '{print $7}' | sort | uniq -d
 # If duplicates exist, CNI IPAM has issues
 
 # For Calico, check IPAM consistency
-kubectl exec -n kube-system calico-node-xxx -- calico-node -birdv
+calicoctl ipam show --show-blocks
 
 # Look for IP conflicts in logs
 kubectl logs -n kube-system calico-node-xxx | grep -i "duplicate\|conflict"
@@ -280,7 +283,7 @@ Orphaned network namespaces cause failures:
 
 ```bash
 # List network namespaces on node
-kubectl debug node/my-node -it --image=nicolaka/netshoot
+kubectl debug node/my-node -it --image=nicolaka/netshoot --profile=sysadmin
 ip netns list
 
 # Should only show namespaces for running pods
@@ -308,7 +311,7 @@ spec:
   nodeName: my-node  # Schedule to specific node
   containers:
   - name: pause
-    image: k8s.gcr.io/pause:3.8
+    image: registry.k8s.io/pause:3.8
 ```
 
 Apply and check if it succeeds:
@@ -349,13 +352,13 @@ Many CNI plugins use Linux bridges:
 
 ```bash
 # Check bridge existence
-kubectl debug node/my-node -it --image=nicolaka/netshoot
-ip link show | grep -i bridge
+kubectl debug node/my-node -it --image=nicolaka/netshoot --profile=sysadmin
+ip link show type bridge
 
 # Common bridge names: cni0, cbr0, docker0
 
 # Check bridge configuration
-brctl show
+bridge link
 
 # Verify interfaces are attached
 ip link show | grep -i veth
@@ -372,13 +375,13 @@ MTU mismatches cause network initialization failures:
 kubectl get cm -n kube-system calico-config -o yaml | grep mtu
 
 # Check actual interface MTU
-kubectl debug node/my-node -it --image=nicolaka/netshoot
+kubectl debug node/my-node -it --image=nicolaka/netshoot --profile=sysadmin
 ip link show | grep mtu
 
 # Ensure CNI MTU matches or is smaller than node interface MTU
 ```
 
-MTU mismatches can prevent CNI plugin initialization.
+MTU mismatches can cause pod networking problems after initialization and may surface as setup errors in some CNI configurations.
 
 ## Restarting CNI Plugin
 
