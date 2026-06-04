@@ -39,12 +39,13 @@ docker run -d \
   -v /:/host/root:ro,rslave \
   -v /etc/passwd:/host/etc/passwd:ro \
   -v /etc/group:/host/etc/group:ro \
-  -v /etc/localtime:/host/etc/localtime:ro \
+  -v /etc/localtime:/etc/localtime:ro \
   -v /proc:/host/proc:ro \
   -v /sys:/host/sys:ro \
   -v /etc/os-release:/host/etc/os-release:ro \
   -v /var/log:/host/var/log:ro \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /run/dbus:/run/dbus:ro \
   netdata/netdata:stable
 ```
 
@@ -56,8 +57,6 @@ For a more manageable deployment, use Docker Compose.
 
 ```yaml
 # docker-compose.yml - Netdata monitoring stack
-version: "3.8"
-
 services:
   netdata:
     image: netdata/netdata:stable
@@ -80,17 +79,19 @@ services:
       - /:/host/root:ro,rslave
       - /etc/passwd:/host/etc/passwd:ro
       - /etc/group:/host/etc/group:ro
-      - /etc/localtime:/host/etc/localtime:ro
+      - /etc/localtime:/etc/localtime:ro
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /etc/os-release:/host/etc/os-release:ro
       - /var/log:/host/var/log:ro
+      - /run/dbus:/run/dbus:ro
 
       # Docker socket for container monitoring
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       # Set the claimed room for Netdata Cloud (optional)
       # - NETDATA_CLAIM_TOKEN=your-claim-token
+      # - NETDATA_CLAIM_ROOMS=your-room-key
       # - NETDATA_CLAIM_URL=https://app.netdata.cloud
       - TZ=UTC
 
@@ -144,9 +145,9 @@ Here is an example custom alert that fires when a Docker container uses more tha
 # custom.conf - Custom Netdata health alert
 
 # Alert when any container exceeds 1GB memory usage
-alarm: container_high_memory
-on: cgroup_*.mem.usage
-lookup: average -1m unaligned
+template: container_high_memory
+on: cgroup.mem_usage
+lookup: average -1m unaligned of ram
 units: MiB
 every: 30s
 warn: $this > 512
@@ -182,10 +183,9 @@ On the parent node, configure it to accept streaming connections.
 ```ini
 # stream.conf on the parent - Accept incoming streams
 [API_KEY_HERE]
+    type = api
     enabled = yes
-    default history = 3600
-    default memory mode = dbengine
-    health enabled by default = auto
+    db = dbengine
     allow from = *
 ```
 
