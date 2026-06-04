@@ -55,7 +55,7 @@ print(ray.get(futures))
 ' && sleep infinity"
 ```
 
-The `--shm-size=2g` flag is important. Ray uses shared memory (`/dev/shm`) extensively for its object store. The default Docker shared memory size of 64 MB is far too small and will cause crashes.
+The `--shm-size=2g` flag is important. Ray uses shared memory (`/dev/shm`) extensively for its object store. The default Docker shared memory size of 64 MB is far too small for many workloads and can cause object store startup failures or force Ray to use slower disk-backed storage.
 
 ## Multi-Node Cluster with Docker Compose
 
@@ -74,6 +74,7 @@ services:
       - "8265:8265"   # Ray Dashboard
       - "6379:6379"   # Ray GCS
       - "10001:10001" # Ray Client
+      - "8000:8000"   # Ray Serve HTTP
     command: >
       ray start --head
       --port=6379
@@ -81,10 +82,6 @@ services:
       --dashboard-port=8265
       --num-cpus=4
       --block
-    environment:
-      - RAY_GRAFANA_HOST=http://grafana:3000
-    volumes:
-      - ray-data:/tmp/ray
 
   ray-worker-1:
     image: rayproject/ray:2.40.0
@@ -97,8 +94,6 @@ services:
       --address=ray-head:6379
       --num-cpus=4
       --block
-    volumes:
-      - ray-data:/tmp/ray
 
   ray-worker-2:
     image: rayproject/ray:2.40.0
@@ -111,11 +106,6 @@ services:
       --address=ray-head:6379
       --num-cpus=4
       --block
-    volumes:
-      - ray-data:/tmp/ray
-
-volumes:
-  ray-data:
 ```
 
 Launch the cluster:
@@ -182,7 +172,7 @@ processed = ds.map(lambda row: {
 errors = processed.filter(lambda row: row["level"] == "ERROR")
 print(f"Total error count: {errors.count()}")
 
-# Write results back
+# Write results back to shared storage mounted on every Ray node
 errors.write_parquet("/data/output/errors/")
 ```
 
@@ -267,7 +257,8 @@ class SentimentAnalyzer:
 
 # Deploy the model
 app = SentimentAnalyzer.bind()
-serve.run(app, host="0.0.0.0", port=8000)
+serve.start(http_options={"host": "0.0.0.0", "port": 8000})
+serve.run(app)
 ```
 
 ## Custom Ray Image with Dependencies
