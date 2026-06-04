@@ -14,7 +14,7 @@ Network policies in Kubernetes give you the power to control traffic at the IP a
 
 CIDR (Classless Inter-Domain Routing) notation lets you specify IP address ranges in network policies. This becomes critical when you need to allow traffic only from specific networks, like your corporate VPN range, a partner's network, or specific cloud provider subnets.
 
-Unlike pod selector-based policies that work with labels, CIDR-based policies operate at the IP layer, making them perfect for controlling access to external services or restricting which external networks can reach your pods.
+Unlike pod selector-based policies that work with labels, CIDR-based policies operate at the IP layer, making them useful for controlling access to external services or restricting which external networks can reach your pods. Kubernetes recommends using `ipBlock` for cluster-external IPs because pod IPs are ephemeral, and ingress source IP matching can depend on whether your load balancer, Service, or network plugin rewrites the source address before policy enforcement.
 
 ## Default Deny Policy with CIDR Exceptions
 
@@ -40,7 +40,7 @@ Apply this policy to establish a baseline:
 kubectl apply -f default-deny-ingress.yaml
 ```
 
-Now no ingress traffic reaches pods in the production namespace. Next, create a policy that allows specific CIDR ranges.
+Now pods in the production namespace are isolated for ingress unless traffic is allowed by another NetworkPolicy. Next, create a policy that allows specific CIDR ranges.
 
 ## Allowing Specific CIDR Ranges
 
@@ -203,17 +203,14 @@ spec:
 
 ## Testing CIDR-Based Policies
 
-After applying policies, test them to verify they work as expected. Use a test pod to simulate traffic from different sources:
+After applying policies, test them to verify they work as expected. To test ingress rules, send traffic from a host whose source IP is in the allowed CIDR range:
 
 ```bash
-# Create a test pod in the allowed CIDR range
-kubectl run test-allowed --image=nicolaka/netshoot -it --rm -- /bin/bash
-
-# From inside the pod, test connectivity
+# From a host in the allowed CIDR range, test connectivity
 curl http://api-server.production.svc.cluster.local:8080
 ```
 
-For testing blocked traffic, you need a pod that appears to come from an unauthorized IP. This is tricky within a cluster, but you can test egress policies easily:
+For testing blocked ingress traffic, use a host outside the allowed CIDR range. Testing this with a pod inside the same cluster is unreliable because `ipBlock` rules are intended for cluster-external IPs. You can test egress policies more directly:
 
 ```bash
 # Test egress blocking
@@ -272,10 +269,10 @@ After implementing CIDR-based policies, monitor their effectiveness:
 
 ```bash
 # Check denied connections (Cilium example)
-kubectl exec -n kube-system cilium-xxxxx -- cilium monitor --type drop
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg monitor --type drop
 
-# View policy statistics
-kubectl exec -n kube-system cilium-xxxxx -- cilium policy get
+# View policy map entries
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg bpf policy get --all
 ```
 
 CIDR-based network policies give you precise control over which networks can communicate with your Kubernetes workloads. By combining default deny policies with explicit CIDR allowlists, you create a strong security posture that limits the attack surface of your applications.
