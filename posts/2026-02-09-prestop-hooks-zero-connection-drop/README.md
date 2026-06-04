@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, PreStop Hook, Zero Downtime, Lifecycle Management
 
-Description: Configure preStop hooks that coordinate graceful shutdown across load balancers, service meshes, and applications to achieve truly zero-connection-drop deployments in Kubernetes.
+Description: Configure preStop hooks that coordinate graceful shutdown across load balancers, service meshes, and applications to reduce connection drops during Kubernetes deployments.
 
 ---
 
-PreStop hooks execute before Kubernetes sends SIGTERM to containers, providing a window to coordinate graceful shutdown. Without preStop hooks, containers receive SIGTERM immediately after being marked for deletion, but load balancers and service meshes may still route traffic to them for several seconds. This timing mismatch causes connection errors during deployments.
+PreStop hooks execute before Kubernetes sends SIGTERM to containers, providing a window to coordinate graceful shutdown. Without preStop hooks, containers receive SIGTERM as soon as the kubelet starts terminating them, but load balancers and service meshes may still route traffic to them for several seconds. This timing mismatch causes connection errors during deployments.
 
-The preStop hook delays container termination while external systems update routing tables. This coordination ensures that by the time SIGTERM arrives, no new connections are being routed to the container. The container can then drain existing connections without receiving new ones, achieving zero connection drops.
+The preStop hook delays the TERM signal while external systems update routing tables. This coordination makes it much more likely that by the time SIGTERM arrives, no new connections are being routed to the container. The container can then drain existing connections without receiving new ones, reducing connection drops during rollouts.
 
 Implementing effective preStop hooks requires understanding the latency of various systems (load balancers, DNS, service mesh) and configuring appropriate delays.
 
@@ -19,13 +19,13 @@ Implementing effective preStop hooks requires understanding the latency of vario
 The termination sequence with preStop hooks:
 
 1. Pod marked for deletion
-2. Removed from endpoints
-3. PreStop hook executes (blocks SIGTERM)
+2. EndpointSlice marks the endpoint as terminating and not ready
+3. Kubelet starts the Pod grace period and runs the preStop hook
 4. External systems update (load balancers, service mesh)
 5. PreStop hook completes
-6. SIGTERM sent to container
+6. SIGTERM sent to the container
 7. Application drains connections
-8. Container exits or SIGKILL after grace period
+8. Container exits or receives SIGKILL when the grace period expires
 
 ```yaml
 apiVersion: apps/v1
@@ -58,7 +58,7 @@ The 20-second sleep gives load balancers and service mesh time to stop routing t
 
 ## Coordinating with Cloud Load Balancers
 
-Cloud load balancers typically take 15-30 seconds to remove targets from rotation after endpoints change. PreStop hooks account for this delay:
+Cloud load balancers can take several seconds to stop routing to a terminating backend after endpoints or health checks change. PreStop hooks account for this delay:
 
 ```yaml
 apiVersion: v1
@@ -66,11 +66,8 @@ kind: Service
 metadata:
   name: api-service
   annotations:
-    # AWS: Connection draining timeout
-    service.beta.kubernetes.io/aws-load-balancer-connection-draining-enabled: "true"
-    service.beta.kubernetes.io/aws-load-balancer-connection-draining-timeout: "30"
-    # GCP: Connection draining timeout
-    cloud.google.com/backend-timeout: "30"
+    # AWS Load Balancer Controller: NLB target deregistration delay
+    service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: deregistration_delay.timeout_seconds=30
 spec:
   type: LoadBalancer
   selector:
@@ -101,11 +98,37 @@ spec:
                 sleep 35
 ```
 
-The preStop sleep (35s) exceeds the load balancer deregistration timeout (30s), ensuring complete deregistration before SIGTERM.
+For GKE Ingress, configure connection draining with a BackendConfig and associate it with the Service:
+
+```yaml
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: api-backend-config
+spec:
+  connectionDraining:
+    drainingTimeoutSec: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  annotations:
+    cloud.google.com/backend-config: '{"ports": {"80":"api-backend-config"}}'
+spec:
+  type: ClusterIP
+  selector:
+    app: api-service
+  ports:
+  - port: 80
+    targetPort: 8080
+```
+
+The preStop sleep gives the load balancer time to observe the terminating backend and stop sending new requests. The load balancer's connection draining setting then controls how long existing requests can continue.
 
 ## Implementing Application-Level Readiness Control
 
-Applications can fail readiness checks immediately in preStop, accelerating removal from service:
+Applications can fail readiness checks during preStop, accelerating removal from service as soon as the kubelet observes the next failed probe:
 
 ```yaml
 apiVersion: apps/v1
@@ -169,7 +192,7 @@ func main() {
 }
 ```
 
-When preStop calls `/shutdown`, readiness checks immediately start failing, quickly removing the pod from service.
+When preStop calls `/shutdown`, readiness checks fail on the next probe, quickly removing the pod from service.
 
 ## Service Mesh Integration
 
@@ -246,6 +269,7 @@ Application implements connection draining:
 
 ```python
 import signal
+import sys
 import time
 from flask import Flask
 from sqlalchemy import create_engine
@@ -285,6 +309,7 @@ def signal_handler(sig, frame):
     shutting_down = True
     time.sleep(30)
     engine.dispose()
+    sys.exit(0)
 
 signal.signal(signal.SIGTERM, signal_handler)
 
@@ -341,7 +366,7 @@ Monitor connection metrics:
 ```promql
 # Failed requests during deployment
 rate(http_requests_total{status=~"5.."}[1m])
-and on() changes(kube_deployment_status_observed_generation[5m]) > 0
+and on() (sum(changes(kube_deployment_status_observed_generation[5m])) > 0)
 
 # Connection errors
 rate(http_connection_errors_total[1m])
@@ -363,22 +388,22 @@ data:
       rules:
       - alert: PreStopHookTimeout
         expr: |
-          increase(kubelet_runtime_operations_errors_total{
-            operation_type="PreStopContainer"
+          increase(kube_event_count{
+            reason="FailedPreStopHook"
           }[5m]) > 0
         labels:
           severity: warning
         annotations:
-          summary: "PreStop hooks timing out"
+          summary: "PreStop hooks failing"
 
       - alert: ConnectionDropsDuringDeployment
         expr: |
           rate(http_connection_errors_total[1m]) > 0
-          and on() changes(kube_deployment_status_observed_generation[5m]) > 0
+          and on() (sum(changes(kube_deployment_status_observed_generation[5m])) > 0)
         labels:
           severity: critical
         annotations:
           summary: "Connection drops detected during deployment"
 ```
 
-PreStop hooks are essential for zero-connection-drop deployments. By coordinating graceful shutdown across load balancers, service meshes, and applications, preStop hooks ensure that terminating pods complete all in-flight work before receiving SIGTERM. This transforms rolling updates from potentially disruptive operations into seamless transitions that users never notice.
+PreStop hooks are essential for reducing connection drops during deployments. By coordinating graceful shutdown across load balancers, service meshes, and applications, preStop hooks help terminating pods stop receiving new traffic and complete in-flight work before receiving SIGTERM. This transforms rolling updates from potentially disruptive operations into smoother transitions that users are less likely to notice.
