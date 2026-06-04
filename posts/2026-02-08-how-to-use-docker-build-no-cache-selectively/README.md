@@ -8,7 +8,7 @@ Description: Learn how to selectively invalidate Docker build cache for specific
 
 ---
 
-The `docker build --no-cache` flag is a sledgehammer. It rebuilds every single layer from scratch, discarding all cached work. This is wasteful when only one layer is stale. A dependency update, for example, should not force you to re-download your base image and reinstall system packages. Selective cache invalidation gives you fine-grained control over which layers rebuild and which ones stay cached.
+The `docker build --no-cache` flag is a sledgehammer. It rebuilds Dockerfile instructions without reusing the build cache. This is wasteful when only one layer is stale. A dependency update, for example, should not force you to reinstall system packages. Selective cache invalidation gives you fine-grained control over which layers rebuild and which ones stay cached.
 
 ## Understanding Docker's Layer Cache
 
@@ -25,11 +25,11 @@ COPY . .                      # Layer 5 - forced rebuild
 RUN npm run build             # Layer 6 - forced rebuild
 ```
 
-If only your source code changes, layers 1 through 4 stay cached. But if `package.json` changes, layers 3 through 6 all rebuild. Using `--no-cache` would rebuild all six layers, including the base image pull and system package installation.
+If only your source code changes, layers 1 through 4 stay cached. But if `package.json` changes, layers 3 through 6 all rebuild. Using `--no-cache` would rebuild the instructions after `FROM`, including the system package installation.
 
 ## Strategy 1: Cache Busting with Build Arguments
 
-The simplest selective cache invalidation uses a build argument. When the argument value changes, Docker invalidates that layer and everything after it.
+The simplest selective cache invalidation uses a build argument. When the argument value changes, Docker invalidates the first instruction that uses it and everything after it.
 
 ```dockerfile
 FROM node:20-alpine
@@ -39,8 +39,9 @@ RUN apk add --no-cache curl git
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# This ARG invalidates the cache from this point forward when its value changes
+# This RUN consumes the ARG and invalidates the cache from this point forward
 ARG CACHE_BUST_APP=1
+RUN echo "$CACHE_BUST_APP" > /tmp/cache-bust-app
 COPY . .
 RUN npm run build
 ```
@@ -51,11 +52,11 @@ Trigger a rebuild of only the app layers by changing the argument:
 # Normal build - uses cache for everything
 docker build -t myapp:latest .
 
-# Bust cache only for the COPY and build steps
+# Bust cache only for the app steps
 docker build -t myapp:latest --build-arg CACHE_BUST_APP=$(date +%s) .
 ```
 
-The layers before the `ARG` instruction stay cached. Only the layers after it rebuild.
+The layers before the cache-busting `RUN` instruction stay cached. Only that instruction and the layers after it rebuild.
 
 You can place multiple cache bust points in your Dockerfile:
 
@@ -68,17 +69,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Python dependencies - change occasionally
 ARG CACHE_BUST_DEPS=1
+RUN echo "$CACHE_BUST_DEPS" > /tmp/cache-bust-deps
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Application code - changes frequently
 ARG CACHE_BUST_APP=1
+RUN echo "$CACHE_BUST_APP" > /tmp/cache-bust-app
 COPY . .
 RUN python setup.py install
 ```
 
 ```bash
-# Rebuild only the app layer
+# Rebuild only the app layers
 docker build --build-arg CACHE_BUST_APP=$(date +%s) -t myapp .
 
 # Rebuild both dependencies and app
@@ -166,11 +169,12 @@ Use it with a multi-stage Dockerfile:
 
 ```dockerfile
 FROM golang:1.22 AS base
-RUN apt-get update && apt-get install -y protobuf-compiler
+RUN apt-get update && apt-get install -y protobuf-compiler && \
+    go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 
 FROM base AS proto-gen
 COPY proto/ ./proto/
-RUN protoc --go_out=. proto/*.proto
+RUN mkdir -p /generated && protoc --go_out=/generated proto/*.proto
 
 FROM base AS builder
 COPY --from=proto-gen /generated ./generated
@@ -200,7 +204,7 @@ When building in CI/CD, you often lose the local cache between runs. Registry-ba
 ```bash
 # Build with inline cache metadata
 docker buildx build \
-  --cache-from type=registry,ref=ghcr.io/your-org/app:cache \
+  --cache-from type=registry,ref=ghcr.io/your-org/app:latest \
   --cache-to type=inline \
   -t ghcr.io/your-org/app:latest \
   --push .
@@ -230,7 +234,7 @@ For advanced scenarios, generate a cache-busting hash based on specific conditio
 DEPS_HASH=$(sha256sum requirements.txt Pipfile.lock 2>/dev/null | sha256sum | cut -d' ' -f1)
 
 # Generate a hash from source code only
-SRC_HASH=$(find src/ -type f -exec sha256sum {} \; | sha256sum | cut -d' ' -f1)
+SRC_HASH=$(find src/ -type f -print0 | sort -z | xargs -0 -r sha256sum | sha256sum | cut -d' ' -f1)
 
 # Pass targeted hashes as build args
 docker build \
