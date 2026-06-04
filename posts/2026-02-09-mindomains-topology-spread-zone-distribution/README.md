@@ -8,19 +8,19 @@ Description: Learn how to use the minDomains field in topology spread constraint
 
 ---
 
-Topology spread constraints distribute pods across failure domains, but by default they only spread across domains that already have matching pods. The minDomains field forces the scheduler to spread pods across at least a specified number of domains, even when starting from zero. This ensures true multi-zone or multi-region distribution from the beginning, improving availability and resilience.
+Topology spread constraints distribute pods across failure domains by comparing the number of matching pods in eligible topology domains. The minDomains field sets the minimum number of eligible domains that must be considered for skew calculations. When fewer eligible domains exist than minDomains, the scheduler treats the global minimum as 0, which can prevent additional pods from being placed until enough domains are available.
 
-This guide will show you how to use minDomains to guarantee minimum spreading across your infrastructure topology.
+This guide will show you how to use minDomains to enforce spreading requirements across your infrastructure topology.
 
 ## Understanding minDomains Behavior
 
-Without minDomains, if you deploy 2 replicas with maxSkew: 1, both might land in the same zone initially. As you scale up, pods spread to other zones. With minDomains: 3, the scheduler ensures the first 3 pods land in different zones, guaranteeing multi-zone presence immediately.
+Without minDomains, the scheduler balances pods across the eligible domains it can see. With three eligible zones and maxSkew: 1, two replicas are placed in different zones. With minDomains: 3, the same balancing applies when three eligible zones exist; if fewer than three eligible zones exist, the scheduler calculates skew against a global minimum of 0 and can keep pods pending rather than allowing the workload to over-concentrate.
 
-The minDomains field was introduced in Kubernetes 1.24 and became stable in 1.26. It works in conjunction with maxSkew to provide both minimum spread and maximum skew constraints.
+The minDomains field was introduced in Kubernetes 1.24 as an alpha feature and became stable in Kubernetes 1.30. Before Kubernetes 1.30, it required the MinDomainsInPodTopologySpread feature gate, which was enabled by default starting in Kubernetes 1.28. It works in conjunction with maxSkew and can only be used with `whenUnsatisfiable: DoNotSchedule`.
 
 ## Basic minDomains Configuration
 
-Ensure pods spread across at least 3 availability zones:
+Require scheduler calculations to account for at least 3 availability zones:
 
 ```yaml
 # deployment-mindomain.yaml
@@ -53,16 +53,16 @@ spec:
 ```
 
 With this configuration:
-- First 3 pods must land in 3 different zones
-- Remaining 3 pods distribute with maxSkew: 1
+- If 3 eligible zones exist, pods distribute with maxSkew: 1
+- If fewer than 3 eligible zones exist, additional pods can remain pending
 - Result: 2 pods per zone across 3 zones
 
 ## Comparing with and without minDomains
 
-Without minDomains (legacy behavior):
+Without minDomains:
 
 ```yaml
-# Without minDomains - pods might cluster initially
+# Without minDomains - balance across eligible zones
 topologySpreadConstraints:
 - maxSkew: 1
   topologyKey: topology.kubernetes.io/zone
@@ -72,16 +72,16 @@ topologySpreadConstraints:
       app: web
 
 # Possible distribution with 6 replicas:
-# Zone A: 4 pods
+# Zone A: 2 pods
 # Zone B: 2 pods
-# Zone C: 0 pods
-# (Meets maxSkew: 1 between zones with pods)
+# Zone C: 2 pods
+# (Meets maxSkew: 1 across eligible zones)
 ```
 
 With minDomains:
 
 ```yaml
-# With minDomains - guaranteed 3-zone spread
+# With minDomains - require at least 3 eligible zones for full placement
 topologySpreadConstraints:
 - maxSkew: 1
   minDomains: 3
@@ -91,7 +91,7 @@ topologySpreadConstraints:
     matchLabels:
       app: web
 
-# Guaranteed distribution with 6 replicas:
+# Distribution with 3 eligible zones:
 # Zone A: 2 pods
 # Zone B: 2 pods
 # Zone C: 2 pods
@@ -112,21 +112,21 @@ topologySpreadConstraints:
     matchLabels:
       app: global-service
 
-# Within each region, spread across at least 3 zones
+# Spread across at least 3 zones overall
 - maxSkew: 1
   minDomains: 3
   topologyKey: topology.kubernetes.io/zone
-  whenUnsatisfiable: ScheduleAnyway
+  whenUnsatisfiable: DoNotSchedule
   labelSelector:
     matchLabels:
       app: global-service
 ```
 
-This creates a hierarchical distribution: at least 2 regions, with pods in at least 3 zones per region.
+These constraints are both applied to the same set of pods: the scheduler enforces spreading across at least 2 eligible regions and at least 3 eligible zones overall.
 
 ## Using minDomains with Small Replica Counts
 
-When replica count is less than minDomains, each pod goes to a different domain:
+When replica count is less than minDomains, pods are spread with maxSkew across the eligible domains. With maxSkew: 1 and at least 3 eligible zones, each of the first two pods goes to a different zone:
 
 ```yaml
 apiVersion: apps/v1
@@ -176,14 +176,13 @@ topologySpreadConstraints:
       app: web
 ```
 
-With `whenUnsatisfiable: DoNotSchedule`, pods remain pending if minDomains cannot be satisfied. Use `whenUnsatisfiable: ScheduleAnyway` to fall back to best-effort distribution:
+With `whenUnsatisfiable: DoNotSchedule`, additional pods can remain pending if placing them would exceed maxSkew while fewer than minDomains eligible domains are available. Remove `minDomains` and use `whenUnsatisfiable: ScheduleAnyway` to fall back to best-effort distribution:
 
 ```yaml
 topologySpreadConstraints:
 - maxSkew: 1
-  minDomains: 5
   topologyKey: topology.kubernetes.io/zone
-  whenUnsatisfiable: ScheduleAnyway  # Schedule even if can't meet minDomains
+  whenUnsatisfiable: ScheduleAnyway  # Schedule while preferring lower skew
   labelSelector:
     matchLabels:
       app: web
@@ -263,7 +262,7 @@ spec:
         app: compute-job
 ```
 
-Pods spread across at least 3 zones, but only on compute-optimized nodes.
+Pods spread across the eligible compute-optimized zones, and minDomains requires the scheduler to account for at least 3 of those zones.
 
 ## minDomains for Rolling Updates
 
@@ -304,7 +303,7 @@ spec:
         image: api:v2
 ```
 
-During rolling updates, both old and new ReplicaSets maintain 3-zone spread independently.
+During rolling updates, `matchLabelKeys` uses the Deployment's `pod-template-hash` label so each ReplicaSet revision is spread independently.
 
 ## Monitoring Domain Distribution
 
@@ -313,15 +312,17 @@ Check actual pod distribution across domains:
 ```bash
 # Count pods per zone
 kubectl get pods -l app=web -o json | \
-  jq -r '.items[] | .spec.nodeName' | \
+  jq -r '.items[] | select(.spec.nodeName != null) | .spec.nodeName' | \
   xargs -I {} kubectl get node {} -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}' | \
   sort | uniq -c
 
 # Detailed pod to zone mapping
-kubectl get pods -l app=web -o custom-columns=\
-NAME:.metadata.name,\
-NODE:.spec.nodeName,\
-ZONE:.spec.nodeSelector
+kubectl get pods -l app=web -o json | \
+  jq -r '.items[] | select(.spec.nodeName != null) | [.metadata.name, .spec.nodeName] | @tsv' | \
+  while read -r pod node; do
+    zone=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
+    printf "%s\t%s\t%s\n" "$pod" "$node" "$zone"
+  done
 
 # Check for pending pods due to spread constraints
 kubectl get pods -l app=web --field-selector status.phase=Pending
@@ -338,21 +339,25 @@ topologySpreadConstraints:
 - maxSkew: 1
   minDomains: 3
   topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: DoNotSchedule
 
 # Large cluster (6+ zones)
 topologySpreadConstraints:
 - maxSkew: 2
   minDomains: 5
   topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: DoNotSchedule
 
 # Multi-region cluster
 topologySpreadConstraints:
 - maxSkew: 1
   minDomains: 2
   topologyKey: topology.kubernetes.io/region
+  whenUnsatisfiable: DoNotSchedule
 - maxSkew: 1
   minDomains: 3
   topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: DoNotSchedule
 ```
 
 ## Troubleshooting minDomains Issues
@@ -368,7 +373,7 @@ kubectl describe pod PENDING_POD
 
 # Verify available domains
 kubectl get nodes -L topology.kubernetes.io/zone | \
-  awk '{print $6}' | sort | uniq
+  awk 'NR > 1 {print $NF}' | sort | uniq
 
 # Check existing pod distribution
 kubectl get pods -l app=web -o wide
@@ -387,16 +392,16 @@ kubectl patch deployment web-app --type=json -p='[
 
 Set minDomains based on your reliability requirements and available infrastructure. For critical services, use minDomains equal to your desired zone count. For less critical workloads, use lower values or omit minDomains.
 
-Use `whenUnsatisfiable: DoNotSchedule` for strict enforcement when high availability is required. Use `whenUnsatisfiable: ScheduleAnyway` for flexible deployment that tolerates reduced spreading.
+Use `whenUnsatisfiable: DoNotSchedule` for strict enforcement when high availability is required. Use `whenUnsatisfiable: ScheduleAnyway` for flexible deployment that tolerates reduced spreading, and omit minDomains in that case.
 
-Start with minDomains: 2 for basic redundancy and increase based on SLA requirements. Consider cluster capacity when setting minDomains - setting it higher than available domains causes permanent pending pods.
+Start with minDomains: 2 for basic redundancy and increase based on SLA requirements. Consider cluster capacity when setting minDomains - setting it higher than available domains can leave pods pending when maxSkew would be exceeded.
 
 Combine minDomains with appropriate maxSkew values. Common combinations: minDomains: 3 with maxSkew: 1 for balanced spreading, or minDomains: 2 with maxSkew: 2 for more flexible placement.
 
 ## Conclusion
 
-The minDomains field ensures pods distribute across multiple failure domains from the start, improving availability and resilience. By guaranteeing minimum spreading, you avoid scenarios where all pods cluster in a single domain initially.
+The minDomains field ensures topology spread calculations account for a minimum number of eligible failure domains, improving availability and resilience when domains are temporarily unavailable or not yet present.
 
-Configure minDomains based on your reliability requirements and infrastructure topology. Use it with appropriate whenUnsatisfiable policies to balance strict spreading requirements with deployment flexibility. Monitor actual distribution to verify constraints achieve intended spreading behavior.
+Configure minDomains based on your reliability requirements and infrastructure topology. Use `DoNotSchedule` with minDomains for strict spreading requirements, or omit minDomains with `ScheduleAnyway` when deployment flexibility is more important. Monitor actual distribution to verify constraints achieve intended spreading behavior.
 
 Combined with maxSkew and proper labelSelector configuration, minDomains provides powerful control over pod placement for highly available applications.
