@@ -18,8 +18,8 @@ You could deploy an LLM with a simple Flask wrapper around the transformers libr
 
 - Continuous batching that dynamically groups requests for better GPU utilization
 - Token streaming for better user experience with long responses
-- Quantization support (GPTQ, AWQ, GGML) to reduce memory usage
-- Flash Attention v2 for faster inference
+- Quantization support (bitsandbytes, GPTQ, AWQ, EETQ, FP8) to reduce memory usage
+- Flash Attention and Paged Attention for faster inference
 - Tensor parallelism to split models across multiple GPUs
 
 These features make the difference between serving 1 request per second and 50 requests per second on the same hardware.
@@ -29,7 +29,7 @@ These features make the difference between serving 1 request per second and 50 r
 You'll need a Kubernetes cluster with GPU nodes. For Llama-2 7B, minimum requirements are:
 
 - 1x NVIDIA A10G GPU (24GB VRAM) for FP16
-- 1x NVIDIA T4 GPU (16GB VRAM) if using quantization
+- 1x NVIDIA T4 GPU (16GB VRAM) if using 4-bit quantization
 - 16GB system RAM
 - 50GB disk space for model storage
 
@@ -99,12 +99,12 @@ spec:
     spec:
       containers:
         - name: tgi
-          image: ghcr.io/huggingface/text-generation-inference:2.0
+          image: ghcr.io/huggingface/text-generation-inference:3.3.5
           env:
             # Model configuration
             - name: MODEL_ID
               value: "meta-llama/Llama-2-7b-chat-hf"
-            - name: HUGGING_FACE_HUB_TOKEN
+            - name: HF_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: huggingface-token
@@ -112,7 +112,7 @@ spec:
             # Performance settings
             - name: MAX_CONCURRENT_REQUESTS
               value: "128"
-            - name: MAX_INPUT_LENGTH
+            - name: MAX_INPUT_TOKENS
               value: "4096"
             - name: MAX_TOTAL_TOKENS
               value: "4096"
@@ -121,12 +121,12 @@ spec:
             - name: MAX_BATCH_TOTAL_TOKENS
               value: "8192"
             # Optimization flags
-            - name: QUANTIZE
-              value: ""  # Leave empty for FP16, use "gptq" or "awq" for quantization
+            # Leave QUANTIZE unset for FP16. Use "bitsandbytes-nf4" for on-the-fly 4-bit quantization,
+            # or "gptq"/"awq" with a model that already has GPTQ/AWQ weights.
             - name: NUM_SHARD
               value: "1"  # Number of GPUs to split model across
             # Caching
-            - name: HUGGINGFACE_HUB_CACHE
+            - name: HF_HUB_CACHE
               value: "/cache"
           ports:
             - containerPort: 80
@@ -181,7 +181,7 @@ Key configuration points:
 
 - `MAX_CONCURRENT_REQUESTS`: How many requests TGI queues
 - `MAX_BATCH_TOTAL_TOKENS`: Total tokens across all batched requests
-- `QUANTIZE`: Set to "gptq" or "awq" to reduce memory usage
+- `QUANTIZE`: Leave unset for FP16; set to "bitsandbytes-nf4" for on-the-fly 4-bit quantization, or "gptq"/"awq" with pre-quantized weights
 - `NUM_SHARD`: Set >1 to split model across multiple GPUs
 - `/dev/shm` mount: Required for inter-process communication
 
@@ -344,8 +344,7 @@ metadata:
   namespace: llm-inference
   annotations:
     kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/rate-limit: "10"  # 10 req/sec per IP
-    nginx.ingress.kubernetes.io/limit-rps: "100"  # 100 req/sec total
+    nginx.ingress.kubernetes.io/limit-rps: "10"  # 10 req/sec per IP per controller replica
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"  # 5 min for long generations
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
@@ -391,7 +390,7 @@ spec:
       rules:
         - alert: HighInferenceLatency
           expr: |
-            histogram_quantile(0.95, rate(tgi_request_duration_seconds_bucket[5m])) > 5
+            histogram_quantile(0.95, rate(tgi_request_duration_bucket[5m])) > 5
           for: 2m
           labels:
             severity: warning
@@ -409,7 +408,7 @@ spec:
             description: "Queue depth is {{ $value }}"
 
         - alert: LowThroughput
-          expr: rate(tgi_request_success_total[5m]) < 1
+          expr: rate(tgi_request_success[5m]) < 1
           for: 10m
           labels:
             severity: warning
@@ -434,10 +433,10 @@ Reduce costs with quantization:
 # Update deployment env vars
 env:
   - name: QUANTIZE
-    value: "gptq"  # or "awq"
+    value: "bitsandbytes-nf4"  # or "gptq"/"awq" with pre-quantized weights
 ```
 
-GPTQ quantization reduces model size to 4-bit, cutting memory usage by 75% with minimal quality loss. This lets you run on smaller, cheaper GPUs.
+4-bit quantization can cut model memory substantially with some quality and latency tradeoffs. Use `bitsandbytes-nf4` for on-the-fly quantization of standard model weights, or use `gptq`/`awq` with models that have already been quantized in those formats.
 
 For multi-GPU nodes, enable tensor parallelism:
 
