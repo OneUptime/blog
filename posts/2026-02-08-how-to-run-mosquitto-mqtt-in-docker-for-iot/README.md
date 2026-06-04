@@ -75,8 +75,6 @@ password_file /mosquitto/config/passwd
 
 ```yaml
 # docker-compose.yml - Eclipse Mosquitto MQTT Broker
-version: "3.8"
-
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -187,10 +185,12 @@ Use forward slashes to create hierarchy and wildcards for broad subscriptions:
 
 ```bash
 # Subscribe to all sensors in the living room
-mosquitto_sub -t "home/living_room/#" -v
+mosquitto_sub -u homeassistant -P your_password \
+  -t "home/living_room/#" -v
 
 # Subscribe to all temperature readings in the house
-mosquitto_sub -t "home/+/temperature" -v
+mosquitto_sub -u homeassistant -P your_password \
+  -t "home/+/temperature" -v
 ```
 
 The `#` wildcard matches any number of levels. The `+` wildcard matches exactly one level.
@@ -248,12 +248,14 @@ user sensor_user
 topic write home/+/temperature
 topic write home/+/humidity
 topic write home/+/motion
+topic write home/+/status
 
-# homeassistant has full access to everything
+# homeassistant has full access to application topics and broker statistics
 user homeassistant
 topic readwrite #
+topic read $SYS/#
 
-# nodered can read all topics and write commands
+# nodered can read all application topics and write commands
 user nodered
 topic read #
 topic write devices/+/command
