@@ -50,8 +50,6 @@ For a proper deployment, use Docker Compose with environment variables and resou
 
 ```yaml
 # docker-compose.yml - Gotify push notification server
-version: "3.8"
-
 services:
   gotify:
     image: gotify/server:latest
@@ -132,10 +130,10 @@ curl -X POST \
 ```
 
 Priority levels control how the notification appears on your phone:
-- 0: Minimum priority, no notification sound
-- 1-3: Low priority
-- 4-7: Normal priority, default notification behavior
-- 8-10: High priority, persistent notification with sound
+- 0: Minimum priority, no Android notification
+- 1-3: Low priority, notification icon only
+- 4-7: Normal priority, notification icon with sound
+- 8-10: High priority, notification icon with sound and vibration
 
 ```bash
 # Send a high-priority alert for critical issues
@@ -220,7 +218,7 @@ Gotify provides an Android app (available on F-Droid and GitHub releases). It ma
 3. Log in with your credentials
 4. The app will create a client token and start receiving notifications
 
-For iOS users, Gotify does not have an official app. You can use the web interface, which supports browser push notifications on supported browsers.
+For iOS users, Gotify does not have an official app. You can use the web interface, which can show browser notifications while the web UI is open on supported browsers.
 
 ## Putting Gotify Behind a Reverse Proxy
 
@@ -249,12 +247,19 @@ server {
 
     location / {
         proxy_pass http://localhost:8070;
-        proxy_set_header Host $host;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
 
         # WebSocket support is essential for real-time notifications
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+
+        proxy_connect_timeout 1m;
+        proxy_send_timeout 1m;
+        proxy_read_timeout 1m;
     }
 }
 ```
