@@ -65,8 +65,6 @@ The solution is to set the build context to the repository root and use the `doc
 
 ```yaml
 # docker-compose.yml - Build context is the repo root for all services
-version: "3.8"
-
 services:
   api:
     build:
@@ -231,7 +229,10 @@ docker buildx bake api
 docker buildx bake
 
 # Build with specific tags
-docker buildx bake --set "*.tags=myregistry/*:v1.2.3"
+docker buildx bake \
+  --set "api.tags=myregistry/api:v1.2.3" \
+  --set "worker.tags=myregistry/worker:v1.2.3" \
+  --set "web.tags=myregistry/web:v1.2.3"
 ```
 
 ## Optimizing Build Caching
@@ -263,7 +264,7 @@ services/api/Dockerfile      -> services/api/Dockerfile.dockerignore
 services/worker/Dockerfile   -> services/worker/Dockerfile.dockerignore
 ```
 
-Docker 1.20+ supports this pattern with BuildKit.
+Docker supports this pattern for BuildKit-backed builds.
 
 ## Handling Shared Configurations
 
@@ -305,8 +306,6 @@ For development, mount source code into containers for hot reloading:
 
 ```yaml
 # docker-compose.override.yml - Development overrides
-version: "3.8"
-
 services:
   api:
     build:
