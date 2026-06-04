@@ -8,7 +8,7 @@ Description: Deploy VictoriaMetrics in Docker as a fast, cost-effective Promethe
 
 ---
 
-VictoriaMetrics is a high-performance time-series database that serves as a long-term storage backend for Prometheus metrics. It is fully compatible with the Prometheus ecosystem, which means Prometheus can remote-write to it, Grafana can query it, and existing PromQL dashboards work without modification. What sets VictoriaMetrics apart is its compression efficiency and query performance - it typically uses 7-10x less disk space than Prometheus and queries faster too.
+VictoriaMetrics is a high-performance time-series database that serves as a long-term storage backend for Prometheus metrics. It is fully compatible with the Prometheus ecosystem, which means Prometheus can remote-write to it, Grafana can query it, and existing PromQL dashboards work without modification. What sets VictoriaMetrics apart is its compression efficiency and query performance - it can use up to 7x less disk space than Prometheus and queries faster too.
 
 VictoriaMetrics comes in two flavors: a single-node version that handles most workloads with ease, and a cluster version for horizontal scaling. The single-node version is a single binary that stores and queries metrics, making it one of the simplest monitoring backends to deploy.
 
@@ -34,8 +34,8 @@ Port 8428 serves the HTTP API for both ingestion and querying. Verify it is runn
 # Check the health endpoint
 curl http://localhost:8428/health
 
-# View active time series count
-curl http://localhost:8428/api/v1/status/tsdb
+# View total time series count
+curl http://localhost:8428/api/v1/series/count
 ```
 
 ## Docker Compose Setup
@@ -152,7 +152,7 @@ curl -d 'http_requests_total{method="GET", endpoint="/api/users"} 1500' \
 
 # Import metrics in JSON line format
 curl -X POST http://localhost:8428/api/v1/import \
-  -d '{"metric":{"__name__":"temperature","location":"office","floor":"3"},"values":[22.5],"timestamps":[1705312200]}'
+  -d '{"metric":{"__name__":"temperature","location":"office","floor":"3"},"values":[22.5],"timestamps":[1705312200000]}'
 
 # Import InfluxDB line protocol
 curl -d 'cpu_usage,host=server1,region=us-east value=78.5 1705312200000000000' \
@@ -233,14 +233,19 @@ VictoriaMetrics supports standard PromQL plus its own MetricsQL extension:
 
 ```bash
 # Instant query - current value of a metric
-curl "http://localhost:8428/api/v1/query?query=up"
+curl -G http://localhost:8428/api/v1/query \
+  --data-urlencode 'query=up'
 
 # Range query - values over the last hour
-curl "http://localhost:8428/api/v1/query_range?query=rate(http_requests_total[5m])&start=-1h&step=60s"
+curl -G http://localhost:8428/api/v1/query_range \
+  --data-urlencode 'query=rate(http_requests_total[5m])' \
+  --data-urlencode 'start=-1h' \
+  --data-urlencode 'step=60s'
 
 # MetricsQL extensions - rollup functions
 # Get the 95th percentile of request duration over a range
-curl "http://localhost:8428/api/v1/query?query=histogram_quantile(0.95,sum(rate(http_request_duration_seconds_bucket[5m]))by(le))"
+curl -G http://localhost:8428/api/v1/query \
+  --data-urlencode 'query=histogram_quantile(0.95,sum(rate(http_request_duration_seconds_bucket[5m])) by (le))'
 
 # Find top 10 metrics by series count
 curl "http://localhost:8428/api/v1/status/tsdb"
@@ -249,7 +254,9 @@ curl "http://localhost:8428/api/v1/status/tsdb"
 curl "http://localhost:8428/api/v1/label/__name__/values"
 
 # Export raw data for a specific metric
-curl "http://localhost:8428/api/v1/export?match[]=process_cpu_seconds_total&start=-1h"
+curl -G http://localhost:8428/api/v1/export \
+  --data-urlencode 'match[]=process_cpu_seconds_total' \
+  --data-urlencode 'start=-1h'
 ```
 
 ## VictoriaMetrics with Alerting (vmalert)
@@ -324,11 +331,12 @@ VictoriaMetrics provides built-in backup tools:
 ```bash
 # Create a backup using vmbackup
 docker run --rm \
+  --network container:victoriametrics \
   -v vm_data:/storage:ro \
   -v $(pwd)/backups:/backup \
   victoriametrics/vmbackup:latest \
   -storageDataPath=/storage \
-  -snapshot.createURL=http://victoriametrics:8428/snapshot/create \
+  -snapshot.createURL=http://localhost:8428/snapshot/create \
   -dst=fs:///backup/$(date +%Y%m%d)
 
 # Restore from backup
@@ -349,11 +357,8 @@ command:
   - -retentionPeriod=90d
   # Allocate more memory for caching frequently accessed data
   - -memory.allowedPercent=80
-  # Search cache size (speeds up repeated queries)
+  # Limit the number of unique time series a single query can process
   - -search.maxUniqueTimeseries=1000000
-  # Merge concurrency for background operations
-  - -bigMergeConcurrency=2
-  - -smallMergeConcurrency=4
   # Max query duration
   - -search.maxQueryDuration=60s
 ```
