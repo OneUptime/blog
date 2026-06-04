@@ -8,21 +8,21 @@ Description: Replace kube-proxy with Cilium's eBPF-based implementation to reduc
 
 ---
 
-The traditional kube-proxy component in Kubernetes uses iptables or IPVS to handle service load balancing. While functional, these approaches introduce latency and create complex iptables chains that become difficult to debug at scale. Cilium offers an eBPF-based kube-proxy replacement that eliminates these issues entirely. This guide shows you how to implement it.
+The traditional kube-proxy component in Kubernetes uses iptables or IPVS to handle service load balancing. While functional, these approaches can introduce latency and create complex iptables chains that become difficult to debug at scale. Cilium offers an eBPF-based kube-proxy replacement that avoids kube-proxy's service iptables or IPVS datapath. This guide shows you how to implement it.
 
 ## Why Replace kube-proxy
 
 Before diving into configuration, you should understand why replacing kube-proxy matters. The standard kube-proxy implementation creates iptables rules for every service and endpoint in your cluster. On a cluster with 1,000 services and 5,000 endpoints, you end up with tens of thousands of iptables rules.
 
-Each packet traverses these rules sequentially until it finds a match. This creates O(n) lookup performance that degrades as your cluster grows. You'll notice increased latency and CPU usage as your cluster scales.
+In iptables mode, packet matching can traverse rule chains until it finds a match. This can degrade as your cluster grows. You'll notice increased latency and CPU usage as your cluster scales.
 
-Cilium's eBPF implementation uses hash tables for O(1) lookups and processes packets directly in the kernel without the iptables overhead. You get consistent performance regardless of cluster size.
+Cilium's eBPF implementation uses maps for efficient lookups and processes packets directly in the kernel without kube-proxy's iptables overhead. You get more consistent performance as service count grows.
 
-The eBPF datapath also enables advanced features like direct server return (DSR), which allows response traffic to bypass load balancing hops and return directly to clients. This cuts latency in half for many workloads.
+The eBPF datapath also enables advanced features like direct server return (DSR), which allows response traffic to bypass load balancing hops and return directly to clients. This can reduce latency for many workloads.
 
 ## Prerequisites and Cluster Preparation
 
-You need a Kubernetes cluster running version 1.24 or later with a kernel version of 4.9.17 or higher. Most modern Linux distributions meet this requirement. Check your kernel version:
+You need a Kubernetes cluster running a version supported by your Cilium release. For Cilium 1.19, the tested Kubernetes versions are 1.31 through 1.34, and hosts should run Linux kernel 5.10 or later, or an equivalent distribution kernel such as RHEL 8.10's 4.18 kernel. Most modern Linux distributions meet this requirement. Check your kernel version:
 
 ```bash
 # Check kernel version on all nodes
@@ -37,13 +37,13 @@ If you're building a new cluster, disable kube-proxy from the start. For kubeadm
 
 ```yaml
 # kubeadm-config.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 networking:
   podSubnet: "10.244.0.0/16"
   serviceSubnet: "10.96.0.0/12"
 ---
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: InitConfiguration
 skipPhases:
   - addon/kube-proxy  # Skip kube-proxy installation
@@ -69,16 +69,13 @@ helm repo update
 Install Cilium with kube-proxy replacement enabled:
 
 ```bash
-helm install cilium cilium/cilium --version 1.15.0 \
+helm install cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
   --set kubeProxyReplacement=true \
   --set k8sServiceHost=API_SERVER_IP \
   --set k8sServicePort=API_SERVER_PORT \
-  --set hostServices.enabled=true \
-  --set externalIPs.enabled=true \
-  --set nodePort.enabled=true \
-  --set hostPort.enabled=true \
   --set bpf.masquerade=true \
+  --set prometheus.enabled=true \
   --set image.pullPolicy=IfNotPresent
 ```
 
@@ -110,12 +107,9 @@ kubectl -n kube-system delete ds kube-proxy
 
 # Delete kube-proxy ConfigMap (optional, prevents accidental reinstall)
 kubectl -n kube-system delete cm kube-proxy
-
-# Clean up kube-proxy iptables rules on each node
-kubectl -n kube-system exec ds/cilium -- cilium cleanup
 ```
 
-For a more thorough cleanup, SSH to each node and remove iptables rules manually:
+Then SSH to each node and remove kube-proxy iptables rules:
 
 ```bash
 # On each node
@@ -142,7 +136,7 @@ This creates test pods and services to validate that all networking features wor
 You should see all tests pass. Check the Cilium status to confirm kube-proxy replacement is active:
 
 ```bash
-cilium status | grep KubeProxyReplacement
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep KubeProxyReplacement
 ```
 
 You'll see output like:
@@ -156,25 +150,30 @@ KubeProxyReplacement:    True   [eth0 10.0.1.5 (Direct Routing)]
 With kube-proxy replacement active, you can enable additional performance optimizations. Direct Server Return (DSR) mode allows response traffic to bypass the load balancer:
 
 ```bash
-helm upgrade cilium cilium/cilium --version 1.15.0 \
+helm upgrade cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
   --reuse-values \
-  --set loadBalancer.mode=dsr
+  --set routingMode=native \
+  --set loadBalancer.mode=dsr \
+  --set loadBalancer.dsrDispatch=opt
 ```
 
-DSR mode requires that your external load balancer supports it. It works best with MetalLB or cloud provider load balancers that support DSR.
+DSR mode requires native routing or a supported DSR dispatch mode for your environment. It works best when your network and load balancer path can route replies directly from backends to clients.
 
 Enable Maglev consistent hashing for better load distribution:
 
 ```bash
-helm upgrade cilium cilium/cilium --version 1.15.0 \
+SEED=$(head -c12 /dev/urandom | base64 -w0)
+
+helm upgrade cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
   --reuse-values \
   --set loadBalancer.algorithm=maglev \
-  --set maglev.tableSize=65521
+  --set maglev.tableSize=65521 \
+  --set maglev.hashSeed=$SEED
 ```
 
-Maglev hashing ensures that backend changes cause minimal connection disruption by maintaining consistent hash values.
+Maglev hashing reduces backend reassignment when backends change. In Cilium, Maglev applies to external north-south traffic, not in-cluster east-west service connections that are handled by socket load balancing.
 
 ## Testing Service Load Balancing
 
@@ -258,30 +257,30 @@ SERVICE_IP=$(kubectl get svc netperf-server -o jsonpath='{.spec.clusterIP}')
 kubectl exec netperf-client -- netperf -H $SERVICE_IP -t TCP_RR -l 60 -- -o mean_latency,p99_latency
 ```
 
-Compare these results to a cluster running traditional kube-proxy. You should see a 20-40% reduction in mean latency and even larger improvements at the 99th percentile.
+Compare these results to a cluster running traditional kube-proxy. You may see lower mean latency and larger improvements at the 99th percentile, but the exact gain depends on your workload, kernel, routing mode, and service topology.
 
 ## Monitoring and Troubleshooting
 
 Cilium provides detailed metrics about service load balancing. Access the Cilium agent metrics:
 
 ```bash
-kubectl -n kube-system port-forward ds/cilium 9090:9090
+kubectl -n kube-system port-forward ds/cilium 9962:9962
 ```
 
 Query service-related metrics:
 
 ```bash
 # Service connection metrics
-curl http://localhost:9090/metrics | grep cilium_services
+curl http://localhost:9962/metrics | grep cilium_services
 
 # Backend health status
-curl http://localhost:9090/metrics | grep cilium_lb_backend
+curl http://localhost:9962/metrics | grep cilium_lb_backend
 ```
 
 For troubleshooting, use the Cilium service list command:
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium service list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg service list
 ```
 
 This shows all services and their backends with health status. Check for services with no healthy backends or unexpected backend counts.
@@ -289,47 +288,46 @@ This shows all services and their backends with health status. Check for service
 View detailed eBPF map statistics:
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium bpf lb list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf lb list
 ```
 
 This displays the actual eBPF maps used for service load balancing.
 
 ## Handling Node Port Allocation
 
-Cilium's kube-proxy replacement manages NodePort allocation differently. By default, it uses the same port range as kube-proxy (30000-32767), but you can customize it:
+NodePort allocation is controlled by the Kubernetes API server's `--service-node-port-range` setting. By default, Kubernetes uses 30000-32767. Cilium's kube-proxy replacement handles traffic for NodePort services in that configured range, but it does not change the API server's allocation range.
 
 ```bash
-helm upgrade cilium cilium/cilium --version 1.15.0 \
-  --namespace kube-system \
-  --reuse-values \
-  --set nodePort.range="30000-32767"
+# Set this on kube-apiserver, not in the Cilium chart
+--service-node-port-range=30000-32767
 ```
 
 Cilium also supports binding NodePort services to specific interfaces or IP addresses:
 
 ```bash
-helm upgrade cilium cilium/cilium --version 1.15.0 \
+helm upgrade cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
   --reuse-values \
+  --set nodePort.addresses="{192.168.1.0/24}" \
   --set nodePort.bindProtection=true \
   --set nodePort.enableHealthCheck=true
 ```
 
-The health check feature adds liveness probes for NodePort services, allowing external load balancers to detect node failures.
+The health check feature enables the health check NodePort server for NodePort services. You can also enable the kube-proxy replacement healthz endpoint with `--set kubeProxyReplacementHealthzBindAddr=0.0.0.0:10256` if external load balancers expect kube-proxy's health check port.
 
 ## Rollback Procedure
 
 If you need to roll back to kube-proxy, follow these steps carefully:
 
 ```bash
-# Reinstall kube-proxy
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/kube-proxy/kube-proxy.yaml
+# Reinstall kube-proxy on kubeadm clusters
+sudo kubeadm init phase addon kube-proxy --config kubeadm-config.yaml
 
 # Wait for kube-proxy to be ready
 kubectl -n kube-system rollout status ds/kube-proxy
 
 # Disable kube-proxy replacement in Cilium
-helm upgrade cilium cilium/cilium --version 1.15.0 \
+helm upgrade cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
   --reuse-values \
   --set kubeProxyReplacement=false
@@ -342,4 +340,4 @@ Test connectivity thoroughly after rollback to ensure services work correctly.
 
 ## Conclusion
 
-Replacing kube-proxy with Cilium's eBPF implementation delivers measurable performance improvements and simplifies cluster networking. The O(1) lookup performance, reduced latency, and advanced features like DSR make it a compelling upgrade for production clusters. Start with a development cluster to validate the configuration, then roll it out to production once you've verified performance gains in your specific environment.
+Replacing kube-proxy with Cilium's eBPF implementation delivers measurable performance improvements and simplifies cluster networking. The efficient map-based service lookup, reduced latency, and advanced features like DSR make it a compelling upgrade for production clusters. Start with a development cluster to validate the configuration, then roll it out to production once you've verified performance gains in your specific environment.
