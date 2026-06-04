@@ -12,7 +12,7 @@ Kubernetes Jobs are designed to run tasks to completion, but when they fail repe
 
 ## Understanding Job Backoff Limits
 
-The `backoffLimit` field in a Job specification controls how many times Kubernetes will retry a failed Pod before marking the Job as failed. Each Pod failure increments the backoff counter, and when this counter exceeds the backoff limit, the Job stops retrying.
+The `backoffLimit` field in a Job specification controls how many retries Kubernetes will allow before marking the Job as failed. Kubernetes counts failed Pods, and when `restartPolicy` is `OnFailure`, it also counts container retries in Pods that are still `Pending` or `Running`. When either count reaches the backoff limit, the Job stops retrying.
 
 The default backoff limit is 6, but this may not be appropriate for all workloads. Jobs that interact with flaky external APIs might need higher limits, while Jobs performing critical operations might need lower limits to fail fast.
 
@@ -26,7 +26,7 @@ The restart policy determines what happens when a container inside a Job Pod fai
 
 When a Job's container exits with a non-zero code and the restart policy is `OnFailure`, the kubelet restarts the container with exponential backoff delays. These delays start at 10 seconds and double with each retry, capped at 5 minutes. This behavior can make Jobs appear stuck when containers repeatedly crash.
 
-If the restart policy is `Never`, each container failure creates a new Pod, and the backoff limit counts these Pod failures. You'll see multiple failed Pods accumulating until the backoff limit is reached.
+If the restart policy is `Never`, each failed Pod is replaced by a new Pod, and the backoff limit counts these Pod failures. You'll see multiple failed Pods accumulating until the backoff limit is reached.
 
 ## Diagnosing Job Failures
 
@@ -99,7 +99,7 @@ spec:
           claimName: processing-data
 ```
 
-With `OnFailure`, failed containers restart in the same Pod, preserving the Pod's IP address and volumes. This is useful when you need to maintain state between retries or when debugging with pod-level resources.
+With `OnFailure`, failed containers restart in the same Pod, preserving the Pod's volumes while the Pod remains on the same node. This is useful when you need to maintain local state between retries, but it can make debugging harder because the Job Pod is terminated once the backoff limit is reached.
 
 ## Example: Job with Never Restart Policy
 
@@ -111,7 +111,7 @@ kind: Job
 metadata:
   name: api-migration
 spec:
-  backoffLimit: 3  # Create up to 3 Pods
+  backoffLimit: 3  # Allow up to 3 failed Pods before the Job fails
   template:
     spec:
       restartPolicy: Never
@@ -182,7 +182,7 @@ spec:
 
 ## Handling Exponential Backoff
 
-When using `OnFailure`, be aware of the exponential backoff between container restarts. A Job that fails 6 times will have delays of roughly 10s, 20s, 40s, 80s, 160s, and 300s. That's over 10 minutes of total backoff time.
+When using `OnFailure`, be aware of the exponential backoff between container restarts. A container that repeatedly fails will have restart delays of roughly 10s, 20s, 40s, 80s, 160s, and then 300s, capped at 5 minutes by default. That's over 10 minutes of total backoff time.
 
 You can implement application-level retries with shorter delays to complete faster.
 
@@ -192,7 +192,7 @@ kind: Job
 metadata:
   name: quick-retry-job
 spec:
-  backoffLimit: 2  # Only allow 2 Pod failures
+  backoffLimit: 2  # Keep the Kubernetes-level retry count low
   template:
     spec:
       restartPolicy: OnFailure
