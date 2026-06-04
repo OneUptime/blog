@@ -8,18 +8,18 @@ Description: Learn how to use Checkov to scan Dockerfiles for security misconfig
 
 ---
 
-Building a secure Docker image starts with the Dockerfile. Misconfigurations like running as root, using the `latest` tag, or adding unnecessary capabilities create vulnerabilities before the image even runs. Checkov is a static analysis tool that scans Dockerfiles against hundreds of security policies and catches these issues before the build step. Fix the Dockerfile, not the running container.
+Building a secure Docker image starts with the Dockerfile. Misconfigurations like running as root, using the `latest` tag, or adding unnecessary capabilities create vulnerabilities before the image even runs. Checkov is a static analysis tool that scans Dockerfiles against built-in security policies and catches these issues before the build step. Fix the Dockerfile, not the running container.
 
 ## What Is Checkov?
 
-Checkov is an open source static analysis tool by Bridgecrew (now part of Palo Alto Networks) that scans infrastructure-as-code files for misconfigurations. It supports Terraform, CloudFormation, Kubernetes manifests, Helm charts, and Dockerfiles. For Dockerfiles specifically, it checks against CIS Docker Benchmark recommendations and additional community policies.
+Checkov is an open source static analysis tool by Bridgecrew (now part of Palo Alto Networks) that scans infrastructure-as-code files for misconfigurations. It supports Terraform, CloudFormation, Kubernetes manifests, Helm charts, and Dockerfiles. For Dockerfiles specifically, it checks for Dockerfile best practices such as not running as root, adding health checks, avoiding SSH exposure, and pinning image tags.
 
 ## Installation
 
 Install Checkov using pip or run it as a Docker container:
 
 ```bash
-# Install with pip (Python 3.8+ required)
+# Install with pip (Python 3.9+ required)
 
 pip install checkov
 
@@ -70,26 +70,21 @@ CMD ["python", "/app/main.py"]
 Checkov reports:
 
 ```text
-Passed checks: 2, Failed checks: 6, Skipped checks: 0
+Passed checks: 21, Failed checks: 4, Skipped checks: 0
+
+Check: CKV_DOCKER_1: "Ensure port 22 is not exposed"
+    FAILED for resource: /Dockerfile.EXPOSE
+    Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/docker-policies/docker-policy-index/ensure-port-22-is-not-exposed
 
 Check: CKV_DOCKER_2: "Ensure that HEALTHCHECK instructions have been added"
     FAILED for resource: /Dockerfile.
-    Guide: https://docs.bridgecrew.io/docs/ensure-that-healthcheck-instructions-have-been-added
-
-Check: CKV_DOCKER_3: "Ensure that a user for the container has been created"
-    FAILED for resource: /Dockerfile.
+    Guide: https://docs.prismacloud.io/en/enterprise-edition/policy-reference/docker-policies/docker-policy-index/ensure-that-healthcheck-instructions-have-been-added-to-container-images
 
 Check: CKV_DOCKER_7: "Ensure the base image uses a non latest version tag"
-    FAILED for resource: /Dockerfile.
+    FAILED for resource: /Dockerfile.FROM
 
 Check: CKV_DOCKER_8: "Ensure the last USER is not root"
-    FAILED for resource: /Dockerfile.
-
-Check: CKV_DOCKER_9: "Ensure that APT isn't used"
-    FAILED for resource: /Dockerfile.
-
-Check: CKV_DOCKER_11: "Ensure From Alias is unique for multistage builds"
-    PASSED for resource: /Dockerfile.
+    FAILED for resource: /Dockerfile.USER
 ```
 
 Each finding includes the check ID, a description, and a link to documentation with remediation steps.
@@ -185,20 +180,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 ```
 
-### CKV_DOCKER_6: Adding Sensitive Files
+### CKV_DOCKER_4: Using ADD Instead of COPY
 
-Do not COPY or ADD sensitive files like private keys or credentials:
+Use `COPY` for local files and directories. Reserve `ADD` for cases where you specifically need its extra behavior, such as extracting local tar archives:
 
 ```dockerfile
-# BAD: Copies everything including potential secrets
-COPY . /app
+# BAD: ADD is not needed for a plain local copy
+ADD src/ /app/src/
 
-# GOOD: Use .dockerignore and copy specific files
+# GOOD: COPY makes the intent explicit
 COPY src/ /app/src/
-COPY package.json /app/
 ```
 
-Create a thorough `.dockerignore`:
+Also use `.dockerignore` and copy specific files so secrets and unnecessary files are not sent in the build context:
 
 ```text
 # .dockerignore
@@ -346,9 +340,10 @@ Catch issues before they reach CI:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/bridgecrewio/checkov
-    rev: '3.1.0'
+    rev: '3.2.533'
     hooks:
       - id: checkov
+        files: '(^|/)Dockerfile[^/]*$'
         args: ['--framework', 'dockerfile']
 ```
 
