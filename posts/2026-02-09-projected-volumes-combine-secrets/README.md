@@ -137,7 +137,13 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
       - name: api
@@ -248,6 +254,9 @@ kind: Deployment
 metadata:
   name: web-app
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
     metadata:
       labels:
@@ -282,12 +291,9 @@ spec:
               - path: pod-namespace
                 fieldRef:
                   fieldPath: metadata.namespace
-              - path: pod-ip
+              - path: pod-uid
                 fieldRef:
-                  fieldPath: status.podIP
-              - path: node-name
-                fieldRef:
-                  fieldPath: spec.nodeName
+                  fieldPath: metadata.uid
               - path: labels
                 fieldRef:
                   fieldPath: metadata.labels
@@ -304,8 +310,7 @@ The combined directory:
 ├── config.yaml         (from ConfigMap)
 ├── pod-name            (from Downward API)
 ├── pod-namespace       (from Downward API)
-├── pod-ip              (from Downward API)
-├── node-name           (from Downward API)
+├── pod-uid             (from Downward API)
 ├── labels              (from Downward API)
 └── annotations         (from Downward API)
 ```
@@ -342,7 +347,7 @@ volumes:
         audience: "my-api"
 ```
 
-Access the token:
+If you mount this volume at `/etc/config`, access the token:
 
 ```bash
 TOKEN=$(cat /etc/config/token)
@@ -497,7 +502,7 @@ Directory structure:
 
 ## Handling File Name Conflicts
 
-If multiple sources have the same key, the last one wins:
+If multiple sources explicitly project files to the same path, Kubernetes rejects the Pod with a conflicting duplicate paths error:
 
 ```yaml
 volumes:
@@ -513,7 +518,7 @@ volumes:
         name: environment-override
         items:
         - key: app.yaml
-          path: config.yaml  # Overrides previous config.yaml
+          path: config.yaml  # Invalid: conflicts with the previous config.yaml
 ```
 
 Use subdirectories to avoid conflicts:
