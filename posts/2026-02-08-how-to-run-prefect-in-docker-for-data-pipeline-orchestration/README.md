@@ -23,8 +23,6 @@ Here is a complete setup with Prefect server, PostgreSQL for state storage, and 
 ```yaml
 # docker-compose.yml - Prefect orchestration platform
 
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16
@@ -127,7 +125,7 @@ import sqlalchemy
 
 
 @task(retries=3, retry_delay_seconds=10, cache_key_fn=task_input_hash, cache_expiration=timedelta(hours=1))
-def extract_data(api_url: str) -> dict:
+def extract_data(api_url: str) -> list:
     """Fetch data from an external API with automatic retries."""
     logger = get_run_logger()
     logger.info(f"Extracting data from {api_url}")
@@ -141,7 +139,7 @@ def extract_data(api_url: str) -> dict:
 
 
 @task
-def transform_data(raw_data: dict) -> pd.DataFrame:
+def transform_data(raw_data: list) -> pd.DataFrame:
     """Clean and transform the raw API data into a structured DataFrame."""
     logger = get_run_logger()
 
@@ -206,19 +204,17 @@ if __name__ == "__main__":
 
 ## Deploying Flows
 
-Register your flow with the Prefect server so it can be scheduled:
+Create a deployment on the Prefect server so your flow can be scheduled:
 
 ```python
 # flows/deploy.py - Deploy flows to the Prefect server with schedules
-from prefect.deployments import Deployment
-from prefect.server.schemas.schedules import CronSchedule
+from prefect.client.schemas.schedules import CronSchedule
 from etl_pipeline import etl_pipeline
 
 
 def deploy():
     """Create a deployment for the ETL pipeline with a daily schedule."""
-    deployment = Deployment.build_from_flow(
-        flow=etl_pipeline,
+    deployment = etl_pipeline.to_deployment(
         name="daily-etl",
         work_pool_name="default-agent-pool",
         schedule=CronSchedule(cron="0 6 * * *", timezone="UTC"),
@@ -227,6 +223,7 @@ def deploy():
             "table_name": "users",
             "db_url": "postgresql://prefect:prefect@postgres:5432/prefect"
         },
+        job_variables={"working_dir": "/app/flows"},
         tags=["etl", "daily"]
     )
     deployment.apply()
