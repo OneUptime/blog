@@ -171,7 +171,13 @@ kind: Deployment
 metadata:
   name: prod-api
 spec:
+  selector:
+    matchLabels:
+      app: prod-api
   template:
+    metadata:
+      labels:
+        app: prod-api
     spec:
       containers:
       - name: api
@@ -201,7 +207,13 @@ kind: Deployment
 metadata:
   name: dev-api
 spec:
+  selector:
+    matchLabels:
+      app: dev-api
   template:
+    metadata:
+      labels:
+        app: dev-api
     spec:
       containers:
       - name: api
@@ -260,6 +272,9 @@ metadata:
   name: critical-service
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: critical-service
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -267,6 +282,9 @@ spec:
       maxUnavailable: 1        # Only 1 pod unavailable at a time
 
   template:
+    metadata:
+      labels:
+        app: critical-service
     spec:
       containers:
       - name: service
@@ -303,16 +321,16 @@ Track probe behavior:
 rate(prober_probe_total{result="failed"}[5m])
 
 # Count pods failing health checks
-count by (namespace, deployment) (
-  kube_pod_status_ready{condition="false"}
+sum by (namespace) (
+  kube_pod_status_ready{condition="false"} == 1
 )
 
 # Pod restart rate (indicates liveness failures)
 rate(kube_pod_container_status_restarts_total[15m])
 
-# Time between probe failure and action
+# Probe latency
 histogram_quantile(0.95,
-  rate(probe_failure_duration_seconds_bucket[10m])
+  rate(prober_probe_duration_seconds_bucket[10m])
 )
 ```
 
@@ -402,12 +420,12 @@ if __name__ == '__main__':
 Test different scenarios:
 
 ```bash
-# Trigger a 25-second failure (less than 3 * 10s = 30s threshold)
-curl http://my-pod:8080/trigger-failure/25
+# Trigger a 15-second failure (less than 3 * 10s = 30s threshold)
+curl http://my-pod:8080/trigger-failure/15
 # Pod should NOT restart
 
-# Trigger a 35-second failure (more than threshold)
-curl http://my-pod:8080/trigger-failure/35
+# Trigger a 45-second failure (more than threshold)
+curl http://my-pod:8080/trigger-failure/45
 # Pod should restart
 
 # Monitor during test
