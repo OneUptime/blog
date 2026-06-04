@@ -12,9 +12,9 @@ When updating DaemonSets in Kubernetes, controlling the rollout speed is critica
 
 ## Understanding maxUnavailable in DaemonSets
 
-Unlike Deployments that use maxSurge and maxUnavailable together, DaemonSets only support maxUnavailable because they maintain exactly one pod per node. This parameter defines the maximum number of DaemonSet pods that can be unavailable during the update process.
+Unlike Deployments, DaemonSets normally maintain one pod on each eligible node, and `maxUnavailable` controls how many of those pods can be stopped before replacement pods are available. DaemonSets also support `maxSurge`, but it defaults to 0, so `maxUnavailable` is the main setting for the common update pattern where the old pod is removed before the new one starts on that node.
 
-The maxUnavailable value can be specified as an absolute number or as a percentage of total nodes. For example, if you have 10 nodes and set maxUnavailable to 20%, only 2 pods can be unavailable at any time during the rollout.
+The maxUnavailable value can be specified as an absolute number or as a percentage of the total number of DaemonSet pods at the start of the update. For example, if your DaemonSet is scheduled on 10 nodes and you set maxUnavailable to 20%, only 2 pods can be unavailable at any time during the rollout.
 
 ## Basic DaemonSet with maxUnavailable configuration
 
@@ -113,7 +113,7 @@ spec:
           path: /sys
 ```
 
-With a 40-node cluster, this configuration allows up to 10 pods to be unavailable simultaneously, significantly speeding up the rollout while maintaining service availability.
+With a DaemonSet scheduled on 40 nodes, this configuration allows up to 10 pods to be unavailable simultaneously, significantly speeding up the rollout while maintaining service availability.
 
 ## Conservative update strategy for critical services
 
@@ -236,7 +236,7 @@ The output shows you how many pods are ready, updated, and available during the 
 
 ## Combining maxUnavailable with node selectors
 
-You can also control which nodes get updated first by combining maxUnavailable with node labels:
+You can also control which nodes participate in the rollout by combining maxUnavailable with node labels:
 
 ```yaml
 apiVersion: apps/v1
