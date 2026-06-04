@@ -8,38 +8,39 @@ Description: Learn how to connect multiple edge K3s clusters using WireGuard mes
 
 ---
 
-Edge deployments often span multiple geographic locations, each running its own K3s cluster. These clusters need to communicate for distributed applications, data synchronization, and failover scenarios. Traditional VPNs create hub-and-spoke topologies with single points of failure. WireGuard mesh networking creates direct, encrypted connections between all clusters.
+Edge deployments often span multiple geographic locations, each running its own K3s cluster. These clusters need to communicate for distributed applications, data synchronization, and failover scenarios. Traditional VPNs often create hub-and-spoke topologies with single points of failure. WireGuard mesh networking creates direct, encrypted connections between all clusters.
 
 In this guide, you'll build a secure mesh network connecting multiple edge K3s clusters using WireGuard, enabling low-latency cross-cluster communication without central dependencies.
 
 ## Understanding WireGuard Mesh Architecture
 
-A mesh network connects every node directly to every other node. In a 3-cluster deployment, each cluster establishes WireGuard tunnels to the other two, creating redundant paths with automatic failover.
+A mesh network connects every site gateway directly to every other gateway. In a 3-cluster deployment, each cluster establishes WireGuard tunnels to the other two, creating direct encrypted paths between locations.
 
 Benefits for edge clusters:
 
 - No central VPN gateway (single point of failure)
 - Lower latency with direct connections
 - Encrypted tunnel traffic
-- Automatic route updates when topology changes
-- Works through NAT and firewalls
+- Routes can be automated when topology changes
+- Works with NAT and firewalls when reachable endpoints, keepalives, or relays are configured
 
-WireGuard is perfect for this because it's lightweight, performant, and handles dynamic peer discovery well.
+WireGuard is perfect for this because it's lightweight, performant, and supports roaming endpoints with persistent keepalives.
 
 ## Prerequisites
 
 You need:
 
 - 3 or more K3s clusters at different edge locations
+- Single-node K3s clusters, or a gateway node that all cluster nodes can route through
 - Public IP or NAT traversal solution for each location
 - Root access to cluster nodes
 - UDP port 51820 open on firewalls
 
 For this guide, we'll connect three retail store clusters: store-a, store-b, and store-c.
 
-## Installing WireGuard on All Nodes
+## Installing WireGuard on Gateway Nodes
 
-On each K3s node in all clusters:
+On one gateway node in each K3s cluster:
 
 ```bash
 # Ubuntu/Debian
@@ -62,7 +63,7 @@ lsmod | grep wireguard
 
 ## Generating WireGuard Keys
 
-Generate key pairs for each cluster:
+Generate key pairs for each gateway node:
 
 ```bash
 # On store-a cluster
@@ -76,17 +77,19 @@ STORE_A_PRIVATE=$(sudo cat privatekey)
 STORE_A_PUBLIC=$(sudo cat publickey)
 ```
 
-Repeat on store-b and store-c, saving each cluster's public key.
+Repeat on store-b and store-c, saving each gateway node's public key.
 
 ## Planning IP Address Ranges
 
-Assign non-overlapping IP ranges to each cluster:
+Assign non-overlapping pod, service, and WireGuard IP ranges to each cluster:
 
-- Store-A: Cluster CIDR 10.42.0.0/16, WireGuard 10.100.1.0/24
-- Store-B: Cluster CIDR 10.43.0.0/16, WireGuard 10.100.2.0/24
-- Store-C: Cluster CIDR 10.44.0.0/16, WireGuard 10.100.3.0/24
+- Store-A: Pod CIDR 10.42.0.0/16, Service CIDR 10.43.0.0/16, WireGuard 10.100.1.0/24
+- Store-B: Pod CIDR 10.52.0.0/16, Service CIDR 10.53.0.0/16, WireGuard 10.100.2.0/24
+- Store-C: Pod CIDR 10.62.0.0/16, Service CIDR 10.63.0.0/16, WireGuard 10.100.3.0/24
 
 K3s clusters must have different pod and service CIDRs to avoid routing conflicts.
+
+Configure these ranges when installing each K3s server, for example with `--cluster-cidr`, `--service-cidr`, and a `--cluster-dns` address inside the service CIDR.
 
 ## Configuring WireGuard on Store-A
 
@@ -107,14 +110,14 @@ PostDown = iptables -D FORWARD -o wg0 -j ACCEPT
 # Peer: Store-B
 [Peer]
 PublicKey = ${STORE_B_PUBLIC}
-AllowedIPs = 10.100.2.0/24, 10.43.0.0/16  # Store-B WireGuard and Pod CIDR
+AllowedIPs = 10.100.2.0/24, 10.52.0.0/16, 10.53.0.0/16
 Endpoint = store-b.example.com:51820
 PersistentKeepalive = 25
 
 # Peer: Store-C
 [Peer]
 PublicKey = ${STORE_C_PUBLIC}
-AllowedIPs = 10.100.3.0/24, 10.44.0.0/16  # Store-C WireGuard and Pod CIDR
+AllowedIPs = 10.100.3.0/24, 10.62.0.0/16, 10.63.0.0/16
 Endpoint = store-c.example.com:51820
 PersistentKeepalive = 25
 EOF
@@ -139,13 +142,13 @@ PostDown = iptables -D FORWARD -o wg0 -j ACCEPT
 
 [Peer]
 PublicKey = ${STORE_A_PUBLIC}
-AllowedIPs = 10.100.1.0/24, 10.42.0.0/16
+AllowedIPs = 10.100.1.0/24, 10.42.0.0/16, 10.43.0.0/16
 Endpoint = store-a.example.com:51820
 PersistentKeepalive = 25
 
 [Peer]
 PublicKey = ${STORE_C_PUBLIC}
-AllowedIPs = 10.100.3.0/24, 10.44.0.0/16
+AllowedIPs = 10.100.3.0/24, 10.62.0.0/16, 10.63.0.0/16
 Endpoint = store-c.example.com:51820
 PersistentKeepalive = 25
 EOF
@@ -170,13 +173,13 @@ PostDown = iptables -D FORWARD -o wg0 -j ACCEPT
 
 [Peer]
 PublicKey = ${STORE_A_PUBLIC}
-AllowedIPs = 10.100.1.0/24, 10.42.0.0/16
+AllowedIPs = 10.100.1.0/24, 10.42.0.0/16, 10.43.0.0/16
 Endpoint = store-a.example.com:51820
 PersistentKeepalive = 25
 
 [Peer]
 PublicKey = ${STORE_B_PUBLIC}
-AllowedIPs = 10.100.2.0/24, 10.43.0.0/16
+AllowedIPs = 10.100.2.0/24, 10.52.0.0/16, 10.53.0.0/16
 Endpoint = store-b.example.com:51820
 PersistentKeepalive = 25
 EOF
@@ -186,7 +189,7 @@ sudo chmod 600 /etc/wireguard/wg0.conf
 
 ## Starting WireGuard Mesh
 
-On all clusters:
+On all gateway nodes:
 
 ```bash
 # Enable and start WireGuard
@@ -218,23 +221,15 @@ All pings should succeed, confirming the mesh is working.
 
 ## Configuring K3s Cross-Cluster Routes
 
-Add routes to reach pods in other clusters:
+Verify the routes that `wg-quick` added from each peer's `AllowedIPs`:
 
 ```bash
-# On store-a, add routes to other clusters' pod CIDRs
-sudo ip route add 10.43.0.0/16 via 10.100.2.1 dev wg0  # Store-B pods
-sudo ip route add 10.44.0.0/16 via 10.100.3.1 dev wg0  # Store-C pods
-
-# Make routes persistent
-sudo tee -a /etc/wireguard/wg0.conf > /dev/null <<EOF
-PostUp = ip route add 10.43.0.0/16 via 10.100.2.1 dev wg0
-PostUp = ip route add 10.44.0.0/16 via 10.100.3.1 dev wg0
-PostDown = ip route del 10.43.0.0/16 via 10.100.2.1 dev wg0
-PostDown = ip route del 10.44.0.0/16 via 10.100.3.1 dev wg0
-EOF
+# On store-a, confirm routes to other clusters' pod CIDRs
+ip route get 10.52.10.5
+ip route get 10.62.10.5
 ```
 
-Repeat on store-b and store-c with appropriate CIDRs.
+Repeat on store-b and store-c with appropriate pod and service CIDRs. In multi-node clusters, every node must have routes to the remote CIDRs through the local WireGuard gateway. If you set `Table = off` in `wg0.conf`, add equivalent static routes with `PostUp` and `PostDown` instead.
 
 ## Testing Cross-Cluster Pod Communication
 
@@ -265,55 +260,57 @@ kubectl exec test-a -- ping -c 3 <store-b-pod-ip>
 
 ## Implementing Multi-Cluster Services
 
-Use multi-cluster services for transparent failover:
+Use selectorless services for reachable remote endpoints:
 
 ```yaml
 # On store-a: api-service.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: api-service
-  annotations:
-    mesh.wireguard/export: "true"
+  name: api-service-store-b
 spec:
-  selector:
-    app: api
   ports:
-    - port: 8080
+    - name: http
+      port: 8080
       targetPort: 8080
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: api-service-store-b
-subsets:
+  name: api-service-store-b-1
+  labels:
+    kubernetes.io/service-name: api-service-store-b
+addressType: IPv4
+ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+endpoints:
   - addresses:
-      - ip: 10.43.10.5  # Pod IP in store-b
-    ports:
-      - port: 8080
+      - "10.52.10.5"  # Pod IP in store-b
 ```
 
 This allows pods in store-a to call `api-service-store-b:8080` and reach store-b pods directly.
 
-## Configuring Dynamic Route Updates
+## Monitoring Route Health
 
-Use a lightweight route synchronizer:
+Use a lightweight route health checker:
 
 ```yaml
-# route-sync-daemon.yaml
+# route-health-daemon.yaml
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: wireguard-route-sync
+  name: wireguard-route-health
   namespace: kube-system
 spec:
   selector:
     matchLabels:
-      app: route-sync
+      app: route-health
   template:
     metadata:
       labels:
-        app: route-sync
+        app: route-health
     spec:
       hostNetwork: true
       containers:
@@ -340,30 +337,25 @@ spec:
 
 ## Implementing Cross-Cluster Service Discovery
 
-Use CoreDNS stub zones for cross-cluster DNS:
+Use CoreDNS stub zones for cross-cluster DNS, forwarding to each remote cluster's CoreDNS service IP. Add these server blocks to the existing CoreDNS Corefile:
 
-```yaml
-# Extend CoreDNS config
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: coredns-custom
-  namespace: kube-system
-data:
-  mesh.server: |
-    store-b.mesh:53 {
-        errors
-        cache 30
-        forward . 10.100.2.1:53
-    }
-    store-c.mesh:53 {
-        errors
-        cache 30
-        forward . 10.100.3.1:53
-    }
+```corefile
+store-b.mesh:53 {
+    errors
+    cache 30
+    rewrite name suffix .store-b.mesh. .cluster.local. answer auto
+    forward . 10.53.0.10:53
+}
+
+store-c.mesh:53 {
+    errors
+    cache 30
+    rewrite name suffix .store-c.mesh. .cluster.local. answer auto
+    forward . 10.63.0.10:53
+}
 ```
 
-Now pods can resolve `api-service.default.svc.store-b.mesh`.
+Now pods can resolve records served by the remote cluster's CoreDNS zone, such as `api-service.default.svc.store-b.mesh`.
 
 ## Monitoring WireGuard Mesh
 
@@ -390,9 +382,9 @@ sudo chmod +x /usr/local/bin/wg-monitor.sh
 */5 * * * * /usr/local/bin/wg-monitor.sh | logger -t wireguard-monitor
 ```
 
-## Implementing Automatic Failover
+## Implementing a Global Service
 
-Configure automatic failover between clusters:
+Configure a service that can load balance across routed pod IPs:
 
 ```yaml
 # global-loadbalancer.yaml
@@ -401,50 +393,55 @@ kind: Service
 metadata:
   name: global-api
 spec:
-  type: ExternalName
-  externalName: api-service.default.svc.cluster.local
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: global-api
-subsets:
+  name: global-api-1
+  labels:
+    kubernetes.io/service-name: global-api
+addressType: IPv4
+ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+endpoints:
   - addresses:
-      - ip: 10.42.10.5  # Store-A pod
-    ports:
-      - port: 8080
+      - "10.42.10.5"  # Store-A pod
   - addresses:
-      - ip: 10.43.10.5  # Store-B pod (backup)
-    ports:
-      - port: 8080
+      - "10.52.10.5"  # Store-B pod
 ```
 
 ## Handling NAT Traversal
 
-For clusters behind NAT, use hole-punching:
+For clusters behind NAT, use a stable public endpoint or dynamic DNS. Keepalives maintain NAT mappings after a peer has an endpoint:
 
-```bash
-# Update WireGuard config with STUN-discovered endpoint
+```ini
+# Update WireGuard config with a reachable endpoint
 [Peer]
-Endpoint = $(stunclient stun.l.google.com:19302 | grep "Mapped address" | awk '{print $3}'):51820
+Endpoint = store-b.example.com:51820
 PersistentKeepalive = 25
 ```
 
-Or use a relay node with public IP:
+Or use a relay node with a public IP and configure each NAT'd cluster as a peer of the relay:
 
 ```bash
-# Relay node forwards traffic between NAT'd peers
-[Interface]
-PostUp = iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+# Relay node forwards traffic between WireGuard peers
+sudo sysctl -w net.ipv4.ip_forward=1
+sudo iptables -A FORWARD -i wg0 -o wg0 -j ACCEPT
 ```
 
 ## Securing the Mesh
 
-Add authentication and rate limiting:
+Add firewall restrictions and rate limiting:
 
 ```bash
-# Firewall rules to restrict WireGuard traffic
-sudo ufw allow from 10.100.0.0/16 to any port 51820 proto udp
+# Firewall rules to allow WireGuard from peer public addresses
+sudo ufw allow from <peer-public-ip> to any port 51820 proto udp
 sudo ufw deny 51820/udp
 
 # Rate limit connection attempts
