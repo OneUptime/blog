@@ -12,11 +12,11 @@ Rate limiting protects backend services from overload and abuse by controlling r
 
 ## Understanding NGINX Rate Limiting
 
-NGINX uses the leaky bucket algorithm for rate limiting. Requests arrive at variable rates but are processed at a fixed rate. Excess requests either queue up to a burst limit or get rejected with 429 status codes.
+NGINX uses the leaky bucket algorithm for rate limiting. Requests arrive at variable rates but are processed at a fixed rate. Excess requests either queue up to a burst limit or get rejected with the configured rate-limit status code.
 
-The limit applies per key, typically the client IP address. NGINX tracks request rates for each unique key in a shared memory zone. When a client exceeds the limit, NGINX delays or rejects subsequent requests based on burst configuration.
+The limit applies per key, typically the client IP address. NGINX tracks request rates for each unique key in a shared memory zone. In NGINX Ingress Controller, these limits are applied per controller replica, so the effective limit scales with the number of replicas. When a client exceeds the limit, NGINX delays or rejects subsequent requests based on burst configuration.
 
-Burst allows temporary spikes above the rate limit. A client can send burst requests immediately if they haven't used their quota recently. This handles legitimate traffic patterns while still preventing sustained abuse.
+Burst allows temporary spikes above the rate limit. Excess requests within the burst limit may be delayed so they are processed at the configured rate; requests beyond the burst limit are rejected. This handles legitimate traffic patterns while still preventing sustained abuse.
 
 ## Implementing Basic Rate Limiting
 
@@ -31,12 +31,11 @@ metadata:
   name: api-ingress
   namespace: production
   annotations:
-    kubernetes.io/ingress.class: nginx
-    # Rate limit: 10 requests per second per IP
+    # Rate limit: 10 requests per second per IP per controller replica
     nginx.ingress.kubernetes.io/limit-rps: "10"
-    # Return 429 when limit exceeded
-    nginx.ingress.kubernetes.io/limit-whitelist: ""
+    # Rejected requests return the controller's configured limit-req-status-code
 spec:
+  ingressClassName: nginx
   rules:
     - host: api.example.com
       http:
@@ -67,14 +66,12 @@ metadata:
   name: api-ingress
   namespace: production
   annotations:
-    kubernetes.io/ingress.class: nginx
-    # 10 requests per second
+    # 10 requests per second per IP per controller replica
     nginx.ingress.kubernetes.io/limit-rps: "10"
     # Allow burst of 20 requests
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
-    # Don't delay burst requests
-    nginx.ingress.kubernetes.io/limit-rate-after: "0"
 spec:
+  ingressClassName: nginx
   rules:
     - host: api.example.com
       http:
@@ -100,10 +97,10 @@ metadata:
   name: api-public
   namespace: production
   annotations:
-    kubernetes.io/ingress.class: nginx
     # Lower limit for resource-intensive endpoints
     nginx.ingress.kubernetes.io/limit-rps: "5"
 spec:
+  ingressClassName: nginx
   rules:
     - host: api.example.com
       http:
@@ -122,10 +119,10 @@ metadata:
   name: api-fast
   namespace: production
   annotations:
-    kubernetes.io/ingress.class: nginx
     # Higher limit for lightweight endpoints
     nginx.ingress.kubernetes.io/limit-rps: "50"
 spec:
+  ingressClassName: nginx
   rules:
     - host: api.example.com
       http:
@@ -157,10 +154,10 @@ metadata:
   name: api-ingress
   namespace: production
   annotations:
-    kubernetes.io/ingress.class: nginx
-    # Limit to 10 concurrent connections per IP
+    # Limit to 10 concurrent connections per IP per controller replica
     nginx.ingress.kubernetes.io/limit-connections: "10"
 spec:
+  ingressClassName: nginx
   rules:
     - host: api.example.com
       http:
@@ -185,11 +182,11 @@ metadata:
   name: api-ingress
   namespace: production
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/limit-rps: "10"
     # Whitelist internal IPs and monitoring systems
-    nginx.ingress.kubernetes.io/limit-whitelist: "10.0.0.0/8,192.168.1.100"
+    nginx.ingress.kubernetes.io/limit-whitelist: "10.0.0.0/8,192.168.1.100/32"
 spec:
+  ingressClassName: nginx
   rules:
     - host: api.example.com
       http:
@@ -205,21 +202,30 @@ spec:
 
 ## Custom Rate Limiting with Snippets
 
-For advanced scenarios, use configuration snippets:
+For advanced scenarios, define a custom zone in the controller ConfigMap and reference it from a configuration snippet:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  allow-snippet-annotations: "true"
+  http-snippet: |
+    limit_req_zone $http_authorization zone=apikey:10m rate=100r/s;
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: api-ingress
   namespace: production
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/configuration-snippet: |
-      limit_req_zone $http_authorization zone=apikey:10m rate=100r/s;
       limit_req zone=apikey burst=200 nodelay;
       limit_req_status 429;
 spec:
+  ingressClassName: nginx
   rules:
     - host: api.example.com
       http:
@@ -242,7 +248,7 @@ Verify rate limiting works:
 kubectl run -it --rm load-test --image=williamyeh/hey --restart=Never -- \
   -n 100 -c 10 https://api.example.com/api/search
 
-# Check for 429 responses
+# Check for rejected responses, usually 503 unless limit-req-status-code is configured
 for i in {1..50}; do
   curl -s -o /dev/null -w "%{http_code}\n" https://api.example.com/api/search
   sleep 0.05
@@ -254,10 +260,10 @@ done
 Check NGINX Ingress metrics for rate limiting:
 
 ```bash
-kubectl port-forward -n ingress-nginx svc/nginx-ingress-controller-metrics 10254:10254
+kubectl port-forward -n ingress-nginx deploy/ingress-nginx-controller 10254:10254
 
-# Query metrics
-curl http://localhost:10254/metrics | grep nginx_http_limit
+# Query request metrics and filter for rejected responses
+curl http://localhost:10254/metrics | grep 'nginx_ingress_controller_requests.*status="503"'
 ```
 
 NGINX Ingress rate limiting provides powerful protection against API abuse and overload scenarios. Proper configuration balances protecting backend services while allowing legitimate traffic patterns, all without requiring changes to application code.
