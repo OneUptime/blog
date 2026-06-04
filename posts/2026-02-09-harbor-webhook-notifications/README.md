@@ -8,7 +8,7 @@ Description: Master Harbor webhook notifications to trigger actions on image pus
 
 ---
 
-Harbor webhooks notify external systems of registry events like image push, scan completion, quota exceeded, and replication status. Configure webhook endpoints per project, filter events by type, customize payloads, and verify signatures for security. Use webhooks to trigger CI/CD pipelines, send Slack notifications, update deployment systems, or invoke security scanning. This enables event-driven automation and integration of Harbor with broader DevOps toolchains.
+Harbor webhooks notify external systems of registry events like image push, scan completion, quota exceeded, and replication status. Configure webhook endpoints per project, select event types and payload formats, and use HTTPS plus an authentication header when your listener requires authentication. Use webhooks to trigger CI/CD pipelines, send Slack notifications, update deployment systems, or invoke security scanning. This enables event-driven automation and integration of Harbor with broader DevOps toolchains.
 
 This post has been created as part of a comprehensive Kubernetes troubleshooting and image management series. For detailed implementation guides, best practices, and complete examples, please refer to the official Kubernetes documentation and the specific tool documentation mentioned in this post.
 
