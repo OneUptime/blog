@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kibana, Multi-Tenancy, Security, Elasticsearch, Access Control
 
-Description: Implement Kibana Spaces to create isolated environments for different teams or customers, including space configuration, role-based access control, index pattern restrictions.
+Description: Implement Kibana Spaces to create isolated environments for different teams or customers, including space configuration, role-based access control, data view restrictions.
 
 ---
 
-Kibana Spaces provide logical isolation within a single Kibana instance, allowing multiple teams or customers to work with their own dashboards, visualizations, and index patterns without seeing each other's data. Each space acts as a separate workspace with its own saved objects while sharing the underlying Elasticsearch cluster. This architecture enables multi-tenant deployments without running separate Kibana instances.
+Kibana Spaces provide logical isolation within a single Kibana instance, allowing multiple teams or customers to work with their own dashboards, visualizations, and data views without seeing each other's saved objects. Each space acts as a separate workspace with its own saved objects while sharing the underlying Elasticsearch cluster. This architecture enables multi-tenant deployments without running separate Kibana instances.
 
 ## Understanding Kibana Spaces Architecture
 
 Spaces organize Kibana objects into isolated containers. When you create a dashboard, visualization, or saved search, it exists within a specific space. Users access only the spaces they have permissions for, and objects from one space remain invisible in another space.
 
-This isolation extends to all saved objects including dashboards, visualizations, saved searches, index patterns, and maps. However, the underlying data in Elasticsearch remains accessible across spaces. You control data access through index patterns and Elasticsearch security features, not through spaces alone.
+This isolation extends to saved objects including dashboards, visualizations, Discover sessions, data views, and maps. However, the underlying data in Elasticsearch remains accessible unless you restrict it with Elasticsearch security. You control data access through index privileges and Elasticsearch security features, not through spaces or data views alone.
 
-A common pattern assigns one space per team or customer, with that space configured to access only relevant indices. Teams see only their dashboards and work with their data, even though everything runs on a shared infrastructure.
+A common pattern assigns one space per team or customer, with roles configured to access only relevant indices. Teams see only their dashboards and work with their data, even though everything runs on a shared infrastructure.
 
 ## Creating Spaces
 
@@ -76,49 +76,49 @@ curl -X POST "http://kibana:5601/api/spaces/space" \
 
 The disabledFeatures array lets you hide specific Kibana features within a space, preventing users from accessing Machine Learning or Graph capabilities if not needed.
 
-## Configuring Index Patterns Per Space
+## Configuring Data Views Per Space
 
-Each space needs its own index patterns pointing to the appropriate data. Switch to a space and create index patterns specific to that space's data:
+Each space needs its own data views pointing to the appropriate data. Switch to a space and create data views specific to that space's data:
 
 ```bash
-# Create index pattern in dev-team space
-curl -X POST "http://kibana:5601/s/dev-team/api/saved_objects/index-pattern" \
+# Create data view in dev-team space
+curl -X POST "http://kibana:5601/s/dev-team/api/data_views/data_view" \
   -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
-    "attributes": {
+    "data_view": {
       "title": "dev-logs-*",
       "timeFieldName": "@timestamp"
     }
   }'
 
-# Create index pattern in prod-ops space
-curl -X POST "http://kibana:5601/s/prod-ops/api/saved_objects/index-pattern" \
+# Create data view in prod-ops space
+curl -X POST "http://kibana:5601/s/prod-ops/api/data_views/data_view" \
   -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
-    "attributes": {
+    "data_view": {
       "title": "prod-logs-*",
       "timeFieldName": "@timestamp"
     }
   }'
 
-# Create index pattern in security space
-curl -X POST "http://kibana:5601/s/security/api/saved_objects/index-pattern" \
+# Create data view in security space
+curl -X POST "http://kibana:5601/s/security/api/data_views/data_view" \
   -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
-    "attributes": {
+    "data_view": {
       "title": "security-logs-*,audit-logs-*",
       "timeFieldName": "@timestamp"
     }
   }'
 ```
 
-These index patterns exist only within their respective spaces, so users in the dev-team space see only dev-logs-* patterns.
+These data views exist only within their respective spaces, so users in the dev-team space see only the dev-logs-* data view.
 
 ## Setting Up Role-Based Access Control
 
@@ -126,64 +126,73 @@ Spaces work with Elasticsearch security to control who can access which spaces a
 
 ```bash
 # Role for development team members
-curl -X POST "http://elasticsearch:9200/_security/role/dev_team_role" \
+curl -X PUT "http://kibana:5601/api/security/role/dev_team_role" \
+  -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
-    "cluster": [],
-    "indices": [
+    "elasticsearch": {
+      "cluster": [],
+      "indices": [
+        {
+          "names": ["dev-logs-*"],
+          "privileges": ["read", "view_index_metadata"]
+        }
+      ]
+    },
+    "kibana": [
       {
-        "names": ["dev-logs-*"],
-        "privileges": ["read", "view_index_metadata"]
-      }
-    ],
-    "applications": [
-      {
-        "application": "kibana-.kibana",
-        "privileges": ["space_all"],
-        "resources": ["space:dev-team"]
+        "base": ["all"],
+        "feature": {},
+        "spaces": ["dev-team"]
       }
     ]
   }'
 
 # Role for production operations
-curl -X POST "http://elasticsearch:9200/_security/role/prod_ops_role" \
+curl -X PUT "http://kibana:5601/api/security/role/prod_ops_role" \
+  -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
-    "cluster": [],
-    "indices": [
+    "elasticsearch": {
+      "cluster": [],
+      "indices": [
+        {
+          "names": ["prod-logs-*", "metrics-*"],
+          "privileges": ["read", "view_index_metadata"]
+        }
+      ]
+    },
+    "kibana": [
       {
-        "names": ["prod-logs-*", "metrics-*"],
-        "privileges": ["read", "view_index_metadata"]
-      }
-    ],
-    "applications": [
-      {
-        "application": "kibana-.kibana",
-        "privileges": ["space_all"],
-        "resources": ["space:prod-ops"]
+        "base": ["all"],
+        "feature": {},
+        "spaces": ["prod-ops"]
       }
     ]
   }'
 
 # Role for security analysts
-curl -X POST "http://elasticsearch:9200/_security/role/security_analyst_role" \
+curl -X PUT "http://kibana:5601/api/security/role/security_analyst_role" \
+  -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
-    "cluster": [],
-    "indices": [
+    "elasticsearch": {
+      "cluster": [],
+      "indices": [
+        {
+          "names": ["security-logs-*", "audit-logs-*", "threat-intel-*"],
+          "privileges": ["read", "view_index_metadata"]
+        }
+      ]
+    },
+    "kibana": [
       {
-        "names": ["security-logs-*", "audit-logs-*", "threat-intel-*"],
-        "privileges": ["read", "view_index_metadata"]
-      }
-    ],
-    "applications": [
-      {
-        "application": "kibana-.kibana",
-        "privileges": ["space_all"],
-        "resources": ["space:security"]
+        "base": ["all"],
+        "feature": {},
+        "spaces": ["security"]
       }
     ]
   }'
@@ -230,7 +239,7 @@ curl -X POST "http://elasticsearch:9200/_security/user/security_user" \
   }'
 ```
 
-Users automatically land in their assigned space when logging into Kibana and cannot see or access other spaces.
+Users can see and access only the spaces granted by their roles. If a user can access multiple spaces, Kibana lets them choose or switch spaces from the space selector.
 
 ## Configuring Cross-Space Access
 
@@ -238,22 +247,25 @@ Some users need access to multiple spaces. Create a role with permissions across
 
 ```bash
 # Manager role with access to multiple spaces
-curl -X POST "http://elasticsearch:9200/_security/role/manager_role" \
+curl -X PUT "http://kibana:5601/api/security/role/manager_role" \
+  -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
-    "cluster": [],
-    "indices": [
+    "elasticsearch": {
+      "cluster": [],
+      "indices": [
+        {
+          "names": ["dev-logs-*", "prod-logs-*", "metrics-*"],
+          "privileges": ["read", "view_index_metadata"]
+        }
+      ]
+    },
+    "kibana": [
       {
-        "names": ["dev-logs-*", "prod-logs-*", "metrics-*"],
-        "privileges": ["read", "view_index_metadata"]
-      }
-    ],
-    "applications": [
-      {
-        "application": "kibana-.kibana",
-        "privileges": ["space_all"],
-        "resources": ["space:dev-team", "space:prod-ops"]
+        "base": ["all"],
+        "feature": {},
+        "spaces": ["dev-team", "prod-ops"]
       }
     ]
   }'
@@ -297,7 +309,6 @@ Automate space setup for multiple tenants using scripts:
 
 CUSTOMER=$1
 KIBANA_URL="http://kibana:5601"
-ES_URL="http://elasticsearch:9200"
 CREDS="elastic:password"
 
 # Create space
@@ -313,34 +324,38 @@ curl -X POST "${KIBANA_URL}/api/spaces/space" \
     \"initials\": \"C${CUSTOMER}\"
   }"
 
-# Create index pattern
-curl -X POST "${KIBANA_URL}/s/customer-${CUSTOMER}/api/saved_objects/index-pattern" \
+# Create data view
+curl -X POST "${KIBANA_URL}/s/customer-${CUSTOMER}/api/data_views/data_view" \
   -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
   -u "$CREDS" \
   -d "{
-    \"attributes\": {
+    \"data_view\": {
       \"title\": \"customer-${CUSTOMER}-logs-*\",
       \"timeFieldName\": \"@timestamp\"
     }
   }"
 
 # Create role
-curl -X POST "${ES_URL}/_security/role/customer_${CUSTOMER}_role" \
+curl -X PUT "${KIBANA_URL}/api/security/role/customer_${CUSTOMER}_role" \
+  -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
   -u "$CREDS" \
   -d "{
-    \"indices\": [
+    \"elasticsearch\": {
+      \"cluster\": [],
+      \"indices\": [
+        {
+          \"names\": [\"customer-${CUSTOMER}-logs-*\"],
+          \"privileges\": [\"read\", \"view_index_metadata\"]
+        }
+      ]
+    },
+    \"kibana\": [
       {
-        \"names\": [\"customer-${CUSTOMER}-logs-*\"],
-        \"privileges\": [\"read\", \"view_index_metadata\"]
-      }
-    ],
-    \"applications\": [
-      {
-        \"application\": \"kibana-.kibana\",
-        \"privileges\": [\"space_all\"],
-        \"resources\": [\"space:customer-${CUSTOMER}\"]
+        \"base\": [\"all\"],
+        \"feature\": {},
+        \"spaces\": [\"customer-${CUSTOMER}\"]
       }
     ]
   }"
@@ -386,21 +401,29 @@ curl -X GET "http://kibana:5601/api/spaces/space" \
   -H "kbn-xsrf: true" \
   -u elastic:password | jq
 
-# Count objects per space
-curl -X GET "http://kibana:5601/s/dev-team/api/saved_objects/_find?type=dashboard" \
+# List dashboards in a space
+curl -X GET "http://kibana:5601/s/dev-team/api/dashboards" \
   -H "kbn-xsrf: true" \
-  -u elastic:password | jq '.total'
-
-# List users with access to a space
-curl -X GET "http://elasticsearch:9200/_security/role/dev_team_role" \
   -u elastic:password | jq
+
+# Find native users assigned to a role
+curl -X POST "http://elasticsearch:9200/_security/_query/user" \
+  -H "Content-Type: application/json" \
+  -u elastic:password \
+  -d '{
+    "query": {
+      "term": {
+        "roles": "dev_team_role"
+      }
+    }
+  }' | jq
 ```
 
 Set up alerts for space creation or modification:
 
 ```bash
-# Audit space changes through Elasticsearch audit logs
-curl -X GET "http://elasticsearch:9200/.security-audit-*/_search" \
+# Search ingested Kibana audit logs for space changes
+curl -X GET "http://elasticsearch:9200/kibana-audit-*/_search" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
@@ -420,20 +443,11 @@ curl -X GET "http://elasticsearch:9200/.security-audit-*/_search" \
 
 ## Default Space Configuration
 
-Set which space users land in by default:
+Set a space-level landing page so users enter a specific app or dashboard when they open that space:
 
-```bash
-# Configure default space per user through user profile
-curl -X PUT "http://kibana:5601/internal/spaces/_active_space" \
-  -H "kbn-xsrf: true" \
-  -H "Content-Type: application/json" \
-  -u dev_user:dev_password \
-  -d '{
-    "id": "dev-team"
-  }'
-```
+Open the dev-team space, navigate to Stack Management > Advanced Settings, choose Space Settings, and set the `defaultRoute` value to a route such as `/app/dashboards`.
 
-Users see their default space immediately upon login without needing to navigate.
+Users see the configured route when they enter the space.
 
 ## Space Migration and Backup
 
@@ -461,4 +475,4 @@ This enables disaster recovery and space replication across environments.
 
 ## Conclusion
 
-Kibana Spaces provide effective multi-tenancy for teams and customers sharing a single Elastic Stack deployment. By combining spaces with proper role-based access control and index pattern configuration, you create secure, isolated environments where users see only their relevant data and dashboards. Start with clear separation of data at the index level, create spaces that map to organizational boundaries, and use roles to enforce access control. The result is a scalable multi-tenant logging platform that maintains security and usability without operational overhead of multiple deployments.
+Kibana Spaces provide effective multi-tenancy for teams and customers sharing a single Elastic Stack deployment. By combining spaces with proper role-based access control and data view configuration, you create secure, isolated environments where users see only their relevant data and dashboards. Start with clear separation of data at the index level, create spaces that map to organizational boundaries, and use roles to enforce access control. The result is a scalable multi-tenant logging platform that maintains security and usability without operational overhead of multiple deployments.
