@@ -16,7 +16,7 @@ ImageMagick depends on delegate libraries for different image formats: libjpeg f
 
 ## Quick Start
 
-The fastest way to use ImageMagick in Docker is with the official dpokidov/imagemagick image:
+The fastest way to use ImageMagick in Docker is with the `dpokidov/imagemagick` image:
 
 ```bash
 # Convert a PNG image to JPEG with 85% quality
@@ -54,7 +54,7 @@ WORKDIR /imgs
 ENTRYPOINT ["convert"]
 ```
 
-The security policy modifications are important. ImageMagick's default policy restricts PDF processing and limits memory usage to prevent abuse. For a controlled Docker environment, relaxing these limits is safe.
+The security policy modifications are important. ImageMagick's default policy restricts PDF processing and limits memory usage to prevent abuse. For a controlled Docker environment that does not process untrusted files, relaxing these limits can be acceptable; keep stricter policies for public upload workflows.
 
 ## Common Image Processing Tasks
 
@@ -89,8 +89,7 @@ Add a watermark to an image:
 
 ```bash
 # Overlay a semi-transparent watermark in the bottom-right corner
-docker run --rm -v $(pwd)/images:/imgs dpokidov/imagemagick \
-  composite \
+docker run --rm --entrypoint composite -v $(pwd)/images:/imgs dpokidov/imagemagick \
   -dissolve 30 \
   -gravity southeast \
   -geometry +10+10 \
@@ -99,7 +98,7 @@ docker run --rm -v $(pwd)/images:/imgs dpokidov/imagemagick \
   /imgs/watermarked-photo.jpg
 ```
 
-Note: When using `composite` instead of `convert`, override the entrypoint:
+The `dpokidov/imagemagick` image runs `convert` by default, so using `composite` requires overriding the entrypoint:
 
 ```bash
 # Override the default entrypoint to use the composite command
@@ -170,8 +169,6 @@ Build a service that watches for new images and processes them automatically:
 
 ```yaml
 # docker-compose.yml - Image processing pipeline
-version: "3.8"
-
 services:
   image-processor:
     build: .
