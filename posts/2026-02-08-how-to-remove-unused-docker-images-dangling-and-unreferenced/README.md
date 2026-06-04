@@ -97,9 +97,9 @@ docker image prune -a
 # Skip confirmation
 docker image prune -a -f
 
-# Preview what will be removed
-docker image prune -a --filter "until=24h" --dry-run 2>/dev/null || \
-    echo "Note: --dry-run not available, use filter to be selective"
+# Review local images and containers before pruning
+docker images --format "{{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.CreatedSince}}\t{{.Size}}"
+docker ps -a --format "{{.Image}}" | sort -u
 ```
 
 This is aggressive. It removes every image that is not currently used by at least one container. If you have images you pulled for future use, they will be deleted.
@@ -169,7 +169,7 @@ docker system prune
 # Include ALL unused images (not just dangling)
 docker system prune -a
 
-# Also remove unused volumes (careful - this deletes data!)
+# Also remove unused anonymous volumes (careful - this deletes data!)
 docker system prune -a --volumes
 
 # Skip confirmation
@@ -179,7 +179,7 @@ docker system prune -a -f
 docker system prune -a --filter "until=168h"
 ```
 
-The `--volumes` flag is dangerous. It permanently deletes data stored in Docker volumes. Only use it when you are certain no important data lives in Docker volumes.
+The `--volumes` flag is dangerous. It permanently deletes data stored in unused anonymous Docker volumes. Only use it when you are certain no important data lives in those volumes.
 
 ## Scripted Cleanup
 
@@ -261,7 +261,7 @@ Clean up the build cache:
 
 ```bash
 # Show build cache usage
-docker builder prune --dry-run 2>/dev/null || docker buildx du
+docker buildx du
 
 # Remove all build cache
 docker builder prune -f
@@ -269,7 +269,7 @@ docker builder prune -f
 # Remove build cache older than 7 days
 docker builder prune -f --filter "until=168h"
 
-# Remove ALL build cache (including named caches)
+# Remove all unused build cache, not just dangling cache
 docker builder prune -a -f
 ```
 
@@ -307,11 +307,11 @@ Preview cleanup impact:
 # See all dangling images and their sizes
 docker images --filter "dangling=true" --format "{{.ID}}\t{{.Size}}\t{{.CreatedSince}}"
 
-# Count images and total size that would be pruned
+# Count dangling images
 echo "Dangling images:"
 docker images --filter "dangling=true" -q | wc -l
 
-echo "Total unused images:"
+echo "All local image references:"
 docker images --format "{{.Repository}}:{{.Tag}}" | wc -l
 
 # Check which images are actually in use
