@@ -28,15 +28,15 @@ Install Admiralty in each cluster that will participate in multi-cluster schedul
 ```bash
 # Install using Helm
 
-helm repo add admiralty https://charts.admiralty.io
-helm repo update
-
 # Install in each cluster
-helm install admiralty admiralty/multicluster-scheduler \
+helm install admiralty oci://public.ecr.aws/admiralty/admiralty \
   --namespace admiralty \
   --create-namespace \
-  --version 0.15.0
+  --version 0.17.0 \
+  --wait
 ```
+
+Admiralty Open Source uses cert-manager for its mutating admission webhook certificate, so install cert-manager before installing the Admiralty agent if it is not already present.
 
 Verify installation:
 
@@ -50,12 +50,20 @@ kubectl get crd | grep admiralty
 Create Target resources to define which clusters can schedule workloads:
 
 ```yaml
-# In source cluster (cluster-1), define targets
+# In source cluster (cluster-1), define targets for the production namespace
+apiVersion: multicluster.admiralty.io/v1alpha1
+kind: Target
+metadata:
+  name: cluster-1
+  namespace: production
+spec:
+  self: true
+---
 apiVersion: multicluster.admiralty.io/v1alpha1
 kind: Target
 metadata:
   name: cluster-2
-  namespace: admiralty
+  namespace: production
 spec:
   kubeconfigSecret:
     name: cluster-2-kubeconfig
@@ -64,28 +72,50 @@ apiVersion: multicluster.admiralty.io/v1alpha1
 kind: Target
 metadata:
   name: cluster-3
-  namespace: admiralty
+  namespace: production
 spec:
   kubeconfigSecret:
     name: cluster-3-kubeconfig
 ```
 
-Create kubeconfig secrets for target clusters:
+Create kubeconfig secrets for target clusters. The example below uses `jq` to build kubeconfigs for the remote ServiceAccounts:
 
 ```bash
-# Get kubeconfig for cluster-2
-kubectl config view --context=cluster-2 --minify --flatten > cluster-2-config.yaml
+# Create the remote identity in cluster-2
+kubectl create serviceaccount cluster-1-scheduler \
+  -n production \
+  --context cluster-2
+
+# Build a kubeconfig that authenticates as that ServiceAccount
+TOKEN=$(kubectl create token cluster-1-scheduler \
+  -n production \
+  --context cluster-2)
+
+kubectl config view --context=cluster-2 --minify --flatten --raw -o json | \
+  jq '.users[0].user={token: env.TOKEN}' > cluster-2-config.json
 
 # Create secret
 kubectl create secret generic cluster-2-kubeconfig \
-  --from-file=config=cluster-2-config.yaml \
-  -n admiralty
+  --from-file=config=cluster-2-config.json \
+  -n production \
+  --context cluster-1
 
 # Repeat for cluster-3
-kubectl config view --context=cluster-3 --minify --flatten > cluster-3-config.yaml
+kubectl create serviceaccount cluster-1-scheduler \
+  -n production \
+  --context cluster-3
+
+TOKEN=$(kubectl create token cluster-1-scheduler \
+  -n production \
+  --context cluster-3)
+
+kubectl config view --context=cluster-3 --minify --flatten --raw -o json | \
+  jq '.users[0].user={token: env.TOKEN}' > cluster-3-config.json
+
 kubectl create secret generic cluster-3-kubeconfig \
-  --from-file=config=cluster-3-config.yaml \
-  -n admiralty
+  --from-file=config=cluster-3-config.json \
+  -n production \
+  --context cluster-1
 ```
 
 ## Configuring Source Clusters
@@ -98,52 +128,55 @@ apiVersion: multicluster.admiralty.io/v1alpha1
 kind: Source
 metadata:
   name: cluster-1
-  namespace: admiralty
+  namespace: production
 spec:
-  userName: "cluster-1-scheduler"
+  serviceAccountName: cluster-1-scheduler
 ```
 
-Create ServiceAccount and RBAC for remote scheduling:
+The Source controller creates the ServiceAccount if it does not exist. If you disable the Source controller with `sourceController.enabled=false`, create the ServiceAccount and RBAC yourself:
 
 ```yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: cluster-1-scheduler
-  namespace: admiralty
+  namespace: production
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: RoleBinding
 metadata:
-  name: admiralty-remote-scheduler
-rules:
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["create", "delete", "get", "list", "watch", "patch"]
-- apiGroups: [""]
-  resources: ["pods/status"]
-  verbs: ["patch"]
-- apiGroups: [""]
-  resources: ["nodes"]
-  verbs: ["get", "list", "watch"]
+  name: admiralty-source-cluster-1
+  namespace: production
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admiralty-source
+subjects:
+- kind: ServiceAccount
+  name: cluster-1-scheduler
+  namespace: production
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: admiralty-remote-scheduler
+  name: admiralty-source-production-cluster-1-cluster-summary-viewer
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: admiralty-remote-scheduler
+  name: admiralty-cluster-summary-viewer
 subjects:
 - kind: ServiceAccount
   name: cluster-1-scheduler
-  namespace: admiralty
+  namespace: production
 ```
 
 ## Scheduling Pods Across Clusters
 
-Annotate pods to enable multi-cluster scheduling:
+Label the source namespace and annotate pods to enable multi-cluster scheduling:
+
+```bash
+kubectl label namespace production multicluster-scheduler=enabled --context cluster-1
+```
 
 ```yaml
 apiVersion: apps/v1
@@ -227,7 +260,7 @@ Admiralty only schedules these pods to clusters that have nodes matching the sel
 
 ## Implementing Cluster Affinity
 
-Use pod annotations to express cluster preferences:
+Use standard Kubernetes node affinity to express cluster preferences. For example, if nodes in cluster-2 are labeled `topology.kubernetes.io/region: cluster-2`, prefer that cluster while allowing fallback to other clusters:
 
 ```yaml
 apiVersion: v1
@@ -237,14 +270,17 @@ metadata:
   namespace: production
   annotations:
     multicluster.admiralty.io/elect: ""
-    # Prefer cluster-2 (e.g., data locality)
-    multicluster.admiralty.io/cluster-affinity: |
-      - matchExpressions:
-        - key: admiralty.io/cluster-name
-          operator: In
-          values:
-          - cluster-2
 spec:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: topology.kubernetes.io/region
+            operator: In
+            values:
+            - cluster-2
   containers:
   - name: processor
     image: data-processor:v1
@@ -266,9 +302,6 @@ kind: Service
 metadata:
   name: webapp-service
   namespace: production
-  annotations:
-    # Export service across clusters
-    multicluster.admiralty.io/export: "true"
 spec:
   selector:
     app: webapp
@@ -283,7 +316,7 @@ Install service mesh (Istio or Linkerd) for cross-cluster service discovery, or 
 
 ## Handling Stateful Workloads
 
-StatefulSets can be multi-cluster scheduled with careful configuration:
+StatefulSets can be annotated for multi-cluster scheduling, but do not split a single StatefulSet across clusters unless the storage and network identity model is designed for it. Constrain the workload to a storage domain using standard Kubernetes scheduling constraints:
 
 ```yaml
 apiVersion: apps/v1
@@ -303,12 +336,9 @@ spec:
         app: database
       annotations:
         multicluster.admiralty.io/elect: ""
-        # Pin each pod to a specific cluster for stable storage
-        multicluster.admiralty.io/pod-index-cluster-map: |
-          0: cluster-1
-          1: cluster-2
-          2: cluster-3
     spec:
+      nodeSelector:
+        storage-domain: cluster-1
       containers:
       - name: postgres
         image: postgres:14
@@ -325,11 +355,11 @@ spec:
           storage: 100Gi
 ```
 
-This ensures database-0 always runs in cluster-1, database-1 in cluster-2, and database-2 in cluster-3.
+This keeps the StatefulSet in a cluster or storage domain where its `ReadWriteOnce` volumes and stable network identity can be satisfied.
 
 ## Implementing Burst Scheduling
 
-Use Admiralty for burst capacity by prioritizing local cluster:
+Use Admiralty for burst capacity by targeting the local cluster with `spec.self: true` and adding remote targets. Then use standard Kubernetes scheduling preferences to prefer local nodes while allowing remote clusters when local capacity is unavailable:
 
 ```yaml
 apiVersion: batch/v1
@@ -337,22 +367,23 @@ kind: Job
 metadata:
   name: batch-processing
   namespace: production
-  annotations:
-    multicluster.admiralty.io/elect: ""
 spec:
   parallelism: 100
   template:
     metadata:
       annotations:
-        # Try local cluster first, overflow to remote
-        multicluster.admiralty.io/scheduling-policy: |
-          - weight: 100
-            clusterName: cluster-1  # Local cluster
-          - weight: 50
-            clusterName: cluster-2  # Remote clusters
-          - weight: 50
-            clusterName: cluster-3
+        multicluster.admiralty.io/elect: ""
     spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: topology.kubernetes.io/region
+                operator: In
+                values:
+                - cluster-1
       containers:
       - name: worker
         image: batch-worker:latest
@@ -363,7 +394,7 @@ spec:
       restartPolicy: Never
 ```
 
-Admiralty fills cluster-1 first, then distributes overflow to cluster-2 and cluster-3.
+Admiralty prefers cluster-1 when matching nodes are available, then can use other configured targets if the preference cannot be satisfied.
 
 ## Monitoring Multi-Cluster Scheduling
 
@@ -394,6 +425,8 @@ groups:
       kube_pod_status_phase{namespace="production",phase="Pending"} == 1
       and kube_pod_annotations{annotation_multicluster_admiralty_io_elect=""}
     for: 5m
+    labels:
+      severity: warning
     annotations:
       summary: "Pod {{ $labels.pod }} cannot be scheduled to any cluster"
 ```
