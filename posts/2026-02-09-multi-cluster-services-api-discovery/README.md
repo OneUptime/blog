@@ -21,25 +21,31 @@ When you create a ServiceExport, a controller propagates the Service to other cl
 
 ## Installing an MCS Implementation
 
-Several projects implement the MCS API. We'll use the reference implementation with Submariner:
+Several projects implement the MCS API. We'll use Submariner with its Lighthouse service discovery implementation:
 
 ```bash
 # Deploy Submariner with service discovery
 
 subctl deploy-broker \
   --kubeconfig ~/.kube/config \
-  --context cluster-1
+  --context cluster-1 \
+  --enable-clusterset-ip
 
-# Join clusters with service discovery enabled
+# Join each cluster to the broker
 subctl join broker-info.subm \
   --kubeconfig ~/.kube/config \
   --context cluster-1 \
   --clusterid cluster-1 \
-  --service-discovery \
+  --cable-driver libreswan
+
+subctl join broker-info.subm \
+  --kubeconfig ~/.kube/config \
+  --context cluster-2 \
+  --clusterid cluster-2 \
   --cable-driver libreswan
 ```
 
-Alternatively, use Cilium ClusterMesh or Istio multi-cluster, both of which support MCS API.
+Alternatively, use Cilium ClusterMesh or Istio multi-cluster, both of which can be configured for MCS API support.
 
 ## Exporting Services
 
@@ -90,7 +96,7 @@ NAME       TYPE        IP                  AGE
 database   ClusterSetIP   242.254.1.10       30s
 ```
 
-The ServiceImport has a `ClusterSetIP` that's accessible from any cluster in the clusterset.
+The ServiceImport has a `ClusterSetIP`. In Submariner, ClusterSet virtual IP allocation must be enabled with `--enable-clusterset-ip` or the `lighthouse.submariner.io/use-clusterset-ip` ServiceExport annotation.
 
 ## Accessing Imported Services
 
@@ -109,7 +115,7 @@ The DNS name format is: `<service>.<namespace>.svc.clusterset.local`
 
 ## Understanding ClusterSetIP
 
-ClusterSetIP is a virtual IP that load-balances across all clusters exporting the service:
+ClusterSetIP is a virtual IP for the imported service. Implementations can route or load-balance traffic sent to this VIP across clusters exporting the service:
 
 ```yaml
 apiVersion: multicluster.x-k8s.io/v1alpha1
@@ -127,7 +133,7 @@ spec:
     port: 8080
 ```
 
-Traffic to 242.254.1.15:8080 is routed to backend pods in any cluster exporting api-service.
+Traffic to 242.254.1.15:8080 is routed according to the MCS implementation. For Submariner, the cluster set virtual IP is opt-in and requires an external component to route that VIP.
 
 ## Using Headless Services Across Clusters
 
@@ -170,7 +176,7 @@ spec:
     port: 9042
 ```
 
-DNS returns all pod IPs from all clusters:
+DNS returns endpoint IPs from exporting clusters:
 
 ```bash
 # Resolve cassandra.database.svc.clusterset.local
@@ -230,11 +236,11 @@ metadata:
   namespace: production
 ```
 
-Deploy the same resources in cluster-2 and cluster-3. The ServiceImport automatically load-balances across all clusters.
+Deploy the same resources in cluster-2 and cluster-3. The ServiceImport represents the combined service, and DNS or VIP routing load-balances according to the MCS implementation.
 
 ## Configuring Service Export Scope
 
-Control which clusters can import a service using labels:
+If your MCS implementation includes policy logic, you can attach labels for a controller or admission policy to use:
 
 ```yaml
 apiVersion: multicluster.x-k8s.io/v1alpha1
@@ -247,11 +253,11 @@ metadata:
     export-to: "cluster-2,cluster-3"
 ```
 
-The MCS controller implementation must support label-based filtering.
+The MCS API does not define `export-to` semantics itself; the controller or policy layer must implement this filtering.
 
 ## Implementing Locality-Aware Load Balancing
 
-Some MCS implementations support topology-aware routing. Traffic prefers local endpoints:
+Some MCS implementations support topology-aware routing. Kubernetes Topology Aware Routing can prefer same-zone endpoints for a Service:
 
 ```yaml
 apiVersion: v1
@@ -260,7 +266,7 @@ metadata:
   name: webapp
   namespace: production
   annotations:
-    # Prefer local endpoints
+    # Prefer same-zone endpoints
     service.kubernetes.io/topology-mode: Auto
 spec:
   selector:
@@ -269,7 +275,7 @@ spec:
   - port: 80
 ```
 
-With this annotation, pods in cluster-1 accessing webapp.production.svc.clusterset.local prefer endpoints in cluster-1.
+With this annotation, Kubernetes can prefer same-zone endpoints when enough endpoints are available. Submariner Lighthouse also prefers the local cluster when the same exported Service exists locally.
 
 ## Monitoring ServiceExports and Imports
 
@@ -291,7 +297,7 @@ Check ServiceImport details:
 kubectl describe serviceimport api -n production --context cluster-2
 ```
 
-Output shows backend endpoints:
+Output shows the importing clusters in status:
 
 ```yaml
 Spec:
@@ -342,7 +348,7 @@ kubectl get pods -n submariner-operator | grep lighthouse
 kubectl logs -n submariner-operator deployment/submariner-lighthouse-agent
 ```
 
-**DNS not resolving**: Verify CoreDNS has MCS plugin configured:
+**DNS not resolving**: Verify CoreDNS forwards `clusterset.local` queries to Submariner Lighthouse:
 
 ```bash
 kubectl get configmap coredns -n kube-system -o yaml
@@ -352,7 +358,7 @@ Should include:
 
 ```yaml
 clusterset.local:53 {
-    lighthouse
+    forward . <lighthouse-coredns-serviceip>
 }
 ```
 
