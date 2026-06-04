@@ -34,58 +34,59 @@ node.attr.zone: us-east-1b
 node.attr.zone: us-east-1c
 ```
 
-For Kubernetes deployments, use node labels to populate attributes dynamically:
+For Kubernetes deployments, use node affinity to schedule each Elasticsearch node set into a zone, then set the matching Elasticsearch node attribute explicitly. The standard Kubernetes Downward API exposes pod labels, not node labels, so a plain StatefulSet cannot read `topology.kubernetes.io/zone` directly from the node:
 
 ```yaml
 # elasticsearch-statefulset.yaml
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: elasticsearch
+  name: elasticsearch-zone-a
   namespace: logging
 spec:
   serviceName: elasticsearch
-  replicas: 6
+  replicas: 2
   selector:
     matchLabels:
       app: elasticsearch
+      zone: us-east-1a
   template:
     metadata:
       labels:
         app: elasticsearch
+        zone: us-east-1a
     spec:
       affinity:
-        podAntiAffinity:
+        nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: app
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: topology.kubernetes.io/zone
                 operator: In
                 values:
-                - elasticsearch
-            topologyKey: topology.kubernetes.io/zone
+                - us-east-1a
       containers:
       - name: elasticsearch
         image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
         env:
-        - name: cluster.name
+        - name: ES_SETTING_CLUSTER_NAME
           value: "production-cluster"
-        - name: node.name
+        - name: ES_SETTING_NODE_NAME
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        # Set zone attribute from node label
-        - name: node.attr.zone
+        # Set zone attribute from the pod label for this zone-specific StatefulSet
+        - name: ES_SETTING_NODE_ATTR_ZONE
           valueFrom:
             fieldRef:
-              fieldPath: metadata.labels['topology.kubernetes.io/zone']
-        - name: cluster.initial_master_nodes
-          value: "elasticsearch-0,elasticsearch-1,elasticsearch-2"
-        - name: discovery.seed_hosts
+              fieldPath: metadata.labels['zone']
+        - name: ES_SETTING_CLUSTER_INITIAL__MASTER__NODES
+          value: "elasticsearch-zone-a-0,elasticsearch-zone-b-0,elasticsearch-zone-c-0"
+        - name: ES_SETTING_DISCOVERY_SEED__HOSTS
           value: "elasticsearch"
 ```
 
-This configuration uses the standard Kubernetes topology zone label to set each pod's zone attribute. The podAntiAffinity ensures pods spread across zones.
+Create equivalent StatefulSets for `us-east-1b` and `us-east-1c`, changing both the pod `zone` label and the `nodeAffinity` value. The node affinity ensures each pod lands in the zone that matches its Elasticsearch node attribute.
 
 ## Enabling Cluster-Wide Allocation Awareness
 
@@ -102,7 +103,7 @@ curl -X PUT "http://elasticsearch:9200/_cluster/settings" \
   }'
 ```
 
-This tells Elasticsearch to consider the zone attribute when allocating shards. Elasticsearch will try to balance shards across zones but doesn't strictly enforce it yet.
+This tells Elasticsearch to consider the zone attribute when allocating shards. Elasticsearch will avoid placing copies of the same shard in the same zone when possible.
 
 ## Forcing Allocation Across Zones
 
@@ -120,7 +121,7 @@ curl -X PUT "http://elasticsearch:9200/_cluster/settings" \
   }'
 ```
 
-With force values configured, Elasticsearch won't allocate replica shards until nodes in all specified zones are available. This prevents scenarios where all shards end up in one zone due to temporary node unavailability.
+With force values configured, Elasticsearch may leave replica shards unassigned until nodes in the specified zones are available. This prevents scenarios where all shard copies are reallocated into the remaining zones during temporary zone unavailability.
 
 ## Verifying Zone Distribution
 
@@ -128,7 +129,7 @@ Check shard allocation across zones:
 
 ```bash
 # View shard allocation by node
-curl -X GET "http://elasticsearch:9200/_cat/shards?v" | grep -E "zone|node"
+curl -X GET "http://elasticsearch:9200/_cat/shards?v&h=index,shard,prirep,state,node"
 
 # Get detailed shard allocation info
 curl -X GET "http://elasticsearch:9200/_cluster/allocation/explain?pretty" \
@@ -151,12 +152,12 @@ Expected output shows each node in a different zone:
 
 ```text
 node                        attr value
-elasticsearch-0             zone us-east-1a
-elasticsearch-1             zone us-east-1b
-elasticsearch-2             zone us-east-1c
-elasticsearch-3             zone us-east-1a
-elasticsearch-4             zone us-east-1b
-elasticsearch-5             zone us-east-1c
+elasticsearch-zone-a-0      zone us-east-1a
+elasticsearch-zone-a-1      zone us-east-1a
+elasticsearch-zone-b-0      zone us-east-1b
+elasticsearch-zone-b-1      zone us-east-1b
+elasticsearch-zone-c-0      zone us-east-1c
+elasticsearch-zone-c-1      zone us-east-1c
 ```
 
 ## Creating Indices with Zone Awareness
@@ -194,7 +195,9 @@ Simulate a zone failure to test resilience:
 kubectl cordon $(kubectl get nodes -l topology.kubernetes.io/zone=us-east-1a -o name)
 
 # Delete pods in that zone
-kubectl delete pods -n logging -l app=elasticsearch --field-selector spec.nodeName=$(kubectl get nodes -l topology.kubernetes.io/zone=us-east-1a -o jsonpath='{.items[*].metadata.name}')
+for node in $(kubectl get nodes -l topology.kubernetes.io/zone=us-east-1a -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl delete pods -n logging -l app=elasticsearch --field-selector spec.nodeName="$node"
+done
 
 # Check cluster health
 curl -X GET "http://elasticsearch:9200/_cluster/health?pretty"
@@ -237,7 +240,7 @@ curl -X PUT "http://elasticsearch:9200/_cluster/settings" \
   }'
 ```
 
-This creates two levels of separation. Replicas prefer different zones, but within a zone, they prefer different racks.
+This applies both awareness attributes during allocation. Elasticsearch will try to keep copies of the same shard separated across the configured zone and rack values when possible.
 
 ## Index-Level Allocation Control
 
@@ -289,17 +292,44 @@ curl -X PUT "http://elasticsearch:9200/_watcher/watch/zone-imbalance" \
       }
     },
     "input": {
-      "http": {
-        "request": {
-          "host": "localhost",
-          "port": 9200,
-          "path": "/_cat/shards?format=json"
-        }
+      "chain": {
+        "inputs": [
+          {
+            "shards": {
+              "http": {
+                "request": {
+                  "host": "localhost",
+                  "port": 9200,
+                  "path": "/_cat/shards",
+                  "params": {
+                    "format": "json",
+                    "h": "index,shard,prirep,state,node"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "nodeattrs": {
+              "http": {
+                "request": {
+                  "host": "localhost",
+                  "port": 9200,
+                  "path": "/_cat/nodeattrs",
+                  "params": {
+                    "format": "json",
+                    "h": "node,attr,value"
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "condition": {
       "script": {
-        "source": "def zoneCounts = [:]; for (shard in ctx.payload) { def node = shard.node; def zone = ctx.payload._nodes.find{it.name == node}?.attributes?.zone; zoneCounts[zone] = (zoneCounts[zone] ?: 0) + 1; }; def max = zoneCounts.values().max(); def min = zoneCounts.values().min(); return (max - min) > 10;",
+        "source": "def nodeZones = [:]; for (attr in ctx.payload.nodeattrs) { if (attr.attr == 'zone') { nodeZones[attr.node] = attr.value; } } def zoneCounts = [:]; for (shard in ctx.payload.shards) { def zone = nodeZones[shard.node]; if (zone != null) { zoneCounts[zone] = (zoneCounts.containsKey(zone) ? zoneCounts[zone] : 0) + 1; } } if (zoneCounts.size() < 2) { return false; } def max = 0; def min = null; for (count in zoneCounts.values()) { if (count > max) { max = count; } if (min == null || count < min) { min = count; } } return (max - min) > 10;",
         "lang": "painless"
       }
     },
