@@ -8,7 +8,7 @@ Description: Learn how to configure allowedProcMountTypes in PodSecurityPolicy t
 
 ---
 
-PodSecurityPolicy, while deprecated in Kubernetes 1.25, remains in use in older clusters. The `allowedProcMountTypes` field controls whether containers can access full /proc filesystem information or only masked versions. Understanding this setting helps maintain security in clusters still using PSP and guides migration to Pod Security Admission.
+PodSecurityPolicy, deprecated in Kubernetes 1.21 and removed in Kubernetes 1.25, remains in use in older clusters. The `allowedProcMountTypes` field controls whether containers can access full /proc filesystem information or only masked versions. Understanding this setting helps maintain security in clusters still using PSP and guides migration to Pod Security Admission.
 
 ## Understanding ProcMount Types
 
@@ -215,6 +215,8 @@ spec:
     rule: RunAsAny
   fsGroup:
     rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
   volumes:
   - '*'
 ---
@@ -247,7 +249,7 @@ This configuration allows system monitors to use Unmasked procMount.
 
 ## Migration to Pod Security Admission
 
-PSP is deprecated. Migrate to Pod Security Admission:
+PSP is removed from current Kubernetes releases. Migrate to Pod Security Admission:
 
 ```yaml
 # Old PSP approach
@@ -352,6 +354,8 @@ spec:
     rule: RunAsAny
   fsGroup:
     rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
   volumes:
   - 'configMap'
   - 'emptyDir'
@@ -389,4 +393,4 @@ This provides a secure default for all pods.
 
 ## Conclusion
 
-The allowedProcMountTypes field in PodSecurityPolicy controls /proc filesystem access, with Default masking sensitive paths and Unmasked providing full visibility. Configure PSPs to allow only Default for application workloads, reserving Unmasked for infrastructure components that genuinely need full /proc access. Bind PSPs to service accounts using RBAC to ensure appropriate policies apply to each workload. Document and regularly review exceptions that require unmasked proc access. While PSP is deprecated, understanding these concepts helps secure existing clusters and guides migration to Pod Security Admission, which enforces similar restrictions through the restricted standard. Treat unmasked proc access as a privilege requiring explicit justification and security review.
+The allowedProcMountTypes field in PodSecurityPolicy controls /proc filesystem access, with Default masking sensitive paths and Unmasked providing full visibility. Configure PSPs to allow only Default for application workloads, reserving Unmasked for infrastructure components that genuinely need full /proc access. Bind PSPs to service accounts using RBAC to ensure appropriate policies apply to each workload. Document and regularly review exceptions that require unmasked proc access. While PSP has been removed from current Kubernetes releases, understanding these concepts helps secure existing clusters and guides migration to Pod Security Admission, which enforces similar restrictions through the restricted standard. Treat unmasked proc access as a privilege requiring explicit justification and security review.
