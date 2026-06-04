@@ -16,7 +16,7 @@ This guide shows you how to implement both approaches for Kubernetes infrastruct
 
 Policies are rules written as code that validate infrastructure changes. They check Terraform plans for compliance, blocking non-compliant changes. Common policies enforce tagging, prevent public resources, and require specific configurations.
 
-Policies run during terraform plan, so violations are caught before applying changes. This prevents configuration drift and enforces standards.
+Policies evaluate the generated Terraform plan before apply, so violations are caught before changes are deployed. This prevents configuration drift and enforces standards.
 
 ## Implementing Sentinel Policies
 
@@ -40,6 +40,7 @@ all_resources = filter tfplan.resource_changes as _, rc {
 validate_tags = rule {
     all all_resources as _, resource {
         all required_tags as tag {
+            resource.change.after.tags is defined and
             resource.change.after.tags contains tag
         }
     }
@@ -66,7 +67,7 @@ import "tfplan/v2" as tfplan
 
 # Find all Kubernetes deployments
 deployments = filter tfplan.resource_changes as _, rc {
-    rc.type is "kubernetes_deployment" and
+    rc.type is "kubernetes_deployment_v1" and
     rc.mode is "managed" and
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
@@ -75,8 +76,12 @@ deployments = filter tfplan.resource_changes as _, rc {
 validate_resource_limits = rule {
     all deployments as _, deployment {
         all deployment.change.after.spec[0].template[0].spec[0].container as container {
-            container.resources[0].limits is not null and
-            container.resources[0].requests is not null
+            container.resources is defined and
+            container.resources is not empty and
+            container.resources[0].limits is defined and
+            container.resources[0].limits is not empty and
+            container.resources[0].requests is defined and
+            container.resources[0].requests is not empty
         }
     }
 }
@@ -98,7 +103,7 @@ allowed_prefixes = ["prod-", "staging-", "dev-"]
 
 # Find all namespaces
 namespaces = filter tfplan.resource_changes as _, rc {
-    rc.type is "kubernetes_namespace" and
+    rc.type is "kubernetes_namespace_v1" and
     rc.change.actions contains "create"
 }
 
@@ -131,16 +136,17 @@ Create OPA policy:
 # policies/kubernetes.rego
 package terraform.kubernetes
 
+import rego.v1
 import input as tfplan
 
 # Deny deployments without resource limits
-deny[msg] {
+deny contains msg if {
     resource := tfplan.resource_changes[_]
-    resource.type == "kubernetes_deployment"
+    resource.type == "kubernetes_deployment_v1"
     resource.change.actions[_] == "create"
 
     container := resource.change.after.spec[0].template[0].spec[0].container[_]
-    not container.resources.limits
+    not has_resource_limits(container)
 
     msg := sprintf("Deployment %s container %s missing resource limits", [
         resource.name,
@@ -148,14 +154,22 @@ deny[msg] {
     ])
 }
 
+has_resource_limits(container) if {
+    resources := object.get(container, "resources", [])
+    count(resources) > 0
+    limits := object.get(resources[0], "limits", {})
+    count(limits) > 0
+}
+
 # Deny deployments without readiness probes
-deny[msg] {
+deny contains msg if {
     resource := tfplan.resource_changes[_]
-    resource.type == "kubernetes_deployment"
+    resource.type == "kubernetes_deployment_v1"
     resource.change.actions[_] == "create"
 
     container := resource.change.after.spec[0].template[0].spec[0].container[_]
-    not container.readiness_probe
+    readiness_probes := object.get(container, "readiness_probe", [])
+    count(readiness_probes) == 0
 
     msg := sprintf("Deployment %s container %s missing readiness probe", [
         resource.name,
@@ -164,9 +178,9 @@ deny[msg] {
 }
 
 # Enforce replica counts
-deny[msg] {
+deny contains msg if {
     resource := tfplan.resource_changes[_]
-    resource.type == "kubernetes_deployment"
+    resource.type == "kubernetes_deployment_v1"
 
     replicas := resource.change.after.spec[0].replicas
     replicas < 2
@@ -180,11 +194,11 @@ deny[msg] {
 # Require specific labels
 required_labels := ["app", "environment", "owner"]
 
-deny[msg] {
+deny contains msg if {
     resource := tfplan.resource_changes[_]
-    resource.type == "kubernetes_deployment"
+    resource.type == "kubernetes_deployment_v1"
 
-    labels := resource.change.after.metadata[0].labels
+    labels := object.get(resource.change.after.metadata[0], "labels", {})
     required_label := required_labels[_]
     not labels[required_label]
 
@@ -263,18 +277,19 @@ jobs:
 
 ## Creating Advanced OPA Policies
 
-Enforce network policies:
+Enforce network policies in the same plan:
 
 ```rego
 # policies/network-policy.rego
 package terraform.kubernetes.network
 
+import rego.v1
 import input as tfplan
 
-# Require network policies for all namespaces
-deny[msg] {
+# Require network policies for newly created namespaces
+deny contains msg if {
     namespace := tfplan.resource_changes[_]
-    namespace.type == "kubernetes_namespace"
+    namespace.type == "kubernetes_namespace_v1"
     namespace.change.actions[_] == "create"
 
     ns_name := namespace.change.after.metadata[0].name
@@ -283,9 +298,9 @@ deny[msg] {
     msg := sprintf("Namespace %s missing network policy", [ns_name])
 }
 
-has_network_policy(ns_name) {
+has_network_policy(ns_name) if {
     policy := tfplan.resource_changes[_]
-    policy.type == "kubernetes_network_policy"
+    policy.type == "kubernetes_network_policy_v1"
     policy.change.after.metadata[0].namespace == ns_name
 }
 ```
@@ -296,25 +311,27 @@ Validate ingress configurations:
 # policies/ingress.rego
 package terraform.kubernetes.ingress
 
+import rego.v1
 import input as tfplan
 
 # Require TLS for all ingress
-deny[msg] {
+deny contains msg if {
     ingress := tfplan.resource_changes[_]
     ingress.type == "kubernetes_ingress_v1"
     ingress.change.actions[_] == "create"
 
-    not ingress.change.after.spec[0].tls
+    tls := object.get(ingress.change.after.spec[0], "tls", [])
+    count(tls) == 0
 
     msg := sprintf("Ingress %s missing TLS configuration", [ingress.name])
 }
 
 # Require cert-manager annotations
-deny[msg] {
+deny contains msg if {
     ingress := tfplan.resource_changes[_]
     ingress.type == "kubernetes_ingress_v1"
 
-    annotations := ingress.change.after.metadata[0].annotations
+    annotations := object.get(ingress.change.after.metadata[0], "annotations", {})
     not annotations["cert-manager.io/cluster-issuer"]
 
     msg := sprintf("Ingress %s missing cert-manager annotation", [ingress.name])
@@ -329,20 +346,21 @@ Limit resource sizes:
 # policies/cost-control.rego
 package terraform.kubernetes.cost
 
+import rego.v1
 import input as tfplan
 
 # Maximum CPU per container
 max_cpu := "2000m"
 
-# Maximum memory per container
-max_memory := "4Gi"
-
-deny[msg] {
+deny contains msg if {
     resource := tfplan.resource_changes[_]
-    resource.type == "kubernetes_deployment"
+    resource.type == "kubernetes_deployment_v1"
 
     container := resource.change.after.spec[0].template[0].spec[0].container[_]
-    cpu_limit := container.resources.limits.cpu
+    resources := object.get(container, "resources", [])
+    count(resources) > 0
+    limits := object.get(resources[0], "limits", {})
+    cpu_limit := limits.cpu
 
     exceeds_cpu_limit(cpu_limit)
 
@@ -353,10 +371,20 @@ deny[msg] {
     ])
 }
 
-exceeds_cpu_limit(limit) {
-    limit_val := to_number(trim_suffix(limit, "m"))
-    max_val := to_number(trim_suffix(max_cpu, "m"))
+exceeds_cpu_limit(limit) if {
+    limit_val := cpu_millicores(limit)
+    max_val := cpu_millicores(max_cpu)
     limit_val > max_val
+}
+
+cpu_millicores(limit) := value if {
+    endswith(limit, "m")
+    value := to_number(trim_suffix(limit, "m"))
+}
+
+cpu_millicores(limit) := value if {
+    not endswith(limit, "m")
+    value := to_number(limit) * 1000
 }
 ```
 
