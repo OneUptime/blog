@@ -36,10 +36,10 @@ View logs from failed pods:
 
 ```bash
 # List pods from the job
-kubectl get pods -l job-name=failed-job
+kubectl get pods -l batch.kubernetes.io/job-name=failed-job
 
-# Get logs from most recent pod
-kubectl logs -l job-name=failed-job --tail=100
+# Get recent logs from pods created by the job
+kubectl logs -l batch.kubernetes.io/job-name=failed-job --tail=100
 
 # Get logs from a specific failed pod
 kubectl logs failed-job-abc123
@@ -48,7 +48,7 @@ kubectl logs failed-job-abc123
 kubectl logs failed-job-abc123 --previous
 
 # Follow logs in real-time
-kubectl logs -f -l job-name=failed-job
+kubectl logs -f -l batch.kubernetes.io/job-name=failed-job
 ```
 
 Logs show application-level errors, stack traces, and debug output that reveal why your code failed.
@@ -59,13 +59,13 @@ Events provide cluster-level context:
 
 ```bash
 # Events for the job itself
-kubectl get events --field-selector involvedObject.name=failed-job
+kubectl events --for job/failed-job
 
-# Events for all pods from the job
-kubectl get events --field-selector involvedObject.kind=Pod | grep failed-job
+# Events for a specific pod from the job
+kubectl events --for pod/failed-job-abc123
 
-# Sort by timestamp
-kubectl get events --sort-by='.lastTimestamp' | grep failed-job
+# Show warning events in the namespace
+kubectl events --types=Warning
 
 # Detailed event view
 kubectl describe job failed-job | grep -A 20 Events
@@ -115,11 +115,11 @@ kubectl describe job $JOB_NAME
 
 echo ""
 echo "=== Recent Pods ==="
-kubectl get pods -l job-name=$JOB_NAME --sort-by='.status.startTime'
+kubectl get pods -l batch.kubernetes.io/job-name=$JOB_NAME --sort-by='.status.startTime'
 
 echo ""
 echo "=== Failed Pod Logs ==="
-FAILED_POD=$(kubectl get pods -l job-name=$JOB_NAME \
+FAILED_POD=$(kubectl get pods -l batch.kubernetes.io/job-name=$JOB_NAME \
   --field-selector=status.phase=Failed \
   --sort-by='.status.startTime' \
   -o jsonpath='{.items[-1:].metadata.name}')
@@ -136,7 +136,7 @@ fi
 
 echo ""
 echo "=== Events ==="
-kubectl get events --field-selector involvedObject.name=$JOB_NAME --sort-by='.lastTimestamp'
+kubectl events --for job/$JOB_NAME
 ```
 
 ## Checking Resource Limits
@@ -276,15 +276,23 @@ def watch_job_failures():
     w = watch.Watch()
     for event in w.stream(batch_v1.list_job_for_all_namespaces):
         job = event['object']
+        conditions = job.status.conditions or []
+        failed = any(
+            condition.type == "Failed" and condition.status == "True"
+            for condition in conditions
+        )
         
-        if job.status.failed and job.status.failed >= job.spec.backoff_limit:
+        if failed:
             # Job has failed, get logs
             pods = core_v1.list_namespaced_pod(
                 namespace=job.metadata.namespace,
-                label_selector=f'job-name={job.metadata.name}'
+                label_selector=f'batch.kubernetes.io/job-name={job.metadata.name}'
             )
             
             if pods.items:
+                pods.items.sort(key=lambda pod: (
+                    pod.status.start_time or pod.metadata.creation_timestamp or ""
+                ).isoformat() if pod.status.start_time or pod.metadata.creation_timestamp else "")
                 logs = core_v1.read_namespaced_pod_log(
                     name=pods.items[-1].metadata.name,
                     namespace=job.metadata.namespace,
