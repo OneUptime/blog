@@ -14,6 +14,8 @@ Container image security extends beyond vulnerability scanning. Even if an image
 
 Docker Content Trust is Docker's implementation of The Update Framework (TUF), a specification for secure software distribution. DCT uses digital signatures to verify the publisher and integrity of images.
 
+Docker is retiring DCT for Docker Official Images, so new deployments should plan a migration path to newer signing systems such as Sigstore or Notation. DCT and Notary v1 are still relevant for environments that already depend on Docker trust metadata or compatible registries.
+
 When DCT is enabled:
 1. Publishers sign images with private keys after pushing
 2. Signatures are stored in a Notary server
@@ -65,7 +67,10 @@ data:
         "type": "remote",
         "hostname": "notary-signer",
         "port": "7899",
-        "tls_ca_file": "/certs/ca.crt"
+        "key_algorithm": "ecdsa",
+        "tls_ca_file": "/certs/ca.crt",
+        "tls_client_cert": "/certs/tls.crt",
+        "tls_client_key": "/certs/tls.key"
       },
       "storage": {
         "backend": "postgres",
@@ -100,6 +105,8 @@ spec:
       containers:
       - name: notary-server
         image: notary:server-0.7.0
+        args:
+        - -config=/config/server-config.json
         ports:
         - containerPort: 4443
           name: https
@@ -108,9 +115,6 @@ spec:
           mountPath: /config
         - name: certs
           mountPath: /certs
-        env:
-        - name: NOTARY_SERVER_CONFIG_FILE
-          value: /config/server-config.json
       volumes:
       - name: config
         configMap:
@@ -154,7 +158,8 @@ data:
       },
       "storage": {
         "backend": "postgres",
-        "db_url": "postgres://notary:password@postgres:5432/notarysigner?sslmode=disable"
+        "db_url": "postgres://notary:password@postgres:5432/notarysigner?sslmode=disable",
+        "default_alias": "passwordalias1"
       }
     }
 ---
@@ -176,6 +181,8 @@ spec:
       containers:
       - name: notary-signer
         image: notary:signer-0.7.0
+        args:
+        - -config=/config/signer-config.json
         ports:
         - containerPort: 7899
           name: grpc
@@ -185,8 +192,11 @@ spec:
         - name: certs
           mountPath: /certs
         env:
-        - name: NOTARY_SIGNER_CONFIG_FILE
-          value: /config/signer-config.json
+        - name: NOTARY_SIGNER_PASSWORDALIAS1
+          valueFrom:
+            secretKeyRef:
+              name: notary-signer-passphrases
+              key: passwordalias1
       volumes:
       - name: config
         configMap:
@@ -219,7 +229,7 @@ kubectl apply -f notary-signer-deployment.yaml
 
 ## Integrating Notary with Harbor
 
-Harbor has built-in Notary integration. Enable it during deployment:
+Harbor 2.7 and earlier have built-in Notary v1 integration. Enable it during deployment:
 
 ```yaml
 # harbor-values.yaml with Notary
@@ -230,10 +240,10 @@ notary:
   signer:
     replicas: 2
 
-# Harbor will automatically configure itself to use Notary
+# Harbor will automatically configure itself to use Notary v1
 ```
 
-Or enable Notary on an existing Harbor instance via the UI: Administration > Configuration > Project Creation > Content Trust.
+Or enable Notary enforcement on an existing Harbor 2.7 or earlier project via the project Configuration tab. Harbor 2.9 deprecated Notary v1 support, and current Harbor releases use Cosign or Notation for content trust enforcement instead.
 
 ## Signing Images in CI/CD Pipelines
 
@@ -246,8 +256,11 @@ Generate signing keys:
 export DOCKER_CONTENT_TRUST=1
 export DOCKER_CONTENT_TRUST_SERVER=https://notary.example.com
 
-# This generates keys on first push
+# Generate a delegation key pair
 docker trust key generate mykey
+
+# Add the delegation public key to the repository
+docker trust signer add --key mykey.pub mykey registry.example.com/myapp
 
 # Store keys securely (e.g., Vault, AWS Secrets Manager)
 ```
@@ -262,7 +275,6 @@ stages:
   - deploy
 
 variables:
-  DOCKER_CONTENT_TRUST: "1"
   DOCKER_CONTENT_TRUST_SERVER: "https://notary.example.com"
 
 build-image:
@@ -275,11 +287,13 @@ sign-image:
   stage: sign
   script:
     # Import signing keys from CI/CD secrets
-    - mkdir -p ~/.docker/trust/private
-    - echo "$DOCKER_TRUST_KEY" | base64 -d > ~/.docker/trust/private/mykey.key
-    - chmod 600 ~/.docker/trust/private/mykey.key
+    - echo "$DOCKER_TRUST_KEY" | base64 -d > mykey.key
+    - export DOCKER_CONTENT_TRUST_REPOSITORY_PASSPHRASE="$DOCKER_TRUST_KEY_PASSPHRASE"
+    - docker trust key load mykey.key --name mykey
 
     # Sign the image
+    - docker pull registry.example.com/myapp:${CI_COMMIT_SHA}
+    - export DOCKER_CONTENT_TRUST=1
     - docker trust sign registry.example.com/myapp:${CI_COMMIT_SHA}
 
     # Verify signature
@@ -290,7 +304,7 @@ sign-image:
 deploy-staging:
   stage: deploy
   script:
-    # DCT will automatically verify signatures on pull
+    # The Kubernetes admission controller will verify signatures on admission
     - kubectl set image deployment/myapp \
         myapp=registry.example.com/myapp:${CI_COMMIT_SHA} \
         -n staging
@@ -318,7 +332,7 @@ application:
   - name: default
     type: notaryv1
     host: notary.example.com
-    trust_roots:
+    trustRoots:
     - name: default
       key: |
         -----BEGIN PUBLIC KEY-----
@@ -359,7 +373,7 @@ Cosign from Sigstore project offers a simpler alternative to Notary:
 
 ```bash
 # Install cosign
-curl -sL https://github.com/sigstore/cosign/releases/download/v2.0.0/cosign-linux-amd64 \
+curl -sL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
   -o /usr/local/bin/cosign
 chmod +x /usr/local/bin/cosign
 
