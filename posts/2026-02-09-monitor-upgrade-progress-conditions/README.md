@@ -20,13 +20,7 @@ echo "Monitoring node conditions during upgrade..."
 
 # Watch all node conditions
 
-watch -n 5 'kubectl get nodes -o custom-columns=\
-NAME:.metadata.name,\
-STATUS:.status.conditions[?(@.type==\"Ready\")].status,\
-DISK:.status.conditions[?(@.type==\"DiskPressure\")].status,\
-MEMORY:.status.conditions[?(@.type==\"MemoryPressure\")].status,\
-PID:.status.conditions[?(@.type==\"PIDPressure\")].status,\
-NETWORK:.status.conditions[?(@.type==\"NetworkUnavailable\")].status'
+watch -n 5 "kubectl get nodes -o 'custom-columns=NAME:.metadata.name,STATUS:.status.conditions[?(@.type==\"Ready\")].status,DISK:.status.conditions[?(@.type==\"DiskPressure\")].status,MEMORY:.status.conditions[?(@.type==\"MemoryPressure\")].status,PID:.status.conditions[?(@.type==\"PIDPressure\")].status,NETWORK:.status.conditions[?(@.type==\"NetworkUnavailable\")].status'"
 
 # Get detailed condition information
 kubectl get nodes -o json | jq -r '
@@ -130,7 +124,8 @@ echo "Tracking node upgrade progress to $TARGET_VERSION..."
 
 while true; do
   clear
-  echo "========================================  echo "Node Upgrade Status - $(date)"
+  echo "========================================"
+  echo "Node Upgrade Status - $(date)"
   echo "========================================"
 
   # Count nodes by version
@@ -145,11 +140,7 @@ while true; do
   echo ""
 
   # List nodes with details
-  kubectl get nodes -o custom-columns=\
-NAME:.metadata.name,\
-STATUS:.status.conditions[?(@.type==\"Ready\")].status,\
-VERSION:.status.nodeInfo.kubeletVersion,\
-OS:.status.nodeInfo.osImage
+  kubectl get nodes -o 'custom-columns=NAME:.metadata.name,STATUS:.status.conditions[?(@.type=="Ready")].status,VERSION:.status.nodeInfo.kubeletVersion,OS:.status.nodeInfo.osImage'
 
   # Calculate upgrade progress
   total_nodes=$(kubectl get nodes --no-headers | wc -l)
@@ -181,7 +172,7 @@ Track pods being evicted and rescheduled during node drains.
 echo "Monitoring pod rescheduling..."
 
 # Track pods in terminating state
-watch -n 5 'kubectl get pods -A --field-selector status.phase=Terminating'
+watch -n 5 'kubectl get pods -A -o json | jq -r ".items[] | select(.metadata.deletionTimestamp != null) | \"\(.metadata.namespace)/\(.metadata.name): Terminating\""'
 
 # Monitor pending pods
 watch -n 5 'kubectl get pods -A --field-selector status.phase=Pending'
@@ -231,13 +222,46 @@ watch -n 10 'kubectl top pods -A --sort-by=cpu | head -20'
 # API server metrics
 kubectl get --raw /metrics | grep -E "apiserver_request_total|apiserver_request_duration"
 
-# etcd metrics
-kubectl get --raw /metrics | grep etcd_disk
+# API server storage metrics
+kubectl get --raw /metrics | grep apiserver_storage_size_bytes
 
-# Track cluster capacity changes
+# Track cluster resource usage changes
 while true; do
-  total_cpu=$(kubectl top nodes --no-headers | awk '{sum+=$2} END {print sum}')
-  total_memory=$(kubectl top nodes --no-headers | awk '{sum+=$4} END {print sum}')
+  read -r total_cpu total_memory < <(kubectl top nodes --no-headers | awk '
+    function cpu_to_millicores(value) {
+      if (value ~ /m$/) {
+        sub(/m$/, "", value)
+        return value
+      }
+      return value * 1000
+    }
+    function memory_to_mib(value) {
+      if (value ~ /Ki$/) {
+        sub(/Ki$/, "", value)
+        return value / 1024
+      }
+      if (value ~ /Mi$/) {
+        sub(/Mi$/, "", value)
+        return value
+      }
+      if (value ~ /Gi$/) {
+        sub(/Gi$/, "", value)
+        return value * 1024
+      }
+      if (value ~ /Ti$/) {
+        sub(/Ti$/, "", value)
+        return value * 1024 * 1024
+      }
+      return value / 1024 / 1024
+    }
+    {
+      cpu += cpu_to_millicores($2)
+      memory += memory_to_mib($4)
+    }
+    END {
+      printf "%.0f %.0f", cpu, memory
+    }
+  ')
 
   echo "$(date): Total CPU: ${total_cpu}m, Total Memory: ${total_memory}Mi"
 
@@ -266,15 +290,15 @@ data:
             "title": "Nodes by Version",
             "targets": [
               {
-                "expr": "count by (kubelet_version) (kubelet_running_pods)"
+                "expr": "count by (kubelet_version) (kube_node_info)"
               }
             ]
           },
           {
-            "title": "Pod Eviction Rate",
+            "title": "Pods Marked for Deletion",
             "targets": [
               {
-                "expr": "rate(kube_pod_deletion_total[5m])"
+                "expr": "sum(kube_pod_deletion_timestamp > 0)"
               }
             ]
           },
@@ -282,7 +306,7 @@ data:
             "title": "API Server Latency",
             "targets": [
               {
-                "expr": "histogram_quantile(0.99, rate(apiserver_request_duration_seconds_bucket[5m]))"
+                "expr": "histogram_quantile(0.99, sum by (le) (rate(apiserver_request_duration_seconds_bucket[5m])))"
               }
             ]
           }
@@ -314,22 +338,22 @@ spec:
         summary: "Node {{ $labels.node }} is not ready"
         description: "Node has been not ready for more than 5 minutes during upgrade"
 
-    - alert: HighPodEvictionRate
-      expr: rate(kube_pod_deletion_total[5m]) > 10
+    - alert: HighPodDeletionCount
+      expr: sum(kube_pod_deletion_timestamp > 0) > 10
       for: 2m
       annotations:
-        summary: "High pod eviction rate detected"
-        description: "More than 10 pods/second being evicted"
+        summary: "High pod deletion count detected"
+        description: "More than 10 pods are marked for deletion"
 
     - alert: PodsPendingTooLong
-      expr: kube_pod_status_phase{phase="Pending"} > 0
+      expr: sum(kube_pod_status_phase{phase="Pending"} == 1) > 0
       for: 10m
       annotations:
         summary: "Pods stuck in pending state"
         description: "{{ $value }} pods have been pending for more than 10 minutes"
 
     - alert: APIServerHighLatency
-      expr: histogram_quantile(0.99, rate(apiserver_request_duration_seconds_bucket[5m])) > 1
+      expr: histogram_quantile(0.99, sum by (le) (rate(apiserver_request_duration_seconds_bucket[5m]))) > 1
       for: 5m
       annotations:
         summary: "API server latency is high"
@@ -405,7 +429,7 @@ if [ ! -z "$notready" ]; then
 fi
 
 # Check no pods are terminating
-terminating=$(kubectl get pods -A --field-selector status.phase=Terminating --no-headers | wc -l)
+terminating=$(kubectl get pods -A -o json | jq '[.items[] | select(.metadata.deletionTimestamp != null)] | length')
 
 if [ $terminating -gt 0 ]; then
   echo "WARNING: $terminating pods still terminating"
