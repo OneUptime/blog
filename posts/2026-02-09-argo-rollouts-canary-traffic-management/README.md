@@ -46,13 +46,13 @@ spec:
   strategy:
     canary:
       steps:
-      - setWeight: 10    # 10% traffic to canary
+      - setWeight: 10    # 10% canary weight
       - pause: {duration: 5m}
-      - setWeight: 25    # 25% traffic to canary
+      - setWeight: 25    # 25% canary weight
       - pause: {duration: 5m}
-      - setWeight: 50    # 50% traffic to canary
+      - setWeight: 50    # 50% canary weight
       - pause: {duration: 5m}
-      - setWeight: 75    # 75% traffic to canary
+      - setWeight: 75    # 75% canary weight
       - pause: {duration: 5m}
 ---
 apiVersion: v1
@@ -158,7 +158,7 @@ Argo Rollouts automatically updates the VirtualService weights during rollout.
 
 ## Automated Analysis
 
-Add metric analysis at each step:
+Add metric analysis to the rollout:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -217,7 +217,7 @@ spec:
   - name: success-rate
     interval: 30s
     count: 5
-    successCondition: result >= 0.95
+    successCondition: result[0] >= 0.95
     failureLimit: 2
     provider:
       prometheus:
@@ -245,7 +245,7 @@ spec:
   - name: p95-latency
     interval: 30s
     count: 5
-    successCondition: result < 0.5
+    successCondition: result[0] < 0.5
     failureLimit: 2
     provider:
       prometheus:
@@ -271,6 +271,8 @@ spec:
   strategy:
     canary:
       trafficRouting:
+        managedRoutes:
+        - name: internal-users
         istio:
           virtualService:
             name: web-app-vsvc
@@ -344,7 +346,9 @@ spec:
       prometheus:
         address: http://prometheus:9090
         query: |
-          rate(http_requests_total{status=~"5..",service="web-app"}[5m])
+          sum(rate(http_requests_total{status=~"5..",service="web-app"}[5m]))
+          /
+          sum(rate(http_requests_total{service="web-app"}[5m]))
 ```
 
 Background analysis runs continuously and fails the rollout if metrics degrade.
@@ -375,6 +379,14 @@ spec:
         - containerPort: 8080
   strategy:
     canary:
+      trafficRouting:
+        istio:
+          virtualService:
+            name: web-app-vsvc
+          destinationRule:
+            name: web-app-destrule
+            canarySubsetName: canary
+            stableSubsetName: stable
       steps:
       - experiment:
           templates:
@@ -393,14 +405,22 @@ spec:
 
 This creates experimental pods for A/B testing before rolling out to all traffic.
 
-## Dynamic Canary with Metrics
+## Dynamic Stable Scaling with Metrics
 
-Adjust canary speed based on metrics:
+Reduce stable pods as canary pods increase while monitoring metrics:
 
 ```yaml
 spec:
   strategy:
     canary:
+      trafficRouting:
+        istio:
+          virtualService:
+            name: web-app-vsvc
+          destinationRule:
+            name: web-app-destrule
+            canarySubsetName: canary
+            stableSubsetName: stable
       analysis:
         templates:
         - templateName: dynamic-analysis
