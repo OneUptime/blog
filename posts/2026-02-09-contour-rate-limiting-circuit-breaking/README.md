@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Contour, Rate Limiting
 
-Description: Learn how to implement rate limiting and circuit breaking in Contour Ingress Controller using HTTPProxy resources to protect your Kubernetes services from overload and cascading failures.
+Description: Learn how to implement rate limiting with HTTPProxy resources and circuit breaker limits for Contour-managed services to protect your Kubernetes services from overload and cascading failures.
 
 ---
 
-Contour Ingress Controller provides robust rate limiting and circuit breaking features through its HTTPProxy CRD and integration with Envoy's rate limiting service. These features protect your services from abuse, prevent cascading failures, and ensure system stability under load. This guide explores how to configure both local and global rate limiting, along with circuit breaking patterns.
+Contour Ingress Controller provides robust rate limiting features through its HTTPProxy CRD and integration with Envoy's rate limiting service. It also exposes Envoy circuit breaker budgets through Kubernetes Service annotations and Contour cluster defaults. These features protect your services from abuse, prevent cascading failures, and ensure system stability under load. This guide explores how to configure both local and global rate limiting, along with circuit breaking patterns.
 
 ## Understanding Rate Limiting in Contour
 
@@ -43,14 +43,14 @@ data:
   ratelimit-config.yaml: |
     domain: contour
     descriptors:
-      # 100 requests per minute per IP
+      # 100 requests per minute for the global descriptor
       - key: generic_key
         value: global
         rate_limit:
           unit: minute
           requests_per_unit: 100
 
-      # 1000 requests per minute for authenticated users
+      # 1000 requests per minute for a header_match descriptor
       - key: header_match
         value: authenticated
         rate_limit:
@@ -81,11 +81,11 @@ spec:
     spec:
       containers:
       - name: ratelimit
-        image: envoyproxy/ratelimit:latest
+        image: envoyproxy/ratelimit:master
         ports:
-        - containerPort: 8081
-          name: http
         - containerPort: 8080
+          name: http
+        - containerPort: 8081
           name: grpc
         env:
         - name: USE_STATSD
@@ -120,11 +120,11 @@ spec:
     app: ratelimit
   ports:
   - name: http
-    port: 8081
-    targetPort: 8081
-  - name: grpc
     port: 8080
     targetPort: 8080
+  - name: grpc
+    port: 8081
+    targetPort: 8081
 ```
 
 ### Deploy Redis for Rate Limit State
@@ -193,7 +193,7 @@ spec:
   protocol: h2
   services:
   - name: ratelimit
-    port: 8080
+    port: 8081
 ```
 
 Apply the configuration:
@@ -425,14 +425,36 @@ spec:
 
 ## Circuit Breaking Configuration
 
-Circuit breaking prevents cascading failures by limiting connections and requests to unhealthy services.
+Circuit breaking prevents cascading failures by limiting connections, pending requests, parallel requests, and parallel retries to Kubernetes Services. In Contour, these limits are configured on Services with annotations, or as global Envoy cluster defaults in Contour configuration.
 
 ### Connection Limits
 
-Configure maximum connections and requests:
+Configure maximum connections and requests with Service annotations:
 
 ```yaml
-# circuit-breaker.yaml
+# circuit-breaker-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: default
+  annotations:
+    projectcontour.io/max-connections: "1024"
+    projectcontour.io/max-pending-requests: "512"
+    projectcontour.io/max-requests: "1024"
+    projectcontour.io/max-retries: "3"
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 80
+    targetPort: 8080
+```
+
+Reference the annotated Service from HTTPProxy as usual:
+
+```yaml
+# circuit-breaker-route.yaml
 apiVersion: projectcontour.io/v1
 kind: HTTPProxy
 metadata:
@@ -444,33 +466,23 @@ spec:
   routes:
   - conditions:
     - prefix: /
+    loadBalancerPolicy:
+      strategy: RoundRobin
     services:
     - name: backend-service
       port: 80
-    # Circuit breaker configuration
-    loadBalancerPolicy:
-      strategy: RoundRobin
-      circuitBreaker:
-        # Maximum connections
-        maxConnections: 1024
-        # Maximum pending requests
-        maxPendingRequests: 512
-        # Maximum requests
-        maxRequests: 1024
-        # Maximum retries
-        maxRetries: 3
 ```
 
-### Outlier Detection
+### Health Checking
 
-Automatically remove unhealthy backends:
+Actively mark unhealthy backends with an HTTP health check:
 
 ```yaml
-# outlier-detection.yaml
+# health-check.yaml
 apiVersion: projectcontour.io/v1
 kind: HTTPProxy
 metadata:
-  name: outlier-detection
+  name: health-checked-api
   namespace: default
 spec:
   virtualhost:
@@ -487,20 +499,48 @@ spec:
       healthyThresholdCount: 2
     loadBalancerPolicy:
       strategy: RoundRobin
-      # Outlier detection settings
-      circuitBreaker:
-        maxConnections: 2048
-        maxPendingRequests: 1024
-        maxRequests: 2048
-        maxRetries: 3
 ```
 
-### Per-Route Circuit Breaking
+### Per-Service Circuit Breaking
 
-Different limits for different routes:
+Use different annotated Services for different routes:
 
 ```yaml
-# per-route-circuit-breaker.yaml
+# per-service-circuit-breaker.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: heavy-service
+  namespace: default
+  annotations:
+    projectcontour.io/max-connections: "256"
+    projectcontour.io/max-pending-requests: "128"
+    projectcontour.io/max-requests: "256"
+    projectcontour.io/max-retries: "1"
+spec:
+  selector:
+    app: heavy
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: light-service
+  namespace: default
+  annotations:
+    projectcontour.io/max-connections: "4096"
+    projectcontour.io/max-pending-requests: "2048"
+    projectcontour.io/max-requests: "4096"
+    projectcontour.io/max-retries: "5"
+spec:
+  selector:
+    app: light
+  ports:
+  - port: 80
+    targetPort: 8080
+---
 apiVersion: projectcontour.io/v1
 kind: HTTPProxy
 metadata:
@@ -510,31 +550,16 @@ spec:
   virtualhost:
     fqdn: api.example.com
   routes:
-  # Strict limits for resource-intensive endpoint
   - conditions:
     - prefix: /api/heavy
     services:
     - name: heavy-service
       port: 80
-    loadBalancerPolicy:
-      circuitBreaker:
-        maxConnections: 256
-        maxPendingRequests: 128
-        maxRequests: 256
-        maxRetries: 1
-
-  # Generous limits for lightweight endpoint
   - conditions:
     - prefix: /api/light
     services:
     - name: light-service
       port: 80
-    loadBalancerPolicy:
-      circuitBreaker:
-        maxConnections: 4096
-        maxPendingRequests: 2048
-        maxRequests: 4096
-        maxRetries: 5
 ```
 
 ## Combining Rate Limiting and Circuit Breaking
@@ -543,6 +568,23 @@ Use both features together for comprehensive protection:
 
 ```yaml
 # combined-protection.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: default
+  annotations:
+    projectcontour.io/max-connections: "1024"
+    projectcontour.io/max-pending-requests: "512"
+    projectcontour.io/max-requests: "1024"
+    projectcontour.io/max-retries: "3"
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 80
+    targetPort: 8080
+---
 apiVersion: projectcontour.io/v1
 kind: HTTPProxy
 metadata:
@@ -569,13 +611,6 @@ spec:
     services:
     - name: backend-service
       port: 80
-    # Circuit breaking
-    loadBalancerPolicy:
-      circuitBreaker:
-        maxConnections: 1024
-        maxPendingRequests: 512
-        maxRequests: 1024
-        maxRetries: 3
     # Health checking
     healthCheckPolicy:
       path: /health
@@ -589,7 +624,7 @@ spec:
       idle: 300s
     # Retry policy
     retryPolicy:
-      numRetries: 3
+      count: 3
       perTryTimeout: 10s
       retryOn:
       - 5xx
