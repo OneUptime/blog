@@ -26,18 +26,18 @@ This reduces operational overhead compared to running separate control planes in
 Ensure clusters meet requirements:
 
 - Direct pod-to-pod connectivity (flat network or VPN)
-- API server accessibility between clusters
+- Primary cluster access to the remote cluster API server
 - Same trust domain for mTLS
-- Kubernetes 1.24+
-- Istio 1.18+
+- Kubernetes 1.32-1.36
+- Istio 1.30.x
 
 ## Installing Istio in Primary Cluster
 
 Download istioctl:
 
 ```bash
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
-cd istio-1.20.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -87,42 +87,29 @@ spec:
       multiCluster:
         clusterName: cluster-1
       network: network1
+      externalIstiod: true
 EOF
 
 istioctl install -f cluster1-config.yaml --context cluster-1
 ```
 
-Expose Istio control plane for remote clusters:
+Install an east-west gateway and expose Istio control plane discovery for remote clusters:
 
 ```bash
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Service
-metadata:
-  name: istiod-external
-  namespace: istio-system
-spec:
-  type: LoadBalancer
-  selector:
-    app: istiod
-  ports:
-  - name: https-dns
-    port: 15012
-    protocol: TCP
-    targetPort: 15012
-  - name: https-webhook
-    port: 15017
-    protocol: TCP
-    targetPort: 15017
-EOF --context cluster-1
+samples/multicluster/gen-eastwest-gateway.sh \
+  --network network1 | \
+  istioctl --context cluster-1 install -y -f -
+
+kubectl apply --context cluster-1 -n istio-system \
+  -f samples/multicluster/expose-istiod.yaml
 ```
 
 Get the external IP:
 
 ```bash
-export ISTIOD_EXTERNAL_IP=$(kubectl get svc istiod-external -n istio-system \
+export DISCOVERY_ADDRESS=$(kubectl get svc istio-eastwestgateway -n istio-system \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --context cluster-1)
-echo "Istiod external IP: $ISTIOD_EXTERNAL_IP"
+echo "Istio discovery address: $DISCOVERY_ADDRESS"
 ```
 
 ## Installing Istio in Remote Cluster
@@ -139,10 +126,10 @@ kubectl create secret generic cacerts -n istio-system \
   --context cluster-2
 ```
 
-Label the namespace:
+Annotate the namespace with the primary control plane cluster:
 
 ```bash
-kubectl label namespace istio-system topology.istio.io/network=network1 --context cluster-2
+kubectl annotate namespace istio-system topology.istio.io/controlPlaneClusters=cluster-1 --context cluster-2
 ```
 
 Install remote Istio configuration:
@@ -156,14 +143,10 @@ metadata:
 spec:
   profile: remote
   values:
-    global:
-      meshID: mesh1
-      multiCluster:
-        clusterName: cluster-2
-      network: network1
-      remotePilotAddress: ${ISTIOD_EXTERNAL_IP}
     istiodRemote:
-      injectionURL: https://${ISTIOD_EXTERNAL_IP}:15017/inject
+      injectionPath: /inject/cluster/cluster-2/net/network1
+    global:
+      remotePilotAddress: ${DISCOVERY_ADDRESS}
 EOF
 
 istioctl install -f cluster2-config.yaml --context cluster-2
@@ -300,7 +283,7 @@ curl http://backend.production.svc.cluster.local
 
 ## Configuring Traffic Management
 
-Create a VirtualService in the primary cluster:
+Create a VirtualService in the primary cluster after deploying a `backend` version with the `version: v2` label:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -393,8 +376,8 @@ Shows all proxies across clusters:
 
 ```text
 NAME                              CLUSTER      VERSION    STATUS      ISTIO VERSION
-frontend-xxx.production           cluster-1    1.20.0     SYNCED      1.20.0
-backend-yyy.production            cluster-2    1.20.0     SYNCED      1.20.0
+frontend-xxx.production           cluster-1    1.30.0     SYNCED      1.30.0
+backend-yyy.production            cluster-2    1.30.0     SYNCED      1.30.0
 ```
 
 Check cross-cluster connectivity:
@@ -420,13 +403,13 @@ spec:
         replicaCount: 3
 ```
 
-**Monitor control plane connectivity**: Alert if remote clusters can't reach the primary control plane:
+**Monitor control plane connectivity**: Alert if remote clusters take too long to sync with the primary control plane:
 
 ```promql
-sum(pilot_xds_pushes{cluster="cluster-2"}) == 0
+increase(remote_cluster_sync_timeouts_total[5m]) > 0
 ```
 
-**Secure control plane access**: Use network policies and firewalls to limit access to istiod-external service.
+**Secure control plane access**: Use network policies and firewalls to limit access to the east-west gateway service.
 
 **Plan for primary cluster failure**: Have a documented procedure for promoting a remote cluster to primary if needed.
 
