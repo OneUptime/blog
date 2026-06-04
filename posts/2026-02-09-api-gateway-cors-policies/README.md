@@ -12,7 +12,7 @@ Cross-Origin Resource Sharing (CORS) is a security mechanism that controls how w
 
 ## Understanding CORS Mechanics
 
-When a browser makes a cross-origin request, it first sends an OPTIONS preflight request to check if the server allows the actual request. The server responds with CORS headers indicating which origins, methods, and headers are permitted. Only if the preflight succeeds does the browser proceed with the actual request.
+When a browser makes a cross-origin request that is not a simple request, it first sends an OPTIONS preflight request to check if the server allows the actual request. The server responds with CORS headers indicating which origins, methods, and headers are permitted. Only if the preflight succeeds does the browser proceed with the actual request.
 
 For simple requests (GET, HEAD, POST with certain content types), browsers skip the preflight and include an `Origin` header in the request. The server must respond with appropriate `Access-Control-Allow-Origin` headers for the browser to expose the response to JavaScript.
 
@@ -34,6 +34,7 @@ server {
             add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
             add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, X-Requested-With' always;
             add_header 'Access-Control-Max-Age' '86400' always;
+            add_header 'Vary' 'Origin' always;
             add_header 'Content-Length' '0';
             add_header 'Content-Type' 'text/plain';
             return 204;
@@ -41,8 +42,8 @@ server {
 
         # Add CORS headers to all responses
         add_header 'Access-Control-Allow-Origin' '$http_origin' always;
-        add_header 'Access-Control-Allow-Credentials' 'true' always;
         add_header 'Access-Control-Expose-Headers' 'Content-Length, X-Request-ID' always;
+        add_header 'Vary' 'Origin' always;
 
         proxy_pass http://backend-service:8080;
         proxy_set_header Host $host;
@@ -55,7 +56,7 @@ This configuration responds to preflight requests immediately without proxying t
 
 ## Restricted Origin Configuration
 
-Never use `Access-Control-Allow-Origin: *` in production if your API requires authentication. This combination allows any website to make authenticated requests on behalf of users.
+Never use `Access-Control-Allow-Origin: *` for credentialed CORS requests. Browsers reject responses that combine the wildcard origin with credentials, so authenticated APIs should return a specific trusted origin instead.
 
 ```nginx
 # Whitelist specific origins
@@ -72,12 +73,15 @@ server {
             add_header 'Access-Control-Allow-Origin' '$cors_origin' always;
             add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE' always;
             add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
             add_header 'Access-Control-Max-Age' '86400' always;
+            add_header 'Vary' 'Origin' always;
             return 204;
         }
 
         add_header 'Access-Control-Allow-Origin' '$cors_origin' always;
         add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Vary' 'Origin' always;
 
         # Reject requests from unauthorized origins
         if ($cors_origin = "") {
@@ -89,7 +93,7 @@ server {
 }
 ```
 
-The map directive creates a lookup table of allowed origins. Requests from other origins get an empty `$cors_origin` variable and receive a 403 response.
+The map directive creates a lookup table of allowed origins. Actual requests from other origins get an empty `$cors_origin` variable and receive a 403 response; preflight requests from other origins receive no `Access-Control-Allow-Origin` header and are blocked by the browser.
 
 ## Kong CORS Plugin
 
@@ -289,13 +293,13 @@ plugins:
 - name: cors
   config:
     origins:
-    - "https://*.example.com"
+    - "^https://[a-z0-9-]+\\.example\\.com$"
     - "https://app.example.com"
 ```
 
 ## Credentials and Security
 
-When `Access-Control-Allow-Credentials: true` is set, browsers include cookies and authorization headers in cross-origin requests. This requires careful origin validation.
+When application code sends a request with credentials, such as `fetch()` with `credentials: "include"`, `Access-Control-Allow-Credentials: true` allows the browser to expose the credentialed response to JavaScript. This requires careful origin validation.
 
 ```yaml
 # Secure credentials configuration
@@ -309,17 +313,17 @@ corsPolicy:
   - Authorization
   - Content-Type
   allowCredentials: true  # Requires specific origin, not *
-  maxAge: 3600
+  maxAge: 1h
 ```
 
-Never combine wildcards with credentials:
+Never combine catch-all origin matching with credentials:
 
 ```yaml
 # INSECURE - DO NOT USE
 corsPolicy:
   allowOrigins:
-  - prefix: "*"  # Dangerous with credentials
-  allowCredentials: true  # This combination is a security vulnerability
+  - regex: ".*"  # Dangerous catch-all with credentials
+  allowCredentials: true  # This combination allows any origin to read credentialed responses
 ```
 
 ## Preflight Optimization
@@ -336,7 +340,7 @@ add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type' always;
 
 Browsers won't send preflight requests for simple requests that only use:
 - Methods: GET, HEAD, POST
-- Headers: Accept, Accept-Language, Content-Language, Content-Type (only application/x-www-form-urlencoded, multipart/form-data, or text/plain)
+- Headers: Accept, Accept-Language, Content-Language, Content-Type (only application/x-www-form-urlencoded, multipart/form-data, or text/plain), and Range with a single byte range
 
 Use these constraints when possible to avoid preflight overhead.
 
