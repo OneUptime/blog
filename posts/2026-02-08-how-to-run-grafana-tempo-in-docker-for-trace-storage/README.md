@@ -8,13 +8,13 @@ Description: Deploy Grafana Tempo in Docker for distributed trace storage and qu
 
 ---
 
-Grafana Tempo is a high-volume, cost-effective distributed tracing backend. It only requires object storage to function, which makes it significantly cheaper to run than alternatives like Jaeger or Zipkin that need a database like Cassandra or Elasticsearch. Tempo integrates seamlessly with Grafana for trace visualization, and it accepts traces from all major tracing protocols including OpenTelemetry, Jaeger, and Zipkin.
+Grafana Tempo is a high-volume, cost-effective distributed tracing backend. It can use object storage as its primary long-term storage backend, which makes it significantly cheaper to run than alternatives like Jaeger or Zipkin deployments that need a database like Cassandra or Elasticsearch. Tempo integrates seamlessly with Grafana for trace visualization, and it accepts traces from all major tracing protocols including OpenTelemetry, Jaeger, and Zipkin.
 
 Tempo stores traces in a columnar format on object storage (or local disk for development) and provides fast trace lookups by ID. Combined with TraceQL, Tempo's query language, you can search traces by attributes like service name, duration, and custom span attributes.
 
 ## Quick Start
 
-Run Tempo in standalone mode for local development:
+After creating the `tempo.yaml` configuration shown below, run Tempo in standalone mode for local development:
 
 ```bash
 # Start Tempo with local file storage
@@ -24,16 +24,18 @@ docker run -d \
   -p 3200:3200 \
   -p 4317:4317 \
   -p 4318:4318 \
+  -p 9411:9411 \
+  -v ./tempo.yaml:/etc/tempo.yaml \
   -v tempo_data:/var/tempo \
-  grafana/tempo:latest \
-  -config.file=/etc/tempo/tempo.yaml
+  grafana/tempo:2.10.1 \
+  -config.file=/etc/tempo.yaml
 ```
 
 However, Tempo needs a configuration file. Let's set it up properly with Docker Compose.
 
 ## Docker Compose with Grafana
 
-Here is a complete setup with Tempo, Grafana, and an OpenTelemetry Collector:
+Here is a complete setup with Tempo and Grafana:
 
 ```yaml
 # docker-compose.yml - Tempo tracing stack
@@ -41,7 +43,7 @@ version: "3.8"
 
 services:
   tempo:
-    image: grafana/tempo:latest
+    image: grafana/tempo:2.10.1
     command: ["-config.file=/etc/tempo.yaml"]
     ports:
       # Tempo API and query frontend
@@ -52,6 +54,9 @@ services:
       - "4318:4318"
       # Zipkin compatible endpoint
       - "9411:9411"
+      # Jaeger Thrift HTTP and gRPC endpoints
+      - "14268:14268"
+      - "14250:14250"
     volumes:
       - ./tempo.yaml:/etc/tempo.yaml
       - tempo_data:/var/tempo
@@ -113,18 +118,6 @@ compactor:
   compaction:
     block_retention: 48h
 
-# Metrics generator creates span metrics from traces
-metrics_generator:
-  registry:
-    external_labels:
-      source: tempo
-      cluster: docker
-  storage:
-    path: /var/tempo/generator/wal
-    remote_write:
-      - url: http://prometheus:9090/api/v1/write
-        send_exemplars: true
-
 # Storage backend configuration
 storage:
   trace:
@@ -134,18 +127,6 @@ storage:
     local:
       path: /var/tempo/blocks
 
-# Enable TraceQL search
-querier:
-  search:
-    query_timeout: 30s
-
-# Override defaults for single-node deployment
-overrides:
-  defaults:
-    search:
-      duration_type: TRACE_DURATION
-    metrics_generator:
-      processors: [service-graphs, span-metrics]
 ```
 
 ## Grafana Data Source Configuration
@@ -178,8 +159,8 @@ datasources:
         hide: false
       traceQuery:
         timeShiftEnabled: true
-        spanStartTimeShift: '1h'
-        spanEndTimeShift: '-1h'
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
 ```
 
 ## Sending Traces
@@ -241,22 +222,22 @@ print("Traces sent to Tempo")
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
-
-// Configure the tracer provider
-const provider = new NodeTracerProvider({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'api-gateway',
-  }),
-});
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Send traces to Tempo
 const exporter = new OTLPTraceExporter({
   url: 'http://localhost:4317',
 });
 
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+// Configure the tracer provider
+const provider = new NodeTracerProvider({
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'api-gateway',
+  }),
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
+
 provider.register();
 
 console.log('Tracing initialized - sending to Tempo');
@@ -301,12 +282,12 @@ TraceQL is Tempo's query language for searching traces by attributes:
 # Find traces from a specific service
 curl "http://localhost:3200/api/search?q=%7Bresource.service.name%3D%22order-service%22%7D"
 
-# Find slow traces (duration > 1 second)
-curl "http://localhost:3200/api/search?q=%7Bduration%3E1s%7D"
+# Find slow traces (trace duration > 1 second)
+curl "http://localhost:3200/api/search?q=%7Btrace%3Aduration%3E1s%7D"
 
 # Search by span name and attribute
-# TraceQL: { span.http.status_code >= 500 }
-curl "http://localhost:3200/api/search?q=%7Bspan.http.status_code+%3E%3D+500%7D"
+# TraceQL: { span.http.response.status_code >= 500 }
+curl "http://localhost:3200/api/search?q=%7Bspan.http.response.status_code+%3E%3D+500%7D"
 
 # Fetch a specific trace by ID
 curl "http://localhost:3200/api/traces/5982fe77008310cc80f1da5e10147519"
@@ -324,7 +305,7 @@ version: "3.8"
 
 services:
   tempo:
-    image: grafana/tempo:latest
+    image: grafana/tempo:2.10.1
     command: ["-config.file=/etc/tempo.yaml"]
     ports:
       - "3200:3200"
