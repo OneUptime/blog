@@ -34,7 +34,7 @@ Ensure you have:
 
 ## Basic Configuration
 
-Set `allowPrivilegeEscalation: false` in your pod security context:
+Set `allowPrivilegeEscalation: false` in your container security context:
 
 ```yaml
 apiVersion: v1
@@ -59,22 +59,23 @@ Test this behavior:
 ```bash
 kubectl apply -f no-escalation.yaml
 
-# Try to use sudo (a setuid binary)
-
-kubectl exec no-escalation -- sudo id
-# Error: sudo: effective uid is not 0, is /usr/bin/sudo on a file system with the 'nosuid' option set or an NFS file system without root privileges?
+# Check that no_new_privs is enabled
+kubectl exec no-escalation -- grep NoNewPrivs /proc/1/status
+# NoNewPrivs:	1
 ```
 
-The setuid mechanism is blocked, preventing the privilege escalation.
+The `no_new_privs` flag blocks setuid and file-capability based privilege gains, preventing the privilege escalation.
 
 ## How allowPrivilegeEscalation Works
 
 When `allowPrivilegeEscalation: false` is set, Kubernetes configures the container runtime to set the `no_new_privs` bit on the container's init process. This bit is inherited by all child processes and prevents:
 
-- Gaining capabilities through execve()
+- Gaining additional capabilities from file capabilities through execve()
 - Transitioning to a different SELinux context with more privileges
 - Executing setuid/setgid programs with elevated privileges
 - Using file capabilities to gain permissions
+
+Kubernetes always treats `allowPrivilegeEscalation` as true when the container is privileged or has the `CAP_SYS_ADMIN` capability.
 
 This provides defense-in-depth even if other security controls fail.
 
@@ -100,9 +101,8 @@ spec:
 This container can potentially escalate privileges if setuid binaries are available:
 
 ```bash
-# If ping is setuid root (common on some systems)
-kubectl exec with-escalation -- ping -c 1 8.8.8.8
-# Works because ping can temporarily gain capabilities
+kubectl exec with-escalation -- grep NoNewPrivs /proc/1/status
+# NoNewPrivs:	0
 ```
 
 **With protection:**
@@ -125,8 +125,8 @@ spec:
 Setuid binaries cannot gain privileges:
 
 ```bash
-kubectl exec no-escalation -- ping -c 1 8.8.8.8
-# May fail depending on whether ping needs elevated privileges
+kubectl exec no-escalation -- grep NoNewPrivs /proc/1/status
+# NoNewPrivs:	1
 ```
 
 ## Best Practice Configuration
@@ -339,6 +339,8 @@ Even when running as root, prevent privilege escalation to limit potential damag
 
 Enforce `allowPrivilegeEscalation: false` cluster-wide:
 
+`ValidatingAdmissionPolicy` is stable in Kubernetes 1.30 and later.
+
 ```yaml
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
@@ -351,10 +353,11 @@ spec:
     - apiGroups: [""]
       apiVersions: ["v1"]
       operations: ["CREATE", "UPDATE"]
-      resources: ["pods"]
+      resources: ["pods", "pods/ephemeralcontainers"]
   validations:
   - expression: |
       object.spec.containers.all(c,
+        has(c.securityContext) &&
         has(c.securityContext.allowPrivilegeEscalation) &&
         c.securityContext.allowPrivilegeEscalation == false
       )
@@ -363,10 +366,20 @@ spec:
   - expression: |
       !has(object.spec.initContainers) ||
       object.spec.initContainers.all(c,
+        has(c.securityContext) &&
         has(c.securityContext.allowPrivilegeEscalation) &&
         c.securityContext.allowPrivilegeEscalation == false
       )
     message: "Init containers must set allowPrivilegeEscalation: false"
+
+  - expression: |
+      !has(object.spec.ephemeralContainers) ||
+      object.spec.ephemeralContainers.all(c,
+        has(c.securityContext) &&
+        has(c.securityContext.allowPrivilegeEscalation) &&
+        c.securityContext.allowPrivilegeEscalation == false
+      )
+    message: "Ephemeral containers must set allowPrivilegeEscalation: false"
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
@@ -415,10 +428,6 @@ EOF
 
 kubectl wait --for=condition=ready pod/$POD_NAME --timeout=60s
 
-# Try to escalate privileges using sudo
-echo "Testing sudo (should fail):"
-kubectl exec $POD_NAME -- bash -c 'apt-get update && apt-get install -y sudo && sudo id' 2>&1 | grep -q "effective uid is not 0" && echo "✓ Privilege escalation blocked"
-
 # Check no_new_privs flag
 echo "Checking no_new_privs flag:"
 kubectl exec $POD_NAME -- cat /proc/1/status | grep NoNewPrivs
@@ -460,14 +469,14 @@ spec:
   matchResources:
     namespaceSelector:
       matchExpressions:
-      - key: name
+      - key: kubernetes.io/metadata.name
         operator: NotIn
         values: ["kube-system", "privileged-workloads"]
 ```
 
 ## Monitoring and Alerting
 
-Monitor for containers that violate the policy:
+Monitor Kubernetes audit events for pods that violate the policy:
 
 ```yaml
 apiVersion: v1
@@ -479,13 +488,15 @@ data:
     - rule: Container Allows Privilege Escalation
       desc: Detect containers configured to allow privilege escalation
       condition: >
-        container and
-        k8s.pod.security.context.allow_privilege_escalation = true
+        jevt.value[/stage]=ResponseComplete and
+        ka.target.resource=pods and
+        ka.verb in (create,update,patch) and
+        jevt.value[/requestObject/spec/containers] contains "allowPrivilegeEscalation\":true"
       output: >
         Container allows privilege escalation
-        (user=%user.name pod=%k8s.pod.name
-         namespace=%k8s.ns.name image=%container.image.repository)
+        (user=%ka.user.name pod=%ka.req.pod.name namespace=%ka.target.namespace)
       priority: WARNING
+      source: k8s_audit
 ```
 
 ## Conclusion
