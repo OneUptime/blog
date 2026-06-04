@@ -12,9 +12,9 @@ During rolling control plane upgrades, you temporarily run multiple API server v
 
 ## Understanding API Version Skew
 
-Kubernetes supports limited version skew between components. The API server can be at version N, while kubelets can be at N-2, and kubectl can be at N+1 or N-1. However, during rolling upgrades, you may have multiple API server versions running behind a load balancer, requiring careful compatibility management.
+Kubernetes supports limited version skew between components. The API server can be at version N, while kubelets can be up to three minor versions older for currently supported releases, and kubectl can be at N+1 or N-1. However, during rolling upgrades, you may have multiple API server versions running behind a load balancer, and the newest and oldest API server instances must remain within one minor version of each other.
 
-API servers support multiple API versions simultaneously. Clients specify which version they want using the apiVersion field. During upgrades, ensure older API servers can handle requests from newer clients and vice versa.
+API servers support multiple API versions simultaneously. Clients specify which version they want using the request path or the apiVersion field in submitted objects. During upgrades, ensure older API servers can handle requests from newer clients and vice versa.
 
 ## Checking Version Skew
 
@@ -46,10 +46,10 @@ kubectl get pods -n kube-system -l component=kube-controller-manager \
 
 # Check kubectl version
 echo "kubectl version:"
-kubectl version --client --short
+kubectl version --client -o json | jq -r '.clientVersion.gitVersion'
 
 # Validate skew
-CURRENT_API=$(kubectl version --short | grep Server | awk '{print $3}' | sed 's/v//')
+CURRENT_API=$(kubectl version -o json | jq -r '.serverVersion.gitVersion' | sed 's/^v//')
 CURRENT_KUBELET=$(kubectl get nodes -o json | jq -r '.items[0].status.nodeInfo.kubeletVersion' | sed 's/v//')
 
 echo "API version: $CURRENT_API"
@@ -79,7 +79,7 @@ STATUS:.status.phase
 
   # Check which API server is answering requests
   for i in {1..5}; do
-    kubectl version --short 2>&1 | grep "Server Version"
+    kubectl get --raw /version | jq -r '.gitVersion'
     sleep 1
   done
 
@@ -101,12 +101,17 @@ echo "Testing API request routing during upgrade..."
 for version in v1 apps/v1 batch/v1 networking.k8s.io/v1; do
   echo "Testing API version: $version"
 
-  kubectl api-resources --api-group=$(echo $version | cut -d/ -f1) \
-    --verbs=list --namespaced -o name | head -1 | \
-    xargs kubectl get --all-namespaces -o json | \
-    jq -r '.items | length' > /dev/null 2>&1
+  if [[ "$version" == */* ]]; then
+    group="${version%/*}"
+  else
+    group=""
+  fi
 
-  if [ $? -eq 0 ]; then
+  resource=$(kubectl api-resources --api-group="$group" \
+    --verbs=list --namespaced -o name | head -1)
+
+  if [ -n "$resource" ] && kubectl get "$resource" --all-namespaces -o json | \
+    jq -r '.items | length' > /dev/null 2>&1; then
     echo "  $version: OK"
   else
     echo "  $version: FAILED"
@@ -127,18 +132,14 @@ TARGET_VERSION="1.29"
 echo "Checking for deprecated API usage before upgrade to $TARGET_VERSION..."
 
 # Check API server metrics for deprecated API calls
-kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis
+kubectl get --raw /metrics | \
+  grep "apiserver_requested_deprecated_apis.*removed_release=\"$TARGET_VERSION\""
 
-# List resources using deprecated APIs
-kubectl api-resources --verbs=list -o name | while read resource; do
-  # Try to get resources
-  kubectl get $resource -A -o json 2>/dev/null | \
-    jq -r --arg targetVersion "$TARGET_VERSION" '
-      .items[] |
-      select(.apiVersion | contains("v1beta") or contains("v1alpha")) |
-      "\(.kind): \(.apiVersion) in \(.metadata.namespace)/\(.metadata.name)"
-    '
-done | sort -u
+# Search checked-in manifests and charts for pre-GA API versions
+find ./manifests ./charts -type f \( -name '*.yaml' -o -name '*.yml' \) 2>/dev/null | \
+  while read -r file; do
+    grep -nE 'apiVersion: .*/v1(beta|alpha)[0-9]*|apiVersion: v1(beta|alpha)[0-9]*' "$file"
+  done || true
 ```
 
 ## Implementing Request Compatibility Checks
@@ -147,9 +148,11 @@ Add compatibility checks to prevent breaking changes.
 
 ```go
 // Example: API server request compatibility check
-package main
+package compatibility
 
 import (
+    "fmt"
+
     "k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -221,16 +224,17 @@ echo "Monitoring API server health..."
 
 while true; do
   # Check API server availability
-  if kubectl get --raw /healthz > /dev/null 2>&1; then
+  if kubectl get --raw /readyz > /dev/null 2>&1; then
     echo "$(date): API server healthy"
   else
     echo "$(date): API server unhealthy"
   fi
 
-  # Check API server latency
+  # Check average API server request duration from the histogram counters
   latency=$(kubectl get --raw /metrics 2>/dev/null | \
-    grep 'apiserver_request_duration_seconds_bucket' | \
-    grep 'le="1"' | head -1 | awk '{print $2}')
+    awk '/^apiserver_request_duration_seconds_sum/ {sum+=$2}
+         /^apiserver_request_duration_seconds_count/ {count+=$2}
+         END {if (count > 0) printf "%.6f", sum/count; else print "n/a"}')
 
   echo "$(date): API latency: ${latency}s"
 
@@ -265,10 +269,11 @@ webhooks:
       namespace: kube-system
       path: "/validate"
   rules:
-  - apiGroups: ["extensions"]
-    apiVersions: ["v1beta1"]
+  - apiGroups: ["networking.k8s.io"]
+    apiVersions: ["v1"]
     operations: ["CREATE", "UPDATE"]
     resources: ["ingresses"]
+  matchPolicy: Equivalent
   failurePolicy: Fail
   sideEffects: None
 ```
@@ -286,52 +291,22 @@ echo "Testing controller behavior during API version skew..."
 # Deploy controller
 kubectl apply -f ./controllers/test-controller.yaml
 
-# Create resources using old API version
-cat <<EOF | kubectl apply -f -
-apiVersion: extensions/v1beta1
-kind: Ingress
-metadata:
-  name: test-ingress
-spec:
-  rules:
-  - host: test.example.com
-    http:
-      paths:
-      - path: /
-        backend:
-          serviceName: test-service
-          servicePort: 80
-EOF
+# Create resources using an older API version that is still served by both
+# API server versions in your upgrade path
+kubectl apply -f ./test-manifests/old-api-version/
 
 # Verify controller reconciles correctly
 sleep 10
-kubectl get ingress test-ingress -o yaml
+kubectl get -f ./test-manifests/old-api-version/ -o yaml
 
-# Update using new API version
-cat <<EOF | kubectl apply -f -
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: test-ingress
-spec:
-  rules:
-  - host: test.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: test-service
-            port:
-              number: 80
-EOF
+# Update using the replacement API version
+kubectl apply -f ./test-manifests/new-api-version/
 
 # Verify controller still reconciles
 sleep 10
-kubectl describe ingress test-ingress
+kubectl get -f ./test-manifests/new-api-version/ -o yaml
 
-kubectl delete ingress test-ingress
+kubectl delete -f ./test-manifests/new-api-version/
 ```
 
 ## Best Practices
