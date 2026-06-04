@@ -23,7 +23,7 @@ docker system info
 docker info
 ```
 
-The output is long. On a typical installation, expect 60-80 lines of information. Let's break down each section.
+The output is long. On a typical installation, expect dozens of lines of information. Let's break down each section.
 
 ## Understanding the Output
 
@@ -46,8 +46,8 @@ Cgroup Version: 2
 
 Key things to check:
 - **Server Version** tells you exactly which Docker release is running. Bug fixes and features vary between versions.
-- **Storage Driver** should be `overlay2` on modern systems. If you see `devicemapper` or `aufs`, your system is using an older, less efficient driver.
-- **Cgroup Driver** should match your container runtime. Kubernetes environments typically require `systemd`.
+- **Storage Driver** is often `overlay2` on modern Linux systems using Docker's classic storage drivers. On fresh Docker Engine 29.0+ installations, you may see `overlayfs`, which is the containerd snapshotter used by the default containerd image store. If you see `devicemapper` or `aufs`, your system is using a removed or deprecated driver.
+- **Cgroup Driver** should match the kubelet if this host is part of a Kubernetes cluster. Kubernetes environments using systemd as the init system typically use `systemd`.
 - **Cgroup Version** indicates whether you are using v1 or v2 cgroups. Cgroup v2 is the modern standard with better resource isolation.
 
 ### Storage Information
@@ -69,20 +69,19 @@ Storage Driver: overlay2
  userxattr: false
 ```
 
-**Backing Filesystem** should be `extfs` (ext4) or `xfs`. These are the supported filesystems for overlay2.
+**Backing Filesystem** is commonly `extfs` (ext4) or `xfs`. For classic `overlay2`, Docker also supports other backing filesystems, but `xfs` must be formatted with `ftype=1`.
 
-**Supports d_type** must be `true`. Without d_type support, overlay2 can silently corrupt data.
+**Supports d_type** must be `true` for `overlay2` on XFS. Without d_type support, Docker's overlay drivers do not work as expected.
 
 Resource Availability
 
 ```bash
 # Check available CPUs and memory
-docker info --format 'CPUs: {{.NCPU}}, Memory: {{.MemTotal}}'
+docker info --format 'CPUs: {{.NCPU}}, Memory bytes: {{.MemTotal}}'
 ```
 
 ```text
-CPUs: 8
-Total Memory: 15.63GiB
+CPUs: 8, Memory bytes: 16777216000
 ```
 
 These numbers reflect what Docker can see, which might be less than your total system resources. On Docker Desktop, these are limited by the virtual machine settings. On Linux, they reflect the actual host resources.
@@ -101,7 +100,7 @@ Docker Root Dir: /var/lib/docker
 This is where all images, containers, volumes, and other Docker data lives. If this partition fills up, Docker stops working. Check its disk usage regularly.
 
 ```bash
-# Check disk space for the Docker root directory
+# Check disk space for the Docker root directory on Linux
 df -h $(docker info --format '{{.DockerRootDir}}')
 ```
 
@@ -174,10 +173,10 @@ docker info --format '{{json .Runtimes}}' | jq .
 ### Check 1: Storage Driver Health
 
 ```bash
-# Verify the storage driver is optimal
+# Verify the storage driver is expected
 DRIVER=$(docker info --format '{{.Driver}}')
-if [ "$DRIVER" != "overlay2" ]; then
-  echo "WARNING: Using $DRIVER instead of overlay2"
+if [ "$DRIVER" != "overlay2" ] && [ "$DRIVER" != "overlayfs" ]; then
+  echo "WARNING: Using $DRIVER instead of overlay2 or overlayfs"
 fi
 ```
 
@@ -305,7 +304,7 @@ echo ""
 
 # Resources
 echo "CPUs: $(docker info --format '{{.NCPU}}')"
-echo "Memory: $(docker info --format '{{.MemTotal}}')"
+echo "Memory bytes: $(docker info --format '{{.MemTotal}}')"
 echo ""
 
 # Storage
