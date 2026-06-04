@@ -46,14 +46,12 @@ services:
       - "4443:4443"
       - "4444:4444"
     environment:
-      - GRID_MAX_SESSION=10
-      - GRID_BROWSER_TIMEOUT=60
-      - GRID_TIMEOUT=120
+      - SE_SESSION_REQUEST_TIMEOUT=120
+      - SE_SESSION_RETRY_INTERVAL=5
 
-  # Chrome node with VNC access for debugging
+  # Chrome node with noVNC access for debugging
   chrome:
     image: selenium/node-chrome:4.18
-    container_name: chrome-node
     depends_on:
       - selenium-hub
     environment:
@@ -61,15 +59,15 @@ services:
       - SE_EVENT_BUS_PUBLISH_PORT=4442
       - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
       - SE_NODE_MAX_SESSIONS=4
+      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
       - SE_NODE_SESSION_TIMEOUT=120
     shm_size: "2g"  # Required for Chrome to function properly
     volumes:
       - /dev/shm:/dev/shm
 
-  # Firefox node with VNC access for debugging
+  # Firefox node with noVNC access for debugging
   firefox:
     image: selenium/node-firefox:4.18
-    container_name: firefox-node
     depends_on:
       - selenium-hub
     environment:
@@ -77,6 +75,7 @@ services:
       - SE_EVENT_BUS_PUBLISH_PORT=4442
       - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
       - SE_NODE_MAX_SESSIONS=4
+      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
       - SE_NODE_SESSION_TIMEOUT=120
     shm_size: "2g"
     volumes:
@@ -149,7 +148,7 @@ if __name__ == "__main__":
 
 ```bash
 # Install Selenium and run tests
-pip install selenium
+pip install selenium pytest
 python -m pytest test_example.py -v
 ```
 
@@ -224,7 +223,7 @@ for node in nodes:
 
 ## Visual Debugging with VNC
 
-Use the debug images that include VNC access to watch tests run in real time.
+Use the browser node images with noVNC access to watch tests run in real time.
 
 ```yaml
 # docker-compose-debug.yml - Grid with VNC-enabled nodes
@@ -244,7 +243,7 @@ services:
       - SE_EVENT_BUS_HOST=selenium-hub
       - SE_EVENT_BUS_PUBLISH_PORT=4442
       - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
-      - SE_VNC_NO_PASSWORD=1
+      - SE_VNC_NO_PASSWORD=true
     ports:
       - "7900:7900"  # noVNC web interface
     shm_size: "2g"
@@ -307,7 +306,7 @@ jobs:
       - name: Wait for grid to be ready
         run: |
           for i in $(seq 1 30); do
-            if curl -s http://localhost:4444/status | grep -q '"ready":true'; then
+            if curl -s http://localhost:4444/status | python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin)["value"]["ready"] else 1)' 2>/dev/null; then
               echo "Grid is ready"
               break
             fi
