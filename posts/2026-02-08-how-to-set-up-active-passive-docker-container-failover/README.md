@@ -141,21 +141,30 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# List of critical containers that must be running and healthy
-CRITICAL_CONTAINERS=("app" "redis")
+# List of critical Compose services that must be running and healthy
+COMPOSE_DIR="/opt/app"
+CRITICAL_SERVICES=("app" "redis")
 
-for CONTAINER in "${CRITICAL_CONTAINERS[@]}"; do
+cd "$COMPOSE_DIR" || exit 1
+
+for SERVICE in "${CRITICAL_SERVICES[@]}"; do
+    CONTAINER=$(docker compose ps -q "$SERVICE")
+    if [ -z "$CONTAINER" ]; then
+        echo "Service $SERVICE does not have a container"
+        exit 1
+    fi
+
     # Check if container exists and is running
     STATE=$(docker inspect --format='{{.State.Running}}' "$CONTAINER" 2>/dev/null)
     if [ "$STATE" != "true" ]; then
-        echo "Container $CONTAINER is not running"
+        echo "Service $SERVICE is not running"
         exit 1
     fi
 
     # Check health status if the container has a health check defined
     HEALTH=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$CONTAINER" 2>/dev/null)
     if [ "$HEALTH" != "healthy" ] && [ "$HEALTH" != "none" ]; then
-        echo "Container $CONTAINER health status: $HEALTH"
+        echo "Service $SERVICE health status: $HEALTH"
         exit 1
     fi
 done
@@ -173,17 +182,18 @@ sudo chmod +x /usr/local/bin/check-docker-health.sh
 
 ## Notification Script
 
-This script runs when Keepalived changes state. Use it to start or stop containers and send alerts.
+This script runs when Keepalived changes state. Use it to make sure containers are running and send alerts.
 
 ```bash
 #!/bin/bash
 # /usr/local/bin/keepalived-notify.sh
 # Called by Keepalived on state changes
-# Arguments: $1=group/instance, $2=name, $3=state (MASTER/BACKUP/FAULT)
+# Arguments: $1=group/instance, $2=name, $3=state (MASTER/BACKUP/FAULT), $4=priority
 
 TYPE=$1
 NAME=$2
 STATE=$3
+PRIORITY=$4
 LOGFILE="/var/log/keepalived-transitions.log"
 WEBHOOK="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 
@@ -203,10 +213,9 @@ case $STATE in
         cd /opt/app && docker compose up -d
         ;;
     "BACKUP")
-        log_and_notify "$(hostname) became BACKUP - stopping containers"
-        # Stop containers when becoming backup (optional)
-        # Some setups keep containers running on both hosts
-        cd /opt/app && docker compose stop
+        log_and_notify "$(hostname) became BACKUP - keeping containers ready"
+        # Keep containers running so health checks can pass before failover
+        cd /opt/app && docker compose up -d
         ;;
     "FAULT")
         log_and_notify "$(hostname) entered FAULT state"
@@ -226,8 +235,6 @@ Create identical Docker Compose files on both servers:
 
 ```yaml
 # /opt/app/docker-compose.yml - identical on both hosts
-version: "3.9"
-
 services:
   app:
     image: myapp:latest
@@ -269,10 +276,10 @@ Pull images on both servers so failover is fast:
 docker compose -f /opt/app/docker-compose.yml pull
 ```
 
-Start the stack on the primary:
+Start the stack on both servers:
 
 ```bash
-# Start the application stack on the primary server
+# Start the application stack on both servers
 cd /opt/app && docker compose up -d
 ```
 
