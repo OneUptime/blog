@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab CI, Kubernetes, CI/CD, DevOps, Runner
 
-Description: Configure GitLab CI runners on Kubernetes with pod templates to create flexible, scalable build environments with custom images, resource allocation, and service dependencies.
+Description: Configure GitLab CI runners on Kubernetes with pod settings to create flexible, scalable build environments with custom images, resource allocation, and service dependencies.
 
 ---
 
-GitLab CI runners on Kubernetes provide dynamic, scalable build environments. Pod templates let you define custom build environments with specific images, resource requirements, and dependencies. This guide shows you how to configure GitLab runners with Kubernetes pod templates for flexible CI/CD pipelines that adapt to your workload needs.
+GitLab CI runners on Kubernetes provide dynamic, scalable build environments. Kubernetes executor pod settings let you define custom build environments with specific images, resource requirements, and dependencies. This guide shows you how to configure GitLab runners with Kubernetes pod settings for flexible CI/CD pipelines that adapt to your workload needs.
 
 ## Understanding Kubernetes Executor
 
-The GitLab Kubernetes executor creates a new pod for each job, with containers defined by pod templates. The build runs in an isolated environment with specific resource limits, custom images, and service containers. After the job completes, the pod is deleted, ensuring clean builds.
+The GitLab Kubernetes executor creates a new pod for each job, with containers defined by the runner configuration and the CI job. The build runs in an isolated environment with specific resource limits, custom images, and service containers. After the job completes, the pod is deleted, ensuring clean builds.
 
 ## Installing GitLab Runner on Kubernetes
 
@@ -27,15 +27,16 @@ helm repo update
 # Create namespace
 kubectl create namespace gitlab-runner
 
-# Get your GitLab registration token
+# Get your GitLab runner authentication token
 # From GitLab: Settings > CI/CD > Runners > New instance runner
 
 # Install runner with Kubernetes executor
 helm install gitlab-runner gitlab/gitlab-runner \
   --namespace gitlab-runner \
   --set gitlabUrl=https://gitlab.example.com \
-  --set runnerRegistrationToken="your-registration-token" \
+  --set runnerToken="your-runner-authentication-token" \
   --set rbac.create=true \
+  --set serviceAccount.create=true \
   --set runners.executor=kubernetes
 ```
 
@@ -46,7 +47,7 @@ Create a custom values file for more control:
 ```yaml
 # values.yaml
 gitlabUrl: https://gitlab.example.com
-runnerRegistrationToken: "your-registration-token"
+runnerToken: "your-runner-authentication-token"
 
 runners:
   config: |
@@ -62,7 +63,7 @@ runners:
         memory_request = "2Gi"
 
         # Helper image for cloning and artifacts
-        helper_image = "gitlab/gitlab-runner-helper:latest"
+        helper_image = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:x86_64-v${CI_RUNNER_VERSION}"
 
         # Service account
         service_account = "gitlab-runner"
@@ -74,7 +75,10 @@ runners:
 
 rbac:
   create: true
-  serviceAccountName: gitlab-runner
+
+serviceAccount:
+  create: true
+  name: gitlab-runner
 ```
 
 Install with custom configuration:
@@ -100,7 +104,7 @@ runners:
         image = "ubuntu:22.04"
 
         # Node.js build template
-        [[runners.kubernetes.pod_annotations]]
+        [runners.kubernetes.pod_annotations]
           "build-type" = "nodejs"
 
         [[runners.kubernetes.volumes.empty_dir]]
@@ -109,14 +113,10 @@ runners:
           medium = "Memory"
 
         # Docker-in-Docker support
-        [[runners.kubernetes.volumes.host_path]]
-          name = "docker-sock"
-          mount_path = "/var/run/docker.sock"
-          host_path = "/var/run/docker.sock"
+        privileged = true
 
-        # Custom build container
         [[runners.kubernetes.services]]
-          name = "docker:20-dind"
+          name = "docker:24.0.5-dind"
           alias = "docker"
 
         # Security context
@@ -150,7 +150,7 @@ runners:
       name = "go-runner"
       [runners.kubernetes]
         namespace = "gitlab-runner"
-        image = "golang:1.21"
+        image = "golang:1.26"
 
         cpu_limit = "4"
         memory_limit = "8Gi"
@@ -163,14 +163,14 @@ runners:
       name = "node-runner"
       [runners.kubernetes]
         namespace = "gitlab-runner"
-        image = "node:18"
+        image = "node:24"
 
         [[runners.kubernetes.volumes.empty_dir]]
           name = "node-modules"
           mount_path = "/root/.npm"
 ```
 
-Use specific runners in `.gitlab-ci.yml`:
+Assign matching tags to these runners in GitLab, then use the tags in `.gitlab-ci.yml`:
 
 ```yaml
 build-python:
@@ -182,7 +182,7 @@ build-python:
     - python -m pytest
 
 build-go:
-  image: golang:1.21
+  image: golang:1.26
   tags:
     - go-runner
   script:
@@ -190,7 +190,7 @@ build-go:
     - go test ./...
 
 build-node:
-  image: node:18
+  image: node:24
   tags:
     - node-runner
   script:
@@ -233,13 +233,14 @@ runners:
         memory_request = "8Gi"
 
         # Use dedicated nodes
-        node_selector = { "workload-type" = "ci-large" }
+        [runners.kubernetes.node_selector]
+          "workload-type" = "ci-large"
 
         # Allow priority scheduling
         priority_class_name = "high-priority"
 ```
 
-Use in pipeline:
+Assign matching tags to these runners in GitLab, then use them in the pipeline:
 
 ```yaml
 unit-tests:
@@ -276,16 +277,11 @@ runners:
         [[runners.kubernetes.services]]
           name = "postgres:15"
           alias = "postgres"
+          environment = ["POSTGRES_DB=test", "POSTGRES_USER=test", "POSTGRES_PASSWORD=test"]
 
         [[runners.kubernetes.services]]
           name = "redis:7"
           alias = "redis"
-
-        # Service environment variables
-        [runners.kubernetes.services.environment]
-          POSTGRES_DB = "test"
-          POSTGRES_USER = "test"
-          POSTGRES_PASSWORD = "test"
 ```
 
 Use services in pipeline:
@@ -374,6 +370,7 @@ runners:
     [[runners]]
       [runners.kubernetes]
         namespace = "gitlab-runner"
+        allow_privilege_escalation = false
 
         # Pod security context
         [runners.kubernetes.pod_security_context]
@@ -383,13 +380,12 @@ runners:
           fs_group = 1000
           supplemental_groups = [1000]
 
-        # Container security context
-        [runners.kubernetes.container_security_context]
+        # Build container security context
+        [runners.kubernetes.build_container_security_context]
           run_as_non_root = true
           run_as_user = 1000
-          capabilities.drop = ["ALL"]
-          read_only_root_filesystem = false
-          allow_privilege_escalation = false
+          [runners.kubernetes.build_container_security_context.capabilities]
+            drop = ["ALL"]
 ```
 
 Apply Pod Security Standards:
@@ -422,16 +418,9 @@ runners:
           "disk-type" = "ssd"
 
         # Tolerations for tainted nodes
-        [[runners.kubernetes.node_tolerations]]
-          key = "ci-workload"
-          operator = "Equal"
-          value = "true"
-          effect = "NoSchedule"
-
-        [[runners.kubernetes.node_tolerations]]
-          key = "spot-instance"
-          operator = "Exists"
-          effect = "NoSchedule"
+        [runners.kubernetes.node_tolerations]
+          "ci-workload=true" = "NoSchedule"
+          "spot-instance" = "NoSchedule"
 ```
 
 ## Implementing Multi-Architecture Builds
@@ -484,17 +473,12 @@ create-manifest:
 Track runner metrics:
 
 ```yaml
-runners:
-  config: |
-    [[runners]]
-      [runners.kubernetes]
-        namespace = "gitlab-runner"
-
-        # Enable metrics
-        [runners.kubernetes.pod_annotations]
-          "prometheus.io/scrape" = "true"
-          "prometheus.io/port" = "9252"
-          "prometheus.io/path" = "/metrics"
+metrics:
+  enabled: true
+  port: 9252
+  podMonitor:
+    enabled: true
+    path: /metrics
 ```
 
 Query runner metrics:
@@ -506,7 +490,7 @@ kubectl top pods -n gitlab-runner
 # View runner logs
 kubectl logs -n gitlab-runner -l app=gitlab-runner
 
-# Check job execution history
+# List configured runners
 gitlab-runner list
 ```
 
