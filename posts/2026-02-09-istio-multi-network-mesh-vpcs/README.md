@@ -14,7 +14,7 @@ Running Kubernetes clusters across different VPCs is common for isolation, compl
 
 In a single-network mesh, pods communicate directly using their pod IPs. In a multi-network mesh, pods in different networks can't reach each other directly. Istio solves this by routing cross-network traffic through east-west gateways deployed in each cluster.
 
-Each cluster has a gateway that exposes local services to remote networks. When a service in VPC A calls a service in VPC B, Istio routes the request through the gateways. The source sidecar sends traffic to the local gateway, which forwards it to the remote gateway, which routes it to the destination pod.
+Each cluster has a gateway that exposes local services to remote networks. When a service in VPC A calls a service in VPC B, Istio routes the request to the gateway for the destination network, which routes it to the destination pod.
 
 This architecture maintains end-to-end mTLS encryption and service identity across networks. Istio handles service discovery automatically as services move between networks.
 
@@ -24,8 +24,8 @@ You need two Kubernetes clusters in different VPCs with non-overlapping pod CIDR
 
 Cluster requirements:
 
-- Kubernetes 1.24 or later
-- Network connectivity between cluster API servers
+- A Kubernetes version supported by your Istio release
+- Network connectivity from each Istio control plane to the remote cluster API server
 - Network connectivity between gateway LoadBalancers
 
 Verify network isolation:
@@ -54,9 +54,6 @@ metadata:
   namespace: istio-system
 spec:
   profile: default
-  meshConfig:
-    # Configure network name
-    network: vpc-a
   values:
     global:
       meshID: shared-mesh
@@ -82,8 +79,6 @@ metadata:
   namespace: istio-system
 spec:
   profile: default
-  meshConfig:
-    network: vpc-b
   values:
     global:
       meshID: shared-mesh
@@ -110,10 +105,8 @@ kubectl config use-context cluster-vpc-a
 
 # Generate gateway configuration
 samples/multicluster/gen-eastwest-gateway.sh \
-  --mesh shared-mesh \
-  --cluster cluster-vpc-a \
   --network vpc-a | \
-  istioctl install -y -f -
+  istioctl --context=cluster-vpc-a install -y -f -
 ```
 
 If you don't have the samples directory, create the gateway manually:
@@ -157,7 +150,7 @@ spec:
 ```
 
 ```bash
-kubectl apply -f eastwest-gateway-vpc-a.yaml
+istioctl --context=cluster-vpc-a install -y -f eastwest-gateway-vpc-a.yaml
 ```
 
 Repeat for cluster-vpc-b:
@@ -167,7 +160,7 @@ kubectl config use-context cluster-vpc-b
 
 # Create gateway with network vpc-b
 # Update topology.istio.io/network to vpc-b in the YAML
-kubectl apply -f eastwest-gateway-vpc-b.yaml
+istioctl --context=cluster-vpc-b install -y -f eastwest-gateway-vpc-b.yaml
 ```
 
 Verify gateways are running:
@@ -184,7 +177,7 @@ Configure gateways to expose all services. On cluster-vpc-a:
 
 ```yaml
 # expose-services-vpc-a.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: cross-network-gateway
@@ -222,9 +215,9 @@ Configure each cluster to discover services in the remote cluster. Create a remo
 ```bash
 # Generate remote secret from cluster-vpc-b
 kubectl config use-context cluster-vpc-b
-istioctl x create-remote-secret \
-  --name=cluster-vpc-b \
-  --server=https://<cluster-vpc-b-api-endpoint> > remote-secret-vpc-b.yaml
+istioctl create-remote-secret \
+  --context=cluster-vpc-b \
+  --name=cluster-vpc-b > remote-secret-vpc-b.yaml
 
 # Apply to cluster-vpc-a
 kubectl config use-context cluster-vpc-a
@@ -235,9 +228,9 @@ Create a remote secret for cluster-vpc-a on cluster-vpc-b:
 
 ```bash
 kubectl config use-context cluster-vpc-a
-istioctl x create-remote-secret \
-  --name=cluster-vpc-a \
-  --server=https://<cluster-vpc-a-api-endpoint> > remote-secret-vpc-a.yaml
+istioctl create-remote-secret \
+  --context=cluster-vpc-a \
+  --name=cluster-vpc-a > remote-secret-vpc-a.yaml
 
 kubectl config use-context cluster-vpc-b
 kubectl apply -f remote-secret-vpc-a.yaml
@@ -245,56 +238,14 @@ kubectl apply -f remote-secret-vpc-a.yaml
 
 These secrets allow each cluster's Istio control plane to discover services in the remote cluster.
 
-## Configuring Gateway Endpoints
-
-Tell Istio where the remote gateways are located. On cluster-vpc-a:
-
-```yaml
-# service-vpc-b-gateway.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: istio-eastwestgateway
-  namespace: istio-system
-  labels:
-    topology.istio.io/network: vpc-b
-spec:
-  type: ClusterIP
-  ports:
-  - port: 15443
-    name: tls
-  # Use external IP of cluster-vpc-b's east-west gateway
-  externalName: <vpc-b-gateway-external-ip>
-```
+Verify that each control plane can see the remote cluster:
 
 ```bash
-kubectl config use-context cluster-vpc-a
-kubectl apply -f service-vpc-b-gateway.yaml
+istioctl remote-clusters --context=cluster-vpc-a
+istioctl remote-clusters --context=cluster-vpc-b
 ```
 
-On cluster-vpc-b:
-
-```yaml
-# service-vpc-a-gateway.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: istio-eastwestgateway
-  namespace: istio-system
-  labels:
-    topology.istio.io/network: vpc-a
-spec:
-  type: ClusterIP
-  ports:
-  - port: 15443
-    name: tls
-  externalName: <vpc-a-gateway-external-ip>
-```
-
-```bash
-kubectl config use-context cluster-vpc-b
-kubectl apply -f service-vpc-a-gateway.yaml
-```
+Both remote clusters should show a synced status.
 
 ## Deploying Test Applications
 
@@ -319,9 +270,8 @@ spec:
     spec:
       containers:
       - name: service-a
-        image: your-registry/service-a:latest
-        ports:
-        - containerPort: 8080
+        image: curlimages/curl:8.11.1
+        command: ["sleep", "infinity"]
 ---
 apiVersion: v1
 kind: Service
@@ -337,7 +287,7 @@ spec:
 
 ```bash
 kubectl config use-context cluster-vpc-a
-kubectl label namespace default istio-injection=enabled
+kubectl label namespace default istio-injection=enabled --overwrite
 kubectl apply -f service-a.yaml
 ```
 
@@ -362,9 +312,9 @@ spec:
     spec:
       containers:
       - name: service-b
-        image: your-registry/service-b:latest
+        image: nginxdemos/hello:plain-text
         ports:
-        - containerPort: 8080
+        - containerPort: 80
 ---
 apiVersion: v1
 kind: Service
@@ -376,12 +326,35 @@ spec:
     app: service-b
   ports:
   - port: 8080
+    targetPort: 80
 ```
 
 ```bash
 kubectl config use-context cluster-vpc-b
-kubectl label namespace default istio-injection=enabled
+kubectl label namespace default istio-injection=enabled --overwrite
 kubectl apply -f service-b.yaml
+```
+
+For Kubernetes DNS lookup to succeed from cluster-vpc-a, create the same Service object there without the Deployment:
+
+```yaml
+# service-b-dns-vpc-a.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-b
+  namespace: default
+spec:
+  selector:
+    app: service-b
+  ports:
+  - port: 8080
+    targetPort: 80
+```
+
+```bash
+kubectl config use-context cluster-vpc-a
+kubectl apply -f service-b-dns-vpc-a.yaml
 ```
 
 ## Testing Cross-Network Communication
@@ -390,7 +363,7 @@ Test that services can communicate across networks. From cluster-vpc-a, call ser
 
 ```bash
 kubectl config use-context cluster-vpc-a
-kubectl exec -it deploy/service-a -- curl http://service-b.default.svc.cluster.local:8080/health
+kubectl exec -it deploy/service-a -- curl http://service-b.default.svc.cluster.local:8080/
 ```
 
 The request should succeed, routing through the east-west gateways. Check the traffic path:
@@ -403,15 +376,15 @@ kubectl logs deploy/service-a -c istio-proxy | grep service-b
 kubectl logs -n istio-system -l istio=eastwestgateway | grep service-b
 ```
 
-You'll see traffic flowing: service-a → local gateway → remote gateway → service-b.
+You'll see traffic flowing from service-a through the gateway for the destination network to service-b.
 
 ## Implementing Locality-Aware Routing
 
-Configure locality preferences to keep traffic within the same network when possible:
+Configure locality preferences to keep traffic in the same locality when possible. This is useful when the same service has instances in both clusters and your nodes have Kubernetes locality labels such as `topology.kubernetes.io/region`:
 
 ```yaml
 # destinationrule-locality.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b
@@ -423,11 +396,15 @@ spec:
       localityLbSetting:
         enabled: true
         failover:
-        - from: vpc-a
-          to: vpc-b
+        - from: region-a
+          to: region-b
+    outlierDetection:
+      consecutive5xxErrors: 1
+      interval: 1s
+      baseEjectionTime: 1m
 ```
 
-Apply to both clusters. This routes to local instances first, falling back to remote networks when local instances are unavailable.
+Apply to both clusters. This routes to local instances first, falling back to the configured region when local instances become unhealthy.
 
 ## Monitoring Cross-Network Traffic
 
