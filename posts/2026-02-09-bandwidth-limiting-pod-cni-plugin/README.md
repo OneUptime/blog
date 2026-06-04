@@ -19,7 +19,7 @@ The bandwidth plugin is a standard CNI plugin that shapes traffic using Linux tr
 - Per-pod configuration via annotations
 - Token bucket algorithm for smooth traffic shaping
 
-The plugin works with any CNI that supports chaining plugins (Calico, Flannel, Cilium, etc.).
+The plugin works with CNI configurations that support chained plugins. Kubernetes treats these traffic shaping annotations as an experimental feature, so verify support with your CNI provider before using them in production.
 
 ## Installing the Bandwidth Plugin
 
@@ -30,11 +30,12 @@ Most CNI installations don't include the bandwidth plugin by default. Install it
 ```bash
 # Download CNI plugins
 
-CNI_VERSION="v1.3.0"
-wget https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-amd64-${CNI_VERSION}.tgz
+ARCH="amd64"
+CNI_VERSION=$(curl -fsSL https://api.github.com/repos/containernetworking/plugins/releases/latest | jq -r .tag_name)
+wget https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz
 
 # Extract to CNI bin directory
-sudo tar -xzf cni-plugins-linux-amd64-${CNI_VERSION}.tgz -C /opt/cni/bin
+sudo tar -xzf cni-plugins-linux-${ARCH}-${CNI_VERSION}.tgz -C /opt/cni/bin
 
 # Verify bandwidth plugin exists
 ls -la /opt/cni/bin/bandwidth
@@ -70,7 +71,7 @@ data:
   cni_network_config: |-
     {
       "name": "k8s-pod-network",
-      "cniVersion": "0.3.1",
+      "cniVersion": "0.4.0",
       "plugins": [
         {
           "type": "calico",
@@ -109,7 +110,7 @@ data:
   cni-conf.json: |
     {
       "name": "cbr0",
-      "cniVersion": "0.3.1",
+      "cniVersion": "0.4.0",
       "plugins": [
         {
           "type": "flannel",
@@ -235,8 +236,10 @@ metadata:
   name: bandwidth-server
 spec:
   containers:
-  - name: nginx
-    image: nginx:alpine
+  - name: tools
+    image: nicolaka/netshoot
+    command: ["/bin/bash"]
+    args: ["-c", "while true; do sleep 3600; done"]
 ---
 # client-pod.yaml
 apiVersion: v1
@@ -264,14 +267,12 @@ kubectl apply -f client-pod.yaml
 
 ```bash
 # On server pod, run iperf server
-kubectl exec bandwidth-server -- apk add iperf3
-kubectl exec bandwidth-server -- iperf3 -s &
+kubectl exec bandwidth-server -- iperf3 -s -D
 
 # Get server pod IP
 SERVER_IP=$(kubectl get pod bandwidth-server -o jsonpath='{.status.podIP}')
 
 # On client pod, test bandwidth
-kubectl exec bandwidth-client -- apk add iperf3
 kubectl exec bandwidth-client -- iperf3 -c $SERVER_IP -t 30
 
 # Results should show ~10 Mbps due to egress limit
@@ -287,10 +288,11 @@ Example output:
 
 ### Test Without Limits
 
-Remove the annotation and test again:
+Remove the annotation from `client-pod.yaml`, recreate the pod, and test again:
 
 ```bash
-kubectl annotate pod bandwidth-client kubernetes.io/egress-bandwidth-
+kubectl delete pod bandwidth-client
+kubectl apply -f client-pod.yaml
 
 # Re-run iperf3 test
 kubectl exec bandwidth-client -- iperf3 -c $SERVER_IP -t 30
@@ -303,27 +305,21 @@ kubectl exec bandwidth-client -- iperf3 -c $SERVER_IP -t 30
 The bandwidth plugin uses Linux tc to enforce limits. Inspect them:
 
 ```bash
-# Find the pod's network interface on the node
-POD_ID=$(kubectl get pod bandwidth-client -o jsonpath='{.status.containerID}' | cut -d'/' -f3)
+# Find the pod sandbox and network namespace on the node running the pod
+POD_SANDBOX_ID=$(sudo crictl pods --name bandwidth-client -q | head -1)
+NETNS=$(sudo crictl inspectp "$POD_SANDBOX_ID" | jq -r '.info.runtimeSpec.linux.namespaces[] | select(.type=="network") | .path')
 
-# Find the veth interface (varies by container runtime)
-# For containerd:
-sudo crictl inspect $POD_ID | jq -r '.info.runtimeSpec.linux.namespaces[] | select(.type=="network") | .path'
-
-# View tc rules on the veth interface
-VETH=$(ip link show | grep "veth.*@" | head -1 | awk '{print $2}' | cut -d'@' -f1)
-sudo tc qdisc show dev $VETH
-sudo tc class show dev $VETH
+# View tc rules on the pod interface
+sudo nsenter --net="$NETNS" tc qdisc show dev eth0
 ```
 
 Example output:
 
 ```text
-qdisc htb 1: root refcnt 2 r2q 10 default 0 direct_packets_stat 0
-class htb 1:1 root prio 0 rate 10Mbit ceil 10Mbit burst 1600b cburst 1600b
+qdisc tbf 1: root refcnt 2 rate 10Mbit burst 10Kb lat 50ms
 ```
 
-This shows a 10 Mbit rate limit enforced by HTB (Hierarchical Token Bucket).
+This shows a 10 Mbit rate limit enforced by TBF (Token Bucket Filter).
 
 ## Advanced Bandwidth Configuration
 
@@ -386,14 +382,14 @@ The webhook can inspect pod labels and inject appropriate bandwidth annotations.
 
 Track actual bandwidth consumption:
 
-### Using cAdvisor Metrics
+### Using Kubelet Summary Metrics
 
 ```bash
-# Port-forward to kubelet cAdvisor
-kubectl port-forward -n kube-system <kubelet-pod> 4194:4194
+# Query kubelet summary metrics through the Kubernetes API server
+NODE=$(kubectl get pod bandwidth-client -o jsonpath='{.spec.nodeName}')
 
 # Query network metrics
-curl -s http://localhost:4194/api/v2.0/summary | jq '.[] | select(.name == "/bandwidth-client") | .network'
+kubectl get --raw "/api/v1/nodes/$NODE/proxy/stats/summary" | jq '.pods[] | select(.podRef.name == "bandwidth-client") | .network'
 ```
 
 ### Using Prometheus
@@ -444,15 +440,17 @@ rate(container_network_transmit_bytes_total{pod="bandwidth-client"}[5m]) * 8
 }
 ```
 
-## Bandwidth Limits for Specific Traffic Types
+## Combining Bandwidth Limits with Network Policies
 
-Combine with network policies for fine-grained control:
+Combine with network policies to control which destinations are allowed. The bandwidth annotation still applies to all egress traffic from the pod:
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
   name: selective-limits
+  labels:
+    app: selective-limits
   annotations:
     kubernetes.io/egress-bandwidth: "100M"
 spec:
@@ -471,12 +469,13 @@ spec:
   policyTypes:
   - Egress
   egress:
-  # Allow internal traffic unlimited
+  # Allow traffic to pods in the same namespace
   - to:
     - podSelector: {}
-  # External traffic already limited by bandwidth annotation
+  # Allow HTTPS traffic to external destinations
   - to:
-    - namespaceSelector: {}
+    - ipBlock:
+        cidr: 0.0.0.0/0
     ports:
     - protocol: TCP
       port: 443
