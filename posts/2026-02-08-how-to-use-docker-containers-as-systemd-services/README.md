@@ -30,14 +30,14 @@ After=docker.service
 Requires=docker.service
 Wants=network-online.target
 After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 # Container lifecycle management
 Type=simple
 Restart=on-failure
 RestartSec=15
-StartLimitIntervalSec=300
-StartLimitBurst=5
 
 # Environment file for sensitive configuration
 EnvironmentFile=/etc/myapp/env
@@ -117,6 +117,10 @@ Requires=docker.service
 
 # Soft dependency: try to start network, but do not fail if it is slow
 Wants=network-online.target
+
+# Allow at most 5 starts within 300 seconds before giving up
+StartLimitIntervalSec=300
+StartLimitBurst=5
 ```
 
 The `[Service]` section defines how the service runs:
@@ -132,10 +136,6 @@ Restart=on-failure
 
 # Wait 15 seconds between restart attempts
 RestartSec=15
-
-# Allow at most 5 restarts within 300 seconds before giving up
-StartLimitIntervalSec=300
-StartLimitBurst=5
 ```
 
 The `[Install]` section defines when the service starts during boot:
@@ -246,16 +246,20 @@ Create each component service. Redis:
 Description=MyApp Redis Cache
 After=docker.service
 Requires=docker.service
+PartOf=myapp-stack.target
 
 [Service]
 Type=simple
 Restart=always
 RestartSec=10
 
+ExecStartPre=-/usr/bin/docker network create myapp-net
 ExecStartPre=-/usr/bin/docker rm -f myapp-redis
 ExecStart=/usr/bin/docker run \
   --name myapp-redis \
   --rm \
+  --network myapp-net \
+  --network-alias redis \
   --log-driver=journald \
   --log-opt tag=myapp-redis \
   -v myapp-redis-data:/data \
@@ -277,16 +281,20 @@ PostgreSQL:
 Description=MyApp PostgreSQL Database
 After=docker.service
 Requires=docker.service
+PartOf=myapp-stack.target
 
 [Service]
 Type=simple
 Restart=always
 RestartSec=10
 
+ExecStartPre=-/usr/bin/docker network create myapp-net
 ExecStartPre=-/usr/bin/docker rm -f myapp-postgres
 ExecStart=/usr/bin/docker run \
   --name myapp-postgres \
   --rm \
+  --network myapp-net \
+  --network-alias postgres \
   --log-driver=journald \
   --log-opt tag=myapp-postgres \
   -v myapp-pg-data:/var/lib/postgresql/data \
@@ -309,23 +317,24 @@ The application service depends on both:
 Description=MyApp Web Application
 After=docker.service myapp-redis.service myapp-postgres.service
 Requires=docker.service myapp-redis.service myapp-postgres.service
+PartOf=myapp-stack.target
 
 [Service]
 Type=simple
 Restart=on-failure
 RestartSec=15
 
+ExecStartPre=-/usr/bin/docker network create myapp-net
 ExecStartPre=-/usr/bin/docker rm -f myapp
 # Wait for PostgreSQL to accept connections
-ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do docker exec myapp-postgres pg_isready -U postgres && break; sleep 2; done'
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do docker exec myapp-postgres pg_isready -U postgres && exit 0; sleep 2; done; exit 1'
 
 ExecStart=/usr/bin/docker run \
   --name myapp \
   --rm \
+  --network myapp-net \
   --log-driver=journald \
   --log-opt tag=myapp \
-  --link myapp-redis:redis \
-  --link myapp-postgres:postgres \
   -p 8080:8080 \
   -e DATABASE_URL=postgresql://postgres:secretpass@postgres:5432/myapp \
   -e REDIS_URL=redis://redis:6379 \
