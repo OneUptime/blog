@@ -23,7 +23,7 @@ Calico Enterprise monitors network traffic for suspicious patterns:
 - Lateral movement attempts
 - Connection to known malicious IPs
 
-Detection happens at the network layer using eBPF, providing visibility without application modifications.
+Detection is based on Calico Enterprise flow logs, DNS logs, threat feeds, global alerts, and deep packet inspection (DPI). DPI uses Snort rules with Linux AF_PACKET to inspect selected workload traffic without application modifications.
 
 ## Installing Calico Enterprise
 
@@ -32,7 +32,9 @@ Install Calico Enterprise operator:
 ```bash
 # Add Tigera operator repository
 
-kubectl create -f https://downloads.tigera.io/ee/v3.17.0/manifests/tigera-operator.yaml
+kubectl create -f https://downloads.tigera.io/ee/v3.22.5/manifests/operator-crds.yaml
+kubectl create -f https://downloads.tigera.io/ee/v3.22.5/manifests/tigera-operator.yaml
+kubectl create -f https://downloads.tigera.io/ee/v3.22.5/manifests/tigera-prometheus-operator.yaml
 
 # Create pull secret for Calico Enterprise images
 kubectl create secret generic tigera-pull-secret \
@@ -72,10 +74,10 @@ spec: {}
 apiVersion: operator.tigera.io/v1
 kind: IntrusionDetection
 metadata:
-  name: default
+  name: tigera-secure
 spec:
   componentResources:
-  - componentName: IntrusionDetectionController
+  - componentName: DeepPacketInspection
     resourceRequirements:
       requests:
         cpu: 100m
@@ -100,31 +102,32 @@ Configure intrusion detection system (IDS):
 apiVersion: projectcalico.org/v3
 kind: GlobalThreatFeed
 metadata:
-  name: threatfeed-all
+  name: feodo-tracker
 spec:
-  content: All
+  content: IPSet
   mode: Enabled
-  description: "Enable all threat feeds"
+  description: "Feodo Tracker C2 IP blocklist"
+  feedType: Custom
+  pull:
+    http:
+      url: https://feodotracker.abuse.ch/downloads/ipblocklist.txt
+  globalNetworkSet:
+    labels:
+      threat-feed: feodo
 
 ---
 apiVersion: projectcalico.org/v3
 kind: GlobalThreatFeed
 metadata:
-  name: threatfeed-tor
+  name: suspicious-domains
 spec:
-  content: TorNodes
+  content: DomainNameSet
   mode: Enabled
-  description: "Block Tor exit nodes"
-
----
-apiVersion: projectcalico.org/v3
-kind: GlobalThreatFeed
-metadata:
-  name: threatfeed-malware
-spec:
-  content: MalwareC2
-  mode: Enabled
-  description: "Block known malware C2 servers"
+  description: "Known suspicious domains"
+  feedType: Custom
+  pull:
+    http:
+      url: https://example.com/threat-feeds/malicious-domains.txt
 
 ---
 apiVersion: projectcalico.org/v3
@@ -154,19 +157,17 @@ metadata:
   name: port-scan-alert
 spec:
   description: "Alert on port scanning activity"
-  summary: "Port scan detected from ${source_ip}"
+  summary: "High connection volume from ${source_namespace}/${source_name_aggr}"
   severity: 100
   dataSet: flows
-  query: |
-    (
-      source_ip=${source_ip} AND
-      dest_port_count > 20 AND
-      time_window = 60s
-    )
-  aggregateBy: [source_namespace, source_name]
-  metric: count
+  period: 5m
+  lookback: 10m
+  query: reporter=src AND proto=tcp AND action=allow
+  aggregateBy: [source_namespace, source_name_aggr]
+  field: num_flows
+  metric: sum
   condition: gt
-  threshold: 1
+  threshold: 100
 
 ---
 apiVersion: projectcalico.org/v3
@@ -175,19 +176,16 @@ metadata:
   name: dns-tunneling-alert
 spec:
   description: "Detect DNS tunneling attempts"
-  summary: "Possible DNS tunneling from ${source_name}"
+  summary: "Many NXDomain responses for ${client_namespace}/${client_name_aggr}"
   severity: 80
   dataSet: dns
-  query: |
-    (
-      query_length > 100 OR
-      subdomain_count > 5
-    )
-  aggregateBy: [source_namespace, source_name]
+  query: rcode=NXDomain
+  aggregateBy: [client_namespace, client_name_aggr]
   metric: count
   condition: gt
-  threshold: 10
+  threshold: 100
   period: 5m
+  lookback: 10m
 
 ---
 apiVersion: projectcalico.org/v3
@@ -196,19 +194,11 @@ metadata:
   name: crypto-mining-alert
 spec:
   description: "Detect cryptocurrency mining activity"
-  summary: "Crypto mining detected in ${source_namespace}/${source_name}"
+  summary: "Crypto mining port contacted from ${source_namespace}/${source_name_aggr}"
   severity: 90
   dataSet: flows
-  query: |
-    (
-      (dest_port IN (3333, 5555, 7777, 8888, 9999)) OR
-      (dest_name IN (
-        'pool.supportxmr.com',
-        'xmr-eu1.nanopool.org',
-        'xmr.pool.minergate.com'
-      ))
-    )
-  aggregateBy: [source_namespace, source_name]
+  query: reporter=src AND proto=tcp AND dest_port IN {3333, 5555, 7777, 8888, 9999}
+  aggregateBy: [source_namespace, source_name_aggr]
   metric: count
   condition: gt
   threshold: 1
@@ -220,20 +210,17 @@ metadata:
   name: data-exfiltration-alert
 spec:
   description: "Detect large data transfers"
-  summary: "Large data transfer from ${source_name}"
+  summary: "Large data transfer from ${source_namespace}/${source_name_aggr}"
   severity: 85
   dataSet: flows
-  query: |
-    (
-      bytes_out > 1000000000 AND
-      dest_ip NOT IN ${internal_networks}
-    )
-  aggregateBy: [source_namespace, source_name]
+  query: reporter=src AND dest_type=net AND action=allow
+  aggregateBy: [source_namespace, source_name_aggr]
   metric: sum
   field: bytes_out
   condition: gt
   threshold: 5000000000
   period: 10m
+  lookback: 15m
 ```
 
 Apply detection rules:
@@ -246,69 +233,11 @@ kubectl apply -f detection-rules.yaml
 
 Configure alert webhooks:
 
-```yaml
-# alert-webhook.yaml
-apiVersion: projectcalico.org/v3
-kind: GlobalAlertWebhook
-metadata:
-  name: slack-alerts
-spec:
-  description: "Send alerts to Slack"
-  url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-  method: POST
-  headers:
-    Content-Type: application/json
-  body: |
-    {
-      "text": "Security Alert: ${alert.summary}",
-      "attachments": [{
-        "color": "danger",
-        "fields": [
-          {
-            "title": "Severity",
-            "value": "${alert.severity}",
-            "short": true
-          },
-          {
-            "title": "Source",
-            "value": "${alert.source_namespace}/${alert.source_name}",
-            "short": true
-          },
-          {
-            "title": "Description",
-            "value": "${alert.description}"
-          }
-        ]
-      }]
-    }
-
----
-apiVersion: projectcalico.org/v3
-kind: GlobalAlertWebhook
-metadata:
-  name: pagerduty-alerts
-spec:
-  description: "Send critical alerts to PagerDuty"
-  url: https://events.pagerduty.com/v2/enqueue
-  method: POST
-  headers:
-    Content-Type: application/json
-  body: |
-    {
-      "routing_key": "YOUR_PAGERDUTY_KEY",
-      "event_action": "trigger",
-      "payload": {
-        "summary": "${alert.summary}",
-        "severity": "critical",
-        "source": "${alert.source_name}",
-        "custom_details": {
-          "namespace": "${alert.source_namespace}",
-          "description": "${alert.description}"
-        }
-      }
-    }
-  filter:
-    severity: gte(90)
+```bash
+# Slack, Jira, Alertmanager, and generic JSON webhooks are configured in
+# the Calico Enterprise web console under Activity > Webhooks.
+# For Alertmanager, use the v2 API endpoint for an in-cluster service:
+# http://<alertmanager-service>.<namespace>.svc.cluster.local:9093/api/v2/alerts
 ```
 
 ## Implementing Automated Response
@@ -353,19 +282,12 @@ spec:
   egress:
   - action: Deny
     destination:
-      ports:
-      - 3333
-      - 5555
-      - 7777
-      - 8888
-      - 9999
+      ports: [3333, 5555, 7777, 8888, 9999]
     protocol: TCP
   - action: Deny
     destination:
-      domains:
-      - "*.pool.minergate.com"
-      - "*.nanopool.org"
-      - "*.supportxmr.com"
+      selector: threat-feed == 'feodo'
+  - action: Allow
 ```
 
 ## Building Automated Remediation
@@ -471,12 +393,12 @@ func (tr *ThreatResponder) scaleDownDeployment(namespace string, pod *corev1.Pod
 func (tr *ThreatResponder) HandleAlert(alert Alert) error {
     log.Printf("Processing alert: %s", alert.Summary)
 
-    switch alert.Severity {
-    case 100:
+    switch {
+    case alert.Severity >= 100:
         // Critical threat - immediate quarantine
         return tr.QuarantinePod(alert.SourceNamespace, alert.SourceName)
 
-    case 80, 90:
+    case alert.Severity >= 80:
         // High severity - log and notify
         log.Printf("High severity threat detected: %s/%s", alert.SourceNamespace, alert.SourceName)
         // Send notification
@@ -503,14 +425,14 @@ type Alert struct {
 View detected threats:
 
 ```bash
-# List all alerts
+# List configured alerts
 kubectl get globalalerts
 
 # View alert details
-kubectl describe globalalert port-scan-alert
+kubectl get globalalert port-scan-alert -o yaml
 
-# Check alert history
-calicoctl get alerts --all
+# Alert events are available in the Calico Enterprise web console
+# under Activity > Alerts.
 
 # View quarantined pods
 kubectl get pods -A -l quarantine=true
@@ -525,21 +447,21 @@ Create a threat dashboard:
     "title": "Calico Threat Detection",
     "panels": [
       {
-        "title": "Active Threats",
+        "title": "Denied Packets",
         "targets": [{
-          "expr": "sum(calico_threat_alerts_total) by (severity)"
+          "expr": "sum(rate(calico_denied_packets[5m])) by (policy)"
         }]
       },
       {
-        "title": "Blocked Connections",
+        "title": "Denied Bytes",
         "targets": [{
-          "expr": "rate(calico_blocked_connections_total[5m])"
+          "expr": "sum(rate(calico_denied_bytes[5m])) by (policy)"
         }]
       },
       {
-        "title": "Top Threat Sources",
+        "title": "Policy Rule Connections",
         "targets": [{
-          "expr": "topk(10, sum by (source_namespace) (calico_threat_alerts_total))"
+          "expr": "sum(rate(cnx_policy_rule_connections{action=\"deny\"}[5m])) by (tier, policy)"
         }]
       }
     ]
@@ -576,7 +498,7 @@ Verify alerts were triggered:
 
 ```bash
 kubectl get globalalerts
-calicoctl get alerts --all | grep -E "port-scan|dns-tunnel|crypto"
+# Then check Activity > Alerts in the Calico Enterprise web console.
 ```
 
 Calico Enterprise threat detection provides continuous security monitoring at the network layer. Configure detection rules that match your security requirements, integrate with incident response systems, and automate remediation for rapid threat containment.
