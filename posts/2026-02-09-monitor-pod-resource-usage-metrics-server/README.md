@@ -122,13 +122,13 @@ Look for pods using < 50% of requested resources.
 
 ## Finding Under-Provisioned Pods
 
-Pods using more than requested may get throttled (CPU) or OOMKilled (memory):
+Pods using more than requested may indicate that requests are too low. CPU throttling happens when a container reaches its CPU limit, while OOMKills happen when memory usage exceeds a memory limit or the node is under memory pressure:
 
 ```bash
 kubectl top pods -n production | awk 'NR>1 {print $1, $2, $3}'
 ```
 
-Compare against requests. Pods consistently near or exceeding requests need higher limits.
+Compare against requests. Pods consistently near or exceeding requests may need higher requests; review limits separately.
 
 ## Checking Container-Level Usage
 
@@ -160,7 +160,7 @@ kubectl get --raw /apis/metrics.k8s.io/v1beta1/nodes | jq
 kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/production/pods | jq
 ```
 
-Output includes timestamp, CPU usage in nanocores, and memory in bytes.
+Output includes timestamp, the measurement window, and CPU and memory usage as Kubernetes Quantity values.
 
 ## Sample Metrics API Response
 
@@ -191,11 +191,11 @@ Output includes timestamp, CPU usage in nanocores, and memory in bytes.
 }
 ```
 
-The window field shows the measurement period (typically 30s).
+The window field shows the measurement period, which depends on Metrics Server's metric resolution.
 
-## Calculating Utilization Percentage
+## Listing Utilization Inputs
 
-Write a script to calculate usage vs request percentage:
+Write a script to list usage alongside requests:
 
 ```bash
 #!/bin/bash
@@ -242,10 +242,10 @@ Action: No change needed
 
 ## Exporting Metrics to Prometheus
 
-While Metrics Server provides recent data, use Prometheus for historical analysis:
+While Metrics Server provides recent data, use Prometheus for historical analysis. Scrape kubelet/cAdvisor or your Kubernetes monitoring stack for container usage metrics; scraping Metrics Server itself only exposes Metrics Server component metrics:
 
 ```yaml
-# ServiceMonitor for Metrics Server
+# ServiceMonitor for Metrics Server component metrics
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -262,14 +262,14 @@ spec:
       insecureSkipVerify: true
 ```
 
-Then query with PromQL:
+For container usage metrics from kubelet/cAdvisor, query with PromQL:
 
 ```promql
 # Pod CPU usage
-container_cpu_usage_seconds_total{namespace="production"}
+sum(rate(container_cpu_usage_seconds_total{namespace="production", container!="", image!=""}[5m])) by (pod)
 
 # Pod memory usage
-container_memory_working_set_bytes{namespace="production"}
+sum(container_memory_working_set_bytes{namespace="production", container!="", image!=""}) by (pod)
 ```
 
 ## Using Metrics for HPA
@@ -314,7 +314,7 @@ Common issues:
 - Network policies blocking access
 - Metrics Server can't reach kubelet
 
-**Metrics outdated**: Metrics Server scrapes every 60s by default. Adjust with:
+**Metrics outdated**: Metrics Server's binary default is 60s, while the official manifests set `--metric-resolution=15s`. Check the deployment args and adjust with:
 
 ```yaml
 args:
@@ -340,7 +340,7 @@ A web app deployment with 10 replicas:
 
 ```bash
 # Check usage
-kubectl top pods -n production -l app=web | awk '{sum+=$2; count++} END {print "Avg CPU:", sum/count}'
+kubectl top pods -n production -l app=web --no-headers | awk '{sum+=$2; count++} END {printf "Avg CPU: %.0fm\n", sum/count}'
 # Output: Avg CPU: 180m
 
 # Check requests
