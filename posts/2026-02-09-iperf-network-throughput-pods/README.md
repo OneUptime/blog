@@ -69,6 +69,8 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: iperf-client
+  labels:
+    app: iperf-client
 spec:
   containers:
   - name: iperf
@@ -88,7 +90,7 @@ kubectl exec -it iperf-client -- iperf3 -c iperf-server -t 30
 # [  5]   0.00-30.00  sec  3.25 GBytes   929 Mbits/sec        receiver
 ```
 
-The basic test runs for 30 seconds and reports throughput in both directions.
+The basic test runs for 30 seconds and reports sender-side and receiver-side throughput for client-to-server traffic.
 
 ## Advanced Testing Scenarios
 
@@ -110,7 +112,7 @@ Measure throughput in both directions simultaneously:
 
 ```bash
 # Test both upload and download
-kubectl exec -it iperf-client -- iperf3 -c iperf-server -d -t 30
+kubectl exec -it iperf-client -- iperf3 -c iperf-server --bidir -t 30
 
 # Reverse mode (server sends data)
 kubectl exec -it iperf-client -- iperf3 -c iperf-server -R -t 30
@@ -129,16 +131,16 @@ kubectl exec -it iperf-client -- iperf3 -c iperf-server -u -b 100M -t 30
 # [  5]   0.00-30.00  sec   357 MBytes   100 Mbits/sec  0.015 ms  0/261042 (0%)
 ```
 
-### Testing with Different Packet Sizes
+### Testing with Different Buffer and MSS Sizes
 
-Adjust MSS (Maximum Segment Size) to test with different packet sizes:
+Adjust UDP buffer length or TCP MSS (Maximum Segment Size) to test with different payload sizes:
 
 ```bash
-# Test with 9000 byte MTU (jumbo frames)
-kubectl exec -it iperf-client -- iperf3 -c iperf-server -M 9000 -t 30
+# UDP test with 1472 byte payloads
+kubectl exec -it iperf-client -- iperf3 -c iperf-server -u -b 100M -l 1472 -t 30
 
-# Test with smaller packets
-kubectl exec -it iperf-client -- iperf3 -c iperf-server -M 536 -t 30
+# TCP test with an MSS suitable for a 9000 byte MTU on IPv4
+kubectl exec -it iperf-client -- iperf3 -c iperf-server -M 8960 -t 30
 ```
 
 ## Testing Across Different Network Scenarios
@@ -164,6 +166,8 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: iperf-client-node1
+  labels:
+    app: iperf-client
 spec:
   nodeName: worker-node-1  # Same node as server
   containers:
@@ -193,6 +197,8 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: iperf-client-node2
+  labels:
+    app: iperf-client
 spec:
   nodeName: worker-node-2  # Different node
   containers:
@@ -239,7 +245,7 @@ spec:
 
 ## Automated Testing with Jobs
 
-Create a Job that runs periodic throughput tests:
+Create a Job that runs throughput tests:
 
 ```yaml
 # iperf-test-job.yaml
@@ -252,11 +258,12 @@ spec:
     spec:
       containers:
       - name: iperf
-        image: networkstatic/iperf3
+        image: alpine:3.20
         command:
         - /bin/sh
         - -c
         - |
+          apk add --no-cache iperf3 jq
           echo "Starting throughput test at $(date)"
 
           # Basic TCP test
@@ -340,14 +347,11 @@ spec:
       labels:
         app: iperf-mesh
     spec:
-      hostNetwork: true  # Use host network for maximum performance
+      hostNetwork: true  # Use host network to measure the node network path
       containers:
       - name: iperf
         image: networkstatic/iperf3
         args: ['-s']
-        securityContext:
-          capabilities:
-            add: ['NET_ADMIN']
 ```
 
 Run mesh tests:
