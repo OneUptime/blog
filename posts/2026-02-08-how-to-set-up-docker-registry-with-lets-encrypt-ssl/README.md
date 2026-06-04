@@ -55,8 +55,6 @@ docker-registry/
 
 ```yaml
 # Private Docker Registry with Let's Encrypt SSL
-version: "3.8"
-
 services:
   # Docker Registry - image storage
   registry:
@@ -166,7 +164,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name registry.yourdomain.com;
 
     # Let's Encrypt SSL certificates
@@ -249,7 +248,7 @@ The Certbot container automatically handles renewal. You can test it manually:
 docker compose run --rm certbot renew --dry-run
 ```
 
-To reload Nginx after renewal so it picks up the new certificates, add a deploy hook:
+To reload Nginx after a manual renewal so it picks up the new certificates, run:
 
 ```bash
 # Force renewal and reload Nginx
@@ -261,7 +260,7 @@ For automated reload, add a cron job on the host:
 
 ```bash
 # Add to crontab - reload Nginx daily at 3 AM
-0 3 * * * cd /path/to/docker-registry && docker compose exec nginx nginx -s reload
+0 3 * * * cd /path/to/docker-registry && docker compose exec -T nginx nginx -s reload
 ```
 
 ## Storage Configuration
@@ -283,14 +282,20 @@ registry:
 
 ## Garbage Collection
 
-Docker registry does not automatically clean up deleted image layers. Run garbage collection periodically:
+Docker registry does not automatically clean up deleted image layers. Stop the registry first so no pushes happen during garbage collection:
 
 ```bash
+# Stop writes before garbage collection
+docker compose stop registry
+
 # Run garbage collection in dry-run mode first
-docker compose exec registry bin/registry garbage-collect /etc/docker/registry/config.yml --dry-run
+docker compose run --rm --no-deps registry garbage-collect /etc/docker/registry/config.yml --dry-run
 
 # Run actual garbage collection
-docker compose exec registry bin/registry garbage-collect /etc/docker/registry/config.yml
+docker compose run --rm --no-deps registry garbage-collect /etc/docker/registry/config.yml
+
+# Start the registry again
+docker compose up -d registry
 ```
 
 ## Troubleshooting
