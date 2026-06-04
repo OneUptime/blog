@@ -21,9 +21,11 @@ Pod Identity offers advantages over IRSA including simpler configuration, no OID
 Ensure your cluster supports Pod Identity:
 
 ```bash
-# Check EKS cluster version (requires 1.24+)
+# Check EKS cluster and platform version
 
-aws eks describe-cluster --name my-cluster --query 'cluster.version'
+aws eks describe-cluster \
+  --name my-cluster \
+  --query 'cluster.{version:version,platformVersion:platformVersion}'
 
 # Verify Pod Identity add-on is available
 aws eks describe-addon-versions \
@@ -34,6 +36,11 @@ aws eks describe-addon-versions \
 aws eks describe-addon \
   --cluster-name my-cluster \
   --addon-name eks-pod-identity-agent
+
+# Verify the node role can call the EKS Auth API
+aws iam list-attached-role-policies \
+  --role-name my-node-role \
+  --query 'AttachedPolicies[?PolicyName==`AmazonEKSWorkerNodePolicy`]'
 ```
 
 ## Installing Pod Identity Add-on
@@ -253,18 +260,18 @@ Application example using AWS SDK:
 import boto3
 import os
 
-# AWS SDK automatically uses Pod Identity credentials
-# No need to configure credentials explicitly
+# AWS SDK automatically uses Pod Identity credentials when you use a supported SDK version
+# and do not configure another credential provider earlier in the default chain.
 
 def main():
     # Create S3 client - credentials auto-configured
     s3 = boto3.client('s3')
 
-    # List buckets
-    response = s3.list_buckets()
-    print("Buckets:")
-    for bucket in response['Buckets']:
-        print(f"  {bucket['Name']}")
+    # List objects in the bucket
+    response = s3.list_objects_v2(Bucket='my-bucket')
+    print("Objects:")
+    for item in response.get('Contents', []):
+        print(f"  {item['Key']}")
 
     # Read object
     obj = s3.get_object(Bucket='my-bucket', Key='data.json')
@@ -325,14 +332,14 @@ Verify credentials are available:
 ```bash
 # Deploy test pod
 kubectl run test-pod --image=amazon/aws-cli:latest \
-  --serviceaccount=s3-access-sa \
+  --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"s3-access-sa"}}' \
   --command -- sleep 3600
 
 # Check environment variables
 kubectl exec test-pod -- env | grep AWS
 
 # Test AWS CLI access
-kubectl exec test-pod -- aws s3 ls
+kubectl exec test-pod -- aws s3 ls s3://my-bucket/
 kubectl exec test-pod -- aws sts get-caller-identity
 
 # View assumed role
@@ -367,7 +374,7 @@ aws iam get-role --role-name S3AccessPodRole --query 'Role.AssumeRolePolicyDocum
 # Test from within pod
 kubectl exec -it test-pod -- /bin/bash
 # Inside pod:
-curl $AWS_CONTAINER_CREDENTIALS_FULL_URI
+curl -H "Authorization: $(cat $AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE)" "$AWS_CONTAINER_CREDENTIALS_FULL_URI"
 aws sts get-caller-identity
 ```
 
@@ -448,13 +455,13 @@ aws logs start-query \
   --end-time $(date -u +%s) \
   --query-string 'fields @timestamp, @message | filter @message like /pod-identity/ | sort @timestamp desc'
 
-# CloudTrail events for AssumeRole
+# CloudTrail events for EKS Auth credential requests
 aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRole \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleForPodIdentity \
   --max-results 50
 ```
 
-Set up CloudWatch alarms:
+Set up CloudWatch alarms from a custom metric that you publish from agent logs or observability tooling:
 
 ```hcl
 resource "aws_cloudwatch_metric_alarm" "pod_identity_errors" {
@@ -462,7 +469,7 @@ resource "aws_cloudwatch_metric_alarm" "pod_identity_errors" {
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "PodIdentityErrors"
-  namespace           = "AWS/EKS"
+  namespace           = "Custom/EKS"
   period              = "300"
   statistic           = "Sum"
   threshold           = "10"
