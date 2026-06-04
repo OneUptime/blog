@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CockroachDB, Kubernetes, Database
 
-Description: Learn how to set up cross-datacenter replication for CockroachDB across multiple Kubernetes clusters for disaster recovery, geo-distribution, and global data availability.
+Description: Learn how to set up cross-datacenter replication for CockroachDB across multiple Kubernetes clusters for geo-distribution, regional locality, and global data availability.
 
 ---
 
-Cross-datacenter replication extends CockroachDB's built-in replication across separate Kubernetes clusters in different geographic locations. This provides disaster recovery against complete cluster failures while enabling low-latency data access for global users. This guide demonstrates configuring multi-cluster CockroachDB replication with automatic failover and conflict resolution.
+Cross-datacenter replication extends CockroachDB's built-in replication across separate Kubernetes clusters in different geographic locations. This improves resilience and enables low-latency data access for global users. This guide demonstrates configuring multi-cluster CockroachDB replication with locality-aware data placement. To survive the loss of an entire region or datacenter while remaining fully available, CockroachDB requires a region-survival configuration with at least three database regions.
 
 ## Understanding Multi-Cluster Replication Architecture
 
 CockroachDB nodes in different datacenters join a single logical cluster through network connectivity. Each datacenter runs its own Kubernetes cluster with CockroachDB pods, but they coordinate through the distributed consensus protocol. Data replicates across datacenters based on locality configuration, ensuring replicas spread across geographic boundaries.
 
-This differs from traditional active-passive replication. CockroachDB provides multi-active topology where all datacenters accept writes. The system handles conflicts automatically through timestamp-based ordering, providing global consistency without requiring master election or failover procedures.
+This differs from traditional active-passive replication. CockroachDB provides a multi-active topology where all datacenters can accept writes through the same logical cluster. CockroachDB coordinates transactions with serializable isolation and distributed consensus, providing global consistency without requiring a single primary database.
 
 ## Prerequisites and Network Setup
 
@@ -30,7 +30,8 @@ aws ec2 create-vpc-peering-connection \
   --peer-region us-east-1
 
 # Configure security groups to allow CockroachDB ports
-# Port 26257: SQL and inter-node traffic
+# Port 26257: SQL traffic
+# Port 26258: inter-node gRPC traffic when using the CockroachDB Kubernetes Operator defaults
 # Port 8080: Admin UI
 
 # For on-premises, configure network routes between cluster networks
@@ -82,7 +83,7 @@ spec:
   # Locality configuration for datacenter 1
   additionalArgs:
     - --locality=region=us-west-2,datacenter=dc1
-    - --join=cockroachdb-dc1-0.cockroachdb-dc1.cockroachdb:26257,cockroachdb-dc1-1.cockroachdb-dc1.cockroachdb:26257,cockroachdb-dc1-2.cockroachdb-dc1.cockroachdb:26257,cockroachdb-dc2-0.cockroachdb-dc2.cockroachdb.svc.cluster2.local:26257,cockroachdb-dc2-1.cockroachdb-dc2.cockroachdb.svc.cluster2.local:26257,cockroachdb-dc2-2.cockroachdb-dc2.cockroachdb.svc.cluster2.local:26257
+    - --join=cockroachdb-dc1-0.cockroachdb-dc1.cockroachdb:26258,cockroachdb-dc1-1.cockroachdb-dc1.cockroachdb:26258,cockroachdb-dc1-2.cockroachdb-dc1.cockroachdb:26258,cockroachdb-dc2-0.cockroachdb-dc2.cockroachdb.svc.cluster2.local:26258,cockroachdb-dc2-1.cockroachdb-dc2.cockroachdb.svc.cluster2.local:26258,cockroachdb-dc2-2.cockroachdb-dc2.cockroachdb.svc.cluster2.local:26258
 
   tlsEnabled: true
 ```
@@ -138,7 +139,7 @@ spec:
   # Locality configuration for datacenter 2
   additionalArgs:
     - --locality=region=us-east-1,datacenter=dc2
-    - --join=cockroachdb-dc1-0.cockroachdb-dc1.cockroachdb.svc.cluster1.local:26257,cockroachdb-dc1-1.cockroachdb-dc1.cockroachdb.svc.cluster1.local:26257,cockroachdb-dc1-2.cockroachdb-dc1.cockroachdb.svc.cluster1.local:26257,cockroachdb-dc2-0.cockroachdb-dc2.cockroachdb:26257,cockroachdb-dc2-1.cockroachdb-dc2.cockroachdb:26257,cockroachdb-dc2-2.cockroachdb-dc2.cockroachdb:26257
+    - --join=cockroachdb-dc1-0.cockroachdb-dc1.cockroachdb.svc.cluster1.local:26258,cockroachdb-dc1-1.cockroachdb-dc1.cockroachdb.svc.cluster1.local:26258,cockroachdb-dc1-2.cockroachdb-dc1.cockroachdb.svc.cluster1.local:26258,cockroachdb-dc2-0.cockroachdb-dc2.cockroachdb:26258,cockroachdb-dc2-1.cockroachdb-dc2.cockroachdb:26258,cockroachdb-dc2-2.cockroachdb-dc2.cockroachdb:26258
 
   tlsEnabled: true
 ```
@@ -158,7 +159,7 @@ kubectl get pods -n cockroachdb -w
 
 ## Initializing the Multi-Cluster Database
 
-Initialize the cluster from any node:
+Initialize the cluster once. If you use the CockroachDB Public operator, it creates the StatefulSet and initializes the cluster automatically; do not run `cockroach init` a second time. If you deploy unmanaged StatefulSets instead, run `cockroach init` exactly once from one node:
 
 ```bash
 # Connect to a pod in cluster1
@@ -180,20 +181,22 @@ Create databases with cross-datacenter replication:
 # Connect to SQL interface
 kubectl exec -it -n cockroachdb cockroachdb-dc1-0 \
   -- ./cockroach sql --certs-dir=/cockroach/cockroach-certs
+```
 
-# Inside SQL shell
-CREATE DATABASE globaldb PRIMARY REGION "us-west-2" REGIONS "us-east-1";
+```sql
+-- Inside SQL shell
+CREATE DATABASE globaldb PRIMARY REGION "us-west-2" REGIONS "us-west-2", "us-east-1";
 
 ALTER DATABASE globaldb SURVIVE ZONE FAILURE;
 
-# Create multi-region table
+-- Create multi-region table
 USE globaldb;
 
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email STRING NOT NULL,
   name STRING,
-  region STRING AS (
+  region crdb_internal_region AS (
     CASE
       WHEN email LIKE '%@us.example.com' THEN 'us-west-2'
       ELSE 'us-east-1'
@@ -202,7 +205,7 @@ CREATE TABLE users (
   created_at TIMESTAMP DEFAULT now()
 ) LOCALITY REGIONAL BY ROW AS region;
 
-# Global reference table
+-- Global reference table
 CREATE TABLE products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name STRING NOT NULL,
@@ -210,7 +213,7 @@ CREATE TABLE products (
 ) LOCALITY GLOBAL;
 ```
 
-The `REGIONAL BY ROW` locality pins each row to a specific region based on the `region` column. `GLOBAL` locality replicates to all regions for fast reads everywhere.
+The `REGIONAL BY ROW` locality homes each row in a specific region based on the `region` column, which must use the database's `crdb_internal_region` enum type. `GLOBAL` locality optimizes read-mostly reference tables for low-latency reads from all regions.
 
 ## Testing Cross-Datacenter Replication
 
@@ -234,30 +237,26 @@ kubectl exec -it -n cockroachdb cockroachdb-dc2-0 \
 Check replica placement:
 
 ```sql
-SHOW RANGES FROM TABLE globaldb.users;
+SHOW RANGES FROM TABLE globaldb.users WITH DETAILS;
 
-# Shows which nodes hold replicas for each range
+-- Shows which nodes hold replicas and leases for each range
 ```
 
 ## Configuring Follower Reads for Low Latency
 
-Enable follower reads to serve queries from local replicas:
+Use follower reads to serve stale reads from local replicas:
 
 ```sql
--- Session-level setting
-SET CLUSTER SETTING kv.closed_timestamp.target_duration = '1s';
-SET CLUSTER SETTING kv.closed_timestamp.side_transport_interval = '500ms';
-
 -- Use follower reads in queries
 SELECT * FROM users AS OF SYSTEM TIME follower_read_timestamp()
 WHERE email = 'alice@us.example.com';
 
 -- Or with maximum staleness
 SELECT * FROM users AS OF SYSTEM TIME with_max_staleness('10s')
-WHERE id = 'some-uuid';
+WHERE id = '00000000-0000-0000-0000-000000000001';
 ```
 
-This allows queries to read from local replicas without cross-datacenter network calls, dramatically reducing latency.
+This allows eligible read-only queries to read from a nearby replica without contacting the leaseholder in another datacenter, reducing latency when the application can tolerate stale reads.
 
 ## Implementing Datacenter-Specific Application Routing
 
@@ -318,44 +317,44 @@ spec:
 Key metrics to monitor:
 
 - Cross-datacenter latency: `round_trip_latency`
-- Replication lag: `replication.pending`
-- Range quiescence: `range.adds`, `range.removes`
-- Network bytes sent/received: `sys.network.sent`, `sys.network.recv`
+- Slow Raft requests: `requests_slow_raft`
+- Unhealthy RPC connections: `rpc_connection_unhealthy`
+- Network bytes sent/received: `sys_host_net_send_bytes`, `sys_host_net_recv_bytes`
 
 Set up alerts for replication issues:
 
 ```yaml
-# Alert when replication lag exceeds threshold
-- alert: HighReplicationLag
-  expr: sum(rate(replication_pending[5m])) > 100
+# Alert when Raft requests are stuck
+- alert: SlowRaftRequests
+  expr: sum(requests_slow_raft) > 0
   for: 5m
   annotations:
-    summary: "High replication lag detected"
+    summary: "Slow Raft requests detected"
 ```
 
 ## Handling Datacenter Failures
 
-Test failover by simulating datacenter failure:
+Test resilience by simulating a single-node failure. In a two-region topology using `SURVIVE ZONE FAILURE`, do not expect the cluster to remain fully available after losing an entire datacenter. For full region failure survival, configure at least three database regions and use `ALTER DATABASE ... SURVIVE REGION FAILURE`.
 
 ```bash
-# Simulate DC1 failure by scaling down all nodes
+# Simulate one CockroachDB node failure
 kubectl config use-context cluster1
-kubectl scale statefulset cockroachdb-dc1 --replicas=0 -n cockroachdb
+kubectl delete pod cockroachdb-dc1-0 -n cockroachdb
 
-# Verify cluster remains available from DC2
+# Verify the cluster remains available from DC2
 kubectl config use-context cluster2
 kubectl exec -it -n cockroachdb cockroachdb-dc2-0 \
   -- ./cockroach sql --certs-dir=/cockroach/cockroach-certs \
   --execute="SELECT COUNT(*) FROM globaldb.users;"
 
-# Cluster automatically promotes replicas in DC2
+# Kubernetes recreates the pod and CockroachDB rebalances as needed
 ```
 
-When DC1 recovers, nodes rejoin automatically:
+When the pod recovers, it rejoins automatically:
 
 ```bash
 kubectl config use-context cluster1
-kubectl scale statefulset cockroachdb-dc1 --replicas=3 -n cockroachdb
+kubectl get pods -n cockroachdb -w
 
 # Nodes catch up on missed updates automatically
 ```
@@ -367,22 +366,21 @@ Configure write locality for better performance:
 ```sql
 -- Pin frequently updated data to specific regions
 CREATE TABLE user_sessions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL,
+  user_id UUID PRIMARY KEY,
   session_token STRING,
-  region STRING NOT NULL,
+  region crdb_internal_region NOT NULL,
   last_active TIMESTAMP DEFAULT now()
 ) LOCALITY REGIONAL BY ROW AS region;
 
 -- Use ON CONFLICT for upserts to reduce cross-region traffic
 INSERT INTO user_sessions (user_id, session_token, region)
-VALUES ('user-id', 'token', 'us-west-2')
-ON CONFLICT (id) DO UPDATE
+VALUES ('00000000-0000-0000-0000-000000000001', 'token', 'us-west-2')
+ON CONFLICT (user_id) DO UPDATE
 SET last_active = now();
 ```
 
 ## Conclusion
 
-Cross-datacenter CockroachDB replication on multi-cluster Kubernetes provides enterprise-grade disaster recovery with automatic failover. By configuring locality-aware schemas and using follower reads, you optimize both performance and resilience.
+Cross-datacenter CockroachDB replication on multi-cluster Kubernetes provides regional data placement and stronger resilience than a single-site deployment. By configuring locality-aware schemas and using follower reads, you optimize both performance and resilience.
 
-The key advantage is the multi-active architecture that eliminates failover procedures. All datacenters accept writes simultaneously, and the system handles conflicts automatically through timestamp ordering. Combined with Kubernetes orchestration for infrastructure management, this creates a truly distributed database platform that survives complete datacenter failures without manual intervention or data loss.
+The key advantage is the multi-active architecture. All datacenters can accept writes simultaneously through one logical cluster, while CockroachDB coordinates transactions with serializable isolation and consensus replication. Combined with Kubernetes orchestration for infrastructure management, this creates a distributed database platform that can be designed for zone or region failure survival when the topology and survival goals are configured accordingly.
