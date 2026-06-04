@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, Reliability
 
-Description: Configure request and backend timeout policies in Kubernetes Gateway API HTTPRoute to prevent cascading failures, handle slow backends gracefully.
+Description: Configure request and backend request timeout policies in Kubernetes Gateway API HTTPRoute to prevent cascading failures, handle slow backends gracefully.
 
 ---
 
-Timeouts are critical for building resilient applications. Without proper timeout configuration, slow or unresponsive backends can cause cascading failures, resource exhaustion, and poor user experience. The Kubernetes Gateway API provides timeout policies at the HTTPRoute level, allowing you to set request timeouts and backend connection timeouts per route. This guide shows you how to configure and tune timeout policies effectively.
+Timeouts are critical for building resilient applications. Without proper timeout configuration, slow or unresponsive backends can cause cascading failures, resource exhaustion, and poor user experience. The Kubernetes Gateway API provides timeout policies at the HTTPRoute level, allowing you to set request timeouts and backend request timeouts per route. This guide shows you how to configure and tune timeout policies effectively.
 
 ## Understanding Gateway API Timeouts
 
-The Gateway API supports two types of timeouts in HTTPRoute:
+The Gateway API supports two types of Extended-support timeouts in HTTPRoute:
 
-1. **Request timeout**: Maximum time for the entire request-response cycle
-2. **Backend request timeout**: Maximum time to wait for a backend to respond
+1. **Request timeout**: Maximum time for the gateway to respond to a client HTTP request
+2. **Backend request timeout**: Maximum time for a single request from the gateway to a backend, until the full response is received
 
 These timeouts protect your system from slow or hanging requests and prevent resource exhaustion.
 
@@ -103,7 +103,7 @@ spec:
 
 ## Backend Request Timeout
 
-Configure how long the gateway waits for a backend connection and response:
+Configure how long the gateway waits for a backend request and response:
 
 ```yaml
 # backend-timeout.yaml
@@ -127,7 +127,7 @@ spec:
       port: 8080
 ```
 
-The `backendRequest` timeout should be shorter than `request` timeout to allow time for processing and retries.
+The `backendRequest` timeout must not be greater than the `request` timeout. Make it shorter when you want to leave time for retries or other gateway processing.
 
 ## Implementing Timeout Best Practices
 
@@ -199,12 +199,11 @@ func timeoutMiddleware(timeout time.Duration, next http.HandlerFunc) http.Handle
 }
 
 func apiHandler(w http.ResponseWriter, r *http.Request) {
-    // Check context for timeout
     select {
     case <-r.Context().Done():
         http.Error(w, "Request timeout", http.StatusRequestTimeout)
         return
-    default:
+    case <-time.After(100 * time.Millisecond):
         // Process request
         w.Write([]byte("Response"))
     }
@@ -215,7 +214,7 @@ Timeout hierarchy: Client (60s) > Gateway (50s) > Backend handler (40s)
 
 ## Handling Streaming Requests
 
-For long-lived connections like SSE or streaming APIs, use longer timeouts or disable them:
+For long-lived connections like SSE or streaming APIs, use longer timeouts, or set `request: "0s"` to disable the request timeout if your gateway supports disabling it:
 
 ```yaml
 # streaming-timeout.yaml
@@ -251,7 +250,7 @@ spec:
 
 ## Timeout with Retry Configuration
 
-Combine timeouts with retries for resilience:
+Combine timeouts with retries for resilience. HTTPRoute `retry` is an experimental Gateway API field, so confirm that your installed Gateway API CRDs and gateway implementation support it:
 
 ```yaml
 # timeout-with-retry.yaml
@@ -269,35 +268,41 @@ spec:
         value: /api
     timeouts:
       request: 60s  # Total time including retries
-      backendRequest: 15s  # Per-attempt timeout
+      backendRequest: 15s  # Per-attempt backend request timeout
+    retry:
+      attempts: 2
+      backoff: 500ms
+      codes:
+      - 502
+      - 503
+      - 504
     backendRefs:
     - name: api-service
       port: 8080
 ```
 
-If implemented by your gateway, it can retry on timeout within the overall request timeout.
+If implemented by your gateway, it can retry connection errors or the configured status codes within the overall request timeout.
 
 ## Gateway-Specific Timeout Configuration
 
-Different gateway implementations have different timeout configuration methods. For Kong Gateway:
+Different gateway implementations have different timeout configuration methods. For Kong Gateway, upstream timeout annotations are applied to Service resources:
 
 ```yaml
 # kong-timeout-annotations.yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
+apiVersion: v1
+kind: Service
 metadata:
-  name: kong-timeout-example
+  name: app-service
   annotations:
     konghq.com/connect-timeout: "5000"   # 5 seconds
     konghq.com/write-timeout: "60000"    # 60 seconds
     konghq.com/read-timeout: "60000"     # 60 seconds
 spec:
-  parentRefs:
-  - name: kong-gateway
-  rules:
-  - backendRefs:
-    - name: app-service
-      port: 8080
+  selector:
+    app: app-service
+  ports:
+  - port: 8080
+    targetPort: 8080
 ```
 
 For Envoy Gateway, timeouts may be configured via BackendTrafficPolicy:
@@ -309,8 +314,8 @@ kind: BackendTrafficPolicy
 metadata:
   name: timeout-policy
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: api-route
   timeout:
@@ -324,7 +329,7 @@ Check your gateway implementation documentation for specific timeout configurati
 
 ## Monitoring Timeout Behavior
 
-Track timeout metrics to tune configuration:
+Track timeout metrics to tune configuration. Metric names and labels vary by gateway implementation, so replace the example names below with the metrics exposed by your gateway:
 
 ```yaml
 # servicemonitor-timeouts.yaml
@@ -351,7 +356,9 @@ sum(rate(gateway_http_requests_total{status="504"}[5m])) by (route)
 histogram_quantile(0.95, sum(rate(gateway_http_request_duration_seconds_bucket[5m])) by (le, route))
 
 # Requests approaching timeout
-sum(gateway_http_request_duration_seconds_bucket{le="25"} - gateway_http_request_duration_seconds_bucket{le="20"}) by (route)
+sum(rate(gateway_http_request_duration_seconds_bucket{le="25"}[5m])) by (route)
+  -
+sum(rate(gateway_http_request_duration_seconds_bucket{le="20"}[5m])) by (route)
 ```
 
 Create alerts for high timeout rates:
@@ -368,7 +375,7 @@ spec:
     interval: 30s
     rules:
     - alert: HighTimeoutRate
-      expr: sum(rate(gateway_http_requests_total{status="504"}[5m])) by (route) > 0.01
+      expr: sum(rate(gateway_http_requests_total{status="504"}[5m])) by (route) / sum(rate(gateway_http_requests_total[5m])) by (route) > 0.01
       for: 5m
       labels:
         severity: warning
@@ -465,7 +472,7 @@ spec:
   - matches:
     - path:
         type: PathPrefix
-        value: /test
+        value: /slow
     timeouts:
       request: 10s  # 10 second timeout
     backendRefs:
@@ -477,13 +484,13 @@ Test timeout behavior:
 
 ```bash
 # Should succeed (5s < 10s timeout)
-curl "http://api.example.com/test/slow?delay=5"
+curl "http://api.example.com/slow?delay=5"
 
 # Should timeout (15s > 10s timeout)
-curl "http://api.example.com/test/slow?delay=15"
+curl "http://api.example.com/slow?delay=15"
 
 # Measure actual timeout
-time curl "http://api.example.com/test/slow?delay=20"
+time curl "http://api.example.com/slow?delay=20"
 ```
 
 ## Timeout Tuning Guidelines
@@ -513,39 +520,31 @@ Implement graceful timeout handling in backend services:
 
 ```python
 # python-timeout-handler.py
-from flask import Flask, request
-import signal
+from flask import Flask
 import time
 
 app = Flask(__name__)
 
-class TimeoutException(Exception):
-    pass
-
-def timeout_handler(signum, frame):
-    raise TimeoutException("Request timeout")
-
 @app.route('/api/process')
 def process_request():
-    # Set alarm for internal timeout (shorter than gateway)
-    signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(25)  # 25s internal timeout (gateway has 30s)
+    # Set an internal deadline shorter than the gateway timeout
+    deadline = time.monotonic() + 25  # 25s internal timeout (gateway has 30s)
 
     try:
         # Long-running operation
-        result = expensive_operation()
-        signal.alarm(0)  # Cancel alarm
+        result = expensive_operation(deadline)
         return {"result": result}
-    except TimeoutException:
-        signal.alarm(0)
+    except TimeoutError:
         return {"error": "Processing timeout"}, 408
     except Exception as e:
-        signal.alarm(0)
         return {"error": str(e)}, 500
 
-def expensive_operation():
+def expensive_operation(deadline):
     # Simulate work
-    time.sleep(10)
+    for _ in range(10):
+        if time.monotonic() >= deadline:
+            raise TimeoutError("deadline exceeded")
+        time.sleep(1)
     return "completed"
 
 if __name__ == '__main__':
