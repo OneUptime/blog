@@ -40,8 +40,6 @@ Here is a complete Docker Compose configuration for Temporal:
 ```yaml
 # docker-compose.yml - Temporal server with all dependencies
 
-version: "3.8"
-
 services:
   postgresql:
     image: postgres:16
@@ -52,29 +50,80 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    networks:
+      - temporal-net
+
+  temporal-schema-setup:
+    image: temporalio/admin-tools:1.31.0
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      SQL_PASSWORD: temporal
+      POSTGRES_SEEDS: postgresql
+      POSTGRES_USER: temporal
+      DB_PORT: 5432
+    command: >
+      sh -c "
+        temporal-sql-tool --plugin postgres12 --ep postgresql -u temporal -p 5432 --db temporal create &&
+        temporal-sql-tool --plugin postgres12 --ep postgresql -u temporal -p 5432 --db temporal setup-schema -v 0.0 &&
+        temporal-sql-tool --plugin postgres12 --ep postgresql -u temporal -p 5432 --db temporal update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned &&
+        temporal-sql-tool --plugin postgres12 --ep postgresql -u temporal -p 5432 --db temporal_visibility create &&
+        temporal-sql-tool --plugin postgres12 --ep postgresql -u temporal -p 5432 --db temporal_visibility setup-schema -v 0.0 &&
+        temporal-sql-tool --plugin postgres12 --ep postgresql -u temporal -p 5432 --db temporal_visibility update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
+      "
     networks:
       - temporal-net
 
   temporal:
-    image: temporalio/auto-setup:latest
+    image: temporalio/server:1.31.0
     depends_on:
-      - postgresql
+      temporal-schema-setup:
+        condition: service_completed_successfully
     environment:
-      - DB=postgresql
+      - DB=postgres12
       - DB_PORT=5432
       - POSTGRES_USER=temporal
       - POSTGRES_PWD=temporal
       - POSTGRES_SEEDS=postgresql
+      - BIND_ON_IP=0.0.0.0
     ports:
       # gRPC port for workers and clients
       - "7233:7233"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7233"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+    networks:
+      - temporal-net
+
+  temporal-create-namespace:
+    image: temporalio/admin-tools:1.31.0
+    restart: on-failure:5
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    command: >
+      sh -c "
+        temporal operator namespace describe --address temporal:7233 --namespace default ||
+        temporal operator namespace create --address temporal:7233 --namespace default
+      "
     networks:
       - temporal-net
 
   temporal-ui:
-    image: temporalio/ui:latest
+    image: temporalio/ui:2.49.1
     depends_on:
-      - temporal
+      temporal:
+        condition: service_healthy
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
       - TEMPORAL_CORS_ORIGINS=http://localhost:3000
@@ -84,13 +133,15 @@ services:
       - temporal-net
 
   temporal-admin-tools:
-    image: temporalio/admin-tools:latest
+    image: temporalio/admin-tools:1.31.0
     depends_on:
-      - temporal
+      temporal:
+        condition: service_healthy
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
     networks:
       - temporal-net
+    command: ["tail", "-f", "/dev/null"]
     stdin_open: true
     tty: true
 
@@ -133,6 +184,8 @@ import (
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
+
+	"temporal-worker/activities"
 )
 
 // OrderInput contains the data needed to process an order
@@ -170,33 +223,33 @@ func ProcessOrder(ctx workflow.Context, input OrderInput) (*OrderResult, error) 
 
 	// Step 1: Charge payment
 	var paymentID string
-	err := workflow.ExecuteActivity(ctx, ChargePayment, input.OrderID, input.TotalAmount).Get(ctx, &paymentID)
+	err := workflow.ExecuteActivity(ctx, activities.ChargePayment, input.OrderID, input.TotalAmount).Get(ctx, &paymentID)
 	if err != nil {
 		return nil, err
 	}
 	result.PaymentID = paymentID
 
 	// Step 2: Reserve inventory
-	err = workflow.ExecuteActivity(ctx, ReserveInventory, input.OrderID, input.Items).Get(ctx, nil)
+	err = workflow.ExecuteActivity(ctx, activities.ReserveInventory, input.OrderID, input.Items).Get(ctx, nil)
 	if err != nil {
 		// Compensate: refund payment if inventory reservation fails
-		_ = workflow.ExecuteActivity(ctx, RefundPayment, paymentID).Get(ctx, nil)
+		_ = workflow.ExecuteActivity(ctx, activities.RefundPayment, paymentID).Get(ctx, nil)
 		return nil, err
 	}
 
 	// Step 3: Schedule shipment
 	var shipmentID string
-	err = workflow.ExecuteActivity(ctx, ScheduleShipment, input.OrderID, input.CustomerID).Get(ctx, &shipmentID)
+	err = workflow.ExecuteActivity(ctx, activities.ScheduleShipment, input.OrderID, input.CustomerID).Get(ctx, &shipmentID)
 	if err != nil {
 		// Compensate: release inventory and refund payment
-		_ = workflow.ExecuteActivity(ctx, ReleaseInventory, input.OrderID, input.Items).Get(ctx, nil)
-		_ = workflow.ExecuteActivity(ctx, RefundPayment, paymentID).Get(ctx, nil)
+		_ = workflow.ExecuteActivity(ctx, activities.ReleaseInventory, input.OrderID, input.Items).Get(ctx, nil)
+		_ = workflow.ExecuteActivity(ctx, activities.RefundPayment, paymentID).Get(ctx, nil)
 		return nil, err
 	}
 	result.ShipmentID = shipmentID
 
 	// Step 4: Send confirmation email
-	_ = workflow.ExecuteActivity(ctx, SendConfirmationEmail, input.CustomerID, input.OrderID).Get(ctx, nil)
+	_ = workflow.ExecuteActivity(ctx, activities.SendConfirmationEmail, input.CustomerID, input.OrderID).Get(ctx, nil)
 
 	result.Confirmed = true
 	return &result, nil
@@ -266,6 +319,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
@@ -275,9 +329,14 @@ import (
 )
 
 func main() {
+	temporalHost := os.Getenv("TEMPORAL_HOST")
+	if temporalHost == "" {
+		temporalHost = "localhost:7233"
+	}
+
 	// Connect to the Temporal server
 	c, err := client.Dial(client.Options{
-		HostPort: "localhost:7233",
+		HostPort: temporalHost,
 	})
 	if err != nil {
 		log.Fatalln("Unable to create Temporal client:", err)
@@ -308,14 +367,14 @@ Dockerize the worker:
 
 ```dockerfile
 # Dockerfile.worker - Temporal worker container
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine3.22 AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN go build -o worker .
 
-FROM alpine:3.19
+FROM alpine:3.22
 COPY --from=builder /app/worker /usr/local/bin/worker
 CMD ["worker"]
 ```
@@ -343,9 +402,10 @@ Use the Temporal CLI to start a workflow:
 ```bash
 # Start an order processing workflow via the Temporal CLI
 docker compose exec temporal-admin-tools \
-  tctl workflow start \
-  --taskqueue order-processing \
-  --workflow_type ProcessOrder \
+  temporal workflow start \
+  --task-queue order-processing \
+  --type ProcessOrder \
+  --workflow-id ord-123 \
   --input '{"OrderID":"ord-123","CustomerID":"cust-456","Items":["item-1","item-2"],"TotalAmount":99.99}'
 ```
 
@@ -384,7 +444,7 @@ func main() {
 		log.Fatalln("Unable to start workflow:", err)
 	}
 
-	log.Printf("Workflow started: WorkflowID=%s, RunID=%s\n", we.GetID(), we.GetRunID())
+	log.Printf("Workflow started: WorkflowID=%s, RunID=%s\n", we.GetWorkflowID(), we.GetRunID())
 }
 ```
 
@@ -397,11 +457,11 @@ For CLI-based monitoring:
 ```bash
 # List all running workflows
 docker compose exec temporal-admin-tools \
-  tctl workflow list --open
+  temporal workflow list --query 'ExecutionStatus="Running"'
 
 # Describe a specific workflow execution
 docker compose exec temporal-admin-tools \
-  tctl workflow describe --workflow_id ord-123
+  temporal workflow describe --workflow-id ord-123
 ```
 
 ## Wrapping Up
