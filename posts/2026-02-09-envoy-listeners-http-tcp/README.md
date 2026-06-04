@@ -256,7 +256,7 @@ These settings control:
 
 ## Transparent Proxying with Original Destination
 
-Use the original destination filter for transparent proxying:
+Use the original destination listener filter for transparent proxying:
 
 ```yaml
 listeners:
@@ -265,8 +265,11 @@ listeners:
     socket_address:
       address: 0.0.0.0
       port_value: 15001
+  listener_filters:
+  - name: envoy.filters.listener.original_dst
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.listener.original_dst.v3.OriginalDst
   transparent: true
-  use_original_dst: true
   filter_chains:
   - filters:
     - name: envoy.filters.network.tcp_proxy
@@ -282,7 +285,7 @@ clusters:
   lb_policy: CLUSTER_PROVIDED
 ```
 
-This configuration intercepts traffic transparently and forwards it to the original destination without requiring explicit routing rules.
+This configuration intercepts traffic transparently, restores the original destination address on the connection, and forwards it to that destination through an `ORIGINAL_DST` cluster without requiring explicit routing rules.
 
 ## Proxy Protocol Support
 
@@ -424,9 +427,9 @@ envoy_listener_downstream_cx_active
 # Connection errors
 envoy_listener_downstream_cx_transport_socket_connect_timeout
 
-# Bytes received and sent
-envoy_listener_downstream_cx_rx_bytes_total
-envoy_listener_downstream_cx_tx_bytes_total
+# Rejected connections and unmatched filter chains
+envoy_listener_downstream_cx_overflow
+envoy_listener_no_filter_chain_match
 ```
 
 Create alerts for listener issues:
@@ -452,7 +455,7 @@ Use the admin interface to debug listener configuration:
 
 ```bash
 # Get listener configuration
-curl http://localhost:9901/config_dump | jq '.configs[1]'
+curl http://localhost:9901/config_dump | jq '.configs[] | select(."@type" | contains("ListenersConfigDump"))'
 
 # Get listener statistics
 curl http://localhost:9901/stats | grep listener
@@ -461,7 +464,7 @@ curl http://localhost:9901/stats | grep listener
 curl http://localhost:9901/listeners
 ```
 
-Enable debug logging for listeners:
+Configure admin access logging:
 
 ```yaml
 admin:
@@ -474,6 +477,13 @@ admin:
     typed_config:
       "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
       path: /dev/stdout
+```
+
+Enable debug logging at startup or through the admin logging endpoint:
+
+```bash
+envoy -c /etc/envoy/envoy.yaml -l debug
+curl -X POST http://localhost:9901/logging?level=debug
 ```
 
 ## Conclusion
