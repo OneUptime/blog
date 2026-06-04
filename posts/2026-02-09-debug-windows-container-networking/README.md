@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Window, Networking, Troubleshooting, Debugging, Container
+Tags: Kubernetes, Windows, Networking, Troubleshooting, Debugging, Container
 
 Description: Learn practical techniques and tools for diagnosing and resolving networking issues with Windows containers running on Kubernetes clusters.
 
@@ -16,7 +16,7 @@ In this guide, you'll learn systematic approaches to debug Windows container net
 
 Windows containers support several networking modes. NAT mode provides network address translation for containers. Transparent mode connects containers directly to the physical network. Overlay mode creates virtual networks across multiple hosts. L2Bridge mode provides layer 2 bridging for containers.
 
-Kubernetes on Windows typically uses either Overlay mode (with Flannel or Calico) or L2Bridge mode depending on your network plugin.
+Kubernetes on Windows typically uses either Overlay mode (for example, win-overlay, Flannel VXLAN, or Calico VXLAN) or L2Bridge mode (for example, win-bridge, Flannel host-gateway, or Azure CNI) depending on your network plugin.
 
 ## Checking Basic Network Connectivity
 
@@ -42,8 +42,9 @@ ipconfig /all
 # Test DNS resolution
 nslookup kubernetes.default.svc.cluster.local
 
-# Test connectivity to cluster DNS
-Test-NetConnection -ComputerName 10.96.0.10 -Port 53
+# Test connectivity to the cluster DNS service IP shown by:
+# kubectl get svc -n kube-system kube-dns
+Test-NetConnection -ComputerName <cluster-dns-service-ip> -Port 53
 
 # Ping another pod
 ping <other-pod-ip>
@@ -90,7 +91,8 @@ If DNS resolution fails, check the pod's resolv.conf equivalent:
 ```powershell
 # Windows doesn't use /etc/resolv.conf
 # Check DNS settings directly
-Get-DnsClientServerAddress -InterfaceAlias "vEthernet (Ethernet)"
+Get-NetAdapter | Format-Table Name, ifIndex, Status
+Get-DnsClientServerAddress -InterfaceAlias "<container-interface-name>"
 ```
 
 ## Inspecting HNS (Host Networking Service)
@@ -111,8 +113,8 @@ Get-HnsNetwork -Name "cbr0" | ConvertTo-Json -Depth 10
 # List all HNS endpoints (container network interfaces)
 Get-HnsEndpoint | Format-List
 
-# Get endpoint for specific container
-$containerId = docker ps --filter "label=io.kubernetes.pod.name=<pod-name>" --format "{{.ID}}"
+# Get endpoint for a specific container when using a CRI runtime such as containerd
+$containerId = crictl ps --label io.kubernetes.pod.name=<pod-name> -q | Select-Object -First 1
 Get-HnsEndpoint | Where-Object { $_.SharedContainers -contains $containerId }
 ```
 
@@ -148,9 +150,8 @@ Get-Process flanneld
 Get-Content C:\var\log\flanneld.log -Tail 50
 
 # For Calico
-# Check Calico node status
-Get-Service CalicoNode
-Get-Service CalicoFelix
+# Check Calico services
+Get-Service | Where-Object { $_.Name -like "Calico*" -or $_.DisplayName -like "Calico*" }
 
 # View Calico logs
 Get-Content C:\CalicoWindows\logs\calico-node.log -Tail 50
@@ -231,14 +232,14 @@ Get-NetNeighbor
 Test service endpoints:
 
 ```bash
-# List service endpoints
-kubectl get endpoints <service-name>
+# List service endpoint slices
+kubectl get endpointslices -l kubernetes.io/service-name=<service-name>
 
 # Describe service
 kubectl describe svc <service-name>
 
-# Check if pod is included in endpoints
-kubectl get endpoints <service-name> -o yaml
+# Check if pod is included in endpoint slices
+kubectl get endpointslices -l kubernetes.io/service-name=<service-name> -o yaml
 ```
 
 Test service connectivity from Windows pod:
@@ -306,14 +307,14 @@ Get-Content C:\k\logs\kube-proxy.log -Tail 100
 Get-Content C:\k\kubeproxy-config.yaml
 ```
 
-Verify kube-proxy created HNS load balancers:
+Verify kube-proxy created HNS load-balancing policy lists:
 
 ```powershell
-# List HNS load balancing policies
-Get-HnsLoadBalancer | Format-Table Id, Protocol, InternalPort, ExternalPort
+# List HNS policy lists
+Get-HnsPolicyList | ConvertTo-Json -Depth 10
 
-# Get details of specific service load balancer
-Get-HnsLoadBalancer | Where-Object { $_.VirtualIPs -contains "<service-ip>" }
+# Search policy lists for a specific service IP
+Get-HnsPolicyList | Where-Object { ($_ | ConvertTo-Json -Depth 10) -match "<service-ip>" } | ConvertTo-Json -Depth 10
 ```
 
 ## Troubleshooting Load Balancer Services
@@ -373,9 +374,9 @@ Restart-Service Dnscache
 Issue: Cannot pull images:
 
 ```powershell
-# Solution: Check Docker networking
-docker network ls
-docker network inspect nat
+# Solution: Check the CRI runtime and images
+crictl info
+crictl images
 
 # Verify external connectivity
 Test-NetConnection -ComputerName mcr.microsoft.com -Port 443
