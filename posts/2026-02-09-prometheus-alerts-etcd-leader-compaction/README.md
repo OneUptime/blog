@@ -25,7 +25,7 @@ These metrics reveal etcd health and performance characteristics.
 
 ## Setting Up etcd Metrics Collection
 
-Ensure Prometheus scrapes etcd metrics. For clusters created with kubeadm:
+Ensure Prometheus scrapes etcd metrics. For clusters created with kubeadm, first make sure the etcd metrics listener is reachable by Prometheus, for example by configuring `--listen-metrics-urls` to use a routable address. Then create a selectorless Service and EndpointSlice for the etcd metrics endpoints:
 
 ```yaml
 apiVersion: v1
@@ -44,30 +44,32 @@ spec:
     port: 2381
     targetPort: 2381
     protocol: TCP
-  selector:
-    component: etcd
-    tier: control-plane
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: etcd-metrics
+  name: etcd-metrics-1
   namespace: kube-system
   labels:
+    kubernetes.io/service-name: etcd-metrics
+    endpointslice.kubernetes.io/managed-by: cluster-admin
     component: etcd
     tier: control-plane
-subsets:
+addressType: IPv4
+ports:
+- name: metrics
+  port: 2381
+  protocol: TCP
+endpoints:
 - addresses:
-  - ip: 10.0.0.1  # Your etcd node IP
-    nodeName: master-1
-  - ip: 10.0.0.2
-    nodeName: master-2
-  - ip: 10.0.0.3
-    nodeName: master-3
-  ports:
-  - name: metrics
-    port: 2381
-    protocol: TCP
+  - "10.0.0.1"  # Your etcd node IP
+  nodeName: master-1
+- addresses:
+  - "10.0.0.2"
+  nodeName: master-2
+- addresses:
+  - "10.0.0.3"
+  nodeName: master-3
 ```
 
 Configure Prometheus to scrape etcd:
@@ -79,21 +81,17 @@ metadata:
   name: prometheus-config
   namespace: monitoring
 data:
-  prometheus.yml: |
+      prometheus.yml: |
     scrape_configs:
     - job_name: 'etcd'
       kubernetes_sd_configs:
-      - role: endpoints
+      - role: endpointslice
         namespaces:
           names:
           - kube-system
-      scheme: https
-      tls_config:
-        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-        cert_file: /etc/prometheus/secrets/etcd-certs/client.crt
-        key_file: /etc/prometheus/secrets/etcd-certs/client.key
+      scheme: http
       relabel_configs:
-      - source_labels: [__meta_kubernetes_service_label_component]
+      - source_labels: [__meta_kubernetes_endpointslice_label_component]
         regex: etcd
         action: keep
 ```
@@ -128,14 +126,14 @@ spec:
     # Alert on frequent leader changes
     - alert: etcdFrequentLeaderElections
       expr: |
-        rate(etcd_server_leader_changes_seen_total[15m]) > 3
+        increase(etcd_server_leader_changes_seen_total[15m]) > 3
       for: 5m
       labels:
         severity: critical
         component: etcd
       annotations:
         summary: "Frequent etcd leader elections detected"
-        description: "etcd cluster on {{ $labels.instance }} is experiencing {{ $value }} leader elections per second. This indicates cluster instability."
+        description: "etcd cluster on {{ $labels.instance }} has seen {{ $value }} leader elections in 15 minutes. This indicates cluster instability."
 
     # Alert when no leader exists
     - alert: etcdNoLeader
@@ -164,14 +162,14 @@ spec:
 
 ## Monitoring Database Compaction
 
-etcd requires regular compaction to reclaim space. Create alerts for compaction lag:
+etcd requires regular history compaction to avoid keyspace bloat, and defragmentation to return internally free database space to the filesystem. Create alerts for compaction and defragmentation lag:
 
 ```yaml
 - name: etcd_compaction
   interval: 1m
   rules:
   # Alert when database size grows much larger than used size
-  - alert: etcdDatabaseCompactionRequired
+  - alert: etcdDatabaseDefragmentationRequired
     expr: |
       (
         etcd_mvcc_db_total_size_in_bytes
@@ -186,8 +184,8 @@ etcd requires regular compaction to reclaim space. Create alerts for compaction 
       severity: warning
       component: etcd
     annotations:
-      summary: "etcd database needs compaction on {{ $labels.instance }}"
-      description: "etcd database on {{ $labels.instance }} has {{ $value | humanizePercentage }} unused space. Run compaction to reclaim disk space."
+      summary: "etcd database needs defragmentation on {{ $labels.instance }}"
+      description: "etcd database on {{ $labels.instance }} has {{ $value | humanizePercentage }} internally free space. Run defragmentation after compaction to reclaim disk space."
 
   # Alert when database grows too large
   - alert: etcdDatabaseTooLarge
@@ -201,11 +199,9 @@ etcd requires regular compaction to reclaim space. Create alerts for compaction 
       summary: "etcd database size exceeds recommended limit"
       description: "etcd database on {{ $labels.instance }} is {{ $value | humanize1024 }}B. Databases over 8GB can cause performance issues."
 
-  # Alert when compaction is falling behind
-  - alert: etcdCompactionFallingBehind
+  # Alert when defragmentation is falling behind
+  - alert: etcdDefragmentationFallingBehind
     expr: |
-      rate(etcd_debugging_mvcc_db_compaction_keys_total[5m]) == 0
-      and
       (
         etcd_mvcc_db_total_size_in_bytes
         -
@@ -216,13 +212,13 @@ etcd requires regular compaction to reclaim space. Create alerts for compaction 
       severity: warning
       component: etcd
     annotations:
-      summary: "etcd compaction not running"
-      description: "etcd on {{ $labels.instance }} has not compacted data recently despite 1GB+ of reclaimable space."
+      summary: "etcd defragmentation is falling behind"
+      description: "etcd on {{ $labels.instance }} has 1GB+ of internally free database space. Run defragmentation after compaction to reclaim disk space."
 
   # Alert on high database growth rate
   - alert: etcdHighDatabaseGrowthRate
     expr: |
-      deriv(etcd_mvcc_db_total_size_in_bytes[30m]) > 100 * 1024 * 1024  # 100MB per 30min
+      deriv(etcd_mvcc_db_total_size_in_bytes[30m]) > (100 * 1024 * 1024) / 1800  # 100MB per 30min
     for: 15m
     labels:
       severity: warning
@@ -234,14 +230,14 @@ etcd requires regular compaction to reclaim space. Create alerts for compaction 
 
 ## Monitoring Compaction Performance
 
-Track compaction operation performance:
+Track compaction operation and backend commit performance:
 
 ```yaml
 - name: etcd_compaction_performance
   interval: 1m
   rules:
-  # Alert on slow compaction
-  - alert: etcdSlowCompaction
+  # Alert on slow backend commits
+  - alert: etcdSlowBackendCommit
     expr: |
       histogram_quantile(
         0.95,
@@ -255,20 +251,20 @@ Track compaction operation performance:
       summary: "etcd disk commits are slow"
       description: "etcd on {{ $labels.instance }} has p95 disk commit latency of {{ $value }}s. This may indicate disk I/O issues."
 
-  # Alert on compaction errors
-  - alert: etcdCompactionErrors
+  # Alert on slow compaction
+  - alert: etcdSlowMvccCompaction
     expr: |
-      rate(etcd_debugging_mvcc_db_compaction_total_duration_milliseconds_count[5m])
-      -
-      rate(etcd_debugging_mvcc_db_compaction_keys_total[5m])
-      > 0
-    for: 5m
+      histogram_quantile(
+        0.95,
+        rate(etcd_debugging_mvcc_db_compaction_total_duration_milliseconds_bucket[5m])
+      ) > 500
+    for: 10m
     labels:
       severity: warning
       component: etcd
     annotations:
-      summary: "etcd compaction errors detected"
-      description: "etcd on {{ $labels.instance }} is experiencing compaction errors."
+      summary: "etcd MVCC compaction is slow"
+      description: "etcd on {{ $labels.instance }} has p95 MVCC compaction duration of {{ $value }}ms."
 ```
 
 ## Detecting Member Failures
@@ -279,22 +275,22 @@ Alert when etcd cluster members become unavailable:
 - name: etcd_cluster_health
   interval: 30s
   rules:
-  # Alert on member count changes
-  - alert: etcdMemberCountChanged
+  # Alert on available member count changes
+  - alert: etcdAvailableMemberCountChanged
     expr: |
-      changes(etcd_server_has_leader[5m]) > 0
+      changes(count(up{job="etcd"} == 1)[5m:]) > 0
     for: 5m
     labels:
       severity: critical
       component: etcd
     annotations:
-      summary: "etcd cluster membership changed"
-      description: "etcd cluster membership has changed. Verify all members are healthy."
+      summary: "etcd available member count changed"
+      description: "The number of scrapeable etcd members has changed. Verify all members are healthy."
 
   # Alert when cluster loses quorum
   - alert: etcdInsufficientMembers
     expr: |
-      count(up{job="etcd"} == 1) < ((count(up{job="etcd"}) / 2) + 1)
+      count(up{job="etcd"} == 1) < floor(count(up{job="etcd"}) / 2) + 1
     for: 3m
     labels:
       severity: critical
@@ -306,14 +302,14 @@ Alert when etcd cluster members become unavailable:
   # Alert on member communication issues
   - alert: etcdHighNumberOfFailedProposals
     expr: |
-      rate(etcd_server_proposals_failed_total[15m]) > 5
+      increase(etcd_server_proposals_failed_total[15m]) > 5
     for: 15m
     labels:
       severity: warning
       component: etcd
     annotations:
       summary: "High rate of failed etcd proposals"
-      description: "etcd on {{ $labels.instance }} has {{ $value }} failed proposals per second. This may indicate network issues or slow members."
+      description: "etcd on {{ $labels.instance }} has {{ $value }} failed proposals in 15 minutes. This may indicate network issues or slow members."
 ```
 
 ## Monitoring Network Latency
@@ -367,8 +363,8 @@ increase(etcd_server_leader_changes_seen_total[1h])
 # Time since last leader change
 time() - max(
   max_over_time(
-    (etcd_server_is_leader == 1) * timestamp(etcd_server_is_leader)
-    [24h]
+    ((changes(etcd_server_leader_changes_seen_total[5m]) > 0)
+    * timestamp(etcd_server_leader_changes_seen_total))[24h:]
   )
 ) by (instance)
 
@@ -399,11 +395,10 @@ etcd_mvcc_db_total_size_in_bytes * 100
 rate(etcd_debugging_mvcc_db_compaction_keys_total[5m])
 
 # Time since last compaction
-time() - max(
+time() - max by (instance) (
   max_over_time(
-    (etcd_debugging_mvcc_db_compaction_keys_total > 0) *
-    timestamp(etcd_debugging_mvcc_db_compaction_keys_total)
-    [24h]
+    ((changes(etcd_debugging_mvcc_db_compaction_keys_total[5m]) > 0)
+    * timestamp(etcd_debugging_mvcc_db_compaction_keys_total))[24h:]
   )
 )
 ```
@@ -437,18 +432,17 @@ spec:
     # Track compaction lag
     - record: etcd:compaction_lag_seconds
       expr: |
-        time() - max(
+        time() - max by (instance) (
           max_over_time(
-            (etcd_debugging_mvcc_db_compaction_keys_total > 0) *
-            timestamp(etcd_debugging_mvcc_db_compaction_keys_total)
-            [1h]
+            ((changes(etcd_debugging_mvcc_db_compaction_keys_total[5m]) > 0)
+            * timestamp(etcd_debugging_mvcc_db_compaction_keys_total))[1h:]
           )
         )
 
     # Leader stability score
     - record: etcd:leader_stability_score
       expr: |
-        1 / (rate(etcd_server_leader_changes_seen_total[1h]) + 1)
+        1 / (increase(etcd_server_leader_changes_seen_total[1h]) + 1)
 ```
 
 ## Debugging Leader Election Issues
@@ -460,13 +454,10 @@ When alerts fire, use these queries to investigate:
 etcd_server_is_leader == 1
 
 # Show instances that see frequent elections
-topk(5, rate(etcd_server_leader_changes_seen_total[15m]))
+topk(5, increase(etcd_server_leader_changes_seen_total[15m]))
 
-# Check proposal commit latency (high values delay elections)
-histogram_quantile(
-  0.99,
-  rate(etcd_server_proposal_duration_seconds_bucket[5m])
-)
+# Check pending consensus proposals
+etcd_server_proposals_pending
 
 # Check for slow disk operations
 histogram_quantile(
