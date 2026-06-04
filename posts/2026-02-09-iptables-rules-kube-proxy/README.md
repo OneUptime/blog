@@ -10,7 +10,7 @@ Description: Understand and troubleshoot iptables rules created by kube-proxy fo
 
 Kube-proxy's iptables mode creates complex chains of packet filtering and NAT rules to implement Kubernetes services. Every Service resource translates into multiple iptables rules that handle load balancing, session affinity, and health-based routing. Understanding these rules is essential for debugging connectivity issues, optimizing performance, and securing your cluster's network traffic.
 
-When kube-proxy runs in iptables mode (the default), it watches the Kubernetes API for Service and Endpoints changes and immediately programs corresponding iptables rules. This happens on every node, creating a distributed load balancing system where each node independently routes service traffic using kernel netfilter. The complexity of these rules scales with the number of services and endpoints, which is why large clusters often migrate to IPVS mode.
+When kube-proxy runs in iptables mode (the default), it watches the Kubernetes API for Service and EndpointSlice changes and immediately programs corresponding iptables rules. This happens on every node, creating a distributed load balancing system where each node independently routes service traffic using kernel netfilter. The complexity of these rules scales with the number of services and endpoints, which is why large clusters often migrate to nftables mode.
 
 ## Understanding Kube-Proxy iptables Chains
 
@@ -50,25 +50,29 @@ kind: Service
 metadata:
   name: my-service
 spec:
-  selector:
-    app: my-app
   ports:
   - protocol: TCP
     port: 80
     targetPort: 8080
   clusterIP: 10.96.100.50
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: my-service
-subsets:
+  name: my-service-1
+  labels:
+    kubernetes.io/service-name: my-service
+addressType: IPv4
+ports:
+- protocol: TCP
+  port: 8080
+endpoints:
 - addresses:
-  - ip: 10.244.0.10
-  - ip: 10.244.1.20
-  - ip: 10.244.2.30
-  ports:
-  - port: 8080
+  - 10.244.0.10
+- addresses:
+  - 10.244.1.20
+- addresses:
+  - 10.244.2.30
 ```
 
 View the generated rules:
@@ -98,7 +102,7 @@ iptables -t nat -L KUBE-SEP-AAA -n -v
 # 0     0    DNAT       tcp  --  *      *     0.0.0.0/0    0.0.0.0/0    /* default/my-service */ tcp to:10.244.0.10:8080
 ```
 
-The probability-based selection implements round-robin load balancing. With 3 endpoints:
+The probability-based selection implements randomized load balancing. With 3 endpoints:
 - First endpoint: 33.3% (1/3)
 - Second endpoint: 50% of remaining traffic (1/2)
 - Third endpoint: gets remaining traffic (100%)
@@ -206,7 +210,7 @@ iptables -t nat -L KUBE-XLB-XXXX -n -v
 # Only includes endpoints on local node
 # No SNAT happens (preserves source IP)
 
-# On nodes without local pods, returns ICMP rejection
+# On nodes without local pods, the traffic is dropped
 ```
 
 ## Troubleshooting iptables Rules
@@ -226,7 +230,7 @@ kubectl logs -n kube-system -l k8s-app=kube-proxy --tail=50
 
 # Verify service and endpoints exist
 kubectl get svc my-service
-kubectl get endpoints my-service
+kubectl get endpointslices -l kubernetes.io/service-name=my-service
 
 # Test connectivity
 kubectl run -it --rm debug --image=busybox --restart=Never -- wget -O- http://10.96.100.50
@@ -239,7 +243,7 @@ kubectl run -it --rm debug --image=busybox --restart=Never -- wget -O- http://10
 iptables -t nat -L -n -v | grep KUBE-SEP
 
 # Check endpoint health
-kubectl get endpoints my-service -o yaml
+kubectl get endpointslices -l kubernetes.io/service-name=my-service -o yaml
 
 # Verify probability calculations
 # Should sum to 100% across all endpoints
@@ -276,7 +280,7 @@ iptables-save | wc -l
 time iptables -t nat -L KUBE-SERVICES -n
 
 # Solutions:
-# 1. Migrate to IPVS mode (O(1) lookups)
+# 1. Migrate to nftables mode on supported Kubernetes and Linux versions
 # 2. Reduce number of services
 # 3. Use service mesh for east-west traffic
 ```
@@ -286,17 +290,16 @@ time iptables -t nat -L KUBE-SERVICES -n
 Add custom rules that interact with kube-proxy:
 
 ```bash
-# Add custom rule before KUBE-SERVICES
-iptables -t nat -I PREROUTING 1 -p tcp --dport 8080 -j LOG --log-prefix "SERVICE-ACCESS: "
-
-# Allow only specific sources to access a service
+# Add a custom logging rule before KUBE-SERVICES
 SERVICE_IP="10.96.100.50"
-iptables -I FORWARD -d $SERVICE_IP -s 192.168.1.0/24 -j ACCEPT
-iptables -I FORWARD -d $SERVICE_IP -j REJECT
+iptables -t nat -I PREROUTING 1 -p tcp -d $SERVICE_IP --dport 80 -j LOG --log-prefix "SERVICE-ACCESS: "
 
-# Rate limit service access
-iptables -I FORWARD -d $SERVICE_IP -m limit --limit 100/s --limit-burst 200 -j ACCEPT
-iptables -I FORWARD -d $SERVICE_IP -j DROP
+# Allow only specific sources to access a service after kube-proxy DNAT
+iptables -I FORWARD 1 -p tcp -m conntrack --ctorigdst $SERVICE_IP --ctorigdstport 80 ! -s 192.168.1.0/24 -j REJECT
+
+# Rate limit service access using the original Service IP and port
+iptables -I FORWARD 2 -p tcp -m conntrack --ctorigdst $SERVICE_IP --ctorigdstport 80 -s 192.168.1.0/24 -m limit --limit 100/s --limit-burst 200 -j ACCEPT
+iptables -I FORWARD 3 -p tcp -m conntrack --ctorigdst $SERVICE_IP --ctorigdstport 80 -s 192.168.1.0/24 -j DROP
 ```
 
 Make custom rules persistent:
@@ -364,7 +367,7 @@ iptables -t raw -F
 1. **Don't modify kube-proxy chains manually**: Changes will be overwritten
 2. **Use service mesh for complex routing**: iptables is limited
 3. **Monitor rule count**: Large rule sets impact performance
-4. **Consider IPVS mode**: For clusters with 1000+ services
+4. **Consider nftables mode**: For clusters with 1000+ services
 5. **Test firewall rules carefully**: Easy to break service routing
 6. **Use iptables-save for debugging**: Easier to read than -L output
 7. **Enable connection tracking**: Required for stateful rules
