@@ -12,7 +12,7 @@ PhotoPrism is a self-hosted photo management application that uses AI to automat
 
 ## Why Self-Host Your Photos?
 
-Cloud photo services are convenient but come with real trade-offs. Google Photos scans your images for ad targeting. Apple iCloud locks you into their ecosystem. Both charge ongoing fees for storage beyond the free tier. PhotoPrism gives you unlimited storage (bounded only by your hardware), complete privacy, and no monthly bills. Your photos stay on your hardware, and the AI processing runs locally.
+Cloud photo services are convenient but come with real trade-offs. Google Photos processes your library in Google's cloud, while Apple iCloud locks you into their ecosystem. Both charge ongoing fees for storage beyond the free tier. PhotoPrism gives you unlimited storage (bounded only by your hardware), complete privacy, and no monthly bills. Your photos stay on your hardware, and the AI processing runs locally.
 
 ## Prerequisites
 
@@ -33,14 +33,14 @@ graph LR
     B --> F[AI/ML Models]
 ```
 
-PhotoPrism stores metadata in MariaDB, keeps original photos untouched in the storage directory, and writes AI-generated metadata to sidecar files.
+PhotoPrism stores metadata in MariaDB, keeps original photos in the originals directory, and writes generated metadata to sidecar files.
 
 ## Project Setup
 
 ```bash
 # Create the PhotoPrism project directory
 
-mkdir -p ~/photoprism/{storage,db}
+mkdir -p ~/photoprism/{storage,db,import}
 cd ~/photoprism
 ```
 
@@ -48,8 +48,6 @@ cd ~/photoprism
 
 ```yaml
 # docker-compose.yml - PhotoPrism Photo Management
-version: "3.8"
-
 services:
   db:
     image: mariadb:11
@@ -101,17 +99,17 @@ services:
       # Disable authentication for private networks (set to "public")
       # or keep authentication enabled (set to "password")
       PHOTOPRISM_AUTH_MODE: "password"
-      # Originals storage limit in GB (-1 for unlimited)
+      # Maximum original media file size in MB (-1 to disable)
       PHOTOPRISM_ORIGINALS_LIMIT: -1
       # Quality settings
       PHOTOPRISM_JPEG_QUALITY: 85
       PHOTOPRISM_THUMB_SIZE: 2048
       PHOTOPRISM_THUMB_SIZE_UNCACHED: 7680
     volumes:
-      # Original photos - mount your photo library here (read-only is fine)
-      - /mnt/photos:/photoprism/originals:ro
+      # Original photos - keep writable if you want imports, uploads, or deletes
+      - /mnt/photos:/photoprism/originals
       # Import directory for new photos
-      - /mnt/photos/import:/photoprism/import
+      - ./import:/photoprism/import
       # PhotoPrism storage for cache, thumbnails, and sidecar files
       - ./storage:/photoprism/storage
     networks:
@@ -143,10 +141,10 @@ Once you see "server started," open `http://<your-server-ip>:2342` in your brows
 After the first login, PhotoPrism needs to scan your photo library. Go to Library > Index and click "Start." You can also trigger indexing from the command line:
 
 ```bash
-# Start a full index of the photo library
+# Start an index of the photo library
 docker exec photoprism photoprism index
 
-# For a faster re-index that only processes new files
+# Update the index and clean up missing files
 docker exec photoprism photoprism index --cleanup
 ```
 
@@ -166,15 +164,15 @@ You can merge face clusters if the same person was split into multiple groups. S
 
 ## Smart Search
 
-The search bar understands natural language queries:
+The search bar supports keyword searches and structured filters:
 
 ```text
 # Example search queries
 sunset beach               # Photos with both sunset and beach tags
-face:John                  # Photos containing John's face
-year:2024 month:july       # Photos from July 2024
+person:"John Doe"          # Photos containing John Doe
+year:2024 month:7          # Photos from July 2024
 camera:iPhone              # Photos taken with an iPhone
-country:Japan              # Photos geolocated in Japan
+country:jp                 # Photos geolocated in Japan
 color:red                  # Photos where red is dominant
 type:video                 # Only video files
 path:vacation/2024         # Photos from a specific folder
@@ -182,10 +180,10 @@ path:vacation/2024         # Photos from a specific folder
 
 ## Albums and Organization
 
-Create albums manually or let PhotoPrism generate them automatically:
+Create albums manually or browse PhotoPrism's automatically generated views:
 
-- **Calendar albums** - Auto-generated based on dates
-- **Location albums** - Auto-generated based on GPS data
+- **Calendar** - Organizes photos based on dates
+- **Places and regions** - Groups photos based on GPS data
 - **Manual albums** - Create custom albums and add photos to them
 - **Moments** - PhotoPrism identifies meaningful clusters of photos (trips, events)
 
@@ -233,7 +231,7 @@ docker exec photoprism-db mysqldump -u photoprism -pdb_password_change_me photop
 rsync -a ~/photoprism/storage/ ~/photoprism-backup/storage/
 ```
 
-Your original photos should have their own backup strategy. PhotoPrism does not modify originals, so they can be backed up independently.
+Your original photos should have their own backup strategy. PhotoPrism does not modify originals during indexing, so they can be backed up independently.
 
 ## Updating PhotoPrism
 
@@ -246,8 +244,8 @@ docker compose up -d photoprism
 After major updates, re-run indexing to take advantage of improved AI models:
 
 ```bash
-# Re-index after a major update
-docker exec photoprism photoprism index
+# Complete rescan after a major update
+docker exec photoprism photoprism index -f
 ```
 
 ## Monitoring with OneUptime
