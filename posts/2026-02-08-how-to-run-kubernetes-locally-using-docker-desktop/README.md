@@ -8,13 +8,13 @@ Description: A complete guide to enabling and using the built-in Kubernetes clus
 
 ---
 
-Docker Desktop ships with a built-in Kubernetes cluster that you can enable with a single checkbox. There is no need to install Minikube, Kind, or any other tool. The cluster runs alongside your Docker containers, shares the same Docker daemon, and integrates with your existing Docker workflow. For developers who want to test Kubernetes manifests without setting up additional infrastructure, this is the fastest path from zero to a running cluster.
+Docker Desktop ships with a built-in Kubernetes cluster that you can create from the Docker Desktop Dashboard. There is no need to install Minikube, Kind, or any other separate local cluster tool. The cluster runs alongside your Docker containers and integrates with your existing Docker workflow. For developers who want to test Kubernetes manifests without setting up additional infrastructure, this is the fastest path from zero to a running cluster.
 
 This guide walks through enabling Kubernetes in Docker Desktop, configuring it for development, deploying applications, and troubleshooting common issues.
 
 ## Enabling Kubernetes
 
-Open Docker Desktop and navigate to Settings (the gear icon). Click on the Kubernetes tab and check "Enable Kubernetes." Click "Apply & Restart."
+Open Docker Desktop and select the Kubernetes view. Click "Create cluster", then choose the cluster type. The `kubeadm` option creates the classic single-node Docker Desktop cluster, while the `kind` option can create a multi-node cluster and lets you choose the Kubernetes version. On older Docker Desktop versions, open Settings (the gear icon), click on the Kubernetes tab, check "Enable Kubernetes", and click "Apply & Restart."
 
 Docker Desktop downloads the Kubernetes components and starts the cluster. This takes a few minutes on the first run. Subsequent starts are much faster.
 
@@ -25,7 +25,7 @@ Verify the cluster is running:
 
 kubectl cluster-info
 
-# List the nodes (you should see one node called "docker-desktop")
+# List the nodes (with the kubeadm option, you should see one node called "docker-desktop")
 kubectl get nodes
 ```
 
@@ -53,7 +53,7 @@ kubectl config current-context
 
 ## The Docker Desktop Advantage: Shared Image Store
 
-The biggest practical benefit of Docker Desktop's Kubernetes is that it shares the Docker daemon. Images you build with `docker build` are immediately available to the Kubernetes cluster. No need to push to a registry or use `kind load`.
+The biggest practical benefit of Docker Desktop's classic `kubeadm` Kubernetes cluster is that it can use images you build locally with Docker. No need to push to a registry or use `kind load`. If you create a Docker Desktop `kind` cluster instead, make sure your Docker Desktop image store and provisioner settings support the local-image workflow, or push the image to a registry.
 
 ```bash
 # Build an image locally
@@ -63,7 +63,7 @@ docker build -t myapp:v1.0 .
 kubectl create deployment myapp --image=myapp:v1.0
 ```
 
-Just set `imagePullPolicy` to `Never` or `IfNotPresent` so Kubernetes does not try to pull from a remote registry:
+Set `imagePullPolicy` to `Never` for purely local images so Kubernetes does not try to pull from a remote registry. `IfNotPresent` is also useful when the image is already present locally, but Kubernetes will try to pull it if it is missing:
 
 ```yaml
 # deployment.yaml - Using a locally built image
@@ -85,7 +85,7 @@ spec:
         - name: myapp
           image: myapp:v1.0
           # Use the local image, do not attempt to pull from a registry
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Never
           ports:
             - containerPort: 8080
 ```
@@ -201,7 +201,7 @@ spec:
       containers:
         - name: webapp
           image: myapp:v1.0
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Never
           env:
             - name: DATABASE_URL
               value: postgres://appuser:devpassword@postgres:5432/myapp
@@ -246,7 +246,7 @@ For routing multiple services through a single entry point, install an Ingress c
 
 ```bash
 # Install Nginx Ingress Controller using kubectl
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.5/deploy/static/provider/cloud/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/cloud/deploy.yaml
 
 # Wait for the controller to be ready
 kubectl wait --namespace ingress-nginx \
@@ -307,13 +307,18 @@ kubectl get pods
 
 ## Dashboard
 
-Install the Kubernetes Dashboard for a visual overview of your cluster:
+Docker Desktop now includes a Kubernetes view in its Dashboard for a visual overview of pods, services, and deployments. The upstream Kubernetes Dashboard project is deprecated and unmaintained; for a new in-cluster web UI, the Kubernetes docs recommend Headlamp. If you still need Kubernetes Dashboard for a local demo, install it with Helm:
 
 ```bash
-# Install the Kubernetes Dashboard
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
+# Add the Kubernetes Dashboard chart repository
+helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/
 
-# Create a service account for dashboard access
+# Install Kubernetes Dashboard
+helm upgrade --install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard \
+  --create-namespace \
+  --namespace kubernetes-dashboard
+
+# Create a service account for demo dashboard access
 kubectl create serviceaccount dashboard-admin -n kubernetes-dashboard
 kubectl create clusterrolebinding dashboard-admin \
   --clusterrole=cluster-admin \
@@ -322,11 +327,11 @@ kubectl create clusterrolebinding dashboard-admin \
 # Generate a login token
 kubectl create token dashboard-admin -n kubernetes-dashboard
 
-# Start the proxy
-kubectl proxy
+# Forward the Dashboard service to your machine
+kubectl -n kubernetes-dashboard port-forward svc/kubernetes-dashboard-kong-proxy 8443:443
 ```
 
-Visit `http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/` and paste the token.
+Visit `https://localhost:8443` and paste the token.
 
 ## Resetting Kubernetes
 
@@ -349,4 +354,4 @@ kubectl top nodes
 
 ## Conclusion
 
-Docker Desktop's built-in Kubernetes is the lowest-friction way to run Kubernetes locally. The shared Docker daemon eliminates the image loading step entirely, and the single-node cluster starts quickly with minimal configuration. It is ideal for testing Kubernetes manifests, developing Helm charts, and validating CI/CD pipelines before deploying to production clusters. While it lacks the multi-node capabilities of Kind or k3d, the simplicity of a checkbox to enable Kubernetes makes it the right choice for many development workflows.
+Docker Desktop's built-in Kubernetes is the lowest-friction way to run Kubernetes locally. The local image workflow can eliminate the image loading step, and the single-node cluster starts quickly with minimal configuration. It is ideal for testing Kubernetes manifests, developing Helm charts, and validating CI/CD pipelines before deploying to production clusters. If you need multi-node testing, Docker Desktop's `kind` provisioner or tools such as Kind and k3d are better fits, but Docker Desktop's integrated workflow makes it the right choice for many development workflows.
