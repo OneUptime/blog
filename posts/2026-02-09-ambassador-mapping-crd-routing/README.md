@@ -96,7 +96,7 @@ metadata:
   namespace: default
 spec:
   prefix: /
-  host: api.example.com
+  hostname: api.example.com
   service: api-backend:8080
 ---
 apiVersion: getambassador.io/v3alpha1
@@ -106,7 +106,7 @@ metadata:
   namespace: default
 spec:
   prefix: /
-  host: admin.example.com
+  hostname: admin.example.com
   service: admin-backend:8080
 ```
 
@@ -139,7 +139,6 @@ metadata:
   namespace: default
 spec:
   prefix: /old-api/
-  prefix_regex: true
   regex_rewrite:
     pattern: /old-api/(.*)
     substitution: /new-api/\1
@@ -182,7 +181,7 @@ metadata:
 spec:
   prefix: /api/
   service: default-backend:8080
-  precedence: 1  # Lower precedence, used as fallback
+  precedence: -1  # Lower precedence, used as fallback
 ```
 
 ## Query Parameter Routing
@@ -263,13 +262,13 @@ spec:
   add_request_headers:
     X-Custom-Header:
       value: custom-value
-    X-Request-ID:
-      value: "%REQ(X-REQUEST-ID)%"  # Copy from incoming request
+    X-Forwarded-Proto:
+      value: "%PROTOCOL%"
   add_response_headers:
     X-API-Version:
       value: "2.0"
-    X-Response-Time:
-      value: "%DOWNSTREAM_REMOTE_ADDRESS%"
+    X-Client-IP:
+      value: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
   remove_request_headers:
   - X-Internal-Debug
   - Cookie
@@ -301,7 +300,8 @@ metadata:
   namespace: default
 spec:
   prefix: /api/data
-  method_regex: "POST|PUT|DELETE"
+  method: "POST|PUT|DELETE"
+  method_regex: true
   service: write-service:8080
 ```
 
@@ -324,7 +324,7 @@ spec:
   retry_policy:
     retry_on: "5xx"
     num_retries: 3
-    per_try_timeout: 1000  # 1 second per retry
+    per_try_timeout: "1s"  # 1 second per retry
 ```
 
 ## Load Balancing Policies
@@ -334,6 +334,11 @@ Specify load balancing behavior:
 ```yaml
 # load-balancing.yaml
 apiVersion: getambassador.io/v3alpha1
+kind: KubernetesEndpointResolver
+metadata:
+  name: endpoint
+---
+apiVersion: getambassador.io/v3alpha1
 kind: Mapping
 metadata:
   name: api-lb-policy
@@ -341,6 +346,7 @@ metadata:
 spec:
   prefix: /api/
   service: backend-service:8080
+  resolver: endpoint
   load_balancer:
     policy: round_robin  # Options: round_robin, least_request, ring_hash, maglev
 ---
@@ -352,6 +358,7 @@ metadata:
 spec:
   prefix: /sessions/
   service: session-backend:8080
+  resolver: endpoint
   load_balancer:
     policy: ring_hash
     cookie:
@@ -405,11 +412,8 @@ metadata:
   name: uuid-routing
   namespace: default
 spec:
-  prefix: /api/
+  prefix: "^/api/items/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
   prefix_regex: true
-  regex_headers:
-    ":path":
-      match: "^/api/items/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
   service: items-service:8080
 ```
 
@@ -469,7 +473,7 @@ metadata:
 spec:
   prefix: /api/orders
   service: orders-service:8080
-  headers:
+  regex_headers:
     Authorization: ".*"
   timeout_ms: 10000
   retry_policy:
