@@ -16,7 +16,7 @@ Understanding how PDBs interact with maintenance operations allows you to design
 
 ## Understanding Pod Disruption Budget Basics
 
-A Pod Disruption Budget specifies the minimum number of pods that must remain available during voluntary disruptions. Kubernetes respects these budgets when evicting pods during node drains, rolling updates, and cluster autoscaling.
+A Pod Disruption Budget specifies the minimum number of pods that must remain available during voluntary disruptions. Kubernetes respects these budgets when evicting pods during node drains and eviction-based automation such as some cluster autoscaling operations. Pods unavailable during rolling updates count against the budget, but workload controllers such as Deployments and StatefulSets are not limited by PDBs during their own rollouts.
 
 ```yaml
 apiVersion: policy/v1
@@ -138,16 +138,19 @@ Automate this process with a script:
 
 NAMESPACE="production"
 SERVICE="web-app"
+NORMAL_MIN_AVAILABLE=2
+MAINTENANCE_MAX_UNAVAILABLE=3
 ACTION=${1:-enable}
 
 if [ "$ACTION" = "enable" ]; then
   echo "Enabling maintenance mode for $SERVICE"
-  kubectl get pdb ${SERVICE}-pdb -n $NAMESPACE -o yaml > /tmp/${SERVICE}-pdb-backup.yaml
-  kubectl patch pdb ${SERVICE}-pdb -n $NAMESPACE -p '{"spec":{"maxUnavailable":3}}'
+  kubectl patch pdb ${SERVICE}-pdb -n $NAMESPACE --type=json \
+    -p="[{\"op\":\"remove\",\"path\":\"/spec/minAvailable\"},{\"op\":\"add\",\"path\":\"/spec/maxUnavailable\",\"value\":$MAINTENANCE_MAX_UNAVAILABLE}]"
   echo "Maintenance mode enabled"
 elif [ "$ACTION" = "disable" ]; then
   echo "Disabling maintenance mode for $SERVICE"
-  kubectl apply -f /tmp/${SERVICE}-pdb-backup.yaml
+  kubectl patch pdb ${SERVICE}-pdb -n $NAMESPACE --type=json \
+    -p="[{\"op\":\"remove\",\"path\":\"/spec/maxUnavailable\"},{\"op\":\"add\",\"path\":\"/spec/minAvailable\",\"value\":$NORMAL_MIN_AVAILABLE}]"
   echo "Maintenance mode disabled"
 else
   echo "Usage: $0 {enable|disable}"
@@ -194,7 +197,7 @@ spec:
         - containerPort: 5432
 ```
 
-This configuration allows disrupting one database pod at a time, ensuring quorum is maintained during maintenance. With three replicas, two always remain available.
+This configuration allows disrupting one database pod at a time during voluntary evictions. With three replicas, two can remain available during maintenance, assuming the database replication topology itself is healthy.
 
 For applications requiring leader election or consensus:
 
@@ -260,7 +263,7 @@ kubectl apply -f web-app-pdb.yaml
 Monitor PDB status to detect situations where disruption budgets prevent necessary operations:
 
 ```bash
-# Check PDBs that are currently violated
+# Check PDBs that currently allow no voluntary disruptions
 kubectl get pdb --all-namespaces -o json | \
   jq -r '.items[] | select(.status.disruptionsAllowed == 0) | "\(.metadata.namespace)/\(.metadata.name)"'
 
