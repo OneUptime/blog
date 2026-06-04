@@ -40,8 +40,6 @@ metadata:
 rules:
 - apiGroups: [""]
   resources:
-  - nodes
-  - nodes/metrics
   - services
   - endpoints
   - pods
@@ -219,6 +217,50 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: team-beta
+  labels:
+    name: team-beta
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: team-beta
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prometheus
+  namespace: team-beta
+rules:
+- apiGroups: [""]
+  resources:
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources:
+  - configmaps
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus
+  namespace: team-beta
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: team-beta
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: Prometheus
@@ -228,10 +270,16 @@ metadata:
 spec:
   replicas: 1
   serviceAccountName: prometheus
+  serviceMonitorSelector: {}
   serviceMonitorNamespaceSelector:
     matchLabels:
       name: team-beta
+  podMonitorSelector: {}
   podMonitorNamespaceSelector:
+    matchLabels:
+      name: team-beta
+  ruleSelector: {}
+  ruleNamespaceSelector:
     matchLabels:
       name: team-beta
   resources:
@@ -279,6 +327,19 @@ spec:
   podMetricsEndpoints:
   - port: metrics
     interval: 30s
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: team-prometheus
+  namespace: team-beta
+spec:
+  selector:
+    prometheus: team-prometheus
+  ports:
+  - name: web
+    port: 9090
+    targetPort: web
 ```
 
 ## Implementing Federation for Central Monitoring
@@ -286,6 +347,12 @@ spec:
 Create a central Prometheus that federates from namespace Prometheus instances:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-federation
+  namespace: monitoring
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -330,7 +397,7 @@ metadata:
   name: prometheus-federation
   namespace: monitoring
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: prometheus-federation
@@ -369,6 +436,31 @@ spec:
       - name: storage
         persistentVolumeClaim:
           claimName: prometheus-federation-storage
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-federation-storage
+  namespace: monitoring
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-federation
+  namespace: monitoring
+spec:
+  selector:
+    app: prometheus-federation
+  ports:
+  - port: 9090
+    targetPort: 9090
+    name: http
 ```
 
 ## Automating Prometheus Deployment Per Namespace
@@ -382,13 +474,12 @@ import (
     "context"
     "fmt"
 
-    corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/client-go/kubernetes"
-    "k8s.io/client-go/rest"
     "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
     "k8s.io/apimachinery/pkg/runtime/schema"
     "k8s.io/client-go/dynamic"
+    "k8s.io/client-go/kubernetes"
+    "k8s.io/client-go/rest"
 )
 
 type PrometheusDeployer struct {
@@ -448,15 +539,13 @@ func (pd *PrometheusDeployer) DeployPrometheus(ctx context.Context, namespace st
                 "replicas":            1,
                 "serviceAccountName":  "prometheus",
                 "retention":           "30d",
+                "serviceMonitorSelector": map[string]interface{}{},
+                "podMonitorSelector":     map[string]interface{}{},
+                "ruleSelector":           map[string]interface{}{},
                 "resources": map[string]interface{}{
                     "requests": map[string]interface{}{
                         "memory": "1Gi",
                         "cpu":    "500m",
-                    },
-                },
-                "serviceMonitorNamespaceSelector": map[string]interface{}{
-                    "matchLabels": map[string]interface{}{
-                        "name": namespace,
                     },
                 },
             },
