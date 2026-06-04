@@ -19,6 +19,10 @@ The matrix block goes inside a target definition:
 ```hcl
 # docker-bake.hcl - basic matrix build
 
+group "default" {
+  targets = ["app"]
+}
+
 target "app" {
   name       = "app-${item.variant}"
   dockerfile = "Dockerfile"
@@ -26,8 +30,8 @@ target "app" {
 
   matrix = {
     item = [
-      { variant = "alpine", base = "node:20-alpine" },
-      { variant = "debian", base = "node:20-bookworm-slim" }
+      { variant = "alpine", base = "node:24-alpine" },
+      { variant = "debian", base = "node:24-bookworm-slim" }
     ]
   }
 
@@ -40,8 +44,8 @@ target "app" {
 ```
 
 This single target definition generates two build targets:
-- `app-alpine` with `BASE_IMAGE=node:20-alpine`
-- `app-debian` with `BASE_IMAGE=node:20-bookworm-slim`
+- `app-alpine` with `BASE_IMAGE=node:24-alpine`
+- `app-debian` with `BASE_IMAGE=node:24-bookworm-slim`
 
 Build both:
 
@@ -81,9 +85,9 @@ target "app" {
 
   matrix = {
     item = [
-      { node_version = "18", tag_suffix = "node18" },
-      { node_version = "20", tag_suffix = "node20" },
-      { node_version = "22", tag_suffix = "node22" }
+      { node_version = "22", tag_suffix = "node22" },
+      { node_version = "24", tag_suffix = "node24" },
+      { node_version = "26", tag_suffix = "node26" }
     ]
   }
 
@@ -102,12 +106,12 @@ The Dockerfile uses the build argument to select the base image:
 
 ```dockerfile
 # Dockerfile - uses NODE_VERSION from build args
-ARG NODE_VERSION=20
+ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-alpine
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 COPY . .
 EXPOSE 3000
 CMD ["node", "server.js"]
@@ -235,7 +239,7 @@ target "app" {
 The Dockerfile installs only the needed database driver:
 
 ```dockerfile
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 
 ARG DB_PACKAGE
 ARG DB_DRIVER
@@ -247,7 +251,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install the specific database driver
-RUN npm ci --production && npm install ${DB_DRIVER}
+RUN npm ci --omit=dev && npm install ${DB_DRIVER}
 
 COPY . .
 CMD ["node", "server.js"]
@@ -277,13 +281,13 @@ target "_base" {
 
 target "tool" {
   inherits = ["_base"]
-  name     = "tool-${item.version}-${item.os}"
+  name     = "tool-${replace(item.version, ".", "")}-${item.os}"
 
   matrix = {
     item = [
-      { version = "1.0", os = "alpine", base = "alpine:3.19" },
+      { version = "1.0", os = "alpine", base = "alpine:3.23" },
       { version = "1.0", os = "ubuntu", base = "ubuntu:22.04" },
-      { version = "1.1", os = "alpine", base = "alpine:3.19" },
+      { version = "1.1", os = "alpine", base = "alpine:3.23" },
       { version = "1.1", os = "ubuntu", base = "ubuntu:22.04" }
     ]
   }
