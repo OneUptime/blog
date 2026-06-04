@@ -17,9 +17,9 @@ In this guide, you'll transform a vanilla Kubernetes cluster into an edge-capabl
 Unlike purpose-built edge solutions that require special installations, OpenYurt converts existing clusters by installing additional components:
 
 - **Yurt-Manager**: Manages node lifecycles and edge autonomy
-- **Yurt-Tunnel**: Provides secure cloud-to-edge communication through NAT
+- **Raven and Yurt-Tunnel**: Provide cross-region networking and cloud-to-edge maintenance tunnels
 - **NodePool**: Groups edge nodes by location or purpose
-- **UnitedDeployment**: Distributes workloads across NodePools
+- **YurtAppSet**: Distributes workloads across NodePools
 
 These components run as standard Kubernetes resources, preserving your existing cluster while adding edge capabilities.
 
@@ -36,25 +36,23 @@ For this guide, we'll use a cluster with 3 cloud nodes and prepare to add edge n
 
 ## Installing OpenYurt Components
 
-Install OpenYurt using the official installer:
+Install the OpenYurt control-plane components with the official Helm charts:
 
 ```bash
-# Download yurtadm
+helm repo add openyurt https://openyurtio.github.io/openyurt-helm
+helm repo update
 
-wget https://github.com/openyurtio/openyurt/releases/download/v1.4.0/yurtadm
-chmod +x yurtadm
-sudo mv yurtadm /usr/local/bin/
+# Install yurt-manager controllers and webhooks
+helm upgrade --install yurt-manager -n kube-system openyurt/yurt-manager
 
-# Convert cluster to OpenYurt
-yurtadm init --apiserver-advertise-address=<your-k8s-api-ip> \
-  --yurthub-image=openyurt/yurthub:v1.4.0 \
-  --enable-app-manager
+# Install Raven if cloud and edge nodes are in different network areas
+helm upgrade --install raven-agent -n kube-system openyurt/raven-agent
 ```
 
-This installs yurt-manager, yurt-tunnel, and yurt-controller-manager. Verify installation:
+This installs yurt-manager and, when needed, Raven networking components. Verify installation:
 
 ```bash
-kubectl get pods -n kube-system | grep yurt
+kubectl get pods -n kube-system | grep -E 'yurt-manager|raven-agent'
 ```
 
 You should see yurt components running.
@@ -77,15 +75,20 @@ These nodes continue operating normally, handling control plane and cloud worklo
 Add edge nodes to your cluster using yurtadm:
 
 ```bash
+# Download yurtadm on the edge node
+curl -LO https://github.com/openyurtio/openyurt/releases/download/v1.4.0/yurtadm-v1.4.0-linux-amd64.tar.gz
+tar -xzf yurtadm-v1.4.0-linux-amd64.tar.gz
+sudo install -m 0755 yurtadm /usr/local/bin/yurtadm
+
 # On each edge node, join as an edge node
 sudo yurtadm join <k8s-api-ip>:6443 \
   --token <bootstrap-token> \
   --discovery-token-ca-cert-hash sha256:<hash> \
   --node-name edge-node-01 \
-  --edge-worker
+  --node-type=edge
 ```
 
-The `--edge-worker` flag tells OpenYurt this is an edge node that needs autonomy features.
+The `--node-type=edge` flag tells OpenYurt this is an edge node that needs edge-side components.
 
 Verify edge nodes joined:
 
@@ -107,11 +110,7 @@ spec:
   type: Edge
   selector:
     matchLabels:
-      location: store-01
-  taints:
-    - key: apps.openyurt.io/example
-      value: test
-      effect: NoSchedule
+      apps.openyurt.io/nodepool: retail-store-01
 ```
 
 Apply NodePools:
@@ -120,8 +119,8 @@ Apply NodePools:
 kubectl apply -f nodepool-retail-store-01.yaml
 
 # Label nodes to assign them to pools
-kubectl label node edge-node-01 location=store-01
-kubectl label node edge-node-02 location=store-01
+kubectl label node edge-node-01 apps.openyurt.io/nodepool=retail-store-01
+kubectl label node edge-node-02 apps.openyurt.io/nodepool=retail-store-01
 ```
 
 Check NodePool status:
@@ -134,15 +133,10 @@ kubectl get nodepool
 
 OpenYurt's yurthub component provides autonomy when edge nodes lose cloud connectivity. Configure autonomy settings:
 
-```yaml
-# Edit yurthub ConfigMap
-kubectl edit configmap yurt-hub-cfg -n kube-system
-
-# Add autonomy settings:
-data:
-  cache_agents: "kubelet,kube-proxy,flanneld"
-  working_mode: "edge"
-  node_pool_name: "retail-store-01"
+```bash
+# Enable autonomy on edge nodes
+kubectl annotate node edge-node-01 node.beta.openyurt.io/autonomy=true
+kubectl annotate node edge-node-02 node.beta.openyurt.io/autonomy=true
 ```
 
 When disconnected, edge nodes:
@@ -167,43 +161,30 @@ sudo iptables -D OUTPUT -d <k8s-api-ip> -j DROP
 
 ## Configuring Cloud-Edge Traffic Separation
 
-Use Yurt-Tunnel for secure cloud-to-edge communication:
-
-```yaml
-# tunnel-server.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: yurt-tunnel-server
-  namespace: kube-system
-spec:
-  selector:
-    app: yurt-tunnel-server
-  ports:
-    - name: tcp
-      port: 10262
-      targetPort: 10262
-      protocol: TCP
-  type: ClusterIP
-```
-
-Edge nodes connect to tunnel-server, creating reverse tunnels for cloud-initiated connections.
-
-Verify tunnel status:
+Use Raven for cross-region cloud-edge traffic:
 
 ```bash
-kubectl get pods -n kube-system -l app=yurt-tunnel-server
-kubectl logs -n kube-system -l app=yurt-tunnel-server
+# Install Raven for cross-region pod and service communication
+helm upgrade --install raven-agent -n kube-system openyurt/raven-agent
 ```
 
-## Deploying Workloads with UnitedDeployment
+Raven builds edge-edge and edge-cloud network connectivity across NodePools. Yurt-Tunnel is used for cloud-to-edge maintenance traffic such as logs, exec, and metrics collection when it is deployed.
 
-UnitedDeployment distributes applications across multiple NodePools:
+Verify Raven status:
+
+```bash
+kubectl get pods -n kube-system | grep raven-agent
+kubectl logs -n kube-system -l app.kubernetes.io/name=raven-agent
+```
+
+## Deploying Workloads with YurtAppSet
+
+YurtAppSet distributes applications across multiple NodePools:
 
 ```yaml
 # retail-app-deployment.yaml
 apiVersion: apps.openyurt.io/v1alpha1
-kind: UnitedDeployment
+kind: YurtAppSet
 metadata:
   name: retail-pos-system
   namespace: default
@@ -238,15 +219,33 @@ spec:
   topology:
     pools:
       - name: retail-store-01
+        nodeSelectorTerm:
+          matchExpressions:
+            - key: apps.openyurt.io/nodepool
+              operator: In
+              values:
+                - retail-store-01
         replicas: 2
       - name: retail-store-02
+        nodeSelectorTerm:
+          matchExpressions:
+            - key: apps.openyurt.io/nodepool
+              operator: In
+              values:
+                - retail-store-02
         replicas: 2
       - name: retail-store-03
+        nodeSelectorTerm:
+          matchExpressions:
+            - key: apps.openyurt.io/nodepool
+              operator: In
+              values:
+                - retail-store-03
         replicas: 2
   revisionHistoryLimit: 5
 ```
 
-Apply the UnitedDeployment:
+Apply the YurtAppSet:
 
 ```bash
 kubectl apply -f retail-app-deployment.yaml
@@ -257,7 +256,7 @@ OpenYurt creates 2 replicas in each NodePool, ensuring every store location runs
 Check deployment status:
 
 ```bash
-kubectl get uniteddeployment retail-pos-system
+kubectl get yurtappset retail-pos-system
 kubectl get deployments -l app=pos-system
 ```
 
@@ -287,7 +286,7 @@ The `openyurt.io/topologyKeys` annotation ensures pods only connect to service e
 
 ## Configuring YurtAppDaemon
 
-YurtAppDaemon deploys pods to all nodes in NodePools, like a DaemonSet with NodePool awareness:
+YurtAppDaemon deploys template workloads to selected NodePools as those NodePools are created:
 
 ```yaml
 # monitoring-daemon.yaml
@@ -319,29 +318,30 @@ spec:
             containers:
               - name: agent
                 image: monitoring/agent:latest
-                env:
-                  - name: NODE_POOL
-                    valueFrom:
-                      fieldRef:
-                        fieldPath: metadata.annotations['apps.openyurt.io/nodepool']
   nodepoolSelector:
     matchLabels:
-      type: Edge
+      yurtappdaemon.openyurt.io/type: monitoring
 ```
 
-This deploys one monitoring agent per NodePool, not per node, reducing overhead.
+Label each target NodePool to opt in:
+
+```bash
+kubectl label nodepool retail-store-01 yurtappdaemon.openyurt.io/type=monitoring
+kubectl label nodepool retail-store-02 yurtappdaemon.openyurt.io/type=monitoring
+```
+
+This deploys the configured number of replicas per selected NodePool.
 
 ## Managing Over-The-Air Updates
 
-Update applications across all edge locations using UnitedDeployment:
+Update applications across all edge locations using YurtAppSet:
 
 ```bash
-# Update image for all locations
-kubectl set image uniteddeployment/retail-pos-system \
-  pos=retail/pos-system:v1.3
+# Update the image in retail-app-deployment.yaml, then apply it
+kubectl apply -f retail-app-deployment.yaml
 
 # Check rollout status
-kubectl rollout status uniteddeployment/retail-pos-system
+kubectl get yurtappset retail-pos-system
 ```
 
 OpenYurt coordinates updates across NodePools, handling connectivity issues gracefully.
@@ -387,10 +387,10 @@ spec:
 
 Key metrics to track:
 
-- Node autonomy status
-- Tunnel connection health
-- NodePool workload distribution
-- Edge node connectivity duration
+- Node readiness and connectivity state for edge-labeled nodes
+- Raven or Yurt-Tunnel pod readiness when those components are deployed
+- NodePool status columns such as ready and not-ready node counts
+- Workload distribution across generated per-NodePool Deployments
 
 Create alerts for edge issues:
 
@@ -405,15 +405,15 @@ spec:
     - name: openyurt
       rules:
         - alert: EdgeNodeDisconnected
-          expr: yurt_node_autonomy_enabled == 1
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Edge node operating in autonomy mode"
+            summary: "Node is NotReady"
 
         - alert: NodePoolUnhealthy
-          expr: yurt_nodepool_ready_nodes / yurt_nodepool_total_nodes < 0.5
+          expr: count(kube_node_status_condition{condition="Ready",status="true"} == 1) / count(kube_node_status_condition{condition="Ready",status="true"}) < 0.5
           for: 5m
           labels:
             severity: critical
@@ -440,20 +440,20 @@ kubectl drain edge-node-01 \
 kubectl uncordon edge-node-01
 ```
 
-UnitedDeployment automatically redistributes workloads within the NodePool.
+YurtAppSet automatically reconciles the per-NodePool workloads.
 
 ## Migrating Existing Workloads
 
-Convert existing Deployments to UnitedDeployments:
+Convert existing Deployments to YurtAppSets:
 
 ```bash
 # Export existing deployment
 kubectl get deployment my-app -o yaml > my-app.yaml
 
-# Create UnitedDeployment wrapper
-cat > united-my-app.yaml <<EOF
+# Create YurtAppSet wrapper
+cat > yurtappset-my-app.yaml <<EOF
 apiVersion: apps.openyurt.io/v1alpha1
-kind: UnitedDeployment
+kind: YurtAppSet
 metadata:
   name: my-app
 spec:
@@ -466,20 +466,32 @@ $(cat my-app.yaml | grep -A 100 "spec:" | sed 's/^/      /')
   topology:
     pools:
       - name: retail-store-01
+        nodeSelectorTerm:
+          matchExpressions:
+            - key: apps.openyurt.io/nodepool
+              operator: In
+              values:
+                - retail-store-01
         replicas: 1
       - name: retail-store-02
+        nodeSelectorTerm:
+          matchExpressions:
+            - key: apps.openyurt.io/nodepool
+              operator: In
+              values:
+                - retail-store-02
         replicas: 1
 EOF
 
 # Delete old deployment
 kubectl delete deployment my-app
 
-# Apply UnitedDeployment
-kubectl apply -f united-my-app.yaml
+# Apply YurtAppSet
+kubectl apply -f yurtappset-my-app.yaml
 ```
 
 ## Conclusion
 
 OpenYurt transforms standard Kubernetes clusters into edge-capable platforms without requiring infrastructure replacement. By adding NodePools, autonomy, and edge-aware workload management, you get cloud-edge coordination while preserving Kubernetes APIs and workflows.
 
-Start by converting a test cluster, validate autonomy and failover behavior, then gradually migrate production workloads to UnitedDeployment for multi-location management. The non-intrusive architecture means you can adopt edge capabilities incrementally as your needs grow.
+Start by converting a test cluster, validate autonomy and failover behavior, then gradually migrate production workloads to YurtAppSet for multi-location management. The non-intrusive architecture means you can adopt edge capabilities incrementally as your needs grow.
