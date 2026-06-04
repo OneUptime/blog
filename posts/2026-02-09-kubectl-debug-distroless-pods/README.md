@@ -18,7 +18,7 @@ Distroless containers typically lack shells like bash or sh, have no package man
 
 ## Setting Up kubectl debug
 
-Ensure you have kubectl 1.18 or later:
+Ensure you have a current kubectl and a cluster that supports ephemeral containers. The examples below use `--profile` and `--custom`, so use kubectl 1.32 or later for the full workflow:
 
 ```bash
 # Check kubectl version
@@ -51,11 +51,10 @@ spec:
     spec:
       containers:
       - name: app
-        image: gcr.io/distroless/nodejs:18
+        image: gcr.io/distroless/nodejs22-debian13
         ports:
         - containerPort: 3000
         workingDir: /app
-        command: ["node"]
         args: ["server.js"]
 ```
 
@@ -67,9 +66,9 @@ POD_NAME=$(kubectl get pod -n production -l app=distroless-app -o jsonpath='{.it
 
 # Attach debug container with full tooling
 kubectl debug -n production $POD_NAME -it \
-  --image=nicolaka/netshoot \
+  --image=nicolaka/netshoot:v0.15 \
   --target=app \
-  --share-processes
+  --profile=general
 
 # You now have a shell with full debugging capabilities
 # while the distroless container continues running
@@ -82,57 +81,63 @@ Choose appropriate debug images for different scenarios:
 ```bash
 # For network debugging - nicolaka/netshoot
 kubectl debug distroless-pod -it \
-  --image=nicolaka/netshoot \
-  --target=app
+  --image=nicolaka/netshoot:v0.15 \
+  --target=app \
+  --profile=netadmin
 
 # For general Linux debugging - ubuntu
 kubectl debug distroless-pod -it \
   --image=ubuntu:22.04 \
-  --target=app
+  --target=app \
+  --profile=general
 
 # For minimal debugging - busybox
 kubectl debug distroless-pod -it \
   --image=busybox:1.36 \
-  --target=app
+  --target=app \
+  --profile=general
 
 # For Go application debugging
 kubectl debug distroless-go-pod -it \
-  --image=golang:1.21 \
+  --image=golang:1.25 \
   --target=app \
-  --share-processes
+  --profile=general
 
 # For Java application debugging
 kubectl debug distroless-java-pod -it \
-  --image=openjdk:17-slim \
+  --image=eclipse-temurin:21-jdk-jammy \
   --target=app \
-  --share-processes
+  --profile=general
 ```
 
 ## Accessing Distroless Container Filesystem
 
-Mount the distroless container's filesystem in your debug container:
+Access the distroless container's filesystem through the target process namespace:
 
 ```bash
 # Debug with process namespace sharing
 kubectl debug distroless-pod -it \
-  --image=ubuntu \
+  --image=ubuntu:22.04 \
   --target=app \
-  --share-processes
+  --profile=general
+
+# Find the application process
+APP_PID=$(pgrep -f 'node.*server.js' || pgrep -f node)
 
 # Inside the debug container, access the distroless filesystem
-ls -la /proc/1/root/
+ls -la /proc/$APP_PID/root/
 
 # Read files from the distroless container
-cat /proc/1/root/app/config.json
+cat /proc/$APP_PID/root/app/config.json
 
 # Check environment variables
-cat /proc/1/environ | tr '\0' '\n'
+cat /proc/$APP_PID/environ | tr '\0' '\n'
 
 # View file descriptors
-ls -la /proc/1/fd/
+ls -la /proc/$APP_PID/fd/
 
 # Check current working directory
-ls -la /proc/1/cwd/
+ls -la /proc/$APP_PID/cwd/
 ```
 
 ## Network Debugging Distroless Pods
@@ -142,8 +147,9 @@ Comprehensive network troubleshooting:
 ```bash
 # Attach network debugging tools
 kubectl debug distroless-pod -it \
-  --image=nicolaka/netshoot \
-  --target=app
+  --image=nicolaka/netshoot:v0.15 \
+  --target=app \
+  --profile=netadmin
 
 # Inside the debug container:
 
@@ -184,9 +190,9 @@ Debug application behavior without modifying the image:
 ```bash
 # Debug with process access
 kubectl debug nodejs-distroless-pod -it \
-  --image=ubuntu \
+  --image=ubuntu:22.04 \
   --target=app \
-  --share-processes
+  --profile=sysadmin
 
 # Inside the debug container:
 
@@ -242,7 +248,7 @@ apt-get install -y \
   strace \
   tcpdump \
   vim \
-  netcat \
+  netcat-openbsd \
   dnsutils
 
 # Now debug the application
@@ -271,25 +277,17 @@ kubectl exec -it debug-init -c init-container -- bash
 
 ## Creating a Debug Profile
 
-Create a reusable debug profile:
+Create a reusable custom profile:
 
-```bash
-# Save as ~/.kube/debug-profiles.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: debug-profiles
-data:
-  netshoot: |
-    image: nicolaka/netshoot
-    shareProcesses: true
-  ubuntu-full: |
-    image: ubuntu:22.04
-    shareProcesses: true
-    command: ["bash", "-c", "apt-get update && apt-get install -y curl wget strace tcpdump && bash"]
-  minimal: |
-    image: busybox:1.36
-    shareProcesses: false
+```yaml
+# Save as custom-profile.yaml
+env:
+- name: DEBUG_SESSION
+  value: "true"
+securityContext:
+  capabilities:
+    add:
+    - NET_ADMIN
 ```
 
 Use it with a wrapper script:
@@ -300,19 +298,20 @@ Use it with a wrapper script:
 
 POD_NAME=$1
 PROFILE=${2:-netshoot}
+CUSTOM_PROFILE=${3:-}
 
 case $PROFILE in
   netshoot)
-    IMAGE="nicolaka/netshoot"
-    SHARE_PROC="--share-processes"
+    IMAGE="nicolaka/netshoot:v0.15"
+    PROFILE_FLAG="--profile=netadmin"
     ;;
   ubuntu)
     IMAGE="ubuntu:22.04"
-    SHARE_PROC="--share-processes"
+    PROFILE_FLAG="--profile=sysadmin"
     ;;
   busybox)
     IMAGE="busybox:1.36"
-    SHARE_PROC=""
+    PROFILE_FLAG="--profile=general"
     ;;
   *)
     echo "Unknown profile: $PROFILE"
@@ -320,14 +319,20 @@ case $PROFILE in
     ;;
 esac
 
+CUSTOM_FLAG=""
+if [ -n "$CUSTOM_PROFILE" ]; then
+    CUSTOM_FLAG="--custom=$CUSTOM_PROFILE"
+fi
+
 kubectl debug "$POD_NAME" -it \
   --image="$IMAGE" \
   --target=$(kubectl get pod "$POD_NAME" -o jsonpath='{.spec.containers[0].name}') \
-  $SHARE_PROC
+  $PROFILE_FLAG \
+  $CUSTOM_FLAG
 
 # Usage:
 # kubectl-debug-distroless my-pod netshoot
-# kubectl-debug-distroless my-pod ubuntu
+# kubectl-debug-distroless my-pod ubuntu custom-profile.yaml
 ```
 
 ## Debugging Distroless Security Context
@@ -337,22 +342,23 @@ Investigate security settings and capabilities:
 ```bash
 # Debug with capability inspection
 kubectl debug distroless-pod -it \
-  --image=ubuntu \
+  --image=ubuntu:22.04 \
   --target=app \
-  --share-processes
+  --profile=sysadmin
 
 # Check capabilities
 apt-get update && apt-get install -y libcap2-bin
 capsh --print
 
-# View process capabilities
-cat /proc/1/status | grep Cap
+# View application process capabilities
+APP_PID=$(pgrep -f 'node.*server.js' || pgrep -f node)
+cat /proc/$APP_PID/status | grep Cap
 
 # Check SELinux/AppArmor status
-cat /proc/1/attr/current
+cat /proc/$APP_PID/attr/current
 
 # View seccomp profile
-cat /proc/1/status | grep Seccomp
+cat /proc/$APP_PID/status | grep Seccomp
 
 # Check user context
 ps aux | grep "^\S\+\s\+1\s"
@@ -385,9 +391,9 @@ echo "Creating debug session..."
 
 # Launch debug container
 kubectl debug -n "$NAMESPACE" "$POD_NAME" -it \
-  --image=nicolaka/netshoot \
+  --image=nicolaka/netshoot:v0.15 \
   --target="$CONTAINER" \
-  --share-processes \
+  --profile=netadmin \
   -- bash -c "
 echo '=== Debug Container Ready ==='
 echo 'Available commands:'
@@ -395,7 +401,7 @@ echo '  ps aux          - View all processes'
 echo '  tcpdump         - Capture network traffic'
 echo '  curl/wget       - Test HTTP connectivity'
 echo '  nslookup/dig    - DNS debugging'
-echo '  /proc/1/root/   - Access distroless filesystem'
+echo '  /proc/\$APP_PID/root/ - Access distroless filesystem after finding the app PID'
 echo ''
 bash
 "
@@ -403,10 +409,10 @@ bash
 
 ## Best Practices
 
-Always use specific image tags for debug containers to ensure consistency. Prefer minimal debug images when possible to reduce attack surface. Use process sharing only when necessary to inspect application processes. Document debug sessions for audit and compliance purposes. Remove debug containers by deleting pods after investigation. Consider using debug profiles for team consistency. Test debug procedures in non-production first.
+Always use specific image tags for debug containers to ensure consistency. Prefer minimal debug images when possible to reduce attack surface. Use privileged debug profiles only when necessary to inspect application processes or capture traffic. Document debug sessions for audit and compliance purposes. Remove debug containers by deleting pods after investigation. Consider using debug profiles for team consistency. Test debug procedures in non-production first.
 
 ## Troubleshooting Common Issues
 
-If you cannot attach to a distroless pod, ensure your Kubernetes version supports ephemeral containers (1.23+). Check that the feature gate EphemeralContainers is enabled (default in 1.25+). Verify RBAC permissions allow creating ephemeral containers. Confirm the pod is running and not in CrashLoopBackOff state.
+If you cannot attach to a distroless pod, ensure your Kubernetes version supports ephemeral containers (stable in 1.25). Check that the feature gate EphemeralContainers is enabled on older clusters. Verify RBAC permissions allow updating the pods/ephemeralcontainers subresource. Confirm the pod is running and not in CrashLoopBackOff state.
 
 kubectl debug makes debugging distroless containers practical, allowing you to maintain security best practices in production while retaining powerful debugging capabilities when needed.
