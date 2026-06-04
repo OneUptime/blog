@@ -8,7 +8,7 @@ Description: Learn how to deploy and configure NodeLocal DNSCache to reduce Core
 
 ---
 
-NodeLocal DNSCache runs as a DaemonSet on every Kubernetes node, providing a local DNS cache that intercepts queries before they reach CoreDNS. This architecture dramatically reduces DNS query latency, decreases CoreDNS load, and improves reliability by eliminating single points of failure for DNS resolution.
+NodeLocal DNSCache runs as a DaemonSet on every Kubernetes node, providing a local DNS cache that intercepts queries before they reach CoreDNS. This architecture dramatically reduces DNS query latency, decreases CoreDNS load, and improves reliability by reducing dependence on a centralized DNS path.
 
 This guide shows you how to implement NodeLocal DNSCache for optimized DNS performance in Kubernetes clusters.
 
@@ -18,8 +18,8 @@ NodeLocal DNSCache provides several advantages:
 
 - **Reduced latency**: Local cache avoids network hops to CoreDNS
 - **Lower CoreDNS load**: Caching at node level reduces cluster DNS queries
-- **Improved reliability**: Node-level cache survives CoreDNS outages
-- **Better performance**: TCP connections to local cache avoid UDP packet loss
+- **Improved reliability**: Cached records can continue to resolve during brief upstream DNS disruption
+- **Better performance**: DNS queries to CoreDNS can be upgraded from UDP to TCP to reduce UDP packet loss and timeouts
 - **Scalability**: Distributes DNS load across all nodes
 
 Architecture:
@@ -53,6 +53,26 @@ metadata:
   namespace: kube-system
 ---
 apiVersion: v1
+kind: Service
+metadata:
+  name: kube-dns-upstream
+  namespace: kube-system
+  labels:
+    k8s-app: kube-dns
+spec:
+  ports:
+  - name: dns
+    port: 53
+    protocol: UDP
+    targetPort: 53
+  - name: dns-tcp
+    port: 53
+    protocol: TCP
+    targetPort: 53
+  selector:
+    k8s-app: kube-dns
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: node-local-dns
@@ -68,7 +88,7 @@ data:
         reload
         loop
         bind 169.254.20.10 10.96.0.10
-        forward . 10.96.0.10 {
+        forward . __PILLAR__CLUSTER__DNS__ {
             force_tcp
         }
         prometheus :9253
@@ -81,7 +101,7 @@ data:
         reload
         loop
         bind 169.254.20.10 10.96.0.10
-        forward . 10.96.0.10 {
+        forward . __PILLAR__CLUSTER__DNS__ {
             force_tcp
         }
         prometheus :9253
@@ -93,7 +113,7 @@ data:
         reload
         loop
         bind 169.254.20.10 10.96.0.10
-        forward . 10.96.0.10 {
+        forward . __PILLAR__CLUSTER__DNS__ {
             force_tcp
         }
         prometheus :9253
@@ -105,9 +125,7 @@ data:
         reload
         loop
         bind 169.254.20.10 10.96.0.10
-        forward . /etc/resolv.conf {
-            force_tcp
-        }
+        forward . __PILLAR__UPSTREAM__SERVERS__
         prometheus :9253
     }
 ---
@@ -138,7 +156,7 @@ spec:
         operator: Exists
       containers:
       - name: node-cache
-        image: registry.k8s.io/dns/k8s-dns-node-cache:1.22.20
+        image: registry.k8s.io/dns/k8s-dns-node-cache:1.26.8
         resources:
           requests:
             cpu: 25m
@@ -147,9 +165,9 @@ spec:
         - -localip
         - 169.254.20.10,10.96.0.10
         - -conf
-        - /etc/coredns/Corefile
+        - /etc/Corefile
         - -upstreamsvc
-        - kube-dns
+        - kube-dns-upstream
         securityContext:
           capabilities:
             add:
@@ -174,12 +192,21 @@ spec:
         volumeMounts:
         - name: config
           mountPath: /etc/coredns
+        - name: kube-dns-config
+          mountPath: /etc/kube-dns
         - name: xtables-lock
           mountPath: /run/xtables.lock
       volumes:
       - name: config
         configMap:
           name: node-local-dns
+          items:
+          - key: Corefile
+            path: Corefile.base
+      - name: kube-dns-config
+        configMap:
+          name: kube-dns
+          optional: true
       - name: xtables-lock
         hostPath:
           path: /run/xtables.lock
@@ -216,7 +243,7 @@ kubectl get pods -n kube-system -l k8s-app=node-local-dns -o wide
 
 ## Configuring Pods to Use NodeLocal DNSCache
 
-Existing pods automatically use NodeLocal DNSCache after deployment because it binds to the CoreDNS service IP. For explicit configuration:
+Existing pods automatically use NodeLocal DNSCache after deployment in kube-proxy iptables mode because it binds to the CoreDNS service IP. In IPVS mode, update the kubelet `--cluster-dns` value to the NodeLocal DNSCache IP. For explicit configuration:
 
 ```yaml
 apiVersion: v1
@@ -266,7 +293,7 @@ data:
         reload
         loop
         bind 169.254.20.10 10.96.0.10
-        forward . 10.96.0.10 {
+        forward . __PILLAR__CLUSTER__DNS__ {
             force_tcp
             max_concurrent 1000
         }
@@ -283,9 +310,7 @@ data:
         reload
         loop
         bind 169.254.20.10 10.96.0.10
-        forward . /etc/resolv.conf {
-            force_tcp
-        }
+        forward . __PILLAR__UPSTREAM__SERVERS__
         prometheus :9253
     }
 ```
@@ -335,7 +360,7 @@ Key metrics to monitor:
 # Cache hit ratio per node
 sum(rate(coredns_cache_hits_total{job="node-local-dns"}[5m])) by (instance)
 /
-sum(rate(coredns_dns_requests_total{job="node-local-dns"}[5m])) by (instance)
+sum(rate(coredns_cache_requests_total{job="node-local-dns"}[5m])) by (instance)
 
 # Query rate per node
 rate(coredns_dns_requests_total{job="node-local-dns"}[5m])
@@ -344,7 +369,7 @@ rate(coredns_dns_requests_total{job="node-local-dns"}[5m])
 coredns_cache_entries{job="node-local-dns"}
 
 # Forward requests (cache misses)
-rate(coredns_forward_requests_total{job="node-local-dns"}[5m])
+sum(rate(coredns_proxy_request_duration_seconds_count{job="node-local-dns",proxy_name="forward"}[5m])) by (instance)
 ```
 
 ## Testing Performance Improvements
@@ -399,7 +424,7 @@ spec:
       - name: benchmark
         image: nicolaka/netshoot
         command:
-        - sh
+        - bash
         - /scripts/benchmark.sh
         volumeMounts:
         - name: scripts
