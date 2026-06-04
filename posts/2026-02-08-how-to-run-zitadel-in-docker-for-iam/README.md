@@ -14,27 +14,39 @@ This guide covers deploying Zitadel in Docker, configuring it for application au
 
 ## Quick Start
 
-The fastest way to get Zitadel running for evaluation:
+The fastest way to get Zitadel running for evaluation is with a local PostgreSQL container:
 
 ```bash
-# Start Zitadel with the embedded CockroachDB (evaluation only)
+# Start PostgreSQL for Zitadel
+docker network create zitadel
+docker run -d \
+  --name zitadel-db \
+  --network zitadel \
+  -e POSTGRES_USER=root \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=postgres \
+  postgres:17-alpine
 
+# Start Zitadel (evaluation only)
 docker run -d \
   --name zitadel \
+  --network zitadel \
   -p 8080:8080 \
+  -e ZITADEL_DATABASE_POSTGRES_DSN="postgresql://root:postgres@zitadel-db:5432/postgres?sslmode=disable" \
+  -e ZITADEL_EXTERNALSECURE=false \
   ghcr.io/zitadel/zitadel:latest start-from-init \
   --masterkey "MasterkeyNeedsToHave32Characters" \
   --tlsMode disabled
 ```
 
-Wait about 30 seconds, then access http://localhost:8080. The default credentials are:
+Wait about 30 seconds, then access http://localhost:8080/ui/console?login_hint=zitadel-admin@zitadel.localhost. The default credentials are:
 
 - Username: `zitadel-admin@zitadel.localhost`
 - Password: `Password1!`
 
 ## Production Setup with PostgreSQL
 
-For production, use an external PostgreSQL database:
+For production, use PostgreSQL instead of a single-container test setup:
 
 ```yaml
 # docker-compose.yml - Zitadel with PostgreSQL
@@ -59,7 +71,7 @@ services:
       ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: postgres_password
       ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
       # External domain configuration
-      ZITADEL_EXTERNALDOMAIN: localhost
+      ZITADEL_DOMAIN: localhost
       ZITADEL_EXTERNALPORT: 8080
       ZITADEL_EXTERNALSECURE: "false"
       # First instance settings
@@ -100,16 +112,20 @@ docker compose up -d
 docker compose logs -f zitadel
 ```
 
+Use `start-from-init` only for the initial database setup. For upgrades on an existing production database, run the setup and runtime phases separately or use `start-from-setup`.
+
 ## Creating a Project and Application
 
 After logging into the Zitadel console, you need to create a project and register your application. You can do this through the UI or the API:
 
 ```bash
-# Create a project via the Management API
-curl -X POST http://localhost:8080/management/v1/projects \
+# Create a project via the Project API
+curl -X POST http://localhost:8080/zitadel.project.v2.ProjectService/CreateProject \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Connect-Protocol-Version: 1" \
   -H "Content-Type: application/json" \
   -d '{
+    "organizationId": "'"$ORG_ID"'",
     "name": "My Application",
     "projectRoleAssertion": true
   }'
@@ -118,18 +134,24 @@ curl -X POST http://localhost:8080/management/v1/projects \
 To create an OIDC application:
 
 ```bash
-# Register an OIDC web application
-curl -X POST http://localhost:8080/management/v1/projects/$PROJECT_ID/apps/oidc \
+# Register an OIDC browser application
+curl -X POST http://localhost:8080/zitadel.application.v2.ApplicationService/CreateApplication \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Connect-Protocol-Version: 1" \
   -H "Content-Type: application/json" \
   -d '{
+    "projectId": "'"$PROJECT_ID"'",
     "name": "Web Frontend",
-    "redirectUris": ["http://localhost:3000/callback"],
-    "postLogoutRedirectUris": ["http://localhost:3000"],
-    "responseTypes": ["OIDC_RESPONSE_TYPE_CODE"],
-    "grantTypes": ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
-    "appType": "OIDC_APP_TYPE_WEB",
-    "authMethodType": "OIDC_AUTH_METHOD_TYPE_BASIC"
+    "oidcConfiguration": {
+      "redirectUris": ["http://localhost:3000/callback"],
+      "postLogoutRedirectUris": ["http://localhost:3000"],
+      "responseTypes": ["OIDC_RESPONSE_TYPE_CODE"],
+      "grantTypes": ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+      "applicationType": "OIDC_APP_TYPE_USER_AGENT",
+      "authMethodType": "OIDC_AUTH_METHOD_TYPE_NONE",
+      "accessTokenType": "OIDC_TOKEN_TYPE_JWT",
+      "developmentMode": true
+    }
   }'
 ```
 
@@ -186,7 +208,6 @@ Validate Zitadel tokens in your backend API:
 ```python
 # auth_middleware.py - validate Zitadel JWT tokens in a Python API
 import jwt
-import requests
 from functools import wraps
 from flask import request, jsonify
 
@@ -233,20 +254,26 @@ def require_auth(f):
 #     return jsonify({"user": user_id, "data": "protected content"})
 ```
 
-## Service User Authentication (Machine-to-Machine)
+## Service Account Authentication (Machine-to-Machine)
 
 For backend services that need to authenticate without a user:
 
 ```bash
-# Create a service user
-curl -X POST http://localhost:8080/management/v1/users/machine \
+# Create a service account
+curl -X POST http://localhost:8080/v2/users/new \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "userName": "api-service",
-    "name": "API Service Account",
-    "description": "Service account for backend API"
+    "machine": {
+      "username": "api-service"
+    }
   }'
+
+# Generate and download a private key for the service account
+curl -X POST http://localhost:8080/v2/users/$SERVICE_USER_ID/keys \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
 ```python
@@ -256,7 +283,7 @@ import jwt
 import time
 
 ZITADEL_URL = "http://localhost:8080"
-CLIENT_ID = "your-service-user-client-id"
+SERVICE_USER_ID = "your-service-user-id"
 KEY_ID = "your-key-id"
 PRIVATE_KEY = open("service-key.pem").read()
 
@@ -264,11 +291,11 @@ def get_service_token():
     """Get an access token using JWT bearer assertion."""
     now = int(time.time())
     payload = {
-        "iss": CLIENT_ID,
-        "sub": CLIENT_ID,
+        "iss": SERVICE_USER_ID,
+        "sub": SERVICE_USER_ID,
         "aud": ZITADEL_URL,
         "iat": now,
-        "exp": now + 3600,
+        "exp": now + 300,
     }
 
     assertion = jwt.encode(payload, PRIVATE_KEY, algorithm="RS256",
@@ -329,4 +356,4 @@ docker exec -i zitadel-db psql -U postgres zitadel < zitadel-backup.sql
 
 ## Conclusion
 
-Zitadel in Docker provides a modern, cloud-native identity management platform. Its event-sourced architecture gives you a complete audit trail, and the built-in multi-tenancy support makes it suitable for SaaS applications. The setup is simpler than Keycloak, and the Go-based architecture means it runs efficiently with modest resources. Start with the PostgreSQL-backed deployment, register your first application, and implement OIDC authentication in your frontend and backend. The management API lets you automate user and application management as your deployment grows.
+Zitadel in Docker provides a modern, cloud-native identity management platform. Its event-sourced architecture gives you a complete audit trail, and the built-in multi-tenancy support makes it suitable for SaaS applications. The setup is simpler than Keycloak, and the Go-based architecture means it runs efficiently with modest resources. Start with the PostgreSQL-backed deployment, register your first application, and implement OIDC authentication in your frontend and backend. The Zitadel APIs let you automate user and application management as your deployment grows.
