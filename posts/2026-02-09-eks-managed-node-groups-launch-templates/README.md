@@ -107,7 +107,9 @@ resource "aws_launch_template" "eks_nodes" {
   }))
 }
 
-# Get EKS optimized AMI
+# Get an EKS optimized Amazon Linux 2 AMI. Amazon EKS stopped publishing
+# AL2 AMIs after Kubernetes 1.32, so use AL2023 or Bottlerocket AMIs for
+# newer cluster versions.
 data "aws_ami" "eks_optimized" {
   most_recent = true
   owners      = ["amazon"]
@@ -121,11 +123,17 @@ data "aws_ami" "eks_optimized" {
 
 ## Custom User Data Script
 
-Create a user data script for node customization:
+Create a user data script for node customization. For Amazon Linux launch templates, EKS expects MIME multi-part user data. This example uses the Amazon Linux 2 EKS optimized AMI and explicitly runs `bootstrap.sh` because the launch template specifies an AMI ID:
 
 ```bash
-#!/bin/bash
 # user-data.sh
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+
+--==MYBOUNDARY==
+Content-Type: text/x-shellscript; charset="us-ascii"
+
+#!/bin/bash
 set -ex
 
 # Bootstrap EKS node
@@ -133,6 +141,7 @@ set -ex
   --b64-cluster-ca ${cluster_ca} \
   --apiserver-endpoint ${cluster_endpoint} \
   --kubelet-extra-args '--node-labels=node-role=application,environment=production --max-pods=50' \
+  --use-max-pods false \
   --container-runtime containerd
 
 # Install additional packages
@@ -208,9 +217,13 @@ cat <<EOF > /etc/logrotate.d/kubelet
 EOF
 
 # Install monitoring tools
-curl -L -o /usr/local/bin/node-problem-detector \
-  https://github.com/kubernetes/node-problem-detector/releases/latest/download/node-problem-detector
-chmod +x /usr/local/bin/node-problem-detector
+NPD_VERSION="v1.35.2"
+curl -L -o /tmp/node-problem-detector.tar.gz \
+  "https://github.com/kubernetes/node-problem-detector/releases/download/${NPD_VERSION}/node-problem-detector-${NPD_VERSION}-linux_amd64.tar.gz"
+tar -xzf /tmp/node-problem-detector.tar.gz -C /tmp
+install -m 0755 /tmp/bin/node-problem-detector /usr/local/bin/node-problem-detector
+
+--==MYBOUNDARY==--
 ```
 
 ## Creating Managed Node Group with Launch Template
@@ -253,7 +266,7 @@ resource "aws_eks_node_group" "custom" {
 
   launch_template {
     id      = aws_launch_template.eks_nodes.id
-    version = "$Latest"
+    version = aws_launch_template.eks_nodes.latest_version
   }
 
   labels = {
@@ -332,6 +345,7 @@ Configure launch template for GPU workloads:
 resource "aws_launch_template" "gpu_nodes" {
   name_prefix   = "eks-gpu-nodes-"
   instance_type = "g4dn.xlarge"
+  image_id      = data.aws_ami.eks_gpu_optimized.id
 
   block_device_mappings {
     device_name = "/dev/xvda"
@@ -342,26 +356,34 @@ resource "aws_launch_template" "gpu_nodes" {
   }
 
   user_data = base64encode(<<-EOF
-    #!/bin/bash
-    set -ex
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
 
-    # Install NVIDIA drivers
-    yum install -y gcc kernel-devel-$(uname -r)
-    aws s3 cp --recursive s3://ec2-linux-nvidia-drivers/latest/ .
-    chmod +x NVIDIA-Linux-x86_64*.run
-    ./NVIDIA-Linux-x86_64*.run --silent
+--==MYBOUNDARY==
+Content-Type: text/x-shellscript; charset="us-ascii"
 
-    # Install nvidia-docker
-    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-    curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.repo | \
-      tee /etc/yum.repos.d/nvidia-docker.repo
-    yum install -y nvidia-docker2
-    systemctl restart docker
+#!/bin/bash
+set -ex
 
-    # Bootstrap EKS
-    /etc/eks/bootstrap.sh ${var.cluster_name}
-  EOF
+# EKS optimized accelerated AMIs include NVIDIA drivers and the
+# NVIDIA container toolkit. Bootstrap the node into the cluster.
+/etc/eks/bootstrap.sh ${var.cluster_name}
+
+--==MYBOUNDARY==--
+EOF
   )
+}
+
+# Get an EKS optimized Amazon Linux 2 accelerated AMI. Use the AL2023
+# NVIDIA AMI family for newer cluster versions.
+data "aws_ami" "eks_gpu_optimized" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amazon-eks-gpu-node-${var.kubernetes_version}-v*"]
+  }
 }
 ```
 
@@ -371,16 +393,7 @@ Use Spot instances for cost savings:
 
 ```hcl
 resource "aws_launch_template" "spot_nodes" {
-  name_prefix   = "eks-spot-nodes-"
-  instance_type = "t3.large"
-
-  instance_market_options {
-    market_type = "spot"
-    spot_options {
-      max_price          = "0.05"
-      spot_instance_type = "one-time"
-    }
-  }
+  name_prefix = "eks-spot-nodes-"
 
   tag_specifications {
     resource_type = "instance"
@@ -391,10 +404,11 @@ resource "aws_launch_template" "spot_nodes" {
 }
 
 resource "aws_eks_node_group" "spot" {
-  cluster_name  = aws_eks_cluster.main.name
+  cluster_name    = aws_eks_cluster.main.name
   node_group_name = "spot-nodes"
-  node_role_arn = aws_iam_role.eks_nodes.arn
-  subnet_ids    = var.private_subnet_ids
+  node_role_arn   = aws_iam_role.eks_nodes.arn
+  subnet_ids      = var.private_subnet_ids
+  instance_types  = ["t3.large", "t3a.large", "m5.large", "m5a.large"]
 
   scaling_config {
     desired_size = 3
@@ -404,7 +418,7 @@ resource "aws_eks_node_group" "spot" {
 
   launch_template {
     id      = aws_launch_template.spot_nodes.id
-    version = "$Latest"
+    version = aws_launch_template.spot_nodes.latest_version
   }
 
   capacity_type = "SPOT"
@@ -457,7 +471,7 @@ resource "aws_eks_node_group" "custom" {
 
   launch_template {
     id      = aws_launch_template.eks_nodes.id
-    version = "$Latest"  # Always use latest
+    version = aws_launch_template.eks_nodes.latest_version
   }
 }
 ```
@@ -493,7 +507,7 @@ sudo journalctl -u kubelet
 1. Use versioned launch templates for controlled updates
 2. Enable IMDSv2 for improved security
 3. Encrypt EBS volumes with customer-managed KMS keys
-4. Use latest EKS-optimized AMIs
+4. Use latest supported EKS-optimized AMIs, such as AL2023 or Bottlerocket for current Kubernetes versions
 5. Configure appropriate disk sizes based on pod density
 6. Tag resources for cost allocation
 7. Test launch templates in dev before production
