@@ -44,7 +44,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install Haystack with all common integrations
+# Install Haystack and the packages used by this app
 RUN pip install --no-cache-dir \
     haystack-ai \
     "fastapi[standard]" \
@@ -72,16 +72,14 @@ from haystack.components.embedders import (
     SentenceTransformersTextEmbedder,
 )
 from haystack.components.retrievers.in_memory import InMemoryEmbeddingRetriever
-from haystack.components.builders import PromptBuilder
-from haystack.components.generators import HuggingFaceLocalGenerator
 from haystack import Document
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 
 app = FastAPI(title="Haystack RAG API")
 
 # Initialize the document store
-document_store = InMemoryDocumentStore()
+document_store = InMemoryDocumentStore(embedding_similarity_function="cosine")
 
 # Sample documents to search over
 documents = [
@@ -91,14 +89,6 @@ documents = [
     Document(content="Container images are built from Dockerfiles that specify the base image and application layers."),
     Document(content="Docker volumes persist data beyond the container lifecycle and provide better I/O performance."),
 ]
-
-# Build the indexing pipeline to embed and store documents
-indexing_pipeline = Pipeline()
-indexing_pipeline.add_component(
-    "embedder",
-    SentenceTransformersDocumentEmbedder(model="sentence-transformers/all-MiniLM-L6-v2")
-)
-indexing_pipeline.connect("embedder", "writer")
 
 # Embed and store the documents
 doc_embedder = SentenceTransformersDocumentEmbedder(
@@ -177,8 +167,6 @@ For production, use a proper vector database instead of in-memory storage.
 ```yaml
 # docker-compose.yml
 # Haystack with Qdrant vector database for persistent semantic search
-version: "3.8"
-
 services:
   haystack:
     build: .
@@ -189,8 +177,7 @@ services:
       - QDRANT_URL=http://qdrant:6333
       - EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
     depends_on:
-      qdrant:
-        condition: service_healthy
+      - qdrant
     restart: unless-stopped
 
   qdrant:
@@ -202,11 +189,6 @@ services:
     volumes:
       # Persist vector database storage
       - qdrant_data:/qdrant/storage
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     restart: unless-stopped
 
 volumes:
@@ -288,6 +270,11 @@ async def query(request: QueryRequest):
             for doc in docs
         ]
     }
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "documents": document_store.count_documents()}
 ```
 
 Update the Dockerfile to include the Qdrant integration:
