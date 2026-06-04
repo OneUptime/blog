@@ -8,13 +8,13 @@ Description: Learn how to deploy Grafana Mimir for scalable multi-cluster metric
 
 ---
 
-Grafana Mimir provides a horizontally scalable Prometheus-compatible metrics backend designed specifically for multi-tenant, multi-cluster environments. Unlike Thanos, which extends existing Prometheus instances, Mimir replaces Prometheus as your metrics storage backend, offering better performance at scale and simplified operations.
+Grafana Mimir provides a horizontally scalable Prometheus-compatible metrics backend designed specifically for multi-tenant, multi-cluster environments. Unlike Thanos, which extends existing Prometheus instances, Mimir acts as your remote metrics storage backend while Prometheus or Grafana Alloy continues to scrape and forward metrics.
 
 In this guide, you'll learn how to deploy Mimir for multi-cluster metric aggregation, configure Prometheus agents to send metrics to Mimir, and query metrics across your entire infrastructure.
 
 ## Why Choose Mimir Over Thanos
 
-Mimir and Thanos solve similar problems but take different architectural approaches. Mimir provides a single, centralized metrics backend with built-in multi-tenancy, making it simpler to operate at scale. It handles higher cardinality metrics better than Prometheus or Thanos through its sophisticated indexing and storage architecture. The query performance remains consistent even with hundreds of millions of active series.
+Mimir and Thanos solve similar problems but take different architectural approaches. Mimir provides a single, centralized metrics backend with built-in multi-tenancy, making it simpler to operate at scale. It handles higher cardinality metrics better than a single Prometheus server through its distributed indexing and storage architecture, and it can scale to hundreds of millions of active series when sized correctly.
 
 Thanos works better if you want to keep Prometheus instances independent with federated querying. Mimir works better if you want centralized metrics storage with simplified operations.
 
@@ -32,9 +32,29 @@ Create a values file for your Mimir deployment:
 ```yaml
 # mimir-values.yaml
 
+global:
+  extraEnvFrom:
+  - secretRef:
+      name: mimir-object-storage
+
+kafka:
+  enabled: false
+
 mimir:
   structuredConfig:
     multitenancy_enabled: true
+    tenant_federation:
+      enabled: true
+    ingest_storage:
+      enabled: false
+      kafka:
+        address: null
+        topic: null
+        auto_create_topic_default_partitions: null
+    distributor:
+      remote_timeout: null
+    ingester:
+      push_grpc_method_enabled: null
     limits:
       max_global_series_per_user: 10000000
       max_global_series_per_metric: 1000000
@@ -47,6 +67,8 @@ mimir:
         endpoint: s3.amazonaws.com
         bucket_name: mimir-blocks
         region: us-east-1
+        access_key_id: "${AWS_ACCESS_KEY_ID}"
+        secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
 
     ruler_storage:
       backend: s3
@@ -54,6 +76,8 @@ mimir:
         endpoint: s3.amazonaws.com
         bucket_name: mimir-ruler
         region: us-east-1
+        access_key_id: "${AWS_ACCESS_KEY_ID}"
+        secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
 
     alertmanager_storage:
       backend: s3
@@ -61,6 +85,8 @@ mimir:
         endpoint: s3.amazonaws.com
         bucket_name: mimir-alertmanager
         region: us-east-1
+        access_key_id: "${AWS_ACCESS_KEY_ID}"
+        secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
 
 # Scale components based on your needs
 ingester:
@@ -111,7 +137,7 @@ store_gateway:
 minio:
   enabled: false  # Use cloud provider object storage instead
 
-nginx:
+gateway:
   enabled: true
   replicas: 2
 ```
@@ -123,8 +149,8 @@ kubectl create namespace mimir
 
 # Create secret for object storage credentials
 kubectl create secret generic mimir-object-storage \
-  --from-literal=access-key-id="${AWS_ACCESS_KEY_ID}" \
-  --from-literal=secret-access-key="${AWS_SECRET_ACCESS_KEY}" \
+  --from-literal=AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}" \
+  --from-literal=AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}" \
   -n mimir
 
 helm install mimir grafana/mimir-distributed \
@@ -158,7 +184,7 @@ spec:
   retention: 2h
 
   remoteWrite:
-  - url: http://mimir-nginx.mimir.svc.cluster.local/api/v1/push
+  - url: http://mimir-gateway.mimir.svc.cluster.local/api/v1/push
     headers:
       X-Scope-OrgID: cluster-1  # Tenant ID for multi-tenancy
     queueConfig:
@@ -171,9 +197,8 @@ spec:
       maxBackoff: 5s
     writeRelabelConfigs:
     # Add additional labels if needed
-    - sourceLabels: [__name__]
-      targetLabel: cluster
-      replacement: cluster-1
+    - targetLabel: source
+      replacement: prometheus-agent
 
   # Scrape configurations
   serviceMonitorSelector: {}
@@ -209,7 +234,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: mimir-nginx
+            name: mimir-gateway
             port:
               number: 80
 ```
@@ -225,40 +250,24 @@ remoteWrite:
 
 ## Configuring Multi-Tenancy
 
-Mimir's multi-tenancy feature isolates metrics between clusters or teams. Create tenant-specific configurations:
+Mimir's multi-tenancy feature isolates metrics between clusters or teams. Create tenant-specific overrides in the Helm values file:
 
 ```yaml
-# mimir-tenants-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mimir-overrides
-  namespace: mimir
-data:
-  overrides.yaml: |
-    overrides:
-      cluster-1:
-        max_global_series_per_user: 5000000
-        ingestion_rate: 50000
-        ingestion_burst_size: 100000
-      cluster-2:
-        max_global_series_per_user: 10000000
-        ingestion_rate: 100000
-        ingestion_burst_size: 200000
-      team-analytics:
-        max_global_series_per_user: 1000000
-        ingestion_rate: 10000
-        ingestion_burst_size: 20000
-```
-
-Reference this ConfigMap in your Mimir deployment:
-
-```yaml
-mimir:
-  structuredConfig:
-    limits:
-      # Override specific tenant limits
-      overrides_config_file: /etc/mimir/overrides.yaml
+# mimir-values.yaml
+runtimeConfig:
+  overrides:
+    cluster-1:
+      max_global_series_per_user: 5000000
+      ingestion_rate: 50000
+      ingestion_burst_size: 100000
+    cluster-2:
+      max_global_series_per_user: 10000000
+      ingestion_rate: 100000
+      ingestion_burst_size: 200000
+    team-analytics:
+      max_global_series_per_user: 1000000
+      ingestion_rate: 10000
+      ingestion_burst_size: 20000
 ```
 
 ## Querying Metrics from Mimir
@@ -330,32 +339,25 @@ Mimir handles high cardinality queries efficiently, making it suitable for track
 Mimir includes a built-in ruler that evaluates recording and alerting rules. This centralizes rule management instead of running rules in each Prometheus instance.
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mimir-rules
-  namespace: mimir
-data:
-  rules.yaml: |
-    groups:
-    - name: aggregate-metrics
-      interval: 30s
-      rules:
-      # Pre-aggregate expensive queries
-      - record: cluster:request_rate:sum
-        expr: sum(rate(http_requests_total[5m])) by (cluster)
+# rules.yaml
+name: aggregate-metrics
+interval: 30s
+rules:
+# Pre-aggregate expensive queries
+- record: cluster:request_rate:sum
+  expr: sum(rate(http_requests_total[5m])) by (cluster)
 
-      - record: cluster:error_rate:ratio
-        expr: |
-          sum(rate(http_requests_total{status=~"5.."}[5m])) by (cluster)
-          /
-          sum(rate(http_requests_total[5m])) by (cluster)
+- record: cluster:error_rate:ratio
+  expr: |
+    sum(rate(http_requests_total{status=~"5.."}[5m])) by (cluster)
+    /
+    sum(rate(http_requests_total[5m])) by (cluster)
 
-      - record: cluster:cpu_usage:avg
-        expr: avg(rate(container_cpu_usage_seconds_total[5m])) by (cluster)
+- record: cluster:cpu_usage:avg
+  expr: avg(rate(container_cpu_usage_seconds_total[5m])) by (cluster)
 
-      - record: cluster:memory_usage:sum
-        expr: sum(container_memory_usage_bytes) by (cluster)
+- record: cluster:memory_usage:sum
+  expr: sum(container_memory_usage_bytes) by (cluster)
 ```
 
 Load rules via the Mimir API:
@@ -366,7 +368,7 @@ curl -X POST \
   -H "X-Scope-OrgID: cluster-1" \
   -H "Content-Type: application/yaml" \
   --data-binary @rules.yaml \
-  http://mimir-nginx.mimir.svc/prometheus/config/v1/rules/default
+  http://mimir-gateway.mimir.svc/prometheus/config/v1/rules/default
 ```
 
 ## Configuring Alertmanager in Mimir
@@ -374,45 +376,39 @@ curl -X POST \
 Mimir includes a distributed Alertmanager for handling alerts:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mimir-alertmanager-config
-  namespace: mimir
-data:
-  alertmanager.yaml: |
-    global:
-      resolve_timeout: 5m
-      slack_api_url: ${SLACK_WEBHOOK_URL}
+# alertmanager.yaml
+global:
+  resolve_timeout: 5m
+  slack_api_url: ${SLACK_WEBHOOK_URL}
 
-    route:
-      group_by: ['alertname', 'cluster']
-      group_wait: 10s
-      group_interval: 10s
-      repeat_interval: 12h
-      receiver: 'slack-notifications'
-      routes:
-      - match:
-          severity: critical
-        receiver: 'pagerduty-critical'
-      - match:
-          cluster: cluster-1
-        receiver: 'team-cluster-1'
+route:
+  group_by: ['alertname', 'cluster']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'slack-notifications'
+  routes:
+  - matchers:
+    - severity="critical"
+    receiver: 'pagerduty-critical'
+  - matchers:
+    - cluster="cluster-1"
+    receiver: 'team-cluster-1'
 
-    receivers:
-    - name: 'slack-notifications'
-      slack_configs:
-      - channel: '#alerts'
-        title: '{{ .GroupLabels.alertname }}'
-        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}'
+receivers:
+- name: 'slack-notifications'
+  slack_configs:
+  - channel: '#alerts'
+    title: '{{ .GroupLabels.alertname }}'
+    text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}'
 
-    - name: 'pagerduty-critical'
-      pagerduty_configs:
-      - service_key: ${PAGERDUTY_KEY}
+- name: 'pagerduty-critical'
+  pagerduty_configs:
+  - service_key: ${PAGERDUTY_KEY}
 
-    - name: 'team-cluster-1'
-      slack_configs:
-      - channel: '#cluster-1-alerts'
+- name: 'team-cluster-1'
+  slack_configs:
+  - channel: '#cluster-1-alerts'
 ```
 
 Upload the configuration:
@@ -422,7 +418,7 @@ curl -X POST \
   -H "X-Scope-OrgID: cluster-1" \
   -H "Content-Type: application/yaml" \
   --data-binary @alertmanager.yaml \
-  http://mimir-nginx.mimir.svc/api/v1/alerts
+  http://mimir-gateway.mimir.svc/api/v1/alerts
 ```
 
 ## Monitoring Mimir Performance
