@@ -22,7 +22,6 @@ Install Drone server with Docker:
 # Create docker-compose.yml for Drone
 
 cat > docker-compose.yml <<EOF
-version: '3'
 services:
   drone-server:
     image: drone/drone:2
@@ -51,7 +50,7 @@ services:
       - DRONE_RUNNER_NAME=docker-runner
 EOF
 
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Configuring Kubernetes Cluster Credentials
@@ -78,17 +77,21 @@ drone secret add \
   your-org/your-repo
 ```
 
-For better security, create service account tokens per cluster:
+For better security, create scoped service account tokens per cluster:
 
 ```bash
 # Create deployment service account in each cluster
-kubectl create serviceaccount drone-deployer -n default
-kubectl create clusterrolebinding drone-deployer \
-  --clusterrole=cluster-admin \
-  --serviceaccount=default:drone-deployer
+kubectl create namespace production
+kubectl create serviceaccount drone-deployer -n production
+kubectl create role drone-deployer -n production \
+  --verb=get,list,watch,patch,update \
+  --resource=deployments,deployments/status,pods
+kubectl create rolebinding drone-deployer -n production \
+  --role=drone-deployer \
+  --serviceaccount=production:drone-deployer
 
 # Get the token
-TOKEN=$(kubectl create token drone-deployer --duration=87600h)
+TOKEN=$(kubectl create token drone-deployer -n production --duration=8760h)
 drone secret add \
   --name k8s_token_production \
   --data "$TOKEN" \
@@ -116,6 +119,8 @@ steps:
   # Build Docker image
   - name: docker
     image: plugins/docker
+    depends_on:
+      - build
     settings:
       registry: registry.example.com
       repo: registry.example.com/myapp
@@ -130,6 +135,8 @@ steps:
   # Deploy to dev cluster
   - name: deploy-dev
     image: bitnami/kubectl:latest
+    depends_on:
+      - docker
     environment:
       KUBECONFIG: /tmp/kubeconfig
       KUBE_CONFIG:
@@ -148,6 +155,8 @@ steps:
   # Deploy to staging cluster
   - name: deploy-staging
     image: bitnami/kubectl:latest
+    depends_on:
+      - docker
     environment:
       KUBECONFIG: /tmp/kubeconfig
       KUBE_CONFIG:
@@ -166,6 +175,8 @@ steps:
   # Deploy to production clusters (parallel)
   - name: deploy-prod-us-east
     image: bitnami/kubectl:latest
+    depends_on:
+      - docker
     environment:
       KUBECONFIG: /tmp/kubeconfig
       KUBE_CONFIG:
@@ -183,6 +194,8 @@ steps:
 
   - name: deploy-prod-eu-west
     image: bitnami/kubectl:latest
+    depends_on:
+      - docker
     environment:
       KUBECONFIG: /tmp/kubeconfig
       KUBE_CONFIG:
@@ -199,6 +212,9 @@ steps:
         - production
 
 trigger:
+  event:
+    - push
+    - promote
   branch:
     - main
     - develop
@@ -206,24 +222,24 @@ trigger:
 
 ## Using Helm for Multi-Cluster Deployments
 
-Create a reusable Helm deployment step:
+Create a Helm deployment step that you can repeat per cluster:
 
 ```yaml
 steps:
-  - name: deploy-with-helm
+  - name: deploy-with-helm-prod-us-east
     image: alpine/helm:latest
     environment:
       KUBECONFIG: /tmp/kubeconfig
       KUBE_CONFIG:
-        from_secret: kubeconfig_${CLUSTER}
+        from_secret: kubeconfig_prod_us_east
     commands:
       - echo "$KUBE_CONFIG" > /tmp/kubeconfig
       - helm upgrade --install myapp ./charts/myapp \
-          --namespace ${NAMESPACE} \
+          --namespace production \
           --create-namespace \
           --set image.tag=${DRONE_COMMIT_SHA} \
-          --set cluster.name=${CLUSTER} \
-          --values ./values/${CLUSTER}.yaml \
+          --set cluster.name=prod-us-east \
+          --values ./values/prod-us-east.yaml \
           --wait \
           --timeout 10m
 ```
@@ -263,9 +279,11 @@ steps:
     image: curlimages/curl:latest
     commands:
       - |
-        for i in {1..10}; do
+        i=1
+        while [ "$i" -le 10 ]; do
           curl -f https://canary.example.com/health || exit 1
           sleep 5
+          i=$((i + 1))
         done
 
   - name: deploy-primary
@@ -368,44 +386,47 @@ steps:
 Use Drone templates for DRY configuration:
 
 ```yaml
-# Create a template for deployment
-kind: template
-name: k8s-deploy
-data:
-  steps:
-    - name: deploy-{{cluster}}
-      image: bitnami/kubectl:latest
-      environment:
-        KUBECONFIG: /tmp/kubeconfig
-        KUBE_CONFIG:
-          from_secret: kubeconfig_{{cluster}}
-      commands:
-        - echo "$KUBE_CONFIG" > /tmp/kubeconfig
-        - kubectl apply -f k8s/{{environment}}/ -n {{namespace}}
-        - kubectl rollout status deployment/myapp -n {{namespace}}
-
----
+# k8s-deploy.yaml, stored as an organization template
 kind: pipeline
-name: deploy-all
+type: docker
+name: deploy-{{ .input.cluster }}
 
 steps:
-  - template: k8s-deploy
-    vars:
-      cluster: dev
-      environment: development
-      namespace: dev
+  - name: deploy
+    image: bitnami/kubectl:latest
+    environment:
+      KUBECONFIG: /tmp/kubeconfig
+      KUBE_CONFIG:
+        from_secret: kubeconfig_{{ .input.cluster }}
+    commands:
+      - echo "$KUBE_CONFIG" > /tmp/kubeconfig
+      - kubectl apply -f k8s/{{ .input.environment }}/ -n {{ .input.namespace }}
+      - kubectl rollout status deployment/myapp -n {{ .input.namespace }}
 
-  - template: k8s-deploy
-    vars:
-      cluster: staging
-      environment: staging
-      namespace: staging
+---
+# .drone.yml
+kind: template
+load: k8s-deploy.yaml
+data:
+  cluster: dev
+  environment: development
+  namespace: dev
 
-  - template: k8s-deploy
-    vars:
-      cluster: production
-      environment: production
-      namespace: prod
+---
+kind: template
+load: k8s-deploy.yaml
+data:
+  cluster: staging
+  environment: staging
+  namespace: staging
+
+---
+kind: template
+load: k8s-deploy.yaml
+data:
+  cluster: production
+  environment: production
+  namespace: prod
 ```
 
 ## Monitoring Pipeline Execution
@@ -424,8 +445,8 @@ export DRONE_TOKEN=your-token
 # View pipeline builds
 drone build ls your-org/your-repo
 
-# Get logs for specific step
-drone log view your-org/your-repo 123 deploy-prod
+# Get logs for a specific stage and step
+drone log view your-org/your-repo 123 1 4
 
 # Promote build to production
 drone build promote your-org/your-repo 123 production
