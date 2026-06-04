@@ -12,7 +12,7 @@ Managing multiple Kubernetes clusters means juggling contexts, credentials, and 
 
 ## Understanding Kubeconfig Structure
 
-Kubeconfig files contain three components:
+Kubeconfig files contain three main components:
 
 ```bash
 # View current config
@@ -38,7 +38,7 @@ kubectl config get-contexts
 # Show current context (marked with *)
 kubectl config current-context
 
-# List contexts with full details
+# List context names only
 kubectl config get-contexts -o name
 
 # Show contexts from specific config file
@@ -126,7 +126,8 @@ kubectl config set-cluster production-cluster \
 # Add cluster with embedded certificate
 kubectl config set-cluster staging-cluster \
   --server=https://staging-api.example.com:6443 \
-  --certificate-authority-data=$(cat ca.crt | base64)
+  --certificate-authority=ca.crt \
+  --embed-certs=true
 
 # Skip TLS verification (not recommended for production)
 kubectl config set-cluster test-cluster \
@@ -155,8 +156,9 @@ kubectl config set-credentials dev-user \
 
 # Set user with embedded certificate
 kubectl config set-credentials staging-user \
-  --client-certificate-data=$(cat client.crt | base64) \
-  --client-key-data=$(cat client.key | base64)
+  --client-certificate=client.crt \
+  --client-key=client.key \
+  --embed-certs=true
 
 # Set user with username/password (deprecated)
 kubectl config set-credentials basic-user \
@@ -178,9 +180,9 @@ kubectl config view
 kubectl config view
 
 # View specific context
-kubectl config view --context=production
+kubectl config view --context=production --minify
 
-# View as YAML
+# View raw certificate data and sensitive data
 kubectl config view --raw
 
 # View minified (current context only)
@@ -319,12 +321,14 @@ Store certificates directly in kubeconfig:
 # Embed cluster CA certificate
 kubectl config set-cluster embedded-cluster \
   --server=https://api.example.com:6443 \
-  --certificate-authority-data=$(cat /path/to/ca.crt | base64 -w0)
+  --certificate-authority=/path/to/ca.crt \
+  --embed-certs=true
 
 # Embed client certificate and key
 kubectl config set-credentials embedded-user \
-  --client-certificate-data=$(cat /path/to/client.crt | base64 -w0) \
-  --client-key-data=$(cat /path/to/client.key | base64 -w0)
+  --client-certificate=/path/to/client.crt \
+  --client-key=/path/to/client.key \
+  --embed-certs=true
 ```
 
 Embedded certificates make config files portable without separate cert files.
