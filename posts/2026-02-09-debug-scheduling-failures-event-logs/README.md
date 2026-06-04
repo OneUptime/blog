@@ -14,13 +14,16 @@ This guide shows you how to systematically debug scheduling issues using events,
 
 ## Common Scheduling Failure Reasons
 
-Pods remain pending due to:
+Pods remain pending due to scheduling constraints such as:
 
 - Insufficient CPU or memory resources
 - No nodes matching node selector or affinity rules
 - Taints without matching tolerations
 - Pod topology spread constraints cannot be satisfied
 - Persistent volume not available in required zone
+
+Other failures that can look similar, but are not scheduler placement failures, include:
+
 - Resource quotas exceeded
 - Image pull failures
 - Admission webhook rejections
@@ -40,8 +43,8 @@ kubectl describe pod nginx-7d8f9c5b-xyz12 -n production | grep -A 20 "Events:"
 # Get events in JSON format for parsing
 kubectl get events -n production --field-selector involvedObject.name=nginx-7d8f9c5b-xyz12 -o json
 
-# Sort events by timestamp
-kubectl get events -n production --sort-by='.lastTimestamp' | grep nginx-7d8f9c5b-xyz12
+# Sort events by creation timestamp
+kubectl get events -n production --sort-by='.metadata.creationTimestamp' | grep nginx-7d8f9c5b-xyz12
 ```
 
 Example output:
@@ -167,7 +170,7 @@ Get cluster-wide scheduling events:
 kubectl get events --all-namespaces --field-selector reason=FailedScheduling
 
 # Recent scheduling events
-kubectl get events --all-namespaces --sort-by='.lastTimestamp' | head -20
+kubectl get events --all-namespaces --sort-by='.metadata.creationTimestamp' | tail -20
 
 # Events for a specific namespace
 kubectl get events -n production --field-selector reason=FailedScheduling
@@ -256,25 +259,24 @@ kubectl describe resourcequota production-quota -n production
 # pods        48     50
 ```
 
-## Analyzing Scheduler Predicates
+## Analyzing Scheduler Filters
 
 Understand why nodes were filtered out:
 
 ```bash
-# Enable scheduler debugging
+# Extract FailedScheduling event messages
 kubectl get events --all-namespaces -o json | \
   jq '.items[] | select(.reason=="FailedScheduling") | .message'
 
-# Common predicate failures:
-# - PodFitsResources: Not enough CPU/memory
-# - PodFitsHost: Hostname doesn't match
-# - PodFitsHostPorts: Port conflict
-# - PodMatchNodeSelector: Node selector mismatch
-# - NoDiskConflict: Volume conflict
-# - NoVolumeZoneConflict: Volume in wrong zone
-# - CheckNodeMemoryPressure: Node under memory pressure
-# - CheckNodeDiskPressure: Node under disk pressure
-# - CheckNodePIDPressure: Node has too many processes
+# Common scheduler filter/plugin failures:
+# - NodeResourcesFit: Not enough CPU/memory
+# - NodeName: Hostname doesn't match
+# - NodePorts: Port conflict
+# - NodeAffinity: Node selector or node affinity mismatch
+# - VolumeRestrictions: Volume conflict
+# - VolumeZone: Volume in wrong zone
+# - TaintToleration: Untolerated taint, including pressure taints
+# - PodTopologySpread: Topology spread constraints cannot be satisfied
 ```
 
 ## Checking Volume Topology
@@ -290,7 +292,7 @@ kubectl describe pvc data-postgres-0 -n production
 
 # Check PV topology
 kubectl get pv -o json | \
-  jq -r '.items[] | {name: .metadata.name, zone: .metadata.labels["topology.kubernetes.io/zone"]}'
+  jq -r '.items[] | {name: .metadata.name, zones: [.spec.nodeAffinity.required.nodeSelectorTerms[]?.matchExpressions[]? | select(.key=="topology.kubernetes.io/zone") | .values[]]}'
 
 # Verify pod's node zone matches volume zone
 kubectl get pod postgres-0 -n production -o json | \
@@ -323,14 +325,14 @@ Query scheduler metrics:
 # Scheduling attempts
 rate(scheduler_schedule_attempts_total[5m])
 
-# Scheduling failures by reason
-rate(scheduler_schedule_attempts_total{result="error"}[5m]) by (profile)
+# Scheduling failures by result and profile
+rate(scheduler_schedule_attempts_total{result=~"unschedulable|error"}[5m]) by (result, profile)
 
 # Pending pods
 sum(kube_pod_status_phase{phase="Pending"}) by (namespace)
 
 # Scheduling latency
-histogram_quantile(0.99, rate(scheduler_scheduling_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, rate(scheduler_scheduling_attempt_duration_seconds_bucket[5m]))
 ```
 
 ## Common Scenarios and Solutions
@@ -387,8 +389,8 @@ kubectl get pods -l <label-selector> -o wide
 ## Troubleshooting Tools
 
 ```bash
-# Install kubectl debug plugin
-kubectl krew install debug
+# Use kubectl debug for ephemeral containers or node debugging
+kubectl debug node/<node-name> -it --image=busybox
 
 # Use stern for multi-pod logs
 stern -n kube-system kube-scheduler
@@ -402,4 +404,3 @@ kubectl get pods --field-selector=status.phase=Pending
 ```
 
 Debugging scheduling failures systematically using event logs and scheduler diagnostics helps you quickly identify and resolve issues preventing pods from running. Start with pod events, escalate to scheduler logs when needed, and use automation to handle common scenarios efficiently.
-
