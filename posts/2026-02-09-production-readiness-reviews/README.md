@@ -81,8 +81,9 @@ Install Conftest:
 brew install conftest
 
 # Install on Linux
-wget https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz
-tar xzf conftest_Linux_x86_64.tar.gz
+CONFTEST_VERSION=0.68.2
+wget https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz
+tar xzf conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz
 sudo mv conftest /usr/local/bin/
 ```
 
@@ -92,49 +93,51 @@ Create a policy file enforcing production standards:
 # policy/production.rego
 package main
 
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
-  not input.spec.template.spec.containers[_].livenessProbe
-  msg = "Deployment must have liveness probe configured"
+  container := input.spec.template.spec.containers[_]
+  not container.livenessProbe
+  msg := sprintf("Container %s must have liveness probe configured", [container.name])
 }
 
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
-  not input.spec.template.spec.containers[_].readinessProbe
-  msg = "Deployment must have readiness probe configured"
+  container := input.spec.template.spec.containers[_]
+  not container.readinessProbe
+  msg := sprintf("Container %s must have readiness probe configured", [container.name])
 }
 
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   not container.resources.requests.cpu
-  msg = sprintf("Container %s must have CPU requests defined", [container.name])
+  msg := sprintf("Container %s must have CPU requests defined", [container.name])
 }
 
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   not container.resources.requests.memory
-  msg = sprintf("Container %s must have memory requests defined", [container.name])
+  msg := sprintf("Container %s must have memory requests defined", [container.name])
 }
 
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   input.spec.replicas < 2
-  msg = "Deployment must have at least 2 replicas for production"
+  msg := "Deployment must have at least 2 replicas for production"
 }
 
-warn[msg] {
+warn contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   not container.resources.limits.memory
-  msg = sprintf("Container %s should have memory limits defined", [container.name])
+  msg := sprintf("Container %s should have memory limits defined", [container.name])
 }
 
-warn[msg] {
+warn contains msg if {
   input.kind == "Deployment"
   not input.spec.template.spec.securityContext
-  msg = "Deployment should have security context configured"
+  msg := "Deployment should have security context configured"
 }
 ```
 
@@ -145,7 +148,7 @@ Run validation against manifests:
 conftest test deployment.yaml -p policy/
 
 # Output shows violations
-FAIL - deployment.yaml - main - Deployment must have liveness probe configured
+FAIL - deployment.yaml - main - Container app must have liveness probe configured
 FAIL - deployment.yaml - main - Container app must have CPU requests defined
 WARN - deployment.yaml - main - Container app should have memory limits defined
 ```
@@ -157,7 +160,7 @@ Kyverno provides Kubernetes-native policy management that validates, mutates, an
 Install Kyverno:
 
 ```bash
-kubectl create -f https://github.com/kyverno/kyverno/releases/latest/download/install.yaml
+kubectl create -f https://github.com/kyverno/kyverno/releases/download/v1.18.1/install.yaml
 ```
 
 Create a ClusterPolicy enforcing production standards:
@@ -172,8 +175,7 @@ metadata:
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: enforce
-  background: true
+  background: false
   rules:
   - name: require-probes
     match:
@@ -183,21 +185,27 @@ spec:
           - Deployment
           namespaces:
           - production
+    preconditions:
+      all:
+      - key: "{{request.operation || 'BACKGROUND'}}"
+        operator: AnyIn
+        value:
+        - CREATE
+        - UPDATE
     validate:
+      failureAction: Enforce
       message: "Liveness and readiness probes are required"
-      pattern:
-        spec:
-          template:
-            spec:
-              containers:
-              - livenessProbe:
-                  httpGet:
-                    path: "?*"
-                    port: "?*"
-                readinessProbe:
-                  httpGet:
-                    path: "?*"
-                    port: "?*"
+      foreach:
+      - list: request.object.spec.template.spec.containers[]
+        deny:
+          conditions:
+            any:
+            - key: livenessProbe
+              operator: AllNotIn
+              value: "{{ element.keys(@)[] }}"
+            - key: readinessProbe
+              operator: AllNotIn
+              value: "{{ element.keys(@)[] }}"
 
   - name: require-resources
     match:
@@ -207,20 +215,33 @@ spec:
           - Deployment
           namespaces:
           - production
+    preconditions:
+      all:
+      - key: "{{request.operation || 'BACKGROUND'}}"
+        operator: AnyIn
+        value:
+        - CREATE
+        - UPDATE
     validate:
+      failureAction: Enforce
       message: "CPU and memory requests must be defined"
-      pattern:
-        spec:
-          template:
-            spec:
-              containers:
-              - resources:
-                  requests:
-                    memory: "?*"
-                    cpu: "?*"
-                  limits:
-                    memory: "?*"
-                    cpu: "?*"
+      foreach:
+      - list: request.object.spec.template.spec.containers[]
+        deny:
+          conditions:
+            any:
+            - key: "{{ element.resources.requests.memory || '' }}"
+              operator: Equals
+              value: ""
+            - key: "{{ element.resources.requests.cpu || '' }}"
+              operator: Equals
+              value: ""
+            - key: "{{ element.resources.limits.memory || '' }}"
+              operator: Equals
+              value: ""
+            - key: "{{ element.resources.limits.cpu || '' }}"
+              operator: Equals
+              value: ""
 
   - name: require-multiple-replicas
     match:
@@ -230,7 +251,15 @@ spec:
           - Deployment
           namespaces:
           - production
+    preconditions:
+      all:
+      - key: "{{request.operation || 'BACKGROUND'}}"
+        operator: AnyIn
+        value:
+        - CREATE
+        - UPDATE
     validate:
+      failureAction: Enforce
       message: "Production deployments must have at least 2 replicas"
       pattern:
         spec:
@@ -244,17 +273,28 @@ spec:
           - Deployment
           namespaces:
           - production
+    preconditions:
+      all:
+      - key: "{{request.operation || 'BACKGROUND'}}"
+        operator: Equals
+        value: CREATE
+      - key: "{{ request.object.spec.replicas || `1` }}"
+        operator: GreaterThanOrEquals
+        value: 2
+    context:
+    - name: pdb_count
+      apiCall:
+        urlPath: /apis/policy/v1/namespaces/{{request.namespace}}/poddisruptionbudgets
+        jmesPath: items[?label_match(spec.selector.matchLabels, `{{request.object.spec.template.metadata.labels}}`)] | length(@)
     validate:
+      failureAction: Enforce
       message: "Production deployments must have a PodDisruptionBudget"
       deny:
         conditions:
           any:
-          - key: "{{request.operation}}"
-            operator: Equals
-            value: CREATE
-          - key: "{{request.operation}}"
-            operator: Equals
-            value: UPDATE
+          - key: "{{pdb_count}}"
+            operator: LessThan
+            value: 1
 ```
 
 These policies automatically block deployments that violate production standards. Attempting to create a non-compliant deployment results in immediate rejection:
@@ -288,12 +328,13 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install Conftest
       run: |
-        wget https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz
-        tar xzf conftest_Linux_x86_64.tar.gz
+        CONFTEST_VERSION=0.68.2
+        wget https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz
+        tar xzf conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz
         chmod +x conftest
         sudo mv conftest /usr/local/bin/
 
@@ -301,12 +342,17 @@ jobs:
       run: |
         conftest test k8s/*.yaml -p policy/ --all-namespaces
 
-    - name: Run kubeval
+    - name: Install kubeconform
       run: |
-        wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
-        tar xzf kubeval-linux-amd64.tar.gz
-        sudo mv kubeval /usr/local/bin/
-        kubeval k8s/*.yaml
+        KUBECONFORM_VERSION=0.7.0
+        wget https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz
+        tar xzf kubeconform-linux-amd64.tar.gz
+        chmod +x kubeconform
+        sudo mv kubeconform /usr/local/bin/
+
+    - name: Validate Kubernetes schemas
+      run: |
+        kubeconform -strict k8s/*.yaml
 
     - name: Check resource limits
       run: |
