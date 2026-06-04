@@ -14,7 +14,7 @@ Without timezone support, you'd need to manually calculate UTC offsets and updat
 
 ## Basic Timezone Configuration
 
-The timeZone field requires Kubernetes 1.25 or later with the CronJobTimeZone feature gate enabled. It accepts standard IANA timezone names like "America/New_York" or "Europe/London".
+The timeZone field is stable in Kubernetes 1.27 and later. In Kubernetes 1.25 and 1.26, it is available as a beta field behind the CronJobTimeZone feature gate. It accepts standard IANA timezone names like "America/New_York" or "Europe/London".
 
 ```yaml
 apiVersion: batch/v1
@@ -70,17 +70,17 @@ spec:
               echo "Backup starting at $(TZ=America/Los_Angeles date)"
 
               # On DST spring forward (2 AM doesn't exist)
-              # Job runs at 3 AM instead
+              # That day's 2 AM run is skipped
 
-              # On DST fall back (2 AM happens twice)
-              # Job runs only once
+              # On DST fall back, the 1 AM hour repeats
+              # 2 AM occurs once after the clock change
 
               ./run-backup.sh
 ```
 
 On the day clocks spring forward, 2 AM doesn't exist. The clock jumps from 1:59 AM to 3:00 AM. Kubernetes skips that day's 2 AM run entirely.
 
-On the day clocks fall back, 2 AM happens twice. The clock goes from 1:59 AM to 1:00 AM (second time). Kubernetes runs the job only once, during the first occurrence of 2 AM.
+On the day clocks fall back in this timezone, the repeated hour is 1 AM. A 2 AM job runs once after the clock change. If you schedule during the repeated hour, make sure the job is idempotent because CronJob scheduling is approximate and Kubernetes documents that some schedules can create two Jobs or no Job.
 
 ## Multiple Timezones for Global Operations
 
@@ -193,7 +193,7 @@ def generate_daily_report():
     """Generate report for previous day in local timezone"""
 
     # Job is scheduled at 1 AM with timeZone: America/Chicago
-    # This ensures we're running in the correct timezone context
+    # This ensures the job starts at 1 AM Central Time
 
     tz = pytz.timezone('America/Chicago')
     now = datetime.datetime.now(tz)
@@ -297,7 +297,7 @@ Check your CronJob's timezone settings:
 # View timezone configuration
 kubectl get cronjob morning-report -o jsonpath='{.spec.timeZone}'
 
-# See when next run is scheduled (in UTC)
+# See when the job was last scheduled
 kubectl get cronjob morning-report -o jsonpath='{.status.lastScheduleTime}'
 
 # Describe to see full details
@@ -376,7 +376,7 @@ from datetime import datetime
 import pytz
 
 def show_cronjob_schedules():
-    """Display CronJobs with their next run in local timezone"""
+    """Display CronJobs with their last run in local timezone"""
     config.load_kube_config()
     batch_v1 = client.BatchV1Api()
 
