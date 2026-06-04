@@ -8,7 +8,7 @@ Description: Learn how to migrate Kubernetes persistent volumes from deprecated 
 
 ---
 
-Kubernetes is deprecating in-tree volume plugins in favor of the Container Storage Interface (CSI). In-tree plugins are tightly coupled to Kubernetes releases, while CSI drivers are independently maintained and more flexible. Migrating to CSI is essential for future Kubernetes versions. This guide shows you how to migrate existing volumes from in-tree plugins to CSI drivers safely.
+Kubernetes has deprecated many in-tree volume plugins in favor of the Container Storage Interface (CSI), and several provider-specific in-tree plugins have already been removed from current Kubernetes releases. In-tree plugins are tightly coupled to Kubernetes releases, while CSI drivers are independently maintained and more flexible. Migrating to CSI is essential for future Kubernetes versions. This guide shows you how to migrate existing volumes from in-tree plugins to CSI drivers safely.
 
 ## Understanding In-Tree vs CSI Storage
 
@@ -39,7 +39,7 @@ kubectl get pv -o json | jq '[.items[] | select(.spec.vsphereVolume)] | length'
 
 # Check storage classes
 echo -e "\n=== In-Tree Storage Classes ==="
-kubectl get storageclass -o json | jq -r '.items[] | select(.provisioner | contains("kubernetes.io/aws-ebs") or contains("kubernetes.io/gce-pd") or contains("kubernetes.io/azure-disk")) | .metadata.name'
+kubectl get storageclass -o json | jq -r '.items[] | select(.provisioner | contains("kubernetes.io/aws-ebs") or contains("kubernetes.io/gce-pd") or contains("kubernetes.io/azure-disk") or contains("kubernetes.io/vsphere-volume")) | .metadata.name'
 ```
 
 This audit identifies volumes that need migration.
@@ -52,76 +52,11 @@ Deploy appropriate CSI drivers for your infrastructure.
 #!/bin/bash
 # Install AWS EBS CSI Driver
 
-# Create IAM policy
-cat > ebs-csi-policy.json <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateSnapshot",
-        "ec2:AttachVolume",
-        "ec2:DetachVolume",
-        "ec2:ModifyVolume",
-        "ec2:DescribeAvailabilityZones",
-        "ec2:DescribeInstances",
-        "ec2:DescribeSnapshots",
-        "ec2:DescribeTags",
-        "ec2:DescribeVolumes",
-        "ec2:DescribeVolumesModifications"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateTags"
-      ],
-      "Resource": [
-        "arn:aws:ec2:*:*:volume/*",
-        "arn:aws:ec2:*:*:snapshot/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DeleteTags"
-      ],
-      "Resource": [
-        "arn:aws:ec2:*:*:volume/*",
-        "arn:aws:ec2:*:*:snapshot/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateVolume"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "aws:RequestTag/ebs.csi.aws.com/cluster": "true"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DeleteVolume"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "ec2:ResourceTag/ebs.csi.aws.com/cluster": "true"
-        }
-      }
-    }
-  ]
-}
-EOF
-
-aws iam create-policy --policy-name AmazonEBS_CSI_Driver --policy-document file://ebs-csi-policy.json
+# Attach the AWS managed policy to the IAM role used by the driver
+EBS_CSI_ROLE_NAME="AmazonEKS_EBS_CSI_DriverRole"
+aws iam attach-role-policy \
+    --role-name "${EBS_CSI_ROLE_NAME}" \
+    --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicyV2
 
 # Install using Helm
 helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
@@ -129,9 +64,8 @@ helm repo update
 
 helm install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver \
     --namespace kube-system \
-    --set enableVolumeScheduling=true \
-    --set enableVolumeResizing=true \
-    --set enableVolumeSnapshot=true
+    --set controller.serviceAccount.create=true \
+    --set controller.serviceAccount.name=ebs-csi-controller-sa
 
 # Verify installation
 kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-ebs-csi-driver
@@ -195,51 +129,23 @@ CSI storage classes use new provisioner names and support advanced features.
 
 ## Migrating Volumes Using In-Place Translation
 
-Use CSIMigration feature gate for transparent migration.
-
-```yaml
-# Enable CSIMigration feature gates
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubeadm-config
-  namespace: kube-system
-data:
-  ClusterConfiguration: |
-    apiVersion: kubeadm.k8s.io/v1beta3
-    kind: ClusterConfiguration
-    apiServer:
-      extraArgs:
-        feature-gates: "CSIMigration=true,CSIMigrationAWS=true,CSIMigrationGCE=true,CSIMigrationAzureDisk=true"
-    controllerManager:
-      extraArgs:
-        feature-gates: "CSIMigration=true,CSIMigrationAWS=true,CSIMigrationGCE=true,CSIMigrationAzureDisk=true"
-    kubelet:
-      extraArgs:
-        feature-gates: "CSIMigration=true,CSIMigrationAWS=true,CSIMigrationGCE=true,CSIMigrationAzureDisk=true"
-```
+Use CSIMigration for transparent migration. In current Kubernetes releases, CSIMigration is stable and enabled by default. Provider-specific migration gates such as `CSIMigrationAWS`, `CSIMigrationGCE`, `CSIMigrationAzureDisk`, and `CSIMigrationvSphere` are GA or removed depending on the Kubernetes version, so do not add them to current component flags.
 
 ```bash
 #!/bin/bash
-# Apply feature gates to control plane
+# Verify CSI migration prerequisites
 
-# For kubeadm clusters
-kubectl edit cm kubeadm-config -n kube-system
+# Confirm the replacement CSI drivers are installed
+kubectl get csidrivers
 
-# Restart control plane components
-kubectl -n kube-system delete pod -l component=kube-apiserver
-kubectl -n kube-system delete pod -l component=kube-controller-manager
+# Check for legacy PV objects that Kubernetes can translate to CSI operations
+kubectl get pv -o json | jq -r '.items[] | select(.spec.awsElasticBlockStore or .spec.gcePersistentDisk or .spec.azureDisk or .spec.vsphereVolume) | .metadata.name'
 
-# Restart kubelet on all nodes
-for node in $(kubectl get nodes -o name); do
-    ssh $node 'sudo systemctl restart kubelet'
-done
-
-# Verify CSIMigration is enabled
-kubectl get --raw /metrics | grep csi_migration
+# Watch for migration-related storage operation errors
+kubectl get events --all-namespaces --field-selector type=Warning | grep -i csi
 ```
 
-With CSIMigration enabled, in-tree volumes automatically use CSI drivers without modification.
+With CSIMigration enabled, supported in-tree volume API objects automatically use the corresponding CSI drivers without modifying existing StorageClasses, PersistentVolumes, or PersistentVolumeClaims.
 
 ## Migrating Volumes with Data Copy
 
@@ -266,7 +172,7 @@ spec:
 EOF
 
 # Wait for snapshot to be ready
-kubectl wait --for=condition=readytouse volumesnapshot/${SOURCE_PVC}-snapshot -n ${NAMESPACE} --timeout=300s
+kubectl wait --for=jsonpath='{.status.readyToUse}'=true volumesnapshot/${SOURCE_PVC}-snapshot -n ${NAMESPACE} --timeout=300s
 
 # Create new PVC from snapshot using CSI
 cat <<EOF | kubectl apply -f -
@@ -289,12 +195,12 @@ spec:
 EOF
 
 # Wait for new PVC
-kubectl wait --for=condition=bound pvc/${SOURCE_PVC}-csi -n ${NAMESPACE} --timeout=300s
+kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/${SOURCE_PVC}-csi -n ${NAMESPACE} --timeout=300s
 
 echo "New CSI volume created from snapshot"
 ```
 
-This creates a CSI-backed volume with identical data.
+This creates a CSI-backed volume from the snapshot data. Quiesce or stop writers before taking the snapshot if the application requires application-consistent data.
 
 ## Updating Applications to Use CSI Volumes
 
@@ -314,6 +220,9 @@ spec:
     matchLabels:
       app: database
   template:
+    metadata:
+      labels:
+        app: database
     spec:
       containers:
       - name: postgres
@@ -344,6 +253,9 @@ spec:
     matchLabels:
       app: database
   template:
+    metadata:
+      labels:
+        app: database
     spec:
       containers:
       - name: postgres
@@ -374,15 +286,16 @@ Migrate StatefulSet volumes one pod at a time.
 
 STATEFULSET="database"
 NAMESPACE="production"
+CLAIM_TEMPLATE="data"
 REPLICAS=$(kubectl get statefulset ${STATEFULSET} -n ${NAMESPACE} -o jsonpath='{.spec.replicas}')
 
-for i in $(seq 0 $((REPLICAS-1))); do
+for i in $(seq $((REPLICAS-1)) -1 0); do
     POD="${STATEFULSET}-${i}"
-    PVC="${PVC_NAME}-${POD}"
+    PVC="${CLAIM_TEMPLATE}-${POD}"
 
     echo "Migrating pod $POD..."
 
-    # Scale down to remove this pod
+    # Scale down to remove this ordinal before snapshotting its PVC
     kubectl scale statefulset ${STATEFULSET} -n ${NAMESPACE} --replicas=$i
 
     # Wait for pod to terminate
@@ -401,7 +314,7 @@ spec:
     persistentVolumeClaimName: ${PVC}
 EOF
 
-    kubectl wait --for=condition=readytouse volumesnapshot/${PVC}-snapshot -n ${NAMESPACE} --timeout=300s
+    kubectl wait --for=jsonpath='{.status.readyToUse}'=true volumesnapshot/${PVC}-snapshot -n ${NAMESPACE} --timeout=300s
 
     # Delete old PVC
     kubectl delete pvc ${PVC} -n ${NAMESPACE}
@@ -426,7 +339,7 @@ spec:
       storage: 100Gi
 EOF
 
-    kubectl wait --for=condition=bound pvc/${PVC} -n ${NAMESPACE} --timeout=300s
+    kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/${PVC} -n ${NAMESPACE} --timeout=300s
 
     # Scale back up
     kubectl scale statefulset ${STATEFULSET} -n ${NAMESPACE} --replicas=$((i+1))
@@ -446,14 +359,14 @@ This migrates each StatefulSet pod individually to minimize disruption.
 
 ## Cleaning Up In-Tree Resources
 
-Remove deprecated in-tree storage classes and verify migration.
+For manual data-copy migrations, remove deprecated in-tree storage classes and verify migration. Do not use this check to judge CSIMigration success, because migrated legacy PV objects can still contain their original in-tree fields while Kubernetes routes operations through CSI.
 
 ```bash
 #!/bin/bash
 # Cleanup script
 
 echo "=== Verifying All Volumes Migrated ==="
-INTREE_PVS=$(kubectl get pv -o json | jq -r '.items[] | select(.spec.awsElasticBlockStore or .spec.gcePersistentDisk or .spec.azureDisk) | .metadata.name')
+INTREE_PVS=$(kubectl get pv -o json | jq -r '.items[] | select(.spec.awsElasticBlockStore or .spec.gcePersistentDisk or .spec.azureDisk or .spec.vsphereVolume) | .metadata.name')
 
 if [ -n "$INTREE_PVS" ]; then
     echo "WARNING: In-tree volumes still exist:"
@@ -510,7 +423,7 @@ spec:
         summary: "CSI operations experiencing high latency"
 
     - alert: CSIDriverPodDown
-      expr: kube_pod_status_phase{namespace="kube-system",pod=~"ebs-csi.*"} != 1
+      expr: max by (pod) (kube_pod_status_phase{namespace="kube-system",pod=~"ebs-csi.*",phase="Running"} == 1) < 1
       for: 5m
       labels:
         severity: critical
@@ -522,4 +435,4 @@ Monitor CSI driver health to catch issues early.
 
 ## Conclusion
 
-Migrating from in-tree storage plugins to CSI drivers is essential for future Kubernetes compatibility. Audit your cluster to identify volumes using deprecated in-tree plugins. Install appropriate CSI drivers for your cloud provider or storage platform. Enable CSIMigration feature gates for transparent automatic migration on supported platforms. For platforms without CSIMigration support, use volume snapshots to copy data to new CSI-backed PVCs. Update applications to reference CSI storage classes instead of in-tree provisioners. Migrate StatefulSet volumes using a rolling approach, one pod at a time. Monitor CSI driver metrics to ensure healthy operation. Remove in-tree storage classes only after confirming all volumes use CSI. This migration ensures your cluster remains compatible with future Kubernetes versions while gaining access to CSI driver features like volume snapshots, cloning, and expansion.
+Migrating from in-tree storage plugins to CSI drivers is essential for future Kubernetes compatibility. Audit your cluster to identify volumes using deprecated in-tree plugins. Install appropriate CSI drivers for your cloud provider or storage platform. Use CSIMigration for transparent automatic migration on supported platforms. For platforms without CSIMigration support, use volume snapshots to copy data to new CSI-backed PVCs. Update applications to reference CSI storage classes instead of in-tree provisioners. Migrate StatefulSet volumes using a rolling approach, one pod at a time. Monitor CSI driver metrics to ensure healthy operation. Remove in-tree storage classes only after confirming manually migrated volumes use CSI. This migration ensures your cluster remains compatible with future Kubernetes versions while gaining access to CSI driver features like volume snapshots, cloning, and expansion.
