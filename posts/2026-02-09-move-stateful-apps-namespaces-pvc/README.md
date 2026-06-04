@@ -14,17 +14,15 @@ Moving stateful applications between Kubernetes namespaces presents unique chall
 
 When you delete a StatefulSet or Deployment in one namespace and recreate it in another, the PVCs don't automatically follow. PersistentVolumes are cluster-scoped resources, but PersistentVolumeClaims are namespace-scoped. This means you need a strategy to either move or clone the underlying data.
 
-The key question is whether your storage backend supports volume cloning or snapshots. Modern storage classes like AWS EBS, GCP Persistent Disk, and CSI drivers typically support these features, making migrations significantly easier.
+The key question is whether your storage backend supports volume cloning or snapshots. CSI drivers for platforms like Amazon EBS and Google Compute Engine Persistent Disk support these features when the driver and snapshot components are installed, making migrations significantly easier.
 
 ## Method 1: Using Volume Snapshots and Clones
 
 This approach leverages Kubernetes VolumeSnapshot resources to create point-in-time copies of your data. It's the cleanest method when your storage class supports it.
 
-First, verify your storage class supports volume snapshots:
+First, identify the provisioner used by your storage class and confirm that a matching `VolumeSnapshotClass` exists:
 
 ```bash
-# Check if your storage class has snapshot capability
-
 kubectl get storageclass -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.provisioner}{"\n"}{end}'
 
 # List available VolumeSnapshotClasses
@@ -55,6 +53,26 @@ kubectl apply -f snapshot.yaml
 kubectl get volumesnapshot -n old-namespace -w
 ```
 
+By default, `VolumeSnapshot` is namespace-scoped, so restoring it into another namespace requires the `CrossNamespaceVolumeDataSource` feature and a `ReferenceGrant` in the source namespace. Create the grant first:
+
+```yaml
+# snapshot-referencegrant.yaml
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-postgres-snapshot-restore
+  namespace: old-namespace
+spec:
+  from:
+  - group: ""
+    kind: PersistentVolumeClaim
+    namespace: new-namespace
+  to:
+  - group: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: postgres-data-snapshot
+```
+
 Now create a new PVC in the target namespace from this snapshot:
 
 ```yaml
@@ -65,10 +83,11 @@ metadata:
   name: postgres-data
   namespace: new-namespace
 spec:
-  dataSource:
+  dataSourceRef:
     name: postgres-data-snapshot
     kind: VolumeSnapshot
     apiGroup: snapshot.storage.k8s.io
+    namespace: old-namespace
   accessModes:
     - ReadWriteOnce
   resources:
@@ -77,7 +96,7 @@ spec:
   storageClassName: fast-ssd
 ```
 
-This creates a new PVC in the target namespace with the snapshot data. Deploy your stateful application in the new namespace referencing this PVC.
+This creates a new PVC in the target namespace with the snapshot data. If your cluster does not support cross-namespace data sources, create or bind an equivalent `VolumeSnapshot` in the target namespace using your CSI driver's documented snapshot import process instead. Deploy your stateful application in the new namespace referencing this PVC.
 
 ## Method 2: Manual Data Copy Using Init Containers
 
@@ -93,29 +112,24 @@ metadata:
   name: data-migrator
   namespace: old-namespace
 spec:
+  restartPolicy: Never
   containers:
   - name: migrator
-    image: busybox
-    command: ['sh', '-c', 'tar czf /migration/data.tar.gz -C /data . && sleep 3600']
+    image: amazon/aws-cli:2
+    command: ['sh', '-c', 'tar czf - -C /data . | aws s3 cp - s3://backup-bucket/migration/data.tar.gz && sleep 3600']
     volumeMounts:
     - name: old-data
       mountPath: /data
-    - name: migration-volume
-      mountPath: /migration
   volumes:
   - name: old-data
     persistentVolumeClaim:
       claimName: postgres-data
-  - name: migration-volume
-    emptyDir: {}
 ```
 
-Expose the data via a temporary service or copy it to object storage:
+After the upload succeeds, verify the archive exists in object storage:
 
 ```bash
-# Copy data to S3 or similar
-kubectl exec -n old-namespace data-migrator -- sh -c \
-  "aws s3 cp /migration/data.tar.gz s3://backup-bucket/migration/"
+aws s3 ls s3://backup-bucket/migration/data.tar.gz
 ```
 
 In the new namespace, create a PVC and use an init container to restore:
@@ -140,13 +154,15 @@ spec:
     spec:
       initContainers:
       - name: restore-data
-        image: amazon/aws-cli
+        image: amazon/aws-cli:2
         command:
         - sh
         - -c
         - |
-          aws s3 cp s3://backup-bucket/migration/data.tar.gz /tmp/data.tar.gz
-          tar xzf /tmp/data.tar.gz -C /data
+          if [ ! -f /data/PG_VERSION ]; then
+            aws s3 cp s3://backup-bucket/migration/data.tar.gz /tmp/data.tar.gz
+            tar xzf /tmp/data.tar.gz -C /data
+          fi
         volumeMounts:
         - name: postgres-data
           mountPath: /data
@@ -217,7 +233,7 @@ spec:
     requests:
       storage: 10Gi
   storageClassName: ""  # Empty to allow manual binding
-  volumeName: pvc-abc123  # Specify the PV name
+  volumeName: pvc-abc123  # Replace with the value of $PV_NAME
 ```
 
 Kubernetes will bind this PVC to your existing PV, preserving all data.
@@ -226,7 +242,7 @@ Kubernetes will bind this PVC to your existing PV, preserving all data.
 
 For critical workloads, set up replication between the old and new namespaces before cutting over.
 
-Deploy a replica instance in the new namespace:
+Deploy a replica instance in the new namespace using your database operator or image-specific replication configuration. The plain `postgres:15` image does not configure streaming replication from Kubernetes environment variables alone; PostgreSQL requires a standby data directory, `standby.signal`, `primary_conninfo`, replication authentication, and matching WAL settings.
 
 ```yaml
 # replica-statefulset.yaml
@@ -254,10 +270,6 @@ spec:
         env:
         - name: PGDATA
           value: /var/lib/postgresql/data/pgdata
-        - name: POSTGRES_PRIMARY_HOST
-          value: postgres.old-namespace.svc.cluster.local
-        - name: POSTGRES_REPLICATION_MODE
-          value: slave
         volumeMounts:
         - name: postgres-data
           mountPath: /var/lib/postgresql/data
@@ -271,7 +283,7 @@ spec:
           storage: 10Gi
 ```
 
-Configure PostgreSQL streaming replication from the primary in the old namespace. Once synchronized, promote the replica to primary:
+Configure PostgreSQL streaming replication from the primary in the old namespace. Once synchronized, promote the standby to primary:
 
 ```bash
 # Promote replica to primary
@@ -288,10 +300,10 @@ Before considering the migration complete, verify data integrity:
 ```bash
 # Compare data checksums
 kubectl exec -n old-namespace postgres-0 -- \
-  psql -U postgres -c "SELECT md5(string_agg(column_name::text, '')) FROM table_name"
+  psql -U postgres -c "SELECT md5(string_agg(id::text || ':' || coalesce(important_column::text, ''), ',' ORDER BY id)) FROM table_name"
 
 kubectl exec -n new-namespace postgres-0 -- \
-  psql -U postgres -c "SELECT md5(string_agg(column_name::text, '')) FROM table_name"
+  psql -U postgres -c "SELECT md5(string_agg(id::text || ':' || coalesce(important_column::text, ''), ',' ORDER BY id)) FROM table_name"
 ```
 
 Test application connectivity and functionality in the new namespace before removing resources from the old namespace.
