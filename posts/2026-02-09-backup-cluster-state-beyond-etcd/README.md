@@ -38,6 +38,12 @@ for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
                   roles rolebindings; do
     kubectl get $resource -n $ns -o yaml > $ns/$resource.yaml 2>/dev/null || true
   done
+
+  # Export all namespaced custom resources and other listable resources
+  kubectl api-resources --verbs=list --namespaced=true -o name | \
+    while read resource; do
+      kubectl get "$resource" -n "$ns" -o yaml > "$ns/$resource.yaml" 2>/dev/null || true
+    done
 done
 
 # Back up cluster-scoped resources
@@ -46,15 +52,15 @@ mkdir -p cluster-resources
 for resource in namespaces nodes persistentvolumes \
                 storageclasses clusterroles clusterrolebindings \
                 customresourcedefinitions priorityclasses \
-                podsecuritypolicies validatingwebhookconfigurations \
+                validatingwebhookconfigurations \
                 mutatingwebhookconfigurations; do
   kubectl get $resource -o yaml > cluster-resources/$resource.yaml 2>/dev/null || true
 done
 
-# Back up all custom resources
+# Back up all remaining cluster-scoped custom resources and other listable resources
 kubectl api-resources --verbs=list --namespaced=false -o name | \
   while read resource; do
-    kubectl get $resource -o yaml > cluster-resources/$resource.yaml 2>/dev/null || true
+    kubectl get "$resource" -o yaml > "cluster-resources/$resource.yaml" 2>/dev/null || true
   done
 
 # Create tarball
@@ -78,7 +84,7 @@ spec:
           serviceAccountName: cluster-backup
           containers:
           - name: backup
-            image: bitnami/kubectl:latest
+            image: your-registry/kubectl-awscli:latest
             command:
             - /bin/bash
             - -c
@@ -112,19 +118,18 @@ Install Velero for PV backups:
 
 ```bash
 # Download Velero CLI
-wget https://github.com/vmware-tanzu/velero/releases/download/v1.12.0/velero-v1.12.0-linux-amd64.tar.gz
-tar xzf velero-v1.12.0-linux-amd64.tar.gz
-sudo mv velero-v1.12.0-linux-amd64/velero /usr/local/bin/
+wget https://github.com/velero-io/velero/releases/download/v1.17.0/velero-v1.17.0-linux-amd64.tar.gz
+tar xzf velero-v1.17.0-linux-amd64.tar.gz
+sudo mv velero-v1.17.0-linux-amd64/velero /usr/local/bin/
 
 # Install Velero with AWS S3
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --plugins velero/velero-plugin-for-aws:v1.13.0 \
   --bucket cluster-backups \
   --secret-file ./credentials-velero \
   --backup-location-config region=us-west-2 \
-  --snapshot-location-config region=us-west-2 \
-  --use-volume-snapshots=true
+  --snapshot-location-config region=us-west-2
 ```
 
 Create backup schedules:
@@ -229,7 +234,7 @@ Export all CRDs and their instances:
 #!/bin/bash
 # backup-crds.sh
 
-BACKUP_DIR=/backup/crds-$(date +%Y%m%d)
+BACKUP_DIR=${1:-/backup/crds-$(date +%Y%m%d)}
 mkdir -p $BACKUP_DIR
 
 # Get all CRDs
@@ -241,8 +246,13 @@ kubectl get crds -o name | while read crd; do
   kubectl get $crd -o yaml > $BACKUP_DIR/$CRD_NAME-definition.yaml
 
   # Export all instances
-  RESOURCE=$(kubectl get $crd -o jsonpath='{.spec.names.plural}')
-  kubectl get $RESOURCE --all-namespaces -o yaml > $BACKUP_DIR/$CRD_NAME-instances.yaml || true
+  RESOURCE=$(kubectl get $crd -o jsonpath='{.spec.names.plural}.{.spec.group}')
+  SCOPE=$(kubectl get $crd -o jsonpath='{.spec.scope}')
+  if [ "$SCOPE" = "Namespaced" ]; then
+    kubectl get $RESOURCE --all-namespaces -o yaml > $BACKUP_DIR/$CRD_NAME-instances.yaml || true
+  else
+    kubectl get $RESOURCE -o yaml > $BACKUP_DIR/$CRD_NAME-instances.yaml || true
+  fi
 done
 
 # Create archive
@@ -257,7 +267,7 @@ Export Helm release state:
 #!/bin/bash
 # backup-helm.sh
 
-BACKUP_DIR=/backup/helm-$(date +%Y%m%d)
+BACKUP_DIR=${1:-/backup/helm-$(date +%Y%m%d)}
 mkdir -p $BACKUP_DIR
 
 # Get all Helm releases
@@ -280,7 +290,9 @@ Back up secrets from external stores:
 #!/bin/bash
 # backup-vault-secrets.sh
 
-BACKUP_FILE=/backup/vault-secrets-$(date +%Y%m%d).json
+BACKUP_DIR=${1:-/backup}
+mkdir -p $BACKUP_DIR
+BACKUP_FILE=$BACKUP_DIR/vault-secrets-$(date +%Y%m%d).json
 
 # Export from Vault
 vault kv get -format=json secret/kubernetes | \
@@ -298,15 +310,17 @@ For AWS Secrets Manager:
 #!/bin/bash
 # backup-aws-secrets.sh
 
-BACKUP_FILE=/backup/aws-secrets-$(date +%Y%m%d).json
+BACKUP_DIR=${1:-/backup}
+mkdir -p $BACKUP_DIR
+BACKUP_FILE=$BACKUP_DIR/aws-secrets-$(date +%Y%m%d).json
 
-# List and export all secrets
-aws secretsmanager list-secrets | \
-  jq -r '.SecretList[].Name' | \
+# List and export all secrets as a JSON array
+aws secretsmanager list-secrets --query 'SecretList[].Name' --output text | \
+  tr '\t' '\n' | \
   while read secret; do
-    echo "Backing up: $secret"
-    aws secretsmanager get-secret-value --secret-id $secret >> $BACKUP_FILE
-  done
+    echo "Backing up: $secret" >&2
+    aws secretsmanager get-secret-value --secret-id "$secret"
+  done | jq -s '.' > $BACKUP_FILE
 
 # Encrypt and upload
 gpg --symmetric --cipher-algo AES256 $BACKUP_FILE
@@ -378,7 +392,7 @@ cat > $BACKUP_ROOT/MANIFEST.txt <<EOF
 Kubernetes Cluster Backup
 Created: $(date)
 Cluster: $(kubectl config current-context)
-Kubernetes Version: $(kubectl version --short)
+Kubernetes Version: $(kubectl version)
 
 Components:
 - etcd snapshot: etcd-snapshot.db
