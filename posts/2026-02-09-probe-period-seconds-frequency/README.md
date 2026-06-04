@@ -12,7 +12,7 @@ The `periodSeconds` parameter controls how often Kubernetes runs health checks. 
 
 ## Understanding periodSeconds
 
-After the initial delay, Kubernetes runs probes at `periodSeconds` intervals:
+After the initial delay, Kubernetes generally runs probes at `periodSeconds` intervals. One exception is readiness probes: while a container is not Ready, Kubernetes may run them sooner than the configured interval to make the Pod ready faster.
 
 ```yaml
 livenessProbe:
@@ -74,7 +74,7 @@ livenessProbe:
     port: 8080
   periodSeconds: 10
   failureThreshold: 3
-  # Time to restart: 10s * 3 = 30s detection + restart time
+  # Approximate detection window: up to 10s * 3 = 30s + restart time
 
 # Standard service: Balanced (2 minutes to restart)
 livenessProbe:
@@ -83,7 +83,7 @@ livenessProbe:
     port: 8080
   periodSeconds: 20
   failureThreshold: 3
-  # Time to restart: 20s * 3 = 60s detection + restart time
+  # Approximate detection window: up to 20s * 3 = 60s + restart time
 
 # Background worker: Tolerant (5 minutes to restart)
 livenessProbe:
@@ -92,7 +92,7 @@ livenessProbe:
     port: 8080
   periodSeconds: 60
   failureThreshold: 3
-  # Time to restart: 60s * 3 = 180s detection + restart time
+  # Approximate detection window: up to 60s * 3 = 180s + restart time
 ```
 
 ## Choosing periodSeconds for Readiness Probes
@@ -106,8 +106,8 @@ readinessProbe:
     path: /ready
     port: 8080
   periodSeconds: 3          # Check every 3 seconds
-  failureThreshold: 2       # Remove after 6 seconds
-  successThreshold: 1       # Add back after 3 seconds
+  failureThreshold: 2       # Remove after up to 6 seconds
+  successThreshold: 1       # Add back after the next successful check
 
 # Internal service: Moderate frequency
 readinessProbe:
@@ -136,6 +136,7 @@ Calculate resource usage:
 # Example deployment
 replicas: 100
 periodSeconds: 5
+# Assuming probes run at the configured interval
 
 # Health checks per minute per pod: 60 / 5 = 12
 # Total checks per minute: 100 * 12 = 1,200
