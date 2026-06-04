@@ -27,7 +27,7 @@ cert-manager automates certificate issuance and renewal, making manual mTLS impl
 
 Ensure you have:
 
-- Kubernetes cluster (1.24+)
+- Kubernetes cluster supported by your cert-manager version
 - kubectl with cluster admin access
 - Basic understanding of TLS concepts
 
@@ -36,13 +36,11 @@ Ensure you have:
 Deploy cert-manager using Helm:
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --version v1.20.2 \
+  --set crds.enabled=true
 ```
 
 Verify installation:
@@ -172,9 +170,9 @@ data:
         "crypto/tls"
         "crypto/x509"
         "fmt"
-        "io/ioutil"
         "log"
         "net/http"
+        "os"
     )
 
     func main() {
@@ -185,7 +183,7 @@ data:
         }
 
         // Load CA certificate for client verification
-        caCert, err := ioutil.ReadFile("/certs/ca.crt")
+        caCert, err := os.ReadFile("/certs/ca.crt")
         if err != nil {
             log.Fatal(err)
         }
@@ -284,9 +282,10 @@ data:
         "crypto/tls"
         "crypto/x509"
         "fmt"
-        "io/ioutil"
+        "io"
         "log"
         "net/http"
+        "os"
     )
 
     func main() {
@@ -297,7 +296,7 @@ data:
         }
 
         // Load CA certificate for server verification
-        caCert, err := ioutil.ReadFile("/certs/ca.crt")
+        caCert, err := os.ReadFile("/certs/ca.crt")
         if err != nil {
             log.Fatal(err)
         }
@@ -323,7 +322,7 @@ data:
         }
         defer resp.Body.Close()
 
-        body, _ := ioutil.ReadAll(resp.Body)
+        body, _ := io.ReadAll(resp.Body)
         fmt.Printf("Response: %s\n", body)
     }
 ---
@@ -369,28 +368,14 @@ kubectl logs -n mtls-demo job/client
 
 ## Automatic Certificate Rotation
 
-cert-manager automatically renews certificates before expiry. To ensure pods get updated certificates:
+cert-manager automatically renews certificates before expiry. Kubernetes updates mounted Secret volumes eventually, but applications that load certificates only at startup need to be restarted or taught to reload files. If you deploy with Helm or another templating tool, add a checksum annotation that changes when the certificate Secret changes:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: server
-  namespace: mtls-demo
 spec:
   template:
     metadata:
       annotations:
-        # Force pod restart when cert changes
-        cert-manager.io/certificate-hash: "{{ .Values.certHash }}"
-    spec:
-      containers:
-      - name: server
-        # ... configuration ...
-        lifecycle:
-          preStop:
-            exec:
-              command: ["/bin/sh", "-c", "sleep 10"]
+        checksum/certs: "{{ .Values.certHash }}"
 ```
 
 Or use CSI driver for automatic certificate updates:
@@ -421,7 +406,17 @@ spec:
 
 ## Using cert-manager Trust for CA Distribution
 
-Distribute CA certificates to pods automatically:
+Distribute CA certificates to pods automatically. Secret sources must exist in trust-manager's configured trust namespace, so copy `mtls-ca-secret` there before creating the bundle:
+
+```bash
+kubectl get secret mtls-ca-secret -n mtls-demo -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
+kubectl create secret generic mtls-ca-secret -n cert-manager \
+  --from-file=ca.crt=ca.crt \
+  --dry-run=client -o yaml \
+  | kubectl apply -f -
+```
+
+Then create the bundle:
 
 ```yaml
 apiVersion: trust.cert-manager.io/v1alpha1
