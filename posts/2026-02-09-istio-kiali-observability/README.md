@@ -12,7 +12,7 @@ Kiali provides visualization and management capabilities for Istio service meshe
 
 ## Installing Kiali in Your Mesh
 
-The easiest way to install Kiali is through the Istio operator or Helm chart. For a standard installation alongside Istio:
+The recommended way to install Kiali with Helm is to install the Kiali operator and let it create the Kiali server. For a standard installation alongside Istio:
 
 ```bash
 # Add the Kiali Helm repository
@@ -20,16 +20,18 @@ The easiest way to install Kiali is through the Istio operator or Helm chart. Fo
 helm repo add kiali https://kiali.org/helm-charts
 helm repo update
 
-# Install Kiali with default settings
+# Install the Kiali operator and create a Kiali instance
 helm install \
-  --namespace istio-system \
-  --set auth.strategy="anonymous" \
-  --set deployment.accessible_namespaces=\["**"\] \
-  kiali-server \
-  kiali/kiali-server
+  --namespace kiali-operator \
+  --create-namespace \
+  --set cr.create=true \
+  --set cr.namespace=istio-system \
+  --set cr.spec.auth.strategy="anonymous" \
+  kiali-operator \
+  kiali/kiali-operator
 ```
 
-This creates a Kiali instance accessible from all namespaces. The anonymous auth strategy works for development but production deployments should use token or OpenID authentication.
+This creates a Kiali instance with the default cluster-wide namespace access. The anonymous auth strategy works for development but production deployments should use token or OpenID authentication.
 
 Verify the installation:
 
@@ -48,43 +50,44 @@ Open your browser to `http://localhost:20001` to see the Kiali interface.
 
 ## Configuring Data Sources
 
-Kiali aggregates data from multiple sources: Prometheus for metrics, Jaeger for traces, and Grafana for detailed dashboards. Configure these integrations in the Kiali ConfigMap:
+Kiali aggregates data from multiple sources: Prometheus for metrics, Jaeger for traces, and Grafana for detailed dashboards. Configure these integrations in the Kiali custom resource:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: kiali.io/v1alpha1
+kind: Kiali
 metadata:
   name: kiali
   namespace: istio-system
-data:
-  config.yaml: |
-    external_services:
-      prometheus:
-        url: http://prometheus.istio-system:9090
-      tracing:
-        enabled: true
-        in_cluster_url: http://jaeger-query.istio-system:16686
-        url: http://jaeger-query.istio-system:16686
-        namespace_selector: true
-      grafana:
-        enabled: true
-        in_cluster_url: http://grafana.istio-system:3000
-        url: http://grafana.istio-system:3000
-        dashboards:
-        - name: "Istio Service Dashboard"
-          variables:
-            namespace: "var-namespace"
-            service: "var-service"
-        - name: "Istio Workload Dashboard"
-          variables:
-            namespace: "var-namespace"
-            workload: "var-workload"
+spec:
+  external_services:
+    prometheus:
+      url: http://prometheus.istio-system:9090
+    tracing:
+      enabled: true
+      internal_url: http://tracing.istio-system:16685/jaeger
+      external_url: http://jaeger.example.com/jaeger
+      use_grpc: true
+    grafana:
+      enabled: true
+      internal_url: http://grafana.istio-system:3000
+      external_url: http://grafana.example.com
+      dashboards:
+      - name: "Istio Service Dashboard"
+        variables:
+          datasource: "var-datasource"
+          namespace: "var-namespace"
+          service: "var-service"
+      - name: "Istio Workload Dashboard"
+        variables:
+          datasource: "var-datasource"
+          namespace: "var-namespace"
+          workload: "var-workload"
 ```
 
-Restart Kiali after updating the ConfigMap:
+Apply the updated custom resource. The Kiali operator reconciles the deployment:
 
 ```bash
-kubectl rollout restart deployment/kiali -n istio-system
+kubectl apply -f kiali.yaml
 ```
 
 Kiali now pulls metrics from Prometheus, trace data from Jaeger, and links to Grafana dashboards for detailed analysis.
@@ -143,7 +146,7 @@ When Kiali finds issues, it displays warning or error icons. Click them for deta
 Create a test misconfiguration to see validation in action:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: broken-route
@@ -162,28 +165,31 @@ Apply this VirtualService and view it in Kiali. The UI shows an error indicating
 
 ## Implementing Custom Health Checks
 
-Kiali uses Kubernetes and Envoy health signals by default, but you can configure custom health indicators:
+Kiali uses Kubernetes and traffic health signals by default, but you can configure custom traffic health indicators in the Kiali custom resource:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: kiali.io/v1alpha1
+kind: Kiali
 metadata:
   name: kiali
   namespace: istio-system
-data:
-  config.yaml: |
-    health_config:
-      rate:
-        - namespace: ".*"
-          kind: ".*"
-          name: ".*"
-          tolerance:
-            - code: "^5\\d\\d$"
-              degraded: 1
-              failure: 10
-            - code: "^4\\d\\d$"
-              degraded: 10
-              failure: 20
+spec:
+  health_config:
+    rate:
+      - namespace: ".*"
+        kind: ".*"
+        name: ".*"
+        tolerance:
+          - code: "^5\\d\\d$"
+            direction: ".*"
+            protocol: "http"
+            degraded: 1
+            failure: 10
+          - code: "^4\\d\\d$"
+            direction: ".*"
+            protocol: "http"
+            degraded: 10
+            failure: 20
 ```
 
 This configuration defines health thresholds based on HTTP status codes. Services with 1% 5xx errors show as degraded, while 10% triggers failure status. Adjust these thresholds based on your SLOs.
@@ -217,6 +223,8 @@ func proxyRequest(w http.ResponseWriter, r *http.Request) {
     // Propagate Istio tracing headers
     tracingHeaders := []string{
         "x-request-id",
+        "traceparent",
+        "tracestate",
         "x-b3-traceid",
         "x-b3-spanid",
         "x-b3-parentspanid",
@@ -230,8 +238,13 @@ func proxyRequest(w http.ResponseWriter, r *http.Request) {
         }
     }
 
-    resp, _ := client.Do(req)
-    // Handle response
+    resp, err := client.Do(req)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadGateway)
+        return
+    }
+    defer resp.Body.Close()
+    w.WriteHeader(resp.StatusCode)
 }
 ```
 
@@ -256,7 +269,7 @@ For detailed security status:
 Use this information to gradually roll out strict mTLS:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -351,38 +364,35 @@ Set up alerts for mesh-wide problems like sudden error rate increases or mTLS de
 
 ## Integrating with CI/CD Pipelines
 
-Use Kiali's API to validate Istio configurations in CI/CD:
+Use Kiali's API to check Istio configuration validations in CI/CD after applying resources to a test or staging cluster:
 
 ```bash
-# Validate Istio resources before applying
-curl -X POST http://kiali:20001/api/namespaces/default/istio/validate \
-  -H "Content-Type: application/yaml" \
-  -d @virtualservice.yaml
+# Get validation summaries for Istio resources in a namespace
+curl -s http://kiali:20001/api/namespaces/default/validations
 
 # Check for errors in the response
 ```
 
-This prevents deploying broken configurations that Kiali would flag as invalid. Integrate this check into your deployment pipeline:
+This flags configurations that Kiali detects as invalid in the target cluster. Integrate this check into your deployment pipeline:
 
 ```yaml
 # Example GitLab CI job
 validate-istio:
   stage: validate
   script:
+    - kubectl apply -f istio/ --dry-run=server
+    - kubectl apply -f istio/
     - kubectl port-forward svc/kiali -n istio-system 20001:20001 &
     - sleep 5
+    - response=$(curl -s http://localhost:20001/api/namespaces/default/validations)
     - |
-      for file in istio/*.yaml; do
-        response=$(curl -s -X POST http://localhost:20001/api/namespaces/default/istio/validate \
-          -H "Content-Type: application/yaml" \
-          --data-binary @$file)
-        if echo $response | grep -q "error"; then
-          echo "Validation failed for $file"
-          exit 1
-        fi
-      done
+      if echo "$response" | grep -q '"errors":[1-9]'; then
+        echo "Kiali validation failed"
+        echo "$response"
+        exit 1
+      fi
 ```
 
-This catches configuration errors before they reach production.
+This catches configuration errors before they reach production when the job runs against a non-production cluster.
 
 Kiali transforms Istio from an abstract configuration layer into a visible, manageable system. The combination of real-time traffic visualization, configuration validation, and integrated tracing makes it an essential tool for operating service meshes at scale.
