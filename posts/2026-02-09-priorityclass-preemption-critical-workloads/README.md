@@ -16,7 +16,7 @@ PriorityClass allows you to define the relative importance of pods, and preempti
 
 PriorityClass is a cluster-wide resource that assigns a priority value to pods. Higher values indicate higher priority. When the scheduler cannot place a pod due to resource constraints, it can evict lower-priority pods to make room.
 
-The priority value is an integer, typically ranging from 0 to 1,000,000,000. Kubernetes reserves values above 1,000,000,000 for system-critical pods that should never be preempted.
+The priority value is a 32-bit integer from -2,147,483,648 to 1,000,000,000 for user-created PriorityClasses. Kubernetes reserves values above 1,000,000,000 for built-in system-critical PriorityClasses.
 
 ## Creating Basic PriorityClasses
 
@@ -28,7 +28,7 @@ Let's create a priority hierarchy for different workload types:
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: system-critical
+  name: platform-critical
 value: 1000000000  # Very high priority
 globalDefault: false
 description: "Reserved for critical system components that must always run"
@@ -103,8 +103,8 @@ spec:
       labels:
         app: monitoring-agent
     spec:
-      # Assign system-critical priority
-      priorityClassName: system-critical
+      # Assign platform-critical priority
+      priorityClassName: platform-critical
       containers:
       - name: agent
         image: monitoring-agent:v1.0
@@ -219,8 +219,8 @@ spec:
 When preemption occurs, the scheduler:
 
 1. Identifies pods that can be evicted (lower priority than the pending pod)
-2. Chooses victims that minimize the number of preempted pods
-3. Sends a graceful termination signal (SIGTERM)
+2. Chooses a suitable node and a set of lower-priority victims, preferring options that avoid PDB violations and minimize disruption
+3. Deletes the selected victim pods so the kubelet can gracefully terminate their containers
 4. Waits for the graceful termination period
 5. Schedules the high-priority pod once space is available
 
@@ -338,7 +338,7 @@ spec:
       app: api-server
 ```
 
-Even if lower-priority pods exist, the scheduler won't preempt them if it would violate the PDB.
+The scheduler tries to avoid preempting pods if doing so would violate the PDB, but PDB protection during scheduler preemption is best effort. If no other suitable victims are available, lower-priority pods can still be preempted despite the PDB.
 
 ## Quota and Priority
 
@@ -355,7 +355,6 @@ spec:
   hard:
     requests.cpu: "100"
     requests.memory: "200Gi"
-    persistentvolumeclaims: "50"
   scopeSelector:
     matchExpressions:
     - operator: In
@@ -380,7 +379,7 @@ spec:
 
 ## StatefulSet with Priority
 
-StatefulSets benefit from priority to ensure critical stateful workloads aren't preempted:
+StatefulSets benefit from priority to make critical stateful workloads less likely to be preempted by lower-value workloads:
 
 ```yaml
 # database-statefulset.yaml
@@ -470,7 +469,7 @@ data:
 
 ## Best Practices
 
-1. **Use System-Critical Sparingly**: Reserve very high priorities (>1,000,000,000) only for essential system components
+1. **Use Very High Priorities Sparingly**: Reserve values near the user-defined maximum of 1,000,000,000 only for essential system components
 2. **Establish Clear Tiers**: Define 3-5 priority levels that map to your organizational needs
 3. **Document Priority Policies**: Create clear guidelines for which workloads get which priority
 4. **Protect with PDBs**: Use PodDisruptionBudgets to prevent excessive preemption of important workloads
@@ -515,4 +514,3 @@ kubectl get pods --all-namespaces -o json | \
 ```
 
 PriorityClass and preemption are essential tools for managing resource-constrained Kubernetes clusters. By properly configuring priorities, you ensure that critical workloads always get the resources they need while less important workloads gracefully yield when necessary.
-
