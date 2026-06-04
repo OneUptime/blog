@@ -17,7 +17,7 @@ The `topologyKey` in pod affinity rules determines the scope of topology for pod
 Common topology keys:
 - `kubernetes.io/hostname` - Single node
 - `topology.kubernetes.io/zone` - Availability zone
-- `topology.kubernetes.io/rack` - Physical rack
+- `topology.example.com/rack` - Physical rack
 - `topology.kubernetes.io/region` - Cloud region
 
 ## Labeling Nodes with Rack Information
@@ -27,16 +27,16 @@ First, label nodes with rack topology:
 ```bash
 # Label nodes in rack-1
 
-kubectl label nodes node-1 node-2 node-3 topology.kubernetes.io/rack=rack-1
+kubectl label nodes node-1 node-2 node-3 topology.example.com/rack=rack-1
 
 # Label nodes in rack-2
-kubectl label nodes node-4 node-5 node-6 topology.kubernetes.io/rack=rack-2
+kubectl label nodes node-4 node-5 node-6 topology.example.com/rack=rack-2
 
 # Label nodes in rack-3
-kubectl label nodes node-7 node-8 node-9 topology.kubernetes.io/rack=rack-3
+kubectl label nodes node-7 node-8 node-9 topology.example.com/rack=rack-3
 
 # Verify labels
-kubectl get nodes -L topology.kubernetes.io/rack
+kubectl get nodes -L topology.example.com/rack
 ```
 
 ## Pod Anti-Affinity for Rack Distribution
@@ -50,7 +50,7 @@ kind: Deployment
 metadata:
   name: distributed-app
 spec:
-  replicas: 6
+  replicas: 3
   selector:
     matchLabels:
       app: distributed-app
@@ -69,7 +69,7 @@ spec:
                 operator: In
                 values:
                 - distributed-app
-            topologyKey: topology.kubernetes.io/rack
+            topologyKey: topology.example.com/rack
       containers:
       - name: app
         image: distributed-app:v1.0
@@ -111,7 +111,7 @@ spec:
                 operator: In
                 values:
                 - distributed-app
-            topologyKey: topology.kubernetes.io/rack
+            topologyKey: topology.example.com/rack
       containers:
       - name: redis
         image: redis:7.2
@@ -137,6 +137,9 @@ spec:
     matchLabels:
       app: analytics-worker
   template:
+    metadata:
+      labels:
+        app: analytics-worker
     spec:
       affinity:
         podAffinity:
@@ -150,7 +153,7 @@ spec:
                   operator: In
                   values:
                   - data-layer
-              topologyKey: topology.kubernetes.io/rack
+              topologyKey: topology.example.com/rack
         podAntiAffinity:
           # But don't put multiple workers on same node
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -178,7 +181,7 @@ metadata:
   name: database-cluster
 spec:
   serviceName: database
-  replicas: 9
+  replicas: 3
   selector:
     matchLabels:
       app: database
@@ -197,7 +200,7 @@ spec:
                 operator: In
                 values:
                 - database
-            topologyKey: topology.kubernetes.io/rack
+            topologyKey: topology.example.com/rack
           # Prefer different zones
           preferredDuringSchedulingIgnoredDuringExecution:
           - weight: 100
@@ -231,25 +234,29 @@ spec:
 
 ## Cassandra Ring with Rack Awareness
 
-Deploy Cassandra with rack awareness:
+Deploy Cassandra with rack awareness. Repeat the StatefulSet per rack with the rack-specific `nodeSelector` and `CASSANDRA_RACK` value:
 
 ```yaml
 # cassandra-rack-aware.yaml
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: cassandra
+  name: cassandra-rack-1
 spec:
   serviceName: cassandra
-  replicas: 9
+  replicas: 1
   selector:
     matchLabels:
       app: cassandra
+      cassandra-rack: rack-1
   template:
     metadata:
       labels:
         app: cassandra
+        cassandra-rack: rack-1
     spec:
+      nodeSelector:
+        topology.example.com/rack: rack-1
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -260,22 +267,20 @@ spec:
                 values:
                 - cassandra
             # Ensure pods spread across racks
-            topologyKey: topology.kubernetes.io/rack
+            topologyKey: topology.example.com/rack
       containers:
       - name: cassandra
         image: cassandra:4.1
         env:
         - name: CASSANDRA_SEEDS
-          value: "cassandra-0.cassandra,cassandra-1.cassandra,cassandra-2.cassandra"
+          value: "cassandra-rack-1-0.cassandra,cassandra-rack-2-0.cassandra,cassandra-rack-3-0.cassandra"
         - name: CASSANDRA_CLUSTER_NAME
           value: "RackAwareCluster"
         # Enable rack awareness
         - name: CASSANDRA_DC
           value: "datacenter1"
         - name: CASSANDRA_RACK
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.labels['topology.kubernetes.io/rack']
+          value: "rack-1"
         - name: CASSANDRA_ENDPOINT_SNITCH
           value: "GossipingPropertyFileSnitch"
         resources:
@@ -313,11 +318,14 @@ kind: Deployment
 metadata:
   name: power-aware-app
 spec:
-  replicas: 6
+  replicas: 3
   selector:
     matchLabels:
       app: power-aware-app
   template:
+    metadata:
+      labels:
+        app: power-aware-app
     spec:
       affinity:
         podAntiAffinity:
@@ -359,6 +367,10 @@ spec:
       app: latency-app
       tier: frontend
   template:
+    metadata:
+      labels:
+        app: latency-app
+        tier: frontend
     spec:
       affinity:
         podAffinity:
@@ -388,12 +400,12 @@ Check pod distribution across racks:
 # View pod distribution
 kubectl get pods -l app=distributed-app -o json | \
   jq -r '.items[] | .spec.nodeName' | \
-  xargs -I {} kubectl get node {} -o jsonpath='{.metadata.name}{"\t"}{.metadata.labels.topology\.kubernetes\.io/rack}{"\n"}'
+  xargs -I {} kubectl get node {} -o jsonpath='{.metadata.name}{"\t"}{.metadata.labels.topology\.example\.com/rack}{"\n"}'
 
 # Count pods per rack
 kubectl get pods -l app=distributed-app -o json | \
   jq -r '.items[] | .spec.nodeName' | \
-  xargs -I {} kubectl get node {} -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/rack}{"\n"}' | \
+  xargs -I {} kubectl get node {} -o jsonpath='{.metadata.labels.topology\.example\.com/rack}{"\n"}' | \
   sort | uniq -c
 ```
 
@@ -424,9 +436,8 @@ kubectl describe pod <pod-name> | grep -A 20 Events
 
 # Count available nodes per rack
 kubectl get nodes -o json | \
-  jq -r '.items[] | .metadata.labels["topology.kubernetes.io/rack"]' | \
+  jq -r '.items[] | .metadata.labels["topology.example.com/rack"]' | \
   sort | uniq -c
 ```
 
 Rack-aware scheduling using pod affinity with custom topology keys ensures your workloads are distributed according to physical infrastructure boundaries, improving fault tolerance and optimizing network performance based on your data center layout.
-
