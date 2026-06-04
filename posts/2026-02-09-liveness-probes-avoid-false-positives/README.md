@@ -29,7 +29,13 @@ metadata:
   name: api-service
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: api-service
   template:
+    metadata:
+      labels:
+        app: api-service
     spec:
       containers:
       - name: api
@@ -230,7 +236,13 @@ kind: Deployment
 metadata:
   name: high-load-service
 spec:
+  selector:
+    matchLabels:
+      app: high-load-service
   template:
+    metadata:
+      labels:
+        app: high-load-service
     spec:
       containers:
       - name: app
@@ -257,7 +269,7 @@ Increasing timeouts and failure thresholds accommodates load-related slowness wh
 
 Aggressive liveness probes can trigger cascade failures where pod restarts cause load spikes that trigger more restarts. This creates a death spiral where the cluster cannot stabilize.
 
-Prevent cascades by configuring appropriate PodDisruptionBudgets:
+Reduce overlapping disruptions by configuring appropriate PodDisruptionBudgets:
 
 ```yaml
 apiVersion: policy/v1
@@ -271,7 +283,7 @@ spec:
       app: api-service
 ```
 
-PDBs prevent Kubernetes from restarting too many pods simultaneously, even during liveness probe failures. This limits blast radius and allows healthy pods to continue serving while failed pods restart.
+PDBs limit voluntary disruptions such as evictions during node maintenance, but they do not prevent kubelet restarts caused by failed liveness probes. They still help preserve capacity during maintenance so voluntary disruptions do not combine with liveness-related restarts and reduce availability further.
 
 Implement circuit breakers in health check endpoints:
 
@@ -320,17 +332,17 @@ This pattern prevents endless restart loops by temporarily passing health checks
 
 ## Monitoring Liveness Probe Behavior
 
-Track liveness probe restarts to identify configuration problems:
+Track container restarts and correlate them with probe failure events to identify liveness configuration problems:
 
 ```promql
-# Rate of liveness-triggered restarts
+# Rate of container restarts
 
 rate(kube_pod_container_status_restarts_total[5m])
 
-# Pods restarting frequently due to liveness probes
+# Pods restarting frequently
 kube_pod_container_status_restarts_total > 5
 
-# Average time between restarts
+# Pods that started recently
 time() - kube_pod_start_time{} < 300
 ```
 
@@ -352,7 +364,7 @@ groups:
   - alert: PodCrashLoop
     expr: |
       kube_pod_container_status_restarts_total > 5
-      and
+      and on(namespace, pod)
       time() - kube_pod_start_time{} < 600
     labels:
       severity: critical
@@ -365,11 +377,11 @@ Review restart patterns:
 ```bash
 # Check restart counts across deployments
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name) \(.status.containerStatuses[0].restartCount)"' | \
-  awk '$3 > 0' | sort -k3 -rn
+  jq -r '.items[] as $pod | $pod.status.containerStatuses[]? | "\($pod.metadata.namespace) \($pod.metadata.name) \(.name) \(.restartCount)"' | \
+  awk '$4 > 0' | sort -k4 -rn
 
 # View recent restart events
-kubectl get events --all-namespaces --field-selector reason=Unhealthy --sort-by='.lastTimestamp'
+kubectl get events --all-namespaces --field-selector reason=Unhealthy --sort-by='.metadata.creationTimestamp'
 ```
 
 Liveness probes are essential for recovering from unrecoverable failures, but they must be configured carefully to avoid creating new problems. By designing probes that check only core application health, using appropriate timing parameters, and monitoring restart behavior, you build reliable self-healing systems that restart when necessary without false positive restarts that degrade availability.
