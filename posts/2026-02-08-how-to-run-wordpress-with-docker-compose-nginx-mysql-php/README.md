@@ -63,8 +63,6 @@ wordpress-docker/
 
 ```yaml
 # docker-compose.yml - WordPress with Nginx, PHP-FPM, and MySQL
-version: "3.8"
-
 services:
   nginx:
     image: nginx:1.25-alpine
@@ -129,9 +127,8 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     command:
       # Optimized MySQL settings for WordPress
-      - --default-authentication-plugin=mysql_native_password
       - --innodb-buffer-pool-size=256M
-      - --innodb-log-file-size=64M
+      - --innodb-redo-log-capacity=128M
       - --max-allowed-packet=64M
       - --max-connections=100
     healthcheck:
@@ -164,7 +161,9 @@ networks:
 
 volumes:
   wordpress-files:
+    name: wordpress-files
   mysql-data:
+    name: mysql-data
 ```
 
 ## Nginx Configuration
@@ -187,7 +186,6 @@ server {
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
 
     # Gzip compression for faster page loads
     gzip on;
@@ -314,6 +312,9 @@ Navigate to `http://yourdomain.com` to complete the WordPress installation wizar
 For production, add SSL. You can use Certbot in a separate container or put the entire stack behind Traefik.
 
 ```bash
+# Stop Nginx first so Certbot can bind port 80 for the HTTP-01 challenge
+docker compose stop nginx
+
 # Option 1: Use Certbot standalone to get certificates
 docker run --rm \
   -v ./nginx/certs:/etc/letsencrypt \
@@ -324,6 +325,8 @@ docker run --rm \
     -d www.yourdomain.com \
     --email your-email@example.com \
     --agree-tos
+
+docker compose up -d nginx
 ```
 
 Then update the Nginx configuration to serve HTTPS.
@@ -347,7 +350,7 @@ server {
 
 ```bash
 # Backup the MySQL database
-docker exec wp-mysql mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" wordpress > wordpress-db-$(date +%Y%m%d).sql
+docker compose exec -T wp-mysql sh -c 'mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" wordpress' > wordpress-db-$(date +%Y%m%d).sql
 
 # Backup WordPress files (themes, plugins, uploads)
 docker run --rm \
