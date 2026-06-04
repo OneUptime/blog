@@ -8,11 +8,11 @@ Description: Master Kustomize namePrefix and nameSuffix transformers to systemat
 
 ---
 
-Kustomize namePrefix and nameSuffix transformers automatically modify resource names and all references to those resources. This enables deploying multiple instances of the same application in a cluster without name conflicts. These transformers are essential for multi-tenant architectures and environment separation.
+Kustomize namePrefix and nameSuffix transformers automatically modify resource names and built-in name references to those resources. This enables deploying multiple instances of the same application in a cluster without name conflicts. These transformers are essential for multi-tenant architectures and environment separation.
 
 ## Understanding name transformers
 
-When you apply namePrefix or nameSuffix, Kustomize changes resource names and updates all cross-resource references automatically. This includes Service selectors, ConfigMap references, Secret references, and role bindings. The transformer understands Kubernetes resource relationships and maintains referential integrity.
+When you apply namePrefix or nameSuffix, Kustomize changes resource names and updates built-in name references automatically. This includes Ingress service backends, ConfigMap references, Secret references, and role bindings. The transformer understands Kubernetes resource relationships and maintains referential integrity for supported reference fields.
 
 This automation eliminates manual find-and-replace operations and reduces configuration errors when deploying multiple application instances.
 
@@ -173,7 +173,7 @@ Results in `auth-feature-web-app-dev` for isolated testing.
 
 ## Automatic reference updates
 
-Kustomize updates all references:
+Kustomize updates built-in name references:
 
 ```yaml
 # base/deployment.yaml
@@ -210,7 +210,7 @@ spec:
               number: 80
 ```
 
-All references update automatically when you apply namePrefix.
+Built-in name references update automatically when you apply namePrefix.
 
 ## Role binding updates
 
@@ -462,30 +462,31 @@ spec:
 
 Name transformers only change resource names, not label values. This is intentional to allow Services to select renamed Deployments.
 
-## Limitations and workarounds
+## Cluster-scoped resource considerations
 
-Some resources don't transform:
+Cluster-scoped resources are transformed too, but they remain cluster-wide:
 
 ```yaml
 # ClusterRoles and ClusterRoleBindings
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: app-cluster-role  # Won't be prefixed
+  name: app-cluster-role  # Becomes team-a-app-cluster-role
 ```
 
-Cluster-scoped resources need manual naming to avoid conflicts.
+Use unique prefixes or suffixes for cluster-scoped resources because namespaces do not isolate them.
 
 ## Combining with other transformers
 
-Use with commonLabels:
+Use with labels:
 
 ```yaml
 namePrefix: team-a-
 
-commonLabels:
-  team: team-a
-  managed-by: kustomize
+labels:
+- pairs:
+    team: team-a
+    managed-by: kustomize
 ```
 
 ## Best practices
