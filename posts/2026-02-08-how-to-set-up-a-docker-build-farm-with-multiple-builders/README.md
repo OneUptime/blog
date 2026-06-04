@@ -19,8 +19,8 @@ graph TD
     A[Developer Workstation] --> B[Buildx CLI]
     B --> C[Builder: farm]
     C --> D[Node 1: x86_64 Server]
-    C --> E[Node 2: ARM64 Server]
-    C --> F[Node 3: x86_64 Server]
+    C --> E[Node 2: x86_64 Server]
+    C --> F[Node 3: ARM64 Server]
     D --> G[Registry]
     E --> G
     F --> G
@@ -138,13 +138,14 @@ Write your Dockerfile to work well across architectures. Use multi-stage builds 
 # The syntax directive enables BuildKit features
 # syntax=docker/dockerfile:1
 
-# Build stage - uses the platform-specific Go compiler
+# Build stage - uses the build platform's Go compiler
 FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
 
 # TARGETPLATFORM is set by Buildx (e.g., linux/amd64, linux/arm64)
 ARG TARGETPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
+ARG TARGETVARIANT
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -153,8 +154,9 @@ RUN go mod download
 COPY . .
 
 # Cross-compile for the target platform
-# GOOS and GOARCH are set from the Buildx target arguments
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+# GOOS, GOARCH, and GOARM are set from the Buildx target arguments
+RUN if [ "$TARGETARCH" = "arm" ] && [ -n "$TARGETVARIANT" ]; then export GOARM="${TARGETVARIANT#v}"; fi; \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -ldflags="-s -w" -o /app/server ./cmd/server
 
 # Runtime stage - uses the target platform's base image
@@ -231,7 +233,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up SSH key for build nodes
         run: |
@@ -241,7 +243,7 @@ jobs:
           ssh-keyscan node1.example.com node2.example.com node3.example.com >> ~/.ssh/known_hosts
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Create build farm
         run: |
@@ -253,7 +255,7 @@ jobs:
           docker buildx inspect ci-farm --bootstrap
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
