@@ -48,8 +48,8 @@ spec:
       consumer_timeout = 3600000
 EOF
 
-# Wait for cluster to be ready
-kubectl wait --for=condition=Ready rabbitmqcluster/rabbitmq --timeout=300s
+# Wait for all RabbitMQ replicas to be ready
+kubectl wait --for=condition=AllReplicasReady rabbitmqcluster/rabbitmq --timeout=300s
 ```
 
 Create a worker deployment that consumes from RabbitMQ:
@@ -193,7 +193,7 @@ metadata:
   name: rabbitmq-consumer-secret
 type: Opaque
 stringData:
-  host: "amqp://guest:guest@rabbitmq.default.svc.cluster.local:5672/"
+  host: "amqp://rabbitmq.default.svc.cluster.local:5672/"
 ---
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
@@ -205,6 +205,12 @@ spec:
   - parameter: host
     name: rabbitmq-consumer-secret
     key: host
+  - parameter: username
+    name: rabbitmq-default-user
+    key: username
+  - parameter: password
+    name: rabbitmq-default-user
+    key: password
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -414,7 +420,8 @@ metadata:
 spec:
   # Use pod identity (IRSA)
   podIdentity:
-    provider: aws-eks
+    provider: aws
+    identityOwner: workload
 
   # Or use secrets
   # secretTargetRef:
@@ -448,9 +455,9 @@ spec:
       queueLength: "5"  # Target 5 messages per pod
       awsRegion: us-east-1
 
-      # Optional: scale based on message age
+      # Optional: scale only on visible messages and include delayed messages
       # scaleOnInFlight: "false"
-      # scaleDelayInSeconds: "30"
+      # scaleOnDelayed: "true"
 ```
 
 ## Multi-Queue Scaling
@@ -478,6 +485,7 @@ spec:
     authenticationRef:
       name: rabbitmq-trigger-auth
     metadata:
+      mode: QueueLength
       queueName: high-priority
       value: "5"  # Scale aggressively
 
@@ -486,6 +494,7 @@ spec:
     authenticationRef:
       name: rabbitmq-trigger-auth
     metadata:
+      mode: QueueLength
       queueName: normal-priority
       value: "20"
 
@@ -494,6 +503,7 @@ spec:
     authenticationRef:
       name: rabbitmq-trigger-auth
     metadata:
+      mode: QueueLength
       queueName: low-priority
       value: "50"
 ```
@@ -556,7 +566,7 @@ Track scaling metrics:
 kubectl describe scaledobject rabbitmq-worker-scaler
 
 # View HPA metrics
-kubectl get hpa rabbitmq-worker-scaler -o yaml
+kubectl get hpa keda-hpa-rabbitmq-worker-scaler -o yaml
 
 # Check queue depth
 kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/default/s0-rabbitmq-tasks" | jq .
@@ -568,14 +578,14 @@ kubectl logs -n keda -l app=keda-operator
 Create Grafana dashboards:
 
 ```promql
-# Current replica count
+# Scaler active status
 keda_scaler_active{scaledObject="rabbitmq-worker-scaler"}
 
 # Queue depth
 keda_scaler_metrics_value{scaledObject="rabbitmq-worker-scaler"}
 
 # Scaling events
-rate(keda_scaler_errors_total[5m])
+rate(keda_scaler_detail_errors_total[5m])
 
 # Messages per pod
 (
