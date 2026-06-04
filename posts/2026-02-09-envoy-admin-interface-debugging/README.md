@@ -30,7 +30,9 @@ admin:
     typed_config:
       "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
       path: "/var/log/envoy/admin_access.log"
-      format: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%\" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% \"%REQ(USER-AGENT)%\"\n"
+      log_format:
+        text_format_source:
+          inline_string: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%\" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% \"%REQ(USER-AGENT)%\"\n"
 
 static_resources:
   listeners:
@@ -148,7 +150,7 @@ curl -X POST http://localhost:9901/reset_counters
 curl http://localhost:9901/runtime
 
 # Modify runtime parameter (requires admin access)
-curl -X POST http://localhost:9901/runtime_modify?key=health_check.min_interval&value=10000
+curl -X POST "http://localhost:9901/runtime_modify?health_check.min_interval=10000"
 ```
 
 ### Logging Control
@@ -161,7 +163,7 @@ curl http://localhost:9901/logging
 curl -X POST http://localhost:9901/logging?level=debug
 
 # Set specific logger to trace
-curl -X POST "http://localhost:9901/logging?logger=connection&level=trace"
+curl -X POST "http://localhost:9901/logging?connection=trace"
 
 # Common loggers:
 # - connection: connection events
@@ -187,7 +189,7 @@ curl http://localhost:9901/server_info
 
 ### Health Check Override
 
-Manually fail or pass health checks:
+Manually fail or pass health checks when the HTTP health check filter is configured:
 
 ```bash
 # Fail health checks (take out of load balancer)
@@ -196,7 +198,7 @@ curl -X POST http://localhost:9901/healthcheck/fail
 # Pass health checks (add back to load balancer)
 curl -X POST http://localhost:9901/healthcheck/ok
 
-# Check current health check status
+# Check Envoy readiness state
 curl http://localhost:9901/ready
 ```
 
@@ -226,7 +228,7 @@ curl http://localhost:9901/heap_dump
 
 ## Building a Debug Dashboard
 
-Create a simple HTML dashboard for common operations:
+Create a simple HTML dashboard for common operations. Serve it from the same origin as a local admin proxy, or browser CORS checks will block direct reads from `http://localhost:9901`.
 
 ```html
 <!DOCTYPE html>
@@ -273,7 +275,7 @@ Create a simple HTML dashboard for common operations:
     </div>
 
     <script>
-        const adminUrl = 'http://localhost:9901';
+        const adminUrl = '/admin';
 
         async function loadClusters() {
             const response = await fetch(`${adminUrl}/clusters`);
@@ -339,43 +341,17 @@ curl http://localhost:9901/stats
 ```
 
 ```yaml
-# Method 2: Add authentication with external auth filter
-listeners:
-- name: admin_listener
+# Method 2: Restrict accessible admin paths
+admin:
   address:
     socket_address:
-      address: 0.0.0.0
+      address: 127.0.0.1
       port_value: 9901
-  filter_chains:
-  - filters:
-    - name: envoy.filters.network.http_connection_manager
-      typed_config:
-        "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-        stat_prefix: admin_http
-        codec_type: AUTO
-        route_config:
-          name: admin_route
-          virtual_hosts:
-          - name: admin
-            domains: ["*"]
-            routes:
-            - match:
-                prefix: "/"
-              route:
-                cluster: admin_backend
-        http_filters:
-        # Add external authentication
-        - name: envoy.filters.http.ext_authz
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
-            http_service:
-              server_uri:
-                uri: "http://auth-service:8080"
-                cluster: auth_service
-                timeout: 0.5s
-        - name: envoy.filters.http.router
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  allow_paths:
+  - prefix: /stats
+  - prefix: /config_dump
+  - exact: /ready
+  - prefix: /healthcheck
 ```
 
 ## Troubleshooting Common Issues
@@ -393,7 +369,7 @@ curl http://localhost:9901/clusters | grep -A 10 "backend_service"
 curl http://localhost:9901/stats | grep overflow
 
 # Enable debug logging for router
-curl -X POST "http://localhost:9901/logging?logger=router&level=debug"
+curl -X POST "http://localhost:9901/logging?router=debug"
 
 # Check logs for routing decisions
 tail -f /var/log/envoy/envoy.log | grep router
