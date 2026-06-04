@@ -22,16 +22,17 @@ For a 5GB model stored in S3, this download can easily take 2-3 minutes dependin
 
 A shared PVC acts as a persistent cache layer between your pods and remote object storage. The first pod to start downloads the model once and stores it on the PVC. Subsequent pods, even after scaling to zero and back, can read the cached model directly from the PVC without hitting remote storage.
 
-This works because PVCs in Kubernetes persist independently of pod lifecycle. When your pod scales down, the PVC remains attached to the node, ready for the next pod to use.
+This works because PVCs in Kubernetes persist independently of pod lifecycle. When your pod scales down, the PersistentVolume and its data remain available for the next pod to mount.
 
 ## Prerequisites
 
-Before setting up model caching, ensure you have a storage class that supports ReadWriteMany (RWX) access mode. This allows multiple pods to mount the same volume simultaneously. Common options include NFS, EFS on AWS, Azure Files, or GCP Filestore.
+Before setting up model caching, ensure you have a storage class that can provision volumes with the ReadWriteMany (RWX) access mode. This allows the same volume to be mounted read-write by multiple nodes. Common options include NFS, EFS on AWS, Azure Files, or GCP Filestore.
 
-Check available storage classes that support RWX:
+Check available storage classes and confirm the provisioner supports RWX in its documentation:
 
 ```bash
-kubectl get storageclass -o custom-columns=NAME:.metadata.name,PROVISIONER:.provisioner,RECLAIM:.reclaimPolicy,ACCESS:.parameters.accessModes
+kubectl get storageclass
+kubectl describe storageclass nfs-client
 ```
 
 For this tutorial, we'll assume you have an NFS-based storage class called `nfs-client` or AWS EFS storage class.
@@ -74,7 +75,7 @@ You should see the status as `Bound`.
 
 ## Configuring KServe to Use the Cache
 
-KServe needs to know about the cache volume and where to mount it. We'll configure this through the InferenceService custom resource using a storage initializer that checks the cache first before downloading from remote storage.
+KServe needs to know about the cache volume and where to mount it. The built-in KServe storage initializer downloads a `storageUri` to the model directory, but it does not implement a shared PVC cache lookup by itself. For cache-first behavior, mount the shared PVC and use a custom init container or custom storage initializer to populate `/mnt/models`.
 
 Create an InferenceService with cache configuration:
 
@@ -83,31 +84,37 @@ Create an InferenceService with cache configuration:
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
-  name: sklearn-iris-cached
+  name: custom-iris-cached
   namespace: kserve-inference
 spec:
   predictor:
-    model:
-      modelFormat:
-        name: sklearn
-      storageUri: s3://my-bucket/models/iris
-      # Configure the storage initializer to use cache
-      storage:
-        path: /mnt/models  # Where models are served from
-        schemaPath: ""
-        parameters:
-          # Cache directory on the shared PVC
-          cacheDir: /mnt/model-cache
     # Mount the shared PVC
     volumes:
       - name: model-cache
         persistentVolumeClaim:
           claimName: kserve-model-cache
-    volumeMounts:
-      - name: model-cache
-        mountPath: /mnt/model-cache
+      - name: model-storage
+        emptyDir: {}
+    initContainers:
+      - name: cache-aware-downloader
+        image: python:3.11-slim
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            # Add cache lookup and download logic here.
+            # The model server reads from /mnt/models.
+            mkdir -p /mnt/models /mnt/model-cache
+        volumeMounts:
+          - name: model-cache
+            mountPath: /mnt/model-cache
+          - name: model-storage
+            mountPath: /mnt/models
     containers:
       - name: kserve-container
+        image: your-custom-sklearn-server:latest
+        volumeMounts:
+          - name: model-storage
+            mountPath: /mnt/models
         resources:
           requests:
             cpu: "1"
@@ -142,15 +149,17 @@ spec:
       - name: model-cache
         persistentVolumeClaim:
           claimName: kserve-model-cache
+      - name: model-storage
+        emptyDir: {}
     initContainers:
       # Custom init container with cache logic
       - name: cache-aware-downloader
-        image: python:3.9-slim
+        image: python:3.11-slim
         command:
-          - /bin/bash
+          - /bin/sh
           - -c
           - |
-            #!/bin/bash
+            #!/bin/sh
             set -e
 
             MODEL_URI="s3://models/bert-sentiment"
@@ -160,6 +169,7 @@ spec:
             # Extract model name and version from URI
             MODEL_HASH=$(echo -n "$MODEL_URI" | md5sum | cut -d' ' -f1)
             CACHE_MODEL_PATH="$CACHE_PATH/$MODEL_HASH"
+            export MODEL_URI MODEL_PATH CACHE_MODEL_PATH
 
             echo "Checking cache at $CACHE_MODEL_PATH"
 
@@ -173,10 +183,27 @@ spec:
               python3 << 'EOF'
             import boto3
             import os
+            from pathlib import Path
+            from urllib.parse import urlparse
 
             # Download model from S3
+            uri = urlparse(os.environ["MODEL_URI"])
+            bucket = uri.netloc
+            prefix = uri.path.lstrip("/")
+            target_dir = Path("/tmp/model")
+            target_dir.mkdir(parents=True, exist_ok=True)
+
             s3 = boto3.client('s3')
-            # ... download logic here ...
+            paginator = s3.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    if key.endswith("/"):
+                        continue
+                    relative = key[len(prefix):].lstrip("/")
+                    destination = target_dir / relative
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    s3.download_file(bucket, key, str(destination))
 
             # Copy to both model path and cache
             os.system(f"cp -r /tmp/model/* {os.environ['MODEL_PATH']}/")
@@ -201,8 +228,6 @@ spec:
             mountPath: /cache
           - name: model-storage
             mountPath: /mnt/models
-      - name: model-storage
-        emptyDir: {}
     containers:
       - name: kserve-container
         image: pytorch/torchserve:latest
@@ -267,8 +292,8 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  # Remove models not accessed in 7 days
-                  find /cache -type d -atime +7 -exec rm -rf {} \;
+                  # Remove top-level cached models not accessed in 7 days
+                  find /cache -mindepth 1 -maxdepth 1 -type d -atime +7 -exec rm -rf {} \;
                   echo "Cache cleaned at $(date)"
               volumeMounts:
                 - name: model-cache
