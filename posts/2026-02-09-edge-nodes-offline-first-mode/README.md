@@ -42,15 +42,14 @@ curl -sfL https://get.k3s.io | sh -s - server \
   --write-kubeconfig-mode 644 \
   --disable servicelb \
   --disable traefik \
-  --node-taint CriticalAddonsOnly=true:NoExecute \
   --kubelet-arg="image-gc-high-threshold=85" \
   --kubelet-arg="image-gc-low-threshold=80"
 ```
 
-Configure pod eviction policies for resilience:
+Configure pod eviction policies for resilience. On K3s v1.32 and newer, place this file in `/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-edge-eviction.conf` so K3s loads it as a kubelet configuration drop-in:
 
 ```yaml
-# kubelet-config.yaml
+# /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-edge-eviction.conf
 
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
@@ -141,6 +140,9 @@ spec:
 Apply the database:
 
 ```bash
+kubectl create secret generic postgres-credentials \
+  --from-literal=password='change-me-at-the-edge' \
+  --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f local-postgres.yaml
 ```
 
@@ -153,7 +155,6 @@ Create a Python application with offline capabilities:
 import os
 import psycopg2
 import requests
-import json
 from datetime import datetime
 from flask import Flask, request, jsonify
 
@@ -246,6 +247,8 @@ def get_readings():
 
 # Try to sync a reading to cloud
 def try_sync_reading(reading_id):
+    conn = None
+    cur = None
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -258,7 +261,7 @@ def try_sync_reading(reading_id):
 
         row = cur.fetchone()
         if not row:
-            return
+            return False
 
         # Attempt cloud sync with 2-second timeout
         cloud_url = os.environ.get('CLOUD_API_URL')
@@ -282,23 +285,33 @@ def try_sync_reading(reading_id):
                     WHERE id = %s
                 ''', (reading_id,))
                 conn.commit()
+                return True
 
-        cur.close()
-        conn.close()
+        return False
 
     except Exception as e:
         # Sync failed, will retry later
         print(f"Sync failed: {e}")
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute('''
-            UPDATE sensor_readings
-            SET sync_attempts = sync_attempts + 1
-            WHERE id = %s
-        ''', (reading_id,))
-        conn.commit()
-        cur.close()
-        conn.close()
+        try:
+            if cur:
+                cur.close()
+                cur = None
+            if conn:
+                cur = conn.cursor()
+                cur.execute('''
+                    UPDATE sensor_readings
+                    SET sync_attempts = sync_attempts + 1
+                    WHERE id = %s
+                ''', (reading_id,))
+                conn.commit()
+        except Exception as update_error:
+            print(f"Failed to update sync attempts: {update_error}")
+        return False
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 # Background sync job
 @app.route('/api/sync', methods=['POST'])
@@ -319,12 +332,12 @@ def sync_unsynced():
 
     synced_count = 0
     for reading_id in unsynced_ids:
-        try_sync_reading(reading_id)
-        synced_count += 1
+        if try_sync_reading(reading_id):
+            synced_count += 1
 
     return jsonify({
         'unsynced_found': len(unsynced_ids),
-        'sync_attempted': synced_count
+        'synced': synced_count
     })
 
 if __name__ == '__main__':
@@ -338,9 +351,9 @@ Build and deploy:
 # Dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install flask psycopg2-binary requests
+RUN pip install flask gunicorn psycopg2-binary requests
 COPY app.py .
-CMD ["python", "app.py"]
+CMD ["sh", "-c", "python -c 'from app import init_db; init_db()' && gunicorn -b 0.0.0.0:8080 app:app"]
 ```
 
 ```yaml
@@ -480,6 +493,7 @@ metadata:
 spec:
   selector:
     app: nats
+  clusterIP: None
   ports:
     - port: 4222
       name: client
@@ -517,7 +531,7 @@ def sync_with_conflict_resolution(local_reading, cloud_reading):
 
 ## Monitoring Offline Operations
 
-Track sync status and offline duration:
+Track sync status and offline duration, assuming your application exports these Prometheus metrics:
 
 ```yaml
 # monitoring-dashboard.yaml
@@ -534,13 +548,13 @@ data:
           {
             "title": "Unsynced Records",
             "targets": [{
-              "expr": "SELECT COUNT(*) FROM sensor_readings WHERE synced = FALSE"
+              "expr": "edge_sensor_unsynced_records"
             }]
           },
           {
             "title": "Sync Success Rate",
             "targets": [{
-              "expr": "rate(sync_success_total[5m]) / rate(sync_attempts_total[5m])"
+              "expr": "rate(edge_sensor_sync_success_total[5m]) / rate(edge_sensor_sync_attempts_total[5m])"
             }]
           }
         ]
@@ -562,12 +576,11 @@ CRITICAL_IMAGES=(
   "curlimages/curl:latest"
 )
 
-for image in "${CRITICAL_IMAGES[@]}"; do
-  echo "Pulling $image..."
-  crictl pull $image
-done
+sudo mkdir -p /var/lib/rancher/k3s/agent/images
+printf "%s\n" "${CRITICAL_IMAGES[@]}" | \
+  sudo tee /var/lib/rancher/k3s/agent/images/offline-critical-images.txt > /dev/null
 
-echo "All critical images cached"
+echo "Critical images queued for K3s pre-import"
 ```
 
 ## Conclusion
