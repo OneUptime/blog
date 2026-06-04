@@ -26,7 +26,7 @@ Here is what happens:
 - `docker ps -q` lists the IDs of all running containers (the `-q` flag outputs only IDs)
 - `docker stop` receives those IDs and stops each container
 
-Docker sends SIGTERM to each container's main process, waits 10 seconds for a graceful shutdown, then sends SIGKILL if the process is still running.
+Docker sends the container's configured stop signal to the main process, waits for the configured grace period, then sends SIGKILL if the process is still running. If no stop signal or timeout is configured, Docker uses SIGTERM and waits 10 seconds for Linux containers or 30 seconds for Windows containers.
 
 ## Handling the Empty List Case
 
@@ -58,7 +58,7 @@ docker stop -t 30 $(docker ps -q)
 # Stop all containers with a 5-second grace period for faster shutdown
 docker stop -t 5 $(docker ps -q)
 
-# Stop immediately with no grace period (sends SIGKILL right away)
+# Stop with no grace period after the stop signal
 docker stop -t 0 $(docker ps -q)
 ```
 
@@ -83,8 +83,11 @@ If your containers were started with Docker Compose, use Compose to stop them.
 # Stop all services defined in docker-compose.yml
 docker compose stop
 
-# Stop and remove all services, networks, and anonymous volumes
+# Stop and remove all services and networks
 docker compose down
+
+# Stop and remove services, networks, and anonymous volumes
+docker compose down -v
 
 # Stop with a custom timeout
 docker compose stop -t 30
@@ -106,8 +109,8 @@ docker stop $(docker ps -q --filter "ancestor=nginx")
 # Stop all containers whose name matches a pattern
 docker stop $(docker ps -q --filter "name=test-")
 
-# Stop all containers created in the last hour
-docker stop $(docker ps -q --filter "since=$(docker ps -q | tail -1)")
+# Stop all containers created after a specific container
+docker stop $(docker ps -q --filter "since=my-container")
 ```
 
 ## Stopping All Except Specific Containers
@@ -248,7 +251,9 @@ You will see containers transition from "Up" to "Exited" in the watch output.
 ```dockerfile
 # In your Dockerfile, set appropriate stop handling
 STOPSIGNAL SIGTERM
+```
 
+```yaml
 # In docker-compose.yml, set the grace period
 services:
   web:
