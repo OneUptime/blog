@@ -94,14 +94,13 @@ func init() {
 }
 ```
 
-Implement the controller logic in `controllers/application_controller.go`:
+Implement the controller logic in `internal/controller/application_controller.go`:
 
 ```go
-package controllers
+package controller
 
 import (
     "context"
-    "fmt"
 
     appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
@@ -114,7 +113,7 @@ import (
     "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
     "sigs.k8s.io/controller-runtime/pkg/log"
 
-    appsv1alpha1 "github.com/example/app-operator/api/v1"
+    appv1 "github.com/example/app-operator/api/v1"
 )
 
 // ApplicationReconciler reconciles an Application object
@@ -137,7 +136,7 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
     logger.Info("Reconciling Application", "namespace", req.Namespace, "name", req.Name)
 
     // Fetch the Application instance
-    app := &appsv1alpha1.Application{}
+    app := &appv1.Application{}
     if err := r.Get(ctx, req.NamespacedName, app); err != nil {
         if errors.IsNotFound(err) {
             return ctrl.Result{}, nil
@@ -181,7 +180,7 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 // reconcileDeployment ensures the Deployment exists and matches the spec
-func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *appsv1alpha1.Application) error {
+func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *appv1.Application) error {
     deployment := &appsv1.Deployment{}
     deploymentName := types.NamespacedName{
         Name:      app.Name,
@@ -201,8 +200,27 @@ func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *ap
     }
 
     // Update existing deployment if needed
+    needsUpdate := false
     if deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != app.Spec.Replicas {
         deployment.Spec.Replicas = &app.Spec.Replicas
+        needsUpdate = true
+    }
+    if deployment.Spec.Template.Spec.Containers[0].Image != app.Spec.Image {
+        deployment.Spec.Template.Spec.Containers[0].Image = app.Spec.Image
+        needsUpdate = true
+    }
+    if len(deployment.Spec.Template.Spec.Containers[0].Ports) == 0 ||
+        deployment.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort != app.Spec.Port {
+        deployment.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{
+            {
+                ContainerPort: app.Spec.Port,
+                Protocol:      corev1.ProtocolTCP,
+            },
+        }
+        needsUpdate = true
+    }
+
+    if needsUpdate {
         return r.Update(ctx, deployment)
     }
 
@@ -210,7 +228,7 @@ func (r *ApplicationReconciler) reconcileDeployment(ctx context.Context, app *ap
 }
 
 // buildDeployment creates a Deployment from the Application spec
-func (r *ApplicationReconciler) buildDeployment(app *appsv1alpha1.Application) *appsv1.Deployment {
+func (r *ApplicationReconciler) buildDeployment(app *appv1.Application) *appsv1.Deployment {
     labels := map[string]string{
         "app": app.Name,
     }
@@ -250,7 +268,7 @@ func (r *ApplicationReconciler) buildDeployment(app *appsv1alpha1.Application) *
 }
 
 // reconcileService ensures the Service exists
-func (r *ApplicationReconciler) reconcileService(ctx context.Context, app *appsv1alpha1.Application) error {
+func (r *ApplicationReconciler) reconcileService(ctx context.Context, app *appv1.Application) error {
     service := &corev1.Service{}
     serviceName := types.NamespacedName{
         Name:      app.Name,
@@ -264,12 +282,25 @@ func (r *ApplicationReconciler) reconcileService(ctx context.Context, app *appsv
             return err
         }
         return r.Create(ctx, service)
+    } else if err != nil {
+        return err
     }
-    return err
+
+    if len(service.Spec.Ports) == 0 || service.Spec.Ports[0].Port != app.Spec.Port {
+        service.Spec.Ports = []corev1.ServicePort{
+            {
+                Port:     app.Spec.Port,
+                Protocol: corev1.ProtocolTCP,
+            },
+        }
+        return r.Update(ctx, service)
+    }
+
+    return nil
 }
 
 // buildService creates a Service from the Application spec
-func (r *ApplicationReconciler) buildService(app *appsv1alpha1.Application) *corev1.Service {
+func (r *ApplicationReconciler) buildService(app *appv1.Application) *corev1.Service {
     labels := map[string]string{
         "app": app.Name,
     }
@@ -294,7 +325,7 @@ func (r *ApplicationReconciler) buildService(app *appsv1alpha1.Application) *cor
 }
 
 // updateStatus updates the Application status
-func (r *ApplicationReconciler) updateStatus(ctx context.Context, app *appsv1alpha1.Application) error {
+func (r *ApplicationReconciler) updateStatus(ctx context.Context, app *appv1.Application) error {
     deployment := &appsv1.Deployment{}
     if err := r.Get(ctx, types.NamespacedName{Name: app.Name, Namespace: app.Namespace}, deployment); err != nil {
         return err
@@ -305,7 +336,7 @@ func (r *ApplicationReconciler) updateStatus(ctx context.Context, app *appsv1alp
 }
 
 // handleDeletion handles cleanup when Application is deleted
-func (r *ApplicationReconciler) handleDeletion(ctx context.Context, app *appsv1alpha1.Application) (ctrl.Result, error) {
+func (r *ApplicationReconciler) handleDeletion(ctx context.Context, app *appv1.Application) (ctrl.Result, error) {
     if controllerutil.ContainsFinalizer(app, applicationFinalizer) {
         // Perform cleanup operations here
         controllerutil.RemoveFinalizer(app, applicationFinalizer)
@@ -319,7 +350,7 @@ func (r *ApplicationReconciler) handleDeletion(ctx context.Context, app *appsv1a
 // SetupWithManager sets up the controller with the Manager
 func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
     return ctrl.NewControllerManagedBy(mgr).
-        For(&appsv1alpha1.Application{}).
+        For(&appv1.Application{}).
         Owns(&appsv1.Deployment{}).
         Owns(&corev1.Service{}).
         Complete(r)
@@ -340,11 +371,13 @@ import (
     utilruntime "k8s.io/apimachinery/pkg/util/runtime"
     clientgoscheme "k8s.io/client-go/kubernetes/scheme"
     ctrl "sigs.k8s.io/controller-runtime"
+    "sigs.k8s.io/controller-runtime/pkg/cache"
     "sigs.k8s.io/controller-runtime/pkg/healthz"
     "sigs.k8s.io/controller-runtime/pkg/log/zap"
+    metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
     appsv1 "github.com/example/app-operator/api/v1"
-    "github.com/example/app-operator/controllers"
+    "github.com/example/app-operator/internal/controller"
 )
 
 var (
@@ -384,15 +417,21 @@ func main() {
 
     ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
+    cacheOptions := cache.Options{}
+    if namespace != "" {
+        cacheOptions.DefaultNamespaces = map[string]cache.Config{
+            namespace: {},
+        }
+    }
+
     // Configure manager options
     mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
         Scheme:                 scheme,
-        MetricsBindAddress:     metricsAddr,
-        Port:                   9443,
+        Metrics:                metricsserver.Options{BindAddress: metricsAddr},
+        Cache:                  cacheOptions,
         HealthProbeBindAddress: probeAddr,
         LeaderElection:         enableLeaderElection,
         LeaderElectionID:       leaderElectionID,
-        Namespace:              namespace,
         LeaseDuration:          &leaseDuration,
         RenewDeadline:          &renewDeadline,
         RetryPeriod:            &retryPeriod,
@@ -402,7 +441,7 @@ func main() {
         os.Exit(1)
     }
 
-    if err = (&controllers.ApplicationReconciler{
+    if err = (&controller.ApplicationReconciler{
         Client: mgr.GetClient(),
         Scheme: mgr.GetScheme(),
     }).SetupWithManager(mgr); err != nil {
