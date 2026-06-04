@@ -148,7 +148,7 @@ Run multiple containers together that share networking and lifecycle, similar to
 
 ```yaml
 # deploy.yaml - Container group with app and sidecar
-apiVersion: '2023-05-01'
+apiVersion: '2021-10-01'
 location: eastus
 name: myapp-group
 properties:
@@ -161,7 +161,7 @@ properties:
         resources:
           requests:
             cpu: 1
-            memoryInGb: 2
+            memoryInGB: 2
         environmentVariables:
           - name: PORT
             value: '8080'
@@ -172,7 +172,7 @@ properties:
         resources:
           requests:
             cpu: 0.5
-            memoryInGb: 0.5
+            memoryInGB: 0.5
         volumeMounts:
           - name: logs
             mountPath: /var/log/app
