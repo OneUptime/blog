@@ -71,8 +71,17 @@ cd "$CHART_DIR"
 echo "Adding Helm repositories..."
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo add stable https://charts.helm.sh/stable
 helm repo update
+
+get_repo_name() {
+    local repository=$1
+
+    case "$repository" in
+        https://charts.bitnami.com/bitnami) echo "bitnami" ;;
+        https://prometheus-community.github.io/helm-charts) echo "prometheus-community" ;;
+        *) helm repo list -o json | jq -r --arg url "$repository" '.[] | select(.url == $url) | .name' | head -n1 ;;
+    esac
+}
 
 # Function to get latest version of a chart
 get_latest_version() {
@@ -81,11 +90,14 @@ get_latest_version() {
     local current_version=$3
 
     # Extract major version from current version
-    local major_version=$(echo "$current_version" | cut -d. -f1)
+    local major_version=$(echo "$current_version" | sed -E 's/^[^0-9]*([0-9]+).*/\1/')
+    local latest_version
 
     # Search for latest version in same major version
-    helm search repo "$repo/$chart" --version "^${major_version}" -o json | \
-        jq -r '.[0].version' 2>/dev/null || echo "$current_version"
+    latest_version=$(helm search repo "$repo/$chart" --versions --version "^${major_version}.0.0" -o json | \
+        jq -r '.[0].version // empty' 2>/dev/null || true)
+
+    echo "${latest_version:-$current_version}"
 }
 
 # Parse Chart.yaml and check for updates
@@ -96,8 +108,11 @@ dependencies=$(yq e '.dependencies[] | .name + "|" + .version + "|" + .repositor
 declare -a updates=()
 
 while IFS='|' read -r name version repository; do
-    # Extract repository name from URL
-    repo_name=$(echo "$repository" | sed 's|https://||' | cut -d'/' -f1 | tr '.' '-')
+    repo_name=$(get_repo_name "$repository")
+    if [ -z "$repo_name" ]; then
+        echo "Could not find Helm repository for $repository"
+        continue
+    fi
 
     latest_version=$(get_latest_version "$repo_name" "$name" "$version")
 
@@ -123,7 +138,7 @@ if [ ${#updates[@]} -gt 0 ]; then
             # Update Chart.yaml using yq
             yq e -i "(.dependencies[] | select(.name == \"$name\") | .version) = \"$new_version\"" Chart.yaml
 
-            echo "Updated $name from $version to $new_version"
+            echo "Updated $name from $old_version to $new_version"
         done
 
         # Update Chart.yaml version (bump patch version)
@@ -178,11 +193,14 @@ on:
 jobs:
   update-dependencies:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.DEPENDENCY_UPDATE_TOKEN }}
 
       - name: Install dependencies
         run: |
@@ -209,7 +227,7 @@ jobs:
           ./scripts/update-dependencies.sh charts/myapp
 
           # Check if Chart.yaml changed
-          if git diff --quiet charts/myapp/Chart.yaml; then
+          if git diff --quiet charts/myapp/Chart.yaml charts/myapp/Chart.lock charts/myapp/charts/; then
             echo "has_updates=false" >> $GITHUB_OUTPUT
           else
             echo "has_updates=true" >> $GITHUB_OUTPUT
@@ -217,9 +235,9 @@ jobs:
 
       - name: Create Pull Request
         if: steps.check.outputs.has_updates == 'true'
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v8
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.DEPENDENCY_UPDATE_TOKEN }}
           commit-message: "chore: update Helm chart dependencies"
           title: "Update Helm Chart Dependencies"
           body: |
@@ -282,7 +300,7 @@ update_dependencies:
 
     # Check for changes
     - |
-      if git diff --quiet $CHART_DIR/Chart.yaml; then
+      if git diff --quiet $CHART_DIR/Chart.yaml $CHART_DIR/Chart.lock $CHART_DIR/charts/; then
         echo "No updates available"
         exit 0
       fi
@@ -321,10 +339,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
 
       - name: Update dependencies
         run: |
@@ -374,12 +392,12 @@ dependencies:
     version: "12.1.0"
     repository: "https://charts.bitnami.com/bitnami"
 
-  # Patch updates only (^12.1.0 = >=12.1.0 <13.0.0)
+  # Minor and patch updates (^17.3.0 = >=17.3.0 <18.0.0)
   - name: redis
     version: "^17.3.0"
     repository: "https://charts.bitnami.com/bitnami"
 
-  # Minor and patch updates (~15.10.0 = >=15.10.0 <15.11.0)
+  # Patch updates within the 15.10 minor release (~15.10.0 = >=15.10.0 <15.11.0)
   - name: prometheus
     version: "~15.10.0"
     repository: "https://prometheus-community.github.io/helm-charts"
@@ -415,10 +433,21 @@ if [ "$OLD_MAJOR" != "$NEW_MAJOR" ]; then
     exit 1
 fi
 
-# Run helm template and compare outputs
-helm template test-old "$CHART_DIR" > /tmp/old-template.yaml
-helm dependency update "$CHART_DIR"
-helm template test-new "$CHART_DIR" > /tmp/new-template.yaml
+# Render the old and new dependency versions and compare outputs
+OLD_CHART_DIR=$(mktemp -d)
+NEW_CHART_DIR=$(mktemp -d)
+trap 'rm -rf "$OLD_CHART_DIR" "$NEW_CHART_DIR"' EXIT
+cp -R "$CHART_DIR"/. "$OLD_CHART_DIR"
+cp -R "$CHART_DIR"/. "$NEW_CHART_DIR"
+
+yq e -i "(.dependencies[] | select(.name == \"$DEPENDENCY_NAME\") | .version) = \"$OLD_VERSION\"" "$OLD_CHART_DIR/Chart.yaml"
+yq e -i "(.dependencies[] | select(.name == \"$DEPENDENCY_NAME\") | .version) = \"$NEW_VERSION\"" "$NEW_CHART_DIR/Chart.yaml"
+
+helm dependency update "$OLD_CHART_DIR"
+helm dependency update "$NEW_CHART_DIR"
+
+helm template test-old "$OLD_CHART_DIR" > /tmp/old-template.yaml
+helm template test-new "$NEW_CHART_DIR" > /tmp/new-template.yaml
 
 # Compare templates
 if diff /tmp/old-template.yaml /tmp/new-template.yaml > /tmp/template-diff.txt; then
@@ -447,18 +476,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
+
+      - name: Install tools
+        run: |
+          npm install -g snyk
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
 
       - name: Check for known vulnerabilities
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
-          # Install helm-snyk plugin or similar
-          helm plugin install https://github.com/snyk/helm-snyk
-
-          # Scan dependencies
-          helm snyk test charts/myapp
+          # Render the chart and scan the Kubernetes manifests
+          helm template charts/myapp --output-dir /tmp/helm-output
+          snyk iac test /tmp/helm-output
 
       - name: Generate dependency report
         run: |
@@ -473,7 +508,7 @@ jobs:
           yq e '.dependencies[] | "- " + .name + " " + .version' charts/myapp/Chart.yaml >> dependency-report.md
 
       - name: Upload report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: dependency-report
           path: dependency-report.md
