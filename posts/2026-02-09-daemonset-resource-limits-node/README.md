@@ -8,13 +8,13 @@ Description: Learn how to set appropriate CPU and memory limits for DaemonSets t
 
 ---
 
-DaemonSet pods run on every node, making resource management critical. Poorly configured limits can starve application workloads or cause DaemonSet pods to crash under load. This guide demonstrates setting appropriate resource requests and limits to balance reliability with resource efficiency.
+DaemonSet pods run on every eligible node, making resource management critical. Poorly configured limits can starve application workloads or cause DaemonSet pods to crash under load. This guide demonstrates setting appropriate resource requests and limits to balance reliability with resource efficiency.
 
 ## Understanding DaemonSet Resource Impact
 
-Unlike Deployments that distribute replicas across nodes, DaemonSets place one pod per node. This means resource allocations multiply across your entire cluster. A DaemonSet requesting 500MB memory consumes 5GB in a 10-node cluster.
+Unlike Deployments that distribute replicas across nodes, DaemonSets place one pod per eligible node. This means resource allocations multiply across your entire cluster. A DaemonSet requesting 500Mi memory reserves 5Gi in a 10-node cluster.
 
-Resource configuration affects scheduling, QoS class, and eviction behavior. Requests determine scheduling feasibility. Limits trigger throttling (CPU) or OOMKills (memory). The ratio between them influences quality of service class.
+Resource configuration affects scheduling, QoS class, and eviction behavior. Requests determine scheduling feasibility. Limits trigger throttling (CPU) or OOMKills (memory). The presence and equality of CPU and memory requests and limits determine quality of service class.
 
 ## Setting Basic Resource Limits
 
@@ -78,7 +78,7 @@ spec:
       priorityClassName: system-node-critical
       containers:
       - name: kube-proxy
-        image: k8s.gcr.io/kube-proxy:v1.28.0
+        image: registry.k8s.io/kube-proxy:v1.35.0
         resources:
           requests:
             cpu: 200m
@@ -88,7 +88,7 @@ spec:
             memory: 256Mi
 ```
 
-Guaranteed pods have the highest protection from eviction and receive their full CPU allocation.
+Guaranteed pods have the highest protection from eviction and cannot use more CPU or memory than their configured limits.
 
 ## Configuring Burstable QoS for Flexibility
 
@@ -213,7 +213,13 @@ data:
       rules:
       - alert: DaemonSetCPUThrottling
         expr: |
-          rate(container_cpu_cfs_throttled_seconds_total{pod=~".*daemonset.*"}[5m]) > 0.25
+          (
+            sum by (namespace, pod) (
+              rate(container_cpu_cfs_throttled_seconds_total{container!="",pod!=""}[5m])
+            )
+            * on (namespace, pod) group_left(owner_name)
+              kube_pod_owner{owner_kind="DaemonSet"}
+          ) > 0.25
         for: 10m
         labels:
           severity: warning
@@ -270,20 +276,20 @@ Measure actual usage to set realistic limits:
 
 kubectl top pods -n monitoring -l app=node-exporter
 
-# Get detailed metrics over time
+# Get detailed current metrics
 kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/monitoring/pods/node-exporter-abc123 | jq '.containers[].usage'
 
-# Calculate percentile usage across all pods
+# Sort current CPU usage across all matching pods
 kubectl top pods -n monitoring -l app=log-collector --no-headers | \
   awk '{print $2}' | sort -n
 ```
 
 Use historical data for sizing:
 
-```yaml
+```promql
 # Prometheus query for 95th percentile memory usage
-histogram_quantile(0.95,
-  rate(container_memory_working_set_bytes{pod=~"log-collector.*"}[7d])
+quantile_over_time(0.95,
+  container_memory_working_set_bytes{pod=~"log-collector.*"}[7d]
 )
 
 # Prometheus query for max CPU usage
@@ -383,7 +389,11 @@ data:
       rules:
       - alert: DaemonSetOOMKilled
         expr: |
-          rate(kube_pod_container_status_terminated_reason{reason="OOMKilled",pod=~".*daemonset.*"}[5m]) > 0
+          (
+            increase(kube_pod_container_status_terminated_reason{reason="OOMKilled"}[5m])
+            * on (namespace, pod) group_left(owner_name)
+              kube_pod_owner{owner_kind="DaemonSet"}
+          ) > 0
         labels:
           severity: critical
         annotations:
