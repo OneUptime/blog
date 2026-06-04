@@ -12,7 +12,7 @@ PriorityLevelConfiguration defines how the API server handles requests at differ
 
 ## Understanding Fair Queuing Mechanics
 
-Fair queuing prevents a single misbehaving client from consuming all API server capacity. The system uses shuffle-sharding to assign requests to queues based on the flow distinguisher (typically username and namespace). Multiple queues at each priority level ensure different flows do not block each other.
+Fair queuing prevents a single misbehaving client from consuming all API server capacity. The system uses shuffle-sharding to assign requests to queues based on the flow distinguisher (typically username or namespace). Multiple queues at each priority level ensure different flows do not block each other.
 
 View existing PriorityLevelConfigurations:
 
@@ -28,14 +28,14 @@ kubectl get prioritylevelconfiguration workload-high -o yaml
 kubectl describe prioritylevelconfiguration workload-high
 ```
 
-The status shows current utilization, queue depth, and rejected requests.
+The status shows the current conditions for the priority level. Use API server metrics to check current utilization, queue depth, and rejected requests.
 
 ## Creating a Basic PriorityLevelConfiguration
 
 Define a priority level with fair queuing:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: fair-workload
@@ -79,14 +79,14 @@ kubectl get prioritylevelconfiguration fair-workload -o yaml -w
 Concurrency shares determine the relative weight of each priority level. The API server calculates actual concurrency as:
 
 ```text
-Actual Concurrency = (nominalConcurrencyShares / Total Shares) * Server Capacity
+Nominal Concurrency Limit = ceil((nominalConcurrencyShares / Total Shares) * Server Capacity)
 ```
 
 Create priority levels with different weights:
 
 ```yaml
 # High priority: 100 shares
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: critical-priority
@@ -103,7 +103,7 @@ spec:
         handSize: 10
 ---
 # Medium priority: 50 shares
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: normal-priority
@@ -120,7 +120,7 @@ spec:
         handSize: 8
 ---
 # Low priority: 20 shares
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: background-priority
@@ -144,7 +144,7 @@ With total shares of 170, critical-priority gets 100/170 = 59% of capacity, norm
 Lendable capacity allows unused concurrency to be borrowed by other priority levels:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: lending-priority
@@ -162,14 +162,14 @@ spec:
         handSize: 8
 ```
 
-When this priority level is idle, 80% of its 60 shares (48 shares) become available for other levels to borrow.
+When this priority level is idle, 80% of its nominal concurrency limit becomes available for other levels to borrow.
 
 ## Configuring Queue Parameters
 
 Queue parameters control fairness and responsiveness:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: tuned-queuing
@@ -193,7 +193,7 @@ spec:
 
 Parameter guidelines:
 
-- `queues`: Power of 2, typically 32-128. More queues = better isolation but more memory
+- `queues`: Positive integer, often 32-128. More queues = better isolation but more memory
 - `queueLengthLimit`: 25-100. Higher values buffer more requests during spikes
 - `handSize`: 4-10. Smaller values improve isolation, larger values improve throughput
 
@@ -202,7 +202,7 @@ Parameter guidelines:
 Use rejection instead of queuing for certain workloads:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: reject-on-overflow
@@ -223,7 +223,7 @@ Requests exceeding the concurrency limit receive HTTP 429 (Too Many Requests) im
 Exempt priority levels bypass all queuing and limits:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: system-exempt
@@ -234,8 +234,8 @@ spec:
 
 Use exempt priority sparingly, only for critical system components. Typical use cases:
 
-- Leader election for controllers
-- Kubernetes system components (kube-scheduler, kube-controller-manager)
+- Break-glass administrative traffic such as requests from `system:masters`
+- Narrow, critical system requests that must remain available during flow-control misconfiguration
 - Health check probes
 
 ## Monitoring Queue Utilization
@@ -260,7 +260,7 @@ histogram_quantile(0.99,
 )
 
 # Seats occupied (concurrency usage)
-apiserver_flowcontrol_current_limit_seats{priority_level="fair-workload"}
+apiserver_flowcontrol_current_executing_seats{priority_level="fair-workload"}
 
 # Dispatched requests
 rate(apiserver_flowcontrol_dispatched_requests_total{priority_level="fair-workload"}[5m])
@@ -304,7 +304,7 @@ Create a Grafana dashboard:
 Optimize for controllers that make many API requests:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: high-throughput
@@ -335,7 +335,7 @@ spec:
 Optimize for low-latency, interactive requests:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: low-latency
@@ -420,8 +420,9 @@ spec:
     rules:
     - alert: PriorityLevelQueueFull
       expr: |
-        apiserver_flowcontrol_current_inqueue_requests /
-        (apiserver_flowcontrol_request_queue_length_after_enqueue_total > 0) > 0.8
+        histogram_quantile(0.95,
+          rate(apiserver_flowcontrol_request_queue_length_after_enqueue_bucket[5m])
+        ) > 40
       for: 5m
       labels:
         severity: warning
