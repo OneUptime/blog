@@ -54,6 +54,8 @@ Build a webhook server that validates deployments:
 
 ```javascript
 const express = require('express');
+const fs = require('fs');
+const https = require('https');
 const app = express();
 
 app.use(express.json());
@@ -116,12 +118,19 @@ async function validateDeployment(deployment) {
 async function validateImage(deployment) {
   const container = deployment.spec.template.spec.containers[0];
   const image = container.image;
+  const { registry, repository, reference } = parseImageReference(image);
 
   // Check if image exists in registry
   try {
-    const response = await fetch(`https://registry.example.com/v2/${image}/manifests/latest`, {
+    const response = await fetch(`https://${registry}/v2/${repository}/manifests/${reference}`, {
+      method: 'HEAD',
       headers: {
-        'Authorization': `Bearer ${process.env.REGISTRY_TOKEN}`
+        'Authorization': `Bearer ${process.env.REGISTRY_TOKEN}`,
+        'Accept': [
+          'application/vnd.oci.image.manifest.v1+json',
+          'application/vnd.docker.distribution.manifest.v2+json',
+          'application/vnd.docker.distribution.manifest.list.v2+json'
+        ].join(', ')
       }
     });
 
@@ -139,6 +148,37 @@ async function validateImage(deployment) {
       message: `Failed to validate image: ${err.message}`
     };
   }
+}
+
+function parseImageReference(image) {
+  const defaultRegistry = process.env.REGISTRY_HOST || 'registry.example.com';
+  let registry = defaultRegistry;
+  let name = image;
+
+  const firstSlash = image.indexOf('/');
+  if (firstSlash !== -1) {
+    const firstPart = image.slice(0, firstSlash);
+    if (firstPart.includes('.') || firstPart.includes(':') || firstPart === 'localhost') {
+      registry = firstPart;
+      name = image.slice(firstSlash + 1);
+    }
+  }
+
+  let repository = name;
+  let reference = 'latest';
+  const digestIndex = name.indexOf('@');
+  const tagIndex = name.lastIndexOf(':');
+  const lastSlash = name.lastIndexOf('/');
+
+  if (digestIndex !== -1) {
+    repository = name.slice(0, digestIndex);
+    reference = name.slice(digestIndex + 1);
+  } else if (tagIndex > lastSlash) {
+    repository = name.slice(0, tagIndex);
+    reference = name.slice(tagIndex + 1);
+  }
+
+  return { registry, repository, reference };
 }
 
 function validateResources(deployment) {
@@ -190,17 +230,43 @@ function validateLabels(deployment) {
 
 async function validateConfig(deployment) {
   const spec = deployment.spec.template.spec;
+  const namespace = deployment.metadata.namespace || 'default';
 
-  // Check all referenced ConfigMaps exist
+  // Check referenced ConfigMaps and Secrets exist
   const configMaps = [];
+  const secrets = [];
+
   spec.volumes?.forEach(v => {
     if (v.configMap) {
       configMaps.push(v.configMap.name);
     }
+    if (v.secret) {
+      secrets.push(v.secret.secretName);
+    }
   });
 
-  for (const cm of configMaps) {
-    const exists = await checkConfigMapExists(cm, deployment.metadata.namespace);
+  spec.containers?.forEach(container => {
+    container.envFrom?.forEach(envFrom => {
+      if (envFrom.configMapRef?.name) {
+        configMaps.push(envFrom.configMapRef.name);
+      }
+      if (envFrom.secretRef?.name) {
+        secrets.push(envFrom.secretRef.name);
+      }
+    });
+
+    container.env?.forEach(env => {
+      if (env.valueFrom?.configMapKeyRef?.name) {
+        configMaps.push(env.valueFrom.configMapKeyRef.name);
+      }
+      if (env.valueFrom?.secretKeyRef?.name) {
+        secrets.push(env.valueFrom.secretKeyRef.name);
+      }
+    });
+  });
+
+  for (const cm of [...new Set(configMaps)]) {
+    const exists = await checkKubernetesResourceExists('configmaps', cm, namespace);
     if (!exists) {
       return {
         passed: false,
@@ -209,7 +275,27 @@ async function validateConfig(deployment) {
     }
   }
 
+  for (const secret of [...new Set(secrets)]) {
+    const exists = await checkKubernetesResourceExists('secrets', secret, namespace);
+    if (!exists) {
+      return {
+        passed: false,
+        message: `Secret ${secret} does not exist`
+      };
+    }
+  }
+
   return { passed: true };
+}
+
+async function checkKubernetesResourceExists(resource, name, namespace) {
+  const token = fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/token', 'utf8');
+  const response = await fetch(
+    `https://kubernetes.default.svc/api/v1/namespaces/${namespace}/${resource}/${name}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+
+  return response.ok;
 }
 
 function parseMemory(mem) {
@@ -221,7 +307,10 @@ function parseMemory(mem) {
   return parseInt(mem);
 }
 
-app.listen(8443, () => {
+https.createServer({
+  cert: fs.readFileSync('/certs/tls.crt'),
+  key: fs.readFileSync('/certs/tls.key')
+}, app).listen(8443, () => {
   console.log('Webhook server listening on port 8443');
 });
 ```
@@ -243,6 +332,7 @@ spec:
       labels:
         app: deployment-validator
     spec:
+      serviceAccountName: deployment-validator
       containers:
       - name: webhook
         image: myregistry.io/deployment-validator:latest
@@ -254,6 +344,8 @@ spec:
             secretKeyRef:
               name: registry-credentials
               key: token
+        - name: NODE_EXTRA_CA_CERTS
+          value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         volumeMounts:
         - name: certs
           mountPath: /certs
@@ -273,11 +365,37 @@ spec:
   ports:
   - port: 443
     targetPort: 8443
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deployment-validator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deployment-validator
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployment-validator
+subjects:
+- kind: ServiceAccount
+  name: deployment-validator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: deployment-validator
 ```
 
 ## Argo Rollouts Pre-Rollout Webhook
 
-Configure webhooks that run before Argo Rollouts starts:
+Configure an analysis step that runs before the first canary traffic shift:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -302,19 +420,24 @@ spec:
   strategy:
     canary:
       steps:
+      - analysis:
+          templates:
+          - templateName: pre-rollout-checks
+            args:
+            - name: version
+              value: v1.0.0
       - setWeight: 10
       - pause: {duration: 5m}
       - setWeight: 25
       - pause: {duration: 5m}
-      analysis:
-        templates:
-        - templateName: pre-rollout-checks
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
   name: pre-rollout-checks
 spec:
+  args:
+  - name: version
   metrics:
   - name: webhook-validation
     provider:
@@ -338,14 +461,15 @@ spec:
 
 Use Open Policy Agent for sophisticated validation:
 
-```yaml
+```rego
 # OPA policy
 
 package kubernetes.admission
 
 deny[msg] {
   input.request.kind.kind == "Deployment"
-  not input.request.object.spec.template.spec.containers[_].resources.limits
+  container := input.request.object.spec.template.spec.containers[_]
+  not container.resources.limits
 
   msg := "All containers must have resource limits"
 }
@@ -384,26 +508,28 @@ Run validation script before deployment:
 #!/bin/bash
 # pre-deployment-checks.sh
 
-DEPLOYMENT_FILE=$1
+set -euo pipefail
+
+DEPLOYMENT_FILE="$1"
 
 echo "Running pre-deployment checks..."
 
 # Check 1: YAML is valid
-if ! kubectl apply -f $DEPLOYMENT_FILE --dry-run=client > /dev/null 2>&1; then
+if ! kubectl apply -f "$DEPLOYMENT_FILE" --dry-run=client > /dev/null 2>&1; then
   echo "ERROR: Invalid YAML syntax"
   exit 1
 fi
 
 # Check 2: Extract and validate image
-IMAGE=$(yq eval '.spec.template.spec.containers[0].image' $DEPLOYMENT_FILE)
+IMAGE=$(yq eval '.spec.template.spec.containers[0].image' "$DEPLOYMENT_FILE")
 
-if ! docker pull $IMAGE > /dev/null 2>&1; then
+if ! docker pull "$IMAGE" > /dev/null 2>&1; then
   echo "ERROR: Cannot pull image $IMAGE"
   exit 1
 fi
 
 # Check 3: Run container security scan
-SCAN_RESULT=$(trivy image --severity HIGH,CRITICAL $IMAGE)
+SCAN_RESULT=$(trivy image --severity HIGH,CRITICAL "$IMAGE")
 if echo "$SCAN_RESULT" | grep -q "Total: [1-9]"; then
   echo "ERROR: Image has high/critical vulnerabilities"
   echo "$SCAN_RESULT"
@@ -411,9 +537,9 @@ if echo "$SCAN_RESULT" | grep -q "Total: [1-9]"; then
 fi
 
 # Check 4: Validate resource requests don't exceed quota
-NAMESPACE=$(yq eval '.metadata.namespace' $DEPLOYMENT_FILE)
-REPLICAS=$(yq eval '.spec.replicas' $DEPLOYMENT_FILE)
-MEM_REQUEST=$(yq eval '.spec.template.spec.containers[0].resources.requests.memory' $DEPLOYMENT_FILE)
+NAMESPACE=$(yq eval '.metadata.namespace' "$DEPLOYMENT_FILE")
+REPLICAS=$(yq eval '.spec.replicas' "$DEPLOYMENT_FILE")
+MEM_REQUEST=$(yq eval '.spec.template.spec.containers[0].resources.requests.memory' "$DEPLOYMENT_FILE")
 
 # More validation checks...
 
