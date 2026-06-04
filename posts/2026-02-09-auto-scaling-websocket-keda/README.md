@@ -14,7 +14,7 @@ WebSocket servers pose unique scaling challenges. Traditional metrics like CPU a
 
 WebSocket connections are long-lived. A single server can handle thousands of idle connections with minimal resources. But active connections sending frequent messages consume significant CPU and memory. Traditional autoscaling based on resource utilization fails to capture this nuance.
 
-Connection distribution matters. New connections should route to least-loaded servers. But existing connections must maintain affinity to their server. This requires careful load balancing configuration.
+Connection distribution matters. New connections should route to least-loaded servers. Existing WebSocket connections stay on their established server for the life of the TCP connection, while reconnects need affinity if you want them to return to the same pod. This requires careful load balancing configuration.
 
 KEDA solves these challenges by scaling based on application metrics. You expose connection count and message rate as Prometheus metrics. KEDA queries these metrics and scales your deployment accordingly.
 
@@ -142,6 +142,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: websocket-server
+  labels:
+    app: websocket-server
 spec:
   selector:
     app: websocket-server
@@ -202,23 +204,21 @@ spec:
   - type: prometheus
     metadata:
       serverAddress: http://prometheus:9090
-      metricName: websocket_connections_per_pod
       threshold: "1000"  # Target 1000 connections per pod
       query: |
         sum(websocket_active_connections)
         /
-        count(up{job="websocket-server"})
+        count(websocket_active_connections)
 
   # Also scale based on message rate
   - type: prometheus
     metadata:
       serverAddress: http://prometheus:9090
-      metricName: websocket_message_rate
       threshold: "100"  # Target 100 messages/sec per pod
       query: |
         sum(rate(websocket_messages_received_total[1m]))
         /
-        count(up{job="websocket-server"})
+        count(websocket_active_connections)
 ```
 
 ## Implementing Connection-Aware Load Balancing
@@ -232,10 +232,8 @@ kind: Ingress
 metadata:
   name: websocket-ingress
   annotations:
-    nginx.ingress.kubernetes.io/websocket-services: websocket-server
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    nginx.ingress.kubernetes.io/upstream-hash-by: "$binary_remote_addr"
     # Use least connections for better distribution
     nginx.ingress.kubernetes.io/load-balance: least_conn
 spec:
