@@ -117,7 +117,13 @@ metadata:
   name: web-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
       - name: app
@@ -164,7 +170,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       containers:
       - name: app
@@ -210,7 +222,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       containers:
       - name: app
@@ -410,11 +428,11 @@ This is useful for environment-specific configuration that might not exist in al
 
 ## Environment Variable Naming Rules
 
-Kubernetes sanitizes ConfigMap keys when creating environment variables. Keys must follow these rules:
+Kubernetes does not sanitize ConfigMap keys when creating environment variables. In current Kubernetes versions, environment variable names may use almost all printable ASCII characters except `=`, while ConfigMap keys are limited to alphanumeric characters, `-`, `_`, or `.`.
 
-- Valid characters: letters, numbers, underscores
-- Must not start with a number
-- Invalid characters are skipped
+- ConfigMap keys can contain letters, numbers, hyphens, underscores, and dots
+- Environment variable names cannot contain `=`
+- On older Kubernetes versions, keys that are not valid environment variable names are skipped and reported in the pod events
 
 ```yaml
 apiVersion: v1
@@ -424,14 +442,13 @@ metadata:
 data:
   VALID_KEY: "value1"                    # ✓ Becomes VALID_KEY
   also-valid: "value2"                   # ✓ Becomes also-valid
-  "123invalid": "value3"                 # ✗ Skipped (starts with number)
-  "has.dots": "value4"                   # ✗ Skipped (contains dots)
-  "has spaces": "value5"                 # ✗ Skipped (contains spaces)
+  "123valid": "value3"                   # ✓ Becomes 123valid
+  "has.dots": "value4"                   # ✓ Becomes has.dots
   "kebab-case-key": "value6"             # ✓ Becomes kebab-case-key
   SCREAMING_SNAKE_CASE: "value7"         # ✓ Becomes SCREAMING_SNAKE_CASE
 ```
 
-Best practice: Use uppercase letters with underscores for ConfigMap keys to ensure they become valid environment variables.
+Best practice: Use uppercase letters with underscores for ConfigMap keys to ensure compatibility with shells, application frameworks, and older Kubernetes clusters.
 
 ## Viewing All Environment Variables
 
@@ -452,15 +469,15 @@ kubectl exec -it <pod-name> -- printenv DATABASE_HOST
 
 Using envFrom is efficient because:
 
-1. **Single API call**: Kubernetes fetches the entire ConfigMap/Secret in one operation
-2. **No per-key overhead**: Compared to individual `valueFrom` entries
-3. **Faster pod startup**: Less yaml parsing and validation
+1. **Less manifest repetition**: You reference each ConfigMap or Secret once instead of listing every key
+2. **No per-key manifest updates**: Adding a key to the ConfigMap or Secret does not require changing the pod template
+3. **Simpler validation**: There are fewer environment variable entries to review in the workload manifest
 
 However, consider:
 
 - **Environment variables are static**: They don't update when ConfigMaps change (pod restart required)
-- **Visible in pod spec**: Environment variables appear in `kubectl describe`, potentially exposing sensitive data
-- **Size limits**: Combined environment variables can't exceed ~1MB per container
+- **Secret exposure risk**: Secret values loaded as environment variables are available inside the container's process environment
+- **Size limits**: Individual ConfigMaps and Secrets are limited to 1 MiB, and very large environments can also hit runtime or operating-system limits
 
 ## Security Considerations
 
@@ -481,9 +498,8 @@ envFrom:
 ```
 
 Environment variables are visible in:
-- Pod describe output
-- Container inspect
-- Process listings
+- The container's process environment
+- Debug sessions or node-level runtime inspection
 - Application crash dumps
 
 For highly sensitive data, prefer mounting Secrets as volumes instead.
