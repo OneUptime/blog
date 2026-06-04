@@ -78,11 +78,11 @@ kubectl exec -it pod-a -- ping -M do -s 1400 pod-b-ip
 kubectl exec -it pod-a -- ping -M do -s 1450 pod-b-ip
 kubectl exec -it pod-a -- ping -M do -s 1472 pod-b-ip
 
-# For IPv6
+# For IPv6, account for the 40-byte IPv6 header and 8-byte ICMPv6 header
 kubectl exec -it pod-a -- ping6 -M do -s 1452 pod-b-ipv6
 ```
 
-If large packets fail but small packets succeed, you have found your MTU ceiling. The working packet size plus 28 bytes (IP and ICMP headers) gives you the effective MTU.
+If large packets fail but small packets succeed, you have found your MTU ceiling. For IPv4 ICMP tests, the working packet size plus 28 bytes (IP and ICMP headers) gives you the effective MTU. For IPv6 ICMP tests, add 48 bytes.
 
 ## Using Tracepath to Discover MTU
 
@@ -103,7 +103,7 @@ tracepath pod-b-ip
 # The pmtu value shows the discovered path MTU
 ```
 
-Tracepath sends packets of increasing sizes until it finds the maximum size that reaches the destination without fragmentation.
+Tracepath uses UDP probes and reports Path MTU changes learned from local errors or ICMP responses along the path.
 
 ## Analyzing Packet Fragmentation with tcpdump
 
@@ -126,7 +126,7 @@ tcpdump -i any -s 65535 -w /tmp/capture.pcap
 tcpdump -r /tmp/capture.pcap | grep -i frag
 ```
 
-If you see fragmented packets, it indicates MTU mismatches somewhere in the network path.
+If you see unexpected fragmented packets, it can indicate MTU mismatches somewhere in the network path.
 
 ## Checking CNI Plugin MTU Configuration
 
@@ -139,7 +139,7 @@ For Calico:
 kubectl get cm -n kube-system calico-config -o yaml | grep mtu
 
 # Check Calico node configuration
-kubectl get installation default -o yaml | grep mtu
+kubectl get installation.operator.tigera.io default -o yaml | grep mtu
 
 # Verify veth MTU
 kubectl exec -n kube-system calico-node-xxx -- ip link show | grep mtu
@@ -151,8 +151,8 @@ For Cilium:
 # Check Cilium MTU configuration
 kubectl get cm -n kube-system cilium-config -o yaml | grep mtu
 
-# Verify MTU on Cilium endpoints
-kubectl exec -n kube-system cilium-xxx -- cilium endpoint list
+# Verify the running Cilium configuration
+kubectl exec -n kube-system ds/cilium -- cilium-dbg config get mtu
 ```
 
 For Flannel:
@@ -166,16 +166,16 @@ kubectl get cm -n kube-system kube-flannel-cfg -o yaml
 
 ## Verifying PMTUD Functionality
 
-Path MTU Discovery relies on ICMP "Packet Too Big" messages. Verify these messages can flow:
+Path MTU Discovery relies on ICMP feedback: IPv4 uses "fragmentation needed and DF set" messages, while IPv6 uses ICMPv6 "Packet Too Big" messages. Verify these messages can flow:
 
 ```bash
 # Test if ICMP packets are being blocked
-kubectl exec -it pod-a -- ping -M do -s 1500 pod-b-ip
+kubectl exec -it pod-a -- ping -M do -s 1472 pod-b-ip
 
-# If you get "Frag needed and DF set" errors, PMTUD is working
+# If you get "Frag needed and DF set" or "message too long" errors, PMTUD feedback is working
 # If packets silently fail, ICMP might be blocked
 
-# Check iptables rules for ICMP filtering
+# If permitted, check iptables rules for ICMP filtering in the relevant network namespace
 kubectl exec -it pod-a -- iptables -L -n | grep -i icmp
 ```
 
@@ -194,10 +194,10 @@ kubectl exec -it pod-a -- ssh -v user@pod-b-ip
 
 # Test with different packet sizes using netcat
 # In pod-b
-kubectl exec -it pod-b -- nc -l 8080 > /dev/null
+kubectl exec -it pod-b -- sh -c 'nc -l 8080 > /dev/null'
 
 # In pod-a, send data
-kubectl exec -it pod-a -- dd if=/dev/zero bs=2000 count=1000 | nc pod-b-ip 8080
+kubectl exec -i pod-a -- sh -c 'dd if=/dev/zero bs=2000 count=1000 | nc pod-b-ip 8080'
 ```
 
 If large transfers fail while small ones succeed, MTU is likely the culprit.
@@ -218,7 +218,7 @@ spec:
     mtu: 1450  # Set appropriate MTU for your network
 ```
 
-For Cilium, update the ConfigMap:
+For Cilium, prefer updating the Helm value or using `cilium config set mtu 1450`. If you manage the ConfigMap directly, update the ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -292,9 +292,9 @@ Monitor the logs to detect MTU problems automatically.
 
 Cloud providers have specific MTU requirements:
 
-AWS uses 9001 MTU for enhanced networking, but overlay networks reduce this. Set pod MTU to 8951 for VXLAN on AWS.
+Many current-generation EC2 instances support 9001 MTU jumbo frames, but all EC2 instance types support 1500 MTU and the usable path depends on the traffic path. If your AWS node path MTU is 9001, set pod MTU to 8951 for IPv4 VXLAN. If the path MTU is 1500, use 1450.
 
-GCP supports 1460 MTU on VPC networks. Set pod MTU to 1410 for VXLAN encapsulation.
+GCP VPC networks commonly use a 1460 MTU by default, and GKE pod MTU depends on the CNI and VPC MTU. Set pod MTU to 1410 for IPv4 VXLAN when the underlying path MTU is 1460.
 
 Azure typically uses 1500 MTU. Set pod MTU to 1450 for overlay networks.
 
