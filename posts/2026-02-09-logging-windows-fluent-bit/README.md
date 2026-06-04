@@ -12,13 +12,13 @@ Centralized logging is essential for production Kubernetes clusters. Fluent Bit 
 
 ## Understanding Fluent Bit on Windows
 
-Fluent Bit runs as a Windows service or container process, collecting logs from files, Windows Event Logs, and standard output. Unlike Linux where container logs are automatically written to files, Windows containers require explicit configuration for log collection.
+Fluent Bit runs as a Windows service or container process, collecting logs from files, Windows Event Logs, and standard output. Kubernetes writes Windows container stdout and stderr logs to node log files, but Windows Event Logs, IIS logs, and application file logs require explicit configuration for collection.
 
 Fluent Bit for Windows supports inputs from files, Windows Event Logs, TCP/UDP, and forward protocol. It can output to Elasticsearch, Loki, CloudWatch, Azure Monitor, and many other destinations.
 
 ## Installing Fluent Bit on Windows Nodes
 
-Deploy Fluent Bit as a DaemonSet:
+Deploy Fluent Bit as a DaemonSet. Use a Windows image tag that matches your Windows node version:
 
 ```yaml
 # fluent-bit-windows-daemonset.yaml
@@ -39,7 +39,7 @@ data:
     [INPUT]
         Name              tail
         Path              C:\\var\\log\\containers\\*.log
-        Parser            docker
+        Parser            cri
         Tag               kube.*
         Refresh_Interval  5
         Mem_Buf_Limit     5MB
@@ -69,10 +69,11 @@ data:
 
   parsers.conf: |
     [PARSER]
-        Name   docker
-        Format json
+        Name   cri
+        Format regex
+        Regex  ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
         Time_Key time
-        Time_Format %Y-%m-%dT%H:%M:%S.%LZ
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
 
     [PARSER]
         Name   iis
@@ -98,9 +99,14 @@ spec:
       nodeSelector:
         kubernetes.io/os: windows
       serviceAccountName: fluent-bit
+      securityContext:
+        windowsOptions:
+          hostProcess: true
+          runAsUserName: "NT AUTHORITY\\Local service"
+      hostNetwork: true
       containers:
       - name: fluent-bit
-        image: fluent/fluent-bit:2.1-windowsservercore
+        image: fluent/fluent-bit:windows-2022-5.0.6
         volumeMounts:
         - name: config
           mountPath: C:\\fluent-bit\\etc
@@ -212,10 +218,18 @@ data:
         Host            elasticsearch-service
         Port            9200
         Index           iis-logs
-        Type            _doc
         Logstash_Format On
         Logstash_Prefix iis
         Retry_Limit     5
+        Suppress_Type_Name On
+
+  parsers.conf: |
+    [PARSER]
+        Name   iis
+        Format regex
+        Regex  ^(?<time>[^ ]+) (?<s_ip>[^ ]+) (?<cs_method>[^ ]+) (?<cs_uri_stem>[^ ]+) (?<cs_uri_query>[^ ]+) (?<s_port>[^ ]+) (?<cs_username>[^ ]+) (?<c_ip>[^ ]+) (?<cs_User_Agent>[^ ]+) (?<cs_Referer>[^ ]+) (?<sc_status>[^ ]+) (?<sc_substatus>[^ ]+) (?<sc_win32_status>[^ ]+) (?<time_taken>[^ ]+)$
+        Time_Key time
+        Time_Format %Y-%m-%d %H:%M:%S
 ```
 
 ## Collecting Windows Event Logs
@@ -238,7 +252,7 @@ data:
         Name          winlog
         Channels      Application,System,Security
         Interval_Sec  1
-        Tag           eventlog
+        Tag           eventlog.windows
         DB            C:\\fluent-bit\\winlog.db
 
     [FILTER]
@@ -285,9 +299,14 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/os: windows
+      securityContext:
+        windowsOptions:
+          hostProcess: true
+          runAsUserName: "NT AUTHORITY\\SYSTEM"
+      hostNetwork: true
       containers:
       - name: fluent-bit
-        image: fluent/fluent-bit:2.1-windowsservercore
+        image: fluent/fluent-bit:windows-2022-5.0.6
         env:
         - name: NODE_NAME
           valueFrom:
@@ -317,11 +336,12 @@ data:
     [SERVICE]
         Flush        5
         Log_Level    info
+        Parsers_File parsers.conf
 
     [INPUT]
         Name              tail
         Path              C:\\var\\log\\containers\\*.log
-        Parser            docker
+        Parser            cri
         Tag               kube.*
         Refresh_Interval  5
 
@@ -345,7 +365,6 @@ data:
         Host            elasticsearch.logging.svc.cluster.local
         Port            9200
         Index           kubernetes
-        Type            _doc
         Logstash_Format On
         Logstash_Prefix k8s-windows
         Logstash_DateFormat %Y.%m.%d
@@ -354,6 +373,14 @@ data:
         Tag_Key         tag
         Retry_Limit     5
         Suppress_Type_Name On
+
+  parsers.conf: |
+    [PARSER]
+        Name   cri
+        Format regex
+        Regex  ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+        Time_Key time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
 ```
 
 ## Forwarding Logs to Loki
@@ -371,11 +398,12 @@ data:
     [SERVICE]
         Flush     5
         Log_Level info
+        Parsers_File parsers.conf
 
     [INPUT]
         Name              tail
         Path              C:\\var\\log\\containers\\*.log
-        Parser            docker
+        Parser            cri
         Tag               kube.*
         Refresh_Interval  5
 
@@ -392,6 +420,14 @@ data:
         Port   3100
         Labels job=fluentbit, cluster=production, os=windows
         Label_keys $kubernetes['namespace_name'],$kubernetes['pod_name'],$kubernetes['container_name']
+
+  parsers.conf: |
+    [PARSER]
+        Name   cri
+        Format regex
+        Regex  ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+        Time_Key time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
 ```
 
 ## Application-Specific Logging
@@ -425,7 +461,14 @@ public class StructuredLogger
 
 // Usage
 StructuredLogger.Info("User logged in", new { userId = 123, username = "john" });
-StructuredLogger.Error("Database connection failed", new { error = ex.Message });
+try
+{
+    ConnectToDatabase();
+}
+catch (Exception ex)
+{
+    StructuredLogger.Error("Database connection failed", new { error = ex.Message });
+}
 ```
 
 Fluent Bit parser for JSON logs:
@@ -449,16 +492,13 @@ Add monitoring endpoint:
     HTTP_Port    2020
 
 [INPUT]
-    Name   cpu
-    Tag    metrics.cpu
-
-[INPUT]
-    Name   mem
-    Tag    metrics.mem
+    Name              windows_exporter_metrics
+    Tag               windows_metrics
+    Scrape_Interval   2
 
 [OUTPUT]
     Name   prometheus_exporter
-    Match  metrics.*
+    Match  windows_metrics
     Host   0.0.0.0
     Port   2021
 ```
@@ -471,6 +511,8 @@ kind: Service
 metadata:
   name: fluent-bit-metrics
   namespace: logging
+  labels:
+    app: fluent-bit-windows
 spec:
   selector:
     app: fluent-bit-windows
