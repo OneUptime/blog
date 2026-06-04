@@ -26,7 +26,7 @@ docker run -d \
   -e ZINC_FIRST_ADMIN_PASSWORD=Complexpass#123 \
   -e ZINC_DATA_PATH=/data \
   -v zinc_data:/data \
-  public.ecr.aws/zinclabs/zinc:latest
+  public.ecr.aws/zinclabs/zincsearch:latest
 ```
 
 Open `http://localhost:4080` to access the Zinc web UI. Log in with `admin` / `Complexpass#123`.
@@ -35,11 +35,10 @@ Open `http://localhost:4080` to access the Zinc web UI. Log in with `admin` / `C
 
 ```yaml
 # docker-compose.yml - Zinc Search for development
-version: "3.8"
 
 services:
   zinc:
-    image: public.ecr.aws/zinclabs/zinc:latest
+    image: public.ecr.aws/zinclabs/zincsearch:latest
     ports:
       # Web UI and API
       - "4080:4080"
@@ -229,11 +228,10 @@ Forward logs from Fluentd to Zinc:
 
 ```yaml
 # docker-compose.yml - Log pipeline with Fluentd and Zinc
-version: "3.8"
 
 services:
   zinc:
-    image: public.ecr.aws/zinclabs/zinc:latest
+    image: public.ecr.aws/zinclabs/zincsearch:latest
     ports:
       - "4080:4080"
     environment:
@@ -280,6 +278,7 @@ Fluentd configuration to forward logs to Zinc:
   @type elasticsearch
   host zinc
   port 4080
+  path /es
   scheme http
   user admin
   password Complexpass#123
@@ -341,7 +340,7 @@ for hit in result.get("hits", {}).get("hits", []):
 
 ```bash
 # Check cluster health
-curl -u admin:Complexpass#123 http://localhost:4080/api/healthz
+curl -u admin:Complexpass#123 http://localhost:4080/healthz
 
 # Get index statistics
 curl -u admin:Complexpass#123 http://localhost:4080/api/products/_mapping
