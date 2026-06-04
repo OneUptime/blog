@@ -41,9 +41,6 @@ prometheus:
             requests:
               storage: 100Gi
 
-    # Enable recording rules for cost metrics
-    additionalScrapeConfigs: []
-
 grafana:
   adminPassword: "your-secure-password"
   persistence:
@@ -208,146 +205,129 @@ Create a comprehensive Grafana dashboard that shows key efficiency metrics. This
 
 ```json
 {
-  "dashboard": {
-    "title": "Kubernetes Resource Efficiency Overview",
-    "tags": ["cost", "efficiency", "optimization"],
-    "timezone": "browser",
-    "schemaVersion": 16,
-    "version": 1,
-    "refresh": "5m",
-    "time": {
-      "from": "now-30d",
-      "to": "now"
-    },
-    "panels": [
-      {
-        "title": "Total Monthly Cost Trend",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-        "targets": [
-          {
-            "expr": "sum(namespace:estimated_monthly_cost:dollars)",
-            "legendFormat": "Total Monthly Cost",
-            "refId": "A"
-          }
-        ],
-        "yaxes": [
-          {
-            "format": "currencyUSD",
-            "label": "Cost"
-          }
-        ]
-      },
-      {
-        "title": "Average CPU Request Utilization",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-        "targets": [
-          {
-            "expr": "avg(namespace:cpu_request_utilization:ratio) * 100",
-            "legendFormat": "Cluster Average",
-            "refId": "A"
-          }
-        ],
-        "yaxes": [
-          {
-            "format": "percent",
-            "label": "Utilization",
-            "min": 0,
-            "max": 100
-          }
-        ],
-        "alert": {
-          "conditions": [
-            {
-              "evaluator": {"params": [30], "type": "lt"},
-              "operator": {"type": "and"},
-              "query": {"params": ["A", "5m", "now"]},
-              "reducer": {"type": "avg"},
-              "type": "query"
-            }
-          ],
-          "name": "Low CPU Utilization Alert"
+  "title": "Kubernetes Resource Efficiency Overview",
+  "tags": ["cost", "efficiency", "optimization"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "title": "Total Monthly Cost Trend",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "sum(namespace:estimated_monthly_cost:dollars)",
+          "legendFormat": "Total Monthly Cost",
+          "refId": "A"
         }
-      },
-      {
-        "title": "Average Memory Request Utilization",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
-        "targets": [
-          {
-            "expr": "avg(namespace:memory_request_utilization:ratio) * 100",
-            "legendFormat": "Cluster Average",
-            "refId": "A"
-          }
-        ],
-        "yaxes": [
-          {
-            "format": "percent",
-            "label": "Utilization",
-            "min": 0,
-            "max": 100
-          }
-        ]
-      },
-      {
-        "title": "CPU Waste by Namespace (Top 10)",
-        "type": "bargauge",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
-        "targets": [
-          {
-            "expr": "topk(10, namespace:cpu_waste_cores:sum)",
-            "legendFormat": "{{ namespace }}",
-            "refId": "A",
-            "instant": true
-          }
-        ],
-        "options": {
-          "orientation": "horizontal",
-          "displayMode": "gradient"
-        },
-        "fieldConfig": {
-          "defaults": {
-            "unit": "cores",
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {"value": 0, "color": "green"},
-                {"value": 2, "color": "yellow"},
-                {"value": 5, "color": "red"}
-              ]
-            }
-          }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
         }
-      },
-      {
-        "title": "Cost Per Namespace (Monthly)",
-        "type": "table",
-        "gridPos": {"h": 10, "w": 24, "x": 0, "y": 16},
-        "targets": [
-          {
-            "expr": "sort_desc(namespace:estimated_monthly_cost:dollars)",
-            "legendFormat": "",
-            "refId": "A",
-            "instant": true,
-            "format": "table"
-          }
-        ],
-        "transformations": [
-          {
-            "id": "organize",
-            "options": {
-              "excludeByName": {"Time": true},
-              "renameByName": {
-                "namespace": "Namespace",
-                "Value": "Monthly Cost ($)"
-              }
-            }
-          }
-        ]
       }
-    ]
-  }
+    },
+    {
+      "title": "Average CPU Request Utilization",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "avg(namespace:cpu_request_utilization:ratio) * 100",
+          "legendFormat": "Cluster Average",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      }
+    },
+    {
+      "title": "Average Memory Request Utilization",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "avg(namespace:memory_request_utilization:ratio) * 100",
+          "legendFormat": "Cluster Average",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      }
+    },
+    {
+      "title": "CPU Waste by Namespace (Top 10)",
+      "type": "bargauge",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "topk(10, namespace:cpu_waste_cores:sum)",
+          "legendFormat": "{{ namespace }}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cores",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"value": 0, "color": "green"},
+              {"value": 2, "color": "yellow"},
+              {"value": 5, "color": "red"}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Cost Per Namespace (Monthly)",
+      "type": "table",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 16},
+      "targets": [
+        {
+          "expr": "sort_desc(namespace:estimated_monthly_cost:dollars)",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true},
+            "renameByName": {
+              "namespace": "Namespace",
+              "Value": "Monthly Cost ($)"
+            }
+          }
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -399,10 +379,10 @@ avg_over_time(sum(namespace:estimated_monthly_cost:dollars)[30d:1d] offset 30d)
 * 100
 
 # Example query for utilization improvement trend
-# Calculate 7-day average utilization for each week over 90 days
-avg_over_time(
-  avg(namespace:cpu_request_utilization:ratio)[7d]
-) by (namespace)
+# Calculate a rolling 7-day average utilization per namespace
+avg by (namespace) (
+  avg_over_time(namespace:cpu_request_utilization:ratio[7d])
+)
 ```
 
 Create panels that show these trends visually:
@@ -424,32 +404,17 @@ Add annotations to mark optimization initiatives:
 
 ## Automating Cost Optimization Reports
 
-Generate weekly reports automatically using Grafana's reporting feature or custom scripts.
+Generate weekly reports automatically using Grafana Enterprise or Grafana Cloud reporting, or use custom scripts for Grafana OSS.
 
 ```bash
-# Install Grafana image renderer for PDF reports
+# Grafana reporting requires SMTP configuration and image rendering.
 helm upgrade prometheus prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
   --reuse-values \
   --set grafana.imageRenderer.enabled=true
 
-# Configure report generation via API
-curl -X POST \
-  http://admin:password@localhost:3000/api/reports \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "name": "Weekly Cost Efficiency Report",
-    "dashboard": {
-      "uid": "cost-efficiency-dashboard-uid"
-    },
-    "schedule": {
-      "frequency": "weekly",
-      "day": "monday",
-      "hour": 9
-    },
-    "emails": ["team@company.com"],
-    "message": "Weekly Kubernetes cost efficiency metrics"
-  }'
+# Configure scheduled reports in the Grafana UI or with the Reporting HTTP API
+# if your Grafana edition supports it.
 ```
 
 Alternatively, create a custom script that queries Prometheus and sends summaries:
@@ -458,14 +423,18 @@ Alternatively, create a custom script that queries Prometheus and sends summarie
 #!/usr/bin/env python3
 # weekly-cost-report.py
 
-import requests
-from datetime import datetime, timedelta
+import json
+from datetime import datetime
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
-PROMETHEUS_URL = "http://prometheus-server.monitoring.svc:9090"
+PROMETHEUS_URL = "http://prometheus-operated.monitoring.svc:9090"
 
 def query_prometheus(query):
-    response = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={"query": query})
-    return response.json()["data"]["result"]
+    params = urlencode({"query": query})
+    with urlopen(f"{PROMETHEUS_URL}/api/v1/query?{params}") as response:
+        payload = json.load(response)
+    return payload["data"]["result"]
 
 def generate_report():
     # Current monthly cost
@@ -487,7 +456,13 @@ if __name__ == "__main__":
     generate_report()
 ```
 
-Run this script weekly via a CronJob:
+Create the script ConfigMap, then run this script weekly via a CronJob:
+
+```bash
+kubectl create configmap cost-report-script \
+  --from-file=weekly-cost-report.py \
+  -n monitoring
+```
 
 ```yaml
 # cost-report-cronjob.yaml
@@ -505,7 +480,7 @@ spec:
           containers:
           - name: report-generator
             image: python:3.11-slim
-            command: ["/scripts/weekly-cost-report.py"]
+            command: ["python", "/scripts/weekly-cost-report.py"]
             volumeMounts:
             - name: scripts
               mountPath: /scripts
@@ -523,14 +498,14 @@ Create dashboard variables to filter by time ranges around specific optimization
 
 ```bash
 # Add dashboard variables in Grafana
-# Variable: $optimization_date (date picker)
-# Variable: $comparison_window (days before/after)
+# Variable: $optimization_timestamp (Unix timestamp)
+# Variable: $comparison_window (duration such as 7d or 30d)
 
 # Queries that compare periods
 (
-  avg_over_time(metric[$comparison_window] @ $optimization_date)
+  avg_over_time(metric[$comparison_window] @ $optimization_timestamp)
   -
-  avg_over_time(metric[$comparison_window] @ ($optimization_date - $comparison_window))
+  avg_over_time(metric[$comparison_window] @ $optimization_timestamp offset $comparison_window)
 )
 ```
 
