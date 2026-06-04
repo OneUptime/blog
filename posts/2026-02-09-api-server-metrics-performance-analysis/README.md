@@ -43,13 +43,13 @@ kubectl get --raw /metrics | grep -E "^apiserver_request_total"
 kubectl get --raw /metrics | grep apiserver_request_total
 
 # Example output:
-# apiserver_request_total{code="200",resource="pods",verb="list"} 1234
-# apiserver_request_total{code="404",resource="deployments",verb="get"} 45
+# apiserver_request_total{code="200",component="apiserver",dry_run="",group="",resource="pods",scope="namespace",subresource="",verb="LIST",version="v1"} 1234
+# apiserver_request_total{code="404",component="apiserver",dry_run="",group="apps",resource="deployments",scope="namespace",subresource="",verb="GET",version="v1"} 45
 ```
 
 This metric shows how many requests the API server has processed, broken down by:
 - `resource`: pods, deployments, services, etc.
-- `verb`: get, list, watch, create, update, delete, patch
+- `verb`: GET, LIST, WATCH, CREATE, UPDATE, DELETE, PATCH, etc.
 - `code`: HTTP status code (200, 404, 500, etc.)
 
 **Request Duration**:
@@ -59,10 +59,10 @@ This metric shows how many requests the API server has processed, broken down by
 kubectl get --raw /metrics | grep apiserver_request_duration_seconds
 
 # Example output:
-# apiserver_request_duration_seconds_bucket{resource="pods",verb="list",le="0.1"} 500
-# apiserver_request_duration_seconds_bucket{resource="pods",verb="list",le="0.5"} 950
-# apiserver_request_duration_seconds_sum{resource="pods",verb="list"} 125.5
-# apiserver_request_duration_seconds_count{resource="pods",verb="list"} 1000
+# apiserver_request_duration_seconds_bucket{component="apiserver",dry_run="",group="",resource="pods",scope="namespace",subresource="",verb="LIST",version="v1",le="0.1"} 500
+# apiserver_request_duration_seconds_bucket{component="apiserver",dry_run="",group="",resource="pods",scope="namespace",subresource="",verb="LIST",version="v1",le="0.5"} 950
+# apiserver_request_duration_seconds_sum{component="apiserver",dry_run="",group="",resource="pods",scope="namespace",subresource="",verb="LIST",version="v1"} 125.5
+# apiserver_request_duration_seconds_count{component="apiserver",dry_run="",group="",resource="pods",scope="namespace",subresource="",verb="LIST",version="v1"} 1000
 ```
 
 This histogram shows request latency distribution, helping you identify slow operations.
@@ -74,8 +74,8 @@ This histogram shows request latency distribution, helping you identify slow ope
 kubectl get --raw /metrics | grep apiserver_current_inflight_requests
 
 # Example output:
-# apiserver_current_inflight_requests{kind="mutating"} 5
-# apiserver_current_inflight_requests{kind="readOnly"} 120
+# apiserver_current_inflight_requests{request_kind="mutating"} 5
+# apiserver_current_inflight_requests{request_kind="readOnly"} 120
 ```
 
 This shows how many requests are currently being processed, split between mutating and read-only operations.
@@ -88,7 +88,7 @@ To find the most common requests:
 # Extract and sort request counts
 kubectl get --raw /metrics | \
     grep '^apiserver_request_total' | \
-    sort -t= -k2 -nr | \
+    sort -k2,2nr | \
     head -20
 
 # This shows the top 20 most common requests
@@ -97,48 +97,93 @@ kubectl get --raw /metrics | \
 Look for patterns like:
 - Excessive list operations on large resource types
 - High error rates for specific resources
-- Unusual request patterns from specific clients
+- Unusual request patterns from specific users or service accounts
 
 ## Identifying Slow Endpoints
 
-Check which API endpoints have the highest latency:
+The raw `/metrics` endpoint exposes request latency as histogram buckets. Use bucket values to find operations with requests over a threshold:
 
 ```bash
-# Get p99 latency for different operations
+# Find operations with requests that took more than 1 second
 kubectl get --raw /metrics | \
-    grep 'apiserver_request_duration_seconds' | \
-    grep 'quantile="0.99"'
+    grep '^apiserver_request_duration_seconds_bucket' | \
+    awk -F'[{}, ]' '
+        {
+            resource = verb = le = ""
+            for (i=2; i<=NF; i++) {
+                if ($i ~ /^resource=/) resource = $i
+                if ($i ~ /^verb=/) verb = $i
+                if ($i ~ /^le=/) le = $i
+            }
+            key = resource " " verb
+            if (le == "le=\"1\"") le1[key] = $NF
+            if (le == "le=\"+Inf\"") total[key] = $NF
+        }
+        END {
+            for (key in total) {
+                slow = total[key] - le1[key]
+                if (slow > 0) print slow, key
+            }
+        }' | \
+    sort -rn | \
+    head -20
 
-# Look for operations with high p99 latency
-# Values over 1 second indicate performance issues
+# Values here are cumulative request counts above 1 second
 ```
 
-Create a script to parse and analyze latency:
+Create a script to parse and analyze slow requests:
 
 ```bash
 #!/bin/bash
 
-echo "API Server Latency Analysis (p99)"
-echo "=================================="
+echo "API Server Slow Request Analysis (>1s)"
+echo "======================================"
 
 kubectl get --raw /metrics | \
-    grep 'apiserver_request_duration_seconds{.*quantile="0.99"' | \
-    awk -F'[{},]' '{
-        for (i=2; i<=NF; i++) {
-            if ($i ~ /resource=/) resource = $i
-            if ($i ~ /verb=/) verb = $i
+    grep '^apiserver_request_duration_seconds_bucket' | \
+    awk -F'[{}, ]' '
+        {
+            resource = verb = le = ""
+            for (i=2; i<=NF; i++) {
+                if ($i ~ /^resource=/) resource = $i
+                if ($i ~ /^verb=/) verb = $i
+                if ($i ~ /^le=/) le = $i
+            }
+            key = resource " " verb
+            if (le == "le=\"1\"") le1[key] = $NF
+            if (le == "le=\"+Inf\"") total[key] = $NF
         }
-        print $NF, resource, verb
-    }' | \
+        END {
+            for (key in total) {
+                slow = total[key] - le1[key]
+                if (slow > 0) print slow, key
+            }
+        }' | \
     sort -rn | \
     head -20
 
 echo ""
-echo "Operations taking > 1s at p99:"
+echo "Operations with requests over 1s:"
 kubectl get --raw /metrics | \
-    grep 'apiserver_request_duration_seconds{.*quantile="0.99"' | \
-    awk '$NF > 1' | \
-    wc -l
+    grep '^apiserver_request_duration_seconds_bucket' | \
+    awk -F'[{}, ]' '
+        {
+            resource = verb = le = ""
+            for (i=2; i<=NF; i++) {
+                if ($i ~ /^resource=/) resource = $i
+                if ($i ~ /^verb=/) verb = $i
+                if ($i ~ /^le=/) le = $i
+            }
+            key = resource " " verb
+            if (le == "le=\"1\"") le1[key] = $NF
+            if (le == "le=\"+Inf\"") total[key] = $NF
+        }
+        END {
+            for (key in total) {
+                if (total[key] - le1[key] > 0) count++
+            }
+            print count
+        }'
 ```
 
 ## Monitoring API Priority and Fairness
@@ -164,13 +209,13 @@ Monitor watch performance:
 
 ```bash
 # Number of active watch connections
-kubectl get --raw /metrics | grep apiserver_registered_watchers
+kubectl get --raw /metrics | grep apiserver_longrunning_requests
 
 # Watch events sent
 kubectl get --raw /metrics | grep apiserver_watch_events_total
 
-# Watch terminations
-kubectl get --raw /metrics | grep apiserver_watch_terminated_total
+# Watch cache events dispatched
+kubectl get --raw /metrics | grep apiserver_watch_cache_events_dispatched_total
 ```
 
 Many watch connections can strain the API server. Look for controllers creating excessive watches.
@@ -188,8 +233,7 @@ kubectl get --raw /metrics | grep etcd_requests_total
 
 # Look for slow etcd operations
 kubectl get --raw /metrics | \
-    grep 'etcd_request_duration_seconds.*quantile="0.99"' | \
-    awk '$NF > 0.1'
+    grep '^etcd_request_duration_seconds_bucket.*le="0.1"'
 ```
 
 Slow etcd operations directly impact API server latency.
@@ -210,19 +254,19 @@ Slow webhooks add latency to every create/update request they intercept.
 
 ## Client-Side Metrics
 
-Identify which clients are generating the most load:
+Identify which authenticated users are generating the most load:
 
 ```bash
-# Requests by client (user agent)
-kubectl get --raw /metrics | grep 'apiserver_request_total.*client='
+# Requests by authenticated username
+kubectl get --raw /metrics | grep '^authenticated_user_requests'
 
-# This shows which controllers or tools are making the most requests
+# This shows which users or service accounts are making the most requests
 ```
 
 Look for:
 - Controllers with excessive list/watch operations
 - CI/CD systems hammering the API
-- Misconfigured clients polling too frequently
+- Misconfigured workloads polling too frequently
 
 ## Creating a Monitoring Dashboard
 
@@ -248,6 +292,9 @@ spec:
     matchLabels:
       component: apiserver
       provider: kubernetes
+  namespaceSelector:
+    matchNames:
+    - default
 ```
 
 Then create Grafana dashboards tracking:
@@ -265,8 +312,23 @@ Then create Grafana dashboards tracking:
 ```bash
 # Check list operation latency
 kubectl get --raw /metrics | \
-    grep 'apiserver_request_duration_seconds.*verb="list".*quantile="0.99"' | \
-    sort -t= -k2 -rn | head -10
+    grep '^apiserver_request_duration_seconds_bucket.*verb="LIST"' | \
+    awk -F'[{}, ]' '
+        {
+            resource = le = ""
+            for (i=2; i<=NF; i++) {
+                if ($i ~ /^resource=/) resource = $i
+                if ($i ~ /^le=/) le = $i
+            }
+            if (le == "le=\"1\"") le1[resource] = $NF
+            if (le == "le=\"+Inf\"") total[resource] = $NF
+        }
+        END {
+            for (resource in total) {
+                slow = total[resource] - le1[resource]
+                if (slow > 0) print slow, resource
+            }
+        }' | sort -rn | head -10
 
 # Slow lists might indicate:
 # - Large resource counts
@@ -274,16 +336,16 @@ kubectl get --raw /metrics | \
 # - Slow etcd
 ```
 
-**High watch churn**:
+**High watch activity**:
 
 ```bash
-# Check watch termination rate
-kubectl get --raw /metrics | grep apiserver_watch_terminated_total
+# Check active watch requests
+kubectl get --raw /metrics | grep 'apiserver_longrunning_requests.*verb="WATCH"'
 
-# Frequent terminations might indicate:
-# - Network issues
-# - Client bugs
-# - Resource version expiration
+# High watch activity might indicate:
+# - Controllers opening too many watches
+# - Missing shared informers
+# - Clients reconnecting too frequently
 ```
 
 **APF throttling**:
@@ -305,11 +367,11 @@ kubectl get --raw /metrics | grep apiserver_flowcontrol_rejected_requests_total
 If you see excessive list calls:
 
 ```bash
-# Identify clients doing frequent lists
+# Identify authenticated users making frequent API requests
 kubectl get --raw /metrics | \
-    grep 'apiserver_request_total.*verb="list"' | \
-    grep -o 'client="[^"]*"' | \
-    sort | uniq -c | sort -rn
+    grep '^authenticated_user_requests' | \
+    awk '{print $NF, $1}' | \
+    sort -k1,1nr
 ```
 
 Solution: Use watches with informers instead of polling with lists.
@@ -319,7 +381,7 @@ Solution: Use watches with informers instead of polling with lists.
 If watch count is high:
 
 ```bash
-kubectl get --raw /metrics | grep apiserver_registered_watchers
+kubectl get --raw /metrics | grep 'apiserver_longrunning_requests.*verb="WATCH"'
 ```
 
 Solution: Use shared informers to reduce watch connections.
@@ -329,8 +391,23 @@ Solution: Use shared informers to reduce watch connections.
 ```bash
 # Find slow webhooks
 kubectl get --raw /metrics | \
-    grep 'apiserver_admission_webhook_admission_duration_seconds.*quantile="0.99"' | \
-    awk '$NF > 0.5'
+    grep '^apiserver_admission_webhook_admission_duration_seconds_bucket' | \
+    awk -F'[{}, ]' '
+        {
+            name = le = ""
+            for (i=2; i<=NF; i++) {
+                if ($i ~ /^name=/) name = $i
+                if ($i ~ /^le=/) le = $i
+            }
+            if (le == "le=\"0.5\"") le05[name] = $NF
+            if (le == "le=\"+Inf\"") total[name] = $NF
+        }
+        END {
+            for (name in total) {
+                slow = total[name] - le05[name]
+                if (slow > 0) print slow, name
+            }
+        }' | sort -rn
 ```
 
 Solution: Optimize webhook performance or increase timeout.
@@ -353,19 +430,28 @@ while true; do
         awk '{sum+=$NF} END {print sum}')
 
     INFLIGHT_MUTATING=$(kubectl get --raw /metrics | \
-        grep 'apiserver_current_inflight_requests{kind="mutating"}' | \
+        grep 'apiserver_current_inflight_requests{request_kind="mutating"}' | \
         awk '{print $NF}')
 
     INFLIGHT_READONLY=$(kubectl get --raw /metrics | \
-        grep 'apiserver_current_inflight_requests{kind="readOnly"}' | \
+        grep 'apiserver_current_inflight_requests{request_kind="readOnly"}' | \
         awk '{print $NF}')
 
-    P99_LATENCY=$(kubectl get --raw /metrics | \
-        grep 'apiserver_request_duration_seconds.*quantile="0.99"' | \
-        awk '{sum+=$NF; count++} END {print sum/count}')
+    SLOW_REQUEST_BUCKETS=$(kubectl get --raw /metrics | \
+        grep '^apiserver_request_duration_seconds_bucket' | \
+        awk -F'[{}, ]' '
+            {
+                le = ""
+                for (i=2; i<=NF; i++) {
+                    if ($i ~ /^le=/) le = $i
+                }
+                if (le == "le=\"1\"") le1 += $NF
+                if (le == "le=\"+Inf\"") total += $NF
+            }
+            END {print total - le1}')
 
     # Log metrics
-    echo "$TIMESTAMP,$TOTAL_REQUESTS,$INFLIGHT_MUTATING,$INFLIGHT_READONLY,$P99_LATENCY" >> api-metrics.csv
+    echo "$TIMESTAMP,$TOTAL_REQUESTS,$INFLIGHT_MUTATING,$INFLIGHT_READONLY,$SLOW_REQUEST_BUCKETS" >> api-metrics.csv
 
     sleep $INTERVAL
 done
@@ -383,7 +469,7 @@ done
 
 5. **Track over time**: Monitor trends, not just point-in-time values
 
-6. **Analyze by client**: Identify which clients cause the most load
+6. **Analyze by user**: Identify which users or service accounts cause the most load
 
 7. **Review regularly**: Schedule periodic performance reviews
 
