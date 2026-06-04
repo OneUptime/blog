@@ -33,13 +33,11 @@ metacontroller-0                  1/1     Running   0          1m
 
 ## Understanding Metacontroller Concepts
 
-Metacontroller provides three controller patterns:
+Metacontroller provides two main controller patterns:
 
 **CompositeController**: Manages a parent-child relationship where a parent resource creates and manages child resources.
 
-**DecoratorController**: Adds resources alongside an existing resource without owning it.
-
-**CustomController**: The most flexible pattern for arbitrary controller logic.
+**DecoratorController**: Adds resources alongside an existing target resource without taking over the target resource itself.
 
 ## Creating a Simple CompositeController
 
@@ -55,6 +53,7 @@ spec:
   parentResource:
     apiVersion: example.com/v1
     resource: applications
+  generateSelector: true
 
   # Child resources this controller manages
   childResources:
@@ -89,14 +88,12 @@ def sync():
     children = body.get('children', {})
 
     # Generate desired children
-    desired_children = {
-        'deployments.apps/v1': [create_deployment(parent)],
-        'services.v1': [create_service(parent)]
-    }
-
     return jsonify({
         'status': compute_status(parent, children),
-        'children': desired_children
+        'children': [
+            create_deployment(parent),
+            create_service(parent)
+        ]
     })
 
 def create_deployment(parent):
@@ -159,7 +156,7 @@ def create_service(parent):
 
 def compute_status(parent, children):
     """Compute status based on child resource states"""
-    deployments = children.get('deployments.apps/v1', [])
+    deployments = list(children.get('Deployment.apps/v1', {}).values())
 
     if not deployments:
         return {'phase': 'Pending'}
@@ -184,7 +181,7 @@ if __name__ == '__main__':
 Package and deploy your webhook:
 
 ```dockerfile
-FROM python:3.9-slim
+FROM python:3-slim
 
 WORKDIR /app
 COPY requirements.txt .
@@ -371,6 +368,7 @@ spec:
   parentResource:
     apiVersion: example.com/v1
     resource: databases
+  generateSelector: true
 
   hooks:
     sync:
@@ -419,16 +417,13 @@ app.post('/sync', (req, res) => {
 
   res.json({
     status: computeStatus(parent, children),
-    children: {
-      'deployments.apps/v1': [deployment],
-      'services.v1': [service]
-    }
+    children: [deployment, service]
   });
 });
 
 function createDeployment(parent) {
   const { name, namespace } = parent.metadata;
-  const { image, replicas = 1 } = parent.spec;
+  const { image, replicas = 1, port = 8080 } = parent.spec;
 
   return {
     apiVersion: 'apps/v1',
@@ -442,12 +437,50 @@ function createDeployment(parent) {
         spec: {
           containers: [{
             name: 'app',
-            image
+            image,
+            ports: [{ containerPort: port }]
           }]
         }
       }
     }
   };
+}
+
+function createService(parent) {
+  const { name, namespace } = parent.metadata;
+  const { port = 8080, serviceType = 'ClusterIP' } = parent.spec;
+
+  return {
+    apiVersion: 'v1',
+    kind: 'Service',
+    metadata: { name, namespace },
+    spec: {
+      selector: { app: name },
+      ports: [{
+        port: 80,
+        targetPort: port
+      }],
+      type: serviceType
+    }
+  };
+}
+
+function computeStatus(parent, children = {}) {
+  const deployments = Object.values(children['Deployment.apps/v1'] || {});
+
+  if (deployments.length === 0) {
+    return { phase: 'Pending' };
+  }
+
+  const status = deployments[0].status || {};
+  const available = status.availableReplicas || 0;
+  const desired = status.replicas || 0;
+
+  if (available === desired && available > 0) {
+    return { phase: 'Running', ready: true };
+  }
+
+  return { phase: 'Deploying', ready: false };
 }
 
 app.listen(80, () => {
@@ -457,7 +490,7 @@ app.listen(80, () => {
 
 ## Customize Hook
 
-The customize hook modifies resources before they're applied:
+The customize hook tells Metacontroller which related resources to include in sync and finalize requests:
 
 ```yaml
 apiVersion: metacontroller.k8s.io/v1alpha1
@@ -468,18 +501,22 @@ spec:
   parentResource:
     apiVersion: example.com/v1
     resource: applications
+  generateSelector: true
 
   childResources:
   - apiVersion: apps/v1
     resource: deployments
     updateStrategy:
-      method: InPlace
+      method: RollingInPlace
       statusChecks:
         conditions:
         - type: Available
           status: "True"
 
   hooks:
+    sync:
+      webhook:
+        url: http://app-controller.default.svc/sync
     customize:
       webhook:
         url: http://app-controller.default.svc/customize
