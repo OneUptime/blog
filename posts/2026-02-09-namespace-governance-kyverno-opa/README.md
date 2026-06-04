@@ -21,7 +21,7 @@ Kyverno is a Kubernetes-native policy engine that uses YAML to define policies. 
 Deploy Kyverno to your cluster:
 
 ```bash
-kubectl create -f https://github.com/kyverno/kyverno/releases/download/v1.10.0/install.yaml
+kubectl create -f https://github.com/kyverno/kyverno/releases/download/v1.18.1/install.yaml
 
 # Verify installation
 
@@ -40,7 +40,6 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-limits
 spec:
-  validationFailureAction: enforce
   background: true
   rules:
   - name: check-cpu-memory-limits
@@ -50,6 +49,7 @@ spec:
           kinds:
           - Pod
     validate:
+      failureAction: Enforce
       message: "CPU and memory limits are required for all containers"
       pattern:
         spec:
@@ -70,7 +70,6 @@ kind: ClusterPolicy
 metadata:
   name: namespace-specific-limits
 spec:
-  validationFailureAction: enforce
   background: false
   rules:
   # Production namespaces require higher limits
@@ -84,6 +83,7 @@ spec:
             matchLabels:
               environment: production
     validate:
+      failureAction: Enforce
       message: "Production pods must have at least 1 CPU and 1Gi memory"
       pattern:
         spec:
@@ -106,6 +106,7 @@ spec:
             matchLabels:
               environment: development
     validate:
+      failureAction: Enforce
       message: "Development pods must specify resources"
       pattern:
         spec:
@@ -126,7 +127,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-image-registries
 spec:
-  validationFailureAction: enforce
   background: true
   rules:
   - name: validate-image-registry
@@ -136,6 +136,7 @@ spec:
           kinds:
           - Pod
     validate:
+      failureAction: Enforce
       message: "Images must come from approved registries: myregistry.io or gcr.io/myproject"
       pattern:
         spec:
@@ -198,7 +199,7 @@ spec:
           - to:
             - namespaceSelector:
                 matchLabels:
-                  name: kube-system
+                  kubernetes.io/metadata.name: kube-system
             ports:
             - protocol: UDP
               port: 53
@@ -229,7 +230,7 @@ spec:
         metadata:
           labels:
             managed-by: platform-team
-            +(team): "{{request.namespace | split('-') | [1]}}"
+            +(team): "{{ request.namespace | split(@, '-') | [1] }}"
         spec:
           containers:
           - (name): "*"
@@ -243,7 +244,7 @@ spec:
 Deploy OPA Gatekeeper for more complex policies:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/release-3.13/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.2/deploy/gatekeeper.yaml
 
 # Verify installation
 kubectl get pods -n gatekeeper-system
@@ -277,16 +278,9 @@ spec:
       package k8srequiredquotas
 
       violation[{"msg": msg}] {
-        input.review.kind.kind == "Namespace"
-        namespace := input.review.object.metadata.name
-        not has_required_quotas(namespace)
-        msg := sprintf("Namespace %v must have ResourceQuota defined", [namespace])
-      }
-
-      has_required_quotas(namespace) {
-        quota := data.inventory.cluster["v1"]["ResourceQuota"][namespace][_]
         required := input.parameters.requiredQuotas[_]
-        quota.spec.hard[required]
+        not input.review.object.spec.hard[required]
+        msg := sprintf("ResourceQuota %v must define %v", [input.review.object.metadata.name, required])
       }
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
@@ -297,7 +291,7 @@ spec:
   match:
     kinds:
     - apiGroups: [""]
-      kinds: ["Namespace"]
+      kinds: ["ResourceQuota"]
     excludedNamespaces:
     - kube-system
     - kube-public
@@ -336,8 +330,9 @@ spec:
       }
 
       violation[{"msg": msg}] {
-        not input.review.object.spec.securityContext.runAsNonRoot
-        msg := "Containers must run as non-root user"
+        container := input_containers[_]
+        not is_run_as_non_root(container)
+        msg := sprintf("Container must run as non-root user: %v", [container.name])
       }
 
       input_containers[c] {
@@ -346,6 +341,10 @@ spec:
 
       input_containers[c] {
         c := input.review.object.spec.initContainers[_]
+      }
+
+      is_run_as_non_root(container) {
+        object.get(object.get(container, "securityContext", {}), "runAsNonRoot", object.get(object.get(input.review.object.spec, "securityContext", {}), "runAsNonRoot", false)) == true
       }
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
@@ -372,7 +371,6 @@ kind: ClusterPolicy
 metadata:
   name: namespace-naming-convention
 spec:
-  validationFailureAction: enforce
   rules:
   - name: check-namespace-name
     match:
@@ -381,6 +379,7 @@ spec:
           kinds:
           - Namespace
     validate:
+      failureAction: Enforce
       message: "Namespace must follow naming convention: team-<teamname>-<environment>"
       pattern:
         metadata:
@@ -405,7 +404,7 @@ data:
       rules:
       - alert: HighPolicyViolations
         expr: |
-          sum(rate(kyverno_policy_results_total{policy_result="fail"}[5m])) by (policy_name)
+          sum(rate(kyverno_policy_results{rule_result="fail"}[5m])) by (policy_name)
           > 10
         for: 5m
         labels:
@@ -416,7 +415,7 @@ data:
 
       - alert: GatekeeperConstraintViolations
         expr: |
-          sum(gatekeeper_violations{enforcement_action="deny"}) by (constraint_kind)
+          sum(gatekeeper_violations{enforcement_action="deny"})
           > 0
         for: 2m
         labels:
@@ -437,7 +436,6 @@ kind: ClusterPolicy
 metadata:
   name: test-policy
 spec:
-  validationFailureAction: audit  # Use audit mode
   rules:
   - name: test-rule
     match:
@@ -446,6 +444,7 @@ spec:
           kinds:
           - Pod
     validate:
+      failureAction: Audit  # Use audit mode
       message: "Test message"
       pattern:
         metadata:
