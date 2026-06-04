@@ -25,10 +25,13 @@ Start by installing the Notation CLI on your system. Download the latest release
 ```bash
 # Download Notation for Linux
 
-curl -LO https://github.com/notaryproject/notation/releases/download/v1.0.0/notation_1.0.0_linux_amd64.tar.gz
+export NOTATION_VERSION=1.3.2
+curl -LO https://github.com/notaryproject/notation/releases/download/v${NOTATION_VERSION}/notation_${NOTATION_VERSION}_linux_amd64.tar.gz
+curl -LO https://github.com/notaryproject/notation/releases/download/v${NOTATION_VERSION}/notation_${NOTATION_VERSION}_checksums.txt
+grep "notation_${NOTATION_VERSION}_linux_amd64.tar.gz" notation_${NOTATION_VERSION}_checksums.txt | shasum --check -
 
 # Extract and install
-tar xvzf notation_1.0.0_linux_amd64.tar.gz
+tar xvzf notation_${NOTATION_VERSION}_linux_amd64.tar.gz
 sudo mv notation /usr/local/bin/
 
 # Verify installation
@@ -49,8 +52,8 @@ notation cert generate-test --default "example.io"
 notation cert ls
 
 # The output shows your certificate details
-# NAME         CERTIFICATE
-# example.io   /home/user/.config/notation/certificate.pem
+# STORE TYPE   STORE NAME   CERTIFICATE
+# ca           example.io   example.io.crt
 ```
 
 For production, integrate with external key providers like Azure Key Vault, AWS KMS, or HashiCorp Vault. Notation supports plugins for various key management systems.
@@ -58,10 +61,11 @@ For production, integrate with external key providers like Azure Key Vault, AWS 
 ```bash
 # Example with Azure Key Vault (after installing the plugin)
 notation key add azure-key \
+  --default \
   --plugin azure-kv \
   --id https://myvault.vault.azure.net/keys/signing-key
 
-notation cert add azure-cert --type ca --store ca azure-cert.pem
+notation cert add --type ca --store example.io azure-cert.pem
 ```
 
 ## Signing Container Images
@@ -76,6 +80,32 @@ docker push myregistry.io/app:v1.0
 # Sign the image with Notation
 notation sign myregistry.io/app:v1.0
 
+# Create and import a trust policy for verification
+cat <<EOF > ./trustpolicy.json
+{
+  "version": "1.0",
+  "trustPolicies": [
+    {
+      "name": "production-images",
+      "registryScopes": [
+        "myregistry.io/app"
+      ],
+      "signatureVerification": {
+        "level": "strict"
+      },
+      "trustStores": [
+        "ca:example.io"
+      ],
+      "trustedIdentities": [
+        "*"
+      ]
+    }
+  ]
+}
+EOF
+
+notation policy import ./trustpolicy.json
+
 # Verify the signature
 notation verify myregistry.io/app:v1.0
 
@@ -87,20 +117,57 @@ The signature includes metadata about who signed the image, when it was signed, 
 
 ## Configuring containerd for Signature Verification
 
-To enforce signature verification in Kubernetes, configure containerd to verify images before running them. This requires containerd version 1.7 or later with the Notation plugin.
+To enforce signature verification in Kubernetes, configure containerd to verify images before pulling them. This requires containerd 2.1 or later so CRI pulls use the transfer service, which supports image verifier binaries.
 
-First, install the containerd image verifier plugin.
+First, create a containerd image verifier binary that runs Notation.
 
 ```bash
-# Download the plugin
-sudo curl -L https://github.com/notaryproject/notation-containerd/releases/download/v0.1.0/notation-containerd-v0.1.0-linux-amd64.tar.gz \
-  -o /tmp/notation-containerd.tar.gz
+# Create the verifier directory
+sudo mkdir -p /opt/containerd/image-verifier/bin
 
-# Extract to containerd plugins directory
-sudo tar -C /opt/containerd/lib -xzf /tmp/notation-containerd.tar.gz
+# Install a verifier script
+sudo tee /opt/containerd/image-verifier/bin/notation-verify >/dev/null <<'EOF'
+#!/bin/sh
+set -eu
+
+NAME=""
+DIGEST=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -name)
+      NAME="$2"
+      shift 2
+      ;;
+    -digest)
+      DIGEST="$2"
+      shift 2
+      ;;
+    -stdin-media-type)
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+case "$NAME" in
+  *@sha256:*)
+    REF="$NAME"
+    ;;
+  *)
+    REF="${NAME}@${DIGEST}"
+    ;;
+esac
+
+NOTATION_CONFIG=/etc/containerd/notation notation verify "$REF"
+EOF
+
+sudo chmod +x /opt/containerd/image-verifier/bin/notation-verify
 ```
 
-Create a trust policy that defines which images must be signed and which keys are trusted. Save this as `/etc/containerd/notation-policy.json`.
+Create a trust policy that defines which images must be signed and which keys are trusted. Save this as `/tmp/containerd-trustpolicy.json`.
 
 ```json
 {
@@ -118,7 +185,7 @@ Create a trust policy that defines which images must be signed and which keys ar
         "ca:example.io"
       ],
       "trustedIdentities": [
-        "x509.subject: CN=example.io"
+        "*"
       ]
     }
   ]
@@ -128,29 +195,27 @@ Create a trust policy that defines which images must be signed and which keys ar
 Update your containerd configuration at `/etc/containerd/config.toml` to enable the verifier plugin.
 
 ```toml
-version = 2
+version = 3
 
-[plugins."io.containerd.grpc.v1.cri".image_verifier]
-  # Enable image verification
-  enable = true
-
-  # Path to trust policy
-  policy_path = "/etc/containerd/notation-policy.json"
-
-[plugins."io.containerd.grpc.v1.cri".image_verifier.notation]
-  # Path to Notation configuration
-  config_path = "/etc/containerd/notation"
+[plugins]
+  [plugins."io.containerd.image-verifier.v1.bindir"]
+    bin_dir = "/opt/containerd/image-verifier/bin"
+    max_verifiers = 10
+    per_verifier_timeout = "30s"
 ```
 
-Copy your trusted certificates to the containerd notation directory.
+Import your trusted certificates and trust policy into the Notation configuration directory that the verifier script uses.
 
 ```bash
 # Create notation configuration directory
-sudo mkdir -p /etc/containerd/notation/truststore/x509/ca/example.io
+sudo mkdir -p /etc/containerd/notation
 
-# Copy your CA certificate
-sudo cp ~/.config/notation/certificate.pem \
-  /etc/containerd/notation/truststore/x509/ca/example.io/
+# Add your CA certificate and import the trust policy
+sudo env NOTATION_CONFIG=/etc/containerd/notation \
+  notation cert add --type ca --store example.io example.io.crt
+
+sudo env NOTATION_CONFIG=/etc/containerd/notation \
+  notation policy import /tmp/containerd-trustpolicy.json
 
 # Restart containerd to apply changes
 sudo systemctl restart containerd
