@@ -42,8 +42,8 @@ data:
     [INPUT]
         Name              tail
         Path              /var/log/containers/*.log
-        Parser            docker
         Tag               kube.*
+        multiline.parser  docker, cri
         Refresh_Interval  5
         Mem_Buf_Limit     50MB
 
@@ -69,7 +69,8 @@ data:
         record["pipeline_version"] = "1.0"
 
         -- Return modified record
-        -- Code 0 = keep record
+        -- Code 2 = record modified, timestamp unchanged
+        -- Code 0 = record unchanged
         -- Code -1 = drop record
         return 2, timestamp, record
     end
@@ -94,7 +95,7 @@ spec:
     spec:
       containers:
       - name: fluent-bit
-        image: fluent/fluent-bit:2.2
+        image: fluent/fluent-bit:5.0.6
         volumeMounts:
         - name: config
           mountPath: /fluent-bit/etc/
@@ -160,11 +161,11 @@ Enrich logs with Kubernetes context:
 ```lua
 -- k8s_enrich.lua
 function add_kubernetes_metadata(tag, timestamp, record)
-    -- Extract namespace and pod from tag
-    -- Tag format: kube.var.log.containers.pod_namespace_container.log
-    local namespace, pod, container = string.match(
+    -- Extract pod, namespace, and container from tag
+    -- Tag format: kube.var.log.containers.pod_namespace_container-containerid.log
+    local pod, namespace, container = string.match(
         tag,
-        "kube%.var%.log%.containers%.([^_]+)_([^_]+)_([^%.]+)"
+        "kube%.var%.log%.containers%.([^_]+)_([^_]+)_(.+)%-[^%.]+%.log$"
     )
 
     if namespace and pod and container then
@@ -174,8 +175,8 @@ function add_kubernetes_metadata(tag, timestamp, record)
             container_name = container
         }
 
-        -- Add deployment name (assuming pod name format: deployment-xyz)
-        local deployment = string.match(pod, "([^%-]+)")
+        -- Add deployment name (assuming pod name format: deployment-hash-suffix)
+        local deployment = string.match(pod, "(.+)%-%w+%-%w+$")
         if deployment then
             record["kubernetes"]["deployment"] = deployment
         end
@@ -249,7 +250,12 @@ function filter_logs(tag, timestamp, record)
     local message = record["message"] or record["log"] or ""
 
     -- Drop debug logs in production
-    if record["namespace"] == "production" then
+    local namespace = record["namespace"]
+    if record["kubernetes"] then
+        namespace = record["kubernetes"]["namespace"] or namespace
+    end
+
+    if namespace == "production" or record["environment"] == "production" then
         if record["level"] == "debug" or record["level"] == "trace" then
             return -1, timestamp, record  -- Drop record
         end
@@ -324,57 +330,16 @@ end
 
 ## Multi-Line Log Handling
 
-Combine multi-line logs (like stack traces):
+Combine multi-line container logs before they reach Lua by using Fluent Bit's Tail multiline parser:
 
-```lua
--- multiline.lua
-local buffer = {}
-local buffer_timestamp = {}
-
-function handle_multiline(tag, timestamp, record)
-    local log = record["log"]
-    local pod = record["pod_name"] or "unknown"
-
-    -- Initialize buffer for this pod if needed
-    if not buffer[pod] then
-        buffer[pod] = ""
-        buffer_timestamp[pod] = timestamp
-    end
-
-    -- Check if this is a continuation line (starts with whitespace or tab)
-    local is_continuation = string.match(log, "^%s+") or string.match(log, "^\t")
-
-    if is_continuation then
-        -- Append to buffer
-        buffer[pod] = buffer[pod] .. "\n" .. log
-        return -1, timestamp, record  -- Drop this record, wait for more
-    else
-        -- This is a new log entry
-        if buffer[pod] ~= "" then
-            -- Emit previous buffered record
-            local buffered_record = {
-                log = buffer[pod],
-                pod_name = record["pod_name"],
-                namespace = record["namespace"],
-                container_name = record["container_name"]
-            }
-
-            local buffer_ts = buffer_timestamp[pod]
-
-            -- Reset buffer
-            buffer[pod] = log
-            buffer_timestamp[pod] = timestamp
-
-            -- Return buffered record
-            return 2, buffer_ts, buffered_record
-        else
-            -- No buffer, just pass through
-            buffer[pod] = log
-            buffer_timestamp[pod] = timestamp
-            return 2, timestamp, record
-        end
-    end
-end
+```yaml
+[INPUT]
+    Name              tail
+    Path              /var/log/containers/*.log
+    Tag               kube.*
+    multiline.parser  docker, cri
+    Refresh_Interval  5
+    Mem_Buf_Limit     50MB
 ```
 
 ## Error Rate Calculation
