@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Java, Memory Management
 
-Description: Calculate accurate memory requests for Java applications in Kubernetes by accounting for JVM heap, metaspace, thread stacks, direct buffers, and container overhead to prevent OOMKilled pods.
+Description: Calculate accurate memory requests and limits for Java applications in Kubernetes by accounting for JVM heap, metaspace, thread stacks, direct buffers, and container overhead to prevent OOMKilled pods.
 
 ---
 
@@ -12,7 +12,7 @@ Java applications in Kubernetes get OOMKilled because developers only account fo
 
 ## Why Java Memory Calculation Matters
 
-Setting memory requests based only on `-Xmx` leads to OOM kills. The total memory footprint includes:
+Setting memory limits based only on `-Xmx` leads to OOM kills. The total memory footprint includes:
 
 - JVM heap (`-Xmx`)
 - Metaspace (classes, methods)
@@ -26,15 +26,15 @@ You need to account for all of these.
 
 ## The Java Memory Formula
 
-Total memory request = Heap + Metaspace + Threads + Direct + Overhead
+Total container memory = Heap + Metaspace + Threads + Direct + Overhead
 
 A safe formula:
 
 ```text
-Memory Request = (Xmx + MaxMetaspaceSize + (ThreadCount * StackSize) + MaxDirectMemorySize) * 1.25
+Memory Limit = (Xmx + MaxMetaspaceSize + (ThreadCount * StackSize) + MaxDirectMemorySize) * 1.25
 ```
 
-The 1.25 multiplier adds 25% headroom for native memory and container overhead.
+The 1.25 multiplier adds 25% headroom for native memory and container overhead. Use the result for the container memory limit; set the request to the same value when you want Guaranteed QoS.
 
 ## Setting Heap Size
 
@@ -50,7 +50,7 @@ spec:
   - name: app
     image: openjdk:17
     env:
-    - name: JAVA_OPTS
+    - name: JAVA_TOOL_OPTIONS
       value: "-Xmx2g -Xms2g"
     resources:
       requests:
@@ -59,11 +59,11 @@ spec:
         memory: "3Gi"
 ```
 
-Heap is 2GB, total memory request is 3GB (50% overhead).
+Heap is 2GB, total container memory is 3GB (50% overhead).
 
 ## Using Container-Aware Heap Sizing
 
-Modern JVMs (Java 10+) automatically detect container memory limits:
+Modern HotSpot JVMs (Java 10+) automatically detect supported Linux container memory limits by default. You can control heap sizing with `-XX:MaxRAMPercentage`:
 
 ```yaml
 apiVersion: v1
@@ -75,8 +75,8 @@ spec:
   - name: app
     image: openjdk:17
     env:
-    - name: JAVA_OPTS
-      value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+    - name: JAVA_TOOL_OPTIONS
+      value: "-XX:MaxRAMPercentage=75.0"
     resources:
       limits:
         memory: "4Gi"
@@ -104,7 +104,7 @@ Check actual metaspace usage:
 kubectl exec java-app -- jstat -gc 1
 ```
 
-Look at the Metaspace column and add 20% headroom.
+Look at the metaspace utilization column (`MU` in current `jstat -gc` output) and add 20% headroom.
 
 ## Calculating Thread Stack Overhead
 
@@ -136,7 +136,7 @@ NIO and some libraries use direct memory outside the heap. Set a limit:
 -XX:MaxDirectMemorySize=512m
 ```
 
-Without this, direct memory defaults to heap size, which can cause OOM.
+Without this, the JVM chooses the direct memory limit automatically, which is commonly tied to the maximum heap size and can cause OOM if direct buffers grow unexpectedly.
 
 ## Complete Java Memory Configuration
 
@@ -160,7 +160,7 @@ spec:
       - name: service
         image: myapp:latest
         env:
-        - name: JAVA_OPTS
+        - name: JAVA_TOOL_OPTIONS
           value: >-
             -Xmx2g
             -Xms2g
@@ -168,7 +168,7 @@ spec:
             -XX:MaxDirectMemorySize=256m
             -Xss512k
             -XX:+UseG1GC
-            -XX:+UseContainerSupport
+            -XX:NativeMemoryTracking=summary
         resources:
           requests:
             cpu: "2"
@@ -189,19 +189,25 @@ Breakdown:
 
 ## Monitoring Java Memory Usage
 
-Use JVM metrics to track memory:
+Use JVM metrics to track memory. Native Memory Tracking must be enabled when the JVM starts:
+
+```text
+-XX:NativeMemoryTracking=summary
+```
+
+Then query it with `jcmd`:
 
 ```bash
 kubectl exec java-app -- jcmd 1 VM.native_memory summary
 ```
 
-Output shows heap, metaspace, thread, and native memory usage.
+Output shows JVM native memory usage by category, including heap, class metadata, code, and threads.
 
 Export JMX metrics to Prometheus:
 
 ```yaml
 env:
-- name: JAVA_OPTS
+- name: JAVA_TOOL_OPTIONS
   value: >-
     -Dcom.sun.management.jmxremote
     -Dcom.sun.management.jmxremote.port=9010
@@ -239,7 +245,7 @@ Query native memory:
 kubectl exec java-app -- jcmd 1 VM.native_memory summary
 ```
 
-Output shows exact memory usage by category.
+Output shows JVM native memory usage by category. It does not include every allocation made by third-party native libraries.
 
 ## Right-Sizing with VPA
 
@@ -267,12 +273,11 @@ Spring Boot apps need extra metaspace:
 
 ```yaml
 env:
-- name: JAVA_OPTS
+- name: JAVA_TOOL_OPTIONS
   value: >-
     -Xmx1g
     -XX:MaxMetaspaceSize=384m
     -XX:+UseG1GC
-    -XX:+UseContainerSupport
 resources:
   requests:
     memory: "2Gi"
@@ -284,13 +289,13 @@ Spring Boot's autoconfiguration loads many classes, increasing metaspace needs.
 
 ## Best Practices
 
-- Always set explicit `-Xmx` and `-Xms` (equal values)
+- Set explicit `-Xmx` and `-Xms` for predictable sizing, or use `-XX:MaxRAMPercentage` when you want container-aware heap sizing
 - Set `-XX:MaxMetaspaceSize` to prevent unbounded growth
 - Set `-XX:MaxDirectMemorySize` if using NIO
-- Use `-XX:+UseContainerSupport` on Java 10+
+- Use Java 10+ container support, which is enabled by default on supported Linux platforms
 - Add 25-50% overhead to calculated memory
 - Monitor actual usage with JMX and VPA
-- Use Guaranteed QoS for production Java apps
+- Use Guaranteed QoS for production Java apps when eviction priority matters
 - Enable native memory tracking for tuning
 
 ## Example: Kafka Consumer
@@ -299,7 +304,7 @@ Kafka consumers use direct memory for network buffers:
 
 ```yaml
 env:
-- name: JAVA_OPTS
+- name: JAVA_TOOL_OPTIONS
   value: >-
     -Xmx4g
     -Xms4g
@@ -323,4 +328,4 @@ Breakdown:
 
 ## Conclusion
 
-Java memory in Kubernetes requires careful calculation. Account for heap, metaspace, thread stacks, direct memory, and container overhead. Use `-XX:MaxRAMPercentage` for automatic sizing or calculate manually and add 25-50% headroom. Monitor actual usage with JVM tools and VPA to validate your sizing. Set Guaranteed QoS to prevent memory throttling. Proper sizing prevents OOMKilled pods and ensures stable Java applications in Kubernetes.
+Java memory in Kubernetes requires careful calculation. Account for heap, metaspace, thread stacks, direct memory, and container overhead. Use `-XX:MaxRAMPercentage` for automatic sizing or calculate manually and add 25-50% headroom. Monitor actual usage with JVM tools and VPA to validate your sizing. Set Guaranteed QoS to reduce eviction risk for production workloads. Proper sizing prevents OOMKilled pods and ensures stable Java applications in Kubernetes.
