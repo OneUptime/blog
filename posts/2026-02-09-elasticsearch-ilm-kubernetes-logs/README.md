@@ -65,8 +65,8 @@ data:
         Port            9200
         HTTP_User       elastic
         HTTP_Passwd     ${ES_PASSWORD}
-        Logstash_Format On
-        Logstash_Prefix k8s-logs
+        Logstash_Format Off
+        Index           k8s-logs
         Retry_Limit     False
         Replace_Dots    On
         tls             On
@@ -167,10 +167,7 @@ curl -X PUT "https://elasticsearch-es-http:9200/_ilm/policy/k8s-logs-policy" \
             "max_num_segments": 1
           },
           "allocate": {
-            "number_of_replicas": 1,
-            "require": {
-              "data_tier": "warm"
-            }
+            "number_of_replicas": 1
           },
           "set_priority": {
             "priority": 50
@@ -181,10 +178,7 @@ curl -X PUT "https://elasticsearch-es-http:9200/_ilm/policy/k8s-logs-policy" \
         "min_age": "30d",
         "actions": {
           "allocate": {
-            "number_of_replicas": 0,
-            "require": {
-              "data_tier": "cold"
-            }
+            "number_of_replicas": 0
           },
           "set_priority": {
             "priority": 0
@@ -334,6 +328,18 @@ curl -X PUT "https://elasticsearch-es-http:9200/_index_template/k8s-logs-dev-tem
   },
   "priority": 300
 }'
+
+# Bootstrap the dev write index
+curl -X PUT "https://elasticsearch-es-http:9200/k8s-logs-dev-000001" \
+  -H "Content-Type: application/json" \
+  -u "elastic:${ES_PASSWORD}" \
+  -d '{
+  "aliases": {
+    "k8s-logs-dev": {
+      "is_write_index": true
+    }
+  }
+}'
 ```
 
 Update Fluent Bit to route logs by namespace:
@@ -344,16 +350,16 @@ Update Fluent Bit to route logs by namespace:
     Match           kube.var.log.containers.*_dev-*
     Host            elasticsearch-es-http.elasticsearch.svc
     Port            9200
-    Logstash_Format On
-    Logstash_Prefix k8s-logs-dev
+    Logstash_Format Off
+    Index           k8s-logs-dev
 
 [OUTPUT]
     Name            es
     Match           kube.var.log.containers.*_production-*
     Host            elasticsearch-es-http.elasticsearch.svc
     Port            9200
-    Logstash_Format On
-    Logstash_Prefix k8s-logs-prod
+    Logstash_Format Off
+    Index           k8s-logs
 ```
 
 ## Monitoring ILM Execution
@@ -414,7 +420,7 @@ spec:
                   if [ "$FAILED" -gt 0 ]; then
                     echo "WARNING: $FAILED indices have failed ILM steps"
                     # Send alert to your monitoring system
-                    curl -X POST "https://alertmanager:9093/api/v1/alerts" \
+                    curl -X POST "https://alertmanager:9093/api/v2/alerts" \
                       -H "Content-Type: application/json" \
                       -d "[{\"labels\":{\"alertname\":\"ILMFailure\",\"severity\":\"warning\"},\"annotations\":{\"summary\":\"$FAILED indices have failed ILM steps\"}}]"
                   fi
@@ -465,17 +471,17 @@ ILM rollover can encounter issues in certain scenarios:
     # Use the alias, not a dated pattern
 ```
 
-**Clock skew between indices**: If indices are created out of order (common during cluster recovery), ILM age calculations may be incorrect. Always use `@timestamp` from the log entry rather than index creation time:
+**Backfilled indices**: If you create indices that contain older data, ILM phase timing normally uses the index lifecycle date rather than each document's `@timestamp`. Set an explicit origination date on backfilled indices if retention should be based on the age of the imported data:
 
 ```bash
-# Set ILM to use the origination date
-curl -X PUT "https://elasticsearch-es-http:9200/_index_template/k8s-logs-template" \
+# Set the origination date as Unix epoch milliseconds
+curl -X PUT "https://elasticsearch-es-http:9200/k8s-logs-backfill-000001/_settings" \
   -H "Content-Type: application/json" \
   -u "elastic:${ES_PASSWORD}" \
   -d '{
-  "template": {
-    "settings": {
-      "index.lifecycle.parse_origination_date": true
+  "index": {
+    "lifecycle": {
+      "origination_date": 1770595200000
     }
   }
 }'
