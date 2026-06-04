@@ -24,15 +24,16 @@ http_filters:
           permissions:
           - and_rules:
               rules:
-              - header:
-                  name: ":path"
-                  prefix_match: "/admin"
+              - url_path:
+                  path:
+                    prefix: "/admin"
           principals:
-          - and_rules:
-              rules:
+          - and_ids:
+              ids:
               - header:
                   name: "x-user-role"
-                  exact_match: "admin"
+                  string_match:
+                    exact: "admin"
 - name: envoy.filters.http.router
   typed_config:
     "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -70,12 +71,13 @@ rules:
       permissions:
       - and_rules:
           rules:
-          - header:
-              name: ":path"
-              prefix_match: "/api/public"
+          - url_path:
+              path:
+                prefix: "/api/public"
           - header:
               name: ":method"
-              exact_match: "GET"
+              string_match:
+                exact: "GET"
       principals:
       - any: true
 
@@ -83,20 +85,23 @@ rules:
       permissions:
       - and_rules:
           rules:
-          - header:
-              name: ":path"
-              prefix_match: "/api"
+          - url_path:
+              path:
+                prefix: "/api"
           - or_rules:
               rules:
               - header:
                   name: ":method"
-                  exact_match: "POST"
+                  string_match:
+                    exact: "POST"
               - header:
                   name: ":method"
-                  exact_match: "PUT"
+                  string_match:
+                    exact: "PUT"
               - header:
                   name: ":method"
-                  exact_match: "DELETE"
+                  string_match:
+                    exact: "DELETE"
       principals:
       - header:
           name: "authorization"
@@ -134,7 +139,8 @@ rules:
       principals:
       - header:
           name: "x-user-id"
-          exact_match: "blocked-user-123"
+          string_match:
+            exact: "blocked-user-123"
 ```
 
 Use with shadow mode to test before enforcement.
@@ -151,22 +157,24 @@ rules:
       permissions:
       - and_rules:
           rules:
-          - header:
-              name: ":path"
-              prefix_match: "/api/sensitive"
+          - url_path:
+              path:
+                prefix: "/api/sensitive"
           - header:
               name: ":method"
-              exact_match: "POST"
+              string_match:
+                exact: "POST"
           - not_rule:
               header:
                 name: "x-debug"
                 present_match: true
       principals:
-      - and_rules:
-          rules:
+      - and_ids:
+          ids:
           - header:
               name: "x-user-role"
-              exact_match: "admin"
+              string_match:
+                exact: "admin"
           - remote_ip:
               address_prefix: 10.0.0.0
               prefix_len: 8
@@ -186,13 +194,14 @@ typed_config:
     policies:
       test_policy:
         permissions:
-        - header:
-            name: ":path"
-            prefix_match: "/api/new"
+        - url_path:
+            path:
+              prefix: "/api/new"
         principals:
         - header:
             name: "x-user-role"
-            exact_match: "beta"
+            string_match:
+              exact: "beta"
 ```
 
 Shadow rules log what would happen without actually enforcing.
@@ -220,7 +229,8 @@ routes:
               principals:
               - header:
                   name: "x-user-role"
-                  exact_match: "admin"
+                  string_match:
+                    exact: "admin"
 
 - match:
     prefix: "/api/public"
@@ -244,17 +254,17 @@ routes:
 
 Track RBAC metrics:
 
-```promql
+```text
 # Allowed requests
 
-envoy_http_rbac_allowed
+http.<stat_prefix>.rbac.allowed
 
 # Denied requests
-envoy_http_rbac_denied
+http.<stat_prefix>.rbac.denied
 
 # Shadow mode logging
-envoy_http_rbac_shadow_allowed
-envoy_http_rbac_shadow_denied
+http.<stat_prefix>.rbac.shadow_allowed
+http.<stat_prefix>.rbac.shadow_denied
 ```
 
 ## Best Practices
