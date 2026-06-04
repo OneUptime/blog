@@ -18,7 +18,7 @@ You need:
 
 - Docker Engine 20.10+
 - Docker Compose v2
-- At least 8GB of RAM (Palworld servers are memory-hungry)
+- At least 16GB of RAM (Palworld servers are memory-hungry)
 - Palworld game client on Steam
 
 ```bash
@@ -28,7 +28,7 @@ docker --version
 docker compose version
 ```
 
-Palworld's dedicated server has high memory requirements. Plan for at least 8GB of RAM for a server with several active players. The memory usage grows as players explore more of the world.
+Palworld's dedicated server has high memory requirements. Plan for at least 16GB of RAM for a server with several active players. The memory usage grows as players explore more of the world.
 
 ## Quick Start
 
@@ -56,8 +56,6 @@ A comprehensive Docker Compose setup with game settings.
 
 ```yaml
 # docker-compose.yml - Palworld dedicated server
-version: "3.8"
-
 services:
   palworld:
     image: thijsvanloef/palworld-server-docker:latest
@@ -106,8 +104,8 @@ services:
 
       # Game world settings
       DIFFICULTY: "None"
-      DAY_TIME_SPEED_RATE: 1.0
-      NIGHT_TIME_SPEED_RATE: 1.0
+      DAYTIME_SPEEDRATE: 1.0
+      NIGHTTIME_SPEEDRATE: 1.0
       EXP_RATE: 1.0
       PAL_CAPTURE_RATE: 1.0
       PAL_SPAWN_NUM_RATE: 1.0
@@ -145,7 +143,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 12G
+          memory: 16G
 
 volumes:
   palworld-data:
@@ -160,11 +158,11 @@ docker compose up -d
 # Watch the startup logs
 docker compose logs -f palworld
 
-# First startup downloads the server (~5GB)
+# First startup downloads the server files
 # Wait for "Setting breakpad minidump AppID = 2394010"
 ```
 
-The first startup downloads the Palworld dedicated server binary through SteamCMD, which is about 5GB. Subsequent starts are much faster.
+The first startup downloads the Palworld dedicated server files through SteamCMD. Subsequent starts are much faster.
 
 ## Connecting to the Server
 
@@ -250,8 +248,8 @@ docker exec palworld-server ls -la /palworld/backups/
 # Copy a backup to the host
 docker cp palworld-server:/palworld/backups ./palworld-backups
 
-# Restore from a specific backup
-docker exec palworld-server restore BACKUP_FILE_NAME
+# Restore from a backup
+docker exec -it palworld-server restore
 ```
 
 ## Updating the Server
@@ -292,8 +290,6 @@ You can run multiple Palworld servers on different ports.
 
 ```yaml
 # docker-compose.yml - Multiple Palworld servers
-version: "3.8"
-
 services:
   palworld-pve:
     image: thijsvanloef/palworld-server-docker:latest
@@ -368,4 +364,4 @@ docker compose down -v
 
 ## Summary
 
-Running a Palworld dedicated server in Docker gives you a persistent world for multiplayer adventures. The setup handles SteamCMD downloads, automatic updates, and periodic backups. Customize the world settings through environment variables to create the exact gameplay experience you want. With RCON support, you can manage players and administer the server remotely. Just remember that Palworld servers are memory-intensive, so allocate at least 8GB of RAM and consider scheduled restarts to keep performance stable.
+Running a Palworld dedicated server in Docker gives you a persistent world for multiplayer adventures. The setup handles SteamCMD downloads, automatic updates, and periodic backups. Customize the world settings through environment variables to create the exact gameplay experience you want. With RCON support, you can manage players and administer the server remotely. Just remember that Palworld servers are memory-intensive, so allocate at least 16GB of RAM and consider scheduled restarts to keep performance stable.
