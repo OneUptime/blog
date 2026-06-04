@@ -48,8 +48,24 @@ data:
     wal_retrieve_retry_interval = 1000
 
   pg_hba.conf: |
+    local all all trust
     host replication replicator 0.0.0.0/0 md5
     host all all 0.0.0.0/0 md5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: databases
+  labels:
+    app: postgres
+spec:
+  ports:
+    - port: 5432
+      name: postgres
+  clusterIP: None
+  selector:
+    app: postgres
 ---
 apiVersion: v1
 kind: Service
@@ -100,9 +116,14 @@ spec:
       labels:
         app: postgres
     spec:
+      securityContext:
+        fsGroup: 999
       initContainers:
         - name: init-postgres
           image: postgres:15
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
           command:
             - sh
             - -c
@@ -111,12 +132,12 @@ spec:
               if [ "$HOSTNAME" = "postgres-0" ]; then
                 echo "Initializing primary database"
                 if [ ! -f "$PGDATA/PG_VERSION" ]; then
-                  initdb -D "$PGDATA"
+                  initdb -D "$PGDATA" -U "$POSTGRES_USER" --pwfile=/credentials/password
                   cp /config/primary.conf "$PGDATA/postgresql.conf"
                   cp /config/pg_hba.conf "$PGDATA/pg_hba.conf"
-                  echo "host replication replicator 0.0.0.0/0 md5" >> "$PGDATA/pg_hba.conf"
                 fi
-                touch "$PGDATA/primary"
+                mkdir -p /var/lib/postgresql/data/role
+                touch /var/lib/postgresql/data/role/primary
               else
                 echo "Initializing replica database"
                 if [ ! -f "$PGDATA/PG_VERSION" ]; then
@@ -125,20 +146,31 @@ spec:
                     sleep 2
                   done
 
-                  PGPASSWORD=$REPLICATION_PASSWORD pg_basebackup \
-                    -h postgres-0.postgres.databases.svc.cluster.local \
-                    -D "$PGDATA" \
-                    -U replicator \
-                    -Fp -Xs -P -R
+                  until PGPASSWORD=$REPLICATION_PASSWORD pg_basebackup \
+                      -h postgres-0.postgres.databases.svc.cluster.local \
+                      -D "$PGDATA" \
+                      -U replicator \
+                      -Fp -Xs -P -R; do
+                    echo "Waiting for replication role..."
+                    rm -rf "$PGDATA"/* "$PGDATA"/.[!.]* "$PGDATA"/..?* 2>/dev/null || true
+                    sleep 2
+                  done
 
                   cp /config/replica.conf "$PGDATA/postgresql.conf"
-                  touch "$PGDATA/standby.signal"
                 fi
-                touch "$PGDATA/replica"
+                mkdir -p /var/lib/postgresql/data/role
+                touch /var/lib/postgresql/data/role/replica
               fi
           env:
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_DB
+              value: appdb
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
             - name: REPLICATION_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -149,9 +181,15 @@ spec:
               mountPath: /var/lib/postgresql/data
             - name: config
               mountPath: /config
+            - name: credentials
+              mountPath: /credentials
+              readOnly: true
       containers:
         - name: postgres
           image: postgres:15
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
           ports:
             - containerPort: 5432
               name: postgres
@@ -168,6 +206,11 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: password
+            - name: REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: replication-password
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           volumeMounts:
@@ -180,18 +223,16 @@ spec:
                   - sh
                   - -c
                   - |
-                    if [ -f "$PGDATA/primary" ]; then
+                    if [ -f /var/lib/postgresql/data/role/primary ]; then
                       until pg_isready; do sleep 1; done
-                      psql -U $POSTGRES_USER -d postgres <<EOF
-                      CREATE USER IF NOT EXISTS replicator REPLICATION LOGIN ENCRYPTED PASSWORD '$REPLICATION_PASSWORD';
-                      EOF
+                      if ! psql -U "$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$POSTGRES_DB'" | grep -q 1; then
+                        createdb -U "$POSTGRES_USER" "$POSTGRES_DB"
+                      fi
+                      if ! psql -U "$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'replicator'" | grep -q 1; then
+                        psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \
+                          -c "CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD '$REPLICATION_PASSWORD'"
+                      fi
                     fi
-                env:
-                  - name: REPLICATION_PASSWORD
-                    valueFrom:
-                      secretKeyRef:
-                        name: postgres-credentials
-                        key: replication-password
           resources:
             requests:
               memory: "1Gi"
@@ -215,6 +256,9 @@ spec:
         - name: config
           configMap:
             name: postgres-config
+        - name: credentials
+          secret:
+            secretName: postgres-credentials
   volumeClaimTemplates:
     - metadata:
         name: postgres-storage
@@ -256,7 +300,7 @@ kubectl label pod postgres-2 -n databases role=replica --overwrite
 
 ## Implementing Connection Pooling with PgBouncer
 
-Deploy PgBouncer for connection pooling and read-write splitting:
+Deploy PgBouncer for connection pooling. PgBouncer does not inspect SQL and split reads from writes automatically, so expose separate database aliases and route to the correct alias from the application:
 
 ```yaml
 # pgbouncer.yaml
@@ -285,7 +329,7 @@ data:
     ignore_startup_parameters = extra_float_digits
 
   userlist.txt: |
-    "appuser" "md5secure-hash-here"
+    "appuser" "md5<md5-of-password-plus-username>"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -346,8 +390,8 @@ Create separate connection strings for read and write operations:
 import psycopg2
 from contextlib import contextmanager
 
-PRIMARY_DSN = "postgresql://appuser:password@postgres-primary.databases.svc.cluster.local:5432/appdb"
-REPLICA_DSN = "postgresql://appuser:password@postgres-replicas.databases.svc.cluster.local:5432/appdb"
+PRIMARY_DSN = "postgresql://appuser:password@pgbouncer.databases.svc.cluster.local:5432/appdb_primary"
+REPLICA_DSN = "postgresql://appuser:password@pgbouncer.databases.svc.cluster.local:5432/appdb_replica"
 
 @contextmanager
 def get_write_connection():
@@ -402,18 +446,18 @@ metadata:
 data:
   monitor.sh: |
     #!/bin/bash
-    while true; do
-      LAG=$(psql -h postgres-replicas.databases.svc.cluster.local -U appuser -d appdb -t -c "
-        SELECT CASE
+    LAG=$(psql -h postgres-replicas.databases.svc.cluster.local -U appuser -d appdb -t -c "
+      SELECT COALESCE(
+        CASE
           WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0
           ELSE EXTRACT(EPOCH FROM NOW() - pg_last_xact_replay_timestamp())
-        END AS lag_seconds;
-      " | tr -d ' ')
+        END,
+        0
+      ) AS lag_seconds;
+    " | tr -d '[:space:]')
 
-      echo "replication_lag_seconds{replica=\"all\"} $LAG"
-
-      sleep 15
-    done
+    echo "# TYPE replication_lag_seconds gauge"
+    echo "replication_lag_seconds{replica=\"selected\"} $LAG"
 ---
 apiVersion: v1
 kind: Service
@@ -450,9 +494,24 @@ spec:
       containers:
         - name: monitor
           image: postgres:15
+          ports:
+            - containerPort: 9090
+              name: metrics
           command:
             - /bin/bash
-            - /scripts/monitor.sh
+            - -c
+            - |
+              set -e
+              apt-get update
+              apt-get install -y --no-install-recommends netcat-openbsd
+              rm -rf /var/lib/apt/lists/*
+
+              while true; do
+                {
+                  printf 'HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\n\r\n'
+                  /scripts/monitor.sh
+                } | nc -l -p 9090 -q 1
+              done
           env:
             - name: PGPASSWORD
               valueFrom:
@@ -494,13 +553,13 @@ spec:
             description: "Replication lag is {{ $value }} seconds"
 
         - alert: ReplicaDown
-          expr: up{job="postgres-replicas"} == 0
+          expr: up{job="replication-monitor"} == 0
           for: 1m
           labels:
             severity: critical
           annotations:
-            summary: "PostgreSQL replica is down"
-            description: "Replica {{ $labels.instance }} is not responding"
+            summary: "PostgreSQL replication monitor is down"
+            description: "Replication monitor {{ $labels.instance }} is not responding"
 ```
 
 ## Handling Replica Promotion
@@ -516,8 +575,8 @@ kubectl exec -it postgres-1 -n databases -- \
 kubectl label pod postgres-1 -n databases role=primary --overwrite
 kubectl label pod postgres-0 -n databases role=replica --overwrite
 
-# Update application configuration to point to new primary
-# This typically involves updating Service selectors or DNS records
+# Recreate or reconfigure the remaining replicas so they follow postgres-1
+# before sending read traffic back to them.
 ```
 
 ## Scaling Read Replicas
