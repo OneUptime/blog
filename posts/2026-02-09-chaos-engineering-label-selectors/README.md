@@ -85,7 +85,7 @@ spec:
       - name: backend
         image: httpd:latest
         ports:
-        - containerPort: 8080
+        - containerPort: 80
 ```
 
 The label structure enables targeting by application, tier, version, and chaos participation.
@@ -228,9 +228,9 @@ metadata:
   name: multi-version-test
   namespace: production
 spec:
-  action: partition
+  action: delay
 
-  # Target multiple versions
+  # Target multiple versions while excluding production-critical pods
   selector:
     namespaces:
       - production
@@ -246,16 +246,14 @@ spec:
           - v2
       - key: tier
         operator: Exists
-
-  # Exclude production-critical pods
-  target:
-    selector:
-      expressionSelectors:
-        - key: critical
-          operator: DoesNotExist
+      - key: critical
+        operator: DoesNotExist
 
   mode: fixed
   value: "2"
+  delay:
+    latency: "500ms"
+    jitter: "100ms"
   duration: "3m"
 ```
 
@@ -341,6 +339,7 @@ spec:
 
   # Verify tenant-b unaffected
   target:
+    mode: all
     selector:
       namespaces:
         - production
@@ -366,10 +365,12 @@ kubectl logs -l tenant=tenant-b --tail=50
 
 Use label selectors to protect critical services:
 
-```yaml
+```bash
 # Label critical workloads
 kubectl label deployment database critical=true
+```
 
+```yaml
 # Chaos experiment excluding critical pods
 apiVersion: chaos-mesh.org/v1alpha1
 kind: PodChaos
@@ -427,12 +428,13 @@ spec:
 
 Switch chaos to green after validating blue:
 
-```yaml
-# Update selector to target green
-kubectl patch -n production \
-  stresschaos blue-deployment-stress \
-  --type merge \
-  -p '{"spec":{"selector":{"labelSelectors":{"deployment-color":"green"}}}}'
+```bash
+# Replace the blue experiment with a green-targeted experiment
+kubectl delete stresschaos blue-deployment-stress -n production
+
+sed -e 's/name: blue-deployment-stress/name: green-deployment-stress/' \
+  -e 's/deployment-color: blue/deployment-color: green/' blue-green-chaos.yaml | \
+  kubectl apply -f -
 ```
 
 ## Monitoring Label-Targeted Chaos
@@ -454,14 +456,12 @@ echo "Total pods:"
 kubectl get pods -l app=myapp --no-headers | wc -l
 ```
 
-Export chaos metrics by label:
+Inspect Chaos Mesh experiment status:
 
-```promql
-# Pods affected by chaos
-chaos_mesh_pods_affected{app="myapp",tier="frontend"}
+```bash
+kubectl describe podchaos frontend-pod-kill -n production
 
-# Chaos experiments by tier
-count(chaos_mesh_experiment_status) by (tier)
+kubectl describe networkchaos backend-network-delay -n production
 ```
 
 ## Creating Reusable Chaos Profiles
@@ -495,7 +495,7 @@ Reference profiles in experiments:
 
 ```bash
 # Apply chaos using profile
-PROFILE=$(kubectl get configmap chaos-profiles -n production -o jsonpath='{.data.frontend-profile}')
+PROFILE=$(kubectl get configmap chaos-profiles -n production -o jsonpath='{.data.frontend-profile}' | sed 's/^/    /')
 
 cat <<EOF | kubectl apply -f -
 apiVersion: chaos-mesh.org/v1alpha1
@@ -506,7 +506,7 @@ metadata:
 spec:
   action: pod-kill
   selector:
-    $PROFILE
+$PROFILE
   mode: one
   duration: "5m"
 EOF
