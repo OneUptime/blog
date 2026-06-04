@@ -114,7 +114,7 @@ Package the smoke test as a Docker container so it runs the same way everywhere.
 
 ```dockerfile
 # Dockerfile.smoke - Smoke test runner container
-FROM alpine:3.19
+FROM alpine:3.23
 
 # Install curl, bash, and python3 for response parsing
 RUN apk add --no-cache curl bash python3
@@ -134,8 +134,6 @@ Run smoke tests against the full application stack with Docker Compose.
 
 ```yaml
 # docker-compose.smoke.yml - Smoke test environment
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -313,29 +311,32 @@ echo "Building image..."
 docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" .
 
 echo "Starting smoke test environment..."
-docker compose -f docker-compose.smoke.yml up -d postgres redis
-sleep 5
+docker compose -f docker-compose.smoke.yml up -d --wait postgres redis
+
+NETWORK_NAME="$(docker compose -f docker-compose.smoke.yml ps -q postgres | xargs docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}')"
+
+cleanup() {
+    docker rm -f smoke-test-app 2>/dev/null || true
+    docker compose -f docker-compose.smoke.yml down -v
+}
+trap cleanup EXIT
 
 # Run the newly built image
 docker run -d \
   --name smoke-test-app \
-  --network $(docker compose -f docker-compose.smoke.yml ps -q | head -1 | xargs docker inspect --format '{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}') \
+  --network "$NETWORK_NAME" \
   -e DATABASE_URL=postgres://app:secret@postgres:5432/myapp \
   -e REDIS_URL=redis://redis:6379 \
   "${IMAGE_NAME}:${IMAGE_TAG}"
 
 echo "Running smoke tests..."
-if docker compose -f docker-compose.smoke.yml run smoke-tests; then
+if docker compose -f docker-compose.smoke.yml run --rm --build --no-deps -e BASE_URL=http://smoke-test-app:3000 smoke-tests; then
     echo "Smoke tests passed! Pushing image..."
     docker push "${IMAGE_NAME}:${IMAGE_TAG}"
 else
     echo "Smoke tests failed! Image NOT pushed."
     exit 1
 fi
-
-# Clean up
-docker stop smoke-test-app && docker rm smoke-test-app
-docker compose -f docker-compose.smoke.yml down -v
 ```
 
 ## CI/CD Pipeline Integration
