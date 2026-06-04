@@ -103,7 +103,7 @@ spec:
         cpu: "250m"
 ```
 
-This ensures all pods have resource specifications, which is required when ResourceQuotas are active.
+This ensures all pods have resource specifications, which is required when ResourceQuotas for CPU or memory requests and limits are active.
 
 ## Enforcing Min and Max Limits
 
@@ -457,14 +457,15 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-specs
 spec:
-  validationFailureAction: enforce
   rules:
   - name: check-resources
     match:
-      resources:
-        kinds:
-        - Pod
+      any:
+      - resources:
+          kinds:
+          - Pod
     validate:
+      failureAction: Enforce
       message: "Containers must have resource requests and limits"
       pattern:
         spec:
@@ -478,6 +479,6 @@ spec:
                 cpu: "?*"
 ```
 
-This policy enforces that all containers have explicit resources, even before LimitRange defaults apply. Use policies for requirements beyond what LimitRanges support.
+This policy enforces that admitted Pods have resources present. With LimitRange defaults enabled, those defaults may satisfy the policy before Kyverno validation runs. Use policies for requirements beyond what LimitRanges support.
 
 LimitRanges provide essential guardrails for resource management. They prevent common mistakes, enforce organizational standards, and enable safe cluster sharing without requiring developers to be Kubernetes experts.
