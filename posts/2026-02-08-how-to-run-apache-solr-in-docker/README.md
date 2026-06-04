@@ -24,7 +24,7 @@ docker run -d \
   -p 8983:8983 \
   solr:9
 
-# Create a new core (collection in standalone mode)
+# Create a new core in standalone mode
 docker exec solr solr create_core -c products
 ```
 
@@ -34,8 +34,6 @@ Open `http://localhost:8983/solr` to access the Solr Admin UI.
 
 ```yaml
 # docker-compose.yml - Solr for development
-version: "3.8"
-
 services:
   solr:
     image: solr:9
@@ -64,13 +62,14 @@ Solr uses a schema to define what fields exist in your documents and how they sh
 ```bash
 # Create the directory structure for a custom core configuration
 mkdir -p solr-config/products/conf
+touch solr-config/products/conf/stopwords.txt
 ```
 
 Define the schema:
 
 ```xml
-<!-- solr-config/products/conf/schema.xml - Product search schema -->
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- solr-config/products/conf/schema.xml - Product search schema -->
 <schema name="products" version="1.6">
     <!-- Unique identifier field -->
     <uniqueKey>id</uniqueKey>
@@ -134,8 +133,8 @@ Define the schema:
 Create the solrconfig.xml for the core:
 
 ```xml
-<!-- solr-config/products/conf/solrconfig.xml - Core configuration -->
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- solr-config/products/conf/solrconfig.xml - Core configuration -->
 <config>
     <luceneMatchVersion>9.0</luceneMatchVersion>
 
@@ -159,6 +158,7 @@ Create the solrconfig.xml for the core:
             <str name="field">suggest</str>
             <str name="suggestAnalyzerFieldType">text_suggest</str>
             <str name="buildOnStartup">true</str>
+            <str name="buildOnCommit">true</str>
         </lst>
     </searchComponent>
 
@@ -178,8 +178,6 @@ Mount the configuration in Docker Compose:
 
 ```yaml
 # docker-compose.yml - Solr with custom schema
-version: "3.8"
-
 services:
   solr:
     image: solr:9
@@ -303,8 +301,6 @@ For production deployments with replication and distributed search:
 
 ```yaml
 # docker-compose-cloud.yml - SolrCloud with ZooKeeper
-version: "3.8"
-
 services:
   zookeeper:
     image: zookeeper:3.9
