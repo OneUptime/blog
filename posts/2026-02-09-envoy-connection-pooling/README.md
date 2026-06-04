@@ -77,19 +77,21 @@ static_resources:
         max_retries: 3
     # Connection timeout
     connect_timeout: 1s
-    # Common HTTP protocol options
-    common_http_protocol_options:
-      idle_timeout: 300s
-      max_connection_duration: 600s
-      max_headers_count: 100
-      max_stream_duration: 300s
-      headers_with_underscores_action: REJECT_REQUEST
-    # HTTP/1.1 specific options
-    http_protocol_options:
-      accept_http_10: false
-      default_host_for_http_10: "backend"
-      header_key_format:
-        proper_case_words: {}
+    # HTTP/1.1 protocol options
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        common_http_protocol_options:
+          idle_timeout: 300s
+          max_connection_duration: 600s
+          max_headers_count: 100
+          max_stream_duration: 300s
+        explicit_http_config:
+          http_protocol_options:
+            accept_http_10: false
+            default_host_for_http_10: "backend"
+            header_key_format:
+              proper_case_words: {}
 
 admin:
   address:
@@ -130,15 +132,16 @@ clusters:
           initial_stream_window_size: 65536
           # Initial connection window size
           initial_connection_window_size: 1048576
-          # Allow metadata
-          allow_metadata: true
           # Maximum frame size
           max_outbound_frames: 10000
           max_outbound_control_frames: 1000
           max_consecutive_inbound_frames_with_empty_payload: 1
           max_inbound_priority_frames_per_stream: 100
           max_inbound_window_update_frames_per_data_frame_sent: 10
-          stream_error_on_invalid_http_messaging: true
+          override_stream_error_on_invalid_http_message: true
+      common_http_protocol_options:
+        idle_timeout: 300s
+        max_connection_duration: 3600s
   # Circuit breakers for HTTP/2
   circuit_breakers:
     thresholds:
@@ -151,9 +154,6 @@ clusters:
       max_retries: 3
   # Connection settings
   connect_timeout: 2s
-  common_http_protocol_options:
-    idle_timeout: 300s
-    max_connection_duration: 3600s
   # TLS for HTTP/2
   transport_socket:
     name: envoy.transport_sockets.tls
@@ -163,7 +163,7 @@ clusters:
         alpn_protocols: ["h2"]
 ```
 
-The key difference is `max_concurrent_streams: 100`, which allows up to 100 requests per connection. This means you can handle 10,000 concurrent requests with just 100 connections.
+The key difference is `max_concurrent_streams: 100`, which allows Envoy to initiate up to 100 concurrent streams per connection, subject to the upstream server's negotiated limits. With compatible upstream limits, this means you can handle 10,000 concurrent requests with 100 connections.
 
 ## Advanced Connection Pool Tuning
 
@@ -209,13 +209,17 @@ clusters:
     # Track connection pool budget
     per_host_thresholds:
     - max_connections: 512
-      max_pending_requests: 512
   # Connection lifecycle management
   connect_timeout: 500ms
-  common_http_protocol_options:
-    idle_timeout: 120s
-    max_connection_duration: 1800s
-    max_requests_per_connection: 10000
+  typed_extension_protocol_options:
+    envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+      "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+      common_http_protocol_options:
+        idle_timeout: 120s
+        max_connection_duration: 1800s
+        max_requests_per_connection: 10000
+      explicit_http_config:
+        http_protocol_options: {}
   # Upstream connection options
   upstream_connection_options:
     # TCP keepalive to detect dead connections
@@ -223,8 +227,6 @@ clusters:
       keepalive_probes: 3
       keepalive_time: 60
       keepalive_interval: 10
-  # Drain connections on health check failure
-  drain_connections_on_host_removal: true
   # Connection buffer limits
   per_connection_buffer_limit_bytes: 32768
 ```
@@ -258,11 +260,16 @@ clusters:
     - priority: DEFAULT
       max_connections: 1024
   connect_timeout: 1s
-  common_http_protocol_options:
-    idle_timeout: 300s
+  typed_extension_protocol_options:
+    envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+      "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+      common_http_protocol_options:
+        idle_timeout: 300s
+      explicit_http_config:
+        http_protocol_options: {}
 ```
 
-The preconnect policy establishes connections before they're needed, eliminating cold-start latency.
+The preconnect policy can establish additional connections ahead of demand once the cluster has traffic, reducing cold-start latency.
 
 ## Monitoring Connection Pool Health
 
@@ -288,9 +295,13 @@ Create Grafana dashboards to visualize pool utilization:
 
 ```promql
 # Connection pool utilization
+# Requires track_remaining: true on the circuit breaker threshold
 envoy_cluster_upstream_cx_active{cluster="backend"}
 /
-envoy_cluster_circuit_breakers_default_cx_open{cluster="backend"}
+(
+  envoy_cluster_upstream_cx_active{cluster="backend"}
+  + envoy_cluster_circuit_breakers_default_remaining_cx{cluster="backend"}
+)
 
 # Pending request queue depth
 rate(envoy_cluster_upstream_rq_pending_total{cluster="backend"}[5m])
@@ -325,6 +336,7 @@ clusters:
       max_pending_requests: 512
       max_requests: 1024
       max_retries: 3
+      track_remaining: true
       # Track budget for retries
       retry_budget:
         budget_percent:
@@ -336,7 +348,8 @@ clusters:
       max_pending_requests: 1024
       max_requests: 2048
   # Connection tracking
-  track_timeout_budgets: true
+  track_cluster_stats:
+    timeout_budgets: true
   connect_timeout: 1s
 ```
 
@@ -351,8 +364,7 @@ def call_backend_with_fallback(url):
         response = requests.get(url, timeout=5)
         if response.status_code == 503:
             # Circuit breaker triggered
-            if 'x-envoy-overloaded' in response.headers:
-                return handle_overload()
+            return handle_overload()
         return response.json()
     except requests.exceptions.Timeout:
         return handle_timeout()
@@ -362,11 +374,17 @@ def call_backend_with_fallback(url):
 def handle_overload():
     # Return cached data or degraded response
     return {"status": "degraded", "message": "Service overloaded"}
+
+def handle_timeout():
+    return {"status": "degraded", "message": "Request timed out"}
+
+def handle_connection_error():
+    return {"status": "degraded", "message": "Connection failed"}
 ```
 
 ## TCP Connection Pooling
 
-For non-HTTP protocols, use TCP proxy with connection pooling:
+For non-HTTP protocols, use TCP proxy and circuit breakers to limit upstream TCP connections:
 
 ```yaml
 listeners:
@@ -414,7 +432,7 @@ clusters:
 ## Connection Pool Best Practices
 
 1. **Start with defaults**: Begin with conservative limits and increase based on monitoring
-2. **Match protocol**: HTTP/2 needs fewer connections but higher max_requests
+2. **Match protocol**: HTTP/2 often needs fewer connections but higher max_requests
 3. **Set keepalives**: TCP keepalive prevents silent connection failures
 4. **Monitor overflow**: Watch for circuit breaker triggers indicating insufficient capacity
 5. **Tune timeouts**: Balance responsiveness with connection stability
