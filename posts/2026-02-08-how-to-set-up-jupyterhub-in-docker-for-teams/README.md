@@ -68,7 +68,7 @@ import os
 c.JupyterHub.spawner_class = 'dockerspawner.DockerSpawner'
 
 # The Docker image each user gets
-c.DockerSpawner.image = 'jupyter/scipy-notebook:latest'
+c.DockerSpawner.image = 'quay.io/jupyter/scipy-notebook:2023-10-23'
 
 # Connect containers to the JupyterHub network
 c.DockerSpawner.network_name = 'jupyterhub-network'
@@ -91,6 +91,7 @@ c.DockerSpawner.cpu_limit = 1.0
 # The Hub must be accessible from the spawned containers
 c.JupyterHub.hub_ip = '0.0.0.0'
 c.JupyterHub.hub_connect_ip = 'jupyterhub'
+c.JupyterHub.db_url = 'sqlite:////srv/jupyterhub/data/jupyterhub.sqlite'
 
 # --- Authentication ---
 # Use native authenticator for simple username/password auth
@@ -115,7 +116,7 @@ Create a custom Dockerfile for the Hub:
 
 ```dockerfile
 # Dockerfile.hub - Custom JupyterHub image with DockerSpawner
-FROM jupyterhub/jupyterhub:4
+FROM jupyterhub/jupyterhub:4.0.2
 
 # Install DockerSpawner and Native Authenticator
 RUN pip install --no-cache-dir \
@@ -168,7 +169,7 @@ Before starting JupyterHub, pull the notebook image that users will get:
 
 ```bash
 # Pull the default notebook image
-docker pull jupyter/scipy-notebook:latest
+docker pull quay.io/jupyter/scipy-notebook:2023-10-23
 ```
 
 ## Step 5: Start JupyterHub
@@ -191,15 +192,8 @@ Access JupyterHub at `http://your-server:8000`.
 The first time you access JupyterHub with the native authenticator, you need to create the admin user:
 
 ```bash
-# Create the admin user from the command line
-docker exec -it jupyterhub python3 -c "
-from nativeauthenticator import NativeAuthenticator
-from jupyterhub.orm import User
-from jupyterhub.app import JupyterHub
-import sqlalchemy
-# The admin user needs to be created through the signup page first
-print('Visit http://your-server:8000/hub/signup to create the admin account')
-"
+# Open the signup page and create the admin account
+echo "Visit http://your-server:8000/hub/signup and sign up as admin"
 ```
 
 Or enable open signup temporarily, create the admin account, then disable it:
@@ -216,7 +210,9 @@ Customize the notebook image with your team's packages and tools:
 
 ```dockerfile
 # Dockerfile.notebook - Custom notebook image for your team
-FROM jupyter/scipy-notebook:latest
+FROM quay.io/jupyter/scipy-notebook:2023-10-23
+
+ARG JUPYTERHUB_VERSION=4.0.2
 
 USER root
 
@@ -244,6 +240,7 @@ RUN pip install --no-cache-dir \
 
 # Install JupyterLab extensions
 RUN pip install --no-cache-dir \
+    jupyterhub==${JUPYTERHUB_VERSION} \
     jupyterlab-code-formatter==2.2.1
 
 # Copy shared notebooks or templates
@@ -308,6 +305,18 @@ c.JupyterHub.services = [
         ],
     }
 ]
+
+c.JupyterHub.load_roles = [
+    {
+        'name': 'idle-culler',
+        'services': ['idle-culler'],
+        'scopes': [
+            'list:users',
+            'read:users:activity',
+            'admin:servers',
+        ],
+    }
+]
 ```
 
 Install the idle culler in the Hub image:
@@ -367,6 +376,11 @@ events {
 }
 
 http {
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
     # Redirect HTTP to HTTPS
     server {
         listen 80;
@@ -385,18 +399,10 @@ http {
             proxy_set_header Host $host;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # WebSocket support for Jupyter kernels
-        location ~* /(api/kernels/[^/]+/(channels|iopub|shell|stdin)|terminals/websocket)/? {
-            proxy_pass http://jupyterhub:8000;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
+            proxy_set_header Connection $connection_upgrade;
+            proxy_buffering off;
         }
     }
 }
