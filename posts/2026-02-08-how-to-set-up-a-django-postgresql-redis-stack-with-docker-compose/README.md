@@ -76,7 +76,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Collect static files for production serving
-RUN python manage.py collectstatic --noinput 2>/dev/null || true
+RUN SECRET_KEY=build-secret-key python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
@@ -87,7 +87,7 @@ CMD ["gunicorn", "myproject.wsgi:application", "--bind", "0.0.0.0:8000", "--work
 
 ```txt
 # requirements.txt - Django stack dependencies
-django==5.0.2
+django==5.2.15
 psycopg2-binary==2.9.9
 django-redis==5.4.0
 celery[redis]==5.3.6
@@ -100,8 +100,6 @@ django-environ==0.11.2
 
 ```yaml
 # docker-compose.yml - Full Django development stack
-version: "3.8"
-
 services:
   db:
     image: postgres:16
@@ -259,8 +257,8 @@ CACHES = {
     }
 }
 
-# Session storage in Redis for better performance
-SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+# Session storage cached in Redis with database persistence
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 SESSION_CACHE_ALIAS = "default"
 
 # Celery configuration
@@ -273,7 +271,11 @@ CELERY_RESULT_SERIALIZER = "json"
 # Static files
 STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 TEMPLATES = [
     {
@@ -435,10 +437,6 @@ upstream django {
 server {
     listen 80;
     server_name example.com;
-
-    location /static/ {
-        alias /app/staticfiles/;
-    }
 
     location / {
         proxy_pass http://django;
