@@ -34,7 +34,7 @@ Then generate a token:
 kubectl create token my-app-sa
 ```
 
-This command outputs a JWT token to stdout. The default expiration is one hour. You can save it to a variable or file:
+This command outputs a JWT token to stdout. If you do not specify `--duration`, the server determines the token lifetime automatically. You can save it to a variable or file:
 
 ```bash
 TOKEN=$(kubectl create token my-app-sa)
@@ -50,7 +50,7 @@ curl -k https://kubernetes-api:6443/api/v1/namespaces/default/pods \
 
 ## Setting Token Expiration
 
-The `--duration` flag controls how long the token remains valid. The default is 1 hour, but you can adjust this based on your needs.
+The `--duration` flag requests how long the token remains valid. If you do not set it, the API server determines the lifetime automatically.
 
 For a token that expires in 10 minutes:
 
@@ -64,7 +64,7 @@ For a token that lasts 24 hours:
 kubectl create token my-app-sa --duration=24h
 ```
 
-The maximum duration depends on your cluster configuration. Most clusters allow tokens up to 24 hours by default, but cluster administrators can configure different limits.
+The maximum duration depends on your cluster configuration. The API server can return a token with a shorter or longer lifetime than requested, and cluster administrators can configure the maximum with `--service-account-max-token-expiration`.
 
 Short-lived tokens are better for security. Use the shortest duration that works for your use case. For CI/CD pipelines that run for 30 minutes, a 1-hour token provides a safety margin without excessive lifetime.
 
@@ -212,7 +212,7 @@ chmod 600 /secure/path/k8s-token.txt
 In your application code (Python example):
 
 ```python
-from kubernetes import client, config
+from kubernetes import client
 
 # Read the token
 with open('/secure/path/k8s-token.txt', 'r') as f:
@@ -221,7 +221,8 @@ with open('/secure/path/k8s-token.txt', 'r') as f:
 # Configure client
 configuration = client.Configuration()
 configuration.host = "https://kubernetes-api:6443"
-configuration.api_key = {"authorization": f"Bearer {token}"}
+configuration.api_key = {"authorization": token}
+configuration.api_key_prefix = {"authorization": "Bearer"}
 configuration.verify_ssl = True
 configuration.ssl_ca_cert = "/path/to/ca.crt"
 
@@ -245,7 +246,12 @@ Verify the token has not expired:
 
 ```bash
 # Decode the token to check expiration
-echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq .exp
+PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+')
+case $((${#PAYLOAD} % 4)) in
+  2) PAYLOAD="${PAYLOAD}==" ;;
+  3) PAYLOAD="${PAYLOAD}=" ;;
+esac
+echo "$PAYLOAD" | base64 -d 2>/dev/null | jq .exp
 ```
 
 Compare the exp field with the current Unix timestamp. If it has passed, generate a new token.
