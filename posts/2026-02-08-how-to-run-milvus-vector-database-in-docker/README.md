@@ -12,7 +12,7 @@ Milvus is an open-source vector database purpose-built for similarity search at 
 
 ## What Are Vector Databases For?
 
-Traditional databases search by exact matches or ranges. Vector databases search by similarity. When you convert text, images, or audio into numerical embeddings using models like OpenAI's text-embedding-ada-002 or sentence-transformers, you get high-dimensional vectors. Finding the "most similar" items means finding the nearest neighbors in that vector space.
+Traditional databases search by exact matches or ranges. Vector databases search by similarity. When you convert text, images, or audio into numerical embeddings using models like OpenAI's text-embedding-3-small or sentence-transformers, you get high-dimensional vectors. Finding the "most similar" items means finding the nearest neighbors in that vector space.
 
 This powers use cases like:
 - Semantic search (find documents by meaning, not just keywords)
@@ -39,11 +39,9 @@ Milvus standalone requires etcd for metadata and MinIO for object storage. The o
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
-
 services:
   etcd:
-    image: quay.io/coreos/etcd:v3.5.11
+    image: quay.io/coreos/etcd:v3.5.25
     container_name: milvus-etcd
     environment:
       ETCD_AUTO_COMPACTION_MODE: revision
@@ -63,7 +61,7 @@ services:
       retries: 3
 
   minio:
-    image: minio/minio:RELEASE.2024-01-01T16-36-33Z
+    image: minio/minio:RELEASE.2024-05-28T17-19-04Z
     container_name: milvus-minio
     environment:
       MINIO_ACCESS_KEY: minioadmin
@@ -80,12 +78,16 @@ services:
       retries: 3
 
   milvus:
-    image: milvusdb/milvus:v2.4.0
+    image: milvusdb/milvus:v2.6.11
     container_name: milvus-standalone
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
     ports:
       - "19530:19530"  # gRPC port
       - "9091:9091"    # Metrics port
     environment:
+      MINIO_REGION: us-east-1
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
     volumes:
@@ -98,6 +100,7 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
       interval: 30s
+      start_period: 90s
       timeout: 20s
       retries: 3
     deploy:
@@ -107,8 +110,11 @@ services:
 
 volumes:
   etcd_data:
+    name: milvus_etcd_data
   minio_data:
+    name: milvus_minio_data
   milvus_data:
+    name: milvus_data
 ```
 
 Start the stack.
@@ -127,7 +133,7 @@ The pymilvus library is the primary way to interact with Milvus.
 
 ```bash
 # Install the Milvus Python SDK
-pip install pymilvus
+pip install pymilvus sentence-transformers
 ```
 
 ## Creating a Collection
@@ -167,7 +173,6 @@ Generate embeddings and insert them along with metadata.
 # insert_data.py
 from pymilvus import connections, Collection
 from sentence_transformers import SentenceTransformer
-import numpy as np
 
 # Connect to Milvus
 connections.connect("default", host="localhost", port="19530")
