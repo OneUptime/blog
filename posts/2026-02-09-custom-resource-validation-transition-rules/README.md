@@ -48,13 +48,14 @@ spec:
               storageGB:
                 type: integer
                 minimum: 1
+            required: ["storageGB"]
             x-kubernetes-validations:
             # This rule only applies during updates
             - rule: "!has(oldSelf.storageGB) || self.storageGB >= oldSelf.storageGB"
               message: "Storage size cannot be decreased"
 ```
 
-The `!has(oldSelf.storageGB)` check ensures the rule passes during creation when `oldSelf` does not exist yet.
+Transition rules are not evaluated during resource creation by default. The `!has(oldSelf.storageGB)` check handles updates from older objects where `storageGB` did not previously exist.
 
 ## Preventing Field Modifications After Creation
 
@@ -88,7 +89,9 @@ spec:
               region:
                 type: string
               version:
-                type: string
+                type: integer
+                minimum: 1
+            required: ["engine", "region", "version"]
             x-kubernetes-validations:
             # Engine cannot be changed after creation
             - rule: "!has(oldSelf.engine) || self.engine == oldSelf.engine"
@@ -98,7 +101,7 @@ spec:
             - rule: "!has(oldSelf.region) || self.region == oldSelf.region"
               message: "Database region cannot be changed after creation"
 
-            # Version can only be upgraded, not downgraded
+            # Version number can only be upgraded, not downgraded
             - rule: "!has(oldSelf.version) || self.version >= oldSelf.version"
               message: "Database version can only be upgraded, not downgraded"
 ```
@@ -132,6 +135,7 @@ spec:
               state:
                 type: string
                 enum: ["draft", "pending", "approved", "deployed", "failed"]
+            required: ["state"]
             x-kubernetes-validations:
             # Can only go from draft to pending
             - rule: |
@@ -188,11 +192,12 @@ spec:
                 type: boolean
               forceDelete:
                 type: boolean
+            required: ["nodeCount", "deleteProtection"]
             x-kubernetes-validations:
             # Cannot reduce node count by more than 50% without approval
             - rule: |
                 !has(oldSelf.nodeCount) ||
-                self.nodeCount >= oldSelf.nodeCount * 0.5 ||
+                self.nodeCount * 2 >= oldSelf.nodeCount ||
                 has(self.forceDelete) && self.forceDelete == true
               message: "Cannot reduce node count by more than 50% without setting forceDelete=true"
 
@@ -236,6 +241,7 @@ spec:
                 type: string
               configVersion:
                 type: integer
+            required: ["image", "imageTag", "configVersion"]
             x-kubernetes-validations:
             # If image changes, imageTag must also change
             - rule: |
@@ -282,13 +288,14 @@ spec:
               lastScaleTime:
                 type: string
                 format: date-time
+            required: ["replicas", "lastScaleTime"]
             x-kubernetes-validations:
             # Can only scale every 5 minutes
             - rule: |
                 !has(oldSelf.replicas) ||
                 self.replicas == oldSelf.replicas ||
                 !has(oldSelf.lastScaleTime) ||
-                (timestamp(self.lastScaleTime) - timestamp(oldSelf.lastScaleTime)) >= duration('5m')
+                (self.lastScaleTime - oldSelf.lastScaleTime) >= duration('5m')
               message: "Can only change replicas once every 5 minutes"
 ```
 
@@ -327,6 +334,7 @@ spec:
                 type: integer
               allowDownscale:
                 type: boolean
+            required: ["environment", "replicas"]
             x-kubernetes-validations:
             # Production deployments cannot be downscaled without explicit permission
             - rule: |
@@ -385,6 +393,8 @@ spec:
                     type: boolean
                   retentionDays:
                     type: integer
+                    minimum: 1
+                required: ["enabled", "retentionDays"]
                 x-kubernetes-validations:
                 # Once backups are enabled, they cannot be disabled
                 - rule: |
@@ -428,8 +438,11 @@ spec:
             properties:
               allowedUsers:
                 type: array
+                maxItems: 100
                 items:
                   type: string
+                  maxLength: 128
+            required: ["allowedUsers"]
             x-kubernetes-validations:
             # Cannot remove users, only add
             - rule: |
@@ -445,7 +458,7 @@ spec:
 
 ## Best Practices
 
-1. **Check for oldSelf existence**: Always use `!has(oldSelf.field)` to handle creation
+1. **Check for oldSelf field existence**: Transition rules do not run on create by default, but `!has(oldSelf.field)` can handle updates from older objects where a field was previously absent
 
 2. **Write clear error messages**: Explain what is wrong and what to do
 
@@ -461,6 +474,8 @@ spec:
 
 ## Testing Transition Rules
 
+Assuming your `Database` CRD combines the `storageGB` and `engine` validation rules shown above:
+
 ```bash
 # Create a database
 
@@ -471,7 +486,9 @@ metadata:
   name: test-db
 spec:
   engine: postgres
+  region: us-east-1
   storageGB: 100
+  version: 1
 EOF
 
 # Try to reduce storage (should fail)
