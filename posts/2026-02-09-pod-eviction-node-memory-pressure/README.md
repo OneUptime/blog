@@ -14,12 +14,13 @@ Memory pressure evictions can cause cascading failures if not handled correctly,
 
 ## Understanding Memory Pressure
 
-Kubernetes monitors memory availability on each node and declares memory pressure when available memory falls below certain thresholds. The kubelet uses two signals:
+Kubernetes monitors memory availability on each node and declares memory pressure when available memory falls below configured eviction thresholds. The most relevant memory-pressure signal is:
 
 - `memory.available`: The amount of memory available for new allocations
-- `nodefs.available`: Available disk space (can trigger eviction indirectly)
 
-Default eviction thresholds:
+The kubelet also monitors filesystem and PID signals such as `nodefs.available`, `imagefs.available`, and `pid.available`, but those map to other node-pressure conditions such as `DiskPressure` or `PIDPressure`.
+
+Default hard eviction thresholds on Linux nodes include:
 
 ```yaml
 # Kubelet configuration
@@ -27,13 +28,12 @@ Default eviction thresholds:
 evictionHard:
   memory.available: "100Mi"
   nodefs.available: "10%"
-evictionSoft:
-  memory.available: "500Mi"
-evictionSoftGracePeriod:
-  memory.available: "1m30s"
+  imagefs.available: "15%"
+  nodefs.inodesFree: "5%"
+  imagefs.inodesFree: "5%"
 ```
 
-When hard thresholds are crossed, kubelet immediately begins evicting pods. Soft thresholds allow a grace period before eviction starts.
+When hard thresholds are crossed, kubelet immediately begins evicting pods. Soft thresholds can be configured separately and allow a grace period before eviction starts.
 
 ## Detecting Memory Pressure
 
@@ -41,7 +41,7 @@ Check node conditions:
 
 ```bash
 # View node memory pressure status
-kubectl get nodes -o custom-columns=NAME:.metadata.name,MEMORY_PRESSURE:.status.conditions[?(@.type==\"MemoryPressure\")].status
+kubectl get nodes -o 'custom-columns=NAME:.metadata.name,MEMORY_PRESSURE:.status.conditions[?(@.type=="MemoryPressure")].status'
 
 # Detailed node status
 kubectl describe node <node-name> | grep -A 5 "Conditions"
@@ -102,15 +102,15 @@ spec:
       periodSeconds: 5
 ```
 
-The memory request guarantees the pod gets that much memory, while the limit prevents it from consuming more than specified.
+The memory request reserves schedulable capacity for the pod and influences eviction decisions, while the limit gives the container a kernel-enforced ceiling; if the container exceeds that limit under memory pressure, it can be OOM killed.
 
 ## Setting QoS Classes
 
-Quality of Service (QoS) classes determine eviction order during memory pressure:
+Quality of Service (QoS) classes help estimate eviction risk during memory pressure:
 
-1. **Guaranteed**: Requests equal limits for all resources
-2. **Burstable**: Requests are set but less than limits
-3. **BestEffort**: No requests or limits set
+1. **Guaranteed**: CPU and memory requests equal limits for every container
+2. **Burstable**: At least one CPU or memory request or limit is set, but the pod does not meet Guaranteed criteria
+3. **BestEffort**: No CPU or memory requests or limits are set
 
 ```yaml
 # Guaranteed QoS - evicted last
@@ -159,7 +159,7 @@ spec:
     # No resources specified
 ```
 
-Critical workloads should use Guaranteed QoS to minimize eviction risk.
+Critical workloads should use Guaranteed QoS to minimize eviction risk, but kubelet eviction ranking also considers whether usage exceeds requests, pod priority, and usage relative to requests.
 
 ## Using Priority Classes
 
@@ -203,7 +203,7 @@ spec:
         cpu: "1000m"
 ```
 
-Lower priority pods are evicted before higher priority ones when memory pressure occurs.
+When memory pressure occurs, pod priority is one of the factors kubelet uses when ranking pods for eviction; lower priority pods are more likely to be evicted before otherwise similar higher priority pods.
 
 ## Implementing Pod Disruption Budgets
 
@@ -364,9 +364,11 @@ spec:
             - /bin/bash
             - -c
             - |
-              kubectl get pods --all-namespaces --field-selector status.phase=Failed -o json | \
-                jq -r '.items[] | select(.status.reason == "Evicted") | "-n \(.metadata.namespace) \(.metadata.name)"' | \
-                xargs -r -n 3 kubectl delete pod
+              kubectl get pods --all-namespaces --field-selector status.phase=Failed \
+                -o jsonpath='{range .items[?(@.status.reason=="Evicted")]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' | \
+                while read namespace name; do
+                  kubectl delete pod "$name" -n "$namespace"
+                done
           restartPolicy: OnFailure
 ---
 apiVersion: v1
