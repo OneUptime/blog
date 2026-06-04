@@ -16,9 +16,9 @@ Unlike regular containers that run in parallel, init containers execute sequenti
 
 When init containers and application containers mount the same volume, they can share data prepared during initialization. Kubernetes supports several volume types for this purpose, each with different characteristics and use cases.
 
-The emptyDir volume is the most common choice for init container data sharing. It starts empty when the pod is created, persists for the pod's lifetime, and is deleted when the pod terminates. This works well for temporary data that doesn't need to survive pod restarts.
+The emptyDir volume is the most common choice for init container data sharing. It starts empty when the pod is created, persists for the pod's lifetime, and is deleted when the pod terminates. This works well for temporary data that doesn't need to survive pod replacement.
 
-Persistent volumes provide durability across pod restarts, useful when init containers download large datasets or perform expensive computations that you don't want to repeat. However, you need to handle cases where the volume already contains data from previous runs.
+Persistent volumes provide durability across pod replacements, useful when init containers download large datasets or perform expensive computations that you don't want to repeat. However, you need to handle cases where the volume already contains data from previous runs.
 
 ## Basic Init Container with Shared Volume
 
@@ -117,6 +117,7 @@ spec:
         - -c
         - |
           echo "Downloading raw data files..."
+          mkdir -p /data/raw
           wget -O /data/raw/dataset1.csv https://data.example.com/dataset1.csv
           wget -O /data/raw/dataset2.csv https://data.example.com/dataset2.csv
           echo "Download complete"
@@ -166,7 +167,7 @@ spec:
         - sh
         - -c
         - |
-          pip install pandas --quiet
+          pip install pandas pyarrow --quiet
           python << 'EOF'
           import pandas as pd
           import json
@@ -423,6 +424,7 @@ spec:
           git log -1 --oneline
 
           # Copy files to shared location
+          mkdir -p /data/app-config
           cp -r /data/config/environments/production/* /data/app-config/
         volumeMounts:
         - name: git-secret
@@ -462,7 +464,7 @@ This pattern works well for GitOps workflows where configuration lives in versio
 
 ## Persistent Volume Caching
 
-For expensive operations like downloading large datasets or machine learning models, persistent volumes can cache data across pod restarts.
+For expensive operations like downloading large datasets or machine learning models, persistent volumes can cache data across pod replacements.
 
 ```yaml
 apiVersion: v1
@@ -484,7 +486,7 @@ metadata:
   name: ml-inference
   namespace: default
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: ml-inference
@@ -508,11 +510,14 @@ spec:
           MODEL_VERSION = os.environ.get('MODEL_VERSION', 'v1.0.0')
           CACHE_DIR = '/models'
           MODEL_FILE = f'{CACHE_DIR}/model-{MODEL_VERSION}.pkl'
+          current_link = f'{CACHE_DIR}/current-model.pkl'
 
           # Check if model already cached
           if os.path.exists(MODEL_FILE):
               print(f"Model {MODEL_VERSION} already cached")
-              os.symlink(MODEL_FILE, f'{CACHE_DIR}/current-model.pkl')
+              if os.path.lexists(current_link):
+                  os.remove(current_link)
+              os.symlink(MODEL_FILE, current_link)
               exit(0)
 
           print(f"Downloading model {MODEL_VERSION}...")
@@ -526,8 +531,7 @@ spec:
           )
 
           # Create symlink to current version
-          current_link = f'{CACHE_DIR}/current-model.pkl'
-          if os.path.exists(current_link):
+          if os.path.lexists(current_link):
               os.remove(current_link)
           os.symlink(MODEL_FILE, current_link)
 
@@ -576,7 +580,7 @@ spec:
           claimName: model-cache
 ```
 
-The init container checks if the model version exists in the cache. If not, it downloads from S3 and creates a symlink. Subsequent pod restarts use the cached model, avoiding repeated downloads.
+The init container checks if the model version exists in the cache. If not, it downloads from S3 and creates a symlink. Subsequent pod replacements use the cached model, avoiding repeated downloads.
 
 ## Conclusion
 
