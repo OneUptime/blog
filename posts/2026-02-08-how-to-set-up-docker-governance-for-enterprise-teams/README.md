@@ -32,7 +32,7 @@ Create an approved base image catalog that all teams must use. This eliminates t
 # base-images/python/Dockerfile
 
 # Organization-approved Python base image with security hardening
-FROM python:3.12.2-slim@sha256:abc123...
+FROM python:3.12.2-slim@sha256:5dc6f84b5e97bfb0c90abfb7c55f3cacc2cb6687c8f920b64a833a2219875997
 
 LABEL org.example.base-image="python-3.12"
 LABEL org.example.maintained-by="platform-team"
@@ -122,15 +122,17 @@ Enforce naming with an OPA policy:
 
 package docker.naming
 
+import rego.v1
+
 # Image names must follow the pattern: registry/namespace/name:tag
-deny[msg] {
+deny contains msg if {
     image := input.image
     not regex.match(`^registry\.example\.com/(base-images|team-[a-z]+|shared)/[a-z0-9-]+:[a-z0-9][a-z0-9._-]*$`, image)
     msg := sprintf("Image name '%s' does not follow naming convention: registry/namespace/name:tag", [image])
 }
 
 # Tags must not be 'latest' in production
-deny[msg] {
+deny contains msg if {
     input.environment == "production"
     endswith(input.image, ":latest")
     msg := "The 'latest' tag is not allowed in production deployments"
@@ -164,7 +166,7 @@ REQUIRED_LABELS="org.example.team org.example.service org.example.version org.ex
 MISSING=0
 
 for LABEL in $REQUIRED_LABELS; do
-    VALUE=$(docker inspect --format "{{index .Config.Labels \"$LABEL\"}}" "$IMAGE" 2>/dev/null)
+    VALUE=$(docker image inspect "$IMAGE" | jq -r ".[0].Config.Labels[\"$LABEL\"] // empty")
     if [ -z "$VALUE" ]; then
         echo "MISSING: Label '$LABEL' is required but not set"
         MISSING=$((MISSING + 1))
@@ -236,7 +238,7 @@ SERVICES=$(docker compose -f "$COMPOSE_FILE" config --services)
 for SERVICE in $SERVICES; do
     # Check memory limit
     MEM_LIMIT=$(docker compose -f "$COMPOSE_FILE" config | \
-        yq ".services.${SERVICE}.deploy.resources.limits.memory // \"missing\"")
+        yq ".services[\"${SERVICE}\"].deploy.resources.limits.memory // \"missing\"")
 
     if [ "$MEM_LIMIT" = "missing" ] || [ "$MEM_LIMIT" = "null" ]; then
         echo "ERROR: Service '$SERVICE' is missing memory limit"
@@ -245,7 +247,7 @@ for SERVICE in $SERVICES; do
 
     # Check health check
     HEALTHCHECK=$(docker compose -f "$COMPOSE_FILE" config | \
-        yq ".services.${SERVICE}.healthcheck // \"missing\"")
+        yq ".services[\"${SERVICE}\"].healthcheck // \"missing\"")
 
     if [ "$HEALTHCHECK" = "missing" ] || [ "$HEALTHCHECK" = "null" ]; then
         echo "ERROR: Service '$SERVICE' is missing health check"
@@ -273,6 +275,9 @@ Set rules for how long images are kept:
 REGISTRY="registry.example.com"
 RETENTION_DAYS=90
 KEEP_LATEST=10
+TODAY=$(date +%Y%m%d)
+CUTOFF=$(date -d "${TODAY} - ${RETENTION_DAYS} days" +%Y%m%d)
+MANIFEST_TYPE="application/vnd.docker.distribution.manifest.v2+json"
 
 # Get all repositories
 REPOS=$(curl -s "https://${REGISTRY}/v2/_catalog" | jq -r '.repositories[]')
@@ -280,9 +285,9 @@ REPOS=$(curl -s "https://${REGISTRY}/v2/_catalog" | jq -r '.repositories[]')
 for REPO in $REPOS; do
     echo "Processing: $REPO"
 
-    # Get all tags sorted by creation date
-    TAGS=$(curl -s "https://${REGISTRY}/v2/${REPO}/tags/list" | jq -r '.tags[]?' | sort)
-    TAG_COUNT=$(echo "$TAGS" | wc -l)
+    # Get dated tags sorted lexically. This assumes tags use YYYYMMDD dates.
+    TAGS=$(curl -s "https://${REGISTRY}/v2/${REPO}/tags/list" | jq -r '.tags[]?' | grep -E '^[0-9]{8}$' | sort)
+    TAG_COUNT=$(printf "%s\n" "$TAGS" | grep -c .)
 
     # Skip if we have fewer tags than the minimum to keep
     if [ "$TAG_COUNT" -le "$KEEP_LATEST" ]; then
@@ -290,12 +295,21 @@ for REPO in $REPOS; do
         continue
     fi
 
-    # Identify tags to delete (older than retention period, keeping minimum count)
-    TAGS_TO_DELETE=$(echo "$TAGS" | head -n -$KEEP_LATEST)
+    # Identify tags older than retention period, while keeping the newest tags
+    TAGS_TO_DELETE=$(echo "$TAGS" | head -n -"$KEEP_LATEST" | awk -v cutoff="$CUTOFF" '$1 < cutoff')
     for TAG in $TAGS_TO_DELETE; do
         echo "  Would delete: ${REPO}:${TAG}"
-        # Uncomment to actually delete:
-        # curl -s -X DELETE "https://${REGISTRY}/v2/${REPO}/manifests/${TAG}"
+        DIGEST=$(curl -fsSI -H "Accept: ${MANIFEST_TYPE}" \
+            "https://${REGISTRY}/v2/${REPO}/manifests/${TAG}" | \
+            awk -F': ' 'tolower($1) == "docker-content-digest" {gsub(/\r/, "", $2); print $2}')
+
+        if [ -z "$DIGEST" ]; then
+            echo "  Could not resolve digest for ${REPO}:${TAG}; skipping"
+            continue
+        fi
+
+        # Uncomment to actually delete. Registry deletion must be enabled.
+        # curl -s -X DELETE "https://${REGISTRY}/v2/${REPO}/manifests/${DIGEST}"
     done
 done
 ```
@@ -330,7 +344,7 @@ for CONTAINER_ID in $(docker ps -q); do
 
     # Check: has required labels
     TEAM=$(docker inspect --format '{{index .Config.Labels "org.example.team"}}' "$CONTAINER_ID" 2>/dev/null)
-    if [ -z "$TEAM" ]; then
+    if [ -z "$TEAM" ] || [ "$TEAM" = "<no value>" ]; then
         ISSUES="${ISSUES}missing-team-label "
     fi
 
@@ -342,7 +356,7 @@ for CONTAINER_ID in $(docker ps -q); do
 
     # Check: has health check
     HC=$(docker inspect --format '{{.Config.Healthcheck}}' "$CONTAINER_ID" 2>/dev/null)
-    if [ -z "$HC" ] || [ "$HC" = "<nil>" ]; then
+    if [ -z "$HC" ] || [ "$HC" = "<nil>" ] || [ "$HC" = "<no value>" ]; then
         ISSUES="${ISSUES}no-healthcheck "
     fi
 
@@ -355,7 +369,11 @@ for CONTAINER_ID in $(docker ps -q); do
 done
 
 echo ""
-echo "Summary: $COMPLIANT/$TOTAL containers compliant ($(( COMPLIANT * 100 / TOTAL ))%)"
+if [ "$TOTAL" -eq 0 ]; then
+    echo "Summary: 0 containers running"
+else
+    echo "Summary: $COMPLIANT/$TOTAL containers compliant ($(( COMPLIANT * 100 / TOTAL ))%)"
+fi
 ```
 
 ## Summary
