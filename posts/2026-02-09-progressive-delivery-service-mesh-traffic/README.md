@@ -130,7 +130,14 @@ spec:
   service:
     port: 80
     targetPort: 8080
-  # Linkerd traffic routing
+    # Reference to the Service that the generated HTTPRoute attaches to.
+    gatewayRefs:
+    - name: api-server
+      namespace: default
+      group: core
+      kind: Service
+      port: 80
+  # Linkerd traffic routing with the Gateway API provider
   progressDeadlineSeconds: 600
   analysis:
     interval: 1m
@@ -148,20 +155,27 @@ spec:
       interval: 1m
 ```
 
-Flagger creates TrafficSplit resources for Linkerd:
+With Linkerd's Gateway API provider, Flagger creates HTTPRoute resources. Linkerd's older SMI TrafficSplit support is deprecated, so prefer HTTPRoute for new deployments:
 
 ```yaml
-apiVersion: split.smi-spec.io/v1alpha1
-kind: TrafficSplit
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: api-server
 spec:
-  service: api-server
-  backends:
-  - service: api-server-primary
-    weight: 90
-  - service: api-server-canary
-    weight: 10
+  parentRefs:
+  - name: api-server
+    group: core
+    kind: Service
+    port: 80
+  rules:
+  - backendRefs:
+    - name: api-server-primary
+      port: 80
+      weight: 90
+    - name: api-server-canary
+      port: 80
+      weight: 10
 ```
 
 ## Header-Based Routing
@@ -205,6 +219,8 @@ spec:
   strategy:
     canary:
       trafficRouting:
+        managedRoutes:
+        - name: internal-users
         istio:
           virtualService:
             name: api-server-vsvc
@@ -282,7 +298,7 @@ spec:
           http1MaxPendingRequests: 50
           maxRequestsPerConnection: 2
       outlierDetection:
-        consecutiveErrors: 5
+        consecutive5xxErrors: 5
         interval: 30s
         baseEjectionTime: 30s
         maxEjectionPercent: 50
