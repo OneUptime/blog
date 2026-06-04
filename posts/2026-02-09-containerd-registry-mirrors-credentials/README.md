@@ -8,7 +8,7 @@ Description: Learn how to configure containerd registry mirrors and authenticati
 
 ---
 
-Registry mirrors and credential configuration are essential for production Kubernetes clusters. Mirrors reduce external bandwidth usage and improve pull performance, while proper authentication ensures access to private container images. As containerd replaced Docker as the default Kubernetes runtime, understanding its registry configuration becomes critical for cluster operators.
+Registry mirrors and credential configuration are essential for production Kubernetes clusters. Mirrors reduce external bandwidth usage and improve pull performance, while proper authentication ensures access to private container images. As many Kubernetes distributions moved from Docker Engine to containerd after dockershim removal, understanding its registry configuration becomes critical for cluster operators.
 
 This guide covers configuring registry mirrors, setting up authentication for private registries, and troubleshooting common image pull issues in containerd-based Kubernetes clusters.
 
@@ -16,36 +16,66 @@ This guide covers configuring registry mirrors, setting up authentication for pr
 
 Containerd uses a different approach than Docker for registry configuration. Instead of a single daemon configuration file, containerd supports per-registry configuration in separate files. This modular design allows fine-grained control over mirror endpoints, TLS settings, and authentication per registry.
 
-The registry configuration lives in `/etc/containerd/config.toml` or in separate configuration files under `/etc/containerd/certs.d/`. The newer directory-based approach provides better organization and easier updates.
+The registry configuration is enabled from `/etc/containerd/config.toml` and can be split into separate host configuration files under `/etc/containerd/certs.d/`. The newer directory-based approach provides better organization and easier updates.
 
 ## Configuring Registry Mirrors in containerd
 
 Registry mirrors intercept image pulls and redirect them to local or regional cache servers. This reduces latency and bandwidth costs while improving availability.
 
-Edit `/etc/containerd/config.toml` to add mirror configuration.
+Edit `/etc/containerd/config.toml` to point containerd at the registry hosts directory.
 
 ```toml
 version = 2
 
 [plugins."io.containerd.grpc.v1.cri".registry]
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-      endpoint = ["https://mirror.example.com", "https://registry-1.docker.io"]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."gcr.io"]
-      endpoint = ["https://gcr-mirror.example.com", "https://gcr.io"]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."quay.io"]
-      endpoint = ["https://quay-mirror.example.com", "https://quay.io"]
+  config_path = "/etc/containerd/certs.d"
 ```
 
-The endpoint list defines the order containerd tries when pulling images. If the first mirror fails, it falls back to subsequent endpoints automatically.
+Create per-registry `hosts.toml` files for each mirror.
 
-Restart containerd to apply changes.
+```bash
+sudo mkdir -p /etc/containerd/certs.d/docker.io
+sudo tee /etc/containerd/certs.d/docker.io/hosts.toml <<EOF
+server = "https://registry-1.docker.io"
+
+[host."https://mirror.example.com"]
+  capabilities = ["pull"]
+
+[host."https://registry-1.docker.io"]
+  capabilities = ["pull", "resolve"]
+EOF
+
+sudo mkdir -p /etc/containerd/certs.d/gcr.io
+sudo tee /etc/containerd/certs.d/gcr.io/hosts.toml <<EOF
+server = "https://gcr.io"
+
+[host."https://gcr-mirror.example.com"]
+  capabilities = ["pull"]
+
+[host."https://gcr.io"]
+  capabilities = ["pull", "resolve"]
+EOF
+
+sudo mkdir -p /etc/containerd/certs.d/quay.io
+sudo tee /etc/containerd/certs.d/quay.io/hosts.toml <<EOF
+server = "https://quay.io"
+
+[host."https://quay-mirror.example.com"]
+  capabilities = ["pull"]
+
+[host."https://quay.io"]
+  capabilities = ["pull", "resolve"]
+EOF
+```
+
+The host entries define the order containerd tries when pulling images. If the first mirror fails, it falls back to subsequent hosts automatically.
+
+Restart containerd after changing `config.toml`. Future updates under `/etc/containerd/certs.d/` do not require restarting the daemon.
 
 ```bash
 sudo systemctl restart containerd
 
 # Verify configuration
-
 sudo crictl info | jq '.config.registry'
 ```
 
@@ -69,7 +99,7 @@ cd harbor
 cp harbor.yml.tmpl harbor.yml
 ```
 
-Edit `harbor.yml` to configure as a proxy cache.
+Edit `harbor.yml` to configure the Harbor instance.
 
 ```yaml
 hostname: registry.example.com
@@ -85,26 +115,22 @@ database:
   max_open_conns: 900
 
 data_volume: /data
-
-# Enable proxy cache
-proxy:
-  remote_url: https://registry-1.docker.io
-  username: ""
-  password: ""
 ```
 
 Install and start Harbor.
 
 ```bash
-sudo ./install.sh --with-chartmuseum --with-trivy
+sudo ./install.sh --with-trivy
 
 # Verify Harbor is running
 docker ps | grep harbor
 ```
 
+After Harbor is running, configure proxy cache by creating a registry endpoint for Docker Hub and then creating a proxy cache project that uses that endpoint. Pull images through the proxy cache project path, such as `registry.example.com/dockerhub/library/nginx:latest`, instead of pulling directly from `docker.io`.
+
 ## Configuring Authentication for Private Registries
 
-Private registries require authentication credentials. Containerd supports multiple authentication methods including basic auth, token-based auth, and credential helpers.
+Private registries require authentication credentials. Containerd can use credentials passed by Kubernetes through CRI, deprecated static credentials in `config.toml`, or headers in host configuration files.
 
 Create credential configuration for your private registry. Use the directory-based approach for better organization.
 
@@ -118,33 +144,26 @@ server = "https://myregistry.example.com"
 
 [host."https://myregistry.example.com"]
   capabilities = ["pull", "resolve", "push"]
-  ca = "/etc/containerd/certs.d/myregistry.example.com/ca.crt"
 
 [host."https://myregistry.example.com".header]
-  authorization = "Basic $(echo -n 'username:password' | base64)"
+  authorization = "Basic $(printf 'username:password' | base64 -w 0)"
 EOF
 ```
 
-For more secure credential management, use a credential helper instead of embedding passwords in configuration files.
+For Kubernetes workloads, prefer an ImagePullSecret instead of embedding long-lived credentials in node configuration files. If you must configure static node-level credentials for older setups that are not using `config_path`, use the supported but deprecated `registry.configs.*.auth` fields in `/etc/containerd/config.toml`.
+
+```toml
+version = 2
+
+[plugins."io.containerd.grpc.v1.cri".registry.configs."gcr.io".auth]
+  username = "_json_key"
+  password = '{"type":"service_account","project_id":"example","private_key_id":"..."}'
+```
+
+Restart containerd after changing static credentials in `config.toml`.
 
 ```bash
-# Install credential helper
-sudo curl -L https://github.com/GoogleCloudPlatform/docker-credential-gcr/releases/download/v2.1.0/docker-credential-gcr_linux_amd64-2.1.0.tar.gz \
-  -o /tmp/gcr-credential-helper.tar.gz
-
-sudo tar -C /usr/local/bin -xzf /tmp/gcr-credential-helper.tar.gz
-sudo chmod +x /usr/local/bin/docker-credential-gcr
-
-# Configure containerd to use credential helper
-sudo tee /etc/containerd/certs.d/gcr.io/hosts.toml <<EOF
-server = "https://gcr.io"
-
-[host."https://gcr.io"]
-  capabilities = ["pull", "resolve"]
-
-[host."https://gcr.io".auth]
-  credHelper = "gcr"
-EOF
+sudo systemctl restart containerd
 ```
 
 ## Configuring TLS Certificates for Self-Signed Registries
@@ -230,15 +249,15 @@ server = "https://registry-1.docker.io"
 
 # Primary mirror (local)
 [host."https://local-mirror.example.com"]
-  capabilities = ["pull", "resolve"]
+  capabilities = ["pull"]
 
 # Secondary mirror (regional)
 [host."https://us-mirror.example.com"]
-  capabilities = ["pull", "resolve"]
+  capabilities = ["pull"]
 
 # Tertiary mirror (CDN)
 [host."https://cdn-mirror.example.com"]
-  capabilities = ["pull", "resolve"]
+  capabilities = ["pull"]
 
 # Fallback to official registry
 [host."https://registry-1.docker.io"]
@@ -261,7 +280,7 @@ sudo journalctl -u containerd -n 50 | grep -i mirror
 
 ## Configuring Rate Limiting and Retry Behavior
 
-Configure retry behavior for transient failures and rate limiting scenarios.
+Configure pull concurrency for image downloads. Retries and rate-limit handling are driven by the registry client and the configured mirror fallback order, not by per-registry `max_concurrent_uploads` settings.
 
 ```toml
 version = 2
@@ -269,20 +288,8 @@ version = 2
 [plugins."io.containerd.grpc.v1.cri".registry]
   config_path = "/etc/containerd/certs.d"
 
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-  endpoint = ["https://mirror.example.com"]
-
-[plugins."io.containerd.grpc.v1.cri".registry.configs."mirror.example.com".tls]
-  insecure_skip_verify = false
-
-[plugins."io.containerd.grpc.v1.cri".registry.configs."mirror.example.com".auth]
-  username = "mirror-user"
-  password = "mirror-pass"
-
-# Rate limiting configuration
-[plugins."io.containerd.grpc.v1.cri".registry.configs."docker.io"]
+[plugins."io.containerd.grpc.v1.cri"]
   max_concurrent_downloads = 6
-  max_concurrent_uploads = 3
 ```
 
 ## Troubleshooting Registry Configuration Issues
