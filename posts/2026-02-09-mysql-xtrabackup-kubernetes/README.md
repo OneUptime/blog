@@ -8,19 +8,19 @@ Description: Learn how to automate MySQL backups on Kubernetes using Percona Xtr
 
 ---
 
-Database backups are critical for disaster recovery and business continuity. When running MySQL on Kubernetes, you need a backup solution that works with containerized environments and handles hot backups without locking tables. Percona XtraBackup provides exactly that - a powerful open-source tool that creates consistent backups of MySQL and MariaDB databases while they remain online and available.
+Database backups are critical for disaster recovery and business continuity. When running MySQL on Kubernetes, you need a backup solution that works with containerized environments and handles hot backups without blocking InnoDB workloads. Percona XtraBackup provides exactly that - a powerful open-source tool that creates consistent physical backups of MySQL-compatible 8.0 databases while they remain online and available.
 
 In this guide, we'll implement automated MySQL backup workflows using Percona XtraBackup on Kubernetes. We'll cover full and incremental backups, scheduling strategies, and integration with cloud storage providers.
 
 ## Understanding Percona XtraBackup
 
-Percona XtraBackup creates physical backups of InnoDB, XtraDB, and MyISAM tables without blocking database operations. Unlike logical backup tools like mysqldump, XtraBackup copies data files directly, making it significantly faster for large databases.
+Percona XtraBackup creates physical backups of InnoDB and XtraDB tables without blocking normal database operations. It can include non-InnoDB tables such as MyISAM, but those may require brief locks for consistency. Unlike logical backup tools like mysqldump, XtraBackup copies data files directly, making it significantly faster for large databases.
 
 Key features include:
 
-- Hot backups without locking tables
+- Hot backups without blocking InnoDB workloads
 - Incremental backup support
-- Point-in-time recovery capabilities
+- Point-in-time recovery capabilities when combined with binary logs
 - Parallel backup and restore operations
 - Encryption and compression support
 
@@ -70,7 +70,7 @@ spec:
     spec:
       containers:
       - name: mysql
-        image: percona:8.0
+        image: percona/percona-server:8.0
         ports:
         - containerPort: 3306
           name: mysql
@@ -84,7 +84,7 @@ spec:
         - name: mysql-data
           mountPath: /var/lib/mysql
         - name: mysql-config
-          mountPath: /etc/mysql/conf.d
+          mountPath: /etc/my.cnf.d
         resources:
           requests:
             memory: "2Gi"
@@ -128,13 +128,18 @@ We'll build a custom container image that includes XtraBackup and necessary tool
 
 ```dockerfile
 # Dockerfile
-FROM percona:8.0
+FROM ubuntu:24.04
 
 # Install XtraBackup and utilities
-RUN apt-get update && apt-get install -y \
-    percona-xtrabackup-80 \
-    awscli \
-    curl \
+RUN apt-get update && apt-get install -y curl gnupg2 lsb-release ca-certificates \
+    && curl -O https://repo.percona.com/apt/percona-release_latest.generic_all.deb \
+    && apt-get install -y ./percona-release_latest.generic_all.deb \
+    && percona-release setup pxb-80 \
+    && apt-get update && apt-get install -y \
+        percona-xtrabackup-80 \
+        awscli \
+        zstd \
+        lz4 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create backup script
@@ -160,6 +165,7 @@ MYSQL_HOST=${MYSQL_HOST:-mysql.database.svc.cluster.local}
 MYSQL_PORT=${MYSQL_PORT:-3306}
 MYSQL_USER=${MYSQL_USER:-root}
 BACKUP_DIR=${BACKUP_DIR:-/backup}
+MYSQL_DATA_DIR=${MYSQL_DATA_DIR:-/var/lib/mysql}
 S3_BUCKET=${S3_BUCKET}
 BACKUP_TYPE=${BACKUP_TYPE:-full}
 
@@ -178,6 +184,7 @@ if [ "$BACKUP_TYPE" = "full" ]; then
     echo "Creating full backup..."
     xtrabackup --backup \
         --target-dir=${BACKUP_PATH} \
+        --datadir=${MYSQL_DATA_DIR} \
         --host=${MYSQL_HOST} \
         --port=${MYSQL_PORT} \
         --user=${MYSQL_USER} \
@@ -186,19 +193,20 @@ if [ "$BACKUP_TYPE" = "full" ]; then
         --compress \
         --compress-threads=4
 elif [ "$BACKUP_TYPE" = "incremental" ]; then
-    # Find latest full backup
-    LATEST_FULL=$(ls -t ${BACKUP_DIR}/mysql_full_* | head -1)
+    # Find latest local backup to build an incremental chain
+    LATEST_BACKUP=$(ls -td ${BACKUP_DIR}/mysql_full_* ${BACKUP_DIR}/mysql_incremental_* 2>/dev/null | head -1)
 
-    if [ -z "$LATEST_FULL" ]; then
+    if [ -z "$LATEST_BACKUP" ]; then
         echo "No full backup found. Creating full backup instead..."
         BACKUP_TYPE="full"
         exec $0
     fi
 
-    echo "Creating incremental backup based on ${LATEST_FULL}"
+    echo "Creating incremental backup based on ${LATEST_BACKUP}"
     xtrabackup --backup \
         --target-dir=${BACKUP_PATH} \
-        --incremental-basedir=${LATEST_FULL} \
+        --incremental-basedir=${LATEST_BACKUP} \
+        --datadir=${MYSQL_DATA_DIR} \
         --host=${MYSQL_HOST} \
         --port=${MYSQL_PORT} \
         --user=${MYSQL_USER} \
@@ -227,9 +235,9 @@ if [ -n "$S3_BUCKET" ]; then
     echo "Backup uploaded successfully"
 fi
 
-# Cleanup old local backups (keep last 3)
+# Cleanup old local backups (keep the current chain locally)
 cd ${BACKUP_DIR}
-ls -t mysql_* | tail -n +4 | xargs -r rm -rf
+ls -t mysql_* | tail -n +9 | xargs -r rm -rf
 
 echo "Backup completed successfully: ${BACKUP_NAME}"
 ```
@@ -265,6 +273,7 @@ metadata:
 spec:
   # Run full backup daily at 2 AM
   schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
@@ -272,6 +281,8 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
+          securityContext:
+            runAsUser: 0
           containers:
           - name: backup
             image: your-registry/mysql-backup:latest
@@ -287,9 +298,16 @@ spec:
             - configMapRef:
                 name: backup-config
             volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+              readOnly: true
             - name: backup-storage
               mountPath: /backup
           volumes:
+          - name: mysql-data
+            persistentVolumeClaim:
+              claimName: mysql-data-mysql-0
+              readOnly: true
           - name: backup-storage
             persistentVolumeClaim:
               claimName: mysql-backup-pvc
@@ -302,6 +320,7 @@ metadata:
 spec:
   # Run incremental backup every 6 hours
   schedule: "0 */6 * * *"
+  concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
@@ -309,6 +328,8 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
+          securityContext:
+            runAsUser: 0
           containers:
           - name: backup
             image: your-registry/mysql-backup:latest
@@ -324,9 +345,16 @@ spec:
             - configMapRef:
                 name: backup-config
             volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+              readOnly: true
             - name: backup-storage
               mountPath: /backup
           volumes:
+          - name: mysql-data
+            persistentVolumeClaim:
+              claimName: mysql-data-mysql-0
+              readOnly: true
           - name: backup-storage
             persistentVolumeClaim:
               claimName: mysql-backup-pvc
@@ -338,7 +366,7 @@ metadata:
   namespace: database
 spec:
   accessModes:
-  - ReadWriteMany
+  - ReadWriteOnce
   storageClassName: standard
   resources:
     requests:
@@ -353,7 +381,7 @@ kubectl apply -f backup-cronjobs.yaml
 
 ## Implementing Backup Restore Procedures
 
-Create a restore script for point-in-time recovery:
+Create a restore script for backup restoration. For point-in-time recovery, restore the prepared backup first and then replay the required binary logs with `mysqlbinlog`.
 
 ```bash
 #!/bin/bash
@@ -367,11 +395,12 @@ RESTORE_DIR="/restore"
 MYSQL_DATA_DIR="/var/lib/mysql"
 
 if [ -z "$BACKUP_NAME" ]; then
-    echo "Usage: $0 <backup-name>"
+    echo "Usage: $0 <base-full-backup-name>"
     exit 1
 fi
 
 echo "Restoring backup: ${BACKUP_NAME}"
+mkdir -p ${RESTORE_DIR}
 
 # Download from S3
 if [ -n "$S3_BUCKET" ]; then
@@ -382,19 +411,38 @@ fi
 
 BACKUP_PATH="${RESTORE_DIR}/${BACKUP_NAME}"
 
-# Prepare the backup
-echo "Preparing backup..."
-xtrabackup --decompress --target-dir=${BACKUP_PATH}
-xtrabackup --prepare --target-dir=${BACKUP_PATH}
+echo "Decompressing base backup..."
+xtrabackup --decompress --remove-original --target-dir=${BACKUP_PATH}
 
-# Apply incremental backups if any
-for inc_backup in ${RESTORE_DIR}/mysql_incremental_*; do
+INCREMENTAL_BACKUPS=()
+for inc_backup in $(find ${RESTORE_DIR} -maxdepth 1 -type d -name 'mysql_incremental_*' | sort); do
     if [ -d "$inc_backup" ]; then
-        echo "Applying incremental backup: $inc_backup"
-        xtrabackup --prepare --target-dir=${BACKUP_PATH} \
-            --incremental-dir=$inc_backup
+        echo "Decompressing incremental backup: $inc_backup"
+        xtrabackup --decompress --remove-original --target-dir=$inc_backup
+        INCREMENTAL_BACKUPS+=("$inc_backup")
     fi
 done
+
+if [ ${#INCREMENTAL_BACKUPS[@]} -eq 0 ]; then
+    echo "Preparing full backup..."
+    xtrabackup --prepare --target-dir=${BACKUP_PATH}
+else
+    echo "Preparing base backup for incremental restore..."
+    xtrabackup --prepare --apply-log-only --target-dir=${BACKUP_PATH}
+
+    for i in "${!INCREMENTAL_BACKUPS[@]}"; do
+        inc_backup="${INCREMENTAL_BACKUPS[$i]}"
+        if [ "$i" -lt "$((${#INCREMENTAL_BACKUPS[@]} - 1))" ]; then
+            echo "Applying incremental backup: $inc_backup"
+            xtrabackup --prepare --apply-log-only --target-dir=${BACKUP_PATH} \
+                --incremental-dir=$inc_backup
+        else
+            echo "Applying final incremental backup: $inc_backup"
+            xtrabackup --prepare --target-dir=${BACKUP_PATH} \
+                --incremental-dir=$inc_backup
+        fi
+    done
+fi
 
 # Stop MySQL before restore
 echo "Stopping MySQL..."
