@@ -12,9 +12,9 @@ Description: Complete guide to containerizing and deploying .NET Framework appli
 
 ## Understanding .NET Framework Containerization
 
-.NET Framework applications require Windows Server Core or Windows images with the appropriate .NET Framework version installed. Microsoft provides base images with .NET Framework 3.5, 4.6, 4.7, and 4.8 pre-installed.
+.NET Framework applications require Windows Server Core or Windows images with the appropriate .NET Framework version installed. Microsoft provides base images with .NET Framework 3.5, 4.6.2, 4.7.x, 4.8, and 4.8.1 pre-installed.
 
-Unlike .NET Core which is self-contained, .NET Framework depends on the Global Assembly Cache (GAC), Windows Registry, and system-level components. This makes containerization more complex but still achievable with proper configuration.
+Unlike .NET Core and .NET 5+ applications, which can run as framework-dependent or self-contained apps on cross-platform runtimes, .NET Framework depends on the Global Assembly Cache (GAC), Windows Registry, and system-level components. This makes containerization more complex but still achievable with proper configuration.
 
 The key is choosing the right base image, understanding assembly dependencies, and properly configuring application settings for container environments.
 
@@ -180,7 +180,7 @@ namespace MyWindowsService
 Dockerfile for the service:
 
 ```dockerfile
-FROM mcr.microsoft.com/dotnet/framework/sdk:4.8 AS build
+FROM mcr.microsoft.com/dotnet/framework/sdk:4.8-windowsservercore-ltsc2022 AS build
 WORKDIR /app
 COPY *.csproj ./
 RUN nuget restore
@@ -310,7 +310,13 @@ kind: Deployment
 metadata:
   name: dotnet-app
 spec:
+  selector:
+    matchLabels:
+      app: dotnet-app
   template:
+    metadata:
+      labels:
+        app: dotnet-app
     spec:
       nodeSelector:
         kubernetes.io/os: windows
@@ -441,14 +447,14 @@ spec:
         app: mssql
     spec:
       nodeSelector:
-        kubernetes.io/os: windows
+        kubernetes.io/os: linux
       containers:
       - name: mssql
         image: mcr.microsoft.com/mssql/server:2022-latest
         env:
         - name: ACCEPT_EULA
           value: "Y"
-        - name: SA_PASSWORD
+        - name: MSSQL_SA_PASSWORD
           valueFrom:
             secretKeyRef:
               name: mssql-secret
@@ -457,7 +463,7 @@ spec:
         - containerPort: 1433
         volumeMounts:
         - name: data
-          mountPath: C:\data
+          mountPath: /var/opt/mssql
   volumeClaimTemplates:
   - metadata:
       name: data
@@ -501,13 +507,13 @@ spec:
         ports:
         - containerPort: 8080
         env:
-        - name: ConnectionStrings__DefaultConnection
-          value: "Server=mssql-service;Database=AppDb;User Id=sa;Password=$(SA_PASSWORD)"
-        - name: SA_PASSWORD
+        - name: MSSQL_SA_PASSWORD
           valueFrom:
             secretKeyRef:
               name: mssql-secret
               key: sa-password
+        - name: ConnectionStrings__DefaultConnection
+          value: "Server=mssql-service;Database=AppDb;User Id=sa;Password=$(MSSQL_SA_PASSWORD)"
         resources:
           requests:
             memory: "1Gi"
@@ -515,6 +521,17 @@ spec:
           limits:
             memory: "2Gi"
             cpu: "1"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: business-service
+spec:
+  selector:
+    app: business-tier
+  ports:
+  - port: 8080
+    targetPort: 8080
 ---
 # Presentation Tier (IIS)
 apiVersion: apps/v1
@@ -632,15 +649,16 @@ public class HealthCheckServer
                 var context = _listener.GetContext();
                 var request = context.Request;
                 var response = context.Response;
+                var path = request.Url.AbsolutePath.TrimEnd('/');
 
-                if (request.Url.AbsolutePath == "/health")
+                if (path == "/health")
                 {
                     // Liveness check - is the app running?
                     response.StatusCode = 200;
                     var buffer = Encoding.UTF8.GetBytes("Healthy");
                     response.OutputStream.Write(buffer, 0, buffer.Length);
                 }
-                else if (request.Url.AbsolutePath == "/ready")
+                else if (path == "/ready")
                 {
                     // Readiness check - can the app serve traffic?
                     bool isReady = CheckDatabaseConnection() && CheckDependencies();
