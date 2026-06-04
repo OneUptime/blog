@@ -30,6 +30,8 @@ TEST_NAMESPACE="dr-test-$(date +%s)"
 BACKUP_NAME=$1
 TEST_DURATION=3600  # 1 hour
 VALIDATION_TIMEOUT=600  # 10 minutes
+REPORT_FILE="/tmp/dr-test-report-$(date +%Y%m%d-%H%M%S).txt"
+RECORD_COUNT="N/A"
 
 if [ -z "$BACKUP_NAME" ]; then
   echo "Usage: $0 <backup-name>"
@@ -133,7 +135,7 @@ if kubectl get service frontend -n $TEST_NAMESPACE &>/dev/null; then
   echo "Testing frontend service..."
 
   kubectl run test-frontend -n $TEST_NAMESPACE \
-    --image=curlimages/curl --rm -it --restart=Never -- \
+    --image=curlimages/curl --rm --restart=Never --attach=true --command -- \
     curl -s -o /dev/null -w "%{http_code}" \
     http://frontend.$TEST_NAMESPACE.svc.cluster.local || true
 fi
@@ -149,7 +151,7 @@ echo "Measuring response times..."
 echo ""
 echo "Phase 8: Generating Test Report"
 
-cat <<EOF > /tmp/dr-test-report-$(date +%Y%m%d-%H%M%S).txt
+cat <<EOF > $REPORT_FILE
 ========================================
 Disaster Recovery Test Report
 ========================================
@@ -176,7 +178,7 @@ Test Result: $([ $RUNNING_PODS -eq $TOTAL_PODS ] && echo "PASSED" || echo "FAILE
 ========================================
 EOF
 
-cat /tmp/dr-test-report-$(date +%Y%m%d-%H%M%S).txt
+cat $REPORT_FILE
 
 # Phase 9: Cleanup
 echo ""
@@ -223,7 +225,7 @@ spec:
           serviceAccountName: velero
           containers:
           - name: dr-test
-            image: bitnami/kubectl:latest
+            image: your-registry/dr-test-tools:latest  # Include velero, kubectl, jq, bash, and curl
             command:
             - /bin/bash
             - /scripts/dr-test-framework.sh
@@ -232,9 +234,6 @@ spec:
             volumeMounts:
             - name: test-scripts
               mountPath: /scripts
-            env:
-            - name: KUBECONFIG
-              value: /var/run/secrets/kubernetes.io/serviceaccount/kubeconfig
           volumes:
           - name: test-scripts
             configMap:
@@ -270,9 +269,8 @@ fi
 
 # Test 2: PVC Status
 echo "Test 2: Validating PVC status..."
-UNBOUND_PVCS=$(kubectl get pvc -n $TEST_NAMESPACE \
-  --field-selector=status.phase!=Bound \
-  --no-headers 2>/dev/null | wc -l)
+UNBOUND_PVCS=$(kubectl get pvc -n $TEST_NAMESPACE -o json 2>/dev/null | \
+  jq '[.items[] | select(.status.phase != "Bound")] | length')
 
 if [ $UNBOUND_PVCS -eq 0 ]; then
   echo "✓ All PVCs are bound"
@@ -282,8 +280,17 @@ fi
 
 # Test 3: Service Endpoints
 echo "Test 3: Validating service endpoints..."
-SERVICES_WITHOUT_ENDPOINTS=$(kubectl get endpoints -n $TEST_NAMESPACE -o json | \
-  jq -r '.items[] | select(.subsets == null or .subsets == []) | .metadata.name' | wc -l)
+SERVICES_WITHOUT_ENDPOINTS=0
+
+for svc in $(kubectl get services -n $TEST_NAMESPACE -o jsonpath='{range .items[?(@.spec.selector)]}{.metadata.name}{"\n"}{end}'); do
+  READY_ENDPOINTS=$(kubectl get endpointslice -n $TEST_NAMESPACE \
+    -l kubernetes.io/service-name=$svc -o json | \
+    jq '[.items[].endpoints[]? | select((.conditions.ready // true) == true)] | length')
+
+  if [ "$READY_ENDPOINTS" -eq 0 ]; then
+    SERVICES_WITHOUT_ENDPOINTS=$((SERVICES_WITHOUT_ENDPOINTS + 1))
+  fi
+done
 
 if [ $SERVICES_WITHOUT_ENDPOINTS -eq 0 ]; then
   echo "✓ All services have endpoints"
@@ -328,7 +335,7 @@ done
 echo "Test 5: Testing application APIs..."
 if kubectl get service api -n $TEST_NAMESPACE &>/dev/null; then
   RESPONSE=$(kubectl run test-api -n $TEST_NAMESPACE \
-    --image=curlimages/curl --rm -it --restart=Never -- \
+    --image=curlimages/curl --rm --restart=Never --attach=true --command -- \
     curl -s -o /dev/null -w "%{http_code}" \
     http://api.$TEST_NAMESPACE.svc.cluster.local/health 2>/dev/null || echo "000")
 
@@ -525,16 +532,21 @@ jobs:
   dr-test:
     runs-on: ubuntu-latest
     steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
     - name: Configure kubectl
-      uses: azure/k8s-set-context@v1
+      uses: azure/k8s-set-context@v5
       with:
+        method: kubeconfig
         kubeconfig: ${{ secrets.KUBECONFIG }}
 
     - name: Install Velero CLI
       run: |
-        wget https://github.com/vmware-tanzu/velero/releases/download/v1.12.0/velero-v1.12.0-linux-amd64.tar.gz
-        tar -xvf velero-v1.12.0-linux-amd64.tar.gz
-        sudo mv velero-v1.12.0-linux-amd64/velero /usr/local/bin/
+        VELERO_VERSION=v1.18.1
+        wget https://github.com/vmware-tanzu/velero/releases/download/${VELERO_VERSION}/velero-${VELERO_VERSION}-linux-amd64.tar.gz
+        tar -xvf velero-${VELERO_VERSION}-linux-amd64.tar.gz
+        sudo mv velero-${VELERO_VERSION}-linux-amd64/velero /usr/local/bin/
 
     - name: Run DR Test
       run: |
@@ -543,7 +555,7 @@ jobs:
 
     - name: Upload Test Report
       if: always()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: dr-test-report
         path: /tmp/dr-test-report-*.txt
