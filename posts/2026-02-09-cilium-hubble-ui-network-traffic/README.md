@@ -23,11 +23,12 @@ helm repo add cilium https://helm.cilium.io/
 helm repo update
 
 # Install Cilium with Hubble
-helm install cilium cilium/cilium --version 1.14.5 \
+helm install cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
+  --set hubble.enabled=true \
   --set hubble.relay.enabled=true \
   --set hubble.ui.enabled=true \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}" \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,httpV2}" \
   --set prometheus.enabled=true \
   --set operator.prometheus.enabled=true
 ```
@@ -94,14 +95,14 @@ The Hubble UI displays several key views:
 
 **Service Map**: Visual representation of service-to-service communication
 **Flow Table**: Detailed list of individual network flows
-**Network Policies**: Applied policies affecting traffic
-**Metrics**: Traffic statistics and performance data
+**Policy Verdicts**: Policy-related allow and drop decisions when available
+**Traffic Summaries**: Flow statistics and service dependency data
 
 Each flow shows:
 - Source and destination pods
 - Protocols (HTTP, TCP, UDP)
 - Ports and directions
-- Verdict (forwarded, dropped, denied)
+- Verdict (forwarded, dropped, error)
 - Labels and identities
 
 ## Using Hubble CLI for Deep Inspection
@@ -109,11 +110,13 @@ Each flow shows:
 Install the Hubble CLI:
 
 ```bash
-export HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
-curl -L --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-amd64.tar.gz{,.sha256sum}
-sha256sum --check hubble-linux-amd64.tar.gz.sha256sum
-sudo tar xzvfC hubble-linux-amd64.tar.gz /usr/local/bin
-rm hubble-linux-amd64.tar.gz{,.sha256sum}
+export HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+export HUBBLE_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then export HUBBLE_ARCH=arm64; fi
+curl -L --fail --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC hubble-linux-${HUBBLE_ARCH}.tar.gz /usr/local/bin
+rm hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
 ```
 
 Port forward to Hubble Relay:
@@ -156,17 +159,17 @@ hubble observe --verdict DROPPED
 hubble observe --verdict DROPPED --to-service database
 
 # Show dropped packets with reasons
-hubble observe --verdict DROPPED -o json | jq '.flow.verdict, .flow.drop_reason'
+hubble observe --verdict DROPPED -o json | jq '.flow.verdict, .flow.drop_reason_desc'
 ```
 
 Example output analysis:
 
 ```bash
 # Identify policy denials
-hubble observe --verdict DROPPED | grep "Policy denied"
+hubble observe --verdict DROPPED --drop-reason-desc POLICY_DENIED
 
-# Find connection timeouts
-hubble observe --verdict DROPPED | grep "connection timeout"
+# Find timeout-related drops
+hubble observe --verdict DROPPED | grep -i "timeout"
 
 # Check for missing routes
 hubble observe --verdict DROPPED | grep "no route"
@@ -180,11 +183,11 @@ Filter and analyze HTTP flows:
 # Show all HTTP traffic
 hubble observe --protocol http
 
-# Show HTTP errors (4xx, 5xx)
-hubble observe --protocol http --http-status 500-599
+# Show HTTP 5xx errors
+hubble observe --protocol http --http-status 5+
 
-# Show slow HTTP requests
-hubble observe --protocol http --http-method GET | grep -E "latency=[0-9]{3,}"
+# Show HTTP responses with request duration
+hubble observe --protocol http --http-method GET | grep -E "[0-9]+ms"
 
 # Monitor specific endpoint
 hubble observe --protocol http --http-path "/api/users"
@@ -229,6 +232,17 @@ hubble observe --protocol tcp --port 443
 
 Export Hubble metrics to Prometheus:
 
+With the Cilium Helm chart, you can have the chart create the ServiceMonitor:
+
+```bash
+helm upgrade cilium cilium/cilium --version 1.19.4 \
+  --namespace kube-system \
+  --reuse-values \
+  --set hubble.metrics.serviceMonitor.enabled=true
+```
+
+Or create one manually:
+
 ```yaml
 # servicemonitor.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -253,13 +267,13 @@ Create Grafana dashboards for Hubble metrics:
 rate(hubble_dns_queries_total[5m])
 
 # Dropped packets by reason
-sum by (drop_reason) (rate(hubble_drop_total[5m]))
+sum by (reason) (rate(hubble_drop_total[5m]))
 
 # HTTP response times
 histogram_quantile(0.95, rate(hubble_http_request_duration_seconds_bucket[5m]))
 
-# Top talkers by bytes
-topk(10, sum by (source, destination) (rate(hubble_flows_processed_total[5m])))
+# Flow rate by verdict
+sum by (verdict) (rate(hubble_flows_processed_total[5m]))
 ```
 
 ## Troubleshooting Scenarios
@@ -271,15 +285,16 @@ topk(10, sum by (source, destination) (rate(hubble_flows_processed_total[5m])))
 hubble observe \
   --to-service api \
   --protocol http \
-  --http-status 500-599 \
+  --http-status 5+ \
   -o jsonpb
 
 # Check if specific pods are causing issues
 hubble observe \
   --to-service api \
   --protocol http \
-  --http-status 500-599 | \
-  grep -oP 'destination=[^ ]+' | \
+  --http-status 5+ \
+  -o jsonpb | \
+  jq -r '.flow.destination.namespace + "/" + .flow.destination.pod_name' | \
   sort | uniq -c | sort -rn
 ```
 
@@ -302,11 +317,11 @@ hubble observe --to-service postgres --verdict DROPPED
 # Check mTLS traffic
 hubble observe --to-service api --port 15001
 
-# Verify sidecars are communicating
-hubble observe --from-label istio-proxy --to-label istio-proxy
+# Verify sidecar-injected workloads are communicating
+hubble observe --from-label security.istio.io/tlsMode=istio --to-label security.istio.io/tlsMode=istio
 
 # Find services without sidecars
-hubble observe --protocol tcp --not --from-label istio-proxy
+hubble observe --protocol tcp --not --from-label security.istio.io/tlsMode=istio
 ```
 
 ## Automating Flow Analysis
@@ -324,18 +339,18 @@ DROPPED=$(hubble observe --verdict DROPPED --since 5m --output jsonpb | wc -l)
 
 if [ "$DROPPED" -gt 100 ]; then
     echo "WARNING: High number of dropped packets: $DROPPED"
-    hubble observe --verdict DROPPED --since 5m | \
-        grep -oP 'drop_reason_desc=[^ ]+' | \
+    hubble observe --verdict DROPPED --since 5m -o jsonpb | \
+        jq -r '.flow.drop_reason_desc' | \
         sort | uniq -c | sort -rn | head -5
 fi
 
 # Check for HTTP errors
-ERRORS=$(hubble observe --protocol http --http-status 500-599 --since 5m --output jsonpb | wc -l)
+ERRORS=$(hubble observe --protocol http --http-status 5+ --since 5m --output jsonpb | wc -l)
 
 if [ "$ERRORS" -gt 50 ]; then
     echo "WARNING: High number of HTTP errors: $ERRORS"
-    hubble observe --protocol http --http-status 500-599 --since 5m | \
-        grep -oP 'destination=[^ ]+' | \
+    hubble observe --protocol http --http-status 5+ --since 5m -o jsonpb | \
+        jq -r '.flow.destination.namespace + "/" + .flow.destination.pod_name' | \
         sort | uniq -c | sort -rn | head -5
 fi
 
@@ -393,7 +408,7 @@ spec:
         summary: "High HTTP error rate"
 
     - alert: NetworkPolicyDenials
-      expr: increase(hubble_drop_total{drop_reason="Policy denied"}[5m]) > 100
+      expr: increase(hubble_drop_total{reason="POLICY_DENIED"}[5m]) > 100
       for: 2m
       annotations:
         summary: "High number of policy denials"
