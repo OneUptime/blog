@@ -30,18 +30,19 @@ etcdctl endpoint status --cluster -w table
 
 # Get detailed status
 etcdctl endpoint status --endpoints=$ETCDCTL_ENDPOINTS -w json | \
-  jq '{dbSize: .Status.dbSize, leader: .Status.leader, revision: .Status.revision}'
+  jq '.[] | {dbSize: .Status.dbSize, dbSizeInUse: .Status.dbSizeInUse, leader: .Status.leader, revision: .Status.header.revision}'
 ```
 
-Check current history retention:
+Check the current revision and database size in use:
 
 ```bash
-# Get compaction revision
+# Get current revision
 etcdctl get --prefix "" --keys-only --limit 1 -w json | \
   jq .header.revision
 
-# Calculate approximate number of stored revisions
-# This is the difference between current revision and compacted revision
+# Compare physical database size with the in-use size
+etcdctl endpoint status --endpoints=$ETCDCTL_ENDPOINTS -w json | \
+  jq '.[] | {dbSize: .Status.dbSize, dbSizeInUse: .Status.dbSizeInUse}'
 ```
 
 ## Performing Manual Compaction
@@ -51,15 +52,18 @@ Compaction marks old revisions for deletion. Specify which revision to compact t
 ```bash
 # Get current revision
 CURRENT_REVISION=$(etcdctl endpoint status -w json | \
-  jq -r '.[] | .Status.revision')
+  jq -r '.[] | .Status.header.revision')
 
 echo "Current revision: $CURRENT_REVISION"
 
-# Compact to current revision (removes all old revisions)
 # Keep a small buffer (e.g., keep last 1000 revisions)
 COMPACT_REVISION=$((CURRENT_REVISION - 1000))
 
-etcdctl compact $COMPACT_REVISION
+if [ "$COMPACT_REVISION" -gt 0 ]; then
+  etcdctl compact $COMPACT_REVISION
+else
+  echo "Current revision is too low to keep a 1000-revision buffer"
+fi
 
 # Verify compaction
 etcdctl endpoint status -w table
@@ -120,10 +124,10 @@ sudo systemctl restart etcd
 journalctl -u etcd | grep -i compaction
 ```
 
-For kubeadm clusters, edit the API server manifest to pass auto-compaction to etcd:
+For kubeadm clusters with stacked etcd, edit the etcd static Pod manifest:
 
 ```bash
-sudo nano /etc/kubernetes/manifests/kube-apiserver.yaml
+sudo nano /etc/kubernetes/manifests/etcd.yaml
 ```
 
 Add these flags:
@@ -132,8 +136,9 @@ Add these flags:
 spec:
   containers:
   - command:
-    - kube-apiserver
-    - --etcd-compaction-interval=5m
+    - etcd
+    - --auto-compaction-mode=periodic
+    - --auto-compaction-retention=5m
     # Other flags...
 ```
 
@@ -217,7 +222,7 @@ sudo crontab -e
 
 ## Deploying a Kubernetes CronJob for Defragmentation
 
-For managed etcd, use a Kubernetes CronJob:
+For self-managed kubeadm clusters with stacked etcd, use a Kubernetes CronJob:
 
 ```yaml
 apiVersion: v1
@@ -280,28 +285,9 @@ spec:
 
               echo "Starting defragmentation..."
 
-              # Get current size
-              BEFORE=$(etcdctl --endpoints=https://127.0.0.1:2379 endpoint status -w json | \
-                jq -r '.[] | .Status.dbSize')
-              echo "Database size before: $BEFORE bytes"
-
-              # Compact
-              REVISION=$(etcdctl --endpoints=https://127.0.0.1:2379 endpoint status -w json | \
-                jq -r '.[] | .Status.revision')
-              COMPACT_REV=$((REVISION - 1000))
-              etcdctl --endpoints=https://127.0.0.1:2379 compact $COMPACT_REV
-              echo "Compacted to revision $COMPACT_REV"
-
-              # Defragment
-              etcdctl --endpoints=https://127.0.0.1:2379 defrag
+              # Defragment all cluster members discovered from the local endpoint
+              etcdctl --endpoints=https://127.0.0.1:2379 defrag --cluster
               echo "Defragmentation complete"
-
-              # Get new size
-              AFTER=$(etcdctl --endpoints=https://127.0.0.1:2379 endpoint status -w json | \
-                jq -r '.[] | .Status.dbSize')
-              SAVED=$((BEFORE - AFTER))
-              echo "Database size after: $AFTER bytes"
-              echo "Space reclaimed: $SAVED bytes"
             volumeMounts:
             - name: etcd-certs
               mountPath: /etc/kubernetes/pki/etcd
@@ -344,9 +330,10 @@ Track compaction and defragmentation effectiveness:
 ```bash
 # Check compaction metrics
 etcdctl endpoint status --endpoints=$ETCDCTL_ENDPOINTS -w json | \
-  jq '{
+  jq '.[] | {
     dbSize: .Status.dbSize,
-    revision: .Status.revision,
+    dbSizeInUse: .Status.dbSizeInUse,
+    revision: .Status.header.revision,
     dbSizeMB: (.Status.dbSize / 1024 / 1024)
   }'
 
@@ -358,7 +345,7 @@ journalctl -u etcd | grep -i "compaction\|defrag"
 
 # Set up Prometheus metrics
 cat <<EOF | kubectl apply -f -
-apiVersion: v1
+apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: etcd
@@ -384,10 +371,11 @@ etcd_debugging_mvcc_keys_total
 
 # Compaction duration
 histogram_quantile(0.99,
-  rate(etcd_disk_backend_commit_duration_seconds_bucket[5m]))
+  rate(etcd_debugging_mvcc_db_compaction_total_duration_milliseconds_bucket[5m]))
 
 # Defragmentation duration
-rate(etcd_debugging_mvcc_db_compaction_total_duration_milliseconds[5m])
+histogram_quantile(0.99,
+  rate(etcd_disk_backend_defrag_duration_seconds_bucket[5m]))
 ```
 
 ## Handling Large Databases
@@ -407,11 +395,15 @@ if (( $(echo "$SIZE_GB > 2" | bc -l) )); then
 fi
 
 # For very large databases, compact more aggressively
-CURRENT_REV=$(etcdctl endpoint status -w json | jq -r '.[] | .Status.revision')
+CURRENT_REV=$(etcdctl endpoint status -w json | jq -r '.[] | .Status.header.revision')
 # Keep only last 100 revisions for aggressive compaction
 COMPACT_REV=$((CURRENT_REV - 100))
 
-etcdctl compact $COMPACT_REV
+if [ "$COMPACT_REV" -gt 0 ]; then
+  etcdctl compact $COMPACT_REV
+else
+  echo "Current revision is too low to keep a 100-revision buffer"
+fi
 
 # Then defragment
 etcdctl defrag
@@ -434,7 +426,7 @@ journalctl -u etcd | grep "defragment.*success"
 # If defragmentation hangs, check locks
 etcdctl --endpoints=https://127.0.0.1:2379 get --prefix / --keys-only | wc -l
 
-# Check for corrupted database
+# Check etcd performance
 etcdctl check perf
 
 # View detailed database info
