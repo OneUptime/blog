@@ -8,19 +8,19 @@ Description: Master the differences between ClusterIP, NodePort, and LoadBalance
 
 ---
 
-Kubernetes offers three main service types for exposing applications: ClusterIP, NodePort, and LoadBalancer. Choosing the wrong type creates unnecessary complexity, security risks, or infrastructure costs. This guide explains how each type works and when to use it.
+Kubernetes offers three commonly used service types for exposing applications: ClusterIP, NodePort, and LoadBalancer. Choosing the wrong type creates unnecessary complexity, security risks, or infrastructure costs. This guide explains how each type works and when to use it.
 
 ## Understanding Service Types
 
-Every Kubernetes service provides a stable IP address and DNS name for a set of pods. The service type determines how that service becomes accessible.
+Most Kubernetes services provide a stable IP address and DNS name for a set of pods. The service type determines how that service becomes accessible.
 
 **ClusterIP** creates an internal IP address accessible only within the cluster. No external traffic can reach it directly.
 
 **NodePort** opens a specific port on every node in the cluster, forwarding traffic from that port to the service. External clients can access the service by connecting to any node's IP address and the assigned port.
 
-**LoadBalancer** provisions an external load balancer (typically from your cloud provider) that distributes traffic to the service across all nodes.
+**LoadBalancer** provisions an external load balancer (typically from your cloud provider) that routes traffic to the service.
 
-Each type builds on the previous one. NodePort includes ClusterIP functionality, and LoadBalancer includes both NodePort and ClusterIP.
+Each type generally builds on the previous one. NodePort includes ClusterIP functionality, and LoadBalancer includes both NodePort and ClusterIP by default. Kubernetes also supports disabling NodePort allocation for LoadBalancer services when the load balancer implementation routes directly to pods.
 
 ## ClusterIP: Internal Service Communication
 
@@ -86,6 +86,7 @@ spec:
 Apply both manifests:
 
 ```bash
+kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f backend-deployment.yaml
 kubectl apply -f backend-service.yaml
 ```
@@ -96,7 +97,7 @@ Test connectivity from another pod:
 
 ```bash
 # Create a test pod
-kubectl run curl-test --image=curlimages/curl:latest -i --tty --rm -- sh
+kubectl run curl-test --image=curlimages/curl:latest -i --tty --rm --restart=Never --command -- sh
 
 # Inside the pod, test the service
 curl http://backend-api.production.svc.cluster.local:8080/health
@@ -150,7 +151,7 @@ spec:
 When you create this service, Kubernetes:
 1. Creates a ClusterIP for internal access
 2. Opens port 30080 on every node
-3. Forwards traffic from `NodeIP:30080` to the service's ClusterIP
+3. Forwards traffic from `NodeIP:30080` to one of the ready endpoints behind the service
 
 You can let Kubernetes auto-assign the nodePort if you don't specify one:
 
@@ -166,7 +167,7 @@ spec:
 Check what port was assigned:
 
 ```bash
-kubectl get svc frontend-web -o jsonpath='{.spec.ports[0].nodePort}'
+kubectl get svc frontend-web -n production -o jsonpath='{.spec.ports[0].nodePort}'
 ```
 
 Test access from outside the cluster:
@@ -190,7 +191,7 @@ spec:
     - --service-node-port-range=30000-32767
 ```
 
-NodePort has limitations. Every request goes through the node it connects to, which then forwards to the actual pod (potentially on a different node). This adds a network hop and can create uneven load distribution if external traffic isn't balanced across nodes.
+NodePort has limitations. With the default `externalTrafficPolicy: Cluster`, every request goes through the node it connects to, which then forwards to an actual pod, potentially on a different node. This can add a network hop and can create uneven load distribution if external traffic isn't balanced across nodes.
 
 Use NodePort when:
 - You're running on-premises without a load balancer
@@ -209,14 +210,6 @@ kind: Service
 metadata:
   name: web-app
   namespace: production
-  annotations:
-    # AWS-specific annotations
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
-    # GCP-specific annotations
-    cloud.google.com/load-balancer-type: "External"
-    # Azure-specific annotations
-    service.beta.kubernetes.io/azure-load-balancer-internal: "false"
 spec:
   type: LoadBalancer
   selector:
@@ -242,7 +235,7 @@ kubectl apply -f web-app-service.yaml
 Watch for the external IP to be assigned:
 
 ```bash
-kubectl get svc web-app --watch
+kubectl get svc web-app -n production --watch
 ```
 
 On cloud providers, this typically takes 1-3 minutes. Once assigned, you'll see:
@@ -254,7 +247,7 @@ web-app   LoadBalancer   10.96.45.123    203.0.113.42     80:31234/TCP,443:31567
 
 The external IP (203.0.113.42) is your public endpoint. Create a DNS record pointing to this IP.
 
-LoadBalancer services support health checks to ensure traffic only goes to healthy nodes:
+LoadBalancer services with `externalTrafficPolicy: Local` support health checks to ensure traffic only goes to healthy nodes:
 
 ```yaml
 spec:
@@ -353,10 +346,10 @@ You can change service types without recreating the service in most cases:
 
 ```bash
 # Change from ClusterIP to NodePort
-kubectl patch svc backend-api -p '{"spec":{"type":"NodePort"}}'
+kubectl patch svc backend-api -n production -p '{"spec":{"type":"NodePort"}}'
 
 # Change from NodePort to LoadBalancer
-kubectl patch svc backend-api -p '{"spec":{"type":"LoadBalancer"}}'
+kubectl patch svc backend-api -n production -p '{"spec":{"type":"LoadBalancer"}}'
 ```
 
 Be aware that changing from LoadBalancer to ClusterIP or NodePort will delete the external load balancer, potentially causing downtime.
