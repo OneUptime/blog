@@ -16,7 +16,7 @@ In this guide, you'll learn how to set up Cilium ClusterMesh and configure netwo
 
 Cilium ClusterMesh connects multiple Kubernetes clusters at the networking layer, enabling pods in different clusters to communicate directly using their pod IPs. It provides transparent service discovery across clusters, unified network policy enforcement, and high-performance data plane using eBPF technology that bypasses iptables overhead.
 
-ClusterMesh creates encrypted tunnels between clusters and synchronizes service information, allowing you to write network policies that reference services and pods regardless of which cluster they run in.
+ClusterMesh synchronizes endpoint, identity, and service information between clusters. The clusters still need routable inter-cluster connectivity, and transparent encryption can be enabled separately with Cilium's WireGuard or IPsec encryption features.
 
 ## Installing Cilium in Each Cluster
 
@@ -26,26 +26,29 @@ Install Cilium with ClusterMesh support in each cluster:
 # Install Cilium CLI
 
 CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
-curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz
-sudo tar xzvfC cilium-linux-amd64.tar.gz /usr/local/bin
-rm cilium-linux-amd64.tar.gz
+CLI_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
+curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 
 # Install Cilium in cluster-1
 cilium install \
   --context cluster-1 \
-  --cluster-name cluster-1 \
-  --cluster-id 1 \
-  --ipam kubernetes
+  --set cluster.name=cluster-1 \
+  --set cluster.id=1 \
+  --set ipam.mode=kubernetes
 
 # Install Cilium in cluster-2
 cilium install \
   --context cluster-2 \
-  --cluster-name cluster-2 \
-  --cluster-id 2 \
-  --ipam kubernetes
+  --set cluster.name=cluster-2 \
+  --set cluster.id=2 \
+  --set ipam.mode=kubernetes
 ```
 
-Each cluster needs a unique cluster ID and non-overlapping pod CIDR ranges.
+Each cluster needs a unique cluster ID, matching datapath mode, and non-overlapping pod CIDR ranges. The networks must allow the ClusterMesh control-plane traffic and, for native-routed datapaths, pod-to-pod traffic across clusters.
 
 Verify Cilium installation:
 
@@ -147,13 +150,16 @@ spec:
     - matchLabels:
         app: frontend
         io.kubernetes.pod.namespace: default
+      matchExpressions:
+      - key: io.cilium.k8s.policy.cluster
+        operator: Exists
     toPorts:
     - ports:
       - port: "8080"
         protocol: TCP
 ```
 
-This policy works identically whether the frontend pod is in the same cluster or a different cluster connected via ClusterMesh.
+This policy allows matching frontend pods in any connected cluster. In Cilium 1.19 and later, policies select endpoints from the local cluster by default unless you explicitly match the `io.cilium.k8s.policy.cluster` label.
 
 Create a more complex policy allowing traffic based on cluster identity:
 
@@ -199,6 +205,9 @@ spec:
   - fromEndpoints:
     - matchLabels:
         region: us-east-1
+      matchExpressions:
+      - key: io.cilium.k8s.policy.cluster
+        operator: Exists
     toPorts:
     - ports:
       - port: "5432"
@@ -208,6 +217,9 @@ spec:
   - toEndpoints:
     - matchLabels:
         region: us-east-1
+      matchExpressions:
+      - key: io.cilium.k8s.policy.cluster
+        operator: Exists
 ```
 
 This ensures database traffic stays within the same region for latency and compliance reasons.
@@ -230,6 +242,9 @@ spec:
   - fromEndpoints:
     - matchLabels:
         app: frontend
+      matchExpressions:
+      - key: io.cilium.k8s.policy.cluster
+        operator: Exists
     toPorts:
     - ports:
       - port: "8080"
@@ -248,7 +263,7 @@ This policy allows only specific HTTP methods and paths, providing API-level sec
 
 ## Implementing Service-to-Service Authentication
 
-Combine network policies with mutual TLS for stronger security:
+For same-cluster service-to-service authentication, combine network policies with Cilium mutual authentication:
 
 ```yaml
 apiVersion: cilium.io/v2
@@ -264,18 +279,15 @@ spec:
   - fromEndpoints:
     - matchLabels:
         security.cilium.io/identity: "authorized-client"
+    authentication:
+      mode: "required"
     toPorts:
     - ports:
       - port: "443"
         protocol: TCP
-      terminatingTLS:
-        secret:
-          name: server-tls-cert
-          namespace: default
-    fromRequires:
-    - matchLabels:
-        security.cilium.io/mtls: "enabled"
 ```
+
+Cilium mutual authentication currently relies on SPIFFE/SPIRE and is not compatible with ClusterMesh trust domains. For encrypted cross-cluster pod traffic, enable Cilium WireGuard or IPsec transparent encryption in all participating clusters.
 
 ## Deny-All Default Policy
 
@@ -293,9 +305,6 @@ spec:
   - {}
   egress:
   - {}
-
-  # Explicitly deny all traffic not matching other policies
-  policyEnforcement: always
 ```
 
 Then create specific allow policies for required traffic:
@@ -338,18 +347,25 @@ Query flow logs programmatically:
 
 ```bash
 # Install Hubble CLI
-HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
-curl -L --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-amd64.tar.gz
-sudo tar xzvfC hubble-linux-amd64.tar.gz /usr/local/bin
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+HUBBLE_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then HUBBLE_ARCH=arm64; fi
+curl -L --fail --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC hubble-linux-${HUBBLE_ARCH}.tar.gz /usr/local/bin
+rm hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
+
+# Use the cluster-1 context for Hubble's port-forwarding
+kubectl config use-context cluster-1
 
 # Watch flows in real-time
-hubble observe --context cluster-1
+hubble observe -P
 
 # Filter dropped traffic
-hubble observe --context cluster-1 --verdict DROPPED
+hubble observe -P --verdict DROPPED
 
 # Monitor traffic to specific service
-hubble observe --context cluster-1 --to-label app=payment
+hubble observe -P --to-label app=payment
 ```
 
 Create alerts for policy violations:
@@ -371,7 +387,7 @@ spec:
         summary: "High rate of dropped packets detected"
 
     - alert: PolicyDenyIncrease
-      expr: increase(cilium_policy_l4_denied_total[10m]) > 50
+      expr: increase(cilium_drop_count_total{reason="Policy denied"}[10m]) > 50
       for: 5m
       annotations:
         summary: "Increase in policy denied connections"
@@ -395,27 +411,19 @@ curl -X POST http://payment-service/api/v1/orders \
   -d '{"item":"test"}'
 ```
 
-Use Cilium's policy simulation mode:
+Use Cilium's policy audit mode to log L3/L4 policy verdicts without enforcing them:
 
-```yaml
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: test-policy
-  namespace: default
-  annotations:
-    policy.cilium.io/audit-mode: "true"  # Log violations but don't enforce
-spec:
-  endpointSelector:
-    matchLabels:
-      app: payment
-  ingress:
-  - fromEndpoints:
-    - matchLabels:
-        app: frontend
+```bash
+# Enable audit mode for all Cilium endpoints
+kubectl patch -n kube-system configmap cilium-config --type merge \
+  --patch '{"data":{"policy-audit-mode":"true"}}'
+kubectl -n kube-system rollout restart ds/cilium
+
+# Observe audited policy verdicts
+hubble observe -P -t policy-verdict
 ```
 
-Review audit logs before removing the annotation to enforce the policy.
+Review audit logs before disabling `policy-audit-mode` to enforce the policy.
 
 ## Best Practices
 
