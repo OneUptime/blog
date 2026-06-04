@@ -30,9 +30,9 @@ Flux controllers expose metrics on port 8080 at `/metrics`.
 ### Discovering Flux Metrics
 
 ```bash
-# Port forward to source-controller
+# Port forward to a source-controller Pod
 
-kubectl port-forward -n flux-system svc/source-controller 8080:80
+kubectl port-forward -n flux-system deploy/source-controller 8080:8080
 
 # View metrics
 curl localhost:8080/metrics | grep gotk
@@ -44,33 +44,32 @@ curl localhost:8080/metrics | grep gotk
 # Reconciliation duration
 gotk_reconcile_duration_seconds_bucket
 
-# Reconciliation condition (Ready status)
-gotk_reconcile_condition{
-  kind="Kustomization",
+# Resource readiness from kube-state-metrics custom resource metrics
+gotk_resource_info{
+  customresource_kind="Kustomization",
   name="apps",
-  status="True|False|Unknown",
-  type="Ready"
+  ready="True|False|Unknown"
 }
 
-# Suspend status
-gotk_suspend_status{kind="Kustomization", name="apps"}
+# Suspend status from kube-state-metrics custom resource metrics
+gotk_resource_info{customresource_kind="Kustomization", name="apps", suspended="true"}
 
 # Git fetch duration
-gotk_reconcile_duration_seconds{kind="GitRepository"}
+gotk_reconcile_duration_seconds_bucket{kind="GitRepository"}
 ```
 
 ## Monitoring Flux with Prometheus
 
-Create ServiceMonitor for Flux controllers:
+Create PodMonitor for Flux controllers:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: flux-system
   namespace: flux-system
 spec:
-  endpoints:
+  podMetricsEndpoints:
   - interval: 30s
     port: http-prom
     path: /metrics
@@ -97,12 +96,12 @@ spec:
   - name: flux.rules
     interval: 30s
     rules:
-    # Success rate
+    # Ready resource ratio
     - record: flux:reconcile:success:rate
       expr: |
-        sum(rate(gotk_reconcile_condition{status="True",type="Ready"}[5m]))
+        sum(gotk_resource_info{ready="True"})
         /
-        sum(rate(gotk_reconcile_condition{type="Ready"}[5m]))
+        sum(gotk_resource_info)
 
     # Average reconciliation duration
     - record: flux:reconcile:duration:avg
@@ -114,8 +113,8 @@ spec:
     # Failed reconciliations
     - record: flux:reconcile:failed:total
       expr: |
-        sum by (namespace, name, kind) (
-          gotk_reconcile_condition{status="False",type="Ready"}
+        sum by (exported_namespace, name, customresource_kind) (
+          gotk_resource_info{ready="False"}
         )
 ```
 
@@ -137,28 +136,32 @@ spec:
     # Reconciliation failures
     - alert: FluxReconciliationFailure
       expr: |
-        gotk_reconcile_condition{status="False",type="Ready"} == 1
+        gotk_resource_info{ready="False"} == 1
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "Flux reconciliation failing for {{$labels.kind}}/{{$labels.name}}"
-        description: "{{$labels.kind}} {{$labels.name}} in {{$labels.namespace}} has been failing for 10 minutes"
+        summary: "Flux reconciliation failing for {{$labels.customresource_kind}}/{{$labels.name}}"
+        description: "{{$labels.customresource_kind}} {{$labels.name}} in {{$labels.exported_namespace}} has been failing for 10 minutes"
 
     # Suspended resources
     - alert: FluxResourceSuspended
       expr: |
-        gotk_suspend_status == 1
+        gotk_resource_info{suspended="true"} == 1
       for: 1h
       labels:
         severity: info
       annotations:
-        summary: "Flux resource suspended: {{$labels.kind}}/{{$labels.name}}"
+        summary: "Flux resource suspended: {{$labels.customresource_kind}}/{{$labels.name}}"
 
     # Slow reconciliation
     - alert: FluxSlowReconciliation
       expr: |
-        gotk_reconcile_duration_seconds > 300
+        histogram_quantile(0.95,
+          sum by (le, kind, name, namespace) (
+            rate(gotk_reconcile_duration_seconds_bucket[5m])
+          )
+        ) > 300
       for: 15m
       labels:
         severity: warning
@@ -169,10 +172,9 @@ spec:
     # Git fetch failures
     - alert: FluxGitFetchFailure
       expr: |
-        gotk_reconcile_condition{
-          kind="GitRepository",
-          status="False",
-          type="Ready"
+        gotk_resource_info{
+          customresource_kind="GitRepository",
+          ready="False"
         } == 1
       for: 5m
       labels:
@@ -212,7 +214,8 @@ argocd_app_info{
 
 # Sync duration
 argocd_app_sync_total
-argocd_app_reconcile_duration_seconds
+argocd_app_reconcile
+argocd_app_sync_duration_seconds_total
 
 # API server requests
 argocd_api_server_http_requests_total
@@ -278,7 +281,7 @@ spec:
     interval: 30s
     rules:
     # Applications out of sync
-    - record: argocd:apps:outofync:count
+    - record: argocd:apps:outofsync:count
       expr: |
         count by (namespace) (
           argocd_app_info{sync_status!="Synced"}
@@ -294,9 +297,9 @@ spec:
     # Sync success rate
     - record: argocd:sync:success:rate
       expr: |
-        rate(argocd_app_sync_total{phase="Succeeded"}[5m])
+        sum(rate(argocd_app_sync_total{phase="Succeeded"}[5m]))
         /
-        rate(argocd_app_sync_total[5m])
+        sum(rate(argocd_app_sync_total[5m]))
 ```
 
 ### ArgoCD Alerting Rules
@@ -347,7 +350,9 @@ spec:
     - alert: ArgoCDSlowGitOps
       expr: |
         histogram_quantile(0.95,
-          rate(argocd_git_request_duration_seconds_bucket[5m])
+          sum by (le) (
+            rate(argocd_git_request_duration_seconds_bucket[5m])
+          )
         ) > 30
       for: 10m
       labels:
@@ -380,7 +385,7 @@ Create a Grafana dashboard:
         "title": "Failed Reconciliations",
         "targets": [
           {
-            "expr": "sum by (kind, name) (flux:reconcile:failed:total)"
+            "expr": "sum by (customresource_kind, name) (flux:reconcile:failed:total)"
           }
         ]
       },
@@ -388,7 +393,7 @@ Create a Grafana dashboard:
         "title": "Reconciliation Duration",
         "targets": [
           {
-            "expr": "gotk_reconcile_duration_seconds"
+            "expr": "rate(gotk_reconcile_duration_seconds_sum[5m]) / rate(gotk_reconcile_duration_seconds_count[5m])"
           }
         ]
       },
@@ -396,7 +401,7 @@ Create a Grafana dashboard:
         "title": "Suspended Resources",
         "targets": [
           {
-            "expr": "sum by (kind, name) (gotk_suspend_status)"
+            "expr": "sum by (customresource_kind, name) (gotk_resource_info{suspended=\"true\"})"
           }
         ]
       }
@@ -432,7 +437,7 @@ Create a Grafana dashboard:
         "title": "Sync Duration",
         "targets": [
           {
-            "expr": "histogram_quantile(0.95, rate(argocd_app_reconcile_duration_seconds_bucket[5m]))"
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(argocd_app_reconcile_bucket[5m])))"
           }
         ]
       }
@@ -447,7 +452,7 @@ Add custom metrics to your applications:
 
 ```go
 // Example: Custom Flux exporter
-package main
+package metrics
 
 import (
     "github.com/prometheus/client_golang/prometheus"
@@ -490,10 +495,11 @@ data:
     - name: Loki
       type: loki
       url: http://loki:3100
-      derivedFields:
-        - name: TraceID
-          matcherRegex: "reconciler group=(\\S+) namespace=(\\S+) name=(\\S+)"
-          url: "$${__value.raw}"
+      jsonData:
+        derivedFields:
+          - name: TraceID
+            matcherRegex: "traceID=(\\w+)"
+            url: "$${__value.raw}"
 ```
 
 ## Distributed Tracing
@@ -502,21 +508,29 @@ Add OpenTelemetry for detailed traces:
 
 ```yaml
 # Example: Flux with OpenTelemetry
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
 metadata:
-  name: source-controller
+  name: otel-provider
   namespace: flux-system
 spec:
-  template:
-    spec:
-      containers:
-      - name: manager
-        env:
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://jaeger-collector:4317"
-        - name: OTEL_SERVICE_NAME
-          value: "flux-source-controller"
+  type: otel
+  address: http://otel-collector:4318/v1/traces
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: otel-traces
+  namespace: flux-system
+spec:
+  providerRef:
+    name: otel-provider
+  eventSeverity: info
+  eventSources:
+    - kind: GitRepository
+      name: '*'
+    - kind: Kustomization
+      name: '*'
 ```
 
 ## Best Practices
