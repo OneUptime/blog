@@ -105,7 +105,7 @@ To see tasks across all nodes at once:
 docker node ps $(docker node ls -q)
 ```
 
-You can filter tasks by their desired state. This shows only running tasks, excluding completed or failed ones:
+You can filter tasks by their desired state. This shows only tasks whose desired state is running, excluding tasks whose desired state is shutdown or accepted:
 
 ```bash
 docker node ps worker1 --filter desired-state=running
@@ -248,10 +248,10 @@ for NODE in $WORKERS; do
   echo "Waiting for tasks to drain..."
   sleep 30
 
-  # Verify no running tasks remain on this node
-  RUNNING=$(docker node ps "$NODE" --filter desired-state=running --format '{{.ID}}' | wc -l)
-  if [ "$RUNNING" -gt 0 ]; then
-    echo "Warning: $RUNNING tasks still running on $NODE"
+  # Verify no tasks with a desired state of running remain on this node
+  DESIRED_RUNNING=$(docker node ps "$NODE" --filter desired-state=running --format '{{.ID}}' | wc -l)
+  if [ "$DESIRED_RUNNING" -gt 0 ]; then
+    echo "Warning: $DESIRED_RUNNING tasks still have a desired state of running on $NODE"
     sleep 30
   fi
 
