@@ -8,19 +8,19 @@ Description: Learn how to use Jaeger's Service Performance Monitoring features t
 
 ---
 
-Jaeger Service Performance Monitoring (SPM) automatically analyzes trace data to detect performance regressions. Instead of manually examining individual traces, SPM computes aggregate metrics from trace spans and identifies when service latency exceeds baseline thresholds. This automated approach catches performance degradation early in Kubernetes deployments.
+Jaeger Service Performance Monitoring (SPM) analyzes trace data by computing aggregate metrics from trace spans. Instead of manually examining individual traces, you can use those SPM metrics with Prometheus alerts to identify when service latency exceeds baseline thresholds. This automated approach catches performance degradation early in Kubernetes deployments.
 
 SPM calculates Request Rate, Error Rate, and Duration (RED metrics) from trace data. By monitoring these metrics over time, you detect when deployments introduce latency regressions. Jaeger SPM integrates with Prometheus, enabling alerts when service performance degrades beyond acceptable levels.
 
 ## Understanding Jaeger SPM Architecture
 
-Jaeger SPM processes traces to extract performance metrics. The spanmetrics-connector component reads trace spans and generates Prometheus metrics. These metrics track request rates, error rates, and latency percentiles for each service and operation.
+Jaeger SPM processes traces to extract performance metrics. The spanmetrics connector component reads trace spans and generates Prometheus metrics. These metrics track request rates, error rates, and latency percentiles for each service and span name.
 
-The metrics capture dimensions including service name, operation name, span kind, and status code. This granularity lets you identify exactly which operations regress during deployments. Time-series data enables comparison between deployment versions to detect performance changes.
+The metrics capture dimensions including service name, span name, span kind, and status code. This granularity lets you identify exactly which operations regress during deployments. Time-series data enables comparison between deployment versions to detect performance changes.
 
 ## Deploying Jaeger with SPM Enabled
 
-Deploy Jaeger with the spanmetrics processor:
+Deploy an OpenTelemetry Collector for Jaeger with the spanmetrics connector:
 
 ```yaml
 # jaeger-spm-deployment.yaml
@@ -28,7 +28,7 @@ Deploy Jaeger with the spanmetrics processor:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: jaeger-collector-config
+  name: otel-collector-config
   namespace: observability
 data:
   collector.yaml: |
@@ -56,12 +56,12 @@ data:
             default: GET
           - name: http.status_code
           - name: k8s.deployment.name
-          - name: k8s.namespace
-        aggregation_temporality: CUMULATIVE
+          - name: k8s.namespace.name
+        aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
 
     exporters:
       otlp/jaeger:
-        endpoint: jaeger-collector:14250
+        endpoint: jaeger:4317
         tls:
           insecure: true
 
@@ -85,17 +85,17 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: jaeger-collector
+  name: otel-collector
   namespace: observability
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: jaeger-collector
+      app: otel-collector
   template:
     metadata:
       labels:
-        app: jaeger-collector
+        app: otel-collector
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8889"
@@ -116,7 +116,7 @@ spec:
       volumes:
       - name: config
         configMap:
-          name: jaeger-collector-config
+          name: otel-collector-config
 ```
 
 ## Configuring Prometheus Scraping
@@ -147,7 +147,7 @@ data:
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
         regex: true
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
         regex: ([^:]+)(?::\d+)?;(\d+)
@@ -181,71 +181,71 @@ data:
         expr: |
           (
             histogram_quantile(0.95,
-              rate(jaeger_spm_latency_bucket{span_kind="SPAN_KIND_SERVER"}[5m])
+              sum(rate(jaeger_spm_duration_milliseconds_bucket{span_kind="SPAN_KIND_SERVER"}[5m])) by (le, service_name, span_name)
             )
             -
             histogram_quantile(0.95,
-              rate(jaeger_spm_latency_bucket{span_kind="SPAN_KIND_SERVER"}[5m] offset 1h)
+              sum(rate(jaeger_spm_duration_milliseconds_bucket{span_kind="SPAN_KIND_SERVER"}[5m] offset 1h)) by (le, service_name, span_name)
             )
           ) / histogram_quantile(0.95,
-            rate(jaeger_spm_latency_bucket{span_kind="SPAN_KIND_SERVER"}[5m] offset 1h)
+            sum(rate(jaeger_spm_duration_milliseconds_bucket{span_kind="SPAN_KIND_SERVER"}[5m] offset 1h)) by (le, service_name, span_name)
           ) > 0.5
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "Service {{ $labels.service_name }} P95 latency increased by {{ $value | humanizePercentage }}"
-          description: "P95 latency for {{ $labels.service_name }}/{{ $labels.operation }} increased significantly compared to 1 hour ago"
+          description: "P95 latency for {{ $labels.service_name }}/{{ $labels.span_name }} increased significantly compared to 1 hour ago"
 
       # Alert on P99 latency spike
       - alert: ServiceLatencyP99Spike
         expr: |
           histogram_quantile(0.99,
-            rate(jaeger_spm_latency_bucket{span_kind="SPAN_KIND_SERVER"}[5m])
+            sum(rate(jaeger_spm_duration_milliseconds_bucket{span_kind="SPAN_KIND_SERVER"}[5m])) by (le, service_name, span_name)
           ) > 5000
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "Service {{ $labels.service_name }} P99 latency spike"
-          description: "P99 latency for {{ $labels.service_name }}/{{ $labels.operation }} is {{ $value }}ms"
+          description: "P99 latency for {{ $labels.service_name }}/{{ $labels.span_name }} is {{ $value }}ms"
 
       # Alert on error rate increase
       - alert: ServiceErrorRateIncreased
         expr: |
           (
-            sum(rate(jaeger_spm_calls_total{status_code="STATUS_CODE_ERROR"}[5m])) by (service_name, operation)
+            sum(rate(jaeger_spm_calls_total{status_code="STATUS_CODE_ERROR"}[5m])) by (service_name, span_name)
             /
-            sum(rate(jaeger_spm_calls_total[5m])) by (service_name, operation)
+            sum(rate(jaeger_spm_calls_total[5m])) by (service_name, span_name)
           ) > 0.05
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "Service {{ $labels.service_name }} error rate above 5%"
-          description: "Error rate for {{ $labels.service_name }}/{{ $labels.operation }} is {{ $value | humanizePercentage }}"
+          description: "Error rate for {{ $labels.service_name }}/{{ $labels.span_name }} is {{ $value | humanizePercentage }}"
 
       # Alert on slow operation
       - alert: SlowOperationDetected
         expr: |
           histogram_quantile(0.50,
-            rate(jaeger_spm_latency_bucket[5m])
+            sum(rate(jaeger_spm_duration_milliseconds_bucket[5m])) by (le, service_name, span_name)
           ) > 1000
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "Slow operation detected: {{ $labels.service_name }}/{{ $labels.operation }}"
+          summary: "Slow operation detected: {{ $labels.service_name }}/{{ $labels.span_name }}"
           description: "Median latency is {{ $value }}ms for the last 15 minutes"
 
       # Alert on throughput drop
       - alert: ServiceThroughputDrop
         expr: |
           (
-            rate(jaeger_spm_calls_total[5m])
+            sum(rate(jaeger_spm_calls_total[5m])) by (service_name, span_name)
             -
-            rate(jaeger_spm_calls_total[5m] offset 10m)
-          ) / rate(jaeger_spm_calls_total[5m] offset 10m) < -0.5
+            sum(rate(jaeger_spm_calls_total[5m] offset 10m)) by (service_name, span_name)
+          ) / sum(rate(jaeger_spm_calls_total[5m] offset 10m)) by (service_name, span_name) < -0.5
         for: 5m
         labels:
           severity: warning
@@ -267,8 +267,8 @@ Create Grafana dashboards for service performance monitoring:
         "title": "Request Rate",
         "targets": [
           {
-            "expr": "sum(rate(jaeger_spm_calls_total{service_name=\"$service\"}[5m])) by (operation)",
-            "legendFormat": "{{operation}}"
+            "expr": "sum(rate(jaeger_spm_calls_total{service_name=\"$service\"}[5m])) by (span_name)",
+            "legendFormat": "{{span_name}}"
           }
         ],
         "type": "graph"
@@ -277,8 +277,8 @@ Create Grafana dashboards for service performance monitoring:
         "title": "Error Rate",
         "targets": [
           {
-            "expr": "sum(rate(jaeger_spm_calls_total{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[5m])) by (operation) / sum(rate(jaeger_spm_calls_total{service_name=\"$service\"}[5m])) by (operation)",
-            "legendFormat": "{{operation}}"
+            "expr": "sum(rate(jaeger_spm_calls_total{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[5m])) by (span_name) / sum(rate(jaeger_spm_calls_total{service_name=\"$service\"}[5m])) by (span_name)",
+            "legendFormat": "{{span_name}}"
           }
         ],
         "type": "graph"
@@ -287,16 +287,16 @@ Create Grafana dashboards for service performance monitoring:
         "title": "Latency Percentiles",
         "targets": [
           {
-            "expr": "histogram_quantile(0.50, sum(rate(jaeger_spm_latency_bucket{service_name=\"$service\"}[5m])) by (le, operation))",
-            "legendFormat": "P50 - {{operation}}"
+            "expr": "histogram_quantile(0.50, sum(rate(jaeger_spm_duration_milliseconds_bucket{service_name=\"$service\"}[5m])) by (le, span_name))",
+            "legendFormat": "P50 - {{span_name}}"
           },
           {
-            "expr": "histogram_quantile(0.95, sum(rate(jaeger_spm_latency_bucket{service_name=\"$service\"}[5m])) by (le, operation))",
-            "legendFormat": "P95 - {{operation}}"
+            "expr": "histogram_quantile(0.95, sum(rate(jaeger_spm_duration_milliseconds_bucket{service_name=\"$service\"}[5m])) by (le, span_name))",
+            "legendFormat": "P95 - {{span_name}}"
           },
           {
-            "expr": "histogram_quantile(0.99, sum(rate(jaeger_spm_latency_bucket{service_name=\"$service\"}[5m])) by (le, operation))",
-            "legendFormat": "P99 - {{operation}}"
+            "expr": "histogram_quantile(0.99, sum(rate(jaeger_spm_duration_milliseconds_bucket{service_name=\"$service\"}[5m])) by (le, span_name))",
+            "legendFormat": "P99 - {{span_name}}"
           }
         ],
         "type": "graph"
@@ -305,7 +305,7 @@ Create Grafana dashboards for service performance monitoring:
         "title": "Latency Heatmap",
         "targets": [
           {
-            "expr": "sum(increase(jaeger_spm_latency_bucket{service_name=\"$service\"}[1m])) by (le)",
+            "expr": "sum(increase(jaeger_spm_duration_milliseconds_bucket{service_name=\"$service\"}[1m])) by (le)",
             "format": "heatmap"
           }
         ],
@@ -334,7 +334,7 @@ Create a script to detect latency regressions during deployments:
 # detect_regression.py
 import requests
 import sys
-from datetime import datetime, timedelta
+import os
 
 def query_prometheus(url, query):
     """Query Prometheus and return results"""
@@ -350,14 +350,14 @@ def detect_latency_regression(prom_url, service_name, threshold_percent=20):
     # Query current P95 latency
     current_query = f'''
     histogram_quantile(0.95,
-      rate(jaeger_spm_latency_bucket{{service_name="{service_name}", span_kind="SPAN_KIND_SERVER"}}[5m])
+      sum(rate(jaeger_spm_duration_milliseconds_bucket{{service_name="{service_name}", span_kind="SPAN_KIND_SERVER"}}[5m])) by (le, service_name, span_name)
     )
     '''
 
     # Query baseline P95 latency from 1 hour ago
     baseline_query = f'''
     histogram_quantile(0.95,
-      rate(jaeger_spm_latency_bucket{{service_name="{service_name}", span_kind="SPAN_KIND_SERVER"}}[5m] offset 1h)
+      sum(rate(jaeger_spm_duration_milliseconds_bucket{{service_name="{service_name}", span_kind="SPAN_KIND_SERVER"}}[5m] offset 1h)) by (le, service_name, span_name)
     )
     '''
 
@@ -369,12 +369,12 @@ def detect_latency_regression(prom_url, service_name, threshold_percent=20):
         return False
 
     for curr_metric in current:
-        operation = curr_metric['metric'].get('operation', '')
+        span_name = curr_metric['metric'].get('span_name', '')
         curr_latency = float(curr_metric['value'][1])
 
         # Find matching baseline
         baseline_metric = next(
-            (b for b in baseline if b['metric'].get('operation') == operation),
+            (b for b in baseline if b['metric'].get('span_name') == span_name),
             None
         )
 
@@ -387,7 +387,7 @@ def detect_latency_regression(prom_url, service_name, threshold_percent=20):
             increase_percent = ((curr_latency - baseline_latency) / baseline_latency) * 100
 
             if increase_percent > threshold_percent:
-                print(f"REGRESSION DETECTED: {service_name}/{operation}")
+                print(f"REGRESSION DETECTED: {service_name}/{span_name}")
                 print(f"  Current P95: {curr_latency:.2f}ms")
                 print(f"  Baseline P95: {baseline_latency:.2f}ms")
                 print(f"  Increase: {increase_percent:.1f}%")
@@ -396,7 +396,7 @@ def detect_latency_regression(prom_url, service_name, threshold_percent=20):
     return False
 
 if __name__ == '__main__':
-    prom_url = 'http://prometheus.observability.svc.cluster.local:9090'
+    prom_url = os.environ.get('PROMETHEUS_URL', 'http://localhost:9090')
     service = sys.argv[1] if len(sys.argv) > 1 else 'payment-service'
 
     if detect_latency_regression(prom_url, service):
@@ -421,7 +421,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v5
 
     - name: Deploy to Kubernetes
       run: |
@@ -433,7 +433,9 @@ jobs:
 
     - name: Check for latency regression
       run: |
-        python scripts/detect_regression.py payment-service
+        kubectl port-forward -n observability svc/prometheus 9090:9090 &
+        sleep 5
+        PROMETHEUS_URL=http://127.0.0.1:9090 python scripts/detect_regression.py payment-service
 
     - name: Rollback on regression
       if: failure()
