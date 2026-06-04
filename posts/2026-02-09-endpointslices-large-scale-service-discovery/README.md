@@ -8,11 +8,11 @@ Description: Configure EndpointSlices to improve service discovery performance i
 
 ---
 
-When your Kubernetes services grow to hundreds or thousands of endpoints, the traditional Endpoints API becomes a performance bottleneck. EndpointSlices solve this problem by distributing endpoint information across multiple smaller objects instead of storing everything in a single large Endpoints object. This guide shows you how to leverage EndpointSlices for better scalability.
+When your Kubernetes services grow to hundreds or thousands of endpoints, the traditional Endpoints API becomes a performance bottleneck. EndpointSlices solve this problem by distributing endpoint information across multiple smaller objects instead of storing everything in a single large Endpoints object. In Kubernetes 1.33 and later, the Endpoints API is deprecated in favor of EndpointSlices. This guide shows you how to leverage EndpointSlices for better scalability.
 
 ## The Endpoints API Scalability Problem
 
-The traditional Endpoints API stores all endpoint information for a service in a single object. For a service with 1,000 pods, that's one Endpoints object containing 1,000 IP addresses and port combinations.
+The traditional Endpoints API stores endpoint information for a service in a single object. For a service with 1,000 pods, that's one Endpoints object containing 1,000 IP addresses and port combinations. For more than 1,000 backing endpoints, Kubernetes truncates the Endpoints object and adds the `endpoints.kubernetes.io/over-capacity: truncated` annotation.
 
 Every time a single pod changes (starts, stops, or becomes unhealthy), the entire Endpoints object must be updated and propagated to all nodes. On a 100-node cluster, that's 100 network transmissions of the full object just to update one endpoint.
 
@@ -27,7 +27,7 @@ EndpointSlices solve this by splitting endpoints into groups of approximately 10
 
 ## How EndpointSlices Work
 
-EndpointSlices are enabled by default in Kubernetes 1.21+. The endpoint slice controller automatically creates and manages EndpointSlices for every service.
+EndpointSlices are stable in Kubernetes 1.21+. The endpoint slice controller automatically creates and manages EndpointSlices for every service with a selector.
 
 Check if EndpointSlices are active in your cluster:
 
@@ -182,7 +182,7 @@ Larger slices reduce the number of objects but increase update propagation size.
 
 ## Handling Dual-Stack Services
 
-EndpointSlices support dual-stack (IPv4 and IPv6) services by creating separate slices for each address family:
+EndpointSlices support dual-stack (IPv4 and IPv6) services by creating separate slices for each address family when the cluster and backing pods have dual-stack networking:
 
 ```yaml
 # dual-stack-service.yaml
@@ -228,17 +228,17 @@ kubectl get endpointslices --all-namespaces -o json | \
   sort_by(.count) | reverse | .[]'
 ```
 
-Monitor API server metrics for endpoint updates:
+Monitor controller manager metrics for endpoint updates:
 
 ```bash
 # Query Prometheus metrics
-curl -s http://kube-apiserver:8080/metrics | grep endpoint_slice
+curl -sk https://kube-controller-manager:10257/metrics | grep endpoint_slice
 ```
 
 Key metrics to watch:
-- `endpoint_slice_controller_changes` - Number of slice updates
-- `endpoint_slice_controller_syncs` - Number of sync operations
-- `apiserver_storage_objects{resource="endpointslices"}` - Total slice count
+- `endpoint_slice_controller_changes` - Number of slice updates from kube-controller-manager
+- `endpoint_slice_controller_syncs` - Number of sync operations from kube-controller-manager
+- `apiserver_storage_objects{resource="endpointslices"}` - Total slice count from kube-apiserver
 
 ## Using EndpointSlices in Custom Controllers
 
@@ -279,9 +279,14 @@ func main() {
     for _, slice := range slices.Items {
         fmt.Printf("Slice: %s\n", slice.Name)
         for _, endpoint := range slice.Endpoints {
-            if *endpoint.Conditions.Ready {
+            ready := endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready
+            if ready && len(endpoint.Addresses) > 0 {
+                nodeName := ""
+                if endpoint.NodeName != nil {
+                    nodeName = *endpoint.NodeName
+                }
                 fmt.Printf("  Ready endpoint: %s on node %s\n",
-                    endpoint.Addresses[0], *endpoint.NodeName)
+                    endpoint.Addresses[0], nodeName)
             }
         }
     }
@@ -292,13 +297,13 @@ Use informers to watch for changes efficiently:
 
 ```go
 import (
-    discoveryinformers "k8s.io/client-go/informers/discovery/v1"
+    informers "k8s.io/client-go/informers"
     "k8s.io/client-go/tools/cache"
 )
 
 func watchEndpointSlices(clientset *kubernetes.Clientset) {
-    factory := discoveryinformers.NewSharedInformerFactory(clientset, 0)
-    informer := factory.EndpointSlices()
+    factory := informers.NewSharedInformerFactory(clientset, 0)
+    informer := factory.Discovery().V1().EndpointSlices()
 
     informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
         AddFunc: func(obj interface{}) {
@@ -310,7 +315,11 @@ func watchEndpointSlices(clientset *kubernetes.Clientset) {
             fmt.Printf("EndpointSlice updated: %s\n", slice.Name)
         },
         DeleteFunc: func(obj interface{}) {
-            slice := obj.(*discoveryv1.EndpointSlice)
+            slice, ok := obj.(*discoveryv1.EndpointSlice)
+            if !ok {
+                tombstone := obj.(cache.DeletedFinalStateUnknown)
+                slice = tombstone.Obj.(*discoveryv1.EndpointSlice)
+            }
             fmt.Printf("EndpointSlice deleted: %s\n", slice.Name)
         },
     })
@@ -377,12 +386,12 @@ This guides kube-proxy to prefer endpoints in the same zone, reducing cross-zone
 
 ## Performance Benefits in Real Clusters
 
-In production clusters, EndpointSlices provide measurable benefits:
+In production clusters, EndpointSlices can provide measurable benefits:
 
-- **API server load**: 60-70% reduction in endpoint update traffic
-- **Update propagation**: 80% faster when updating single endpoints
-- **Memory usage**: 40% reduction in kube-proxy memory consumption
-- **Network bandwidth**: 75% reduction in endpoint-related etcd watch traffic
+- **API server load**: Smaller endpoint updates for large Services
+- **Update propagation**: Fewer bytes to distribute when updating a single endpoint
+- **Memory usage**: More efficient endpoint tracking for kube-proxy and other consumers
+- **Network bandwidth**: Less endpoint-related watch traffic compared to large legacy Endpoints objects
 
 These improvements become more significant as your cluster scales. A 500-node cluster with 10,000 endpoints sees dramatic performance gains compared to the legacy Endpoints API.
 
