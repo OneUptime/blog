@@ -14,7 +14,7 @@ This guide shows you how to use matrix generators for scalable multi-dimensional
 
 ## Understanding Matrix Generators
 
-Matrix generators combine two or more generators using cartesian product:
+Matrix generators combine two child generators using cartesian product:
 
 - Generator A produces: [env1, env2]
 - Generator B produces: [region-a, region-b]
@@ -33,6 +33,7 @@ metadata:
   name: multi-environment-app
   namespace: argocd
 spec:
+  goTemplate: true
   generators:
     - matrix:
         generators:
@@ -56,7 +57,7 @@ spec:
 
   template:
     metadata:
-      name: 'myapp-{{environment}}-{{region}}'
+      name: 'myapp-{{.environment}}-{{.region}}'
     spec:
       project: default
       source:
@@ -65,25 +66,29 @@ spec:
         path: apps/myapp
         kustomize:
           commonLabels:
-            environment: '{{environment}}'
-            region: '{{region}}'
-          replicas:
-            - name: myapp
-              count: '{{replicas}}'
+            environment: '{{.environment}}'
+            region: '{{.region}}'
       destination:
-        server: '{{cluster}}'
-        namespace: '{{environment}}'
+        server: '{{.cluster}}'
+        namespace: '{{.environment}}'
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
+  templatePatch: |
+    spec:
+      source:
+        kustomize:
+          replicas:
+            - name: myapp
+              count: {{ .replicas }}
 ```
 
 This creates 6 applications (3 environments × 2 regions).
 
 ## Three-Dimensional Matrix
 
-Add another dimension for multiple applications:
+Add another dimension for multiple applications by nesting a two-generator matrix:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -95,23 +100,24 @@ spec:
   generators:
     - matrix:
         generators:
-          # Dimension 1: Applications
-          - list:
-              elements:
-                - app: frontend
-                  port: "3000"
-                - app: backend
-                  port: "8080"
-                - app: worker
-                  port: "9090"
+          # Dimensions 1 and 2: Applications × Environments
+          - matrix:
+              generators:
+                - list:
+                    elements:
+                      - app: frontend
+                        port: "3000"
+                      - app: backend
+                        port: "8080"
+                      - app: worker
+                        port: "9090"
 
-          # Dimension 2: Environments
-          - list:
-              elements:
-                - environment: development
-                  domain: dev.company.com
-                - environment: production
-                  domain: company.com
+                - list:
+                    elements:
+                      - environment: development
+                        domain: dev.company.com
+                      - environment: production
+                        domain: company.com
 
           # Dimension 3: Clusters
           - git:
@@ -151,6 +157,7 @@ metadata:
   name: cluster-matrix
   namespace: argocd
 spec:
+  goTemplate: true
   generators:
     - matrix:
         generators:
@@ -166,29 +173,34 @@ spec:
               elements:
                 - environment: production
                   namespace: prod
-                  syncPolicy: manual
+                  autoSync: false
                 - environment: staging
                   namespace: staging
-                  syncPolicy: automated
+                  autoSync: true
 
   template:
     metadata:
-      name: 'myapp-{{environment}}-{{cluster.name}}'
+      name: 'myapp-{{.environment}}-{{.name}}'
       labels:
-        environment: '{{environment}}'
-        cluster: '{{cluster.name}}'
+        environment: '{{.environment}}'
+        cluster: '{{.name}}'
     spec:
-      project: '{{cluster.project}}'
+      project: '{{.project}}'
       source:
         repoURL: https://github.com/company/apps
         targetRevision: HEAD
-        path: 'apps/myapp/overlays/{{environment}}'
+        path: 'apps/myapp/overlays/{{.environment}}'
       destination:
-        name: '{{cluster.name}}'
-        namespace: '{{namespace}}'
+        name: '{{.name}}'
+        namespace: '{{.namespace}}'
+  templatePatch: |
+    {{- if .autoSync }}
+    spec:
       syncPolicy:
         automated:
-          prune: '{{syncPolicy}}' == 'automated'
+          prune: true
+          selfHeal: true
+    {{- end }}
 ```
 
 Cluster config.json files:
@@ -204,7 +216,7 @@ Cluster config.json files:
 
 ## Filtering Matrix Results
 
-Not all combinations make sense. Use selectors to filter:
+Not all combinations make sense. The matrix generator does not evaluate arbitrary conditional logic, but you can post-filter generated parameters with a selector when the generated values contain a key you can match:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -220,10 +232,13 @@ spec:
               elements:
                 - app: frontend
                   requiresDatabase: "false"
+                  deploy: "true"
                 - app: backend
                   requiresDatabase: "true"
+                  deploy: "true"
                 - app: worker
                   requiresDatabase: "true"
+                  deploy: "false"
 
           - list:
               elements:
@@ -234,26 +249,18 @@ spec:
                 - environment: production
                   hasDatabase: "true"
 
-        # Only create app if database requirements match
-        template:
-          spec:
-            source:
-              kustomize:
-                # This would need custom logic
-                # Matrix generator doesn't natively support conditional filtering
-                # Use Go template or selector instead
+      selector:
+        matchLabels:
+          deploy: "true"
 
-  # Alternative: Use selector
-  goTemplate: true
   template:
     metadata:
-      name: '{{.app}}-{{.environment}}'
+      name: '{{app}}-{{environment}}'
     spec:
       # ... rest of template
-      # Use Go template conditionals
 ```
 
-For true filtering, use the merge generator with selectors:
+For filtering that depends on specific app/environment pairs, use the merge generator with an explicit allow-list:
 
 ```yaml
 generators:
@@ -269,7 +276,7 @@ generators:
               - list:
                   elements: # ... environments
 
-        # Second generator acts as filter
+        # Second generator acts as an allow-list
         - list:
             elements:
               - environment: development
@@ -282,7 +289,7 @@ generators:
 
 ## Nested Matrices
 
-Matrix generators can be nested:
+Matrix generators can be nested one level:
 
 ```yaml
 generators:
@@ -345,7 +352,7 @@ spec:
 
   template:
     metadata:
-      name: '{{customer.name}}-{{service}}'
+      name: '{{name}}-{{service}}'
       finalizers:
         - resources-finalizer.argocd.argoproj.io
     spec:
@@ -357,16 +364,16 @@ spec:
         helm:
           parameters:
             - name: customer.id
-              value: '{{customer.id}}'
+              value: '{{id}}'
             - name: customer.tier
-              value: '{{customer.tier}}'
+              value: '{{tier}}'
             - name: resources.limits.memory
-              value: '{{customer.limits.memory}}'
+              value: '{{limits.memory}}'
             - name: service.port
               value: '{{port}}'
       destination:
-        server: '{{customer.cluster}}'
-        namespace: 'customer-{{customer.id}}'
+        server: '{{cluster}}'
+        namespace: 'customer-{{id}}'
       syncPolicy:
         automated:
           prune: true
@@ -392,12 +399,14 @@ Customer JSON file:
 
 ## Performance Considerations
 
-Matrix generators can create many Applications. Optimize:
+Matrix generators can create many Applications. Add retry behavior and ordering hints where they fit your deployment:
 
 ```yaml
 spec:
-  # Limit concurrent syncs
   template:
+    metadata:
+      annotations:
+        argocd.argoproj.io/sync-wave: "{{wave}}"
     spec:
       syncPolicy:
         syncOptions:
@@ -408,12 +417,6 @@ spec:
             duration: 5s
             factor: 2
             maxDuration: 3m
-
-  # Or use sync waves
-  template:
-    metadata:
-      annotations:
-        argocd.argoproj.io/sync-wave: "{{wave}}"
 ```
 
 Add wave to list elements:
@@ -454,7 +457,7 @@ argocd appset generate multi-environment-app.yaml
 
 ## Best Practices
 
-1. **Limit dimensions**: Keep matrix to 2-3 dimensions maximum
+1. **Limit dimensions**: Matrix combines two child generators directly; use only one nested matrix when you need a third dimension
 2. **Use descriptive names**: Template names should clearly identify the combination
 3. **Add labels**: Label applications with generator parameters for filtering
 4. **Test small first**: Start with few elements, expand gradually
