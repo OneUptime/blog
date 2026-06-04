@@ -126,6 +126,7 @@ Store checkpoint state in a database:
 #!/usr/bin/env python3
 import psycopg2
 import os
+import json
 
 def get_db_connection():
     """Get database connection"""
