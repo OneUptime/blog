@@ -39,10 +39,15 @@ You need:
 For Venafi Trust Protection Platform deployments, start by creating credentials:
 
 ```bash
-# Create secret with TPP credentials
-
+# Create secret with TPP credentials for a namespaced Issuer
 kubectl create secret generic venafi-tpp-credentials \
-  --from-literal=username='tpp-user@example.com' \
+  --from-literal=username='local:tpp-user' \
+  --from-literal=password='your-tpp-password' \
+  -n production
+
+# For ClusterIssuer, create the secret in cert-manager's cluster resource namespace
+kubectl create secret generic venafi-tpp-credentials \
+  --from-literal=username='local:tpp-user' \
   --from-literal=password='your-tpp-password' \
   -n cert-manager
 ```
@@ -121,13 +126,13 @@ metadata:
   name: venafi-vaas-issuer
 spec:
   venafi:
-    # VaaS zone (application name)
-    zone: "Kubernetes Production"
+    # VaaS zone (application name and issuing template alias)
+    zone: "Kubernetes Production\\Default"
 
     # VaaS cloud configuration
     cloud:
       # VaaS API URL
-      url: https://api.venafi.cloud/v1
+      url: https://api.venafi.cloud/
 
       # Reference to API key secret
       apiTokenSecretRef:
@@ -275,9 +280,12 @@ metadata:
   namespace: production
   # Annotations passed to Venafi as custom fields
   annotations:
-    venafi.io/application: "Customer Portal"
-    venafi.io/cost-center: "IT-1234"
-    venafi.io/owner: "team-platform@example.com"
+    venafi.cert-manager.io/custom-fields: |-
+      [
+        {"name": "Application", "value": "Customer Portal"},
+        {"name": "Cost Center", "value": "IT-1234"},
+        {"name": "Owner", "value": "team-platform@example.com"}
+      ]
 spec:
   secretName: app-with-metadata-tls
   issuerRef:
@@ -431,8 +439,9 @@ Rotate Venafi credentials regularly:
 ```bash
 # Update credentials secret
 kubectl create secret generic venafi-tpp-credentials \
-  --from-literal=username='tpp-user@example.com' \
+  --from-literal=username='local:tpp-user' \
   --from-literal=password='new-password' \
+  -n cert-manager \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
@@ -456,7 +465,7 @@ kubectl exec -it -n cert-manager deployment/cert-manager -- /bin/sh
 curl -k https://tpp.example.com/vedsdk
 
 # Test VaaS connectivity
-curl https://api.venafi.cloud/v1
+curl https://api.venafi.cloud/
 ```
 
 Verify credentials:
@@ -468,7 +477,7 @@ kubectl get secret venafi-tpp-credentials -n cert-manager -o yaml
 # Verify credentials with Venafi API
 curl -X POST "https://tpp.example.com/vedsdk/authorize" \
   -H "Content-Type: application/json" \
-  -d '{"Username": "tpp-user@example.com", "Password": "your-password"}'
+  -d '{"Username": "local:tpp-user", "Password": "your-password"}'
 ```
 
 Check cert-manager logs for Venafi errors:
