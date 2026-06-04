@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Upgrade, Kubeadm, Cluster Management
 
-Description: Learn how to perform safe in-place minor version upgrades of Kubernetes clusters using kubeadm, including control plane updates, worker node upgrades, and rollback procedures.
+Description: Learn how to perform safe in-place minor version upgrades of Kubernetes clusters using kubeadm, including control plane updates, worker node upgrades, and failure recovery procedures.
 
 ---
 
-Kubernetes releases a new minor version approximately every four months. Staying current with minor version upgrades provides security patches, new features, and bug fixes. kubeadm simplifies the upgrade process with built-in commands that handle control plane component updates, addon upgrades, and node reconfiguration while minimizing downtime.
+Kubernetes releases a new minor version approximately three times per year. Staying current with supported minor version upgrades provides security patches, new features, and bug fixes. kubeadm simplifies the upgrade process with built-in commands that handle control plane component updates, addon upgrades, and node reconfiguration while minimizing downtime.
 
 ## Preparing for the Upgrade
 
@@ -17,16 +17,19 @@ Before upgrading, verify your cluster's current state and check the upgrade path
 ```bash
 # Check current cluster version
 
-kubectl version --short
+kubectl version
 kubectl get nodes
 
 # Check which versions are available
 sudo apt update
 sudo apt-cache madison kubeadm
 
+# If you use pkgs.k8s.io, enable the package repository for the
+# target Kubernetes minor version before checking package versions.
+
 # For upgrades, you can only go one minor version at a time
-# Example: 1.27.x -> 1.28.x is valid
-#          1.27.x -> 1.29.x requires going through 1.28.x first
+# Example: 1.35.x -> 1.36.x is valid
+#          1.34.x -> 1.36.x requires going through 1.35.x first
 ```
 
 Review the upgrade considerations:
@@ -38,7 +41,7 @@ kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis
 # Review cluster health
 kubectl get nodes
 kubectl get pods --all-namespaces
-kubectl get componentstatuses
+kubectl get --raw='/readyz?verbose'
 
 # Back up etcd
 ETCDCTL_API=3 etcdctl snapshot save /backup/etcd-snapshot-pre-upgrade.db \
@@ -55,12 +58,14 @@ Start with one control plane node to verify the upgrade process:
 ```bash
 # Find the latest patch version for your target minor version
 sudo apt update
-sudo apt-cache madison kubeadm | grep 1.28
+sudo apt-cache madison kubeadm | grep 1.36
+# The commands below use 1.36.1 as an example. Replace it with the latest
+# 1.36 patch version shown by your package manager.
 
 # Upgrade kubeadm on the first control plane node
 sudo apt-mark unhold kubeadm
 sudo apt-get update
-sudo apt-get install -y kubeadm=1.28.5-00
+sudo apt-get install -y kubeadm='1.36.1-*'
 sudo apt-mark hold kubeadm
 
 # Verify kubeadm version
@@ -79,36 +84,39 @@ sudo kubeadm upgrade plan
 Apply the upgrade to control plane components:
 
 ```bash
-# Drain the control plane node (move pods elsewhere)
-kubectl drain <control-plane-node> --ignore-daemonsets
-
 # Apply the upgrade
-sudo kubeadm upgrade apply v1.28.5
+sudo kubeadm upgrade apply v1.36.1
 
 # Expected output shows upgrade progress:
 # [upgrade/config] Making sure the configuration is correct
-# [upgrade/version] You have chosen to upgrade to version "v1.28.5"
+# [upgrade/version] You have chosen to upgrade to version "v1.36.1"
 # [upgrade/prepull] Pulling images required for setting up a Kubernetes cluster
-# [upgrade/apply] Upgrading your Static Pod-hosted control plane to version "v1.28.5"
+# [upgrade/apply] Upgrading your Static Pod-hosted control plane to version "v1.36.1"
 # [upgrade/staticpods] Writing new Static Pod manifests
-# [upgrade/successful] SUCCESS! Your cluster was upgraded to "v1.28.5"
+# [upgrade/successful] SUCCESS! Your cluster was upgraded to "v1.36.1"
 
-# Uncordon the node
-kubectl uncordon <control-plane-node>
 ```
 
 Upgrade kubelet and kubectl on the control plane:
 
 ```bash
+CONTROL_PLANE_NODE="control-plane-1"
+
+# Drain the control plane node before upgrading kubelet
+kubectl drain "$CONTROL_PLANE_NODE" --ignore-daemonsets
+
 # Upgrade kubelet and kubectl
 sudo apt-mark unhold kubelet kubectl
 sudo apt-get update
-sudo apt-get install -y kubelet=1.28.5-00 kubectl=1.28.5-00
+sudo apt-get install -y kubelet='1.36.1-*' kubectl='1.36.1-*'
 sudo apt-mark hold kubelet kubectl
 
 # Restart kubelet
 sudo systemctl daemon-reload
 sudo systemctl restart kubelet
+
+# Uncordon the node
+kubectl uncordon "$CONTROL_PLANE_NODE"
 
 # Verify the node version
 kubectl get nodes
@@ -120,23 +128,24 @@ For high-availability clusters, upgrade remaining control plane nodes one at a t
 
 ```bash
 # On each additional control plane node:
+CONTROL_PLANE_NODE="control-plane-2"
 
 # Upgrade kubeadm
 sudo apt-mark unhold kubeadm
 sudo apt-get update
-sudo apt-get install -y kubeadm=1.28.5-00
+sudo apt-get install -y kubeadm='1.36.1-*'
 sudo apt-mark hold kubeadm
-
-# Drain the node
-kubectl drain <control-plane-node> --ignore-daemonsets
 
 # Upgrade the node (note: use "upgrade node" not "upgrade apply")
 sudo kubeadm upgrade node
 
+# Drain the node before upgrading kubelet
+kubectl drain "$CONTROL_PLANE_NODE" --ignore-daemonsets
+
 # Upgrade kubelet and kubectl
 sudo apt-mark unhold kubelet kubectl
 sudo apt-get update
-sudo apt-get install -y kubelet=1.28.5-00 kubectl=1.28.5-00
+sudo apt-get install -y kubelet='1.36.1-*' kubectl='1.36.1-*'
 sudo apt-mark hold kubelet kubectl
 
 # Restart kubelet
@@ -144,7 +153,7 @@ sudo systemctl daemon-reload
 sudo systemctl restart kubelet
 
 # Uncordon the node
-kubectl uncordon <control-plane-node>
+kubectl uncordon "$CONTROL_PLANE_NODE"
 
 # Wait for node to become ready before proceeding
 kubectl get nodes -w
@@ -155,25 +164,31 @@ kubectl get nodes -w
 Upgrade worker nodes one at a time to maintain workload availability:
 
 ```bash
-# On the control plane, drain the worker node
-kubectl drain <worker-node> --ignore-daemonsets --delete-emptydir-data
+WORKER_NODE="worker-1"
 
 # SSH to the worker node
-ssh user@worker-node
+ssh "user@$WORKER_NODE"
 
 # Upgrade kubeadm
 sudo apt-mark unhold kubeadm
 sudo apt-get update
-sudo apt-get install -y kubeadm=1.28.5-00
+sudo apt-get install -y kubeadm='1.36.1-*'
 sudo apt-mark hold kubeadm
 
 # Upgrade the node configuration
 sudo kubeadm upgrade node
 
+# Return to the control plane, then drain the worker before upgrading kubelet
+exit
+kubectl drain "$WORKER_NODE" --ignore-daemonsets --delete-emptydir-data
+
+# SSH back to the worker node
+ssh "user@$WORKER_NODE"
+
 # Upgrade kubelet and kubectl
 sudo apt-mark unhold kubelet kubectl
 sudo apt-get update
-sudo apt-get install -y kubelet=1.28.5-00 kubectl=1.28.5-00
+sudo apt-get install -y kubelet='1.36.1-*' kubectl='1.36.1-*'
 sudo apt-mark hold kubelet kubectl
 
 # Restart kubelet
@@ -181,7 +196,8 @@ sudo systemctl daemon-reload
 sudo systemctl restart kubelet
 
 # Return to control plane and uncordon the node
-kubectl uncordon <worker-node>
+exit
+kubectl uncordon "$WORKER_NODE"
 
 # Verify the node is ready
 kubectl get nodes
@@ -195,23 +211,25 @@ Automate worker node upgrades:
 
 set -e
 
-WORKER_NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}')
-TARGET_VERSION="1.28.5-00"
+WORKER_NODES=$(kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[*].metadata.name}')
+TARGET_VERSION="1.36.1-*"
 
 for node in $WORKER_NODES; do
   echo "Upgrading worker node: $node"
 
-  # Drain node
-  kubectl drain $node --ignore-daemonsets --delete-emptydir-data --timeout=300s
-
-  # Upgrade on the node
+  # Upgrade kubeadm and the node configuration
   ssh $node "sudo apt-mark unhold kubeadm && \
              sudo apt-get update && \
-             sudo apt-get install -y kubeadm=$TARGET_VERSION && \
+             sudo apt-get install -y kubeadm='$TARGET_VERSION' && \
              sudo apt-mark hold kubeadm && \
-             sudo kubeadm upgrade node && \
-             sudo apt-mark unhold kubelet kubectl && \
-             sudo apt-get install -y kubelet=$TARGET_VERSION kubectl=$TARGET_VERSION && \
+             sudo kubeadm upgrade node"
+
+  # Drain node before upgrading kubelet
+  kubectl drain $node --ignore-daemonsets --delete-emptydir-data --timeout=300s
+
+  # Upgrade kubelet and kubectl on the node
+  ssh $node "sudo apt-mark unhold kubelet kubectl && \
+             sudo apt-get install -y kubelet='$TARGET_VERSION' kubectl='$TARGET_VERSION' && \
              sudo apt-mark hold kubelet kubectl && \
              sudo systemctl daemon-reload && \
              sudo systemctl restart kubelet"
@@ -263,14 +281,14 @@ kubectl get services -n kube-system
 
 ## Handling Upgrade Failures
 
-If the upgrade fails, investigate and potentially roll back:
+If the upgrade fails, investigate and recover the failed upgrade:
 
 ```bash
 # Check kubeadm logs
 journalctl -u kubelet -f
 
 # View kubeadm upgrade errors
-sudo kubeadm upgrade apply v1.28.5 -v=5
+sudo kubeadm upgrade apply v1.36.1 -v=5
 
 # Common issues:
 
@@ -282,7 +300,7 @@ sudo kubeadm certs renew all
 
 # 2. Image pull failures
 # Solution: Pre-pull images
-sudo kubeadm config images pull --kubernetes-version v1.28.5
+sudo kubeadm config images pull --kubernetes-version v1.36.1
 
 # 3. Control plane components not starting
 # Check static pod manifests
@@ -290,8 +308,10 @@ ls -la /etc/kubernetes/manifests/
 # View logs
 sudo journalctl -u kubelet -n 100 --no-pager
 
-# Roll back if needed (before upgrading kubelet)
-sudo kubeadm upgrade apply v1.27.8  # Previous version
+# Recover a failed upgrade by re-running kubeadm. If kubeadm cannot roll back
+# automatically, retry the same version with --force and inspect
+# /etc/kubernetes/tmp for kubeadm backup directories.
+sudo kubeadm upgrade apply v1.36.1 --force
 ```
 
 ## Upgrading Cluster Addons
@@ -299,19 +319,22 @@ sudo kubeadm upgrade apply v1.27.8  # Previous version
 After upgrading Kubernetes, update cluster addons:
 
 ```bash
-# Update CoreDNS
-kubectl set image deployment/coredns coredns=registry.k8s.io/coredns/coredns:v1.10.1 -n kube-system
+# kubeadm upgrades the default CoreDNS and kube-proxy addons.
+# Update third-party addons according to their own compatibility guides.
 
-# Update CNI plugin (example for Calico)
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.3/manifests/calico.yaml
+# Update CNI plugin (example for Calico; choose the version you validated)
+CALICO_VERSION="v3.x.y"
+kubectl apply -f "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/calico.yaml"
 
-# Update metrics-server
-kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.6.4/components.yaml
+# Update metrics-server (choose the version you validated)
+METRICS_SERVER_VERSION="v0.x.y"
+kubectl apply -f "https://github.com/kubernetes-sigs/metrics-server/releases/download/${METRICS_SERVER_VERSION}/components.yaml"
 
 # Update ingress controller (example for nginx)
+INGRESS_NGINX_CHART_VERSION="x.y.z"
 helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
-  --version 4.8.3
+  --version "$INGRESS_NGINX_CHART_VERSION"
 ```
 
 ## Renewing Certificates During Upgrade
@@ -322,12 +345,13 @@ kubeadm automatically renews certificates during upgrades:
 # Check certificate expiration before upgrade
 sudo kubeadm certs check-expiration
 
-# Certificates are renewed automatically during "kubeadm upgrade apply"
+# Certificates are renewed automatically during "kubeadm upgrade apply" and "kubeadm upgrade node"
 # To manually renew all certificates:
 sudo kubeadm certs renew all
 
-# Restart control plane components after manual renewal
-sudo systemctl restart kubelet
+# Restart control plane components after manual renewal so they use the new certificates
+# Static Pods can be restarted by temporarily moving their manifests out of
+# /etc/kubernetes/manifests/ and then moving them back.
 ```
 
 ## Creating an Upgrade Checklist
@@ -352,9 +376,9 @@ Use this checklist for consistent upgrades:
 # - [ ] Upgrade additional control plane nodes
 
 # Worker node upgrade
-# - [ ] Drain worker node
 # - [ ] Upgrade kubeadm
 # - [ ] Run kubeadm upgrade node
+# - [ ] Drain worker node
 # - [ ] Upgrade kubelet and kubectl
 # - [ ] Uncordon node
 # - [ ] Verify node ready
@@ -411,11 +435,12 @@ Fix common upgrade problems:
 # Issue: kubeadm upgrade plan shows wrong version
 # Fix: Update kubeadm to correct version first
 sudo apt-cache madison kubeadm
-sudo apt-get install -y kubeadm=1.28.5-00
+sudo apt-get install -y kubeadm='1.36.1-*'
 
 # Issue: Control plane pods crashlooping
 # Check logs
-kubectl logs -n kube-system kube-apiserver-<node>
+CONTROL_PLANE_NODE="control-plane-1"
+kubectl logs -n kube-system "kube-apiserver-$CONTROL_PLANE_NODE"
 # Verify manifest syntax
 sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml
 
