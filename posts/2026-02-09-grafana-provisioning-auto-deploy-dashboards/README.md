@@ -14,14 +14,14 @@ This guide covers setting up automated dashboard provisioning in Kubernetes.
 
 ## Understanding Grafana Provisioning
 
-Grafana provisioning loads configuration from files at startup and watches for changes. It supports provisioning:
+Grafana provisioning loads configuration from files at startup. Dashboard provisioning can also check the dashboard file path for changes. It supports provisioning:
 
 - Datasources
 - Dashboards
-- Alert notification channels
+- Alerting resources such as contact points, notification policies, and alert rules
 - Plugins
 
-Provisioned resources are marked read-only in the UI to prevent drift from the source of truth.
+Provisioned dashboards can be marked read-only in the UI to prevent drift from the source of truth.
 
 ## Setting Up Dashboard Provisioning
 
@@ -100,34 +100,52 @@ data:
   kubernetes-overview.json: |
     {
       "dashboard": {
+        "id": null,
+        "uid": "kubernetes-overview",
         "title": "Kubernetes Cluster Overview",
         "tags": ["kubernetes"],
         "timezone": "browser",
+        "schemaVersion": 39,
+        "version": 0,
         "panels": [
           {
+            "id": 1,
+            "type": "timeseries",
             "title": "CPU Usage",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
             "targets": [
               {
+                "refId": "A",
                 "expr": "sum(rate(container_cpu_usage_seconds_total[5m]))"
               }
             ],
             "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
           }
         ]
-      }
+      },
+      "overwrite": true
     }
 
   namespace-metrics.json: |
     {
       "dashboard": {
+        "id": null,
+        "uid": "namespace-metrics",
         "title": "Namespace Metrics",
         "tags": ["kubernetes", "namespace"],
-        "panels": [...]
-      }
+        "timezone": "browser",
+        "schemaVersion": 39,
+        "version": 0,
+        "panels": []
+      },
+      "overwrite": true
     }
 ```
 
-Grafana automatically loads all JSON files from the ConfigMap.
+Grafana automatically loads JSON files from the mounted ConfigMap path configured by the dashboard provider.
 
 ## Using Multiple Dashboard Providers
 
@@ -192,7 +210,13 @@ metadata:
   name: grafana
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: grafana
   template:
+    metadata:
+      labels:
+        app: grafana
     spec:
       containers:
       - name: grafana
@@ -209,8 +233,10 @@ spec:
         - -c
         - |
           while true; do
+            rm -rf /tmp/dashboards
             git clone --depth 1 https://github.com/myorg/grafana-dashboards.git /tmp/dashboards
-            cp -r /tmp/dashboards/*.json /dashboards/
+            find /dashboards -maxdepth 1 -name '*.json' -delete
+            cp /tmp/dashboards/*.json /dashboards/ 2>/dev/null || true
             rm -rf /tmp/dashboards
             sleep 60
           done
@@ -267,6 +293,7 @@ data:
     apiVersion: 1
     datasources:
     - name: Prometheus
+      uid: prometheus
       type: prometheus
       access: proxy
       url: http://prometheus.monitoring.svc.cluster.local:9090
@@ -296,7 +323,7 @@ volumes:
     name: grafana-datasource-provisioning
 ```
 
-## Provisioning Alert Notification Channels
+## Provisioning Alert Contact Points
 
 Configure Slack notifications:
 
@@ -304,30 +331,31 @@ Configure Slack notifications:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-notifier-provisioning
+  name: grafana-alerting-provisioning
   namespace: monitoring
 data:
-  notifiers.yaml: |
+  contact-points.yaml: |
     apiVersion: 1
-    notifiers:
-    - name: Slack
-      type: slack
-      uid: slack-alerts
-      org_id: 1
-      is_default: true
-      settings:
-        url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-        recipient: '#alerts'
-        uploadImage: true
-      secure_settings:
-        url: ${SLACK_WEBHOOK_URL}
+    contactPoints:
+    - orgId: 1
+      name: Slack
+      receivers:
+      - uid: slack-alerts
+        type: slack
+        settings:
+          url: ${SLACK_WEBHOOK_URL}
+          recipient: '#alerts'
+        disableResolveMessage: false
 
-    - name: PagerDuty
-      type: pagerduty
-      uid: pagerduty-oncall
-      settings:
-        integrationKey: ${PAGERDUTY_KEY}
-        autoResolve: true
+    - orgId: 1
+      name: PagerDuty
+      receivers:
+      - uid: pagerduty-oncall
+        type: pagerduty
+        settings:
+          integrationKey: ${PAGERDUTY_KEY}
+          severity: critical
+        disableResolveMessage: false
 ```
 
 Use environment variables for secrets:
@@ -346,6 +374,19 @@ env:
       key: pagerduty-key
 ```
 
+Mount in Grafana:
+
+```yaml
+volumeMounts:
+- name: alerting-provisioning
+  mountPath: /etc/grafana/provisioning/alerting
+
+volumes:
+- name: alerting-provisioning
+  configMap:
+    name: grafana-alerting-provisioning
+```
+
 ## Helm Chart Integration
 
 Use the Grafana Helm chart with provisioning:
@@ -357,8 +398,10 @@ datasources:
     apiVersion: 1
     datasources:
     - name: Prometheus
+      uid: prometheus
       type: prometheus
       url: http://prometheus:9090
+      access: proxy
       isDefault: true
 
 dashboardProviders:
@@ -370,24 +413,23 @@ dashboardProviders:
       folder: ''
       type: file
       disableDeletion: false
-      editable: false
+      allowUiUpdates: false
       options:
         path: /var/lib/grafana/dashboards/default
 
 dashboards:
   default:
     kubernetes-overview:
-      json: |
-        {{ .Files.Get "dashboards/kubernetes-overview.json" | indent 8 }}
+      file: dashboards/kubernetes-overview.json
     namespace-metrics:
-      json: |
-        {{ .Files.Get "dashboards/namespace-metrics.json" | indent 8 }}
+      file: dashboards/namespace-metrics.json
 ```
 
 Deploy with:
 
 ```bash
-helm install grafana grafana/grafana -f values.yaml -n monitoring
+helm repo add grafana https://grafana.github.io/helm-charts
+helm install grafana grafana/grafana -f values.yaml -n monitoring --create-namespace
 ```
 
 ## GitOps with ArgoCD
@@ -484,6 +526,7 @@ git push
 
 ```bash
 kubectl create configmap grafana-dashboards \
+  -n monitoring \
   --from-file=dashboards/ \
   --dry-run=client -o yaml | \
   kubectl apply -f -
