@@ -49,6 +49,9 @@ data:
         Flush        5
         Daemon       Off
         Log_Level    info
+        HTTP_Server  On
+        HTTP_Listen  0.0.0.0
+        HTTP_Port    2020
 
     [INPUT]
         Name              tail
@@ -104,7 +107,6 @@ spec:
       labels:
         app: fluent-bit
     spec:
-      serviceAccountName: fluent-bit
       containers:
       - name: fluent-bit
         image: fluent/fluent-bit:2.2
@@ -142,7 +144,7 @@ spec:
         key: node-role.kubernetes.io/control-plane
 ```
 
-Create the Splunk HEC token secret:
+Create the namespace and Splunk HEC token secret before deploying Fluent Bit:
 
 ```bash
 kubectl create namespace logging
@@ -153,7 +155,7 @@ kubectl create secret generic splunk-credentials \
 
 ## Forwarding to Elastic Stack
 
-For Elasticsearch, use Filebeat with Kubernetes autodiscovery:
+For Elasticsearch, use Filebeat with a file input:
 
 ```yaml
 apiVersion: v1
@@ -164,12 +166,15 @@ metadata:
 data:
   filebeat.yml: |
     filebeat.inputs:
-    - type: log
+    - type: filestream
+      id: kubernetes-audit
       enabled: true
       paths:
         - /var/log/kubernetes/audit*.log
-      json.keys_under_root: true
-      json.add_error_key: true
+      parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
       fields:
         cluster_name: prod-cluster-01
         environment: production
@@ -193,43 +198,11 @@ data:
       index: "k8s-audit-%{+yyyy.MM.dd}"
       ssl.verification_mode: full
 
-    setup.ilm:
-      enabled: true
-      policy_name: k8s-audit
-      policy_file: /etc/filebeat/ilm-policy.json
+    setup.template.name: "k8s-audit"
+    setup.template.pattern: "k8s-audit-*"
 
-  ilm-policy.json: |
-    {
-      "policy": {
-        "phases": {
-          "hot": {
-            "actions": {
-              "rollover": {
-                "max_age": "1d",
-                "max_size": "50gb"
-              }
-            }
-          },
-          "warm": {
-            "min_age": "7d",
-            "actions": {
-              "allocate": {
-                "number_of_replicas": 1
-              },
-              "forcemerge": {
-                "max_num_segments": 1
-              }
-            }
-          },
-          "delete": {
-            "min_age": "90d",
-            "actions": {
-              "delete": {}
-            }
-          }
-        }
-      }
-    }
+    setup.ilm:
+      enabled: false
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -245,7 +218,6 @@ spec:
       labels:
         app: filebeat
     spec:
-      serviceAccountName: filebeat
       containers:
       - name: filebeat
         image: docker.elastic.co/beats/filebeat:8.12.0
@@ -264,17 +236,11 @@ spec:
         - name: config
           mountPath: /usr/share/filebeat/filebeat.yml
           subPath: filebeat.yml
-        - name: ilm-policy
-          mountPath: /etc/filebeat/ilm-policy.json
-          subPath: ilm-policy.json
         - name: varlog
           mountPath: /var/log
           readOnly: true
       volumes:
       - name: config
-        configMap:
-          name: filebeat-config
-      - name: ilm-policy
         configMap:
           name: filebeat-config
       - name: varlog
@@ -323,7 +289,6 @@ spec:
       labels:
         app: datadog-agent
     spec:
-      serviceAccountName: datadog-agent
       containers:
       - name: agent
         image: gcr.io/datadoghq/agent:latest
@@ -379,8 +344,8 @@ data:
       tag kubernetes.audit
       <parse>
         @type json
-        time_key timestamp
-        time_format %Y-%m-%dT%H:%M:%S.%LZ
+        time_key requestReceivedTimestamp
+        time_format %Y-%m-%dT%H:%M:%S.%NZ
       </parse>
     </source>
 
@@ -396,14 +361,16 @@ data:
     # Filter out read-only operations on configmaps
     <filter kubernetes.audit>
       @type grep
-      <exclude>
-        key $.verb
-        pattern ^(get|list|watch)$
-      </exclude>
-      <exclude>
-        key $.objectRef.resource
-        pattern ^configmaps$
-      </exclude>
+      <and>
+        <exclude>
+          key $.verb
+          pattern ^(get|list|watch)$
+        </exclude>
+        <exclude>
+          key $.objectRef.resource
+          pattern ^configmaps$
+        </exclude>
+      </and>
     </filter>
 
     # Add cluster context
@@ -418,9 +385,11 @@ data:
 
     # Extract and tag sensitive operations
     <filter kubernetes.audit>
-      @type record_modifier
+      @type record_transformer
+      enable_ruby true
+      auto_typecast true
       <record>
-        is_sensitive ${if record["objectRef"]["resource"] == "secrets" || record["objectRef"]["apiGroup"] == "rbac.authorization.k8s.io"; true; else; false; end}
+        is_sensitive ${record.dig("objectRef", "resource") == "secrets" || record.dig("objectRef", "apiGroup") == "rbac.authorization.k8s.io"}
       </record>
     </filter>
 
@@ -433,14 +402,7 @@ data:
       </store>
       <store>
         @type relabel
-        @label @S3
-        <filter>
-          @type grep
-          <regexp>
-            key is_sensitive
-            pattern true
-          </regexp>
-        </filter>
+        @label @SENSITIVE_CHECK
       </store>
     </match>
 
@@ -463,7 +425,15 @@ data:
     </label>
 
     # S3 archive for sensitive events
-    <label @S3>
+    <label @SENSITIVE_CHECK>
+      <filter **>
+        @type grep
+        <regexp>
+          key is_sensitive
+          pattern true
+        </regexp>
+      </filter>
+
       <match **>
         @type s3
         s3_bucket audit-logs-archive
@@ -490,7 +460,7 @@ Once logs are in your SIEM, create detection rules for suspicious activity.
 
 ```splunk
 index=kubernetes sourcetype=kubernetes:audit
-| search verb="create" objectRef.resource="tokenreviews" responseStatus.code!=201
+| search verb="create" objectRef.resource="tokenreviews" responseObject.status.authenticated=false
 | stats count by user.username, sourceIPs{}
 | where count > 5
 ```
@@ -503,7 +473,7 @@ index=kubernetes sourcetype=kubernetes:audit
     "bool": {
       "must": [
         {"match": {"objectRef.subresource": "exec"}},
-        {"range": {"@timestamp": {"gte": "now-1h"}}}
+        {"range": {"requestReceivedTimestamp": {"gte": "now-1h"}}}
       ]
     }
   },
@@ -525,6 +495,8 @@ kind: Service
 metadata:
   name: fluent-bit-metrics
   namespace: logging
+  labels:
+    app: fluent-bit
 spec:
   selector:
     app: fluent-bit
