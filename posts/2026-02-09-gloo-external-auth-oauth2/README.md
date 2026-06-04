@@ -25,13 +25,9 @@ This centralizes authentication logic and enables consistent policies across all
 
 ## Deploying ExtAuth Service
 
-ExtAuth is included with Gloo Enterprise. For open-source Gloo, deploy manually:
+ExtAuth is included with Gloo Gateway Enterprise. The built-in OAuth2, OIDC, and API key `AuthConfig` examples in this guide require the Enterprise edition.
 
-```bash
-kubectl apply -f https://raw.githubusercontent.com/solo-io/gloo/main/install/helm/gloo/templates/5-extauth-deployment.yaml
-```
-
-Or enable via Helm:
+Configure the ExtAuth deployment via Helm:
 
 ```yaml
 # gloo-values.yaml
@@ -39,7 +35,7 @@ Or enable via Helm:
 global:
   extensions:
     extAuth:
-      enabled: true
+      standaloneDeployment: true
       deployment:
         replicas: 2
 ```
@@ -73,17 +69,19 @@ spec:
         session:
           cookieOptions:
             maxAge: 3600
-            secure: true
           redis:
-            host: redis.default.svc.cluster.local:6379
+            cookieName: session
+            options:
+              host: redis.default.svc.cluster.local:6379
 ```
 
 Create the client secret:
 
 ```bash
-kubectl create secret generic auth0-client-secret \
-  -n gloo-system \
-  --from-literal=oauth=your-auth0-client-secret
+glooctl create secret oauth \
+  --namespace gloo-system \
+  --name auth0-client-secret \
+  --client-secret your-auth0-client-secret
 ```
 
 ## Applying OAuth2 to VirtualService
@@ -158,7 +156,9 @@ spec:
         session:
           failOnFetchFailure: true
           redis:
-            host: redis.default.svc.cluster.local:6379
+            cookieName: session
+            options:
+              host: redis.default.svc.cluster.local:6379
 ```
 
 ## JWT Validation
@@ -167,23 +167,34 @@ Validate JWT tokens without full OAuth flow:
 
 ```yaml
 # jwt-validation-config.yaml
-apiVersion: enterprise.gloo.solo.io/v1
-kind: AuthConfig
+apiVersion: gateway.solo.io/v1
+kind: VirtualService
 metadata:
   name: jwt-auth
   namespace: gloo-system
 spec:
-  configs:
-  - jwt:
-      providers:
-        auth0:
-          issuer: https://your-tenant.auth0.com/
-          audiences:
-          - your-api-audience
-          jwks:
-            remote:
-              url: https://your-tenant.auth0.com/.well-known/jwks.json
-              cacheDuration: 300s
+  virtualHost:
+    domains:
+    - 'api.example.com'
+    routes:
+    - matchers:
+      - prefix: /api
+      routeAction:
+        single:
+          upstream:
+            name: backend-service
+            namespace: gloo-system
+    options:
+      jwt:
+        providers:
+          auth0:
+            issuer: https://your-tenant.auth0.com/
+            audiences:
+            - your-api-audience
+            jwks:
+              remote:
+                url: https://your-tenant.auth0.com/.well-known/jwks.json
+                cacheDuration: 300s
         okta:
           issuer: https://dev-123456.okta.com/oauth2/default
           audiences:
@@ -220,13 +231,14 @@ spec:
 Create API key secrets:
 
 ```bash
-kubectl create secret generic api-consumer-1 \
-  -n default \
-  --from-literal=api-key=secret-key-123 \
-  --from-literal=consumer-id=consumer-1 \
-  --from-literal=consumer-name="Mobile App"
+glooctl create secret apikey api-consumer-1 \
+  --namespace gloo-system \
+  --apikey secret-key-123 \
+  --apikey-labels app=api-consumer
 
-kubectl label secret api-consumer-1 -n default app=api-consumer
+kubectl patch secret api-consumer-1 -n gloo-system \
+  --type merge \
+  -p '{"stringData":{"consumer-id":"consumer-1","consumer-name":"Mobile App"}}'
 ```
 
 ## Multi-Provider Configuration
@@ -241,9 +253,10 @@ metadata:
   name: multi-auth
   namespace: gloo-system
 spec:
+  booleanExpr: "oauth || apikey"
   configs:
-  # Try OAuth2 first
-  - oauth2:
+  - name: oauth
+    oauth2:
       oidcAuthorizationCode:
         appUrl: https://api.example.com
         callbackPath: /callback
@@ -253,8 +266,8 @@ spec:
           namespace: gloo-system
         issuerUrl: https://auth.example.com/
 
-  # Fallback to API key
-  - apiKeyAuth:
+  - name: apikey
+    apiKeyAuth:
       headerName: X-API-Key
       labelSelector:
         app: api-consumer
@@ -266,17 +279,83 @@ Add RBAC based on OAuth claims:
 
 ```yaml
 # rbac-config.yaml
-apiVersion: enterprise.gloo.solo.io/v1
-kind: AuthConfig
+apiVersion: gateway.solo.io/v1
+kind: VirtualService
 metadata:
   name: oauth-rbac
   namespace: gloo-system
 spec:
-  configs:
-  - oauth2:
-      oidcAuthorizationCode:
-        # ... OAuth config ...
-  - rbac:
+  virtualHost:
+    domains:
+    - 'api.example.com'
+    routes:
+    - matchers:
+      - prefix: /admin
+      routeAction:
+        single:
+          upstream:
+            name: admin-service
+            namespace: gloo-system
+    - matchers:
+      - prefix: /api
+      routeAction:
+        single:
+          upstream:
+            name: api-service
+            namespace: gloo-system
+    options:
+      extauth:
+        configRef:
+          name: auth0-oauth
+          namespace: gloo-system
+      jwt:
+        providers:
+          auth0:
+            issuer: https://your-tenant.auth0.com/
+            audiences:
+            - your-api-audience
+            jwks:
+              remote:
+                url: https://your-tenant.auth0.com/.well-known/jwks.json
+      rbac:
+        policies:
+          admin-only:
+            principals:
+            - jwtPrincipal:
+                claims:
+                  role: admin
+            permissions:
+              methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              pathPrefix: /admin
+
+          user-read:
+            principals:
+            - jwtPrincipal:
+                claims:
+                  role: user
+            permissions:
+              methods:
+              - GET
+              pathPrefix: /api
+```
+
+You can also apply policies at the route level:
+
+```yaml
+routes:
+- matchers:
+  - prefix: /admin
+  routeAction:
+    single:
+      upstream:
+        name: admin-service
+        namespace: gloo-system
+  options:
+    rbac:
       policies:
         admin-only:
           principals:
@@ -291,33 +370,6 @@ spec:
             - DELETE
             pathPrefix: /admin
 
-        user-read:
-          principals:
-          - jwtPrincipal:
-              claims:
-                role: user
-          permissions:
-            methods:
-            - GET
-            pathPrefix: /api
-```
-
-Apply to routes:
-
-```yaml
-routes:
-- matchers:
-  - prefix: /admin
-  routeAction:
-    single:
-      upstream:
-        name: admin-service
-        namespace: gloo-system
-  options:
-    rbac:
-      policies:
-      - admin-only
-
 - matchers:
   - prefix: /api
   routeAction:
@@ -328,8 +380,24 @@ routes:
   options:
     rbac:
       policies:
-      - user-read
-      - admin-only
+        user-read:
+          principals:
+          - jwtPrincipal:
+              claims:
+                role: user
+          permissions:
+            methods:
+            - GET
+            pathPrefix: /api
+        admin-only:
+          principals:
+          - jwtPrincipal:
+              claims:
+                role: admin
+          permissions:
+            methods:
+            - GET
+            pathPrefix: /api
 ```
 
 ## Session Management with Redis
@@ -376,24 +444,40 @@ spec:
 Extract custom claims to headers:
 
 ```yaml
+apiVersion: gateway.solo.io/v1
+kind: VirtualService
+metadata:
+  name: claims-to-headers
+  namespace: gloo-system
 spec:
-  configs:
-  - jwt:
-      providers:
-        custom:
-          issuer: https://auth.example.com/
-          jwks:
-            remote:
-              url: https://auth.example.com/.well-known/jwks.json
-          claimsToHeaders:
-          - claim: sub
-            header: X-User-ID
-          - claim: email
-            header: X-User-Email
-          - claim: roles
-            header: X-User-Roles
-          - claim: tenant_id
-            header: X-Tenant-ID
+  virtualHost:
+    domains:
+    - 'api.example.com'
+    routes:
+    - matchers:
+      - prefix: /api
+      routeAction:
+        single:
+          upstream:
+            name: backend-service
+            namespace: gloo-system
+    options:
+      jwt:
+        providers:
+          custom:
+            issuer: https://auth.example.com/
+            jwks:
+              remote:
+                url: https://auth.example.com/.well-known/jwks.json
+            claimsToHeaders:
+            - claim: sub
+              header: X-User-ID
+            - claim: email
+              header: X-User-Email
+            - claim: roles
+              header: X-User-Roles
+            - claim: tenant_id
+              header: X-Tenant-ID
 ```
 
 Backend receives headers:
@@ -426,19 +510,17 @@ curl -H "Authorization: Bearer <jwt-token>" \
 
 ## Monitoring ExtAuth
 
-View ExtAuth metrics:
+View Envoy `ext_authz` statistics:
 
-```promql
-# Authentication success rate
-rate(gloo_extauth_authorized_total{result="ok"}[5m])
+```text
+# Successful authorizations
+cluster.<route_target_cluster>.ext_authz.ok
 
-# Authentication latency
-histogram_quantile(0.99,
-  rate(gloo_extauth_duration_seconds_bucket[5m])
-)
+# Denied requests
+cluster.<route_target_cluster>.ext_authz.denied
 
-# Failed authentications
-rate(gloo_extauth_authorized_total{result!="ok"}[5m])
+# Errors contacting the authorization service
+cluster.<route_target_cluster>.ext_authz.error
 ```
 
 ## Best Practices
