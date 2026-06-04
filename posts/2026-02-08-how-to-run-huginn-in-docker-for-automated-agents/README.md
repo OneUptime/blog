@@ -77,6 +77,7 @@ services:
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
       # Application settings
       DOMAIN: huginn.yourdomain.com
+      APP_SECRET_TOKEN: ${APP_SECRET_TOKEN}
       HUGINN_SEED_USERNAME: admin
       HUGINN_SEED_PASSWORD: ${ADMIN_PASSWORD}
       # Email settings for sending notifications
@@ -120,6 +121,7 @@ Create the environment file.
 # .env - Sensitive values for Huginn
 POSTGRES_PASSWORD=your-secure-postgres-password
 ADMIN_PASSWORD=your-secure-admin-password
+APP_SECRET_TOKEN=generate-a-long-random-secret
 SMTP_USER=your-email@gmail.com
 SMTP_PASSWORD=your-app-specific-password
 ```
@@ -185,7 +187,7 @@ Here is a step-by-step example of monitoring a product page for price changes.
 
 Set the schedule to run every 6 hours. The "on_change" mode means it only creates events when the extracted data differs from the previous run.
 
-4. Create a second agent, an EmailAgent or SlackAgent, that receives events from the WebsiteAgent.
+4. Create a second agent, an EmailAgent, that receives events from the WebsiteAgent.
 
 ```json
 {
