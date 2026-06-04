@@ -29,6 +29,8 @@ metadata:
   name: monorepo-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
   - git:
       repoURL: https://github.com/myorg/applications
@@ -37,16 +39,16 @@ spec:
       - path: apps/*
   template:
     metadata:
-      name: '{{path.basename}}'
+      name: '{{.path.basename}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/applications
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path.basename}}'
+        namespace: '{{.path.basename}}'
       syncPolicy:
         automated:
           prune: true
@@ -78,13 +80,16 @@ metadata:
   name: production-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
   - git:
       repoURL: https://github.com/myorg/monorepo
       revision: main
       directories:
       - path: services/*
-        exclude: services/deprecated-*
+      - path: services/deprecated-*
+        exclude: true
 ```
 
 This deploys all services except those starting with `deprecated-`.
@@ -117,6 +122,8 @@ metadata:
   name: apps-from-files
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
   - git:
       repoURL: https://github.com/myorg/applications
@@ -125,21 +132,21 @@ spec:
       - path: "apps/*/app.yaml"
   template:
     metadata:
-      name: '{{name}}'
+      name: '{{.name}}'
       labels:
-        tier: '{{tier}}'
+        tier: '{{.tier}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/applications
         targetRevision: main
-        path: 'apps/{{name}}'
+        path: 'apps/{{.name}}'
         helm:
           values: |
-            replicaCount: {{replicas}}
+            replicaCount: {{.replicas}}
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{namespace}}'
+        namespace: '{{.namespace}}'
 ```
 
 The template interpolates values from app.yaml files.
@@ -155,6 +162,8 @@ metadata:
   name: multi-env-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
   - matrix:
       generators:
@@ -176,18 +185,18 @@ spec:
             namespace: development
   template:
     metadata:
-      name: '{{path.basename}}-{{cluster}}'
+      name: '{{.path.basename}}-{{.cluster}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/apps
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
         kustomize:
-          namePrefix: '{{cluster}}-'
+          namePrefix: '{{.cluster}}-'
       destination:
-        server: '{{url}}'
-        namespace: '{{namespace}}'
+        server: '{{.url}}'
+        namespace: '{{.namespace}}'
 ```
 
 This creates Applications for each service in each environment.
@@ -203,14 +212,11 @@ metadata:
   name: branch-promotion
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
   - matrix:
       generators:
-      - git:
-          repoURL: https://github.com/myorg/apps
-          revision: '{{branch}}'
-          directories:
-          - path: apps/*
       - list:
           elements:
           - branch: develop
@@ -222,18 +228,23 @@ spec:
           - branch: main
             cluster: prod
             server: https://prod-cluster
+      - git:
+          repoURL: https://github.com/myorg/apps
+          revision: '{{.branch}}'
+          directories:
+          - path: apps/*
   template:
     metadata:
-      name: '{{path.basename}}-{{cluster}}'
+      name: '{{.path.basename}}-{{.cluster}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/apps
-        targetRevision: '{{branch}}'
-        path: '{{path}}'
+        targetRevision: '{{.branch}}'
+        path: '{{.path.path}}'
       destination:
-        server: '{{server}}'
-        namespace: '{{path.basename}}'
+        server: '{{.server}}'
+        namespace: '{{.path.basename}}'
 ```
 
 ## Nested Directory Structures
@@ -247,6 +258,8 @@ metadata:
   name: team-based-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
   - git:
       repoURL: https://github.com/myorg/monorepo
@@ -255,18 +268,18 @@ spec:
       - path: teams/*/apps/*
   template:
     metadata:
-      name: '{{path[1]}}-{{path[3]}}'
+      name: '{{index .path.segments 1}}-{{index .path.segments 3}}'
       labels:
-        team: '{{path[1]}}'
+        team: '{{index .path.segments 1}}'
     spec:
-      project: '{{path[1]}}'
+      project: '{{index .path.segments 1}}'
       source:
         repoURL: https://github.com/myorg/monorepo
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path[1]}}-{{path[3]}}'
+        namespace: '{{index .path.segments 1}}-{{index .path.segments 3}}'
 ```
 
 Structure:
@@ -294,6 +307,8 @@ metadata:
   name: combined-generators
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
   - merge:
       mergeKeys:
@@ -311,18 +326,18 @@ spec:
           - path: "apps/*/config.json"
   template:
     metadata:
-      name: '{{path.basename}}'
+      name: '{{.path.basename}}'
       annotations:
-        config: '{{config}}'
+        config: '{{.config}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/apps
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{namespace}}'
+        namespace: '{{.namespace}}'
 ```
 
 ## Monitoring ApplicationSet
@@ -349,7 +364,7 @@ kubectl logs -n argocd deployment/argocd-applicationset-controller -f
 
 ## Progressive Rollout with Generators
 
-Implement canary deployments using generators:
+Generate stable and canary variants using generators:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -358,6 +373,8 @@ metadata:
   name: canary-rollout
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
   - matrix:
       generators:
@@ -374,20 +391,20 @@ spec:
             weight: 10
   template:
     metadata:
-      name: '{{name}}-{{variant}}'
+      name: '{{.name}}-{{.variant}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/apps
         targetRevision: main
-        path: 'apps/{{name}}'
+        path: 'apps/{{.name}}'
         helm:
           values: |
-            variant: {{variant}}
-            weight: {{weight}}
+            variant: {{.variant}}
+            weight: {{.weight}}
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{namespace}}'
+        namespace: '{{.namespace}}'
 ```
 
 ApplicationSet Git generators transform monorepo management from manual Application creation to fully automated discovery and deployment based on repository structure.
