@@ -10,7 +10,7 @@ Description: Learn how to leverage Kustomize buildMetadata field to track build 
 
 Understanding which overlay generated specific resources becomes challenging in complex Kustomize setups with multiple layers of inheritance. The buildMetadata field addresses this by injecting metadata about the build process into generated resources. This information helps with debugging, auditing, and understanding the provenance of deployed configurations.
 
-Build metadata particularly helps when troubleshooting issues in production. Rather than tracing through multiple overlay layers manually, you can inspect resource annotations to see exactly which kustomization produced them and when.
+Build metadata particularly helps when troubleshooting issues in production. Rather than tracing through multiple overlay layers manually, you can inspect resource annotations to see where resources originated and which transformations acted on them.
 
 ## Understanding buildMetadata
 
@@ -28,7 +28,7 @@ resources:
 - deployment.yaml
 ```
 
-This configuration adds both a managed-by label and origin annotations to all generated resources.
+This configuration adds both a managed-by label and origin annotations to all resources in the build output.
 
 ## Available buildMetadata options
 
@@ -36,7 +36,7 @@ Kustomize supports several buildMetadata values:
 
 - `managedByLabel`: Adds app.kubernetes.io/managed-by label
 - `originAnnotations`: Adds config.kubernetes.io/origin annotation
-- `transformerAnnotations`: Adds config.kubernetes.io/transformations annotation
+- `transformerAnnotations`: Adds alpha.config.kubernetes.io/transformations annotation
 
 You can combine multiple options in an array:
 
@@ -67,7 +67,7 @@ kind: Deployment
 metadata:
   name: my-app
   labels:
-    app.kubernetes.io/managed-by: kustomize-v5.0.0
+    app.kubernetes.io/managed-by: kustomize-v5.8.1
 spec:
   # ...
 ```
@@ -85,7 +85,7 @@ kind: Kustomization
 
 buildMetadata: [originAnnotations]
 
-bases:
+resources:
 - ../../base
 
 namespace: production
@@ -100,13 +100,12 @@ metadata:
   name: my-app
   annotations:
     config.kubernetes.io/origin: |
-      path: base/deployment.yaml
-      ref: overlays/production
+      path: ../../base/deployment.yaml
 spec:
   # ...
 ```
 
-The annotation shows the original file path and the overlay that included it. This makes it easy to locate the source manifest when debugging.
+The annotation shows the original file path. This makes it easy to locate the source manifest when debugging.
 
 ## Recording transformations
 
@@ -121,8 +120,9 @@ buildMetadata: [transformerAnnotations]
 
 namespace: production
 
-commonLabels:
-  environment: prod
+labels:
+- pairs:
+    environment: prod
 
 images:
 - name: myapp
@@ -140,10 +140,19 @@ kind: Deployment
 metadata:
   name: my-app
   annotations:
-    config.kubernetes.io/transformations: |
-      - namespace: production
-      - commonLabels: {environment: prod}
-      - images: {myapp: newTag=v2.1.0}
+    alpha.config.kubernetes.io/transformations: |
+      - configuredIn: kustomization.yaml
+        configuredBy:
+          apiVersion: builtin
+          kind: NamespaceTransformer
+      - configuredIn: kustomization.yaml
+        configuredBy:
+          apiVersion: builtin
+          kind: LabelTransformer
+      - configuredIn: kustomization.yaml
+        configuredBy:
+          apiVersion: builtin
+          kind: ImageTagTransformer
 spec:
   # ...
 ```
@@ -162,7 +171,7 @@ kind: Kustomization
 # Development doesn't need detailed tracking
 buildMetadata: [managedByLabel]
 
-bases:
+resources:
 - ../../base
 ```
 
@@ -174,7 +183,7 @@ kind: Kustomization
 # Production tracks everything for audit compliance
 buildMetadata: [managedByLabel, originAnnotations, transformerAnnotations]
 
-bases:
+resources:
 - ../../base
 ```
 
@@ -222,7 +231,7 @@ kind: Deployment
 metadata:
   name: my-app
   labels:
-    app.kubernetes.io/managed-by: kustomize-v5.0.0
+    app.kubernetes.io/managed-by: kustomize-v5.8.1
   annotations:
     config.kubernetes.io/origin: |
       path: base/deployment.yaml
@@ -238,7 +247,7 @@ Use kubectl to find resources based on build metadata:
 
 ```bash
 # Find all Kustomize-managed resources
-kubectl get all -A -l app.kubernetes.io/managed-by=kustomize-v5.0.0
+kubectl get all -A -l app.kubernetes.io/managed-by=kustomize-v5.8.1
 
 # Find resources from specific build
 kubectl get deploy -o jsonpath='{.items[?(@.metadata.annotations.build-number=="12345")].metadata.name}'
@@ -261,14 +270,14 @@ kubectl get deploy my-app -o yaml
 kubectl get deploy my-app -o jsonpath='{.metadata.annotations.config\.kubernetes\.io/origin}'
 
 # View transformation history
-kubectl get deploy my-app -o jsonpath='{.metadata.annotations.config\.kubernetes\.io/transformations}'
+kubectl get deploy my-app -o jsonpath='{.metadata.annotations.alpha\.config\.kubernetes\.io/transformations}'
 ```
 
-The metadata reveals the exact path through your kustomization structure, making it easier to identify where issues were introduced.
+The metadata reveals the source file and transformer history, making it easier to identify where issues were introduced.
 
 ## Build metadata in multi-layer overlays
 
-In complex hierarchies, build metadata tracks the full chain:
+In complex hierarchies, origin metadata still identifies the original source file, while transformer metadata shows which kustomization files applied transformations:
 
 ```text
 base/
@@ -286,23 +295,30 @@ overlays/
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-buildMetadata: [originAnnotations]
+buildMetadata: [originAnnotations, transformerAnnotations]
 
-bases:
+resources:
 - ../shared
 ```
 
-The origin annotation shows the complete inheritance:
+The annotations show the source file and the transformations applied by each layer:
 
 ```yaml
 annotations:
+  alpha.config.kubernetes.io/transformations: |
+    - configuredIn: ../shared/kustomization.yaml
+      configuredBy:
+        apiVersion: builtin
+        kind: AnnotationsTransformer
+    - configuredIn: kustomization.yaml
+      configuredBy:
+        apiVersion: builtin
+        kind: NamespaceTransformer
   config.kubernetes.io/origin: |
-    path: base/deployment.yaml
-    ref: overlays/shared
-    ref: overlays/production
+    path: ../../base/deployment.yaml
 ```
 
-This reveals that the resource passed through both the shared overlay and production overlay.
+This reveals the source file and that transformers from both the shared overlay and production overlay acted on the resource.
 
 ## Compliance and audit requirements
 
@@ -340,7 +356,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/managed-by: kustomize-v5.0.0
+      app.kubernetes.io/managed-by: kustomize-v5.8.1
 ```
 
 Or create alerts for resources missing expected metadata:
@@ -357,7 +373,7 @@ spec:
     rules:
     - alert: MissingBuildMetadata
       expr: |
-        count(kube_deployment_labels{label_app_kubernetes_io_managed_by=""}) > 0
+        count(kube_deployment_info unless on(namespace, deployment) kube_deployment_labels{label_app_kubernetes_io_managed_by=~".+"}) > 0
       annotations:
         description: "Deployment missing managed-by label"
 ```
@@ -369,37 +385,23 @@ Build metadata adds annotations and labels to resources, increasing their size s
 ```bash
 # Compare resource sizes
 kustomize build --enable-alpha-plugins . > without-metadata.yaml
-kustomize build --enable-alpha-plugins -o buildMetadata=all . > with-metadata.yaml
+kustomize edit add buildmetadata managedByLabel,originAnnotations,transformerAnnotations
+kustomize build --enable-alpha-plugins . > with-metadata.yaml
 
 wc -l without-metadata.yaml with-metadata.yaml
 ```
 
-Even with all metadata options enabled, the size increase is typically less than 5%. The benefits for debugging and auditing far outweigh this minor cost.
+Even with all metadata options enabled, the size increase is usually small for typical manifests. The benefits for debugging and auditing often outweigh this minor cost.
 
-## Excluding metadata from specific resources
+## Removing metadata from specific resources
 
-Sometimes you need to exclude metadata from certain resources:
+Kustomize does not provide a per-resource buildMetadata exclusion field. If you need to strip metadata from certain resources, do it as a post-build step:
 
-```yaml
-# kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-buildMetadata: [managedByLabel, originAnnotations]
-
-resources:
-- deployment.yaml
-- service.yaml
-
-patches:
-- target:
-    kind: Secret
-  patch: |-
-    - op: remove
-      path: /metadata/annotations/config.kubernetes.io~1origin
+```bash
+kustomize build . | yq 'del(select(.kind == "Secret").metadata.annotations."config.kubernetes.io/origin")'
 ```
 
-This removes origin annotations from Secrets after they're added, useful when annotation size matters.
+This removes origin annotations from Secrets after Kustomize builds the output, useful when annotation size matters.
 
 ## Best practices for build metadata
 
