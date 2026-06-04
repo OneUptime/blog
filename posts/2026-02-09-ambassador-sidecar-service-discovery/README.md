@@ -19,26 +19,51 @@ This pattern is essential for modern Kubernetes deployments where separation of 
 Here's a foundational example showing the core pattern:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-ambassador-config
+  namespace: default
+data:
+  haproxy.cfg: |
+    global
+      maxconn 256
+    defaults
+      mode tcp
+      timeout connect 5s
+      timeout client 30s
+      timeout server 30s
+    frontend redis_in
+      bind *:6379
+      default_backend redis_backend
+    backend redis_backend
+      server redis redis.default.svc.cluster.local:6379 check
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: example-app
+  name: myapp
   namespace: default
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: example
+      app: myapp
   template:
     metadata:
       labels:
-        app: example
+        app: myapp
     spec:
       containers:
       - name: app
         image: myapp:latest
         ports:
         - containerPort: 8080
+        env:
+        - name: REDIS_HOST
+          value: "localhost"
+        - name: REDIS_PORT
+          value: "6379"
         resources:
           requests:
             memory: "256Mi"
@@ -46,6 +71,19 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+      - name: redis-ambassador
+        image: haproxy:3.0-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        volumeMounts:
+        - name: redis-ambassador-config
+          mountPath: /usr/local/etc/haproxy/haproxy.cfg
+          subPath: haproxy.cfg
+      volumes:
+      - name: redis-ambassador-config
+        configMap:
+          name: redis-ambassador-config
 ```
 
 ## Advanced Configuration
@@ -53,6 +91,11 @@ spec:
 Building on the basics, here's a more sophisticated implementation:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-service-account
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -66,19 +109,38 @@ data:
     features:
       enabled: true
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-ambassador-config
+data:
+  haproxy.cfg: |
+    global
+      maxconn 256
+    defaults
+      mode tcp
+      timeout connect 5s
+      timeout client 30s
+      timeout server 30s
+    frontend redis_in
+      bind *:6379
+      default_backend redis_backend
+    backend redis_backend
+      server redis redis.default.svc.cluster.local:6379 check
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: advanced-app
+  name: myapp
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: advanced
+      app: myapp
   template:
     metadata:
       labels:
-        app: advanced
+        app: myapp
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9090"
@@ -90,16 +152,34 @@ spec:
         ports:
         - containerPort: 8080
           name: http
+        - containerPort: 9090
+          name: metrics
         volumeMounts:
         - name: config
           mountPath: /etc/config
         env:
         - name: CONFIG_PATH
           value: "/etc/config/config.yaml"
+        - name: REDIS_HOST
+          value: "localhost"
+        - name: REDIS_PORT
+          value: "6379"
+      - name: redis-ambassador
+        image: haproxy:3.0-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        volumeMounts:
+        - name: redis-ambassador-config
+          mountPath: /usr/local/etc/haproxy/haproxy.cfg
+          subPath: haproxy.cfg
       volumes:
       - name: config
         configMap:
           name: app-config
+      - name: redis-ambassador-config
+        configMap:
+          name: redis-ambassador-config
 ```
 
 ## Implementation with Go
@@ -301,8 +381,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: azure/k8s-set-context@v3
+      - uses: actions/checkout@v6
+      - uses: azure/k8s-set-context@v4
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
@@ -319,11 +399,11 @@ Test your implementation thoroughly before production deployment:
 kubectl create namespace test-environment
 
 # Deploy to test
-kubectl apply -f deployment.yaml -n test-environment
+kubectl apply -f k8s/ -n test-environment
 
 # Run tests
 kubectl run test-pod --image=busybox --rm -it \
-  -n test-environment -- sh -c "wget -O- http://myapp:8080/health"
+  -n test-environment -- sh -c "wget -O- http://myapp-service/health"
 
 # Check logs
 kubectl logs -f deployment/myapp -n test-environment
@@ -439,6 +519,18 @@ spec:
     - protocol: TCP
       port: 8080
   egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
   - to:
     - podSelector:
         matchLabels:
