@@ -8,15 +8,15 @@ Description: Learn how to deploy Fluent Bit as a resource-efficient log collecto
 
 ---
 
-Fluent Bit offers the same log collection capabilities as Fluentd but with a fraction of the resource consumption. Written in C instead of Ruby, Fluent Bit uses approximately 450KB of memory compared to Fluentd's 40MB base footprint. This makes it ideal for edge devices, resource-constrained environments, and Kubernetes clusters where you need a log collector on every node without significant overhead.
+Fluent Bit offers the same log collection capabilities as Fluentd but with a fraction of the resource consumption. Written in C instead of Ruby, Fluent Bit is designed for low memory and CPU consumption compared to Fluentd's larger Ruby-based footprint. This makes it ideal for edge devices, resource-constrained environments, and Kubernetes clusters where you need a log collector on every node without significant overhead.
 
 ## Understanding Fluent Bit Architecture
 
-Fluent Bit operates as a single-threaded event processor with a simple pipeline: input, parser, filter, buffer, output. Unlike Fluentd's plugin-based Ruby architecture, Fluent Bit uses compiled C plugins that execute with minimal overhead. The core focuses on performance and efficiency rather than flexibility.
+Fluent Bit operates around a main event loop with a simple pipeline: input, parser, filter, buffer, output. Inputs can run in threaded mode and outputs can use worker threads, but the design still focuses on performance and efficiency. Unlike Fluentd's plugin-based Ruby architecture, Fluent Bit uses compiled C plugins that execute with minimal overhead.
 
 This design makes Fluent Bit perfect for the collection and forwarding use case. It excels at reading logs from files, containers, or system sources, applying basic transformations, and shipping to a central aggregator. For complex filtering logic or routing, many deployments use Fluent Bit for collection and forward to Fluentd for heavy processing.
 
-The memory efficiency becomes critical in large Kubernetes deployments. With 100 nodes, using Fluentd DaemonSet consumes 4GB of memory just for log collection. Fluent Bit reduces this to 45MB, freeing resources for actual workloads.
+The memory efficiency becomes critical in large Kubernetes deployments. With 100 nodes, reducing per-node log collector memory from tens of megabytes to a smaller Fluent Bit footprint can free significant resources for actual workloads.
 
 ## Installing Fluent Bit on Kubernetes
 
@@ -44,7 +44,7 @@ spec:
       serviceAccountName: fluent-bit
       containers:
       - name: fluent-bit
-        image: fluent/fluent-bit:2.2
+        image: fluent/fluent-bit:5.0.6
         resources:
           requests:
             cpu: 100m
@@ -56,8 +56,8 @@ spec:
         - name: varlog
           mountPath: /var/log
           readOnly: true
-        - name: varlibdockercontainers
-          mountPath: /var/lib/docker/containers
+        - name: varlogpods
+          mountPath: /var/log/pods
           readOnly: true
         - name: fluent-bit-config
           mountPath: /fluent-bit/etc/
@@ -65,9 +65,9 @@ spec:
       - name: varlog
         hostPath:
           path: /var/log
-      - name: varlibdockercontainers
+      - name: varlogpods
         hostPath:
-          path: /var/lib/docker/containers
+          path: /var/log/pods
       - name: fluent-bit-config
         configMap:
           name: fluent-bit-config
@@ -113,12 +113,11 @@ Deploy the resources:
 ```bash
 kubectl create namespace logging
 kubectl apply -f fluent-bit-rbac.yaml
-kubectl apply -f fluent-bit-daemonset.yaml
 ```
 
 ## Basic Configuration Structure
 
-Fluent Bit uses a simple INI-like configuration format. Create a ConfigMap with the main configuration:
+Fluent Bit supports YAML configuration as the standard format as of v3.2 and still supports the classic INI-like configuration format shown here. Create a ConfigMap with the main configuration:
 
 ```yaml
 # fluent-bit-config.yaml
@@ -185,7 +184,7 @@ Apply the configuration:
 
 ```bash
 kubectl apply -f fluent-bit-config.yaml
-kubectl rollout restart daemonset/fluent-bit -n logging
+kubectl apply -f fluent-bit-daemonset.yaml
 ```
 
 ## Configuring Multiple Input Sources
@@ -322,12 +321,11 @@ Send logs to multiple destinations based on tags:
     Logstash_Prefix k8s
     Retry_Limit     5
 
-# Send error logs to Slack
+# Send error-tagged logs to Slack
 [OUTPUT]
     Name            slack
-    Match           *
+    Match           errors.*
     Webhook         https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-    Condition       Matching level ERROR
 
 # Send metrics to Prometheus
 [OUTPUT]
@@ -344,13 +342,12 @@ Send logs to multiple destinations based on tags:
     Port            24224
     Require_ack_response On
 
-# Send critical logs to file for local debugging
+# Send critical-tagged logs to file for local debugging
 [OUTPUT]
     Name            file
-    Match           *
+    Match           critical.*
     Path            /var/log/fluent-bit
     Format          json
-    Condition       Matching level CRITICAL
 ```
 
 ## Performance Tuning
@@ -383,7 +380,7 @@ Optimize Fluent Bit for high-throughput environments:
     Parser            docker
     Tag               kube.*
 
-    # Buffer size per file
+    # Memory limit for this input when filesystem buffering is not enabled
     Mem_Buf_Limit     5MB
 
     # Skip lines longer than 32KB
@@ -417,7 +414,7 @@ kubectl port-forward -n logging daemonset/fluent-bit 2020:2020
 # View metrics
 curl http://localhost:2020/api/v1/metrics
 
-# View active inputs
+# View Prometheus-formatted metrics
 curl http://localhost:2020/api/v1/metrics/prometheus
 ```
 
@@ -486,8 +483,9 @@ kubectl logs -n logging daemonset/fluent-bit -f
 # Check specific pod
 kubectl logs -n logging fluent-bit-xxxxx
 
-# Enable debug logging
-kubectl set env daemonset/fluent-bit -n logging FLB_LOG_LEVEL=debug
+# Enable debug logging by changing Log_Level in the ConfigMap, then restart
+kubectl edit configmap/fluent-bit-config -n logging
+kubectl rollout restart daemonset/fluent-bit -n logging
 ```
 
 Common issues:
@@ -510,8 +508,8 @@ Test configuration locally:
 
 ```bash
 # Run Fluent Bit with local config
-docker run -v /path/to/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf \
-  fluent/fluent-bit:2.2 \
+docker run -v /path/to/fluent-bit/:/fluent-bit/etc/ \
+  fluent/fluent-bit:5.0.6 \
   /fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf
 
 # Validate configuration syntax
