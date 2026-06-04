@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, EphemeralVolume, TemporaryStorage
 
-Description: Learn how to use generic ephemeral volumes in Kubernetes to provide temporary scratch space for pods with automatic cleanup, better performance than emptyDir.
+Description: Learn how to use generic ephemeral volumes in Kubernetes to provide temporary scratch space for pods with automatic cleanup and more storage features than emptyDir.
 
 ---
 
@@ -12,14 +12,14 @@ Generic ephemeral volumes provide temporary storage that follows the pod lifecyc
 
 ## Understanding Generic Ephemeral Volumes
 
-Generic ephemeral volumes are created and deleted with the pod, similar to emptyDir, but backed by PersistentVolumes. This gives you:
+Generic ephemeral volumes are created and deleted with the pod, similar to emptyDir, but backed by PersistentVolumes and PersistentVolumeClaims. This gives you:
 
 1. **CSI driver features** - Snapshots, cloning, volume metrics
 2. **StorageClass parameters** - Custom IOPS, encryption, filesystem type
-3. **Automatic cleanup** - Volume deleted when pod terminates
+3. **Automatic cleanup** - Volume deleted when the pod is deleted
 4. **Resource tracking** - Better visibility into storage usage
 
-Unlike persistent volumes, ephemeral volumes don't survive pod deletion.
+Unlike persistent volumes, ephemeral volumes don't survive pod deletion unless the StorageClass uses a Retain reclaim policy and you clean up the retained storage separately.
 
 ## Basic Generic Ephemeral Volume
 
@@ -71,7 +71,7 @@ kubectl get pod data-processor
 kubectl get pvc
 
 # The PVC name includes the pod name
-# Example: data-processor-scratch-xxxxx
+# Example: data-processor-scratch
 
 # Check volume usage
 kubectl exec data-processor -- df -h /scratch
@@ -148,6 +148,7 @@ spec:
         - /bin/sh
         - -c
         - |
+          apk add --no-cache aws-cli wget
           # Download video to ephemeral storage
           wget -O /scratch/input.mp4 $VIDEO_URL
           # Process video
@@ -319,6 +320,9 @@ spec:
       containers:
       - name: postgres
         image: postgres:15
+        env:
+        - name: POSTGRES_PASSWORD
+          value: change-me
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
@@ -346,21 +350,14 @@ Control ephemeral storage usage with resource quotas:
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: ephemeral-storage-quota
+  name: generic-ephemeral-storage-quota
   namespace: default
 spec:
   hard:
-    # Limit total ephemeral storage
-    requests.ephemeral-storage: "500Gi"
-    # Limit number of ephemeral volumes
+    # Limit total PVC-backed ephemeral storage
+    requests.storage: "500Gi"
+    # Limit number of PVCs, including generic ephemeral volume PVCs
     persistentvolumeclaims: "50"
-  scopeSelector:
-    matchExpressions:
-    - operator: In
-      scopeName: PriorityClass
-      values:
-      - medium
-      - low
 ```
 
 ## Monitoring Ephemeral Volume Usage
@@ -382,10 +379,8 @@ kubectl get pods -A -o json | jq -r '.items[] |
     ephemeralVolumes: [.spec.volumes[] | select(.ephemeral != null) | .name]
   }'
 
-# Total ephemeral storage used
-kubectl get pvc -A -o json | jq -r '[.items[] |
-  select(.metadata.ownerReferences[0].kind == "Pod") |
-  .status.capacity.storage | gsub("[^0-9]";"") | tonumber] | add'
+# Check quota usage for PVC-backed ephemeral storage
+kubectl describe resourcequota generic-ephemeral-storage-quota
 ```
 
 ## Cleanup and Troubleshooting
@@ -393,21 +388,22 @@ kubectl get pvc -A -o json | jq -r '[.items[] |
 Handle orphaned ephemeral volumes:
 
 ```bash
-# Find PVCs without owner pods (orphaned)
-kubectl get pvc -o json | jq -r '.items[] |
-  select(.metadata.ownerReferences[0].kind == "Pod") |
-  select(.metadata.ownerReferences[0].name as $pod |
-    ([.metadata.namespace] | @sh) as $ns |
-    (["kubectl get pod -n", $ns, $pod, "-o name 2>/dev/null"] |
-    join(" ") | @sh | "test -z $(" + . + ")") | . == "test -z $()") |
-  .metadata.name'
+# Find PVCs whose owner pod no longer exists
+kubectl get pvc -A -o json | jq -r '.items[] |
+  select(any(.metadata.ownerReferences[]?; .kind == "Pod")) |
+  [.metadata.namespace, .metadata.name, (.metadata.ownerReferences[] | select(.kind == "Pod") | .name)] |
+  @tsv' | while read -r namespace pvc pod; do
+  if ! kubectl get pod "$pod" -n "$namespace" >/dev/null 2>&1; then
+    echo "$namespace/$pvc"
+  fi
+done
 
 # Manually clean up orphaned ephemeral PVCs
-kubectl delete pvc <orphaned-pvc-name>
+kubectl delete pvc <orphaned-pvc-name> -n <namespace>
 
 # Force delete stuck ephemeral volumes
-kubectl patch pvc <pvc-name> -p '{"metadata":{"finalizers":null}}'
-kubectl delete pvc <pvc-name> --force --grace-period=0
+kubectl patch pvc <pvc-name> -n <namespace> -p '{"metadata":{"finalizers":null}}'
+kubectl delete pvc <pvc-name> -n <namespace> --force --grace-period=0
 ```
 
 Common issues:
