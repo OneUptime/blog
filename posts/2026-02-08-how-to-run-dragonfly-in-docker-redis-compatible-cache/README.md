@@ -32,7 +32,7 @@ docker run -d \
   --requirepass mysecretpass
 ```
 
-The `--ulimit memlock=-1` flag is important. Dragonfly uses memory-locked pages for performance, and this setting allows it to lock memory without limits.
+The `--ulimit memlock=-1` flag is important. Dragonfly's Docker examples use it to raise the container's locked-memory limit, which avoids startup and runtime issues on hosts with a low default `memlock` limit.
 
 Test with any Redis client.
 
@@ -97,7 +97,7 @@ docker compose up -d
 Key flags explained:
 - `--proactor_threads 4`: Number of I/O threads (defaults to number of CPU cores)
 - `--cache_mode`: Enables cache-optimized eviction (evicts keys proactively when approaching memory limit)
-- `--maxmemory 2gb`: Hard memory limit
+- `--maxmemory 2gb`: Database memory limit
 - `--dbfilename dump`: Name for the snapshot file
 
 ## Cache Mode vs Database Mode
@@ -115,7 +115,7 @@ docker run -d \
   -p 6379:6379 \
   --ulimit memlock=-1 \
   docker.dragonflydb.io/dragonflydb/dragonfly:latest \
-  --cache_mode --maxmemory 1gb
+  --cache_mode --maxmemory 1gb --proactor_threads 4
 ```
 
 ## Using Dragonfly with Your Application
@@ -342,4 +342,4 @@ docker exec dragonfly redis-cli -a strongpassword123 DBSIZE
 
 ## Summary
 
-Dragonfly in Docker provides a modern, high-performance replacement for Redis. Its shared-nothing multi-threaded architecture delivers higher throughput with lower memory usage. Every Redis client, command, and tool works unchanged. Use cache mode for pure caching workloads, database mode for persistent data. The migration path from Redis is simple since Dragonfly reads RDB files directly. For most applications, switching to Dragonfly means changing only the Docker image and enjoying better performance on the same hardware.
+Dragonfly in Docker provides a modern, high-performance replacement for Redis. Its shared-nothing multi-threaded architecture delivers higher throughput with lower memory usage. Most Redis clients and common commands work unchanged, while less common commands should be checked against Dragonfly's compatibility matrix. Use cache mode for pure caching workloads, and database mode with snapshots for data-store workloads. The migration path from Redis is simple since Dragonfly reads RDB files directly. For most applications, switching to Dragonfly means changing only the Docker image and enjoying better performance on the same hardware.
