@@ -25,16 +25,19 @@ Download and install Node Exporter on your target hosts:
 ```bash
 # Download the latest release
 
-wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
+wget https://github.com/prometheus/node_exporter/releases/download/v1.11.1/node_exporter-1.11.1.linux-amd64.tar.gz
 
 # Extract the archive
-tar xvfz node_exporter-1.7.0.linux-amd64.tar.gz
+tar xvfz node_exporter-1.11.1.linux-amd64.tar.gz
 
 # Move binary to system path
-sudo mv node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+sudo mv node_exporter-1.11.1.linux-amd64/node_exporter /usr/local/bin/
+
+# Create dedicated user
+sudo useradd -rs /bin/false node_exporter
 
 # Create systemd service file
-sudo cat > /etc/systemd/system/node_exporter.service <<EOF
+sudo tee /etc/systemd/system/node_exporter.service > /dev/null <<EOF
 [Unit]
 Description=Prometheus Node Exporter
 After=network.target
@@ -44,15 +47,12 @@ Type=simple
 User=node_exporter
 ExecStart=/usr/local/bin/node_exporter \
   --collector.filesystem.mount-points-exclude='^/(dev|proc|sys|var/lib/docker/.+)($|/)' \
-  --collector.netclass.ignored-devices='^(veth.*)$'
+  --collector.netdev.device-exclude='^(veth.*)$'
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 EOF
-
-# Create dedicated user
-sudo useradd -rs /bin/false node_exporter
 
 # Enable and start the service
 sudo systemctl daemon-reload
@@ -70,6 +70,7 @@ Add Node Exporter targets to your Prometheus configuration:
 # prometheus.yml
 scrape_configs:
   - job_name: 'node_exporter'
+    scrape_interval: 15s
     static_configs:
       - targets:
           - 'node01.example.com:9100'
@@ -113,13 +114,13 @@ spec:
       hostIPC: true
       containers:
       - name: node-exporter
-        image: prom/node-exporter:v1.7.0
+        image: prom/node-exporter:v1.11.1
         args:
           - '--path.procfs=/host/proc'
           - '--path.sysfs=/host/sys'
           - '--path.rootfs=/host/root'
           - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($|/)'
-          - '--collector.netclass.ignored-devices=^(veth.*|cali.*|flannel.*|cni.*)$'
+          - '--collector.netdev.device-exclude=^(veth.*|cali.*|flannel.*|cni.*)$'
         ports:
         - containerPort: 9100
           hostPort: 9100
@@ -240,7 +241,7 @@ Focus on these key Node Exporter metrics for system health:
 rate(node_network_receive_bytes_total[5m])
 
 # Disk I/O operations per second
-rate(node_disk_io_time_seconds_total[5m])
+rate(node_disk_reads_completed_total[5m]) + rate(node_disk_writes_completed_total[5m])
 
 # System load average
 node_load1
@@ -259,7 +260,7 @@ Reduce cardinality by excluding irrelevant filesystems and network devices:
 --collector.filesystem.mount-points-exclude='^/(dev|proc|sys|var/lib/docker/.+|run/.+)($|/)'
 
 # Ignore virtual network interfaces
---collector.netclass.ignored-devices='^(veth.*|docker.*|br-.*|cni.*)$'
+--collector.netdev.device-exclude='^(veth.*|docker.*|br-.*|cni.*)$'
 
 # Exclude specific filesystem types
 --collector.filesystem.fs-types-exclude='^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$'
