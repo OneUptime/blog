@@ -273,7 +273,7 @@ When you want to clean up stopped containers along with other unused Docker reso
 # Remove stopped containers, unused networks, dangling images, and build cache
 docker system prune -f
 
-# Also remove unused volumes (WARNING: may delete data)
+# Also remove unused anonymous volumes (WARNING: may delete data)
 docker system prune --volumes -f
 
 # Preview what would be cleaned up
@@ -304,7 +304,7 @@ docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
 docker rm -f stubborn-container
 ```
 
-**Volume data loss**: Removing a container does not remove its named volumes, but anonymous volumes are deleted. If you need the data, commit or copy it first.
+**Volume data loss**: Removing a container does not remove named or anonymous volumes by default. Anonymous volumes are removed if you use `docker rm -v` or if the container was started with `--rm`. If you need the data, commit or copy it first.
 
 ```bash
 # Copy data out before removing the container
