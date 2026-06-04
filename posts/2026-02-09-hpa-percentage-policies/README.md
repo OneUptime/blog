@@ -10,7 +10,7 @@ Description: Configure percentage-based HPA scaling policies to control how rapi
 
 Percentage-based scaling policies in HPA allow you to control scaling velocity as a proportion of current replica count. Instead of adding or removing a fixed number of pods, you scale by a percentage. This makes scaling behavior consistent regardless of deployment size, automatically adding more pods for large deployments and fewer for small ones.
 
-A 50% scale-up policy adds 5 pods when you have 10 running, but adds 25 pods when you have 50 running. This proportional scaling maintains appropriate response times across different deployment sizes without requiring separate HPA configurations for different scales. Percentage policies are particularly useful for deployments that vary significantly in size over time or across environments.
+A 50% scale-up policy can add up to 5 pods when you have 10 running, but can add up to 25 pods when you have 50 running. This proportional scaling maintains appropriate response times across different deployment sizes without requiring separate HPA configurations for different scales. Percentage policies are particularly useful for deployments that vary significantly in size over time or across environments.
 
 ## Understanding Percentage Policies
 
@@ -94,9 +94,9 @@ spec:
       - type: Percent
         value: 100  # Double capacity
         periodSeconds: 60
-      # Absolute for small deployments
+      # Absolute option for small deployments
       - type: Pods
-        value: 20   # Add at least 20 pods
+        value: 20   # Allow up to 20 pods
         periodSeconds: 60
       selectPolicy: Max  # Use whichever adds more pods
 
@@ -148,7 +148,7 @@ spec:
         value: 200  # Triple capacity if needed
         periodSeconds: 30
       - type: Pods
-        value: 50   # Or add 50 pods minimum
+        value: 50   # Or allow up to 50 pods
         periodSeconds: 30
       selectPolicy: Max
 
@@ -274,15 +274,15 @@ spec:
     scaleUp:
       stabilizationWindowSeconds: 30
       policies:
-      # Fast initial response
+      # Larger short-window increase
       - type: Percent
         value: 100
         periodSeconds: 30
-      # Moderate subsequent scaling
+      # Smaller long-window increase
       - type: Percent
         value: 30
         periodSeconds: 90
-      # Cap maximum growth
+      # Absolute option for larger bursts
       - type: Pods
         value: 100
         periodSeconds: 60
@@ -296,7 +296,7 @@ spec:
         periodSeconds: 120
 ```
 
-Though HPA doesn't explicitly support staged policies, defining multiple policies with different periods creates similar behavior.
+Though HPA doesn't explicitly support staged policies, defining multiple policies with different periods lets the autoscaler choose between short-window and long-window rate limits according to `selectPolicy`.
 
 ## Monitoring Percentage-Based Scaling
 
@@ -361,7 +361,7 @@ Monitor actual scaling velocity and adjust if you see frequent hits against poli
 
 ## Troubleshooting
 
-**Scaling is slower than expected**: Percentage might be too small for your deployment size. With 5 replicas and 10% scale-down, you remove at most 0.5 pods, which rounds to 0.
+**Scaling is slower than expected**: Percentage might be too small for your deployment size, or stabilization windows, tolerance, readiness, minReplicas, or maxReplicas might be limiting changes. Percentage policy calculations round fractional pod counts up, so with 5 replicas and a 10% scale-down policy, the policy can allow up to 1 pod to be removed if the metrics and stabilization window permit it.
 
 ```bash
 # Check calculated pod changes
