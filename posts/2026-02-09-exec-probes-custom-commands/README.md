@@ -14,7 +14,7 @@ This guide shows you how to configure exec probes effectively, write robust heal
 
 ## Understanding Exec Probes
 
-An exec probe executes a command in the container using the container's default shell (or the specified binary). If the command exits with status code 0, the probe succeeds. Any other exit code fails the probe.
+An exec probe executes the specified command directly inside the container. If you need shell features such as pipes, redirects, or environment variable expansion, call a shell explicitly (for example, `/bin/sh -c`). If the command exits with status code 0, the probe succeeds. Any other exit code fails the probe.
 
 Exec probes are more flexible than HTTP or TCP probes but also more expensive since they spawn a new process for each check.
 
@@ -76,15 +76,13 @@ set -e  # Exit immediately if a command exits with a non-zero status
 
 # Check 1: Database connectivity
 
-psql -U postgres -c "SELECT 1" > /dev/null 2>&1
-if [ $? -ne 0 ]; then
+if ! psql -U postgres -c "SELECT 1" > /dev/null 2>&1; then
     echo "Database connection failed"
     exit 1
 fi
 
 # Check 2: Can write data
-psql -U postgres -c "CREATE TEMP TABLE health_check (id int);" > /dev/null 2>&1
-if [ $? -ne 0 ]; then
+if ! psql -U postgres -c "CREATE TEMP TABLE health_check (id int);" > /dev/null 2>&1; then
     echo "Cannot write to database"
     exit 1
 fi
@@ -322,7 +320,7 @@ data:
     redis-cli -h redis ping > /dev/null
 
     echo "Checking RabbitMQ..."
-    rabbitmqctl status > /dev/null
+    rabbitmq-diagnostics -q ping -n rabbit@rabbitmq > /dev/null
 
     echo "Checking S3 connectivity..."
     aws s3 ls s3://my-bucket/ --region us-east-1 > /dev/null
@@ -369,6 +367,7 @@ Implement timeout handling in your scripts:
 # health-check-with-timeout.sh
 
 TIMEOUT=5
+export TIMEOUT
 
 # Function that might hang
 check_external_service() {
@@ -376,7 +375,7 @@ check_external_service() {
 }
 
 # Run with timeout
-if timeout $TIMEOUT check_external_service > /dev/null 2>&1; then
+if timeout "$TIMEOUT" bash -c "$(declare -f check_external_service); check_external_service" > /dev/null 2>&1; then
     echo "External service healthy"
     exit 0
 else
