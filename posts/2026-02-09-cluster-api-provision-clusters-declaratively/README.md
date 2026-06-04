@@ -21,14 +21,13 @@ The core concepts include Cluster (defines the cluster), Machine (represents a n
 Start by installing clusterctl, the CLI tool for managing Cluster API:
 
 ```bash
-# Download the latest clusterctl binary
+# Download a current clusterctl binary
 
-curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.6.0/clusterctl-linux-amd64 \
+curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.13.2/clusterctl-linux-amd64 \
   -o clusterctl
 
 # Make it executable and move to PATH
-chmod +x clusterctl
-sudo mv clusterctl /usr/local/bin/
+sudo install -o root -g root -m 0755 clusterctl /usr/local/bin/clusterctl
 
 # Verify installation
 clusterctl version
@@ -38,12 +37,23 @@ You need a management cluster to run CAPI controllers. Use kind for local develo
 
 ```bash
 # Install kind if not already available
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
 chmod +x ./kind
 sudo mv ./kind /usr/local/bin/
 
+# Create a kind config that lets the Docker provider reach the host Docker daemon
+cat > kind-cluster-with-extramounts.yaml <<EOF
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraMounts:
+  - hostPath: /var/run/docker.sock
+    containerPath: /var/run/docker.sock
+EOF
+
 # Create a management cluster
-kind create cluster --name capi-management
+kind create cluster --name capi-management --config kind-cluster-with-extramounts.yaml
 
 # Verify cluster is ready
 kubectl cluster-info --context kind-capi-management
@@ -56,13 +66,18 @@ Initialize CAPI in your management cluster with the providers you need:
 
 ```bash
 # Initialize Cluster API with Docker provider (for local testing)
+export CLUSTER_TOPOLOGY=true
 clusterctl init --infrastructure docker
 
 # For AWS provider
 export AWS_REGION=us-west-2
 export AWS_ACCESS_KEY_ID=<your-access-key>
 export AWS_SECRET_ACCESS_KEY=<your-secret-key>
-export AWS_B64ENCODED_CREDENTIALS=$(clusterctl init --infrastructure aws --list-images | base64 -w0)
+curl -L https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/download/v2.11.1/clusterawsadm-linux-amd64 \
+  -o clusterawsadm
+sudo install -o root -g root -m 0755 clusterawsadm /usr/local/bin/clusterawsadm
+clusterawsadm bootstrap iam create-cloudformation-stack
+export AWS_B64ENCODED_CREDENTIALS=$(clusterawsadm bootstrap credentials encode-as-profile)
 
 clusterctl init --infrastructure aws
 
@@ -82,8 +97,8 @@ kubectl get pods -n capi-kubeadm-bootstrap-system
 kubectl get pods -n capi-kubeadm-control-plane-system
 kubectl get pods -n capd-system  # Docker provider
 
-# List available cluster templates
-clusterctl generate cluster --list-variables docker
+# List variables required by the Docker cluster template
+clusterctl generate cluster dev-cluster --infrastructure docker --list-variables
 ```
 
 ## Creating Your First Cluster with Docker Provider
@@ -93,13 +108,14 @@ The Docker provider creates Kubernetes clusters using Docker containers as nodes
 ```bash
 # Set cluster parameters
 export CLUSTER_NAME="dev-cluster"
-export KUBERNETES_VERSION="v1.28.0"
+export KUBERNETES_VERSION="v1.34.0"
 export CONTROL_PLANE_MACHINE_COUNT=1
 export WORKER_MACHINE_COUNT=2
 
 # Generate cluster manifest
 clusterctl generate cluster ${CLUSTER_NAME} \
   --infrastructure docker \
+  --flavor development \
   --kubernetes-version ${KUBERNETES_VERSION} \
   --control-plane-machine-count ${CONTROL_PLANE_MACHINE_COUNT} \
   --worker-machine-count ${WORKER_MACHINE_COUNT} \
@@ -134,7 +150,7 @@ Wait for the cluster to be ready:
 
 ```bash
 # Wait for control plane to initialize
-kubectl wait --for=condition=ControlPlaneReady cluster/${CLUSTER_NAME} --timeout=600s
+kubectl wait --for=condition=ControlPlaneInitialized cluster/${CLUSTER_NAME} --timeout=600s
 
 # Get the kubeconfig for the workload cluster
 clusterctl get kubeconfig ${CLUSTER_NAME} > ${CLUSTER_NAME}.kubeconfig
@@ -149,7 +165,7 @@ Build reusable templates for your organization's cluster standards:
 
 ```yaml
 # cluster-template.yaml
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: ${CLUSTER_NAME}
@@ -166,15 +182,15 @@ spec:
       cidrBlocks:
       - 10.96.0.0/12
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    apiGroup: controlplane.cluster.x-k8s.io
     kind: KubeadmControlPlane
     name: ${CLUSTER_NAME}-control-plane
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    apiGroup: infrastructure.cluster.x-k8s.io
     kind: DockerCluster
     name: ${CLUSTER_NAME}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: DockerCluster
 metadata:
   name: ${CLUSTER_NAME}
@@ -184,7 +200,7 @@ spec:
     imageRepository: kindest/haproxy
     imageTag: v20230606-42a2262b
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KubeadmControlPlane
 metadata:
   name: ${CLUSTER_NAME}-control-plane
@@ -198,26 +214,30 @@ spec:
         - 127.0.0.1
       controllerManager:
         extraArgs:
-          enable-hostpath-provisioner: "true"
+        - name: enable-hostpath-provisioner
+          value: "true"
     initConfiguration:
       nodeRegistration:
         criSocket: unix:///var/run/containerd/containerd.sock
         kubeletExtraArgs:
-          eviction-hard: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+        - name: eviction-hard
+          value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
     joinConfiguration:
       nodeRegistration:
         criSocket: unix:///var/run/containerd/containerd.sock
         kubeletExtraArgs:
-          eviction-hard: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+        - name: eviction-hard
+          value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
   machineTemplate:
-    infrastructureRef:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-      kind: DockerMachineTemplate
-      name: ${CLUSTER_NAME}-control-plane
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DockerMachineTemplate
+        name: ${CLUSTER_NAME}-control-plane
   replicas: ${CONTROL_PLANE_MACHINE_COUNT}
   version: ${KUBERNETES_VERSION}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: DockerMachineTemplate
 metadata:
   name: ${CLUSTER_NAME}-control-plane
@@ -229,7 +249,7 @@ spec:
       - containerPath: /var/run/docker.sock
         hostPath: /var/run/docker.sock
 ---
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: ${CLUSTER_NAME}-md-0
@@ -243,17 +263,17 @@ spec:
     spec:
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          apiGroup: bootstrap.cluster.x-k8s.io
           kind: KubeadmConfigTemplate
           name: ${CLUSTER_NAME}-md-0
       clusterName: ${CLUSTER_NAME}
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        apiGroup: infrastructure.cluster.x-k8s.io
         kind: DockerMachineTemplate
         name: ${CLUSTER_NAME}-md-0
       version: ${KUBERNETES_VERSION}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: DockerMachineTemplate
 metadata:
   name: ${CLUSTER_NAME}-md-0
@@ -265,7 +285,7 @@ spec:
       - containerPath: /var/run/docker.sock
         hostPath: /var/run/docker.sock
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KubeadmConfigTemplate
 metadata:
   name: ${CLUSTER_NAME}-md-0
@@ -277,7 +297,8 @@ spec:
         nodeRegistration:
           criSocket: unix:///var/run/containerd/containerd.sock
           kubeletExtraArgs:
-            eviction-hard: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
+          - name: eviction-hard
+            value: nodefs.available<0%,nodefs.inodesFree<0%,imagefs.available<0%
 ```
 
 Use the template:
@@ -287,7 +308,7 @@ Use the template:
 export CLUSTER_NAME="staging-cluster"
 export ENVIRONMENT="staging"
 export TEAM="platform"
-export KUBERNETES_VERSION="v1.28.0"
+export KUBERNETES_VERSION="v1.34.0"
 export CONTROL_PLANE_MACHINE_COUNT=3
 export WORKER_MACHINE_COUNT=5
 
@@ -308,12 +329,14 @@ clusterctl get kubeconfig ${CLUSTER_NAME} > ${CLUSTER_NAME}.kubeconfig
 
 # Install Calico CNI
 kubectl --kubeconfig=${CLUSTER_NAME}.kubeconfig apply -f \
-  https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/calico.yaml
+  https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml
 
 # Verify nodes become ready
 kubectl --kubeconfig=${CLUSTER_NAME}.kubeconfig get nodes
 
-# Install cloud-specific controller (example for AWS)
+# Install cloud-specific controller RBAC and controller (example for AWS)
+kubectl --kubeconfig=${CLUSTER_NAME}.kubeconfig apply -f \
+  https://raw.githubusercontent.com/kubernetes/cloud-provider-aws/master/manifests/rbac.yaml
 kubectl --kubeconfig=${CLUSTER_NAME}.kubeconfig apply -f \
   https://raw.githubusercontent.com/kubernetes/cloud-provider-aws/master/manifests/aws-cloud-controller-manager-daemonset.yaml
 ```
@@ -345,12 +368,12 @@ Upgrade clusters by updating the version field:
 # Upgrade control plane
 kubectl patch kubeadmcontrolplane ${CLUSTER_NAME}-control-plane \
   --type merge \
-  --patch '{"spec":{"version":"v1.29.0"}}'
+  --patch '{"spec":{"version":"v1.35.0"}}'
 
 # Upgrade worker nodes
 kubectl patch machinedeployment ${CLUSTER_NAME}-md-0 \
   --type merge \
-  --patch '{"spec":{"template":{"spec":{"version":"v1.29.0"}}}}'
+  --patch '{"spec":{"template":{"spec":{"version":"v1.35.0"}}}}'
 
 # Monitor upgrade progress
 clusterctl describe cluster ${CLUSTER_NAME}
@@ -376,7 +399,8 @@ metadata:
 spec:
   interval: 1m
   url: https://github.com/yourorg/cluster-configs
-  branch: main
+  ref:
+    branch: main
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
