@@ -8,7 +8,7 @@ Description: Configure pod anti-affinity rules that distribute application repli
 
 ---
 
-Running multiple replicas provides redundancy, but if all replicas run on the same node, a single node failure takes down your entire application. Pod anti-affinity rules prevent this by forcing Kubernetes to distribute replicas across different failure domains like nodes, availability zones, or racks. This transforms replicas from theoretical redundancy into actual fault tolerance.
+Running multiple replicas provides redundancy, but if all replicas run on the same node, a single node failure takes down your entire application. Pod anti-affinity rules help prevent this by encouraging or requiring Kubernetes to distribute replicas across different failure domains like nodes, availability zones, or racks. This transforms replicas from theoretical redundancy into actual fault tolerance.
 
 The challenge is balancing distribution requirements with scheduling flexibility. Strict anti-affinity rules can prevent pods from scheduling when insufficient resources exist across domains. Relaxed rules allow better resource utilization but reduce failure protection. The key is choosing appropriate anti-affinity strategies that match your availability requirements.
 
@@ -109,20 +109,22 @@ spec:
     spec:
       affinity:
         podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - api
-            topologyKey: topology.kubernetes.io/zone
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - api
+              topologyKey: topology.kubernetes.io/zone
       containers:
       - name: api
         image: api:v1.0.0
 ```
 
-With three availability zones, this places two pods per zone. Zone failure affects only one-third of capacity.
+With three availability zones, this encourages pods to spread across zones. For strict, even zone distribution, use topology spread constraints.
 
 Combine node and zone anti-affinity:
 
@@ -152,19 +154,22 @@ spec:
                 values:
                 - database
             topologyKey: kubernetes.io/hostname
-          - labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - database
-            topologyKey: topology.kubernetes.io/zone
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - database
+              topologyKey: topology.kubernetes.io/zone
       containers:
       - name: postgres
         image: postgres:15
 ```
 
-This ensures each database replica runs on a different node in a different zone, maximizing fault tolerance.
+This ensures each database replica runs on a different node and prefers different zones, maximizing fault tolerance while remaining compatible with default admission controller settings.
 
 ## Anti-Affinity for StatefulSets
 
@@ -227,7 +232,7 @@ kubectl apply -f deployment-with-anti-affinity.yaml
 kubectl rollout status deployment/test-app
 
 # Check pod distribution across nodes
-kubectl get pods -l app=test-app -o wide | awk '{print $7}' | sort | uniq -c
+kubectl get pods -l app=test-app -o wide | awk 'NR > 1 {print $7}' | sort | uniq -c
 
 # Check pod distribution across zones
 kubectl get pods -l app=test-app -o json | \
@@ -303,7 +308,10 @@ count by (node) (kube_pod_info{pod=~"app-.*"})
 count by (topology_zone) (
   kube_pod_info{pod=~"app-.*"} *
   on(node) group_left(topology_zone)
-  kube_node_labels
+  label_replace(
+    kube_node_labels{label_topology_kubernetes_io_zone!=""},
+    "topology_zone", "$1", "label_topology_kubernetes_io_zone", "(.*)"
+  )
 )
 ```
 
