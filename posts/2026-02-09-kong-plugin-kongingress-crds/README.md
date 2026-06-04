@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kong, API Gateway
 
-Description: Master Kong's Custom Resource Definitions (KongPlugin and KongIngress CRDs) to configure advanced policies, customize proxy behavior, and manage API gateway settings in Kubernetes environments.
+Description: Master Kong's Custom Resource Definitions and current Kubernetes annotations to configure advanced policies, customize proxy behavior, and manage API gateway settings in Kubernetes environments.
 
 ---
 
-Kong Ingress Controller extends Kubernetes Ingress capabilities using Custom Resource Definitions (CRDs) that provide fine-grained control over proxy behavior and policy configuration. The two most important CRDs are KongPlugin for adding functionality and KongIngress for customizing proxy settings. This guide will show you how to leverage these CRDs effectively.
+Kong Ingress Controller extends Kubernetes Ingress capabilities using Custom Resource Definitions (CRDs) that provide fine-grained control over proxy behavior and policy configuration. The most important CRD for policy configuration is KongPlugin. KongIngress is a legacy CRD for customizing proxy settings; in current Kong Ingress Controller versions, annotations and KongUpstreamPolicy are preferred for new proxy and upstream configuration. This guide will show you how to leverage these resources effectively.
 
 ## Understanding Kong CRDs
 
 Kong Ingress Controller introduces several CRDs to bridge Kubernetes-native resources with Kong's powerful gateway features. The main CRDs include:
 
-- **KongPlugin**: Defines plugin configurations that can be applied to services, routes, or globally
-- **KongIngress**: Customizes proxy behavior for routes, services, and upstreams
+- **KongPlugin**: Defines plugin configurations that can be applied to services, routes, consumers, and Gateway API resources
+- **KongIngress**: Legacy resource for customizing proxy behavior for routes, services, and upstreams
 - **KongConsumer**: Represents API consumers for authentication
-- **KongClusterPlugin**: Global plugins that apply across namespaces
-- **TCPIngress**: Layer 4 TCP routing configuration
+- **KongClusterPlugin**: Cluster-scoped plugins that can be applied globally across namespaces
+- **TCPIngress**: Legacy Layer 4 TCP routing configuration
 
 These CRDs allow you to configure Kong using kubectl and integrate with GitOps workflows.
 
@@ -36,19 +36,18 @@ kind: KongPlugin
 metadata:
   name: <plugin-name>
   namespace: <namespace>
-spec:
-  plugin: <kong-plugin-identifier>
-  config:
-    <plugin-specific-configuration>
-  disabled: false
-  protocols:
-  - http
-  - https
-  run_on: first
-  ordering:
-    before:
-      access:
-      - <other-plugin-name>
+plugin: <kong-plugin-identifier>
+config:
+  <plugin-specific-configuration>
+disabled: false
+protocols:
+- http
+- https
+run_on: first
+ordering:
+  before:
+    access:
+    - <other-plugin-name>
 ```
 
 ### Request Transformation Plugin
@@ -66,8 +65,8 @@ metadata:
 config:
   add:
     headers:
-    - "X-Request-ID:$(uuid)"
-    - "X-Forwarded-By:kong-gateway"
+    - "X-Gateway:kong"
+    - "X-Request-Source:api-gateway"
     querystring:
     - "source:api-gateway"
   remove:
@@ -134,7 +133,7 @@ plugin: cors
 
 ### IP Restriction Plugin
 
-Implement IP whitelisting or blacklisting:
+Implement IP allowlisting or denylisting:
 
 ```yaml
 # ip-restriction.yaml
@@ -148,8 +147,6 @@ config:
   - 10.0.0.0/8        # Internal network
   - 172.16.0.0/12     # Docker network
   - 192.168.1.100     # Specific admin IP
-  deny:
-  - 0.0.0.0/0         # Deny all others
 plugin: ip-restriction
 ```
 
@@ -188,11 +185,11 @@ plugin: proxy-cache
 
 ## Working with KongIngress CRD
 
-The KongIngress CRD provides fine-grained control over proxy behavior, route handling, and upstream configuration. It complements standard Kubernetes Ingress resources by adding Kong-specific options.
+The KongIngress CRD historically provided fine-grained control over proxy behavior, route handling, and upstream configuration. It complements standard Kubernetes Ingress resources by adding Kong-specific options, but current Kong Ingress Controller versions deprecate KongIngress for new route and proxy settings in favor of annotations, and use KongUpstreamPolicy for upstream settings.
 
 ### KongIngress Structure
 
-A KongIngress resource has three main sections:
+A legacy KongIngress resource has three main sections:
 
 ```yaml
 apiVersion: configuration.konghq.com/v1
@@ -246,7 +243,7 @@ upstream:
 
 ### Applying KongIngress to an Ingress
 
-Associate KongIngress with a standard Kubernetes Ingress:
+Associate a legacy KongIngress with a standard Kubernetes Ingress:
 
 ```yaml
 # standard-ingress.yaml
@@ -274,33 +271,21 @@ spec:
 
 ### Custom Timeout Configuration
 
-Configure timeouts for slow backend services:
+Configure timeouts for slow backend services with current Service annotations:
 
 ```yaml
 # timeout-config.yaml
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
-metadata:
-  name: long-running-timeout
-  namespace: default
-proxy:
-  protocol: http
-  connect_timeout: 120000    # 2 minutes
-  read_timeout: 300000       # 5 minutes
-  write_timeout: 300000      # 5 minutes
-  retries: 3
-```
-
-Apply to a service:
-
-```yaml
 apiVersion: v1
 kind: Service
 metadata:
   name: batch-processor
   namespace: default
   annotations:
-    konghq.com/override: long-running-timeout
+    konghq.com/protocol: "http"
+    konghq.com/connect-timeout: "120000"  # 2 minutes
+    konghq.com/read-timeout: "300000"     # 5 minutes
+    konghq.com/write-timeout: "300000"    # 5 minutes
+    konghq.com/retries: "3"
 spec:
   selector:
     app: batch-processor
@@ -311,45 +296,47 @@ spec:
 
 ### Advanced Health Check Configuration
 
-Implement comprehensive health checking:
+Implement comprehensive health checking with KongUpstreamPolicy:
 
 ```yaml
 # health-checks.yaml
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
+apiVersion: configuration.konghq.com/v1beta1
+kind: KongUpstreamPolicy
 metadata:
   name: strict-health-checks
   namespace: default
-upstream:
+spec:
   algorithm: consistent-hashing
-  hash_on: ip
-  hash_fallback: none
+  hashOn:
+    input: ip
+  hashOnFallback:
+    input: none
   slots: 10000
   healthchecks:
     active:
       type: http
-      http_path: /health
-      https_verify_certificate: true
+      httpPath: /health
+      httpsVerifyCertificate: true
       concurrency: 10
       healthy:
         interval: 5
-        http_statuses:
+        httpStatuses:
         - 200
         - 302
         successes: 2
       unhealthy:
         interval: 3
-        http_statuses:
+        httpStatuses:
         - 429
         - 500
         - 503
-        tcp_failures: 2
-        http_failures: 3
+        tcpFailures: 2
+        httpFailures: 3
         timeouts: 2
     passive:
       type: http
       healthy:
-        http_statuses:
+        httpStatuses:
         - 200
         - 201
         - 202
@@ -371,18 +358,24 @@ upstream:
         - 308
         successes: 5
       unhealthy:
-        http_statuses:
+        httpStatuses:
         - 429
         - 500
         - 503
-        tcp_failures: 2
-        http_failures: 5
+        tcpFailures: 2
+        httpFailures: 5
         timeouts: 3
 ```
 
-## Combining KongPlugin and KongIngress
+Apply the policy to a service:
 
-You can apply both plugins and custom proxy settings to create sophisticated configurations:
+```bash
+kubectl annotate service backend-api -n default konghq.com/upstream-policy=strict-health-checks
+```
+
+## Combining KongPlugin and Proxy Settings
+
+You can apply plugins, custom proxy settings, and upstream policies to create sophisticated configurations:
 
 ```yaml
 # Complete service configuration
@@ -392,8 +385,13 @@ metadata:
   name: production-api
   namespace: production
   annotations:
-    konghq.com/override: production-proxy-config
     konghq.com/plugins: rate-limit, auth-plugin, cors-policy, cache-responses
+    konghq.com/protocol: "http"
+    konghq.com/connect-timeout: "60000"
+    konghq.com/read-timeout: "60000"
+    konghq.com/write-timeout: "60000"
+    konghq.com/retries: "5"
+    konghq.com/upstream-policy: production-upstream-policy
 spec:
   selector:
     app: production-api
@@ -401,18 +399,12 @@ spec:
   - port: 80
     targetPort: 8080
 ---
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
+apiVersion: configuration.konghq.com/v1beta1
+kind: KongUpstreamPolicy
 metadata:
-  name: production-proxy-config
+  name: production-upstream-policy
   namespace: production
-proxy:
-  protocol: http
-  connect_timeout: 60000
-  read_timeout: 60000
-  write_timeout: 60000
-  retries: 5
-upstream:
+spec:
   algorithm: least-connections
   healthchecks:
     active:
@@ -421,12 +413,12 @@ upstream:
         successes: 2
       unhealthy:
         interval: 5
-        http_failures: 3
+        httpFailures: 3
 ```
 
 ## Plugin Ordering and Execution
 
-Control plugin execution order using the ordering field:
+Control plugin execution order using the Enterprise-only ordering field:
 
 ```yaml
 # plugin-ordering.yaml
@@ -485,10 +477,10 @@ kubectl get kongingress -A
 kubectl describe kongplugin rate-limit -n default
 
 # Validate plugin syntax
-kubectl apply --dry-run=client -f plugin.yaml
+kubectl apply --dry-run=server -f plugin.yaml
 
-# Check Kong configuration sync
-kubectl logs -n kong -l app.kubernetes.io/name=ingress-kong | grep "successfully synced"
+# Check Kong Ingress Controller logs
+kubectl logs -n kong deployments/kong-controller
 ```
 
 ## Troubleshooting Common Issues
@@ -506,7 +498,7 @@ kubectl get kongplugin rate-limit
 
 **Configuration errors**: Check Kong Ingress Controller logs:
 ```bash
-kubectl logs -n kong -l app.kubernetes.io/name=ingress-kong --tail=100
+kubectl logs -n kong deployments/kong-controller --tail=100
 ```
 
 **Health checks failing**: Test the health endpoint directly:
@@ -517,4 +509,4 @@ curl http://localhost:8080/health
 
 ## Conclusion
 
-Kong's KongPlugin and KongIngress CRDs provide powerful, Kubernetes-native ways to configure advanced API gateway policies and proxy behavior. By mastering these CRDs, you can build sophisticated API management solutions that integrate seamlessly with your Kubernetes workflows and GitOps practices. The declarative nature of these resources makes configuration reproducible, version-controlled, and easy to manage across multiple environments.
+Kong's KongPlugin CRD, Kubernetes annotations, and KongUpstreamPolicy provide powerful, Kubernetes-native ways to configure advanced API gateway policies and proxy behavior. KongIngress remains important for understanding legacy configurations, but new deployments should prefer annotations and KongUpstreamPolicy where available. By mastering these resources, you can build sophisticated API management solutions that integrate seamlessly with your Kubernetes workflows and GitOps practices. The declarative nature of these resources makes configuration reproducible, version-controlled, and easy to manage across multiple environments.
