@@ -19,31 +19,43 @@ cert-manager exposes several Prometheus metrics that track certificate lifecycle
 Other useful metrics include:
 
 - `certmanager_certificate_ready_status` - indicates whether a certificate is ready
-- `certmanager_certificate_renewal_timestamp_seconds` - tracks when renewal attempts occur
-- `certmanager_http_acme_client_request_count` - monitors ACME challenge attempts
+- `certmanager_certificate_renewal_timestamp_seconds` - tracks when the certificate should next be renewed
+- `certmanager_http_acme_client_request_count` - monitors outbound ACME client requests
 
 These metrics allow you to build alerting rules that detect certificates approaching expiration, failed renewals, and other certificate-related issues.
 
-## Setting Up Prometheus ServiceMonitor
+## Setting Up Prometheus PodMonitor
 
 First, ensure cert-manager is configured to expose metrics. By default, cert-manager's controller, webhook, and cainjector components expose metrics on port 9402.
 
-Create a ServiceMonitor to tell Prometheus to scrape cert-manager metrics:
+Create a PodMonitor to tell Prometheus to scrape cert-manager metrics:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: cert-manager
   namespace: cert-manager
   labels:
     app: cert-manager
 spec:
+  jobLabel: app.kubernetes.io/name
   selector:
-    matchLabels:
-      app.kubernetes.io/name: cert-manager
-  endpoints:
-  - port: tcp-prometheus-servicemonitor
+    matchExpressions:
+    - key: app.kubernetes.io/name
+      operator: In
+      values:
+      - cainjector
+      - cert-manager
+      - webhook
+    - key: app.kubernetes.io/component
+      operator: In
+      values:
+      - cainjector
+      - controller
+      - webhook
+  podMetricsEndpoints:
+  - port: http-metrics
     interval: 30s
     path: /metrics
 ```
@@ -51,7 +63,7 @@ spec:
 Apply this configuration:
 
 ```bash
-kubectl apply -f servicemonitor.yaml
+kubectl apply -f podmonitor.yaml
 ```
 
 Verify Prometheus is scraping cert-manager metrics:
@@ -85,7 +97,8 @@ spec:
     # Alert when certificate expires in less than 7 days
     - alert: CertificateExpiryWarning
       expr: |
-        (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 7
+        (certmanager_certificate_expiration_timestamp_seconds - time()) < 7 * 24 * 3600
+        and (certmanager_certificate_expiration_timestamp_seconds - time()) > 0
       for: 1h
       labels:
         severity: warning
@@ -96,7 +109,8 @@ spec:
     # Alert when certificate expires in less than 24 hours
     - alert: CertificateExpiryCritical
       expr: |
-        (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 1
+        (certmanager_certificate_expiration_timestamp_seconds - time()) < 24 * 3600
+        and (certmanager_certificate_expiration_timestamp_seconds - time()) > 0
       for: 15m
       labels:
         severity: critical
@@ -118,7 +132,7 @@ spec:
     # Alert when certificate renewal fails
     - alert: CertificateRenewalFailed
       expr: |
-        increase(certmanager_http_acme_client_request_count{status="error"}[15m]) > 5
+        increase(certmanager_http_acme_client_request_count{status=~"4..|5.."}[15m]) > 5
       for: 5m
       labels:
         severity: critical
@@ -157,14 +171,14 @@ stringData:
       receiver: 'default'
       routes:
       # Route critical certificate alerts to PagerDuty
-      - match:
-          alertname: CertificateExpiryCritical
+      - matchers:
+          - alertname="CertificateExpiryCritical"
         receiver: 'pagerduty-critical'
         continue: true
 
       # Route certificate warnings to Slack
-      - match_re:
-          alertname: Certificate.*Warning
+      - matchers:
+          - alertname=~"Certificate.*Warning"
         receiver: 'slack-certificates'
 
     receivers:
@@ -235,22 +249,22 @@ kubectl exec -n monitoring prometheus-0 -- promtool query instant \
   'certmanager_certificate_expiration_timestamp_seconds{name="test-expiry-alert"}'
 ```
 
-Within 30 minutes, you should receive a warning alert as the certificate approaches expiration.
+After the configured `for` period, you should receive an alert as the certificate approaches expiration.
 
 ## Advanced Alert Configurations
 
-Add alerts for certificate issuance velocity to detect potential issues:
+Add alerts for a high number of certificates scheduled to renew soon:
 
 ```yaml
-- alert: HighCertificateIssuanceRate
+- alert: HighCertificateRenewalBacklog
   expr: |
-    rate(certmanager_certificate_renewal_timestamp_seconds[15m]) > 10
+    count((certmanager_certificate_renewal_timestamp_seconds - time()) > 0 and (certmanager_certificate_renewal_timestamp_seconds - time()) < 15 * 60) > 10
   for: 5m
   labels:
     severity: warning
   annotations:
-    summary: "High certificate issuance rate detected"
-    description: "More than 10 certificates are being issued per minute, which may indicate a problem."
+    summary: "High certificate renewal backlog detected"
+    description: "More than 10 certificates are scheduled to renew in the next 15 minutes, which may indicate a backlog."
 ```
 
 Monitor cert-manager controller health:
@@ -305,10 +319,10 @@ If alerts aren't firing:
 
 ```bash
 # Check if Prometheus is scraping cert-manager
-kubectl get servicemonitor -n cert-manager
+kubectl get podmonitor -n cert-manager
 
 # Verify metrics are being exposed
-kubectl port-forward -n cert-manager svc/cert-manager 9402:9402
+kubectl port-forward -n cert-manager deployment/cert-manager 9402:9402
 curl http://localhost:9402/metrics | grep certmanager_certificate_expiration
 
 # Check PrometheusRule is loaded
