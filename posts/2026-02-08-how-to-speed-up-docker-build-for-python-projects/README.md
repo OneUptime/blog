@@ -12,7 +12,7 @@ Python Docker builds have a reputation for being slow. Between downloading packa
 
 ## Why Python Builds Are Slow
 
-The root causes are predictable. Python's package ecosystem relies heavily on C extensions (numpy, pandas, cryptography, lxml). These must be compiled during installation, which requires build tools like gcc and makes the install step CPU-intensive. Additionally, pip downloads and installs packages sequentially by default, and a naive Dockerfile reinstalls everything on every code change.
+The root causes are predictable. Python's package ecosystem relies heavily on C extensions (numpy, pandas, cryptography, lxml). When a suitable pre-built wheel is not available, these must be compiled during installation, which requires build tools like gcc and makes the install step CPU-intensive. Additionally, pip downloads and installs packages sequentially by default, and a naive Dockerfile reinstalls everything on every code change.
 
 Here is the Dockerfile that most Python developers start with:
 
@@ -101,7 +101,7 @@ COPY --from=wheel-builder /wheels /wheels
 COPY requirements.txt .
 
 # Install from local wheels - fast, no compiler needed
-RUN pip install --no-cache-dir --find-links=/wheels -r requirements.txt && \
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt && \
     rm -rf /wheels
 
 COPY . .
@@ -112,7 +112,7 @@ This approach moves all compilation to the builder stage. The production stage i
 
 ## Technique 4: Multi-Stage Build for Smaller Images
 
-A production Python image does not need compilers, header files, or pip itself. Strip them out with a multi-stage build:
+A production Python image does not need compilers or header files, and your application does not need to run pip at startup. Keep build-only tooling out of the runtime stage with a multi-stage build:
 
 ```dockerfile
 # Stage 1: Install dependencies into a virtual environment
@@ -149,7 +149,7 @@ USER appuser
 CMD ["python", "app.py"]
 ```
 
-This produces an image without gcc, development headers, or pip, which is both smaller and more secure.
+This produces an image without gcc or development headers, which is both smaller and more secure.
 
 ## Technique 5: Use Poetry with Docker Efficiently
 
@@ -158,7 +158,7 @@ Poetry adds its own layer of caching complexity. The key is exporting to `requir
 ```dockerfile
 # Stage 1: Export Poetry dependencies to requirements format
 FROM python:3.12-slim AS requirements
-RUN pip install poetry
+RUN pip install poetry poetry-plugin-export
 WORKDIR /app
 COPY pyproject.toml poetry.lock ./
 # Export without dev dependencies, without hashes for simpler install
@@ -172,7 +172,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY --from=requirements /app/requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements.txt
+    pip install --no-deps -r requirements.txt
 
 # Stage 3: Production image
 FROM python:3.12-slim
