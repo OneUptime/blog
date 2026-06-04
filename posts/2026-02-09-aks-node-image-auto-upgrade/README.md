@@ -8,7 +8,7 @@ Description: Learn how to upgrade Azure Kubernetes Service clusters using node i
 
 ---
 
-Azure Kubernetes Service offers sophisticated upgrade mechanisms through node image upgrades and auto-upgrade channels. These features automate security patching, Kubernetes version upgrades, and node OS updates, reducing operational burden while maintaining cluster security and stability.
+Azure Kubernetes Service offers sophisticated upgrade mechanisms through node image upgrades, cluster auto-upgrade channels, and node OS auto-upgrade channels. These features automate security patching, Kubernetes version upgrades, and node OS updates, reducing operational burden while maintaining cluster security and stability.
 
 ## Understanding AKS Node Image Upgrades
 
@@ -91,6 +91,13 @@ for pool in $node_pools; do
   echo "Upgrading node pool: $pool"
 
   # Check if upgrade available
+  current=$(az aks nodepool show \
+    --resource-group $RESOURCE_GROUP \
+    --cluster-name $CLUSTER_NAME \
+    --name $pool \
+    --query "nodeImageVersion" \
+    --output tsv)
+
   available=$(az aks nodepool get-upgrades \
     --resource-group $RESOURCE_GROUP \
     --cluster-name $CLUSTER_NAME \
@@ -98,7 +105,7 @@ for pool in $node_pools; do
     --query "latestNodeImageVersion" \
     --output tsv)
 
-  if [ "$available" != "null" ]; then
+  if [ -n "$available" ] && [ "$available" != "null" ] && [ "$available" != "$current" ]; then
     echo "  Latest image available: $available"
 
     # Upgrade node pool image
@@ -137,7 +144,7 @@ done
 
 ## Configuring Auto-Upgrade Channels
 
-Auto-upgrade channels automate Kubernetes version and node image upgrades based on your chosen upgrade pace.
+Cluster auto-upgrade channels automate Kubernetes version upgrades based on your chosen upgrade pace. Use the node OS auto-upgrade channel separately to automate node OS image updates.
 
 ```bash
 #!/bin/bash
@@ -148,6 +155,7 @@ CLUSTER_NAME="production-aks"
 
 # Available channels: rapid, stable, patch, node-image, none
 UPGRADE_CHANNEL="stable"
+NODE_OS_CHANNEL="NodeImage"
 
 echo "Configuring auto-upgrade channel: $UPGRADE_CHANNEL"
 
@@ -155,6 +163,11 @@ az aks update \
   --resource-group $RESOURCE_GROUP \
   --name $CLUSTER_NAME \
   --auto-upgrade-channel $UPGRADE_CHANNEL
+
+az aks update \
+  --resource-group $RESOURCE_GROUP \
+  --name $CLUSTER_NAME \
+  --node-os-upgrade-channel $NODE_OS_CHANNEL
 
 # Verify configuration
 az aks show \
@@ -174,7 +187,8 @@ resource "azurerm_kubernetes_cluster" "main" {
   kubernetes_version  = "1.29.0"
 
   # Configure auto-upgrade channel
-  automatic_channel_upgrade = "stable"
+  automatic_upgrade_channel = "stable"
+  node_os_upgrade_channel   = "NodeImage"
 
   # Configure maintenance window
   maintenance_window {
@@ -230,13 +244,13 @@ resource "azurerm_kubernetes_cluster" "main" {
 
 AKS offers several auto-upgrade channels with different upgrade paces:
 
-**node-image**: Only upgrades node images automatically, not Kubernetes versions. This is the most conservative option.
+**node-image**: Only upgrades node images automatically, not Kubernetes versions. This cluster auto-upgrade channel is now legacy; prefer setting the separate node OS auto-upgrade channel to **NodeImage**.
 
 **patch**: Automatically upgrades to the latest supported patch version. For example, if running 1.28.3 and 1.28.5 is released, automatically upgrades to 1.28.5.
 
-**stable**: Automatically upgrades to the latest supported minor version N-1, where N is the latest supported minor version. This provides a balance between stability and staying current.
+**stable**: Automatically upgrades to the latest supported patch release on minor version N-1, where N is the latest supported minor version. This provides a balance between stability and staying current.
 
-**rapid**: Automatically upgrades to the latest supported minor version as soon as it's available. Use this for development clusters only.
+**rapid**: Automatically upgrades to the latest supported patch release on the latest supported minor version as soon as it's available. Use this for development clusters only.
 
 ```bash
 # Compare upgrade channels
@@ -246,10 +260,10 @@ cat > compare-channels.sh << 'EOF'
 echo "Auto-Upgrade Channel Comparison"
 echo "================================"
 echo "none: No automatic upgrades"
-echo "node-image: OS image updates only"
+echo "node-image: OS image updates only (legacy; prefer node OS channel NodeImage)"
 echo "patch: Kubernetes patch version updates (1.28.3 -> 1.28.5)"
-echo "stable: Minor version N-1 (if latest is 1.29, upgrades to 1.28)"
-echo "rapid: Latest minor version immediately (1.29 as soon as available)"
+echo "stable: Latest patch on minor version N-1 (if latest is 1.29, upgrades to latest 1.28 patch)"
+echo "rapid: Latest patch on latest minor version (1.29 patch as soon as available)"
 echo ""
 echo "Recommendation:"
 echo "- Production: stable or patch"
@@ -272,32 +286,29 @@ Control when auto-upgrades occur by configuring planned maintenance windows.
 RESOURCE_GROUP="production-rg"
 CLUSTER_NAME="production-aks"
 
-# Create maintenance configuration for auto-upgrades
+# Create maintenance configuration for cluster auto-upgrades
 az aks maintenanceconfiguration add \
   --resource-group $RESOURCE_GROUP \
   --cluster-name $CLUSTER_NAME \
-  --name default \
-  --weekday Saturday \
-  --start-hour 2 \
-  --duration 4
-
-# Add additional maintenance window
-az aks maintenanceconfiguration add \
-  --resource-group $RESOURCE_GROUP \
-  --cluster-name $CLUSTER_NAME \
-  --name default \
-  --weekday Sunday \
-  --start-hour 2 \
-  --duration 4
+  --name aksManagedAutoUpgradeSchedule \
+  --schedule-type Weekly \
+  --day-of-week Saturday \
+  --interval-weeks 1 \
+  --start-time 02:00 \
+  --duration 4 \
+  --utc-offset +00:00
 
 # Create maintenance configuration for node OS updates
 az aks maintenanceconfiguration add \
   --resource-group $RESOURCE_GROUP \
   --cluster-name $CLUSTER_NAME \
   --name aksManagedNodeOSUpgradeSchedule \
-  --weekday Sunday \
-  --start-hour 3 \
-  --duration 4
+  --schedule-type Weekly \
+  --day-of-week Sunday \
+  --interval-weeks 1 \
+  --start-time 03:00 \
+  --duration 4 \
+  --utc-offset +00:00
 
 # View maintenance windows
 az aks maintenanceconfiguration list \
@@ -305,13 +316,34 @@ az aks maintenanceconfiguration list \
   --cluster-name $CLUSTER_NAME \
   --output table
 
-# Add maintenance window exclusion for critical periods
+# Add maintenance window exclusion for critical periods using a configuration file
+cat > auto-upgrade-window.json << 'EOF'
+{
+  "maintenanceWindow": {
+    "schedule": {
+      "weekly": {
+        "intervalWeeks": 1,
+        "dayOfWeek": "Saturday"
+      }
+    },
+    "durationHours": 4,
+    "utcOffset": "+00:00",
+    "startTime": "02:00",
+    "notAllowedDates": [
+      {
+        "start": "2026-12-24",
+        "end": "2026-12-26"
+      }
+    ]
+  }
+}
+EOF
+
 az aks maintenanceconfiguration add \
   --resource-group $RESOURCE_GROUP \
   --cluster-name $CLUSTER_NAME \
-  --name default \
-  --not-allowed-start "2024-12-24T00:00:00Z" \
-  --not-allowed-end "2024-12-26T23:59:59Z"
+  --name aksManagedAutoUpgradeSchedule \
+  --config-file ./auto-upgrade-window.json
 ```
 
 ## Monitoring Auto-Upgrades
@@ -333,10 +365,17 @@ az aks show \
   --name $CLUSTER_NAME \
   --query "autoUpgradeProfile"
 
-# View recent operations
-az aks operation-status list \
+# View latest AKS operation
+az aks operation show-latest \
   --resource-group $RESOURCE_GROUP \
   --name $CLUSTER_NAME \
+  --output table
+
+# View recent upgrade-related activity logs
+az monitor activity-log list \
+  --resource-group $RESOURCE_GROUP \
+  --offset 24h \
+  --query "[?contains(resourceId, '$CLUSTER_NAME')].{time:eventTimestamp,operation:operationName.localizedValue,status:status.localizedValue}" \
   --output table
 
 # Check node pool provisioning state
