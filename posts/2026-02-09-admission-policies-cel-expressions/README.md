@@ -8,7 +8,7 @@ Description: Learn how to use Common Expression Language (CEL) in Kubernetes Val
 
 ---
 
-Common Expression Language (CEL) brings powerful, declarative policy validation to Kubernetes without requiring custom webhook development. Introduced as a beta feature in Kubernetes 1.26, CEL-based admission policies allow you to define complex validation rules directly in YAML manifests, making policy management more accessible and maintainable.
+Common Expression Language (CEL) brings powerful, declarative policy validation to Kubernetes without requiring custom webhook development. Introduced as an alpha feature in Kubernetes 1.26 and generally available in Kubernetes 1.30, CEL-based admission policies allow you to define complex validation rules directly in YAML manifests, making policy management more accessible and maintainable.
 
 This guide explores how to leverage CEL expressions for admission control, from basic field validation to complex security policies.
 
@@ -27,12 +27,12 @@ Key advantages of CEL-based policies include:
 
 Ensure you have:
 
-- Kubernetes 1.26 or later with ValidatingAdmissionPolicy feature enabled
+- Kubernetes 1.30 or later for the stable `admissionregistration.k8s.io/v1` API used in these examples
 - kubectl with cluster admin access
 - Basic understanding of Kubernetes API objects
 - Familiarity with expression languages (helpful but not required)
 
-For Kubernetes 1.26-1.27, enable the feature gate:
+For Kubernetes 1.28-1.29, use the `admissionregistration.k8s.io/v1beta1` API and enable the `ValidatingAdmissionPolicy` feature gate. For Kubernetes 1.26-1.27, use the `admissionregistration.k8s.io/v1alpha1` API and enable the feature gate:
 
 ```yaml
 # In kube-apiserver configuration
@@ -40,7 +40,7 @@ For Kubernetes 1.26-1.27, enable the feature gate:
 --feature-gates=ValidatingAdmissionPolicy=true
 ```
 
-In Kubernetes 1.28+, this feature is enabled by default.
+In Kubernetes 1.30+, the stable API is enabled by default.
 
 ## Creating Your First CEL Admission Policy
 
@@ -132,8 +132,8 @@ metadata:
   namespace: default
 data:
   registries: |
-    - "registry.example.com"
-    - "gcr.io/my-project"
+    registry.example.com/
+    gcr.io/my-project/
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
@@ -154,7 +154,7 @@ spec:
   - expression: |
       object.spec.containers.all(c,
         params.data.registries.split('\n').exists(r,
-          c.image.startsWith(r.trim())
+          r.trim() != '' && c.image.startsWith(r.trim())
         )
       )
     message: "Container images must come from approved registries"
@@ -195,8 +195,9 @@ spec:
   validations:
   - expression: |
       request.namespace.startsWith('prod-') ?
-        has(object.metadata.labels.owner) &&
-        has(object.metadata.labels.cost-center) :
+        has(object.metadata.labels) &&
+        'owner' in object.metadata.labels &&
+        'cost-center' in object.metadata.labels :
         true
     message: "Deployments in production namespaces must have 'owner' and 'cost-center' labels"
 ```
@@ -218,7 +219,7 @@ spec:
       resources: ["services"]
   validations:
   - expression: |
-      object.metadata.name.matches('^[a-z][a-z0-9-]*[a-z0-9]$') &&
+      object.metadata.name.matches('^[a-z]([-a-z0-9]*[a-z0-9])?$') &&
       object.metadata.name.size() <= 63
     message: "Service names must be lowercase alphanumeric with hyphens, starting with a letter"
 ```
@@ -243,8 +244,9 @@ spec:
       object.spec.containers.all(c,
         has(c.resources.requests.memory) &&
         has(c.resources.limits.memory) &&
-        int(c.resources.limits.memory.replace('Mi', '').replace('Gi', '000')) <=
-        int(c.resources.requests.memory.replace('Mi', '').replace('Gi', '000')) * 2
+        quantity(c.resources.limits.memory).compareTo(
+          quantity(c.resources.requests.memory).add(quantity(c.resources.requests.memory))
+        ) <= 0
       )
     message: "Memory limits must not exceed 2x memory requests"
 ```
@@ -271,6 +273,7 @@ spec:
   validations:
   - expression: |
       object.spec.containers.all(c,
+        !has(c.securityContext) ||
         !has(c.securityContext.privileged) ||
         c.securityContext.privileged == false
       )
@@ -301,6 +304,7 @@ spec:
   validations:
   - expression: |
       object.spec.containers.all(c,
+        has(c.securityContext) &&
         has(c.securityContext.runAsNonRoot) &&
         c.securityContext.runAsNonRoot == true
       )
@@ -321,10 +325,10 @@ spec:
   validationActions: ["Audit"]  # Only log violations, don't deny
 ```
 
-Check audit logs to see what would have been blocked:
+Check your configured Kubernetes audit backend to see what would have been blocked. Audit-mode failures are recorded with the `validation.policy.admission.k8s.io/validation_failure` audit annotation.
 
 ```bash
-kubectl logs -n kube-system kube-apiserver-<node> | grep ValidatingAdmissionPolicy
+grep 'validation.policy.admission.k8s.io/validation_failure' /var/log/kubernetes/audit.log
 ```
 
 ## Handling Multiple Validations
@@ -349,10 +353,11 @@ spec:
     message: "All containers must have resource limits"
   - expression: "!has(object.spec.hostNetwork) || !object.spec.hostNetwork"
     message: "Host network is not allowed"
-  - expression: "object.spec.containers.all(c, !c.image.endsWith(':latest'))"
-    message: "Image tag 'latest' is not allowed"
+  - expression: "object.spec.containers.all(c, c.image.contains(':') && !c.image.endsWith(':latest'))"
+    message: "Images must use explicit non-latest tags"
   - expression: |
       object.spec.containers.all(c,
+        has(c.securityContext) &&
         has(c.securityContext.readOnlyRootFilesystem) &&
         c.securityContext.readOnlyRootFilesystem == true
       )
