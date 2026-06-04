@@ -16,7 +16,7 @@ This guide explains how the ingress network works, how to configure it for produ
 
 When you create a service with a published port, Swarm does three things:
 
-1. Creates an ingress overlay network that spans all nodes
+1. Uses the ingress overlay network that was created when each node initialized or joined the swarm
 2. Assigns a virtual IP (VIP) to the service on that network
 3. Configures each node to listen on the published port and forward traffic through the ingress network to a healthy container
 
@@ -111,7 +111,7 @@ The `api` service has no published port - it is only reachable from other servic
 
 ## Service Discovery on Overlay Networks
 
-Swarm provides built-in DNS-based service discovery. Every service gets a DNS entry matching its name, resolving to the service's virtual IP.
+Swarm provides built-in DNS-based service discovery. By default, every service gets a DNS entry matching its name, resolving to the service's virtual IP.
 
 ```bash
 # From inside a container on app-network, these DNS lookups work
@@ -150,10 +150,10 @@ Host mode makes sense when:
 - You want an external load balancer to health-check individual nodes
 - Low latency is critical and you want to avoid the overlay network hop
 
-When using host mode, set a placement constraint to ensure only one replica per node:
+When using host mode with a fixed published port, use a global service or placement constraints to ensure only one replica per node:
 
 ```bash
-# Deploy with host mode and a global constraint
+# Deploy with host mode as a global service
 docker service create \
   --name webapp \
   --mode global \
@@ -165,12 +165,12 @@ The `--mode global` option runs exactly one replica on every node.
 
 ## Setting Up an External Load Balancer
 
-For production, place an external load balancer in front of your Swarm nodes. The load balancer health-checks each node and distributes traffic only to healthy ones.
+For production, place an external load balancer in front of your Swarm nodes. With health checks configured, the load balancer can distribute traffic only to healthy nodes.
 
 Here is an Nginx configuration as an external load balancer:
 
 ```nginx
-# /etc/nginx/nginx.conf - External load balancer for Docker Swarm
+# /etc/nginx/conf.d/swarm.conf - External load balancer for Docker Swarm
 upstream swarm_nodes {
     # List all Swarm nodes
     server 10.0.1.10:80;
@@ -250,7 +250,7 @@ sudo iptables -t nat -L -n | grep 80
 sudo ipvsadm -Ln
 ```
 
-**Port conflicts**: If another process on a node is using port 80, the service creation succeeds but traffic to that node fails. Check with `ss -tlnp | grep :80`.
+**Port conflicts**: If another Swarm service already publishes the same port and protocol, Docker rejects the new published port. In host mode with a fixed published port, local processes or other service tasks can prevent placement on that node. Check with `docker service ps webapp` and `ss -tlnp | grep :80`.
 
 **DNS resolution failures**: If a service cannot resolve another service's name, verify both services are on the same overlay network.
 
@@ -258,6 +258,7 @@ sudo ipvsadm -Ln
 
 ```bash
 # Remove and recreate the ingress network (causes brief disruption)
+# First remove or stop services that publish ports, or removing ingress fails
 docker network rm ingress
 docker network create \
   --driver overlay \
