@@ -83,10 +83,10 @@ The `-f` flag skips the confirmation prompt. Use this in scripts, but think twic
 
 ## Including Volumes: prune --volumes
 
-Volumes are excluded from prune by default because they typically contain data you want to keep (databases, uploads, etc.). To include them, add the `--volumes` flag.
+Volumes are excluded from prune by default because they typically contain data you want to keep (databases, uploads, etc.). To include unused anonymous volumes in `docker system prune`, add the `--volumes` flag.
 
 ```bash
-# WARNING: This also removes unused volumes (potential data loss)
+# WARNING: This also removes unused anonymous volumes (potential data loss)
 docker system prune --volumes
 ```
 
@@ -95,7 +95,7 @@ docker system prune --volumes
 docker system prune -a --volumes -f
 ```
 
-This is the "delete everything" command. It removes all stopped containers, all unused networks, all unused images (including tagged ones), all unused volumes, and all build cache. Only use this when you are certain you do not need any of that data.
+This is the "delete everything" command for containers, networks, images, anonymous volumes, and build cache. It removes all stopped containers, all unused networks, all unused images (including tagged ones), unused anonymous volumes, and all build cache. Only use this when you are certain you do not need any of that data.
 
 ## Targeted Pruning
 
@@ -127,11 +127,14 @@ docker image prune -a --filter "until=24h"
 ### Prune Volumes Only
 
 ```bash
-# Remove unused volumes (DATA LOSS WARNING)
+# Remove unused anonymous volumes (DATA LOSS WARNING)
 docker volume prune
 
 # With force flag
 docker volume prune -f
+
+# Remove all unused volumes, including named volumes
+docker volume prune -a
 ```
 
 ### Prune Networks Only
@@ -150,7 +153,7 @@ docker network prune --filter "until=12h"
 # Remove build cache
 docker builder prune
 
-# Remove all build cache (including in-use layers)
+# Remove all unused build cache, not just dangling cache
 docker builder prune -a
 
 # Keep only the last 5GB of cache
@@ -164,13 +167,13 @@ Filters let you target specific resources for cleanup, leaving others untouched.
 ### Filter by Age
 
 ```bash
-# Remove images not used in the last 7 days
+# Remove images created more than 7 days ago
 docker image prune -a --filter "until=168h"
 
-# Remove containers stopped more than 1 day ago
+# Remove stopped containers created more than 1 day ago
 docker container prune --filter "until=24h"
 
-# System prune for resources older than 48 hours
+# System prune for supported resources created more than 48 hours ago
 docker system prune --filter "until=48h"
 ```
 
@@ -186,7 +189,7 @@ docker system prune --filter "label=environment=dev"
 docker system prune --filter "label!=keep=true"
 ```
 
-To protect a container or image from pruning, add a label when creating it.
+To protect a container from pruning, add a label when creating it. To protect an image with a label filter, add a label when building the image.
 
 ```yaml
 # docker-compose.yml - Add labels to protect from pruning
@@ -308,9 +311,7 @@ Set up monitoring to catch disk space issues before they become emergencies.
 ```bash
 # Quick check script - add to monitoring
 #!/bin/bash
-DOCKER_DISK=$(docker system df --format '{{.Size}}' | head -1)
-DOCKER_RECLAIMABLE=$(docker system df --format '{{.Reclaimable}}' | head -1)
-echo "Docker disk usage: $DOCKER_DISK (Reclaimable: $DOCKER_RECLAIMABLE)"
+docker system df
 
 # Alert if /var/lib/docker is above 80% full
 USAGE=$(df /var/lib/docker --output=pcent | tail -1 | tr -d ' %')
