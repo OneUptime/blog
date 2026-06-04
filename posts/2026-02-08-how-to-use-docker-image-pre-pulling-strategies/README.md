@@ -59,7 +59,7 @@ Schedule it with cron:
 
 ```bash
 # Run the pre-pull script every 30 minutes
-echo "*/30 * * * * /usr/local/bin/pre-pull-images.sh >> /var/log/pre-pull.log 2>&1" | \
+echo "*/30 * * * * root /usr/local/bin/pre-pull-images.sh >> /var/log/pre-pull.log 2>&1" | \
   sudo tee /etc/cron.d/docker-pre-pull
 ```
 
@@ -79,11 +79,30 @@ import json
 import subprocess
 import threading
 
+REGISTRY_HOST = "ghcr.io"
+
 ALLOWED_REPOS = [
     "ghcr.io/your-org/api",
     "ghcr.io/your-org/web",
     "ghcr.io/your-org/worker",
 ]
+
+def image_refs_from_payload(payload):
+    # Docker Distribution notifications wrap push events in an "events" array.
+    for event in payload.get("events", []):
+        if event.get("action") != "push":
+            continue
+        target = event.get("target", {})
+        repository = target.get("repository")
+        tag = target.get("tag")
+        if repository and tag:
+            yield f"{REGISTRY_HOST}/{repository}:{tag}"
+
+    # Docker Hub webhooks use repository.repo_name and push_data.tag.
+    repository = payload.get("repository", {}).get("repo_name")
+    tag = payload.get("push_data", {}).get("tag")
+    if repository and tag:
+        yield f"docker.io/{repository}:{tag}"
 
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -91,15 +110,17 @@ class WebhookHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(content_length)
         payload = json.loads(body)
 
-        # Extract image reference from the webhook payload
-        image = payload.get("target", {}).get("repository", "")
-        tag = payload.get("target", {}).get("tag", "latest")
-        full_ref = f"{image}:{tag}"
+        pull_count = 0
+        for full_ref in image_refs_from_payload(payload):
+            image_repo = full_ref.rsplit(":", 1)[0]
+            if image_repo in ALLOWED_REPOS:
+                # Pull in a background thread so we respond quickly
+                thread = threading.Thread(target=self.pull_image, args=(full_ref,))
+                thread.daemon = True
+                thread.start()
+                pull_count += 1
 
-        if any(full_ref.startswith(repo) for repo in ALLOWED_REPOS):
-            # Pull in a background thread so we respond quickly
-            thread = threading.Thread(target=self.pull_image, args=(full_ref,))
-            thread.start()
+        if pull_count:
             self.send_response(200)
         else:
             self.send_response(403)
@@ -168,7 +189,8 @@ spec:
       labels:
         app: image-pre-puller
     spec:
-      # Use init containers to pull images, then sleep in the main container
+      # Use init containers to pull images, then sleep in the main container.
+      # These commands assume the images include /bin/sh.
       initContainers:
         - name: pull-api
           image: ghcr.io/your-org/api:v2.1.0
@@ -261,14 +283,14 @@ echo "All pre-pull operations complete"
 
 ## Strategy 5: Registry Mirror with Pre-Warming
 
-Run a local registry mirror on each node or in each availability zone. Pre-warm it with the images you need:
+Run a local Docker Hub registry mirror on each node or in each availability zone. Pre-warm it with the images you need:
 
 ```bash
 # Run a local registry mirror
 docker run -d --name registry-mirror \
   -p 5000:5000 \
   -v /data/registry-mirror:/var/lib/registry \
-  -e REGISTRY_PROXY_REMOTEURL=https://ghcr.io \
+  -e REGISTRY_PROXY_REMOTEURL=https://registry-1.docker.io \
   registry:2
 
 # Configure Docker to use the mirror
@@ -284,10 +306,10 @@ Pre-warm the mirror by pulling through it:
 
 ```bash
 # Pull through the mirror to warm the cache
-docker pull localhost:5000/your-org/api:v2.1.0
+docker pull localhost:5000/library/nginx:1.25-alpine
 ```
 
-Subsequent pulls from any container on that node hit the local mirror first.
+Subsequent Docker Hub pulls on that node hit the local mirror first.
 
 ## Strategy 6: Pre-Pull During Node Bootstrap
 
@@ -318,7 +340,7 @@ done
 echo "Node pre-pull complete, ready to accept workloads"
 ```
 
-In Kubernetes, combine this with node taints. Taint the node during bootstrap and remove the taint after pre-pulling finishes:
+In Kubernetes, combine this with node taints. Use the same container runtime that kubelet uses, such as `crictl` or `ctr` for containerd-based nodes, so the images land in the right image store. Taint the node during bootstrap and remove the taint after pre-pulling finishes:
 
 ```bash
 # Taint the node to prevent scheduling
@@ -326,7 +348,7 @@ kubectl taint nodes $NODE_NAME pre-pull=pending:NoSchedule
 
 # Pre-pull images
 for image in "${CRITICAL_IMAGES[@]}"; do
-    docker pull "$image"
+    crictl pull "$image"
 done
 
 # Remove the taint to allow scheduling
