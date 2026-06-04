@@ -33,7 +33,7 @@ data:
     # WAL configuration for archiving
     wal_level = replica
     archive_mode = on
-    archive_command = 'envdir /etc/wal-g/env wal-g wal-push %p'
+    archive_command = 'wal-g wal-push %p'
     archive_timeout = 60
     max_wal_senders = 10
     wal_keep_size = 1024
@@ -50,11 +50,6 @@ data:
     work_mem = 10MB
     min_wal_size = 1GB
     max_wal_size = 4GB
-
-  recovery.conf: |
-    # Recovery configuration for WAL-G
-    restore_command = 'envdir /etc/wal-g/env wal-g wal-fetch %f %p'
-    recovery_target_timeline = 'latest'
 ---
 apiVersion: v1
 kind: Secret
@@ -72,6 +67,7 @@ stringData:
   PGHOST: "localhost"
   PGPORT: "5432"
   PGUSER: "postgres"
+  PGDATA: "/var/lib/postgresql/data/pgdata"
   PGPASSWORD: "your-postgres-password"
 ---
 apiVersion: apps/v1
@@ -93,51 +89,52 @@ spec:
       initContainers:
         # Restore from backup on first start
         - name: restore-backup
-          image: wal-g/wal-g:latest
+          image: your-registry/postgres-16-walg:latest  # PostgreSQL 16 image with wal-g installed
           command:
             - /bin/sh
             - -c
             - |
-              if [ -f /var/lib/postgresql/data/PG_VERSION ]; then
+              if [ -f "$PGDATA/PG_VERSION" ]; then
                 echo "Database already exists, skipping restore"
                 exit 0
               fi
 
               echo "Checking for existing backups..."
-              envdir /etc/wal-g/env wal-g backup-list
+              wal-g backup-list
 
               if [ $? -eq 0 ]; then
                 echo "Restoring from latest backup..."
-                envdir /etc/wal-g/env wal-g backup-fetch /var/lib/postgresql/data LATEST
+                wal-g backup-fetch "$PGDATA" LATEST
+                chown -R postgres:postgres "$PGDATA"
               else
                 echo "No backups found, will initialize new database"
               fi
+          envFrom:
+            - secretRef:
+                name: walg-config
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
-            - name: walg-config
-              mountPath: /etc/wal-g/env
 
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: your-registry/postgres-16-walg:latest  # PostgreSQL 16 image with wal-g installed
           ports:
             - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: walg-config
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: walg-config
                   key: PGPASSWORD
-            - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
             - name: postgres-config
               mountPath: /etc/postgresql
-            - name: walg-config
-              mountPath: /etc/wal-g/env
           command:
             - postgres
             - -c
@@ -152,7 +149,7 @@ spec:
 
         # WAL-G sidecar for backup operations
         - name: walg
-          image: wal-g/wal-g:latest
+          image: your-registry/postgres-16-walg:latest  # PostgreSQL 16 image with wal-g installed
           command:
             - /bin/sh
             - -c
@@ -163,16 +160,14 @@ spec:
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
-            - name: walg-config
-              mountPath: /etc/wal-g/env
+          envFrom:
+            - secretRef:
+                name: walg-config
 
       volumes:
         - name: postgres-config
           configMap:
             name: postgres-config
-        - name: walg-config
-          secret:
-            secretName: walg-config
 
   volumeClaimTemplates:
     - metadata:
@@ -218,34 +213,35 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: backup
-              image: wal-g/wal-g:latest
+              image: your-registry/postgres-16-walg:latest  # PostgreSQL 16 image with wal-g installed
               command:
                 - /bin/sh
                 - -c
                 - |
                   echo "Starting backup at $(date)"
 
-                  # Create backup
-                  envdir /etc/wal-g/env wal-g backup-push /var/lib/postgresql/data
+                  # Create backup and verify page checksums if checksums are enabled
+                  wal-g backup-push "$PGDATA" --verify
 
                   if [ $? -eq 0 ]; then
                     echo "Backup completed successfully"
 
-                    # Delete old backups (keep last 7 days)
-                    envdir /etc/wal-g/env wal-g delete --confirm retain 7
+                    # Delete old backups, keeping the last 7 full backups and their deltas
+                    wal-g delete retain FULL 7 --confirm
 
                     # List current backups
-                    envdir /etc/wal-g/env wal-g backup-list
+                    wal-g backup-list
                   else
                     echo "Backup failed!"
                     exit 1
                   fi
+              envFrom:
+                - secretRef:
+                    name: walg-config
               volumeMounts:
                 - name: postgres-data
                   mountPath: /var/lib/postgresql/data
                   readOnly: true
-                - name: walg-config
-                  mountPath: /etc/wal-g/env
               resources:
                 requests:
                   cpu: 500m
@@ -255,9 +251,6 @@ spec:
             - name: postgres-data
               persistentVolumeClaim:
                 claimName: postgres-data-postgres-0
-            - name: walg-config
-              secret:
-                secretName: walg-config
 ```
 
 Deploy the backup job:
@@ -279,7 +272,7 @@ Check backup status and list available backups:
 ```bash
 # List all backups
 kubectl exec -it -n database postgres-0 -c walg -- \
-  envdir /etc/wal-g/env wal-g backup-list
+  wal-g backup-list
 
 # Output shows:
 # name                          last_modified        wal_segment_backup_start
@@ -287,15 +280,15 @@ kubectl exec -it -n database postgres-0 -c walg -- \
 
 # Check WAL archives
 kubectl exec -it -n database postgres-0 -c walg -- \
-  envdir /etc/wal-g/env wal-g wal-verify integrity
+  wal-g wal-verify integrity
 
-# Verify backup integrity
+# Test that the latest backup can be fetched
 kubectl exec -it -n database postgres-0 -c walg -- \
-  envdir /etc/wal-g/env wal-g backup-fetch /tmp/restore-test LATEST --verify
+  wal-g backup-fetch /tmp/restore-test LATEST
 
 # Check backup size
 kubectl exec -it -n database postgres-0 -c walg -- \
-  envdir /etc/wal-g/env wal-g backup-list --detail
+  wal-g backup-list --detail
 ```
 
 ## Implementing Point-in-Time Recovery
@@ -319,7 +312,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: restore
-          image: wal-g/wal-g:latest
+          image: your-registry/postgres-16-walg:latest  # PostgreSQL 16 image with wal-g installed
           command:
             - /bin/sh
             - -c
@@ -327,35 +320,34 @@ spec:
               echo "Starting point-in-time recovery..."
 
               # Clear existing data
-              rm -rf /var/lib/postgresql/data/pgdata/*
+              rm -rf "$PGDATA"
+              mkdir -p "$PGDATA"
 
               # Restore base backup
-              envdir /etc/wal-g/env wal-g backup-fetch \
-                /var/lib/postgresql/data/pgdata LATEST
+              wal-g backup-fetch "$PGDATA" LATEST
 
               # Create recovery.signal file
-              touch /var/lib/postgresql/data/pgdata/recovery.signal
+              touch "$PGDATA/recovery.signal"
 
               # Configure recovery target
-              cat >> /var/lib/postgresql/data/pgdata/postgresql.auto.conf <<RECOVERY
-              restore_command = 'envdir /etc/wal-g/env wal-g wal-fetch %f %p'
+              cat >> "$PGDATA/postgresql.auto.conf" <<RECOVERY
+              restore_command = 'wal-g wal-fetch %f %p'
               recovery_target_time = '2026-02-09 14:30:00'
               recovery_target_action = 'promote'
               RECOVERY
 
+              chown -R postgres:postgres "$PGDATA"
               echo "Recovery configuration complete"
+          envFrom:
+            - secretRef:
+                name: walg-config
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
-            - name: walg-config
-              mountPath: /etc/wal-g/env
       volumes:
         - name: postgres-data
           persistentVolumeClaim:
             claimName: postgres-data-postgres-0
-        - name: walg-config
-          secret:
-            secretName: walg-config
 EOF
 
 # Wait for recovery job to complete
@@ -384,8 +376,8 @@ data:
     #!/bin/bash
 
     # Check last backup age
-    LAST_BACKUP=$(envdir /etc/wal-g/env wal-g backup-list --json | \
-      jq -r '.[0].time' | date -d - +%s)
+    LAST_BACKUP_TIME=$(wal-g backup-list --json | jq -r 'max_by(.time).time')
+    LAST_BACKUP=$(date -d "$LAST_BACKUP_TIME" +%s)
 
     CURRENT_TIME=$(date +%s)
     AGE=$((CURRENT_TIME - LAST_BACKUP))
@@ -397,14 +389,14 @@ data:
     fi
 
     # Check WAL archiving
-    WAL_COUNT=$(envdir /etc/wal-g/env wal-g wal-verify | grep "verified" | wc -l)
+    WAL_STATUS=$(wal-g wal-verify integrity --json | jq -r '.integrity.status')
 
-    if [ $WAL_COUNT -lt 10 ]; then
-      echo "WARNING: Only $WAL_COUNT WAL archives found"
+    if [ "$WAL_STATUS" != "OK" ]; then
+      echo "WARNING: WAL archive integrity status is $WAL_STATUS"
       exit 1
     fi
 
-    echo "OK: Backups are current, $WAL_COUNT WAL archives verified"
+    echo "OK: Backups are current and WAL archive integrity is $WAL_STATUS"
     exit 0
 ---
 apiVersion: batch/v1
@@ -421,23 +413,21 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: monitor
-              image: wal-g/wal-g:latest
+              image: your-registry/postgres-16-walg:latest  # PostgreSQL 16 image with wal-g and jq installed
               command:
                 - /bin/bash
                 - /scripts/check-backups.sh
+              envFrom:
+                - secretRef:
+                    name: walg-config
               volumeMounts:
                 - name: scripts
                   mountPath: /scripts
-                - name: walg-config
-                  mountPath: /etc/wal-g/env
           volumes:
             - name: scripts
               configMap:
                 name: backup-monitor
                 defaultMode: 0755
-            - name: walg-config
-              secret:
-                secretName: walg-config
 ```
 
 ## Configuring Backup Retention Policies
@@ -447,20 +437,19 @@ Implement automated cleanup of old backups:
 ```bash
 # Keep backups based on multiple criteria
 kubectl exec -it -n database postgres-0 -c walg -- \
-  envdir /etc/wal-g/env wal-g delete --confirm retain FULL 7
+  wal-g delete retain FULL 7 --confirm
 
 # This keeps:
 # - 7 most recent full backups
 # - All WAL archives needed for those backups
 
-# Alternative: keep backups within time window
+# Alternative: keep the 10 most recent backups and backups after a time window
 kubectl exec -it -n database postgres-0 -c walg -- \
-  envdir /etc/wal-g/env wal-g delete --confirm before \
-  "2026-01-01T00:00:00Z"
+  wal-g delete retain 10 --after "2026-01-01T00:00:00Z" --confirm
 
 # Or keep specific backup count
 kubectl exec -it -n database postgres-0 -c walg -- \
-  envdir /etc/wal-g/env wal-g delete --confirm retain 10
+  wal-g delete retain 10 --confirm
 ```
 
 ## Implementing Backup Encryption
@@ -476,7 +465,6 @@ metadata:
   namespace: database
 stringData:
   # ... existing config ...
-  WALG_GPG_KEY_ID: "your-gpg-key-id"
   WALG_PGP_KEY: |
     -----BEGIN PGP PRIVATE KEY BLOCK-----
     ... your PGP key ...
