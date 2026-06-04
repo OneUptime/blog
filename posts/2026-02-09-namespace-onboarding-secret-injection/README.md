@@ -25,6 +25,8 @@ package main
 
 import (
     "context"
+    "crypto/rand"
+    "encoding/base64"
     "fmt"
     "time"
 
@@ -184,14 +186,29 @@ func (no *NamespaceOnboarder) setupRBAC(ctx context.Context, ns *corev1.Namespac
         },
         Rules: []rbacv1.PolicyRule{
             {
-                APIGroups: []string{"", "apps", "batch"},
-                Resources: []string{"pods", "deployments", "jobs", "services", "configmaps"},
+                APIGroups: []string{""},
+                Resources: []string{"pods", "services", "configmaps"},
                 Verbs:     []string{"get", "list", "watch", "create", "update", "patch"},
             },
             {
                 APIGroups: []string{""},
-                Resources: []string{"pods/log", "pods/exec"},
+                Resources: []string{"pods/log"},
                 Verbs:     []string{"get", "list"},
+            },
+            {
+                APIGroups: []string{""},
+                Resources: []string{"pods/exec"},
+                Verbs:     []string{"create"},
+            },
+            {
+                APIGroups: []string{"apps"},
+                Resources: []string{"deployments"},
+                Verbs:     []string{"get", "list", "watch", "create", "update", "patch"},
+            },
+            {
+                APIGroups: []string{"batch"},
+                Resources: []string{"jobs"},
+                Verbs:     []string{"get", "list", "watch", "create", "update", "patch"},
             },
         },
     }
@@ -463,7 +480,7 @@ func (no *NamespaceOnboarder) applyNetworkPolicies(ctx context.Context, ns *core
                         {
                             NamespaceSelector: &metav1.LabelSelector{
                                 MatchLabels: map[string]string{
-                                    "name": "ingress-nginx",
+                                    "kubernetes.io/metadata.name": "ingress-nginx",
                                 },
                             },
                         },
@@ -516,6 +533,10 @@ func (no *NamespaceOnboarder) setupLimitRanges(ctx context.Context, ns *corev1.N
 }
 
 func (no *NamespaceOnboarder) markOnboardingCompleted(ctx context.Context, ns *corev1.Namespace) error {
+    if ns.Annotations == nil {
+        ns.Annotations = make(map[string]string)
+    }
+
     ns.Annotations["onboarding.example.com/status"] = "completed"
     ns.Annotations["onboarding.example.com/completed-at"] = time.Now().Format(time.RFC3339)
 
@@ -524,6 +545,10 @@ func (no *NamespaceOnboarder) markOnboardingCompleted(ctx context.Context, ns *c
 }
 
 func (no *NamespaceOnboarder) markOnboardingFailed(ctx context.Context, ns *corev1.Namespace, err error) error {
+    if ns.Annotations == nil {
+        ns.Annotations = make(map[string]string)
+    }
+
     ns.Annotations["onboarding.example.com/status"] = "failed"
     ns.Annotations["onboarding.example.com/error"] = err.Error()
 
@@ -533,13 +558,21 @@ func (no *NamespaceOnboarder) markOnboardingFailed(ctx context.Context, ns *core
 
 // Helper functions
 func generateSecurePassword() string {
-    // Implement secure password generation
-    return "changeme"
+    password := make([]byte, 32)
+    if _, err := rand.Read(password); err != nil {
+        panic(err)
+    }
+
+    return base64.RawURLEncoding.EncodeToString(password)
 }
 
 func generateAPIKey() string {
-    // Implement API key generation
-    return "api-key-placeholder"
+    key := make([]byte, 32)
+    if _, err := rand.Read(key); err != nil {
+        panic(err)
+    }
+
+    return base64.RawURLEncoding.EncodeToString(key)
 }
 
 func getLogLevel(env string) string {
