@@ -376,6 +376,7 @@ package main
 
 import (
     "context"
+    "encoding/json"
     "fmt"
     "net/http"
     "os"
@@ -416,23 +417,23 @@ func main() {
     // Health endpoints
     mux.HandleFunc("/healthz/live", func(w http.ResponseWriter, r *http.Request) {
         healthy, status := healthChecker.CheckLiveness()
+        w.Header().Set("Content-Type", "application/json")
         if healthy {
             w.WriteHeader(http.StatusOK)
         } else {
             w.WriteHeader(http.StatusServiceUnavailable)
         }
-        w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(status)
     })
 
     mux.HandleFunc("/healthz/ready", func(w http.ResponseWriter, r *http.Request) {
         ready, status := healthChecker.CheckReadiness()
+        w.Header().Set("Content-Type", "application/json")
         if ready {
             w.WriteHeader(http.StatusOK)
         } else {
             w.WriteHeader(http.StatusServiceUnavailable)
         }
-        w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(status)
     })
 
