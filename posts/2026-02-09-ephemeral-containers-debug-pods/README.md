@@ -8,13 +8,13 @@ Description: Learn how to use ephemeral containers in Kubernetes to debug runnin
 
 ---
 
-Debugging production pods often requires tools that aren't included in minimal container images. Traditionally, you would need to rebuild images with debugging tools or restart pods with modified configurations. Ephemeral containers solve this by allowing you to inject temporary debugging containers into running pods without modifying the pod spec or restarting existing containers.
+Debugging production pods often requires tools that aren't included in minimal container images. Traditionally, you would need to rebuild images with debugging tools or restart pods with modified configurations. Ephemeral containers solve this by allowing you to inject temporary debugging containers into running pods without changing the original application containers or restarting existing containers.
 
 This capability is essential when debugging distroless or minimal images, investigating production issues without service disruption, accessing networking tools not present in application containers, and analyzing running processes without redeployment.
 
 ## Understanding Ephemeral Containers
 
-Ephemeral containers are temporary containers that can be added to an existing pod. They share the pod's network namespace and can optionally share process and filesystem namespaces with other containers. Unlike regular containers, they don't have resource guarantees, restart policies, or readiness probes.
+Ephemeral containers are temporary containers that can be added to an existing pod. They share the pod's network namespace, and `kubectl debug --target` can target the process namespace of an existing container when the container runtime supports it. Unlike regular containers, they don't have resource guarantees, restart policies, ports, or readiness probes.
 
 Ephemeral containers were introduced as alpha in Kubernetes 1.16 and reached stable status in 1.25.
 
@@ -25,12 +25,12 @@ Verify your cluster supports ephemeral containers:
 ```bash
 # Check Kubernetes version
 
-kubectl version --short
+kubectl version -o yaml
 
-# Check feature gate (not needed in 1.25+)
-kubectl get --raw /metrics | grep ephemeral
+# Check API support
+kubectl explain pod.spec.ephemeralContainers
 
-# Try creating an ephemeral container (will fail if unsupported)
+# Check kubectl debug client support
 kubectl debug --help | grep ephemeral
 ```
 
@@ -40,7 +40,7 @@ Add a debug container to a running pod:
 
 ```bash
 # Create a test pod with minimal image
-kubectl run minimal-pod --image=gcr.io/distroless/static:nonroot
+kubectl run minimal-pod --image=registry.k8s.io/pause:3.10 --restart=Never
 
 # Wait for pod to be ready
 kubectl wait --for=condition=Ready pod/minimal-pod
@@ -50,8 +50,8 @@ kubectl debug minimal-pod -it --image=busybox --target=minimal-pod
 
 # This drops you into a shell in the debug container
 # You can now use debugging tools like:
-ps aux
-netstat -tulpn
+ps
+netstat -tuln
 ls -la /proc/1/root/
 ```
 
@@ -77,18 +77,20 @@ nslookup service-name
 dig service-name.namespace.svc.cluster.local
 ```
 
-## Sharing Process Namespace
+## Targeting a Process Namespace
 
-Debug with access to all processes in the pod:
+Debug with access to the target container's process namespace:
 
 ```bash
-# Create debug container with shared process namespace
+# Create debug container that targets another container's process namespace
 kubectl debug my-app-pod -it \
-  --image=busybox \
-  --target=my-app-pod \
-  --share-processes
+  --image=ubuntu \
+  --target=my-app-container
 
-# Now you can see all processes in the pod
+# Install process debugging tools
+apt-get update && apt-get install -y procps strace
+
+# Now you can see processes from the targeted container if the runtime supports it
 ps aux
 
 # Attach to running process with strace
@@ -110,7 +112,8 @@ Create a copy of a pod with debugging tools:
 kubectl debug my-app-pod -it \
   --copy-to=my-app-pod-debug \
   --container=debug \
-  --image=ubuntu
+  --image=ubuntu \
+  --share-processes
 
 # The original pod continues running
 # The copied pod has the debug container
@@ -137,7 +140,6 @@ Debug pods that crash immediately:
 kubectl debug failing-pod -it \
   --copy-to=failing-pod-debug \
   --container=app \
-  --image=same-image:tag \
   -- sh -c "sleep infinity"
 
 # Now investigate why it was crashing
@@ -158,7 +160,7 @@ Debug with custom capabilities:
 # Create debug container with additional capabilities
 kubectl debug my-pod -it \
   --image=nicolaka/netshoot \
-  --target=my-pod \
+  --target=my-container \
   --profile=netadmin
 
 # This adds NET_ADMIN and NET_RAW capabilities
@@ -179,17 +181,17 @@ Create ephemeral containers with specialized debugging images:
 
 ```bash
 # Debug with full Linux tools
-kubectl debug my-pod -it --image=ubuntu --target=my-pod
+kubectl debug my-pod -it --image=ubuntu --target=my-container
 apt-get update
 apt-get install -y vim strace ltrace gdb
 
 # Debug with Go debugging tools
-kubectl debug go-app-pod -it --image=golang:1.21 --target=go-app-pod
+kubectl debug go-app-pod -it --image=golang:1.21 --target=go-app-container
 go tool pprof http://localhost:6060/debug/pprof/heap
 
 # Debug with Python debugging tools
-kubectl debug python-app-pod -it --image=python:3.11 --target=python-app-pod
-python -m pdb /app/main.py
+kubectl debug python-app-pod -it --image=python:3.11 --target=python-app-container
+python -m pdb /proc/<pid>/root/app/main.py
 ```
 
 ## Automating Ephemeral Container Creation
@@ -203,6 +205,7 @@ Create a helper script for common debugging scenarios:
 POD_NAME=$1
 NAMESPACE=${2:-default}
 IMAGE=${3:-nicolaka/netshoot}
+TARGET_CONTAINER=${4:-$POD_NAME}
 
 if [ -z "$POD_NAME" ]; then
     echo "Usage: kubectl debug-pod <pod-name> [namespace] [image]"
@@ -212,16 +215,17 @@ fi
 echo "Creating ephemeral debug container in pod: $POD_NAME"
 echo "Namespace: $NAMESPACE"
 echo "Image: $IMAGE"
+echo "Target container: $TARGET_CONTAINER"
 
 kubectl debug -n "$NAMESPACE" "$POD_NAME" -it \
   --image="$IMAGE" \
-  --target="$POD_NAME" \
-  --share-processes
+  --target="$TARGET_CONTAINER"
 
 # Usage:
 # kubectl debug-pod my-app-pod
 # kubectl debug-pod my-app-pod production
 # kubectl debug-pod my-app-pod production ubuntu
+# kubectl debug-pod my-app-pod production ubuntu my-app-container
 ```
 
 ## Viewing Ephemeral Containers
@@ -257,15 +261,15 @@ kubectl delete pod -n myapp <pod-name>
 
 ## Best Practices for Ephemeral Containers
 
-Use minimal debug images when possible to reduce download time. Share process namespace only when necessary for security. Create pod copies for invasive debugging to avoid affecting running workloads. Document which ephemeral containers were added for audit purposes. Clean up debug pods after investigation is complete. Use namespace-specific debug images tailored to your application stack.
+Use minimal debug images when possible to reduce download time. Target another container's process namespace only when necessary for security. Create pod copies for invasive debugging to avoid affecting running workloads. Document which ephemeral containers were added for audit purposes. Clean up debug pods after investigation is complete. Use namespace-specific debug images tailored to your application stack.
 
 ## Debugging Strategies
 
-For application crashes, copy the pod and change the command. For network issues, use netshoot without process sharing. For performance investigation, use shared process namespace with strace. For security investigation, copy the pod to preserve state.
+For application crashes, copy the pod and change the command. For network issues, use netshoot without process targeting. For performance investigation, target the application container's process namespace with strace. For security investigation, copy the pod to preserve state.
 
 ## Limitations and Considerations
 
-Ephemeral containers cannot be removed without deleting the pod. They don't support resource limits or requests. They don't have restart policies. They cannot be defined in pod specs, only added at runtime. Some features require specific Kubernetes versions.
+Ephemeral containers cannot be removed without deleting the pod. They don't support resource limits or requests. They don't have restart policies. They are added through the ephemeral containers API subresource at runtime rather than by editing the normal pod spec. Some features require specific Kubernetes versions.
 
 ## Real-World Example
 
@@ -275,7 +279,7 @@ Debug a production API that's timing out:
 # Add network debugging container
 kubectl debug api-pod-xyz -it \
   --image=nicolaka/netshoot \
-  --target=api-pod-xyz
+  --target=api-container
 
 # Inside the debug container:
 # Check DNS resolution
