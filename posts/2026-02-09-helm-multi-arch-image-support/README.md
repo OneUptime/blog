@@ -45,7 +45,7 @@ image:
         tag: "1.2.3-armv7"
 
   # Fallback for single-arch images
-  platform: ""  # auto-detect if empty
+  platform: ""  # use the default image tag if empty
 
 # Node affinity rules for architecture
 nodeSelector: {}
@@ -62,7 +62,7 @@ This structure provides flexibility. Most users can ignore multi-arch settings a
 
 ## Creating Smart Image Selection Templates
 
-Build template helpers that select the correct image based on configuration and node architecture.
+Build template helpers that select the correct image based on configuration and an optional platform override.
 
 ```yaml
 # templates/_helpers.tpl
@@ -137,6 +137,10 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- if or .Values.image.platform .Values.affinity.nodeAffinity }}
       affinity:
         {{- include "myapp.nodeAffinity" . | nindent 8 }}
@@ -194,23 +198,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v6
         with:
           images: mycompany/myapp
           tags: |
@@ -218,7 +222,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push multi-arch image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64,linux/arm/v7
@@ -237,7 +241,7 @@ Some applications need different base images or dependencies per architecture.
 
 ```dockerfile
 # Dockerfile with multi-stage build for multi-arch
-FROM --platform=${BUILDPLATFORM} golang:1.21 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.26 AS builder
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
@@ -256,7 +260,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -ldflags="-w -s" -o /app/server .
 
 # Use architecture-specific base image if needed
-FROM alpine:3.18
+FROM alpine:3.23
 
 # Install architecture-specific runtime dependencies
 RUN apk add --no-cache ca-certificates tzdata
@@ -367,7 +371,7 @@ kubectl get pod -n test-arm64 -o jsonpath='{.items[0].spec.containers[0].image}'
 
 Update your chart's README to explain multi-arch capabilities.
 
-```markdown
+````markdown
 # MyApp Helm Chart
 
 ## Multi-Architecture Support
@@ -399,7 +403,7 @@ image:
       arm64:
         repository: mycompany/myapp
         tag: "1.2.3-arm64"
-```bash
+```
 
 ### Constraining to Specific Architecture
 
@@ -411,8 +415,8 @@ image:
 
 nodeSelector:
   kubernetes.io/arch: arm64
-```bash
-```text
+```
+````
 
 ## Handling Init Containers
 
