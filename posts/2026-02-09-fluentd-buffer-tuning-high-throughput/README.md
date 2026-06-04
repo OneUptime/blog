@@ -14,17 +14,15 @@ This guide provides practical buffer tuning strategies for production Fluentd de
 
 ## Understanding Fluentd Buffers
 
-Fluentd uses a two-stage buffer system:
+Fluentd buffers events as chunks using either a memory or file buffer plugin:
 
-**Stage 1 - Memory Buffer**: Accumulates incoming logs in memory for fast access
+**Memory Buffer**: Stores chunks in memory for low-latency delivery, but buffered data is lost if Fluentd stops unexpectedly
 
-**Stage 2 - File Buffer**: Persists chunks to disk when memory buffer fills or on flush
+**File Buffer**: Stores chunks on local disk for durability and restart recovery
 
-Buffer chunks move through states:
-- **Queued**: Waiting to be written
-- **Stage**: Being written to
-- **Queue**: Ready for output
-- **Dequeue**: Being sent to destination
+Internally, each buffer has two areas:
+- **Stage**: Chunks being filled with incoming events
+- **Queue**: Chunks waiting to be flushed to the destination
 
 ## Basic Buffer Configuration
 
@@ -45,7 +43,7 @@ Start with a baseline configuration:
     chunk_limit_records 10000
 
     # Queue settings
-    queue_limit_length 32
+    queued_chunks_limit_size 32
 
     # Flush settings
     flush_interval 10s
@@ -115,7 +113,7 @@ data:
         chunk_limit_records 50000
 
         # Deep queue for absorbing spikes
-        queue_limit_length 128
+        queued_chunks_limit_size 128
 
         # Total buffer size limit
         total_limit_size 8GB
@@ -165,7 +163,7 @@ Use memory buffers when low latency is critical:
     chunk_limit_records 5000
 
     # Limited queue to prevent memory exhaustion
-    queue_limit_length 16
+    queued_chunks_limit_size 16
 
     # Fast flushing
     flush_interval 1s
@@ -179,7 +177,7 @@ Use memory buffers when low latency is critical:
 
 ## Hybrid Buffer Strategy
 
-Combine memory and file buffers:
+Use `copy` to send logs to separate outputs with different buffer types:
 
 ```ruby
 <match **>
@@ -196,7 +194,7 @@ Combine memory and file buffers:
     <buffer>
       @type memory
       chunk_limit_size 4MB
-      queue_limit_length 32
+      queued_chunks_limit_size 32
       flush_interval 5s
       overflow_action drop_oldest_chunk
     </buffer>
@@ -214,7 +212,7 @@ Combine memory and file buffers:
       @type file
       path /var/log/fluentd-buffers/durable.buffer
       chunk_limit_size 32MB
-      queue_limit_length 256
+      queued_chunks_limit_size 256
       flush_interval 30s
       total_limit_size 16GB
       overflow_action block
@@ -324,7 +322,7 @@ Query Prometheus for buffer metrics:
 ```promql
 # Buffer queue length
 
-fluentd_output_status_queue_size
+fluentd_output_status_buffer_queue_length
 
 # Buffer retry count
 rate(fluentd_output_status_retry_count[5m])
@@ -332,8 +330,11 @@ rate(fluentd_output_status_retry_count[5m])
 # Buffer emit records
 rate(fluentd_output_status_emit_records[5m])
 
-# Buffer write/read bytes
-rate(fluentd_output_status_buffer_total_bytes[5m])
+# Total buffered bytes
+fluentd_output_status_buffer_total_bytes
+
+# Queued buffer bytes
+fluentd_output_status_buffer_queue_byte_size
 ```
 
 ## Handling Buffer Overflow
@@ -346,7 +347,7 @@ Configure overflow behavior based on criticality:
   @type elasticsearch
   <buffer>
     overflow_action block
-    queue_limit_length 256
+    queued_chunks_limit_size 256
   </buffer>
 </match>
 
@@ -355,7 +356,7 @@ Configure overflow behavior based on criticality:
   @type elasticsearch
   <buffer>
     overflow_action drop_oldest_chunk
-    queue_limit_length 128
+    queued_chunks_limit_size 128
   </buffer>
 </match>
 
@@ -364,7 +365,7 @@ Configure overflow behavior based on criticality:
   @type elasticsearch
   <buffer>
     overflow_action throw_exception
-    queue_limit_length 64
+    queued_chunks_limit_size 64
   </buffer>
 </match>
 ```
@@ -378,15 +379,15 @@ Calculate appropriate buffer sizes:
 
 # Average log size: 2KB
 # Peak throughput: 100,000 * 2KB = 200MB/sec
-# Chunk size: 16MB (8 seconds of data)
-# Queue length: 128 chunks (17 minutes of buffer)
+# Chunk size: 16MB (about 0.08 seconds of data)
+# Queue length: 128 chunks (about 10 seconds of queued data)
 # Total buffer: 128 * 16MB = 2GB
 
 <buffer>
   chunk_limit_size 16MB
-  queue_limit_length 128
+  queued_chunks_limit_size 128
   total_limit_size 2GB
-  flush_interval 8s
+  flush_interval 1s
 </buffer>
 ```
 
@@ -407,7 +408,7 @@ Calculate appropriate buffer sizes:
 # Reduce queue length and chunk size
 <buffer>
   chunk_limit_size 8MB
-  queue_limit_length 64
+  queued_chunks_limit_size 64
   flush_interval 5s
 </buffer>
 ```
