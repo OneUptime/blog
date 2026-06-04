@@ -26,7 +26,7 @@ docker run -d \
   -p 8091-8096:8091-8096 \
   -p 11210-11211:11210-11211 \
   -v couchbase_data1:/opt/couchbase/var \
-  couchbase:community-7.2.0
+  couchbase/server:community-7.2.0
 ```
 
 The web console is available at `http://localhost:8091`. During first access, you will walk through initial cluster setup.
@@ -70,7 +70,7 @@ version: "3.8"
 
 services:
   couchbase-node1:
-    image: couchbase:community-7.2.0
+    image: couchbase/server:community-7.2.0
     container_name: cb-node1
     ports:
       - "8091-8096:8091-8096"
@@ -85,7 +85,7 @@ services:
           memory: 2G
 
   couchbase-node2:
-    image: couchbase:community-7.2.0
+    image: couchbase/server:community-7.2.0
     container_name: cb-node2
     volumes:
       - cb_data2:/opt/couchbase/var
@@ -97,7 +97,7 @@ services:
           memory: 2G
 
   couchbase-node3:
-    image: couchbase:community-7.2.0
+    image: couchbase/server:community-7.2.0
     container_name: cb-node3
     volumes:
       - cb_data3:/opt/couchbase/var
@@ -130,6 +130,10 @@ After all containers are running, initialize the first node and then join the ot
 
 ```bash
 # Initialize the first node as the cluster coordinator
+docker exec cb-node1 couchbase-cli node-init \
+  --cluster cb-node1:8091 \
+  --node-init-hostname cb-node1
+
 docker exec cb-node1 couchbase-cli cluster-init \
   --cluster cb-node1:8091 \
   --cluster-username admin \
@@ -139,23 +143,29 @@ docker exec cb-node1 couchbase-cli cluster-init \
   --services data,index,query
 
 # Initialize node 2 and add it to the cluster
-docker exec cb-node2 couchbase-cli node-init --cluster cb-node2:8091
+docker exec cb-node2 couchbase-cli node-init \
+  --cluster cb-node2:8091 \
+  --node-init-hostname cb-node2
+
 docker exec cb-node1 couchbase-cli server-add \
   --cluster cb-node1:8091 \
   --username admin \
   --password password123 \
-  --server-add cb-node2:8091 \
+  --server-add https://cb-node2:18091 \
   --server-add-username admin \
   --server-add-password password123 \
   --services data,index,query
 
 # Initialize node 3 and add it to the cluster
-docker exec cb-node3 couchbase-cli node-init --cluster cb-node3:8091
+docker exec cb-node3 couchbase-cli node-init \
+  --cluster cb-node3:8091 \
+  --node-init-hostname cb-node3
+
 docker exec cb-node1 couchbase-cli server-add \
   --cluster cb-node1:8091 \
   --username admin \
   --password password123 \
-  --server-add cb-node3:8091 \
+  --server-add https://cb-node3:18091 \
   --server-add-username admin \
   --server-add-password password123 \
   --services data,index,query
@@ -206,13 +216,16 @@ docker exec cb-node1 couchbase-cli collection-manage \
   --create-collection inventory.orders
 ```
 
-## Working with N1QL Queries
+## Working with SQL++ Queries
 
-N1QL (pronounced "nickel") is Couchbase's SQL-like query language for JSON documents. Access the query service through the web console or the cbq shell.
+SQL++ is Couchbase's SQL-like query language for JSON documents, formerly known as N1QL (pronounced "nickel"). Access the query service through the web console or the cbq shell.
 
 ```bash
 # Open the interactive query shell
-docker exec -it cb-node1 cbq -u admin -p password123 -e http://cb-node1:8091
+docker exec -it cb-node1 /opt/couchbase/bin/cbq \
+  -u admin \
+  -p password123 \
+  -engine=http://cb-node1:8091/
 ```
 
 Insert and query documents.
@@ -277,14 +290,15 @@ docker exec cb-node1 cbbackupmgr backup \
   --password password123
 
 # List available backups
-docker exec cb-node1 cbbackupmgr list \
+docker exec cb-node1 cbbackupmgr info \
   --archive /opt/couchbase/var/backups \
-  --repo mybackup
+  --repo mybackup \
+  --all
 ```
 
 ## Application Connectivity
 
-Connect from a Node.js application.
+Connect from a Node.js application running on the same Docker network.
 
 ```javascript
 // npm install couchbase
@@ -292,7 +306,7 @@ const couchbase = require('couchbase');
 
 async function main() {
   // Connect to the cluster
-  const cluster = await couchbase.connect('couchbase://localhost', {
+  const cluster = await couchbase.connect('couchbase://cb-node1', {
     username: 'admin',
     password: 'password123',
   });
@@ -312,7 +326,7 @@ async function main() {
   const result = await collection.get('prod-002');
   console.log(result.content);
 
-  // Run a N1QL query
+  // Run a SQL++ query
   const query = await cluster.query(
     'SELECT * FROM `ecommerce`.`inventory`.`products` WHERE price > $1',
     { parameters: [50] }
