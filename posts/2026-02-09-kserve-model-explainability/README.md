@@ -84,7 +84,7 @@ class SHAPExplainer(kserve.Model):
 
             # Create explanation dict
             explanation = {
-                "instance": instance.tolist(),
+                "instance": np.asarray(instance).tolist(),
                 "shap_values": shap_vals.tolist(),
                 "base_value": float(self.explainer.expected_value[1] if isinstance(self.explainer.expected_value, (list, np.ndarray)) else self.explainer.expected_value),
                 "feature_importance": {
@@ -305,7 +305,7 @@ class LIMEExplainer(kserve.Model):
                 np.array(instance),
                 self.model.predict_proba,
                 num_features=10,
-                top_labels=1
+                labels=(1,)
             )
 
             # Extract feature importances
@@ -350,6 +350,7 @@ import matplotlib.pyplot as plt
 import shap
 import io
 import base64
+import pickle
 
 class VisualExplainer(kserve.Model):
     def __init__(self, name: str, predictor_host: str):
