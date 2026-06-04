@@ -22,7 +22,7 @@ When you combine these options, you can create volumes backed by different stora
 
 ## Creating a tmpfs Volume
 
-A tmpfs volume stores data in memory. This is useful for sensitive data that should never touch disk, or for high-speed scratch space that does not need to survive a restart.
+A tmpfs volume stores data in memory. This is useful for sensitive data that should not persist after the container stops, or for high-speed scratch space that does not need to survive a restart. Keep in mind that Linux tmpfs data can still be written to swap if swap is enabled.
 
 Here is how to create a tmpfs volume with a 100MB size limit:
 
@@ -114,12 +114,10 @@ This approach is better than raw bind mounts in many situations because Docker m
 
 ## Using Custom Volumes in Docker Compose
 
-You can declare volumes with custom driver options directly in your `docker-compose.yml` file. Here is an example that sets up three different volume types:
+You can declare volumes with custom driver options directly in your `compose.yaml` file. Here is an example that sets up three different volume types:
 
 ```yaml
-# docker-compose.yml - demonstrating three local volume types
-version: "3.8"
-
+# compose.yaml - demonstrating three local volume types
 services:
   app:
     image: myapp:latest
