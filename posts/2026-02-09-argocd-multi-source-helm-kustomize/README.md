@@ -82,10 +82,9 @@ spec:
       chart: postgresql
       targetRevision: 13.2.24
       helm:
-        parameters:
-          - name: auth.postgresPassword
-            value: $postgresPassword
         values: |
+          auth:
+            existingSecret: postgresql-auth
           primary:
             persistence:
               size: 100Gi
@@ -167,8 +166,8 @@ spec:
         valueFiles:
           - $config/grafana/values-production.yaml
         parameters:
-          - name: adminPassword
-            value: $ARGOCD_ENV_ADMIN_PASSWORD
+          - name: admin.existingSecret
+            value: grafana-admin
 
     # Custom configuration repository
     - repoURL: https://github.com/yourorg/monitoring-config
@@ -213,7 +212,7 @@ grafana-dashboards/
 
 ## Referencing Resources Between Sources
 
-Use the `$` syntax to reference files from other sources:
+Use the `$` syntax to reference Helm value files from other sources:
 
 ```yaml
 sources:
@@ -254,7 +253,7 @@ spec:
     namespace: apps
   sources:
     # Helm chart from OCI registry
-    - repoURL: oci://registry.company.com/charts
+    - repoURL: registry.company.com/charts
       chart: myapp
       targetRevision: 2.1.0
       helm:
@@ -269,21 +268,21 @@ spec:
 
 ## Handling Dependencies
 
-When sources depend on each other, order matters:
+When resources from different sources depend on each other, source order does not control sync order:
 
 ```yaml
 sources:
-  # Source 1: CRDs must be applied first
+  # CRDs
   - repoURL: https://github.com/yourorg/crds
     targetRevision: main
     path: definitions
 
-  # Source 2: Operator depends on CRDs
+  # Operator depends on CRDs
   - repoURL: https://charts.operator.com
     chart: my-operator
     targetRevision: 1.0.0
 
-  # Source 3: Custom resources depend on operator
+  # Custom resources depend on operator
   - repoURL: https://github.com/yourorg/resources
     targetRevision: main
     path: custom-resources
@@ -299,9 +298,9 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
 ```
 
-## Source-Specific Sync Options
+## Source-Specific Options
 
-Apply different sync options per source:
+Apply different generation options per source:
 
 ```yaml
 sources:
@@ -332,14 +331,7 @@ metadata:
 spec:
   sources:
     - repoURL: https://github.com/org/apps
-      path: base
-      ref: base
-
-    - repoURL: https://github.com/org/apps
       path: overlays/production
-      kustomize:
-        components:
-          - $base
 
     - repoURL: https://github.com/org/secrets
       targetRevision: production
@@ -352,8 +344,8 @@ spec:
 Preview what will be deployed:
 
 ```bash
-# Dry run
-argocd app diff grafana --local-repo-root .
+# Compare live state with a local checkout
+argocd app diff grafana --local ./monitoring/grafana --local-repo-root .
 
 # Show manifests
 argocd app manifests grafana
@@ -366,16 +358,15 @@ Check sync status:
 ```bash
 argocd app get grafana
 
-# Output shows status for each source
+# Output shows the configured sources and overall sync status
 Name:               grafana
 Project:            monitoring
+Sync Status:        Synced
 Sources:
   1. Chart: grafana
      RepoURL: https://grafana.github.io/helm-charts
-     Status: Synced
   2. Path: dashboards
      RepoURL: https://github.com/yourorg/grafana-dashboards
-     Status: Synced
 ```
 
 ## Debugging Multi-Source Issues
@@ -397,10 +388,10 @@ sources:
     ref: config  # Must match $config
 ```
 
-**Circular dependencies:**
+**Cross-source output dependencies:**
 ```yaml
-# Avoid having sources reference each other in a loop
-# ArgoCD will fail to sync
+# Avoid assuming one source can consume rendered output from another
+# ArgoCD renders each source separately, then combines the generated manifests
 ```
 
 **Path not found:**
@@ -440,7 +431,7 @@ spec:
       path: apps/myapp
 ```
 
-The syntax is backward compatible.
+This keeps the Application on the same API version, but the `sources` field still requires ArgoCD 2.6 or later.
 
 ## Conclusion
 
