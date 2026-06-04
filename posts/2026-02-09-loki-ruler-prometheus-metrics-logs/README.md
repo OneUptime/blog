@@ -27,6 +27,8 @@ The Ruler runs as a component in Loki's microservices mode or as part of the sin
 
 Enable Ruler in your Loki configuration:
 
+Prometheus must also be started with `--web.enable-remote-write-receiver` so it can accept samples at `/api/v1/write`.
+
 ```yaml
 apiVersion: v1
 kind: ConfigMap
@@ -51,18 +53,17 @@ data:
     schema_config:
       configs:
       - from: 2024-01-01
-        store: boltdb-shipper
+        store: tsdb
         object_store: filesystem
-        schema: v11
+        schema: v13
         index:
           prefix: index_
           period: 24h
 
     storage_config:
-      boltdb_shipper:
+      tsdb_shipper:
         active_index_directory: /loki/index
         cache_location: /loki/cache
-        shared_store: filesystem
       filesystem:
         directory: /loki/chunks
 
@@ -79,26 +80,25 @@ data:
           store: inmemory
       enable_api: true
       enable_alertmanager_v2: true
-
-    # Remote write to Prometheus
-    limits_config:
-      ruler_remote_write_disabled: false
-
-    ruler:
       wal:
         dir: /loki/ruler-wal
       remote_write:
         enabled: true
-        client:
-          url: http://prometheus.monitoring.svc.cluster.local:9090/api/v1/write
-          queue_config:
-            capacity: 10000
-            max_shards: 10
-            min_shards: 1
-            max_samples_per_send: 5000
-            batch_send_deadline: 5s
-            min_backoff: 30ms
-            max_backoff: 100ms
+        clients:
+          prometheus:
+            url: http://prometheus.monitoring.svc.cluster.local:9090/api/v1/write
+            queue_config:
+              capacity: 10000
+              max_shards: 10
+              min_shards: 1
+              max_samples_per_send: 5000
+              batch_send_deadline: 5s
+              min_backoff: 30ms
+              max_backoff: 100ms
+
+    # Remote write to Prometheus
+    limits_config:
+      ruler_remote_write_disabled: false
 ```
 
 ## Creating Recording Rules
@@ -118,7 +118,7 @@ data:
         interval: 1m
         rules:
           # Count HTTP requests by status code
-          - record: http_requests_total
+          - record: http_requests_count_1m
             expr: |
               sum by (namespace, pod, status_code) (
                 count_over_time({job="kubernetes-pods"}
@@ -133,6 +133,7 @@ data:
               sum by (namespace, pod) (
                 rate({job="kubernetes-pods"}
                   | json
+                  | __error__=""
                   | status_code=~".+" [5m])
               )
 
@@ -142,6 +143,7 @@ data:
               sum by (namespace, pod) (
                 rate({job="kubernetes-pods"}
                   | json
+                  | __error__=""
                   | status_code=~"5.." [5m])
               )
 
@@ -151,20 +153,23 @@ data:
               sum by (namespace, pod) (
                 sum_over_time({job="kubernetes-pods"}
                   | json
-                  | unwrap duration_ms [5m])
+                  | unwrap duration_ms
+                  | __error__="" [5m])
               ) /
               sum by (namespace, pod) (
                 count_over_time({job="kubernetes-pods"}
                   | json
+                  | __error__=""
                   | duration_ms > 0 [5m])
               )
 
           # Track slow requests (>1s)
-          - record: http_slow_requests_total
+          - record: http_slow_requests_count_1m
             expr: |
               sum by (namespace, pod) (
                 count_over_time({job="kubernetes-pods"}
                   | json
+                  | __error__=""
                   | duration_ms > 1000 [1m])
               )
 
@@ -172,20 +177,22 @@ data:
         interval: 1m
         rules:
           # Count errors by type
-          - record: application_errors_total
+          - record: application_errors_count_1m
             expr: |
               sum by (namespace, pod, error_type) (
                 count_over_time({job="kubernetes-pods", level="error"}
                   | json
+                  | __error__=""
                   | error_type=~".+" [1m])
               )
 
           # Track exception count
-          - record: application_exceptions_total
+          - record: application_exceptions_count_1m
             expr: |
               sum by (namespace, pod, exception_class) (
                 count_over_time({job="kubernetes-pods"}
                   | logfmt
+                  | __error__=""
                   | exception_class=~".+Exception" [1m])
               )
 
@@ -193,32 +200,35 @@ data:
         interval: 1m
         rules:
           # Track successful orders
-          - record: orders_completed_total
+          - record: orders_completed_count_1m
             expr: |
               sum by (namespace) (
                 count_over_time({namespace="ecommerce", app="order-service"}
                   | json
+                  | __error__=""
                   | message="Order completed" [1m])
               )
 
           # Track failed payments
-          - record: payments_failed_total
+          - record: payments_failed_count_1m
             expr: |
               sum by (namespace, reason) (
                 count_over_time({namespace="ecommerce", app="payment-service"}
                   | json
+                  | __error__=""
                   | status="failed"
                   | reason=~".+" [1m])
               )
 
           # Calculate order value from logs
-          - record: orders_total_value
+          - record: orders_value_sum_1m
             expr: |
               sum by (namespace) (
                 sum_over_time({namespace="ecommerce", app="order-service"}
                   | json
                   | message="Order completed"
-                  | unwrap amount [1m])
+                  | unwrap amount
+                  | __error__="" [1m])
               )
 ```
 
@@ -263,8 +273,19 @@ spec:
         configMap:
           name: loki-config
       - name: rules
-        configMap:
-          name: loki-recording-rules
+        projected:
+          sources:
+          - configMap:
+              name: loki-recording-rules
+              items:
+              - key: recording-rules.yaml
+                path: fake/recording-rules.yaml
+          - configMap:
+              name: loki-alert-rules
+              optional: true
+              items:
+              - key: alert-rules.yaml
+                path: fake/alert-rules.yaml
   volumeClaimTemplates:
   - metadata:
       name: storage
@@ -311,6 +332,7 @@ data:
               sum by (namespace, pod) (
                 count_over_time({job="kubernetes-pods"}
                   | json
+                  | __error__=""
                   | message=~"(?i).*database.*connection.*failed.*" [5m])
               ) > 5
             for: 5m
@@ -324,6 +346,7 @@ data:
             expr: |
               count_over_time({job="kubernetes-pods"}
                 | json
+                | __error__=""
                 | message=~"(?i).*out of memory.*|.*oom.*killed.*" [5m]) > 0
             labels:
               severity: critical
@@ -337,11 +360,13 @@ data:
                 sum by (namespace, pod) (
                   sum_over_time({job="kubernetes-pods"}
                     | json
-                    | unwrap duration_ms [5m])
+                    | unwrap duration_ms
+                    | __error__="" [5m])
                 ) /
                 sum by (namespace, pod) (
                   count_over_time({job="kubernetes-pods"}
                     | json
+                    | __error__=""
                     | duration_ms > 0 [5m])
                 )
               ) > 2000
@@ -358,6 +383,7 @@ data:
               sum by (namespace) (
                 rate({job="kubernetes-pods"}
                   | json
+                  | __error__=""
                   | message=~"(?i).*authentication.*failed.*|.*login.*failed.*" [5m])
               ) > 0.5
             for: 5m
@@ -377,20 +403,22 @@ groups:
     interval: 30s
     rules:
       # Track user signups
-      - record: user_signups_total
+      - record: user_signups_count_1m
         expr: |
           sum by (source) (
             count_over_time({namespace="production", app="auth-service"}
               | json
+              | __error__=""
               | event="user_signup" [1m])
           )
 
       # Track product views
-      - record: product_views_total
+      - record: product_views_count_1m
         expr: |
           sum by (category) (
             count_over_time({namespace="production", app="catalog-service"}
               | json
+              | __error__=""
               | event="product_viewed"
               | category=~".+" [1m])
           )
@@ -399,17 +427,18 @@ groups:
       - record: checkout_conversion_rate
         expr: |
           (
-            sum(rate({namespace="production", app="order-service"} | json | event="order_placed" [5m]))
+            sum(rate({namespace="production", app="order-service"} | json | __error__="" | event="order_placed" [5m]))
             /
-            sum(rate({namespace="production", app="catalog-service"} | json | event="add_to_cart" [5m]))
+            sum(rate({namespace="production", app="catalog-service"} | json | __error__="" | event="add_to_cart" [5m]))
           ) * 100
 
       # Track cart abandonment
-      - record: cart_abandonment_total
+      - record: cart_abandonment_count_1m
         expr: |
           sum(
             count_over_time({namespace="production", app="cart-service"}
               | json
+              | __error__=""
               | event="cart_abandoned" [1m])
           )
 
@@ -417,9 +446,9 @@ groups:
       - record: search_zero_results_rate
         expr: |
           (
-            sum(rate({namespace="production", app="search-service"} | json | results_count="0" [5m]))
+            sum(rate({namespace="production", app="search-service"} | json | __error__="" | results_count="0" [5m]))
             /
-            sum(rate({namespace="production", app="search-service"} | json | event="search" [5m]))
+            sum(rate({namespace="production", app="search-service"} | json | __error__="" | event="search" [5m]))
           ) * 100
 ```
 
@@ -430,20 +459,20 @@ Once metrics are generated, query them in Prometheus:
 ```promql
 # View HTTP request rate
 
-rate(http_requests_total[5m])
+http_requests_rate
 
 # Error rate percentage
 (
-  rate(http_error_rate[5m])
+  http_error_rate
   /
-  rate(http_requests_rate[5m])
+  http_requests_rate
 ) * 100
 
-# P95 response time (if you tracked percentiles)
-histogram_quantile(0.95, http_response_time_avg)
+# Average response time
+http_response_time_avg
 
 # Business metric: Orders per minute
-rate(orders_completed_total[1m]) * 60
+orders_completed_count_1m
 ```
 
 ## Monitoring Ruler Performance
@@ -451,17 +480,18 @@ rate(orders_completed_total[1m]) * 60
 Track Ruler health and performance:
 
 ```promql
-# Ruler evaluation duration
-loki_ruler_evaluation_duration_seconds
+# Ruler WAL appender readiness
+loki_ruler_wal_appender_ready
 
-# Failed rule evaluations
-rate(loki_ruler_evaluation_failures_total[5m])
+# Remote write failed samples
+rate(loki_ruler_wal_prometheus_remote_storage_samples_failed_total[5m])
 
-# Number of active rules
-loki_ruler_rules
+# Remote write lag
+loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds
+  - loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds
 
-# Remote write failures
-rate(loki_ruler_wal_corruptions_total[5m])
+# WAL repair failures
+rate(loki_ruler_wal_corruptions_repair_failed_total[5m])
 ```
 
 ## Visualizing Log-Derived Metrics in Grafana
@@ -473,11 +503,11 @@ Create Grafana dashboards using the generated metrics:
 panels:
   - title: "HTTP Request Rate"
     targets:
-      - expr: sum(rate(http_requests_total[5m])) by (namespace)
+      - expr: sum(http_requests_rate) by (namespace)
 
   - title: "Error Rate by Pod"
     targets:
-      - expr: sum(rate(application_errors_total[5m])) by (pod)
+      - expr: sum(application_errors_count_1m) by (pod)
 
   - title: "Average Response Time"
     targets:
@@ -485,7 +515,7 @@ panels:
 
   - title: "Business Metrics - Orders"
     targets:
-      - expr: rate(orders_completed_total[1m]) * 60
+      - expr: orders_completed_count_1m
 ```
 
 ## Best Practices
