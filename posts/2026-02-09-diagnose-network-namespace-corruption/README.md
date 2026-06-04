@@ -8,13 +8,13 @@ Description: Identify and fix network namespace corruption that causes pods to l
 
 ---
 
-Network namespaces provide network isolation for containers in Kubernetes. Each pod gets its own network namespace with dedicated network interfaces, routing tables, and firewall rules. When network namespaces become corrupted, pods experience strange network behavior including total connectivity loss, intermittent failures, or seeing traffic from other pods. These issues are difficult to diagnose because they manifest in unpredictable ways and standard troubleshooting does not reveal the underlying namespace corruption.
+Network namespaces provide network isolation for containers in Kubernetes. Each non-hostNetwork pod gets its own network namespace, shared by all containers in that pod, with dedicated network interfaces, routing tables, and firewall rules. When network namespaces become corrupted, pods experience strange network behavior including total connectivity loss, intermittent failures, or seeing traffic from other pods. These issues are difficult to diagnose because they manifest in unpredictable ways and standard troubleshooting does not reveal the underlying namespace corruption.
 
 Network namespace corruption typically results from CNI plugin bugs, node kernel issues, manual network configuration errors, or improper pod cleanup. Systematic diagnosis identifies corrupted namespaces and guides recovery.
 
 ## Understanding Network Namespace Architecture
 
-Each pod has a network namespace created when the pod starts. The CNI plugin configures this namespace with interfaces, IP addresses, routes, and iptables rules. The kubelet tracks namespace paths, and container runtimes use these paths to attach containers to the correct namespace.
+Each non-hostNetwork pod has a network namespace created when the pod sandbox starts. The container runtime invokes the CNI plugin, which configures this namespace with interfaces, IP addresses, routes, and any plugin-specific firewall or datapath rules. Container runtimes expose namespace paths in their pod sandbox metadata, and CNI plugins use these paths to attach containers to the correct namespace.
 
 Corruption occurs when namespaces get orphaned, paths become invalid, or namespace contents become inconsistent with the CNI's expectations.
 
@@ -49,24 +49,26 @@ Verify namespace paths are valid:
 kubectl debug node/my-node -it --image=nicolaka/netshoot
 
 # List all network namespaces
-ip netns list
+# ip netns list shows named namespaces under /var/run/netns.
+# In a kubectl debug node pod, check the host filesystem under /host.
+ls -la /host/var/run/netns/
 
 # Check if namespace files exist
-ls -la /var/run/netns/
+ls -la /host/var/run/netns/
 
 # For containers, namespaces are in /proc
 ls -la /proc/*/ns/net
 
 # Count namespaces
-ip netns list | wc -l
+find /host/var/run/netns -maxdepth 1 -type f | wc -l
 
 # Compare with running pod count
-kubectl get pods -o wide | grep NODE-NAME | wc -l
+kubectl get pods -A --field-selector spec.nodeName=my-node --no-headers | wc -l
 
 # Large discrepancy indicates orphaned namespaces
 ```
 
-Orphaned namespaces consume resources and indicate cleanup failures.
+Named orphaned namespaces consume resources and indicate cleanup failures. Some runtimes also expose pod network namespaces only through `/proc/<pid>/ns/net`, so absence from `/var/run/netns` is not always a problem.
 
 ## Inspecting Pod Network Configuration
 
@@ -100,17 +102,17 @@ Verify namespace isolation works correctly:
 # From a pod, check process namespace
 kubectl exec -it my-pod -- ps aux
 
-# Should only see pod's processes
-# If you see node processes, namespace isolation failed
+# Should only see processes visible to that container or shared pod PID namespace
+# If you see node processes, check for hostPID or debug-pod configuration
 
 # Check network namespace
 kubectl exec -it my-pod -- ip link show
 
-# Should show pod's interfaces only
-# If you see node's interfaces, namespace is shared incorrectly
+# Should show pod's interfaces only, unless the pod uses hostNetwork
+# If you see node's interfaces, check for hostNetwork or runtime/CNI issues
 ```
 
-Broken isolation is a serious corruption requiring immediate investigation.
+Broken isolation is a serious issue requiring immediate investigation, but first rule out intentional `hostNetwork` or `hostPID` settings.
 
 ## Examining CNI Plugin State
 
@@ -125,7 +127,7 @@ kubectl exec -n kube-system calico-node-xxx -- \
 # Missing endpoints indicate CNI tracking issues
 
 # For Cilium, check endpoints
-kubectl exec -n kube-system cilium-xxx -- cilium endpoint list
+kubectl exec -n kube-system cilium-xxx -- cilium-dbg endpoint list
 
 # Verify each pod has an endpoint with correct IP
 ```
@@ -167,9 +169,9 @@ ping 10.244.1.5
 # If this fails, namespace connectivity is broken
 
 # From pod, ping gateway
-kubectl exec -it my-pod -- ping -c 3 10.244.1.1
+kubectl exec -it my-pod -- sh -c 'GW=$(ip route show default | awk "{print \$3; exit}"); ping -c 3 "$GW"'
 
-# Gateway is typically .1 in pod's subnet
+# Use the actual default gateway from the pod route table
 # Failure indicates namespace cannot send packets out
 ```
 
@@ -183,7 +185,8 @@ Each namespace can have its own iptables rules:
 # Check if pod has unexpected iptables rules
 kubectl exec -it my-pod -- iptables -L -n
 
-# Normally pods have minimal rules
+# This requires iptables in the image and enough privileges, such as CAP_NET_ADMIN
+# Normally pods have minimal rules; many CNI rules live on the node instead
 # Many rules might indicate corruption or misconfiguration
 
 # Compare with healthy pod
@@ -205,8 +208,8 @@ kubectl debug node/my-node -it --image=nicolaka/netshoot
 # Check if namespace is properly mounted
 findmnt | grep netns
 
-# Check /var/run/netns directory
-ls -la /var/run/netns/
+# In a kubectl debug node pod, check the host directory through /host
+ls -la /host/var/run/netns/
 
 # Verify bind mounts exist
 mount | grep netns
@@ -223,16 +226,16 @@ DNS failures often indicate namespace corruption:
 kubectl exec -it my-pod -- nslookup kubernetes.default
 
 # If this fails with "no such file or directory",
-# namespace might not have /etc/resolv.conf
+# the container might be missing /etc/resolv.conf or DNS tooling
 
 # Check resolv.conf
 kubectl exec -it my-pod -- cat /etc/resolv.conf
 
 # Should show cluster DNS
-# Missing or empty file indicates corruption
+# Missing or empty file indicates container filesystem or pod DNS configuration issues
 ```
 
-Corrupted /etc/resolv.conf prevents name resolution.
+Broken networking or a corrupted `/etc/resolv.conf` prevents name resolution.
 
 ## Checking Namespace Cleanup
 
@@ -243,11 +246,11 @@ Improper cleanup leaves orphaned namespaces:
 kubectl debug node/my-node -it --image=nicolaka/netshoot
 
 # List all namespaces
-ip netns list > all-namespaces.txt
+find /host/var/run/netns -maxdepth 1 -type f | sort > all-namespaces.txt
 
-# List running containers
-crictl ps | awk '{print $1}' | while read cid; do
-  crictl inspect $cid | jq -r '.info.runtimeSpec.linux.namespaces[] |
+# List running pod sandboxes and their network namespace paths
+crictl pods -q | while read sid; do
+  crictl inspectp "$sid" | jq -r '.info.runtimeSpec.linux.namespaces[]? |
     select(.type=="network") | .path'
 done > active-namespaces.txt
 
@@ -285,13 +288,15 @@ Clean up orphaned namespaces on nodes:
 kubectl debug node/my-node -it --image=nicolaka/netshoot
 
 # List namespaces
-ip netns list
+ls -la /host/var/run/netns/
 
-# For each orphaned namespace (verify it's not in use!):
-ip netns delete namespace-name
+# For each orphaned namespace (verify it's not in use!), delete it from the node.
+# This requires privileged node access; a default kubectl debug node pod may not be enough.
+# If working from a debug pod, use chroot only when the host has iproute2 installed:
+chroot /host ip netns delete namespace-name
 
-# Clean up /var/run/netns if needed
-rm /var/run/netns/orphaned-namespace
+# Clean up the host /var/run/netns entry if needed
+rm /host/var/run/netns/orphaned-namespace
 
 # Restart CNI plugin to resync
 kubectl delete pod -n kube-system calico-node-xxx
@@ -305,7 +310,7 @@ Kernel limits can cause namespace creation failures:
 
 ```bash
 # Check current namespace count
-ip netns list | wc -l
+find /proc/*/ns/net -maxdepth 0 2>/dev/null | wc -l
 
 # Check kernel limits
 cat /proc/sys/user/max_net_namespaces
@@ -328,7 +333,7 @@ Check if container runtime properly manages namespaces:
 kubectl debug node/my-node -it --image=nicolaka/netshoot
 
 # For containerd:
-crictl inspect POD-ID | jq '.info.runtimeSpec.linux.namespaces'
+crictl inspectp POD-SANDBOX-ID | jq '.info.runtimeSpec.linux.namespaces'
 
 # Should show network namespace path
 # {
@@ -351,15 +356,16 @@ kubectl debug node/my-node -it --image=nicolaka/netshoot
 
 ip netns add test-ns
 
-# Try configuring it with CNI
-export CNI_COMMAND=ADD
-export CNI_CONTAINERID=test123
-export CNI_NETNS=/var/run/netns/test-ns
-export CNI_IFNAME=eth0
-export CNI_PATH=/opt/cni/bin
+# Try configuring it with CNI using cnitool.
+# Run this on the node, or from a debug pod with host paths.
+export CNI_PATH=/host/opt/cni/bin
+export NETCONFPATH=/host/etc/cni/net.d
+NETWORK_NAME=$(jq -r '.name' /host/etc/cni/net.d/*.conflist | head -n1)
 
-# Run CNI plugin
-/opt/cni/bin/calico < /etc/cni/net.d/10-calico.conflist
+# Run the CNI network by name, then clean it up
+cnitool add "$NETWORK_NAME" /var/run/netns/test-ns
+cnitool del "$NETWORK_NAME" /var/run/netns/test-ns
+ip netns delete test-ns
 
 # If this fails, CNI has issues independent of specific pods
 ```
@@ -378,8 +384,8 @@ while true; do
   # Count namespaces
   NS_COUNT=$(ip netns list | wc -l)
 
-  # Count running pods on node
-  POD_COUNT=$(crictl ps -q | wc -l)
+  # Count running pod sandboxes on node
+  POD_COUNT=$(crictl pods -q | wc -l)
 
   # Alert if difference is too large
   DIFF=$((NS_COUNT - POD_COUNT))
