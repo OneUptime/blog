@@ -14,7 +14,7 @@ This guide covers both use cases with real tc commands and Docker configurations
 
 ## How tc Works with Docker
 
-Docker containers use virtual Ethernet (veth) pairs. Each container has a veth interface on the host side. You apply tc rules to this host-side veth interface to control the container's traffic.
+Docker containers on bridge networks use virtual Ethernet (veth) pairs. Each container has a veth interface on the host side. A root qdisc on the host-side veth controls packets leaving that host interface, which means traffic going into the container. To control packets leaving the container, apply tc inside the container or use ingress shaping on the host.
 
 ```bash
 # Start a test container
@@ -32,23 +32,24 @@ Alternatively, find the veth by matching the container's interface:
 
 ```bash
 # Another method: search veth interfaces by peer index
-PEER_IFINDEX=$(docker exec tc-demo cat /sys/class/net/eth0/ifindex)
-ip link show | grep -B1 "link-netns"
+VETH_INDEX=$(docker exec tc-demo cat /sys/class/net/eth0/iflink)
+VETH_NAME=$(ip -o link show | awk -v idx="$VETH_INDEX" -F': ' '$1 == idx {print $2}' | cut -d@ -f1)
+echo "Container veth: $VETH_NAME"
 ```
 
 ## Bandwidth Limiting
 
-Limit a container's outgoing bandwidth using the tbf (Token Bucket Filter) qdisc:
+Limit a container's incoming bandwidth using the tbf (Token Bucket Filter) qdisc on the host-side veth:
 
 ```bash
-# Limit outgoing bandwidth to 10 Mbps with a 32KB buffer
-sudo tc qdisc add dev $VETH_NAME root tbf rate 10mbit burst 32kbit latency 400ms
+# Limit incoming bandwidth to 10 Mbps with a 32KB buffer
+sudo tc qdisc add dev $VETH_NAME root tbf rate 10mbit burst 32kb latency 400ms
 ```
 
 Breaking down the parameters:
 
 - `rate 10mbit` - Maximum sustained bandwidth
-- `burst 32kbit` - Maximum burst size above the rate
+- `burst 32kb` - Maximum burst size above the rate
 - `latency 400ms` - Maximum time a packet can wait in the queue
 
 Verify the rule is active:
@@ -61,9 +62,9 @@ sudo tc qdisc show dev $VETH_NAME
 Test the bandwidth limit:
 
 ```bash
-# Install iperf3 server on another machine, then test from the container
+# Install iperf3 server on another machine, then test download throughput from the container
 docker exec tc-demo apk add iperf3
-docker exec tc-demo iperf3 -c <server-ip> -t 10
+docker exec tc-demo iperf3 -c <server-ip> -t 10 -R
 # Should show approximately 10 Mbps throughput
 ```
 
@@ -72,7 +73,7 @@ docker exec tc-demo iperf3 -c <server-ip> -t 10
 Add artificial latency using the netem (Network Emulator) qdisc:
 
 ```bash
-# Add 100ms latency to all outgoing packets
+# Add 100ms latency to packets entering the container
 sudo tc qdisc add dev $VETH_NAME root netem delay 100ms
 ```
 
@@ -96,7 +97,7 @@ docker exec tc-demo ping -c 5 8.8.8.8
 Drop a percentage of packets to simulate unreliable networks:
 
 ```bash
-# Drop 5% of outgoing packets randomly
+# Drop 5% of packets entering the container randomly
 sudo tc qdisc add dev $VETH_NAME root netem loss 5%
 
 # Drop with a correlation (packets tend to be lost in bursts)
@@ -112,7 +113,7 @@ Real network problems involve multiple issues simultaneously. Chain netem condit
 ```bash
 # Simulate a poor mobile connection: latency + jitter + packet loss + bandwidth limit
 sudo tc qdisc add dev $VETH_NAME root handle 1: netem delay 150ms 30ms loss 2%
-sudo tc qdisc add dev $VETH_NAME parent 1: handle 2: tbf rate 3mbit burst 32kbit latency 400ms
+sudo tc qdisc add dev $VETH_NAME parent 1:1 handle 2: tbf rate 3mbit burst 32kb latency 400ms
 ```
 
 This creates a parent netem qdisc for latency/loss and a child tbf qdisc for bandwidth shaping.
@@ -140,22 +141,22 @@ case $PROFILE in
     "4g-good")
         # Good 4G connection
         sudo tc qdisc add dev $VETH_NAME root handle 1: netem delay 40ms 10ms
-        sudo tc qdisc add dev $VETH_NAME parent 1: tbf rate 30mbit burst 64kbit latency 300ms
+        sudo tc qdisc add dev $VETH_NAME parent 1:1 tbf rate 30mbit burst 64kb latency 300ms
         ;;
     "4g-poor")
         # Poor 4G connection
         sudo tc qdisc add dev $VETH_NAME root handle 1: netem delay 150ms 40ms loss 1%
-        sudo tc qdisc add dev $VETH_NAME parent 1: tbf rate 5mbit burst 32kbit latency 400ms
+        sudo tc qdisc add dev $VETH_NAME parent 1:1 tbf rate 5mbit burst 32kb latency 400ms
         ;;
     "3g")
         # 3G connection
         sudo tc qdisc add dev $VETH_NAME root handle 1: netem delay 300ms 100ms loss 2%
-        sudo tc qdisc add dev $VETH_NAME parent 1: tbf rate 1mbit burst 16kbit latency 500ms
+        sudo tc qdisc add dev $VETH_NAME parent 1:1 tbf rate 1mbit burst 16kb latency 500ms
         ;;
     "satellite")
         # Satellite internet (high latency, decent bandwidth)
         sudo tc qdisc add dev $VETH_NAME root handle 1: netem delay 600ms 50ms loss 0.5%
-        sudo tc qdisc add dev $VETH_NAME parent 1: tbf rate 20mbit burst 64kbit latency 800ms
+        sudo tc qdisc add dev $VETH_NAME parent 1:1 tbf rate 20mbit burst 64kb latency 800ms
         ;;
     "lossy")
         # Very lossy network for stress testing
@@ -193,10 +194,12 @@ Shape traffic for an entire Docker network instead of individual containers:
 # Find the bridge interface for a Docker network
 BRIDGE=$(docker network inspect my-network --format '{{index .Options "com.docker.network.bridge.name"}}')
 # If no custom name, find it by network ID
-BRIDGE="br-$(docker network inspect my-network --format '{{.Id}}' | cut -c1-12)"
+if [ -z "$BRIDGE" ]; then
+  BRIDGE="br-$(docker network inspect my-network --format '{{.Id}}' | cut -c1-12)"
+fi
 
 # Apply bandwidth limit to all traffic on the network
-sudo tc qdisc add dev $BRIDGE root tbf rate 100mbit burst 128kbit latency 400ms
+sudo tc qdisc add dev $BRIDGE root tbf rate 100mbit burst 128kb latency 400ms
 ```
 
 ## Using tc Inside Containers
@@ -272,7 +275,7 @@ sudo tc qdisc del dev $VETH_NAME root
 
 # Verify rules are cleared
 sudo tc qdisc show dev $VETH_NAME
-# Should show the default pfifo_fast or fq_codel qdisc
+# Should show the default qdisc, such as noqueue or fq_codel
 ```
 
 ## Use Case: Testing Application Resilience
@@ -304,4 +307,4 @@ sudo tc qdisc change dev $VETH_NAME root netem delay 500ms loss 30%
 
 ## Conclusion
 
-tc gives you precise control over network conditions for Docker containers. Use it in production to enforce bandwidth limits and QoS policies. Use it in testing to verify that your applications handle real-world network degradation gracefully. The commands are straightforward: netem for latency, loss, and jitter; tbf for bandwidth shaping. Apply them to the container's host-side veth interface, and the container experiences the simulated conditions transparently. Combined with automated test scripts, tc turns network resilience testing from guesswork into a repeatable practice.
+tc gives you precise control over network conditions for Docker containers. Use it in production to enforce bandwidth limits and QoS policies. Use it in testing to verify that your applications handle real-world network degradation gracefully. The commands are straightforward: netem for latency, loss, and jitter; tbf for bandwidth shaping. Apply them to the container's host-side veth interface for container ingress, or inside the container for container egress, and the container experiences the simulated conditions transparently. Combined with automated test scripts, tc turns network resilience testing from guesswork into a repeatable practice.
