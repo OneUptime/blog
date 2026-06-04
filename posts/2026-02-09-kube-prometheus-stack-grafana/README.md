@@ -26,7 +26,7 @@ Key components include:
 ## Prerequisites
 
 Before deploying the stack, ensure you have:
-- A running Kubernetes cluster (version 1.19+)
+- A running Kubernetes cluster (version 1.25+ for current chart releases)
 - kubectl configured to communicate with your cluster
 - Helm 3 installed on your local machine
 - Sufficient cluster resources (at least 4GB RAM, 2 CPU cores available)
@@ -74,7 +74,7 @@ prometheus:
   prometheusSpec:
     # Storage configuration
     retention: 15d
-    retentionSize: "50GB"
+    retentionSize: "50GiB"
 
     # Resource requests and limits
     resources:
@@ -169,11 +169,11 @@ alertmanager:
       repeat_interval: 12h
       receiver: 'default'
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'critical-alerts'
-        - match:
-            severity: warning
+        - matchers:
+            - severity="warning"
           receiver: 'warning-alerts'
 
     receivers:
@@ -207,9 +207,10 @@ kubeStateMetrics:
 Deploy with the custom values:
 
 ```bash
-# Install with custom configuration
-helm install prometheus-stack prometheus-community/kube-prometheus-stack \
+# Install or update with custom configuration
+helm upgrade --install prometheus-stack prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
+  --create-namespace \
   --values prometheus-values.yaml
 ```
 
@@ -223,7 +224,7 @@ kubectl get pods -n monitoring
 
 # Expected output shows running pods for:
 # - prometheus-operator
-# - prometheus-server
+# - prometheus
 # - grafana
 # - alertmanager
 # - node-exporter (DaemonSet on each node)
@@ -257,7 +258,7 @@ kubectl port-forward -n monitoring svc/prometheus-stack-kube-prom-alertmanager 9
 
 ## Configuring Service Discovery
 
-The kube-prometheus-stack automatically discovers and monitors Kubernetes resources using ServiceMonitor and PodMonitor CRDs. To enable monitoring for your applications, create a ServiceMonitor:
+The kube-prometheus-stack discovers and monitors Kubernetes resources using ServiceMonitor and PodMonitor CRDs selected by the Prometheus resource. To enable monitoring for your applications with the default Helm selector behavior, create a ServiceMonitor:
 
 ```yaml
 # app-service-monitor.yaml
@@ -299,8 +300,9 @@ Verify Grafana dashboards are loaded:
 
 ```bash
 # List all dashboards via API
-GRAFANA_POD=$(kubectl get pod -n monitoring -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n monitoring $GRAFANA_POD -- curl -s http://localhost:3000/api/search | jq '.[] | .title'
+GRAFANA_PASSWORD=$(kubectl get secret -n monitoring prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | base64 --decode)
+kubectl port-forward -n monitoring svc/prometheus-stack-grafana 3000:80 &
+curl -s -u admin:"$GRAFANA_PASSWORD" http://localhost:3000/api/search | jq '.[] | .title'
 ```
 
 Check Alertmanager is receiving alerts:
