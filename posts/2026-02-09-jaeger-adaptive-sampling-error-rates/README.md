@@ -4,57 +4,27 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Jaeger, Distributed Tracing, Sampling, Observability
 
-Description: Learn how to configure Jaeger's adaptive sampling to automatically adjust trace sampling rates based on Kubernetes service error rates.
+Description: Learn how to configure Jaeger's adaptive sampling and build an application-side sampler that raises trace sampling rates when Kubernetes services report errors.
 
 ---
 
-Fixed sampling rates create a dilemma in production systems. Sample too aggressively and you miss important error traces. Sample too conservatively and trace volume becomes overwhelming. Jaeger's adaptive sampling solves this by dynamically adjusting sampling rates based on observed service behavior, particularly error rates.
+Fixed sampling rates create a dilemma in production systems. Sample too aggressively and you miss important error traces. Sample too conservatively and trace volume becomes overwhelming. Jaeger's adaptive sampling solves part of this by dynamically adjusting sampling rates based on observed traffic volume for each service and operation.
 
-Adaptive sampling ensures that services experiencing errors are sampled more heavily, while well-behaved services are sampled less. This approach captures the traces you need for debugging while keeping overall data volume manageable in Kubernetes environments.
+Adaptive sampling keeps a target number of traces per service and operation, while a custom application sampler can increase sampling when sampled spans show errors. This approach captures more traces during problematic windows while keeping overall data volume manageable in Kubernetes environments.
 
 ## Understanding Jaeger Adaptive Sampling
 
-Jaeger adaptive sampling uses feedback from the Jaeger backend to adjust sampling probabilities. The sampling manager analyzes recent traces to determine appropriate sampling rates for each service and operation. Services with high error rates receive higher sampling probabilities, ensuring error cases are well represented in collected traces.
+Jaeger adaptive sampling uses feedback from the Jaeger backend to adjust sampling probabilities. The Jaeger collector observes recent spans and recalculates sampling probabilities for each service and operation so collected traces match a configured target rate. It is traffic-volume based, not error-rate based, so error-aware sampling has to be implemented in the application or in another sampling layer.
 
-The system operates through periodic sampling strategy updates. Clients query the sampling manager for current strategies, apply them to new traces, and the cycle continues with the manager analyzing newly collected traces.
+The system operates through periodic sampling strategy updates. Clients query the collector for current strategies, apply them to new traces, and the cycle continues with the collector analyzing newly collected traces.
 
-## Deploying Jaeger with Sampling Manager
+## Deploying Jaeger with Adaptive Sampling
 
-Deploy Jaeger with the sampling manager component enabled:
+Deploy Jaeger collector with adaptive sampling enabled:
 
 ```yaml
 # jaeger-deployment.yaml
 
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: jaeger-sampling-config
-  namespace: observability
-data:
-  sampling.json: |
-    {
-      "default_strategy": {
-        "type": "probabilistic",
-        "param": 0.001
-      },
-      "service_strategies": [
-        {
-          "service": "payment-service",
-          "type": "probabilistic",
-          "param": 0.1
-        }
-      ],
-      "per_operation_strategies": [
-        {
-          "service": "payment-service",
-          "operation": "POST /charge",
-          "probabilistic_sampling": {
-            "sampling_rate": 0.5
-          }
-        }
-      ]
-    }
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -74,25 +44,22 @@ spec:
       - name: jaeger-collector
         image: jaegertracing/jaeger-collector:1.52
         args:
-          - "--sampling.strategies-file=/etc/jaeger/sampling.json"
+          - "--sampling.target-samples-per-second=1"
+          - "--sampling.initial-sampling-probability=0.001"
           - "--collector.num-workers=50"
           - "--collector.queue-size=2000"
         ports:
+        - containerPort: 4318   # OTLP HTTP
         - containerPort: 14250  # gRPC
         - containerPort: 14268  # HTTP
         - containerPort: 9411   # Zipkin
-        volumeMounts:
-        - name: sampling-config
-          mountPath: /etc/jaeger
         env:
+        - name: SAMPLING_CONFIG_TYPE
+          value: "adaptive"
         - name: SPAN_STORAGE_TYPE
           value: "elasticsearch"
         - name: ES_SERVER_URLS
           value: "http://elasticsearch:9200"
-      volumes:
-      - name: sampling-config
-        configMap:
-          name: jaeger-sampling-config
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -132,6 +99,9 @@ spec:
   selector:
     app: jaeger-collector
   ports:
+  - name: otlp-http
+    port: 4318
+    targetPort: 4318
   - name: grpc
     port: 14250
     targetPort: 14250
@@ -158,7 +128,7 @@ spec:
 
 ## Configuring Application for Remote Sampling
 
-Configure your applications to query the Jaeger sampling manager:
+Configure your applications to query the Jaeger collector for remote sampling strategies:
 
 ```go
 // sampling.go
@@ -166,25 +136,22 @@ package main
 
 import (
     "context"
-    "fmt"
-    "log"
     "os"
     "time"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/exporters/jaeger"
+    "go.opentelemetry.io/contrib/samplers/jaegerremote"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
-    "github.com/jaegertracing/jaeger/pkg/sampling"
 )
 
 func initTracer() (*trace.TracerProvider, error) {
-    // Create Jaeger exporter
-    exporter, err := jaeger.New(
-        jaeger.WithCollectorEndpoint(
-            jaeger.WithEndpoint("http://jaeger-collector.observability.svc.cluster.local:14268/api/traces"),
-        ),
+    // Create OTLP exporter for Jaeger 1.35+.
+    exporter, err := otlptracehttp.New(context.Background(),
+        otlptracehttp.WithEndpoint("jaeger-collector.observability.svc.cluster.local:4318"),
+        otlptracehttp.WithInsecure(),
     )
     if err != nil {
         return nil, err
@@ -202,11 +169,12 @@ func initTracer() (*trace.TracerProvider, error) {
         return nil, err
     }
 
-    // Create remote sampler that queries Jaeger
-    remoteSampler := NewJaegerRemoteSampler(
+    // Create remote sampler that queries the Jaeger collector.
+    remoteSampler := jaegerremote.New(
         "payment-service",
-        "http://jaeger-collector.observability.svc.cluster.local:14268/api/sampling",
-        60*time.Second,  // Refresh interval
+        jaegerremote.WithSamplingServerURL("http://jaeger-collector.observability.svc.cluster.local:14268/api/sampling"),
+        jaegerremote.WithSamplingRefreshInterval(60*time.Second),
+        jaegerremote.WithInitialSampler(trace.TraceIDRatioBased(0.001)),
     )
 
     // Create tracer provider with remote sampler
@@ -219,113 +187,11 @@ func initTracer() (*trace.TracerProvider, error) {
     otel.SetTracerProvider(tp)
     return tp, nil
 }
-
-// JaegerRemoteSampler implements remote sampling
-type JaegerRemoteSampler struct {
-    serviceName     string
-    samplingURL     string
-    refreshInterval time.Duration
-    currentStrategy *sampling.Strategy
-    closer          chan struct{}
-}
-
-func NewJaegerRemoteSampler(serviceName, samplingURL string, refreshInterval time.Duration) *JaegerRemoteSampler {
-    sampler := &JaegerRemoteSampler{
-        serviceName:     serviceName,
-        samplingURL:     samplingURL,
-        refreshInterval: refreshInterval,
-        closer:          make(chan struct{}),
-    }
-
-    // Start background goroutine to refresh sampling strategy
-    go sampler.refreshLoop()
-
-    return sampler
-}
-
-func (s *JaegerRemoteSampler) refreshLoop() {
-    ticker := time.NewTicker(s.refreshInterval)
-    defer ticker.Stop()
-
-    // Initial fetch
-    s.updateStrategy()
-
-    for {
-        select {
-        case <-ticker.C:
-            s.updateStrategy()
-        case <-s.closer:
-            return
-        }
-    }
-}
-
-func (s *JaegerRemoteSampler) updateStrategy() {
-    // Query Jaeger for sampling strategy
-    url := fmt.Sprintf("%s?service=%s", s.samplingURL, s.serviceName)
-
-    resp, err := http.Get(url)
-    if err != nil {
-        log.Printf("Failed to fetch sampling strategy: %v", err)
-        return
-    }
-    defer resp.Body.Close()
-
-    if resp.StatusCode != http.StatusOK {
-        log.Printf("Sampling strategy request returned %d", resp.StatusCode)
-        return
-    }
-
-    var strategyResponse sampling.SamplingStrategyResponse
-    if err := json.NewDecoder(resp.Body).Decode(&strategyResponse); err != nil {
-        log.Printf("Failed to decode sampling strategy: %v", err)
-        return
-    }
-
-    s.currentStrategy = &strategyResponse.Strategy
-    log.Printf("Updated sampling strategy: %+v", s.currentStrategy)
-}
-
-func (s *JaegerRemoteSampler) ShouldSample(p trace.SamplingParameters) trace.SamplingResult {
-    if s.currentStrategy == nil {
-        // Default to probabilistic sampling at 0.001 if no strategy loaded
-        return trace.TraceIDRatioBased(0.001).ShouldSample(p)
-    }
-
-    // Apply strategy based on type
-    switch s.currentStrategy.Type {
-    case sampling.SamplingTypeConst:
-        if s.currentStrategy.Param == 1.0 {
-            return trace.SamplingResult{
-                Decision:   trace.RecordAndSample,
-                Tracestate: p.ParentContext.TraceState(),
-            }
-        }
-        return trace.SamplingResult{
-            Decision:   trace.Drop,
-            Tracestate: p.ParentContext.TraceState(),
-        }
-
-    case sampling.SamplingTypeProbabilistic:
-        return trace.TraceIDRatioBased(s.currentStrategy.Param).ShouldSample(p)
-
-    case sampling.SamplingTypeRateLimiting:
-        // Implement rate limiting sampler
-        return s.rateLimitingSample(p)
-
-    default:
-        return trace.TraceIDRatioBased(0.001).ShouldSample(p)
-    }
-}
-
-func (s *JaegerRemoteSampler) Description() string {
-    return "JaegerRemoteSampler"
-}
 ```
 
 ## Implementing Error-Based Adaptive Sampling
 
-Create a custom sampling strategy that adjusts based on error rates:
+Create a custom sampling strategy that adjusts based on errors observed in sampled spans from the previous window. Because this is head-based sampling, the sampler cannot know that a trace will contain an error before it makes the initial sampling decision.
 
 ```go
 // adaptive_sampler.go
@@ -333,6 +199,7 @@ package sampling
 
 import (
     "context"
+    "log"
     "sync"
     "time"
 
@@ -480,11 +347,10 @@ func main() {
     // Base rate: 0.001 (0.1%), Error boost: 0.5 (increases up to 50% on errors)
     adaptiveSampler := sampling.NewAdaptiveSampler(0.001, 0.5, 60*time.Second)
 
-    // Create tracer provider with adaptive sampler
-    exporter, _ := jaeger.New(
-        jaeger.WithCollectorEndpoint(
-            jaeger.WithEndpoint("http://jaeger-collector.observability.svc.cluster.local:14268/api/traces"),
-        ),
+    // Create OTLP exporter for Jaeger 1.35+.
+    exporter, _ := otlptracehttp.New(context.Background(),
+        otlptracehttp.WithEndpoint("jaeger-collector.observability.svc.cluster.local:4318"),
+        otlptracehttp.WithInsecure(),
     )
 
     tp := trace.NewTracerProvider(
@@ -503,7 +369,7 @@ func main() {
 
 ## Monitoring Sampling Effectiveness
 
-Create a monitoring dashboard to track sampling behavior:
+If your application exports sampler metrics, create a monitoring dashboard to track sampling behavior:
 
 ```yaml
 # sampling-dashboard.yaml
@@ -522,7 +388,7 @@ data:
             "title": "Sampling Rate by Service",
             "targets": [
               {
-                "expr": "jaeger_sampling_rate{service=\"payment-service\"}",
+                "expr": "adaptive_sampler_sampling_rate{service=\"payment-service\"}",
                 "legendFormat": "{{service}}"
               }
             ]
@@ -531,7 +397,7 @@ data:
             "title": "Error Rate by Service",
             "targets": [
               {
-                "expr": "sum(rate(spans_total{status=\"error\"}[5m])) by (service) / sum(rate(spans_total[5m])) by (service)",
+                "expr": "sum(rate(adaptive_sampler_errors_total[5m])) by (service) / sum(rate(adaptive_sampler_sampled_spans_total[5m])) by (service)",
                 "legendFormat": "{{service}}"
               }
             ]
@@ -540,11 +406,11 @@ data:
             "title": "Traces Collected vs Dropped",
             "targets": [
               {
-                "expr": "rate(traces_sampled_total[5m])",
+                "expr": "rate(adaptive_sampler_sampled_traces_total[5m])",
                 "legendFormat": "Sampled"
               },
               {
-                "expr": "rate(traces_dropped_total[5m])",
+                "expr": "rate(adaptive_sampler_dropped_traces_total[5m])",
                 "legendFormat": "Dropped"
               }
             ]
@@ -553,7 +419,7 @@ data:
             "title": "Error Trace Coverage",
             "targets": [
               {
-                "expr": "sum(rate(spans_total{status=\"error\", sampled=\"true\"}[5m])) / sum(rate(spans_total{status=\"error\"}[5m]))",
+                "expr": "sum(rate(adaptive_sampler_errors_total[5m])) / sum(rate(application_errors_total[5m]))",
                 "legendFormat": "Error Trace Coverage %"
               }
             ]
@@ -569,15 +435,15 @@ Create tests to verify sampling adapts to error conditions:
 
 ```go
 // adaptive_sampler_test.go
-package sampling_test
+package sampling
 
 import (
-    "context"
+    "encoding/binary"
     "testing"
     "time"
 
-    "go.opentelemetry.io/otel/codes"
-    "go.opentelemetry.io/otel/sdk/trace"
+    oteltrace "go.opentelemetry.io/otel/trace"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func TestAdaptiveSampler(t *testing.T) {
@@ -586,8 +452,8 @@ func TestAdaptiveSampler(t *testing.T) {
     // Initially should sample at base rate
     sampledCount := 0
     for i := 0; i < 1000; i++ {
-        result := sampler.ShouldSample(trace.SamplingParameters{})
-        if result.Decision == trace.RecordAndSample {
+        result := sampler.ShouldSample(samplingParams(i))
+        if result.Decision == sdktrace.RecordAndSample {
             sampledCount++
         }
     }
@@ -606,8 +472,8 @@ func TestAdaptiveSampler(t *testing.T) {
     // Should now sample at higher rate
     sampledCount = 0
     for i := 0; i < 1000; i++ {
-        result := sampler.ShouldSample(trace.SamplingParameters{})
-        if result.Decision == trace.RecordAndSample {
+        result := sampler.ShouldSample(samplingParams(i + 1000))
+        if result.Decision == sdktrace.RecordAndSample {
             sampledCount++
         }
     }
@@ -619,6 +485,12 @@ func TestAdaptiveSampler(t *testing.T) {
             sampledCount, baselineSampleCount)
     }
 }
+
+func samplingParams(i int) sdktrace.SamplingParameters {
+    var traceID oteltrace.TraceID
+    binary.BigEndian.PutUint64(traceID[8:], uint64(i+1))
+    return sdktrace.SamplingParameters{TraceID: traceID}
+}
 ```
 
-Adaptive sampling ensures you capture the traces that matter most while keeping data volume under control. By increasing sampling rates when services experience errors, you maintain visibility into problems without over-sampling during normal operations in your Kubernetes environment.
+Adaptive sampling helps keep trace volume under control by targeting a stable sample rate per service and operation. By adding application-side error-aware sampling, you can raise sampling rates after sampled errors appear while avoiding over-sampling during normal operation in your Kubernetes environment.
