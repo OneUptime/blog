@@ -68,7 +68,7 @@ docker buildx build \
     --push .
 ```
 
-The `--push` flag is required because multi-platform images cannot be loaded into the local Docker daemon directly. They need to go to a registry. For local testing, build for a single platform:
+With a `docker-container` builder, the result is not loaded into your local Docker image store automatically, so `--push` is the usual way to publish a multi-platform image. For local testing, build for a single platform:
 
 ```bash
 # Build for the current platform only (loads into local Docker)
@@ -144,7 +144,9 @@ FROM debian:bookworm-slim
 ARG TARGETARCH
 
 # Some tools use x86_64/aarch64 instead of amd64/arm64
-RUN ARCH=$(case "${TARGETARCH}" in \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl && \
+    ARCH=$(case "${TARGETARCH}" in \
         amd64) echo "x86_64" ;; \
         arm64) echo "aarch64" ;; \
         *) echo "${TARGETARCH}" ;; \
@@ -152,7 +154,8 @@ RUN ARCH=$(case "${TARGETARCH}" in \
     curl -fsSL "https://github.com/example/releases/download/v1.0/tool-linux-${ARCH}.tar.gz" \
         -o /tmp/tool.tar.gz && \
     tar xzf /tmp/tool.tar.gz -C /usr/local/bin/ && \
-    rm /tmp/tool.tar.gz
+    rm /tmp/tool.tar.gz && \
+    rm -rf /var/lib/apt/lists/*
 ```
 
 ## Conditional Logic with Architecture Checks
@@ -223,24 +226,35 @@ ARG TARGETARCH
 
 # Install the cross-compilation toolchain
 RUN apt-get update && \
-    if [ "${TARGETARCH}" = "arm64" ]; then \
-        apt-get install -y gcc-aarch64-linux-gnu && \
-        rustup target add aarch64-unknown-linux-gnu; \
-    fi && \
+    case "${TARGETARCH}" in \
+        amd64) \
+            apt-get install -y --no-install-recommends gcc-x86-64-linux-gnu && \
+            rustup target add x86_64-unknown-linux-gnu; \
+            ;; \
+        arm64) \
+            apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu && \
+            rustup target add aarch64-unknown-linux-gnu; \
+            ;; \
+        *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY . .
 
 # Build for the target architecture
-RUN if [ "${TARGETARCH}" = "arm64" ]; then \
-        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc && \
-        cargo build --release --target aarch64-unknown-linux-gnu && \
-        cp target/aarch64-unknown-linux-gnu/release/myapp /app/myapp; \
-    else \
-        cargo build --release && \
-        cp target/release/myapp /app/myapp; \
-    fi
+RUN case "${TARGETARCH}" in \
+        amd64) \
+            export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc && \
+            cargo build --release --target x86_64-unknown-linux-gnu && \
+            cp target/x86_64-unknown-linux-gnu/release/myapp /app/myapp; \
+            ;; \
+        arm64) \
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc && \
+            cargo build --release --target aarch64-unknown-linux-gnu && \
+            cp target/aarch64-unknown-linux-gnu/release/myapp /app/myapp; \
+            ;; \
+    esac
 
 FROM debian:bookworm-slim
 COPY --from=builder /app/myapp /usr/local/bin/myapp
@@ -282,22 +296,22 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up QEMU for multi-platform emulation
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push multi-platform image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
