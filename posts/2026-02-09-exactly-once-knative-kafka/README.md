@@ -4,36 +4,54 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Knative, Kafka, Kubernetes, Exactly-Once, Event-Processing
 
-Description: Implement exactly-once semantics for event processing using Knative Eventing with Kafka to ensure reliable message delivery without duplicates in distributed systems.
+Description: Implement effectively exactly-once event effects using Knative Eventing with Kafka, idempotent handlers, and transactional state storage in distributed systems.
 
 ---
 
-Exactly-once processing guarantees that each event is processed once and only once, even in the presence of failures. This is crucial for financial transactions, inventory management, and other scenarios where duplicate processing causes problems. This guide shows you how to achieve exactly-once semantics using Knative Eventing with Kafka.
+Exactly-once processing is usually implemented as a guarantee that each event changes application state once and only once, even if the event is delivered more than once. This is crucial for financial transactions, inventory management, and other scenarios where duplicate processing causes problems. This guide shows you how to build effectively exactly-once event effects using Knative Eventing with Kafka.
 
 ## Understanding Exactly-Once Semantics
 
 Distributed systems naturally tend toward at-least-once delivery. Networks fail, pods restart, and messages get retried. Without proper handling, this leads to duplicate processing. Exactly-once semantics require coordination between message brokers, processing logic, and state storage.
 
-Kafka provides exactly-once delivery through transactional producers and idempotent consumers. Knative Eventing can leverage these capabilities when properly configured. The key is ensuring both message consumption and state updates happen atomically.
+Kafka provides exactly-once primitives through idempotent producers, transactions, and read-committed consumers. Knative Eventing with the Kafka Broker still delivers events to HTTP subscribers with retry-based, at-least-once behavior, so handlers must tolerate duplicate deliveries. The key is ensuring application side effects and processing state are committed atomically.
 
-Three components enable exactly-once processing: idempotent message brokers that deduplicate messages, transactional processing that commits consumption and side effects together, and idempotent handlers that produce the same result when processing duplicates.
+Three components enable effectively exactly-once processing: idempotent producers that avoid duplicate writes from producer retries, transactional processing where offsets and Kafka output records are committed together when you are consuming from and producing to Kafka, and idempotent handlers that produce the same result when Knative retries duplicate deliveries.
 
 ## Configuring Kafka for Exactly-Once
 
-Deploy Kafka with transactional support:
+Deploy Kafka with transactional support. Current Strimzi releases use the `v1` API and KRaft node pools:
 
 ```yaml
 # kafka-cluster.yaml
 
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: mixed
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: event-cluster
+spec:
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  storage:
+    type: persistent-claim
+    size: 100Gi
+    class: fast-ssd
+    kraftMetadata: shared
+---
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: event-cluster
   namespace: kafka
 spec:
   kafka:
-    version: 3.5.0
-    replicas: 3
+    version: 4.2.0
+    metadataVersion: 4.2
     listeners:
       - name: plain
         port: 9092
@@ -44,9 +62,6 @@ spec:
         type: internal
         tls: true
     config:
-      # Enable idempotence
-      enable.idempotence: true
-
       # Transaction settings
       transaction.state.log.replication.factor: 3
       transaction.state.log.min.isr: 2
@@ -65,24 +80,16 @@ spec:
       # Performance tuning
       num.partitions: 10
       compression.type: snappy
-
-    storage:
-      type: persistent-claim
-      size: 100Gi
-      class: fast-ssd
-
-  zookeeper:
-    replicas: 3
-    storage:
-      type: persistent-claim
-      size: 10Gi
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
 ```
 
 Create a topic with proper configuration:
 
 ```yaml
 # exactly-once-topic.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: orders
@@ -104,7 +111,7 @@ spec:
     segment.ms: 86400000     # 1 day
 ```
 
-## Setting Up Knative with Kafka Source
+## Setting Up Knative with Kafka Broker
 
 Install Knative Kafka components:
 
@@ -127,7 +134,7 @@ data:
 EOF
 ```
 
-Configure Kafka broker with exactly-once support:
+Configure the Kafka broker with retry and dead-letter handling. These settings provide at-least-once delivery to the subscriber, so the handler still needs the idempotency logic shown below:
 
 ```yaml
 # kafka-broker-exactly-once.yaml
@@ -164,20 +171,19 @@ Create a service that handles events idempotently using a database for deduplica
 # order_processor.py
 from flask import Flask, request, jsonify
 import psycopg2
-from psycopg2 import sql
 import json
 import logging
-from datetime import datetime
+import os
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # Database connection
 DB_CONN = psycopg2.connect(
-    host="postgres",
-    database="events",
-    user="postgres",
-    password="password"
+    host=os.getenv("DB_HOST", "postgres"),
+    database=os.getenv("DB_NAME", "events"),
+    user=os.getenv("DB_USER", "postgres"),
+    password=os.getenv("DB_PASSWORD", "password")
 )
 
 # Initialize database schema
@@ -189,6 +195,7 @@ def init_db():
                 event_id VARCHAR(255) PRIMARY KEY,
                 event_type VARCHAR(255),
                 processed_at TIMESTAMP DEFAULT NOW(),
+                duplicate_count INTEGER DEFAULT 0,
                 result JSONB
             )
         """)
@@ -217,33 +224,47 @@ def handle_event():
         # Extract CloudEvents headers
         event_id = request.headers.get('Ce-Id')
         event_type = request.headers.get('Ce-Type')
-        event_source = request.headers.get('Ce-Source')
-
         if not event_id:
             return jsonify({'error': 'Missing event ID'}), 400
 
         logging.info(f"Received event {event_id} of type {event_type}")
 
-        # Check if already processed (idempotency)
-        if is_already_processed(event_id):
-            logging.info(f"Event {event_id} already processed, returning cached result")
-            result = get_cached_result(event_id)
-            return jsonify(result), 200
-
         # Extract event data
-        event_data = request.get_json()
+        event_data = request.get_json() or {}
 
-        # Process event based on type
-        if event_type == 'order.created':
-            result = process_order_created(event_id, event_data)
-        elif event_type == 'order.payment':
-            result = process_payment(event_id, event_data)
-        else:
-            logging.warning(f"Unknown event type: {event_type}")
-            result = {'status': 'ignored'}
+        # Use one database transaction for the idempotency record and side effects.
+        with DB_CONN:
+            with DB_CONN.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO processed_events (event_id, event_type)
+                    VALUES (%s, %s)
+                    ON CONFLICT (event_id) DO NOTHING
+                    RETURNING event_id
+                """, (event_id, event_type))
+                inserted = cur.fetchone()
 
-        # Mark as processed
-        mark_as_processed(event_id, event_type, result)
+                if not inserted:
+                    cur.execute("""
+                        UPDATE processed_events
+                        SET duplicate_count = duplicate_count + 1
+                        WHERE event_id = %s
+                        RETURNING result
+                    """, (event_id,))
+                    cached_result = cur.fetchone()[0]
+                    logging.info(f"Event {event_id} already processed, returning cached result")
+                    return jsonify(cached_result or {'status': 'already_processed'}), 200
+
+                # Process event based on type
+                if event_type == 'order.created':
+                    result = process_order_created(cur, event_id, event_data)
+                elif event_type == 'order.payment':
+                    result = process_payment(cur, event_id, event_data)
+                else:
+                    logging.warning(f"Unknown event type: {event_type}")
+                    result = {'status': 'ignored'}
+
+                # Mark as processed in the same transaction as the side effect
+                mark_as_processed(cur, event_id, result)
 
         return jsonify(result), 200
 
@@ -252,36 +273,15 @@ def handle_event():
         # Return 500 to trigger retry
         return jsonify({'error': str(e)}), 500
 
-def is_already_processed(event_id):
-    """Check if event was already processed"""
-    with DB_CONN.cursor() as cur:
-        cur.execute(
-            "SELECT 1 FROM processed_events WHERE event_id = %s",
-            (event_id,)
-        )
-        return cur.fetchone() is not None
-
-def get_cached_result(event_id):
-    """Get cached processing result"""
-    with DB_CONN.cursor() as cur:
-        cur.execute(
-            "SELECT result FROM processed_events WHERE event_id = %s",
-            (event_id,)
-        )
-        row = cur.fetchone()
-        return json.loads(row[0]) if row else {}
-
-def mark_as_processed(event_id, event_type, result):
+def mark_as_processed(cur, event_id, result):
     """Mark event as processed"""
-    with DB_CONN.cursor() as cur:
-        cur.execute("""
-            INSERT INTO processed_events (event_id, event_type, result)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (event_id) DO NOTHING
-        """, (event_id, event_type, json.dumps(result)))
-        DB_CONN.commit()
+    cur.execute("""
+        UPDATE processed_events
+        SET result = %s
+        WHERE event_id = %s
+    """, (json.dumps(result), event_id))
 
-def process_order_created(event_id, data):
+def process_order_created(cur, event_id, data):
     """Process order creation with idempotency"""
 
     order_id = data['order_id']
@@ -290,32 +290,24 @@ def process_order_created(event_id, data):
 
     logging.info(f"Processing order creation: {order_id}")
 
-    # Use database transaction for atomicity
-    with DB_CONN.cursor() as cur:
-        try:
-            # Insert order (idempotent due to PRIMARY KEY)
-            cur.execute("""
-                INSERT INTO orders (order_id, customer_id, total, status)
-                VALUES (%s, %s, %s, 'pending')
-                ON CONFLICT (order_id) DO UPDATE
-                SET updated_at = NOW()
-                RETURNING order_id, status
-            """, (order_id, customer_id, total))
+    # Insert order (idempotent due to PRIMARY KEY)
+    cur.execute("""
+        INSERT INTO orders (order_id, customer_id, total, status)
+        VALUES (%s, %s, %s, 'pending')
+        ON CONFLICT (order_id) DO UPDATE
+        SET updated_at = NOW()
+        RETURNING order_id, status
+    """, (order_id, customer_id, total))
 
-            order_result = cur.fetchone()
-            DB_CONN.commit()
+    order_result = cur.fetchone()
 
-            return {
-                'status': 'created',
-                'order_id': order_result[0],
-                'order_status': order_result[1]
-            }
+    return {
+        'status': 'created',
+        'order_id': order_result[0],
+        'order_status': order_result[1]
+    }
 
-        except Exception as e:
-            DB_CONN.rollback()
-            raise
-
-def process_payment(event_id, data):
+def process_payment(cur, event_id, data):
     """Process payment with idempotency"""
 
     order_id = data['order_id']
@@ -323,35 +315,27 @@ def process_payment(event_id, data):
 
     logging.info(f"Processing payment for order: {order_id}")
 
-    with DB_CONN.cursor() as cur:
-        try:
-            # Update order status atomically
-            cur.execute("""
-                UPDATE orders
-                SET status = 'paid', updated_at = NOW()
-                WHERE order_id = %s AND status = 'pending'
-                RETURNING order_id, status
-            """, (order_id,))
+    # Update order status atomically
+    cur.execute("""
+        UPDATE orders
+        SET status = 'paid', updated_at = NOW()
+        WHERE order_id = %s AND status = 'pending'
+        RETURNING order_id, status
+    """, (order_id,))
 
-            result = cur.fetchone()
+    result = cur.fetchone()
 
-            if not result:
-                # Order already paid or doesn't exist
-                logging.warning(f"Order {order_id} not found or already paid")
-                return {'status': 'already_processed', 'order_id': order_id}
+    if not result:
+        # Order already paid or doesn't exist
+        logging.warning(f"Order {order_id} not found or already paid")
+        return {'status': 'already_processed', 'order_id': order_id}
 
-            DB_CONN.commit()
-
-            return {
-                'status': 'payment_processed',
-                'order_id': result[0],
-                'order_status': result[1],
-                'payment_id': payment_id
-            }
-
-        except Exception as e:
-            DB_CONN.rollback()
-            raise
+    return {
+        'status': 'payment_processed',
+        'order_id': result[0],
+        'order_status': result[1],
+        'payment_id': payment_id
+    }
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
@@ -390,9 +374,9 @@ spec:
               key: password
 ```
 
-## Configuring Triggers with Exactly-Once Delivery
+## Configuring Triggers with Idempotent Delivery
 
-Create triggers that leverage exactly-once semantics:
+Create triggers that route events to an idempotent subscriber:
 
 ```yaml
 # exactly-once-trigger.yaml
@@ -430,24 +414,26 @@ spec:
 
 ## Implementing Transactional Producers
 
-Create a producer that publishes with exactly-once guarantees:
+Create a producer that publishes to Kafka transactionally:
 
 ```java
 // TransactionalProducer.java
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.StringSerializer;
 
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.Future;
 
 public class TransactionalProducer {
 
     private final KafkaProducer<String, String> producer;
     private final String topic;
 
-    public TransactionalProducer(String bootstrapServers, String topic) {
+    public TransactionalProducer(String bootstrapServers, String topic, String transactionalId) {
         this.topic = topic;
 
         Properties props = new Properties();
@@ -458,8 +444,8 @@ public class TransactionalProducer {
         // Enable idempotence
         props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
 
-        // Set transaction ID for exactly-once semantics
-        props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, "order-producer-" + UUID.randomUUID());
+        // Use a stable transaction ID for this producer instance across restarts
+        props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, transactionalId);
 
         // Ensure strong durability
         props.put(ProducerConfig.ACKS_CONFIG, "all");
@@ -484,15 +470,11 @@ public class TransactionalProducer {
                 orderData
             );
 
-            // Send record
-            producer.send(record, (metadata, exception) -> {
-                if (exception != null) {
-                    System.err.println("Failed to send message: " + exception.getMessage());
-                } else {
-                    System.out.println("Sent message to partition " + metadata.partition() +
-                                     " with offset " + metadata.offset());
-                }
-            });
+            // Send record and fail the transaction if the send fails
+            Future<RecordMetadata> sendResult = producer.send(record);
+            RecordMetadata metadata = sendResult.get();
+            System.out.println("Sent message to partition " + metadata.partition() +
+                             " with offset " + metadata.offset());
 
             // Commit transaction
             producer.commitTransaction();
@@ -514,13 +496,14 @@ public class TransactionalProducer {
     public static void main(String[] args) {
         TransactionalProducer producer = new TransactionalProducer(
             "event-cluster-kafka-bootstrap.kafka:9092",
-            "orders"
+            "orders",
+            "order-producer-0"
         );
 
         try {
             // Publish sample order
             String orderId = "ORDER-" + UUID.randomUUID();
-            String orderData = "{\"customer_id\":\"C123\",\"total\":99.99}";
+            String orderData = "{\"order_id\":\"" + orderId + "\",\"customer_id\":\"C123\",\"total\":99.99}";
 
             producer.publishOrder(orderId, orderData);
 
@@ -537,14 +520,13 @@ Track deduplication metrics:
 
 ```python
 # metrics_exporter.py
-from prometheus_client import Counter, Histogram, start_http_server
+from prometheus_client import Gauge, start_http_server
 import psycopg2
 import time
 
 # Metrics
-events_processed = Counter('events_processed_total', 'Total events processed')
-events_deduplicated = Counter('events_deduplicated_total', 'Duplicate events detected')
-processing_duration = Histogram('event_processing_duration_seconds', 'Event processing duration')
+events_processed = Gauge('events_processed_total', 'Total events processed')
+events_deduplicated = Gauge('events_deduplicated_total', 'Duplicate events detected')
 
 def collect_metrics():
     """Collect metrics from database"""
@@ -561,7 +543,12 @@ def collect_metrics():
                 # Count processed events
                 cur.execute("SELECT COUNT(*) FROM processed_events")
                 count = cur.fetchone()[0]
-                events_processed._value.set(count)
+                events_processed.set(count)
+
+                # Count duplicate deliveries recorded by the handler
+                cur.execute("SELECT COALESCE(SUM(duplicate_count), 0) FROM processed_events")
+                duplicate_count = cur.fetchone()[0]
+                events_deduplicated.set(duplicate_count)
 
             time.sleep(60)
 
@@ -580,14 +567,14 @@ Always use unique event IDs. Generate IDs upstream and include them in CloudEven
 
 Implement idempotent operations. Design handlers so repeated execution with the same input produces the same result. Use database constraints and upserts.
 
-Store processing state transactionally. Commit event consumption and state updates in a single transaction when possible.
+Store processing state transactionally. Commit application side effects and the idempotency record in a single transaction when possible. For Kafka-to-Kafka processors, commit consumed offsets and produced records in the same Kafka transaction.
 
 Monitor deduplication rates. High deduplication indicates network issues or excessive retries. Investigate and fix root causes.
 
 Set appropriate timeouts. Balance between giving operations time to complete and detecting failures quickly.
 
-Test failure scenarios. Verify exactly-once semantics under pod restarts, network partitions, and database failures.
+Test failure scenarios. Verify idempotent behavior under pod restarts, network partitions, retries, and database failures.
 
 ## Conclusion
 
-Implementing exactly-once processing with Knative and Kafka requires careful coordination between message brokers, event handlers, and state storage. By leveraging Kafka's transactional capabilities, implementing idempotent handlers with database-backed deduplication, and configuring appropriate retry policies, you can build systems that guarantee each event is processed once and only once. This reliability is essential for applications where duplicate processing causes data corruption or financial loss.
+Implementing effectively exactly-once processing with Knative and Kafka requires careful coordination between message brokers, event handlers, and state storage. By leveraging Kafka's transactional capabilities where they apply, implementing idempotent handlers with database-backed deduplication, and configuring appropriate retry policies, you can build systems where each event changes application state once even when delivery is retried. This reliability is essential for applications where duplicate processing causes data corruption or financial loss.
