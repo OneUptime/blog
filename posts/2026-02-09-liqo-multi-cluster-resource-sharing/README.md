@@ -12,7 +12,7 @@ Liqo extends Kubernetes clusters dynamically by peering them together and sharin
 
 ## Understanding Liqo Architecture
 
-Liqo creates bidirectional peering between clusters:
+Liqo creates peering relationships between clusters. A peering is unidirectional, and bidirectional resource sharing is achieved by creating one peering in each direction:
 
 - **Virtual Nodes**: Remote clusters appear as nodes in the local cluster
 - **Network Fabric**: Automatic cross-cluster pod and service connectivity
@@ -28,18 +28,17 @@ Install Liqo using liqoctl:
 ```bash
 # Download liqoctl
 
-curl --fail -LSO "https://github.com/liqotech/liqo/releases/download/v0.10.0/liqoctl-linux-amd64.tar.gz"
-tar -xzf liqoctl-linux-amd64.tar.gz
+curl --fail -LS "https://github.com/liqotech/liqo/releases/download/v1.1.2/liqoctl-linux-amd64.tar.gz" | tar -xz
 sudo install -o root -g root -m 0755 liqoctl /usr/local/bin/liqoctl
 
 # Install Liqo in cluster-1
 liqoctl install kubeadm \
-  --cluster-name cluster-1 \
+  --cluster-id cluster-1 \
   --kubeconfig ~/.kube/config
 
 # Install Liqo in cluster-2
 liqoctl install kubeadm \
-  --cluster-name cluster-2 \
+  --cluster-id cluster-2 \
   --kubeconfig ~/.kube/config-cluster2
 ```
 
@@ -48,51 +47,39 @@ For cloud providers:
 ```bash
 # For EKS clusters
 liqoctl install eks \
-  --cluster-name eks-cluster-1 \
+  --eks-cluster-name eks-cluster-1 \
   --eks-cluster-region us-east-1
 
 # For GKE clusters
 liqoctl install gke \
-  --cluster-name gke-cluster-1 \
-  --project-id my-project
+  --cluster-id gke-cluster-1 \
+  --project-id my-project \
+  --region us-central1 \
+  --credentials-path ~/.liqo/gcp_service_account
 ```
 
 Verify installation:
 
 ```bash
-kubectl get pods -n liqo
+liqoctl info
 ```
 
 ## Peering Clusters Together
 
-Generate a peering configuration from cluster-1:
+Create a peering from cluster-1 to cluster-2:
 
 ```bash
-liqoctl generate peer-command \
-  --kubeconfig ~/.kube/config
+liqoctl peer \
+  --kubeconfig ~/.kube/config \
+  --remote-kubeconfig ~/.kube/config-cluster2
 ```
 
-Output shows a command like:
+This makes cluster-1 the consumer and cluster-2 the provider. If you want bidirectional sharing, create the reverse peering as well:
 
 ```bash
-liqoctl peer out-of-band cluster-1 \
-  --auth-url https://10.0.1.100:443 \
-  --cluster-id 5f3d2c1a-8b4e-4f9c-9d8e-7a6b5c4d3e2f \
-  --auth-token eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-Run this command in cluster-2 to establish peering:
-
-```bash
-# Switch to cluster-2 context
-kubectl config use-context cluster-2
-
-# Execute the peer command
-liqoctl peer out-of-band cluster-1 \
-  --auth-url https://10.0.1.100:443 \
-  --cluster-id 5f3d2c1a-8b4e-4f9c-9d8e-7a6b5c4d3e2f \
-  --auth-token eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9... \
-  --kubeconfig ~/.kube/config-cluster2
+liqoctl peer \
+  --kubeconfig ~/.kube/config-cluster2 \
+  --remote-kubeconfig ~/.kube/config
 ```
 
 Verify peering status:
@@ -108,8 +95,8 @@ kubectl get foreignclusters
 Output shows peering status:
 
 ```text
-NAME        TYPE        OUTGOING PEERING   INCOMING PEERING   AGE
-cluster-2   OutOfBand   Established        Established        2m
+NAME        ROLE       AGE
+cluster-2   Provider   2m
 ```
 
 ## Viewing Virtual Nodes
@@ -118,19 +105,17 @@ After peering, remote clusters appear as virtual nodes:
 
 ```bash
 # In cluster-1, see cluster-2 as a virtual node
-kubectl get nodes
+kubectl get nodes -l liqo.io/type=virtual-node
 ```
 
 Output:
 
 ```text
 NAME                           STATUS   ROLES           AGE   VERSION
-node-1                         Ready    control-plane   10d   v1.28.0
-node-2                         Ready    worker          10d   v1.28.0
-liqo-cluster-2                 Ready    agent           2m    v1.28.0
+cluster-2                      Ready    agent           2m    v1.30.0
 ```
 
-The `liqo-cluster-2` node represents the entire remote cluster.
+The `cluster-2` node represents the entire remote cluster.
 
 ## Offloading Workloads to Remote Clusters
 
@@ -146,7 +131,7 @@ liqoctl offload namespace production \
 This creates a NamespaceOffloading resource:
 
 ```yaml
-apiVersion: offloading.liqo.io/v1alpha1
+apiVersion: offloading.liqo.io/v1beta1
 kind: NamespaceOffloading
 metadata:
   name: offloading
@@ -163,10 +148,10 @@ spec:
         - "true"
 ```
 
-Label remote clusters to enable offloading:
+Label virtual nodes to enable offloading:
 
 ```bash
-kubectl label foreigncluster cluster-2 liqo.io/enabled=true
+kubectl label node cluster-2 liqo.io/enabled=true
 ```
 
 Now deployments in the production namespace can schedule to cluster-2:
@@ -204,25 +189,20 @@ Liqo automatically distributes pods across local and remote clusters:
 kubectl get pods -n production -o wide
 ```
 
-Some pods run on local nodes, others on `liqo-cluster-2`.
+Some pods run on local nodes, others on `cluster-2`.
 
 ## Configuring Resource Sharing Limits
 
-Control how many resources remote clusters can consume:
+Control how many resources remote clusters can consume at peering time:
 
-```yaml
-apiVersion: sharing.liqo.io/v1alpha1
-kind: ResourceOffer
-metadata:
-  name: cluster-2-offer
-  namespace: liqo
-spec:
-  clusterId: "cluster-2-id"
-  resources:
-    cpu: "20"
-    memory: "64Gi"
-    pods: "100"
-    storage: "500Gi"
+```bash
+liqoctl peer \
+  --kubeconfig ~/.kube/config \
+  --remote-kubeconfig ~/.kube/config-cluster2 \
+  --cpu=20 \
+  --memory=64Gi \
+  --pods=100 \
+  --resource=ephemeral-storage=500Gi
 ```
 
 This limits cluster-1 to using 20 CPU cores, 64Gi memory, and 100 pods from cluster-2.
@@ -301,7 +281,7 @@ spec:
 
 ## Controlling Pod Placement
 
-Use node selectors to control pod placement:
+Use node affinity to control pod placement:
 
 ```yaml
 apiVersion: apps/v1
@@ -319,9 +299,13 @@ spec:
       labels:
         app: local-app
     spec:
-      nodeSelector:
-        # Exclude virtual nodes
-        liqo.io/type: "local"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: liqo.io/type
+                operator: DoesNotExist
       containers:
       - name: app
         image: local-app:latest
@@ -354,27 +338,28 @@ kubectl get foreignclusters -o wide
 View network tunnel status:
 
 ```bash
-kubectl get tunnelendpoints -n liqo
+kubectl get gatewayservers.networking.liqo.io -A
+kubectl get gatewayclients.networking.liqo.io -A
 ```
 
 Check virtual node status:
 
 ```bash
-kubectl describe node liqo-cluster-2
+kubectl describe node cluster-2
 ```
 
-Monitor Liqo controller logs:
+Get detailed peering information:
 
 ```bash
-kubectl logs -n liqo deployment/liqo-controller-manager -f
+liqoctl info peer cluster-2
 ```
 
 ## Implementing Disaster Recovery
 
-Use Liqo for automatic failover. If cluster-1 fails, workloads automatically move to cluster-2:
+Use Liqo to keep critical workloads on a remote cluster for disaster-recovery scenarios:
 
 ```yaml
-apiVersion: offloading.liqo.io/v1alpha1
+apiVersion: offloading.liqo.io/v1beta1
 kind: NamespaceOffloading
 metadata:
   name: offloading
@@ -391,13 +376,13 @@ spec:
         - "true"
 ```
 
-Label the DR cluster:
+Label the DR virtual node:
 
 ```bash
-kubectl label foreigncluster cluster-2 liqo.io/dr-site=true
+kubectl label node cluster-2 liqo.io/dr-site=true
 ```
 
-All pods in critical-services namespace run in cluster-2, providing instant failover if cluster-1 fails.
+All pods in critical-services namespace are scheduled to cluster-2.
 
 ## Best Practices
 
@@ -405,15 +390,15 @@ All pods in critical-services namespace run in cluster-2, providing instant fail
 
 **Monitor network latency**: Cross-cluster communication adds latency. Measure and ensure it's acceptable for your workloads.
 
-**Set resource limits**: Use ResourceOffer to prevent one cluster from consuming all resources of another.
+**Set resource limits**: Request bounded CPU, memory, pod, and extended resources during peering, or manage the underlying ResourceSlice, to prevent one cluster from consuming all resources of another.
 
-**Use pod topology spread**: Distribute replicas across clusters for high availability:
+**Use pod topology spread**: Distribute replicas across virtual nodes for high availability:
 
 ```yaml
 spec:
   topologySpreadConstraints:
   - maxSkew: 1
-    topologyKey: liqo.io/cluster-id
+    topologyKey: liqo.io/remote-cluster-id
     whenUnsatisfiable: DoNotSchedule
     labelSelector:
       matchLabels:
