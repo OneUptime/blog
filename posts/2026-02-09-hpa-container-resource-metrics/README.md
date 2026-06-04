@@ -8,7 +8,7 @@ Description: Learn how to use HPA containerResource metrics to scale pods based 
 
 ---
 
-The standard HPA Resource metric type averages resource utilization across all containers in a pod. This works fine for single-container pods but creates problems when pods run multiple containers with different resource profiles. The containerResource metric type, introduced in Kubernetes 1.20, lets you scale based on specific container metrics within multi-container pods.
+The standard HPA Resource metric type calculates pod utilization from the summed resource usage and summed resource requests of all containers in each pod, then averages that utilization across the targeted pods. This works fine for single-container pods but creates problems when pods run multiple containers with different resource profiles. The containerResource metric type, introduced in Kubernetes 1.20, lets you scale based on specific container metrics within multi-container pods.
 
 ## The Multi-Container Scaling Problem
 
@@ -50,7 +50,7 @@ spec:
             memory: 256Mi
 ```
 
-With traditional HPA Resource metrics, autoscaling calculates utilization by averaging across both containers. If the app container hits 90% CPU but the proxy uses only 20%, HPA sees approximately 55% utilization and might not scale when needed.
+With traditional HPA Resource metrics, autoscaling calculates utilization from total pod CPU usage divided by total pod CPU requests. If the app container hits 90% of its 500m CPU request and the proxy uses 20% of its 100m request, HPA sees approximately 78% pod CPU utilization and might not scale when a threshold such as 80% is configured.
 
 ## Using containerResource Metrics
 
@@ -247,7 +247,7 @@ If metrics show `<unknown>`, verify:
 
 1. The container name matches exactly (case-sensitive)
 2. Metrics Server is running and healthy
-3. The container has resource requests defined
+3. The container has resource requests defined when using a Utilization target
 
 Check Metrics Server:
 
@@ -273,7 +273,7 @@ Events:
 
 ## Best Practices for Container Resource Scaling
 
-**Define resource requests**: ContainerResource metrics require requests to calculate utilization percentages. Always set CPU and memory requests for containers you want to autoscale.
+**Define resource requests**: ContainerResource metrics require requests to calculate utilization percentages. Always set CPU and memory requests for containers you want to autoscale with Utilization targets.
 
 **Match thresholds to workload patterns**: Main application containers often tolerate 70-80% utilization. Sidecar proxies and logging agents might need lower thresholds (50-60%) since they handle bursty traffic.
 
