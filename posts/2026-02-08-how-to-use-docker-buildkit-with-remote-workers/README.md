@@ -90,28 +90,36 @@ On the remote server, set up BuildKit with TLS.
 
 ```bash
 # On the remote server - generate TLS certificates
-mkdir -p /etc/buildkit/certs
+mkdir -p ~/buildkit-certs
+cd ~/buildkit-certs
 
 # Generate CA certificate
-openssl genrsa -out /etc/buildkit/certs/ca-key.pem 4096
-openssl req -new -x509 -days 365 -key /etc/buildkit/certs/ca-key.pem \
-  -sha256 -out /etc/buildkit/certs/ca.pem -subj "/CN=BuildKit CA"
+openssl genrsa -out ca-key.pem 4096
+openssl req -new -x509 -days 365 -key ca-key.pem \
+  -sha256 -out ca.pem -subj "/CN=BuildKit CA"
 
-# Generate server certificate
-openssl genrsa -out /etc/buildkit/certs/server-key.pem 4096
-openssl req -new -key /etc/buildkit/certs/server-key.pem \
-  -out /etc/buildkit/certs/server.csr -subj "/CN=build-server.example.com"
-openssl x509 -req -days 365 -in /etc/buildkit/certs/server.csr \
-  -CA /etc/buildkit/certs/ca.pem -CAkey /etc/buildkit/certs/ca-key.pem \
-  -CAcreateserial -out /etc/buildkit/certs/server-cert.pem
+# Generate server certificate with a DNS subjectAltName
+openssl genrsa -out server-key.pem 4096
+openssl req -new -key server-key.pem \
+  -out server.csr -subj "/CN=build-server.example.com" \
+  -addext "subjectAltName=DNS:build-server.example.com"
+openssl x509 -req -days 365 -in server.csr \
+  -CA ca.pem -CAkey ca-key.pem \
+  -CAcreateserial -out server-cert.pem \
+  -copy_extensions copy
 
 # Generate client certificate
-openssl genrsa -out /etc/buildkit/certs/client-key.pem 4096
-openssl req -new -key /etc/buildkit/certs/client-key.pem \
-  -out /etc/buildkit/certs/client.csr -subj "/CN=BuildKit Client"
-openssl x509 -req -days 365 -in /etc/buildkit/certs/client.csr \
-  -CA /etc/buildkit/certs/ca.pem -CAkey /etc/buildkit/certs/ca-key.pem \
-  -CAcreateserial -out /etc/buildkit/certs/client-cert.pem
+openssl genrsa -out client-key.pem 4096
+openssl req -new -key client-key.pem \
+  -out client.csr -subj "/CN=BuildKit Client"
+openssl x509 -req -days 365 -in client.csr \
+  -CA ca.pem -CAkey ca-key.pem \
+  -CAcreateserial -out client-cert.pem
+
+# Install daemon certificates where buildkitd can read them
+sudo install -d -m 755 /etc/buildkit/certs
+sudo install -m 644 ca.pem server-cert.pem /etc/buildkit/certs/
+sudo install -m 600 server-key.pem /etc/buildkit/certs/
 ```
 
 Create the BuildKit daemon configuration.
@@ -133,15 +141,15 @@ debug = false
   max-parallelism = 8
   snapshotter = "overlayfs"
   gc = true
-  gckeepbytes = 21474836480  # 20GB cache
+  gckeepstorage = "20GB"
 
   [[worker.oci.gcpolicy]]
-    keepBytes = 21474836480
-    keepDuration = 259200  # 3 days
+    keepBytes = "20GB"
+    keepDuration = "72h"
     all = true
 
   [[worker.oci.gcpolicy]]
-    keepBytes = 53687091200  # 50GB hard limit
+    keepBytes = "50GB"
     all = true
 ```
 
@@ -165,9 +173,9 @@ On your local machine, copy the client certificates and create the builder.
 ```bash
 # Copy the client certificates from the remote server
 mkdir -p ~/.buildkit/certs
-scp builder@build-server.example.com:/etc/buildkit/certs/ca.pem ~/.buildkit/certs/
-scp builder@build-server.example.com:/etc/buildkit/certs/client-cert.pem ~/.buildkit/certs/
-scp builder@build-server.example.com:/etc/buildkit/certs/client-key.pem ~/.buildkit/certs/
+scp builder@build-server.example.com:~/buildkit-certs/ca.pem ~/.buildkit/certs/
+scp builder@build-server.example.com:~/buildkit-certs/client-cert.pem ~/.buildkit/certs/
+scp builder@build-server.example.com:~/buildkit-certs/client-key.pem ~/.buildkit/certs/
 
 # Create a builder using the remote BuildKit daemon
 docker buildx create \
@@ -286,7 +294,7 @@ jobs:
       - name: Build and push
         run: |
           docker buildx build \
-            --platform linux/amd64,linux/arm64 \
+            --platform linux/amd64 \
             -t ghcr.io/${{ github.repository }}:${{ github.sha }} \
             --push \
             .
@@ -298,10 +306,10 @@ Keep your remote workers healthy with regular maintenance.
 
 ```bash
 # Check cache usage on the remote builder
-ssh builder@build-server.example.com "docker exec buildkitd buildctl du"
+docker buildx du --builder remote-builder
 
 # Prune old cache entries
-ssh builder@build-server.example.com "docker exec buildkitd buildctl prune --keep-storage 20GB"
+docker buildx prune --builder remote-builder --reserved-space 20GB
 
 # Check worker health
 docker buildx inspect remote-builder
