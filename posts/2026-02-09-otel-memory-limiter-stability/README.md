@@ -14,7 +14,7 @@ The OpenTelemetry Collector memory limiter processor prevents out-of-memory cras
 
 The memory limiter processor monitors collector memory usage and refuses new data when memory consumption exceeds configured thresholds. This backpressure mechanism forces upstream components to slow down or buffer data, preventing collector crashes.
 
-Memory limiting works by checking usage at regular intervals and comparing against soft and hard limits. When the soft limit is exceeded, the processor begins refusing new data. The spike limit provides additional headroom for temporary bursts.
+Memory limiting works by checking usage at regular intervals and comparing against soft and hard limits. When the soft limit is exceeded, the processor begins refusing new data. The spike limit defines the expected memory increase between checks, and the soft limit is calculated as the hard limit minus the spike limit.
 
 ## Basic Configuration
 
@@ -34,10 +34,10 @@ processors:
     # Check memory usage every second
     check_interval: 1s
     
-    # Soft limit at 512 MiB
+    # Hard limit at 512 MiB
     limit_mib: 512
     
-    # Allow spikes up to 640 MiB (512 + 128)
+    # Soft limit is 384 MiB (512 - 128)
     spike_limit_mib: 128
 
   batch:
@@ -84,16 +84,19 @@ def calculate_memory_limits(total_memory_gb, num_collectors=1):
     # Divide among collectors
     per_collector_gb = usable_memory_gb / num_collectors
     
-    # Set soft limit at 70% of available memory
-    soft_limit_mib = int(per_collector_gb * 1024 * 0.7)
+    # Set hard limit at 70% of available memory
+    hard_limit_mib = int(per_collector_gb * 1024 * 0.7)
     
-    # Spike limit is 20% of soft limit
-    spike_limit_mib = int(soft_limit_mib * 0.2)
+    # Spike limit is 20% of hard limit
+    spike_limit_mib = int(hard_limit_mib * 0.2)
+
+    # Soft limit is hard limit minus spike limit
+    soft_limit_mib = hard_limit_mib - spike_limit_mib
     
     return {
-        'limit_mib': soft_limit_mib,
+        'limit_mib': hard_limit_mib,
         'spike_limit_mib': spike_limit_mib,
-        'total_max_mib': soft_limit_mib + spike_limit_mib
+        'soft_limit_mib': soft_limit_mib
     }
 
 # Example: 4GB server running 1 collector
@@ -101,7 +104,7 @@ limits = calculate_memory_limits(4, 1)
 print(f"Recommended configuration:")
 print(f"  limit_mib: {limits['limit_mib']}")
 print(f"  spike_limit_mib: {limits['spike_limit_mib']}")
-print(f"  Total max: {limits['total_max_mib']} MiB")
+print(f"  Soft limit: {limits['soft_limit_mib']} MiB")
 ```
 
 ## Memory Limiter with GOMEMLIMIT
@@ -116,7 +119,13 @@ metadata:
   name: otel-collector
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
       - name: collector
@@ -124,7 +133,7 @@ spec:
         env:
           # Set Go memory limit to 80% of container limit
           - name: GOMEMLIMIT
-            value: "768MiB"
+            value: "819MiB"
         resources:
           limits:
             memory: 1Gi
@@ -137,7 +146,7 @@ spec:
           - --config=/conf/collector-config.yaml
 ```
 
-GOMEMLIMIT helps the Go runtime manage memory more effectively, reducing the frequency of garbage collection.
+GOMEMLIMIT sets a soft memory limit for the Go runtime, helping it keep runtime-managed memory below the container limit.
 
 ## Monitoring Memory Usage
 
@@ -148,7 +157,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   
   pipelines:
     traces:
@@ -157,17 +171,17 @@ service:
       exporters: [otlp]
 
 # Key metrics:
-# - otelcol_processor_refused_spans (spans rejected due to memory limit)
-# - otelcol_processor_refused_metric_points (metrics rejected)
-# - process_runtime_total_alloc_bytes (total memory allocated)
-# - process_runtime_total_sys_bytes (total memory from OS)
+# - otelcol_receiver_refused_spans (spans that could not be pushed into the pipeline)
+# - otelcol_receiver_refused_metric_points (metric points that could not be pushed into the pipeline)
+# - otelcol_process_runtime_heap_alloc_bytes (bytes of allocated heap objects)
+# - otelcol_process_runtime_total_sys_memory_bytes (total memory from OS)
 ```
 
 Monitor refused telemetry to detect when memory limits are being hit frequently.
 
 ## Handling Memory Limit Refusals
 
-Configure retry behavior when memory limits cause refusals.
+Configure exporter retry behavior and queuing to handle downstream failures.
 
 ```yaml
 exporters:
@@ -176,7 +190,7 @@ exporters:
     tls:
       insecure: true
     
-    # Retry configuration for when memory limiter refuses data
+    # Retry configuration for temporary export failures
     retry_on_failure:
       enabled: true
       initial_interval: 1s
@@ -190,7 +204,7 @@ exporters:
       queue_size: 5000
 ```
 
-Retries and queuing help handle temporary memory pressure without losing data.
+Retries and queuing help handle temporary backend pressure without losing data. When the memory limiter refuses data, the receiver or preceding component must retry the refused request.
 
 ## Multi-Pipeline Memory Management
 
@@ -231,7 +245,7 @@ service:
       exporters: [otlp/logs]
 ```
 
-Separate limits prevent one telemetry type from consuming all available memory.
+Separate limits let each telemetry type begin refusing data at different process memory thresholds.
 
 ## Best Practices
 
@@ -239,7 +253,7 @@ Follow these best practices for memory limiter configuration.
 
 First, always place memory_limiter as the first processor in every pipeline. This ensures protection for all downstream components.
 
-Second, set the limit to 70-80% of available memory. This leaves room for OS and temporary spikes.
+Second, set the hard limit to 70-80% of available memory. This leaves room for OS and non-heap memory.
 
 Third, configure spike_limit to handle burst traffic. Set it to 20-30% of the base limit.
 
@@ -247,7 +261,7 @@ Fourth, use check_interval of 1 second for most scenarios. Shorter intervals inc
 
 Fifth, monitor refused telemetry metrics. Frequent refusals indicate you need more memory or better rate limiting upstream.
 
-Sixth, combine with GOMEMLIMIT for optimal Go runtime behavior. Set GOMEMLIMIT to match or slightly exceed memory_limiter limit.
+Sixth, combine with GOMEMLIMIT for optimal Go runtime behavior. Set GOMEMLIMIT to about 80% of the collector's hard memory limit.
 
 Seventh, set Kubernetes memory limits higher than memory_limiter limits. This prevents OOMKills before memory_limiter can apply backpressure.
 
