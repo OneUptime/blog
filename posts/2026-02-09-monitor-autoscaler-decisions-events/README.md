@@ -60,9 +60,9 @@ Watch events in real-time:
 kubectl get events -n production -w
 ```
 
-## Exporting Events to Prometheus
+## Exporting Events for Long-Term Storage
 
-Events are ephemeral (retained for 1 hour by default). Export them to Prometheus for long-term storage:
+Events are ephemeral (retained for 1 hour by default). Export them to Loki for long-term storage:
 
 Deploy kubernetes-event-exporter:
 
@@ -106,15 +106,16 @@ data:
     logLevel: info
     logFormat: json
     receivers:
-    - name: prometheus
-      webhook:
-        endpoint: "http://prometheus-pushgateway:9091/metrics/job/kubernetes-events"
+    - name: loki
+      loki:
+        url: "http://loki:3100/loki/api/v1/push"
+        streamLabels:
+          source: kubernetes-events
     route:
       routes:
       - match:
-        - receiver: prometheus
-          involvedObject:
-            kind: HorizontalPodAutoscaler
+        - receiver: loki
+          kind: HorizontalPodAutoscaler
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -186,6 +187,7 @@ kube-state-metrics exposes HPA state as Prometheus metrics. Install it:
 ```bash
 helm install kube-state-metrics prometheus-community/kube-state-metrics \
   --namespace monitoring \
+  --create-namespace \
   --set prometheus.monitor.enabled=true
 ```
 
@@ -246,21 +248,21 @@ Create a Grafana dashboard to visualize autoscaling:
         "title": "CPU Utilization vs Target",
         "targets": [
           {
-            "expr": "avg(rate(container_cpu_usage_seconds_total{namespace=\"production\",pod=~\"webapp-.*\"}[5m])) / avg(kube_pod_container_resource_requests{namespace=\"production\",pod=~\"webapp-.*\",resource=\"cpu\"}) * 100",
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"production\",pod=~\"webapp-.*\",container!=\"\"}[5m])) / sum(kube_pod_container_resource_requests{namespace=\"production\",pod=~\"webapp-.*\",resource=\"cpu\",unit=\"core\"}) * 100",
             "legendFormat": "Current CPU %"
           },
           {
-            "expr": "kube_horizontalpodautoscaler_spec_target_metric{namespace=\"production\",horizontalpodautoscaler=\"webapp-hpa\",metric_name=\"cpu\"} * 100",
+            "expr": "kube_horizontalpodautoscaler_spec_target_metric{namespace=\"production\",horizontalpodautoscaler=\"webapp-hpa\",metric_name=\"cpu\",metric_target_type=\"utilization\"}",
             "legendFormat": "Target CPU %"
           }
         ],
         "type": "graph"
       },
       {
-        "title": "Scaling Events",
+        "title": "Replica Count Changes",
         "targets": [
           {
-            "expr": "increase(kube_horizontalpodautoscaler_status_current_replicas{namespace=\"production\"}[1m])",
+            "expr": "changes(kube_horizontalpodautoscaler_status_current_replicas{namespace=\"production\"}[10m])",
             "legendFormat": "{{ horizontalpodautoscaler }}"
           }
         ],
@@ -308,7 +310,7 @@ groups:
   # Alert on frequent scaling
   - alert: HPAFlapping
     expr: |
-      rate(kube_horizontalpodautoscaler_status_current_replicas[10m]) > 0.5
+      changes(kube_horizontalpodautoscaler_status_current_replicas[10m]) > 5
     for: 15m
     labels:
       severity: warning
@@ -316,20 +318,19 @@ groups:
       summary: "HPA {{ $labels.horizontalpodautoscaler }} scaling too frequently"
       description: "Replica count changing more than 5 times per 10 minutes. Check stabilization windows."
 
-  # Alert when metrics unavailable
-  - alert: HPAMetricNotFound
+  # Alert when HPA cannot scale
+  - alert: HPAUnableToScale
     expr: |
       kube_horizontalpodautoscaler_status_condition{
         condition="AbleToScale",
-        status="false",
-        reason="FailedGetResourceMetric"
+        status="false"
       } == 1
     for: 5m
     labels:
       severity: critical
     annotations:
-      summary: "HPA {{ $labels.horizontalpodautoscaler }} cannot find metric"
-      description: "HPA cannot retrieve metric {{ $labels.metric_name }}. Check metric configuration."
+      summary: "HPA {{ $labels.horizontalpodautoscaler }} cannot scale"
+      description: "HPA cannot scale. Check metric configuration and the scale target."
 ```
 
 ## Monitoring Cluster Autoscaler
@@ -486,14 +487,17 @@ if __name__ == '__main__':
 
 ```promql
 # Scaling events per hour
-rate(kube_horizontalpodautoscaler_status_current_replicas[1h]) * 3600
+changes(kube_horizontalpodautoscaler_status_current_replicas[1h])
 ```
 
-**Monitor metric collection lag**: Track time between metric collection and scaling decision:
+**Monitor replica convergence**: Track when desired and current replicas differ:
 
 ```promql
-# Time since last scale
-time() - kube_horizontalpodautoscaler_status_last_scale_time
+# Desired replicas differ from current replicas
+abs(
+  kube_horizontalpodautoscaler_status_desired_replicas
+  - kube_horizontalpodautoscaler_status_current_replicas
+)
 ```
 
 **Correlate autoscaling with application metrics**: When investigating scaling issues, compare HPA decisions with application metrics (latency, error rate) to verify scaling helped.
