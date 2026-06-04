@@ -38,14 +38,14 @@ spec:
   - name: namespace_metrics
     interval: 30s
     rules:
-    - record: namespace:container_cpu_usage:sum
+    - record: namespace:container_cpu_usage_seconds:sum_rate
       expr: |
         sum by (namespace) (
-          rate(container_cpu_usage_seconds_total{container!=""}[5m])
+          rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[5m])
         )
 ```
 
-The rule evaluates every 30 seconds and stores results as the metric `namespace:container_cpu_usage:sum`. The naming convention follows Prometheus guidelines: aggregation level, metric name, operation.
+The rule evaluates every 30 seconds and stores results as the metric `namespace:container_cpu_usage_seconds:sum_rate`. The naming convention follows Prometheus guidelines: aggregation level, metric name, operation.
 
 ## CPU Usage Aggregation Rules
 
@@ -67,24 +67,24 @@ groups:
   - record: namespace:kube_pod_container_resource_requests_cpu_cores:sum
     expr: |
       sum by (namespace) (
-        kube_pod_container_resource_requests{resource="cpu"}
+        kube_pod_container_resource_requests{resource="cpu",unit="core"}
       )
 
   # CPU limits per namespace
   - record: namespace:kube_pod_container_resource_limits_cpu_cores:sum
     expr: |
       sum by (namespace) (
-        kube_pod_container_resource_limits{resource="cpu"}
+        kube_pod_container_resource_limits{resource="cpu",unit="core"}
       )
 
-  # CPU utilization vs requests (percentage)
+  # CPU utilization vs requests (ratio)
   - record: namespace:container_cpu_usage:ratio_requests
     expr: |
       namespace:container_cpu_usage_seconds:sum_rate
       /
       namespace:kube_pod_container_resource_requests_cpu_cores:sum
 
-  # CPU utilization vs limits (percentage)
+  # CPU utilization vs limits (ratio)
   - record: namespace:container_cpu_usage:ratio_limits
     expr: |
       namespace:container_cpu_usage_seconds:sum_rate
@@ -96,7 +96,7 @@ These rules create a complete CPU usage hierarchy. The ratio rules build on the 
 
 ## Memory Usage Aggregation Rules
 
-Memory aggregations follow the same pattern but use working set memory, which reflects actual usage minus cache.
+Memory aggregations follow the same pattern but use working set memory, which excludes inactive file-backed memory.
 
 ```yaml
 groups:
@@ -114,14 +114,14 @@ groups:
   - record: namespace:kube_pod_container_resource_requests_memory_bytes:sum
     expr: |
       sum by (namespace) (
-        kube_pod_container_resource_requests{resource="memory"}
+        kube_pod_container_resource_requests{resource="memory",unit="byte"}
       )
 
   # Memory limits per namespace
   - record: namespace:kube_pod_container_resource_limits_memory_bytes:sum
     expr: |
       sum by (namespace) (
-        kube_pod_container_resource_limits{resource="memory"}
+        kube_pod_container_resource_limits{resource="memory",unit="byte"}
       )
 
   # Memory utilization vs requests
@@ -139,7 +139,7 @@ groups:
       namespace:kube_pod_container_resource_limits_memory_bytes:sum
 ```
 
-The working set metric is more accurate than RSS for Kubernetes because it reflects what the OOM killer considers.
+The working set metric is more useful than RSS for Kubernetes dashboards because it includes more of the container's active memory footprint while excluding inactive file-backed memory.
 
 ## Network Throughput Aggregation Rules
 
@@ -154,14 +154,14 @@ groups:
   - record: namespace:container_network_receive_bytes:sum_rate
     expr: |
       sum by (namespace) (
-        rate(container_network_receive_bytes_total{container!="",container!="POD"}[5m])
+        rate(container_network_receive_bytes_total{pod!=""}[5m])
       )
 
   # Bytes transmitted per second per namespace
   - record: namespace:container_network_transmit_bytes:sum_rate
     expr: |
       sum by (namespace) (
-        rate(container_network_transmit_bytes_total{container!="",container!="POD"}[5m])
+        rate(container_network_transmit_bytes_total{pod!=""}[5m])
       )
 
   # Total bidirectional network throughput
@@ -175,14 +175,14 @@ groups:
   - record: namespace:container_network_receive_packets:sum_rate
     expr: |
       sum by (namespace) (
-        rate(container_network_receive_packets_total{container!="",container!="POD"}[5m])
+        rate(container_network_receive_packets_total{pod!=""}[5m])
       )
 
   # Packets transmitted per second
   - record: namespace:container_network_transmit_packets:sum_rate
     expr: |
       sum by (namespace) (
-        rate(container_network_transmit_packets_total{container!="",container!="POD"}[5m])
+        rate(container_network_transmit_packets_total{pod!=""}[5m])
       )
 ```
 
@@ -197,26 +197,26 @@ groups:
 - name: namespace_filesystem
   interval: 30s
   rules:
-  # Total filesystem bytes used per namespace
-  - record: namespace:container_fs_usage_bytes:sum
+  # Total persistent volume bytes used per namespace
+  - record: namespace:kubelet_volume_stats_used_bytes:sum
     expr: |
       sum by (namespace) (
-        container_fs_usage_bytes{container!="",container!="POD"}
+        kubelet_volume_stats_used_bytes
       )
 
-  # Total filesystem capacity per namespace
-  - record: namespace:container_fs_limit_bytes:sum
+  # Total persistent volume capacity per namespace
+  - record: namespace:kubelet_volume_stats_capacity_bytes:sum
     expr: |
       sum by (namespace) (
-        container_fs_limit_bytes{container!="",container!="POD"}
+        kubelet_volume_stats_capacity_bytes
       )
 
-  # Filesystem utilization percentage
-  - record: namespace:container_fs_usage:ratio
+  # Persistent volume utilization ratio
+  - record: namespace:kubelet_volume_stats_used:ratio
     expr: |
-      namespace:container_fs_usage_bytes:sum
+      namespace:kubelet_volume_stats_used_bytes:sum
       /
-      namespace:container_fs_limit_bytes:sum
+      namespace:kubelet_volume_stats_capacity_bytes:sum
 ```
 
 ## Pod Count Aggregation Rules
@@ -228,11 +228,11 @@ groups:
 - name: namespace_pods
   interval: 30s
   rules:
-  # Total running pods per namespace
+  # Total pods by phase per namespace
   - record: namespace:kube_pod_status_phase:count
     expr: |
-      count by (namespace, phase) (
-        kube_pod_status_phase
+      sum by (namespace, phase) (
+        kube_pod_status_phase == 1
       )
 
   # Total pods per namespace (all phases)
@@ -252,8 +252,8 @@ groups:
   # Pods waiting to be scheduled
   - record: namespace:kube_pod_status_scheduled_false:count
     expr: |
-      count by (namespace) (
-        kube_pod_status_scheduled{condition="false"}
+      sum by (namespace) (
+        kube_pod_status_scheduled{condition="false"} == 1
       )
 ```
 
@@ -272,7 +272,7 @@ groups:
       sum by (namespace, workload, workload_type) (
         label_replace(
           label_replace(
-            rate(container_cpu_usage_seconds_total{container!=""}[5m]),
+            rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[5m]),
             "workload", "$1", "pod", "^(.*)-[^-]+-[^-]+$"
           ),
           "workload_type", "deployment", "workload", ".*"
@@ -326,7 +326,7 @@ Reference recording rules in Grafana dashboards to improve load times dramatical
 Before (slow):
 ```promql
 sum by (namespace) (
-  rate(container_cpu_usage_seconds_total{container!=""}[5m])
+  rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[5m])
 )
 ```
 
@@ -372,10 +372,12 @@ Check that recording rules are working correctly:
 
 ```bash
 # Query the recorded metric
-curl -s 'http://prometheus:9090/api/v1/query?query=namespace:container_cpu_usage_seconds:sum_rate' | jq
+curl -s --data-urlencode 'query=namespace:container_cpu_usage_seconds:sum_rate' \
+  'http://prometheus:9090/api/v1/query' | jq
 
 # Compare to the original query to verify accuracy
-curl -s 'http://prometheus:9090/api/v1/query?query=sum+by+(namespace)+(rate(container_cpu_usage_seconds_total[5m]))' | jq
+curl -s --data-urlencode 'query=sum by (namespace) (rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[5m]))' \
+  'http://prometheus:9090/api/v1/query' | jq
 ```
 
 The results should match within rounding differences.
