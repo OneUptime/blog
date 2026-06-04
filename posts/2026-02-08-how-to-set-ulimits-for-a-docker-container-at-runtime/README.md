@@ -27,7 +27,7 @@ Common ulimits you will deal with in Docker:
 | Name | Flag | What It Controls |
 |------|------|-----------------|
 | nofile | -n | Maximum open file descriptors |
-| nproc | -u | Maximum number of processes |
+| nproc | -u | Maximum number of processes or threads for the real user ID |
 | memlock | -l | Maximum locked memory (bytes) |
 | core | -c | Maximum core file size |
 | stack | -s | Maximum stack size |
@@ -64,7 +64,7 @@ docker run --rm \
   ubuntu bash -c "ulimit -a"
 ```
 
-The value `-1` means unlimited. For `memlock`, this is often required by Elasticsearch and other applications that use memory-mapped files.
+The value `-1` means unlimited. For `memlock`, this is often required by Elasticsearch and other applications that lock process memory to avoid swapping.
 
 ## Why Ulimits Matter for Docker Containers
 
@@ -72,7 +72,7 @@ The default ulimits in Docker are often too low for production workloads. Here a
 
 ### Database Servers
 
-Databases like PostgreSQL, MySQL, and MongoDB open many file descriptors simultaneously - one for each client connection, plus files for data, WAL logs, and indexes. The default `nofile` limit of 1024 will cause connection failures under moderate load.
+Databases like PostgreSQL, MySQL, and MongoDB open many file descriptors simultaneously - one for each client connection, plus files for data, WAL logs, and indexes. A low `nofile` limit, such as Docker's default soft limit of 1024 on many hosts, can cause connection failures under moderate load.
 
 ```bash
 # Run PostgreSQL with enough file descriptors for production use
@@ -85,7 +85,7 @@ docker run -d \
 
 ### Elasticsearch
 
-Elasticsearch requires unlimited memory locking and a high file descriptor count. Without these settings, Elasticsearch logs warnings and may refuse to start in production mode.
+Elasticsearch requires a high file descriptor count, and if you enable `bootstrap.memory_lock`, it also needs an unlimited `memlock` ulimit. Without these settings, Elasticsearch logs warnings and may refuse to start in production mode.
 
 ```bash
 # Run Elasticsearch with required ulimits
@@ -96,7 +96,7 @@ docker run -d \
   -e "discovery.type=single-node" \
   -e "bootstrap.memory_lock=true" \
   -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
-  elasticsearch:8.12.0
+  docker.elastic.co/elasticsearch/elasticsearch:8.12.0
 ```
 
 ### High-Traffic Web Servers
@@ -169,7 +169,7 @@ services:
       POSTGRES_PASSWORD: secret
 
   elasticsearch:
-    image: elasticsearch:8.12.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
     ulimits:
       memlock:
         soft: -1
@@ -207,7 +207,7 @@ docker exec postgres-prod bash -c "ulimit -u"
 
 ### Container Ignores Your Ulimit Settings
 
-If a container does not respect the ulimits you set, check whether the host kernel imposes a lower hard limit. A container cannot exceed the host's limits.
+If a container does not respect the ulimits you set, check whether the Docker daemon has a lower effective hard limit. A container's initial limits are set by the daemon and container runtime.
 
 ```bash
 # Check the host's hard limit for open files
@@ -226,9 +226,9 @@ This error almost always means the `nofile` ulimit is too low. Increase it:
 docker run --rm --ulimit nofile=131072:131072 my-app
 ```
 
-### Processes Getting Killed
+### Processes Cannot Start
 
-If processes inside your container die unexpectedly, the `nproc` limit might be too restrictive. Check and increase it:
+If processes or threads inside your container cannot start, the `nproc` limit might be too restrictive. On Linux, `nproc` is enforced for the real user ID, not as a separate per-container process counter. Check and increase it:
 
 ```bash
 # Run with a higher process limit
