@@ -34,7 +34,7 @@ Deployments can stall for many reasons:
 
 **Crash loops**. Pods start, crash immediately, and restart endlessly.
 
-Without progressDeadlineSeconds, Kubernetes keeps retrying indefinitely. The deployment stays in a progressing state forever, never reporting failure.
+Without checking the progress deadline condition, Kubernetes keeps retrying indefinitely. The deployment can be reported as failed, but it will still keep reconciling until you take action.
 
 ## How progressDeadlineSeconds Works
 
@@ -75,7 +75,7 @@ spec:
           periodSeconds: 10
 ```
 
-If the deployment doesn't complete within 10 minutes, Kubernetes marks it as failed by adding a condition to the deployment status:
+If the deployment doesn't make progress within 10 minutes, Kubernetes marks it as failed by adding a condition to the deployment status:
 
 ```yaml
 conditions:
@@ -136,10 +136,10 @@ For a deployment with:
 - maxSurge: 1, maxUnavailable: 1
 - minReadySeconds: 60
 
-A normal rollout takes about:
+A normal rollout may take about:
 - (10 replicas × 90 seconds per pod) / 2 pods at once = 450 seconds
 
-Set progressDeadlineSeconds to allow extra time for retries and temporary issues:
+Set progressDeadlineSeconds higher than minReadySeconds and long enough to allow extra time for retries and temporary issues:
 
 ```yaml
 spec:
@@ -285,22 +285,44 @@ metadata:
 data:
   monitor.sh: |
     #!/bin/bash
-    while true; do
-      # Find deployments that exceeded deadline
-      kubectl get deployments --all-namespaces -o json | \
-        jq -r '.items[] |
-          select(
-            .status.conditions[]? |
-            select(.type=="Progressing" and .status=="False" and .reason=="ProgressDeadlineExceeded")
-          ) |
-          "\(.metadata.namespace) \(.metadata.name)"' | \
-      while read namespace deployment; do
-        echo "Deployment $namespace/$deployment exceeded deadline, rolling back..."
-        kubectl rollout undo deployment/$deployment -n $namespace
-      done
-
-      sleep 60
+    # Find deployments that exceeded deadline
+    kubectl get deployments --all-namespaces \
+      -o go-template='{{range .items}}{{ $ns := .metadata.namespace }}{{ $name := .metadata.name }}{{range .status.conditions}}{{if and (eq .type "Progressing") (eq .status "False") (eq .reason "ProgressDeadlineExceeded")}}{{printf "%s %s\n" $ns $name}}{{end}}{{end}}{{end}}' | \
+    while read namespace deployment; do
+      echo "Deployment $namespace/$deployment exceeded deadline, rolling back..."
+      kubectl rollout undo deployment/$deployment -n $namespace
     done
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deployment-monitor
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: deployment-monitor
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: deployment-monitor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: deployment-monitor
+subjects:
+- kind: ServiceAccount
+  name: deployment-monitor
+  namespace: default
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -327,7 +349,7 @@ spec:
           restartPolicy: OnFailure
 ```
 
-This CronJob monitors for failed deployments and automatically rolls them back.
+This CronJob checks for failed deployments every 5 minutes and automatically rolls them back.
 
 ## Progress Deadline vs Liveness Probes
 
@@ -364,9 +386,9 @@ spec:
 
 ## Edge Cases and Limitations
 
-**Paused deployments don't count against the deadline**. If you pause a deployment, the progress deadline timer stops. When you resume, the timer continues from where it left off.
+**Paused deployments don't count against the deadline**. If you pause a deployment, Kubernetes does not check progress against the deadline until you resume it.
 
-**The deadline applies to the entire rollout, not individual pods**. Even if some pods start successfully, if the rollout as a whole doesn't complete, it will exceed the deadline.
+**The deadline applies to deployment progress, not individual pods**. Even if some pods start successfully, if the rollout stops making progress, it can exceed the deadline.
 
 **Exceeding the deadline doesn't stop the rollout**. Kubernetes marks the deployment as failed, but it keeps trying to reconcile the desired state. You need to take manual action (or use automation) to roll back.
 
