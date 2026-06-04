@@ -8,7 +8,7 @@ Description: Master kubectl run with --rm flag to create temporary debug pods th
 
 ---
 
-The kubectl run --rm flag creates pods that automatically delete when you exit. Perfect for quick debugging sessions without leaving orphaned resources. Combine with -it for interactive shells, --image to specify debug images like nicolaka/netshoot, and --overrides for advanced configurations. Use --restart=Never for job-like behavior or --restart=OnFailure for retry logic. This approach keeps clusters clean while providing powerful debugging capabilities.
+The kubectl run --rm flag deletes the pod after it exits when you attach to the container, such as with -it. Perfect for quick debugging sessions without leaving orphaned resources. Combine with -it for interactive shells, --image to specify debug images like nicolaka/netshoot, and --overrides for advanced configurations. Use --restart=Never for single-run pod behavior or --restart=OnFailure for container retry logic. This approach keeps clusters clean while providing powerful debugging capabilities.
 
 This post has been created as part of a comprehensive Kubernetes troubleshooting and image management series. For detailed implementation guides, best practices, and complete examples, please refer to the official Kubernetes documentation and the specific tool documentation mentioned in this post.
 
