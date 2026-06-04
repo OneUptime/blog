@@ -8,19 +8,21 @@ Description: Learn how to use Docker Desktop Dev Environments to create reproduc
 
 ---
 
-Starting on a new project usually means spending half a day installing dependencies, configuring databases, and fighting with version mismatches. Docker Desktop Dev Environments change this by packaging your entire development setup into a container-based workspace that any team member can launch in minutes.
+Starting on a new project usually means spending half a day installing dependencies, configuring databases, and fighting with version mismatches. Docker Desktop Dev Environments changed this by packaging your entire development setup into a container-based workspace that any team member could launch in minutes.
+
+Docker Desktop Dev Environments was deprecated and removed from Docker Desktop 4.42 and later. This guide applies to legacy Docker Desktop versions that still include the feature, such as Docker Desktop 4.13 through 4.41. On current Docker Desktop releases, use Docker Compose or VS Code Dev Containers for a similar workflow.
 
 Dev Environments let you define your project's development dependencies in a configuration file, spin up a containerized workspace, and share it with teammates through a Git URL. Everyone gets the same tools, the same versions, and the same configuration. No more "works on my machine" problems.
 
 ## What Are Dev Environments?
 
-Dev Environments are a Docker Desktop feature that creates containerized development workspaces. Instead of installing Node.js, Python, or Go directly on your host machine, you define your development requirements in a `compose-dev.yaml` file. Docker Desktop then builds a workspace container with everything pre-configured.
+Dev Environments were a Docker Desktop feature that created containerized development workspaces. Instead of installing Node.js, Python, or Go directly on your host machine, you define your development requirements in a `compose-dev.yaml` file. Docker Desktop then builds a workspace container with everything pre-configured.
 
-The workspace integrates with your local IDE (VS Code or JetBrains) so you edit files locally while running code inside the container. Volumes keep your source code synced between the host and container.
+The workspace integrates with VS Code so you edit files locally while running code inside the container. Volumes keep your source code synced between the host and container.
 
 ## Prerequisites
 
-You need Docker Desktop 4.12 or later installed. Dev Environments also require Git to be available on your system. Open Docker Desktop and verify you can see the "Dev Environments" section in the left sidebar.
+You need a Docker Desktop version that still includes Dev Environments. The `compose-dev.yaml` workflow was introduced in Docker Desktop 4.13, and the feature was removed in Docker Desktop 4.42. Dev Environments also require Git to be available on your system. Open Docker Desktop and verify you can see the "Dev Environments" section in the left sidebar.
 
 ## Creating Your First Dev Environment
 
@@ -192,7 +194,7 @@ One of the strongest features is sharing. Any team member can launch the same en
 
 In Docker Desktop, go to Dev Environments, click "Create," and paste the repository URL. Docker Desktop clones the repo, reads the `compose-dev.yaml`, and builds the workspace. Everyone gets an identical setup.
 
-For private repositories, make sure your Git credentials are configured in Docker Desktop under Settings > General > "Use Docker Compose V2."
+For private repositories, make sure your Git credentials are available before creating the Dev Environment. If you clone over SSH, add your private key to `ssh-agent` with `ssh-add <path-to-private-key>`.
 
 ## Running Services and Commands
 
@@ -276,4 +278,4 @@ If ports conflict with services running on your host, change the host port mappi
 
 If the container runs out of memory during builds, increase Docker Desktop's memory allocation under Settings > Resources.
 
-Docker Desktop Dev Environments remove the friction from onboarding and daily development. Define your setup once in `compose-dev.yaml`, commit it to your repository, and every developer on your team gets a working environment in minutes instead of hours.
+For legacy Docker Desktop versions, Dev Environments remove the friction from onboarding and daily development. Define your setup once in `compose-dev.yaml`, commit it to your repository, and every developer on your team gets a working environment in minutes instead of hours.
