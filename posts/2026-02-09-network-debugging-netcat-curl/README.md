@@ -42,7 +42,7 @@ kubectl exec -it netdebug -- /bin/bash
 Alternatively, use kubectl run for quick testing:
 
 ```bash
-kubectl run netdebug --image=nicolaka/netshoot -it --rm -- /bin/bash
+kubectl run netdebug --image=nicolaka/netshoot -it --rm --command -- /bin/bash
 ```
 
 ## Testing Connectivity with netcat
@@ -60,7 +60,7 @@ nc -zv service-name 8080
 # Test multiple ports
 nc -zv service-name 80 443 8080
 
-# Test UDP connection
+# Test UDP reachability (best effort; UDP has no connection handshake)
 nc -zuv service-name 53
 ```
 
@@ -98,7 +98,7 @@ nc -l 8080
 # Listen and respond with data
 echo "Hello from netcat" | nc -l 8080
 
-# Echo server (repeats received data)
+# Persistent listener (accepts multiple connections)
 nc -l 8080 -k
 
 # Save received data to file
@@ -199,7 +199,7 @@ Test Kubernetes service account tokens:
 # Get service account token
 TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 
-# Query Kubernetes API
+# Query Kubernetes API (if service account RBAC allows)
 curl -H "Authorization: Bearer $TOKEN" \
      --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
      https://kubernetes.default.svc/api/v1/namespaces/default/pods
@@ -421,8 +421,8 @@ curl -k https://service-name:8443
 openssl s_client -connect service-name:8443 -showcerts
 
 # Test specific TLS version
-curl --tlsv1.2 https://service-name:8443
-curl --tlsv1.3 https://service-name:8443
+curl --tlsv1.2 --tls-max 1.2 https://service-name:8443
+curl --tlsv1.3 --tls-max 1.3 https://service-name:8443
 ```
 
 ## Conclusion
