@@ -210,27 +210,20 @@ scrape_configs:
 
 ## Dynamic Port Selection
 
-Handle pods with multiple ports intelligently:
+Handle pods with multiple ports by selecting the metrics port explicitly:
 
 ```yaml
 relabel_configs:
-# Use named port if available
+# Keep named metrics ports
 - source_labels: [__meta_kubernetes_pod_container_port_name]
   action: keep
   regex: metrics|prometheus
 
-# Fall back to annotation-specified port
-- source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-  action: replace
-  regex: ([^:]+)(?::\d+)?;(\d+)
-  replacement: $1:$2
-  target_label: __address__
-
-# Use first port as last resort
+# Prometheus keeps the discovered container port in __address__
 - source_labels: [__address__]
   action: replace
   regex: ([^:]+):(\d+)
-  replacement: $1
+  replacement: $1:$2
   target_label: __address__
 ```
 
@@ -240,7 +233,7 @@ Properly handle pods with multiple containers:
 
 ```yaml
 relabel_configs:
-# Keep all containers in pod
+# Keep metrics ports in the pod
 - source_labels: [__meta_kubernetes_pod_container_port_name]
   regex: metrics.*
   action: keep
@@ -267,12 +260,12 @@ Use service-level discovery with pod relabeling:
 
 ```yaml
 scrape_configs:
-- job_name: 'kubernetes-service-endpoints'
+- job_name: 'kubernetes-service-endpointslices'
   kubernetes_sd_configs:
-  - role: endpoints
+  - role: endpointslice
 
   relabel_configs:
-  # Keep only endpoints with service annotation
+  # Keep only service endpoints with service annotation
   - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
     action: keep
     regex: true
@@ -305,7 +298,7 @@ scrape_configs:
 
 ## Implementing Custom Scrape Schemes
 
-Support HTTPS scraping with custom TLS configuration:
+Support HTTP or HTTPS scraping with custom schemes:
 
 ```yaml
 relabel_configs:
@@ -314,12 +307,6 @@ relabel_configs:
   action: replace
   target_label: __scheme__
   regex: (https?)
-
-# Configure TLS verification
-- source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_tls_skip_verify]
-  action: replace
-  target_label: __param_tls_skip_verify
-  regex: (true|false)
 ```
 
 Configure TLS at the job level:
@@ -361,10 +348,10 @@ relabel_configs:
   replacement: $1
   target_label: statefulset_name
 
-# Use stable network identity for StatefulSets
-- source_labels: [__meta_kubernetes_pod_name, __meta_kubernetes_namespace, __meta_kubernetes_service_name]
-  regex: (.+);(.+);(.+)
-  replacement: $1.$3.$2.svc.cluster.local
+# Use stable network identity for StatefulSets with your headless Service name
+- source_labels: [__meta_kubernetes_pod_name, __meta_kubernetes_namespace, __meta_kubernetes_pod_annotation_prometheus_io_port]
+  regex: (.+);(.+);(\d+)
+  replacement: $1.metrics-headless.$2.svc.cluster.local:$3
   target_label: __address__
 ```
 
@@ -376,11 +363,11 @@ Use these techniques to debug relabeling:
 # Preserve original labels for debugging
 relabel_configs:
 - source_labels: [__address__]
-  target_label: __tmp_address
+  target_label: debug_address
   action: replace
 
 - source_labels: [__metrics_path__]
-  target_label: __tmp_path
+  target_label: debug_path
   action: replace
 
 # Log all discovered metadata (temporarily)
