@@ -125,7 +125,7 @@ For a more visual experience, run a web-based file manager that mounts the volum
 # Run a web-based file browser to explore the volume
 docker run -d \
   --name volume-browser \
-  -p 8080:8080 \
+  -p 8080:80 \
   -v postgres-data:/srv \
   -e FB_NOAUTH=true \
   filebrowser/filebrowser
@@ -174,7 +174,7 @@ Find the largest files in a volume:
 ```bash
 # Find the 10 largest files in the volume
 docker run --rm -v postgres-data:/data alpine \
-  find /data -type f -exec du -h {} + | sort -rh | head -10
+  sh -c 'find /data -type f -exec du -h {} + | sort -rh | head -10'
 ```
 
 ## Searching Volume Contents
@@ -192,7 +192,7 @@ Search for content inside files:
 ```bash
 # Search for a specific string in all config files
 docker run --rm -v app-data:/data alpine \
-  grep -r "database" /data --include="*.conf"
+  find /data -name "*.conf" -type f -exec grep -H "database" {} +
 ```
 
 ## Comparing Volume Contents
@@ -246,7 +246,7 @@ To export specific files:
 ```bash
 # Export only configuration files
 docker run --rm -v postgres-data:/data -v $(pwd):/backup alpine \
-  sh -c 'find /data -name "*.conf" | tar czf /backup/configs.tar.gz -T -'
+  sh -c 'apk add --no-cache tar >/dev/null && cd /data && find . -name "*.conf" -type f -print0 | tar --null -czf /backup/configs.tar.gz --files-from=-'
 ```
 
 ## Viewing Volume Permissions and Ownership
