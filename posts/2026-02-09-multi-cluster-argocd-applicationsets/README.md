@@ -19,7 +19,7 @@ kubectl create namespace argocd
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
-Install the ApplicationSet controller (included in ArgoCD 2.6+):
+Install the ApplicationSet controller (included in ArgoCD 2.3+):
 
 ```bash
 # Verify ApplicationSet CRD exists
@@ -50,13 +50,13 @@ Add target clusters to ArgoCD:
 kubectl config current-context
 
 # Add cluster-1
-argocd cluster add cluster-1 --name cluster-1
+argocd cluster add cluster-1 --name cluster-1 --label environment=production
 
 # Add cluster-2
-argocd cluster add cluster-2 --name cluster-2
+argocd cluster add cluster-2 --name cluster-2 --label environment=production
 
 # Add cluster-3
-argocd cluster add cluster-3 --name cluster-3
+argocd cluster add cluster-3 --name cluster-3 --label environment=staging
 ```
 
 Verify registered clusters:
@@ -172,12 +172,12 @@ spec:
         - CreateNamespace=true
 ```
 
-Label clusters to control which receive the application:
+Use the labels added during cluster registration to control which clusters receive the application. To update labels after registration, label the generated ArgoCD cluster Secrets:
 
 ```bash
-argocd cluster set cluster-1 --label environment=production
-argocd cluster set cluster-2 --label environment=production
-argocd cluster set cluster-3 --label environment=staging
+kubectl -n argocd label secret <cluster-1-secret> environment=production --overwrite
+kubectl -n argocd label secret <cluster-2-secret> environment=production --overwrite
+kubectl -n argocd label secret <cluster-3-secret> environment=staging --overwrite
 ```
 
 Only cluster-1 and cluster-2 receive the monitoring stack.
@@ -340,7 +340,7 @@ Each cluster gets appropriate sizing based on its capacity.
 
 ## Implementing Progressive Rollouts
 
-Use the merge generator for canary deployments:
+Use cluster generators with labels for canary deployments:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -350,22 +350,18 @@ metadata:
   namespace: argocd
 spec:
   generators:
-  - merge:
-      mergeKeys:
-      - cluster
-      generators:
-      - clusters:
-          selector:
-            matchLabels:
-              rollout: canary
-          values:
-            version: v2.0
-      - clusters:
-          selector:
-            matchLabels:
-              rollout: stable
-          values:
-            version: v1.0
+  - clusters:
+      selector:
+        matchLabels:
+          rollout: canary
+      values:
+        version: v2.0
+  - clusters:
+      selector:
+        matchLabels:
+          rollout: stable
+      values:
+        version: v1.0
   template:
     metadata:
       name: '{{name}}-app'
@@ -384,12 +380,12 @@ spec:
         namespace: production
 ```
 
-Label clusters for rollout stages:
+Label cluster Secrets for rollout stages:
 
 ```bash
-argocd cluster set cluster-3 --label rollout=canary
-argocd cluster set cluster-1 --label rollout=stable
-argocd cluster set cluster-2 --label rollout=stable
+kubectl -n argocd label secret <cluster-3-secret> rollout=canary --overwrite
+kubectl -n argocd label secret <cluster-1-secret> rollout=stable --overwrite
+kubectl -n argocd label secret <cluster-2-secret> rollout=stable --overwrite
 ```
 
 Cluster-3 receives v2.0 (canary), others stay on v1.0 (stable).
@@ -422,36 +418,30 @@ kubectl describe applicationset webapp-appset -n argocd
 
 ## Implementing Health Checks
 
-Add health checks to ensure applications are actually healthy:
+Add custom health checks in the `argocd-cm` ConfigMap when you need to override ArgoCD's built-in health assessment:
 
 ```yaml
-spec:
-  template:
-    spec:
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-        - CreateNamespace=true
-      ignoreDifferences:
-      - group: apps
-        kind: Deployment
-        jsonPointers:
-        - /spec/replicas
-      health:
-        - check: |
-            hs = {}
-            if obj.status ~= nil then
-              if obj.status.readyReplicas == obj.status.replicas then
-                hs.status = "Healthy"
-                hs.message = "All replicas ready"
-                return hs
-              end
-            end
-            hs.status = "Progressing"
-            hs.message = "Waiting for replicas"
-            return hs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  resource.customizations.health.apps_Deployment: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.readyReplicas == obj.status.replicas then
+        hs.status = "Healthy"
+        hs.message = "All replicas ready"
+        return hs
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "Waiting for replicas"
+    return hs
 ```
 
 ## Implementing Cluster-Specific Secrets
@@ -500,7 +490,7 @@ Store cluster-specific sealed secrets in separate directories.
 **Monitor sync status**: Set up alerts for applications stuck in OutOfSync or Degraded states:
 
 ```promql
-argocd_app_sync_status{sync_status!="Synced"} > 0
+argocd_app_info{sync_status!="Synced"} == 1
 ```
 
 **Use project-level RBAC**: Create ArgoCD Projects to control which teams can deploy to which clusters.
@@ -510,7 +500,7 @@ argocd_app_sync_status{sync_status!="Synced"} > 0
 **Test ApplicationSets**: Before applying to production, test generators produce expected Applications:
 
 ```bash
-kubectl apply --dry-run=client -f appset.yaml
+argocd appset generate appset.yaml -o yaml
 ```
 
 **Document generator logic**: Add comments explaining why specific generators and filters are used.
