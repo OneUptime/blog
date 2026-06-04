@@ -8,7 +8,7 @@ Description: Learn how to deploy NATS JetStream on Kubernetes for persistent mes
 
 ---
 
-NATS JetStream extends the core NATS messaging system with persistence, replay capabilities, and distributed streaming. Unlike traditional NATS which provides at-most-once delivery, JetStream offers at-least-once and exactly-once semantics, making it suitable for use cases requiring durability and message replay.
+NATS JetStream extends the core NATS messaging system with persistence, replay capabilities, and distributed streaming. Unlike traditional NATS which provides at-most-once delivery, JetStream offers at-least-once delivery and exactly-once publish/consume semantics when you combine publish deduplication with confirmed consumer acknowledgments, making it suitable for use cases requiring durability and message replay.
 
 In this guide, you'll learn how to deploy NATS with JetStream enabled, configure streams and consumers, implement message persistence, and optimize JetStream for production workloads on Kubernetes.
 
@@ -20,7 +20,7 @@ JetStream provides:
 - **Stream replication** - Distribute streams across cluster nodes
 - **Message replay** - Consume from any point in the stream
 - **At-least-once delivery** - Acknowledgment-based consumption
-- **Exactly-once semantics** - Deduplication based on message IDs
+- **Exactly-once publish/consume semantics** - Deduplication based on message IDs plus confirmed consumer acknowledgments
 - **Push and pull consumers** - Flexible consumption patterns
 
 JetStream is ideal for event sourcing, audit logs, time-series data, and any scenario requiring message durability.
@@ -103,6 +103,13 @@ spec:
         - nats-server
         - --config
         - /etc/nats/nats.conf
+        - --name
+        - $(POD_NAME)
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         volumeMounts:
         - name: config
           mountPath: /etc/nats
@@ -235,7 +242,7 @@ async def publish_messages():
     nc = NATS()
     await nc.connect("nats://nats.nats.svc.cluster.local:4222")
 
-    js: JetStreamContext.jetstream = nc.jetstream()
+    js: JetStreamContext = nc.jetstream()
 
     # Publish message
     ack = await js.publish("events.user.signup", b'{"user_id": 123}')
@@ -364,7 +371,7 @@ Replicas: 3
 
 ## Implementing Exactly-Once Processing
 
-Use message deduplication:
+Use message deduplication on the publisher and confirmed acknowledgments on the consumer:
 
 ```go
 // Publisher side - set unique message ID
@@ -396,15 +403,23 @@ func processWithIdempotency(msg *nats.Msg) {
         return
     }
 
-    // Mark as processed and ack
+    // Mark as processed and wait for the server to confirm the ack
     markProcessed(msgID)
-    msg.Ack()
+    if err := msg.AckSync(); err != nil {
+        log.Printf("ack confirmation failed: %v", err)
+    }
 }
 ```
 
 ## Monitoring JetStream
 
-Deploy NATS Surveyor for monitoring:
+After configuring a NATS system account, deploy NATS Surveyor for monitoring. Store the system account credentials in a Secret first:
+
+```bash
+kubectl create secret generic nats-sys-creds \
+  --from-file=SYS.creds=./SYS.creds \
+  -n nats
+```
 
 ```yaml
 apiVersion: apps/v1
@@ -428,11 +443,22 @@ spec:
         args:
         - -s
         - nats://nats:4222
-        - -creds
-        - /etc/nats/creds
+        - --creds
+        - /etc/nats-creds/SYS.creds
+        - --jsz
+        - all
+        - --jsz-leaders-only
         ports:
         - containerPort: 7777
           name: metrics
+        volumeMounts:
+        - name: creds
+          mountPath: /etc/nats-creds
+          readOnly: true
+      volumes:
+      - name: creds
+        secret:
+          secretName: nats-sys-creds
 ```
 
 Create Prometheus alerts:
@@ -446,18 +472,18 @@ spec:
   groups:
   - name: jetstream
     rules:
-    - alert: JetStreamStreamLagging
+    - alert: JetStreamConsumerPending
       expr: |
-        nats_jetstream_stream_lag > 10000
+        nats_consumer_num_pending > 10000
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "JetStream stream lagging"
+        summary: "JetStream consumer has pending messages"
 
     - alert: JetStreamConsumerNotAcking
       expr: |
-        rate(nats_jetstream_consumer_ack_pending[5m]) > 100
+        nats_consumer_num_ack_pending > 100
       for: 10m
       labels:
         severity: warning
