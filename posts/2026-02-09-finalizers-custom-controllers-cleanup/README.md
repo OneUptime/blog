@@ -8,7 +8,7 @@ Description: Learn how to implement finalizers in Kubernetes controllers to perf
 
 ---
 
-When someone deletes a Pod, Kubernetes removes it from etcd immediately. This works for built-in resources because Kubernetes knows how to clean them up. But what about your custom resources that provision external resources like cloud storage buckets, database instances, or DNS records?
+When someone deletes a Kubernetes object without finalizers, Kubernetes can remove it from the API once normal deletion processing is complete. Pods also have graceful termination semantics, and some built-in resources use their own finalizers. But what about your custom resources that provision external resources like cloud storage buckets, database instances, or DNS records?
 
 Finalizers let you run cleanup logic before deletion. Kubernetes marks the resource for deletion but doesn't remove it from etcd until your controller removes its finalizer. This guarantees your cleanup code runs before the resource disappears. This guide shows you how to use finalizers correctly.
 
@@ -28,9 +28,9 @@ package main
 import (
     "context"
 
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
+    "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const finalizerName = "myresource.example.com/finalizer"
@@ -45,6 +45,11 @@ func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Re
     var resource MyResource
     if err := r.Get(ctx, req.NamespacedName, &resource); err != nil {
         return ctrl.Result{}, client.IgnoreNotFound(err)
+    }
+
+    // Do not add finalizers after deletion has started
+    if !resource.DeletionTimestamp.IsZero() {
+        return ctrl.Result{}, nil
     }
 
     // Add finalizer if not present
