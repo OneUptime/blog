@@ -26,6 +26,9 @@ Deploy the operator and custom resource definitions:
 helm repo add flink-operator-repo https://downloads.apache.org/flink/flink-kubernetes-operator-1.7.0/
 helm repo update
 
+# Install cert-manager for the operator webhook
+kubectl create -f https://github.com/jetstack/cert-manager/releases/download/v1.8.2/cert-manager.yaml
+
 # Install the operator
 kubectl create namespace flink-system
 helm install flink-kubernetes-operator flink-operator-repo/flink-kubernetes-operator \
@@ -167,9 +170,17 @@ Build a simple word count streaming application:
 package com.example.flink;
 
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.connector.sink2.DeliveryGuarantee;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
+import org.apache.flink.connector.kafka.sink.KafkaSink;
+import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Collector;
 
@@ -182,28 +193,45 @@ public class WordCount {
         // Enable checkpointing every 10 seconds
         env.enableCheckpointing(10000);
 
+        String brokers = args.length > 0 ? args[0] : "kafka:9092";
+
         // Read from Kafka
-        DataStream<String> text = env
-            .addSource(new FlinkKafkaConsumer<>(
-                "input-topic",
-                new SimpleStringSchema(),
-                properties
-            ));
+        KafkaSource<String> source = KafkaSource.<String>builder()
+            .setBootstrapServers(brokers)
+            .setTopics("input-topic")
+            .setGroupId("word-count")
+            .setStartingOffsets(OffsetsInitializer.earliest())
+            .setValueOnlyDeserializer(new SimpleStringSchema())
+            .build();
+
+        DataStream<String> text = env.fromSource(
+            source,
+            WatermarkStrategy.noWatermarks(),
+            "Kafka Source"
+        );
 
         // Parse and count words
         DataStream<Tuple2<String, Integer>> counts = text
             .flatMap(new Tokenizer())
             .keyBy(value -> value.f0)
-            .window(Time.seconds(5))
+            .window(TumblingProcessingTimeWindows.of(Time.seconds(5)))
             .sum(1);
 
         // Write to Kafka
-        counts.addSink(new FlinkKafkaProducer<>(
-            "output-topic",
-            new KeyedSerializationSchemaWrapper<>(new SimpleStringSchema()),
-            properties,
-            FlinkKafkaProducer.Semantic.EXACTLY_ONCE
-        ));
+        KafkaSink<String> sink = KafkaSink.<String>builder()
+            .setBootstrapServers(brokers)
+            .setRecordSerializer(KafkaRecordSerializationSchema.builder()
+                .setTopic("output-topic")
+                .setValueSerializationSchema(new SimpleStringSchema())
+                .build()
+            )
+            .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+            .setTransactionalIdPrefix("word-count-")
+            .build();
+
+        counts
+            .map(value -> value.f0 + "," + value.f1)
+            .sinkTo(sink);
 
         // Execute program
         env.execute("Streaming Word Count");
@@ -233,9 +261,17 @@ Build and package:
 ```xml
 <!-- pom.xml -->
 <project>
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example.flink</groupId>
+    <artifactId>word-count</artifactId>
+    <version>1.0</version>
+
     <properties>
         <flink.version>1.18.0</flink.version>
-        <scala.binary.version>2.12</scala.binary.version>
+        <kafka.connector.version>3.2.0-1.18</kafka.connector.version>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
     </properties>
 
     <dependencies>
@@ -243,11 +279,12 @@ Build and package:
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-streaming-java</artifactId>
             <version>${flink.version}</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-connector-kafka</artifactId>
-            <version>${flink.version}</version>
+            <version>${kafka.connector.version}</version>
         </dependency>
     </dependencies>
 
@@ -284,9 +321,6 @@ FROM flink:1.18.0
 
 # Copy job JAR
 COPY target/word-count-1.0.jar /opt/flink/usrlib/word-count.jar
-
-# Copy dependencies if needed
-COPY target/libs/*.jar /opt/flink/lib/
 ```
 
 Build and push:
@@ -383,6 +417,8 @@ spec:
               key: secret-key
 ```
 
+On AWS, prefer IAM roles for service accounts over static access keys when your cluster supports them. Also make sure the Flink image includes an S3 filesystem plugin, such as `flink-s3-fs-presto` or `flink-s3-fs-hadoop`, under `/opt/flink/plugins`.
+
 ## Scaling Flink Jobs
 
 Scale TaskManagers for more processing capacity:
@@ -414,7 +450,7 @@ kubectl patch flinkdeployment word-count-app -n flink --type merge \
   -p '{"spec":{"image":"your-registry/flink-word-count:1.1"}}'
 ```
 
-The operator automatically:
+With `upgradeMode: savepoint`, the operator automatically:
 1. Triggers a savepoint
 2. Cancels the running job
 3. Deploys new version
@@ -444,17 +480,17 @@ Open browser to `http://localhost:8081` to view:
 Deploy Prometheus monitoring:
 
 ```yaml
-# servicemonitor.yaml
+# podmonitor.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: flink-metrics
   namespace: flink
 spec:
   selector:
     matchLabels:
-      app: flink
-  endpoints:
+      prometheus: flink
+  podMetricsEndpoints:
   - port: metrics
     interval: 30s
 ```
@@ -463,8 +499,19 @@ Configure Flink to export metrics:
 
 ```yaml
 flinkConfiguration:
-  metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
+  metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
   metrics.reporter.prom.port: 9249
+
+podTemplate:
+  metadata:
+    labels:
+      prometheus: flink
+  spec:
+    containers:
+    - name: flink-main-container
+      ports:
+      - name: metrics
+        containerPort: 9249
 ```
 
 ## Handling Failures and Recovery
@@ -501,6 +548,7 @@ Restore from specific savepoint:
 spec:
   job:
     initialSavepointPath: s3://my-bucket/flink/savepoints/savepoint-abc123
+    savepointRedeployNonce: 1
     allowNonRestoredState: false
 ```
 
