@@ -239,7 +239,13 @@ kind: Deployment
 metadata:
   name: data-loader
 spec:
+  selector:
+    matchLabels:
+      app: data-loader
   template:
+    metadata:
+      labels:
+        app: data-loader
     spec:
       containers:
       - name: app
@@ -259,7 +265,7 @@ spec:
           failureThreshold: 30
 ```
 
-Use startup probes to delay traffic until initialization completes. This prevents HPA from seeing high memory usage during pod startup and making incorrect scaling decisions.
+Use startup probes to delay liveness and readiness checks until initialization completes. Pair them with readiness probes so pods do not receive traffic until startup memory usage has settled.
 
 ## Monitoring Memory-Based Scaling
 
@@ -363,7 +369,7 @@ resources:
 
 Monitor for memory leaks separately from autoscaling. If memory usage continuously climbs regardless of load, you have a leak that autoscaling can't solve.
 
-Use pod disruption budgets to ensure minimum availability during scale-down.
+Use pod disruption budgets to maintain availability during voluntary disruptions such as node drains.
 
 ```yaml
 apiVersion: policy/v1
@@ -377,7 +383,7 @@ spec:
       app: cache
 ```
 
-This prevents HPA from scaling down to a point where availability is compromised.
+This does not limit HPA scale-down; use `minReplicas` and scale-down behavior for that. PDBs protect availability during voluntary evictions.
 
 ## Scaling Stateful Memory Workloads
 
@@ -439,14 +445,16 @@ if __name__ == "__main__":
     allocate_memory(size)
 ```
 
-Deploy this as a test and watch HPA scale.
+Deploy this as a test workload with memory requests and an HPA that targets it, then watch HPA scale.
 
 ```bash
 # Deploy memory consumer
-kubectl run memory-test --image=python:3.11 --env="MEMORY_SIZE_MB=500" -- python -c "import time; data = bytearray(500 * 1024 * 1024); time.sleep(3600)"
+kubectl create deployment memory-test --image=python:3.11 -- python -c "import time; data = bytearray(500 * 1024 * 1024); time.sleep(3600)"
+kubectl set resources deployment memory-test --requests=memory=256Mi,cpu=100m --limits=memory=1Gi,cpu=500m
+kubectl autoscale deployment memory-test --min=1 --max=10 --memory=75%
 
 # Watch HPA respond
-kubectl get hpa cache-memory-hpa -w
+kubectl get hpa memory-test -w
 ```
 
 ## Conclusion
