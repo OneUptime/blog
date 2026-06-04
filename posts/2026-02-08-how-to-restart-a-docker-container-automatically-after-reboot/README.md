@@ -54,7 +54,7 @@ docker run -d --restart on-failure:5 --name worker myapp-worker:latest
 docker run -d --restart on-failure --name worker myapp-worker:latest
 ```
 
-This policy does restart after a reboot, but only if the container was running when the system went down.
+This policy does not restart a container just because the Docker daemon restarts after a reboot. It only restarts the container when the container exits with a non-zero exit code.
 
 ### no (default)
 
@@ -226,9 +226,12 @@ Requires=docker.service
 
 [Service]
 Restart=always
+ExecStartPre=-/usr/bin/docker network create myapp
 ExecStartPre=-/usr/bin/docker stop myapp-db
 ExecStartPre=-/usr/bin/docker rm myapp-db
 ExecStart=/usr/bin/docker run --rm --name myapp-db \
+  --network myapp \
+  --network-alias db \
   -v pgdata:/var/lib/postgresql/data \
   -e POSTGRES_PASSWORD=secret \
   postgres:16-alpine
@@ -251,7 +254,7 @@ RestartSec=5
 ExecStartPre=-/usr/bin/docker stop myapp-web
 ExecStartPre=-/usr/bin/docker rm myapp-web
 ExecStart=/usr/bin/docker run --rm --name myapp-web \
-  --link myapp-db:db \
+  --network myapp \
   -p 80:80 \
   myapp:latest
 ExecStop=/usr/bin/docker stop myapp-web
