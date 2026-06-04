@@ -15,7 +15,7 @@ Istio's multi-primary architecture runs a full control plane in each cluster. Un
 In multi-primary topology:
 
 - Each cluster runs its own Istio control plane (istiod)
-- Control planes communicate to share service discovery
+- Each control plane uses remote secrets to watch the other clusters' Kubernetes API servers for service discovery
 - Each cluster can operate independently if network partitions occur
 - Configuration must be applied to each cluster
 
@@ -71,6 +71,8 @@ kubectl create secret generic cacerts -n istio-system \
 ```
 
 ## Installing Istio in All Clusters
+
+This same-network example assumes the clusters have direct pod-to-pod connectivity, non-overlapping pod and service CIDRs, and API servers that are reachable from the other clusters.
 
 Install Istio with multi-primary configuration in cluster-1:
 
@@ -253,6 +255,31 @@ Deploy the same backend in cluster-2 for redundancy:
 kubectl apply -f backend.yaml --context cluster-2
 ```
 
+Create the backend Service in cluster-3 as well so DNS lookup for `backend.production.svc.cluster.local` succeeds from frontend pods:
+
+```bash
+kubectl apply --context cluster-3 -f - <<EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    istio-injection: enabled
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: production
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 80
+    targetPort: 8080
+EOF
+```
+
 Deploy frontend in cluster-3:
 
 ```yaml
@@ -311,7 +338,7 @@ Frontend in cluster-3 can call backend service, and Istio load-balances across b
 Apply the same traffic rules to all clusters. Create VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-routing
@@ -326,7 +353,7 @@ spec:
         subset: v1
       weight: 100
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-destination
@@ -355,7 +382,7 @@ kubectl apply -f traffic-rules.yaml --context cluster-3
 Configure traffic to prefer local endpoints:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-locality
@@ -461,11 +488,9 @@ Monitor control plane metrics:
 # Request rate across all clusters
 sum(rate(istio_requests_total[5m])) by (source_cluster, destination_cluster)
 
-# Cross-cluster latency
+# Latency by source and destination cluster
 histogram_quantile(0.95,
-  sum(rate(istio_request_duration_milliseconds_bucket{
-    source_cluster!="destination_cluster"
-  }[5m])) by (le)
+  sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le, source_cluster, destination_cluster)
 )
 ```
 
