@@ -18,9 +18,9 @@ Unlike application workloads, CSI driver issues often manifest indirectly. A pod
 
 ## Understanding CSI Driver Architecture
 
-CSI drivers typically deploy three main components:
+CSI drivers typically deploy two main components with several sidecars:
 
-The controller plugin runs as a Deployment or StatefulSet and handles volume lifecycle operations like creation, deletion, snapshots, and cloning. The node plugin runs as a DaemonSet on every node and handles volume attachment, mounting, and unmounting. The CSI driver registrar sidecar registers the driver with the kubelet on each node.
+The controller plugin runs as a Deployment or StatefulSet and handles volume lifecycle operations like creation, deletion, attachment, snapshots, and cloning. The node plugin runs as a DaemonSet on every node and handles node-local operations like staging, mounting, and unmounting volumes. The CSI driver registrar sidecar registers the driver with the kubelet on each node.
 
 Each component exposes different health signals and metrics that you need to monitor.
 
@@ -55,7 +55,8 @@ CSI_KEYWORDS="csi|volume|attach|mount|provision"
 kubectl get events -n $NAMESPACE --watch -o json | jq -r --unbuffered '
   select(.reason | test("Failed|Error|Warning"; "i")) |
   select(.message | test("'$CSI_KEYWORDS'"; "i")) |
-  "\(.lastTimestamp) [\(.type)] \(.involvedObject.kind)/\(.involvedObject.name): \(.message)"
+  (.regarding // .involvedObject) as $obj |
+  "\((.eventTime // .series.lastObservedTime // .deprecatedLastTimestamp // .lastTimestamp // .metadata.creationTimestamp)) [\(.type)] \($obj.kind)/\($obj.name): \(.message)"
 '
 ```
 
@@ -63,7 +64,7 @@ This script streams events related to CSI operations and filters for failures, m
 
 ## Exposing CSI Metrics
 
-Most CSI drivers expose Prometheus metrics on a metrics endpoint. Check your driver's documentation for the specific port:
+Many CSI sidecars and drivers expose Prometheus metrics on a metrics endpoint. Check your driver's documentation for the specific port:
 
 ```bash
 # Port-forward to CSI controller metrics endpoint
@@ -81,10 +82,10 @@ csi_sidecar_operations_seconds_bucket
 csi_sidecar_operations_seconds_sum
 csi_sidecar_operations_seconds_count
 
-# Volume operation errors
-csi_sidecar_operations_errors_total
+# Volume operation errors by gRPC status code
+csi_sidecar_operations_seconds_count{grpc_status_code!="OK"}
 
-# Volume attachment operations
+# Kubelet storage operations
 storage_operation_duration_seconds_bucket
 storage_operation_duration_seconds_sum
 storage_operation_duration_seconds_count
@@ -164,7 +165,9 @@ Create alerts based on these PromQL queries:
 
 ```promql
 # High volume operation error rate
-rate(csi_sidecar_operations_errors_total[5m]) > 0.1
+sum by (driver_name, method_name) (
+  rate(csi_sidecar_operations_seconds_count{grpc_status_code!="OK"}[5m])
+) > 0.1
 
 # Slow volume operations (p95 > 30 seconds)
 histogram_quantile(0.95,
@@ -184,14 +187,17 @@ kube_daemonset_status_number_unavailable{
 } > 0
 
 # Volume attach/detach failures
-rate(storage_operation_errors_total{
-  operation_name=~"volume_attach|volume_detach"
-}[5m]) > 0
+sum by (operation_name, volume_plugin) (
+  rate(storage_operation_duration_seconds_count{
+    operation_name=~"volume_attach|volume_detach",
+    status!="success"
+  }[5m])
+) > 0
 ```
 
 ## Setting Up Alerting Rules
 
-Configure Prometheus AlertManager rules for CSI health:
+Configure Prometheus alerting rules for CSI health:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -206,13 +212,15 @@ spec:
     rules:
     - alert: CSIOperationFailureHigh
       expr: |
-        rate(csi_sidecar_operations_errors_total[5m]) > 0.1
+        sum by (driver_name, method_name) (
+          rate(csi_sidecar_operations_seconds_count{grpc_status_code!="OK"}[5m])
+        ) > 0.1
       for: 10m
       labels:
         severity: warning
       annotations:
         summary: "High CSI operation failure rate"
-        description: "CSI driver {{ $labels.driver_name }} has {{ $value }} operations failing per second"
+        description: "CSI driver {{ $labels.driver_name }} method {{ $labels.method_name }} has {{ $value }} operations failing per second"
 
     - alert: CSIOperationSlow
       expr: |
@@ -301,8 +309,8 @@ spec:
         # Check controller health
         curl -sf http://csi-controller.kube-system.svc:9808/healthz || echo "Controller unhealthy"
 
-        # Check node plugin health on local node
-        curl -sf http://localhost:9809/healthz || echo "Node plugin unhealthy"
+        # Check a node plugin health Service if your driver exposes one
+        curl -sf http://csi-node.kube-system.svc:9809/healthz || echo "Node plugin unhealthy"
 
         sleep 30
       done
@@ -344,7 +352,7 @@ Build a Grafana dashboard with these panels:
         "title": "Operation Success Rate",
         "targets": [
           {
-            "expr": "sum(rate(csi_sidecar_operations_seconds_count[5m])) by (method_name) - sum(rate(csi_sidecar_operations_errors_total[5m])) by (method_name)"
+            "expr": "100 * sum(rate(csi_sidecar_operations_seconds_count{grpc_status_code=\"OK\"}[5m])) by (method_name) / sum(rate(csi_sidecar_operations_seconds_count[5m])) by (method_name)"
           }
         ]
       },
@@ -368,7 +376,7 @@ Build a Grafana dashboard with these panels:
         "title": "CSI Pod Status",
         "targets": [
           {
-            "expr": "kube_pod_status_phase{namespace='kube-system', pod=~'csi.*'}"
+            "expr": "kube_pod_status_phase{namespace=\"kube-system\", pod=~\"csi.*\"}"
           }
         ]
       }
@@ -420,14 +428,14 @@ spec:
               kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/csi-health-test -n default --timeout=120s
 
               # Create test pod
-              kubectl run csi-test-pod --image=busybox --restart=Never \
+              kubectl run csi-test-pod -n default --image=busybox --restart=Never \
                 --overrides='{"spec":{"volumes":[{"name":"test","persistentVolumeClaim":{"claimName":"csi-health-test"}}],"containers":[{"name":"busybox","image":"busybox","command":["sh","-c","echo test > /data/health && sleep 10"],"volumeMounts":[{"name":"test","mountPath":"/data"}]}]}}'
 
-              # Wait for pod completion
-              kubectl wait --for=condition=Ready pod/csi-test-pod --timeout=120s
+              # Wait for pod to mount the volume and become ready
+              kubectl wait --for=condition=Ready pod/csi-test-pod -n default --timeout=120s
 
               # Cleanup
-              kubectl delete pod csi-test-pod
+              kubectl delete pod csi-test-pod -n default
               kubectl delete pvc csi-health-test -n default
 
               echo "CSI health test completed successfully"
