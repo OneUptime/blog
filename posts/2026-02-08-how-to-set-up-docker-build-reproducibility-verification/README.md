@@ -98,14 +98,15 @@ RUN find /app -exec touch -d @${SOURCE_DATE_EPOCH} {} +
 
 ## BuildKit Reproducible Output
 
-Docker BuildKit 0.12+ supports the `--source-date-epoch` flag directly:
+Docker BuildKit supports `SOURCE_DATE_EPOCH` as a special build argument. Buildx automatically propagates the environment variable, and BuildKit 0.13+ can rewrite file timestamps in exported images with `rewrite-timestamp=true`:
 
 ```bash
 # Use BuildKit's native reproducibility support
-docker buildx build \
+SOURCE_DATE_EPOCH=0 docker buildx build \
   --provenance=true \
   --sbom=true \
-  --output type=oci,dest=myapp.tar,rewrite-timestamp=true,source-date-epoch=0 \
+  --build-arg SOURCE_DATE_EPOCH=0 \
+  --output type=oci,dest=myapp.tar,rewrite-timestamp=true \
   .
 ```
 
@@ -130,7 +131,8 @@ echo "=== Build Reproducibility Verification ==="
 echo "Building image (attempt 1)..."
 docker buildx build \
   --no-cache \
-  --output type=oci,dest=/tmp/build1.tar \
+  --build-arg SOURCE_DATE_EPOCH=0 \
+  --output type=oci,dest=/tmp/build1.tar,rewrite-timestamp=true \
   -f "$DOCKERFILE" \
   "$BUILD_CONTEXT"
 
@@ -138,7 +140,8 @@ docker buildx build \
 echo "Building image (attempt 2)..."
 docker buildx build \
   --no-cache \
-  --output type=oci,dest=/tmp/build2.tar \
+  --build-arg SOURCE_DATE_EPOCH=0 \
+  --output type=oci,dest=/tmp/build2.tar,rewrite-timestamp=true \
   -f "$DOCKERFILE" \
   "$BUILD_CONTEXT"
 
@@ -241,21 +244,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # Run two independent builds and compare their output hashes
       - name: Build attempt 1
+        env:
+          SOURCE_DATE_EPOCH: 0
         run: |
           docker buildx build \
             --no-cache \
-            --output type=oci,dest=/tmp/build1.tar \
+            --build-arg SOURCE_DATE_EPOCH=0 \
+            --output type=oci,dest=/tmp/build1.tar,rewrite-timestamp=true \
             .
 
       - name: Build attempt 2
+        env:
+          SOURCE_DATE_EPOCH: 0
         run: |
           docker buildx build \
             --no-cache \
-            --output type=oci,dest=/tmp/build2.tar \
+            --build-arg SOURCE_DATE_EPOCH=0 \
+            --output type=oci,dest=/tmp/build2.tar,rewrite-timestamp=true \
             .
 
       - name: Compare builds
