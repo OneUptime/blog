@@ -8,7 +8,7 @@ Description: Learn how to configure Kubernetes API server request throttling and
 
 ---
 
-The Kubernetes API server is the gateway to all cluster operations, and protecting it from overload is critical for cluster stability. API Priority and Fairness (APF) replaced the older max-requests-inflight throttling mechanism, providing sophisticated request prioritization and fair queuing to prevent any single client from overwhelming the API server.
+The Kubernetes API server is the gateway to all cluster operations, and protecting it from overload is critical for cluster stability. API Priority and Fairness (APF) improves on the older max-requests-inflight throttling mechanism, providing sophisticated request prioritization and fair queuing to prevent any single client from overwhelming the API server.
 
 This guide covers how to configure APF, tune flow schemas and priority levels, and implement custom rate limiting for different API clients.
 
@@ -76,7 +76,6 @@ spec:
   - command:
     - kube-apiserver
     - --enable-priority-and-fairness=true
-    - --enable-flowcontrol-api-v1beta3=true
 ```
 
 ## Creating Custom Priority Levels
@@ -85,7 +84,7 @@ Define custom priority levels for different workload classes:
 
 ```yaml
 # custom-priority-levels.yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: batch-jobs
@@ -93,25 +92,25 @@ spec:
   type: Limited
   limited:
     # Total concurrent requests for this priority level
-    assuredConcurrencyShares: 20
+    nominalConcurrencyShares: 20
     limitResponse:
       type: Queue
       queuing:
-        # Number of queues (should be prime number)
+        # Number of queues
         queues: 64
         # Queue length per queue
         queueLengthLimit: 50
         # Hand size for shuffle sharding
         handSize: 8
 ---
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: monitoring-high
 spec:
   type: Limited
   limited:
-    assuredConcurrencyShares: 50
+    nominalConcurrencyShares: 50
     limitResponse:
       type: Queue
       queuing:
@@ -119,14 +118,14 @@ spec:
         queueLengthLimit: 100
         handSize: 8
 ---
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: development
 spec:
   type: Limited
   limited:
-    assuredConcurrencyShares: 10
+    nominalConcurrencyShares: 10
     limitResponse:
       type: Reject  # Reject excess requests instead of queuing
 ```
@@ -143,7 +142,7 @@ Map requests to priority levels using flow schemas:
 
 ```yaml
 # custom-flow-schemas.yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: FlowSchema
 metadata:
   name: batch-job-controller
@@ -165,7 +164,7 @@ spec:
       resources: ["jobs", "cronjobs"]
       namespaces: ["*"]
 ---
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: FlowSchema
 metadata:
   name: monitoring-exporters
@@ -191,7 +190,7 @@ spec:
       resources: ["*"]
       namespaces: ["*"]
 ---
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: FlowSchema
 metadata:
   name: dev-namespace-limit
@@ -213,7 +212,7 @@ spec:
     - verbs: ["*"]
       apiGroups: ["*"]
       resources: ["*"]
-      namespaces: ["development", "dev-*"]
+      namespaces: ["development", "dev"]
 ```
 
 Apply flow schemas:
@@ -231,7 +230,7 @@ Calculate appropriate concurrency shares based on cluster size and load:
 
 ```yaml
 # For a medium cluster (100-500 nodes)
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: workload-high
@@ -239,8 +238,8 @@ spec:
   type: Limited
   limited:
     # Shares determine relative concurrency allocation
-    # Total concurrency = (shares / total shares) * max-requests-inflight
-    assuredConcurrencyShares: 100
+    # Total concurrency = (shares / total shares) * (max-requests-inflight + max-mutating-requests-inflight)
+    nominalConcurrencyShares: 100
     limitResponse:
       type: Queue
       queuing:
@@ -248,14 +247,14 @@ spec:
         queueLengthLimit: 100
         handSize: 8
 ---
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: workload-low
 spec:
   type: Limited
   limited:
-    assuredConcurrencyShares: 30
+    nominalConcurrencyShares: 30
     limitResponse:
       type: Queue
       queuing:
@@ -267,11 +266,11 @@ spec:
 The actual concurrency for each level:
 
 ```text
-Concurrency = (assuredConcurrencyShares / sum of all shares) * max-requests-inflight
+Concurrency = (nominalConcurrencyShares / sum of all shares) * (max-requests-inflight + max-mutating-requests-inflight)
 
-Example with max-requests-inflight=800:
-- workload-high: (100 / 400) * 800 = 200 concurrent requests
-- workload-low: (30 / 400) * 800 = 60 concurrent requests
+Example with max-requests-inflight=800 and max-mutating-requests-inflight=400:
+- workload-high: (100 / 400) * 1200 = 300 concurrent seats
+- workload-low: (30 / 400) * 1200 = 90 concurrent seats
 ```
 
 ## Configuring API Server Concurrency Limits
@@ -308,8 +307,8 @@ For large clusters (1000+ nodes), increase these values:
 Query APF metrics from Prometheus:
 
 ```promql
-# Current requests in flight by priority level
-apiserver_current_inflight_requests
+# Current APF requests executing by priority level
+apiserver_flowcontrol_current_executing_requests
 
 # Request queue length
 apiserver_flowcontrol_current_inqueue_requests
@@ -383,8 +382,8 @@ kubectl logs -n kube-system kube-apiserver-<node-name> | grep -i "rate\|throttl\
 # Check flowschema status
 kubectl get flowschemas -o json | jq '.items[] | {name: .metadata.name, priorityLevel: .spec.priorityLevelConfiguration.name, precedence: .spec.matchingPrecedence}'
 
-# View current request counts per priority level
-kubectl get --raw /metrics | grep apiserver_current_inflight_requests
+# View current executing request counts per priority level
+kubectl get --raw /metrics | grep apiserver_flowcontrol_current_executing_requests
 
 # Identify which service accounts are making most requests
 kubectl get --raw /metrics | grep apiserver_request_total
@@ -422,14 +421,14 @@ watch -n 1 'kubectl get --raw /metrics | grep apiserver_flowcontrol_current_inqu
 Example production configuration:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: production-critical
 spec:
   type: Limited
   limited:
-    assuredConcurrencyShares: 150
+    nominalConcurrencyShares: 150
     limitResponse:
       type: Queue
       queuing:
