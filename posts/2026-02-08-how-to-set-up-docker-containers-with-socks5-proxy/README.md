@@ -40,7 +40,8 @@ Create a proxy configuration file:
 # This configures the Docker daemon to use a SOCKS5 proxy for all outbound connections
 
 [Service]
-Environment="ALL_PROXY=socks5://proxy-host:1080"
+Environment="HTTP_PROXY=socks5h://proxy-host:1080"
+Environment="HTTPS_PROXY=socks5h://proxy-host:1080"
 Environment="NO_PROXY=localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 ```
 
@@ -64,7 +65,7 @@ Now all Docker daemon operations (pulling images, pushing images, accessing regi
 
 Docker containers do not natively understand SOCKS5 configuration through environment variables. Most applications expect HTTP/HTTPS proxy variables. The cleanest solution is running a local proxy sidecar that translates between protocols.
 
-Use `microsocks` or `dante` as a SOCKS5-to-HTTP bridge. Here is a simpler approach using `redsocks` to transparently redirect traffic.
+Use a tool such as `redsocks` to transparently redirect TCP traffic to a SOCKS5 proxy.
 
 Docker Compose with a redsocks sidecar:
 
@@ -77,23 +78,46 @@ services:
     image: curlimages/curl:latest
     network_mode: "service:socks-proxy"
     # The app shares the network namespace with the proxy container
-    # All outbound traffic from the app routes through the proxy
+    # Outbound TCP traffic from the app routes through the proxy
     command: ["curl", "-v", "https://httpbin.org/ip"]
     depends_on:
       - socks-proxy
 
   # SOCKS5 proxy sidecar
   socks-proxy:
-    image: ncarlier/redsocks:latest
+    image: alpine:3.20
     environment:
       # Point to your external SOCKS5 proxy
-      - PROXY_SERVER=your-socks5-server
-      - PROXY_PORT=1080
-      - PROXY_TYPE=socks5
+      - SOCKS5_HOST=your-socks5-server
+      - SOCKS5_PORT=1080
     cap_add:
       - NET_ADMIN
     dns:
       - 8.8.8.8
+    command:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache redsocks iptables
+        cat > /etc/redsocks.conf <<EOF
+        base {
+            log_debug = off;
+            log_info = on;
+            daemon = on;
+            redirector = iptables;
+        }
+        redsocks {
+            local_ip = 127.0.0.1;
+            local_port = 12345;
+            ip = $${SOCKS5_HOST};
+            port = $${SOCKS5_PORT};
+            type = socks5;
+        }
+        EOF
+        redsocks -c /etc/redsocks.conf
+        iptables -t nat -A OUTPUT -d 127.0.0.0/8 -j RETURN
+        iptables -t nat -A OUTPUT -p tcp -j REDIRECT --to-ports 12345
+        tail -f /dev/null
 ```
 
 The `network_mode: "service:socks-proxy"` directive makes the application container share the network stack with the proxy container. All TCP traffic from the app transparently flows through the SOCKS5 proxy.
@@ -261,10 +285,14 @@ If you need Docker builds to use a SOCKS5 proxy (for downloading dependencies du
 ```bash
 # Set the proxy for BuildKit
 export DOCKER_BUILDKIT=1
-export ALL_PROXY=socks5://proxy-host:1080
+export HTTP_PROXY=socks5h://proxy-host:1080
+export HTTPS_PROXY=socks5h://proxy-host:1080
 
 # Build with proxy
-docker build --build-arg ALL_PROXY=socks5://proxy-host:1080 -t myapp .
+docker build \
+  --build-arg HTTP_PROXY=socks5h://proxy-host:1080 \
+  --build-arg HTTPS_PROXY=socks5h://proxy-host:1080 \
+  -t myapp .
 ```
 
 Inside the Dockerfile, use the build arg:
@@ -272,12 +300,13 @@ Inside the Dockerfile, use the build arg:
 ```dockerfile
 FROM node:20-alpine
 
-ARG ALL_PROXY
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
 
 WORKDIR /app
 COPY package.json package-lock.json ./
 
-# npm respects the ALL_PROXY environment variable
+# npm respects HTTP_PROXY and HTTPS_PROXY during package downloads
 RUN npm ci
 
 COPY . .
