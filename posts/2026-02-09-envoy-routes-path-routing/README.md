@@ -63,7 +63,7 @@ routes:
     cluster: api_v1_service
 ```
 
-Exact matches take precedence over prefix matches in routing logic.
+Exact matches take precedence over overlapping prefix matches when you list them first.
 
 ## Regex Path Matching
 
@@ -129,14 +129,16 @@ routes:
     prefix: "/api"
     headers:
     - name: "x-api-version"
-      exact_match: "v2"
+      string_match:
+        exact: "v2"
   route:
     cluster: api_v2_service
 - match:
     prefix: "/api"
     headers:
     - name: "x-api-version"
-      exact_match: "v1"
+      string_match:
+        exact: "v1"
   route:
     cluster: api_v1_service
 - match:
@@ -180,7 +182,6 @@ routes:
         weight: 90
       - name: api_v2
         weight: 10
-    total_weight: 100
 ```
 
 This sends 90% of traffic to v1 and 10% to v2, perfect for canary deployments or A/B testing.
@@ -245,21 +246,23 @@ routes:
 
 ## CORS Configuration
 
-Enable CORS for specific routes:
+Enable CORS for specific virtual hosts or routes with the CORS HTTP filter configured:
 
 ```yaml
 virtual_hosts:
 - name: api
   domains: ["api.example.com"]
-  cors:
-    allow_origin_string_match:
-    - exact: "https://app.example.com"
-    - exact: "https://mobile.example.com"
-    allow_methods: "GET, POST, PUT, DELETE, OPTIONS"
-    allow_headers: "content-type, authorization, x-request-id"
-    expose_headers: "x-request-id, x-ratelimit-remaining"
-    max_age: "86400"
-    allow_credentials: true
+  typed_per_filter_config:
+    envoy.filters.http.cors:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+      allow_origin_string_match:
+      - exact: "https://app.example.com"
+      - exact: "https://mobile.example.com"
+      allow_methods: "GET, POST, PUT, DELETE, OPTIONS"
+      allow_headers: "content-type, authorization, x-request-id"
+      expose_headers: "x-request-id, x-ratelimit-remaining"
+      max_age: "86400"
+      allow_credentials: true
   routes:
   - match:
       prefix: "/api"
@@ -289,7 +292,7 @@ routes:
 
 ## Virtual Host-Based Routing
 
-Route based on the Host header or SNI:
+Route based on the Host or `:authority` header:
 
 ```yaml
 virtual_hosts:
@@ -362,7 +365,8 @@ routes:
     prefix: "/"
     headers:
     - name: ":scheme"
-      exact_match: "http"
+      string_match:
+        exact: "http"
   redirect:
     https_redirect: true
     response_code: MOVED_PERMANENTLY
@@ -370,18 +374,18 @@ routes:
 
 ## Monitoring Route Metrics
 
-Track route-level metrics:
+Track route-level metrics for routes with `stat_prefix` set:
 
-```promql
+```text
 # Requests per route
 
-envoy_http_downstream_rq_total{envoy_route_name="api_route"}
+vhost.services.route.api_route.downstream_rq_total
 
 # Route latency
-envoy_http_downstream_rq_time{envoy_route_name="api_route"}
+vhost.services.route.api_route.downstream_rq_time
 
 # Route errors
-envoy_http_downstream_rq_xx{envoy_route_name="api_route",envoy_response_code_class="5"}
+vhost.services.route.api_route.downstream_rq_5xx
 ```
 
 ## Testing Route Configuration
