@@ -18,7 +18,7 @@ Karmada consists of several components:
 - **Karmada API Server**: Exposes Kubernetes-like API for multi-cluster resources
 - **Karmada Scheduler**: Decides which clusters receive workloads
 - **Karmada Controller Manager**: Propagates resources to member clusters
-- **Karmada Agent**: Runs in member clusters to sync resource status
+- **Karmada Agent**: Runs in pull-mode member clusters to register the cluster and sync manifests and status
 
 ## Installing Karmada
 
@@ -47,8 +47,10 @@ kubectl get pods -n karmada-system
 You should see:
 
 ```text
+karmada-apiserver
 karmada-aggregated-apiserver
 karmada-controller-manager
+karmada-kube-controller-manager
 karmada-scheduler
 karmada-webhook
 etcd
@@ -78,7 +80,7 @@ karmadactl join cluster-3 \
 Verify member clusters:
 
 ```bash
-kubectl get clusters
+kubectl --kubeconfig /etc/karmada/karmada-apiserver.config get clusters
 ```
 
 Output:
@@ -156,7 +158,7 @@ spec:
 Apply:
 
 ```bash
-kubectl apply -f webapp.yaml
+kubectl --kubeconfig /etc/karmada/karmada-apiserver.config apply -f webapp.yaml
 ```
 
 Karmada divides the 6 replicas across clusters:
@@ -198,7 +200,7 @@ spec:
       replicaDivisionPreference: Aggregated  # Prefer filling clusters completely
 ```
 
-With Aggregated, Karmada fills cluster-1 completely before using cluster-2.
+With Aggregated, Karmada divides replicas into as few clusters as possible while respecting cluster resource availability.
 
 ## Configuring Cluster Affinity
 
@@ -206,9 +208,9 @@ Target clusters based on labels:
 
 ```bash
 # Label clusters
-kubectl label cluster cluster-1 region=us-east zone=a
-kubectl label cluster cluster-2 region=us-east zone=b
-kubectl label cluster cluster-3 region=eu-west zone=a
+kubectl --kubeconfig /etc/karmada/karmada-apiserver.config label cluster cluster-1 region=us-east zone=a
+kubectl --kubeconfig /etc/karmada/karmada-apiserver.config label cluster cluster-2 region=us-east zone=b
+kubectl --kubeconfig /etc/karmada/karmada-apiserver.config label cluster cluster-3 region=eu-west zone=a
 ```
 
 Use label selectors in PropagationPolicy:
@@ -237,7 +239,7 @@ This deploys only to cluster-1 and cluster-2 (both in us-east).
 
 ## Implementing Failover Policies
 
-Configure automatic failover when clusters fail:
+Configure automatic application-level failover when a propagated workload becomes unhealthy:
 
 ```yaml
 apiVersion: policy.karmada.io/v1alpha1
@@ -246,6 +248,7 @@ metadata:
   name: ha-webapp
   namespace: default
 spec:
+  propagateDeps: true
   resourceSelectors:
   - apiVersion: apps/v1
     kind: Deployment
@@ -266,17 +269,20 @@ spec:
       gracePeriodSeconds: 600  # 10 minute grace period
 ```
 
-When a cluster becomes unhealthy, Karmada waits 5 minutes, then redistributes workloads to healthy clusters with a 10-minute grace period.
+When the application remains unhealthy for 5 minutes, Karmada redistributes the workload to another matching cluster. With `Graciously`, it waits until the application is healthy on the new cluster or until the 10-minute grace period expires before evicting the old copy.
 
 Test failover:
 
 ```bash
-# Mark cluster-1 as unhealthy
-kubectl patch cluster cluster-1 --type merge -p '{"status":{"conditions":[{"type":"Ready","status":"False"}]}}'
+# Create an application-level failure in cluster-1
+NODE=$(kubectl --context cluster-1 get nodes -o jsonpath='{.items[0].metadata.name}')
+kubectl --context cluster-1 cordon "$NODE"
+kubectl --context cluster-1 delete pod -l app=webapp
 
-# Watch workloads migrate
-kubectl get deployment webapp --context cluster-2 -w
-kubectl get deployment webapp --context cluster-3 -w
+# Watch the ResourceBinding and workloads migrate after tolerationSeconds
+kubectl --kubeconfig /etc/karmada/karmada-apiserver.config get resourcebinding webapp-deployment -n default -w
+kubectl --context cluster-2 get deployment webapp -w
+kubectl --context cluster-3 get deployment webapp -w
 ```
 
 ## Using Override Policies
@@ -324,7 +330,7 @@ spec:
 Apply:
 
 ```bash
-kubectl apply -f override-policy.yaml
+kubectl --kubeconfig /etc/karmada/karmada-apiserver.config apply -f override-policy.yaml
 ```
 
 Each cluster gets appropriate resource requests based on its capacity.
@@ -367,17 +373,17 @@ spec:
 
 Each cluster gets a LoadBalancer service exposing local webapp pods.
 
-For global load balancing, use Karmada's MultiClusterService:
+For cross-cluster service discovery, use Karmada's MultiClusterService:
 
 ```yaml
 apiVersion: networking.karmada.io/v1alpha1
 kind: MultiClusterService
 metadata:
-  name: webapp-global
+  name: webapp-service
   namespace: default
 spec:
   types:
-  - LoadBalancer
+  - CrossCluster
   consumerClusters:
   - name: cluster-1
   - name: cluster-2
@@ -388,7 +394,7 @@ spec:
   - name: cluster-3
 ```
 
-This creates a global service that load-balances across all clusters.
+This enables cross-cluster service discovery for the Service named `webapp-service`; traffic can reach backend pods from the provider clusters, assuming member cluster networking is connected.
 
 ## Implementing Resource Quotas
 
@@ -396,11 +402,15 @@ Limit how many resources Karmada can use in each cluster:
 
 ```yaml
 apiVersion: policy.karmada.io/v1alpha1
-kind: ResourceQuota
+kind: FederatedResourceQuota
 metadata:
   name: cluster-quotas
-  namespace: karmada-system
+  namespace: default
 spec:
+  overall:
+    cpu: "100"
+    memory: "200Gi"
+    pods: "1000"
   staticAssignments:
   - clusterName: cluster-1
     hard:
@@ -419,14 +429,14 @@ spec:
       pods: "200"
 ```
 
-Karmada respects these quotas when scheduling workloads.
+Karmada creates ResourceQuotas in the corresponding member clusters and reports aggregate quota usage.
 
 ## Monitoring Karmada
 
 Check resource binding status:
 
 ```bash
-kubectl get resourcebindings -n default
+kubectl --kubeconfig /etc/karmada/karmada-apiserver.config get resourcebindings -n default
 ```
 
 Output shows which clusters received which resources:
@@ -440,19 +450,19 @@ webapp-service        3/3     Success
 View detailed binding:
 
 ```bash
-kubectl describe resourcebinding webapp-deployment -n default
+kubectl --kubeconfig /etc/karmada/karmada-apiserver.config describe resourcebinding webapp-deployment -n default
 ```
 
 Monitor work objects (representing propagated resources):
 
 ```bash
-kubectl get works -n karmada-es-cluster-1
+kubectl --kubeconfig /etc/karmada/karmada-apiserver.config get works -n karmada-es-cluster-1
 ```
 
 Check cluster health:
 
 ```bash
-kubectl get clusters -o wide
+kubectl --kubeconfig /etc/karmada/karmada-apiserver.config get clusters -o wide
 ```
 
 ## Implementing Disaster Recovery
@@ -466,6 +476,7 @@ metadata:
   name: dr-policy
   namespace: critical-services
 spec:
+  propagateDeps: true
   resourceSelectors:
   - apiVersion: apps/v1
     kind: Deployment
@@ -531,7 +542,7 @@ clusterAffinity:
 **Plan for Karmada control plane failure**: The control plane is a single point of failure. Run it with high availability:
 
 ```bash
-karmadactl init --karmada-apiserver-replicas 3 --etcd-replicas 3
+karmadactl init --karmada-apiserver-replicas 3 --etcd-replicas 3 --etcd-storage-mode PVC --storage-classes-name <storage-class-name>
 ```
 
 **Document propagation policies**: Add annotations explaining why specific policies exist and which teams own them.
