@@ -25,7 +25,7 @@ Crossplane needs Kubernetes. The fastest way to get a local cluster running in D
 ```bash
 # Install kind if you do not have it
 
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
+curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
 chmod +x ./kind
 sudo mv ./kind /usr/local/bin/kind
 
@@ -72,9 +72,9 @@ Crossplane providers are packaged as container images. Install the AWS provider 
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-aws
+  name: crossplane-contrib-provider-aws-s3
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-s3:v1.1.0
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-s3:v2.0.0
 ```
 
 ```bash
@@ -108,10 +108,11 @@ rm aws-credentials.txt
 
 ```yaml
 # provider-config.yaml - Configure the AWS provider with credentials
-apiVersion: aws.upbound.io/v1beta1
+apiVersion: aws.m.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
+  namespace: default
 spec:
   credentials:
     source: Secret
@@ -132,10 +133,11 @@ Now you can create AWS resources using Kubernetes manifests. Here is an S3 bucke
 
 ```yaml
 # s3-bucket.yaml - Create an S3 bucket through Crossplane
-apiVersion: s3.aws.upbound.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: Bucket
 metadata:
   name: my-crossplane-bucket
+  namespace: default
 spec:
   forProvider:
     region: us-east-1
@@ -151,30 +153,28 @@ spec:
 kubectl apply -f s3-bucket.yaml
 
 # Watch the resource status
-kubectl get bucket my-crossplane-bucket -w
+kubectl get bucket my-crossplane-bucket -n default -w
 
 # Check detailed status including any errors
-kubectl describe bucket my-crossplane-bucket
+kubectl describe bucket my-crossplane-bucket -n default
 ```
 
 Crossplane will create the bucket in AWS and report its status back through the Kubernetes resource.
 
 ## Composing Resources with Compositions
 
-Crossplane's real power comes from Compositions, which let you define reusable infrastructure templates. Create a composition that bundles an S3 bucket with a DynamoDB table.
+Crossplane's real power comes from Compositions, which let you define reusable infrastructure templates. Create a composition that manages an S3 bucket.
 
 ```yaml
 # composite-definition.yaml - Define a composite resource type
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: xstoragebundles.custom.example.com
+  name: storagebundles.custom.example.com
 spec:
+  scope: Namespaced
   group: custom.example.com
   names:
-    kind: XStorageBundle
-    plural: xstoragebundles
-  claimNames:
     kind: StorageBundle
     plural: storagebundles
   versions:
@@ -197,6 +197,16 @@ spec:
 ```
 
 ```yaml
+# function-patch-and-transform.yaml - Install the composition function
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: crossplane-contrib-function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2
+```
+
+```yaml
 # composition.yaml - Define how the composite maps to actual resources
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
@@ -205,28 +215,40 @@ metadata:
 spec:
   compositeTypeRef:
     apiVersion: custom.example.com/v1alpha1
-    kind: XStorageBundle
-  resources:
-    - name: storage-bucket
-      base:
-        apiVersion: s3.aws.upbound.io/v1beta1
-        kind: Bucket
-        spec:
-          forProvider:
-            region: us-east-1
-            tags:
-              ManagedBy: crossplane
-      patches:
-        - fromFieldPath: "spec.region"
-          toFieldPath: "spec.forProvider.region"
-        - fromFieldPath: "spec.environment"
-          toFieldPath: "spec.forProvider.tags.Environment"
+    kind: StorageBundle
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: crossplane-contrib-function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: storage-bucket
+            base:
+              apiVersion: s3.aws.m.upbound.io/v1beta1
+              kind: Bucket
+              spec:
+                forProvider:
+                  region: us-east-1
+                  tags:
+                    ManagedBy: crossplane
+                providerConfigRef:
+                  name: default
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.region
+                toFieldPath: spec.forProvider.region
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.environment
+                toFieldPath: spec.forProvider.tags.Environment
 ```
 
-Now team members can create infrastructure with a simple claim.
+Now team members can create infrastructure with a simple composite resource.
 
 ```yaml
-# storage-claim.yaml - Request a storage bundle
+# storage-bundle.yaml - Request a storage bundle
 apiVersion: custom.example.com/v1alpha1
 kind: StorageBundle
 metadata:
@@ -240,12 +262,12 @@ spec:
 ```bash
 # Apply all the definitions
 kubectl apply -f composite-definition.yaml
+kubectl apply -f function-patch-and-transform.yaml
 kubectl apply -f composition.yaml
-kubectl apply -f storage-claim.yaml
+kubectl apply -f storage-bundle.yaml
 
 # Check the status
-kubectl get storagebundle my-app-storage
-kubectl get composite
+kubectl get storagebundle my-app-storage -n default
 ```
 
 ## Cleaning Up Cloud Resources
@@ -254,10 +276,10 @@ Deleting the Kubernetes resource deletes the cloud resource. Crossplane manages 
 
 ```bash
 # Delete the S3 bucket (this removes it from AWS too)
-kubectl delete bucket my-crossplane-bucket
+kubectl delete bucket my-crossplane-bucket -n default
 
-# Delete a composite claim
-kubectl delete storagebundle my-app-storage
+# Delete a composite resource
+kubectl delete storagebundle my-app-storage -n default
 ```
 
 ## Developing with Docker Compose
@@ -287,7 +309,7 @@ echo "Installing AWS provider..."
 kubectl apply -f aws-provider.yaml
 
 echo "Waiting for provider to become healthy..."
-kubectl wait --for=condition=healthy provider/provider-aws --timeout=120s
+kubectl wait --for=condition=healthy provider/crossplane-contrib-provider-aws-s3 --timeout=120s
 
 echo "Crossplane is ready. Configure your credentials and start creating resources."
 ```
