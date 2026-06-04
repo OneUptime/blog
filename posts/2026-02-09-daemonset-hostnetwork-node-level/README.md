@@ -36,6 +36,7 @@ spec:
     metadata:
       labels:
         app: packet-monitor
+        hostNetwork: "true"
     spec:
       hostNetwork: true
       hostPID: true
@@ -77,7 +78,7 @@ The `dnsPolicy: ClusterFirstWithHostNet` ensures DNS resolution works correctly 
 
 ## Implementing MetalLB Speaker
 
-MetalLB requires hostNetwork to announce IP addresses:
+MetalLB speaker pods use hostNetwork to announce IP addresses:
 
 ```yaml
 apiVersion: apps/v1
@@ -108,7 +109,7 @@ spec:
       - operator: Exists
       containers:
       - name: speaker
-        image: quay.io/metallb/speaker:v0.13.0
+        image: quay.io/metallb/speaker:v0.15.3
         args:
         - --port=7472
         - --log-level=info
@@ -117,6 +118,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: METALLB_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         - name: METALLB_HOST
           valueFrom:
             fieldRef:
@@ -126,14 +131,17 @@ spec:
             fieldRef:
               fieldPath: status.podIP
         - name: METALLB_ML_LABELS
-          value: "app=metallb,component=speaker"
-        - name: METALLB_ML_BIND_PORT
-          value: "7472"
+          value: app=metallb,component=speaker
+        - name: METALLB_ML_SECRET_KEY_PATH
+          value: /etc/ml_secret_key
         ports:
-        - name: memberlist
+        - name: monitoring
           containerPort: 7472
-        - name: metrics
-          containerPort: 7473
+        - name: memberlist-tcp
+          containerPort: 7946
+        - name: memberlist-udp
+          containerPort: 7946
+          protocol: UDP
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -145,7 +153,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /metrics
-            port: metrics
+            port: monitoring
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 1
@@ -154,12 +162,26 @@ spec:
         readinessProbe:
           httpGet:
             path: /metrics
-            port: metrics
+            port: monitoring
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 1
           successThreshold: 1
           failureThreshold: 3
+        volumeMounts:
+        - mountPath: /etc/ml_secret_key
+          name: memberlist
+          readOnly: true
+        - mountPath: /etc/metallb
+          name: metallb-excludel2
+          readOnly: true
+      volumes:
+      - name: memberlist
+        secret:
+          secretName: memberlist
+      - name: metallb-excludel2
+        configMap:
+          name: metallb-excludel2
 ```
 
 ## Deploying Node Exporter with hostNetwork
@@ -180,18 +202,19 @@ spec:
     metadata:
       labels:
         app: node-exporter
+        hostNetwork: "true"
     spec:
       hostNetwork: true
       hostPID: true
       containers:
       - name: node-exporter
-        image: prom/node-exporter:v1.7.0
+        image: quay.io/prometheus/node-exporter:v1.11.1
         args:
         - --path.procfs=/host/proc
         - --path.sysfs=/host/sys
         - --path.rootfs=/host/root
         - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
-        - --collector.netclass.ignored-devices=^(veth.*|cali.*|flannel.*|docker0)$$
+        - --collector.netdev.device-exclude=^(veth.*|cali.*|flannel.*|docker0)$$
         - --web.listen-address=:9100
         ports:
         - name: metrics
@@ -243,7 +266,8 @@ data:
     # Reserved host ports for DaemonSets
     9100: node-exporter
     9256: node-problem-detector
-    9472: metallb-speaker
+    7472: metallb-speaker-metrics
+    7946: metallb-speaker-memberlist
     10250: kubelet
     10255: kubelet-readonly
     10256: kube-proxy
@@ -256,20 +280,41 @@ package main
 
 import (
     "fmt"
+
     corev1 "k8s.io/api/core/v1"
 )
 
-func validateHostPorts(pod *corev1.Pod) error {
-    usedPorts := make(map[int32]string)
+type hostPortKey struct {
+    port     int32
+    protocol corev1.Protocol
+}
+
+func validateHostPorts(pod *corev1.Pod, reservedPorts map[hostPortKey]string) error {
+    usedPorts := make(map[hostPortKey]string)
+    for key, owner := range reservedPorts {
+        usedPorts[key] = owner
+    }
 
     for _, container := range pod.Spec.Containers {
         for _, port := range container.Ports {
-            if port.HostPort > 0 {
-                if existing, ok := usedPorts[port.HostPort]; ok {
-                    return fmt.Errorf("port %d already used by %s", port.HostPort, existing)
-                }
-                usedPorts[port.HostPort] = container.Name
+            hostPort := port.HostPort
+            if pod.Spec.HostNetwork && hostPort == 0 {
+                hostPort = port.ContainerPort
             }
+            if hostPort == 0 {
+                continue
+            }
+
+            protocol := port.Protocol
+            if protocol == "" {
+                protocol = corev1.ProtocolTCP
+            }
+
+            key := hostPortKey{port: hostPort, protocol: protocol}
+            if existing, ok := usedPorts[key]; ok {
+                return fmt.Errorf("%s port %d already used by %s", protocol, hostPort, existing)
+            }
+            usedPorts[key] = container.Name
         }
     }
 
@@ -295,6 +340,7 @@ spec:
     metadata:
       labels:
         app: network-agent
+        hostNetwork: "true"
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
@@ -349,32 +395,35 @@ data:
 Implement security restrictions for hostNetwork workloads:
 
 ```yaml
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
 metadata:
-  name: hostnetwork-psp
+  name: hostnetwork-restrictions
 spec:
-  privileged: false
-  allowPrivilegeEscalation: false
-  hostNetwork: true
-  hostPorts:
-  - min: 9000
-    max: 10000
-  volumes:
-  - 'configMap'
-  - 'emptyDir'
-  - 'secret'
-  - 'hostPath'
-  runAsUser:
-    rule: 'MustRunAsNonRoot'
-  seLinux:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
-  readOnlyRootFilesystem: true
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["pods"]
+  validations:
+  - expression: "!has(object.spec.hostNetwork) || object.spec.hostNetwork == false || namespaceObject.metadata.labels['hostnetwork.oneuptime.com/allowed'] == 'true'"
+    message: "hostNetwork pods are only allowed in approved namespaces"
+  - expression: "!has(object.spec.hostNetwork) || object.spec.hostNetwork == false || object.spec.containers.all(c, !has(c.ports) || c.ports.all(p, !has(p.containerPort) || (p.containerPort >= 9000 && p.containerPort <= 10000)))"
+    message: "hostNetwork container ports must be in the approved 9000-10000 range"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: hostnetwork-restrictions
+spec:
+  policyName: hostnetwork-restrictions
+  validationActions:
+  - Deny
 ```
 
-Apply NetworkPolicies to limit traffic:
+Apply NetworkPolicies to limit traffic when your CNI plugin enforces policy for hostNetwork pods:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
