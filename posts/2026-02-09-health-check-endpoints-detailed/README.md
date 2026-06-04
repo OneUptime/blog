@@ -56,7 +56,7 @@ func detailedHealthHandler(w http.ResponseWriter, r *http.Request) {
 
     checks.Status = overall
     checks.Version = version
-    checks.Uptime = time.Since(startTime).Seconds()
+    checks.Uptime = int64(time.Since(startTime).Seconds())
 
     statusCode := http.StatusOK
     if overall != "healthy" {
@@ -81,7 +81,11 @@ import (
     "database/sql"
     "encoding/json"
     "net/http"
+    "runtime"
+    "syscall"
     "time"
+
+    "github.com/redis/go-redis/v9"
 )
 
 type HealthChecker struct {
@@ -196,7 +200,7 @@ func (hc *HealthChecker) checkRedis(ctx context.Context) CheckResult {
     return result
 }
 
-func (hc *HealthChecker) checkDisk(ctx context.Context) CheckResult {
+func (hc *HealthChecker) checkDisk(_ context.Context) CheckResult {
     start := time.Now()
     result := CheckResult{Status: "healthy"}
 
@@ -230,7 +234,7 @@ func (hc *HealthChecker) checkDisk(ctx context.Context) CheckResult {
     return result
 }
 
-func (hc *HealthChecker) checkMemory(ctx context.Context) CheckResult {
+func (hc *HealthChecker) checkMemory(_ context.Context) CheckResult {
     start := time.Now()
     result := CheckResult{Status: "healthy"}
 
@@ -267,10 +271,9 @@ import time
 import psutil
 import redis
 import psycopg2
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 app = Flask(__name__)
-start_time = time.time()
 
 class HealthChecker:
     def __init__(self):
@@ -292,7 +295,7 @@ class HealthChecker:
 
         return {
             'status': overall_status,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'version': self.version,
             'uptime_seconds': int(time.time() - self.start_time),
             'checks': checks
@@ -338,14 +341,15 @@ class HealthChecker:
             r = redis.Redis(host='redis', port=6379, socket_timeout=3)
             r.ping()
 
-            info = r.info('stats')
+            stats_info = r.info('stats')
+            clients_info = r.info('clients')
 
             return {
                 'status': 'healthy',
                 'duration_ms': int((time.time() - start) * 1000),
                 'details': {
-                    'total_commands': info['total_commands_processed'],
-                    'connected_clients': info.get('connected_clients', 0)
+                    'total_commands': stats_info['total_commands_processed'],
+                    'connected_clients': clients_info.get('connected_clients', 0)
                 }
             }
         except Exception as e:
@@ -430,10 +434,7 @@ def health():
 @app.route('/healthz')
 def healthz():
     # Simple endpoint for Kubernetes
-    result = health_checker.check_all()
-    if result['status'] == 'healthy':
-        return 'OK', 200
-    return 'Unhealthy', 503
+    return 'OK', 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
@@ -445,7 +446,7 @@ A detailed health check might return:
 
 ```json
 {
-  "status": "healthy",
+  "status": "unhealthy",
   "timestamp": "2026-02-09T10:30:15Z",
   "version": "1.2.3",
   "uptime_seconds": 86400,
@@ -528,7 +529,7 @@ spec:
 Include application-specific metrics:
 
 ```go
-func (hc *HealthChecker) checkApplication(ctx context.Context) CheckResult {
+func (hc *HealthChecker) checkApplication(_ context.Context) CheckResult {
     start := time.Now()
     result := CheckResult{Status: "healthy"}
 
