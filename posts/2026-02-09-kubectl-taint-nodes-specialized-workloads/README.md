@@ -20,10 +20,10 @@ Taints repel pods, tolerations allow pods to overcome taints:
 kubectl taint nodes worker-1 workload=gpu:NoSchedule
 
 # Pods without matching toleration cannot schedule on worker-1
-# Pods with toleration can schedule there
+# Pods with toleration are allowed to schedule there
 ```
 
-Taints have three components: key, value, and effect.
+Taints have three components: key, optional value, and effect.
 
 ## Taint Effects
 
@@ -60,7 +60,7 @@ kubectl taint nodes critical-node-1 tier=critical:NoSchedule
 kubectl taint nodes worker-1 environment=production:NoSchedule
 ```
 
-This reserves nodes for specific workload types.
+This helps reserve nodes for specific workload types.
 
 ## Viewing Node Taints
 
@@ -138,7 +138,7 @@ kubectl taint nodes db-node-2 workload=database:NoSchedule
 #   effect: NoSchedule
 ```
 
-Database pods get predictable performance without interference.
+Database pods can get predictable performance without interference when paired with node selectors or affinity.
 
 ## High-Priority Workload Tainting
 
@@ -157,7 +157,7 @@ kubectl taint nodes critical-2 tier=critical:NoSchedule
 #   effect: NoSchedule
 ```
 
-This ensures critical services have dedicated resources.
+This keeps general workloads off critical nodes. Use node selectors or affinity if critical pods must run only there.
 
 ## Evicting Existing Pods
 
@@ -236,23 +236,26 @@ kubectl taint nodes worker-1 special=value:NoSchedule
 
 Exists operator provides flexible matching.
 
-## Master Node Taints
+## Control Plane Node Taints
 
-Master nodes typically have taints to prevent workload scheduling:
+Control plane nodes typically have taints to prevent workload scheduling:
 
 ```bash
-# Check master node taints
-kubectl describe node master-1 | grep Taints
+# Check control plane node taints
+kubectl describe node control-plane-1 | grep Taints
+# Taints: node-role.kubernetes.io/control-plane:NoSchedule
+
+# Older clusters may use the deprecated master taint:
 # Taints: node-role.kubernetes.io/master:NoSchedule
 
-# To schedule on master (not recommended)
+# To schedule on control plane nodes (not recommended)
 # Add toleration:
 # tolerations:
-# - key: node-role.kubernetes.io/master
+# - key: node-role.kubernetes.io/control-plane
 #   effect: NoSchedule
 ```
 
-Leave master taints in place for cluster stability.
+Leave control plane taints in place for cluster stability.
 
 ## Tainting Node Pools
 
@@ -265,10 +268,11 @@ gcloud container node-pools create gpu-pool \
   --node-taints=nvidia.com/gpu=present:NoSchedule
 
 # EKS - configure node group with taints
-# Use launch template or node group configuration
+# Use managed node group taints or kubelet bootstrap configuration
 
 # AKS - add taints to node pool
 az aks nodepool add \
+  --resource-group my-resource-group \
   --cluster-name my-cluster \
   --name gpupool \
   --node-taints nvidia.com/gpu=present:NoSchedule
@@ -477,4 +481,4 @@ kubectl taint nodes gpu-1 hardware=gpu:NoSchedule
 
 This ensures pods schedule on specific GPU models.
 
-Taints transform uniform node pools into specialized infrastructure. Mark nodes for GPUs, databases, or critical workloads, then use tolerations to grant access selectively. This optimizes resource utilization, reduces costs, and ensures workloads run on appropriate hardware. For more scheduling control, see https://oneuptime.com/blog/post/2026-01-25-kubectl-describe-debugging/view for debugging node assignment issues.
+Taints transform uniform node pools into specialized infrastructure. Mark nodes for GPUs, databases, or critical workloads, then use tolerations to grant access selectively. This optimizes resource utilization, reduces costs, and helps workloads run on appropriate hardware when combined with node selection. For more scheduling control, see https://oneuptime.com/blog/post/2026-01-25-kubectl-describe-debugging/view for debugging node assignment issues.
