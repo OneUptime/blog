@@ -43,8 +43,6 @@ sudo chown -R 1000:1000 ~/node-red/data
 
 ```yaml
 # docker-compose.yml - Node-RED IoT automation platform
-version: "3.8"
-
 services:
   node-red:
     image: nodered/node-red:latest
@@ -135,14 +133,14 @@ Let us create a simple flow that reads a temperature sensor value via MQTT, chec
 
 Drag an "mqtt in" node onto the canvas. Double-click it and configure:
 
-- **Server:** Click the pencil icon and add your MQTT broker (localhost:1883 if using the Mosquitto container)
+- **Server:** Click the pencil icon and add your MQTT broker (`mosquitto:1883` if using the Mosquitto container, or `localhost:1883` only if the broker runs on the same host as the Node-RED process)
 - **Topic:** `home/sensors/temperature`
 - **QoS:** 1
 - **Output:** auto-detect
 
 ### Step 2: Add a Function Node
 
-Drag a "function" node and connect it to the MQTT input. Double-click and add this code:
+Drag a "function" node and connect it to the MQTT input. Double-click it, set **Outputs** to `2`, and add this code:
 
 ```javascript
 // Parse the temperature value and check against threshold
@@ -177,27 +175,100 @@ Here is a flow that monitors a web service and alerts on downtime, exported as J
 ```json
 [
     {
+        "id": "service_monitor_tab",
+        "type": "tab",
+        "label": "Service Monitor",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "trigger_health_check",
+        "type": "inject",
+        "z": "service_monitor_tab",
+        "name": "Every 5 minutes",
+        "props": [
+            {"p": "payload"},
+            {"p": "topic", "vt": "str"}
+        ],
+        "repeat": "300",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 140,
+        "y": 120,
+        "wires": [["http_monitor"]]
+    },
+    {
         "id": "http_monitor",
         "type": "http request",
+        "z": "service_monitor_tab",
         "method": "GET",
         "url": "https://your-service.com/health",
         "ret": "txt",
-        "name": "Health Check"
+        "name": "Health Check",
+        "x": 340,
+        "y": 120,
+        "wires": [["status_check"]]
     },
     {
         "id": "status_check",
         "type": "switch",
+        "z": "service_monitor_tab",
         "property": "statusCode",
+        "propertyType": "msg",
         "rules": [
-            {"t": "neq", "v": "200"}
+            {"t": "neq", "v": "200", "vt": "num"}
         ],
-        "name": "Not 200?"
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "name": "Not 200?",
+        "x": 540,
+        "y": 120,
+        "wires": [["set_alert_time"]]
+    },
+    {
+        "id": "set_alert_time",
+        "type": "function",
+        "z": "service_monitor_tab",
+        "name": "Set alert time",
+        "func": "msg.checkedAt = new Date().toISOString();\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 720,
+        "y": 120,
+        "wires": [["alert_msg"]]
     },
     {
         "id": "alert_msg",
         "type": "template",
-        "template": "Service down! Status code: {{statusCode}} at {{timestamp}}",
-        "name": "Alert Message"
+        "z": "service_monitor_tab",
+        "template": "Service down! Status code: {{statusCode}} at {{checkedAt}}",
+        "name": "Alert Message",
+        "x": 920,
+        "y": 120,
+        "wires": [["alert_debug"]]
+    },
+    {
+        "id": "alert_debug",
+        "type": "debug",
+        "z": "service_monitor_tab",
+        "name": "Alert output",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 1120,
+        "y": 120,
+        "wires": []
     }
 ]
 ```
@@ -208,9 +279,9 @@ Node-RED has a rich ecosystem of community nodes. Install them through the UI by
 
 ```bash
 # Install popular Node-RED nodes from inside the container
-docker exec -it node-red npm install node-red-dashboard
-docker exec -it node-red npm install node-red-contrib-home-assistant-websocket
-docker exec -it node-red npm install node-red-node-email
+docker exec -it node-red sh -c "cd /data && npm install @flowfuse/node-red-dashboard"
+docker exec -it node-red sh -c "cd /data && npm install node-red-contrib-home-assistant-websocket"
+docker exec -it node-red sh -c "cd /data && npm install node-red-node-email"
 ```
 
 After installing nodes, restart Node-RED:
@@ -222,7 +293,7 @@ docker compose restart node-red
 
 ## Creating a Dashboard
 
-The `node-red-dashboard` package adds UI widgets. After installing it, you can create real-time dashboards with gauges, charts, and buttons. Dashboard nodes appear in the palette under a new "dashboard" section. The dashboard UI is accessible at `http://<your-server-ip>:1880/ui`.
+The `@flowfuse/node-red-dashboard` package adds UI widgets. After installing it, you can create real-time dashboards with gauges, charts, and buttons. Dashboard nodes appear in the palette under a new "dashboard" section. The dashboard UI is accessible at `http://<your-server-ip>:1880/dashboard`.
 
 ## Securing Node-RED
 
@@ -230,7 +301,7 @@ By default, Node-RED has no authentication. Enable it by editing the settings fi
 
 ```bash
 # Generate a password hash for the settings file
-docker exec -it node-red npx node-red-admin hash-pw
+docker exec -it node-red node-red admin hash-pw
 ```
 
 Enter your desired password and copy the resulting hash. Then edit `~/node-red/data/settings.js` and add:
