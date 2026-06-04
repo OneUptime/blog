@@ -21,23 +21,21 @@ The multi-region setup provides three key benefits. First, it enables low-latenc
 Start by deploying the CockroachDB Kubernetes operator, which manages the lifecycle of CockroachDB clusters:
 
 ```bash
-# Add the CockroachDB Helm repository
-
-helm repo add cockroachdb https://charts.cockroachdb.com/
-helm repo update
+# Clone the official CockroachDB Helm charts
+git clone https://github.com/cockroachdb/helm-charts.git
 
 # Install the operator in a dedicated namespace
 kubectl create namespace cockroach-operator-system
 
-helm install cockroachdb-operator cockroachdb/cockroachdb-operator \
-  --namespace cockroach-operator-system \
-  --set image.tag=v2.11.0
+helm install cockroachdb-operator \
+  ./helm-charts/cockroachdb-parent/charts/operator \
+  --namespace cockroach-operator-system
 
 # Verify the operator is running
 kubectl get pods -n cockroach-operator-system
 ```
 
-The operator watches for CrdbCluster custom resources and manages StatefulSets, Services, and certificates automatically.
+The operator watches CockroachDB custom resources and manages nodes, Services, and certificates automatically.
 
 ## Configuring Multi-Region Infrastructure
 
@@ -49,13 +47,24 @@ For this guide, we'll use a single cluster with nodes labeled by region:
 # Label nodes by region
 kubectl label nodes node-1 node-2 node-3 \
   topology.kubernetes.io/region=us-west-2
+kubectl label nodes node-1 topology.kubernetes.io/zone=us-west-2a
+kubectl label nodes node-2 topology.kubernetes.io/zone=us-west-2b
+kubectl label nodes node-3 topology.kubernetes.io/zone=us-west-2c
+
 kubectl label nodes node-4 node-5 node-6 \
   topology.kubernetes.io/region=us-east-1
+kubectl label nodes node-4 topology.kubernetes.io/zone=us-east-1a
+kubectl label nodes node-5 topology.kubernetes.io/zone=us-east-1b
+kubectl label nodes node-6 topology.kubernetes.io/zone=us-east-1c
+
 kubectl label nodes node-7 node-8 node-9 \
   topology.kubernetes.io/region=eu-west-1
+kubectl label nodes node-7 topology.kubernetes.io/zone=eu-west-1a
+kubectl label nodes node-8 topology.kubernetes.io/zone=eu-west-1b
+kubectl label nodes node-9 topology.kubernetes.io/zone=eu-west-1c
 
 # Verify node labels
-kubectl get nodes -L topology.kubernetes.io/region
+kubectl get nodes -L topology.kubernetes.io/region,topology.kubernetes.io/zone
 ```
 
 Create a namespace for your CockroachDB cluster:
@@ -63,101 +72,103 @@ Create a namespace for your CockroachDB cluster:
 ```bash
 kubectl create namespace cockroachdb
 
-# Label the namespace for multi-region awareness
+# Label the namespace for bookkeeping
 kubectl label namespace cockroachdb \
   topology.kubernetes.io/region=multi
 ```
 
 ## Deploying a Multi-Region Cluster
 
-Create a CrdbCluster custom resource defining your multi-region topology:
+Create a Helm values file defining your multi-region topology:
 
 ```yaml
-# cockroach-multi-region.yaml
-apiVersion: crdb.cockroachlabs.com/v1alpha1
-kind: CrdbCluster
-metadata:
-  name: cockroachdb-multi-region
-  namespace: cockroachdb
-spec:
-  # Total number of nodes across all regions
-  nodes: 9
-
-  # Resource allocation per node
-  resources:
-    requests:
-      cpu: "2"
-      memory: "8Gi"
-    limits:
-      cpu: "4"
-      memory: "16Gi"
-
-  # Storage configuration
-  dataStore:
-    pvc:
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        resources:
-          requests:
-            storage: 100Gi
-        storageClassName: fast-ssd
-
-  # Multi-region topology configuration
-  topology:
-    regions:
-      - name: us-west-2
-        nodeCount: 3
-        nodeSelector:
-          topology.kubernetes.io/region: us-west-2
-
-      - name: us-east-1
-        nodeCount: 3
-        nodeSelector:
-          topology.kubernetes.io/region: us-east-1
-
-      - name: eu-west-1
-        nodeCount: 3
-        nodeSelector:
-          topology.kubernetes.io/region: eu-west-1
-
-  # TLS configuration (highly recommended for production)
-  tlsEnabled: true
-
-  # Additional CockroachDB configuration
-  additionalArgs:
-    - --locality=region=us-west-2,zone=a  # Set via topology
-    - --max-sql-memory=25%
-    - --cache=25%
-    - --max-disk-temp-storage=100GiB
-
-  # Enable automatic certificate management
-  clientTLSSecret: cockroachdb-client-tls
-  nodeTLSSecret: cockroachdb-node-tls
-
-  # Ingress configuration for SQL clients
-  ingress:
+# cockroach-multi-region-values.yaml
+cockroachdb:
+  tls:
     enabled: true
-    annotations:
-      kubernetes.io/ingress.class: nginx
-    sql:
+    selfSigner:
       enabled: true
-      host: cockroachdb.example.com
-    ui:
-      enabled: true
-      host: cockroachdb-admin.example.com
+
+  crdbCluster:
+    # Multi-region topology configuration
+    regions:
+      - code: us-west-2
+        nodes: 3
+        cloudProvider: aws
+        namespace: cockroachdb
+
+      - code: us-east-1
+        nodes: 3
+        cloudProvider: aws
+        namespace: cockroachdb
+
+      - code: eu-west-1
+        nodes: 3
+        cloudProvider: aws
+        namespace: cockroachdb
+
+    localityMappings:
+      - nodeLabel: topology.kubernetes.io/region
+        localityLabel: region
+      - nodeLabel: topology.kubernetes.io/zone
+        localityLabel: zone
+
+    startFlags:
+      upsert:
+        - --max-sql-memory=25%
+        - --cache=25%
+        - --max-disk-temp-storage=100GiB
+
+    dataStore:
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 100Gi
+          storageClassName: fast-ssd
+
+    service:
+      ingress:
+        enabled: true
+        sql:
+          ingressClassName: nginx
+          host: cockroachdb.example.com
+        ui:
+          ingressClassName: nginx
+          host: cockroachdb-admin.example.com
+
+    podTemplate:
+      spec:
+        containers:
+          - name: cockroachdb
+            resources:
+              requests:
+                cpu: "2"
+                memory: "8Gi"
+              limits:
+                cpu: "4"
+                memory: "16Gi"
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: DoNotSchedule
 ```
 
 Apply the configuration:
 
 ```bash
-kubectl apply -f cockroach-multi-region.yaml
+helm install cockroachdb-multi-region \
+  ./helm-charts/cockroachdb-parent/charts/cockroachdb \
+  --namespace cockroachdb \
+  --values cockroach-multi-region-values.yaml
 
 # Watch the cluster come up
 kubectl get pods -n cockroachdb -w
 ```
 
-The operator creates three StatefulSets, one per region, and initializes the cluster automatically. This process takes 5-10 minutes as nodes join the cluster and perform initial replication.
+The operator creates CockroachDB nodes for each configured region and initializes the cluster automatically. This process takes several minutes as nodes join the cluster and perform initial replication.
 
 ## Configuring Regional Database Schemas
 
@@ -165,26 +176,32 @@ Once the cluster is running, configure regional schemas to optimize performance:
 
 ```bash
 # Connect to the CockroachDB SQL shell
-kubectl exec -it cockroachdb-multi-region-0 -n cockroachdb \
+POD=$(kubectl get pods -n cockroachdb \
+  -l app.kubernetes.io/component=cockroachdb \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl exec -it "$POD" -n cockroachdb \
   -- ./cockroach sql --certs-dir=/cockroach/cockroach-certs
+```
 
-# Inside the SQL shell, set up multi-region database
-CREATE DATABASE myapp PRIMARY REGION "us-west-2" REGIONS "us-east-1", "eu-west-1";
+Inside the SQL shell, set up the multi-region database:
 
-# Set survival mode
+```sql
+CREATE DATABASE myapp PRIMARY REGION "us-west-2" REGIONS "us-west-2", "us-east-1", "eu-west-1";
+
+-- Set survival mode
 ALTER DATABASE myapp SURVIVE REGION FAILURE;
 
-# Create regional tables
+-- Create regional tables
 USE myapp;
 
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email STRING NOT NULL,
-  name STRING,
-  region STRING NOT NULL
+  name STRING
 ) LOCALITY REGIONAL BY ROW;
 
-# The 'region' column automatically determines replica placement
+-- CockroachDB adds a hidden crdb_region column to determine row placement
 CREATE TABLE us_orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL,
@@ -192,7 +209,7 @@ CREATE TABLE us_orders (
   created_at TIMESTAMP DEFAULT now()
 ) LOCALITY REGIONAL BY TABLE IN "us-west-2";
 
-# Global tables replicate to all regions for low-latency reads
+-- Global tables replicate to all regions for low-latency reads
 CREATE TABLE products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name STRING NOT NULL,
@@ -204,54 +221,16 @@ This configuration enables CockroachDB to automatically place data based on acce
 
 ## Setting Up Automated Backups
 
-Configure automated backups to cloud storage for disaster recovery:
+Configure an automated backup schedule to cloud storage for disaster recovery:
 
-```yaml
-# backup-schedule.yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: cockroachdb-backup
-  namespace: cockroachdb
-spec:
-  schedule: "0 2 * * *"  # Daily at 2 AM UTC
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: backup
-              image: cockroachdb/cockroach:v23.1.0
-              command:
-                - /bin/bash
-                - -c
-                - |
-                  ./cockroach sql \
-                    --certs-dir=/cockroach/cockroach-certs \
-                    --host=cockroachdb-multi-region-public.cockroachdb:26257 \
-                    --execute="BACKUP DATABASE myapp TO 's3://my-backups/cockroachdb?AWS_ACCESS_KEY_ID=${AWS_KEY}&AWS_SECRET_ACCESS_KEY=${AWS_SECRET}' AS OF SYSTEM TIME '-10s' WITH revision_history;"
-              env:
-                - name: AWS_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: aws-credentials
-                      key: access-key-id
-                - name: AWS_SECRET
-                  valueFrom:
-                    secretKeyRef:
-                      name: aws-credentials
-                      key: secret-access-key
-              volumeMounts:
-                - name: client-certs
-                  mountPath: /cockroach/cockroach-certs
-          volumes:
-            - name: client-certs
-              secret:
-                secretName: cockroachdb-client-tls
-          restartPolicy: OnFailure
+```sql
+CREATE SCHEDULE myapp_daily_backup
+  FOR BACKUP DATABASE myapp INTO 's3://my-backups/cockroachdb?AWS_ACCESS_KEY_ID={AWS_KEY}&AWS_SECRET_ACCESS_KEY={AWS_SECRET}'
+  WITH revision_history
+  RECURRING '0 2 * * *';
 ```
 
-This CronJob runs daily incremental backups to S3, maintaining point-in-time recovery capability.
+This schedule runs daily incremental backups to S3 and creates full backups on the default cadence, maintaining point-in-time recovery capability.
 
 ## Monitoring Multi-Region Performance
 
@@ -267,7 +246,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: cockroachdb
+      app.kubernetes.io/component: cockroachdb
   endpoints:
     - port: http
       interval: 30s
@@ -282,10 +261,10 @@ Create Grafana dashboards to visualize key metrics:
 
 ```yaml
 # Key metrics to monitor:
-# - replication_quiescent: Should be high (data is stable)
-# - replication_pending: Should be low (minimal catch-up)
-# - sql_query_latency_p99: Track cross-region query performance
-# - liveness_livenodes: Verify all nodes are healthy
+# - replicas.quiescent: Should be high (data is stable)
+# - queue.replicate.pending: Should be low (minimal catch-up)
+# - sql.service.latency: Track cross-region query performance
+# - liveness.livenodes: Verify all nodes are healthy
 ```
 
 Access the built-in admin UI for cluster visualization:
@@ -302,12 +281,17 @@ The admin UI shows replica placement, query performance, and replication lag acr
 CockroachDB automatically handles node and region failures. Test failover by simulating a region outage:
 
 ```bash
-# Simulate region failure by scaling down us-west-2 nodes
-kubectl scale statefulset cockroachdb-multi-region-us-west-2 \
-  --replicas=0 -n cockroachdb
+# Simulate region failure by cordoning and draining us-west-2 nodes
+kubectl cordon node-1 node-2 node-3
+kubectl drain node-1 node-2 node-3 \
+  --ignore-daemonsets --delete-emptydir-data
 
 # Verify cluster remains available
-kubectl exec -it cockroachdb-multi-region-0 -n cockroachdb \
+POD=$(kubectl get pods -n cockroachdb \
+  -l app.kubernetes.io/component=cockroachdb \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl exec -it "$POD" -n cockroachdb \
   -- ./cockroach sql --certs-dir=/cockroach/cockroach-certs \
   --execute="SELECT * FROM myapp.users LIMIT 10;"
 ```
@@ -320,15 +304,15 @@ Reduce cross-region latency by using follower reads for eventually consistent qu
 
 ```sql
 -- Regular read (requires quorum, may cross regions)
-SELECT * FROM users WHERE id = 'some-uuid';
+SELECT * FROM users WHERE id = '00000000-0000-0000-0000-000000000000';
 
 -- Follower read (served by local replica, slight staleness)
 SELECT * FROM users AS OF SYSTEM TIME follower_read_timestamp()
-WHERE id = 'some-uuid';
+WHERE id = '00000000-0000-0000-0000-000000000000';
 
 -- Bounded staleness read (at most 10s stale)
 SELECT * FROM users AS OF SYSTEM TIME with_max_staleness('10s')
-WHERE id = 'some-uuid';
+WHERE id = '00000000-0000-0000-0000-000000000000';
 ```
 
 Follower reads serve data from local replicas without requiring consensus, dramatically reducing latency for read-heavy workloads.
@@ -338,19 +322,14 @@ Follower reads serve data from local replicas without requiring consensus, drama
 Add more nodes to handle increased load:
 
 ```bash
-# Scale up each region by editing the CrdbCluster resource
-kubectl patch crdbcluster cockroachdb-multi-region -n cockroachdb \
-  --type='json' \
-  -p='[{"op": "replace", "path": "/spec/nodes", "value": 12}]'
-
-# Update region node counts
-kubectl patch crdbcluster cockroachdb-multi-region -n cockroachdb \
-  --type='json' \
-  -p='[
-    {"op": "replace", "path": "/spec/topology/regions/0/nodeCount", "value": 4},
-    {"op": "replace", "path": "/spec/topology/regions/1/nodeCount", "value": 4},
-    {"op": "replace", "path": "/spec/topology/regions/2/nodeCount", "value": 4}
-  ]'
+# Scale up each region by updating the Helm values
+helm upgrade cockroachdb-multi-region \
+  ./helm-charts/cockroachdb-parent/charts/cockroachdb \
+  --namespace cockroachdb \
+  --values cockroach-multi-region-values.yaml \
+  --set cockroachdb.crdbCluster.regions[0].nodes=4 \
+  --set cockroachdb.crdbCluster.regions[1].nodes=4 \
+  --set cockroachdb.crdbCluster.regions[2].nodes=4
 ```
 
 The operator handles rolling updates, ensuring the cluster remains available during scaling operations.
@@ -376,7 +355,7 @@ CREATE TABLE eu_users (
 SHOW RANGES FROM TABLE eu_users;
 ```
 
-This ensures EU customer data never leaves the EU region, satisfying data residency requirements.
+This keeps the database's replicas within the configured EU database region, satisfying data residency requirements when the underlying nodes and backups are also constrained to EU locations.
 
 ## Conclusion
 
