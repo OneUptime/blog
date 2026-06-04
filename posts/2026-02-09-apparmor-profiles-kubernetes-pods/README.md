@@ -190,7 +190,7 @@ spec:
           privileged: true
       containers:
       - name: pause
-        image: k8s.gcr.io/pause:3.5
+        image: registry.k8s.io/pause:3.6
         resources:
           requests:
             cpu: 10m
@@ -216,12 +216,14 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: nginx-secure
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/nginx: localhost/k8s-nginx-restricted
 spec:
   containers:
   - name: nginx
     image: nginx:1.21
+    securityContext:
+      appArmorProfile:
+        type: Localhost
+        localhostProfile: k8s-nginx-restricted
     ports:
     - containerPort: 80
     volumeMounts:
@@ -232,12 +234,12 @@ spec:
     emptyDir: {}
 ```
 
-The annotation format is `container.apparmor.security.beta.kubernetes.io/<container-name>: <profile>`.
+The `appArmorProfile` field can be set on the pod `securityContext` or on an individual container `securityContext`. A container-level profile takes precedence over a pod-level profile.
 
 Profile options:
-- `runtime/default`: Use the container runtime's default profile
-- `localhost/<profile-name>`: Use a profile loaded on the node
-- `unconfined`: No AppArmor restrictions (never use in production)
+- `RuntimeDefault`: Use the container runtime's default profile
+- `Localhost`: Use a profile loaded on the node, with `localhostProfile` set to the profile name
+- `Unconfined`: No AppArmor restrictions (never use in production)
 
 ## Creating Application-Specific Profiles
 
@@ -283,24 +285,31 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: multi-tier-app
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/web: localhost/k8s-nginx-restricted
-    container.apparmor.security.beta.kubernetes.io/api: localhost/k8s-api-restricted
-    container.apparmor.security.beta.kubernetes.io/cache: runtime/default
 spec:
   containers:
   - name: web
     image: nginx:1.21
+    securityContext:
+      appArmorProfile:
+        type: Localhost
+        localhostProfile: k8s-nginx-restricted
     ports:
     - containerPort: 80
 
   - name: api
     image: myapi:latest
+    securityContext:
+      appArmorProfile:
+        type: Localhost
+        localhostProfile: k8s-api-restricted
     ports:
     - containerPort: 8080
 
   - name: cache
     image: redis:7
+    securityContext:
+      appArmorProfile:
+        type: RuntimeDefault
     ports:
     - containerPort: 6379
 ```
@@ -401,14 +410,16 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: apparmor-test
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/test: localhost/k8s-nginx-restricted
 spec:
   containers:
   - name: test
     image: nginx:1.21
+    securityContext:
+      appArmorProfile:
+        type: Localhost
+        localhostProfile: k8s-nginx-restricted
     command:
-    - /bin/bash
+    - /bin/sh
     - -c
     - |
       echo "Test 1: Reading allowed file"
@@ -420,8 +431,8 @@ spec:
       echo "Test 3: Writing to denied directory (should fail)"
       echo "test" > /etc/test.txt 2>&1 | grep -q "Permission denied" && echo "PASS (correctly denied)" || echo "FAIL"
 
-      echo "Test 4: Attempting ptrace (should fail)"
-      strace -p 1 2>&1 | grep -q "Operation not permitted" && echo "PASS (correctly denied)" || echo "FAIL"
+      echo "Test 4: Verifying profile is applied"
+      grep -q "k8s-nginx-restricted" /proc/1/attr/current && echo "PASS" || echo "FAIL"
 
       echo "All tests complete"
       sleep 300
@@ -463,7 +474,7 @@ spec:
           privileged: true
       containers:
       - name: pause
-        image: k8s.gcr.io/pause:3.5
+        image: registry.k8s.io/pause:3.6
       volumes:
       - name: profiles
         configMap:
@@ -489,12 +500,14 @@ spec:
     metadata:
       labels:
         app: {{ .Release.Name }}
-      annotations:
-        container.apparmor.security.beta.kubernetes.io/{{ .Chart.Name }}: localhost/{{ .Values.apparmor.profile }}
     spec:
       containers:
       - name: {{ .Chart.Name }}
         image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+        securityContext:
+          appArmorProfile:
+            type: Localhost
+            localhostProfile: {{ .Values.apparmor.profile }}
         ports:
         - containerPort: {{ .Values.service.port }}
 ```
