@@ -63,6 +63,43 @@ kubectl apply -f provider-aws.yaml
 kubectl wait --for=condition=Healthy provider/provider-aws --timeout=300s
 ```
 
+Install the composition functions used by the examples:
+
+```yaml
+# functions.yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-go-templating
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-go-templating:v0.12.1
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-auto-ready
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-auto-ready:v0.5.0
+```
+
+Apply the functions:
+
+```bash
+kubectl apply -f functions.yaml
+
+# Wait for functions to be healthy
+kubectl wait --for=condition=Healthy function/function-patch-and-transform --timeout=300s
+kubectl wait --for=condition=Healthy function/function-go-templating --timeout=300s
+kubectl wait --for=condition=Healthy function/function-auto-ready --timeout=300s
+```
+
 Configure AWS credentials:
 
 ```bash
@@ -144,6 +181,10 @@ spec:
                     type: string
                     description: "AWS region"
                     default: us-west-2
+                  enableReplica:
+                    type: boolean
+                    description: "Create a read replica"
+                    default: false
                 required:
                 - storageGB
             required:
@@ -154,7 +195,7 @@ spec:
               address:
                 type: string
               port:
-                type: string
+                type: integer
 ```
 
 This XRD defines what developers can request. They specify storage size, instance class, and region. The status shows connection details after provisioning.
@@ -175,107 +216,131 @@ spec:
     apiVersion: database.example.com/v1alpha1
     kind: XPostgreSQLInstance
 
-  resources:
-  # Security group for RDS
-  - name: rds-security-group
-    base:
-      apiVersion: ec2.aws.upbound.io/v1beta1
-      kind: SecurityGroup
-      spec:
-        forProvider:
-          region: us-west-2
-          description: "Security group for RDS instance"
-          ingress:
-          - fromPort: 5432
-            toPort: 5432
-            protocol: tcp
-            cidrBlocks:
-            - "10.0.0.0/8"
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.region
-      toFieldPath: spec.forProvider.region
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      # Security group for RDS
+      - name: rds-security-group
+        base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: SecurityGroup
+          spec:
+            forProvider:
+              region: us-west-2
+              description: "Security group for RDS instance"
+              ingress:
+              - fromPort: 5432
+                toPort: 5432
+                protocol: tcp
+                cidrBlocks:
+                - "10.0.0.0/8"
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: spec.forProvider.region
 
-  # DB subnet group
-  - name: rds-subnet-group
-    base:
-      apiVersion: rds.aws.upbound.io/v1beta1
-      kind: SubnetGroup
-      spec:
-        forProvider:
-          region: us-west-2
-          description: "Subnet group for RDS"
-          subnetIds:
-          - subnet-abc123
-          - subnet-def456
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.region
-      toFieldPath: spec.forProvider.region
+      # DB subnet group
+      - name: rds-subnet-group
+        base:
+          apiVersion: rds.aws.upbound.io/v1beta1
+          kind: SubnetGroup
+          spec:
+            forProvider:
+              region: us-west-2
+              description: "Subnet group for RDS"
+              subnetIds:
+              - subnet-abc123
+              - subnet-def456
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: spec.forProvider.region
 
-  # RDS instance
-  - name: rds-instance
-    base:
-      apiVersion: rds.aws.upbound.io/v1beta1
-      kind: Instance
-      spec:
-        forProvider:
-          region: us-west-2
-          engine: postgres
-          engineVersion: "15.4"
-          instanceClass: db.t3.micro
-          allocatedStorage: 20
-          dbName: appdb
-          username: dbadmin
-          passwordSecretRef:
-            name: postgres-password
-            namespace: crossplane-system
-            key: password
-          publiclyAccessible: false
-          skipFinalSnapshot: true
-          vpcSecurityGroupIdSelector:
-            matchControllerRef: true
-          dbSubnetGroupNameSelector:
-            matchControllerRef: true
-    patches:
-    # Map storage size
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.storageGB
-      toFieldPath: spec.forProvider.allocatedStorage
+      # RDS instance
+      - name: rds-instance
+        base:
+          apiVersion: rds.aws.upbound.io/v1beta1
+          kind: Instance
+          spec:
+            writeConnectionSecretToRef:
+              name: postgres-connection
+              namespace: crossplane-system
+            forProvider:
+              region: us-west-2
+              engine: postgres
+              engineVersion: "15.4"
+              instanceClass: db.t3.micro
+              allocatedStorage: 20
+              dbName: appdb
+              username: dbadmin
+              passwordSecretRef:
+                name: postgres-password
+                namespace: crossplane-system
+                key: password
+              publiclyAccessible: false
+              skipFinalSnapshot: true
+              vpcSecurityGroupIdSelector:
+                matchControllerRef: true
+              dbSubnetGroupNameSelector:
+                matchControllerRef: true
+        patches:
+        # Give each composed RDS connection secret a stable per-XR name
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.uid
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+          - type: string
+            string:
+              fmt: "%s-rds"
 
-    # Map instance class to RDS instance types
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.instanceClass
-      toFieldPath: spec.forProvider.instanceClass
-      transforms:
-      - type: map
-        map:
-          small: db.t3.micro
-          medium: db.t3.medium
-          large: db.r5.large
+        # Map storage size
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.storageGB
+          toFieldPath: spec.forProvider.allocatedStorage
 
-    # Map region
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.region
-      toFieldPath: spec.forProvider.region
+        # Map instance class to RDS instance types
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.instanceClass
+          toFieldPath: spec.forProvider.instanceClass
+          transforms:
+          - type: map
+            map:
+              small: db.t3.micro
+              medium: db.t3.medium
+              large: db.r5.large
 
-    # Set status fields
-    - type: ToCompositeFieldPath
-      fromFieldPath: status.atProvider.address
-      toFieldPath: status.address
-    - type: ToCompositeFieldPath
-      fromFieldPath: status.atProvider.port
-      toFieldPath: status.port
+        # Map region
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: spec.forProvider.region
 
-    connectionDetails:
-    - name: endpoint
-      fromConnectionSecretKey: endpoint
-    - name: port
-      fromConnectionSecretKey: port
-    - name: username
-      fromConnectionSecretKey: username
-    - name: password
-      fromConnectionSecretKey: password
+        # Set status fields
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.address
+          toFieldPath: status.address
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.port
+          toFieldPath: status.port
+
+        connectionDetails:
+        - name: endpoint
+          type: FromConnectionSecretKey
+          fromConnectionSecretKey: endpoint
+        - name: port
+          type: FromConnectionSecretKey
+          fromConnectionSecretKey: port
+        - name: username
+          type: FromConnectionSecretKey
+          fromConnectionSecretKey: username
+        - name: password
+          type: FromConnectionSecretKey
+          fromConnectionSecretKey: password
 ```
 
 Apply both resources:
@@ -347,26 +412,45 @@ spec:
     apiVersion: database.example.com/v1alpha1
     kind: XPostgreSQLInstance
 
-  resources:
-  - name: rds-instance
-    base:
-      apiVersion: rds.aws.upbound.io/v1beta1
-      kind: Instance
-      spec:
-        forProvider:
-          engine: postgres
-          engineVersion: "15.4"
-          instanceClass: db.r5.large
-          multiAz: true  # Production uses multi-AZ
-          backupRetentionPeriod: 30  # 30 days of backups
-          storageEncrypted: true
-          deletionProtection: true
-          # Additional production settings
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.storageGB
-      toFieldPath: spec.forProvider.allocatedStorage
-    # More patches...
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: rds-instance
+        base:
+          apiVersion: rds.aws.upbound.io/v1beta1
+          kind: Instance
+          spec:
+            forProvider:
+              region: us-west-2
+              engine: postgres
+              engineVersion: "15.4"
+              instanceClass: db.r5.large
+              allocatedStorage: 100
+              dbName: appdb
+              username: dbadmin
+              passwordSecretRef:
+                name: postgres-password
+                namespace: crossplane-system
+                key: password
+              multiAz: true  # Production uses multi-AZ
+              backupRetentionPeriod: 30  # 30 days of backups
+              storageEncrypted: true
+              deletionProtection: true
+              # Additional production settings
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.storageGB
+          toFieldPath: spec.forProvider.allocatedStorage
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.region
+          toFieldPath: spec.forProvider.region
+        # More patches...
 ```
 
 Developers select the environment:
@@ -380,6 +464,7 @@ spec:
   parameters:
     storageGB: 100
     instanceClass: large
+    region: us-west-2
   compositionSelector:
     matchLabels:
       provider: aws
@@ -392,7 +477,7 @@ The production composition adds multi-AZ deployment, longer backup retention, an
 
 ## Creating Compositions with Conditional Logic
 
-Use patch transforms for conditional resource creation:
+Patch transforms cannot conditionally create resources. Use a composition function such as Go templating when optional resources are required:
 
 ```yaml
 # composition-postgres-conditional.yaml
@@ -405,51 +490,48 @@ spec:
     apiVersion: database.example.com/v1alpha1
     kind: XPostgreSQLInstance
 
-  resources:
-  # Read replica (only created if replicas > 0)
-  - name: rds-replica
-    base:
-      apiVersion: rds.aws.upbound.io/v1beta1
-      kind: Instance
-      spec:
-        forProvider:
-          engine: postgres
-          replicateSourceDb: ""  # Set via patch
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.enableReplica
-      toFieldPath: metadata.annotations[crossplane.io/external-name]
-      transforms:
-      - type: string
-        string:
-          fmt: "%s-replica"
-
-    # Only create if replica is requested
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.enableReplica
-      toFieldPath: spec.forProvider.replicateSourceDb
-      policy:
-        fromFieldPath: Required
-
-  # CloudWatch alarm for high CPU
-  - name: cpu-alarm
-    base:
-      apiVersion: cloudwatch.aws.upbound.io/v1beta1
-      kind: MetricAlarm
-      spec:
-        forProvider:
-          comparisonOperator: GreaterThanThreshold
-          evaluationPeriods: 2
-          metricName: CPUUtilization
-          namespace: AWS/RDS
-          period: 300
-          statistic: Average
-          threshold: 80
-          alarmDescription: "RDS CPU above 80%"
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.region
-      toFieldPath: spec.forProvider.region
+  mode: Pipeline
+  pipeline:
+  - step: render-optional-resources
+    functionRef:
+      name: function-go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: |
+          {{- $params := .observed.composite.resource.spec.parameters }}
+          {{- if $params.enableReplica }}
+          apiVersion: rds.aws.upbound.io/v1beta1
+          kind: Instance
+          metadata:
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: rds-replica
+          spec:
+            forProvider:
+              region: {{ $params.region }}
+              engine: postgres
+              replicateSourceDbSelector:
+                matchControllerRef: true
+          ---
+          {{- end }}
+          apiVersion: cloudwatch.aws.upbound.io/v1beta1
+          kind: MetricAlarm
+          metadata:
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: cpu-alarm
+          spec:
+            forProvider:
+              region: {{ $params.region }}
+              comparisonOperator: GreaterThanThreshold
+              evaluationPeriods: 2
+              metricName: CPUUtilization
+              namespace: AWS/RDS
+              period: 300
+              statistic: Average
+              threshold: 80
+              alarmDescription: "RDS CPU above 80%"
 ```
 
 ## Building Storage Compositions
@@ -490,10 +572,12 @@ spec:
                     default: 90
                   publicAccess:
                     type: boolean
-                    description: "Allow public read access"
+                    description: "Allow public bucket policies and ACLs"
                     default: false
                 required:
                 - lifecycleDays
+            required:
+            - parameters
 ```
 
 Implementation composition:
@@ -509,71 +593,117 @@ spec:
     apiVersion: storage.example.com/v1alpha1
     kind: XObjectStorage
 
-  resources:
-  - name: s3-bucket
-    base:
-      apiVersion: s3.aws.upbound.io/v1beta1
-      kind: Bucket
-      spec:
-        forProvider:
-          region: us-west-2
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: metadata.name
-      toFieldPath: spec.forProvider.bucket
-      transforms:
-      - type: string
-        string:
-          fmt: "app-%s"
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: s3-bucket
+        base:
+          apiVersion: s3.aws.upbound.io/v1beta1
+          kind: Bucket
+          spec:
+            forProvider:
+              region: us-west-2
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.bucket
+          transforms:
+          - type: string
+            string:
+              fmt: "app-%s"
 
-  - name: bucket-lifecycle
-    base:
-      apiVersion: s3.aws.upbound.io/v1beta1
-      kind: BucketLifecycleConfiguration
-      spec:
-        forProvider:
-          bucketSelector:
-            matchControllerRef: true
-          rule:
-          - id: transition-to-ia
-            status: Enabled
-            transition:
-            - days: 90
-              storageClass: STANDARD_IA
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.lifecycleDays
-      toFieldPath: spec.forProvider.rule[0].transition[0].days
+      - name: bucket-lifecycle
+        base:
+          apiVersion: s3.aws.upbound.io/v1beta1
+          kind: BucketLifecycleConfiguration
+          spec:
+            forProvider:
+              region: us-west-2
+              bucketSelector:
+                matchControllerRef: true
+              rule:
+              - id: transition-to-ia
+                status: Enabled
+                transition:
+                - days: 90
+                  storageClass: STANDARD_IA
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.lifecycleDays
+          toFieldPath: spec.forProvider.rule[0].transition[0].days
 
-  - name: bucket-public-access-block
-    base:
-      apiVersion: s3.aws.upbound.io/v1beta1
-      kind: BucketPublicAccessBlock
-      spec:
-        forProvider:
-          bucketSelector:
-            matchControllerRef: true
-          blockPublicAcls: true
-          blockPublicPolicy: true
-          ignorePublicAcls: true
-          restrictPublicBuckets: true
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.publicAccess
-      toFieldPath: spec.forProvider.blockPublicPolicy
-      transforms:
-      - type: convert
-        convert:
-          toType: bool
-      - type: match
-        match:
-          patterns:
-          - type: literal
-            literal: true
-            result: false
-          - type: literal
-            literal: false
-            result: true
+      - name: bucket-public-access-block
+        base:
+          apiVersion: s3.aws.upbound.io/v1beta1
+          kind: BucketPublicAccessBlock
+          spec:
+            forProvider:
+              region: us-west-2
+              bucketSelector:
+                matchControllerRef: true
+              blockPublicAcls: true
+              blockPublicPolicy: true
+              ignorePublicAcls: true
+              restrictPublicBuckets: true
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.publicAccess
+          toFieldPath: spec.forProvider.blockPublicAcls
+          transforms:
+          - type: match
+            match:
+              patterns:
+              - type: literal
+                literal: true
+                result: false
+              - type: literal
+                literal: false
+                result: true
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.publicAccess
+          toFieldPath: spec.forProvider.blockPublicPolicy
+          transforms:
+          - type: match
+            match:
+              patterns:
+              - type: literal
+                literal: true
+                result: false
+              - type: literal
+                literal: false
+                result: true
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.publicAccess
+          toFieldPath: spec.forProvider.ignorePublicAcls
+          transforms:
+          - type: match
+            match:
+              patterns:
+              - type: literal
+                literal: true
+                result: false
+              - type: literal
+                literal: false
+                result: true
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.publicAccess
+          toFieldPath: spec.forProvider.restrictPublicBuckets
+          transforms:
+          - type: match
+            match:
+              patterns:
+              - type: literal
+                literal: true
+                result: false
+              - type: literal
+                literal: false
+                result: true
 ```
 
 Developers request storage:
@@ -619,7 +749,16 @@ spec:
           kind: Instance
           spec:
             forProvider:
+              region: us-west-2
               engine: postgres
+              instanceClass: db.t3.micro
+              allocatedStorage: 20
+              dbName: appdb
+              username: dbadmin
+              passwordSecretRef:
+                name: postgres-password
+                namespace: crossplane-system
+                key: password
 
   - step: auto-ready
     functionRef:
