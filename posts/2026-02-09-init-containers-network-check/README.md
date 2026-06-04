@@ -34,6 +34,21 @@ spec:
       labels:
         app: example
     spec:
+      initContainers:
+      - name: check-network
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          until nslookup kubernetes.default.svc.cluster.local; do
+            echo "Waiting for DNS resolution..."
+            sleep 2
+          done
+          until nc -z -w 2 kubernetes.default.svc.cluster.local 443; do
+            echo "Waiting for Kubernetes API connectivity..."
+            sleep 2
+          done
       containers:
       - name: app
         image: myapp:latest
@@ -84,6 +99,21 @@ spec:
         prometheus.io/port: "9090"
     spec:
       serviceAccountName: app-service-account
+      initContainers:
+      - name: wait-for-database
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          until nslookup database.default.svc.cluster.local; do
+            echo "Waiting for database DNS..."
+            sleep 2
+          done
+          until nc -z -w 2 database.default.svc.cluster.local 5432; do
+            echo "Waiting for database connectivity..."
+            sleep 2
+          done
       containers:
       - name: main
         image: myapp:latest
@@ -301,8 +331,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: azure/k8s-set-context@v3
+      - uses: actions/checkout@v6
+      - uses: azure/k8s-set-context@v5
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
