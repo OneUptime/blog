@@ -18,7 +18,7 @@ A device twin is a digital representation of a physical device that maintains:
 
 - **Desired state**: What the cloud wants the device to be
 - **Reported state**: What the device actually is
-- **Metadata**: Timestamps, versions, and sync status
+- **Metadata**: Timestamps and mapper-observed desired state
 
 When online, twins sync automatically. When offline, edge nodes cache desired state and sync when connectivity returns. This allows applications to work despite network issues.
 
@@ -29,6 +29,7 @@ If not already installed:
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/kubeedge/kubeedge/master/build/crds/devices/devices_v1beta1_device.yaml
 kubectl apply -f https://raw.githubusercontent.com/kubeedge/kubeedge/master/build/crds/devices/devices_v1beta1_devicemodel.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubeedge/kubeedge/master/build/crds/devices/devices_v1beta1_devicestatus.yaml
 ```
 
 ## Defining a Comprehensive Device Model
@@ -44,49 +45,41 @@ metadata:
   name: environmental-sensor
   namespace: default
 spec:
+  protocol: mqtt
   properties:
     - name: temperature
       description: Temperature in celsius
-      type:
-        float:
-          accessMode: ReadOnly
-          unit: celsius
-          minimum: -40
-          maximum: 85
+      type: FLOAT
+      accessMode: ReadOnly
+      unit: celsius
+      minimum: "-40"
+      maximum: "85"
     - name: humidity
       description: Humidity percentage
-      type:
-        int:
-          accessMode: ReadOnly
-          unit: percent
-          minimum: 0
-          maximum: 100
+      type: INT
+      accessMode: ReadOnly
+      unit: percent
+      minimum: "0"
+      maximum: "100"
     - name: pressure
       description: Atmospheric pressure
-      type:
-        int:
-          accessMode: ReadOnly
-          unit: kPa
+      type: INT
+      accessMode: ReadOnly
+      unit: kPa
     - name: sampling-interval
       description: Seconds between readings
-      type:
-        int:
-          accessMode: ReadWrite
-          defaultValue: 60
-          minimum: 10
-          maximum: 3600
+      type: INT
+      accessMode: ReadWrite
+      minimum: "10"
+      maximum: "3600"
     - name: alert-threshold-temp
       description: Temperature alert threshold
-      type:
-        float:
-          accessMode: ReadWrite
-          defaultValue: 30.0
+      type: FLOAT
+      accessMode: ReadWrite
     - name: enabled
       description: Enable/disable sensor
-      type:
-        boolean:
-          accessMode: ReadWrite
-          defaultValue: true
+      type: BOOLEAN
+      accessMode: ReadWrite
 ```
 
 Apply the model:
@@ -114,42 +107,67 @@ spec:
     name: environmental-sensor
   nodeName: edge-node-warehouse
   protocol:
-    mqtt:
+    protocolName: mqtt
+    configData:
       brokerURL: tcp://mqtt-broker.local:1883
-      topic: sensors/env-sensor-01
-    common:
-      mqtt:
-        clientID: env-sensor-01
-        username: sensor-user
-        password: sensor-pass
-  propertyVisitors:
-    - propertyName: temperature
-      mqtt:
-        topic: sensors/env-sensor-01/temperature
-        dataType: float
-    - propertyName: humidity
-      mqtt:
-        topic: sensors/env-sensor-01/humidity
-        dataType: int
-    - propertyName: pressure
-      mqtt:
-        topic: sensors/env-sensor-01/pressure
-        dataType: int
-    - propertyName: sampling-interval
-      mqtt:
-        topic: sensors/env-sensor-01/config/interval
-        dataType: int
-        retained: true
-    - propertyName: alert-threshold-temp
-      mqtt:
-        topic: sensors/env-sensor-01/config/threshold
-        dataType: float
-        retained: true
-    - propertyName: enabled
-      mqtt:
-        topic: sensors/env-sensor-01/config/enabled
-        dataType: boolean
-        retained: true
+      clientID: env-sensor-01
+      username: sensor-user
+      password: sensor-pass
+  properties:
+    - name: temperature
+      collectCycle: 10000000000
+      reportCycle: 10000000000
+      reportToCloud: true
+      visitors:
+        protocolName: mqtt
+        configData:
+          topic: sensors/env-sensor-01/temperature
+          dataType: FLOAT
+    - name: humidity
+      collectCycle: 10000000000
+      reportCycle: 10000000000
+      reportToCloud: true
+      visitors:
+        protocolName: mqtt
+        configData:
+          topic: sensors/env-sensor-01/humidity
+          dataType: INT
+    - name: pressure
+      collectCycle: 10000000000
+      reportCycle: 10000000000
+      reportToCloud: true
+      visitors:
+        protocolName: mqtt
+        configData:
+          topic: sensors/env-sensor-01/pressure
+          dataType: INT
+    - name: sampling-interval
+      desired:
+        value: "60"
+      visitors:
+        protocolName: mqtt
+        configData:
+          topic: sensors/env-sensor-01/config/interval
+          dataType: INT
+          retained: true
+    - name: alert-threshold-temp
+      desired:
+        value: "30.0"
+      visitors:
+        protocolName: mqtt
+        configData:
+          topic: sensors/env-sensor-01/config/threshold
+          dataType: FLOAT
+          retained: true
+    - name: enabled
+      desired:
+        value: "true"
+      visitors:
+        protocolName: mqtt
+        configData:
+          topic: sensors/env-sensor-01/config/enabled
+          dataType: BOOLEAN
+          retained: true
 ```
 
 Apply the device:
@@ -160,7 +178,7 @@ kubectl apply -f sensor-device-01.yaml
 
 ## Deploying MQTT Device Mapper
 
-The mapper translates between MQTT and device twins:
+The mapper translates between MQTT and device twins. Generate a mapper with the KubeEdge Mapper Framework and build it as a container image:
 
 ```yaml
 # mqtt-mapper.yaml
@@ -183,7 +201,7 @@ spec:
       hostNetwork: true
       containers:
         - name: mapper
-          image: kubeedge/mqtt-mapper:latest
+          image: your-registry/mqtt-mapper:1.0.0
           env:
             - name: MQTT_BROKER_URL
               value: "tcp://mqtt-broker.local:1883"
@@ -219,11 +237,12 @@ kubectl apply -f mqtt-mapper.yaml
 Query device state from the cloud:
 
 ```bash
-# Get full device details
+# Get full device and status details
 kubectl get device env-sensor-warehouse-01 -o yaml
+kubectl get devicestatus env-sensor-warehouse-01 -o yaml
 
 # Extract twin data
-kubectl get device env-sensor-warehouse-01 \
+kubectl get devicestatus env-sensor-warehouse-01 \
   -o jsonpath='{.status.twins}' | jq
 ```
 
@@ -243,7 +262,7 @@ You'll see output like:
   },
   {
     "propertyName": "sampling-interval",
-    "desired": {
+    "observedDesired": {
       "value": "60",
       "metadata": {"type": "int"}
     },
@@ -260,19 +279,12 @@ You'll see output like:
 Change device settings from the cloud:
 
 ```bash
-# Create a patch file
-cat > update-sensor-config.yaml <<EOF
-spec:
-  propertyVisitors:
-    - propertyName: sampling-interval
-      desiredValue: "30"
-    - propertyName: alert-threshold-temp
-      desiredValue: "28.0"
-EOF
-
-# Apply the update
-kubectl patch device env-sensor-warehouse-01 --type merge \
-  --patch "$(cat update-sensor-config.yaml)"
+# Update the desired values. These JSON Patch paths match the property order
+# in the device manifest above.
+kubectl patch device env-sensor-warehouse-01 --type json -p='[
+  {"op":"replace","path":"/spec/properties/3/desired/value","value":"30"},
+  {"op":"replace","path":"/spec/properties/4/desired/value","value":"28.0"}
+]'
 ```
 
 KubeEdge propagates this to the edge node, the mapper writes it to MQTT, and the physical sensor receives the update.
@@ -323,17 +335,29 @@ spec:
                 group="devices.kubeedge.io",
                 version="v1beta1",
                 namespace="default",
-                plural="devices",
-                label_selector="location=warehouse"
+                plural="devicestatuses"
               ):
                 event_type = event['type']
-                device = event['object']
-                device_name = device['metadata']['name']
+                status = event['object']
+                device_name = status['metadata']['name']
+
+                try:
+                  device = api.get_namespaced_custom_object(
+                    group="devices.kubeedge.io",
+                    version="v1beta1",
+                    namespace="default",
+                    plural="devices",
+                    name=device_name
+                  )
+                  if device.get('metadata', {}).get('labels', {}).get('location') != 'warehouse':
+                    continue
+                except Exception:
+                  continue
 
                 print(f"Event: {event_type} - Device: {device_name}")
 
-                if 'status' in device and 'twins' in device['status']:
-                  for twin in device['status']['twins']:
+                if 'status' in status and 'twins' in status['status']:
+                  for twin in status['status']['twins']:
                     prop_name = twin['propertyName']
                     reported = twin.get('reported', {})
                     value = reported.get('value', 'N/A')
@@ -356,7 +380,7 @@ metadata:
   name: device-reader
 rules:
   - apiGroups: ["devices.kubeedge.io"]
-    resources: ["devices"]
+    resources: ["devices", "devicestatuses"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -389,17 +413,9 @@ Update multiple devices simultaneously:
 ```bash
 # Update all warehouse sensors
 kubectl get devices -l location=warehouse -o name | while read device; do
-  kubectl patch $device --type merge -p '
-  {
-    "spec": {
-      "propertyVisitors": [
-        {
-          "propertyName": "sampling-interval",
-          "desiredValue": "120"
-        }
-      ]
-    }
-  }'
+  kubectl patch "$device" --type json -p='[
+    {"op":"replace","path":"/spec/properties/3/desired/value","value":"120"}
+  ]'
 done
 ```
 
@@ -440,16 +456,16 @@ spec:
               api = client.CustomObjectsApi()
 
               def check_alerts():
-                devices = api.list_namespaced_custom_object(
+                statuses = api.list_namespaced_custom_object(
                   group="devices.kubeedge.io",
                   version="v1beta1",
                   namespace="default",
-                  plural="devices"
+                  plural="devicestatuses"
                 )
 
-                for device in devices['items']:
-                  name = device['metadata']['name']
-                  twins = device.get('status', {}).get('twins', [])
+                for status in statuses['items']:
+                  name = status['metadata']['name']
+                  twins = status.get('status', {}).get('twins', [])
 
                   temp_value = None
                   threshold = 30.0
@@ -458,7 +474,7 @@ spec:
                     if twin['propertyName'] == 'temperature':
                       temp_value = float(twin.get('reported', {}).get('value', 0))
                     elif twin['propertyName'] == 'alert-threshold-temp':
-                      threshold_str = twin.get('desired', {}).get('value') or \
+                      threshold_str = twin.get('observedDesired', {}).get('value') or \
                                      twin.get('reported', {}).get('value')
                       if threshold_str:
                         threshold = float(threshold_str)
@@ -530,16 +546,28 @@ spec:
 
               w = watch.Watch()
               for event in w.stream(
-                k8s_api.list_cluster_custom_object,
+                k8s_api.list_namespaced_custom_object,
                 group="devices.kubeedge.io",
                 version="v1beta1",
-                plural="devices"
+                namespace="default",
+                plural="devicestatuses"
               ):
-                device = event['object']
-                device_name = device['metadata']['name']
-                location = device['metadata'].get('labels', {}).get('location', 'unknown')
+                status = event['object']
+                device_name = status['metadata']['name']
 
-                twins = device.get('status', {}).get('twins', [])
+                try:
+                  device = k8s_api.get_namespaced_custom_object(
+                    group="devices.kubeedge.io",
+                    version="v1beta1",
+                    namespace="default",
+                    plural="devices",
+                    name=device_name
+                  )
+                  location = device['metadata'].get('labels', {}).get('location', 'unknown')
+                except Exception:
+                  location = 'unknown'
+
+                twins = status.get('status', {}).get('twins', [])
 
                 for twin in twins:
                   prop_name = twin['propertyName']
@@ -575,14 +603,13 @@ Test offline behavior:
 # On edge node, simulate network partition
 sudo iptables -A OUTPUT -d <cloud-api-ip> -j DROP
 
-# Device twins still update locally
-kubectl get device env-sensor-warehouse-01 -o yaml  # On edge node
+# Device twins still update locally for mappers and edge applications
 
 # Restore connectivity
 sudo iptables -D OUTPUT -d <cloud-api-ip> -j DROP
 
 # Watch synchronization occur
-kubectl get device env-sensor-warehouse-01 -o yaml -w
+kubectl get devicestatus env-sensor-warehouse-01 -o yaml -w
 ```
 
 ## Implementing Device Twin Versioning
@@ -603,7 +630,7 @@ metadata:
 
 ## Monitoring Device Twin Health
 
-Create monitoring dashboard:
+Create monitoring dashboard rules if your mapper or monitor exports these custom metrics:
 
 ```yaml
 # prometheusrule.yaml
