@@ -195,16 +195,13 @@ app.put('/orders/:id/status', async (req, res) => {
 });
 
 async function publishEvent(topic, eventType, data) {
-  const pubsubUrl = `http://localhost:${DAPR_HTTP_PORT}/v1.0/publish/${PUBSUB_NAME}/${topic}`;
-
-  const event = {
-    type: eventType,
-    data: data,
-    timestamp: new Date().toISOString()
-  };
+  const metadata = new URLSearchParams({
+    'metadata.cloudevent.type': eventType
+  });
+  const pubsubUrl = `http://localhost:${DAPR_HTTP_PORT}/v1.0/publish/${PUBSUB_NAME}/${topic}?${metadata}`;
 
   try {
-    await axios.post(pubsubUrl, event, {
+    await axios.post(pubsubUrl, data, {
       headers: {
         'Content-Type': 'application/json'
       }
@@ -309,7 +306,9 @@ def subscribe():
         {
             'pubsubname': 'pubsub',
             'topic': 'orders',
-            'route': '/orders'
+            'routes': {
+                'default': '/orders'
+            }
         }
     ]
     return jsonify(subscriptions)
@@ -383,14 +382,12 @@ def charge_payment(customer_id, amount):
 def publish_event(topic, event_type, data):
     """Publish event via Dapr"""
     url = f"http://localhost:{DAPR_HTTP_PORT}/v1.0/publish/pubsub/{topic}"
-
-    event = {
-        'type': event_type,
-        'data': data
+    params = {
+        'metadata.cloudevent.type': event_type
     }
 
     try:
-        response = requests.post(url, json=event)
+        response = requests.post(url, params=params, json=data)
         response.raise_for_status()
         logging.info(f"Published {event_type} to {topic}")
     except Exception as e:
@@ -465,9 +462,9 @@ spec:
     rules:
       - match: event.type == "order.created"
         path: /orders/created
-      # Route order.paid events to another
-      - match: event.type == "order.paid"
-        path: /orders/paid
+      # Route order status change events to another
+      - match: event.type == "order.status.changed"
+        path: /orders/status-changed
       # Default route for other events
       - match: true
         path: /orders/default
@@ -504,7 +501,6 @@ package main
 
 import (
     "encoding/json"
-    "fmt"
     "log"
     "net/http"
 )
@@ -573,8 +569,8 @@ func main() {
 Track pub/sub metrics:
 
 ```bash
-# View Dapr metrics
-kubectl port-forward -n dapr-system svc/dapr-dashboard 8080:8080
+# View the Dapr dashboard
+dapr dashboard -k
 
 # Access dashboard
 open http://localhost:8080
@@ -596,11 +592,11 @@ rate(dapr_component_pubsub_egress_count[5m])
 rate(dapr_component_pubsub_ingress_count[5m])
 
 # Failed deliveries
-rate(dapr_component_pubsub_ingress_error_count[5m])
+rate(dapr_component_pubsub_ingress_count{process_status!="success"}[5m])
 
 # Processing latency
 histogram_quantile(0.95,
-  rate(dapr_http_server_request_duration_bucket[5m])
+  rate(dapr_component_pubsub_ingress_latencies_bucket[5m])
 )
 ```
 
