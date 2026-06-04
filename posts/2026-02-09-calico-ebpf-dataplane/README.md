@@ -14,12 +14,12 @@ Calico's eBPF dataplane replaces iptables with eBPF programs for packet processi
 
 Traditional Calico uses iptables for policy enforcement and routing decisions. While iptables works well for small to medium clusters, it scales poorly as the number of services and policies grows. Each packet must traverse potentially thousands of iptables rules, consuming CPU cycles.
 
-The eBPF dataplane replaces this with programs that use hash table lookups for O(1) complexity. A cluster with 10,000 services performs the same as one with 10 services from a per-packet overhead perspective. eBPF programs also enable features like DSR (Direct Server Return) and native service handling without kube-proxy.
+The eBPF dataplane replaces this with programs that use BPF maps for efficient lookups, avoiding the linear chain traversal that can affect iptables-based service handling as the number of services grows. eBPF programs also enable features like DSR (Direct Server Return) and native service handling without kube-proxy.
 
 Key benefits include:
-- 10-25% better throughput
-- 25-35% lower CPU usage
-- Sub-microsecond latency improvements
+- Higher throughput for service-heavy clusters
+- Lower first-packet latency
+- Less CPU spent keeping the service data plane in sync
 - Kube-proxy replacement capabilities
 - Better support for large-scale clusters
 
@@ -28,7 +28,7 @@ Key benefits include:
 Before enabling eBPF dataplane, verify your environment meets these requirements:
 
 ```bash
-# Check kernel version (minimum 5.3, recommended 5.10+)
+# Check kernel version (minimum 5.10, or RHEL 8.4 kernel 4.18.0-305+)
 
 uname -r
 
@@ -70,7 +70,7 @@ For new clusters, install Calico with eBPF enabled from the start:
 
 ```bash
 # Download the Calico operator manifest
-curl https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml -O
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml -O
 
 # Apply the operator
 kubectl create -f tigera-operator.yaml
@@ -83,6 +83,9 @@ metadata:
   name: default
 spec:
   calicoNetwork:
+    linuxDataplane: BPF
+    bpfNetworkBootstrap: Enabled
+    kubeProxyManagement: Enabled
     bgp: Enabled
     ipPools:
     - blockSize: 26
@@ -91,7 +94,6 @@ spec:
       natOutgoing: Enabled
       nodeSelector: all()
   flexVolumePath: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/
-  linuxDataplane: BPF
   nodeUpdateStrategy:
     rollingUpdate:
       maxUnavailable: 1
@@ -99,7 +101,7 @@ spec:
 EOF
 ```
 
-The `linuxDataplane: BPF` setting enables eBPF mode. Wait for the installation to complete:
+The `linuxDataplane: BPF` setting enables eBPF mode. `bpfNetworkBootstrap` lets the operator bootstrap API server access, and `kubeProxyManagement` lets it disable kube-proxy for the BPF dataplane. Wait for the installation to complete:
 
 ```bash
 watch kubectl get tigerastatus
@@ -128,8 +130,8 @@ spec:
   bpfEnabled: true
   bpfExternalServiceMode: Tunnel
   bpfLogLevel: Info
-  bpfDataIfacePattern: ^(en.*|eth.*|tunl0)$
-  bpfConnectTimeLoadBalancingEnabled: true
+  bpfDataIfacePattern: ^(en.*|eth.*)$
+  bpfConnectTimeLoadBalancing: Enabled
   bpfHostNetworkedNATWithoutCTLB: Enabled
 EOF
 
@@ -165,8 +167,9 @@ spec:
   # Options: Tunnel (default), DSR
   bpfExternalServiceMode: DSR
 
-  # Enable connection-time load balancing for better distribution
-  bpfConnectTimeLoadBalancingEnabled: true
+  # Enable connection-time load balancing
+  # Options: Disabled, Enabled, TCP
+  bpfConnectTimeLoadBalancing: Enabled
 
   # Log level for BPF programs
   # Options: Off, Info, Debug
@@ -175,11 +178,11 @@ spec:
   # Interface pattern for BPF attachment
   bpfDataIfacePattern: ^(en.*|eth.*|bond.*)$
 
-  # Enable DSR optimization for host-networked pods
+  # Control host-networked NAT behavior with connection-time load balancing
   bpfHostNetworkedNATWithoutCTLB: Enabled
 
-  # Disable if you need strict source port preservation
-  bpfPSNATPorts: 20000-29999
+  # Source NAT port range used if there is a source port collision
+  bpfPSNATPorts: 20000:29999
 
   # Map size tuning
   bpfMapSizeNATFrontend: 65536
@@ -187,7 +190,7 @@ spec:
   bpfMapSizeNATAffinity: 65536
   bpfMapSizeRoute: 262144
 
-  # Disable kube-proxy
+  # Clean up kube-proxy iptables rules after kube-proxy has been disabled
   bpfKubeProxyIptablesCleanupEnabled: true
   bpfKubeProxyEndpointSlicesEnabled: true
 ```
@@ -203,7 +206,7 @@ calicoctl get felixconfiguration default -o yaml
 
 ## Enabling DSR Mode for External Traffic
 
-Direct Server Return (DSR) mode improves performance for NodePort and LoadBalancer services by having responses bypass the load balancing node:
+Direct Server Return (DSR) mode improves performance for external service traffic such as NodePort by having responses bypass the load balancing node:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -217,7 +220,7 @@ spec:
   - 10.0.0.0/8  # Exclude internal networks from DSR
 ```
 
-DSR requires that backend pods can respond directly to clients. This works well for external traffic but may cause issues with internal cluster-to-cluster communication. Use `bpfDSROptoutCIDRs` to exclude specific networks.
+DSR requires the underlying network to allow backend nodes to send replies using another node's IP address. In AWS this requires nodes in the same subnet with source/destination checks disabled, and in GCP it requires IP forwarding. DSR is not compatible with cloud load balancer traffic that expects replies from the same node. Use `bpfDSROptoutCIDRs` to exclude specific client networks.
 
 Test DSR functionality:
 
@@ -283,22 +286,45 @@ bpftool map list | grep calico
 bpftool map dump name cali_v4_nat_fe
 
 # Monitor BPF statistics
-kubectl exec -n calico-system calico-node-xxxxx -c calico-node -- \
-  calico-bpf stats
+kubectl exec -n calico-system <calico-node-name> -- \
+  calico-node -bpf counters dump --iface=eth0
 ```
 
 Track metrics in Prometheus:
 
 ```yaml
+apiVersion: projectcalico.org/v3
+kind: FelixConfiguration
+metadata:
+  name: default
+spec:
+  prometheusMetricsEnabled: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    app: calico-felix-metrics
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+  - name: metrics-port
+    port: 9091
+    targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: calico-bpf-metrics
+  name: felix-bpf-metrics
   namespace: calico-system
 spec:
   selector:
     matchLabels:
-      k8s-app: calico-node
+      app: calico-felix-metrics
   endpoints:
   - port: metrics-port
     interval: 30s
@@ -306,10 +332,11 @@ spec:
 ```
 
 Key metrics to monitor:
-- `calico_bpf_dataplane_packets_total`: Total packets processed
-- `calico_bpf_dataplane_policy_drops`: Packets dropped by policy
-- `calico_bpf_connections_total`: Connection tracking entries
-- `calico_bpf_nat_frontend_entries`: Service entries
+- `felix_bpf_dataplane_endpoints`: Number of BPF endpoints managed in the data plane
+- `felix_bpf_dirty_dataplane_endpoints`: BPF endpoints left dirty after a failure
+- `felix_bpf_happy_dataplane_endpoints`: BPF endpoints successfully programmed
+- `felix_bpf_num_ip_sets`: Number of BPF IP sets managed in the data plane
+- `felix_bpf_conntrack_maglev_entries_total`: Maglev entries in the BPF conntrack table
 
 ## Performance Tuning
 
@@ -317,16 +344,15 @@ Tune map sizes based on cluster scale:
 
 ```bash
 # Calculate required map sizes
-# NAT frontend: one entry per service endpoint
-# Formula: (num_services * avg_endpoints_per_service * 1.5)
+# NAT frontend: entries for each node port, external IP, and service port
+# NAT backend: total number of service endpoints
 
 # For 1000 services with average 3 endpoints:
-# Frontend: 1000 * 3 * 1.5 = 4500
+# Backend: 1000 * 3 * 1.5 = 4500
 # Use 8192 (next power of 2)
 
-# NAT backend: one entry per connection
-# Depends on connection rate and timeout
-# Start with 262144 and monitor usage
+# Conntrack: one entry per active connection
+# Start with the default or 524288 and monitor usage
 ```
 
 Configure map sizes:
@@ -372,9 +398,9 @@ kubectl get pods -n kube-system -l k8s-app=kube-proxy
 kubectl logs -n calico-system -l k8s-app=calico-node | grep -i error
 
 # Issue: High CPU usage
-# Check for program errors
-kubectl exec -n calico-system calico-node-xxxxx -- \
-  calico-bpf stats | grep errors
+# Check BPF counters for packet drops
+kubectl exec -n calico-system <calico-node-name> -- \
+  calico-node -bpf counters dump --iface=eth0 | grep Dropped
 
 # Issue: Connectivity problems
 # Verify interface pattern matches your NICs
