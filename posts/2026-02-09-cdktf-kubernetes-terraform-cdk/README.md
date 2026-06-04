@@ -8,7 +8,7 @@ Description: Learn how to use Cloud Development Kit for Terraform (CDKTF) to man
 
 ---
 
-Terraform's HCL domain-specific language works well for simple configurations but becomes cumbersome for complex infrastructure patterns. Cloud Development Kit for Terraform (CDKTF) solves this by letting you define infrastructure using TypeScript, Python, Go, or Java. This guide shows you how to leverage CDKTF for Kubernetes infrastructure management.
+Terraform's HCL domain-specific language works well for simple configurations but becomes cumbersome for complex infrastructure patterns. Cloud Development Kit for Terraform (CDKTF) solves this by letting you define infrastructure using TypeScript, Python, Java, C#, or experimental Go. HashiCorp deprecated CDKTF on December 10, 2025 and no longer maintains it, so use these patterns only when you are maintaining an existing CDKTF codebase or have accepted that maintenance status. This guide shows you how to leverage CDKTF for Kubernetes infrastructure management.
 
 ## Understanding CDKTF Architecture
 
@@ -28,7 +28,7 @@ npm install -g cdktf-cli
 # Create a new project
 mkdir k8s-infrastructure
 cd k8s-infrastructure
-cdktf init --template=typescript --providers=kubernetes,aws
+cdktf init --template=typescript --providers=kubernetes --providers=aws
 
 # This creates:
 # - cdktf.json (project configuration)
@@ -39,19 +39,18 @@ cdktf init --template=typescript --providers=kubernetes,aws
 Configure the project to use the Kubernetes and AWS providers:
 
 ```json
-// cdktf.json
 {
   "language": "typescript",
   "app": "npx ts-node main.ts",
   "projectId": "k8s-infra",
   "terraformProviders": [
-    "kubernetes@~> 2.23",
-    "aws@~> 5.0"
+    "kubernetes@~> 2.38",
+    "aws@~> 6.0"
   ],
   "terraformModules": [],
   "context": {
-    "excludeStackIdFromLogicalIds": "true",
-    "allowSepCharsInLogicalIds": "true"
+    "excludeStackIdFromLogicalIds": true,
+    "allowSepCharsInLogicalIds": true
   }
 }
 ```
@@ -66,19 +65,16 @@ This downloads provider schemas and generates TypeScript types for all resources
 
 ## Building Your First Kubernetes Stack
 
-Create a basic stack that deploys an EKS cluster and Kubernetes resources.
+Create a basic stack that deploys an EKS cluster and configures the Kubernetes provider.
 
 ```typescript
 // main.ts
 import { Construct } from "constructs";
-import { App, TerraformStack, TerraformOutput } from "cdktf";
+import { App, Fn, TerraformStack, TerraformOutput } from "cdktf";
 import { AwsProvider } from "./.gen/providers/aws/provider";
 import { EksCluster } from "./.gen/providers/aws/eks-cluster";
 import { EksNodeGroup } from "./.gen/providers/aws/eks-node-group";
 import { KubernetesProvider } from "./.gen/providers/kubernetes/provider";
-import { Namespace } from "./.gen/providers/kubernetes/namespace";
-import { Deployment } from "./.gen/providers/kubernetes/deployment";
-import { Service } from "./.gen/providers/kubernetes/service";
 
 class KubernetesInfrastructureStack extends TerraformStack {
   constructor(scope: Construct, id: string) {
@@ -93,7 +89,7 @@ class KubernetesInfrastructureStack extends TerraformStack {
     const cluster = new EksCluster(this, "eks-cluster", {
       name: "production-cluster",
       roleArn: this.createClusterRole(),
-      version: "1.28",
+      version: "1.35",
       vpcConfig: {
         subnetIds: this.getSubnetIds(),
         endpointPrivateAccess: true,
@@ -102,7 +98,7 @@ class KubernetesInfrastructureStack extends TerraformStack {
     });
 
     // Create node group
-    const nodeGroup = new EksNodeGroup(this, "node-group", {
+    new EksNodeGroup(this, "node-group", {
       clusterName: cluster.name,
       nodeGroupName: "workers",
       nodeRoleArn: this.createNodeRole(),
@@ -118,17 +114,19 @@ class KubernetesInfrastructureStack extends TerraformStack {
     // Configure Kubernetes provider to use the new cluster
     new KubernetesProvider(this, "kubernetes", {
       host: cluster.endpoint,
-      clusterCaCertificate: cluster.certificateAuthority.get(0).data,
-      exec: {
-        apiVersion: "client.authentication.k8s.io/v1beta1",
+      clusterCaCertificate: Fn.base64decode(cluster.certificateAuthority.get(0).data),
+      exec: [{
+        apiVersion: "client.authentication.k8s.io/v1",
         command: "aws",
         args: [
           "eks",
           "get-token",
           "--cluster-name",
           cluster.name,
+          "--region",
+          "us-west-2",
         ],
-      },
+      }],
     });
 
     // Output cluster details
@@ -161,7 +159,7 @@ new KubernetesInfrastructureStack(app, "k8s-infrastructure");
 app.synth();
 ```
 
-This creates a complete EKS cluster with typed resources and IDE autocomplete support.
+This creates an EKS cluster and configures typed providers with IDE autocomplete support. In production, manage Kubernetes workloads in a separate stack or apply after the cluster exists so the Kubernetes provider can connect during planning.
 
 ## Creating Reusable Constructs
 
@@ -228,7 +226,7 @@ export class Application extends Construct {
     }
 
     // Build environment variables from config and secrets
-    const envVars = [];
+    const envVars: any[] = [];
 
     if (configMap) {
       Object.keys(config.env!).forEach(key => {
@@ -444,13 +442,13 @@ Test infrastructure logic before deployment using standard testing frameworks.
 
 ```typescript
 // __tests__/Application.test.ts
-import { Testing } from "cdktf";
+import { Testing, TerraformStack } from "cdktf";
 import { Application } from "../constructs/Application";
 
 describe("Application Construct", () => {
   test("creates deployment with correct replica count", () => {
     const app = Testing.app();
-    const stack = Testing.stubStack(app, "test");
+    const stack = new TerraformStack(app, "test");
 
     new Application(stack, "test-app", {
       name: "test",
@@ -460,12 +458,12 @@ describe("Application Construct", () => {
       port: 80,
     });
 
-    const synthesized = Testing.synth(stack);
+    const synthesized = JSON.parse(Testing.synth(stack));
 
     // Find the deployment resource
-    const deployment = synthesized.find(resource =>
-      resource.type === "kubernetes_deployment"
-    );
+    const deployment = Object.values(
+      synthesized.resource.kubernetes_deployment
+    )[0] as any;
 
     expect(deployment).toBeDefined();
     expect(deployment.spec.replicas).toBe("5");
@@ -473,7 +471,7 @@ describe("Application Construct", () => {
 
   test("creates configmap when env vars provided", () => {
     const app = Testing.app();
-    const stack = Testing.stubStack(app, "test");
+    const stack = new TerraformStack(app, "test");
 
     new Application(stack, "test-app", {
       name: "test",
@@ -487,10 +485,10 @@ describe("Application Construct", () => {
       },
     });
 
-    const synthesized = Testing.synth(stack);
-    const configMap = synthesized.find(resource =>
-      resource.type === "kubernetes_config_map"
-    );
+    const synthesized = JSON.parse(Testing.synth(stack));
+    const configMap = Object.values(
+      synthesized.resource.kubernetes_config_map
+    )[0] as any;
 
     expect(configMap).toBeDefined();
     expect(configMap.data.FOO).toBe("bar");
@@ -498,7 +496,7 @@ describe("Application Construct", () => {
 
   test("applies security context to containers", () => {
     const app = Testing.app();
-    const stack = Testing.stubStack(app, "test");
+    const stack = new TerraformStack(app, "test");
 
     new Application(stack, "test-app", {
       name: "test",
@@ -508,14 +506,14 @@ describe("Application Construct", () => {
       port: 80,
     });
 
-    const synthesized = Testing.synth(stack);
-    const deployment = synthesized.find(resource =>
-      resource.type === "kubernetes_deployment"
-    );
+    const synthesized = JSON.parse(Testing.synth(stack));
+    const deployment = Object.values(
+      synthesized.resource.kubernetes_deployment
+    )[0] as any;
 
     const container = deployment.spec.template.spec.container[0];
-    expect(container.securityContext.runAsNonRoot).toBe(true);
-    expect(container.securityContext.capabilities.drop).toContain("ALL");
+    expect(container.security_context.run_as_non_root).toBe(true);
+    expect(container.security_context.capabilities.drop).toContain("ALL");
   });
 });
 ```
@@ -551,19 +549,19 @@ class MultiClusterStack extends TerraformStack {
 
     // Create a cluster for each configuration
     Object.entries(config.clusters).forEach(([name, clusterConfig]) => {
-      new AwsProvider(this, `aws-${name}`, {
+      const provider = new AwsProvider(this, `aws-${name}`, {
         region: clusterConfig.region,
         alias: name,
       });
 
       const cluster = new EksCluster(this, `cluster-${name}`, {
         name: name,
-        version: "1.28",
+        version: "1.35",
         roleArn: this.getClusterRole(name),
         vpcConfig: {
           subnetIds: this.getSubnetsForRegion(clusterConfig.region),
         },
-        provider: `aws.${name}`,
+        provider: provider,
       });
 
       new EksNodeGroup(this, `nodes-${name}`, {
@@ -577,7 +575,7 @@ class MultiClusterStack extends TerraformStack {
           desiredSize: clusterConfig.minNodes,
         },
         instanceTypes: [clusterConfig.nodeType],
-        provider: `aws.${name}`,
+        provider: provider,
       });
     });
   }
