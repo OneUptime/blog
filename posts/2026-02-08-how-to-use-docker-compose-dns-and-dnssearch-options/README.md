@@ -28,8 +28,6 @@ The `dns` option lets you specify which DNS servers a container should use for r
 
 ```yaml
 # Set custom DNS servers for a service
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -150,8 +148,6 @@ The two options work together. Here is a complete setup for a development enviro
 
 ```yaml
 # Development environment with full DNS configuration
-version: "3.8"
-
 services:
   backend:
     build: ./backend
@@ -188,20 +184,21 @@ networks:
 
 Understanding the resolution order helps you debug DNS issues. When a container on a user-defined network tries to resolve a name, the following happens:
 
-1. Docker's embedded DNS server checks if the name matches a container or service name on the same network
-2. If no match, the embedded DNS server forwards the query to the configured DNS servers (from `dns` or daemon defaults)
-3. The resolver applies search domains for short hostnames
+1. The container's resolver applies search domains to short hostnames according to `/etc/resolv.conf`
+2. Each DNS query goes to Docker's embedded DNS server
+3. Docker's embedded DNS server checks if the query matches a container or service name on the same network
+4. If no match, the embedded DNS server forwards the query to the configured DNS servers (from `dns` or daemon defaults)
 
 Here is a diagram showing the resolution flow.
 
 ```mermaid
 flowchart TD
-    A[Application resolves hostname] --> B{Is it a container/service name?}
+    A[Application resolves hostname] --> D{Is it a short hostname?}
+    D -->|Yes| F[Apply search domains from resolv.conf]
+    D -->|No| B
+    F --> B
     B -->|Yes| C[Docker embedded DNS responds]
-    B -->|No| D{Is it a FQDN?}
-    D -->|Yes| E[Forward to configured DNS servers]
-    D -->|No| F[Append search domains and retry]
-    F --> E
+    B -->|No| E[Forward to configured DNS servers]
     E --> G{Resolved?}
     G -->|Yes| H[Return IP address]
     G -->|No| I[Return NXDOMAIN]
@@ -215,8 +212,6 @@ When your microservices are spread across multiple Docker networks or hosts, sea
 
 ```yaml
 # Microservices using search domains for clean service addressing
-version: "3.8"
-
 services:
   api-gateway:
     image: my-gateway:latest
@@ -320,8 +315,9 @@ docker network inspect my-network | jq '.[0].IPAM'
 
 If you want the same DNS settings for all services, you can set them at the Docker daemon level instead of repeating them in every Compose file.
 
+`/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json - Global DNS configuration
 {
   "dns": ["10.0.0.53", "8.8.8.8"],
   "dns-search": ["mycompany.internal"]
