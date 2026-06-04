@@ -42,13 +42,15 @@ RUN apt-get update && apt-get install -y \
     git \
     vim \
     jq \
+    wget \
+    python3-pip \
     bash-completion \
     && rm -rf /var/lib/apt/lists/*
 
 # Install kubectl
-RUN curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | \
+RUN curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.36/deb/Release.key | \
     gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
-    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | \
+    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.36/deb/ /' | \
     tee /etc/apt/sources.list.d/kubernetes.list && \
     apt-get update && \
     apt-get install -y kubectl && \
@@ -71,7 +73,7 @@ RUN git clone https://github.com/ahmetb/kubectx /opt/kubectx && \
     ln -s /opt/kubectx/kubens /usr/local/bin/kubens
 
 # Install stern for log streaming
-RUN curl -L https://github.com/stern/stern/releases/download/v1.28.0/stern_1.28.0_linux_amd64.tar.gz | \
+RUN curl -L https://github.com/stern/stern/releases/download/v1.34.0/stern_1.34.0_linux_amd64.tar.gz | \
     tar xz && mv stern /usr/local/bin/
 
 # Install yq for YAML processing
@@ -79,7 +81,7 @@ RUN wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
     chmod +x /usr/local/bin/yq
 
 # Install kind for local clusters
-RUN curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64 && \
+RUN curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64 && \
     chmod +x ./kind && \
     mv ./kind /usr/local/bin/kind
 
@@ -88,7 +90,7 @@ RUN apt-get update && apt-get install -y \
     httpie \
     iproute2 \
     iputils-ping \
-    netcat \
+    netcat-openbsd \
     dnsutils \
     && rm -rf /var/lib/apt/lists/*
 
@@ -100,9 +102,9 @@ ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
-# Create user with sudo access
-RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+# Create user with sudo access if the base image does not already include it
+RUN if ! getent group $USERNAME >/dev/null; then groupadd --gid $USER_GID $USERNAME; fi \
+    && if ! id -u $USERNAME >/dev/null 2>&1; then useradd --uid $USER_UID --gid $USER_GID -m $USERNAME; fi \
     && apt-get update \
     && apt-get install -y sudo \
     && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
@@ -187,7 +189,7 @@ Create the devcontainer configuration:
   "postCreateCommand": "bash .devcontainer/post-create.sh",
 
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:3": {},
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}
   }
@@ -215,7 +217,7 @@ if [ -f ~/.kube/config ]; then
     # Test cluster connectivity
     if kubectl cluster-info &> /dev/null; then
         echo "✓ Cluster connectivity verified"
-        kubectl version --short 2>/dev/null || kubectl version
+        kubectl version
     else
         echo "⚠ Warning: Cannot connect to cluster. Check your kubeconfig."
     fi
@@ -227,19 +229,19 @@ fi
 echo "Installing development dependencies..."
 
 # Install language-specific tools if needed
-if [ -f "go.mod" ]; then
+if [ -f "go.mod" ] && command -v go >/dev/null 2>&1; then
     echo "Go project detected, installing Go dependencies..."
     go mod download
 fi
 
-if [ -f "package.json" ]; then
+if [ -f "package.json" ] && command -v npm >/dev/null 2>&1; then
     echo "Node.js project detected, installing npm dependencies..."
     npm install
 fi
 
-if [ -f "requirements.txt" ]; then
+if [ -f "requirements.txt" ] && command -v python3 >/dev/null 2>&1; then
     echo "Python project detected, installing pip dependencies..."
-    pip install -r requirements.txt
+    python3 -m pip install -r requirements.txt
 fi
 
 # Set up useful aliases
@@ -376,9 +378,10 @@ quick_deploy() {
     local name=${1:-app}
     local image=${2:-nginx:latest}
     local port=${3:-8080}
+    local target_port=${4:-80}
 
     kubectl create deployment $name --image=$image
-    kubectl expose deployment $name --port=$port --target-port=$port
+    kubectl expose deployment $name --port=$port --target-port=$target_port
     kubectl wait --for=condition=available --timeout=60s deployment/$name
 
     echo "Deployment $name created and exposed on port $port"
@@ -452,7 +455,7 @@ Create a devcontainer that supports multiple Kubernetes clusters:
   "postCreateCommand": "bash -c 'source .devcontainer/post-create.sh && source .devcontainer/scripts/dev-helpers.sh'",
 
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:3": {},
     "ghcr.io/devcontainers/features/aws-cli:1": {},
     "ghcr.io/devcontainers/features/azure-cli:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {},
@@ -534,26 +537,24 @@ Include validation tools in the devcontainer:
 # .devcontainer/scripts/setup-validation.sh
 
 # Install pre-commit
-pip install pre-commit
+python3 -m pip install pre-commit
 
-# Install kubeval for manifest validation
-wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
-tar xf kubeval-linux-amd64.tar.gz
-sudo mv kubeval /usr/local/bin/
-rm kubeval-linux-amd64.tar.gz
+# Install kubeconform for manifest validation
+curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+sudo mv kubeconform /usr/local/bin/
 
 # Install yamllint
-pip install yamllint
+python3 -m pip install yamllint
 
 # Install hadolint for Dockerfile linting
-wget -O /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
-chmod +x /usr/local/bin/hadolint
+sudo wget -O /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/download/v2.14.0/hadolint-Linux-x86_64
+sudo chmod +x /usr/local/bin/hadolint
 
 # Set up pre-commit hooks
 cat > .pre-commit-config.yaml << 'EOF'
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -561,15 +562,15 @@ repos:
       - id: check-added-large-files
 
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.32.0
+    rev: v1.38.0
     hooks:
       - id: yamllint
 
   - repo: local
     hooks:
-      - id: kubeval
+      - id: kubeconform
         name: Validate Kubernetes manifests
-        entry: kubeval
+        entry: kubeconform
         language: system
         files: ^k8s/.*\.yaml$
 EOF
