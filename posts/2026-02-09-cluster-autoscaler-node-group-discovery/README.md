@@ -8,15 +8,15 @@ Description: Configure Cluster Autoscaler node group auto-discovery to automatic
 
 ---
 
-Manually configuring Cluster Autoscaler with every node group in your cluster becomes unwieldy as the number of groups grows. Auto-discovery uses cloud provider tags or labels to automatically identify which autoscaling groups should be managed by Cluster Autoscaler. This eliminates manual configuration and makes it easy to add or remove node groups.
+Manually configuring Cluster Autoscaler with every node group in your cluster becomes unwieldy as the number of groups grows. Auto-discovery uses cloud provider tags or name prefixes to automatically identify which autoscaling groups should be managed by Cluster Autoscaler. This eliminates manual configuration and makes it easy to add or remove node groups.
 
-Auto-discovery works across major cloud providers including AWS, GCP, and Azure. By tagging your autoscaling groups appropriately, Cluster Autoscaler finds and manages them automatically, scaling each group based on pod resource requirements and constraints.
+Auto-discovery works across major cloud providers including AWS, GCP, and Azure. By tagging or naming your autoscaling groups appropriately, Cluster Autoscaler finds and manages them automatically, scaling each group based on pod resource requirements and constraints.
 
 ## Understanding Auto-Discovery
 
 Auto-discovery scans cloud provider APIs for autoscaling groups that match specific tag patterns. When found, Cluster Autoscaler manages these groups without requiring them to be explicitly listed in the configuration. This is particularly valuable for environments with many node groups or where node groups are created and destroyed frequently.
 
-The autoscaler uses cloud provider tags to identify which groups to manage and which cluster they belong to. This allows running multiple clusters in the same cloud account without interference.
+The autoscaler uses cloud provider tags or managed instance group name prefixes to identify which groups to manage and which cluster they belong to. This allows running multiple clusters in the same cloud account without interference.
 
 ## AWS Auto Scaling Group Discovery
 
@@ -60,7 +60,7 @@ spec:
       serviceAccountName: cluster-autoscaler
       containers:
       - name: cluster-autoscaler
-        image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.27.0
+        image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.35.0
         command:
         - ./cluster-autoscaler
         - --v=4
@@ -77,13 +77,12 @@ The auto-discovery tag pattern finds all ASGs with both the enabled tag and the 
 
 ## GCP Managed Instance Group Discovery
 
-Configure auto-discovery for GKE using instance group labels.
+Configure auto-discovery for GCE using managed instance group name prefixes.
 
 ```bash
-# Label MIG for discovery
-gcloud compute instance-groups managed update my-node-pool \
-  --region=us-central1 \
-  --update-labels=k8s-io-cluster-autoscaler-enabled=true,k8s-io-cluster-autoscaler-my-cluster=owned
+# Managed instance groups are discovered by name prefix
+gcloud compute instance-groups managed list \
+  --filter='name~^gke-my-cluster-'
 ```
 
 Deploy Cluster Autoscaler with GCP auto-discovery.
@@ -107,12 +106,12 @@ spec:
       serviceAccountName: cluster-autoscaler
       containers:
       - name: cluster-autoscaler
-        image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.27.0
+        image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.35.0
         command:
         - ./cluster-autoscaler
         - --v=4
         - --cloud-provider=gce
-        - --node-group-auto-discovery=mig:name_prefix=gke-my-cluster-,label=k8s-io-cluster-autoscaler-enabled=true
+        - --node-group-auto-discovery=mig:namePrefix=gke-my-cluster-,min=1,max=50
         env:
         - name: GCE_PROJECT
           value: my-project
@@ -120,7 +119,7 @@ spec:
           value: us-central1-a
 ```
 
-This discovers all MIGs with names starting with the cluster prefix and the enabled label.
+This discovers all MIGs with names starting with the cluster prefix and applies the configured min and max size limits.
 
 ## Azure Virtual Machine Scale Set Discovery
 
@@ -131,8 +130,10 @@ Configure auto-discovery for AKS using VMSS tags.
 az vmss update \
   --resource-group my-resource-group \
   --name my-node-pool \
-  --set tags.k8s-io-cluster-autoscaler-enabled=true \
-  --set tags.k8s-io-cluster-autoscaler-my-cluster=owned
+  --set tags.cluster-autoscaler-enabled=true \
+  --set tags.cluster-autoscaler-name=my-cluster \
+  --set tags.min=1 \
+  --set tags.max=50
 ```
 
 Deploy Cluster Autoscaler with Azure auto-discovery.
@@ -156,7 +157,7 @@ spec:
       serviceAccountName: cluster-autoscaler
       containers:
       - name: cluster-autoscaler
-        image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.27.0
+        image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.35.0
         command:
         - ./cluster-autoscaler
         - --v=4
@@ -236,7 +237,8 @@ Add new node groups without restarting Cluster Autoscaler.
 # Create new ASG with proper tags
 aws autoscaling create-auto-scaling-group \
   --auto-scaling-group-name new-node-group \
-  --launch-template LaunchTemplateName=my-template \
+  --launch-template LaunchTemplateName=my-template,Version='$Latest' \
+  --vpc-zone-identifier subnet-0123456789abcdef0,subnet-abcdef01234567890 \
   --min-size 0 \
   --max-size 10 \
   --desired-capacity 0 \
@@ -251,7 +253,7 @@ The autoscaler periodically scans for new groups matching the discovery pattern.
 
 ## Setting Node Group Limits
 
-Configure min and max sizes through cloud provider APIs.
+Configure min and max sizes through cloud provider APIs or auto-discovery settings, depending on the provider.
 
 ```bash
 # AWS: Set ASG limits
@@ -260,17 +262,17 @@ aws autoscaling update-auto-scaling-group \
   --min-size 1 \
   --max-size 50
 
-# GCP: Set MIG limits
-gcloud compute instance-groups managed set-autoscaling my-node-pool \
-  --region=us-central1 \
-  --min-num-replicas=1 \
-  --max-num-replicas=50
+# GCP: Set limits in the Cluster Autoscaler deployment manifest
+kubectl -n kube-system patch deployment cluster-autoscaler \
+  --type='json' \
+  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/command","value":["./cluster-autoscaler","--v=4","--cloud-provider=gce","--node-group-auto-discovery=mig:namePrefix=gke-my-cluster-,min=1,max=50"]}]'
 
-# Azure: Set VMSS limits
+# Azure: Set VMSS limits as tags for auto-discovery
 az vmss update \
   --resource-group my-resource-group \
   --name my-node-pool \
-  --set sku.capacity=1
+  --set tags.min=1 \
+  --set tags.max=50
 ```
 
 Cluster Autoscaler respects these limits when scaling node groups.
@@ -330,7 +332,7 @@ Document your tag naming conventions and discovery patterns so team members unde
 
 ## Limitations
 
-Auto-discovery has a scan interval, so newly created node groups may not be discovered immediately. The default scan interval is 10 minutes.
+Auto-discovery has a scan interval, so newly created node groups may not be discovered immediately. The default scan interval is 10 seconds.
 
 Changes to node group tags require the autoscaler to re-scan, which may delay recognition of tag changes.
 
@@ -338,6 +340,6 @@ Complex tag filtering patterns can make it difficult to understand which node gr
 
 ## Conclusion
 
-Cluster Autoscaler node group auto-discovery simplifies managing multiple node groups by eliminating manual configuration. By properly tagging your cloud provider autoscaling groups, you enable Cluster Autoscaler to automatically find and manage them without requiring deployment updates.
+Cluster Autoscaler node group auto-discovery simplifies managing multiple node groups by eliminating manual configuration. By properly tagging or naming your cloud provider autoscaling groups, you enable Cluster Autoscaler to automatically find and manage them without requiring deployment updates.
 
 Auto-discovery is especially valuable in dynamic environments where node groups are frequently added or removed, or in large clusters with many specialized node groups. Combined with appropriate tagging strategies and monitoring, auto-discovery provides a maintainable, scalable approach to cluster autoscaling configuration.
