@@ -87,7 +87,11 @@ clusters:
   connect_timeout: 1s
   type: STRICT_DNS
   lb_policy: ROUND_ROBIN
-  http2_protocol_options: {}
+  typed_extension_protocol_options:
+    envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+      "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+      explicit_http_config:
+        http2_protocol_options: {}
   load_assignment:
     cluster_name: authz_grpc_cluster
     endpoints:
@@ -114,8 +118,7 @@ import (
 )
 
 type AuthResponse struct {
-    Allowed bool              `json:"allowed"`
-    Headers map[string]string `json:"headers,omitempty"`
+    Allowed bool `json:"allowed"`
 }
 
 func authzHandler(w http.ResponseWriter, r *http.Request) {
@@ -139,15 +142,12 @@ func authzHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Allow request and add user context headers
+    // Allow request and add user context headers. Envoy copies matching
+    // response headers configured in allowed_upstream_headers.
+    w.Header().Set("x-user-id", userID)
+    w.Header().Set("x-user-roles", roles)
     w.WriteHeader(http.StatusOK)
-    json.NewEncoder(w).Encode(AuthResponse{
-        Allowed: true,
-        Headers: map[string]string{
-            "x-user-id":    userID,
-            "x-user-roles": roles,
-        },
-    })
+    json.NewEncoder(w).Encode(AuthResponse{Allowed: true})
 }
 
 func validateToken(token string) (string, string) {
@@ -212,44 +212,24 @@ Public endpoints skip authorization, admin endpoints enforce it.
 
 ## Caching Authorization Decisions
 
-Cache authorization results to reduce load:
-
-```yaml
-typed_config:
-  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
-  http_service:
-    server_uri:
-      uri: http://authz-service:8080
-      cluster: authz_cluster
-      timeout: 1s
-    authorization_request:
-      allowed_headers:
-        patterns:
-        - exact: "authorization"
-  filter_enabled_metadata:
-    filter: envoy.filters.http.ext_authz
-    path:
-    - key: shadow_effective
-    value:
-      bool_match: false
-  status_on_error:
-    code: 403
-```
+Envoy's ext_authz filter does not cache authorization decisions itself. Implement caching in the authorization service to reduce database or policy-engine calls, and key the cache on the request attributes that affect the authorization decision.
 
 ## Monitoring ext_authz
 
 Track authorization metrics:
 
-```promql
-# Authorization requests
+```text
+# Authorization requests allowed by ext_authz
+cluster.<route_target_cluster>.ext_authz.ok
 
-envoy_http_ext_authz_total
+# Authorization denials by ext_authz
+cluster.<route_target_cluster>.ext_authz.denied
 
-# Authorization denials
-envoy_http_ext_authz_denied
+# Authorization service errors
+cluster.<route_target_cluster>.ext_authz.error
 
 # Authorization service latency
-envoy_cluster_upstream_rq_time{cluster="authz_cluster"}
+cluster.authz_cluster.upstream_rq_time
 ```
 
 ## Best Practices
