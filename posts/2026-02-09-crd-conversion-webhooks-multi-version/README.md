@@ -10,7 +10,7 @@ Description: Learn how to implement conversion webhooks for Custom Resource Defi
 
 APIs evolve. Fields get renamed, structures get refactored, and new features get added. In Kubernetes, Custom Resource Definitions need to support multiple versions simultaneously while maintaining backward compatibility. Conversion webhooks make this possible.
 
-Without conversion webhooks, you're stuck with a single API version forever or you force users to migrate all their resources at once. Neither option is realistic for production systems. This guide shows you how to implement conversion webhooks that let you evolve your CRD gracefully.
+Without conversion webhooks, schema-changing API evolution is limited to versions that can share the same object shape, or you force users to migrate all their resources at once. Neither option is realistic for production systems. This guide shows you how to implement conversion webhooks that let you evolve your CRD gracefully.
 
 ## Understanding CRD Versioning
 
@@ -99,7 +99,7 @@ package main
 import (
     "encoding/json"
     "fmt"
-    "io/ioutil"
+    "io"
     "net/http"
 
     "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -176,7 +176,7 @@ func convertV2ToV1(v2Obj *ApplicationV2) (*ApplicationV1, error) {
 // handleConvert processes conversion requests
 func handleConvert(w http.ResponseWriter, r *http.Request) {
     // Read request body
-    body, err := ioutil.ReadAll(r.Body)
+    body, err := io.ReadAll(r.Body)
     if err != nil {
         http.Error(w, "failed to read request", http.StatusBadRequest)
         return
@@ -189,64 +189,92 @@ func handleConvert(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "failed to parse request", http.StatusBadRequest)
         return
     }
+    if convertReview.Request == nil {
+        http.Error(w, "missing conversion request", http.StatusBadRequest)
+        return
+    }
 
     // Process conversion
     convertedObjects := []runtime.RawExtension{}
 
     for _, obj := range convertReview.Request.Objects {
         // Determine source and target versions
-        src := obj.Object
-        var converted interface{}
+        var convertedRaw []byte
         var err error
 
         // Parse to determine current version
         var typeMeta metav1.TypeMeta
-        json.Unmarshal(obj.Raw, &typeMeta)
+        if err := json.Unmarshal(obj.Raw, &typeMeta); err != nil {
+            respondFailure(w, convertReview, err)
+            return
+        }
 
         desiredVersion := convertReview.Request.DesiredAPIVersion
 
         if typeMeta.APIVersion == "example.com/v1" && desiredVersion == "example.com/v2" {
             var v1Obj ApplicationV1
-            json.Unmarshal(obj.Raw, &v1Obj)
+            if err := json.Unmarshal(obj.Raw, &v1Obj); err != nil {
+                respondFailure(w, convertReview, err)
+                return
+            }
+            var converted *ApplicationV2
             converted, err = convertV1ToV2(&v1Obj)
+            if err == nil {
+                convertedRaw, err = json.Marshal(converted)
+            }
         } else if typeMeta.APIVersion == "example.com/v2" && desiredVersion == "example.com/v1" {
             var v2Obj ApplicationV2
-            json.Unmarshal(obj.Raw, &v2Obj)
+            if err := json.Unmarshal(obj.Raw, &v2Obj); err != nil {
+                respondFailure(w, convertReview, err)
+                return
+            }
+            var converted *ApplicationV1
             converted, err = convertV2ToV1(&v2Obj)
+            if err == nil {
+                convertedRaw, err = json.Marshal(converted)
+            }
         } else {
-            // No conversion needed
-            converted = src
+            // No conversion needed, but the object still needs to be returned.
+            convertedRaw = obj.Raw
         }
 
         if err != nil {
-            convertReview.Response = &v1.ConversionResponse{
-                UID:    convertReview.Request.UID,
-                Result: metav1.Status{
-                    Status:  metav1.StatusFailure,
-                    Message: err.Error(),
-                },
-            }
-            respondJSON(w, convertReview)
+            respondFailure(w, convertReview, err)
             return
         }
 
-        // Marshal converted object
-        convertedJSON, _ := json.Marshal(converted)
         convertedObjects = append(convertedObjects, runtime.RawExtension{
-            Raw: convertedJSON,
+            Raw: convertedRaw,
         })
     }
 
     // Build successful response
-    convertReview.Response = &v1.ConversionResponse{
-        UID:              convertReview.Request.UID,
-        ConvertedObjects: convertedObjects,
-        Result: metav1.Status{
-            Status: metav1.StatusSuccess,
+    responseReview := v1.ConversionReview{
+        TypeMeta: convertReview.TypeMeta,
+        Response: &v1.ConversionResponse{
+            UID:              convertReview.Request.UID,
+            ConvertedObjects: convertedObjects,
+            Result: metav1.Status{
+                Status: metav1.StatusSuccess,
+            },
         },
     }
 
-    respondJSON(w, convertReview)
+    respondJSON(w, responseReview)
+}
+
+func respondFailure(w http.ResponseWriter, review v1.ConversionReview, err error) {
+    responseReview := v1.ConversionReview{
+        TypeMeta: review.TypeMeta,
+        Response: &v1.ConversionResponse{
+            UID: review.Request.UID,
+            Result: metav1.Status{
+                Status:  metav1.StatusFailure,
+                Message: err.Error(),
+            },
+        },
+    }
+    respondJSON(w, responseReview)
 }
 
 func respondJSON(w http.ResponseWriter, obj interface{}) {
@@ -266,7 +294,7 @@ func main() {
 }
 ```
 
-This webhook handles bidirectional conversion between v1 and v2. When converting v1 to v2, it restructures the replicas field into a scaling object and renames containerImage to image.
+This webhook handles bidirectional conversion between v1 and v2. When converting v1 to v2, it restructures the replicas field into a scaling object and renames containerImage to image. The converted objects are returned in the same order they were received, and the conversion functions preserve metadata fields such as name, namespace, and UID.
 
 ## Deploying the Webhook
 
@@ -326,12 +354,16 @@ Conversion webhooks require TLS. Generate certificates with cert-manager or manu
 openssl genrsa -out ca.key 2048
 openssl req -x509 -new -nodes -key ca.key -days 365 -out ca.crt -subj "/CN=conversion-webhook-ca"
 
-# Generate server key and CSR
+# Generate server key and CSR. The certificate must include SANs for the Service DNS names.
 openssl genrsa -out tls.key 2048
-openssl req -new -key tls.key -out tls.csr -subj "/CN=app-conversion-webhook.default.svc"
+openssl req -new -key tls.key -out tls.csr \
+  -subj "/CN=app-conversion-webhook.default.svc" \
+  -addext "subjectAltName=DNS:app-conversion-webhook.default.svc,DNS:app-conversion-webhook.default.svc.cluster.local"
 
 # Sign the certificate
-openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out tls.crt -days 365
+openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+  -out tls.crt -days 365 \
+  -extfile <(printf "subjectAltName=DNS:app-conversion-webhook.default.svc,DNS:app-conversion-webhook.default.svc.cluster.local")
 
 # Create Kubernetes secret
 kubectl create secret tls webhook-certs \
@@ -422,7 +454,7 @@ spec:
 EOF
 
 # Retrieve it as v2
-kubectl get application test-app -o yaml --output-version=example.com/v2
+kubectl get applications.v2.example.com test-app -o yaml
 
 # Create a v2 resource
 cat <<EOF | kubectl apply -f -
@@ -439,7 +471,7 @@ spec:
 EOF
 
 # Retrieve it as v1
-kubectl get application test-app-v2 -o yaml --output-version=example.com/v1
+kubectl get applications.v1.example.com test-app-v2 -o yaml
 ```
 
 Verify that fields convert correctly in both directions.
@@ -454,10 +486,15 @@ func handleConvert(w http.ResponseWriter, r *http.Request) {
 
     // ... existing code ...
 
-    log.Printf("Converting %d objects from %s to %s",
-        len(convertReview.Request.Objects),
-        convertReview.Request.Objects[0].Object.GetObjectKind().GroupVersionKind().Version,
-        convertReview.Request.DesiredAPIVersion)
+    if len(convertReview.Request.Objects) > 0 {
+        var typeMeta metav1.TypeMeta
+        if err := json.Unmarshal(convertReview.Request.Objects[0].Raw, &typeMeta); err == nil {
+            log.Printf("Converting %d objects from %s to %s",
+                len(convertReview.Request.Objects),
+                typeMeta.APIVersion,
+                convertReview.Request.DesiredAPIVersion)
+        }
+    }
 
     // ... existing code ...
 
