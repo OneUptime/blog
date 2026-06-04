@@ -125,7 +125,7 @@ This flexibility helps when you're not sure what parallelism level works best. S
 
 ## Work Queue Pattern
 
-For work queue patterns where pods pull tasks from a shared queue, you typically set a high completions count with parallelism controlling your worker pool size:
+For pod-per-item queue patterns where pods pull tasks from a shared queue and you know the exact task count ahead of time, set completions to that task count with parallelism controlling your worker pool size:
 
 ```yaml
 apiVersion: batch/v1
@@ -171,7 +171,7 @@ def main():
 
     if task_json is None:
         print("No work available")
-        sys.exit(0)
+        sys.exit(1)
 
     task = json.loads(task_json)
     process_task(task)
@@ -180,7 +180,7 @@ if __name__ == "__main__":
     main()
 ```
 
-Each pod grabs one item, processes it, and exits. Kubernetes counts this as one completion and starts a new pod to grab the next item.
+Each pod grabs one item, processes it, and exits. Kubernetes counts a successful pod as one completion and starts a new pod to grab the next item. If you do not know the queue size ahead of time, leave completions unset and make your workers coordinate when the queue is drained.
 
 ## Fixed Work Assignment Pattern
 
@@ -257,7 +257,7 @@ kubectl get job image-processor -o yaml | grep -A 5 status
 kubectl get job image-processor -w
 
 # See active pod count
-kubectl get pods -l job-name=image-processor --field-selector=status.phase=Running | wc -l
+kubectl get pods -l batch.kubernetes.io/job-name=image-processor --field-selector=status.phase=Running | wc -l
 
 # Calculate completion percentage
 TOTAL=$(kubectl get job image-processor -o jsonpath='{.spec.completions}')
@@ -270,19 +270,22 @@ Resource-Based Parallelism Calculation
 Calculate optimal parallelism based on available resources:
 
 ```bash
-# Get total cluster CPU
-TOTAL_CPU=$(kubectl top nodes --no-headers | awk '{sum+=$2} END {print sum}')
+# Get allocatable cluster CPU in millicores
+TOTAL_MCPU=$(kubectl get nodes -o jsonpath='{range .items[*]}{.status.allocatable.cpu}{"\n"}{end}' | awk '
+/m$/ {sum += substr($0, 1, length($0)-1); next}
+/^[0-9.]+$/ {sum += $0 * 1000}
+END {print int(sum)}')
 
 # If each job pod needs 500m CPU
-POD_CPU=0.5
+POD_MCPU=500
 
 # Calculate max parallelism (leaving 20% headroom)
-MAX_PARALLEL=$(echo "$TOTAL_CPU * 0.8 / $POD_CPU" | bc)
+MAX_PARALLEL=$((TOTAL_MCPU * 80 / 100 / POD_MCPU))
 
 echo "Recommended parallelism: $MAX_PARALLEL"
 ```
 
-This ensures you don't overcommit your cluster resources.
+This gives you a capacity-based ceiling. Subtract CPU already needed by other workloads before using it for production jobs.
 
 ## Best Practices
 
@@ -303,9 +306,9 @@ spec:
   minAvailable: 10
   selector:
     matchLabels:
-      job-name: image-processor
+      batch.kubernetes.io/job-name: image-processor
 ```
 
-This ensures at least 10 pods keep running during cluster operations, maintaining throughput.
+This helps keep at least 10 pods running during voluntary disruptions that respect PodDisruptionBudgets, maintaining throughput.
 
 The combination of completions and parallelism gives you fine-grained control over batch processing. Tune these values based on your workload characteristics, available resources, and downstream system constraints for optimal results.
