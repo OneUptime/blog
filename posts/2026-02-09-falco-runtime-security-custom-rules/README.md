@@ -25,8 +25,8 @@ Basic rule anatomy:
 ```yaml
 - rule: Example Rule Name
   desc: Human-readable description of what this detects
-  condition: system_call and suspicious_activity
-  output: "Alert message with %user.name and %container.name"
+  condition: spawned_process and container and proc.name in (sh, bash)
+  output: "Shell started by %user.name in %container.name"
   priority: WARNING
   tags: [security, containers]
 ```
@@ -35,95 +35,24 @@ Basic rule anatomy:
 
 Deploy Falco in your Kubernetes cluster:
 
-```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: falco
----
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: falco
-  namespace: falco
-spec:
-  selector:
-    matchLabels:
-      app: falco
-  template:
-    metadata:
-      labels:
-        app: falco
-    spec:
-      serviceAccountName: falco
-      hostNetwork: true
-      hostPID: true
-      containers:
-      - name: falco
-        image: falcosecurity/falco:0.36.0
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: docker-socket
-          mountPath: /var/run/docker.sock
-        - name: dev
-          mountPath: /host/dev
-        - name: proc
-          mountPath: /host/proc
-          readOnly: true
-        - name: boot
-          mountPath: /host/boot
-          readOnly: true
-        - name: lib-modules
-          mountPath: /host/lib/modules
-          readOnly: true
-        - name: usr
-          mountPath: /host/usr
-          readOnly: true
-        - name: etc
-          mountPath: /host/etc
-          readOnly: true
-        - name: falco-config
-          mountPath: /etc/falco
-      volumes:
-      - name: docker-socket
-        hostPath:
-          path: /var/run/docker.sock
-      - name: dev
-        hostPath:
-          path: /dev
-      - name: proc
-        hostPath:
-          path: /proc
-      - name: boot
-        hostPath:
-          path: /boot
-      - name: lib-modules
-        hostPath:
-          path: /lib/modules
-      - name: usr
-        hostPath:
-          path: /usr
-      - name: etc
-        hostPath:
-          path: /etc
-      - name: falco-config
-        configMap:
-          name: falco-config
+```bash
+helm repo add falcosecurity https://falcosecurity.github.io/charts
+helm repo update
+
+helm install --replace falco \
+  --namespace falco \
+  --create-namespace \
+  --set tty=true \
+  falcosecurity/falco
 ```
 
 ## Creating Custom Rules
 
-Store custom rules in a ConfigMap:
+Store custom rules in a Helm values file:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: falco-custom-rules
-  namespace: falco
-data:
-  custom-rules.yaml: |
+customRules:
+  custom-rules.yaml: |-
     - rule: Unauthorized Process in Container
       desc: Detect when unauthorized processes run in production containers
       condition: >
@@ -142,7 +71,7 @@ data:
       condition: >
         open_write and
         container and
-        fd.name startswith /usr/ or fd.name startswith /bin/ or fd.name startswith /sbin/
+        (fd.name startswith /usr/ or fd.name startswith /bin/ or fd.name startswith /sbin/)
       output: >
         Container wrote to system directory
         (user=%user.name file=%fd.name container=%container.name image=%container.image.repository)
@@ -167,8 +96,8 @@ data:
         outbound and
         container and
         container.image.repository in (postgres, mysql, mongodb) and
-        fd.sip != "127.0.0.1" and
-        fd.sip != "::1"
+        fd.rip != "127.0.0.1" and
+        fd.rip != "::1"
       output: >
         Outbound connection from database container
         (connection=%fd.name container=%container.name dest=%fd.rip:%fd.rport)
@@ -188,19 +117,14 @@ data:
       tags: [privilege_escalation]
 ```
 
-Mount the custom rules:
+Apply the custom rules:
 
-```yaml
-# Update the DaemonSet to include custom rules
-
-volumeMounts:
-- name: falco-custom-rules
-  mountPath: /etc/falco/rules.d
-
-volumes:
-- name: falco-custom-rules
-  configMap:
-    name: falco-custom-rules
+```bash
+helm upgrade -i falco \
+  --namespace falco \
+  --set tty=true \
+  -f custom-rules-values.yaml \
+  falcosecurity/falco
 ```
 
 ## Kubernetes-Specific Rules
@@ -208,13 +132,8 @@ volumes:
 Create rules that use Kubernetes metadata:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: falco-k8s-rules
-  namespace: falco
-data:
-  k8s-rules.yaml: |
+customRules:
+  k8s-rules.yaml: |-
     - rule: Container Running as Root in Production
       desc: Detect containers running as root in production namespaces
       condition: >
@@ -228,7 +147,7 @@ data:
       tags: [k8s, container, security]
 
     - rule: Secret Access from Non-Service Account
-      desc: Detect secret access from processes not running as service accounts
+      desc: Detect service account token reads by unexpected processes
       condition: >
         open_read and
         fd.name glob /var/run/secrets/kubernetes.io/serviceaccount/* and
@@ -239,19 +158,20 @@ data:
       priority: ERROR
       tags: [k8s, secrets]
 
-    - rule: Unexpected Service Account Usage
-      desc: Detect pods using service accounts they shouldn't
+    - rule: Unexpected Service Account Token Access
+      desc: Detect service account token reads in production namespaces
       condition: >
-        spawned_process and
+        open_read and
         k8s.pod.name != "" and
-        k8s.sa.name = "default" and
+        fd.name glob /var/run/secrets/kubernetes.io/serviceaccount/* and
         k8s.ns.name in (production, staging)
       output: >
-        Pod using default service account in production
-        (namespace=%k8s.ns.name pod=%k8s.pod.name)
+        Service account token read in production
+        (namespace=%k8s.ns.name pod=%k8s.pod.name process=%proc.name)
       priority: NOTICE
       tags: [k8s, rbac]
 
+    # Requires the k8saudit plugin and Kubernetes audit events to be configured.
     - rule: ConfigMap or Secret Creation
       desc: Detect creation of ConfigMaps or Secrets
       condition: >
@@ -272,13 +192,8 @@ data:
 Tailor rules to your applications:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: falco-app-rules
-  namespace: falco
-data:
-  app-rules.yaml: |
+customRules:
+  app-rules.yaml: |-
     - rule: Web Shell Detection
       desc: Detect web shell execution patterns
       condition: >
@@ -354,10 +269,10 @@ Create macros for common conditions:
 - macro: database_containers
   condition: container.image.repository in (postgres, mysql, mongodb, redis, cassandra)
 
-- macro: shell_binaries
+- macro: custom_shell_binaries
   condition: proc.name in (sh, bash, zsh, dash, csh, tcsh, ksh)
 
-- macro: package_managers
+- macro: custom_package_managers
   condition: proc.name in (apt-get, yum, dnf, apk, pip, npm)
 
 # Use macros in rules
@@ -367,7 +282,7 @@ Create macros for common conditions:
     spawned_process and
     container and
     production_namespace and
-    shell_binaries
+    custom_shell_binaries
   output: >
     Shell executed in production
     (namespace=%k8s.ns.name pod=%k8s.pod.name command=%proc.cmdline)
@@ -380,16 +295,12 @@ Create macros for common conditions:
 Validate rules before deployment:
 
 ```bash
-# Install falco-ctl
-wget https://github.com/falcosecurity/falcoctl/releases/download/v0.7.0/falcoctl_0.7.0_linux_amd64.tar.gz
-tar -xvf falcoctl_0.7.0_linux_amd64.tar.gz
-sudo mv falcoctl /usr/local/bin/
-
 # Validate rule syntax
-falcoctl rules validate custom-rules.yaml
+falco -V /etc/falco/falco_rules.yaml -V custom-rules.yaml
 
-# Test rules against sample events
-falcoctl rules test custom-rules.yaml --events test-events.json
+# Or validate with the Falco container image
+docker run --rm -v "$PWD:/rules:ro" falcosecurity/falco:0.44.0 \
+  falco -V /etc/falco/falco_rules.yaml -V /rules/custom-rules.yaml
 ```
 
 Create test cases:
@@ -415,7 +326,7 @@ Reduce false positives:
   condition: >
     spawned_process and
     container and
-    shell_binaries and
+    proc.name in (shell_binaries) and
     not (k8s.pod.name startswith "debug-" or
     k8s.pod.name startswith "troubleshoot-") and
     not proc.aname in (kubectl, docker, containerd)
