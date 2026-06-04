@@ -99,13 +99,13 @@ spec:
         app: monitoring-stack
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "9100"
+        prometheus.io/port: "9999"
     spec:
       hostNetwork: true
       hostPID: true
       containers:
       - name: node-exporter
-        image: prom/node-exporter:v1.7.0
+        image: quay.io/prometheus/node-exporter:v1.11.1
         args:
         - --path.procfs=/host/proc
         - --path.sysfs=/host/sys
@@ -130,7 +130,7 @@ spec:
             cpu: 200m
 
       - name: process-exporter
-        image: ncabatoff/process-exporter:0.7.10
+        image: ncabatoff/process-exporter:0.8.7
         args:
         - --procfs=/host/proc
         - --config.path=/etc/process-exporter/config.yml
@@ -149,7 +149,7 @@ spec:
             cpu: 100m
 
       - name: cadvisor
-        image: gcr.io/cadvisor/cadvisor:v0.47.0
+        image: ghcr.io/google/cadvisor:v0.57.0
         args:
         - --housekeeping_interval=10s
         - --docker_only=true
@@ -217,7 +217,7 @@ spec:
 
 This stack provides comprehensive node monitoring through multiple specialized exporters.
 
-## Service mesh data plane with sidecars
+## Service mesh node proxy with sidecars
 
 Deploy a service mesh proxy with telemetry and security sidecars:
 
@@ -237,21 +237,9 @@ spec:
         app: mesh-node
     spec:
       hostNetwork: true
-      initContainers:
-      - name: init-iptables
-        image: istio/proxyv2:1.20.0
-        command:
-        - /usr/local/bin/pilot-agent
-        - istio-iptables
-        securityContext:
-          capabilities:
-            add:
-            - NET_ADMIN
-            - NET_RAW
-
       containers:
-      - name: envoy-proxy
-        image: envoyproxy/envoy:v1.28.0
+      - name: node-proxy
+        image: envoyproxy/envoy:v1.33.0
         args:
         - -c
         - /etc/envoy/envoy.yaml
@@ -299,17 +287,19 @@ spec:
             cpu: 100m
 
       - name: config-sync
-        image: istio/pilot:1.20.0
+        image: example/config-sync:v1.0
         command:
-        - /usr/local/bin/pilot-agent
-        - proxy
-        - --serviceCluster
-        - mesh-node
+        - /config-sync
+        - --config-path=/etc/envoy/envoy.yaml
+        - --reload-endpoint=http://localhost:15090/reload
         env:
         - name: NODE_NAME
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        volumeMounts:
+        - name: envoy-config
+          mountPath: /etc/envoy
         resources:
           limits:
             memory: 200Mi
@@ -321,7 +311,7 @@ spec:
           name: envoy-config
 ```
 
-This multi-container DaemonSet provides complete service mesh functionality at the node level.
+This multi-container DaemonSet illustrates a node-local service mesh proxy pattern with supporting telemetry, security, and configuration components.
 
 ## Storage plugin with CSI sidecars
 
@@ -370,7 +360,7 @@ spec:
             cpu: 300m
 
       - name: node-driver-registrar
-        image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.0
+        image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.13.0
         args:
         - --csi-address=/csi/csi.sock
         - --kubelet-registration-path=/var/lib/kubelet/plugins/csi.example.com/csi.sock
@@ -385,7 +375,7 @@ spec:
             cpu: 50m
 
       - name: liveness-probe
-        image: registry.k8s.io/sig-storage/livenessprobe:v2.12.0
+        image: registry.k8s.io/sig-storage/livenessprobe:v2.15.0
         args:
         - --csi-address=/csi/csi.sock
         - --health-port=9808
@@ -491,21 +481,21 @@ spec:
             cpu: 100m
 
       - name: vulnerability-scanner
-        image: aquasec/trivy:0.48.0
+        image: aquasec/trivy:0.64.1
         command:
         - /bin/sh
         - -c
         - |
           while true; do
-            trivy image --format json --output /shared/scan-results.json \
-              $(crictl images -q)
+            trivy rootfs --format json --output /shared/scan-results.json /host/rootfs
             sleep 3600
           done
         volumeMounts:
         - name: shared
           mountPath: /shared
-        - name: containerd-socket
-          mountPath: /var/run/containerd
+        - name: host-root
+          mountPath: /host/rootfs
+          readOnly: true
         resources:
           limits:
             memory: 1Gi
@@ -536,12 +526,12 @@ spec:
         emptyDir: {}
       - name: shared
         emptyDir: {}
-      - name: containerd-socket
+      - name: host-root
         hostPath:
-          path: /var/run/containerd
+          path: /
 ```
 
-This stack provides runtime security, vulnerability scanning, and compliance checking together.
+This stack provides runtime security, host vulnerability scanning, and compliance checking together.
 
 Resource sharing patterns
 
