@@ -14,13 +14,14 @@ This guide shows you how to configure each discovery mechanism, apply relabeling
 
 ## Understanding Kubernetes Service Discovery Roles
 
-Prometheus supports five Kubernetes service discovery roles:
+Prometheus supports six Kubernetes service discovery roles:
 
 - **node**: Discovers one target per cluster node with node information
 - **service**: Discovers services and creates targets for each service port
 - **pod**: Discovers pods and creates targets for each container port
 - **endpoints**: Discovers endpoints behind services
 - **endpointslice**: Discovers endpoint slices (more scalable than endpoints)
+- **ingress**: Discovers ingress paths for blackbox monitoring
 
 Each role exposes different metadata labels that you can use for relabeling and filtering.
 
@@ -45,14 +46,14 @@ scrape_configs:
       # Only scrape pods with prometheus.io/scrape annotation
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
-        regex: true
+        regex: "true"
 
-      # Use custom port from annotation or default to port in pod spec
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port, __meta_kubernetes_pod_container_port_number]
+      # Use custom port from annotation, or keep the discovered pod port
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
-        regex: ([^;]+)(?:;.*)?
+        regex: ([^:]+)(?::\d+)?;(\d+)
         target_label: __address__
-        replacement: ${1}
+        replacement: $1:$2
 
       # Use custom metrics path from annotation
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
@@ -98,7 +99,7 @@ spec:
 
 ## Configuring Service Discovery
 
-Discover services and scrape through service endpoints:
+Discover services and scrape through their Kubernetes DNS names:
 
 ```yaml
 scrape_configs:
@@ -112,7 +113,7 @@ scrape_configs:
       # Only scrape services with prometheus.io/scrape annotation
       - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
         action: keep
-        regex: true
+        regex: "true"
 
       # Use service annotation for metrics path
       - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
@@ -120,7 +121,7 @@ scrape_configs:
         target_label: __metrics_path__
         regex: (.+)
 
-      # Use service annotation for port
+      # Use service annotation for service port
       - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
         action: replace
         regex: ([^:]+)(?::\d+)?;(\d+)
@@ -145,7 +146,7 @@ metadata:
   name: my-service
   annotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: "8080"
+    prometheus.io/port: "80"
     prometheus.io/path: "/metrics"
 spec:
   selector:
@@ -173,7 +174,7 @@ scrape_configs:
     bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
 
     relabel_configs:
-      # Map node internal IP to target address
+      # Add node labels as Prometheus labels
       - action: labelmap
         regex: __meta_kubernetes_node_label_(.+)
 
@@ -207,12 +208,12 @@ scrape_configs:
       # Only scrape endpoints of services with prometheus.io/scrape annotation
       - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
         action: keep
-        regex: true
+        regex: "true"
 
       # Drop endpoints that are not ready
       - source_labels: [__meta_kubernetes_endpoint_ready]
         action: keep
-        regex: true
+        regex: "true"
 
       # Custom metrics path from service annotation
       - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
@@ -255,12 +256,12 @@ scrape_configs:
       # Filter by service annotation
       - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
         action: keep
-        regex: true
+        regex: "true"
 
       # Only scrape ready endpoints
       - source_labels: [__meta_kubernetes_endpointslice_endpoint_conditions_ready]
         action: keep
-        regex: true
+        regex: "true"
 
       # Add labels
       - source_labels: [__meta_kubernetes_namespace]
@@ -356,17 +357,17 @@ kubernetes_sd_configs:
         - staging
         - monitoring
 
-    # Or exclude system namespaces
+    # Or discover only Prometheus's own namespace
     # namespaces:
-    #   own_namespace: false
+    #   own_namespace: true
 
-# Adjust discovery refresh interval (default 5m)
+# Adjust how often discovered targets are scraped
 scrape_configs:
   - job_name: 'kubernetes-pods'
     scrape_interval: 30s
     kubernetes_sd_configs:
       - role: pod
-        # Discovery happens at scrape_interval
+        # Kubernetes discovery stays synchronized through the Kubernetes API
 ```
 
 ## Debugging Service Discovery
@@ -384,15 +385,10 @@ http://prometheus:9090/service-discovery
 up{job="kubernetes-pods"}
 ```
 
-Enable debug logging in Prometheus:
+Enable debug logging when starting Prometheus:
 
-```yaml
-# prometheus.yml
-global:
-  log_level: debug
-
-# Or start with flag
---log.level=debug
+```bash
+prometheus --config.file=prometheus.yml --log.level=debug
 ```
 
 Check logs for discovery issues:
@@ -403,7 +399,7 @@ kubectl logs -n monitoring prometheus-0 | grep -i "kubernetes"
 
 ## Complete Production Configuration
 
-Here's a comprehensive Prometheus configuration with all discovery roles:
+Here's a comprehensive Prometheus configuration with common discovery roles:
 
 ```yaml
 global:
@@ -418,7 +414,7 @@ scrape_configs:
     relabel_configs:
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
-        regex: true
+        regex: "true"
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
         action: replace
         target_label: __metrics_path__
@@ -445,7 +441,7 @@ scrape_configs:
     relabel_configs:
       - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_probe]
         action: keep
-        regex: true
+        regex: "true"
       - source_labels: [__address__]
         target_label: __param_target
       - target_label: __address__
