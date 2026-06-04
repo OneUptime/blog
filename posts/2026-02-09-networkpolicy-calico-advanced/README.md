@@ -14,7 +14,7 @@ Network policies are critical for securing Kubernetes workloads, but the standar
 
 Calico provides two types of network policies. The first is standard Kubernetes NetworkPolicy, which Calico fully supports. The second is Calico NetworkPolicy, which offers additional features like action types beyond allow/deny, ICMP protocol support, and more flexible rule ordering.
 
-Standard Kubernetes NetworkPolicy operates on a whitelist model. Everything is denied by default, and you explicitly allow traffic. Calico extends this with explicit deny rules, rule ordering based on priority, and the ability to log matched traffic.
+Standard Kubernetes NetworkPolicy operates on a whitelist model once a pod is selected by a policy. Pods that are not selected by any NetworkPolicy remain non-isolated for that traffic direction, while selected pods only allow traffic that matches explicit allow rules. Calico extends this with explicit deny rules, rule ordering based on priority, and the ability to log matched traffic.
 
 ## Setting Up Advanced Egress Rules
 
@@ -37,6 +37,7 @@ spec:
     destination:
       ports:
       - 53
+      namespaceSelector: projectcalico.org/name == "kube-system"
       selector: k8s-app == "kube-dns"
   # Allow HTTPS to specific external IPs
   - action: Allow
@@ -93,24 +94,31 @@ The nets field accepts both IPv4 and IPv6 CIDR notation. This is particularly us
 
 ## Using Named Ports for Service Abstractions
 
-Named ports let you create policies that reference ports by name rather than number, making your policies more maintainable:
+Named ports let you create policies that reference endpoint ports by name rather than number, making your policies more maintainable:
 
 ```yaml
-apiVersion: v1
-kind: Service
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: api-service
+  name: api
   namespace: production
 spec:
   selector:
-    app: api
-  ports:
-  - name: https
-    port: 443
-    targetPort: 8443
-  - name: metrics
-    port: 9090
-    targetPort: 9090
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+      - name: api
+        image: example/api:latest
+        ports:
+        - name: https
+          containerPort: 8443
+        - name: metrics
+          containerPort: 9090
 ---
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
@@ -134,13 +142,13 @@ spec:
   - action: Allow
     protocol: TCP
     source:
-      namespaceSelector: name == "monitoring"
+      namespaceSelector: projectcalico.org/name == "monitoring"
     destination:
       ports:
       - metrics
 ```
 
-Named ports decouple your policy from specific port numbers. If you need to change the port your application listens on, you only update the Service definition, not every NetworkPolicy that references it.
+Named ports decouple your policy from specific port numbers. If you need to change the port your application listens on, you update the named container port on the workload, not every NetworkPolicy that references it.
 
 ## Creating Global Network Policies
 
@@ -245,11 +253,11 @@ calicoctl get networkpolicy -n production -o yaml
 # Test connectivity from a pod
 kubectl exec -n production web-app-pod -- curl -m 5 https://external-api.example.com
 
-# View policy evaluation for specific endpoints
+# Inspect endpoint labels and addresses used by policy selectors
 calicoctl get workloadendpoint -n production -o yaml
 ```
 
-Use `calicoctl` to query Calico-specific resources. The tool provides detailed information about how policies apply to individual pods and which rules match specific traffic flows.
+Use `calicoctl` to query Calico-specific resources. The tool provides detailed information about Calico policies and workload endpoints so you can confirm which selectors and endpoint attributes are involved.
 
 ## Combining Multiple Policy Types
 
@@ -283,7 +291,7 @@ spec:
   - action: Allow
     protocol: TCP
     source:
-      namespaceSelector: name == "monitoring"
+      namespaceSelector: projectcalico.org/name == "monitoring"
     destination:
       ports:
       - 9090
@@ -306,7 +314,7 @@ calicoctl get networkpolicy restrict-egress -n production -o yaml
 # Check if policies are enforced on a node
 calicoctl node status
 
-# View policy counters
+# Inspect Felix configuration
 calicoctl get felixconfiguration default -o yaml
 ```
 
