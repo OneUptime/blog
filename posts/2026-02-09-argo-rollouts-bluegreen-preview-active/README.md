@@ -85,7 +85,7 @@ spec:
       activeService: api-active
       # Preview service receives test traffic
       previewService: api-preview
-      # Auto-promote after analysis passes
+      # Pause before promotion until manually promoted
       autoPromotionEnabled: false
 ---
 # Active service for production traffic
@@ -139,8 +139,8 @@ Replicas:
   Desired:       5
   Current:       10
   Updated:       5
-  Ready:         5
-  Available:     5
+  Ready:         10
+  Available:     10
 
 NAME                                   KIND        STATUS     AGE  INFO
 ⟳ api-server                           Rollout     ॥ Paused   5m
@@ -160,7 +160,7 @@ Access the new version through the preview service:
 # Get preview service endpoint
 kubectl get service api-preview
 
-# Test the new version
+# Test the new version from another pod in the same namespace
 curl http://api-preview/health
 
 # Run integration tests against preview
@@ -188,7 +188,7 @@ Check status:
 ```bash
 kubectl argo rollouts get rollout api-server
 
-# Output shows both versions as active
+# Output shows the new version as stable and active
 Name:            api-server
 Namespace:       default
 Status:          ✔ Healthy
@@ -226,7 +226,7 @@ spec:
       activeService: api-active
       previewService: api-preview
       autoPromotionEnabled: true
-      # Wait before starting analysis
+      # Keep the previous ReplicaSet running briefly after promotion
       scaleDownDelaySeconds: 30
       # Analysis template
       prePromotionAnalysis:
@@ -271,7 +271,7 @@ With this configuration:
 1. New version deploys to preview
 2. Analysis runs for 5 minutes (5 checks at 1-minute intervals)
 3. If success rate stays above 95%, auto-promotes
-4. If success rate falls below 95%, auto-rollbacks
+4. If success rate falls below 95%, the rollout aborts and the active service stays on the stable version
 
 ## Abort and Rollback
 
@@ -291,7 +291,7 @@ After promotion, if you discover issues, roll back quickly:
 kubectl argo rollouts undo api-server
 ```
 
-This instantly switches the active service back to the old version. No waiting for pods to scale down and up.
+If the previous ReplicaSet is still running during the scale-down delay, this switches the active service back without waiting for pods to scale down and up. After the old ReplicaSet has scaled down, Argo Rollouts must scale it back up during the undo.
 
 ## Preview with Ingress
 
@@ -343,7 +343,7 @@ spec:
       autoPromotionEnabled: false
       # Keep old version for 5 minutes after promotion
       scaleDownDelaySeconds: 300
-      # Alternative: scale to specific count instead of 0
+      # Keep at most one old ReplicaSet scaled up during the delay
       scaleDownDelayRevisionLimit: 1
 ```
 
@@ -351,27 +351,20 @@ This gives you 5 minutes to detect issues and rollback before the old version sc
 
 ## Anti-Affinity for Blue-Green
 
-Ensure blue and green versions run on different nodes:
+Prefer running blue and green versions on different nodes:
 
 ```yaml
 spec:
-  template:
-    spec:
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                  - api-server
-              topologyKey: kubernetes.io/hostname
+  strategy:
+    blueGreen:
+      activeService: api-active
+      previewService: api-preview
+      antiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          weight: 100
 ```
 
-This spreads pods across nodes, reducing the risk of infrastructure issues affecting both versions.
+This tells Argo Rollouts to inject preferred pod anti-affinity between the desired and previous ReplicaSets. Use `requiredDuringSchedulingIgnoredDuringExecution: {}` instead if the new version must not schedule on nodes that run the previous version.
 
 ## Monitoring Blue-Green Rollouts
 
@@ -379,13 +372,13 @@ Track rollout status with Prometheus:
 
 ```promql
 # Current rollout phase
-argo_rollouts_info{name="api-server"}
+rollout_info{name="api-server"}
 
-# Number of replicas in each revision
-argo_rollouts_pod_count{rollout="api-server"}
+# Number of available replicas
+rollout_info_replicas_available{name="api-server"}
 
 # Analysis run status
-argo_rollouts_analysis_run_status{rollout="api-server"}
+analysis_run_phase{rollout="api-server"}
 ```
 
 Alert on failed analysis:
@@ -396,7 +389,7 @@ groups:
   rules:
   - alert: RolloutAnalysisFailed
     expr: |
-      argo_rollouts_analysis_run_status{
+      analysis_run_phase{
         phase="Failed",
         rollout="api-server"
       } == 1
@@ -408,16 +401,14 @@ groups:
 
 ## Progressive Exposure
 
-Gradually shift production traffic to preview before full promotion:
+Blue-green promotion is an all-at-once service switch. If you need to gradually shift production traffic before full promotion, use a canary strategy with a traffic router such as Istio:
 
 ```yaml
 spec:
   strategy:
-    blueGreen:
-      activeService: api-active
-      previewService: api-preview
-      autoPromotionEnabled: false
-      # Send subset of active traffic to preview
+    canary:
+      stableService: api-active
+      canaryService: api-preview
       trafficRouting:
         istio:
           virtualService:
@@ -426,13 +417,15 @@ spec:
             name: api-destrule
             canarySubsetName: canary
             stableSubsetName: stable
-      # Progressive steps
-      prePromotionAnalysis:
-        templates:
-        - templateName: success-rate
+      steps:
+      - setWeight: 10
+      - pause: {duration: 5m}
+      - analysis:
+          templates:
+          - templateName: success-rate
 ```
 
-This requires a service mesh like Istio to split traffic between active and preview.
+This requires a service mesh like Istio to split traffic between stable and canary services.
 
 ## Blue-Green with Notifications
 
@@ -443,6 +436,8 @@ apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
   name: api-server
+  annotations:
+    notifications.argoproj.io/subscribe.on-rollout-paused.slack: deployments
 spec:
   replicas: 5
   selector:
