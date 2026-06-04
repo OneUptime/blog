@@ -31,7 +31,7 @@ param clusterName string = 'myaks'
 param location string = resourceGroup().location
 
 @description('Kubernetes version')
-param kubernetesVersion string = '1.28.3'
+param kubernetesVersion string = '1.35'
 
 @description('VM size for nodes')
 param nodeVmSize string = 'Standard_D2s_v3'
@@ -60,7 +60,6 @@ resource aksCluster 'Microsoft.ContainerService/managedClusters@2023-10-01' = {
         minCount: 1
         maxCount: 5
         type: 'VirtualMachineScaleSets'
-        vnetSubnetID: null
       }
     ]
 
@@ -146,7 +145,7 @@ resource aksCluster 'Microsoft.ContainerService/managedClusters@2023-10-01' = {
     }
   }
   properties: {
-    kubernetesVersion: '1.28.3'
+    kubernetesVersion: '1.35'
     dnsPrefix: '${clusterName}-dns'
 
     // Enable managed identity for kubelet
@@ -233,18 +232,6 @@ resource aksCluster 'Microsoft.ContainerService/managedClusters@2023-10-01' = {
   }
 }
 
-// Grant managed identity permissions to AKS subnet
-// This allows AKS to manage network resources
-resource networkContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(resourceGroup().id, managedIdentity.id, 'NetworkContributor')
-  scope: resourceGroup()
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4d97b98b-1d4f-4787-a291-c67834d212e7')
-    principalId: managedIdentity.properties.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
 output clusterName string = aksCluster.name
 output identityId string = managedIdentity.id
 output identityClientId string = managedIdentity.properties.clientId
@@ -262,7 +249,7 @@ az deployment group create \
 
 ## Integrating with Azure Container Registry
 
-Enable AKS to pull images from ACR using managed identity:
+Enable AKS to pull images from ACR using the kubelet managed identity:
 
 ```bicep
 // aks-with-acr.bicep
@@ -283,13 +270,13 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-01-01-preview' = {
   }
 }
 
-// Create managed identity
+// Create managed identity for AKS and kubelet
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${clusterName}-identity'
   location: location
 }
 
-// Grant AcrPull role to managed identity
+// Grant AcrPull role to the kubelet managed identity
 resource acrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(acr.id, managedIdentity.id, 'AcrPull')
   scope: acr
@@ -311,7 +298,7 @@ resource aksCluster 'Microsoft.ContainerService/managedClusters@2023-10-01' = {
     }
   }
   properties: {
-    kubernetesVersion: '1.28.3'
+    kubernetesVersion: '1.35'
     dnsPrefix: '${clusterName}-dns'
 
     identityProfile: {
@@ -346,13 +333,13 @@ output acrLoginServer string = acr.properties.loginServer
 output clusterName string = aksCluster.name
 ```
 
-After deployment, push and pull images without credentials:
+After deployment, pull images without Kubernetes image pull secrets:
 
 ```bash
 # Get AKS credentials
 az aks get-credentials --resource-group myaks-rg --name production-aks
 
-# Test pulling image (uses managed identity automatically)
+# Test pulling image (uses the kubelet managed identity automatically)
 kubectl run test --image=${ACR_NAME}.azurecr.io/myapp:latest
 ```
 
@@ -415,7 +402,7 @@ resource aksCluster 'Microsoft.ContainerService/managedClusters@2023-10-01' = {
     }
   }
   properties: {
-    kubernetesVersion: '1.28.3'
+    kubernetesVersion: '1.35'
     dnsPrefix: '${clusterName}-dns'
 
     identityProfile: {
@@ -501,7 +488,7 @@ spec:
       value: "${STORAGE_ACCOUNT_NAME}"
 ```
 
-The pod automatically gets credentials to access Azure Storage using the managed identity.
+The workload identity webhook injects the environment variables and projected token that Azure Identity client libraries and MSAL use to access Azure Storage with the managed identity.
 
 ## Building Complete Infrastructure with Modules
 
