@@ -31,7 +31,13 @@ metadata:
   name: api-service
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: api-service
   template:
+    metadata:
+      labels:
+        app: api-service
     spec:
       containers:
       - name: api
@@ -77,11 +83,11 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: web-app
-  annotations:
-    # Rollback settings
-    deployment.kubernetes.io/revision: "5"
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: web-app
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -90,6 +96,9 @@ spec:
   minReadySeconds: 30
   progressDeadlineSeconds: 600
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
       - name: app
@@ -160,6 +169,8 @@ package main
 import (
     "context"
     "fmt"
+    "sort"
+    "strconv"
     "time"
 
     appsv1 "k8s.io/api/apps/v1"
@@ -276,26 +287,52 @@ func (rc *RollbackController) getFailedPods(deployment *appsv1.Deployment) ([]co
 }
 
 func (rc *RollbackController) rollback(deploymentName string) error {
-    // Get deployment to find previous revision
     deployment, err := rc.clientset.AppsV1().Deployments(rc.namespace).Get(
         context.TODO(), deploymentName, metav1.GetOptions{})
     if err != nil {
         return err
     }
 
-    // Rollback to previous revision
-    rollbackConfig := &appsv1.DeploymentRollback{
-        Name: deploymentName,
+    labelSelector := metav1.FormatLabelSelector(deployment.Spec.Selector)
+    replicaSets, err := rc.clientset.AppsV1().ReplicaSets(rc.namespace).List(
+        context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
+    if err != nil {
+        return err
     }
 
-    err = rc.clientset.AppsV1().Deployments(rc.namespace).Rollback(
-        context.TODO(), rollbackConfig, metav1.CreateOptions{})
+    sort.Slice(replicaSets.Items, func(i, j int) bool {
+        return getRevision(&replicaSets.Items[i]) > getRevision(&replicaSets.Items[j])
+    })
+
+    if len(replicaSets.Items) < 2 {
+        return fmt.Errorf("no previous ReplicaSet revision found for deployment %s", deploymentName)
+    }
+
+    previousReplicaSet := replicaSets.Items[1]
+    deployment.Spec.Template = previousReplicaSet.Spec.Template
+    if deployment.Spec.Template.Annotations == nil {
+        deployment.Spec.Template.Annotations = map[string]string{}
+    }
+    deployment.Spec.Template.Annotations["kubernetes.io/change-cause"] =
+        fmt.Sprintf("automated rollback to revision %d", getRevision(&previousReplicaSet))
+
+    _, err = rc.clientset.AppsV1().Deployments(rc.namespace).Update(
+        context.TODO(), deployment, metav1.UpdateOptions{})
     if err != nil {
         return err
     }
 
     fmt.Printf("Successfully triggered rollback for deployment %s\n", deploymentName)
     return nil
+}
+
+func getRevision(replicaSet *appsv1.ReplicaSet) int64 {
+    revision, err := strconv.ParseInt(
+        replicaSet.Annotations["deployment.kubernetes.io/revision"], 10, 64)
+    if err != nil {
+        return 0
+    }
+    return revision
 }
 
 func main() {
@@ -309,7 +346,7 @@ func main() {
 }
 ```
 
-Deploy this controller as a Deployment in your cluster with appropriate RBAC permissions to watch deployments and trigger rollbacks.
+Deploy this controller as a Deployment in your cluster with appropriate RBAC permissions to get, list, watch, and update deployments, ReplicaSets, and pods.
 
 ## Integrating with Progressive Delivery Tools
 
@@ -400,7 +437,7 @@ spec:
   metrics:
   - name: success-rate
     interval: 30s
-    successCondition: result >= 0.95
+    successCondition: result[0] >= 0.95
     failureLimit: 3
     provider:
       prometheus:
@@ -426,7 +463,13 @@ metadata:
   name: test-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: test-app
   template:
+    metadata:
+      labels:
+        app: test-app
     spec:
       containers:
       - name: app
@@ -434,7 +477,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /nonexistent
-            port: 8080
+            port: 80
           periodSeconds: 5
           failureThreshold: 2
 ```
