@@ -17,13 +17,13 @@ This guide covers deploying Nexus in Docker, configuring repositories for differ
 Get Nexus running with a single command:
 
 ```bash
-# Start Nexus Repository Manager OSS
+# Start Nexus Repository Manager
 
 docker run -d \
   --name nexus \
   -p 8081:8081 \
   -v nexus-data:/nexus-data \
-  sonatype/nexus3:3.72.0
+  sonatype/nexus3:3.92.3
 ```
 
 Nexus takes 2-3 minutes to start up. Monitor the logs:
@@ -48,11 +48,9 @@ For production use, configure proper resource limits and persistent storage:
 
 ```yaml
 # docker-compose.yml - Nexus Repository Manager production deployment
-version: "3.8"
-
 services:
   nexus:
-    image: sonatype/nexus3:3.72.0
+    image: sonatype/nexus3:3.92.3
     container_name: nexus
     ports:
       - "8081:8081"   # Web UI and API
@@ -179,6 +177,24 @@ curl -u admin:yourpassword -X POST \
   }'
 ```
 
+Create a hosted repository for private npm packages:
+
+```bash
+# Create an npm hosted repository
+curl -u admin:yourpassword -X POST \
+  http://localhost:8081/service/rest/v1/repositories/npm/hosted \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "npm-hosted",
+    "online": true,
+    "storage": {
+      "blobStoreName": "default",
+      "strictContentTypeValidation": true,
+      "writePolicy": "ALLOW"
+    }
+  }'
+```
+
 Configure npm to use Nexus:
 
 ```bash
@@ -214,6 +230,8 @@ curl -u admin:yourpassword -X POST \
   }'
 ```
 
+Enable the Docker Bearer Token Realm under Security > Realms before using Docker clients with Nexus.
+
 Use the Docker registry:
 
 ```bash
@@ -248,6 +266,17 @@ curl -u admin:yourpassword -X POST \
       "remoteUrl": "https://pypi.org",
       "contentMaxAge": 1440,
       "metadataMaxAge": 1440
+    },
+    "httpClient": {
+      "autoBlock": true
+    },
+    "negativeCache": {
+      "enabled": true,
+      "timeToLive": 1440
+    },
+    "pypi": {
+      "removeQuarantined": true,
+      "indexPath": "/simple"
     }
   }'
 ```
@@ -263,21 +292,20 @@ pip install --index-url http://localhost:8081/repository/pypi-proxy/simple/ \
 
 ## Cleanup Policies
 
-Prevent your storage from growing indefinitely by configuring cleanup policies:
+If you use Nexus Repository Pro, prevent your storage from growing indefinitely by configuring cleanup policies:
 
 ```bash
 # Create a cleanup policy to remove old snapshots
 curl -u admin:yourpassword -X POST \
-  http://localhost:8081/service/rest/v1/lifecycle/cleanup \
+  http://localhost:8081/service/rest/v1/cleanup-policies \
   -H "Content-Type: application/json" \
   -d '{
     "name": "delete-old-snapshots",
     "format": "maven2",
     "notes": "Remove snapshots older than 30 days",
-    "criteria": {
-      "lastDownloaded": 30,
-      "lastBlobUpdated": 30
-    }
+    "criteriaLastDownloaded": 30,
+    "criteriaLastBlobUpdated": 30,
+    "criteriaReleaseType": "PRERELEASES"
   }'
 ```
 
@@ -285,7 +313,7 @@ Schedule a compact task to reclaim disk space after cleanup runs. You can do thi
 
 ## Backup
 
-Back up Nexus data regularly:
+Back up Nexus data regularly. Stop Nexus before taking a filesystem backup of the data volume, or use the built-in database backup task and back up the exported database together with the blob stores:
 
 ```bash
 # Create a backup of the Nexus data volume
@@ -294,8 +322,8 @@ docker run --rm \
   -v $(pwd)/backups:/backup \
   alpine tar czf /backup/nexus-backup-$(date +%Y%m%d).tar.gz /data
 
-# Alternatively, use Nexus's built-in database backup task
-# Configure it through Admin > System > Tasks > Create task > Admin - Export databases
+# Alternatively, use Nexus's built-in H2 database backup task
+# Configure it through Admin > System > Tasks > Create task > Admin - Backup H2 Database
 ```
 
 ## Monitoring
@@ -313,4 +341,4 @@ curl -u admin:yourpassword \
 
 ## Conclusion
 
-Nexus Repository Manager in Docker provides a centralized artifact management solution for your entire development stack. A single instance handles Maven, npm, PyPI, Docker, and more. The proxy feature caches packages from public registries, speeding up builds and providing resilience against registry outages. Start with the repositories your team uses most, configure build tools to point at Nexus, and expand to additional formats as needed. The cleanup policies keep storage manageable, and regular backups protect your private packages.
+Nexus Repository Manager in Docker provides a centralized artifact management solution for your entire development stack. A single instance handles Maven, npm, PyPI, Docker, and more. The proxy feature caches packages from public registries, speeding up builds and providing resilience against registry outages. Start with the repositories your team uses most, configure build tools to point at Nexus, and expand to additional formats as needed. Cleanup policies, where available, keep storage manageable, and regular backups protect your private packages.
