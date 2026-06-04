@@ -17,7 +17,7 @@ A naive Rust Dockerfile looks like this:
 ```dockerfile
 # BAD: Compiles EVERYTHING from scratch on every change
 
-FROM rust:1.77
+FROM rust:1
 WORKDIR /app
 COPY . .
 RUN cargo build --release
@@ -33,7 +33,7 @@ The core issue is that Rust dependencies represent 90% of build time, but they c
 This classic technique builds dependencies first using a fake `main.rs`, then compiles the real application:
 
 ```dockerfile
-FROM rust:1.77-slim AS builder
+FROM rust:1-slim AS builder
 WORKDIR /app
 
 # Copy only Cargo files
@@ -69,7 +69,7 @@ Cache mounts persist Cargo's registry and build caches between Docker builds:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM rust:1.77-slim AS builder
+FROM rust:1-slim AS builder
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
@@ -102,7 +102,7 @@ For maximum speed, use both techniques together:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM rust:1.77-slim AS builder
+FROM rust:1-slim AS builder
 WORKDIR /app
 
 # Copy dependency manifests
@@ -143,8 +143,8 @@ CMD ["myapp"]
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM rust:1.77-slim AS chef
-RUN cargo install cargo-chef
+FROM rust:1-slim AS chef
+RUN cargo install --locked cargo-chef
 WORKDIR /app
 
 # Stage 1: Analyze dependencies and create a recipe
@@ -183,7 +183,7 @@ Produce a fully static binary that runs on `scratch`:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM rust:1.77-alpine AS builder
+FROM rust:1-alpine AS builder
 RUN apk add --no-cache musl-dev
 
 WORKDIR /app
@@ -205,7 +205,7 @@ USER 65534
 ENTRYPOINT ["/myapp"]
 ```
 
-The musl-linked binary requires zero runtime dependencies, producing a final image that is typically 5-15MB.
+The musl-linked binary avoids shared library dependencies, producing a final image that is typically 5-15MB. If your application makes TLS connections, keep the CA certificates copy shown above.
 
 ## Technique 6: Use sccache for Distributed Caching
 
@@ -213,31 +213,35 @@ For CI/CD environments where cache mounts are not persistent between runs, `scca
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM rust:1.77-slim AS builder
+FROM rust:1-slim AS builder
 
 # Install sccache for distributed compile caching
-RUN cargo install sccache
+RUN cargo install --locked sccache
 
 # Configure sccache to use S3 for storage
 ENV RUSTC_WRAPPER=sccache
 ENV SCCACHE_BUCKET=my-rust-cache-bucket
 ENV SCCACHE_REGION=us-east-1
-# AWS credentials passed as build secrets
-ARG AWS_ACCESS_KEY_ID
-ARG AWS_SECRET_ACCESS_KEY
 
 WORKDIR /app
 COPY . .
-RUN cargo build --release
-
-# Show cache statistics
-RUN sccache --show-stats
+RUN --mount=type=secret,id=aws_access_key_id,env=AWS_ACCESS_KEY_ID \
+    --mount=type=secret,id=aws_secret_access_key,env=AWS_SECRET_ACCESS_KEY \
+    cargo build --release && \
+    sccache --show-stats
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/myapp /usr/local/bin/
 CMD ["myapp"]
+```
+
+```bash
+docker build \
+    --secret id=aws_access_key_id,env=AWS_ACCESS_KEY_ID \
+    --secret id=aws_secret_access_key,env=AWS_SECRET_ACCESS_KEY \
+    -t myapp .
 ```
 
 sccache is particularly valuable in CI where Docker layer caches might not be available. It caches compiled object files, so even without Docker layer caching, previously compiled crates are reused.
@@ -248,8 +252,8 @@ For Rust workspaces with multiple crates, structure the Dockerfile to cache the 
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM rust:1.77-slim AS chef
-RUN cargo install cargo-chef
+FROM rust:1-slim AS chef
+RUN cargo install --locked cargo-chef
 WORKDIR /app
 
 FROM chef AS planner
