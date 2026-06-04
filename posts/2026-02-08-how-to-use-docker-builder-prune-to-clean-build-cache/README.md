@@ -8,7 +8,7 @@ Description: Manage Docker build cache efficiently with docker builder prune to 
 
 ---
 
-Docker build cache is a double-edged sword. It speeds up repeated builds dramatically by reusing unchanged layers, but it grows silently until it consumes gigabytes of disk space. The `docker builder prune` command gives you precise control over this cache, letting you reclaim space without sacrificing build performance.
+Docker build cache is a double-edged sword. It speeds up repeated builds dramatically by reusing unchanged layers, but it grows silently until it consumes gigabytes of disk space. The `docker builder prune` command gives you control over this cache, letting you reclaim space while keeping enough recent cache to preserve build performance.
 
 ## Understanding the Build Cache
 
@@ -49,21 +49,21 @@ docker builder prune
 # Total reclaimed space: 3.2GB
 ```
 
-"Unused" means cache entries that are not referenced by any existing image. This is safe for most situations because the cache will be rebuilt on the next build.
+"Dangling" means cache entries that are no longer needed by the builder. This is safe for most situations because the cache will be rebuilt on the next build.
 
 ## Aggressive Cache Cleanup
 
-The `-a` flag removes all build cache, including entries that are still referenced.
+The `-a` flag removes all unused build cache, not just dangling entries.
 
 ```bash
-# Remove ALL build cache (including in-use entries)
+# Remove all unused build cache
 docker builder prune -a
 
 # Skip the confirmation prompt
 docker builder prune -a -f
 ```
 
-After running this, your next build will start from scratch with no cache hits. This takes longer but guarantees you reclaim all build cache space.
+After running this, your next build may have fewer cache hits. This takes longer for affected layers but reclaims more build cache space than the default prune.
 
 ## Keeping a Cache Budget
 
@@ -80,7 +80,7 @@ docker builder prune --keep-storage 2g -f
 docker builder prune --keep-storage 500m -f
 ```
 
-Docker removes the least recently used cache entries first, so your most commonly used layers stay cached.
+Docker removes least recently used cache entries first when it needs to get under the requested cache budget, so your most recently used layers stay cached.
 
 ## Filtering by Age
 
@@ -179,13 +179,13 @@ COPY package*.json ./
 
 # Cache mount for npm - persists between builds
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --production
+    npm ci --omit=dev
 
 COPY . .
 CMD ["node", "server.js"]
 ```
 
-These cache mounts are included in the `docker builder prune` cleanup. If you want to keep them while removing other cache:
+These cache mounts are BuildKit cache records and can be included in prune operations. Inspect them before pruning so you know which cache types are consuming space:
 
 ```bash
 # Check what cache entries exist
@@ -193,6 +193,9 @@ docker buildx du
 
 # Detailed cache usage breakdown
 docker buildx du --verbose
+
+# Prune other BuildKit cache while keeping cache mounts
+docker buildx prune --filter "type!=exec.cachemount" -f
 ```
 
 ## Inspecting the Build Cache
@@ -210,11 +213,11 @@ docker buildx du
 # ghi789                false         500MB       2 hours ago
 ```
 
-The `RECLAIMABLE` column indicates whether an entry can be safely removed. Entries marked `false` are still referenced by existing images.
+The `RECLAIMABLE` column indicates whether a cache record can be pruned. Entries marked `false` are actively in use by the builder.
 
 ```bash
-# Show only reclaimable cache
-docker buildx du --filter type=regular
+# Show only cache records that are not actively in use
+docker buildx du --filter "inuse=false"
 
 # Show cache usage sorted by size (useful for finding big entries)
 docker buildx du --verbose | sort -k2 -h
@@ -261,13 +264,26 @@ Track cache growth over time to set appropriate cleanup policies.
 #!/bin/bash
 # cache-monitor.sh - Track build cache size over time
 
-CACHE_SIZE=$(docker system df --format '{{.Size}}' | tail -1)
+CACHE_SIZE=$(docker system df --format '{{if eq .Type "Build Cache"}}{{.Size}}{{end}}' | awk 'NF {print; exit}')
 TIMESTAMP=$(date +%Y-%m-%d_%H:%M:%S)
 echo "$TIMESTAMP,$CACHE_SIZE" >> /var/log/docker-cache-growth.csv
 
 # Alert if cache exceeds threshold
-SIZE_BYTES=$(docker system df --format '{{.RawSize}}' | tail -1)
-THRESHOLD=21474836480  # 20GB
+SIZE_BYTES=$(printf '%s\n' "$CACHE_SIZE" | awk '
+  {
+    value = $1
+    unit = value
+    sub(/^[0-9.]+/, "", unit)
+    sub(/[A-Za-z]+$/, "", value)
+    multiplier = 1
+    if (unit == "kB") multiplier = 1000
+    else if (unit == "MB") multiplier = 1000 * 1000
+    else if (unit == "GB") multiplier = 1000 * 1000 * 1000
+    else if (unit == "TB") multiplier = 1000 * 1000 * 1000 * 1000
+    printf "%.0f\n", value * multiplier
+  }
+')
+THRESHOLD=20000000000  # 20GB
 if [ "$SIZE_BYTES" -gt "$THRESHOLD" ] 2>/dev/null; then
   echo "WARNING: Docker build cache is ${CACHE_SIZE} - exceeds 20GB threshold"
 fi
@@ -295,7 +311,7 @@ docker builder prune --keep-storage 5g -f
 # Age-based cleanup (remove old entries)
 docker builder prune --filter "until=168h" -f
 
-# Full cleanup (everything goes)
+# More aggressive cleanup (all unused build cache)
 docker builder prune -a -f
 ```
 
