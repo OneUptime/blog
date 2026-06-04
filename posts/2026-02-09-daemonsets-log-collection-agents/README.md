@@ -14,7 +14,7 @@ Centralized logging is essential for troubleshooting and monitoring Kubernetes c
 
 Log collectors need access to container log files, which reside on each node's filesystem. DaemonSets guarantee one collector pod per node, ensuring comprehensive log coverage even as nodes scale. Collectors mount host directories containing logs, parse them, enrich with metadata, and forward to centralized storage.
 
-The typical flow involves the container runtime writing logs to /var/log/containers, the log collector reading these files, parsing formats, adding Kubernetes metadata like pod name and namespace, and shipping to backends like Elasticsearch, Loki, or cloud logging services.
+The typical flow involves the kubelet directing the container runtime to write logs under /var/log/pods, with active container log symlinks under /var/log/containers. The log collector reads these files, parses formats, adds Kubernetes metadata like pod name and namespace, and ships to backends like Elasticsearch, Loki, or cloud logging services.
 
 ## Deploying Fluentd as DaemonSet
 
@@ -66,8 +66,9 @@ data:
       tag kubernetes.*
       read_from_head true
       <parse>
-        @type json
-        time_format %Y-%m-%dT%H:%M:%S.%NZ
+        @type regexp
+        expression /^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$/
+        time_format %iso8601
       </parse>
     </source>
 
@@ -147,9 +148,6 @@ spec:
         volumeMounts:
         - name: varlog
           mountPath: /var/log
-        - name: varlibdockercontainers
-          mountPath: /var/lib/docker/containers
-          readOnly: true
         - name: config
           mountPath: /fluentd/etc/fluent.conf
           subPath: fluent.conf
@@ -158,9 +156,6 @@ spec:
       - name: varlog
         hostPath:
           path: /var/log
-      - name: varlibdockercontainers
-        hostPath:
-          path: /var/lib/docker/containers
       - name: config
         configMap:
           name: fluentd-config
@@ -172,6 +167,37 @@ Filebeat is a lightweight shipper for Elasticsearch:
 
 ```yaml
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: filebeat
+  namespace: logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filebeat
+rules:
+- apiGroups: [""]
+  resources:
+  - namespaces
+  - pods
+  - nodes
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: filebeat
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: filebeat
+subjects:
+- kind: ServiceAccount
+  name: filebeat
+  namespace: logging
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: filebeat-config
@@ -179,15 +205,28 @@ metadata:
 data:
   filebeat.yml: |
     filebeat.inputs:
-    - type: container
+    - type: filestream
+      id: kubernetes-container-logs
+      compression: auto
+      parsers:
+        - container: ~
       paths:
-        - /var/log/containers/*.log
+        - /var/log/pods/*/*/*.log*
+      prospector:
+        scanner:
+          fingerprint.enabled: true
+      file_identity.fingerprint: ~
       processors:
       - add_kubernetes_metadata:
           host: ${NODE_NAME}
+          default_indexers.enabled: false
+          default_matchers.enabled: false
+          indexers:
+          - pod_uid:
           matchers:
           - logs_path:
-              logs_path: "/var/log/containers/"
+              logs_path: "/var/log/pods/"
+              resource_type: "pod"
 
     processors:
     - add_cloud_metadata:
@@ -258,9 +297,6 @@ spec:
           subPath: filebeat.yml
         - name: data
           mountPath: /usr/share/filebeat/data
-        - name: varlibdockercontainers
-          mountPath: /var/lib/docker/containers
-          readOnly: true
         - name: varlog
           mountPath: /var/log
           readOnly: true
@@ -269,9 +305,6 @@ spec:
         configMap:
           defaultMode: 0640
           name: filebeat-config
-      - name: varlibdockercontainers
-        hostPath:
-          path: /var/lib/docker/containers
       - name: varlog
         hostPath:
           path: /var/log
@@ -286,9 +319,42 @@ spec:
 
 ## Deploying Promtail for Loki
 
-Promtail ships logs to Grafana Loki:
+Promtail is end of life as of March 2, 2026. For new Loki deployments, use Grafana Alloy or another supported Loki client. For legacy clusters still running Promtail, it ships logs to Grafana Loki:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: promtail
+  namespace: logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: promtail
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: promtail
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promtail
+subjects:
+- kind: ServiceAccount
+  name: promtail
+  namespace: logging
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -301,7 +367,7 @@ data:
       grpc_listen_port: 0
 
     positions:
-      filename: /tmp/positions.yaml
+      filename: /run/promtail/positions.yaml
 
     clients:
       - url: http://loki.logging.svc.cluster.local:3100/loki/api/v1/push
@@ -336,6 +402,10 @@ data:
             source_labels:
             - __meta_kubernetes_pod_node_name
             target_label: node_name
+          - action: keep
+            source_labels:
+            - __meta_kubernetes_pod_node_name
+            regex: ${HOSTNAME}
           - action: replace
             source_labels:
             - __meta_kubernetes_namespace
@@ -390,9 +460,6 @@ spec:
         - name: pods
           mountPath: /var/log/pods
           readOnly: true
-        - name: containers
-          mountPath: /var/lib/docker/containers
-          readOnly: true
         env:
         - name: HOSTNAME
           valueFrom:
@@ -412,12 +479,10 @@ spec:
       - name: run
         hostPath:
           path: /run/promtail
+          type: DirectoryOrCreate
       - name: pods
         hostPath:
           path: /var/log/pods
-      - name: containers
-        hostPath:
-          path: /var/lib/docker/containers
       tolerations:
       - effect: NoSchedule
         operator: Exists
@@ -427,7 +492,7 @@ spec:
 
 Add filtering to reduce noise and costs:
 
-```yaml
+```conf
 # Fluentd filter configuration
 
 <filter kubernetes.**>
@@ -467,18 +532,27 @@ Configure parsers for multi-line logs like stack traces:
 ```yaml
 # Filebeat multiline configuration
 filebeat.inputs:
-- type: container
+- type: filestream
+  id: kubernetes-container-logs
+  compression: auto
+  parsers:
+    - container: ~
+    - multiline:
+        type: pattern
+        pattern: '^[[:space:]]+(at|\.\.\.)[[:space:]]+\b|^Caused by:'
+        negate: false
+        match: after
   paths:
-    - /var/log/containers/*.log
-  multiline.type: pattern
-  multiline.pattern: '^[[:space:]]+(at|\.\.\.)[[:space:]]+\b|^Caused by:'
-  multiline.negate: false
-  multiline.match: after
+    - /var/log/pods/*/*/*.log*
+  prospector:
+    scanner:
+      fingerprint.enabled: true
+  file_identity.fingerprint: ~
 ```
 
 For Java stack traces in Fluentd:
 
-```yaml
+```conf
 <source>
   @type tail
   path /var/log/containers/*java*.log
@@ -496,7 +570,7 @@ For Java stack traces in Fluentd:
 
 Implement buffering and batching for efficiency:
 
-```yaml
+```conf
 # Fluentd buffer configuration
 <match kubernetes.**>
   @type elasticsearch
@@ -582,6 +656,6 @@ Monitor collector performance. Track buffer usage, error rates, and throughput t
 
 ## Conclusion
 
-DaemonSets provide the ideal deployment model for log collection agents in Kubernetes. By ensuring every node runs a collector, you maintain comprehensive log coverage across your infrastructure. Whether using Fluentd, Filebeat, Promtail, or custom collectors, the DaemonSet pattern guarantees logs flow from all nodes to your centralized logging system, enabling effective troubleshooting and observability.
+DaemonSets provide the ideal deployment model for log collection agents in Kubernetes. By ensuring every node runs a collector, you maintain comprehensive log coverage across your infrastructure. Whether using Fluentd, Filebeat, legacy Promtail deployments, or custom collectors, the DaemonSet pattern guarantees logs flow from all nodes to your centralized logging system, enabling effective troubleshooting and observability.
 
 Implement robust log collection with DaemonSets to gain full visibility into your cluster operations.
