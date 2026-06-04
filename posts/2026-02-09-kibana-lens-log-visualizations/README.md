@@ -14,26 +14,26 @@ Kibana Lens revolutionizes how you visualize log data by providing an intuitive 
 
 Lens works by analyzing your log data structure and offering visualization options that make sense for the fields you select. When you drag a timestamp field, Lens suggests time series charts. When you add a keyword field, it offers bar charts and pie charts showing value distributions. This intelligent suggestion system reduces the learning curve dramatically.
 
-The tool supports all common visualization types including line charts, bar charts, area charts, pie charts, data tables, metric displays, and heatmaps. You can layer multiple data series, apply filters, split visualizations by dimensions, and customize colors and formatting without writing any code or queries.
+The tool supports all common visualization types including line charts, bar charts, area charts, pie charts, data tables, metric displays, and heatmaps. You can layer multiple data series, apply filters, split visualizations by dimensions, and customize colors and formatting without writing queries for basic visualizations.
 
 ## Accessing Lens and Basic Setup
 
-Navigate to Lens through the Kibana menu under Visualize. When you first open Lens, you'll see a blank canvas with a data panel on the left showing fields from your default index pattern.
+Navigate to Lens through the Kibana menu under Visualize Library or by creating a new visualization from a dashboard. When you first open Lens, you'll see a blank canvas with a data panel on the left showing fields from your selected data view.
 
 If you need to change the data source:
 
 ```bash
-# Click on the index pattern dropdown at the top
+# Click on the data view dropdown at the top
 
-# Select your log index pattern (e.g., "application-logs-*")
+# Select your log data view (e.g., "application-logs-*")
 # The field list updates to show available fields
 ```
 
-The field list categorizes fields by type - date fields, numeric fields, keyword fields, and text fields. Each type works best with specific visualization types. Date fields drive time series analysis. Numeric fields work for metrics and aggregations. Keyword fields enable grouping and categorization.
+The field list shows available fields from the data view and identifies their types, such as date, numeric, and keyword fields. Each type works best with specific visualization types. Date fields drive time series analysis. Numeric fields work for metrics and aggregations. Keyword fields enable grouping and categorization. Full-text fields are not generally available for Lens grouping, so use a keyword field such as `message.keyword` when you need buckets by message text.
 
-## Creating a Time Series Error Rate Visualization
+## Creating a Time Series Error Count Visualization
 
-Let's build a visualization showing error rates over time. This demonstrates the core Lens workflow:
+Let's build a visualization showing error counts over time. This demonstrates the core Lens workflow:
 
 Start by dragging the timestamp field (usually @timestamp) to the canvas. Lens automatically creates a time series chart counting documents over time. This gives you total log volume.
 
@@ -49,7 +49,7 @@ To focus on errors specifically:
 
 Now your chart shows only ERROR level logs over time. The chart updates automatically, and Lens adjusts the Y-axis scale to fit your data.
 
-To compare error rates across services:
+To compare error counts across services:
 
 ```bash
 # Drag the "service.name" field to the "Break down by" drop zone
@@ -113,12 +113,14 @@ Add the error filter:
 
 The metric now shows a single large number representing current error count. This works great in dashboards where you want at-a-glance status.
 
-To add context, create a comparison to the previous period:
+To add context, create a comparison to the previous period with a secondary metric:
 
 ```bash
 # In the metric configuration panel
-# Enable "Compare to previous period"
-# Lens shows the current value and percentage change
+# Add a secondary metric
+# Set the secondary metric to a Formula such as: count(kql='log.level: ERROR', shift='1h')
+# Enable dynamic coloring and compare the secondary metric to the primary metric
+# Lens shows a trend indicator based on the comparison
 ```
 
 Now you can see if errors are increasing or decreasing relative to the previous hour.
@@ -132,7 +134,7 @@ Tables provide detailed views of log data with sorting and pagination. Create a 
 # Click chart type selector
 # Choose "Table"
 # Configure columns:
-#   - Drag "message" to "Rows"
+#   - Drag "message.keyword" to "Rows"
 #   - Drag any field to "Metrics"
 #   - Set metric function to "Count"
 #   - Name it "Occurrences"
@@ -161,11 +163,11 @@ Heatmaps reveal patterns in multidimensional data using color intensity. Create 
 # Select "Heatmap" chart type
 # Configure axes:
 #   - X-axis: Drag "@timestamp", set interval to "1 hour"
-#   - Y-axis: Drag "http.request.path"
+#   - Y-axis: Drag "http.request.path" or another keyword endpoint field
 #   - Cell value: Drag "http.response.time", set to "Average"
 ```
 
-The resulting heatmap uses color intensity to show average response times. Dark colors indicate slow responses. This makes it easy to spot which endpoints have performance issues and whether they're consistent or time-based.
+The resulting heatmap uses color intensity to show average response times. Higher-intensity colors indicate slower responses, depending on the palette you choose. This makes it easy to spot which endpoints have performance issues and whether they're consistent or time-based.
 
 Add filters to focus on specific scenarios:
 
@@ -180,14 +182,15 @@ Lens includes a formula feature for custom calculations. Calculate error rate as
 
 ```bash
 # Create new visualization
-# Click "Add layer" in the data panel
-# Choose "Formula"
+# Add a metric or vertical-axis dimension
+# Select "Formula" as the function
 # Enter formula:
-#   count(kql='log.level: ERROR') / count() * 100
+#   count(kql='log.level: ERROR') / count()
 # Name the result "Error Rate %"
+# Set the value format to Percent
 ```
 
-This divides error count by total count and multiplies by 100 to get a percentage. The formula updates in real-time as data changes.
+This divides error count by total count and formats the resulting ratio as a percentage. The formula updates in real-time as data changes.
 
 Common useful formulas:
 
@@ -196,9 +199,9 @@ Common useful formulas:
 average(http.response.time) / 1000
 
 # Success rate percentage
-count(kql='http.response.status_code < 400') / count() * 100
+count(kql='http.response.status_code < 400') / count()
 
-# Requests per second
+# Requests per second for one-minute date histogram buckets
 count() / 60
 
 # 95th percentile response time
@@ -263,7 +266,7 @@ Once you've created a useful visualization, save it for reuse:
 
 ```bash
 # Click "Save" in the top right
-# Enter a title: "Error Rate by Service"
+# Enter a title: "Error Count by Service"
 # Optionally add to a dashboard
 # Click "Save"
 ```
@@ -273,11 +276,11 @@ The visualization appears in your saved objects and can be added to any dashboar
 ```bash
 # Open the saved visualization
 # Click "Share" in the top menu
-# Choose "Copy link" or "Generate PDF report"
+# Choose "Copy link" or, if reporting is enabled, export a PDF report
 # Send the link to colleagues
 ```
 
-Links preserve filters and time ranges, so recipients see exactly what you see.
+Links can preserve filters and time ranges, so recipients see the same saved context when they open the visualization.
 
 ## Conclusion
 
