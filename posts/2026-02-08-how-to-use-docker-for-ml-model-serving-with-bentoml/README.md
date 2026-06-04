@@ -14,7 +14,7 @@ This guide walks through the full workflow: saving a model, defining a service, 
 
 ## What BentoML Brings to the Table
 
-BentoML is not just a Flask wrapper around your model. It provides adaptive batching, which groups incoming requests and processes them in a single forward pass for better GPU utilization. It ships with built-in support for all major frameworks: PyTorch, TensorFlow, scikit-learn, XGBoost, and many more. And its containerization story is first-class, producing optimized Docker images with multi-stage builds and proper CUDA support.
+BentoML is not just a Flask wrapper around your model. It provides adaptive batching, which groups incoming requests and processes them in a single forward pass for better hardware utilization. It ships with built-in support for major frameworks: PyTorch, TensorFlow, scikit-learn, XGBoost, and many more. And its containerization story is first-class, producing Docker images with BuildKit support and options for GPU workloads.
 
 ## Installing BentoML
 
@@ -53,8 +53,7 @@ print(f"Model accuracy: {accuracy:.4f}")
 saved_model = bentoml.sklearn.save_model(
     "iris_classifier",
     model,
-    signatures={"predict": {"batchable": True}},  # Enable adaptive batching
-    metadata={"accuracy": accuracy}
+    metadata={"accuracy": float(accuracy)}
 )
 print(f"Model saved: {saved_model}")
 ```
@@ -77,45 +76,45 @@ A BentoML service defines how your model handles requests. It specifies the API 
 # service.py - Define the BentoML service for the Iris classifier
 import numpy as np
 import bentoml
-from bentoml.io import NumpyNdarray, JSON
+from bentoml.models import BentoModel
 
-# Load the model from the local store
-iris_model_runner = bentoml.sklearn.get("iris_classifier:latest").to_runner()
-
-# Create the service
-svc = bentoml.Service("iris_classifier_service", runners=[iris_model_runner])
-
-# Map class indices to species names
 SPECIES = ["setosa", "versicolor", "virginica"]
 
-@svc.api(input=NumpyNdarray(), output=JSON())
-async def predict(input_array: np.ndarray) -> dict:
-    """Predict the species of an iris flower from its measurements."""
-    predictions = await iris_model_runner.predict.async_run(input_array)
-    species = [SPECIES[p] for p in predictions]
-    return {"predictions": species}
+@bentoml.service(name="iris_classifier_service")
+class IrisClassifier:
+    # Load the model from the local model store
+    iris_model = BentoModel("iris_classifier:latest")
 
-@svc.api(input=JSON(), output=JSON())
-async def predict_json(input_data: dict) -> dict:
-    """Accept JSON input with named features."""
-    features = np.array([[
-        input_data["sepal_length"],
-        input_data["sepal_width"],
-        input_data["petal_length"],
-        input_data["petal_width"]
-    ]])
-    predictions = await iris_model_runner.predict.async_run(features)
-    return {
-        "species": SPECIES[predictions[0]],
-        "confidence": "high"
-    }
+    def __init__(self) -> None:
+        self.model = bentoml.sklearn.load_model(self.iris_model)
+
+    @bentoml.api(batchable=True)
+    def predict(self, input_array: np.ndarray) -> list[str]:
+        """Predict the species of iris flowers from their measurements."""
+        predictions = self.model.predict(input_array)
+        return [SPECIES[p] for p in predictions]
+
+    @bentoml.api
+    def predict_json(self, input_data: dict[str, float]) -> dict[str, str]:
+        """Accept JSON input with named features."""
+        features = np.array([[
+            input_data["sepal_length"],
+            input_data["sepal_width"],
+            input_data["petal_length"],
+            input_data["petal_width"]
+        ]])
+        predictions = self.model.predict(features)
+        return {
+            "species": SPECIES[predictions[0]],
+            "confidence": "high"
+        }
 ```
 
 Test the service locally before containerizing.
 
 ```bash
 # Run the service locally for testing
-bentoml serve service:svc --reload
+bentoml serve service:IrisClassifier --reload
 
 # In another terminal, test with curl
 curl -X POST http://localhost:3000/predict \
@@ -134,7 +133,7 @@ A "Bento" packages your service code, model, and dependencies into a single arti
 
 ```yaml
 # bentofile.yaml - Build configuration for the Bento
-service: "service:svc"
+service: "service:IrisClassifier"
 labels:
   owner: ml-team
   project: iris-classifier
@@ -196,26 +195,27 @@ curl -X POST http://localhost:3000/predict \
 
 ## GPU-Enabled Model Serving
 
-For deep learning models that need GPU inference, BentoML supports CUDA-enabled containers.
+For deep learning models that need GPU inference, BentoML supports GPU-enabled Docker containers.
 
 ```yaml
 # bentofile-gpu.yaml - GPU-enabled build configuration
-service: "service:svc"
+service: "service:MyPytorchService"
 
 python:
   packages:
     - torch
     - torchvision
+  extra_index_url:
+    - "https://download.pytorch.org/whl/cu121"
 
 docker:
   python_version: "3.11"
-  cuda_version: "12.1"  # BentoML handles CUDA setup automatically
   distro: "debian"
 ```
 
 ```bash
 # Build with GPU support
-bentoml containerize my_pytorch_service:latest --opt platform=linux/amd64
+bentoml containerize my_pytorch_service:latest --platform linux/amd64
 
 # Run with GPU access
 docker run -d \
@@ -230,7 +230,7 @@ If you need more control over the container image, BentoML lets you use a custom
 
 ```yaml
 # bentofile-custom.yaml - Using a custom Dockerfile
-service: "service:svc"
+service: "service:IrisClassifier"
 
 include:
   - "*.py"
@@ -267,18 +267,12 @@ In production, you likely want to run the model service behind a reverse proxy w
 
 ```yaml
 # docker-compose.yml - Production deployment stack
-version: "3.8"
-
 services:
   iris-service:
     image: iris_classifier_service:latest
-    container_name: iris-service
-    ports:
-      - "3000:3000"
-    environment:
-      - BENTOML_CONFIG=/home/bentoml/config.yaml
+    expose:
+      - "3000"
     deploy:
-      replicas: 2
       resources:
         limits:
           memory: 2G
