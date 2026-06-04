@@ -14,7 +14,7 @@ This approach catches problems that active health checks might miss, such as hos
 
 ## Understanding Outlier Detection
 
-Envoy tracks several metrics for each upstream host: consecutive connection failures, consecutive 5xx responses, and success rate relative to other hosts in the cluster. When a host exceeds configured thresholds, Envoy ejects it from the load balancing pool for a base ejection time. The ejection duration increases exponentially with repeated ejections, preventing flapping hosts from repeatedly entering and leaving the pool.
+Envoy tracks several metrics for each upstream host: consecutive local-origin failures, consecutive 5xx responses, consecutive gateway failures, and success rate relative to other hosts in the cluster. When a host exceeds configured thresholds, Envoy ejects it from the load balancing pool for a base ejection time. The ejection duration increases with repeated ejections and is capped by `max_ejection_time`, preventing flapping hosts from repeatedly entering and leaving the pool.
 
 The detection algorithm distinguishes between two modes: consecutive failures (any single host exceeding thresholds) and success rate outliers (hosts performing significantly worse than cluster averages). You can enable both modes simultaneously to catch different failure patterns.
 
@@ -87,16 +87,16 @@ static_resources:
       base_ejection_time: 30s
       # Maximum ejection percentage (safety limit)
       max_ejection_percent: 50
-      # Enforce consecutive 5xx for gateway errors
+      # Enforce consecutive 5xx errors
       enforcing_consecutive_5xx: 100
       # Enforce consecutive gateway failures
-      enforcing_consecutive_gateway_failure: 0
+      enforcing_consecutive_gateway_failure: 100
       # Success rate parameters
       enforcing_success_rate: 100
       success_rate_minimum_hosts: 3
       success_rate_request_volume: 100
       success_rate_stdev_factor: 1900
-      # Consecutive connection failures before ejection
+      # Consecutive gateway failures before ejection
       consecutive_gateway_failure: 3
       # Local origin failures (connection refused, etc.)
       consecutive_local_origin_failure: 5
@@ -129,15 +129,15 @@ outlier_detection:
   consecutive_5xx: 5
   enforcing_consecutive_5xx: 100  # 100% enforcement
 
-  # Gateway failures (connection refused, reset, timeout)
+  # Gateway failures (HTTP 502, 503, 504)
   consecutive_gateway_failure: 3
   enforcing_consecutive_gateway_failure: 100
 
-  # Local origin failures (connect failures before reaching upstream)
+  # Local origin failures (timeouts, resets, connect failures)
   consecutive_local_origin_failure: 5
   enforcing_consecutive_local_origin_failure: 100
 
-  # Differentiate between connection failures and HTTP errors
+  # Differentiate between local-origin failures and external HTTP errors
   split_external_local_origin_errors: true
 ```
 
@@ -270,7 +270,7 @@ clusters:
       expected_statuses:
       - start: 200
         end: 299
-      # Don't count health check failures as outlier events
+      # Use HTTP/1.1 for health check requests
       codec_client_type: HTTP1
   # Passive outlier detection
   outlier_detection:
@@ -299,10 +299,10 @@ curl -s http://localhost:9901/stats | grep outlier_detection
 
 # Key metrics:
 # cluster.backend.outlier_detection.ejections_active: currently ejected hosts
-# cluster.backend.outlier_detection.ejections_consecutive_5xx: ejections due to 5xx
-# cluster.backend.outlier_detection.ejections_consecutive_gateway_failure: gateway failures
-# cluster.backend.outlier_detection.ejections_success_rate: success rate outliers
-# cluster.backend.outlier_detection.ejections_total: total ejections
+# cluster.backend.outlier_detection.ejections_enforced_consecutive_5xx: ejections due to 5xx
+# cluster.backend.outlier_detection.ejections_enforced_consecutive_gateway_failure: gateway failures
+# cluster.backend.outlier_detection.ejections_enforced_success_rate: success rate outliers
+# cluster.backend.outlier_detection.ejections_enforced_total: total enforced ejections
 # cluster.backend.outlier_detection.ejections_overflow: max ejection % reached
 ```
 
@@ -314,7 +314,7 @@ groups:
 - name: envoy_outlier_detection
   rules:
   - alert: FrequentOutlierEjections
-    expr: rate(envoy_cluster_outlier_detection_ejections_total[5m]) > 0.1
+    expr: rate(envoy_cluster_outlier_detection_ejections_enforced_total[5m]) > 0.1
     for: 5m
     annotations:
       summary: "High rate of outlier ejections in {{ $labels.cluster }}"
@@ -346,15 +346,15 @@ FAILURE_RATE = 0.7  # 70% failure rate
 def test_endpoint():
     if random.random() < FAILURE_RATE:
         # Simulate various failure modes
-        failure_type = random.choice(['5xx', 'timeout', 'connection'])
+        failure_type = random.choice(['5xx', 'timeout', 'gateway'])
 
         if failure_type == '5xx':
             return jsonify({"error": "Internal error"}), 500
         elif failure_type == 'timeout':
-            time.sleep(10)  # Hang to cause timeout
+            time.sleep(20)  # Hang long enough to exceed Envoy's default route timeout
             return jsonify({"data": "slow"}), 200
         else:
-            # Connection will be reset
+            # Return a gateway failure response
             time.sleep(0.1)
             return "", 503
 
@@ -386,7 +386,7 @@ clusters:
   lb_policy: ROUND_ROBIN
   # Common load balancer configuration
   common_lb_config:
-    # Panic threshold: route to all hosts if > 50% are unhealthy
+    # Panic threshold: route to all hosts if availability drops below 50%
     healthy_panic_threshold:
       value: 50.0
     # Zone aware load balancing
@@ -410,7 +410,7 @@ clusters:
     base_ejection_time: 30s
 ```
 
-When ejections exceed panic threshold, Envoy routes to all hosts including ejected ones, preventing complete service outage.
+When available hosts drop below the panic threshold, Envoy routes to all hosts in that priority, including ejected ones, preventing complete service outage.
 
 ## Best Practices
 
