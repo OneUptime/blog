@@ -14,7 +14,7 @@ Build checks complement tools like Hadolint by integrating directly into the Doc
 
 ## Requirements
 
-Docker build checks require Docker Engine 27.0 or later, or Docker Desktop 4.33 or later. They rely on BuildKit, which has been the default builder since Docker 23.0.
+Docker build checks require Docker Buildx 0.15.0 or later and Dockerfile syntax 1.8 or later. Docker Desktop 4.33 and later include support for Docker build checks. They rely on BuildKit, which is the default builder for Docker Desktop and Docker Engine users.
 
 Verify your Docker version supports build checks:
 
@@ -23,11 +23,8 @@ Verify your Docker version supports build checks:
 
 docker version
 
-# Verify BuildKit is the active builder
+# Build checks are available when you see Buildx v0.15.0 or later
 docker buildx version
-
-# Build checks are available when you see BuildKit v0.15.0 or later
-docker buildx inspect --bootstrap | grep -i version
 ```
 
 ## Running Build Checks
@@ -44,7 +41,7 @@ docker build --check .
 docker build --check -f Dockerfile.prod .
 ```
 
-If there are no issues, the command exits silently with a zero exit code. When problems are found, you get detailed output describing each issue.
+If there are no issues, the command completes with a zero exit code. When problems are found, you get detailed output describing each issue, and `docker build --check` exits with a non-zero status.
 
 ## Understanding Check Output
 
@@ -56,12 +53,11 @@ A Dockerfile with common problems:
 # test.Dockerfile - Contains issues for demonstration
 FROM ubuntu:22.04
 
-RUN apt-get update
-RUN apt-get install -y python3 curl wget
+ARG AWS_SECRET_ACCESS_KEY
+ENV APP_HOME /app
 
+WORKDIR $APP_HOME
 COPY . .
-
-RUN cd /app && python3 setup.py install
 
 ENTRYPOINT python3 /app/main.py
 ```
@@ -76,9 +72,9 @@ docker build --check -f test.Dockerfile .
 The output shows each issue with its location, severity, and a description:
 
 ```text
-WARNING: LegacyKeyValueFormat - "Legacy key/value format with whitespace separator should not be used"
-WARNING: SecretsUsedInArgOrEnv - "Do not use ARG or ENV instructions for sensitive data"
-WARNING: JSONArgsRecommended - "JSON arguments recommended for ENTRYPOINT to prevent unintended behavior"
+WARNING: SecretsUsedInArgOrEnv - Do not use ARG or ENV instructions for sensitive data
+WARNING: LegacyKeyValueFormat - "ENV key=value" should be used instead of legacy "ENV key value" format
+WARNING: JSONArgsRecommended - JSON arguments recommended for ENTRYPOINT to prevent unintended behavior related to OS signals
 ```
 
 Each check has a unique identifier that you can reference when configuring which checks to enforce or ignore.
@@ -119,11 +115,11 @@ ENV API_KEY=abc123
 # Good: use build secrets instead
 RUN --mount=type=secret,id=db_pass cat /run/secrets/db_pass
 
-# RedundantUser - Avoid setting USER to root explicitly
-# Bad: unnecessary root user declaration
-USER root
-# Good: only set USER when switching to a non-root user
-USER appuser
+# CopyIgnoredFile - Don't copy files excluded by .dockerignore
+# Bad: .env is listed in .dockerignore, but the Dockerfile tries to copy it
+COPY .env /app/.env
+# Good: pass sensitive values with secrets or runtime configuration instead
+RUN --mount=type=secret,id=app_env cat /run/secrets/app_env
 ```
 
 ### Best Practice Checks
@@ -146,7 +142,7 @@ FROM --platform=$BUILDPLATFORM ubuntu:22.04
 
 ## Configuring Build Checks
 
-You can configure which checks are active using a `check` directive in your Dockerfile or through a `docker-bake.hcl` file.
+You can configure which checks are active using a `check` directive in your Dockerfile or by passing the `BUILDKIT_DOCKERFILE_CHECK` build argument, including from a Bake target.
 
 Add check configuration directly in your Dockerfile:
 
@@ -288,7 +284,8 @@ Start with a Dockerfile that triggers several checks:
 
 ```dockerfile
 # Before: multiple issues
-FROM node AS build
+FROM node AS Build
+ENV NODE_ENV production
 COPY . /app
 WORKDIR /app
 RUN npm install
@@ -304,6 +301,8 @@ Apply the fixes one by one:
 # Pin the base image tag, use lowercase stage name
 FROM node:20-slim AS build
 
+ENV NODE_ENV=production
+
 WORKDIR /app
 
 # Copy dependency manifest first for layer caching
@@ -317,8 +316,8 @@ ENTRYPOINT ["npm", "start"]
 ```
 
 Each change addresses a specific build check:
-- Pinning `node:20-slim` resolves version pinning checks
 - Lowercase `build` stage name satisfies casing checks
+- Using `ENV NODE_ENV=production` resolves the LegacyKeyValueFormat check
 - JSON form `ENTRYPOINT` resolves the JSONArgsRecommended check
 - Adding the syntax directive enables the latest check features
 
