@@ -31,7 +31,7 @@ You advertise extended resources by patching node status. The resource name must
 ```bash
 # Advertise 4 FPGAs on a node
 
-kubectl patch node worker-01 --type=json -p='[
+kubectl patch node worker-01 --subresource=status --type=json -p='[
   {
     "op": "add",
     "path": "/status/capacity/example.com~1fpga",
@@ -40,7 +40,7 @@ kubectl patch node worker-01 --type=json -p='[
 ]'
 
 # Advertise custom AI accelerators
-kubectl patch node worker-02 --type=json -p='[
+kubectl patch node worker-02 --subresource=status --type=json -p='[
   {
     "op": "add",
     "path": "/status/capacity/acme.io~1ai-accelerator",
@@ -76,6 +76,7 @@ import (
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
 
@@ -85,9 +86,16 @@ const (
 )
 
 type FPGADevicePlugin struct {
+    pluginapi.UnimplementedDevicePluginServer
+
     devices []*pluginapi.Device
     socket  string
     server  *grpc.Server
+}
+
+// GetDevicePluginOptions reports which optional RPCs this plugin supports
+func (m *FPGADevicePlugin) GetDevicePluginOptions(ctx context.Context, e *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
+    return &pluginapi.DevicePluginOptions{}, nil
 }
 
 // ListAndWatch returns available devices
@@ -149,7 +157,7 @@ func (m *FPGADevicePlugin) Start() error {
 
 // Register with kubelet
 func (m *FPGADevicePlugin) Register() error {
-    conn, err := grpc.Dial(pluginapi.KubeletSocket, grpc.WithInsecure())
+    conn, err := grpc.NewClient("unix://"+pluginapi.KubeletSocket, grpc.WithTransportCredentials(insecure.NewCredentials()))
     if err != nil {
         return err
     }
@@ -255,7 +263,7 @@ Nodes often have multiple types of specialized hardware. You can advertise multi
 
 ```bash
 # Node with both GPUs and FPGAs
-kubectl patch node gpu-node-01 --type=json -p='[
+kubectl patch node gpu-node-01 --subresource=status --type=json -p='[
   {
     "op": "add",
     "path": "/status/capacity/nvidia.com~1gpu",
@@ -388,7 +396,7 @@ The kubelet will automatically stop allocating unhealthy devices to new pods.
 
 **Forgetting integer constraints**: Extended resources must be integers. Requesting 0.5 of a resource will fail.
 
-**Not implementing proper cleanup**: Device plugins should clean up device allocations when pods terminate.
+**Expecting a deallocation callback**: The device plugin API does not provide a cleanup call when pods terminate. Make allocation and device preparation idempotent, and perform any device-specific reset or cleanup before reusing a device.
 
 **Oversubscribing manually**: Don't advertise more resources than physically exist. Kubernetes trusts your advertised capacity.
 
