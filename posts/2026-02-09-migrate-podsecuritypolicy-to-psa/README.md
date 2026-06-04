@@ -22,17 +22,19 @@ First, understand your current PSP usage:
 
 ```bash
 # List all PodSecurityPolicies
-
 kubectl get psp
 
 # Check which PSPs are actually used
-kubectl get psp -o yaml | grep -A 5 "^metadata:"
+kubectl get pods --all-namespaces \
+  -o jsonpath="{range .items[*]}{.metadata.namespace} {.metadata.name} {.metadata.annotations.kubernetes\.io\/psp}{'\n'}{end}" | \
+  sort -u
 
-# Find which service accounts use each PSP
-kubectl get rolebindings,clusterrolebindings --all-namespaces -o json | \
-  jq -r '.items[] | select(.roleRef.kind=="ClusterRole") |
-  select(.roleRef.name | contains("psp")) |
-  {namespace:.metadata.namespace, name:.metadata.name, subjects:.subjects}'
+# Find RBAC roles that grant use of PSP resources
+kubectl get roles,clusterroles --all-namespaces -o json | \
+  jq -r '.items[] | select([.rules[]? |
+    select((.resources[]?=="podsecuritypolicies" or .resources[]?=="podsecuritypolicies.policy") and
+    (.verbs[]?=="use" or .verbs[]?=="*"))] | length > 0) |
+    {kind, namespace:.metadata.namespace, name:.metadata.name, rules:.rules}'
 ```
 
 Create an inventory of your policies:
@@ -67,10 +69,11 @@ for psp in $(kubectl get psp -o name); do
   runAsUser=$(kubectl get psp $psp_name -o jsonpath='{.spec.runAsUser.rule}')
   echo "  RunAsUser: $runAsUser"
 
-  # Find which service accounts are bound
-  bindings=$(kubectl get clusterrolebindings -o json | \
-    jq -r ".items[] | select(.roleRef.name==\"$psp_name\" or .roleRef.name==\"use-$psp_name\") | .metadata.name")
-  echo "  Bound via: $bindings"
+  # Find running pods admitted by this PSP
+  used_by=$(kubectl get pods --all-namespaces \
+    -o jsonpath="{range .items[?(@.metadata.annotations.kubernetes\.io\/psp=='$psp_name')]}{.metadata.namespace}/{.metadata.name}{'\n'}{end}")
+  echo "  Used by pods:"
+  echo "$used_by" | sed 's/^/    /'
 done
 ```
 
@@ -78,7 +81,7 @@ done
 
 Map each PSP to the equivalent PSA profile:
 
-**Restrictive PSPs map to restricted**: Policies that require runAsNonRoot, drop all capabilities, and enforce read-only root filesystems.
+**Restrictive PSPs map to restricted**: Policies that require runAsNonRoot, prevent privilege escalation, require seccomp, and require containers to drop all Linux capabilities while only allowing NET_BIND_SERVICE to be added back.
 
 **Moderate PSPs map to baseline**: Policies that block hostNetwork, privileged containers, and host path volumes but allow most configurations.
 
@@ -114,7 +117,7 @@ mappings:
 
 ## Running PSP and PSA Together
 
-During migration, run both systems concurrently in warn/audit mode:
+During migration on Kubernetes versions where PSP is still available, run both systems concurrently in warn/audit mode:
 
 ```yaml
 # Enable PSA in warn mode for all namespaces
@@ -125,7 +128,7 @@ metadata:
   labels:
     pod-security.kubernetes.io/warn: baseline
     pod-security.kubernetes.io/audit: baseline
-    # Don't enforce yet - PSP still active
+    # Don't enforce yet - PSP is still active on pre-1.25 clusters
 ```
 
 This configuration allows you to see what would happen when PSA enforces without breaking existing workloads.
@@ -136,11 +139,12 @@ Monitor warnings:
 # Deploy a test pod and check warnings
 kubectl run test --image=nginx -n development
 
-# Check events for PSA warnings
-kubectl get events -n development | grep PodSecurity
+# Dry-run an enforce label to check existing pods without changing the namespace
+kubectl label --dry-run=server --overwrite ns development \
+  pod-security.kubernetes.io/enforce=baseline
 
-# Review audit logs
-kubectl logs -n kube-system kube-apiserver-xxx | grep pod-security-admission
+# Review Kubernetes audit logs for PSA audit annotations
+grep 'pod-security.kubernetes.io/audit-violations' /var/log/kubernetes/audit.log
 ```
 
 ## Automated Migration Tool
@@ -202,13 +206,13 @@ for psp in $(kubectl get psp -o name | cut -d'/' -f2); do
   profile=$(map_psp_to_profile $psp)
   echo "  Mapped to profile: $profile"
 
-  # Find namespaces using this PSP
-  bindings=$(kubectl get clusterrolebindings,rolebindings --all-namespaces -o json | \
-    jq -r ".items[] | select(.roleRef.name==\"$psp\" or .roleRef.name==\"use-$psp\") |
-    {namespace:.metadata.namespace} | .namespace")
+  # Find namespaces with running pods admitted by this PSP
+  namespaces=$(kubectl get pods --all-namespaces \
+    -o jsonpath="{range .items[?(@.metadata.annotations.kubernetes\.io\/psp=='$psp')]}{.metadata.namespace}{'\n'}{end}" | \
+    sort -u)
 
-  for ns in $bindings; do
-    if [[ "$ns" != "null" ]] && [[ -n "$ns" ]]; then
+  for ns in $namespaces; do
+    if [[ -n "$ns" ]]; then
       apply_psa_labels $ns $profile
     fi
   done
@@ -234,11 +238,11 @@ ENFORCE=true ./migrate-psp-to-psa.sh
 
 Some PSPs have custom configurations that don't map cleanly:
 
-**Custom allowed capabilities**: PSA restricted profile drops all capabilities. If your PSP allows specific capabilities, you may need baseline profile plus documentation for developers.
+**Custom allowed capabilities**: PSA restricted requires dropping all Linux capabilities and only allows adding back NET_BIND_SERVICE. If your PSP allows other capabilities, you may need baseline profile plus documentation for developers or an additional policy webhook.
 
 **Custom volume type restrictions**: PSA doesn't restrict volume types as granularly as PSP. Document acceptable volume types in your security policy.
 
-**Custom seccomp/AppArmor profiles**: PSA restricted requires seccomp but doesn't specify which profile. Use pod annotations for custom profiles.
+**Custom seccomp/AppArmor profiles**: PSA restricted requires seccomp but doesn't specify which profile. Use pod or container securityContext fields for custom seccomp and AppArmor profiles on current Kubernetes versions.
 
 Create compensating controls:
 
@@ -252,15 +256,25 @@ metadata:
     security.company.com/required-capabilities: "NET_BIND_SERVICE"
     security.company.com/volume-types: "emptyDir,configMap,secret"
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
     metadata:
-      annotations:
-        container.apparmor.security.beta.kubernetes.io/app: localhost/custom-profile
+      labels:
+        app: app
     spec:
       securityContext:
         seccompProfile:
           type: Localhost
           localhostProfile: profiles/custom.json
+      containers:
+      - name: app
+        image: nginx:1.27
+        securityContext:
+          appArmorProfile:
+            type: Localhost
+            localhostProfile: custom-profile
 ```
 
 ## Phased Migration Plan
@@ -283,8 +297,8 @@ done
 Phase 2: Review violations (Week 3)
 
 ```bash
-# Collect violation reports
-kubectl get events --all-namespaces | grep "violates PodSecurity" > violations.txt
+# Collect violation reports from Kubernetes audit logs
+grep 'pod-security.kubernetes.io/audit-violations' /var/log/kubernetes/audit.log > violations.txt
 
 # Analyze and remediate top violations
 cat violations.txt | awk '{print $5}' | sort | uniq -c | sort -rn
@@ -318,7 +332,7 @@ Phase 5: Remove PSP (Week 6)
 # Delete PSPs
 kubectl delete psp --all
 
-# Remove PSP RBAC bindings
+# Remove PSP RBAC bindings if you labeled them during migration
 kubectl delete clusterrole,clusterrolebinding -l 'rbac.authorization.k8s.io/psp=true'
 ```
 
@@ -369,9 +383,8 @@ kubectl apply -f test-psa-migration.yaml
 # Should succeed
 kubectl get pod compliant-pod -n psa-test
 
-# Should fail
-kubectl get pod non-compliant-pod -n psa-test
-# Error: pods "non-compliant-pod" is forbidden
+# The apply output should include a Forbidden error for non-compliant-pod
+# Error from server (Forbidden): error when creating "test-psa-migration.yaml": pods "non-compliant-pod" is forbidden
 ```
 
 ## Rollback Plan
