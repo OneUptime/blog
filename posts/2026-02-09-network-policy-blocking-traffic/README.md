@@ -12,13 +12,13 @@ Network policies in Kubernetes provide essential security controls, but overly r
 
 ## Understanding Network Policy Behavior
 
-Kubernetes network policies work as a whitelist. Once you apply any network policy selecting a pod, that pod blocks all traffic not explicitly allowed. This default-deny behavior catches many engineers off guard.
+Kubernetes network policies work as a whitelist for the direction they apply to. Once you apply any ingress policy selecting a pod, that pod blocks incoming traffic not explicitly allowed; once you apply any egress policy selecting a pod, that pod blocks outgoing traffic not explicitly allowed. This default-deny behavior catches many engineers off guard.
 
 Network policies are namespace-scoped and use label selectors to target pods. Both ingress (incoming) and egress (outgoing) traffic can be controlled separately. A common mistake is defining ingress rules but forgetting egress rules, or vice versa.
 
 ## Symptoms of Blocked Traffic
 
-When network policies block legitimate traffic, you'll see connection timeouts or refused connections. Applications log errors like "connection timed out", "no route to host", or "connection refused". These symptoms look identical to many other network issues, making diagnosis tricky.
+When network policies block legitimate traffic, you'll usually see connection timeouts. Applications may log errors like "connection timed out" or "no route to host". These symptoms look identical to many other network issues, making diagnosis tricky.
 
 DNS resolution failures are particularly common when egress policies don't allow traffic to kube-dns or CoreDNS. Your pods can't resolve service names, breaking service discovery.
 
@@ -103,7 +103,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
       podSelector:
         matchLabels:
           app.kubernetes.io/component: controller
@@ -170,7 +170,7 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
       podSelector:
         matchLabels:
           k8s-app: kube-dns
@@ -219,7 +219,7 @@ kubectl run blocked-test --image=nicolaka/netshoot \
 
 If the first succeeds and the second times out, your network policy is working as intended.
 
-## Example: Missing Egress Policy
+## Example: Overly Restrictive Egress Policy
 
 Applications often need to make external API calls, but egress policies can block them. Here's a frontend that needs to call an external payment API but is blocked by policy.
 
@@ -280,7 +280,7 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
       podSelector:
         matchLabels:
           k8s-app: kube-dns
@@ -348,10 +348,10 @@ Some CNI plugins provide metrics or logs for denied connections. Cilium, for exa
 
 ```bash
 # View Cilium network policy denials (if using Cilium)
-kubectl exec -it -n kube-system cilium-xxxxx -- cilium monitor --type drop
+kubectl exec -it -n kube-system cilium-xxxxx -- cilium-dbg monitor --type drop
 
-# Check Calico policy logs (if using Calico)
-kubectl logs -n kube-system calico-node-xxxxx | grep "calico/denied"
+# Check Calico policy logs (if using Calico Log rules with the iptables data plane)
+sudo journalctl -k | grep calico-packet
 ```
 
 Set up alerts for unexpected connection failures in your applications. Sudden spikes in connection timeouts often indicate new network policy issues.
@@ -380,10 +380,7 @@ spec:
         matchLabels:
           app: frontend
   egress:
-  - to:
-    - podSelector: {}
-  - to:
-    - namespaceSelector: {}
+  - {}
 ```
 
 Monitor for several days before tightening egress rules. Use application logs and metrics to identify all legitimate traffic patterns.
