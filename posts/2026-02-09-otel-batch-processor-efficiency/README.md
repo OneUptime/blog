@@ -34,7 +34,7 @@ processors:
     # Maximum time to wait before sending a batch
     timeout: 10s
     
-    # Number of spans/metrics/logs per batch
+    # Number of spans/metrics/logs that triggers a send
     send_batch_size: 1024
     
     # Maximum batch size (safety limit)
@@ -54,7 +54,7 @@ service:
       exporters: [otlp]
 ```
 
-This configuration sends batches every 10 seconds or when 1024 items accumulate, whichever comes first.
+This configuration triggers a send every 10 seconds or when 1024 items accumulate, whichever comes first, and splits larger batches at 2048 items.
 
 ## Tuning for High Throughput
 
@@ -70,13 +70,13 @@ processors:
     send_batch_size: 8192
     send_batch_max_size: 16384
     
-    # Configure metadata keys to include in batches
+    # Create separate batchers for client metadata keys
     metadata_keys:
       - tenant_id
       - environment
 ```
 
-Larger batch sizes work well when you have consistent high traffic and can tolerate slightly higher latency.
+Larger batch sizes work well when you have consistent high traffic and can tolerate slightly higher latency. When using `metadata_keys`, configure receivers with `include_metadata: true` and use keys from client metadata, such as authenticated tenant metadata.
 
 ## Low-Latency Configuration
 
@@ -122,10 +122,12 @@ processors:
 exporters:
   otlp/traces:
     endpoint: tempo:4317
-  otlp/metrics:
-    endpoint: prometheus:9090
-  otlp/logs:
-    endpoint: loki:3100
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:8889
+  otlphttp/logs:
+    endpoint: http://loki:3100/otlp
 
 service:
   pipelines:
@@ -137,12 +139,12 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch/metrics]
-      exporters: [otlp/metrics]
+      exporters: [prometheus]
     
     logs:
       receivers: [otlp]
       processors: [batch/logs]
-      exporters: [otlp/logs]
+      exporters: [otlphttp/logs]
 ```
 
 Different telemetry types often have different volume and latency requirements.
@@ -155,7 +157,12 @@ Monitor batch processor metrics to optimize configuration.
 service:
   telemetry:
     metrics:
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   
   pipelines:
     traces:
