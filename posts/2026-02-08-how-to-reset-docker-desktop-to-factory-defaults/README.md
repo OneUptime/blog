@@ -90,15 +90,15 @@ docker save $(docker images --format '{{.Repository}}:{{.Tag}}' | grep 'myapp') 
 
 ```bash
 # macOS: Back up Docker Desktop settings
-cp ~/Library/Group\ Containers/group.com.docker/settings.json backups/docker-settings.json
+cp ~/Library/Group\ Containers/group.com.docker/settings-store.json backups/docker-settings-store.json
 
 # View current settings to note resource allocations
-cat backups/docker-settings.json | python3 -m json.tool
+cat backups/docker-settings-store.json | python3 -m json.tool
 ```
 
 ```powershell
 # Windows: Back up Docker Desktop settings
-Copy-Item "$env:APPDATA\Docker\settings.json" ".\backups\docker-settings.json"
+Copy-Item "$env:APPDATA\Docker\settings-store.json" ".\backups\docker-settings-store.json"
 ```
 
 ### Save Docker Compose State
@@ -118,10 +118,9 @@ docker compose -f /path/to/your/docker-compose.yml config > backups/compose-conf
 The easiest method works on all platforms:
 
 1. Open Docker Desktop
-2. Click the gear icon (Settings)
-3. Navigate to the "Troubleshoot" section (or look for a bug icon)
-4. Click "Reset to factory defaults"
-5. Confirm the action
+2. Open the Docker menu and select "Troubleshoot," or click the Troubleshoot icon in the Dashboard
+3. Click "Reset to factory defaults"
+4. Confirm the action
 
 Docker Desktop shuts down, removes all data, and restarts with a clean state.
 
@@ -137,13 +136,13 @@ killall Docker 2>/dev/null
 killall com.docker.hyperkit 2>/dev/null
 killall com.docker.backend 2>/dev/null
 
+# Remove the Docker VM disk image
+rm -rf ~/Library/Containers/com.docker.docker/Data/vms/
+
 # Remove all Docker Desktop data
 rm -rf ~/Library/Containers/com.docker.docker
 rm -rf ~/Library/Group\ Containers/group.com.docker
 rm -rf ~/.docker
-
-# Remove the Docker VM disk image
-rm -rf ~/Library/Containers/com.docker.docker/Data/vms/
 
 # Restart Docker Desktop fresh
 open -a Docker
@@ -161,6 +160,7 @@ wsl --shutdown
 
 # Unregister Docker's WSL distributions (this removes all data)
 wsl --unregister docker-desktop
+# Docker Desktop 4.30 and later only has docker-desktop-data if it was created by an older install
 wsl --unregister docker-desktop-data
 
 # Remove Docker Desktop configuration
@@ -182,7 +182,6 @@ systemctl --user stop docker-desktop
 
 # Remove Docker Desktop data
 rm -rf ~/.docker/desktop
-rm -rf ~/.local/share/docker
 
 # Remove Docker configuration
 rm -rf ~/.docker
@@ -200,7 +199,7 @@ Docker Desktop starts with a clean state. Follow these steps to get back to a wo
 ```bash
 # macOS: Restore your backed-up settings
 # Wait for Docker Desktop to fully start first
-cp backups/docker-settings.json ~/Library/Group\ Containers/group.com.docker/settings.json
+cp backups/docker-settings-store.json ~/Library/Group\ Containers/group.com.docker/settings-store.json
 
 # Restart Docker Desktop to apply restored settings
 osascript -e 'quit app "Docker"'
@@ -263,10 +262,10 @@ docker login registry.example.com
 You do not always need a full factory reset. Try these targeted cleanups first.
 
 ```bash
-# Remove all containers, images, and build cache (keeps settings and volumes)
+# Remove stopped containers, unused images, unused networks, and build cache (keeps settings and volumes)
 docker system prune -a -f
 
-# Remove everything including volumes
+# Also remove unused anonymous volumes
 docker system prune -a -f --volumes
 
 # Remove only build cache
@@ -278,8 +277,8 @@ docker container prune -f
 # Remove only dangling images
 docker image prune -f
 
-# Remove only unused volumes (dangerous if you have data you need)
-docker volume prune -f
+# Remove unused anonymous and named volumes (dangerous if you have data you need)
+docker volume prune -a -f
 ```
 
 ### Reset Kubernetes Only
@@ -311,6 +310,7 @@ rm -rf ~/.docker
 ```powershell
 # Windows: Uninstall through Settings > Apps, then remove leftover data
 wsl --unregister docker-desktop
+# Docker Desktop 4.30 and later only has docker-desktop-data if it was created by an older install
 wsl --unregister docker-desktop-data
 Remove-Item -Recurse -Force "$env:APPDATA\Docker" -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Docker" -ErrorAction SilentlyContinue
