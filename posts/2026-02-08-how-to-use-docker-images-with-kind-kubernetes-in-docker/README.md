@@ -14,7 +14,7 @@ One of the first challenges developers face with Kind is getting their locally b
 
 ## Installing Kind
 
-Kind requires Docker and Go, though you can install the binary directly without Go.
+For this Docker-based workflow, Kind requires Docker. Go is only needed if you install Kind with `go install` or from source.
 
 ```bash
 # Install Kind on macOS
@@ -149,7 +149,13 @@ Create the registry and connect it to Kind:
 
 ```bash
 # Create a local Docker registry running on port 5001
-docker run -d --restart=always -p 5001:5000 --name kind-registry registry:2
+reg_name='kind-registry'
+reg_port='5001'
+if [ "$(docker inspect -f '{{.State.Running}}' "${reg_name}" 2>/dev/null || true)" != 'true' ]; then
+  docker run \
+    -d --restart=always -p "127.0.0.1:${reg_port}:5000" --network bridge --name "${reg_name}" \
+    registry:3
+fi
 
 # Create a Kind cluster configured to use the local registry
 cat <<'EOF' | kind create cluster --name dev --config=-
@@ -157,12 +163,22 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 containerdConfigPatches:
   - |-
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
-      endpoint = ["http://kind-registry:5000"]
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
 EOF
 
+# Configure each Kind node to route localhost:5001 pulls to the registry container
+REGISTRY_DIR="/etc/containerd/certs.d/localhost:${reg_port}"
+for node in $(kind get nodes --name dev); do
+  node_name=${node#node/}
+  docker exec "${node_name}" mkdir -p "${REGISTRY_DIR}"
+  cat <<EOF | docker exec -i "${node_name}" cp /dev/stdin "${REGISTRY_DIR}/hosts.toml"
+[host."http://${reg_name}:5000"]
+EOF
+done
+
 # Connect the registry to the Kind network so nodes can reach it
-docker network connect kind kind-registry
+docker network connect kind "${reg_name}" 2>/dev/null || true
 ```
 
 Now tag and push images to the local registry:
@@ -238,7 +254,7 @@ The `kind load` command can be slow for large images because it exports the imag
 
 **Keep images small.** Use Alpine base images and multi-stage builds.
 
-**Use specific tags, not `latest`.** Changing the tag forces Kubernetes to pull the new version without needing `imagePullPolicy: Always`.
+**Use specific tags, not `latest`.** Changing the tag gives Kubernetes a new image reference to use without relying on `imagePullPolicy: Always`.
 
 **Load to specific nodes.** In multi-node clusters, if your pods only run on worker nodes, you can load images to workers only:
 
