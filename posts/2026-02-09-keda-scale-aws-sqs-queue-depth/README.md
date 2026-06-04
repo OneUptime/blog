@@ -10,13 +10,13 @@ Description: Configure KEDA to autoscale Kubernetes deployments based on AWS SQS
 
 AWS SQS queues decouple services by providing reliable message delivery. When message rates vary, you need to scale workers dynamically to maintain low queue depths and fast processing times. KEDA monitors SQS queue metrics and automatically adjusts worker replica counts to match the workload.
 
-This autoscaling approach ensures you have enough workers to process messages quickly during peak periods while scaling down during quiet times to reduce costs. KEDA handles the complexity of querying CloudWatch and AWS SQS APIs, exposing queue depth as a standard metric that HPA can use for scaling decisions.
+This autoscaling approach ensures you have enough workers to process messages quickly during peak periods while scaling down during quiet times to reduce costs. KEDA handles the complexity of querying AWS SQS APIs, exposing queue depth as a standard metric that HPA can use for scaling decisions.
 
 ## Understanding SQS-Based Scaling
 
 SQS queue depth represents messages waiting to be processed. KEDA's SQS scaler queries this metric and calculates how many worker pods are needed based on your target messages-per-pod ratio. When queue depth increases beyond the target, KEDA scales up. When it decreases, KEDA scales down.
 
-The scaler can monitor ApproximateNumberOfMessages (visible messages) or ApproximateNumberOfMessagesNotVisible (in-flight messages being processed), or both combined to determine scaling needs.
+The scaler can monitor ApproximateNumberOfMessages (visible messages) alone, or combine it with ApproximateNumberOfMessagesNotVisible (in-flight messages being processed) to determine scaling needs.
 
 ## Setting Up AWS Credentials
 
@@ -66,7 +66,8 @@ metadata:
   namespace: workers
 spec:
   podIdentity:
-    provider: aws-eks
+    provider: aws
+    identityOwner: workload
 ```
 
 ## Basic SQS Queue Scaling
@@ -93,7 +94,6 @@ spec:
       queueURL: https://sqs.us-east-1.amazonaws.com/123456789012/my-work-queue
       queueLength: "10"  # Target 10 messages per pod
       awsRegion: us-east-1
-      identityOwner: operator  # Use credentials from TriggerAuthentication
 
   advanced:
     horizontalPodAutoscalerConfig:
@@ -146,7 +146,6 @@ spec:
       awsRegion: us-east-1
       awsEndpoint: ""  # Leave empty for standard AWS endpoints
       scaleOnInFlight: "true"  # Also consider in-flight messages
-      scaleIfInFlight: "true"  # Scale even if only in-flight messages exist
 ```
 
 With scaleOnInFlight enabled, KEDA considers both waiting messages and messages currently being processed when calculating replica count.
@@ -196,7 +195,8 @@ metadata:
   namespace: workers
 spec:
   podIdentity:
-    provider: aws-eks
+    provider: aws
+    identityOwner: workload
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -217,7 +217,6 @@ spec:
       queueURL: https://sqs.us-east-1.amazonaws.com/123456789012/my-work-queue
       queueLength: "20"
       awsRegion: us-east-1
-      identityOwner: pod  # Use pod's service account
 ```
 
 The pod's service account assumes the IAM role, eliminating the need for static credentials.
@@ -352,7 +351,7 @@ spec:
       queueURL: https://sqs.us-east-1.amazonaws.com/123456789012/orders.fifo
       queueLength: "10"
       awsRegion: us-east-1
-      scaleOnInFlight: "false"  # FIFO handles one message group at a time
+      scaleOnInFlight: "true"  # Include work already assigned to consumers
 
   advanced:
     horizontalPodAutoscalerConfig:
@@ -372,7 +371,7 @@ spec:
             periodSeconds: 180
 ```
 
-FIFO queues have throughput limits and ordering constraints that affect optimal scaling behavior.
+FIFO queues have throughput limits and ordering constraints per message group that affect optimal scaling behavior.
 
 ## Monitoring SQS Scaling
 
