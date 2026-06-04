@@ -12,9 +12,11 @@ You define a database claim. Should it provision on AWS, Azure, or GCP? Should i
 
 Composition selectors let you maintain multiple implementations of the same interface. Claims use label selectors to pick which composition handles their provisioning. This enables multi-cloud strategies, environment-specific configurations, and gradual migrations between infrastructure patterns.
 
+The examples below use Crossplane v1.20-style composite resource claims. Crossplane v2 still supports many v1 configurations for compatibility, but new v2 designs generally use namespaced composite resources instead of claims.
+
 ## Understanding Composition Selection
 
-When you create a composite resource claim, Crossplane must choose which composition to use. The composition selector uses label matching to make this decision. You tag compositions with labels like provider, region, or environment. Claims specify matching criteria. Crossplane selects the first composition that satisfies all requirements.
+When you create a composite resource claim, Crossplane must choose which composition to use. The composition selector uses label matching to make this decision. You tag compositions with labels like provider, region, or environment. Claims specify matching criteria. Crossplane selects a composition that satisfies all requirements.
 
 This pattern decouples what you want from how you get it. Platform teams maintain multiple compositions implementing the same XRD. Application teams pick the right one through selectors without understanding the underlying complexity.
 
@@ -404,30 +406,41 @@ All five labels must match for this composition to be selected.
 Specify a default composition when no selector is provided.
 
 ```yaml
-# composition-default-database.yaml
+# xrd-default-database.yaml
 apiVersion: apiextensions.crossplane.io/v1
-kind: Composition
+kind: CompositeResourceDefinition
 metadata:
-  name: default-postgres-database
-  labels:
-    crossplane.io/default: "true"
-    engine: postgres
+  name: databases.platform.example.com
 spec:
-  compositeTypeRef:
-    apiVersion: platform.example.com/v1alpha1
+  defaultCompositionRef:
+    name: default-postgres-database
+  group: platform.example.com
+  names:
     kind: Database
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-            allocatedStorage: 100
+    plural: databases
+  claimNames:
+    kind: DatabaseClaim
+    plural: databaseclaims
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                parameters:
+                  type: object
+                  properties:
+                    size:
+                      type: string
+                      enum: ["small", "medium", "large"]
+                    engine:
+                      type: string
+                      enum: ["postgres", "mysql"]
 ```
 
 Claims without a selector use the default.
@@ -450,7 +463,7 @@ spec:
 
 ## Dynamic Selection Based on Claim Parameters
 
-Use composition revisions to route based on claim parameters.
+Expose provider as a claim parameter and route by setting the same value in the composition selector.
 
 ```yaml
 # xrd-with-provider-param.yaml
@@ -543,7 +556,7 @@ spec:
             databaseVersion: POSTGRES_15
 ```
 
-Use patches to set the selector dynamically.
+Set the selector to match the provider label. Crossplane does not derive `compositionSelector.matchLabels` from `spec.parameters.provider` automatically.
 
 ```yaml
 # database-claim-dynamic.yaml
@@ -695,46 +708,18 @@ This selects compositions that have engine=postgres AND provider in (aws, azure)
 
 Monitor which compositions get selected.
 
-```yaml
-# prometheus-rules.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: crossplane-composition-rules
-  namespace: monitoring
-data:
-  crossplane.rules: |
-    groups:
-      - name: crossplane-compositions
-        interval: 30s
-        rules:
-          # Track composition usage
-          - record: crossplane_composition_selection_total
-            expr: |
-              count by (composition_name, provider, environment) (
-                crossplane_composite_resource_info
-              )
-
-          # Alert on failed selections
-          - alert: CrossplaneCompositionSelectionFailed
-            expr: |
-              crossplane_composite_resource_condition{type="Synced",status="False"} == 1
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "Crossplane composition selection failed"
-              description: "Composite {{ $labels.name }} cannot find matching composition"
-```
-
 Check composition selection status.
 
 ```bash
-# View which composition was selected
-kubectl get database app-database -o jsonpath='{.spec.compositionRef.name}'
+# Find the composite resource created for the claim
+kubectl get databaseclaim app-database -n production -o jsonpath='{.spec.resourceRef.name}'
+
+# View which composition was selected on the composite resource
+XR_NAME=$(kubectl get databaseclaim app-database -n production -o jsonpath='{.spec.resourceRef.name}')
+kubectl get database "$XR_NAME" -o jsonpath='{.spec.compositionRef.name}'
 
 # Check for selection failures
-kubectl describe database app-database | grep -A 10 Conditions
+kubectl describe database "$XR_NAME" | grep -A 10 Conditions
 
 # List all compositions available for selection
 kubectl get compositions -l engine=postgres
@@ -749,4 +734,4 @@ Crossplane composition selectors enable flexible infrastructure routing. Label c
 
 Define multiple compositions implementing the same XRD. Tag them with descriptive labels. Claims specify selection criteria without understanding implementation details. Crossplane matches claims to compositions at runtime based on label matching.
 
-Use selectors for provider choice, region placement, environment configuration, and version migration. Complex match expressions support sophisticated routing logic. Monitor selection metrics to track composition usage and catch configuration errors early.
+Use selectors for provider choice, region placement, environment configuration, and version migration. Complex match expressions support sophisticated routing logic. Monitor resource status and events to track composition usage and catch configuration errors early.
