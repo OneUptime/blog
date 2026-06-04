@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, ApplicationSet, Canary Deployment, Progressive Delivery, GitOps
 
-Description: Implement safe canary deployments using ArgoCD ApplicationSet progressive sync to gradually roll out changes across environments and clusters with automated promotion and rollback capabilities.
+Description: Implement safe canary deployments using ArgoCD ApplicationSet progressive sync to gradually roll out changes across environments and clusters with controlled promotion and rollback procedures.
 
 ---
 
@@ -20,9 +20,10 @@ ApplicationSet progressive sync controls the order and timing of application dep
 - Waits for health and sync validation
 - Gradually promotes to additional targets (progressive rollout)
 - Supports manual or automated promotion
-- Enables rollback on failure
+- Limits further promotion on failure
 
 Progressive sync is configured using the `strategy` field in ApplicationSet specifications.
+It must also be enabled on the ApplicationSet controller with `--enable-progressive-syncs`, the `ARGOCD_APPLICATIONSET_CONTROLLER_ENABLE_PROGRESSIVE_SYNCS=true` environment variable, or `applicationsetcontroller.enable.progressive.syncs: "true"` in `argocd-cmd-params-cm`.
 
 ## Configuring basic progressive sync
 
@@ -84,18 +85,16 @@ spec:
           values: |
             environment: {{environment}}
       destination:
-        server: '{{cluster}}'
+        name: '{{cluster}}'
         namespace: production
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
 ```
 
 This configuration:
 1. Deploys to dev first
 2. After dev is healthy, deploys to staging
 3. After staging is healthy, deploys to production
+
+RollingSync triggers syncs from the ApplicationSet controller and forces autosync off on the generated Applications, so do not rely on `syncPolicy.automated` for these Applications.
 
 ## Implementing multi-cluster canary deployment
 
@@ -109,54 +108,43 @@ metadata:
   namespace: argocd
 spec:
   generators:
-    - matrix:
-        generators:
-          - clusters:
-              selector:
-                matchLabels:
-                  environment: production
-          - list:
-              elements:
-                - region: us-east-1
-                  weight: "10"
-                - region: us-west-2
-                  weight: "30"
-                - region: eu-west-1
-                  weight: "30"
-                - region: ap-southeast-1
-                  weight: "30"
+    - list:
+        elements:
+          - cluster: prod-us-east-1
+            region: us-east-1
+            stage: canary
+          - cluster: prod-us-west-2
+            region: us-west-2
+            stage: primary
+          - cluster: prod-eu-west-1
+            region: eu-west-1
+            stage: primary
+          - cluster: prod-ap-southeast-1
+            region: ap-southeast-1
+            stage: primary
   strategy:
     type: RollingSync
     rollingSync:
       steps:
-        # Stage 1: Deploy to 10% (us-east-1)
+        # Stage 1: Deploy to the canary region
         - matchExpressions:
-            - key: weight
+            - key: stage
               operator: In
               values:
-                - "10"
-        # Stage 2: Deploy to 40% (us-east-1 + us-west-2)
+                - canary
+        # Stage 2: Deploy primary regions one at a time
         - matchExpressions:
-            - key: weight
+            - key: stage
               operator: In
               values:
-                - "10"
-                - "30"
-          maxUpdate: 50%
-        # Stage 3: Deploy to 100% (all regions)
-        - matchExpressions:
-            - key: weight
-              operator: In
-              values:
-                - "10"
-                - "30"
-          maxUpdate: 100%
+                - primary
+          maxUpdate: 1
   template:
     metadata:
-      name: 'app-{{region}}'
+      name: 'app-{{cluster}}'
       labels:
         region: '{{region}}'
-        weight: '{{weight}}'
+        stage: '{{stage}}'
     spec:
       project: default
       source:
@@ -164,18 +152,14 @@ spec:
         targetRevision: main
         path: k8s
       destination:
-        server: '{{server}}'
+        name: '{{cluster}}'
         namespace: production
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
 ```
 
-This implements a weighted canary:
-- 10% traffic to first region
-- Expand to 40% after validation
-- Full rollout to 100% after success
+This implements a regional canary:
+- Deploy to the first production region
+- Expand to the remaining production regions after validation
+- Limit primary-region rollout to one cluster at a time
 
 ## Using maxUpdate for controlled rollout pace
 
@@ -214,21 +198,18 @@ spec:
               values:
                 - high
           maxUpdate: 50%  # Deploy to 1 of 2 high priority clusters
-        # Then medium priority
+        # Then medium priority, one at a time
         - matchExpressions:
             - key: priority
               operator: In
               values:
-                - high
                 - medium
-          maxUpdate: 50%  # Deploy remaining high + 1 medium
+          maxUpdate: 1
         # Finally low priority, all at once
         - matchExpressions:
             - key: priority
               operator: In
               values:
-                - high
-                - medium
                 - low
           maxUpdate: 100%
   template:
@@ -280,22 +261,16 @@ spec:
               operator: In
               values:
                 - "1"
-          # Wait for canary to be healthy for 5 minutes
-          minReadySeconds: 300
         - matchExpressions:
             - key: stage
               operator: In
               values:
-                - "1"
                 - "2"
           maxUpdate: 50%
-          minReadySeconds: 300
         - matchExpressions:
             - key: stage
               operator: In
               values:
-                - "1"
-                - "2"
                 - "3"
           maxUpdate: 100%
   template:
@@ -319,17 +294,9 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{environment}}'
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-      # Define health assessment
-      health:
-        - type: Deployment
-          checkInterval: 30s
 ```
 
-The `minReadySeconds` parameter ensures each stage remains healthy before proceeding.
+ApplicationSet RollingSync waits for each selected Application to reach `Healthy` before proceeding. Use Argo CD's built-in health checks, custom Lua health checks in `argocd-cm`, resource hooks, or Rollout analysis to make that health signal meaningful.
 
 ## Combining progressive sync with Argo Rollouts
 
@@ -360,21 +327,16 @@ spec:
               operator: In
               values:
                 - "1"
-          minReadySeconds: 600  # 10 minutes for Rollout canary
         - matchExpressions:
             - key: stage
               operator: In
               values:
-                - "1"
                 - "2"
           maxUpdate: 50%
-          minReadySeconds: 600
         - matchExpressions:
             - key: stage
               operator: In
               values:
-                - "1"
-                - "2"
                 - "3"
           maxUpdate: 100%
   template:
@@ -392,10 +354,6 @@ spec:
       destination:
         name: '{{cluster}}'
         namespace: production
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
 ```
 
 The application manifests include Rollout resources:
@@ -452,10 +410,8 @@ spec:
         elements:
           - environment: staging
             stage: "1"
-            autoSync: "true"
           - environment: production
             stage: "2"
-            autoSync: "false"
   strategy:
     type: RollingSync
     rollingSync:
@@ -471,14 +427,13 @@ spec:
               operator: In
               values:
                 - "2"
+          maxUpdate: 0
   template:
     metadata:
       name: 'app-{{environment}}'
       labels:
         environment: '{{environment}}'
         stage: '{{stage}}'
-      annotations:
-        notifications.argoproj.io/subscribe.on-sync-waiting.slack: ops-team
     spec:
       project: default
       source:
@@ -489,10 +444,6 @@ spec:
         server: https://kubernetes.default.svc
         namespace: '{{environment}}'
       syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        # Disable auto-sync for production
         syncOptions:
           - CreateNamespace=true
 ```
@@ -526,7 +477,7 @@ kubectl get applications -n argocd \
   -o custom-columns=NAME:.metadata.name,HEALTH:.status.health.status,SYNC:.status.sync.status
 ```
 
-Set up Prometheus alerts for rollout issues:
+Set up Prometheus alerts for rollout issues. The `argocd_app_labels` metric is disabled by default, so enable Application label export for the labels you want to query:
 
 ```yaml
 groups:
@@ -534,7 +485,9 @@ groups:
     rules:
       - alert: CanaryDeploymentFailed
         expr: |
-          argocd_app_sync_total{phase="Failed",stage="1"} > 0
+          argocd_app_info{health_status="Degraded"}
+          and on (name, namespace, project)
+          argocd_app_labels{label_stage="1"}
         for: 5m
         labels:
           severity: critical
@@ -544,7 +497,9 @@ groups:
 
       - alert: ProgressiveSyncStalled
         expr: |
-          time() - argocd_app_sync_timestamp > 1800
+          argocd_app_info{sync_status="OutOfSync"}
+          and on (name, namespace, project)
+          argocd_app_labels{label_stage=~"1|2|3"}
         for: 10m
         labels:
           severity: warning
@@ -554,7 +509,7 @@ groups:
 
 ## Implementing rollback strategies
 
-Configure automatic rollback on failure:
+Configure retry behavior and a rollback procedure:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -579,12 +534,10 @@ spec:
               operator: In
               values:
                 - "1"
-          minReadySeconds: 300
         - matchExpressions:
             - key: stage
               operator: In
               values:
-                - "1"
                 - "2"
   template:
     metadata:
@@ -599,9 +552,6 @@ spec:
         server: https://kubernetes.default.svc
         namespace: '{{environment}}'
       syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
         retry:
           limit: 2
           backoff:
