@@ -12,20 +12,20 @@ Erasure coding is MinIO's core data protection mechanism, dividing objects into 
 
 ## Erasure Coding Fundamentals
 
-MinIO uses Reed-Solomon erasure coding which divides each object into N data blocks and M parity blocks. The system tolerates up to M drive failures while maintaining data availability. With 16 drives using 8 data and 8 parity blocks (8+8), you can lose half your drives and still recover all data.
+MinIO uses Reed-Solomon erasure coding which divides each object into N data blocks and M parity blocks. The system tolerates up to M drive failures for reads while maintaining data availability. With 16 drives using 8 data and 8 parity blocks (8+8), you can lose half your drives and still recover all data for reads, though writes require 9 healthy drives when parity is exactly half the erasure set.
 
-The number of data and parity blocks is determined by the total drive count. MinIO automatically selects optimal configurations based on deployment size, but understanding the mathematics helps you plan capacity and protection levels.
+The erasure set size determines the maximum parity. MinIO automatically selects erasure set size during initial pool setup, and you configure parity through the standard storage class. Understanding the mathematics helps you plan capacity and protection levels.
 
 ## Drive Count and Parity Configuration
 
-MinIO requires minimum 4 drives for erasure coding. Common configurations:
+MinIO requires more than one drive for erasure coding, but production availability typically requires multiple drives and parity greater than EC:1. Common parity choices:
 
 - 4 drives: 2 data + 2 parity (EC:2)
-- 8 drives: 4 data + 4 parity (EC:4)
-- 12 drives: 6 data + 6 parity (EC:6)
-- 16 drives: 8 data + 8 parity (EC:8)
+- 8 drives: 4 data + 4 parity (EC:4, maximum parity)
+- 12 drives: 8 data + 4 parity (EC:4, default for 8-16 drive erasure sets)
+- 16 drives: 12 data + 4 parity (EC:4, default) or 8 data + 8 parity (EC:8, maximum parity)
 
-Each configuration trades storage efficiency for fault tolerance. With 16 drives in EC:8 mode, you get 50% usable capacity but can survive 8 drive failures. With 16 drives in EC:4 mode (possible with custom configuration), you get 75% usable capacity but only survive 4 failures.
+Each configuration trades storage efficiency for fault tolerance. With 16 drives in EC:8 mode, you get 50% usable capacity but can survive 8 drive failures for reads. With 16 drives in EC:4 mode, you get 75% usable capacity but only survive 4 failures.
 
 ## Configuring Erasure Sets
 
@@ -55,7 +55,7 @@ spec:
         image: quay.io/minio/minio:latest
         args:
         # 4 nodes × 4 drives = 16 total drives
-        # Creates 1 erasure set with EC:8 (8 data + 8 parity)
+        # Creates 1 erasure set with EC:4 by default (12 data + 4 parity)
         - server
         - http://minio-{0...3}.minio.minio.svc.cluster.local/data{1...4}
         - --console-address
@@ -71,8 +71,10 @@ spec:
             secretKeyRef:
               name: minio-creds
               key: root-password
+        - name: MINIO_STORAGE_CLASS_STANDARD
+          value: "EC:4"
         # Erasure coding happens automatically
-        # No explicit configuration needed
+        # Set MINIO_STORAGE_CLASS_STANDARD to EC:8 for maximum parity
         volumeMounts:
         - name: data-0
           mountPath: /data1
@@ -128,7 +130,7 @@ Usable Capacity = Raw Capacity × ((Total Drives - N) / Total Drives)
 
 Examples:
 - 16 drives × 100GB with EC:8 = 1600GB × (8/16) = 800GB usable
-- 12 drives × 100GB with EC:6 = 1200GB × (6/12) = 600GB usable
+- 12 drives × 100GB with EC:4 = 1200GB × (8/12) = 800GB usable
 - 8 drives × 100GB with EC:4 = 800GB × (4/8) = 400GB usable
 
 ## Checking Erasure Configuration
@@ -150,11 +152,14 @@ mc admin info myminio
 #    Uptime: 2 hours
 #    Version: 2024-01-31T20:20:33Z
 #    Storage Info:
-#    4 Online, 0 Offline
-#    ┌─────┬────────────────┬──────────┬──────────┐
-#    │ Set │ Total Drives   │ EC:8     │ Erasure  │
-#    └─────┴────────────────┴──────────┴──────────┘
-#       1   16              8+8         Standard
+#    Network: 4/4 OK
+#    Drives: 16/16 OK
+#    Pool: 1
+#
+#    Pools:
+#       1st, Erasure sets: 1, Drives per erasure set: 16
+#
+#    16 drives online, 0 drives offline, EC:4
 ```
 
 ## Testing Fault Tolerance
@@ -173,8 +178,8 @@ kubectl delete pod minio-0 -n minio
 mc cp testfile.txt myminio/bucket/test.txt
 mc cp myminio/bucket/test.txt downloaded.txt
 
-# Check healing status
-mc admin heal myminio
+# Check healing status for the test bucket
+mc admin heal myminio/bucket --verbose
 ```
 
 MinIO automatically heals data when failed drives return or are replaced.
@@ -185,17 +190,17 @@ Track erasure set health and healing operations.
 
 ```promql
 # Drives online vs offline
-minio_cluster_drive_online_total
-minio_cluster_drive_offline_total
+minio_cluster_health_drives_online_count
+minio_cluster_health_drives_offline_count
 
 # Healing operations
 minio_heal_objects_total
 minio_heal_objects_heal_total
-minio_heal_objects_error_total
+minio_heal_objects_errors_total
 
 # Storage usage considering erasure coding
-minio_cluster_capacity_usable_total_bytes
-minio_cluster_capacity_usable_free_bytes
+minio_cluster_health_capacity_usable_total_bytes
+minio_cluster_health_capacity_usable_free_bytes
 ```
 
 Create alerts for drive failures:
@@ -210,7 +215,7 @@ spec:
   - name: minio-erasure
     rules:
     - alert: MinIODriveOffline
-      expr: minio_cluster_drive_offline_total > 0
+      expr: minio_cluster_health_drives_offline_count > 0
       for: 5m
       labels:
         severity: warning
@@ -219,7 +224,7 @@ spec:
         description: "{{ $value }} drives are offline"
 
     - alert: MinIOCriticalDriveLoss
-      expr: minio_cluster_drive_offline_total > 4
+      expr: minio_cluster_health_drives_offline_count > 4
       for: 1m
       labels:
         severity: critical
@@ -233,28 +238,28 @@ spec:
 MinIO automatically heals data when drives recover or are replaced.
 
 ```bash
-# Start healing scan
-mc admin heal --scan deep myminio
+# Start healing scan for a bucket or prefix
+mc admin heal myminio/bucket
 
 # Check healing progress
-mc admin heal --verbose myminio
+mc admin heal myminio/bucket --verbose
 
-# View healing statistics
-mc admin heal --dry-run myminio
+# Show detailed drive healing status
+mc admin heal myminio/bucket --all-drives --verbose
 ```
 
-Healing operates in background without service interruption. MinIO prioritizes recently accessed objects.
+Healing operates in background without service interruption. MinIO heals objects on access, through the background scanner, and after drive replacement.
 
 ## Bitrot Protection
 
-MinIO uses cryptographic hashing to detect bitrot (silent data corruption).
+MinIO uses hashing to detect bitrot (silent data corruption).
 
 ```bash
-# Enable bitrot detection (enabled by default)
-# MinIO automatically checksums all data blocks
+# Enable scanner-based bitrot checks
+mc admin config set myminio heal bitrotscan=on
 
-# Force integrity check
-mc admin heal --scan deep myminio
+# Perform a bitrot check for a specific object
+mc admin object info myminio/bucket/test.txt --bitrot
 
 # Any corruption is automatically repaired using parity blocks
 ```
@@ -293,9 +298,10 @@ resources:
 
 Compare erasure coding to replication:
 
-| Method | Raw | Usable | Overhead | Failure Tolerance |
+| Method | Raw | Usable | Overhead | Read Failure Tolerance |
 |--------|-----|--------|----------|-------------------|
 | EC:8 (16 drives) | 1600GB | 800GB | 100% | 8 drives |
+| EC:4 (16 drives) | 1600GB | 1200GB | 33% | 4 drives |
 | EC:4 (8 drives) | 800GB | 400GB | 100% | 4 drives |
 | Replication ×3 | 1600GB | 533GB | 200% | 2 drives |
 
@@ -314,7 +320,7 @@ Follow these guidelines for optimal erasure coding configuration:
 
 ## Advanced Configuration
 
-Configure multiple pools with different erasure settings.
+Configure multiple pools. The cluster parity setting must fit the erasure set size of each pool.
 
 ```yaml
 apiVersion: minio.min.io/v2
@@ -326,14 +332,14 @@ spec:
   - name: high-redundancy
     servers: 4
     volumesPerServer: 4
-    # 16 drives, EC:8, survives 8 failures
+    # 16 drives, supports up to EC:8
   - name: balanced
     servers: 4
     volumesPerServer: 2
-    # 8 drives, EC:4, survives 4 failures
+    # 8 drives, supports up to EC:4
 ```
 
-Use bucket policies to direct data to appropriate pools based on importance.
+MinIO places new writes across pools based on available free space. Use separate tenants or clusters if you need strict workload isolation.
 
 ## Conclusion
 
