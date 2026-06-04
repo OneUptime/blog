@@ -76,7 +76,7 @@ Create a RequestAuthentication with multiple JWT rules:
 
 ```yaml
 # requestauth-multi-issuer.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: multi-issuer-jwt
@@ -165,7 +165,7 @@ Apply different authorization policies based on the issuer:
 
 ```yaml
 # authz-per-issuer.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: issuer-based-authz
@@ -203,24 +203,30 @@ kubectl apply -f authz-per-issuer.yaml
 
 This creates a multi-tenant authorization model where access depends on which identity provider authenticated the user.
 
-## Handling Issuer Priority
+## Avoiding Ambiguous Token Locations
 
-When multiple issuers could match, Istio uses the first valid JWT. Order JWT rules by priority:
+When multiple issuers are configured, make each JWT rule unambiguous by issuer and token location. Requests with multiple JWTs at different locations are not supported, and the authenticated principal is undefined. Do not rely on `jwtRules` order as a priority mechanism:
 
 ```yaml
 jwtRules:
-# Try internal SSO first (most common)
+# Internal SSO token from the Authorization header
 - issuer: "https://auth.mycompany.com"
   jwksUri: "https://auth.mycompany.com/.well-known/jwks.json"
-# Then Auth0 (external users)
+  fromHeaders:
+  - name: Authorization
+    prefix: "Bearer "
+# Auth0 token from the Authorization header
 - issuer: "https://mycompany.auth0.com/"
   jwksUri: "https://mycompany.auth0.com/.well-known/jwks.json"
-# Finally custom issuer (rare)
+# Custom issuer token from a separate header
 - issuer: "custom-issuer"
   jwks: "..."
+  fromHeaders:
+  - name: X-Custom-Auth
+    prefix: "Token "
 ```
 
-Istio validates in order and uses the first successful validation.
+Istio validates a token based on the JWT rule that recognizes its location and issuer. Send one JWT per request.
 
 ## Configuring Issuer-Specific Audiences
 
@@ -248,7 +254,7 @@ Accept unauthenticated requests when no JWT is present:
 
 ```yaml
 # requestauth-optional.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: optional-jwt
@@ -261,7 +267,7 @@ spec:
   - issuer: "https://auth.mycompany.com"
     jwksUri: "https://auth.mycompany.com/.well-known/jwks.json"
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: optional-authz
@@ -289,17 +295,17 @@ This allows both authenticated and anonymous access with different permissions.
 Query Prometheus for authentication metrics:
 
 ```promql
-# Successful JWT validations
-sum(rate(istio_requests_total{response_code="200"}[5m])) by (source_principal)
+# Successful responses from the protected workload
+sum(rate(istio_requests_total{destination_workload="httpbin",response_code="200"}[5m]))
 
-# Failed JWT validations
-sum(rate(istio_requests_total{response_code="401"}[5m]))
+# JWT validation failures
+sum(rate(istio_requests_total{destination_workload="httpbin",response_code="401"}[5m]))
 
-# Requests by issuer
-sum by (request_principal) (
-  rate(istio_requests_total{request_principal!=""}[5m])
-)
+# Failed requests to the protected workload
+sum(rate(istio_requests_total{destination_workload="httpbin",response_code=~"401|403"}[5m]))
 ```
+
+Standard Istio request metrics do not include a JWT issuer label by default. Add a custom Telemetry metric tag if you need issuer-level Prometheus queries.
 
 Check Envoy logs for authentication details:
 
@@ -307,13 +313,13 @@ Check Envoy logs for authentication details:
 kubectl logs deploy/httpbin -c istio-proxy | grep -i jwt
 ```
 
-## Implementing JWT Claim Extraction
+## Forwarding JWT Payload and Using Claims
 
-Extract specific claims for use in authorization:
+Forward the verified JWT payload to a header and use claims in authorization:
 
 ```yaml
 # requestauth-claims.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-with-claims
@@ -325,10 +331,10 @@ spec:
   jwtRules:
   - issuer: "https://auth.mycompany.com"
     jwksUri: "https://auth.mycompany.com/.well-known/jwks.json"
-    # Extract custom claims
+    # Forward the verified JWT payload
     outputPayloadToHeader: "x-jwt-payload"
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: claim-based-authz
@@ -346,7 +352,7 @@ spec:
       values: ["high", "critical"]
 ```
 
-This extracts and validates custom JWT claims for authorization.
+This forwards the verified JWT payload and uses custom JWT claims for authorization.
 
 ## Troubleshooting Multi-Issuer Setup
 
@@ -362,7 +368,9 @@ kubectl run test --image=curlimages/curl --rm -it -- \
 Check JWT token format:
 
 ```bash
-echo $TOKEN | cut -d '.' -f2 | base64 -d | jq
+PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f2)
+PAD=$(( (4 - ${#PAYLOAD} % 4) % 4 ))
+printf '%s%*s' "$PAYLOAD" "$PAD" '' | tr ' ' '=' | tr '_-' '/+' | base64 -d | jq
 ```
 
 Verify issuer and audience claims match configuration.
