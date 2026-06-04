@@ -42,8 +42,6 @@ The most common device mapping is for NVIDIA GPUs. While the NVIDIA Container To
 
 ```yaml
 # Map NVIDIA GPU devices into a container
-version: "3.8"
-
 services:
   ml-training:
     image: tensorflow/tensorflow:latest-gpu
@@ -205,8 +203,6 @@ Here is a complete Compose setup for an IoT gateway that reads from multiple sen
 
 ```yaml
 # IoT sensor gateway with device access
-version: "3.8"
-
 services:
   # MQTT broker for sensor data
   mqtt:
