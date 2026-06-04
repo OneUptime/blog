@@ -8,7 +8,7 @@ Description: Configure Kubernetes liveness probes to automatically detect and re
 
 ---
 
-Liveness probes tell Kubernetes whether your application is running properly. When a liveness probe fails, Kubernetes automatically restarts the container, helping your applications recover from errors that leave them in a broken state but still technically running.
+Liveness probes tell Kubernetes whether your application is running properly. When a liveness probe fails, Kubernetes kills the container and restarts it if the pod's restart policy allows it, helping your applications recover from errors that leave them in a broken state but still technically running.
 
 This guide shows you how to configure liveness probes effectively to catch real problems while avoiding false positives that cause unnecessary restarts.
 
@@ -16,7 +16,7 @@ This guide shows you how to configure liveness probes effectively to catch real 
 
 A liveness probe answers one question: "Is this container alive?" If the probe fails repeatedly, Kubernetes kills the container and starts a new one according to the pod's restart policy.
 
-Liveness probes are different from readiness probes. Liveness checks if the container should be restarted, while readiness checks if the container should receive traffic. A container can be alive but not ready, but if it's not alive, Kubernetes restarts it.
+Liveness probes are different from readiness probes. Liveness checks if the container should be restarted, while readiness checks if the container should receive traffic. A container can be alive but not ready, but if it's not alive, Kubernetes kills it and applies the pod's restart policy.
 
 ## Basic Liveness Probe Configuration
 
@@ -66,7 +66,6 @@ var healthy int32 = 1
 
 func main() {
     http.HandleFunc("/healthz", livenessHandler)
-    http.HandleFunc("/ready", readinessHandler)
     http.ListenAndServe(":8080", nil)
 }
 
@@ -263,7 +262,7 @@ func livenessHandler(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-Set resource limits to ensure the probe fails before the OOM killer runs:
+Set resource limits above your application threshold so the probe can fail before the OOM killer runs:
 
 ```yaml
 apiVersion: v1
@@ -313,7 +312,7 @@ livenessProbe:
   successThreshold: 1
 ```
 
-Time until restart after first failure:
+Approximate maximum time from a sustained failure to restart:
 ```text
 periodSeconds * failureThreshold = 15 * 3 = 45 seconds
 ```
@@ -390,13 +389,13 @@ groups:
   - name: liveness
     rules:
       - alert: HighPodRestartRate
-        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+        expr: increase(kube_pod_container_status_restarts_total[15m]) > 3
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} restarting frequently"
-          description: "Container {{ $labels.container }} has restarted {{ $value }} times in 15 minutes"
+          description: "Container {{ $labels.container }} has restarted more than 3 times in 15 minutes"
 
       - alert: CrashLoopBackOff
         expr: kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} > 0
