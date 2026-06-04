@@ -8,13 +8,13 @@ Description: Learn how to configure Istio locality-weighted load balancing to op
 
 ---
 
-When running Kubernetes across multiple availability zones, sending traffic to the nearest endpoints reduces latency and cross-zone data transfer costs. Istio's locality-weighted load balancing automatically routes requests to endpoints in the same zone first, falling back to other zones only when necessary. This guide shows you how to set it up.
+When running Kubernetes across multiple availability zones, sending traffic to the nearest endpoints reduces latency and cross-zone data transfer costs. Istio's locality-aware load balancing can prefer endpoints in the same zone, and locality-weighted distribution lets you tune how much traffic goes to each zone. This guide shows you how to set it up.
 
 ## Understanding Locality-Aware Routing
 
 Locality-aware routing prioritizes endpoints based on their location relative to the client. In Kubernetes, locality typically means the availability zone where a pod runs. Istio uses topology information from node labels to make routing decisions.
 
-When a service in zone A calls another service, Istio tries to route to pods in zone A first. If no healthy pods exist in zone A, Istio routes to zone B or C based on the weights you configure. This keeps traffic within the same zone when possible, reducing latency and costs.
+When a service in zone A calls another service, Istio tries to route to pods in zone A first. If no healthy pods exist in zone A, Istio routes to other healthy zones. You can also configure explicit distribution weights when you want some steady-state traffic to use other zones. This keeps most traffic within the same zone when possible, reducing latency and costs.
 
 ## Prerequisites
 
@@ -102,7 +102,7 @@ The DestinationRule configures how Istio routes traffic to service endpoints. En
 
 ```yaml
 # destinationrule-locality.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service
@@ -119,7 +119,7 @@ spec:
         http2MaxRequests: 100
     # Configure outlier detection for failover
     outlierDetection:
-      consecutiveErrors: 3
+      consecutive5xxErrors: 3
       interval: 30s
       baseEjectionTime: 30s
       maxEjectionPercent: 50
@@ -129,36 +129,39 @@ spec:
       localityLbSetting:
         enabled: true
         distribute:
-        # When zone A has no healthy endpoints, distribute to other zones
+        # Prefer same-zone endpoints while allowing some cross-zone traffic
         - from: "us-east-1/us-east-1a/*"
           to:
-            "us-east-1/us-east-1b/*": 50
-            "us-east-1/us-east-1c/*": 50
+            "us-east-1/us-east-1a/*": 80
+            "us-east-1/us-east-1b/*": 10
+            "us-east-1/us-east-1c/*": 10
         - from: "us-east-1/us-east-1b/*"
           to:
-            "us-east-1/us-east-1a/*": 50
-            "us-east-1/us-east-1c/*": 50
+            "us-east-1/us-east-1a/*": 10
+            "us-east-1/us-east-1b/*": 80
+            "us-east-1/us-east-1c/*": 10
         - from: "us-east-1/us-east-1c/*"
           to:
-            "us-east-1/us-east-1a/*": 50
-            "us-east-1/us-east-1b/*": 50
+            "us-east-1/us-east-1a/*": 10
+            "us-east-1/us-east-1b/*": 10
+            "us-east-1/us-east-1c/*": 80
 ```
 
 ```bash
 kubectl apply -f destinationrule-locality.yaml
 ```
 
-The locality format is `region/zone/subzone`. The distribute section defines failover behavior. When endpoints in the source zone are unhealthy, traffic distributes to other zones according to the specified weights.
+The locality format is `region/zone/subzone`. The distribute section defines steady-state locality weights. Any locality not listed in the `to` map receives no traffic for that rule.
 
 ## Understanding Locality Failover Behavior
 
-Istio uses a three-tier failover approach:
+Without an explicit `distribute` policy, Istio uses locality-aware failover priorities:
 
-1. **Same zone**: All traffic goes to endpoints in the same zone when they're healthy
-2. **Distributed failover**: When the local zone has no healthy endpoints, traffic distributes according to your weights
-3. **Global fallback**: If specified zones are unavailable, Istio falls back to any available endpoint
+1. **Same zone**: Traffic goes to endpoints in the same zone when they're healthy
+2. **Same region**: When the local zone has no healthy endpoints, traffic fails over to other zones in the same region
+3. **Global fallback**: If local-region endpoints are unavailable and no regional failover policy restricts traffic, Istio falls back to any available endpoint
 
-The outlierDetection settings determine when Istio considers an endpoint unhealthy. Consecutive errors trigger ejection from the load balancing pool for the baseEjectionTime duration.
+The outlierDetection settings determine when Istio considers an endpoint unhealthy. Consecutive 5xx responses trigger ejection from the load balancing pool for the baseEjectionTime duration.
 
 ## Testing Locality-Aware Routing
 
@@ -211,7 +214,7 @@ kubectl get pods -o wide -l app=product-service
 
 ## Simulating Zone Failure
 
-Test failover by scaling down pods in zone A to zero. Cordon nodes in zone A first:
+Test failover by removing the destination pods from zone A. Cordon nodes in zone A first so replacement pods schedule in other zones:
 
 ```bash
 # Find nodes in zone A
@@ -221,11 +224,12 @@ kubectl get nodes -l topology.kubernetes.io/zone=us-east-1a
 kubectl cordon <node-name-1>
 kubectl cordon <node-name-2>
 
-# Scale down replicas to force rescheduling
-kubectl scale deployment product-service --replicas=6
+# Delete product-service pods from the cordoned nodes
+kubectl delete pod -l app=product-service --field-selector spec.nodeName=<node-name-1>
+kubectl delete pod -l app=product-service --field-selector spec.nodeName=<node-name-2>
 ```
 
-Pods will reschedule to zones B and C. Make requests again from your zone A client:
+Replacement pods will schedule to zones B and C. Make requests again from your zone A client:
 
 ```bash
 kubectl exec -it client-zone-a -- sh
@@ -235,15 +239,15 @@ for i in $(seq 1 100); do
 done | sort | uniq -c
 ```
 
-Traffic now distributes across zones B and C according to your failover weights (50/50 in this example).
+Traffic now fails over to healthy endpoints in zones B and C.
 
 ## Advanced Locality Configuration with Failover Priority
 
-For more control, define explicit failover priorities. This tells Istio to prefer certain zones over others during failover.
+For more control, define explicit failover priorities. This tells Istio to sort endpoint groups by the ordered labels you specify.
 
 ```yaml
 # destinationrule-locality-priority.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service-priority
@@ -252,29 +256,22 @@ spec:
   host: product-service
   trafficPolicy:
     outlierDetection:
-      consecutiveErrors: 3
+      consecutive5xxErrors: 3
       interval: 30s
       baseEjectionTime: 30s
     loadBalancer:
       localityLbSetting:
         enabled: true
-        failover:
-        # Define failover priority for zone A
-        - from: us-east-1a
-          to: us-east-1b
-        # Define failover priority for zone B
-        - from: us-east-1b
-          to: us-east-1c
-        # Define failover priority for zone C
-        - from: us-east-1c
-          to: us-east-1a
+        failoverPriority:
+        - "topology.kubernetes.io/region"
+        - "topology.kubernetes.io/zone"
 ```
 
-With failover priorities, zone A traffic goes to zone B first, only using zone C if zone B is also unavailable. This creates a circular failover chain.
+With failover priorities, endpoints matching both the client's region and zone have the highest priority. Endpoints matching only the region have the next priority, and all other endpoints have the lowest priority.
 
 ## Configuring Locality Weights at the Mesh Level
 
-You can set default locality behavior for the entire mesh in the Istio configuration. This applies to all services unless overridden by individual DestinationRules.
+You can set default locality behavior for the entire mesh in the Istio configuration. This applies to all services unless overridden by individual DestinationRules. Services still need outlier detection for health-based failover.
 
 ```yaml
 # istio-config-locality.yaml
@@ -287,13 +284,9 @@ spec:
   meshConfig:
     localityLbSetting:
       enabled: true
-      failover:
-      - from: us-east-1a
-        to: us-east-1b
-      - from: us-east-1b
-        to: us-east-1c
-      - from: us-east-1c
-        to: us-east-1a
+      failoverPriority:
+      - "topology.kubernetes.io/region"
+      - "topology.kubernetes.io/zone"
 ```
 
 Apply this during Istio installation or update:
@@ -304,7 +297,7 @@ istioctl install -f istio-config-locality.yaml
 
 ## Monitoring Locality-Based Routing
 
-Use Prometheus metrics to verify locality routing works correctly. Query for requests grouped by source and destination zones:
+Istio's standard Prometheus metrics include workload and service labels, but they do not include source and destination zone labels by default. If you add custom zone dimensions with the Telemetry API, query for requests grouped by source and destination zones:
 
 ```promql
 # Requests from zone A to each destination zone
@@ -343,7 +336,7 @@ Locality load balancing works with other load balancing algorithms. You can spec
 
 ```yaml
 # destinationrule-locality-lb-algo.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service-algo
