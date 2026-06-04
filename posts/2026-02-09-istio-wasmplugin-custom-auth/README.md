@@ -16,44 +16,46 @@ WebAssembly is a portable binary format that runs in sandboxed environments. Ist
 
 Wasm plugins run at the proxy level, intercepting every request before it reaches your application. They can inspect headers, validate credentials, call external services, modify requests, and reject unauthorized access. The plugin code runs efficiently in the same process as Envoy.
 
-This approach is more performant than sidecar containers and more flexible than Envoy filters written in C++. You write plugins in languages like Rust, Go, or C++ that compile to Wasm.
+This approach can avoid an extra network hop compared with calling a separate sidecar service, and it is easier to roll out than custom Envoy C++ filters. You write plugins in languages like Rust, Go, or C++ that compile to Wasm.
 
 ## Prerequisites
 
-You need a Kubernetes cluster with Istio 1.12 or later:
+You need a Kubernetes cluster with a supported Istio release. The Go SDK example below requires an Istio/Envoy data plane based on Envoy 1.33 or later:
 
 ```bash
 istioctl install --set profile=demo
 kubectl label namespace default istio-injection=enabled
 ```
 
-Install Rust and TinyGo for Wasm development (optional if using pre-built modules):
+Install Go 1.24 or later for the Go example. Install Rust if you plan to build Rust-based Wasm modules:
 
 ```bash
+# Go
+# Follow the current installation steps for your OS:
+# https://go.dev/doc/install
+
 # Rust
-
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-rustup target add wasm32-wasi
-
-# TinyGo
-wget https://github.com/tinygo-org/tinygo/releases/download/v0.30.0/tinygo_0.30.0_amd64.deb
-sudo dpkg -i tinygo_0.30.0_amd64.deb
+rustup target add wasm32-wasip1
 ```
 
 ## Building a Simple Authentication Plugin
 
-Create a Wasm plugin that validates custom authentication tokens. Here's a Go example using TinyGo:
+Create a Wasm plugin that validates custom authentication tokens. Here's a Go example using the Proxy-Wasm Go SDK:
 
 ```go
 // main.go
 package main
 
 import (
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm"
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm/types"
+	"github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm"
+	"github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm/types"
 )
 
 func main() {
+}
+
+func init() {
 	proxywasm.SetVMContext(&vmContext{})
 }
 
@@ -82,16 +84,13 @@ func (ctx *httpContext) OnHttpRequestHeaders(numHeaders int, endOfStream bool) t
 	token, err := proxywasm.GetHttpRequestHeader("x-custom-auth")
 	if err != nil {
 		proxywasm.LogWarn("No auth token found")
-		return types.ActionContinue
+		return ctx.sendUnauthorized()
 	}
 
 	// Validate token (simple example - check prefix)
 	if len(token) < 10 || token[:4] != "CAT-" {
 		proxywasm.LogWarn("Invalid token format")
-		proxywasm.SendHttpResponse(401, [][2]string{
-			{"content-type", "application/json"},
-		}, []byte(`{"error":"unauthorized"}`), -1)
-		return types.ActionPause
+		return ctx.sendUnauthorized()
 	}
 
 	// Extract user ID from token
@@ -103,12 +102,21 @@ func (ctx *httpContext) OnHttpRequestHeaders(numHeaders int, endOfStream bool) t
 
 	return types.ActionContinue
 }
+
+func (ctx *httpContext) sendUnauthorized() types.Action {
+	proxywasm.SendHttpResponse(401, [][2]string{
+		{"content-type", "application/json"},
+	}, []byte(`{"error":"unauthorized"}`), -1)
+	return types.ActionPause
+}
 ```
 
 Build the Wasm module:
 
 ```bash
-tinygo build -o custom-auth.wasm -scheduler=none -target=wasi main.go
+go mod init custom-auth
+go get github.com/proxy-wasm/proxy-wasm-go-sdk
+env GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o custom-auth.wasm main.go
 ```
 
 ## Deploying the Wasm Plugin
@@ -213,7 +221,7 @@ kubectl run test --image=curlimages/curl --rm -it -- \
 Check proxy logs to see the plugin working:
 
 ```bash
-kubectl logs deploy/httpbin -c istio-proxy | grep "custom-auth"
+kubectl logs deploy/httpbin -c istio-proxy | grep -E "Authenticated user|Invalid token|No auth token"
 ```
 
 ## Implementing Token Validation with External API
@@ -238,7 +246,7 @@ func (ctx *httpContext) OnHttpRequestHeaders(numHeaders int, endOfStream bool) t
 	body := []byte(`{"token":"` + token + `"}`)
 
 	_, err = proxywasm.DispatchHttpCall(
-		"auth-service",
+		"outbound|80||auth-service.default.svc.cluster.local",
 		headers,
 		body,
 		nil,
@@ -310,6 +318,8 @@ spec:
 Access configuration in your plugin:
 
 ```go
+import "encoding/json"
+
 type pluginContext struct {
 	types.DefaultPluginContext
 	config Config
@@ -340,29 +350,42 @@ func (ctx *pluginContext) OnPluginStart(pluginConfigurationSize int) types.OnPlu
 
 ## Implementing Rate Limiting in Wasm
 
-Add rate limiting to your authentication plugin:
+Add a simple in-memory request counter to your authentication plugin:
 
 ```go
+type pluginContext struct {
+	types.DefaultPluginContext
+	requestCounts map[string]int
+}
+
+func (ctx *pluginContext) OnPluginStart(pluginConfigurationSize int) types.OnPluginStartStatus {
+	ctx.requestCounts = make(map[string]int)
+	return types.OnPluginStartStatusOK
+}
+
+func (ctx *pluginContext) NewHttpContext(contextID uint32) types.HttpContext {
+	return &httpContext{plugin: ctx}
+}
+
 type httpContext struct {
 	types.DefaultHttpContext
-	requestCounts map[string]int
+	plugin *pluginContext
 }
 
 func (ctx *httpContext) OnHttpRequestHeaders(numHeaders int, endOfStream bool) types.Action {
 	userID, _ := proxywasm.GetHttpRequestHeader("x-user-id")
 
 	// Check rate limit
-	count := ctx.requestCounts[userID]
+	count := ctx.plugin.requestCounts[userID]
 	if count >= 100 {
 		proxywasm.SendHttpResponse(429, [][2]string{
 			{"content-type", "application/json"},
-			{"retry-after", "60"},
 		}, []byte(`{"error":"rate limit exceeded"}`), -1)
 		return types.ActionPause
 	}
 
 	// Increment counter
-	ctx.requestCounts[userID] = count + 1
+	ctx.plugin.requestCounts[userID] = count + 1
 
 	return types.ActionContinue
 }
@@ -396,19 +419,17 @@ Common issues:
 
 ## Monitoring Plugin Performance
 
-Query metrics for Wasm plugin execution:
+Query Envoy's Wasm runtime metrics, or add custom counters and histograms from your plugin:
 
 ```promql
-# Plugin execution duration
-histogram_quantile(0.95,
-  sum(rate(envoy_wasm_vm_duration_milliseconds_bucket[5m])) by (le)
-)
+# V8 Wasm runtime instances created
+rate(envoy_wasm_runtime_v8_created[5m])
 
-# Plugin failures
-rate(envoy_wasm_vm_failures_total[5m])
+# V8 Wasm runtime instances currently active
+envoy_wasm_runtime_v8_active
 ```
 
-Set alerts for plugin failures or high latency.
+Use Envoy's `/stats` endpoint to confirm the exact metric names exposed by your proxy build before creating alerts.
 
 ## Conclusion
 
