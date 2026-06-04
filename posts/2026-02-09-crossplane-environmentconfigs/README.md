@@ -25,40 +25,46 @@ Start with environment definitions:
 ```yaml
 # environment-dev.yaml
 
-apiVersion: apiextensions.crossplane.io/v1alpha1
+apiVersion: apiextensions.crossplane.io/v1beta1
 kind: EnvironmentConfig
 metadata:
   name: development
+  labels:
+    environment: development
 data:
   environment: development
   region: us-west-2
   instanceType: t3.medium
-  minNodes: "1"
-  maxNodes: "3"
-  desiredNodes: "2"
-  enableBackups: "false"
-  backupRetentionDays: "7"
-  multiAz: "false"
-  storageSize: "20"
+  minNodes: 1
+  maxNodes: 3
+  desiredNodes: 2
+  enableBackups: false
+  backupRetentionDays: 7
+  enableMonitoring: false
+  multiAz: false
+  storageSize: 20
 ```
 
 ```yaml
 # environment-prod.yaml
-apiVersion: apiextensions.crossplane.io/v1alpha1
+apiVersion: apiextensions.crossplane.io/v1beta1
 kind: EnvironmentConfig
 metadata:
   name: production
+  labels:
+    environment: production
 data:
   environment: production
   region: us-east-1
   instanceType: m5.xlarge
-  minNodes: "3"
-  maxNodes: "10"
-  desiredNodes: "5"
-  enableBackups: "true"
-  backupRetentionDays: "30"
-  multiAz: "true"
-  storageSize: "100"
+  minNodes: 3
+  maxNodes: 10
+  desiredNodes: 5
+  enableBackups: true
+  backupRetentionDays: 30
+  enableMonitoring: true
+  multiAz: true
+  storageSize: 100
 ```
 
 Apply both:
@@ -70,7 +76,7 @@ kubectl apply -f environment-prod.yaml
 
 ## Using EnvironmentConfigs in Compositions
 
-Reference environment data in compositions:
+Reference environment data in compositions. In Crossplane v1.18 and later, use Pipeline mode with the environment-configs and patch-and-transform functions:
 
 ```yaml
 # composition-database.yaml
@@ -78,65 +84,79 @@ apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
   name: xpostgresqlinstances.aws
+  labels:
+    provider: aws
 spec:
+  mode: Pipeline
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: XPostgreSQLInstance
-
-  environment:
-    environmentConfigs:
-    - type: Reference
-      ref:
-        name: production  # Default environment
-
-  resources:
-  - name: rds-instance
-    base:
-      apiVersion: rds.aws.upbound.io/v1beta1
-      kind: Instance
+  pipeline:
+  - step: environment-configs
+    functionRef:
+      name: function-environment-configs
+    input:
+      apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+      kind: Input
       spec:
-        forProvider:
-          engine: postgres
-          engineVersion: "15.4"
-          username: dbadmin
-          passwordSecretRef:
-            name: postgres-password
-            namespace: crossplane-system
-            key: password
-    patches:
-    # Patch from EnvironmentConfig
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: region
-      toFieldPath: spec.forProvider.region
+        environmentConfigs:
+        - type: Reference
+          ref:
+            name: production  # Default environment
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: rds-instance
+        base:
+          apiVersion: rds.aws.upbound.io/v1beta1
+          kind: Instance
+          spec:
+            forProvider:
+              engine: postgres
+              engineVersion: "15.4"
+              username: dbadmin
+              passwordSecretRef:
+                name: postgres-password
+                namespace: crossplane-system
+                key: password
+        patches:
+        # Patch from EnvironmentConfig
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: region
+          toFieldPath: spec.forProvider.region
 
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: instanceType
-      toFieldPath: spec.forProvider.instanceClass
-      transforms:
-      - type: map
-        map:
-          t3.medium: db.t3.medium
-          m5.xlarge: db.m5.xlarge
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: instanceType
+          toFieldPath: spec.forProvider.instanceClass
+          transforms:
+          - type: map
+            map:
+              t3.medium: db.t3.medium
+              m5.xlarge: db.m5.xlarge
 
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: storageSize
-      toFieldPath: spec.forProvider.allocatedStorage
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: storageSize
+          toFieldPath: spec.forProvider.allocatedStorage
 
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: multiAz
-      toFieldPath: spec.forProvider.multiAz
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: multiAz
+          toFieldPath: spec.forProvider.multiAz
 
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: backupRetentionDays
-      toFieldPath: spec.forProvider.backupRetentionPeriod
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: backupRetentionDays
+          toFieldPath: spec.forProvider.backupRetentionPeriod
 
-    # Patch from claim
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.dbName
-      toFieldPath: spec.forProvider.dbName
+        # Patch from claim
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.dbName
+          toFieldPath: spec.forProvider.dbName
 ```
 
-Create a claim that selects the environment:
+Create a claim that selects the composition:
 
 ```yaml
 # database-claim.yaml
@@ -150,8 +170,6 @@ spec:
   compositionSelector:
     matchLabels:
       provider: aws
-  environmentConfigRefs:
-  - name: production
   writeConnectionSecretToRef:
     name: app-database-connection
 ```
@@ -169,44 +187,56 @@ kind: Composition
 metadata:
   name: xapplications.multienv
 spec:
+  mode: Pipeline
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XApplication
-
-  environment:
-    environmentConfigs:
-    - type: Selector
-      selector:
-        matchLabels:
-        - key: environment
-          type: FromCompositeFieldPath
-          valueFromFieldPath: spec.parameters.environment
-
-  resources:
-  - name: eks-nodegroup
-    base:
-      apiVersion: eks.aws.upbound.io/v1beta1
-      kind: NodeGroup
+  pipeline:
+  - step: environment-configs
+    functionRef:
+      name: function-environment-configs
+    input:
+      apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+      kind: Input
       spec:
-        forProvider:
-          clusterNameSelector:
-            matchControllerRef: true
-    patches:
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: instanceType
-      toFieldPath: spec.forProvider.instanceTypes[0]
+        environmentConfigs:
+        - type: Selector
+          selector:
+            matchLabels:
+            - key: environment
+              type: FromCompositeFieldPath
+              valueFromFieldPath: spec.parameters.environment
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: eks-nodegroup
+        base:
+          apiVersion: eks.aws.upbound.io/v1beta1
+          kind: NodeGroup
+          spec:
+            forProvider:
+              clusterNameSelector:
+                matchControllerRef: true
+        patches:
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: instanceType
+          toFieldPath: spec.forProvider.instanceTypes[0]
 
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: minNodes
-      toFieldPath: spec.forProvider.scalingConfig[0].minSize
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: minNodes
+          toFieldPath: spec.forProvider.scalingConfig[0].minSize
 
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: maxNodes
-      toFieldPath: spec.forProvider.scalingConfig[0].maxSize
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: maxNodes
+          toFieldPath: spec.forProvider.scalingConfig[0].maxSize
 
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: desiredNodes
-      toFieldPath: spec.forProvider.scalingConfig[0].desiredSize
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: desiredNodes
+          toFieldPath: spec.forProvider.scalingConfig[0].desiredSize
 ```
 
 The claim specifies which environment to use:
@@ -230,7 +260,7 @@ Use EnvironmentConfigs for tenant isolation:
 
 ```yaml
 # tenant-alpha.yaml
-apiVersion: apiextensions.crossplane.io/v1alpha1
+apiVersion: apiextensions.crossplane.io/v1beta1
 kind: EnvironmentConfig
 metadata:
   name: tenant-alpha
@@ -247,7 +277,7 @@ data:
 
 ```yaml
 # tenant-beta.yaml
-apiVersion: apiextensions.crossplane.io/v1alpha1
+apiVersion: apiextensions.crossplane.io/v1beta1
 kind: EnvironmentConfig
 metadata:
   name: tenant-beta
@@ -271,61 +301,74 @@ kind: Composition
 metadata:
   name: tenant-applications
 spec:
+  mode: Pipeline
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XTenantApplication
-
-  environment:
-    environmentConfigs:
-    - type: Selector
-      selector:
-        matchLabels:
-        - key: tenant
-          type: FromCompositeFieldPath
-          valueFromFieldPath: spec.parameters.tenantId
-
-  resources:
-  - name: s3-bucket
-    base:
-      apiVersion: s3.aws.upbound.io/v1beta1
-      kind: Bucket
+  pipeline:
+  - step: environment-configs
+    functionRef:
+      name: function-environment-configs
+    input:
+      apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+      kind: Input
       spec:
-        forProvider:
-          region: us-west-2
-    patches:
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: tenantId
-      toFieldPath: spec.forProvider.bucket
-      transforms:
-      - type: string
-        string:
-          fmt: "tenant-%s-data"
+        environmentConfigs:
+        - type: Selector
+          selector:
+            matchLabels:
+            - key: tenant
+              type: FromCompositeFieldPath
+              valueFromFieldPath: spec.parameters.tenantId
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: s3-bucket
+        base:
+          apiVersion: s3.aws.upbound.io/v1beta1
+          kind: Bucket
+          spec:
+            forProvider:
+              region: us-west-2
+        patches:
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: tenantId
+          toFieldPath: spec.forProvider.bucket
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "tenant-%s-data"
 
-  - name: resource-quota
-    base:
-      apiVersion: kubernetes.crossplane.io/v1alpha2
-      kind: Object
-      spec:
-        forProvider:
-          manifest:
-            apiVersion: v1
-            kind: ResourceQuota
-            metadata:
-              name: tenant-quota
-            spec:
-              hard: {}
-    patches:
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: namespace
-      toFieldPath: spec.forProvider.manifest.metadata.namespace
+      - name: resource-quota
+        base:
+          apiVersion: kubernetes.crossplane.io/v1alpha2
+          kind: Object
+          spec:
+            forProvider:
+              manifest:
+                apiVersion: v1
+                kind: ResourceQuota
+                metadata:
+                  name: tenant-quota
+                spec:
+                  hard: {}
+        patches:
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: namespace
+          toFieldPath: spec.forProvider.manifest.metadata.namespace
 
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: quotaCpu
-      toFieldPath: spec.forProvider.manifest.spec.hard["requests.cpu"]
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: quotaCpu
+          toFieldPath: spec.forProvider.manifest.spec.hard["requests.cpu"]
 
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: quotaMemory
-      toFieldPath: spec.forProvider.manifest.spec.hard["requests.memory"]
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: quotaMemory
+          toFieldPath: spec.forProvider.manifest.spec.hard["requests.memory"]
 ```
 
 ## Combining Multiple EnvironmentConfigs
@@ -339,58 +382,92 @@ kind: Composition
 metadata:
   name: complex-application
 spec:
+  mode: Pipeline
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XComplexApplication
-
-  environment:
-    environmentConfigs:
-    # Base environment settings
-    - type: Reference
-      ref:
-        name: production
-    # Tenant-specific settings
-    - type: Selector
-      selector:
-        matchLabels:
-        - key: tenant
-          type: FromCompositeFieldPath
-          valueFromFieldPath: spec.parameters.tenantId
-    # Region-specific settings
-    - type: Reference
-      ref:
-        name: us-west-2-config
-
-  resources:
-  - name: application-deployment
-    base:
-      apiVersion: kubernetes.crossplane.io/v1alpha2
-      kind: Object
+  pipeline:
+  - step: environment-configs
+    functionRef:
+      name: function-environment-configs
+    input:
+      apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+      kind: Input
       spec:
-        forProvider:
-          manifest:
-            apiVersion: apps/v1
-            kind: Deployment
-    patches:
-    # From base environment
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: environment
-      toFieldPath: spec.forProvider.manifest.metadata.labels["environment"]
+        environmentConfigs:
+        # Base environment settings
+        - type: Reference
+          ref:
+            name: production
+        # Tenant-specific settings
+        - type: Selector
+          selector:
+            matchLabels:
+            - key: tenant
+              type: FromCompositeFieldPath
+              valueFromFieldPath: spec.parameters.tenantId
+        # Region-specific settings
+        - type: Reference
+          ref:
+            name: us-west-2-config
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: application-deployment
+        base:
+          apiVersion: kubernetes.crossplane.io/v1alpha2
+          kind: Object
+          spec:
+            forProvider:
+              manifest:
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: application
+                  labels: {}
+                spec:
+                  selector:
+                    matchLabels:
+                      app: application
+                  template:
+                    metadata:
+                      labels:
+                        app: application
+                    spec:
+                      topologySpreadConstraints:
+                      - maxSkew: 1
+                        topologyKey: kubernetes.io/hostname
+                        whenUnsatisfiable: ScheduleAnyway
+                        labelSelector:
+                          matchLabels:
+                            app: application
+                      containers:
+                      - name: app
+                        image: nginx:1.27
+        patches:
+        # From base environment
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: environment
+          toFieldPath: spec.forProvider.manifest.metadata.labels["environment"]
 
-    # From tenant config
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: tenantId
-      toFieldPath: spec.forProvider.manifest.metadata.labels["tenant"]
+        # From tenant config
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: tenantId
+          toFieldPath: spec.forProvider.manifest.metadata.labels["tenant"]
 
-    # From region config
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: availabilityZones
-      toFieldPath: spec.forProvider.manifest.spec.template.spec.topologySpreadConstraints[0].topologyKey
+        # From region config
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: topologyKey
+          toFieldPath: spec.forProvider.manifest.spec.template.spec.topologySpreadConstraints[0].topologyKey
 ```
 
-## Implementing Conditional Resource Creation
+## Implementing Conditional Configuration
 
-Use EnvironmentConfig values for conditional logic:
+Use EnvironmentConfig values for conditional settings. If you need to omit entire resources based on conditions, use a composition function that supports templating or custom logic:
 
 ```yaml
 # composition-conditional.yaml
@@ -399,68 +476,68 @@ kind: Composition
 metadata:
   name: conditional-resources
 spec:
+  mode: Pipeline
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: XDatabase
-
-  environment:
-    environmentConfigs:
-    - type: Reference
-      ref:
-        name: production
-
-  resources:
-  # Primary database (always created)
-  - name: primary-db
-    base:
-      apiVersion: rds.aws.upbound.io/v1beta1
-      kind: Instance
+  pipeline:
+  - step: environment-configs
+    functionRef:
+      name: function-environment-configs
+    input:
+      apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+      kind: Input
       spec:
-        forProvider:
-          engine: postgres
+        environmentConfigs:
+        - type: Reference
+          ref:
+            name: production
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      # Primary database
+      - name: primary-db
+        base:
+          apiVersion: rds.aws.upbound.io/v1beta1
+          kind: Instance
+          spec:
+            forProvider:
+              engine: postgres
+        patches:
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: environment
+          toFieldPath: spec.forProvider.deletionProtection
+          transforms:
+          - type: match
+            match:
+              patterns:
+              - type: literal
+                literal: production
+                result: true
+              fallbackTo: Value
+              fallbackValue: false
 
-  # Read replica (only in production)
-  - name: read-replica
-    base:
-      apiVersion: rds.aws.upbound.io/v1beta1
-      kind: Instance
-      spec:
-        forProvider:
-          engine: postgres
-          replicateSourceDb: ""
-    patches:
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: environment
-      toFieldPath: spec.forProvider.replicateSourceDb
-      transforms:
-      - type: match
-        match:
-          patterns:
-          - type: literal
-            literal: production
-            result: "primary-db-id"
-          - type: literal
-            literal: "*"
-            result: ""
-
-  # Monitoring (enabled via EnvironmentConfig)
-  - name: cloudwatch-alarm
-    base:
-      apiVersion: cloudwatch.aws.upbound.io/v1beta1
-      kind: MetricAlarm
-      spec:
-        forProvider:
-          comparisonOperator: GreaterThanThreshold
-          evaluationPeriods: 2
-          metricName: CPUUtilization
-    readinessChecks:
-    - type: None
-    patches:
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: enableMonitoring
-      toFieldPath: metadata.annotations["crossplane.io/external-name"]
-      policy:
-        fromFieldPath: Required
+      # Monitoring settings from EnvironmentConfig
+      - name: cloudwatch-alarm
+        base:
+          apiVersion: cloudwatch.aws.upbound.io/v1beta1
+          kind: MetricAlarm
+          spec:
+            forProvider:
+              comparisonOperator: GreaterThanThreshold
+              evaluationPeriods: 2
+              metricName: CPUUtilization
+              threshold: 80
+        readinessChecks:
+        - type: None
+        patches:
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: enableMonitoring
+          toFieldPath: spec.forProvider.actionsEnabled
 ```
 
 ## Using EnvironmentConfig with Patch Transforms
@@ -474,51 +551,68 @@ kind: Composition
 metadata:
   name: transformed-resources
 spec:
-  environment:
-    environmentConfigs:
-    - type: Reference
-      ref:
-        name: production
+  mode: Pipeline
+  compositeTypeRef:
+    apiVersion: database.example.com/v1alpha1
+    kind: XPostgreSQLInstance
+  pipeline:
+  - step: environment-configs
+    functionRef:
+      name: function-environment-configs
+    input:
+      apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+      kind: Input
+      spec:
+        environmentConfigs:
+        - type: Reference
+          ref:
+            name: production
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: rds-instance
+        base:
+          apiVersion: rds.aws.upbound.io/v1beta1
+          kind: Instance
+        patches:
+        # Calculate IOPS based on storage size from EnvironmentConfig
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: storageSize
+          toFieldPath: spec.forProvider.iops
+          transforms:
+          - type: math
+            math:
+              type: multiply
+              multiply: 3  # 3 IOPS per GB
 
-  resources:
-  - name: rds-instance
-    base:
-      apiVersion: rds.aws.upbound.io/v1beta1
-      kind: Instance
-    patches:
-    # Calculate IOPS based on storage size from EnvironmentConfig
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: storageSize
-      toFieldPath: spec.forProvider.iops
-      transforms:
-      - type: math
-        math:
-          multiply: 3  # 3 IOPS per GB
+        # Generate unique identifiers
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: environment
+          toFieldPath: spec.forProvider.dbInstanceIdentifier
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "db-%s"
+          - type: string
+            string:
+              type: TrimSuffix
+              trim: "-"
 
-    # Generate unique identifiers
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: environment
-      toFieldPath: spec.forProvider.dbInstanceIdentifier
-      transforms:
-      - type: string
-        string:
-          type: Format
-          fmt: "db-%s-%s"
-      - type: string
-        string:
-          type: TrimSuffix
-          trim: "-"
-
-    # Map environment to maintenance windows
-    - type: FromEnvironmentFieldPath
-      fromFieldPath: environment
-      toFieldPath: spec.forProvider.preferredMaintenanceWindow
-      transforms:
-      - type: map
-        map:
-          development: "Mon:00:00-Mon:03:00"
-          staging: "Tue:00:00-Tue:03:00"
-          production: "Sun:00:00-Sun:03:00"
+        # Map environment to maintenance windows
+        - type: FromEnvironmentFieldPath
+          fromFieldPath: environment
+          toFieldPath: spec.forProvider.preferredMaintenanceWindow
+          transforms:
+          - type: map
+            map:
+              development: "Mon:00:00-Mon:03:00"
+              staging: "Tue:00:00-Tue:03:00"
+              production: "Sun:00:00-Sun:03:00"
 ```
 
 ## Summary
