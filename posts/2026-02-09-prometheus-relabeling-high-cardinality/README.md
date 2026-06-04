@@ -8,7 +8,7 @@ Description: Learn how to use Prometheus relabeling to drop high-cardinality lab
 
 ---
 
-High-cardinality labels in Prometheus create performance problems. Each unique combination of label values creates a new time series, consuming memory and slowing queries. Labels like user IDs, session tokens, or request IDs can explode cardinality into millions of series. Metric relabeling provides tools to drop, transform, or aggregate these labels before they cause issues. This guide covers techniques to identify and fix cardinality problems.
+High-cardinality labels in Prometheus create performance problems. Each unique combination of label values creates a new time series, consuming memory and slowing queries. Labels like user IDs, session tokens, or request IDs can explode cardinality into millions of series. Metric relabeling provides tools to drop or transform labels before ingestion. This guide covers techniques to identify and fix cardinality problems.
 
 ## Understanding Cardinality
 
@@ -154,32 +154,28 @@ metricRelabelings:
   # Everything else is dropped
 ```
 
-## Aggregating High-Cardinality Labels
+## Normalizing High-Cardinality Labels
 
-Replace specific values with aggregated categories:
+Replace specific values with normalized categories only when the rewrite will not create duplicate series in the same scrape. If multiple original series can collapse to the same metric name and label set, use recording rules to aggregate them instead.
 
 ```yaml
 metricRelabelings:
-  # Aggregate HTTP status codes to classes
+  # Add HTTP status classes while keeping the original status label
   - sourceLabels: [status]
     regex: '([0-9])..'
     targetLabel: status_class
     replacement: '${1}xx'
     action: replace
 
-  # Then drop the original status label
-  - regex: status
-    action: labeldrop
-
-  # Aggregate paths to remove parameters
+  # Normalize paths to remove parameters, only if the result stays unique
   - sourceLabels: [path]
-    regex: '/api/users/[0-9]+/.*'
+    regex: '/api/users/[0-9]+(?:/.*)?'
     targetLabel: path
     replacement: '/api/users/:id'
     action: replace
 
   - sourceLabels: [path]
-    regex: '/api/orders/[0-9]+/.*'
+    regex: '/api/orders/[0-9]+(?:/.*)?'
     targetLabel: path
     replacement: '/api/orders/:id'
     action: replace
@@ -199,27 +195,25 @@ metricRelabelings:
 
 ## Conditional Label Dropping
 
-Drop labels only for specific metrics:
+Prometheus relabeling cannot make `labeldrop` conditional on metric names or label values in a single relabel rule. The `labeldrop` action matches label names, not the concatenated `sourceLabels`. Use recording rules when you need metric-specific aggregation without a label:
 
 ```yaml
-metricRelabelings:
-  # Drop instance label only for aggregated metrics
-  - sourceLabels: [__name__]
-    regex: 'cluster:.*'
-    action: labeldrop
-    regex: instance
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: conditional-aggregation
+  namespace: monitoring
+spec:
+  groups:
+    - name: aggregation
+      rules:
+        # Remove instance only from this aggregated metric
+        - record: cluster:http_requests:rate5m
+          expr: sum without (instance) (rate(http_requests_total[5m]))
 
-  # Drop pod label for namespace-level metrics
-  - sourceLabels: [__name__, pod]
-    regex: 'namespace:.*;.*'
-    action: labeldrop
-
-  # Keep user_id only for login metrics
-  - sourceLabels: [__name__]
-    regex: '((?!login_attempts_total).)*'
-    target_label: user_id
-    replacement: ''
-    action: replace
+        # Remove pod only from this namespace-level metric
+        - record: namespace:container_cpu_usage_seconds_total:rate5m
+          expr: sum without (pod) (rate(container_cpu_usage_seconds_total[5m]))
 ```
 
 ## Limiting Label Values
@@ -239,24 +233,22 @@ spec:
       interval: 60s
       rules:
         # Aggregate by top 10 endpoints
-        - record: http:requests:top_endpoints
+        - record: http:requests:by_endpoint
           expr: |
             topk(10,
               sum by (endpoint) (rate(http_requests_total[5m]))
             )
 
         # Everything else becomes "other"
-        - record: http:requests:with_aggregation
+        - record: http:requests:by_endpoint
+          labels:
+            endpoint: other
           expr: |
-            label_replace(
-              sum by (endpoint) (rate(http_requests_total[5m])),
-              "endpoint_agg",
-              "other",
-              "endpoint",
-              ".*"
+            sum(
+              sum by (endpoint) (rate(http_requests_total[5m]))
+              unless
+              topk(10, sum by (endpoint) (rate(http_requests_total[5m])))
             )
-            unless on(endpoint)
-            topk(10, sum by (endpoint) (rate(http_requests_total[5m])))
 ```
 
 ## Handling Kubernetes Labels
@@ -334,16 +326,14 @@ spec:
           regex: '.*_bucket;(0.005|0.01|0.025|0.05|0.075|0.1|0.25|0.75)'
           action: drop
 
-        # 4. Aggregate status codes
+        # 4. Add status classes
         - sourceLabels: [status_code]
           regex: '([0-9])..'
           targetLabel: status_class
           replacement: '${1}xx'
           action: replace
-        - regex: status_code
-          action: labeldrop
 
-        # 5. Normalize paths
+        # 5. Normalize paths, only if the result stays unique
         - sourceLabels: [path]
           regex: '/api/v1/users/[0-9]+.*'
           targetLabel: path
@@ -439,21 +429,27 @@ count by (label_name) (metric_name{job="my-job"})
 Test relabeling before deploying:
 
 ```bash
-# Use promtool to test relabeling
-cat > test-relabel.yaml <<EOF
-- source_labels: [status_code]
-  regex: '([0-9])..'
-  target_label: status_class
-  replacement: '\${1}xx'
-  action: replace
+# Use promtool to validate the Prometheus configuration syntax
+cat > prometheus-test.yml <<EOF
+global:
+  scrape_interval: 30s
+
+scrape_configs:
+  - job_name: test
+    static_configs:
+      - targets: ['localhost:9090']
+    metric_relabel_configs:
+      - source_labels: [status_code]
+        regex: '([0-9])..'
+        target_label: status_class
+        replacement: '\${1}xx'
+        action: replace
 EOF
 
-# Test with sample metric
-echo 'http_requests_total{status_code="404"} 1' | \
-  promtool test rules test-relabel.yaml
+promtool check config prometheus-test.yml
 ```
 
-Check the Prometheus targets page after applying relabeling to verify labels are dropped as expected.
+After applying metric relabeling, query the affected metrics or use the `/api/v1/series` API to verify labels are dropped as expected. The Prometheus targets page is useful for target relabeling, but it does not show post-scrape metric labels.
 
 ## Best Practices
 
