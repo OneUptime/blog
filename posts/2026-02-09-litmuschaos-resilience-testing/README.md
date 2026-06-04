@@ -22,29 +22,29 @@ Workflows define steady-state validation steps that check application health bef
 
 ## Installing LitmusChaos
 
-Deploy LitmusChaos using the official manifests:
+Deploy LitmusChaos using the official Helm chart:
 
 ```bash
-# Install LitmusChaos CRDs and operator
+# Add the LitmusChaos Helm repository
+helm repo add litmuschaos https://litmuschaos.github.io/litmus-helm/
+helm repo update
 
-kubectl apply -f https://litmuschaos.github.io/litmus/litmus-operator-v3.0.0.yaml
+# Install Litmus ChaosCenter and the execution components
+kubectl create namespace litmus --dry-run=client -o yaml | kubectl apply -f -
+helm install chaos litmuschaos/litmus --namespace litmus
 
 # Verify installation
 kubectl get pods -n litmus
 
-# Install chaos experiments from ChaosHub
-kubectl apply -f https://hub.litmuschaos.io/api/chaos/3.0.0?file=charts/generic/experiments.yaml
+# Install Kubernetes chaos experiments from ChaosHub into the target namespace
+kubectl apply -n default -f "https://hub.litmuschaos.io/api/chaos/3.28.0?file=faults/kubernetes/experiments.yaml"
 ```
 
-Install the Litmus portal for visualization (optional):
+Access the Litmus portal for visualization:
 
 ```bash
-# Install Litmus portal
-kubectl apply -f https://litmuschaos.github.io/litmus/3.0.0/litmus-portal-crds.yml
-kubectl apply -f https://litmuschaos.github.io/litmus/3.0.0/litmus-portal.yml
-
 # Access portal
-kubectl port-forward -n litmus svc/litmusportal-frontend-service 9091:9091
+kubectl port-forward -n litmus svc/chaos-litmus-frontend-service 9091:9091
 ```
 
 ## Creating Service Accounts for Chaos
@@ -66,14 +66,26 @@ metadata:
   namespace: default
 rules:
 - apiGroups: [""]
-  resources: ["pods", "services", "endpoints"]
-  verbs: ["get", "list", "patch", "delete"]
+  resources: ["pods"]
+  verbs: ["create", "delete", "get", "list", "patch", "update", "deletecollection"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "get", "list", "patch", "update"]
+- apiGroups: [""]
+  resources: ["configmaps", "services", "endpoints"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["get", "list", "create"]
 - apiGroups: ["apps"]
-  resources: ["deployments", "replicasets", "statefulsets"]
-  verbs: ["get", "list", "patch"]
+  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+  verbs: ["get", "list"]
 - apiGroups: ["batch"]
   resources: ["jobs"]
-  verbs: ["create", "list", "get", "delete"]
+  verbs: ["create", "list", "get", "delete", "deletecollection"]
 - apiGroups: ["litmuschaos.io"]
   resources: ["chaosengines", "chaosexperiments", "chaosresults"]
   verbs: ["create", "list", "get", "patch", "delete", "update"]
@@ -169,6 +181,10 @@ metadata:
   name: nginx-chaos
   namespace: default
 spec:
+  # Start the chaos run and skip the application annotation prerequisite
+  engineState: active
+  annotationCheck: "false"
+
   # Application to target
   appinfo:
     appns: default
@@ -264,6 +280,14 @@ spec:
     # Step 2: Pod delete chaos
     - - name: pod-delete-experiment
         template: pod-delete-chaos
+    - - name: check-pod-delete-result
+        template: check-chaos-result
+        arguments:
+          parameters:
+          - name: engine_name
+            value: pod-delete-chaos-{{workflow.name}}
+          - name: experiment_name
+            value: pod-delete
 
     # Step 3: Verify recovery
     - - name: recovery-check
@@ -272,6 +296,14 @@ spec:
     # Step 4: Network delay chaos
     - - name: network-delay-experiment
         template: network-delay-chaos
+    - - name: check-network-delay-result
+        template: check-chaos-result
+        arguments:
+          parameters:
+          - name: engine_name
+            value: network-delay-chaos-{{workflow.name}}
+          - name: experiment_name
+            value: pod-network-latency
 
     # Step 5: Final validation
     - - name: final-check
@@ -294,12 +326,33 @@ spec:
 
           echo "Health check passed"
 
+  # Chaos result check template
+  - name: check-chaos-result
+    inputs:
+      parameters:
+      - name: engine_name
+      - name: experiment_name
+    container:
+      image: bitnami/kubectl:latest
+      command: [sh, -c]
+      args:
+        - |
+          result_name="{{inputs.parameters.engine_name}}-{{inputs.parameters.experiment_name}}"
+          verdict=$(kubectl get chaosresult "$result_name" -n default -o jsonpath='{.status.experimentStatus.verdict}')
+
+          if [ "$verdict" != "Pass" ]; then
+            echo "Chaos result $result_name failed with verdict: $verdict"
+            exit 1
+          fi
+
+          echo "Chaos result $result_name passed"
+
   # Pod delete chaos template
   - name: pod-delete-chaos
     resource:
       action: create
-      successCondition: status.experimentStatus.verdict == Pass
-      failureCondition: status.experimentStatus.verdict == Fail
+      successCondition: status.engineStatus == completed
+      failureCondition: status.engineStatus == stopped
       manifest: |
         apiVersion: litmuschaos.io/v1alpha1
         kind: ChaosEngine
@@ -307,6 +360,8 @@ spec:
           name: pod-delete-chaos-{{workflow.name}}
           namespace: default
         spec:
+          engineState: active
+          annotationCheck: "false"
           appinfo:
             appns: default
             applabel: "app=nginx"
@@ -326,8 +381,8 @@ spec:
   - name: network-delay-chaos
     resource:
       action: create
-      successCondition: status.experimentStatus.verdict == Pass
-      failureCondition: status.experimentStatus.verdict == Fail
+      successCondition: status.engineStatus == completed
+      failureCondition: status.engineStatus == stopped
       manifest: |
         apiVersion: litmuschaos.io/v1alpha1
         kind: ChaosEngine
@@ -335,6 +390,8 @@ spec:
           name: network-delay-chaos-{{workflow.name}}
           namespace: default
         spec:
+          engineState: active
+          annotationCheck: "false"
           appinfo:
             appns: default
             applabel: "app=nginx"
@@ -377,6 +434,8 @@ metadata:
   name: hypothesis-test
   namespace: default
 spec:
+  engineState: active
+  annotationCheck: "false"
   appinfo:
     appns: default
     applabel: "app=nginx"
@@ -463,20 +522,60 @@ spec:
       # Morning resilience check
       - - name: pod-failure-test
           template: pod-delete-experiment
+      - - name: check-pod-failure-result
+          template: check-chaos-result
+          arguments:
+            parameters:
+            - name: engine_name
+              value: scheduled-pod-delete-{{workflow.name}}
+            - name: experiment_name
+              value: pod-delete
 
       - - name: network-chaos-test
           template: network-delay-experiment
+      - - name: check-network-chaos-result
+          template: check-chaos-result
+          arguments:
+            parameters:
+            - name: engine_name
+              value: scheduled-network-delay-{{workflow.name}}
+            - name: experiment_name
+              value: pod-network-latency
+
+    - name: check-chaos-result
+      inputs:
+        parameters:
+        - name: engine_name
+        - name: experiment_name
+      container:
+        image: bitnami/kubectl:latest
+        command: [sh, -c]
+        args:
+          - |
+            result_name="{{inputs.parameters.engine_name}}-{{inputs.parameters.experiment_name}}"
+            verdict=$(kubectl get chaosresult "$result_name" -n default -o jsonpath='{.status.experimentStatus.verdict}')
+
+            if [ "$verdict" != "Pass" ]; then
+              echo "Chaos result $result_name failed with verdict: $verdict"
+              exit 1
+            fi
+
+            echo "Chaos result $result_name passed"
 
     - name: pod-delete-experiment
       resource:
         action: create
-        successCondition: status.experimentStatus.verdict == Pass
+        successCondition: status.engineStatus == completed
+        failureCondition: status.engineStatus == stopped
         manifest: |
           apiVersion: litmuschaos.io/v1alpha1
           kind: ChaosEngine
           metadata:
             name: scheduled-pod-delete-{{workflow.name}}
+            namespace: default
           spec:
+            engineState: active
+            annotationCheck: "false"
             appinfo:
               appns: default
               applabel: "app=nginx"
@@ -493,13 +592,17 @@ spec:
     - name: network-delay-experiment
       resource:
         action: create
-        successCondition: status.experimentStatus.verdict == Pass
+        successCondition: status.engineStatus == completed
+        failureCondition: status.engineStatus == stopped
         manifest: |
           apiVersion: litmuschaos.io/v1alpha1
           kind: ChaosEngine
           metadata:
             name: scheduled-network-delay-{{workflow.name}}
+            namespace: default
           spec:
+            engineState: active
+            annotationCheck: "false"
             appinfo:
               appns: default
               applabel: "app=nginx"
@@ -567,7 +670,7 @@ jobs:
   chaos-test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Deploy application
       run: |
@@ -583,7 +686,7 @@ jobs:
 
     - name: Wait for workflow completion
       run: |
-        kubectl wait --for=condition=Succeeded --timeout=600s workflow/resilience-validation
+        kubectl wait --for=jsonpath='{.status.phase}'=Succeeded --timeout=600s workflow/resilience-validation
 
     - name: Check workflow result
       run: |
