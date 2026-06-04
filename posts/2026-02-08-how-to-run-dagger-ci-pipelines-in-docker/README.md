@@ -32,8 +32,7 @@ Install the Dagger CLI and ensure Docker is running.
 ```bash
 # Install the Dagger CLI
 
-curl -fsSL https://dl.dagger.io/dagger/install.sh | sh
-sudo mv ./bin/dagger /usr/local/bin/
+curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=/usr/local/bin sudo -E sh
 
 # Verify the installation
 dagger version
@@ -51,13 +50,14 @@ Initialize a Dagger project with the Python SDK.
 mkdir my-dagger-project && cd my-dagger-project
 
 # Initialize a Python Dagger module
-dagger init --sdk=python --name=ci
+dagger init --sdk=python --name=ci --source=dagger
 ```
 
 This creates a `dagger.json` config file and a `dagger/` directory with the SDK scaffolding. Now write your pipeline.
 
 ```python
-# dagger/src/main.py - CI pipeline using Dagger Python SDK
+# dagger/src/ci/main.py - CI pipeline using Dagger Python SDK
+import asyncio
 import dagger
 from dagger import dag, function, object_type
 
@@ -116,10 +116,12 @@ class Ci:
     @function
     async def all(self, source: dagger.Directory) -> str:
         """Run the full CI pipeline: lint, test, build"""
-        # These run with Dagger's automatic parallelism
-        lint_result = await self.lint(source)
-        test_result = await self.test(source)
-        build_result = await self.build(source)
+        # Schedule independent steps concurrently so Dagger can execute them in parallel
+        lint_result, test_result, build_result = await asyncio.gather(
+            self.lint(source),
+            self.test(source),
+            self.build(source),
+        )
 
         return f"Lint: {lint_result}\nTest: {test_result}\nBuild: {build_result}"
 ```
@@ -143,7 +145,7 @@ For Go projects, Dagger's Go SDK feels natural.
 
 ```bash
 # Initialize a Go Dagger module
-dagger init --sdk=go --name=ci
+dagger init --sdk=go --name=ci --source=dagger
 ```
 
 ```go
@@ -182,7 +184,7 @@ func (m *Ci) Build(ctx context.Context, source *dagger.Directory) *dagger.Contai
 // Test runs the Go test suite
 func (m *Ci) Test(ctx context.Context, source *dagger.Directory) (string, error) {
 	return dag.Container().
-		From("golang:1.22-alpine").
+		From("golang:1.22").
 		WithWorkdir("/app").
 		WithDirectory("/app", source).
 		WithExec([]string{"go", "mod", "download"}).
@@ -228,8 +230,7 @@ jobs:
 
       - name: Install Dagger
         run: |
-          curl -fsSL https://dl.dagger.io/dagger/install.sh | sh
-          sudo mv ./bin/dagger /usr/local/bin/
+          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=/usr/local/bin sudo -E sh
 
       # The exact same commands you run locally
       - name: Run CI Pipeline
@@ -247,10 +248,16 @@ ci:
   stage: ci
   image: docker:latest
   services:
-    - docker:dind
+    - docker:27.2.0-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_TLS_CERTDIR: /certs
+    DOCKER_CERT_PATH: /certs/client
+    DOCKER_DRIVER: overlay2
   before_script:
-    - curl -fsSL https://dl.dagger.io/dagger/install.sh | sh
-    - export PATH="$PWD/bin:$PATH"
+    - apk add curl
+    - curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=/usr/local/bin sh
   script:
     # Same commands as local development
     - dagger call all --source=.
@@ -303,7 +310,7 @@ async def deploy(self, source: dagger.Directory, token: dagger.Secret) -> str:
 
 ```bash
 # Pass a secret from an environment variable
-dagger call deploy --source=. --token=env:DEPLOY_TOKEN
+dagger call deploy --source=. --token=env://DEPLOY_TOKEN
 ```
 
 ## Cleanup
@@ -311,11 +318,13 @@ dagger call deploy --source=. --token=env:DEPLOY_TOKEN
 Dagger manages its own engine container. To clean up.
 
 ```bash
-# Stop the Dagger engine
-docker stop dagger-engine-*
+# Stop and remove the Dagger engine
+DAGGER_ENGINE_DOCKER_CONTAINER="$(docker container list --all --filter 'name=^dagger-engine-*' --format '{{.Names}}')"
+docker container stop "$DAGGER_ENGINE_DOCKER_CONTAINER"
+docker container rm "$DAGGER_ENGINE_DOCKER_CONTAINER"
 
-# Prune unused Dagger data
-docker volume prune -f --filter label=com.docker.compose.project=dagger
+# Prune unused Dagger cache data
+dagger core engine local-cache prune
 ```
 
 ## Conclusion
