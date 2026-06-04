@@ -32,7 +32,7 @@ CRL (Certificate Revocation Lists): Published lists of revoked certificate seria
 
 OCSP (Online Certificate Status Protocol): Real-time protocol for querying certificate status from the certificate authority.
 
-cert-manager doesn't directly manage revocation checking, but certificate authorities handle revocation when cert-manager requests it.
+cert-manager doesn't directly manage revocation checking or provide a Certificate revocation workflow. Revoke compromised certificates with the issuing certificate authority or an ACME client, then use cert-manager to issue a replacement.
 
 ## Revoking Certificates with ACME
 
@@ -42,6 +42,7 @@ For ACME-issued certificates (Let's Encrypt, ZeroSSL), revoke through the certif
 # Install acme.sh or certbot for revocation
 
 # Using certbot to revoke Let's Encrypt certificate
+# Add --server for a non-default ACME CA or Let's Encrypt staging
 
 certbot revoke --cert-path /path/to/cert.pem \
   --key-path /path/to/privkey.pem \
@@ -82,7 +83,7 @@ When certificates are compromised, replace them immediately:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: emergency-replacement
+  name: app-certificate
   namespace: production
   annotations:
     # Document the emergency replacement
@@ -109,13 +110,12 @@ spec:
     size: 2048
 ```
 
-Force immediate certificate replacement:
+Force immediate certificate replacement with `cmctl`:
 
 ```bash
-# Delete existing certificate secret to trigger reissuance
-kubectl delete secret app-tls -n production
+# Manually trigger reissuance
+cmctl renew app-certificate --namespace production
 
-# cert-manager automatically recreates with new certificate
 # Monitor replacement
 kubectl get certificate -n production -w
 
@@ -129,27 +129,32 @@ kubectl get secret app-tls -n production -o jsonpath='{.data.tls\.crt}' | \
 When private keys are compromised, follow this procedure:
 
 ```bash
-# 1. Immediately delete the compromised secret
-kubectl delete secret compromised-tls -n production
-
-# 2. Revoke the certificate (if ACME)
-# Extract certificate before deletion if needed
+# 1. Extract certificate and key before revocation
 kubectl get secret compromised-tls -n production \
   -o jsonpath='{.data.tls\.crt}' | base64 -d > compromised.pem
 
-certbot revoke --cert-path compromised.pem --reason keycompromise
+kubectl get secret compromised-tls -n production \
+  -o jsonpath='{.data.tls\.key}' | base64 -d > compromised-key.pem
 
-# 3. Update Certificate resource to force new key
-kubectl annotate certificate compromised-cert \
-  cert-manager.io/issue-temporary-certificate="true" \
-  --overwrite
+# 2. Revoke the certificate (if ACME)
+certbot revoke --cert-path compromised.pem \
+  --key-path compromised-key.pem \
+  --reason keycompromise
 
-# 4. Verify new certificate with different key
+# 3. Ensure future issuance uses a new private key
+kubectl patch certificate compromised-cert -n production --type merge \
+  -p '{"spec":{"privateKey":{"rotationPolicy":"Always"}}}'
+
+# 4. Trigger replacement
+cmctl renew compromised-cert --namespace production
+
+# 5. Verify new certificate with different key
 kubectl get secret compromised-tls -n production \
   -o jsonpath='{.data.tls\.key}' | base64 -d | \
   openssl rsa -modulus -noout | openssl md5
 
 # Compare with old key fingerprint (should be different)
+shred -u compromised.pem compromised-key.pem
 ```
 
 ## Bulk Certificate Replacement
@@ -168,12 +173,8 @@ certificates=$(kubectl get certificates -n $NAMESPACE -o jsonpath='{.items[*].me
 for cert in $certificates; do
   echo "Replacing certificate: $cert"
 
-  # Get secret name
-  secret=$(kubectl get certificate $cert -n $NAMESPACE \
-    -o jsonpath='{.spec.secretName}')
-
-  # Delete secret to trigger reissuance
-  kubectl delete secret $secret -n $NAMESPACE
+  # Trigger reissuance
+  cmctl renew $cert --namespace $NAMESPACE
 
   # Wait for certificate to become ready
   kubectl wait --for=condition=Ready \
@@ -204,8 +205,7 @@ metadata:
   name: nginx-config
   namespace: ingress-nginx
 data:
-  ssl-stapling: "true"
-  ssl-stapling-verify: "true"
+  enable-ocsp: "true"
 ```
 
 This enables OCSP stapling where nginx checks certificate status and includes it in TLS handshakes.
@@ -215,12 +215,12 @@ This enables OCSP stapling where nginx checks certificate status and includes it
 Configure applications to verify certificate revocation:
 
 ```python
-# Example Python application with revocation checking
+# Example Python helper for finding OCSP responder information
 import ssl
 import certifi
 from OpenSSL import crypto
 
-def verify_certificate_revocation(cert_path):
+def get_ocsp_authority_info(cert_path):
     # Load certificate
     with open(cert_path, 'r') as f:
         cert_data = f.read()
@@ -231,17 +231,18 @@ def verify_certificate_revocation(cert_path):
     for i in range(cert.get_extension_count()):
         ext = cert.get_extension(i)
         if 'authorityInfoAccess' in str(ext.get_short_name()):
-            # Parse OCSP URL and check status
-            pass
+            return str(ext)
 
-    return True  # or False if revoked
+    return None
 
 # Use in TLS context
 context = ssl.create_default_context(cafile=certifi.where())
 context.verify_mode = ssl.CERT_REQUIRED
 context.check_hostname = True
 
-# Application verifies revocation during TLS handshake
+# Python's default TLS context verifies trust and hostnames, but does not
+# automatically perform OCSP checks during the TLS handshake. Use the OCSP
+# responder information with an OCSP client or library to enforce revocation.
 ```
 
 ## Monitoring Certificate Revocation
@@ -284,23 +285,23 @@ spec:
   groups:
   - name: certificate-replacements
     rules:
-    - alert: CertificateReplaced
+    - alert: CertificateReadyStatusChanged
       expr: |
         changes(certmanager_certificate_ready_status[5m]) > 0
       labels:
         severity: info
       annotations:
-        summary: "Certificate {{ $labels.name }} replaced"
-        description: "Certificate changed, verify if expected"
+        summary: "Certificate {{ $labels.name }} ready status changed"
+        description: "Certificate readiness changed, verify if this was expected"
 
-    - alert: MultipleCertificatesReplaced
+    - alert: MultipleCertificateReadyStatusChanges
       expr: |
         count(changes(certmanager_certificate_ready_status[15m]) > 0) > 5
       labels:
         severity: warning
       annotations:
-        summary: "Multiple certificates replaced"
-        description: "{{ $value }} certificates replaced recently, possible incident"
+        summary: "Multiple certificate ready status changes"
+        description: "{{ $value }} certificates changed readiness recently, possible incident"
 ```
 
 ## Certificate Replacement Workflow
@@ -325,8 +326,8 @@ data:
 
     ## Immediate Actions
     1. Revoke compromised certificate
-    2. Delete certificate secret
-    3. Force new certificate issuance
+    2. Force new certificate issuance
+    3. Remove old local certificate and key copies
     4. Verify new certificate differs from old
 
     ## Verification Steps
@@ -344,15 +345,15 @@ data:
     ## Commands
     ```bash
     # Revoke
-    certbot revoke --cert-path cert.pem --reason keycompromise
+    certbot revoke --cert-path cert.pem --key-path key.pem --reason keycompromise
 
-    # Delete secret
-    kubectl delete secret <secret-name> -n <namespace>
+    # Trigger replacement
+    cmctl renew <cert-name> --namespace <namespace>
 
     # Verify replacement
     kubectl get certificate <cert-name> -n <namespace>
-    ```bash
-```text
+    ```
+```
 
 ## Testing Revocation Procedures
 
@@ -378,6 +379,9 @@ spec:
 
   dnsNames:
   - revocation-test.example.com
+
+  privateKey:
+    rotationPolicy: Always
 ```
 
 Conduct revocation drills:
@@ -393,16 +397,24 @@ kubectl wait --for=condition=Ready certificate/revocation-test -n testing
 kubectl get secret revocation-test-tls -n testing \
   -o jsonpath='{.data.tls\.crt}' | base64 -d > test-cert.pem
 
-certbot revoke --cert-path test-cert.pem --reason cessationofoperation
+kubectl get secret revocation-test-tls -n testing \
+  -o jsonpath='{.data.tls\.key}' | base64 -d > test-key.pem
+
+certbot revoke --cert-path test-cert.pem \
+  --key-path test-key.pem \
+  --server https://acme-staging-v02.api.letsencrypt.org/directory \
+  --reason cessationofoperation
 
 # 4. Practice replacement
-kubectl delete secret revocation-test-tls -n testing
+cmctl renew revocation-test --namespace testing
 
 # 5. Verify new certificate issued
 kubectl get certificate revocation-test -n testing
 
 # 6. Clean up
 kubectl delete certificate revocation-test -n testing
+kubectl delete secret revocation-test-tls -n testing
+shred -u test-cert.pem test-key.pem
 ```
 
 ## Automated Revocation Response
@@ -423,7 +435,9 @@ spec:
       - name: revoker
         image: cert-revocation-tool:latest
         env:
-        - name: COMPROMISED_CERT
+        - name: CERTIFICATE_NAME
+          value: "app-certificate"
+        - name: SECRET_NAME
           value: "app-tls"
         - name: NAMESPACE
           value: "production"
@@ -434,18 +448,23 @@ spec:
         - -c
         - |
           # Extract certificate
-          kubectl get secret $COMPROMISED_CERT -n $NAMESPACE \
+          kubectl get secret $SECRET_NAME -n $NAMESPACE \
             -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/cert.pem
 
-          # Revoke certificate
-          certbot revoke --cert-path /tmp/cert.pem --reason $REVOCATION_REASON
+          kubectl get secret $SECRET_NAME -n $NAMESPACE \
+            -o jsonpath='{.data.tls\.key}' | base64 -d > /tmp/key.pem
 
-          # Delete secret
-          kubectl delete secret $COMPROMISED_CERT -n $NAMESPACE
+          # Revoke certificate
+          certbot revoke --cert-path /tmp/cert.pem \
+            --key-path /tmp/key.pem \
+            --reason $REVOCATION_REASON
+
+          # Trigger replacement
+          cmctl renew $CERTIFICATE_NAME --namespace $NAMESPACE
 
           # Send notification
           curl -X POST https://notifications.example.com/webhook \
-            -d "{\"message\": \"Certificate $COMPROMISED_CERT revoked and replaced\"}"
+            -d "{\"message\": \"Certificate $CERTIFICATE_NAME revoked and replaced\"}"
       restartPolicy: Never
 ```
 
