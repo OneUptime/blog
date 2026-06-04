@@ -20,7 +20,7 @@ The workflow combines External DNS and cert-manager:
 2. External DNS detects the Ingress and creates DNS records
 3. cert-manager detects the Ingress annotation for certificate management
 4. cert-manager initiates certificate request with DNS-01 challenge
-5. DNS records already exist (created by External DNS), challenge succeeds
+5. cert-manager creates the `_acme-challenge` TXT record through the DNS provider API
 6. cert-manager stores certificate in secret referenced by Ingress
 
 This seamless integration eliminates manual DNS management for certificate validation.
@@ -30,15 +30,43 @@ This seamless integration eliminates manual DNS management for certificate valid
 Install External DNS configured for your DNS provider. This example uses AWS Route53:
 
 ```bash
-# Create service account for External DNS
-
-kubectl create serviceaccount external-dns -n kube-system
-
-# Create IAM policy for Route53 access (same as cert-manager Route53 policy)
-# Bind policy to service account using IRSA
+# Create IAM policy for Route53 access and bind it to the service account using IRSA
 
 # Install External DNS
 kubectl apply -f - <<EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: external-dns
+  namespace: kube-system
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/external-dns
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: external-dns
+rules:
+- apiGroups: [""]
+  resources: ["services", "endpoints", "pods", "nodes"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: external-dns
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: external-dns
+subjects:
+- kind: ServiceAccount
+  name: external-dns
+  namespace: kube-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -56,15 +84,19 @@ spec:
       serviceAccountName: external-dns
       containers:
       - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=ingress
         - --source=service
+        - --domain-filter=example.com
         - --provider=aws
         - --aws-zone-type=public
         - --registry=txt
         - --txt-owner-id=kubernetes-cluster
         - --log-level=info
+        env:
+        - name: AWS_DEFAULT_REGION
+          value: us-east-1
 EOF
 ```
 
@@ -123,9 +155,8 @@ metadata:
     # Tell cert-manager to issue certificate
     cert-manager.io/cluster-issuer: "letsencrypt-dns01"
 
-    # Ingress class
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -159,7 +190,7 @@ kubectl describe ingress app-ingress -n production
 kubectl describe certificate app-example-com-tls -n production
 ```
 
-Within minutes, External DNS creates the DNS A record, and cert-manager issues the certificate using DNS-01 validation.
+Within minutes, External DNS creates the service DNS record, and cert-manager creates the temporary `_acme-challenge` TXT record needed for DNS-01 validation.
 
 ## Multiple Domains with Wildcard Certificates
 
@@ -196,8 +227,8 @@ metadata:
   namespace: production
   annotations:
     external-dns.alpha.kubernetes.io/hostname: api.example.com
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - api.example.com
@@ -222,8 +253,8 @@ metadata:
   namespace: production
   annotations:
     external-dns.alpha.kubernetes.io/hostname: dashboard.example.com
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - dashboard.example.com
@@ -289,7 +320,7 @@ spec:
   - service.example.com
 ```
 
-The service gets a DNS record and certificate automatically.
+The service gets a DNS record, and cert-manager stores the certificate in the referenced Secret.
 
 ## Dynamic Environment-Based DNS
 
@@ -305,8 +336,8 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/hostname: app.dev.example.com
     cert-manager.io/cluster-issuer: "letsencrypt-staging"
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.dev.example.com
@@ -332,8 +363,8 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/hostname: app.example.com
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -369,8 +400,8 @@ metadata:
     # Set DNS TTL to 60 seconds for faster updates
     external-dns.alpha.kubernetes.io/ttl: "60"
     cert-manager.io/cluster-issuer: "letsencrypt-dns01"
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -425,7 +456,7 @@ spec:
     rules:
     - alert: DNSRecordMissing
       expr: |
-        external_dns_registry_errors_total > 0
+        increase(external_dns_registry_errors_total[10m]) > 0
       labels:
         severity: warning
       annotations:
@@ -433,7 +464,7 @@ spec:
 
     - alert: CertificateNotReady
       expr: |
-        certmanager_certificate_ready_status == 0
+        certmanager_certificate_ready_status{condition="True"} == 0
       for: 10m
       labels:
         severity: critical
@@ -443,10 +474,10 @@ spec:
 
 ## Handling DNS Propagation Delays
 
-DNS propagation takes time. Configure cert-manager to wait appropriately:
+DNS propagation takes time. cert-manager performs a DNS-01 self check before presenting the challenge. When using delegated `_acme-challenge` records, configure cert-manager to follow CNAMEs:
 
 ```yaml
-# issuer-with-propagation-timeout.yaml
+# issuer-with-cname-follow.yaml
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -459,13 +490,12 @@ spec:
       name: letsencrypt-dns01-patient-key
     solvers:
     - dns01:
+        cnameStrategy: Follow
         route53:
           region: us-east-1
-        # Additional DNS-01 specific settings
-        cnameStrategy: Follow
 ```
 
-cert-manager automatically waits for DNS propagation before presenting challenges to Let's Encrypt.
+cert-manager checks that the challenge TXT record exists before presenting challenges to Let's Encrypt.
 
 ## Troubleshooting Integration Issues
 
@@ -510,7 +540,7 @@ kubectl apply -f <ingress-file>
 kubectl delete pod -n kube-system -l app=external-dns
 
 # Force cert-manager renewal
-kubectl delete secret <cert-secret-name>
+cmctl renew <certificate-name> -n <namespace>
 ```
 
 ## Best Practices
@@ -543,11 +573,17 @@ metadata:
   name: external-dns-aws
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: external-dns-aws
   template:
+    metadata:
+      labels:
+        app: external-dns-aws
     spec:
       containers:
       - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=ingress
         - --provider=aws
@@ -559,11 +595,17 @@ metadata:
   name: external-dns-cloudflare
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: external-dns-cloudflare
   template:
+    metadata:
+      labels:
+        app: external-dns-cloudflare
     spec:
       containers:
       - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=ingress
         - --provider=cloudflare
