@@ -14,7 +14,7 @@ This guide walks through deploying both the New Relic infrastructure agent and A
 
 ## Prerequisites
 
-You need a New Relic account and a license key. New Relic offers a generous free tier with 100GB of data ingestion per month. Get your license key from the New Relic UI under Account Settings > API Keys.
+You need a New Relic account and a license key. New Relic offers a generous free tier with 100GB of data ingestion per month. Get your license key from the New Relic API keys UI at one.newrelic.com/api-keys.
 
 ```bash
 # Store your New Relic license key
@@ -38,6 +38,7 @@ docker run -d \
   --cap-add=SYS_PTRACE \
   --privileged \
   --pid=host \
+  --cgroupns=host \
   -e NRIA_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY} \
   -e NRIA_DISPLAY_NAME="docker-host-01" \
   -v /:/host:ro \
@@ -53,8 +54,6 @@ Here is a complete stack with the infrastructure agent, a Node.js application in
 
 ```yaml
 # docker-compose.yml - New Relic monitoring stack
-version: "3.8"
-
 services:
   # New Relic Infrastructure Agent
   newrelic-infra:
@@ -63,13 +62,12 @@ services:
     network_mode: host
     privileged: true
     pid: host
+    cgroup: host
     cap_add:
       - SYS_PTRACE
     environment:
       - NRIA_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
       - NRIA_DISPLAY_NAME=docker-compose-host
-      # Enable Docker container monitoring
-      - NRIA_DOCKER_ENABLED=true
       # Enable process monitoring
       - NRIA_ENABLE_PROCESS_METRICS=true
     volumes:
@@ -132,7 +130,7 @@ Create the Node.js application directory and files.
 
 ```dockerfile
 # node-app/Dockerfile - Node.js app with New Relic APM
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
@@ -181,9 +179,9 @@ exports.config = {
   "name": "docker-node-app",
   "version": "1.0.0",
   "dependencies": {
-    "express": "^4.18.2",
-    "newrelic": "^11.0.0",
-    "redis": "^4.6.0"
+    "express": "^5.2.1",
+    "newrelic": "^14.1.0",
+    "redis": "^6.0.0"
   }
 }
 ```
@@ -242,21 +240,16 @@ CMD ["newrelic-admin", "run-program", "python", "app.py"]
 
 ```text
 # python-app/requirements.txt
-flask==3.0.0
-newrelic==9.6.0
-redis==5.0.0
+flask==3.1.3
+newrelic==13.1.1
+redis==8.0.0
 ```
 
 ```python
 # python-app/app.py - Flask app with New Relic instrumentation
 import os
-import time
-import newrelic.agent
 from flask import Flask, jsonify
 import redis
-
-# Initialize New Relic (happens automatically with newrelic-admin, but explicit init is fine too)
-newrelic.agent.initialize()
 
 app = Flask(__name__)
 cache = redis.Redis(host=os.environ.get('REDIS_HOST', 'localhost'), port=6379)
@@ -308,7 +301,7 @@ For advanced infrastructure monitoring, create a configuration file.
 
 ```yaml
 # newrelic-infra.yml - Infrastructure agent configuration
-license_key: ${NRIA_LICENSE_KEY}
+# License key is supplied by the NRIA_LICENSE_KEY environment variable
 display_name: docker-compose-host
 
 # Custom attributes added to all infrastructure events
@@ -317,25 +310,14 @@ custom_attributes:
   team: platform
   region: us-east-1
 
-# Enable Docker container monitoring
-docker:
-  enabled: true
-
 # Configure process monitoring
-process:
-  enabled: true
-  # Only monitor processes matching these patterns
-  include_matching_metrics:
-    - process.name: "node"
-    - process.name: "python"
-    - process.name: "nginx"
-
-# Log forwarding to New Relic
-log:
-  forward: true
-  include_filters:
-    - name: "docker-logs"
-      file: /var/lib/docker/containers/*/*.log
+enable_process_metrics: true
+# Only monitor processes matching these patterns
+include_matching_metrics:
+  process.name:
+    - "node"
+    - "python"
+    - "nginx"
 ```
 
 ## Verifying Data Flow
