@@ -8,7 +8,7 @@ Description: Learn the differences between nodeSelector and nodeAffinity, unders
 
 ---
 
-Kubernetes provides two main mechanisms for controlling which nodes can run your pods: nodeSelector and nodeAffinity. While both constrain pod placement, they offer different levels of flexibility and expressiveness. Understanding their capabilities and limitations helps you choose the right approach for your scheduling requirements.
+Kubernetes provides two common label-based mechanisms for controlling which nodes can run your pods: nodeSelector and nodeAffinity. While both constrain pod placement, they offer different levels of flexibility and expressiveness. Understanding their capabilities and limitations helps you choose the right approach for your scheduling requirements.
 
 This guide will explain both mechanisms, compare their features, and provide practical guidance on when to use each.
 
@@ -155,7 +155,7 @@ affinity:
 ### Exclusion Logic
 
 ```yaml
-# Avoid nodes with specific labels
+# Exclude nodes with specific labels
 affinity:
   nodeAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:
@@ -202,7 +202,7 @@ affinity:
           - 10gbps
 ```
 
-Pods must schedule in us-west-2, but preferentially choose SSD nodes, and secondarily prefer high-speed network nodes. If SSD nodes are full, pods schedule on non-SSD nodes.
+Pods must schedule in us-west-2. The scheduler adds the matching preferred rule weights to each eligible node's score, so SSD nodes get a stronger preference than high-speed network nodes in this example. If SSD nodes are unavailable or unsuitable, pods can still schedule on non-SSD nodes that meet the required rules.
 
 ## Combining Multiple nodeSelectorTerms
 
@@ -327,7 +327,7 @@ Multiple acceptable regions require nodeAffinity.
 
 ## Performance Considerations
 
-nodeSelector evaluation is faster than nodeAffinity because it uses simple map lookups. For large clusters with many nodes, this difference can impact scheduling latency. However, the difference is typically negligible (microseconds).
+nodeSelector is simpler for humans and the scheduler to evaluate because it uses exact label matches. In most clusters, the practical scheduling-latency difference between simple nodeSelector and nodeAffinity rules is less important than choosing the configuration that clearly expresses your placement requirements.
 
 Use nodeSelector for:
 - Simple exact matching
@@ -416,6 +416,6 @@ Label nodes consistently and meaningfully. Use hierarchical labels like `node-cl
 
 nodeSelector and nodeAffinity both control pod placement but serve different needs. nodeSelector provides simple, readable exact matching suitable for most use cases. nodeAffinity offers powerful expression-based selection with soft preferences for complex requirements.
 
-Choose nodeSelector by default for its simplicity. Graduate to nodeAffinity when you need multiple value options, range-based selection, soft preferences, or complex logic. Both can coexist in the same pod spec, combining simple and complex constraints.
+Choose nodeSelector by default for its simplicity. Graduate to nodeAffinity when you need multiple value options, range-based selection, soft preferences, or complex logic. Both can coexist in the same pod spec; when they do, both must be satisfied for the pod to schedule on a node.
 
 Understanding when to use each approach helps create maintainable scheduling configurations that meet your reliability, compliance, and performance requirements.
