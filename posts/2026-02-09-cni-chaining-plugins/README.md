@@ -12,9 +12,9 @@ CNI (Container Network Interface) plugins can be chained together to combine mul
 
 ## Understanding CNI Plugin Chaining
 
-CNI plugins follow a simple model. Each plugin receives network configuration from the previous plugin, performs its operation, and passes results to the next plugin. The first plugin typically handles IP address allocation and basic connectivity. Subsequent plugins add features like bandwidth limiting, port mapping, or firewall rules.
+CNI plugins follow a simple model. Each plugin receives network configuration from the runtime, and chained plugins also receive the previous plugin's result in `prevResult`. The first plugin typically handles IP address allocation and basic connectivity. Subsequent plugins add features like bandwidth limiting, port mapping, or firewall rules.
 
-The CNI specification defines how plugins communicate through stdin/stdout. The runtime (containerd, CRI-O) calls each plugin in sequence based on the order defined in the CNI configuration file. Results from one plugin become inputs to the next.
+The CNI specification defines how runtimes and plugins communicate through stdin/stdout. The runtime (containerd, CRI-O) calls each plugin in sequence based on the order defined in the CNI configuration file. Results from one plugin become inputs to the next.
 
 This compositional approach means you can mix and match plugins from different vendors. For example, you might use Calico for connectivity and network policies, then add the bandwidth plugin for rate limiting, and the firewall plugin for additional security.
 
@@ -25,7 +25,7 @@ Let's start with a simple chain that combines basic networking with bandwidth li
 ```bash
 # Download CNI plugins
 
-CNI_VERSION="v1.3.0"
+CNI_VERSION="v1.9.1"
 mkdir -p /opt/cni/bin
 curl -L "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-amd64-${CNI_VERSION}.tgz" | tar -C /opt/cni/bin -xz
 
@@ -34,7 +34,7 @@ ls -l /opt/cni/bin/
 # Should show: bridge, bandwidth, portmap, firewall, tuning, etc.
 ```
 
-Create a CNI configuration that chains the bridge plugin with bandwidth limiting:
+Create a CNI configuration that chains the bridge plugin with bandwidth limiting. Bandwidth rates and bursts are specified in bits:
 
 ```json
 {
@@ -63,10 +63,10 @@ Create a CNI configuration that chains the bridge plugin with bandwidth limiting
     {
       "type": "bandwidth",
       "capabilities": {"bandwidth": true},
-      "ingressRate": 1048576,    // 1 Mbps ingress (bits per second)
-      "ingressBurst": 1048576,   // 1 MB burst
-      "egressRate": 1048576,     // 1 Mbps egress
-      "egressBurst": 1048576     // 1 MB burst
+      "ingressRate": 1000000,
+      "ingressBurst": 1000000,
+      "egressRate": 1000000,
+      "egressBurst": 1000000
     },
     {
       "type": "portmap",
@@ -130,7 +130,7 @@ spec:
     - containerPort: 80
 ```
 
-The bandwidth plugin reads these annotations and configures traffic shaping accordingly.
+Kubernetes passes these annotation-derived limits to the bandwidth plugin, which configures traffic shaping accordingly.
 
 ## Chaining with the Firewall Plugin
 
@@ -248,8 +248,10 @@ Here's a comprehensive example that chains multiple security-focused plugins:
     {
       "type": "bandwidth",
       "capabilities": {"bandwidth": true},
-      "ingressRate": 10485760,   // 10 Mbps
-      "egressRate": 10485760
+      "ingressRate": 10000000,
+      "ingressBurst": 10000000,
+      "egressRate": 10000000,
+      "egressBurst": 10000000
     },
     {
       "type": "tuning",
@@ -273,18 +275,11 @@ This configuration provides:
 When plugins are chained, debugging becomes more complex because failures can occur at any stage. Here's how to troubleshoot:
 
 ```bash
-# Enable CNI plugin logging
+# Set the plugin search path
 export CNI_PATH=/opt/cni/bin
-export CNI_LOG_LEVEL=debug
 
-# Test CNI configuration manually
-cat /etc/cni/net.d/10-mynet.conflist | \
-  CNI_COMMAND=ADD \
-  CNI_CONTAINERID=test123 \
-  CNI_NETNS=/var/run/netns/test \
-  CNI_IFNAME=eth0 \
-  CNI_PATH=/opt/cni/bin \
-  /opt/cni/bin/bridge
+# Validate the JSON in the conflist
+jq . /etc/cni/net.d/10-mynet.conflist
 
 # Check which plugin failed
 journalctl -u containerd | grep CNI
@@ -302,7 +297,7 @@ Each plugin writes its result to stdout. If a plugin fails, the chain stops and 
 # Create a test network namespace
 ip netns add testns
 
-# Manually execute the plugin chain
+# Manually test an individual plugin with a single-plugin configuration
 echo '{
   "cniVersion": "0.4.0",
   "name": "mynet",
@@ -319,7 +314,24 @@ echo '{
   CNI_PATH=/opt/cni/bin \
   /opt/cni/bin/bridge
 
-# Clean up
+# Clean up the individual plugin test
+CNI_COMMAND=DEL \
+  CNI_CONTAINERID=test123 \
+  CNI_NETNS=/var/run/netns/testns \
+  CNI_IFNAME=eth0 \
+  CNI_PATH=/opt/cni/bin \
+  /opt/cni/bin/bridge <<'EOF'
+{
+  "cniVersion": "0.4.0",
+  "name": "mynet",
+  "type": "bridge",
+  "bridge": "cni0",
+  "ipam": {
+    "type": "host-local",
+    "subnet": "10.244.0.0/24"
+  }
+}
+EOF
 ip netns del testns
 ```
 
@@ -350,7 +362,9 @@ spec:
       {
         "type": "bandwidth",
         "ingressRate": 104857600,
-        "egressRate": 104857600
+        "ingressBurst": 104857600,
+        "egressRate": 104857600,
+        "egressBurst": 104857600
       }
     ]
   }'
@@ -386,7 +400,7 @@ time CNI_COMMAND=ADD \
 # Compare with and without chained plugins
 ```
 
-The order matters for performance. Put lightweight plugins first and heavy plugins last. For example, place the tuning plugin before bandwidth because tuning just sets sysctl values while bandwidth configures tc (traffic control) rules.
+The order matters for both correctness and performance. Interface-creating plugins need to run before chained plugins that modify the resulting interface. When multiple chained plugins can run in either order, lightweight interface tweaks such as tuning can run before heavier traffic-shaping plugins such as bandwidth.
 
 Monitor CPU usage during pod creation to identify slow plugins:
 
