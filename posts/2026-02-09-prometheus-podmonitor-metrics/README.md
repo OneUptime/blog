@@ -15,13 +15,13 @@ While ServiceMonitors work well for services, some scenarios require monitoring 
 Choose PodMonitor when:
 - Monitoring pods without services (DaemonSets, StatefulSets)
 - Each pod exposes unique metrics (node exporters, per-pod metrics)
-- You need per-replica metrics instead of aggregated service metrics
-- Monitoring ephemeral jobs or batch workloads
-- Collecting metrics from init containers or sidecar containers
+- You need direct pod metrics without relying on a Service
+- Monitoring batch workloads while their pods are running
+- Collecting metrics from sidecar containers
 
 Use ServiceMonitor when:
 - Monitoring standard application services
-- Aggregating metrics across multiple pods
+- Discovering metrics through a Service and its backing endpoints
 - Following Kubernetes service patterns
 - Monitoring external services via Service definitions
 
@@ -374,10 +374,9 @@ spec:
       - staging
       - development
 
-  # Or use label-based selection
+  # Or select all namespaces
   # namespaceSelector:
-  #   matchLabels:
-  #     monitoring: enabled
+  #   any: true
 
   selector:
     matchLabels:
@@ -431,7 +430,7 @@ spec:
 
 ## Monitoring Job Pods
 
-Monitor batch jobs and CronJobs:
+Monitor batch jobs and CronJobs while their pods are running:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
