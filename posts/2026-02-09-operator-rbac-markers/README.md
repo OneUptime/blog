@@ -18,7 +18,7 @@ RBAC markers are specially formatted comments in your Go source files that the `
 //+kubebuilder:rbac:groups=<api-group>,resources=<resources>,verbs=<verbs>
 ```
 
-These markers are typically placed directly above the `Reconcile` method in your controller file, though they can appear anywhere in your Go code within the controller package. The `controller-gen` tool scans all Go files and aggregates the markers into a single ClusterRole manifest.
+These markers are typically placed directly above the `Reconcile` method in your controller file, though they can appear anywhere in Go files under the packages included by the `paths` argument. The `controller-gen` tool scans those Go packages and aggregates the markers into a single ClusterRole manifest by default.
 
 ## Basic RBAC Marker Syntax
 
@@ -29,7 +29,7 @@ Here is a simple example. Suppose your operator manages a custom resource called
 //+kubebuilder:rbac:groups=myapp.example.com,resources=databases/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=myapp.example.com,resources=databases/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+//+kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 func (r *DatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
     // reconciliation logic
@@ -42,7 +42,7 @@ Let us break down each marker:
 - The second marker grants access to the `databases/status` subresource, which is needed to update the status of your custom resource.
 - The third marker grants access to `databases/finalizers`, which is required if your controller adds finalizers for cleanup logic.
 - The fourth marker targets the core API group (empty string `""`) for Services. Your operator might create a Service for each Database instance.
-- The fifth marker allows creating and patching Events, which is standard for any operator that records events on resources.
+- The fifth marker allows creating and patching Events in the `events.k8s.io` API group, which is standard for any operator that records events on resources.
 
 ## Generating RBAC Manifests
 
@@ -67,7 +67,7 @@ metadata:
   name: manager-role
 rules:
   - apiGroups:
-      - ""
+      - events.k8s.io
     resources:
       - events
     verbs:
@@ -159,11 +159,13 @@ This generates a rule that only allows getting the ConfigMap named `my-operator-
 
 ### URLs for Non-Resource Endpoints
 
-Some operators need access to non-resource URLs like health check endpoints or metrics:
+Some operators need access to Kubernetes API server non-resource URLs like `/healthz`:
 
 ```go
 //+kubebuilder:rbac:urls="/healthz;/readyz",verbs=get
 ```
+
+Because non-resource URLs are not namespaced, these rules must be generated into a ClusterRole and bound with a ClusterRoleBinding to be effective.
 
 ## The Principle of Least Privilege
 
@@ -173,7 +175,7 @@ One of the most important security principles in operator development is grantin
 
 **Do not use wildcard resources.** Never write `resources=*`. This gives your operator access to every resource in the API group, including secrets and sensitive configuration.
 
-**Do not use wildcard API groups.** Never write `groups=*`. This is equivalent to giving your operator cluster-admin access for the specified resources.
+**Do not use wildcard API groups.** Never write `groups=*`. This allows the same resource and verb rule across all API groups, which can grant much broader access than intended.
 
 **Separate read and write access.** If your controller only reads Nodes to check capacity but never modifies them, only grant `get;list;watch`:
 
@@ -219,10 +221,10 @@ After adding or changing RBAC markers, you must run `make manifests` to regenera
 
 ### Event Recording Without Permissions
 
-If your controller records events using the Kubernetes event recorder but lacks the event permission, events will silently fail to be created. Always include:
+If your controller records events using the Kubernetes event recorder but lacks the event permission, the Event objects will not be created. Always include:
 
 ```go
-//+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+//+kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 ```
 
 ## Testing RBAC Configuration
