@@ -8,7 +8,7 @@ Description: A practical guide to deploying Docker containers with WebAssembly r
 
 ---
 
-Edge computing pushes processing closer to where data originates, cutting latency and reducing bandwidth costs. Traditional Docker containers work at the edge, but they carry overhead that matters on constrained devices. WebAssembly (Wasm) changes this equation. Wasm binaries are small, start instantly, and run in a secure sandbox. Docker now supports Wasm workloads natively, making it possible to deploy edge applications the same way you deploy cloud services.
+Edge computing pushes processing closer to where data originates, cutting latency and reducing bandwidth costs. Traditional Docker containers work at the edge, but they carry overhead that matters on constrained devices. WebAssembly (Wasm) changes this equation. Wasm binaries are small, start quickly, and run in a secure sandbox. Docker can run Wasm workloads through containerd shims, making it possible to deploy edge applications with the same image and CLI workflow you use for cloud services.
 
 This post covers how to combine Docker and Wasm for edge computing scenarios, with real configurations and deployment patterns you can use today.
 
@@ -26,7 +26,7 @@ When Docker wraps Wasm, you get the familiar image distribution, orchestration, 
 
 ## Setting Up Docker for Edge Wasm Workloads
 
-First, ensure your edge device runs a Docker version with Wasm support. Docker Desktop 4.15+ and Docker Engine with containerd 1.7+ both qualify.
+First, ensure your edge device runs Docker with the containerd image store enabled and a Wasm containerd shim installed. Docker Desktop introduced Wasm workloads in version 4.15, but Docker Desktop's Wasm workloads feature is currently beta, deprecated, and no longer actively maintained. For Linux edge devices, use Docker Engine with the containerd image store and install the Wasmtime shim on the Docker daemon host.
 
 ```bash
 # Check Docker version and containerd status on the edge device
@@ -35,31 +35,40 @@ docker version
 docker info | grep -i containerd
 ```
 
-Enable the containerd image store and Wasm shims:
+Enable the containerd image store:
 
 ```json
-// /etc/docker/daemon.json - Enable Wasm runtime on edge device
 {
   "features": {
     "containerd-snapshotter": true
-  },
-  "default-runtime": "runc",
-  "runtimes": {
-    "io.containerd.wasmedge.v1": {
-      "path": "/usr/bin/containerd-shim-wasmedge-v1"
-    },
-    "io.containerd.wasmtime.v1": {
-      "path": "/usr/bin/containerd-shim-wasmtime-v1"
-    }
   }
 }
 ```
 
-Restart Docker after the configuration change:
+Install the Wasmtime containerd shim on the daemon host's `PATH`, then restart Docker after the configuration change:
+
+```bash
+# Build the Wasmtime containerd shim and place it on PATH
+docker build --output . - <<'EOF'
+FROM rust:latest AS build
+RUN cargo install \
+    --git https://github.com/containerd/runwasi.git \
+    --bin containerd-shim-wasmtime-v1 \
+    --root /out \
+    containerd-shim-wasmtime
+FROM scratch
+COPY --from=build /out/bin /
+EOF
+
+sudo install -m 0755 containerd-shim-wasmtime-v1 /usr/local/bin/
+```
+
+Restart Docker and verify the containerd image store:
 
 ```bash
 # Apply the new runtime configuration
 sudo systemctl restart docker
+docker info -f '{{ .DriverStatus }}'
 ```
 
 ## Building a Wasm Application for Edge Deployment
@@ -95,7 +104,7 @@ fn main() {
             // Filter: only forward readings that exceed thresholds
             if reading.temperature > 85.0 {
                 let alert = Alert {
-                    device_id: reading.device_id,
+                    device_id: reading.device_id.clone(),
                     alert_type: "high_temperature".to_string(),
                     value: reading.temperature,
                     timestamp: reading.timestamp,
@@ -119,9 +128,9 @@ fn main() {
 Compile this to WebAssembly:
 
 ```bash
-# Add the wasm32-wasi target and build the edge processor
-rustup target add wasm32-wasi
-cargo build --target wasm32-wasi --release
+# Add the wasm32-wasip1 target and build the edge processor
+rustup target add wasm32-wasip1
+cargo build --target wasm32-wasip1 --release
 ```
 
 ## Creating a Minimal Docker Image
@@ -131,7 +140,7 @@ For edge deployment, every byte counts. The Wasm binary itself is the entire app
 ```dockerfile
 # Dockerfile - Ultra-minimal edge Wasm container
 FROM scratch
-COPY target/wasm32-wasi/release/sensor-processor.wasm /sensor-processor.wasm
+COPY target/wasm32-wasip1/release/sensor-processor.wasm /sensor-processor.wasm
 ENTRYPOINT ["/sensor-processor.wasm"]
 ```
 
@@ -347,8 +356,8 @@ docker run -d \
   localhost:5000/sensor-processor:v2
 ```
 
-Because Wasm containers start in milliseconds, the downtime window during updates is negligible. This is a significant advantage over traditional containers at the edge, where a 5-second restart can mean lost sensor data.
+Because Wasm containers can start in milliseconds, the downtime window during updates can be very small. This is a significant advantage over traditional containers at the edge, where a multi-second restart can mean lost sensor data.
 
 ## Conclusion
 
-Docker and Wasm together make edge computing more practical. You get the distribution and management benefits of Docker with the lightweight execution model of WebAssembly. The tooling is still maturing, but the core workflow already works well for production edge deployments. Start with a simple data processing use case, deploy it to a test edge device, and expand from there as you get comfortable with the Wasm runtime behavior.
+Docker and Wasm together make edge computing more practical. You get the distribution and management benefits of Docker with the lightweight execution model of WebAssembly. The tooling is still maturing, and Docker Desktop's Wasm workloads feature is deprecated, so validate your runtime choice carefully before production use. Start with a simple data processing use case, deploy it to a test edge device, and expand from there as you get comfortable with the Wasm runtime behavior.
