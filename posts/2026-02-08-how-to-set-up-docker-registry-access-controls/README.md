@@ -22,7 +22,7 @@ The simplest way to protect a Docker registry is HTTP basic authentication. This
 mkdir -p /opt/registry/auth
 
 # Generate an htpasswd file with bcrypt encryption
-# Add the first user (the -B flag enables bcrypt, -c creates a new file)
+# Add the first user (the -B flag enables bcrypt, and > creates the file)
 docker run --rm --entrypoint htpasswd httpd:2 \
   -Bbn admin 'strong_password_here' > /opt/registry/auth/htpasswd
 
@@ -43,7 +43,7 @@ version: "3.8"
 
 services:
   registry:
-    image: registry:2
+    image: registry:3
     ports:
       - "5000:5000"
     environment:
@@ -98,12 +98,12 @@ version: "3.8"
 
 services:
   registry:
-    image: registry:2
+    image: registry:3
     ports:
       - "5000:5000"
     environment:
       REGISTRY_AUTH: token
-      REGISTRY_AUTH_TOKEN_REALM: https://auth.example.com/token
+      REGISTRY_AUTH_TOKEN_REALM: https://auth.example.com/auth
       REGISTRY_AUTH_TOKEN_SERVICE: "Docker Registry"
       REGISTRY_AUTH_TOKEN_ISSUER: "Auth Service"
       REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE: /certs/auth.crt
@@ -135,6 +135,7 @@ server:
 token:
   issuer: "Auth Service"
   expiration: 900  # Token valid for 15 minutes
+  disable_legacy_key_id: true  # Required for registry:3
 
 # User definitions with bcrypt-hashed passwords
 users:
@@ -196,37 +197,12 @@ sudo systemctl restart docker
 
 For enterprise environments, Harbor provides a full-featured registry with a web UI and project-based access control.
 
-```yaml
-# docker-compose.harbor.yml (simplified)
-# Harbor registry with RBAC, vulnerability scanning, and audit logging
-version: "3.8"
-
-services:
-  harbor-core:
-    image: goharbor/harbor-core:v2.10
-    environment:
-      - CONFIG_PATH=/etc/harbor/app.conf
-    volumes:
-      - /opt/harbor/config:/etc/harbor
-      - /opt/harbor/data:/data
-
-  harbor-db:
-    image: goharbor/harbor-db:v2.10
-    volumes:
-      - /opt/harbor/database:/var/lib/postgresql/data
-
-  harbor-portal:
-    image: goharbor/harbor-portal:v2.10
-    ports:
-      - "8080:8080"
-```
-
 Install Harbor using the official installer for a production-ready setup:
 
 ```bash
 # Download and extract the Harbor installer
-wget https://github.com/goharbor/harbor/releases/download/v2.10.0/harbor-online-installer-v2.10.0.tgz
-tar xzf harbor-online-installer-v2.10.0.tgz
+wget https://github.com/goharbor/harbor/releases/download/v2.14.4/harbor-online-installer-v2.14.4.tgz
+tar xzf harbor-online-installer-v2.14.4.tgz
 
 # Edit the configuration file
 cd harbor
@@ -250,8 +226,8 @@ curl -s -X POST "https://registry.example.com/api/v2.0/projects" \
   -u "admin:Harbor12345" \
   -d '{
     "project_name": "team-a",
-    "public": false,
     "metadata": {
+      "public": "false",
       "auto_scan": "true",
       "prevent_vul": "true",
       "severity": "high"
@@ -268,7 +244,7 @@ curl -s -X POST "https://registry.example.com/api/v2.0/projects/team-a/members" 
   }'
 ```
 
-Harbor role IDs: 1 = Project Admin, 2 = Developer, 3 = Guest (read-only), 4 = Maintainer.
+Harbor role IDs: 1 = Project Admin, 2 = Developer, 3 = Guest (read-only), 4 = Maintainer, 5 = Limited Guest.
 
 ## Restricting Actions with Registry Middleware
 
@@ -305,7 +281,7 @@ server {
             return 403;
         }
 
-        proxy_pass https://registry;
+        proxy_pass http://registry;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -324,8 +300,9 @@ Track who pushed and pulled what:
 
 ```bash
 # Enable verbose logging in the registry
-# Add this environment variable to your registry container
+# Add these environment variables to your registry container
 REGISTRY_LOG_LEVEL=info
+REGISTRY_LOG_FORMATTER=json
 REGISTRY_LOG_ACCESSLOG_DISABLED=false
 ```
 
