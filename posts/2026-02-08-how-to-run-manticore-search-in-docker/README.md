@@ -10,7 +10,7 @@ Description: Set up Manticore Search in Docker as a fast, lightweight alternativ
 
 Manticore Search is an open-source search engine that evolved from Sphinx Search. It provides full-text search, columnar storage, and analytics capabilities while maintaining a small resource footprint. One of its standout features is MySQL protocol compatibility, which means you can query Manticore using standard MySQL clients and connectors without learning a new query language.
 
-Manticore is significantly faster than Elasticsearch for many search workloads and uses a fraction of the memory. It supports both real-time indexes (insert and search immediately) and plain indexes (batch-built from a database), giving you flexibility in how you manage your search data.
+Manticore can be significantly faster than Elasticsearch for many search workloads and uses a fraction of the memory, depending on your data model and query patterns. It supports both real-time indexes (insert and search immediately) and plain indexes (batch-built from a database), giving you flexibility in how you manage your search data.
 
 ## Quick Start
 
@@ -55,9 +55,6 @@ services:
       - manticore_data:/var/lib/manticore
       # Mount custom configuration (optional)
       - ./manticore.conf:/etc/manticoresearch/manticore.conf
-    environment:
-      # Enable automatic column store for better analytics performance
-      EXTRA: 1
     ulimits:
       nproc: 65535
       nofile:
@@ -94,11 +91,11 @@ Insert documents:
 -- Insert product documents
 INSERT INTO products (id, name, description, category, brand, price, in_stock, created_at)
 VALUES
-  (1, 'Wireless Bluetooth Headphones', 'Premium noise-cancelling headphones with 30-hour battery', 'Electronics', 'AudioTech', 149.99, 1, NOW()),
-  (2, 'Mechanical Gaming Keyboard', 'RGB backlit keyboard with Cherry MX switches', 'Electronics', 'KeyMaster', 89.99, 1, NOW()),
-  (3, 'Organic Cotton T-Shirt', 'Soft organic cotton shirt in multiple colors', 'Clothing', 'EcoWear', 29.99, 1, NOW()),
-  (4, 'Running Shoes Pro', 'Lightweight running shoes with cushioned sole', 'Footwear', 'SpeedRun', 119.99, 1, NOW()),
-  (5, 'Portable Bluetooth Speaker', 'Waterproof speaker with 12-hour battery life', 'Electronics', 'SoundBox', 59.99, 0, NOW());
+  (1, 'Wireless Bluetooth Headphones', 'Premium noise-cancelling headphones with 30-hour battery', 'Electronics', 'AudioTech', 149.99, 1, 1769904000),
+  (2, 'Mechanical Gaming Keyboard', 'RGB backlit keyboard with Cherry MX switches', 'Electronics', 'KeyMaster', 89.99, 1, 1769904000),
+  (3, 'Organic Cotton T-Shirt', 'Soft organic cotton shirt in multiple colors', 'Clothing', 'EcoWear', 29.99, 1, 1769904000),
+  (4, 'Running Shoes Pro', 'Lightweight running shoes with cushioned sole', 'Footwear', 'SpeedRun', 119.99, 1, 1769904000),
+  (5, 'Portable Bluetooth Speaker', 'Waterproof speaker with 12-hour battery life', 'Electronics', 'SoundBox', 59.99, 0, 1769904000);
 ```
 
 ## Searching
@@ -141,10 +138,10 @@ Manticore also has a REST API that accepts JSON queries:
 curl -X POST http://localhost:9308/search \
   -H "Content-Type: application/json" \
   -d '{
-    "index": "products",
+    "table": "products",
     "query": {
       "match": {
-        "name,description": "bluetooth"
+        "*": "bluetooth"
       }
     },
     "limit": 10,
@@ -157,7 +154,7 @@ curl -X POST http://localhost:9308/search \
 curl -X POST http://localhost:9308/insert \
   -H "Content-Type: application/json" \
   -d '{
-    "index": "products",
+    "table": "products",
     "id": 6,
     "doc": {
       "name": "USB-C Hub Adapter",
@@ -173,8 +170,8 @@ curl -X POST http://localhost:9308/insert \
 curl -X POST http://localhost:9308/bulk \
   -H "Content-Type: application/x-ndjson" \
   -d '
-{"insert": {"index": "products", "id": 7, "doc": {"name": "Wireless Mouse", "price": 29.99, "category": "Electronics"}}}
-{"insert": {"index": "products", "id": 8, "doc": {"name": "Laptop Stand", "price": 49.99, "category": "Accessories"}}}
+{"insert": {"table": "products", "id": 7, "doc": {"name": "Wireless Mouse", "price": 29.99, "category": "Electronics"}}}
+{"insert": {"table": "products", "id": 8, "doc": {"name": "Laptop Stand", "price": 49.99, "category": "Accessories"}}}
 '
 ```
 
@@ -291,10 +288,6 @@ services:
       - "9308:9308"
     volumes:
       - m1_data:/var/lib/manticore
-    environment:
-      EXTRA: 1
-      cluster: myapp_cluster
-      cluster_name: node1
 
   manticore-2:
     image: manticoresearch/manticore
@@ -303,14 +296,24 @@ services:
       - "9318:9308"
     volumes:
       - m2_data:/var/lib/manticore
-    environment:
-      EXTRA: 1
-      cluster: myapp_cluster
-      cluster_name: node2
 
 volumes:
   m1_data:
   m2_data:
+```
+
+After starting the containers, create the cluster on the first node and join it from the second node:
+
+```bash
+docker compose -f docker-compose-cluster.yml exec manticore-1 mysql -e "
+CREATE TABLE products (name text, category string, price float);
+CREATE CLUSTER myapp_cluster;
+ALTER CLUSTER myapp_cluster ADD products;
+"
+
+docker compose -f docker-compose-cluster.yml exec manticore-2 mysql -e "
+JOIN CLUSTER myapp_cluster AT 'manticore-1:9312';
+"
 ```
 
 ## Useful Management Commands
@@ -340,4 +343,4 @@ mysql -h 127.0.0.1 -P 9306 -e "TRUNCATE TABLE products"
 
 ## Summary
 
-Manticore Search delivers fast full-text search with a familiar SQL interface. The MySQL protocol compatibility means you can use existing MySQL clients, ORMs, and tools to interact with it, which significantly reduces the learning curve. Compared to Elasticsearch, Manticore uses less memory, starts faster, and provides comparable or better search performance for most workloads. The Docker deployment is straightforward, and the combination of SQL and HTTP APIs gives you flexibility in how you integrate it with your application. If you need a search engine that feels like a database, Manticore is an excellent choice.
+Manticore Search delivers fast full-text search with a familiar SQL interface. The MySQL protocol compatibility means you can use existing MySQL clients, ORMs, and tools to interact with it, which significantly reduces the learning curve. Compared to Elasticsearch, Manticore can use less memory, start faster, and provide comparable or better search performance for many workloads. The Docker deployment is straightforward, and the combination of SQL and HTTP APIs gives you flexibility in how you integrate it with your application. If you need a search engine that feels like a database, Manticore is an excellent choice.
