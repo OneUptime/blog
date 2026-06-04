@@ -29,7 +29,7 @@ kubectl annotate pod webapp description="Main application pod"
 kubectl annotate deployment webapp deployment-tool="helm"
 ```
 
-Labels have syntax restrictions, annotations do not.
+Labels have syntax restrictions. Annotation keys also have syntax rules, while annotation values can contain arbitrary string data.
 
 ## Basic Label Operations
 
@@ -49,7 +49,7 @@ kubectl label pod webapp version=v2.0 -n production
 kubectl label pod webapp team="platform-engineering"
 ```
 
-Labels must follow DNS subdomain format for keys and values.
+Label keys can use an optional DNS subdomain prefix, and label names and values have length and character restrictions.
 
 ## Labeling Multiple Resources
 
@@ -170,7 +170,7 @@ kubectl annotate deployment webapp \
 kubectl annotate namespace production owner="ops-team"
 ```
 
-Annotations store arbitrary string data without format restrictions.
+Annotation values store arbitrary string data, while annotation keys follow Kubernetes key syntax rules.
 
 ## Bulk Annotation Operations
 
@@ -316,7 +316,7 @@ kubectl annotate namespace production \
   billing-code="PROJ-123"
 ```
 
-Annotations document resources without affecting functionality.
+Annotations can document resources without affecting label selection.
 
 ## Propagating Labels
 
@@ -414,8 +414,8 @@ Labels have syntax requirements:
 
 ```bash
 # Valid label keys
-# - Must be 63 characters or less
-# - Can have optional prefix up to 253 characters
+# - Name segment must be 63 characters or less
+# - Can have optional DNS subdomain prefix up to 253 characters
 # - Format: [prefix/]name
 
 # Valid examples
@@ -425,10 +425,10 @@ kubectl label pod webapp platform.example.com/team=backend
 
 # Invalid (will fail)
 # kubectl label pod webapp "invalid label=value"  # Space in key
-# kubectl label pod webapp label=  # Empty value
+# kubectl label pod webapp label=-invalid  # Value starts with hyphen
 ```
 
-Follow DNS naming conventions for labels.
+Follow Kubernetes label key and value constraints.
 
 ## Using kubectl get with Labels
 
