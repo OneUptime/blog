@@ -27,7 +27,7 @@ Cross-cluster DNS resolution solves these issues by extending DNS queries across
 
 The simplest approach involves configuring CoreDNS in each cluster to forward specific DNS queries to other clusters. This works well for smaller multi-cluster setups with stable cluster configurations.
 
-First, identify the CoreDNS service endpoints in each cluster:
+First, identify the CoreDNS service IP and cluster domain in each cluster:
 
 ```bash
 # In cluster-1
@@ -35,34 +35,37 @@ First, identify the CoreDNS service endpoints in each cluster:
 kubectl get svc -n kube-system kube-dns -o wide
 
 # Note the ClusterIP, let's say it's 10.96.0.10
+# In this example, cluster-1 is configured with the cluster domain cluster1.local
 ```
 
-Create a ConfigMap to extend CoreDNS configuration in cluster-2:
+Edit the CoreDNS ConfigMap in cluster-2 and add a server block for the remote cluster domain. Keep the existing `.:53` server block intact:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: coredns-custom
-  namespace: kube-system
-data:
-  cluster1.server: |
-    # Forward queries for cluster-1 services
-    cluster1.local:53 {
-      errors
-      cache 30
-      forward . 10.244.0.5 {
-        force_tcp
-      }
-    }
+```bash
+kubectl edit configmap coredns -n kube-system
 ```
 
-This configuration tells CoreDNS in cluster-2 to forward any queries for `*.cluster1.local` to the specified IP address. You'll need VPN or direct network connectivity between clusters for this to work.
+Add the remote-zone block to the `Corefile` data:
+
+```corefile
+# Forward queries for cluster-1 services
+cluster1.local:53 {
+  errors
+  cache 30
+  forward . 10.96.0.10 {
+    force_tcp
+  }
+}
+
+.:53 {
+  # Keep the existing Kubernetes CoreDNS configuration here
+}
+```
+
+This configuration tells CoreDNS in cluster-2 to forward any queries for `*.cluster1.local` to the cluster-1 DNS service IP. Use the actual remote cluster domain; if cluster-1 still uses the default `cluster.local` domain, forwarding `cluster1.local` queries will not resolve Kubernetes Services unless you also configure DNS rewriting. You'll need VPN or direct network connectivity between clusters, including routing to the remote DNS service IP, for this to work.
 
 Apply the configuration:
 
 ```bash
-kubectl apply -f coredns-custom.yaml
 kubectl rollout restart deployment/coredns -n kube-system
 ```
 
@@ -97,7 +100,7 @@ spec:
       serviceAccountName: external-dns
       containers:
       - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
+        image: registry.k8s.io/external-dns/external-dns:v0.20.0
         args:
         - --source=service
         - --source=ingress
@@ -178,9 +181,9 @@ The `.clusterset.local` suffix indicates this is a multi-cluster service. Submar
 
 ## Approach 4: Istio Multi-Cluster DNS
 
-If you're using Istio service mesh across multiple clusters, it provides built-in cross-cluster DNS resolution through its control plane.
+If you're using Istio service mesh across multiple clusters, it can provide cross-cluster service discovery through its control plane. Kubernetes DNS still needs a local `Service`, an Istio `ServiceEntry` with DNS capture, or another DNS integration so the client workload can resolve the hostname before Istio routes the traffic.
 
-Configure Istio for multi-cluster with a shared control plane:
+Configure Istio for multi-primary multi-cluster with a shared mesh:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -192,18 +195,20 @@ spec:
     global:
       multiCluster:
         clusterName: cluster-1
-      meshID: shared-mesh
+      meshID: mesh1
       network: network-1
 ```
 
 Create a ServiceEntry to make remote services discoverable:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: payment-service-remote
 spec:
+  addresses:
+  - 240.0.0.10
   hosts:
   - payment.default.svc.cluster2.local
   ports:
@@ -213,13 +218,13 @@ spec:
   resolution: DNS
   location: MESH_INTERNAL
   endpoints:
-  - address: payment.default.svc.cluster.local
+  - address: payment.cluster2.internal.example.com
     locality: cluster-2/zone-a
     labels:
       cluster: cluster-2
 ```
 
-With Istio's multi-cluster configuration, services can communicate using standard Kubernetes DNS names, and Istio handles the cross-cluster routing transparently.
+Use a routable endpoint address for the remote service, such as an east-west gateway or an internal load balancer. With Istio's multi-cluster configuration and DNS capture enabled for `ServiceEntry` hosts, services can communicate using Kubernetes-style DNS names, and Istio handles the cross-cluster routing transparently.
 
 ## Testing Cross-Cluster DNS
 
