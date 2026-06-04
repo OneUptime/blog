@@ -60,14 +60,12 @@ Build with BuildKit:
 export DOCKER_BUILDKIT=1
 
 # Build with cache
-docker build \
-  --cache-from registry.example.com/myapp:cache \
-  --build-arg BUILDKIT_INLINE_CACHE=1 \
+docker buildx build \
+  --cache-from type=registry,ref=registry.example.com/myapp:latest \
+  --cache-to type=inline \
   -t registry.example.com/myapp:latest \
+  --push \
   .
-
-# Push with cache
-docker push registry.example.com/myapp:latest
 ```
 
 ## Registry-Based Caching
@@ -83,20 +81,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: registry.example.com
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Build and push
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -113,8 +111,8 @@ Use inline cache for simpler setups:
 - name: Build with inline cache
   run: |
     docker buildx build \
-      --cache-from registry.example.com/myapp:latest \
-      --build-arg BUILDKIT_INLINE_CACHE=1 \
+      --cache-from type=registry,ref=registry.example.com/myapp:latest \
+      --cache-to type=inline \
       --tag registry.example.com/myapp:${{ github.sha }} \
       --tag registry.example.com/myapp:latest \
       --push \
@@ -320,20 +318,19 @@ spec:
         set -e
 
         # Pull cache layers
-        buildah pull ${IMAGE}:cache || true
+        buildah pull $(params.IMAGE):cache || true
 
         # Build with cache
         buildah bud \
           --layers \
-          --cache-from ${IMAGE}:cache \
-          --tag ${IMAGE}:${BUILD_NUMBER} \
-          --tag ${IMAGE}:cache \
-          --file ${DOCKERFILE} \
+          --cache-from $(params.IMAGE):cache \
+          --cache-to $(params.IMAGE):cache \
+          --tag $(params.IMAGE) \
+          --file $(params.DOCKERFILE) \
           .
 
         # Push images
-        buildah push ${IMAGE}:${BUILD_NUMBER}
-        buildah push ${IMAGE}:cache
+        buildah push $(params.IMAGE)
 
       securityContext:
         privileged: true
@@ -341,11 +338,11 @@ spec:
 
 ## S3-Based Cache Backend
 
-Use S3 for cache storage:
+Use the experimental S3 cache backend with a non-default Buildx driver for cache storage:
 
 ```yaml
 - name: Build with S3 cache
-  uses: docker/build-push-action@v4
+  uses: docker/build-push-action@v7
   with:
     context: .
     push: true
