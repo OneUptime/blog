@@ -16,7 +16,7 @@ Metricbeat consists of modules that collect metrics from specific services. The 
 
 In Kubernetes deployments, Metricbeat needs to reach Elasticsearch endpoints from within the cluster. This requires proper service discovery, authentication configuration, and network policies. The collected metrics flow back into Elasticsearch, often to dedicated monitoring indices, where Kibana can visualize them through pre-built dashboards.
 
-This self-monitoring pattern where Elasticsearch monitors itself works well because metrics volume stays manageable. Even large clusters generate only megabytes of monitoring data per day, negligible compared to log volumes.
+This self-monitoring pattern where Elasticsearch monitors itself works well because metrics volume is usually manageable. Actual volume depends on cluster size, enabled metricsets, and collection period, but it is typically much smaller than log volume.
 
 ## Deploying Metricbeat on Kubernetes
 
@@ -42,11 +42,13 @@ data:
         - index_summary
         - shard
         - ml_job
+        - cluster_stats
+        - pending_tasks
       period: 10s
       hosts: ["http://elasticsearch:9200"]
       username: "${ELASTICSEARCH_USERNAME}"
       password: "${ELASTICSEARCH_PASSWORD}"
-      xpack.enabled: true
+      xpack.enabled: false
 
     - module: system
       metricsets:
@@ -60,6 +62,7 @@ data:
       enabled: true
       period: 10s
       processes: ['.*']
+      hostfs: "/hostfs"
 
     - module: kubernetes
       metricsets:
@@ -68,23 +71,15 @@ data:
         - container
         - volume
       period: 10s
-      hosts: ["https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"]
+      host: ${NODE_NAME}
+      hosts: ["https://${NODE_NAME}:10250"]
       bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-      ssl.certificate_authorities:
-        - /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      ssl.verification_mode: "none"
 
     output.elasticsearch:
       hosts: ["http://elasticsearch:9200"]
       username: "${ELASTICSEARCH_USERNAME}"
       password: "${ELASTICSEARCH_PASSWORD}"
-      indices:
-        - index: "metricbeat-elasticsearch-%{+yyyy.MM.dd}"
-          when.contains:
-            event.module: "elasticsearch"
-        - index: "metricbeat-system-%{+yyyy.MM.dd}"
-          when.contains:
-            event.module: "system"
-
     setup.kibana:
       host: "http://kibana:5601"
       username: "${ELASTICSEARCH_USERNAME}"
@@ -93,6 +88,7 @@ data:
     setup.dashboards.enabled: true
     setup.template.enabled: true
     setup.ilm.enabled: true
+    setup.ilm.policy_name: "metricbeat-policy"
 ```
 
 Create the DaemonSet deployment:
@@ -120,11 +116,10 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
       - name: metricbeat
-        image: docker.elastic.co/beats/metricbeat:8.11.0
+        image: docker.elastic.co/beats/metricbeat:9.4.1
         args: [
           "-c", "/etc/metricbeat.yml",
-          "-e",
-          "-system.hostfs=/hostfs"
+          "-e"
         ]
         env:
         - name: ELASTICSEARCH_USERNAME
@@ -200,6 +195,7 @@ rules:
 - apiGroups: [""]
   resources:
   - nodes
+  - nodes/stats
   - namespaces
   - events
   - pods
@@ -265,8 +261,8 @@ The Elasticsearch module includes multiple metricsets, each collecting different
   username: "${ELASTICSEARCH_USERNAME}"
   password: "${ELASTICSEARCH_PASSWORD}"
 
-  # Enable X-Pack monitoring
-  xpack.enabled: true
+  # Keep events in Metricbeat indices instead of Stack Monitoring indices
+  xpack.enabled: false
 
   # Scope for multi-cluster monitoring
   scope: cluster
@@ -275,7 +271,7 @@ The Elasticsearch module includes multiple metricsets, each collecting different
   index_recovery.active_only: true
 ```
 
-Each metricset generates specific metrics. The node_stats metricset provides CPU usage, heap utilization, and thread pool statistics. The shard metricset reveals unassigned shards and replication lag.
+Each metricset generates specific metrics. The node_stats metricset provides process CPU usage, heap utilization, and thread pool statistics. The shard metricset reveals shard allocation and state, including unassigned and relocating shards.
 
 ## Setting Up Index Templates and ILM
 
@@ -377,12 +373,17 @@ curl -X PUT "http://elasticsearch:9200/_watcher/watch/high-heap-usage" \
     "input": {
       "search": {
         "request": {
-          "indices": ["metricbeat-elasticsearch-*"],
+          "indices": ["metricbeat-*"],
           "body": {
             "size": 0,
             "query": {
               "bool": {
                 "must": [
+                  {
+                    "term": {
+                      "event.module": "elasticsearch"
+                    }
+                  },
                   {
                     "range": {
                       "@timestamp": {
@@ -393,7 +394,7 @@ curl -X PUT "http://elasticsearch:9200/_watcher/watch/high-heap-usage" \
                   {
                     "range": {
                       "elasticsearch.node.stats.jvm.mem.heap.used.pct": {
-                        "gte": 85
+                        "gte": 0.85
                       }
                     }
                   }
@@ -445,12 +446,17 @@ curl -X PUT "http://elasticsearch:9200/_watcher/watch/unassigned-shards" \
     "input": {
       "search": {
         "request": {
-          "indices": ["metricbeat-elasticsearch-*"],
+          "indices": ["metricbeat-*"],
           "body": {
             "size": 0,
             "query": {
               "bool": {
                 "must": [
+                  {
+                    "term": {
+                      "event.module": "elasticsearch"
+                    }
+                  },
                   {
                     "range": {
                       "@timestamp": {
@@ -459,8 +465,8 @@ curl -X PUT "http://elasticsearch:9200/_watcher/watch/unassigned-shards" \
                     }
                   },
                   {
-                    "term": {
-                      "elasticsearch.cluster.stats.status": "yellow"
+                    "terms": {
+                      "elasticsearch.cluster.stats.status": ["yellow", "red"]
                     }
                   }
                 ]
@@ -501,7 +507,9 @@ metricbeat.modules:
   hosts: ["http://prod-elasticsearch:9200"]
   username: "${PROD_ES_USERNAME}"
   password: "${PROD_ES_PASSWORD}"
-  cluster_uuid: "prod-cluster"
+  scope: cluster
+  fields:
+    cluster_alias: "prod"
 
 - module: elasticsearch
   metricsets: ["node", "node_stats", "cluster_stats"]
@@ -509,7 +517,9 @@ metricbeat.modules:
   hosts: ["http://staging-elasticsearch:9200"]
   username: "${STAGING_ES_USERNAME}"
   password: "${STAGING_ES_PASSWORD}"
-  cluster_uuid: "staging-cluster"
+  scope: cluster
+  fields:
+    cluster_alias: "staging"
 
 output.elasticsearch:
   hosts: ["http://monitoring-elasticsearch:9200"]
@@ -544,7 +554,7 @@ curl -X GET "http://elasticsearch:9200/_cat/indices/metricbeat-*?v" \
   -u elastic:password
 
 # Query recent metrics
-curl -X GET "http://elasticsearch:9200/metricbeat-elasticsearch-*/_search?size=1&sort=@timestamp:desc" \
+curl -X GET "http://elasticsearch:9200/metricbeat-*/_search?size=1&sort=@timestamp:desc" \
   -H "Content-Type: application/json" \
   -u elastic:password \
   -d '{
@@ -575,11 +585,7 @@ metricbeat.modules:
   period: 30s  # Reduce collection frequency
   hosts: ["http://elasticsearch:9200"]
 
-  # Disable expensive metricsets
-  index_recovery.active_only: true
-
-  # Limit shard metrics collection
-  shard.enabled: false
+  # Only enable the metricsets you need for large clusters
 
 # Adjust buffer sizes
 queue.mem:
