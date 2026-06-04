@@ -49,9 +49,9 @@ View default storage classes:
 kubectl get storageclasses
 
 # The default classes are:
-# - managed-csi (Premium SSD)
+# - managed-csi (Standard SSD)
 # - azurefile-csi (Azure Files)
-# - managed-csi-premium (Premium SSD - legacy)
+# - managed-csi-premium (Premium SSD)
 ```
 
 ## Creating Custom Storage Classes
@@ -103,8 +103,8 @@ parameters:
   skuName: UltraSSD_LRS
   kind: Managed
   cachingMode: None
-  diskIOPSReadWrite: "2000"
-  diskMBpsReadWrite: "320"
+  DiskIOPSReadWrite: "2000"
+  DiskMBpsReadWrite: "320"
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -223,13 +223,17 @@ kubectl describe pvc mysql-data-mysql-0
 
 ## Creating Volume Snapshots
 
-Install snapshot CRDs if not already present:
+Enable the AKS snapshot controller if it is not already enabled:
 
 ```bash
-# Install snapshot CRDs
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+# Enable the managed snapshot controller
+az aks update \
+  --resource-group myResourceGroup \
+  --name myAKSCluster \
+  --enable-snapshot-controller
+
+# Verify snapshot APIs are available
+kubectl get crd volumesnapshots.snapshot.storage.k8s.io
 ```
 
 Create a VolumeSnapshotClass:
@@ -433,8 +437,8 @@ parameters:
   kind: Managed
   cachingMode: None
   # Custom IOPS and throughput
-  diskIOPSReadWrite: "10000"
-  diskMBpsReadWrite: "500"
+  DiskIOPSReadWrite: "10000"
+  DiskMBpsReadWrite: "500"
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -459,7 +463,28 @@ Check disk metrics from within pods:
 
 ```bash
 # Install fio for testing
-kubectl run disk-test --image=ubuntu:latest --command -- sleep 3600
+kubectl run disk-test \
+  --image=ubuntu:latest \
+  --overrides='
+  {
+    "spec": {
+      "containers": [{
+        "name": "disk-test",
+        "image": "ubuntu:latest",
+        "command": ["sleep", "3600"],
+        "volumeMounts": [{
+          "name": "data",
+          "mountPath": "/data"
+        }]
+      }],
+      "volumes": [{
+        "name": "data",
+        "persistentVolumeClaim": {
+          "claimName": "mysql-data-mysql-0"
+        }
+      }]
+    }
+  }'
 kubectl exec disk-test -- apt-get update
 kubectl exec disk-test -- apt-get install -y fio
 
@@ -530,7 +555,7 @@ parameters:
   skuName: Premium_LRS
   kind: Managed
   # Use customer-managed key from Key Vault
-  diskEncryptionSetID: /subscriptions/.../diskEncryptionSets/myDES
+  diskEncryptionSetID: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Compute/diskEncryptionSets/myDES
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
