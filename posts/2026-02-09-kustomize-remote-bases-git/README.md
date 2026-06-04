@@ -14,7 +14,7 @@ Remote bases work particularly well for platform teams that maintain standard co
 
 ## Basic remote base syntax
 
-Reference a Git repository using a URL in the bases or resources field:
+Reference a Git repository using a URL in the resources field:
 
 ```yaml
 # kustomization.yaml
@@ -47,7 +47,7 @@ resources:
 
 # Using a commit SHA
 resources:
-- https://github.com/example/k8s-configs//base/webapp?ref=abc123def456
+- https://github.com/example/k8s-configs//base/webapp?ref=abc123def4567890abc123def4567890abc123def4
 ```
 
 Production deployments should use tags or commit SHAs for stability. Development environments might reference branches to automatically pick up the latest changes.
@@ -87,8 +87,10 @@ resources:
 - deployment.yaml
 - service.yaml
 
-commonLabels:
-  app.kubernetes.io/component: webapp
+labels:
+- includeSelectors: true
+  pairs:
+    app.kubernetes.io/component: webapp
 ```
 
 ## Consuming remote bases
@@ -171,19 +173,16 @@ Ensure your SSH key is available when running kustomize build. In CI/CD pipeline
     kustomize build overlays/production | kubectl apply -f -
 ```
 
-## Caching remote bases
+## Remote base fetch behavior
 
-Kustomize caches remote bases in ~/.kustomize/cache by default. This speeds up repeated builds and enables offline work:
+Kustomize clones remote repositories to a temporary directory and checks out the requested ref when building:
 
 ```bash
-# View cache contents
-ls ~/.kustomize/cache
-
-# Clear cache if needed
-rm -rf ~/.kustomize/cache
+# Build from a remote base
+kustomize build https://github.com/example/configs//bases/webapp?ref=v1.0.0
 ```
 
-The cache respects ref parameters, so using commit SHAs ensures consistent builds even if the remote repository changes.
+Using commit SHAs ensures consistent builds even if branches or tags move. For offline or repeatable builds without network access, vendor the remote base locally or use Git submodules.
 
 ## Versioning strategy for shared bases
 
@@ -259,15 +258,16 @@ CONSUMERS=(
 
 for consumer in "${CONSUMERS[@]}"; do
   echo "Testing $consumer..."
-  git clone https://github.com/$consumer test-$consumer
-  cd test-$consumer
+  workdir="test-${consumer//\//-}"
+  git clone https://github.com/$consumer "$workdir"
+  cd "$workdir"
 
   # Temporarily point to your branch
   sed -i 's|?ref=v1.0.0|?ref=my-feature-branch|g' overlays/*/kustomization.yaml
 
   # Try building
   for overlay in overlays/*; do
-    if kustomize build $overlay > /dev/null; then
+    if kustomize build "$overlay" > /dev/null; then
       echo "✓ $consumer/$overlay builds successfully"
     else
       echo "✗ $consumer/$overlay failed to build"
@@ -276,7 +276,7 @@ for consumer in "${CONSUMERS[@]}"; do
   done
 
   cd ..
-  rm -rf test-$consumer
+  rm -rf "$workdir"
 done
 ```
 
@@ -286,7 +286,7 @@ This validation catches breaking changes before they affect consumers.
 
 Maintain comprehensive documentation in shared repositories:
 
-```markdown
+````markdown
 # Webapp Base Configuration
 
 ## Usage
@@ -294,14 +294,14 @@ Maintain comprehensive documentation in shared repositories:
 ```yaml
 resources:
 - https://github.com/example/configs//bases/webapp?ref=v1.2.0
-```bash
+```
 
 ## Customization Points
 
 - `namespace`: Set target namespace
 - `images`: Override webapp image
 - `replicas`: Adjust replica count
-- `commonLabels`: Add additional labels
+- `labels`: Add additional labels
 
 ## Example
 
@@ -315,7 +315,7 @@ See [examples/basic-usage](./examples/basic-usage) for a complete example.
 
 ### v1.1.0 (2026-01-15)
 - Added liveness and readiness probes
-```text
+````
 
 Good documentation reduces support burden and helps teams adopt your shared configurations.
 
@@ -323,14 +323,14 @@ Good documentation reduces support burden and helps teams adopt your shared conf
 
 When making breaking changes, increment the major version and maintain backward compatibility:
 
-```bash
+```text
 k8s-configs/
 ├── bases/
 │   ├── webapp-v1/  # Legacy version
 │   │   └── kustomization.yaml
 │   └── webapp-v2/  # New version with breaking changes
 │       └── kustomization.yaml
-```text
+```
 
 Consumers can migrate at their own pace:
 
@@ -368,7 +368,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Validate all bases
       run: |
@@ -382,12 +382,9 @@ jobs:
 
 Loading remote bases adds latency to builds. For large configurations or slow networks, consider:
 
-```yaml
+```text
 # Option 1: Vendor remote bases locally
-# Run: kustomize build --load-restrictor=LoadRestrictionsNone \
-#        --enable-helm \
-#        --output /tmp/vendored \
-#        https://github.com/example/configs//bases/webapp?ref=v1.0.0
+# git clone --branch v1.0.0 --depth 1 https://github.com/example/configs vendor/k8s-configs
 
 # Option 2: Use Git submodules
 # git submodule add https://github.com/example/configs vendor/k8s-configs
