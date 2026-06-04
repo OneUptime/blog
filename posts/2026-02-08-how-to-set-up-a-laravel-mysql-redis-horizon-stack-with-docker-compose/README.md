@@ -80,11 +80,8 @@ RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
 # Copy the rest of the application
 COPY . .
 
-# Generate optimized autoloader and cache config
-RUN composer dump-autoload --optimize \
-    && php artisan config:cache \
-    && php artisan route:cache \
-    && php artisan view:cache
+# Generate optimized autoloader
+RUN composer dump-autoload --optimize
 
 # Set proper permissions for Laravel storage and cache
 RUN chown -R www-data:www-data storage bootstrap/cache \
@@ -129,7 +126,6 @@ server {
 
 ```yaml
 # Laravel + MySQL + Redis + Horizon full stack
-version: "3.8"
 
 services:
   # PHP-FPM application server
@@ -148,7 +144,7 @@ services:
       DB_PASSWORD: secret
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      CACHE_DRIVER: redis
+      CACHE_STORE: redis
       SESSION_DRIVER: redis
       QUEUE_CONNECTION: redis
     depends_on:
