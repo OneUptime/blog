@@ -63,7 +63,13 @@ kind: Deployment
 metadata:
   name: production-app
 spec:
+  selector:
+    matchLabels:
+      app: web
   template:
+    metadata:
+      labels:
+        app: web
     spec:
       containers:
       - name: app
@@ -108,15 +114,19 @@ const server = app.listen(8080, () => {
   console.log('Server started on port 8080');
 });
 
+async function closeDatabaseConnections() {
+  // Close database connection pools here.
+}
+
 // Handle termination signals
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
 
-  server.close(() => {
+  server.close(async () => {
     console.log('HTTP server closed');
 
     // Close database connections
-    closeDatabase();
+    await closeDatabaseConnections();
 
     // Exit after cleanup
     process.exit(0);
@@ -157,6 +167,17 @@ metadata:
   name: production-app
 spec:
   replicas: 3  # Minimum 2 for HA, 3 recommended
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: app
+        image: myapp:2.0
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -186,7 +207,13 @@ kind: Deployment
 metadata:
   name: production-app
 spec:
+  selector:
+    matchLabels:
+      app: web
   template:
+    metadata:
+      labels:
+        app: web
     spec:
       affinity:
         podAntiAffinity:
@@ -209,6 +236,9 @@ spec:
                   values:
                   - web
               topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: app
+        image: myapp:2.0
 ```
 
 This spreads pods across nodes and availability zones for better resilience.
@@ -223,7 +253,13 @@ kind: Deployment
 metadata:
   name: production-app
 spec:
+  selector:
+    matchLabels:
+      app: web
   template:
+    metadata:
+      labels:
+        app: web
     spec:
       securityContext:
         runAsNonRoot: true
@@ -284,9 +320,9 @@ Expose metrics, structured logs, and trace context propagation.
 
 ```javascript
 // Metrics endpoint
-app.get('/metrics', (req, res) => {
-  res.set('Content-Type', 'text/plain');
-  res.send(prometheusRegister.metrics());
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', prometheusRegister.contentType);
+  res.send(await prometheusRegister.metrics());
 });
 
 // Structured logging
@@ -340,7 +376,13 @@ kind: Deployment
 metadata:
   name: production-app
 spec:
+  selector:
+    matchLabels:
+      app: web
   template:
+    metadata:
+      labels:
+        app: web
     spec:
       containers:
       - name: app
@@ -384,7 +426,7 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
       podSelector:
         matchLabels:
           k8s-app: kube-dns
@@ -413,8 +455,6 @@ kind: PersistentVolumeClaim
 metadata:
   name: app-data
   namespace: production
-  annotations:
-    backup.velero.io/backup-volumes: "data"
 spec:
   accessModes:
   - ReadWriteOnce
@@ -437,6 +477,17 @@ metadata:
   name: production-app
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: app
+        image: myapp:2.0
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -485,22 +536,40 @@ kind: Deployment
 metadata:
   name: production-app-stable
 spec:
-  replicas: 9  # 90% of traffic
+  replicas: 9  # 90% of pods
   selector:
     matchLabels:
       app: web
       version: stable
+  template:
+    metadata:
+      labels:
+        app: web
+        version: stable
+    spec:
+      containers:
+      - name: app
+        image: myapp:2.0
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: production-app-canary
 spec:
-  replicas: 1  # 10% of traffic
+  replicas: 1  # 10% of pods
   selector:
     matchLabels:
       app: web
       version: canary
+  template:
+    metadata:
+      labels:
+        app: web
+        version: canary
+    spec:
+      containers:
+      - name: app
+        image: myapp:2.1
 ```
 
 Monitor canary metrics before full rollout.
