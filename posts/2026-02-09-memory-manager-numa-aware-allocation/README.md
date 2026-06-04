@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, NUMA, Memory Management
 
-Description: Configure Kubernetes Memory Manager to allocate memory from NUMA nodes local to assigned CPUs, eliminating cross-NUMA traffic and improving performance for memory-intensive workloads.
+Description: Configure Kubernetes Memory Manager to allocate memory from NUMA nodes local to assigned CPUs, reducing cross-NUMA traffic and improving performance for memory-intensive workloads.
 
 ---
 
-Cross-NUMA memory access destroys performance for high-throughput applications. Kubernetes Memory Manager solves this by allocating memory from the same NUMA node as the pod's CPUs. This guide shows you how to enable NUMA-aware memory allocation.
+Cross-NUMA memory access can hurt performance for high-throughput applications. Kubernetes Memory Manager helps by allocating memory from NUMA nodes aligned with the pod's CPUs. This guide shows you how to enable NUMA-aware memory allocation.
 
 ## Understanding NUMA
 
@@ -18,7 +18,7 @@ Non-Uniform Memory Access (NUMA) is a memory architecture where each CPU has loc
 - Local memory banks
 - PCIe devices
 
-Accessing local memory is 2-3x faster than remote memory. For performance-critical workloads, you want CPUs and memory on the same NUMA node.
+Accessing local memory can be significantly faster than remote memory. For performance-critical workloads, you want CPUs and memory on the same NUMA node.
 
 ## Why Memory Manager Matters
 
@@ -28,13 +28,13 @@ By default, Kubernetes allocates memory from any NUMA node. A pod pinned to NUMA
 - Setting memory affinity in the container's cgroup
 - Coordinating with CPU Manager and Topology Manager
 
-This eliminates remote memory access for guaranteed pods.
+This reduces remote memory access for Guaranteed pods.
 
 ## Prerequisites
 
 Memory Manager requires:
 
-- Kubernetes 1.22+ (beta in 1.22, stable in 1.27)
+- Kubernetes 1.32+ for the stable Memory Manager feature (it was beta from 1.22 through 1.31)
 - CPU Manager with static policy enabled
 - Topology Manager enabled (recommended)
 - NUMA-capable hardware
@@ -61,6 +61,13 @@ systemReserved:
   memory: "2Gi"
 kubeReserved:
   memory: "1Gi"
+reservedMemory:
+  - numaNode: 0
+    limits:
+      memory: "1586Mi"
+  - numaNode: 1
+    limits:
+      memory: "1586Mi"
 ```
 
 Key settings:
@@ -68,18 +75,21 @@ Key settings:
 - `memoryManagerPolicy: Static` - Enable NUMA-aware allocation
 - `cpuManagerPolicy: static` - Required for CPU pinning
 - `topologyManagerPolicy: single-numa-node` - Align all resources to one NUMA node
+- `reservedMemory` - Required with `Static`; the total must match `kubeReserved` plus `systemReserved` plus the hard eviction memory threshold
 
-Restart the kubelet:
+When changing the policy on an existing node, drain the node and restart the kubelet:
 
 ```bash
+kubectl drain worker-1 --ignore-daemonsets
 systemctl stop kubelet
-rm /var/lib/kubelet/memory_manager_state
+rm -f /var/lib/kubelet/memory_manager_state
 systemctl start kubelet
+kubectl uncordon worker-1
 ```
 
 ## Creating NUMA-Aware Pods
 
-Only Guaranteed pods with whole CPU requests get NUMA-aware memory. Here's an example:
+For CPU and memory alignment with CPU Manager, use Guaranteed pods with whole CPU requests. Here's an example:
 
 ```yaml
 apiVersion: v1
@@ -99,39 +109,36 @@ spec:
         memory: "16Gi"
 ```
 
-The kubelet allocates 4 CPUs from one NUMA node and 16GB of memory from the same node.
+With `single-numa-node`, the kubelet admits this pod only if it can align 4 CPUs and 16Gi of memory on one NUMA node.
 
 ## Verifying NUMA Memory Allocation
 
 Check the container's memory affinity:
 
 ```bash
-# Get container ID
-
-CONTAINER_ID=$(crictl ps | grep numa-aware-app | awk '{print $1}')
-
 # Check memory NUMA node
-cat /sys/fs/cgroup/cpuset/kubepods/pod*/*/cpuset.mems
+find /sys/fs/cgroup -path '*kubepods*' \( -name cpuset.mems -o -name cpuset.mems.effective \) -print -exec cat {} \;
 ```
 
-Output like `0` means all memory is allocated from NUMA node 0.
+Output like `0` means the pod's cgroup is restricted to NUMA node 0 for memory allocation. Paths differ between cgroup v1, cgroup v2, and cgroup drivers.
 
 Compare with CPU allocation:
 
 ```bash
-cat /sys/fs/cgroup/cpuset/kubepods/pod*/*/cpuset.cpus
+find /sys/fs/cgroup -path '*kubepods*' \( -name cpuset.cpus -o -name cpuset.cpus.effective \) -print -exec cat {} \;
 ```
 
-Both should reference the same NUMA node.
+Map the CPU list back to the node topology from `numactl --hardware`; the CPUs and memory node should align.
 
 ## Memory Manager Policies
 
-Memory Manager supports two policies:
+Memory Manager supports these policies:
 
 - **None** (default): No NUMA awareness, memory allocated from any node
-- **Static**: NUMA-aware allocation for Guaranteed pods
+- **Static**: NUMA-aware allocation for Guaranteed pods on Linux
+- **BestEffort**: Windows-only best-effort NUMA assignment
 
-The Static policy requires hugepages support or works with regular pages when Topology Manager is enabled.
+The Static policy requires `reservedMemory` configuration and works with regular memory and hugepages.
 
 ## Reserving Memory Per NUMA Node
 
@@ -146,13 +153,13 @@ systemReserved:
 reservedMemory:
   - numaNode: 0
     limits:
-      memory: "2Gi"
+      memory: "2098Mi"
   - numaNode: 1
     limits:
-      memory: "2Gi"
+      memory: "2098Mi"
 ```
 
-This reserves 2GB on each NUMA node, leaving the rest allocatable.
+This reserves memory on each NUMA node, leaving the rest allocatable. The total includes `systemReserved` plus the default 100Mi hard eviction threshold.
 
 ## Working with Hugepages
 
@@ -195,7 +202,7 @@ spec:
       medium: HugePages
 ```
 
-Memory Manager ensures hugepages come from the same NUMA node as CPUs.
+With `single-numa-node`, Memory Manager and Topology Manager align hugepage requests with CPUs when the pod is admitted.
 
 ## Topology Manager Integration
 
@@ -220,7 +227,7 @@ Use `single-numa-node` for maximum performance.
 
 ## Troubleshooting Memory Manager
 
-**Pod Fails to Schedule**: Not enough memory on a single NUMA node. Check allocatable memory:
+**Pod Fails Kubelet Admission**: Not enough aligned memory on a single NUMA node can cause Topology Manager to reject the pod after it has been scheduled to the node. Check allocatable memory and kubelet logs:
 
 ```bash
 kubectl get node worker-1 -o json | jq '.status.allocatable'
@@ -252,7 +259,7 @@ numastat -c <pid>
 
 Look for low values in the remote columns. High remote access indicates NUMA misalignment.
 
-Export node exporter NUMA metrics:
+Export node exporter NUMA metrics with the `meminfo_numa` collector enabled:
 
 ```yaml
 # Prometheus query
@@ -260,7 +267,7 @@ node_memory_numa_local_node_total
 node_memory_numa_other_node_total
 ```
 
-Low `numa_other_node` values indicate good alignment.
+Low `node_memory_numa_other_node_total` growth compared with local-node accesses indicates good alignment.
 
 ## Best Practices
 
@@ -301,7 +308,7 @@ spec:
         memory: "16Gi"
 ```
 
-All Redis memory operations stay within one NUMA node, improving throughput and reducing latency.
+Redis memory operations can stay on the aligned NUMA node, improving throughput and reducing latency.
 
 ## DPDK and NUMA
 
@@ -336,26 +343,25 @@ spec:
       medium: HugePages
 ```
 
-Memory Manager ensures CPUs, hugepages, and network devices are all on the same NUMA node.
+Topology Manager can align CPUs, hugepages, and network devices on the same NUMA node when device plugins provide topology hints and the pod is admitted.
 
 ## Limitations
 
-- Only works for Guaranteed pods with whole CPU requests
+- Static memory allocation applies to Guaranteed pods; CPU co-location requires whole CPU requests
 - Requires NUMA-capable hardware
 - Can reduce memory utilization if NUMA nodes are unbalanced
 - State file must be removed when changing policies
-- Not compatible with memory overcommitment
+- Does not provide NUMA guarantees for overcommitted Burstable or BestEffort pods
 
 ## Advanced Topology Scenarios
 
-On a 4-socket server with 4 NUMA nodes, you might dedicate specific nodes to specific workload types:
+On separate worker nodes with suitable NUMA capacity, you might dedicate machines to specific workload types:
 
-- NUMA 0: System and Kubernetes components
-- NUMA 1: Database workloads
-- NUMA 2: Network-intensive apps
-- NUMA 3: Compute workloads
+- Worker pool 1: Database workloads
+- Worker pool 2: Network-intensive apps
+- Worker pool 3: Compute workloads
 
-Use node labels and taints to control placement:
+Use node labels and taints to control which machines receive these workloads:
 
 ```bash
 kubectl label node worker-1 numa-zone=database
@@ -390,4 +396,4 @@ spec:
 
 ## Conclusion
 
-Memory Manager eliminates cross-NUMA traffic for guaranteed pods, delivering consistent low-latency memory access. Enable it alongside CPU Manager and Topology Manager for complete resource alignment. Reserve memory per NUMA node, size pods to fit within single nodes, and monitor NUMA metrics to verify effectiveness. While it reduces scheduling flexibility, the performance gains for memory-intensive workloads make NUMA awareness essential for high-performance Kubernetes deployments.
+Memory Manager reduces cross-NUMA traffic for Guaranteed pods, delivering more consistent low-latency memory access. Enable it alongside CPU Manager and Topology Manager for complete resource alignment. Reserve memory per NUMA node, size pods to fit within single nodes, and monitor NUMA metrics to verify effectiveness. While it reduces scheduling flexibility, the performance gains for memory-intensive workloads make NUMA awareness essential for high-performance Kubernetes deployments.
