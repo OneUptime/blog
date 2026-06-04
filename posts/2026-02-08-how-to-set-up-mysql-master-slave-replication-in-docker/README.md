@@ -92,8 +92,6 @@ Define the master and two replicas in a Docker Compose file.
 
 ```yaml
 # docker-compose.yml - MySQL master-slave replication
-version: "3.8"
-
 services:
   mysql-master:
     image: mysql:8.0
@@ -121,6 +119,7 @@ services:
     container_name: mysql-replica-1
     environment:
       - MYSQL_ROOT_PASSWORD=replicapass
+      - MYSQL_DATABASE=myapp
     ports:
       - "3307:3306"
     volumes:
@@ -142,6 +141,7 @@ services:
     container_name: mysql-replica-2
     environment:
       - MYSQL_ROOT_PASSWORD=replicapass
+      - MYSQL_DATABASE=myapp
     ports:
       - "3308:3306"
     volumes:
@@ -256,8 +256,7 @@ REPL_USER="replicator"
 REPL_PASS="repl_password"
 
 echo "Starting MySQL cluster..."
-docker compose up -d
-sleep 15
+docker compose up -d --wait
 
 echo "Creating replication user on master..."
 docker exec mysql-master mysql -uroot -p${MASTER_PASS} -e "
