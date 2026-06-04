@@ -12,7 +12,7 @@ Microsoft Defender for Containers provides comprehensive security for AKS cluste
 
 ## Understanding Defender for Containers Architecture
 
-Defender for Containers operates at multiple layers. The Defender agent runs as a DaemonSet on every node, monitoring kernel-level events and container activities using eBPF. The cloud-side analytics engine processes telemetry data, applying machine learning models to detect anomalies and threats.
+Defender for Containers operates at multiple layers. The Defender sensor runs as a DaemonSet on every node, monitoring kernel-level events and container activities using eBPF. The cloud-side analytics engine processes telemetry data, applying machine learning models to detect anomalies and threats.
 
 The system provides three main capabilities: vulnerability scanning of container images in Azure Container Registry, runtime threat protection that detects malicious activities, and security recommendations based on CIS Kubernetes benchmarks and Azure security best practices.
 
@@ -27,7 +27,10 @@ Enable Defender at the subscription level to protect all AKS clusters:
 
 az security pricing create \
   --name Containers \
-  --tier standard
+  --tier standard \
+  --extensions name=ContainerSensor isEnabled=True \
+  --extensions name=AgentlessDiscoveryForKubernetes isEnabled=True \
+  --extensions name=ContainerRegistriesVulnerabilityAssessments isEnabled=True
 
 # Verify Defender is enabled
 az security pricing show \
@@ -35,43 +38,52 @@ az security pricing show \
   --query "pricingTier"
 ```
 
-The Defender agent automatically deploys to existing and new AKS clusters in the subscription. Verify deployment:
+The Defender sensor automatically deploys to existing and new AKS clusters in the subscription when the sensor component is enabled. Verify deployment:
 
 ```bash
+# Verify the Defender profile on the AKS resource
+az aks show \
+  --resource-group production-rg \
+  --name production-cluster \
+  --query "securityProfile.defender.securityMonitoring.enabled"
+
 # Check Defender pods
-kubectl get pods -n kube-system | grep defender
+kubectl get pods -n kube-system -l app=defender
 
-# Verify Defender DaemonSet
-kubectl get daemonset -n kube-system microsoft-defender-collector-ds
-
-# Check agent status
-kubectl describe daemonset microsoft-defender-collector-ds -n kube-system
+# Deploy the Defender sensor manually if it was not provisioned
+az aks update \
+  --resource-group production-rg \
+  --name production-cluster \
+  --enable-defender
 ```
 
-For clusters with custom configurations, ensure the Defender agent has necessary permissions:
+For clusters with custom configurations, ensure the Defender sensor has necessary permissions:
 
 ```bash
-# Verify service account
-kubectl get serviceaccount -n kube-system microsoft-defender-collector
+# Verify trusted access role binding created by Defender
+az aks trustedaccess rolebinding list \
+  --resource-group production-rg \
+  --cluster-name production-cluster
 
-# Check role bindings
-kubectl get clusterrolebinding | grep defender
+# Check Kubernetes role bindings
+kubectl get clusterrolebinding | grep -i defender
 ```
 
 ## Configuring Vulnerability Scanning
 
-Defender automatically scans images pushed to Azure Container Registry. Configure registry integration:
+Defender automatically scans images pushed to Azure Container Registry when registry access is enabled in the Defender for Containers plan:
 
 ```bash
-# Enable Defender for Container Registries
+# Enable Defender for Containers with registry vulnerability assessment
 az security pricing create \
-  --name ContainerRegistry \
-  --tier standard
+  --name Containers \
+  --tier standard \
+  --extensions name=ContainerRegistriesVulnerabilityAssessments isEnabled=True
 
-# Verify scanning is enabled
-az acr show \
-  --name myregistry \
-  --query "policies.quarantinePolicy.status"
+# Verify the registry vulnerability assessment extension is enabled
+az security pricing show \
+  --name Containers \
+  --query "extensions[?name=='ContainerRegistriesVulnerabilityAssessments']"
 ```
 
 View vulnerability scan results:
@@ -84,42 +96,35 @@ az security assessment list \
 # Get detailed vulnerability report for specific image
 az security sub-assessment list \
   --assessed-resource-id /subscriptions/<subscription-id>/resourceGroups/production-rg/providers/Microsoft.ContainerRegistry/registries/myregistry \
-  --assessment-name "container-registry-vulnerability-assessment"
+  --assessment-name c0b7cfc6-3172-465a-b378-53c7ff2cc0d5
 ```
 
-Configure automatic image scanning on push:
+Scanning runs automatically when new images are pushed or imported to supported registries, and Defender also performs periodic rescans:
 
 ```bash
-# Enable image scanning
-az acr update \
+# Push a new image to trigger registry vulnerability assessment
+az acr import \
   --name myregistry \
-  --resource-group production-rg \
-  --anonymous-pull-enabled false
-
-# Set up task to scan on push
-az acr task create \
-  --registry myregistry \
-  --name scan-on-push \
-  --context /dev/null \
-  --image {{.Run.Registry}}/{{.Run.ImageName}}:{{.Run.ImageTag}} \
-  --cmd "az security assessment create" \
-  --trigger-event push
+  --source docker.io/library/nginx:latest \
+  --image samples/nginx:latest
 ```
 
 ## Setting Up Runtime Threat Detection
 
-Defender monitors cluster activities for suspicious behavior. Configure threat detection policies:
+Defender monitors cluster activities for suspicious behavior. Runtime threat detection depends on the Defender sensor being enabled on the AKS cluster:
 
 ```bash
-# View current threat detection configuration
-az security setting list \
-  --query "[?name=='MCAS'].{Name:name, Enabled:enabled}"
-
-# Enable specific threat detections
-az security alert update \
-  --name "Suspicious process executed" \
+# Verify runtime monitoring is enabled
+az aks show \
   --resource-group production-rg \
-  --status On
+  --name production-cluster \
+  --query "securityProfile.defender.securityMonitoring.enabled"
+
+# Enable the Defender sensor if needed
+az aks update \
+  --resource-group production-rg \
+  --name production-cluster \
+  --enable-defender
 ```
 
 Common threat detection categories include:
@@ -142,6 +147,7 @@ az security alert list \
 # Get detailed alert information
 az security alert show \
   --name <alert-id> \
+  --location <alert-location> \
   --resource-group production-rg
 ```
 
@@ -152,13 +158,11 @@ Defender generates security recommendations based on CIS benchmarks and Azure be
 ```bash
 # List security recommendations
 az security assessment list \
-  --resource-group production-rg \
   --query "[?resourceDetails.ResourceType=='Microsoft.ContainerService/managedClusters'].{Name:displayName, Severity:status.severity, Status:status.code}"
 
 # Get specific recommendation details
 az security assessment show \
-  --name <assessment-id> \
-  --resource-group production-rg
+  --name <assessment-id>
 ```
 
 Common recommendations include:
@@ -168,15 +172,19 @@ Common recommendations include:
 - Use Azure Active Directory integration
 - Enable audit logging
 - Implement network policies
-- Configure pod security policies
+- Enforce Kubernetes admission and workload security policies
 
 Remediate recommendations through Azure Policy:
 
 ```bash
 # Assign policy to enforce recommendations
+POLICY_SET_ID=$(az policy set-definition list \
+  --query "[?contains(displayName, 'Kubernetes') && contains(displayName, 'security')].id | [0]" \
+  -o tsv)
+
 az policy assignment create \
   --name "enforce-aks-security" \
-  --policy-set-definition "Kubernetes cluster security" \
+  --policy-set-definition "$POLICY_SET_ID" \
   --scope /subscriptions/<subscription-id>/resourceGroups/production-rg
 ```
 
@@ -192,61 +200,68 @@ az monitor action-group create \
   --action email security-team security@example.com \
   --action webhook defender-webhook https://webhook.example.com/defender
 
-# Create alert rule for high-severity threats
-az monitor metrics alert create \
-  --name high-severity-threats \
+# Create alert rule for Defender security events
+az monitor activity-log alert create \
+  --name defender-security-events \
   --resource-group production-rg \
-  --scopes /subscriptions/<subscription-id>/resourceGroups/production-rg/providers/Microsoft.ContainerService/managedClusters/production-cluster \
-  --condition "count where severity == 'High'" \
-  --window-size 5m \
-  --evaluation-frequency 1m \
-  --action security-alerts
+  --scope /subscriptions/<subscription-id> \
+  --condition category=Security \
+  --action-group security-alerts
 ```
 
 Automate response to specific threats:
 
-```yaml
-# Logic App for automated response
+```json
 {
-  "definition": {
-    "triggers": {
-      "When_a_Defender_alert_is_created": {
-        "type": "ApiConnection",
-        "inputs": {
-          "host": {
-            "connection": {
-              "name": "@parameters('$connections')['azuresecuritycenter']['connectionId']"
-            }
-          },
-          "method": "post",
-          "path": "/subscriptions/@{encodeURIComponent(subscription-id)}/providers/Microsoft.Security/alerts"
-        }
+  "type": "Microsoft.Security/automations",
+  "apiVersion": "2019-01-01-preview",
+  "name": "defender-container-alert-response",
+  "location": "eastus",
+  "properties": {
+    "isEnabled": true,
+    "scopes": [
+      {
+        "description": "Subscription scope",
+        "scopePath": "/subscriptions/<subscription-id>"
       }
-    },
-    "actions": {
-      "Quarantine_Pod": {
-        "type": "Http",
-        "inputs": {
-          "method": "POST",
-          "uri": "https://management.azure.com/subscriptions/@{triggerBody()?['properties']?['subscriptionId']}/resourceGroups/@{triggerBody()?['properties']?['resourceGroup']}/providers/Microsoft.ContainerService/managedClusters/@{triggerBody()?['properties']?['clusterName']}/quarantine",
-          "authentication": {
-            "type": "ManagedServiceIdentity"
+    ],
+    "sources": [
+      {
+        "eventSource": "Alerts",
+        "ruleSets": [
+          {
+            "rules": [
+              {
+                "propertyJPath": "Severity",
+                "propertyType": "String",
+                "expectedValue": "High",
+                "operator": "Equals"
+              }
+            ]
           }
-        }
+        ]
       }
-    }
+    ],
+    "actions": [
+      {
+        "actionType": "LogicApp",
+        "logicAppResourceId": "/subscriptions/<subscription-id>/resourceGroups/security-rg/providers/Microsoft.Logic/workflows/defender-response",
+        "uri": "https://prod-00.logic.azure.com/workflows/<workflow-id>/triggers/manual/paths/invoke"
+      }
+    ]
   }
 }
 ```
 
 ## Investigating Security Incidents
 
-When Defender raises an alert, investigate using Azure Security Center:
+When Defender raises an alert, investigate using Microsoft Defender for Cloud:
 
 ```bash
 # Get alert timeline
 az security alert show \
   --name <alert-id> \
+  --location <alert-location> \
   --resource-group production-rg \
   --query "properties.{Time:startTimeUtc, Description:description, Entities:entities}"
 
@@ -261,7 +276,7 @@ Examine suspicious pods:
 
 ```bash
 # Get pod details from alert
-SUSPICIOUS_POD=$(az security alert show --name <alert-id> --query "properties.extendedProperties.podName" -o tsv)
+SUSPICIOUS_POD=$(az security alert show --name <alert-id> --location <alert-location> --query "properties.extendedProperties.podName" -o tsv)
 
 # Describe pod
 kubectl describe pod $SUSPICIOUS_POD -n <namespace>
@@ -279,11 +294,11 @@ Analyze network connections:
 # Get pod IP
 POD_IP=$(kubectl get pod $SUSPICIOUS_POD -n <namespace> -o jsonpath='{.status.podIP}')
 
-# Check network flows in Defender
-az network watcher flow-log show \
-  --name defender-flow-log \
-  --resource-group production-rg \
-  --query "flowAnalyticsConfiguration.networkWatcherFlowAnalyticsConfiguration"
+# Check recent AKS network-related activity
+az monitor activity-log list \
+  --resource-id /subscriptions/<subscription-id>/resourceGroups/production-rg/providers/Microsoft.ContainerService/managedClusters/production-cluster \
+  --start-time 2026-02-09T00:00:00Z \
+  --query "[?contains(operationName.value, 'network')]"
 ```
 
 ## Integrating with Azure Sentinel
@@ -295,15 +310,14 @@ Export Defender alerts to Azure Sentinel for advanced threat hunting:
 az sentinel data-connector create \
   --resource-group security-rg \
   --workspace-name security-workspace \
-  --name defender-connector \
-  --kind AzureSecurityCenter \
-  --data-types alerts
+  --data-connector-id defender-connector \
+  --azure-security-center '{"subscriptionId":"<subscription-id>","dataTypes":{"alerts":{"state":"Enabled"}}}'
 
 # Verify connector
 az sentinel data-connector show \
   --resource-group security-rg \
   --workspace-name security-workspace \
-  --name defender-connector
+  --data-connector-id defender-connector
 ```
 
 Create hunting queries in Sentinel:
@@ -311,7 +325,7 @@ Create hunting queries in Sentinel:
 ```kusto
 // Find privilege escalation attempts
 SecurityAlert
-| where ProviderName == "Azure Security Center"
+| where ProviderName in ("Microsoft Defender for Cloud", "Azure Security Center")
 | where AlertName contains "privilege"
 | extend ClusterName = tostring(ExtendedProperties.ClusterName)
 | extend PodName = tostring(ExtendedProperties.PodName)
@@ -319,7 +333,7 @@ SecurityAlert
 
 // Detect crypto-mining activity
 SecurityAlert
-| where ProviderName == "Azure Security Center"
+| where ProviderName in ("Microsoft Defender for Cloud", "Azure Security Center")
 | where Description contains "mining" or Description contains "cryptocurrency"
 | summarize count() by bin(TimeGenerated, 1h), AlertName
 | render timechart
@@ -327,36 +341,29 @@ SecurityAlert
 
 ## Configuring Just-In-Time Access
 
-Implement just-in-time (JIT) VM access for AKS nodes:
+If you expose SSH to AKS node VMs, manage just-in-time (JIT) VM access in Microsoft Defender for Cloud, then verify the policy:
 
 ```bash
-# Enable JIT on node resource group
+# Get the AKS node resource group
 NODE_RG=$(az aks show \
   --resource-group production-rg \
   --name production-cluster \
   --query nodeResourceGroup -o tsv)
 
-az security jit-policy create \
-  --location eastus \
-  --name aks-nodes-jit \
+# List JIT policies that cover the node resource group
+az security jit-policy list \
   --resource-group $NODE_RG \
-  --virtual-machines $(az vm list -g $NODE_RG --query "[].id" -o tsv) \
-  --port 22 \
-  --protocol TCP \
-  --duration PT3H
+  --location eastus
 ```
 
 Request JIT access when needed:
 
 ```bash
-# Request SSH access to node
-az security jit-policy request \
+# Show the configured JIT policy before requesting access in Defender for Cloud
+az security jit-policy show \
   --resource-group $NODE_RG \
-  --jit-policy-name aks-nodes-jit \
-  --virtual-machines <vm-id> \
-  --port 22 \
-  --duration PT1H \
-  --source-address-prefix $(curl -s ifconfig.me)
+  --location eastus \
+  --name default
 ```
 
 ## Monitoring Defender Performance
@@ -364,16 +371,16 @@ az security jit-policy request \
 Track Defender metrics and resource usage:
 
 ```bash
-# Check Defender agent resource consumption
-kubectl top pods -n kube-system -l app=microsoft-defender-collector
+# Check Defender sensor resource consumption
+kubectl top pods -n kube-system -l app=defender
 
-# View Defender logs
-kubectl logs -n kube-system -l app=microsoft-defender-collector --tail=100
+# View Defender sensor logs
+kubectl logs -n kube-system -l app=defender --tail=100
 
-# Monitor scanning performance
+# Monitor AKS resource metrics while Defender is enabled
 az monitor metrics list \
   --resource /subscriptions/<subscription-id>/resourceGroups/production-rg/providers/Microsoft.ContainerService/managedClusters/production-cluster \
-  --metric "SecurityScanDuration" \
+  --metric "node_cpu_usage_percentage" \
   --start-time 2026-02-09T00:00:00Z \
   --end-time 2026-02-09T23:59:59Z
 ```
@@ -383,7 +390,7 @@ Query Defender telemetry in Log Analytics:
 ```kusto
 // Defender agent health
 ContainerInventory
-| where Name contains "microsoft-defender-collector"
+| where Name contains "defender"
 | summarize count() by Computer, State
 | render barchart
 
@@ -401,14 +408,17 @@ Common issues include agent installation failures and false positives.
 Verify agent connectivity:
 
 ```bash
-# Check agent status
-kubectl exec -n kube-system microsoft-defender-collector-xxxxx -- defender-status
+# Check sensor pod status
+kubectl get pods -n kube-system -l app=defender
 
-# Test connectivity to Defender backend
-kubectl exec -n kube-system microsoft-defender-collector-xxxxx -- curl -v https://defender.microsoft.com
+# Verify the AKS Defender profile
+az aks show \
+  --resource-group production-rg \
+  --name production-cluster \
+  --query "securityProfile.defender"
 
 # Review agent logs for errors
-kubectl logs -n kube-system microsoft-defender-collector-xxxxx | grep ERROR
+kubectl logs -n kube-system -l app=defender --tail=200 | grep ERROR
 ```
 
 Handle false positives:
@@ -417,16 +427,18 @@ Handle false positives:
 # Suppress specific alert
 az security alert update \
   --name <alert-id> \
+  --location <alert-location> \
   --resource-group production-rg \
-  --status Dismissed
+  --status dismiss
 
 # Create suppression rule
-az security alert-suppression-rule create \
-  --name suppress-known-scanner \
-  --rule-name "Suppress scanner activity" \
+az security alerts-suppression-rule update \
+  --rule-name suppress-known-scanner \
   --alert-type "Suspicious process detected" \
-  --reason "Legitimate scanning tool" \
-  --expiration-time 2026-12-31T23:59:59Z
+  --reason "Other" \
+  --comment "Legitimate scanning tool" \
+  --state Enabled \
+  --expiration-date-utc 2026-12-31T23:59:59Z
 ```
 
 Microsoft Defender for Containers provides enterprise-grade security for AKS clusters with minimal operational overhead. The automated threat detection and vulnerability scanning capabilities help maintain strong security posture while reducing manual security assessment efforts.
