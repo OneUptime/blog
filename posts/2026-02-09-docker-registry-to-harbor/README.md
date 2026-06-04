@@ -8,11 +8,11 @@ Description: Step-by-step guide to migrate from Docker Registry v2 to Harbor on 
 
 ---
 
-Docker Registry v2 provides basic image storage functionality, but modern container workflows demand more. Harbor offers enterprise-grade features including role-based access control, vulnerability scanning, image signing, replication policies, and a comprehensive management UI. This guide walks through migrating your Docker Registry v2 deployment to Harbor on Kubernetes while preserving all your images and maintaining service availability.
+Docker Registry v2 provides basic image storage functionality, but modern container workflows demand more. Harbor offers enterprise-grade features including role-based access control, vulnerability scanning, content trust, replication policies, and a comprehensive management UI. This guide walks through migrating your Docker Registry v2 deployment to Harbor on Kubernetes while preserving all your images and maintaining service availability.
 
 ## Why Migrate to Harbor
 
-Docker Registry v2 excels at storing and distributing images, but it lacks critical production features. Harbor extends the registry with security scanning using Trivy or Clair, policy-based image replication across registries, webhook notifications for CI/CD integration, Helm chart repository capabilities, and granular access control with project-based isolation.
+Docker Registry v2 excels at storing and distributing images, but it lacks critical production features. Harbor extends the registry with security scanning using Trivy or other compatible scanners, policy-based image replication across registries, webhook notifications for CI/CD integration, OCI artifact support for Helm charts, and granular access control with project-based isolation.
 
 For organizations running Kubernetes, Harbor provides native integration and supports multi-tenancy, making it ideal for teams sharing a cluster.
 
@@ -21,7 +21,9 @@ For organizations running Kubernetes, Harbor provides native integration and sup
 Before starting, inventory your current registry:
 
 ```bash
-# List all repositories in Docker Registry v2
+# List repositories in Docker Registry v2.
+# For large registries, use the n/last pagination parameters from the
+# Distribution API instead of relying on one unbounded _catalog response.
 
 curl -X GET https://registry.example.com/v2/_catalog | jq .
 
@@ -93,9 +95,6 @@ redis:
 
 trivy:
   enabled: true
-
-notary:
-  enabled: true
 EOF
 
 # Install Harbor
@@ -141,7 +140,9 @@ for project in myapp frontend backend ml-models; do
     -u "${HARBOR_USER}:${HARBOR_PASSWORD}" \
     -d "{
       \"project_name\": \"${project}\",
-      \"public\": false,
+      \"metadata\": {
+        \"public\": \"false\"
+      },
       \"storage_limit\": -1
     }"
 
@@ -212,15 +213,15 @@ HARBOR_USER="admin"
 HARBOR_PASSWORD="ChangeThisPassword123!"
 
 # Get list of all repositories
-REPOS=$(curl -s -u ${OLD_REGISTRY_USER}:${OLD_REGISTRY_PASSWORD} \
-  https://${OLD_REGISTRY}/v2/_catalog | jq -r '.repositories[]')
+REPOS=$(curl -s -u "${OLD_REGISTRY_USER}:${OLD_REGISTRY_PASSWORD}" \
+  "https://${OLD_REGISTRY}/v2/_catalog" | jq -r '.repositories[]')
 
 for repo in $REPOS; do
   echo "Processing repository: $repo"
 
   # Get all tags for this repository
-  TAGS=$(curl -s -u ${OLD_REGISTRY_USER}:${OLD_REGISTRY_PASSWORD} \
-    https://${OLD_REGISTRY}/v2/${repo}/tags/list | jq -r '.tags[]')
+  TAGS=$(curl -s -u "${OLD_REGISTRY_USER}:${OLD_REGISTRY_PASSWORD}" \
+    "https://${OLD_REGISTRY}/v2/${repo}/tags/list" | jq -r '.tags[]?')
 
   for tag in $TAGS; do
     echo "  Copying ${repo}:${tag}"
@@ -259,6 +260,8 @@ For large registries, parallelize the migration:
 export OLD_REGISTRY="registry.example.com"
 export NEW_REGISTRY="harbor.example.com"
 export HARBOR_PROJECT="myapp"
+export OLD_REGISTRY_USER="admin"
+export OLD_REGISTRY_PASSWORD="oldpassword"
 export HARBOR_USER="admin"
 export HARBOR_PASSWORD="ChangeThisPassword123!"
 
@@ -278,8 +281,10 @@ copy_image() {
 export -f copy_image
 
 # Get all image:tag combinations
-curl -s https://${OLD_REGISTRY}/v2/_catalog | jq -r '.repositories[]' | while read repo; do
-  curl -s https://${OLD_REGISTRY}/v2/${repo}/tags/list | jq -r '.tags[]' | while read tag; do
+curl -s -u "${OLD_REGISTRY_USER}:${OLD_REGISTRY_PASSWORD}" \
+  "https://${OLD_REGISTRY}/v2/_catalog" | jq -r '.repositories[]' | while read repo; do
+  curl -s -u "${OLD_REGISTRY_USER}:${OLD_REGISTRY_PASSWORD}" \
+    "https://${OLD_REGISTRY}/v2/${repo}/tags/list" | jq -r '.tags[]?' | while read tag; do
     echo "${repo}:${tag}"
   done
 done > images-to-migrate.txt
@@ -332,7 +337,7 @@ curl -X POST "${HARBOR_URL}/api/v2.0/replication/policies" \
         "value": "**"
       }
     ],
-    "deletion": false,
+    "replicate_deletion": false,
     "override": false,
     "enabled": true
   }'
@@ -346,7 +351,7 @@ Update your cluster to use Harbor credentials:
 # Create Harbor pull secret
 kubectl create secret docker-registry harbor-registry \
   --docker-server=harbor.example.com \
-  --docker-username=robot$cicd-bot \
+  --docker-username='robot$cicd-bot' \
   --docker-password=<robot-token> \
   --docker-email=devops@example.com \
   -n production
@@ -361,13 +366,16 @@ Update deployments to pull from Harbor:
 ```bash
 # Update all deployments to use new registry
 kubectl get deployments --all-namespaces -o json | \
-  jq '.items[] |
-    select(.spec.template.spec.containers[].image | contains("registry.example.com")) |
-    {namespace: .metadata.namespace, name: .metadata.name}' | \
-  jq -r '[.namespace, .name] | @tsv' | \
-  while IFS=$'\t' read -r namespace name; do
-    kubectl set image deployment/$name -n $namespace \
-      --all=harbor.example.com/myapp/$(kubectl get deployment $name -n $namespace -o jsonpath='{.spec.template.spec.containers[0].image}' | sed 's|registry.example.com/||')
+  jq -r '.items[] |
+    .metadata.namespace as $ns |
+    .metadata.name as $deploy |
+    .spec.template.spec.containers[] |
+    select(.image | startswith("registry.example.com/")) |
+    [$ns, $deploy, .name, (.image | sub("^registry.example.com/"; "harbor.example.com/myapp/"))] |
+    @tsv' | \
+  while IFS=$'\t' read -r namespace deployment container image; do
+    kubectl set image "deployment/${deployment}" -n "${namespace}" \
+      "${container}=${image}"
   done
 ```
 
@@ -377,7 +385,9 @@ Enable automatic scanning in Harbor:
 
 ```bash
 # Configure automatic scan on push
-curl -X PUT "${HARBOR_URL}/api/v2.0/projects/${PROJECT_ID}" \
+PROJECT_NAME="myapp"
+
+curl -X PUT "${HARBOR_URL}/api/v2.0/projects/${PROJECT_NAME}" \
   -H "Content-Type: application/json" \
   -u "${HARBOR_USER}:${HARBOR_PASSWORD}" \
   -d '{
@@ -389,7 +399,7 @@ curl -X PUT "${HARBOR_URL}/api/v2.0/projects/${PROJECT_ID}" \
   }'
 
 # Scan all existing images
-curl -X POST "${HARBOR_URL}/api/v2.0/system/scanAll/schedule" \
+curl -X PUT "${HARBOR_URL}/api/v2.0/system/scanAll/schedule" \
   -H "Content-Type: application/json" \
   -u "${HARBOR_USER}:${HARBOR_PASSWORD}" \
   -d '{
@@ -407,8 +417,9 @@ Query scan results via API:
 PROJECT="myapp"
 REPO="backend"
 TAG="v1.2.3"
+ENCODED_REPO=$(jq -rn --arg repo "$REPO" '$repo|@uri')
 
-curl -X GET "${HARBOR_URL}/api/v2.0/projects/${PROJECT}/repositories/${REPO}/artifacts/${TAG}/additions/vulnerabilities" \
+curl -X GET "${HARBOR_URL}/api/v2.0/projects/${PROJECT}/repositories/${ENCODED_REPO}/artifacts/${TAG}/additions/vulnerabilities" \
   -u "${HARBOR_USER}:${HARBOR_PASSWORD}" | jq .
 ```
 
@@ -417,13 +428,15 @@ curl -X GET "${HARBOR_URL}/api/v2.0/projects/${PROJECT}/repositories/${REPO}/art
 Configure content trust and immutability:
 
 ```bash
-# Enable content trust (Notary)
-curl -X PUT "${HARBOR_URL}/api/v2.0/projects/${PROJECT_ID}" \
+# Enable content trust for Cosign signatures
+PROJECT_NAME="myapp"
+
+curl -X PUT "${HARBOR_URL}/api/v2.0/projects/${PROJECT_NAME}" \
   -H "Content-Type: application/json" \
   -u "${HARBOR_USER}:${HARBOR_PASSWORD}" \
   -d '{
     "metadata": {
-      "enable_content_trust": "true",
+      "enable_content_trust_cosign": "true",
       "auto_scan": "true"
     }
   }'
@@ -489,17 +502,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Login to Harbor
-      uses: docker/login-action@v2
+      uses: docker/login-action@v4
       with:
         registry: harbor.example.com
         username: ${{ secrets.HARBOR_USERNAME }}
         password: ${{ secrets.HARBOR_PASSWORD }}
 
     - name: Build and push
-      uses: docker/build-push-action@v4
+      uses: docker/build-push-action@v7
       with:
         context: .
         push: true
@@ -513,10 +526,11 @@ jobs:
 Verify all images migrated successfully:
 
 ```bash
-# Compare image counts
+# Compare repository counts. Harbor's API is paginated; increase page_size
+# or iterate pages for projects with more than 100 repositories.
 OLD_COUNT=$(curl -s https://${OLD_REGISTRY}/v2/_catalog | jq '.repositories | length')
 NEW_COUNT=$(curl -s -u ${HARBOR_USER}:${HARBOR_PASSWORD} \
-  ${HARBOR_URL}/api/v2.0/projects/${HARBOR_PROJECT}/repositories | jq 'length')
+  "${HARBOR_URL}/api/v2.0/projects/${HARBOR_PROJECT}/repositories?page_size=100" | jq 'length')
 
 echo "Old registry: $OLD_COUNT repositories"
 echo "New registry: $NEW_COUNT repositories"
@@ -534,15 +548,15 @@ docker run --rm harbor.example.com/myapp/backend:latest /app/healthcheck
 After running both registries in parallel for a safe period (2-4 weeks):
 
 ```bash
-# Stop accepting pushes to old registry (make read-only)
-kubectl scale deployment registry --replicas=0 -n registry
-
 # Archive registry data
-kubectl exec -n registry registry-pod-name -- tar czf /backup/registry-archive.tar.gz /var/lib/registry
+kubectl exec -n registry registry-pod-name -- tar czf /tmp/registry-archive.tar.gz /var/lib/registry
 
 # Copy archive to long-term storage
-kubectl cp registry/registry-pod-name:/backup/registry-archive.tar.gz ./registry-archive.tar.gz
+kubectl cp registry/registry-pod-name:/tmp/registry-archive.tar.gz ./registry-archive.tar.gz
 aws s3 cp registry-archive.tar.gz s3://backups/registry/
+
+# Stop accepting pushes and pulls to the old registry
+kubectl scale deployment registry --replicas=0 -n registry
 
 # Delete old registry
 helm uninstall docker-registry -n registry
