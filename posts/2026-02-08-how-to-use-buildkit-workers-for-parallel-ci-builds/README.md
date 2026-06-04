@@ -8,13 +8,13 @@ Description: Configure BuildKit workers to run parallel CI builds with shared ca
 
 ---
 
-BuildKit is the modern build engine behind Docker. When you run `docker build` on recent Docker versions, BuildKit handles the actual work. But most people use it through Docker's default configuration, which runs a single BuildKit worker with default settings. For CI environments where you run many builds concurrently, tuning BuildKit workers can dramatically improve throughput.
+BuildKit is the modern build engine behind Docker. Since Docker Engine 23.0, `docker build` uses Buildx and BuildKit by default. But most people use it through Docker's default configuration, which runs a single BuildKit builder with default settings. For CI environments where you run many builds concurrently, tuning BuildKit workers can dramatically improve throughput.
 
-This guide covers running standalone BuildKit workers, configuring them for parallel CI workloads, setting resource limits, and sharing cache across multiple concurrent builds.
+This guide covers running standalone BuildKit daemons, configuring their workers for parallel CI workloads, setting resource limits, and sharing cache across multiple concurrent builds.
 
 ## Understanding BuildKit Workers
 
-A BuildKit worker is a daemon process that executes build instructions. Each worker has its own cache, parallelism settings, and resource constraints. Docker Buildx creates workers automatically when you create builders, but you can also run BuildKit standalone for more control.
+A BuildKit worker is an execution backend inside the `buildkitd` daemon. Each worker has its own cache, parallelism settings, and resource constraints. Docker Buildx creates and connects to BuildKit daemons automatically for managed builder drivers, but you can also run BuildKit standalone for more control.
 
 ```mermaid
 graph TD
@@ -28,7 +28,7 @@ graph TD
 
 ## Running Standalone BuildKit
 
-Run BuildKit directly as a Docker container for full control over its configuration.
+Run BuildKit directly as a Docker container for full control over its configuration. These examples expose BuildKit over plain TCP for clarity; in production, use mTLS or keep the endpoint isolated because unauthenticated TCP access is unsafe.
 
 ```bash
 # Run a standalone BuildKit daemon
@@ -77,25 +77,19 @@ debug = false
   snapshotter = "overlayfs"
   # Garbage collection settings
   gc = true
-  gckeepbytes = 10737418240  # 10GB
-  # Resource limits per build
+  gckeepstorage = "10GB"
+  # Garbage collection policies
   [[worker.oci.gcpolicy]]
-    keepBytes = 10737418240
-    keepDuration = 172800  # 48 hours in seconds
-    all = true
+    keepBytes = "10GB"
+    keepDuration = "48h"
+    filters = ["type==source.local", "type==exec.cachemount", "type==source.git.checkout"]
   [[worker.oci.gcpolicy]]
-    keepBytes = 53687091200  # 50GB total
+    keepBytes = "50GB"
     all = true
 
 # Registry mirror configuration
 [registry."docker.io"]
   mirrors = ["mirror.gcr.io"]
-
-# Cache export/import settings
-[cache]
-  # Use a large disk cache
-  [cache.local]
-    dir = "/var/lib/buildkit/cache"
 ```
 
 Run BuildKit with this configuration.
@@ -114,14 +108,14 @@ docker run -d \
 
 ## Multiple Workers with Docker Compose
 
-For CI servers handling many concurrent builds, run multiple BuildKit workers behind a simple load balancer.
+For CI servers handling many concurrent builds, run multiple BuildKit daemons behind a simple load balancer.
 
 ```yaml
-# docker-compose.yml - Multiple BuildKit workers
+# docker-compose.yml - Multiple BuildKit daemons
 version: "3.8"
 
 services:
-  # BuildKit worker 1
+  # BuildKit daemon 1
   buildkitd-1:
     image: moby/buildkit:v0.13.0
     privileged: true
@@ -141,7 +135,7 @@ services:
     networks:
       - buildkit
 
-  # BuildKit worker 2
+  # BuildKit daemon 2
   buildkitd-2:
     image: moby/buildkit:v0.13.0
     privileged: true
@@ -161,7 +155,7 @@ services:
     networks:
       - buildkit
 
-  # BuildKit worker 3
+  # BuildKit daemon 3
   buildkitd-3:
     image: moby/buildkit:v0.13.0
     privileged: true
@@ -181,7 +175,7 @@ services:
     networks:
       - buildkit
 
-  # Nginx load balancer distributes builds across workers
+  # Nginx load balancer distributes builds across BuildKit daemons
   buildkit-lb:
     image: nginx:alpine
     ports:
@@ -205,10 +199,10 @@ networks:
     driver: bridge
 ```
 
-Create the Nginx configuration for gRPC load balancing.
+Create the Nginx configuration for TCP load balancing of BuildKit's gRPC API.
 
 ```nginx
-# nginx-lb.conf - gRPC load balancer for BuildKit workers
+# nginx-lb.conf - TCP load balancer for BuildKit daemons
 events {
     worker_connections 1024;
 }
@@ -233,7 +227,7 @@ stream {
 
 ## Connecting Buildx to Standalone Workers
 
-Register the BuildKit workers as a Buildx builder.
+Register the BuildKit daemons as a Buildx builder.
 
 ```bash
 # Create a Buildx builder pointing to the load balancer
@@ -242,7 +236,7 @@ docker buildx create \
   --driver remote \
   tcp://localhost:1234
 
-# Or create a builder with individual workers for platform-specific routing
+# Or create a builder with individual BuildKit daemons for platform-specific routing
 docker buildx create \
   --name ci-workers \
   --driver remote \
@@ -253,7 +247,7 @@ docker buildx create \
   --name ci-workers \
   --append \
   --driver remote \
-  --platform linux/amd64 \
+  --platform linux/arm64 \
   tcp://buildkitd-2:1234
 
 # Set as default
@@ -312,7 +306,7 @@ BuildKit sees that frontend-deps, backend-deps, and ml-deps have no dependencies
 
 ## Shared Cache Across Workers
 
-For cache sharing between multiple BuildKit workers, use a registry-based cache or a shared storage backend.
+For cache sharing between multiple BuildKit daemons, use a registry-based cache or a shared storage backend.
 
 ```bash
 # Build with registry-based cache sharing
@@ -325,7 +319,7 @@ docker buildx build \
   .
 ```
 
-For S3-based cache (supported in newer BuildKit versions).
+For S3-based cache (experimental and not supported with the default `docker` driver).
 
 ```bash
 # Build with S3 cache backend
@@ -340,7 +334,7 @@ docker buildx build \
 
 ## Monitoring Worker Performance
 
-Track build times and cache hit rates to identify bottlenecks.
+Track worker status and cache size to identify bottlenecks.
 
 ```bash
 # Check worker disk usage and cache size
@@ -352,7 +346,7 @@ buildctl --addr tcp://localhost:1234 du
 # Prune cache to free disk space (keep last 10GB)
 buildctl --addr tcp://localhost:1234 prune --keep-storage 10737418240
 
-# Get build-specific metrics
+# Get BuildKit daemon information
 buildctl --addr tcp://localhost:1234 debug info
 ```
 
@@ -365,17 +359,17 @@ Configure automatic garbage collection to prevent workers from filling up their 
 [worker.oci]
   gc = true
   # Keep at least 20GB of cache
-  gckeepbytes = 21474836480
+  gckeepstorage = "20GB"
 
   # First policy: remove anything older than 48 hours if over the limit
   [[worker.oci.gcpolicy]]
-    keepBytes = 21474836480
-    keepDuration = 172800
-    filters = ["type==regular"]
+    keepBytes = "20GB"
+    keepDuration = "48h"
+    filters = ["type==source.local", "type==exec.cachemount", "type==source.git.checkout"]
 
   # Second policy: hard limit at 50GB total
   [[worker.oci.gcpolicy]]
-    keepBytes = 53687091200
+    keepBytes = "50GB"
     all = true
 ```
 
@@ -391,4 +385,4 @@ docker buildx rm ci-workers
 
 ## Conclusion
 
-Running multiple BuildKit workers with proper parallelism, caching, and resource limits transforms your CI build infrastructure. The combination of parallel build stages within Dockerfiles and multiple workers for concurrent builds gives you multiplicative speedups. Registry-based caching ensures that all workers benefit from each other's work. For monitoring the health of your BuildKit workers and tracking build performance metrics, [OneUptime](https://oneuptime.com) can alert you to slow builds, cache misses, and worker failures before they impact your development velocity.
+Running multiple BuildKit daemons with proper parallelism, caching, and resource limits transforms your CI build infrastructure. The combination of parallel build stages within Dockerfiles and multiple daemons for concurrent builds gives you multiplicative speedups. Registry-based caching ensures that all workers benefit from each other's work. For monitoring the health of your BuildKit workers and tracking build performance metrics, [OneUptime](https://oneuptime.com) can alert you to slow builds, cache misses, and worker failures before they impact your development velocity.
