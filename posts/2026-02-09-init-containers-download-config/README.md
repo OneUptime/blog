@@ -215,6 +215,7 @@ Create a versatile configuration fetcher:
 import os
 import sys
 import json
+import base64
 import boto3
 import requests
 from pathlib import Path
@@ -256,35 +257,41 @@ class ConfigFetcher:
             value = item.get('Value', '')
 
             if value:
-                import base64
                 decoded_value = base64.b64decode(value).decode('utf-8')
                 local_path = self.output_dir / key
                 local_path.parent.mkdir(parents=True, exist_ok=True)
                 local_path.write_text(decoded_value)
                 print(f"Wrote {local_path}")
 
+    def _etcd_prefix_range_end(self, key_prefix):
+        key = bytearray(key_prefix.encode('utf-8'))
+        for index in range(len(key) - 1, -1, -1):
+            if key[index] < 0xff:
+                key[index] += 1
+                return bytes(key[:index + 1])
+        return b'\0'
+
     def fetch_from_etcd(self, etcd_url, key_prefix):
         """Fetch configuration from etcd"""
         print(f"Fetching from etcd: {key_prefix}")
-        url = f"{etcd_url}/v2/keys/{key_prefix}?recursive=true"
-        response = requests.get(url, timeout=10)
+        url = f"{etcd_url}/v3/kv/range"
+        payload = {
+            'key': base64.b64encode(key_prefix.encode('utf-8')).decode('utf-8'),
+            'range_end': base64.b64encode(
+                self._etcd_prefix_range_end(key_prefix)
+            ).decode('utf-8')
+        }
+        response = requests.post(url, json=payload, timeout=10)
         response.raise_for_status()
 
-        def process_node(node, parent_path=""):
-            if node.get('dir'):
-                for child in node.get('nodes', []):
-                    process_node(child, parent_path)
-            else:
-                key = node['key'].replace(f"/{key_prefix}/", "")
-                value = node.get('value', '')
-                local_path = self.output_dir / key
-                local_path.parent.mkdir(parents=True, exist_ok=True)
-                local_path.write_text(value)
-                print(f"Wrote {local_path}")
-
-        data = response.json()
-        if 'node' in data:
-            process_node(data['node'])
+        for item in response.json().get('kvs', []):
+            key = base64.b64decode(item['key']).decode('utf-8')
+            relative_key = key.replace(f"{key_prefix}/", "", 1)
+            value = base64.b64decode(item.get('value', '')).decode('utf-8')
+            local_path = self.output_dir / relative_key
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            local_path.write_text(value)
+            print(f"Wrote {local_path}")
 
 def main():
     fetcher = ConfigFetcher()
@@ -398,12 +405,12 @@ Render configuration templates with environment-specific values:
 ```yaml
 initContainers:
 - name: fetch-and-render-config
-  image: alpine:3.19
+  image: alpine:3.23
   command:
   - sh
   - -c
   - |
-    apk add --no-cache curl envsubst
+    apk add --no-cache curl gettext-envsubst
 
     # Download template
     curl -o /config/template.yaml \
