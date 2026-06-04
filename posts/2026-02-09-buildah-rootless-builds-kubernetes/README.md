@@ -8,7 +8,7 @@ Description: Learn how to use Buildah for rootless container image builds in Kub
 
 ---
 
-Buildah is Red Hat's answer to secure container image building. Like Kaniko, it doesn't require a Docker daemon. Unlike Kaniko, Buildah gives you fine-grained control over image layers and supports both Dockerfile and scripted builds. When run in rootless mode, Buildah provides maximum security for Kubernetes CI/CD pipelines.
+Buildah is Red Hat's answer to secure container image building. Like Kaniko, it doesn't require a Docker daemon. Unlike Kaniko, Buildah gives you fine-grained control over image layers and supports both Dockerfile and scripted builds. When run in rootless mode, Buildah can reduce the privileges needed in Kubernetes CI/CD pipelines.
 
 This guide shows you how to use Buildah for secure, rootless builds in Kubernetes.
 
@@ -55,7 +55,7 @@ spec:
           - SETGID
     volumeMounts:
     - name: varlibcontainers
-      mountPath: /var/lib/containers
+      mountPath: /home/build/.local/share/containers
     - name: registry-config
       mountPath: /home/build/.docker
   volumes:
@@ -127,7 +127,7 @@ spec:
 
       volumeMounts:
         - name: varlibcontainers
-          mountPath: /var/lib/containers
+          mountPath: /home/build/.local/share/containers
 
       env:
         - name: STORAGE_DRIVER
@@ -195,8 +195,15 @@ Or configure in `/etc/containers/storage.conf`:
 ```toml
 [storage]
 driver = "vfs"
+```
 
-[storage.options]
+If you use overlay storage with `fuse-overlayfs`, configure the overlay storage options instead:
+
+```toml
+[storage]
+driver = "overlay"
+
+[storage.options.overlay]
 mount_program = "/usr/bin/fuse-overlayfs"
 ```
 
@@ -345,7 +352,7 @@ Use bind mounts for caching:
 ```yaml
 volumeMounts:
   - name: buildah-cache
-    mountPath: /var/lib/containers
+    mountPath: /home/build/.local/share/containers
   - name: go-cache
     mountPath: /go/pkg/mod
 
@@ -407,7 +414,7 @@ spec:
         add:
           - SETUID
           - SETGID
-      allowPrivilegeEscalation: false
+      allowPrivilegeEscalation: true
       runAsNonRoot: true
 
     env:
@@ -418,7 +425,7 @@ spec:
 
     volumeMounts:
       - name: varlibcontainers
-        mountPath: /var/lib/containers
+        mountPath: /home/build/.local/share/containers
 
   volumes:
     - name: varlibcontainers
@@ -538,4 +545,4 @@ FROM alpine:3.18  # Instead of ubuntu
 
 ## Conclusion
 
-Buildah brings true rootless container building to Kubernetes with fine-grained control over the build process. Whether using Dockerfiles or scripted builds, Buildah provides security without sacrificing features. The VFS storage driver and proper capability configuration enable completely unprivileged operation. For Kubernetes CI/CD pipelines prioritizing security, Buildah offers the best balance of control, compatibility, and safety.
+Buildah brings rootless container building to Kubernetes with fine-grained control over the build process. Whether using Dockerfiles or scripted builds, Buildah provides security without sacrificing features. The VFS storage driver and proper capability configuration can enable non-root builds without privileged pods. For Kubernetes CI/CD pipelines prioritizing security, Buildah offers a strong balance of control, compatibility, and safety.
