@@ -8,7 +8,7 @@ Description: Master docker image prune with filters to reclaim disk space while 
 
 ---
 
-Docker images pile up quickly. Every build creates new layers. Every pull brings down a full image. Over time, your disk fills with old versions, intermediate build images, and dangling layers that nothing references. On CI/CD servers, this problem is especially severe because builds run constantly and produce new images with every commit.
+Docker images pile up quickly. Every build creates new layers. Every pull brings down any layers that are not already present locally. Over time, your disk fills with old versions, intermediate build images, and dangling layers that nothing references. On CI/CD servers, this problem is especially severe because builds run constantly and produce new images with every commit.
 
 The `docker image prune` command reclaims this space, and its filter options let you be surgical about what gets removed. This guide covers all the filtering options with practical examples for development machines, CI servers, and production hosts.
 
@@ -73,7 +73,7 @@ Remove images created before a specific date:
 docker image prune -a -f --filter "until=2026-02-01T00:00:00"
 ```
 
-The time is based on when the image was created (built or pulled), not when it was last used. An image pulled 60 days ago but used by a running container will not be pruned because it is not "unused."
+The time is based on the image creation timestamp, not when it was pulled or last used. For pulled images, this is the image's build timestamp from its metadata. An image with an old creation timestamp but used by a running container will not be pruned because it is not "unused."
 
 ## Filtering by Labels
 
@@ -267,7 +267,7 @@ Remove all images matching a pattern:
 docker rmi $(docker images my-app -q) 2>/dev/null
 
 # Remove all images from a specific registry
-docker rmi $(docker images registry.example.com/* -q) 2>/dev/null
+docker rmi $(docker images --filter "reference=registry.example.com/*" -q) 2>/dev/null
 ```
 
 These targeted removals complement pruning. Use `docker rmi` for specific cleanup and `docker image prune` for broad maintenance.
