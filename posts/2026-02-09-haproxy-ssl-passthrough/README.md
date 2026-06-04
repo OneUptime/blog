@@ -12,13 +12,13 @@ This guide covers advanced ingress controller configuration for Kubernetes envir
 
 ## Understanding the Architecture
 
-Modern ingress controllers act as the entry point for external traffic into Kubernetes clusters. They provide Layer 7 load balancing, SSL termination, and advanced routing based on hostnames, paths, headers, and other request attributes.
+Modern ingress controllers act as the entry point for external traffic into Kubernetes clusters. They provide Layer 7 load balancing, SSL termination, and advanced routing based on hostnames, paths, headers, and other request attributes. When SSL passthrough is enabled, HAProxy proxies encrypted traffic in TCP mode, so HTTP-layer annotations and request inspection are not available for that route.
 
 The ingress controller watches Ingress resources and translates them into native configuration for the underlying proxy. This abstraction allows teams to use Kubernetes-native resources while leveraging battle-tested load balancing technologies.
 
 ## Basic Configuration
 
-Deploy the ingress controller and create basic routing:
+Deploy the HAProxy ingress controller and create a basic SSL passthrough route:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -26,8 +26,10 @@ kind: Ingress
 metadata:
   name: example-ingress
   namespace: production
+  annotations:
+    haproxy.org/ssl-passthrough: "true"
 spec:
-  ingressClassName: nginx
+  ingressClassName: haproxy
   rules:
     - host: app.example.com
       http:
@@ -38,24 +40,24 @@ spec:
               service:
                 name: app-service
                 port:
-                  number: 80
+                  number: 443
 ```
 
 ## Advanced Features
 
-The ingress controller supports sophisticated traffic management patterns including weighted routing, header-based routing, rate limiting, authentication, and custom middleware chains.
+The ingress controller supports sophisticated traffic management patterns including weighted routing, header-based routing, rate limiting, authentication, and custom middleware chains for HTTP-mode routes. SSL passthrough routes are handled in TCP mode, so use only features that work without decrypting the request.
 
 Configure these features using annotations or custom resource definitions depending on your ingress controller choice. Each controller provides unique capabilities tailored to specific use cases.
 
 ## Security Considerations
 
-Always enable TLS encryption for production traffic. Use cert-manager to automate certificate management. Implement rate limiting and authentication to protect backend services from abuse.
+Always enable TLS encryption for production traffic. With SSL passthrough, terminate TLS in the backend service and manage that service's certificate lifecycle directly, for example with cert-manager. Implement rate limiting and authentication where your ingress mode and application architecture support them.
 
-Configure security headers, enable CORS policies, and implement Web Application Firewall rules to protect against common attacks. Regular security audits ensure configurations remain secure as threats evolve.
+For HTTP-mode routes, configure security headers, enable CORS policies, and implement Web Application Firewall rules to protect against common attacks. For SSL passthrough routes, enforce those HTTP-layer controls in the backend service because the ingress controller does not decrypt the traffic. Regular security audits ensure configurations remain secure as threats evolve.
 
 ## Performance Optimization
 
-Tune connection pooling, keepalive settings, and buffer sizes based on your traffic patterns. Enable HTTP/2 and compression to improve client performance. Monitor metrics to identify bottlenecks and optimize resource allocation.
+Tune connection pooling, keepalive settings, and buffer sizes based on your traffic patterns. Enable HTTP/2 and compression where TLS is terminated and HTTP traffic is visible. Monitor metrics to identify bottlenecks and optimize resource allocation.
 
 Scale ingress controller replicas horizontally to handle increased load. Use pod affinity rules to distribute replicas across nodes for high availability.
 
