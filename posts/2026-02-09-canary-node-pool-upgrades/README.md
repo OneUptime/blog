@@ -12,22 +12,22 @@ Canary node pool upgrades let you test new Kubernetes versions on a small subset
 
 ## Understanding Canary Upgrades
 
-A canary upgrade involves creating a new node pool with the target Kubernetes version alongside your existing pool. You gradually shift workloads to the canary pool, monitor for issues, and only proceed with full upgrade after validating the canary succeeds. If problems arise, you can quickly shift workloads back to the stable pool.
+A canary upgrade involves creating a new node pool with the target Kubernetes version alongside your existing pool after the control plane supports that version. You gradually shift workloads to the canary pool, monitor for issues, and only proceed with full node pool upgrade after validating the canary succeeds. If problems arise, you can quickly shift workloads back to the stable pool.
 
 This strategy is particularly valuable for large production clusters where the cost of a failed upgrade is high. You get real production testing without risking your entire workload.
 
 ## Creating a Canary Node Pool
 
-Start by creating a small canary node pool with the target version.
+Start by creating a small canary node pool with the target version. On EKS, the managed node group Kubernetes version must match the current cluster control plane version, so upgrade the control plane before creating a canary node group for the new version.
 
 ```bash
 #!/bin/bash
 # create-canary-pool-eks.sh
 
 CLUSTER_NAME="production"
-CANARY_POOL="canary-1-29"
-STABLE_POOL="stable-1-28"
-TARGET_VERSION="1.29"
+CANARY_POOL="canary-1-34"
+STABLE_POOL="stable-1-33"
+TARGET_VERSION="1.34"
 
 echo "Creating canary node pool with version $TARGET_VERSION..."
 
@@ -41,7 +41,7 @@ aws eks create-nodegroup \
   --instance-types t3.large \
   --scaling-config minSize=2,maxSize=5,desiredSize=2 \
   --kubernetes-version $TARGET_VERSION \
-  --labels canary=true,version=1.29
+  --labels '{"canary": "true", "version": "1.34"}'
 
 # Wait for canary pool to be ready
 aws eks wait nodegroup-active \
@@ -60,7 +60,9 @@ For GKE:
 CLUSTER_NAME="production"
 ZONE="us-central1-a"
 CANARY_POOL="canary-pool"
-TARGET_VERSION="1.29.0-gke.1234"
+TARGET_VERSION=$(gcloud container get-server-config \
+  --zone=$ZONE \
+  --format='value(validNodeVersions[0])')
 
 gcloud container node-pools create $CANARY_POOL \
   --cluster=$CLUSTER_NAME \
@@ -71,14 +73,14 @@ gcloud container node-pools create $CANARY_POOL \
   --enable-autoscaling \
   --min-nodes=2 \
   --max-nodes=5 \
-  --node-labels=canary=true,version=1-29
+  --node-labels=canary=true,version=$TARGET_VERSION
 
 echo "Canary pool created"
 ```
 
 ## Directing Traffic to Canary Nodes
 
-Use node selectors and taints to control which pods run on canary nodes.
+Use node selectors to control which pods run on canary nodes.
 
 ```yaml
 # canary-deployment.yaml
@@ -116,16 +118,18 @@ Gradually increase canary traffic:
 #!/bin/bash
 # increase-canary-traffic.sh
 
-CANARY_REPLICAS=2
-STABLE_REPLICAS=8
+TOTAL_REPLICAS=10
+CANARY_REPLICAS=1
+STABLE_REPLICAS=9
 
 echo "Current distribution: $CANARY_REPLICAS canary, $STABLE_REPLICAS stable"
 
 # Increase canary gradually
-for canary in 2 5 10 20; do
-  stable=$((100 - canary))
+for percent in 10 20 50 80; do
+  canary=$((TOTAL_REPLICAS * percent / 100))
+  stable=$((TOTAL_REPLICAS - canary))
 
-  echo "Shifting to $canary% canary, $stable% stable..."
+  echo "Shifting to $percent% canary..."
 
   kubectl scale deployment web-app-canary -n production --replicas=$canary
   kubectl scale deployment web-app-stable -n production --replicas=$stable
@@ -139,7 +143,7 @@ for canary in 2 5 10 20; do
   if [ $errors -gt 10 ]; then
     echo "ERROR: High error rate on canary, rolling back"
     kubectl scale deployment web-app-canary -n production --replicas=0
-    kubectl scale deployment web-app-stable -n production --replicas=10
+    kubectl scale deployment web-app-stable -n production --replicas=$TOTAL_REPLICAS
     exit 1
   fi
 done
@@ -158,7 +162,8 @@ Compare canary node performance against stable nodes.
 echo "Monitoring canary vs stable performance..."
 
 while true; do
-  echo "========================================  echo "Canary Performance Report - $(date)"
+  echo "========================================"
+  echo "Canary Performance Report - $(date)"
   echo "========================================"
 
   # Compare pod health
@@ -170,10 +175,10 @@ while true; do
   # Compare resource usage
   echo "Resource usage:"
   kubectl top pods -n production -l track=canary --no-headers | \
-    awk '{cpu+=$2; mem+=$3} END {print "Canary avg: CPU=" cpu/NR "m, Memory=" mem/NR "Mi"}'
+    awk 'NR > 0 {cpu+=$2; mem+=$3} END {if (NR > 0) print "Canary avg: CPU=" cpu/NR "m, Memory=" mem/NR "Mi"; else print "Canary avg: no pods found"}'
 
   kubectl top pods -n production -l track=stable --no-headers | \
-    awk '{cpu+=$2; mem+=$3} END {print "Stable avg: CPU=" cpu/NR "m, Memory=" mem/NR "Mi"}'
+    awk 'NR > 0 {cpu+=$2; mem+=$3} END {if (NR > 0) print "Stable avg: CPU=" cpu/NR "m, Memory=" mem/NR "Mi"; else print "Stable avg: no pods found"}'
 
   # Compare error rates
   canary_errors=$(kubectl logs -n production -l track=canary --tail=1000 --since=5m | grep -c ERROR)
@@ -182,9 +187,9 @@ while true; do
   echo "Error rates: Canary=$canary_errors, Stable=$stable_errors"
 
   # Decision point
-  error_ratio=$(echo "scale=2; $canary_errors / $stable_errors" | bc)
-
-  if (( $(echo "$error_ratio > 1.5" | bc -l) )); then
+  if [ "$stable_errors" -eq 0 ] && [ "$canary_errors" -gt 0 ]; then
+    echo "WARNING: Canary has errors while stable has none"
+  elif [ "$stable_errors" -gt 0 ] && (( $(echo "scale=2; $canary_errors / $stable_errors > 1.5" | bc -l) )); then
     echo "WARNING: Canary error rate significantly higher than stable"
   fi
 
@@ -202,7 +207,6 @@ Implement automated canary analysis to detect issues.
 
 ANALYSIS_DURATION=3600  # 1 hour
 THRESHOLD_ERROR_RATE=0.05  # 5%
-THRESHOLD_LATENCY_P99=1000  # 1 second
 
 echo "Starting automated canary analysis..."
 
@@ -217,13 +221,20 @@ while [ $(($(date +%s) - start_time)) -lt $ANALYSIS_DURATION ]; do
   stable_errors=$(kubectl logs -n production -l track=stable --tail=1000 | grep "HTTP.*[45][0-9][0-9]" | wc -l)
 
   # Calculate error rates
+  if [ "$canary_requests" -eq 0 ] || [ "$stable_requests" -eq 0 ]; then
+    echo "$(date): Not enough request data yet"
+    sleep 60
+    continue
+  fi
+
   canary_error_rate=$(echo "scale=4; $canary_errors / $canary_requests" | bc)
   stable_error_rate=$(echo "scale=4; $stable_errors / $stable_requests" | bc)
 
   echo "$(date): Canary error rate: $canary_error_rate, Stable: $stable_error_rate"
 
   # Check if canary exceeds threshold
-  if (( $(echo "$canary_error_rate > $stable_error_rate * 2" | bc -l) )); then
+  if (( $(echo "$canary_error_rate > $THRESHOLD_ERROR_RATE" | bc -l) )) || \
+     (( $(echo "$canary_error_rate > $stable_error_rate * 2" | bc -l) )); then
     echo "FAIL: Canary error rate too high, aborting"
     exit 1
   fi
@@ -274,15 +285,14 @@ Once canary validation succeeds, promote it to production.
 # promote-canary.sh
 
 CLUSTER_NAME="production"
-OLD_POOL="stable-1-28"
-CANARY_POOL="canary-1-29"
+OLD_POOL="stable-1-33"
+CANARY_POOL="canary-1-34"
 
 echo "Promoting canary to production..."
 
 # Gradually shift all traffic to canary
 for percent in 25 50 75 100; do
   canary_size=$((percent / 5))
-  stable_size=$(((100 - percent) / 5))
 
   echo "Shifting to $percent% canary..."
 
@@ -298,18 +308,18 @@ done
 
 # Delete old stable pool
 echo "Removing old stable pool..."
-kubectl cordon -l nodepool=$OLD_POOL
-kubectl drain -l nodepool=$OLD_POOL --ignore-daemonsets --delete-emptydir-data
+kubectl cordon -l eks.amazonaws.com/nodegroup=$OLD_POOL
+kubectl drain -l eks.amazonaws.com/nodegroup=$OLD_POOL --ignore-daemonsets --delete-emptydir-data
 
 aws eks delete-nodegroup \
   --cluster-name $CLUSTER_NAME \
   --nodegroup-name $OLD_POOL
 
-# Rename canary to stable
+# Update canary labels to mark it as stable
 aws eks update-nodegroup-config \
   --cluster-name $CLUSTER_NAME \
   --nodegroup-name $CANARY_POOL \
-  --labels stable=true,canary-
+  --labels 'addOrUpdateLabels={stable=true},removeLabels=canary'
 
 echo "Canary promoted to production successfully"
 ```
