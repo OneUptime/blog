@@ -8,7 +8,7 @@ Description: Learn how to implement blue-green deployments using HAProxy Ingress
 
 ---
 
-Blue-green deployments provide zero-downtime releases by maintaining two identical production environments. HAProxy Ingress Controller supports blue-green deployments through annotations that control traffic routing between versions. This guide explores how to implement blue-green deployments using HAProxy's powerful annotation system.
+Blue-green deployments provide zero-downtime releases by maintaining two identical production environments. HAProxy Ingress supports blue-green deployments through annotations that control traffic routing between versions. This guide explores how to implement blue-green deployments using HAProxy Ingress's powerful annotation system.
 
 ## Understanding Blue-Green Deployments
 
@@ -20,7 +20,7 @@ Blue-green deployments work by:
 - Switching traffic to the new version instantly
 - Keeping the old version running for quick rollback
 
-HAProxy Ingress Controller enables this pattern through weight-based routing and annotation-based configuration.
+HAProxy Ingress enables this pattern through weight-based routing and annotation-based configuration.
 
 ## Installing HAProxy Ingress Controller
 
@@ -29,30 +29,32 @@ Install HAProxy Ingress Controller:
 ```bash
 # Using Helm
 
-helm repo add haproxytech https://haproxytech.github.io/helm-charts
+helm repo add haproxy-ingress https://haproxy-ingress.github.io/charts
 helm repo update
 
-helm install haproxy-ingress haproxytech/kubernetes-ingress \
-  --namespace haproxy-controller \
+helm upgrade haproxy-ingress haproxy-ingress/haproxy-ingress \
+  --install \
+  --namespace ingress-controller \
   --create-namespace \
-  --set controller.service.type=LoadBalancer
+  --version 0.16.1 \
+  --set controller.ingressClassResource.enabled=true
 ```
 
 Verify installation:
 
 ```bash
-kubectl get pods -n haproxy-controller
-kubectl get svc -n haproxy-controller
+kubectl get pods -n ingress-controller
+kubectl get svc -n ingress-controller
 ```
 
 ## Basic Blue-Green Setup
 
-Create two deployments representing blue and green environments.
+Create two deployments representing blue and green environments, and expose them through one Service that selects both sets of pods. HAProxy Ingress uses the shared service selector for the backend and a second label to distinguish the blue and green groups. You can also keep version-specific Services for path-based preview routes.
 
 ### Blue and Green Deployments
 
 ```yaml
-# blue-deployment.yaml
+# blue-green-deployments.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -82,20 +84,6 @@ spec:
         - name: VERSION
           value: "blue-v1.0"
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: app-blue
-  namespace: default
-spec:
-  selector:
-    app: myapp
-    version: blue
-  ports:
-  - port: 80
-    targetPort: 8080
----
-# green-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -128,6 +116,31 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  name: app-service
+  namespace: default
+spec:
+  selector:
+    app: myapp
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-blue
+  namespace: default
+spec:
+  selector:
+    app: myapp
+    version: blue
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: app-green
   namespace: default
 spec:
@@ -141,7 +154,7 @@ spec:
 
 ### Traffic Routing with Weights
 
-Use HAProxy annotations to control traffic distribution:
+Use HAProxy Ingress annotations to control traffic distribution:
 
 ```yaml
 # blue-green-ingress.yaml
@@ -152,17 +165,15 @@ metadata:
   namespace: default
   annotations:
     # HAProxy backend configuration
-    haproxy.org/load-balance: "roundrobin"
+    haproxy-ingress.github.io/balance-algorithm: "roundrobin"
 
-    # Blue backend (100% traffic initially)
-    haproxy.org/server-weight-blue: "100"
-
-    # Green backend (0% traffic initially)
-    haproxy.org/server-weight-green: "0"
+    # Blue receives all new traffic initially; green receives none.
+    haproxy-ingress.github.io/blue-green-balance: "version=blue=100,version=green=0"
+    haproxy-ingress.github.io/blue-green-mode: "deploy"
 
     # Health check configuration
-    haproxy.org/check: "enabled"
-    haproxy.org/check-interval: "10s"
+    haproxy-ingress.github.io/health-check-uri: "/health"
+    haproxy-ingress.github.io/health-check-interval: "10s"
 spec:
   ingressClassName: haproxy
   rules:
@@ -173,7 +184,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: app-blue
+            name: app-service
             port:
               number: 80
 ```
@@ -184,7 +195,7 @@ Implement canary-style gradual shifting between blue and green.
 
 ### Multi-Backend Ingress
 
-Configure both backends with weights:
+Configure both groups with weights:
 
 ```yaml
 # weighted-blue-green.yaml
@@ -194,50 +205,41 @@ metadata:
   name: weighted-app
   namespace: default
   annotations:
-    haproxy.org/load-balance: "roundrobin"
+    haproxy-ingress.github.io/balance-algorithm: "roundrobin"
 
-    # Use backend switching based on weights
-    haproxy.org/backend-config-snippet: |
-      use-server app-blue weight 80
-      use-server app-green weight 20
+    # Send 80% of new traffic to blue and 20% to green.
+    haproxy-ingress.github.io/blue-green-balance: "version=blue=80,version=green=20"
+    haproxy-ingress.github.io/blue-green-mode: "deploy"
 
     # Server check configuration
-    haproxy.org/check: "enabled"
-    haproxy.org/check-interval: "5s"
-    haproxy.org/check-timeout: "3s"
+    haproxy-ingress.github.io/health-check-uri: "/health"
+    haproxy-ingress.github.io/health-check-interval: "5s"
 
     # Connection timeouts
-    haproxy.org/timeout-connect: "5s"
-    haproxy.org/timeout-server: "30s"
+    haproxy-ingress.github.io/timeout-connect: "5s"
+    haproxy-ingress.github.io/timeout-server: "30s"
 spec:
   ingressClassName: haproxy
   rules:
   - host: app.example.com
     http:
       paths:
-      # Blue backend - 80% traffic
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: app-blue
+            name: app-service
             port:
               number: 80
 ```
 
-For more precise control, use ConfigMap:
+For more precise control, update the `blue-green-balance` annotation:
 
 ```yaml
-# haproxy-config.yaml
-apiVersion: v1
-kind: ConfigMap
 metadata:
-  name: haproxy-configmap
-  namespace: haproxy-controller
-data:
-  backend-weights: |
-    blue: 70
-    green: 30
+  annotations:
+    haproxy-ingress.github.io/blue-green-balance: "version=blue=70,version=green=30"
+    haproxy-ingress.github.io/blue-green-mode: "deploy"
 ```
 
 ### Dynamic Weight Adjustment
@@ -258,10 +260,10 @@ for weight in 0 20 40 60 80 100; do
 
   echo "Shifting traffic: Blue $blue_weight%, Green $green_weight%"
 
-  kubectl annotate ingress $INGRESS \
-    -n $NAMESPACE \
-    haproxy.org/server-weight-blue="$blue_weight" \
-    haproxy.org/server-weight-green="$green_weight" \
+  kubectl annotate ingress "$INGRESS" \
+    -n "$NAMESPACE" \
+    haproxy-ingress.github.io/blue-green-balance="version=blue=$blue_weight,version=green=$green_weight" \
+    haproxy-ingress.github.io/blue-green-mode="deploy" \
     --overwrite
 
   # Wait for health checks and monitoring
@@ -290,14 +292,10 @@ metadata:
   name: header-based-routing
   namespace: default
   annotations:
-    haproxy.org/request-capture: "X-Beta-User"
-    haproxy.org/backend-config-snippet: |
-      # Route beta users to green
-      acl is_beta_user req.hdr(X-Beta-User) -m found
-      use-server app-green if is_beta_user
-
-      # Default to blue
-      use-server app-blue if !is_beta_user
+    # Match the value of X-Beta-Version against the pod's version label.
+    haproxy-ingress.github.io/blue-green-header: "X-Beta-Version:version"
+    haproxy-ingress.github.io/blue-green-balance: "version=blue=100,version=green=0"
+    haproxy-ingress.github.io/blue-green-mode: "deploy"
 spec:
   ingressClassName: haproxy
   rules:
@@ -308,10 +306,12 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: app-blue
+            name: app-service
             port:
               number: 80
 ```
+
+Requests with `X-Beta-Version: green` go to green pods. Requests without the header, or with a value that does not match a `version` label, fall back to the configured balance.
 
 ### Path-Based Blue-Green
 
@@ -324,8 +324,6 @@ kind: Ingress
 metadata:
   name: path-routing
   namespace: default
-  annotations:
-    haproxy.org/path-rewrite: "/"
 spec:
   ingressClassName: haproxy
   rules:
@@ -353,7 +351,7 @@ spec:
 
 ### Cookie-Based Routing
 
-Maintain user session during rollout:
+Route users based on a version cookie during rollout:
 
 ```yaml
 # cookie-routing.yaml
@@ -363,14 +361,10 @@ metadata:
   name: cookie-routing
   namespace: default
   annotations:
-    haproxy.org/cookie-persistence: "version"
-    haproxy.org/backend-config-snippet: |
-      # Check for version cookie
-      acl has_green_cookie req.cook(version) -m str green
-      use-server app-green if has_green_cookie
-
-      # Set cookie based on backend
-      cookie version insert indirect nocache
+    # Match the version cookie value against the pod's version label.
+    haproxy-ingress.github.io/blue-green-cookie: "version:version"
+    haproxy-ingress.github.io/blue-green-balance: "version=blue=100,version=green=0"
+    haproxy-ingress.github.io/blue-green-mode: "deploy"
 spec:
   ingressClassName: haproxy
   rules:
@@ -381,7 +375,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: app-blue
+            name: app-service
             port:
               number: 80
 ```
@@ -400,20 +394,17 @@ metadata:
   name: health-checked-blue-green
   namespace: default
   annotations:
-    # Enable health checks
-    haproxy.org/check: "enabled"
-    haproxy.org/check-http: "/health"
-    haproxy.org/check-interval: "5s"
-    haproxy.org/check-timeout: "3s"
+    # Enable HTTP health checks
+    haproxy-ingress.github.io/health-check-uri: "/health"
+    haproxy-ingress.github.io/health-check-interval: "5s"
 
     # Rise and fall thresholds
-    haproxy.org/server-rise: "2"
-    haproxy.org/server-fall: "3"
+    haproxy-ingress.github.io/health-check-rise-count: "2"
+    haproxy-ingress.github.io/health-check-fall-count: "3"
 
-    # Don't route to unhealthy backends
-    haproxy.org/backend-config-snippet: |
-      option httpchk GET /health HTTP/1.1\r\nHost:\ app.example.com
-      http-check expect status 200
+    # Blue-green balance
+    haproxy-ingress.github.io/blue-green-balance: "version=blue=100,version=green=0"
+    haproxy-ingress.github.io/blue-green-mode: "deploy"
 spec:
   ingressClassName: haproxy
   rules:
@@ -424,47 +415,21 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: app-blue
+            name: app-service
             port:
               number: 80
 ```
 
-### Automatic Rollback
+### Rollback Command
 
-Configure automatic rollback on errors:
+Roll back traffic to blue by restoring the blue-green balance:
 
-```yaml
-# auto-rollback.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: auto-rollback-ingress
-  namespace: default
-  annotations:
-    haproxy.org/check: "enabled"
-    haproxy.org/check-interval: "10s"
-
-    # Error threshold for rollback
-    haproxy.org/backend-config-snippet: |
-      # Track error rate
-      stick-table type ip size 100k expire 30s store http_err_rate(10s)
-
-      # Mark backend down if error rate > 10%
-      acl error_rate http_err_rate gt 10
-      use-server app-blue if error_rate
-spec:
-  ingressClassName: haproxy
-  rules:
-  - host: app.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: app-green
-            port:
-              number: 80
+```bash
+kubectl annotate ingress app-ingress \
+  -n default \
+  haproxy-ingress.github.io/blue-green-balance="version=blue=100,version=green=0" \
+  haproxy-ingress.github.io/blue-green-mode="deploy" \
+  --overwrite
 ```
 
 ## Monitoring Blue-Green Deployments
@@ -473,37 +438,42 @@ Monitor traffic distribution and health.
 
 ### Traffic Distribution Metrics
 
-```yaml
-# metrics-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: haproxy-metrics
-  namespace: haproxy-controller
-data:
-  prometheus.yaml: |
-    global:
-      stats socket /var/run/haproxy.sock mode 600 level admin
-      stats timeout 2m
+Enable HAProxy Ingress metrics in the Helm values:
 
-    frontend stats
-      bind *:9090
-      stats enable
-      stats uri /metrics
-      stats refresh 10s
+```yaml
+# haproxy-ingress-values.yaml
+controller:
+  ingressClassResource:
+    enabled: true
+  stats:
+    enabled: true
+  metrics:
+    enabled: true
+```
+
+Apply the updated values:
+
+```bash
+helm upgrade haproxy-ingress haproxy-ingress/haproxy-ingress \
+  --install \
+  --namespace ingress-controller \
+  -f haproxy-ingress-values.yaml
 ```
 
 Query metrics:
 
 ```bash
+# Forward the HAProxy Ingress service locally, then query metrics
+kubectl -n ingress-controller port-forward svc/haproxy-ingress 9101:9101
+
 # Check backend weights
-curl http://haproxy-metrics:9090/metrics | grep backend_weight
+curl http://localhost:9101/metrics | grep haproxy_backend_weight
 
 # Check active servers
-curl http://haproxy-metrics:9090/metrics | grep backend_active_servers
+curl http://localhost:9101/metrics | grep haproxy_backend_active_servers
 
 # Check response times
-curl http://haproxy-metrics:9090/metrics | grep response_time
+curl http://localhost:9101/metrics | grep haproxy_backend_response_time
 ```
 
 ### Testing Blue-Green Switch
@@ -517,8 +487,9 @@ curl -H "Host: app.example.com" http://HAPROXY_IP/
 
 # Switch to green
 kubectl annotate ingress app-ingress \
-  haproxy.org/server-weight-blue="0" \
-  haproxy.org/server-weight-green="100" \
+  -n default \
+  haproxy-ingress.github.io/blue-green-balance="version=blue=0,version=green=100" \
+  haproxy-ingress.github.io/blue-green-mode="deploy" \
   --overwrite
 
 # Wait for propagation
@@ -546,7 +517,6 @@ Full workflow script:
 set -e
 
 NAMESPACE="default"
-APP_NAME="myapp"
 NEW_VERSION="$1"
 
 echo "Starting blue-green deployment for version $NEW_VERSION"
@@ -554,11 +524,11 @@ echo "Starting blue-green deployment for version $NEW_VERSION"
 # 1. Deploy to green environment
 echo "Deploying to green environment..."
 kubectl set image deployment/app-green \
-  app=myapp:$NEW_VERSION \
-  -n $NAMESPACE
+  app=myapp:"$NEW_VERSION" \
+  -n "$NAMESPACE"
 
 # 2. Wait for rollout
-kubectl rollout status deployment/app-green -n $NAMESPACE
+kubectl rollout status deployment/app-green -n "$NAMESPACE"
 
 # 3. Run smoke tests
 echo "Running smoke tests on green..."
@@ -570,9 +540,10 @@ for weight in 10 25 50 75 100; do
   blue_weight=$((100 - weight))
 
   kubectl annotate ingress app-ingress \
-    haproxy.org/server-weight-blue="$blue_weight" \
-    haproxy.org/server-weight-green="$weight" \
-    --overwrite -n $NAMESPACE
+    -n "$NAMESPACE" \
+    haproxy-ingress.github.io/blue-green-balance="version=blue=$blue_weight,version=green=$weight" \
+    haproxy-ingress.github.io/blue-green-mode="deploy" \
+    --overwrite
 
   echo "Traffic: Blue $blue_weight%, Green $weight%"
   sleep 30
@@ -584,4 +555,4 @@ echo "Blue environment ready for rollback if needed"
 
 ## Conclusion
 
-HAProxy Ingress Controller provides robust support for blue-green deployments through its annotation system. By combining weight-based routing, health checks, and gradual traffic shifting, you can implement zero-downtime deployments with confidence. Always test thoroughly in the inactive environment, shift traffic gradually, and maintain the ability to rollback quickly. Monitor error rates and performance metrics during the transition to catch issues early and ensure smooth production releases.
+HAProxy Ingress provides robust support for blue-green deployments through its annotation system. By combining weight-based routing, health checks, and gradual traffic shifting, you can implement zero-downtime deployments with confidence. Always test thoroughly in the inactive environment, shift traffic gradually, and maintain the ability to rollback quickly. Monitor error rates and performance metrics during the transition to catch issues early and ensure smooth production releases.
