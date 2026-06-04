@@ -19,7 +19,7 @@ Install Calico using the manifest:
 ```bash
 # Download Calico manifest
 
-curl https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml -O
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml -O
 
 # Edit the manifest to configure BGP
 # Set CALICO_IPV4POOL_IPIP to "Never" for pure BGP
@@ -64,8 +64,7 @@ kubectl exec -n kube-system calico-node-xxxxx -- calicoctl node status
 By default, Calico creates a full mesh where every node peers with every other node. This works well for clusters up to about 100 nodes:
 
 ```yaml
-# Check default BGP configuration
-kubectl get bgpconfiguration default -o yaml
+# kubectl get bgpconfiguration default -o yaml
 
 apiVersion: projectcalico.org/v3
 kind: BGPConfiguration
@@ -136,18 +135,18 @@ spec:
 apiVersion: projectcalico.org/v3
 kind: BGPPeer
 metadata:
-  name: peer-with-rr1
+  name: peer-to-route-reflectors
 spec:
-  peerIP: 10.0.1.10
-  asNumber: 64512
+  nodeSelector: "!has(route-reflector)"
+  peerSelector: route-reflector == 'true'
 ---
 apiVersion: projectcalico.org/v3
 kind: BGPPeer
 metadata:
-  name: peer-with-rr2
+  name: route-reflectors-to-route-reflectors
 spec:
-  peerIP: 10.0.1.11
-  asNumber: 64512
+  nodeSelector: route-reflector == 'true'
+  peerSelector: route-reflector == 'true'
 ```
 
 This creates a hub-and-spoke topology where client nodes peer only with route reflectors, and route reflectors peer with each other.
@@ -198,7 +197,7 @@ router bgp 65001
  neighbor 10.0.1.12 remote-as 64512
  !
  address-family ipv4
-  network 0.0.0.0 0.0.0.0
+  network 0.0.0.0 mask 0.0.0.0
   neighbor 10.0.1.10 activate
   neighbor 10.0.1.11 activate
   neighbor 10.0.1.12 activate
@@ -327,14 +326,29 @@ Influence route selection by prepending AS path:
 
 ```yaml
 apiVersion: projectcalico.org/v3
+kind: BGPFilter
+metadata:
+  name: prepend-pod-routes
+spec:
+  exportV4:
+  - action: Accept
+    matchOperator: In
+    cidr: 10.244.0.0/16
+    operations:
+    - prependASPath:
+        prefix:
+        - 64512
+        - 64512
+---
+apiVersion: projectcalico.org/v3
 kind: BGPPeer
 metadata:
   name: external-router-prepend
 spec:
   peerIP: 192.168.1.1
   asNumber: 65100
-  # Prepend local AS twice to make routes less preferred
-  asPathPrepend: 2
+  filters:
+  - prepend-pod-routes
 ```
 
 ### BGP Communities
@@ -369,10 +383,10 @@ spec:
   ipipMode: Never
   vxlanMode: Never
   natOutgoing: true
-  # Disable BGP advertisement for this pool
+  # Keep BGP advertisement enabled for this pool
   disableBGPExport: false
   # Node selector for pool assignment
-  nodeSelector: "!node-role.kubernetes.io/master"
+  nodeSelector: "!has(node-role.kubernetes.io/control-plane)"
 ```
 
 ## Performance Optimization
@@ -387,10 +401,8 @@ metadata:
 spec:
   asNumber: 64512
   nodeToNodeMeshEnabled: true
-  # Tune BGP timers (in seconds)
-  bgpTimers:
-    keepaliveInterval: 10
-    holdTime: 30
+  # Tune BGP graceful restart timeout for full-mesh peerings
+  nodeMeshMaxRestartTime: 120s
   # Listen on specific address
   listenPort: 179
   # Bind to specific interface
