@@ -8,7 +8,7 @@ Description: Manage non-sensitive configuration files in Docker Swarm using the 
 
 ---
 
-Docker Swarm has a built-in `configs` feature designed specifically for non-secret configuration data. Think Nginx config files, application settings, feature flags, or logging configurations. Unlike secrets (which are encrypted at rest and mounted in a tmpfs), configs are stored unencrypted in the Raft log and mounted as regular files inside containers.
+Docker Swarm has a built-in `configs` feature designed specifically for non-secret configuration data. Think Nginx config files, application settings, feature flags, or logging configurations. Unlike secrets (which are encrypted at rest and mounted in a tmpfs), configs are intended for non-sensitive data and are mounted directly into the container filesystem.
 
 Configs solve a real problem. Before they existed, you had to bake configuration files into images (rebuilding for every change), use environment variables (messy for complex configs), or mount host volumes (breaking the portable, immutable container model). Swarm configs keep configuration separate from the image while maintaining the declarative, version-controlled workflow that Swarm provides.
 
@@ -47,8 +47,8 @@ docker config ls
 # Inspect a config to see its metadata
 docker config inspect nginx-conf
 
-# View the actual config content (base64 encoded in the output)
-docker config inspect nginx-conf --pretty
+# View the actual config content (base64 encoded in the JSON output)
+docker config inspect --format '{{.Spec.Data}}' nginx-conf
 ```
 
 ## Using Configs in Services
@@ -104,7 +104,7 @@ http {
 # Create the config from the file
 docker config create nginx-conf ./nginx.conf
 
-# Deploy Nginx using the config
+# Deploy Nginx using the config, assuming app-network and an api service already exist
 docker service create \
   --name proxy \
   --replicas 2 \
@@ -201,7 +201,7 @@ Deploy the stack:
 docker stack deploy -c docker-compose.yml myapp
 ```
 
-When you update a config file and redeploy the stack, Swarm detects the content change and performs a rolling update of affected services.
+Because configs are immutable, changing a local config file and redeploying with the same config name does not update the existing config. Use a new config name in the Compose file, then redeploy the stack so affected services roll to the new config.
 
 ## Templating Configs
 
@@ -288,7 +288,7 @@ When should you use each?
 
 - Configs are immutable after creation. Use the rotation pattern for updates.
 - Maximum config size is 500 KB.
-- Configs are stored unencrypted in the Raft log. Do not put sensitive data in them.
+- Configs are intended for non-sensitive data and do not have the same protections as Docker secrets. Do not put sensitive data in them.
 - Config names must be unique within the swarm.
 - You must remove a config from all services before deleting it.
 
