@@ -41,8 +41,6 @@ For a proper deployment with custom configuration:
 
 ```yaml
 # docker-compose.yml - Squid forward proxy
-version: "3.8"
-
 services:
   squid:
     image: ubuntu/squid:latest
@@ -116,7 +114,7 @@ forwarded_for delete
 
 ## Caching Proxy for Package Downloads
 
-One of the best uses for Squid in Docker is caching package manager downloads. This speeds up builds dramatically when multiple containers or CI jobs download the same packages:
+One of the best uses for Squid in Docker is caching HTTP package manager downloads. This speeds up builds dramatically when multiple containers or CI jobs download the same packages:
 
 ```text
 # squid.conf - Optimized for package caching
@@ -147,9 +145,6 @@ refresh_pattern -i \.tar\.gz$ 43200 100% 43200
 # Cache npm packages
 refresh_pattern -i \.tgz$ 43200 100% 43200
 
-# Cache Docker layers
-refresh_pattern -i /v2/.*/blobs/ 43200 100% 43200
-
 # Default refresh patterns
 refresh_pattern ^ftp: 1440 20% 10080
 refresh_pattern ^gopher: 1440 0% 1440
@@ -172,18 +167,17 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# pip will also use the proxy through environment variables
+# pip will also use the proxy through environment variables,
+# but HTTPS package traffic is tunneled unless you configure SSL bump.
 RUN pip3 install requests flask
 ```
 
 ## Docker Network Proxy
 
-Configure Squid as a transparent proxy for all containers on a Docker network:
+Configure Squid as an explicit proxy for containers on a Docker network:
 
 ```yaml
 # docker-compose.yml - Squid as a network proxy
-version: "3.8"
-
 services:
   squid:
     image: ubuntu/squid:latest
@@ -239,8 +233,6 @@ Block access to specific domains or content types:
 http_port 3128
 
 acl localnet src 172.16.0.0/12
-http_access allow localnet
-http_access allow localhost
 
 # Block specific domains
 acl blocked_sites dstdomain .facebook.com .twitter.com .instagram.com
@@ -254,6 +246,8 @@ http_access deny blocked_urls
 # acl allowed_sites dstdomain .github.com .npmjs.org .pypi.org
 # http_access deny !allowed_sites
 
+http_access allow localnet
+http_access allow localhost
 http_access deny all
 
 cache_dir ufs /var/spool/squid 1000 16 256
@@ -316,15 +310,14 @@ docker exec squid squidclient -h localhost -p 3128 mgr:active_requests
 docker exec squid du -sh /var/spool/squid/
 
 # Clear the entire cache
-docker exec squid squid -k shutdown
-docker exec squid rm -rf /var/spool/squid/*
-docker exec squid squid -z
-docker compose restart squid
+docker compose stop squid
+docker compose run --rm --no-deps --entrypoint sh squid -c 'rm -rf /var/spool/squid/* && squid -z'
+docker compose up -d squid
 ```
 
 ## HTTPS Interception (SSL Bump)
 
-For development and testing, Squid can intercept HTTPS traffic. This requires generating a CA certificate:
+For development and testing, Squid builds with SSL bump support can intercept HTTPS traffic. The `ubuntu/squid:latest` image used above does not currently support the `ssl-bump` listener option, so use a custom Squid image built with SSL bump support before using a configuration like this. This requires generating a CA certificate:
 
 ```bash
 # Generate a CA certificate for SSL interception
@@ -341,7 +334,7 @@ cat certs/squid-ca-cert.pem certs/squid-ca-key.pem > certs/squid-ca-cert-key.pem
 ```text
 # squid.conf - With SSL bump for HTTPS interception (development only)
 http_port 3128 ssl-bump \
-  cert=/etc/squid/certs/squid-ca-cert-key.pem \
+  tls-cert=/etc/squid/certs/squid-ca-cert-key.pem \
   generate-host-certificates=on \
   dynamic_cert_mem_cache_size=4MB
 
