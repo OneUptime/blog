@@ -20,7 +20,7 @@ The optimized loop with file sync includes editing code, syncing files to runnin
 
 ## Setting Up kubectl cp for Basic File Sync
 
-The simplest approach uses kubectl cp:
+The simplest approach uses kubectl cp. This requires the `tar` binary to be present in the container image:
 
 ```bash
 #!/bin/bash
@@ -95,7 +95,6 @@ set -e
 
 NAMESPACE="development"
 POD_NAME="api-7d8f6c9b-abc123"
-CONTAINER_NAME="api"
 LOCAL_PATH="./src/"
 REMOTE_PATH="/app/src/"
 
@@ -131,7 +130,7 @@ brew install mutagen-io/mutagen/mutagen
 mutagen daemon start
 ```
 
-Create a Mutagen configuration:
+Create a Mutagen project configuration. This example assumes the pods expose SSH on port 22 and that those ports are forwarded locally before running `mutagen project start`:
 
 ```yaml
 # mutagen.yml
@@ -149,14 +148,12 @@ sync:
 
   api-service:
     alpha: "./services/api/src"
-    beta: "docker://api-pod/app/src"
+    beta: "root@localhost:2222:/app/src"
     mode: "two-way-resolved"
-    configurationBeta:
-      username: "root"
 
   frontend:
     alpha: "./services/frontend/src"
-    beta: "docker://frontend-pod/app/src"
+    beta: "root@localhost:2223:/app/src"
     mode: "two-way-resolved"
 ```
 
@@ -182,8 +179,8 @@ if [ -z "$POD" ]; then
     exit 1
 fi
 
-# Set up port forward for sync
-kubectl port-forward -n "$NAMESPACE" "pod/$POD" 10873:873 &
+# Set up port forward to SSH in the pod
+kubectl port-forward -n "$NAMESPACE" "pod/$POD" 2222:22 &
 PF_PID=$!
 
 # Wait for port forward
@@ -196,7 +193,7 @@ mutagen sync create \
     --ignore="node_modules" \
     --ignore="*.log" \
     "$LOCAL_PATH" \
-    "root@localhost:$REMOTE_PATH"
+    "root@localhost:2222:$REMOTE_PATH"
 
 echo "Sync session created: $SYNC_NAME"
 echo "View status: mutagen sync list"
@@ -216,9 +213,8 @@ Create a custom sync tool in Node.js:
 ```javascript
 // sync-tool.js
 const chokidar = require('chokidar');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const path = require('path');
-const fs = require('fs');
 
 class KubeSyncer {
     constructor(config) {
@@ -235,9 +231,18 @@ class KubeSyncer {
 
     async getPodName() {
         return new Promise((resolve, reject) => {
-            const cmd = `kubectl get pod -n ${this.namespace} -l ${this.podSelector} -o jsonpath='{.items[0].metadata.name}'`;
+            const args = [
+                'get',
+                'pod',
+                '-n',
+                this.namespace,
+                '-l',
+                this.podSelector,
+                '-o',
+                'jsonpath={.items[0].metadata.name}'
+            ];
 
-            exec(cmd, (error, stdout) => {
+            execFile('kubectl', args, (error, stdout) => {
                 if (error) reject(error);
                 else resolve(stdout.trim());
             });
@@ -262,15 +267,19 @@ class KubeSyncer {
         try {
             const podName = await this.getPodName();
             const relativePath = path.relative(this.localPath, filePath);
-            const remotePath = path.join(this.remotePath, relativePath);
+            const remotePath = path.posix.join(this.remotePath, relativePath.split(path.sep).join('/'));
 
             console.log(`Syncing: ${relativePath}`);
 
             // Copy file to pod
-            const cmd = `kubectl cp "${filePath}" "${this.namespace}/${podName}:${remotePath}"`;
+            const args = [
+                'cp',
+                filePath,
+                `${this.namespace}/${podName}:${remotePath}`
+            ];
 
             await new Promise((resolve, reject) => {
-                exec(cmd, (error) => {
+                execFile('kubectl', args, (error) => {
                     if (error) reject(error);
                     else resolve();
                 });
@@ -398,9 +407,9 @@ npm run sync
 
 Configure Node.js with nodemon:
 
-```javascript
-// Development Dockerfile
-FROM node:18-alpine
+```dockerfile
+# Development Dockerfile
+FROM node:24-alpine
 
 WORKDIR /app
 
