@@ -34,7 +34,7 @@ rate(http_requests_total[5m])
 container_memory_usage_bytes{namespace="production"}
 ```
 
-Explore shows results immediately as you type, with auto-completion helping you discover available metrics and labels.
+Run the query to view results, with auto-completion helping you discover available metrics and labels as you type.
 
 ## Using Split View for Correlation
 
@@ -50,7 +50,7 @@ rate(http_requests_total{status="500"}[5m])
 {namespace="production"} |= "error" | json | status="500"
 ```
 
-Time ranges and cursor positions sync across both panes, making it easy to see the relationship between metrics spikes and log entries.
+When you link the time pickers, time ranges sync across both panes, making it easy to see the relationship between metrics spikes and log entries.
 
 ## Exploring Logs with Loki
 
@@ -83,7 +83,7 @@ When you've identified a problematic time window in metrics or logs, pivot to tr
 
 ```traceql
 # Search traces by service and duration
-{service.name="checkout-service" && duration > 2s}
+{resource.service.name="checkout-service" && duration > 2s}
 
 # Find traces with errors
 {status=error}
@@ -92,7 +92,7 @@ When you've identified a problematic time window in metrics or logs, pivot to tr
 {span.http.status_code=500}
 
 # Combine multiple conditions
-{service.name="api-gateway" &&
+{resource.service.name="api-gateway" &&
  duration > 1s &&
  span.http.route="/checkout"}
 ```
@@ -125,7 +125,7 @@ Switch between builder and code mode using the toggle button to learn query synt
 
 ## Leveraging Query History
 
-Explore maintains a history of all your queries, which is incredibly useful during investigations. Access it via the History tab or `Ctrl+H`.
+Explore maintains a history of all your queries, which is incredibly useful during investigations. Access it via the Query history pane.
 
 ```bash
 # Query history stores:
@@ -164,21 +164,21 @@ The time picker also includes a refresh interval option for live monitoring duri
 
 ## Creating Alerts from Explore
 
-When you've identified a query that should trigger alerts, convert it directly to an alert rule.
+When you've identified a query that should trigger alerts, use it as the basis for an alert rule.
 
-After building your query in Explore, click the "Create alert rule from this query" button. This opens the alert rule editor pre-populated with your query.
+After validating your query in Explore, open Alerts & IRM, create a new alert rule, and add the query in the alert rule editor.
 
 ```promql
 # Query built in Explore
-rate(http_requests_total{status="500"}[5m]) > 10
+sum(rate(http_requests_total{status="500"}[5m]))
 
 # Becomes an alert rule with:
 - Expression: your query
-- Condition: threshold already set
-- Time range: preserved from Explore
+- Condition: threshold you configure
+- Time range: fixed relative range for alert evaluation
 ```
 
-This workflow eliminates the need to recreate queries when moving from investigation to ongoing monitoring.
+This workflow lets you validate queries before moving from investigation to ongoing monitoring.
 
 ## Using Inspector for Query Analysis
 
@@ -210,21 +210,21 @@ Use this information to understand why queries return unexpected results or to o
 
 ## Exploring Multiple Data Sources Simultaneously
 
-Configure Explore to query multiple data sources at once, not just in split view but as part of the same query.
+Configure Explore to query multiple data sources at once, not just in split view but as part of the same Explore pane.
 
 ```yaml
 # Mixed data source query
 Data Source: -- Mixed --
 Query A (Prometheus): up{job="api"}
 Query B (Loki): {job="api"} |= "error"
-Query C (Tempo): {service.name="api"}
+Query C (Tempo): {resource.service.name="api"}
 ```
 
 This approach gives you a complete picture of your system's behavior across all observability signals.
 
 ## Using Exemplars to Connect Metrics and Traces
 
-When your Prometheus metrics include exemplars, Explore automatically links them to traces in Tempo.
+When your Prometheus metrics include exemplars and your data source is configured with an exemplar trace link, Explore can link them to traces in Tempo.
 
 ```promql
 # Query with exemplar support
@@ -240,10 +240,9 @@ Exemplars appear as diamonds on the graph. Click them to jump directly to the co
 Explore includes keyboard shortcuts that speed up investigations:
 
 ```text
-Ctrl+Enter / Cmd+Enter - Run query
-Shift+Enter - Add new query line
-Ctrl+K / Cmd+K - Clear query
+Shift+Enter - Run query
 Ctrl+Space - Trigger autocomplete
+? - Show available keyboard shortcuts
 Escape - Close panels/modals
 ```
 
@@ -261,8 +260,8 @@ When you've found something important, share it with your team. Use the share bu
 ```bash
 # Example share URL
 https://grafana.example.com/explore?orgId=1&
-  left={"datasource":"prometheus","queries":[{"expr":"rate(http[5m])"}]}&
-  range={"from":"now-1h","to":"now"}
+  schemaVersion=1&
+  panes=%7B%22abc%22%3A%7B%22datasource%22%3A%22prometheus%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22prometheus%22%2C%22type%22%3A%22prometheus%22%7D%2C%22expr%22%3A%22rate(http_requests_total%5B5m%5D)%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-1h%22%2C%22to%22%3A%22now%22%7D%7D%7D
 ```
 
 Team members can open this link and see exactly what you were investigating.
