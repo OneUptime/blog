@@ -61,7 +61,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: flagger
-      version: 1.34.x
+      version: 1.x
   values:
     meshProvider: istio
     metricsServer: http://prometheus.monitoring:9090
@@ -172,10 +172,10 @@ spec:
     # Schedule interval
     interval: 1m
 
-    # Max traffic percentage routed to canary
+    # Max number of failed checks before rollback
     threshold: 5
 
-    # Max number of failed checks before rollback
+    # Max traffic percentage routed to canary
     maxWeight: 50
 
     # Increment weight by this step
@@ -206,7 +206,7 @@ This configuration:
 - Starts with 10% traffic to canary
 - Increases by 10% each minute if metrics pass
 - Requires 99% success rate and sub-500ms latency
-- Rolls back if any check fails
+- Rolls back if the failed check count reaches the threshold
 
 ## Metrics Analysis
 
@@ -424,13 +424,8 @@ Switch to blue/green instead of canary:
 spec:
   analysis:
     interval: 1m
-    threshold: 10
+    threshold: 2
     iterations: 10
-    # Route all traffic at once after validation
-    canaryAnalysis:
-      threshold: 10
-      maxWeight: 0
-      stepWeight: 100
 ```
 
 ### A/B Testing
@@ -511,17 +506,17 @@ spec:
 
 ## Notifications
 
-Integrate with notification systems:
+Send canary events to notification receivers:
 
 ```yaml
 analysis:
   webhooks:
   - name: notify-slack
-    type: rollout
-    url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    type: event
+    url: http://event-receiver.notifications/slack
   - name: notify-pagerduty
-    type: rollout-failure
-    url: https://events.pagerduty.com/v2/enqueue
+    type: event
+    url: http://event-receiver.notifications/pagerduty
 ```
 
 ## Best Practices
