@@ -83,7 +83,9 @@ kubescape scan framework nsa --format pretty-printer | head -50
 
 # Filter failed controls only
 kubescape scan framework nsa --format json | \
-  jq '.results[] | select(.status == "failed") | {name, severity}'
+  jq '.summaryDetails.controls | to_entries[] |
+    select(.value.status == "failed") |
+    {id: .key, name: .value.name, severity: .value.severity}'
 ```
 
 ## Scanning Against MITRE ATT&CK Framework
@@ -94,8 +96,8 @@ MITRE ATT&CK framework focuses on adversary tactics and techniques:
 # Scan with MITRE ATT&CK framework
 kubescape scan framework mitre --verbose
 
-# Focus on specific tactics
-kubescape scan framework mitre --controls-config controls.yaml
+# Scan a specific namespace
+kubescape scan framework mitre --include-namespaces production
 ```
 
 The framework checks for vulnerabilities that attackers could exploit:
@@ -111,13 +113,13 @@ The CIS Benchmark provides detailed security configuration guidelines:
 
 ```bash
 # Scan with CIS Benchmark
-kubescape scan framework cis-v1.23-t1.0.1
+kubescape scan framework cis-v1.12.0
 
 # Scan specific namespace
-kubescape scan framework cis-v1.23-t1.0.1 --include-namespaces production
+kubescape scan framework cis-v1.12.0 --include-namespaces production
 
 # Exclude system namespaces
-kubescape scan framework cis-v1.23-t1.0.1 --exclude-namespaces kube-system,kube-public
+kubescape scan framework cis-v1.12.0 --exclude-namespaces kube-system,kube-public
 ```
 
 CIS controls cover:
@@ -135,15 +137,15 @@ Kubescape calculates a compliance score based on passed vs. failed controls:
 ```bash
 # Get compliance score
 kubescape scan framework nsa --format json | \
-  jq '.summaryDetails.score'
+  jq '.summaryDetails.complianceScore'
 
 # View detailed breakdown
 kubescape scan framework nsa --format json | \
-  jq '.summaryDetails | {
-    score,
-    passed: .controls.passed,
-    failed: .controls.failed,
-    total: .controls.total
+  jq '{
+    score: .summaryDetails.complianceScore,
+    passed: (.summaryDetails.controls | to_entries | map(select(.value.status == "passed")) | length),
+    failed: (.summaryDetails.controls | to_entries | map(select(.value.status == "failed")) | length),
+    total: (.summaryDetails.controls | length)
   }'
 ```
 
@@ -157,8 +159,8 @@ Audit individual resources or resource types:
 # Scan specific deployment
 kubescape scan workload deployment/web-app -n production
 
-# Scan all deployments
-kubescape scan workload deployment --all-namespaces
+# Scan all resources visible to the current context
+kubescape scan --verbose
 
 # Scan YAML files before applying
 kubescape scan *.yaml --format json --output results.json
@@ -169,64 +171,78 @@ helm template myapp ./mychart | kubescape scan -
 
 This helps catch security issues before deploying resources to the cluster.
 
-## Configuring Custom Control Thresholds
+## Configuring Custom Control Parameters
 
-Adjust severity thresholds to match your requirements:
+Adjust supported control parameters to match your requirements:
 
-```yaml
-# controls-config.yaml
-controls:
-  - controlID: C-0016
-    name: Allow privilege escalation
-    severity: Critical
-    action: warn
-  - controlID: C-0017
-    name: Immutable container filesystem
-    severity: High
-    action: enforce
-  - controlID: C-0034
-    name: Automatic mapping of service account
-    severity: Medium
-    action: warn
+```json
+{
+  "cpu_limit_min": ["100m"],
+  "memory_limit_min": ["128Mi"],
+  "imageRepositoryAllowList": ["registry.example.com", "ghcr.io/company"],
+  "insecureCapabilities": ["NET_ADMIN", "NET_RAW", "SYS_ADMIN"]
+}
 ```
 
 Use the configuration file:
 
 ```bash
-kubescape scan framework nsa --controls-config controls-config.yaml
+kubescape scan framework nsa --controls-config controls-config.json
 ```
 
 ## Setting Up Exceptions
 
 Create exceptions for known acceptable deviations:
 
-```yaml
-# exceptions.yaml
-exceptions:
-  - name: "kube-system-privileged-pods"
-    policyName: C-0016
-    resources:
-      - kind: DaemonSet
-        name: kube-proxy
-        namespace: kube-system
-      - kind: DaemonSet
-        name: calico-node
-        namespace: kube-system
-    justification: "System components require privileged access"
-
-  - name: "monitoring-host-path"
-    policyName: C-0048
-    resources:
-      - kind: DaemonSet
-        name: node-exporter
-        namespace: monitoring
-    justification: "Node exporter needs host metrics access"
+```json
+[
+  {
+    "name": "kube-system-privileged-pods",
+    "policyType": "postureExceptionPolicy",
+    "actions": ["alertOnly"],
+    "resources": [
+      {
+        "designatorType": "Attributes",
+        "attributes": {
+          "kind": "DaemonSet",
+          "namespace": "kube-system",
+          "name": "kube-proxy|calico-node"
+        }
+      }
+    ],
+    "posturePolicies": [
+      {
+        "controlID": "C-0057"
+      }
+    ]
+  },
+  {
+    "name": "monitoring-host-path",
+    "policyType": "postureExceptionPolicy",
+    "actions": ["alertOnly"],
+    "resources": [
+      {
+        "designatorType": "Attributes",
+        "attributes": {
+          "kind": "DaemonSet",
+          "namespace": "monitoring",
+          "name": "node-exporter"
+        }
+      }
+    ],
+    "posturePolicies": [
+      {
+        "controlID": "C-0060"
+      }
+    ]
+  }
+]
 ```
 
 Apply exceptions:
 
 ```bash
-kubescape scan framework nsa --exceptions exceptions.yaml --format pretty-printer
+kubescape scan framework nsa --exceptions exceptions.json --format pretty-printer
 ```
 
 ## Continuous Compliance Monitoring
@@ -234,49 +250,45 @@ kubescape scan framework nsa --exceptions exceptions.yaml --format pretty-printe
 Set up scheduled scans with the operator:
 
 ```yaml
-# scheduled-scan.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubescape-scheduler
-  namespace: kubescape
-data:
-  config.json: |
-    {
-      "scan": {
-        "scanSchedule": "0 2 * * *",
-        "frameworks": ["nsa", "mitre", "cis-v1.23-t1.0.1"],
-        "scanScope": {
-          "includeNamespaces": ["production", "staging"],
-          "excludeNamespaces": ["kube-system"]
-        }
-      }
-    }
+# values-scheduled-scan.yaml
+kubescapeScheduler:
+  scanSchedule: "0 2 * * *"
+  requestBody:
+    commands:
+      - CommandName: "kubescapeScan"
+        args:
+          scanV1:
+            targetType: "framework"
+            targetNames:
+              - "nsa"
+              - "mitre"
+              - "cis-v1.12.0"
 ```
 
 Apply the configuration:
 
 ```bash
-kubectl apply -f scheduled-scan.yaml
+helm upgrade kubescape kubescape/kubescape-operator \
+  --namespace kubescape \
+  --reuse-values \
+  -f values-scheduled-scan.yaml
 
 # Trigger immediate scan
-kubectl exec -n kubescape deployment/kubescape-operator -- \
-  kubescape scan framework nsa
+kubescape operator scan configurations --namespace kubescape
 ```
 
-## Viewing Historical Scan Results
+## Viewing Current Scan Results
 
-Query past scans from the operator's storage:
+Query scan results exposed by the operator's storage API:
 
 ```bash
-# Get scan history
-kubectl exec -n kubescape deployment/kubescape-storage -- \
-  curl -s http://localhost:8080/v1/scans | jq '.scans[] | {date, score}'
+# List Kubescape API resources
+kubectl api-resources | grep kubescape
 
-# Compare scans over time
-kubectl exec -n kubescape deployment/kubescape-storage -- \
-  curl -s http://localhost:8080/v1/scans | \
-  jq '.scans | sort_by(.date) | .[] | {date, score}'
+# Get workload configuration scan summaries
+kubectl get workloadconfigurationscansummaries \
+  -A \
+  -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,STATUS:.status.status
 ```
 
 ## Integrating with CI/CD Pipelines
@@ -292,7 +304,7 @@ jobs:
   kubescape:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install Kubescape
         run: curl -s https://raw.githubusercontent.com/kubescape/kubescape/master/install.sh | /bin/bash
@@ -302,10 +314,10 @@ jobs:
           kubescape scan framework nsa *.yaml \
             --format json \
             --output results.json \
-            --fail-threshold 80
+            --compliance-threshold 80
 
       - name: Upload results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kubescape-results
           path: results.json
@@ -358,10 +370,18 @@ kubescape scan framework nsa --format sarif --output results.sarif
 # Custom JSON processing for executive summary
 kubescape scan framework nsa --format json | jq '{
   cluster: .clusterName,
-  scanDate: .scanDate,
-  score: .summaryDetails.score,
-  criticalIssues: (.results[] | select(.severity == "Critical") | .name),
-  highIssues: [.results[] | select(.severity == "High") | .name]
+  scanDate: .generationTime,
+  score: .summaryDetails.complianceScore,
+  criticalIssues: [
+    .summaryDetails.controls | to_entries[] |
+    select(.value.status == "failed" and .value.severity == "Critical") |
+    .value.name
+  ],
+  highIssues: [
+    .summaryDetails.controls | to_entries[] |
+    select(.value.status == "failed" and .value.severity == "High") |
+    .value.name
+  ]
 }'
 ```
 
@@ -374,10 +394,12 @@ Track security improvements over time:
 helm upgrade kubescape kubescape/kubescape-operator \
   --namespace kubescape \
   --reuse-values \
-  --set prometheus.enabled=true
+  --set capabilities.prometheusExporter=enable \
+  --set kubescape.serviceMonitor.enabled=true
 
 # Query metrics
-curl -s http://kubescape-prometheus:8080/metrics | grep kubescape_
+kubectl port-forward -n kubescape service/prometheus-exporter 8080:8080
+curl -s http://localhost:8080/metrics | grep kubescape_
 ```
 
 Create dashboards showing:
