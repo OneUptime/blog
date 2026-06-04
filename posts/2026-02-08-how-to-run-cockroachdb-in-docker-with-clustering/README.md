@@ -26,7 +26,7 @@ docker run -d \
   -p 26257:26257 \
   -p 8080:8080 \
   -v cockroach-data:/cockroach/cockroach-data \
-  cockroachdb/cockroach:v23.2.3 \
+  cockroachdb/cockroach:v26.2.1 \
   start-single-node \
   --insecure \
   --advertise-addr=localhost
@@ -58,7 +58,7 @@ version: "3.8"
 
 services:
   roach1:
-    image: cockroachdb/cockroach:v23.2.3
+    image: cockroachdb/cockroach:v26.2.1
     container_name: roach1
     hostname: roach1
     command: >
@@ -85,7 +85,7 @@ services:
       start_period: 30s
 
   roach2:
-    image: cockroachdb/cockroach:v23.2.3
+    image: cockroachdb/cockroach:v26.2.1
     container_name: roach2
     hostname: roach2
     command: >
@@ -106,7 +106,7 @@ services:
       - cockroachnet
 
   roach3:
-    image: cockroachdb/cockroach:v23.2.3
+    image: cockroachdb/cockroach:v26.2.1
     container_name: roach3
     hostname: roach3
     command: >
@@ -128,7 +128,7 @@ services:
 
   # Initialization container - runs once to initialize the cluster
   init:
-    image: cockroachdb/cockroach:v23.2.3
+    image: cockroachdb/cockroach:v26.2.1
     container_name: roach-init
     command: >
       init --insecure --host=roach1:26357
@@ -136,7 +136,11 @@ services:
       - cockroachnet
     depends_on:
       roach1:
-        condition: service_healthy
+        condition: service_started
+      roach2:
+        condition: service_started
+      roach3:
+        condition: service_started
 
 volumes:
   roach1-data:
@@ -164,9 +168,9 @@ docker exec -it roach1 cockroach node status --insecure --host=roach1:26257
 ```mermaid
 graph TD
     Client[SQL Client] --> LB[Load Balancer / Direct]
-    LB --> R1[roach1:26257]
-    LB --> R2[roach2:26258]
-    LB --> R3[roach3:26259]
+    LB --> R1[localhost:26257 / roach1:26257]
+    LB --> R2[localhost:26258 / roach2:26257]
+    LB --> R3[localhost:26259 / roach3:26257]
     R1 <--> R2
     R2 <--> R3
     R1 <--> R3
@@ -175,7 +179,7 @@ graph TD
     R3 --> D3[(Data Volume 3)]
 ```
 
-Each node communicates with every other node over the internal port (26357). SQL clients connect on port 26257. Data is automatically replicated across nodes.
+Each node communicates with every other node over the internal port (26357). SQL clients inside the Docker network connect to each node on port 26257, while clients on the Docker host use the mapped ports 26257, 26258, and 26259. Data is automatically replicated across nodes.
 
 ## Initializing the Cluster
 
@@ -347,7 +351,7 @@ version: "3.8"
 
 services:
   certs-init:
-    image: cockroachdb/cockroach:v23.2.3
+    image: cockroachdb/cockroach:v26.2.1
     container_name: certs-init
     volumes:
       - certs:/certs
@@ -362,7 +366,7 @@ services:
       "
 
   roach1:
-    image: cockroachdb/cockroach:v23.2.3
+    image: cockroachdb/cockroach:v26.2.1
     command: >
       start
       --certs-dir=/certs
@@ -435,11 +439,11 @@ CockroachDB supports SQL-level backup:
 ```bash
 # Create a full backup to local storage
 docker exec -it roach1 cockroach sql --insecure --host=roach1:26257 \
-  -e "BACKUP DATABASE myapp TO 'nodelocal://1/backup/myapp';"
+  -e "BACKUP DATABASE myapp INTO 'nodelocal://1/backup/myapp';"
 
-# Restore from backup
+# Restore from backup into a new database name
 docker exec -it roach1 cockroach sql --insecure --host=roach1:26257 \
-  -e "RESTORE DATABASE myapp FROM 'nodelocal://1/backup/myapp';"
+  -e "RESTORE DATABASE myapp FROM LATEST IN 'nodelocal://1/backup/myapp' WITH new_db_name = 'myapp_restored';"
 ```
 
 ## Performance Tuning
@@ -497,7 +501,7 @@ docker exec -it roach1 cockroach sql --insecure --host=roach1:26257 \
 
 # View range distribution
 docker exec -it roach1 cockroach sql --insecure --host=roach1:26257 \
-  -e "SELECT * FROM crdb_internal.ranges_no_leases WHERE database_name = 'myapp';"
+  -e "SHOW RANGES FROM TABLE myapp.users WITH DETAILS;"
 ```
 
 ## Summary
