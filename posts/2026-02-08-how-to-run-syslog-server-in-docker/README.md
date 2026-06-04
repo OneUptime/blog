@@ -48,8 +48,6 @@ A production setup includes persistent storage, custom configuration, and log ro
 ```yaml
 # docker-compose.yml - Centralized rsyslog server
 # Receives logs from all infrastructure and stores them organized by host
-version: "3.8"
-
 services:
   rsyslog:
     image: rsyslog/syslog_appliance_alpine:latest
@@ -58,7 +56,6 @@ services:
     ports:
       - "514:514/udp"    # Traditional syslog (UDP)
       - "514:514/tcp"    # Reliable syslog (TCP)
-      - "6514:6514/tcp"  # Syslog over TLS
     volumes:
       - ./rsyslog.conf:/etc/rsyslog.conf:ro
       - ./rsyslog.d:/etc/rsyslog.d:ro
@@ -82,7 +79,7 @@ Create an rsyslog.conf that receives logs and organizes them by source hostname.
 
 ```bash
 # rsyslog.conf - Central syslog server configuration
-# Receives logs via UDP, TCP, and TLS, then stores by hostname and facility
+# Receives logs via UDP and TCP, then stores by hostname and facility
 
 # Load required modules
 module(load="imudp")    # UDP syslog input
@@ -134,8 +131,6 @@ syslog-ng offers a more flexible configuration language and built-in support for
 
 ```yaml
 # docker-compose.yml - Syslog-ng server
-version: "3.8"
-
 services:
   syslog-ng:
     image: balabit/syslog-ng:latest
@@ -144,7 +139,6 @@ services:
     ports:
       - "514:514/udp"
       - "514:514/tcp"
-      - "6514:6514/tcp"
     volumes:
       - ./syslog-ng.conf:/etc/syslog-ng/syslog-ng.conf:ro
       - syslog-logs:/var/log/remote
@@ -300,11 +294,7 @@ Prevent disk space from filling up with automated log rotation.
     delaycompress
     missingok
     notifempty
-    create 0644 root root
-    sharedscripts
-    postrotate
-        /bin/kill -HUP $(cat /var/run/syslogd.pid 2>/dev/null) 2>/dev/null || true
-    endscript
+    copytruncate
 }
 ```
 
@@ -318,7 +308,7 @@ Prevent disk space from filling up with automated log rotation.
       - syslog-logs:/var/log/remote
       - ./logrotate.conf:/etc/logrotate.d/syslog:ro
     entrypoint: /bin/sh
-    command: ["-c", "while true; do logrotate /etc/logrotate.d/syslog; sleep 86400; done"]
+    command: ["-c", "apk add --no-cache logrotate && while true; do logrotate /etc/logrotate.d/syslog; sleep 86400; done"]
 ```
 
 ## Forwarding to Modern Log Platforms
@@ -379,14 +369,14 @@ docker exec syslog-server sh -c 'for dir in /var/log/remote/*/; do host=$(basena
 Make sure your syslog server stays healthy and keeps up with incoming messages.
 
 ```bash
-# Check rsyslog internal statistics
+# Validate the rsyslog configuration
 docker exec syslog-server rsyslogd -N1
 
 # Monitor disk usage of the log volume
 docker exec syslog-server du -sh /var/log/remote/
 
 # Watch incoming logs in real time
-docker exec syslog-server tail -f /var/log/remote/all.log
+docker exec syslog-server sh -c 'tail -f /var/log/remote/*/*/*.log'
 ```
 
 Integrate syslog server health monitoring with OneUptime to get alerts when the server stops receiving logs or when disk usage approaches capacity.
