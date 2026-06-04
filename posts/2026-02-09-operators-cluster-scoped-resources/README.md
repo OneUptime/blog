@@ -120,6 +120,7 @@ package controllers
 import (
     "context"
 
+    corev1 "k8s.io/api/core/v1"
     "k8s.io/apimachinery/pkg/runtime"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
@@ -213,21 +214,21 @@ if err := ctrl.SetControllerReference(cluster, clusterRole, r.Scheme); err != ni
 }
 ```
 
-**Cluster-scoped resources CANNOT own namespace-scoped resources**:
+**Cluster-scoped resources can own namespace-scoped resources**:
 
 ```go
-// This will FAIL - cluster-scoped cannot own namespace-scoped
-// cluster (cluster-scoped) cannot own deployment (namespace-scoped)
+// Cluster owns Deployment (cluster-scoped owner, namespace-scoped dependent)
 if err := ctrl.SetControllerReference(cluster, deployment, r.Scheme); err != nil {
-    // Error: cross-namespace owner references are disallowed
     return err
 }
 ```
 
-Instead, use labels and custom cleanup logic:
+Namespace-scoped resources cannot own resources in a different namespace, and cluster-scoped dependents can only have cluster-scoped owners.
+
+If you need custom cleanup logic instead of garbage collection, use labels and a finalizer:
 
 ```go
-// Label namespace-scoped resources instead of using owner references
+// Label namespace-scoped resources for custom cleanup
 deployment := &appsv1.Deployment{
     ObjectMeta: metav1.ObjectMeta{
         Name:      "worker",
@@ -240,7 +241,7 @@ deployment := &appsv1.Deployment{
     // ...
 }
 
-// Create without owner reference
+// Create without relying on garbage collection
 if err := r.Create(ctx, deployment); err != nil {
     return err
 }
@@ -253,14 +254,6 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
     cluster := &examplev1.Cluster{}
     if err := r.Get(ctx, req.NamespacedName, cluster); err != nil {
         return ctrl.Result{}, client.IgnoreNotFound(err)
-    }
-
-    // Add finalizer if not present
-    if !controllerutil.ContainsFinalizer(cluster, "cluster.example.com/finalizer") {
-        controllerutil.AddFinalizer(cluster, "cluster.example.com/finalizer")
-        if err := r.Update(ctx, cluster); err != nil {
-            return ctrl.Result{}, err
-        }
     }
 
     // Handle deletion
@@ -278,6 +271,14 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
             }
         }
         return ctrl.Result{}, nil
+    }
+
+    // Add finalizer if not present
+    if !controllerutil.ContainsFinalizer(cluster, "cluster.example.com/finalizer") {
+        controllerutil.AddFinalizer(cluster, "cluster.example.com/finalizer")
+        if err := r.Update(ctx, cluster); err != nil {
+            return ctrl.Result{}, err
+        }
     }
 
     // Normal reconciliation
