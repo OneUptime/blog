@@ -24,7 +24,7 @@ graph LR
     V --> T1[Transform: Parse JSON]
     V --> T2[Transform: Add Fields]
     T1 --> S1[Elasticsearch]
-    T2 --> S2[Prometheus Remote Write]
+    T2 --> S2[Prometheus Scrape Endpoint]
     T1 --> S3[S3 Archive]
 ```
 
@@ -43,6 +43,10 @@ Create a `vector.yaml` file. This configuration collects Docker container logs, 
 
 ```yaml
 # vector.yaml - Observability pipeline configuration
+
+api:
+  enabled: true
+  address: "0.0.0.0:8686"
 
 # Sources define where Vector collects data from
 
@@ -96,7 +100,7 @@ transforms:
       - parse_json_logs
     condition:
       type: vrl
-      source: '!contains(string!(.message), "/health") ?? true'
+      source: '!contains(string(.message) ?? "", "/health")'
 
   # Add environment metadata to all events
   enrich_metadata:
@@ -138,7 +142,7 @@ sinks:
     encoding:
       codec: json
 
-  # Send metrics to Prometheus via remote write
+  # Expose metrics for Prometheus to scrape
   prometheus_metrics:
     type: prometheus_exporter
     inputs:
@@ -161,12 +165,10 @@ Create the `docker-compose.yml` with Vector, Elasticsearch, and sample applicati
 
 ```yaml
 # docker-compose.yml - Vector observability pipeline
-version: "3.8"
-
 services:
   # Vector - the observability pipeline
   vector:
-    image: timberio/vector:0.37.0-alpine
+    image: timberio/vector:0.56.0-alpine
     volumes:
       - ./vector.yaml:/etc/vector/vector.yaml
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -210,7 +212,7 @@ services:
 
   # Sample API generating structured JSON logs
   api-simulator:
-    image: alpine:3.19
+    image: alpine:3.23
     command: >
       sh -c "while true; do
         echo '{\"level\":\"info\",\"service\":\"api\",\"endpoint\":\"/users\",\"method\":\"GET\",\"status\":200,\"duration_ms\":'$$(shuf -i 5-200 -n 1)'}';
@@ -224,7 +226,7 @@ services:
 
   # Error-generating service
   error-simulator:
-    image: alpine:3.19
+    image: alpine:3.23
     command: >
       sh -c "while true; do
         echo '{\"level\":\"error\",\"service\":\"payments\",\"error\":\"connection timeout\",\"retry_count\":'$$(shuf -i 1-5 -n 1)'}';
@@ -314,7 +316,7 @@ sinks:
 
 ## Performance Characteristics
 
-Vector is designed for high throughput. On a single core, it can process over 10GB of log data per second for simple pipelines. Memory usage stays low because Vector uses a fixed-size buffer system rather than unbounded queues. For Docker deployments, you can limit resources without worrying about Vector falling behind under normal load.
+Vector is designed for high throughput. Its sizing guidance gives conservative MiB-per-second-per-vCPU estimates, with actual capacity depending on pipeline shape, hardware, and destinations. Memory usage stays predictable because Vector uses configured buffers rather than unbounded queues. For Docker deployments, you can limit resources while still preserving backpressure behavior under normal load.
 
 ```yaml
 # Resource limits for Vector in Docker Compose
