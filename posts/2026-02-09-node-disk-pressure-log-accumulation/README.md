@@ -14,9 +14,9 @@ This guide covers diagnosing log accumulation issues, configuring proper log rot
 
 ## Understanding Container Log Management
 
-Kubernetes stores container stdout and stderr logs on the node filesystem, typically under `/var/log/pods/`. The container runtime (containerd, CRI-O) manages these log files and rotates them based on configuration. When rotation is misconfigured or disabled, verbose applications quickly fill disk space.
+Kubernetes stores container stdout and stderr logs on the node filesystem, typically under `/var/log/pods/`. The kubelet is responsible for rotating container logs and managing the logging directory structure, while the container runtime writes logs to the paths the kubelet provides. When rotation is misconfigured or disabled, verbose applications quickly fill disk space.
 
-The kubelet monitors filesystem usage and triggers disk pressure conditions when usage exceeds thresholds. Default thresholds mark nodes as experiencing DiskPressure at 85% usage, and the kubelet begins evicting pods to reclaim space. This protects the node but disrupts running applications.
+The kubelet monitors filesystem usage and triggers disk pressure conditions when available space or inodes fall below configured thresholds. The default hard eviction thresholds include `nodefs.available<10%`, `imagefs.available<15%`, `nodefs.inodesFree<5%`, and `imagefs.inodesFree<5%`, and the kubelet begins evicting pods to reclaim space when thresholds are met. This protects the node but disrupts running applications.
 
 ## Identifying Disk Pressure from Logs
 
@@ -82,9 +82,9 @@ sudo ls -lh /var/log/pods/default_verbose-app-6f8d9c7b5-x4k2h_*/app/
 # -rw-r----- 1 root root 100M Feb  9 08:00 2.log
 ```
 
-## Configuring Container Runtime Log Rotation
+## Configuring Container Log Rotation
 
-Configure containerd to rotate logs more aggressively. Edit `/etc/containerd/config.toml` on each node.
+Container log rotation is configured through the kubelet. Containerd's CRI configuration can limit the maximum size of a single log line, but it does not set the per-container log file rotation count or size. If you need to adjust the line-size limit, edit `/etc/containerd/config.toml` on each node.
 
 ```toml
 version = 2
@@ -96,12 +96,9 @@ version = 2
 
 # Container log configuration
 [plugins."io.containerd.grpc.v1.cri"]
-  [plugins."io.containerd.grpc.v1.cri".containerd]
-    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-      # Maximum size of container log file before rotation
-      max_container_log_line_size = 16384  # 16KB per line
+  # Maximum size of a single CRI log line before it is split
+  max_container_log_line_size = 16384  # 16KB per line
 
-  # Enable log rotation
   enable_unprivileged_ports = false
   enable_unprivileged_icmp = false
 
@@ -122,8 +119,9 @@ kind: KubeletConfiguration
 containerLogMaxSize: 50Mi
 # Number of rotated log files to retain
 containerLogMaxFiles: 5
-# Total max size for all container logs on node
+# Number of concurrent workers used for log rotation
 containerLogMaxWorkers: 1
+# How often kubelet checks whether logs need rotation
 containerLogMonitorInterval: 30s
 ```
 
@@ -149,9 +147,8 @@ ssh worker-1
 # This removes logs older than 7 days
 sudo find /var/log/pods -type f -name "*.log" -mtime +7 -delete
 
-# Remove logs from terminated pods
-# These directories persist even after pod deletion
-sudo find /var/log/pods -type d -name "*_terminated_*" -mtime +1 -exec rm -rf {} +
+# Remove empty log directories left after cleanup
+sudo find /var/log/pods -type d -empty -mtime +1 -delete
 
 # Check disk space after cleanup
 df -h /
@@ -203,8 +200,8 @@ spec:
             # Remove logs older than 7 days
             find /var/log/pods -type f -name "*.log" -mtime +7 -delete
 
-            # Remove terminated pod logs older than 1 day
-            find /var/log/pods -type d -path "*_terminated_*" -mtime +1 -exec rm -rf {} +
+            # Remove empty log directories left after cleanup
+            find /var/log/pods -type d -empty -mtime +1 -delete
 
             # Truncate very large current logs (>500MB)
             find /var/log/pods -name "0.log" -size +500M -exec truncate -s 100M {} \;
@@ -294,10 +291,12 @@ function shouldLogRequest() {
 
 app.use((req, res, next) => {
   if (shouldLogRequest()) {
-    logger.info('HTTP request', {
-      method: req.method,
-      path: req.path,
-      status: res.statusCode
+    res.on('finish', () => {
+      logger.info('HTTP request', {
+        method: req.method,
+        path: req.path,
+        status: res.statusCode
+      });
     });
   }
   next();
@@ -323,8 +322,8 @@ data:
 
     [INPUT]
         Name              tail
-        Path              /var/log/pods/*/*/*.log
-        Parser            docker
+        Path              /var/log/containers/*.log
+        multiline.parser  docker, cri
         Tag               kube.*
         Refresh_Interval  5
         Mem_Buf_Limit     50MB
@@ -412,24 +411,28 @@ data:
         annotations:
           summary: "Node {{ $labels.node }} in disk pressure"
 
-      - alert: LargeLogFiles
+      - alert: NodeInodeUsageHigh
         expr: |
-          node_filesystem_files{mountpoint="/var/log"} > 100000
+          (1 - node_filesystem_files_free{mountpoint="/"}
+          / node_filesystem_files{mountpoint="/"}) > 0.80
         for: 30m
         labels:
           severity: warning
         annotations:
-          summary: "Excessive log files on {{ $labels.instance }}"
+          summary: "Node {{ $labels.instance }} inode usage above 80%"
 ```
 
 Create dashboards tracking log directory sizes and growth rates.
 
 ```bash
-# Export disk metrics from nodes
-kubectl run disk-monitor --image=prom/node-exporter \
-  --restart=Never \
-  --hostnetwork=true \
-  --hostpid=true
+# If you run node-exporter in a container, mount the host root and point
+# node-exporter at it so filesystem metrics describe the node, not the container.
+docker run -d \
+  --net="host" \
+  --pid="host" \
+  -v "/:/host:ro,rslave" \
+  quay.io/prometheus/node-exporter:latest \
+  --path.rootfs=/host
 ```
 
 Container log accumulation causes preventable disk pressure that disrupts cluster operations. By configuring proper log rotation, implementing automated cleanup, shipping logs to external storage, and reducing application verbosity, you prevent disk space exhaustion. Combined with proactive monitoring and alerting, these practices ensure nodes maintain adequate free space for normal operations without emergency interventions.
