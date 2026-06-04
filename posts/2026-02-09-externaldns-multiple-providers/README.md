@@ -19,7 +19,7 @@ Common multi-provider scenarios:
 - AWS Route53 for public records, internal DNS for private records
 - Different cloud providers for different geographic regions
 - Multiple Route53 hosted zones for different domains
-- CloudFlare for CDN, Route53 for internal services
+- Cloudflare for CDN, Route53 for internal services
 - Split-horizon DNS with different providers for internal/external views
 
 ## Setting Up Multiple ExternalDNS Instances
@@ -45,7 +45,10 @@ metadata:
   name: external-dns-route53
 rules:
 - apiGroups: [""]
-  resources: ["services","endpoints","pods"]
+  resources: ["services","pods"]
+  verbs: ["get","watch","list"]
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
   verbs: ["get","watch","list"]
 - apiGroups: ["extensions","networking.k8s.io"]
   resources: ["ingresses"]
@@ -86,7 +89,7 @@ spec:
       serviceAccountName: external-dns-route53
       containers:
       - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=service
         - --source=ingress
@@ -132,7 +135,10 @@ metadata:
   name: external-dns-clouddns
 rules:
 - apiGroups: [""]
-  resources: ["services","endpoints","pods"]
+  resources: ["services","pods"]
+  verbs: ["get","watch","list"]
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
   verbs: ["get","watch","list"]
 - apiGroups: ["extensions","networking.k8s.io"]
   resources: ["ingresses"]
@@ -192,7 +198,7 @@ spec:
       serviceAccountName: external-dns-clouddns
       containers:
       - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=service
         - --source=ingress
@@ -277,11 +283,17 @@ metadata:
   name: external-dns-route53-public
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: external-dns-route53-public
   template:
+    metadata:
+      labels:
+        app: external-dns-route53-public
     spec:
       containers:
       - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=service
         - --source=ingress
@@ -299,11 +311,17 @@ metadata:
   name: external-dns-route53-private
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: external-dns-route53-private
   template:
+    metadata:
+      labels:
+        app: external-dns-route53-private
     spec:
       containers:
       - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=service
         - --source=ingress
@@ -327,6 +345,11 @@ metadata:
     external-dns.alpha.kubernetes.io/hostname: api.example.com
 spec:
   type: LoadBalancer
+  ports:
+  - port: 443
+    targetPort: 8443
+  selector:
+    app: public-api
 ---
 # Internal service
 apiVersion: v1
@@ -335,29 +358,39 @@ metadata:
   name: internal-api
   annotations:
     external-dns.alpha.kubernetes.io/hostname: api.internal.example.com
+    external-dns.alpha.kubernetes.io/target: 10.0.50.100
 spec:
   type: ClusterIP
-  externalIPs:
-  - 10.0.50.100
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: internal-api
 ```
 
-## CloudFlare and Route53 Together
+## Cloudflare and Route53 Together
 
-A common pattern uses CloudFlare for CDN-enabled public records and Route53 for everything else:
+A common pattern uses Cloudflare for CDN-enabled public records and Route53 for everything else:
 
 ```yaml
-# CloudFlare for CDN
+# Cloudflare for CDN
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: external-dns-cloudflare
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: external-dns-cloudflare
   template:
+    metadata:
+      labels:
+        app: external-dns-cloudflare
     spec:
       containers:
       - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=ingress
         - --domain-filter=cdn.example.com
@@ -380,11 +413,17 @@ metadata:
   name: external-dns-route53
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: external-dns-route53
   template:
+    metadata:
+      labels:
+        app: external-dns-route53
     spec:
       containers:
       - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=service
         - --source=ingress
@@ -451,10 +490,17 @@ kind: Deployment
 metadata:
   name: external-dns-services
 spec:
+  selector:
+    matchLabels:
+      app: external-dns-services
   template:
+    metadata:
+      labels:
+        app: external-dns-services
     spec:
       containers:
       - name: external-dns
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=service
         - --domain-filter=services.example.com
@@ -466,10 +512,17 @@ kind: Deployment
 metadata:
   name: external-dns-ingresses
 spec:
+  selector:
+    matchLabels:
+      app: external-dns-ingresses
   template:
+    metadata:
+      labels:
+        app: external-dns-ingresses
     spec:
       containers:
       - name: external-dns
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=ingress
         - --domain-filter=apps.example.com
@@ -478,7 +531,7 @@ spec:
 
 ## Namespace-Based Filtering
 
-Route different namespaces to different providers using label selectors:
+Route different namespaces to different providers using namespace filters:
 
 ```yaml
 # Production to Route53
@@ -487,10 +540,17 @@ kind: Deployment
 metadata:
   name: external-dns-production
 spec:
+  selector:
+    matchLabels:
+      app: external-dns-production
   template:
+    metadata:
+      labels:
+        app: external-dns-production
     spec:
       containers:
       - name: external-dns
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=service
         - --source=ingress
@@ -504,10 +564,17 @@ kind: Deployment
 metadata:
   name: external-dns-staging
 spec:
+  selector:
+    matchLabels:
+      app: external-dns-staging
   template:
+    metadata:
+      labels:
+        app: external-dns-staging
     spec:
       containers:
       - name: external-dns
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=service
         - --source=ingress
@@ -561,13 +628,13 @@ spec:
   - name: externaldns
     rules:
     - alert: ExternalDNSSyncFailed
-      expr: external_dns_registry_errors_total > 0
+      expr: rate(external_dns_registry_errors_total[5m]) > 0
       for: 5m
       labels:
         severity: warning
       annotations:
         summary: "ExternalDNS sync errors"
-        description: "ExternalDNS {{ $labels.app }} has registry errors"
+        description: "ExternalDNS has registry errors"
 ```
 
 ## Handling Conflicts and Ownership
