@@ -31,7 +31,9 @@ Name: namespace
 Type: Query
 Label: Namespace
 Data source: Prometheus
-Query: label_values(kube_namespace_created, namespace)
+Query type: Label values
+Label: namespace
+Metric: kube_namespace_created
 Regex: (leave empty or filter with regex)
 Multi-value: Enabled
 Include All option: Enabled
@@ -46,10 +48,10 @@ Create a panel that uses the namespace variable in its query:
 ```promql
 # CPU usage per namespace
 
-sum(rate(container_cpu_usage_seconds_total{namespace="$namespace"}[5m])) by (pod)
+sum(rate(container_cpu_usage_seconds_total{namespace=~"$namespace"}[$__rate_interval])) by (pod)
 ```
 
-The `$namespace` variable will be replaced with the selected namespace values when the query runs.
+The `$namespace` variable will be replaced with the selected namespace values when the query runs. Because this variable is multi-value and includes the "All" option, use a regex matcher (`=~`) instead of an exact matcher (`=`).
 
 ## Configuring Panel Repeating
 
@@ -78,15 +80,21 @@ Create variables that depend on each other for hierarchical filtering:
 ```text
 # Variable 1: Cluster
 Name: cluster
-Query: label_values(kube_node_info, cluster)
+Query type: Label values
+Label: cluster
+Metric: kube_node_info
 
 # Variable 2: Namespace (filtered by cluster)
 Name: namespace
-Query: label_values(kube_namespace_labels{cluster="$cluster"}, namespace)
+Query type: Label values
+Label: namespace
+Metric: kube_namespace_labels{cluster=~"$cluster"}
 
 # Variable 3: Deployment (filtered by namespace)
 Name: deployment
-Query: label_values(kube_deployment_created{namespace="$namespace"}, deployment)
+Query type: Label values
+Label: deployment
+Metric: kube_deployment_created{namespace=~"$namespace"}
 ```
 
 This creates a cascading selection where choosing a cluster filters available namespaces, and choosing a namespace filters available deployments.
@@ -117,13 +125,13 @@ Here's a complete dashboard JSON snippet with repeating panels:
       {
         "id": 1,
         "title": "CPU Usage - $namespace",
-        "type": "graph",
+        "type": "timeseries",
         "repeat": "namespace",
         "repeatDirection": "h",
         "maxPerRow": 2,
         "targets": [
           {
-            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\"}[5m])) by (pod)",
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\"}[$__rate_interval])) by (pod)",
             "legendFormat": "{{pod}}"
           }
         ]
@@ -131,13 +139,13 @@ Here's a complete dashboard JSON snippet with repeating panels:
       {
         "id": 2,
         "title": "Memory Usage - $namespace",
-        "type": "graph",
+        "type": "timeseries",
         "repeat": "namespace",
         "repeatDirection": "h",
         "maxPerRow": 2,
         "targets": [
           {
-            "expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\"}) by (pod)",
+            "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\"}) by (pod)",
             "legendFormat": "{{pod}}"
           }
         ]
@@ -167,23 +175,23 @@ For more complex layouts, use repeating rows that contain multiple panels:
   "panels": [
     {
       "title": "CPU Usage",
-      "type": "graph",
+      "type": "timeseries",
       "targets": [
-        {"expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\"}[5m]))"}
+        {"expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\"}[$__rate_interval]))"}
       ]
     },
     {
       "title": "Memory Usage",
-      "type": "graph",
+      "type": "timeseries",
       "targets": [
-        {"expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\"})"}
+        {"expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\"})"}
       ]
     },
     {
       "title": "Network I/O",
-      "type": "graph",
+      "type": "timeseries",
       "targets": [
-        {"expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"$namespace\"}[5m]))"}
+        {"expr": "sum(rate(container_network_transmit_bytes_total{namespace=~\"$namespace\"}[$__rate_interval]))"}
       ]
     }
   ]
@@ -232,10 +240,10 @@ Use multiple variables to create flexible dashboards:
 ```promql
 # Query using multiple variables
 sum(rate(container_cpu_usage_seconds_total{
-  namespace="$namespace",
-  cluster="$cluster",
+  namespace=~"$namespace",
+  cluster=~"$cluster",
   pod=~"$pod_pattern"
-}[5m])) by (pod)
+}[$__rate_interval])) by (pod)
 ```
 
 Only the `$namespace` variable needs to be the repeat variable, but you can filter by other variables in the queries.
@@ -268,7 +276,7 @@ Optimize performance by:
 - Aggregate before repeating
 
 # Example optimized query
-topk(10, sum(rate(container_cpu_usage_seconds_total{namespace="$namespace"}[5m])) by (pod))
+topk(10, sum(rate(container_cpu_usage_seconds_total{namespace=~"$namespace"}[$__rate_interval])) by (pod))
 ```
 
 ## Exporting and Sharing Repeating Dashboards
@@ -280,8 +288,10 @@ When sharing dashboards with repeating panels, others can customize namespace se
 curl -H "Authorization: Bearer $GRAFANA_API_KEY" \
   "http://localhost:3000/api/dashboards/uid/abc123" > dashboard.json
 
-# Import with provisioning
-cp dashboard.json /etc/grafana/provisioning/dashboards/
+# Import with file provisioning
+# Configure a dashboard provider under /etc/grafana/provisioning/dashboards/
+# with options.path set to this directory.
+cp dashboard.json /var/lib/grafana/dashboards/
 
 # Or use Terraform
 resource "grafana_dashboard" "namespace_monitoring" {
@@ -323,6 +333,8 @@ Here's a complete dashboard for monitoring multiple customer namespaces:
     "list": [
       {
         "name": "customer",
+        "type": "query",
+        "datasource": "Prometheus",
         "query": "label_values(kube_namespace_labels{label_tenant_type=\"customer\"}, namespace)",
         "multi": true,
         "includeAll": false
@@ -345,19 +357,19 @@ Here's a complete dashboard for monitoring multiple customer namespaces:
         {
           "title": "Request Rate",
           "targets": [{
-            "expr": "sum(rate(http_requests_total{namespace=\"$customer\"}[$interval]))"
+            "expr": "sum(rate(http_requests_total{namespace=~\"$customer\"}[$interval]))"
           }]
         },
         {
           "title": "Error Rate",
           "targets": [{
-            "expr": "sum(rate(http_requests_total{namespace=\"$customer\",status=~\"5..\"}[$interval]))"
+            "expr": "sum(rate(http_requests_total{namespace=~\"$customer\",status=~\"5..\"}[$interval]))"
           }]
         },
         {
           "title": "Latency p95",
           "targets": [{
-            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{namespace=\"$customer\"}[$interval]))"
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=~\"$customer\"}[$interval])) by (le))"
           }]
         }
       ]
