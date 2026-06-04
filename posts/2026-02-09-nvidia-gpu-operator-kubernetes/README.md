@@ -32,10 +32,11 @@ Ensure your cluster meets requirements:
 
 kubectl debug node/<node-name> -it --image=ubuntu -- uname -r
 
-# Verify nodes have GPUs
-kubectl get nodes -o json | jq '.items[].status.capacity | select(."nvidia.com/gpu" != null)'
+# Verify NVIDIA GPUs are visible on the host
+kubectl debug node/<gpu-node-name> -it --image=ubuntu -- bash -c "apt-get update && apt-get install -y pciutils && lspci | grep -i nvidia"
 
-# Check for existing GPU drivers (should be clean)
+# Check for existing GPU drivers
+# If drivers are already installed on the host, install the operator with driver.enabled=false
 kubectl debug node/<gpu-node-name> -it --image=ubuntu -- bash -c "lsmod | grep nvidia"
 ```
 
@@ -57,7 +58,7 @@ Install with default configuration:
 helm install gpu-operator nvidia/gpu-operator \
   --namespace gpu-operator \
   --create-namespace \
-  --version v23.9.1 \
+  --version v26.3.2 \
   --wait
 
 # Watch pods come up
@@ -95,7 +96,10 @@ driver:
   enabled: true
 
   # Driver version (match your GPU generation)
-  version: "535.129.03"
+  version: "580.126.20"
+
+  # Kernel module type: auto, proprietary, or open
+  kernelModuleType: "auto"
 
   # Use precompiled drivers for faster installation
   usePrecompiled: true
@@ -112,28 +116,20 @@ driver:
       cpu: "100m"
       memory: "128Mi"
 
-  # Node selector for GPU nodes
-  nodeSelector:
-    node-role.kubernetes.io/gpu: ""
+toolkit:
+  enabled: true
+  version: "v1.19.1"
 
-  # Tolerations for tainted nodes
+devicePlugin:
+  enabled: true
+  version: "v0.19.2"
+
+daemonsets:
+  # Tolerations for GPU operand daemonsets
   tolerations:
   - key: nvidia.com/gpu
     operator: Exists
     effect: NoSchedule
-
-toolkit:
-  enabled: true
-  version: "1.14.3"
-
-devicePlugin:
-  enabled: true
-  version: "0.14.3"
-
-  # Device plugin configuration
-  config:
-    name: device-plugin-config
-    default: default
 ```
 
 Upgrade with custom values:
@@ -152,16 +148,15 @@ Enable automatic GPU feature labeling:
 ```yaml
 gfd:
   enabled: true
-  version: "0.8.2"
+  version: "v0.19.2"
 
-  # Additional labels to discover
-  config: |
-    version: v1
-    flags:
-      migStrategy: none
-    sharing:
-      timeSlicing:
-        renameByDefault: false
+nfd:
+  enabled: true
+
+node-feature-discovery:
+  master:
+    config:
+      extraLabelNs: ["nvidia.com"]
 ```
 
 Check discovered features:
@@ -186,7 +181,7 @@ Enable DCGM Exporter for GPU metrics:
 ```yaml
 dcgmExporter:
   enabled: true
-  version: "3.3.0-3.2.0"
+  version: "4.5.3-4.8.2-distroless"
 
   # Service monitor for Prometheus
   serviceMonitor:
@@ -215,7 +210,7 @@ Query GPU metrics:
 DCGM_FI_DEV_GPU_UTIL
 
 # GPU memory usage
-DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_FREE
+DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE) * 100
 
 # GPU temperature
 DCGM_FI_DEV_GPU_TEMP
@@ -234,25 +229,23 @@ Create Grafana dashboard for GPU monitoring:
 # Dashboard ID: 12239
 curl -X POST http://admin:admin@localhost:3000/api/dashboards/import \
   -H "Content-Type: application/json" \
-  -d '{"dashboard":{"id":null},"overwrite":true,"inputs":[{"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":"Prometheus"}],"folderId":0,"pluginId":"grafana","dashboard":{"id":12239}}'
+  -d "$(curl -s https://grafana.com/api/dashboards/12239/revisions/latest/download | jq -c '{dashboard: ., overwrite: true, inputs: [{name: "DS_PROMETHEUS", type: "datasource", pluginId: "prometheus", value: "Prometheus"}]}')"
 ```
 
 ## Configuring MIG (Multi-Instance GPU)
 
-Enable MIG support for A100/H100 GPUs:
+Enable MIG support for A100 GPUs:
 
 ```yaml
 migManager:
   enabled: true
-  version: "0.6.0"
+  version: "v0.14.2"
 
   # MIG configuration
   config:
     name: mig-config
+    create: false
     default: all-disabled
-
-  # MIG strategies: none, single, mixed
-  strategy: mixed
 
 mig:
   # MIG strategy for device plugin
@@ -301,7 +294,7 @@ Apply MIG configuration:
 kubectl apply -f mig-parted-config.yaml
 
 # Label nodes to apply MIG config
-kubectl label node <gpu-node> nvidia.com/mig.config=all-1g.5gb
+kubectl label node <gpu-node> nvidia.com/mig.config=all-1g.5gb --overwrite
 
 # Verify MIG instances
 kubectl describe node <gpu-node> | grep nvidia.com/mig
@@ -402,14 +395,14 @@ Perform rolling driver upgrades:
 # Update driver version
 helm upgrade gpu-operator nvidia/gpu-operator \
   --namespace gpu-operator \
-  --set driver.version="545.23.08" \
+  --set driver.version="580.126.20" \
   --reuse-values
 
 # Monitor upgrade
 kubectl rollout status daemonset -n gpu-operator nvidia-driver-daemonset
 
-# Pods will be upgraded one node at a time
-# Workloads on each node will be drained before driver upgrade
+# Driver upgrades run one node at a time by default
+# GPU pods are evicted before driver reload; full node drain requires driver.upgradePolicy.drain.enable=true
 ```
 
 ## Setting Up Node Taints for GPU Nodes
