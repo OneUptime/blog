@@ -8,13 +8,13 @@ Description: Learn how to configure Crossplane connection secrets management to 
 
 ---
 
-Cloud resources generate credentials that applications need to consume. An RDS database creates connection strings with passwords. An S3 bucket generates access keys. A Redis instance returns auth tokens. Managing these dynamically generated secrets is a critical part of infrastructure automation.
+Cloud resources generate credentials and connection details that applications need to consume. An RDS database exposes endpoints, ports, usernames, and passwords. An IAM access key generates access key IDs and secret access keys. A Redis instance can return endpoints and auth tokens. Managing these dynamically generated secrets is a critical part of infrastructure automation.
 
-Crossplane handles this through connection secrets. When you provision managed resources, Crossplane automatically stores the connection details in Kubernetes secrets. Your applications reference those secrets without knowing anything about the underlying cloud provider. This guide shows you how to configure connection secret management effectively.
+Crossplane handles this through connection secrets. When you provision managed resources and configure a connection secret target, Crossplane stores the connection details in Kubernetes secrets. Your applications reference those secrets without knowing anything about the underlying cloud provider. This guide shows you how to configure connection secret management effectively.
 
 ## Understanding Connection Secrets
 
-Connection secrets store information that applications need to connect to managed resources. When Crossplane provisions an RDS instance, it retrieves the connection endpoint, username, password, and port. These values get written to a Kubernetes secret automatically.
+Connection secrets store information that applications need to connect to managed resources. When Crossplane provisions an RDS instance, the provider can publish connection details such as the connection endpoint, username, password, and port. These values get written to a Kubernetes secret when you configure a connection secret reference.
 
 The key benefit is decoupling. Applications consume standard Kubernetes secrets. The infrastructure layer handles credential generation and rotation. You can swap out a self-hosted database for a cloud-managed one without changing application configuration.
 
@@ -70,57 +70,67 @@ You'll see keys like endpoint, port, username, and password populated automatica
 
 ## Customizing Connection Secret Keys
 
-Control which keys appear in the connection secret.
+For a standalone managed resource, the provider determines which keys it writes to the connection secret. To expose a stable set of application-facing keys, use a Composition and map the provider-specific keys with `connectionDetails`.
 
 ```yaml
-# rds-custom-keys.yaml
-apiVersion: rds.aws.upbound.io/v1beta1
-kind: Instance
+# composition-custom-keys.yaml
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
 metadata:
-  name: postgres-db
+  name: postgres-custom-keys
 spec:
-  forProvider:
-    region: us-west-2
-    engine: postgres
-    engineVersion: "15.4"
-    instanceClass: db.t3.medium
-    allocatedStorage: 100
-    username: dbadmin
-    passwordSecretRef:
-      namespace: crossplane-system
-      name: db-password
-      key: password
-  writeConnectionSecretToRef:
-    namespace: production
-    name: postgres-connection
-  # Specify exactly which connection details to expose
-  writeConnectionDetailsToConfigRef:
-    name: postgres-connection-config
-```
-
-Define the connection details configuration.
-
-```yaml
-# connection-config.yaml
-apiVersion: apiextensions.crossplane.io/v1alpha1
-kind: ConnectionDetailsConfig
-metadata:
-  name: postgres-connection-config
-spec:
-  writeConnectionDetailsToRef:
-    namespace: production
-    name: postgres-connection
-  connectionDetails:
-    - name: host
-      fromConnectionSecretKey: endpoint
-    - name: port
-      fromConnectionSecretKey: port
-    - name: database
-      value: "defaultdb"
-    - name: username
-      fromConnectionSecretKey: username
-    - name: password
-      fromConnectionSecretKey: password
+  compositeTypeRef:
+    apiVersion: database.example.com/v1alpha1
+    kind: PostgreSQLInstance
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        writeConnectionSecretToRef:
+          patches:
+            - type: FromCompositeFieldPath
+              fromFieldPath: spec.writeConnectionSecretToRef.name
+              toFieldPath: name
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
+                  allocatedStorage: 100
+                  username: dbadmin
+                  passwordSecretRef:
+                    namespace: crossplane-system
+                    name: db-password
+                    key: password
+                writeConnectionSecretToRef:
+                  namespace: crossplane-system
+                  name: postgres-db-connection
+            connectionDetails:
+              - name: host
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: endpoint
+              - name: port
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: port
+              - name: database
+                type: FromValue
+                value: "defaultdb"
+              - name: username
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: username
+              - name: password
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: password
 ```
 
 This maps provider-specific keys to standardized names your applications expect.
@@ -139,43 +149,63 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: PostgreSQLInstance
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-            allocatedStorage: 100
-            username: dbadmin
-            passwordSecretRef:
-              namespace: crossplane-system
-              name: db-password
-              key: password
-      # Propagate connection secret from managed resource
-      connectionDetails:
-        - name: endpoint
-          fromConnectionSecretKey: endpoint
-        - name: port
-          fromConnectionSecretKey: port
-        - name: username
-          fromConnectionSecretKey: username
-        - name: password
-          fromConnectionSecretKey: password
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        writeConnectionSecretToRef:
+          patches:
+            - type: FromCompositeFieldPath
+              fromFieldPath: spec.writeConnectionSecretToRef.name
+              toFieldPath: name
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
+                  allocatedStorage: 100
+                  username: dbadmin
+                  passwordSecretRef:
+                    namespace: crossplane-system
+                    name: db-password
+                    key: password
+                writeConnectionSecretToRef:
+                  namespace: crossplane-system
+                  name: postgres-db-connection
+            # Propagate connection secret from managed resource
+            connectionDetails:
+              - name: endpoint
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: endpoint
+              - name: port
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: port
+              - name: username
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: username
+              - name: password
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: password
 
-    - name: security-group
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: SecurityGroup
-        spec:
-          forProvider:
-            region: us-west-2
-            description: PostgreSQL security group
-      # Security groups don't produce connection secrets
+          - name: security-group
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: SecurityGroup
+              spec:
+                forProvider:
+                  region: us-west-2
+                  description: PostgreSQL security group
+            # Security groups don't produce connection secrets
 ```
 
 When you create a claim, specify where the composite's connection secret should go.
@@ -198,7 +228,7 @@ The connection details flow from the RDS instance through the composition to the
 
 ## Merging Connection Secrets from Multiple Resources
 
-Some compositions create multiple resources that each produce connection details. Merge them into a single secret.
+Some compositions create multiple resources that each contribute connection details. Merge them into a single secret.
 
 ```yaml
 # composition-app-stack.yaml
@@ -210,64 +240,88 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: ApplicationStack
-  resources:
-    # Database resource
-    - name: database
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-            allocatedStorage: 50
-            username: appuser
-            passwordSecretRef:
-              namespace: crossplane-system
-              name: db-password
-              key: password
-      connectionDetails:
-        - name: db_host
-          fromConnectionSecretKey: endpoint
-        - name: db_port
-          fromConnectionSecretKey: port
-        - name: db_username
-          fromConnectionSecretKey: username
-        - name: db_password
-          fromConnectionSecretKey: password
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        writeConnectionSecretToRef:
+          patches:
+            - type: FromCompositeFieldPath
+              fromFieldPath: spec.writeConnectionSecretToRef.name
+              toFieldPath: name
+        resources:
+          # Database resource
+          - name: database
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
+                  allocatedStorage: 50
+                  username: appuser
+                  passwordSecretRef:
+                    namespace: crossplane-system
+                    name: db-password
+                    key: password
+                writeConnectionSecretToRef:
+                  namespace: crossplane-system
+                  name: app-db-connection
+            connectionDetails:
+              - name: db_host
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: endpoint
+              - name: db_port
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: port
+              - name: db_username
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: username
+              - name: db_password
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: password
 
-    # Redis cache
-    - name: redis
-      base:
-        apiVersion: cache.aws.upbound.io/v1beta1
-        kind: Cluster
-        spec:
-          forProvider:
-            region: us-west-2
-            cacheNodeType: cache.t3.micro
-            engine: redis
-            numCacheNodes: 1
-      connectionDetails:
-        - name: redis_host
-          fromConnectionSecretKey: cacheNodes[0].address
-        - name: redis_port
-          fromConnectionSecretKey: cacheNodes[0].port
+          # Redis cache
+          - name: redis
+            base:
+              apiVersion: elasticache.aws.upbound.io/v1beta1
+              kind: Cluster
+              spec:
+                forProvider:
+                  region: us-west-2
+                  cacheNodeType: cache.t3.micro
+                  engine: redis
+                  numCacheNodes: 1
+            connectionDetails:
+              - name: redis_host
+                type: FromFieldPath
+                fromFieldPath: status.atProvider.cacheNodes[0].address
+              - name: redis_port
+                type: FromFieldPath
+                fromFieldPath: status.atProvider.cacheNodes[0].port
 
-    # S3 bucket
-    - name: storage
-      base:
-        apiVersion: s3.aws.upbound.io/v1beta1
-        kind: Bucket
-        spec:
-          forProvider:
-            region: us-west-2
-      connectionDetails:
-        - name: bucket_name
-          fromFieldPath: metadata.name
-        - name: bucket_region
-          value: us-west-2
+          # S3 bucket
+          - name: storage
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: Bucket
+              spec:
+                forProvider:
+                  region: us-west-2
+            connectionDetails:
+              - name: bucket_name
+                type: FromFieldPath
+                fromFieldPath: metadata.name
+              - name: bucket_region
+                type: FromValue
+                value: us-west-2
 ```
 
 The claim's connection secret contains all merged keys.
@@ -290,71 +344,59 @@ The resulting secret has db_host, db_port, redis_host, redis_port, bucket_name, 
 
 ## Transforming Connection Secret Values
 
-Apply transforms to connection details before writing them to secrets.
+Function Patch and Transform can select, rename, and add static connection details. It doesn't transform values read from a composed resource's connection secret. For computed values like full connection URLs, compose a Kubernetes `Secret` with a templating or programming function, or build the value in the consuming application.
 
 ```yaml
-# composition-transforms.yaml
+# composition-selected-values.yaml
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  name: postgres-with-transforms
+  name: postgres-selected-values
 spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: PostgreSQLInstance
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-            allocatedStorage: 100
-            username: postgres
-            passwordSecretRef:
-              namespace: crossplane-system
-              name: db-password
-              key: password
-      connectionDetails:
-        # Build a complete connection string
-        - name: connection_url
-          type: FromConnectionSecretKey
-          fromConnectionSecretKey: endpoint
-          transform:
-            type: string
-            string:
-              type: Format
-              fmt: "postgresql://%s:%s@%s:%s/postgres"
-
-        # Convert port to string
-        - name: port_string
-          fromConnectionSecretKey: port
-          transform:
-            type: string
-            string:
-              type: Convert
-              convert: ToString
-
-        # Add static values
-        - name: ssl_mode
-          value: "require"
-
-        # Map environment to connection pool sizes
-        - name: max_connections
-          fromFieldPath: spec.parameters.environment
-          transform:
-            type: map
-            map:
-              development: "10"
-              staging: "25"
-              production: "100"
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
+                  allocatedStorage: 100
+                  username: postgres
+                  passwordSecretRef:
+                    namespace: crossplane-system
+                    name: db-password
+                    key: password
+                writeConnectionSecretToRef:
+                  namespace: crossplane-system
+                  name: postgres-selected-values
+            connectionDetails:
+              - name: host
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: endpoint
+              - name: port
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: port
+              - name: ssl_mode
+                type: FromValue
+                value: "require"
 ```
 
-These transforms let you create application-ready configuration from raw infrastructure details.
+These mappings let you create application-ready key names from raw infrastructure details.
 
 ## Connection Secret Scoping and RBAC
 
@@ -380,7 +422,7 @@ rules:
     resourceNames:
       - "app-db-connection"
       - "app-cache-connection"
-    verbs: ["get", "list", "watch"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -474,7 +516,7 @@ spec:
     name: postgres-connection
 ```
 
-When you update the password secret, Crossplane propagates the change.
+When you update the password secret, the provider reconciles the managed resource. Whether the cloud service applies the new password in place, requires replacement, or needs an additional rotation workflow depends on the specific provider and resource.
 
 ```bash
 # Generate new password
@@ -487,67 +529,51 @@ kubectl create secret generic db-master-password \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-The managed resource detects the change and updates the RDS password. The connection secret automatically reflects the new password.
+The managed resource detects the spec input change during reconciliation. Check the managed resource conditions and provider documentation to confirm how that specific RDS field is applied.
 
 ## External Secret Stores Integration
 
-Integrate with external secret management systems.
+Crossplane can publish connection details to external secret stores through External Secret Stores, an alpha feature that must be enabled explicitly and supported by the provider. For production clusters, many teams instead keep Crossplane writing Kubernetes Secrets and use a separate controller or platform workflow to distribute them.
 
 ```yaml
-# external-secrets-integration.yaml
-apiVersion: external-secrets.io/v1beta1
-kind: SecretStore
+# storeconfig-vault.yaml
+apiVersion: secrets.crossplane.io/v1alpha1
+kind: StoreConfig
 metadata:
-  name: aws-secrets-manager
-  namespace: production
+  name: vault
 spec:
-  provider:
-    aws:
-      service: SecretsManager
-      region: us-west-2
-      auth:
-        jwt:
-          serviceAccountRef:
-            name: external-secrets-sa
+  type: Plugin
+  defaultScope: crossplane-system
+  plugin:
+    endpoint: ess-plugin-vault.crossplane-system:4040
+    configRef:
+      apiVersion: secrets.crossplane.io/v1alpha1
+      kind: VaultConfig
+      name: vault-internal
 ---
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
+apiVersion: rds.aws.upbound.io/v1beta1
+kind: Instance
 metadata:
-  name: postgres-connection-external
-  namespace: production
+  name: postgres-db
 spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: aws-secrets-manager
-    kind: SecretStore
-  target:
-    name: postgres-connection-external
-    creationPolicy: Owner
-  dataFrom:
-    - extract:
-        key: prod/database/postgres
+  forProvider:
+    region: us-west-2
+    engine: postgres
+    engineVersion: "15.4"
+    instanceClass: db.t3.medium
+    allocatedStorage: 100
+    username: dbadmin
+    passwordSecretRef:
+      namespace: crossplane-system
+      name: db-password
+      key: password
+  publishConnectionDetailsTo:
+    name: prod/database/postgres
+    configRef:
+      name: vault
 ```
 
-Reference the Crossplane-generated secret in your SecretStore to sync it.
-
-```yaml
-# sync-crossplane-to-external.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: postgres-connection-sync
-  namespace: production
-  annotations:
-    # Annotation to trigger external secret sync
-    external-secrets.io/sync: "true"
-stringData:
-  endpoint: ""
-  port: ""
-  username: ""
-  password: ""
-```
-
-This pattern works with Vault, AWS Secrets Manager, Azure Key Vault, or any external secret store.
+This pattern is provider-dependent. Check your provider documentation for `publishConnectionDetailsTo` support before relying on it.
 
 ## Monitoring Connection Secret Health
 
@@ -591,7 +617,7 @@ data:
 
 ## Cleanup and Secret Lifecycle
 
-Configure what happens to secrets when managed resources are deleted.
+Configure what happens to the external cloud resource when managed resources are deleted. Connection secrets are Kubernetes objects written by the provider; Crossplane does not support a `connection-secret-deletion-policy` annotation.
 
 ```yaml
 # managed-resource-with-deletion-policy.yaml
@@ -599,12 +625,9 @@ apiVersion: rds.aws.upbound.io/v1beta1
 kind: Instance
 metadata:
   name: postgres-db
-  # Control secret cleanup behavior
-  annotations:
-    # Keep the connection secret after resource deletion
-    crossplane.io/connection-secret-deletion-policy: Orphan
 spec:
-  deletionPolicy: Delete
+  # Keep the external RDS instance if the managed resource is deleted
+  deletionPolicy: Orphan
   forProvider:
     region: us-west-2
     engine: postgres
@@ -621,7 +644,7 @@ spec:
     name: postgres-connection
 ```
 
-Use Orphan to preserve secrets for disaster recovery. Use Delete to clean up automatically.
+Use `deletionPolicy: Orphan` to preserve the external resource for disaster recovery. Use `deletionPolicy: Delete` to delete the external resource when the managed resource is deleted.
 
 ## Debugging Connection Secret Issues
 
@@ -646,7 +669,7 @@ kubectl get postgresqlinstance app-database -n production -o yaml | grep -A 5 wr
 
 ## Summary
 
-Crossplane connection secrets automate credential management for cloud resources. Managed resources write connection details to Kubernetes secrets automatically. Compositions merge secrets from multiple resources. Transforms let you shape data for application consumption.
+Crossplane connection secrets automate credential management for cloud resources. Managed resources write connection details to Kubernetes secrets when you configure a connection secret reference. Compositions merge secrets from multiple resources. Connection detail mappings let you shape key names for application consumption.
 
 Use writeConnectionSecretToRef to specify where secrets land. Reference secrets in your deployments as environment variables or volume mounts. Apply RBAC to control secret access. Integrate with external secret stores for centralized credential management.
 
