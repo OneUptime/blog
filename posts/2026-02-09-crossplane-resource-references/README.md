@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Crossplane, Kubernetes, Dependencies, Infrastructure-as-Code
 
-Description: Learn how to use Crossplane resource references and selectors to create dependencies between managed resources, ensuring proper provisioning order and automatic value propagation.
+Description: Learn how to use Crossplane resource references and selectors to connect managed resources and automatically propagate provider-assigned values.
 
 ---
 
 A security group needs a VPC ID. A database subnet group requires subnet IDs. An EKS node group references a cluster. Infrastructure has dependencies. Hard-coding IDs creates brittle configurations that break when you recreate resources. References solve this by letting resources discover and reference each other dynamically.
 
-Crossplane supports three ways to reference resources: direct references by name, selector-based references using labels, and controller references for ownership. This guide shows you when and how to use each approach.
+Crossplane supports references by external name, direct references by Kubernetes resource name, selector-based references using labels, and controller references for resources created by the same composite resource. This guide shows you when and how to use each approach.
 
 ## Understanding Resource References
 
-A reference creates a dependency between two resources. When resource A references resource B, Crossplane ensures B exists and is ready before provisioning A. The reference automatically populates with B's relevant field, like its ID or ARN.
+A reference connects two resources. When resource A references resource B, Crossplane resolves B's external name or provider-assigned value before reconciling the field on A. The reference automatically populates with B's relevant field, like its ID or ARN.
 
 References keep configurations portable. You can deploy the same set of manifests to different accounts or regions. Resources find each other through references rather than hard-coded values.
 
@@ -53,7 +53,7 @@ spec:
       name: main-vpc
 ```
 
-Crossplane waits for the VPC to become ready, then injects its ID into the subnet's vpcId field.
+Crossplane resolves the VPC's external ID, then injects it into the subnet's vpcId field.
 
 ## Selector-Based References
 
@@ -94,41 +94,56 @@ The subnet finds the VPC through labels. This works even when the VPC name chang
 
 ## Controller References for Ownership
 
-Use controller references to establish ownership relationships.
+Use controller references inside compositions to match resources owned by the same composite resource.
 
 ```yaml
 # security-group-with-controller-ref.yaml
-apiVersion: ec2.aws.upbound.io/v1beta1
-kind: SecurityGroup
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
 metadata:
-  name: app-security-group
+  name: app-networking
 spec:
-  forProvider:
-    region: us-west-2
-    description: Application security group
-    vpcIdRef:
-      name: main-vpc
----
-# security-group-rule.yaml
-apiVersion: ec2.aws.upbound.io/v1beta1
-kind: SecurityGroupRule
-metadata:
-  name: allow-http
-spec:
-  forProvider:
-    region: us-west-2
-    type: ingress
-    fromPort: 80
-    toPort: 80
-    protocol: tcp
-    cidrBlocks:
-      - "0.0.0.0/0"
-    # Reference owner using controller reference
-    securityGroupIdSelector:
-      matchControllerRef: true
+  compositeTypeRef:
+    apiVersion: platform.example.com/v1alpha1
+    kind: AppNetworking
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: security-group
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: SecurityGroup
+              spec:
+                forProvider:
+                  region: us-west-2
+                  description: Application security group
+                  vpcIdRef:
+                    name: main-vpc
+          - name: security-group-rule
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: SecurityGroupRule
+              spec:
+                forProvider:
+                  region: us-west-2
+                  type: ingress
+                  fromPort: 80
+                  toPort: 80
+                  protocol: tcp
+                  cidrBlocks:
+                    - "0.0.0.0/0"
+                  # Match the security group created by the same composite resource
+                  securityGroupIdSelector:
+                    matchControllerRef: true
 ```
 
-The rule matches resources owned by the same controller, ensuring related resources stay together.
+The rule matches resources created by the same composite resource, ensuring related resources stay together.
 
 ## Chaining Multiple References
 
@@ -222,7 +237,7 @@ spec:
       name: public-route-table
 ```
 
-Crossplane provisions resources in dependency order automatically.
+Crossplane keeps reconciling dependent resources as referenced values become available.
 
 ## References in Compositions
 
@@ -238,68 +253,81 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: PostgreSQLInstance
-  resources:
-    # Security group
-    - name: security-group
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: SecurityGroup
-        spec:
-          forProvider:
-            region: us-west-2
-            description: PostgreSQL database security group
-      patches:
-        # VPC ID comes from claim parameter
-        - fromFieldPath: spec.parameters.vpcId
-          toFieldPath: spec.forProvider.vpcId
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          # Security group
+          - name: security-group
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: SecurityGroup
+              spec:
+                forProvider:
+                  region: us-west-2
+                  description: PostgreSQL database security group
+            patches:
+              # VPC ID comes from claim parameter
+              - fromFieldPath: spec.parameters.vpcId
+                toFieldPath: spec.forProvider.vpcId
 
-    # Ingress rule references security group
-    - name: ingress-rule
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: SecurityGroupRule
-        spec:
-          forProvider:
-            region: us-west-2
-            type: ingress
-            fromPort: 5432
-            toPort: 5432
-            protocol: tcp
-            # Reference the security group created above
-            securityGroupIdSelector:
-              matchControllerRef: true
+          # Ingress rule references security group
+          - name: ingress-rule
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: SecurityGroupRule
+              spec:
+                forProvider:
+                  region: us-west-2
+                  type: ingress
+                  fromPort: 5432
+                  toPort: 5432
+                  protocol: tcp
+                  cidrBlocks:
+                    - "10.0.0.0/16"
+                  # Reference the security group created above
+                  securityGroupIdSelector:
+                    matchControllerRef: true
 
-    # Subnet group
-    - name: subnet-group
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: SubnetGroup
-        spec:
-          forProvider:
-            region: us-west-2
-      patches:
-        # Subnet IDs come from claim parameter
-        - fromFieldPath: spec.parameters.subnetIds
-          toFieldPath: spec.forProvider.subnetIds
+          # Subnet group
+          - name: subnet-group
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: SubnetGroup
+              spec:
+                forProvider:
+                  region: us-west-2
+            patches:
+              # Subnet IDs come from claim parameter
+              - fromFieldPath: spec.parameters.subnetIds
+                toFieldPath: spec.forProvider.subnetIds
 
-    # RDS instance references both security group and subnet group
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-            allocatedStorage: 100
-            # Reference security group
-            vpcSecurityGroupIdSelector:
-              matchControllerRef: true
-            # Reference subnet group
-            dbSubnetGroupNameSelector:
-              matchControllerRef: true
+          # RDS instance references both security group and subnet group
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
+                  allocatedStorage: 100
+                  username: postgres
+                  manageMasterUserPassword: true
+                  skipFinalSnapshot: true
+                  # Reference security group
+                  vpcSecurityGroupIdSelector:
+                    matchControllerRef: true
+                  # Reference subnet group
+                  dbSubnetGroupNameSelector:
+                    matchControllerRef: true
 ```
 
 Resources find each other through controller references automatically.
@@ -310,7 +338,7 @@ Reference resources in different namespaces.
 
 ```yaml
 # shared-vpc.yaml
-apiVersion: ec2.aws.upbound.io/v1beta1
+apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: VPC
 metadata:
   name: shared-vpc
@@ -323,7 +351,7 @@ spec:
     cidrBlock: "10.0.0.0/16"
 ---
 # app-subnet.yaml
-apiVersion: ec2.aws.upbound.io/v1beta1
+apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: Subnet
 metadata:
   name: app-subnet
@@ -337,9 +365,8 @@ spec:
     vpcIdSelector:
       matchLabels:
         shared: "true"
-      # Explicitly allow cross-namespace matching
-      policy:
-        resolve: Always
+      # Search for the VPC in a different namespace
+      namespace: platform-infrastructure
 ```
 
 Enable cross-namespace references with care. They create dependencies across team boundaries.
@@ -425,7 +452,7 @@ spec:
     securityGroupIdRef:
       name: app-sg
     # This creates a cycle if db-sg also references app-sg
-    destinationSecurityGroupIdRef:
+    sourceSecurityGroupIdRef:
       name: db-sg
 ```
 
@@ -445,38 +472,62 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: Application
-  resources:
-    - name: s3-bucket
-      base:
-        apiVersion: s3.aws.upbound.io/v1beta1
-        kind: Bucket
-        spec:
-          forProvider:
-            region: us-west-2
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: s3-bucket
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: Bucket
+              metadata:
+                labels:
+                  app: placeholder
+              spec:
+                forProvider:
+                  region: us-west-2
+            patches:
+              # Patch a shared label onto the bucket
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.labels[app]
 
-    - name: bucket-policy
-      base:
-        apiVersion: s3.aws.upbound.io/v1beta1
-        kind: BucketPolicy
-        spec:
-          forProvider:
-            region: us-west-2
-            # Reference bucket
-            bucketRef:
-              name: placeholder
-      patches:
-        # Patch the reference to point to composed bucket
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.bucketRef.name
-          transforms:
-            - type: string
-              string:
-                type: Format
-                fmt: "%s-bucket"
+          - name: bucket-policy
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: BucketPolicy
+              spec:
+                forProvider:
+                  region: us-west-2
+                  policy: |
+                    {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                        {
+                          "Effect": "Allow",
+                          "Principal": "*",
+                          "Action": "s3:GetObject",
+                          "Resource": "arn:aws:s3:::*/*"
+                        }
+                      ]
+                    }
+                  # Reference bucket by patched label
+                  bucketSelector:
+                    matchLabels:
+                      app: placeholder
+            patches:
+              # Patch the selector to point to the composed bucket
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.bucketSelector.matchLabels[app]
 ```
 
-Patches can dynamically set reference names based on composite resource values.
+Patches can dynamically set selector labels based on composite resource values.
 
 ## References for Multi-Resource Patterns
 
@@ -499,6 +550,9 @@ spec:
     engineVersion: "15.4"
     instanceClass: db.r5.large
     allocatedStorage: 500
+    username: postgres
+    manageMasterUserPassword: true
+    skipFinalSnapshot: true
 ---
 # Read replica references primary
 apiVersion: rds.aws.upbound.io/v1beta1
@@ -510,6 +564,8 @@ metadata:
 spec:
   forProvider:
     region: us-west-2
+    instanceClass: db.r5.large
+    skipFinalSnapshot: true
     # Reference primary database
     replicateSourceDbSelector:
       matchLabels:
@@ -525,6 +581,8 @@ metadata:
 spec:
   forProvider:
     region: us-west-2
+    instanceClass: db.r5.large
+    skipFinalSnapshot: true
     replicateSourceDbSelector:
       matchLabels:
         role: primary
@@ -534,8 +592,8 @@ All replicas automatically reference the primary through labels.
 
 ## Summary
 
-Crossplane resource references create dependencies between managed resources. Use name-based references when you know the exact resource name. Use selector-based references to match by labels. Use controller references to establish ownership in compositions.
+Crossplane resource references connect managed resources. Use name-based references when you know the exact resource name. Use selector-based references to match by labels. Use controller references to match resources that are already owned by the same composite resource in compositions.
 
-References ensure proper provisioning order. Crossplane waits for referenced resources to become ready before creating dependent resources. This eliminates race conditions and hard-coded IDs.
+References ensure dependent fields are populated from the resources they point to. Crossplane resolves referenced values before reconciling those fields, which eliminates hard-coded IDs.
 
 Design reference relationships carefully. Avoid circular dependencies. Use fallback values for optional references. Monitor reference resolution through events and logs. References make infrastructure configurations portable and maintainable.
