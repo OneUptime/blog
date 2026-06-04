@@ -22,8 +22,8 @@ To implement queue-depth-based scaling, you need:
 
 1. AWS SQS queue receiving messages
 2. Kubernetes pods consuming from the queue
-3. CloudWatch for SQS metrics
-4. A metrics provider that exposes CloudWatch metrics to Kubernetes (like KEDA or CloudWatch Exporter)
+3. SQS queue attributes or CloudWatch SQS metrics
+4. A metrics provider that exposes queue depth to Kubernetes (like KEDA or CloudWatch Exporter with Prometheus Adapter)
 5. HPA configured to scale based on queue depth
 
 ## Method 1: Using KEDA (Recommended)
@@ -38,7 +38,7 @@ helm repo update
 helm install keda kedacore/keda --namespace keda --create-namespace
 ```
 
-Create an IAM role for the ScaledObject to access CloudWatch metrics. Attach this policy:
+Create an IAM role for the ScaledObject authentication to read SQS queue attributes. Attach this policy:
 
 ```json
 {
@@ -48,10 +48,9 @@ Create an IAM role for the ScaledObject to access CloudWatch metrics. Attach thi
       "Effect": "Allow",
       "Action": [
         "sqs:GetQueueAttributes",
-        "sqs:GetQueueUrl",
-        "cloudwatch:GetMetricData"
+        "sqs:GetQueueUrl"
       ],
-      "Resource": "*"
+      "Resource": "arn:aws:sqs:us-east-1:123456789012:order-queue"
     }
   ]
 }
@@ -109,6 +108,16 @@ Create a KEDA ScaledObject for queue-depth-based scaling:
 
 ```yaml
 apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: order-processor-aws-auth
+  namespace: default
+spec:
+  podIdentity:
+    provider: aws
+    identityOwner: workload
+---
+apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
   name: order-processor-scaler
@@ -122,20 +131,21 @@ spec:
   cooldownPeriod: 300
   triggers:
   - type: aws-sqs-queue
+    authenticationRef:
+      name: order-processor-aws-auth
     metadata:
       queueURL: https://sqs.us-east-1.amazonaws.com/123456789012/order-queue
       queueLength: "100"
       awsRegion: "us-east-1"
-      identityOwner: operator
 ```
 
-This configuration scales the deployment to maintain approximately 100 messages per pod. KEDA polls CloudWatch every 30 seconds and adjusts replica count accordingly.
+This configuration scales the deployment to maintain approximately 100 messages per pod. KEDA checks the SQS queue every 30 seconds while the workload is scaled to zero; from one replica upward, the HPA also polls KEDA's metrics server on the HPA controller sync interval.
 
 ## Method 2: Using CloudWatch Exporter and Prometheus Adapter
 
 If you prefer a Prometheus-based approach, use CloudWatch Exporter to fetch SQS metrics.
 
-Deploy CloudWatch Exporter:
+Deploy CloudWatch Exporter with an IAM role or service account that can call `cloudwatch:ListMetrics`, `cloudwatch:GetMetricStatistics`, and `cloudwatch:GetMetricData`:
 
 ```yaml
 apiVersion: apps/v1
@@ -173,6 +183,21 @@ spec:
       - name: config
         configMap:
           name: cloudwatch-exporter-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudwatch-exporter
+  namespace: monitoring
+  labels:
+    app: cloudwatch-exporter
+spec:
+  selector:
+    app: cloudwatch-exporter
+  ports:
+  - name: metrics
+    port: 9106
+    targetPort: metrics
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -214,15 +239,14 @@ spec:
 Set up Prometheus Adapter to expose the queue depth metric:
 
 ```yaml
-rules:
-- seriesQuery: 'aws_sqs_approximate_number_of_messages_visible_average{queue_name="order-queue"}'
+externalRules:
+- seriesQuery: '{__name__="aws_sqs_approximate_number_of_messages_visible_average",queue_name!=""}'
   resources:
-    overrides:
-      namespace: {resource: "namespace"}
+    namespaced: false
   name:
-    matches: "^(.*)$"
+    matches: "^aws_sqs_approximate_number_of_messages_visible_average$"
     as: "sqs_queue_depth"
-  metricsQuery: 'max(aws_sqs_approximate_number_of_messages_visible_average{queue_name="order-queue"}) by (queue_name)'
+  metricsQuery: 'max(<<.Series>>{<<.LabelMatchers>>}) by (queue_name)'
 ```
 
 Create the HPA:
@@ -281,13 +305,13 @@ Monitor actual processing rates in production and adjust the target accordingly.
 
 ## Handling Visibility Timeout
 
-SQS visibility timeout affects scaling behavior. Messages being processed are invisible to queue depth metrics, which can cause premature scale-down. Set your cooldown period to be longer than your visibility timeout:
+SQS visibility timeout affects scaling behavior. CloudWatch's `ApproximateNumberOfMessagesVisible` excludes in-flight messages, while KEDA's SQS scaler includes in-flight messages by default. For KEDA scale-to-zero behavior, set your cooldown period to be longer than your visibility timeout:
 
 ```yaml
 cooldownPeriod: 300  # 5 minutes, longer than visibility timeout
 ```
 
-This prevents scaling down while messages are still being processed.
+For HPA-based CloudWatch metrics, use a scale-down stabilization window or include `ApproximateNumberOfMessagesNotVisible` in the external metric if you need in-flight messages to influence scale-down decisions.
 
 ## Combining Queue Depth with Resource Metrics
 
