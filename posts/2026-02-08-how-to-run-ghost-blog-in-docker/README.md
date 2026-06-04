@@ -68,7 +68,7 @@ services:
     ports:
       - "2368:2368"
     volumes:
-      # Persist themes, images, and configuration
+      # Persist themes, images, uploaded files, and local content data
       - ghost-content:/var/lib/ghost/content
     environment:
       NODE_ENV: production
@@ -141,10 +141,10 @@ Visit `https://blog.yourdomain.com/ghost` to create your admin account and start
 
 ## Configuring Email for Newsletters
 
-Ghost's newsletter feature requires a bulk email service. For small lists (under 300 subscribers), SMTP works fine. For larger lists, Ghost recommends Mailgun.
+Ghost's newsletter feature requires a bulk email service. Transactional email can use SMTP, but newsletter delivery for self-hosted Ghost cannot use basic SMTP. Ghost currently supports Mailgun for bulk newsletters.
 
 ```yaml
-# Mailgun configuration for larger newsletter lists
+# Mailgun configuration for newsletters and transactional email
 environment:
   mail__transport: "SMTP"
   mail__options__service: "Mailgun"
@@ -187,7 +187,7 @@ Ghost also supports the Theme Marketplace where you can download free and premiu
 
 ## Ghost Content API
 
-Ghost provides a Content API for building custom frontends (headless CMS approach) and a Admin API for managing content programmatically.
+Ghost provides a Content API for building custom frontends (headless CMS approach) and an Admin API for managing content programmatically.
 
 ```bash
 # Fetch published posts via the Content API
@@ -219,7 +219,7 @@ api.posts.add({
     title: 'Automated Post',
     html: '<p>This post was created via the Admin API.</p>',
     status: 'draft'
-}).then(post => {
+}, {source: 'html'}).then(post => {
     console.log('Created post:', post.title);
 });
 ```
@@ -244,12 +244,12 @@ Make sure the `url` environment variable matches your public domain, including t
 
 ```bash
 # Backup the MySQL database
-docker exec ghost-mysql mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" ghost > ghost-db-$(date +%Y%m%d).sql
+docker exec ghost-mysql sh -c 'mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" ghost' > ghost-db-$(date +%Y%m%d).sql
 
-# Backup Ghost content (themes, images, settings)
+# Backup Ghost content (themes, images, uploaded files, and local content data)
 docker run --rm \
   -v ghost-content:/source:ro \
-  -v $(pwd)/backups:/backup \
+  -v "$(pwd)/backups:/backup" \
   alpine tar czf /backup/ghost-content-$(date +%Y%m%d).tar.gz -C /source .
 ```
 
@@ -275,7 +275,7 @@ Always back up before updating. Ghost database migrations are generally smooth, 
 Ghost is fast by default, but you can squeeze more performance out of it.
 
 ```yaml
-# Add a Redis cache for improved session handling (optional)
+# Add HTTP cache headers for public Ghost pages
 environment:
   # Enable caching headers
   caching__frontend__maxAge: 600
