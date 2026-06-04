@@ -27,8 +27,8 @@ spec:
         kinds: ["Namespace"]
   parameters:
     labels:
-      - "team"
-      - "cost-center"
+      - key: "team"
+      - key: "cost-center"
 ```
 
 Resources violating this policy will be logged but not blocked.
@@ -69,20 +69,16 @@ status:
 Adjust audit interval (default: 60 seconds):
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: gatekeeper-overrides
-  namespace: gatekeeper-system
-data:
-  audit-interval: "120"  # Audit every 2 minutes
+auditInterval: 120  # Audit every 2 minutes
 ```
 
-Apply and restart Gatekeeper:
+Apply the Helm value:
 
 ```bash
-kubectl apply -f gatekeeper-config.yaml
-kubectl rollout restart deployment/gatekeeper-audit -n gatekeeper-system
+helm upgrade gatekeeper gatekeeper/gatekeeper \
+  --namespace gatekeeper-system \
+  --reuse-values \
+  -f gatekeeper-values.yaml
 ```
 
 ## Multiple Enforcement Actions
@@ -98,17 +94,20 @@ spec:
   enforcementAction: warn
   match:
     kinds:
-      - apiGroups: ["apps"]
-        kinds: ["Deployment"]
+      - apiGroups: [""]
+        kinds: ["Pod"]
+  parameters:
+    cpu: "200m"
+    memory: "1Gi"
 ```
 
 Users see warnings when creating resources:
 
 ```bash
-kubectl apply -f deployment.yaml
+kubectl apply -f pod.yaml
 # Warning: Constraint violation: Container missing resource limits
 
-# deployment.apps/api created
+# pod/api created
 ```
 
 ## Progressive Policy Rollout
@@ -135,7 +134,9 @@ spec:
       - apiGroups: ["apps"]
         kinds: ["Deployment"]
   parameters:
-    labels: ["app", "team"]
+    labels:
+      - key: "app"
+      - key: "team"
 ```
 
 After fixing violations:
@@ -153,7 +154,9 @@ spec:
       - apiGroups: ["apps"]
         kinds: ["Deployment"]
   parameters:
-    labels: ["app", "team"]
+    labels:
+      - key: "app"
+      - key: "team"
 ```
 
 Finally:
@@ -171,7 +174,9 @@ spec:
       - apiGroups: ["apps"]
         kinds: ["Deployment"]
   parameters:
-    labels: ["app", "team"]
+    labels:
+      - key: "app"
+      - key: "team"
 ```
 
 ## Exporting Audit Results
@@ -205,9 +210,9 @@ kubectl get -n gatekeeper-system deployment/gatekeeper-audit
 View audit metrics:
 
 ```bash
-kubectl port-forward -n gatekeeper-system svc/gatekeeper-webhook-service 8888:443
+kubectl port-forward -n gatekeeper-system deployment/gatekeeper-audit 8888:8888
 
-curl -k https://localhost:8888/metrics | grep gatekeeper_audit
+curl http://localhost:8888/metrics | grep gatekeeper_audit
 ```
 
 Key metrics:
