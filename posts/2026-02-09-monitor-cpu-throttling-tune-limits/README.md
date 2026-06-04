@@ -25,7 +25,7 @@ This happens because CPU limits create a hard ceiling, unlike memory limits whic
 
 ## How CPU Limits Work
 
-Kubernetes translates CPU limits into CFS (Completely Fair Scheduler) parameters:
+Kubernetes translates CPU limits into Linux cgroup CPU bandwidth controls. On cgroups v1, these are CFS (Completely Fair Scheduler) parameters:
 
 ```text
 cpu.cfs_period_us = 100000 (100ms)
@@ -36,6 +36,8 @@ cpu.cfs_quota_us = 2 * 100000 = 200000
 ```
 
 If a container uses 200ms of CPU time within a 100ms period (possible with multiple cores), it gets throttled for the remainder of that period.
+
+On cgroups v2, the same limit is represented with `cpu.max`, which stores quota and period values in one file.
 
 ## Viewing CPU Throttling Metrics
 
@@ -48,6 +50,7 @@ kubectl get pod <pod-name> -o jsonpath='{.status.containerStatuses[0].containerI
 
 # On the node, view throttling stats
 CONTAINER_ID=<container-id>
+CONTAINER_ID=${CONTAINER_ID#*://}
 CGROUP_PATH=$(crictl inspect $CONTAINER_ID | jq -r '.info.runtimeSpec.linux.cgroupsPath')
 
 # For cgroups v1
@@ -56,10 +59,12 @@ cat /sys/fs/cgroup/cpu/$CGROUP_PATH/cpu.stat
 # For cgroups v2
 cat /sys/fs/cgroup/$CGROUP_PATH/cpu.stat
 
-# Output shows:
+# cgroups v1 output shows:
 # nr_periods: Number of enforcement periods
 # nr_throttled: Number of times throttled
 # throttled_time: Total time throttled (nanoseconds)
+#
+# cgroups v2 uses throttled_usec for total throttled time (microseconds)
 ```
 
 Calculate throttling percentage:
@@ -72,7 +77,7 @@ A throttling rate above 5% typically indicates performance impact.
 
 ## Monitoring Throttling with kubectl top
 
-While `kubectl top` shows current CPU usage, it doesn't show throttling. You need to access node metrics:
+While `kubectl top` shows current CPU usage, it doesn't show throttling. The Metrics API only exposes basic CPU and memory usage, so you need cAdvisor or another full monitoring pipeline for throttling metrics:
 
 ```bash
 # View current CPU usage
@@ -81,7 +86,7 @@ kubectl top pods
 # View node-level metrics
 kubectl top nodes
 
-# For detailed metrics, query metrics-server API
+# Query Metrics API for current CPU and memory usage
 kubectl get --raw /apis/metrics.k8s.io/v1beta1/pods | jq
 ```
 
@@ -102,6 +107,10 @@ data:
       scrape_interval: 15s
     scrape_configs:
     - job_name: 'kubernetes-cadvisor'
+      scheme: https
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tls_config:
+        insecure_skip_verify: true
       kubernetes_sd_configs:
       - role: node
       relabel_configs:
@@ -109,6 +118,10 @@ data:
         regex: __meta_kubernetes_node_label_(.+)
       - target_label: __metrics_path__
         replacement: /metrics/cadvisor
+      - source_labels: [__address__]
+        target_label: __address__
+        regex: '([^:]+)(?::\d+)?'
+        replacement: '${1}:10250'
       metric_relabel_configs:
       - source_labels: [__name__]
         regex: 'container_cpu_cfs_(throttled_seconds_total|periods_total|throttled_periods_total)'
@@ -280,7 +293,7 @@ spec:
           limits:
             cpu: "1000m"  # Remove this
 
-# After: No limit, no throttling
+# After: No container CPU limit, no throttling from a container CPU limit
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -303,8 +316,10 @@ Set limits based on 99th percentile CPU usage:
 ```promql
 # Query P99 CPU usage over last 7 days
 quantile_over_time(0.99,
-  sum by (namespace, pod) (
-    rate(container_cpu_usage_seconds_total[5m])
+  (
+    sum by (namespace, pod) (
+      rate(container_cpu_usage_seconds_total[5m])
+    )
   )[7d:5m]
 )
 ```
@@ -349,7 +364,7 @@ spec:
 
 ## Implementing Right-Sizing Automation
 
-Use Vertical Pod Autoscaler (VPA) to automatically adjust CPU limits:
+Use Vertical Pod Autoscaler (VPA) to automatically adjust CPU requests and limits:
 
 ```yaml
 # vpa-cpu-recommendation.yaml
@@ -372,8 +387,7 @@ spec:
       maxAllowed:
         cpu: "8000m"
       controlledResources: ["cpu"]
-      # Only update limits, not requests
-      mode: Auto
+      controlledValues: RequestsAndLimits
 ```
 
 Check VPA recommendations:
@@ -402,11 +416,11 @@ kubectl apply -f deployment-new-limits.yaml -n staging
 kubectl run load-test --image=williamyeh/hey --rm -it --restart=Never -- \
   hey -z 300s -c 50 http://web-app.staging.svc.cluster.local
 
-# Monitor throttling during test
+# Spot-check current CPU usage during the test
 watch 'kubectl top pods -n staging'
 
-# Check Prometheus for throttling metrics
-# (throttling should be < 5% for acceptable performance)
+# Query container_cpu_cfs_throttled_periods_total / container_cpu_cfs_periods_total
+# in Prometheus during the test. Throttling should be < 5% for acceptable performance.
 ```
 
 ## Creating a CPU Optimization Runbook
