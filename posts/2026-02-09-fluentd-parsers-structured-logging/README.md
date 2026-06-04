@@ -37,7 +37,7 @@ Most modern applications output JSON logs:
   <parse>
     @type json
     time_key timestamp
-    time_format %Y-%m-%dT%H:%M:%S.%L%z
+    time_format %Y-%m-%dT%H:%M:%S.%N%z
     keep_time_key true
   </parse>
 </source>
@@ -70,7 +70,7 @@ Parse nginx combined log format:
   <parse>
     @type nginx
     # Parses: combined format
-    # $remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent"
+    # $remote_addr $host $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent"
   </parse>
 </source>
 ```
@@ -83,6 +83,7 @@ Input: 192.168.1.100 - - [09/Feb/2026:10:15:30 +0000] "GET /api/users HTTP/1.1" 
 Output:
 {
   "remote": "192.168.1.100",
+  "host": "-",
   "user": "-",
   "method": "GET",
   "path": "/api/users",
@@ -180,7 +181,7 @@ Parse application-specific log formats:
   <parse>
     @type regexp
     expression /^\[(?<time>[^\]]+)\] (?<level>\w+) \[RequestID:(?<request_id>[^\]]+)\] \[UserID:(?<user_id>[^\]]+)\] (?<message>.*)$/
-    time_format %Y-%m-%d %H:%M:%S.%L
+    time_format %Y-%m-%d %H:%M:%S.%N
     types user_id:integer
   </parse>
 </filter>
@@ -188,7 +189,7 @@ Parse application-specific log formats:
 
 ## Using multi-format parsers
 
-Handle logs in multiple formats with fallback:
+Handle logs in multiple formats with fallback. The `multi_format` parser is provided by the `fluent-plugin-multi-format-parser` plugin:
 
 ```yaml
 <source>
@@ -202,7 +203,7 @@ Handle logs in multiple formats with fallback:
     <pattern>
       format json
       time_key timestamp
-      time_format %Y-%m-%dT%H:%M:%S.%NZ
+      time_format %Y-%m-%dT%H:%M:%S.%N%z
     </pattern>
     # Fall back to custom format
     <pattern>
@@ -229,6 +230,7 @@ Handle stack traces and multiline messages:
   path /var/log/app/*.log
   pos_file /var/log/app-multiline.pos
   tag app.multiline
+  multiline_flush_interval 5s
   <parse>
     @type multiline
     format_firstline /^\d{4}-\d{2}-\d{2}/
@@ -251,13 +253,14 @@ Extract fields from CSV format logs:
 </parse>
 ```
 
-With header row:
+For CSV files with a header row, define the keys explicitly and start tailing after the header has already been written. Fluentd's built-in CSV parser requires `keys` and does not infer them from a header row:
 
 ```yaml
 <parse>
   @type csv
-  keys []  # Empty to use header row
-  header_row true
+  keys time,user_id,action,resource,status
+  time_key time
+  time_format %Y-%m-%d %H:%M:%S
 </parse>
 ```
 
@@ -302,9 +305,9 @@ Convert string fields to appropriate types:
 
 Supported types:
 - `string` (default)
-- `integer` or `int`
+- `integer`
 - `float`
-- `bool` or `boolean`
+- `bool`
 - `time`
 - `array`
 
@@ -322,18 +325,17 @@ Configure error handling for unparseable logs:
     @type json
     time_key timestamp
   </parse>
-  # Emit unparsed records with error tag
+  # Emit unparsed records as {"unmatched_line": "..."} with the same tag
   emit_unmatched_lines true
-  unmatched_lines_tag app.unparsed
 </source>
 
 # Log unparsed records
-<match app.unparsed>
+<match app>
   @type file
   path /var/log/fluentd/unparsed
   <format>
     @type single_value
-    message_key log
+    message_key unmatched_line
   </format>
 </match>
 ```
@@ -359,6 +361,7 @@ Parse complex log formats with multiple steps:
   @type parser
   key_name payload
   reserve_data true
+  hash_value_field parsed_payload
   <parse>
     @type multi_format
     <pattern>
@@ -366,6 +369,7 @@ Parse complex log formats with multiple steps:
     </pattern>
     <pattern>
       format none
+      message_key msg
     </pattern>
   </parse>
 </filter>
@@ -374,10 +378,10 @@ Parse complex log formats with multiple steps:
 <filter app.**>
   @type record_transformer
   enable_ruby true
-  remove_keys payload
+  remove_keys payload,parsed_payload
   <record>
-    level ${record.dig("payload", "level") || "INFO"}
-    message ${record.dig("payload", "msg") || record["payload"]}
+    level ${record.dig("parsed_payload", "level") || "INFO"}
+    message ${record.dig("parsed_payload", "msg") || record["payload"]}
   </record>
 </filter>
 ```
@@ -387,26 +391,22 @@ Parse complex log formats with multiple steps:
 Test parser configuration:
 
 ```bash
-# Create test input file
+# Create test input file for a tail-based test configuration
 cat > /tmp/test.log <<EOF
 {"timestamp":"2026-02-09T10:15:30Z","level":"INFO","message":"Test message"}
 EOF
 
-# Test parser with fluent-cat
-cat /tmp/test.log | fluent-cat test.debug
+# Validate the Fluentd configuration
+fluentd -c test.conf --dry-run
 
-# View parsed output
-tail -f /var/log/fluentd/test.log
+# Run Fluentd with the test configuration, then append new lines to /tmp/test.log
+fluentd -c test.conf
 ```
 
-Use Fluentd test plugin:
+Test `in_forward` inputs with `fluent-cat`:
 
 ```bash
-# Install test plugin
-gem install fluent-plugin-test-dump
-
-# Run test
-fluentd -c test.conf --dry-run
+echo '{"timestamp":"2026-02-09T10:15:30Z","level":"INFO","message":"Test message"}' | fluent-cat test.debug
 ```
 
 ## Best practices
