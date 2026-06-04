@@ -21,14 +21,14 @@ Pumba runs as a standalone binary or, fittingly, as a Docker container. Running 
 
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba --help
+  ghcr.io/alexei-led/pumba --help
 ```
 
 You can also download the binary directly.
 
 ```bash
 # Download the Pumba binary (Linux)
-curl -L https://github.com/alexei-led/pumba/releases/download/0.9.7/pumba_linux_amd64 -o pumba
+curl -L https://github.com/alexei-led/pumba/releases/latest/download/pumba_linux_amd64 -o pumba
 chmod +x pumba
 sudo mv pumba /usr/local/bin/
 ```
@@ -39,7 +39,6 @@ Create a simple microservices application to run chaos experiments against.
 
 ```yaml
 # docker-compose.yml - Target application for Pumba chaos experiments
-version: "3.8"
 
 services:
   web:
@@ -94,18 +93,18 @@ The simplest chaos experiment is killing containers. Pumba can kill containers b
 # Kill a specific container with SIGKILL
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba kill api-service
+  ghcr.io/alexei-led/pumba kill api-service
 
 # Kill a container with SIGTERM (graceful shutdown)
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba kill --signal SIGTERM api-service
+  ghcr.io/alexei-led/pumba kill --signal SIGTERM api-service
 
 # Kill a random container matching a pattern every 60 seconds
 docker run -d \
   --name pumba-killer \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba --interval 60s kill --signal SIGKILL "re2:.*-service"
+  ghcr.io/alexei-led/pumba --interval 60s --random kill --signal SIGKILL "re2:.*-service"
 ```
 
 The `re2:` prefix lets you use regular expressions to match container names. This is useful for targeting a group of services.
@@ -118,12 +117,12 @@ Pausing is more subtle than killing. A paused container still exists and holds i
 # Pause a container for 30 seconds
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba pause --duration 30s api-service
+  ghcr.io/alexei-led/pumba pause --duration 30s api-service
 
 # Pause the database for 10 seconds to simulate GC pause
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba pause --duration 10s db-service
+  ghcr.io/alexei-led/pumba pause --duration 10s db-service
 ```
 
 Watch what happens to your application when the database freezes for 10 seconds. Do connections time out? Does the connection pool recover? These are the questions chaos engineering answers.
@@ -136,21 +135,21 @@ Pumba uses Linux traffic control (tc) to inject network delays. This simulates s
 # Add 500ms latency to all traffic from the API container
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba netem --duration 60s \
+  ghcr.io/alexei-led/pumba netem --duration 60s \
   delay --time 500 \
   api-service
 
 # Add 200ms latency with 50ms jitter (more realistic)
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba netem --duration 60s \
+  ghcr.io/alexei-led/pumba netem --duration 60s \
   delay --time 200 --jitter 50 \
   api-service
 
 # Add latency to the database connection
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba netem --duration 30s \
+  ghcr.io/alexei-led/pumba netem --duration 30s \
   delay --time 1000 \
   db-service
 ```
@@ -165,14 +164,14 @@ Simulate an unreliable network by dropping a percentage of packets.
 # Drop 10% of packets from the cache service
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba netem --duration 60s \
+  ghcr.io/alexei-led/pumba netem --duration 60s \
   loss --percent 10 \
   cache-service
 
 # Drop 50% of packets (severe network degradation)
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba netem --duration 30s \
+  ghcr.io/alexei-led/pumba netem --duration 30s \
   loss --percent 50 \
   api-service
 ```
@@ -187,7 +186,7 @@ Restrict bandwidth to simulate slow network links or bandwidth contention.
 # Limit bandwidth to 1 Mbit/s
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba netem --duration 60s \
+  ghcr.io/alexei-led/pumba netem --duration 60s \
   rate --rate 1mbit \
   api-service
 ```
@@ -198,11 +197,18 @@ Real network problems rarely come as isolated latency or packet loss. Combine mu
 
 ```bash
 # Add 100ms latency AND 5% packet loss simultaneously
-docker run --rm \
+docker run -d --rm \
+  --name pumba-api-delay \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gaiaadm/pumba netem --duration 60s \
+  ghcr.io/alexei-led/pumba netem --duration 60s \
   delay --time 100 --jitter 20 \
-  loss --percent 5 \
+  api-service
+
+docker run -d --rm \
+  --name pumba-api-loss \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ghcr.io/alexei-led/pumba iptables --duration 60s \
+  loss --probability 0.05 \
   api-service
 ```
 
@@ -212,7 +218,6 @@ Run Pumba alongside your application in Docker Compose for automated chaos testi
 
 ```yaml
 # docker-compose-chaos.yml - Application with Pumba chaos injection
-version: "3.8"
 
 services:
   api:
@@ -229,7 +234,7 @@ services:
 
   # Pumba injects latency into the cache every 2 minutes
   pumba-cache-latency:
-    image: gaiaadm/pumba
+    image: ghcr.io/alexei-led/pumba
     container_name: pumba-latency
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -239,9 +244,9 @@ services:
       delay --time 300 --jitter 100
       cache-service
 
-  # Pumba randomly kills the API container every 5 minutes
+  # Pumba kills the API container every 5 minutes
   pumba-api-killer:
-    image: gaiaadm/pumba
+    image: ghcr.io/alexei-led/pumba
     container_name: pumba-killer
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
