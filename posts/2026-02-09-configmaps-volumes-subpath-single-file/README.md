@@ -25,10 +25,13 @@ metadata:
   name: nginx-config
 data:
   nginx.conf: |
-    server {
-      listen 80;
-      location / {
-        root /usr/share/nginx/html;
+    events {}
+    http {
+      server {
+        listen 80;
+        location / {
+          root /usr/share/nginx/html;
+        }
       }
     }
 ---
@@ -37,7 +40,13 @@ kind: Deployment
 metadata:
   name: nginx
 spec:
+  selector:
+    matchLabels:
+      app: nginx
   template:
+    metadata:
+      labels:
+        app: nginx
     spec:
       containers:
       - name: nginx
@@ -63,7 +72,13 @@ kind: Deployment
 metadata:
   name: nginx
 spec:
+  selector:
+    matchLabels:
+      app: nginx
   template:
+    metadata:
+      labels:
+        app: nginx
     spec:
       containers:
       - name: nginx
@@ -106,7 +121,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       containers:
       - name: app
@@ -152,15 +173,21 @@ kind: Deployment
 metadata:
   name: redis
 spec:
+  selector:
+    matchLabels:
+      app: redis
   template:
+    metadata:
+      labels:
+        app: redis
     spec:
       containers:
       - name: redis
         image: redis:7
-        command: ["redis-server", "/etc/redis/redis.conf"]
+        command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
         volumeMounts:
         - name: config
-          mountPath: /etc/redis/redis.conf
+          mountPath: /usr/local/etc/redis/redis.conf
           subPath: redis.conf
       volumes:
       - name: config
@@ -168,7 +195,7 @@ spec:
           name: redis-config
 ```
 
-This overrides the default `/etc/redis/redis.conf` without affecting other files in the Redis image.
+This overrides the Redis configuration at `/usr/local/etc/redis/redis.conf` without affecting other files in the Redis image.
 
 ## Injecting Files into Application Directories
 
@@ -198,7 +225,13 @@ kind: Deployment
 metadata:
   name: web-app
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
       - name: app
@@ -239,7 +272,13 @@ kind: Deployment
 metadata:
   name: nginx
 spec:
+  selector:
+    matchLabels:
+      app: nginx
   template:
+    metadata:
+      labels:
+        app: nginx
     spec:
       containers:
       - name: nginx
@@ -268,6 +307,9 @@ kind: ConfigMap
 metadata:
   name: postgres-custom-config
 data:
+  postgresql.conf: |
+    listen_addresses = '*'
+    include_dir = '/etc/postgresql/conf.d'
   custom.conf: |
     # Connection settings
     max_connections = 200
@@ -283,9 +325,6 @@ data:
 
     # Logging
     log_destination = 'stderr'
-    logging_collector = on
-    log_directory = '/var/log/postgresql'
-    log_filename = 'postgresql-%Y-%m-%d.log'
     log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
 ---
 apiVersion: apps/v1
@@ -306,6 +345,7 @@ spec:
       containers:
       - name: postgres
         image: postgres:15
+        command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
         env:
         - name: POSTGRES_PASSWORD
           valueFrom:
@@ -313,7 +353,10 @@ spec:
               name: postgres-secret
               key: password
         volumeMounts:
-        # Mount custom config as additional file
+        # Mount main config and custom config as individual files
+        - name: custom-config
+          mountPath: /etc/postgresql/postgresql.conf
+          subPath: postgresql.conf
         - name: custom-config
           mountPath: /etc/postgresql/conf.d/custom.conf
           subPath: custom.conf
@@ -333,7 +376,7 @@ spec:
           storage: 10Gi
 ```
 
-PostgreSQL reads configuration from `/etc/postgresql/conf.d/` in addition to the main config file.
+PostgreSQL reads configuration from `/etc/postgresql/conf.d/` when the main `postgresql.conf` includes that directory.
 
 ## The subPath Update Limitation
 
@@ -399,7 +442,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       initContainers:
       - name: copy-defaults
