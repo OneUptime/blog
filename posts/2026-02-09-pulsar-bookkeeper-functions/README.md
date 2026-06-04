@@ -10,7 +10,7 @@ Description: Learn how to deploy Apache Pulsar with BookKeeper storage and Pulsa
 
 Apache Pulsar is a cloud-native distributed messaging and streaming platform that separates compute from storage using Apache BookKeeper. This architecture enables independent scaling of message serving and storage layers. Pulsar Functions add serverless stream processing capabilities, allowing you to process messages without managing separate compute infrastructure.
 
-In this guide, you'll learn how to deploy Pulsar with BookKeeper on Kubernetes, configure storage tiers, implement Pulsar Functions for stream processing, and build scalable event-driven applications.
+In this guide, you'll learn how to deploy Pulsar with BookKeeper on Kubernetes, configure storage, implement Pulsar Functions for stream processing, and build scalable event-driven applications.
 
 ## Understanding Pulsar Architecture
 
@@ -25,7 +25,7 @@ Pulsar consists of:
 This separation allows:
 - Independent scaling of compute and storage
 - Fast broker recovery without data movement
-- Infinite retention with tiered storage
+- Long-term retention with tiered storage configured
 - Multi-tenancy with namespace isolation
 
 ## Deploying Pulsar with Helm
@@ -33,7 +33,7 @@ This separation allows:
 Install Pulsar using the official Helm chart:
 
 ```bash
-helm repo add apache https://pulsar.apache.org/charts
+helm repo add apachepulsar https://pulsar.apache.org/charts
 helm repo update
 
 # Create namespace
@@ -41,7 +41,7 @@ helm repo update
 kubectl create namespace pulsar
 
 # Install with BookKeeper
-helm install pulsar apache/pulsar \
+helm install pulsar apachepulsar/pulsar \
   --namespace pulsar \
   --set initialize=true \
   --set components.zookeeper=true \
@@ -58,9 +58,8 @@ Custom values file for production:
 
 ```yaml
 # pulsar-values.yaml
-persistence:
-  enabled: true
-  storageClass: fast-ssd
+volumes:
+  persistence: true
 
 zookeeper:
   replicaCount: 3
@@ -78,8 +77,10 @@ bookkeeper:
   volumes:
     journal:
       size: 20Gi
+      storageClassName: fast-ssd
     ledgers:
       size: 100Gi
+      storageClassName: fast-ssd
 
 broker:
   replicaCount: 3
@@ -92,19 +93,18 @@ broker:
     managedLedgerDefaultWriteQuorum: "2"
     managedLedgerDefaultAckQuorum: "2"
 
+components:
+  functions: true
+  proxy: true
+
 functions:
-  enabled: true
-  replicaCount: 2
-  resources:
-    requests:
-      cpu: 500m
-      memory: 1Gi
+  useBookieAsStateStore: true
 ```
 
 Deploy with custom values:
 
 ```bash
-helm install pulsar apache/pulsar \
+helm install pulsar apachepulsar/pulsar \
   --namespace pulsar \
   -f pulsar-values.yaml
 ```
@@ -126,12 +126,6 @@ bookkeeper:
     gcWaitTime: 900000
     # Enable statistics
     enableStatistics: true
-    # Ensemble size for ledgers
-    ensembleSize: 3
-    # Write quorum size
-    writeQuorumSize: 2
-    # Ack quorum size
-    ackQuorumSize: 2
 ```
 
 ## Creating Topics and Producing Messages
@@ -139,8 +133,8 @@ bookkeeper:
 Use Pulsar admin to create topics:
 
 ```bash
-# Port-forward to broker
-kubectl port-forward -n pulsar svc/pulsar-broker 6650:6650 8080:8080 &
+# Port-forward to proxy
+kubectl port-forward -n pulsar svc/pulsar-proxy 6650:6650 8080:8080 &
 
 # Install pulsar-client
 pip install pulsar-client
@@ -260,7 +254,8 @@ from pulsar import Function
 
 class WordCount(Function):
     def process(self, input, context):
-        words = input.split()
+        text = input.decode('utf-8') if isinstance(input, bytes) else input
+        words = text.split()
         for word in words:
             context.publish(
                 'persistent://public/default/word-counts',
@@ -271,15 +266,12 @@ class WordCount(Function):
 Package and deploy:
 
 ```bash
-# Create function package
-zip word_count.zip word_count_function.py
-
 # Deploy function
 pulsar-admin functions create \
   --tenant public \
   --namespace default \
   --name word-count \
-  --py word_count.zip \
+  --py word_count_function.py \
   --classname word_count_function.WordCount \
   --inputs persistent://public/default/text-input \
   --output persistent://public/default/word-counts
@@ -297,11 +289,11 @@ inputs:
   - persistent://public/default/text-input
 output: persistent://public/default/word-counts
 runtime: python
-py: word_count.zip
+py: word_count_function.py
 parallelism: 2
 resources:
   cpu: 0.5
-  ram: 512M
+  ram: 536870912
 ```
 
 Deploy with YAML:
@@ -323,14 +315,12 @@ class RunningSum(Function):
 
     def process(self, input, context):
         # Get state
-        current_sum = context.get_state('sum')
-        if current_sum is None:
-            current_sum = 0
+        current_sum = context.get_counter('sum') or 0
 
         # Update state
-        value = int(input)
+        value = int(input.decode('utf-8') if isinstance(input, bytes) else input)
+        context.incr_counter('sum', value)
         new_sum = current_sum + value
-        context.put_state('sum', new_sum)
 
         # Publish result
         return f"Running sum: {new_sum}".encode('utf-8')
@@ -343,7 +333,7 @@ pulsar-admin functions create \
   --tenant public \
   --namespace default \
   --name running-sum \
-  --py running_sum.zip \
+  --py running_sum.py \
   --classname running_sum.RunningSum \
   --inputs persistent://public/default/numbers \
   --output persistent://public/default/sums \
@@ -355,6 +345,8 @@ pulsar-admin functions create \
 Chain multiple functions:
 
 ```python
+from pulsar import Function
+
 # Function 1: Parse JSON
 class ParseJSON(Function):
     def process(self, input, context):
@@ -379,8 +371,8 @@ class EnrichOrder(Function):
         order = json.loads(input)
 
         # Add enrichment
-        order['processed_at'] = context.get_message_id()
-        order['partition'] = context.get_partition_id()
+        order['message_id'] = str(context.get_message_id())
+        order['partition'] = context.get_message_partition_index()
 
         return json.dumps(order).encode('utf-8')
 ```
@@ -390,24 +382,33 @@ Deploy pipeline:
 ```bash
 # Parse
 pulsar-admin functions create \
+  --tenant public \
+  --namespace default \
   --name parse-json \
+  --classname parse.ParseJSON \
   --inputs persistent://public/default/raw-orders \
   --output persistent://public/default/parsed-orders \
-  --py parse.zip
+  --py parse.py
 
 # Filter
 pulsar-admin functions create \
+  --tenant public \
+  --namespace default \
   --name filter-orders \
+  --classname filter.FilterOrders \
   --inputs persistent://public/default/parsed-orders \
   --output persistent://public/default/filtered-orders \
-  --py filter.zip
+  --py filter.py
 
 # Enrich
 pulsar-admin functions create \
+  --tenant public \
+  --namespace default \
   --name enrich-order \
+  --classname enrich.EnrichOrder \
   --inputs persistent://public/default/filtered-orders \
   --output persistent://public/default/enriched-orders \
-  --py enrich.zip
+  --py enrich.py
 ```
 
 ## Monitoring Pulsar and Functions
@@ -425,42 +426,23 @@ pulsar-admin functions stats --tenant public --namespace default --name word-cou
 pulsar-admin functions status --tenant public --namespace default --name word-count
 ```
 
-Deploy Pulsar monitoring:
+Enable the chart's built-in metrics scraping:
 
 ```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: pulsar-prometheus
-  namespace: pulsar
-spec:
-  selector:
-    component: prometheus
-  ports:
-  - port: 9090
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: pulsar-prometheus
-  namespace: pulsar
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      component: prometheus
-  template:
-    metadata:
-      labels:
-        component: prometheus
-    spec:
-      containers:
-      - name: prometheus
-        image: prom/prometheus:latest
-        args:
-        - --config.file=/etc/prometheus/prometheus.yml
-        ports:
-        - containerPort: 9090
+victoria-metrics-k8s-stack:
+  enabled: true
+
+bookkeeper:
+  podMonitor:
+    enabled: true
+
+broker:
+  podMonitor:
+    enabled: true
+
+proxy:
+  podMonitor:
+    enabled: true
 ```
 
 ## Best Practices
