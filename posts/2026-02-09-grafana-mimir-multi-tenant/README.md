@@ -24,9 +24,6 @@ Start with a simple multi-component Mimir deployment:
 
 ```yaml
 # docker-compose.yml
-
-version: '3.8'
-
 services:
   mimir:
     image: grafana/mimir:latest
@@ -38,6 +35,7 @@ services:
       - "9009:9009"
     volumes:
       - ./mimir-config.yaml:/etc/mimir/config.yaml
+      - ./runtime.yaml:/etc/mimir/runtime.yaml
       - mimir-data:/data
     environment:
       - JAEGER_AGENT_HOST=jaeger
@@ -54,6 +52,17 @@ services:
       MINIO_ROOT_PASSWORD: supersecret
     volumes:
       - minio-data:/data
+
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set myminio http://minio:9000 mimir supersecret; do sleep 1; done;
+      mc mb -p myminio/mimir-blocks;
+      exit 0;
+      "
 
 volumes:
   mimir-data:
@@ -119,12 +128,22 @@ limits:
   max_global_series_per_user: 150000
   max_global_series_per_metric: 20000
 
+runtime_config:
+  file: /etc/mimir/runtime.yaml
+
 memberlist:
   join_members:
     - mimir:7946
 ```
 
 This configuration enables multi-tenancy and sets default rate limits.
+
+Create an initial runtime configuration file for per-tenant overrides:
+
+```yaml
+# runtime.yaml
+overrides: {}
+```
 
 ## Configuring Prometheus to Write to Mimir
 
@@ -154,13 +173,7 @@ Each Prometheus instance should write with a unique tenant ID to maintain isolat
 Override limits for specific tenants:
 
 ```yaml
-# mimir-config.yaml (continued)
-limits:
-  # Global defaults
-  ingestion_rate: 10000
-  max_global_series_per_user: 150000
-
-# Per-tenant overrides
+# runtime.yaml
 overrides:
   tenant-premium:
     ingestion_rate: 50000
@@ -180,7 +193,7 @@ overrides:
     ingestion_rate: 100000
     ingestion_burst_size: 1000000
     max_global_series_per_user: 5000000
-    max_query_length: 7d
+    max_query_lookback: 7d
     max_query_parallelism: 64
 ```
 
@@ -200,8 +213,6 @@ kubectl create namespace mimir
 
 # Create values file for multi-tenant configuration
 cat > mimir-values.yaml <<EOF
-multitenancy_enabled: true
-
 mimir:
   structuredConfig:
     multitenancy_enabled: true
@@ -211,12 +222,13 @@ mimir:
       ingestion_burst_size: 200000
       max_global_series_per_user: 150000
 
-    blocks_storage:
-      backend: s3
-      s3:
-        endpoint: s3.amazonaws.com
-        bucket_name: my-mimir-blocks
-        region: us-east-1
+    common:
+      storage:
+        backend: s3
+        s3:
+          endpoint: s3.amazonaws.com
+          bucket_name: my-mimir-blocks
+          region: us-east-1
 
 ingester:
   replicas: 3
@@ -387,29 +399,30 @@ Create dashboards showing per-tenant resource consumption.
 Prevent resource-intensive queries from one tenant affecting others:
 
 ```yaml
+# mimir-config.yaml
 limits:
-  # Query timeout
-  query_timeout: 1m
+  # Maximum lookback for queries
+  max_query_lookback: 30d
 
-  # Maximum time range for queries
-  max_query_length: 30d
-
-  # Maximum number of samples in query result
-  max_samples_per_query: 100000000
-
-  # Maximum number of series in query
-  max_query_series: 100000
+  # Maximum number of series a query can fetch
+  max_fetched_series_per_query: 100000
 
   # Maximum query parallelism
   max_query_parallelism: 16
 
-  # Split queries by time interval
-  split_queries_by_interval: 24h
+querier:
+  # Query timeout
+  timeout: 1m
 
+  # Maximum number of samples a query can load
+  max_samples: 100000000
+```
+
+```yaml
+# runtime.yaml
 overrides:
   tenant-premium:
-    max_query_length: 90d
-    max_samples_per_query: 500000000
+    max_query_lookback: 90d
     max_query_parallelism: 32
 ```
 
@@ -418,10 +431,14 @@ overrides:
 Configure different retention policies per tenant:
 
 ```yaml
+# mimir-config.yaml
 limits:
   # Default retention
   compactor_blocks_retention_period: 30d
+```
 
+```yaml
+# runtime.yaml
 overrides:
   tenant-longterm:
     compactor_blocks_retention_period: 365d
@@ -445,24 +462,16 @@ curl -H "X-Scope-OrgID: tenant-1|tenant-2|tenant-3" \
   "http://mimir:8080/prometheus/api/v1/query?query=sum(up)"
 ```
 
-Control federation permissions:
+Limit federated queries and enforce authorization before requests reach Mimir:
 
 ```yaml
 # mimir-config.yaml
 tenant_federation:
   enabled: true
+  max_tenants: 3
 
-overrides:
-  # Allow tenant-1 to query itself and tenant-2
-  tenant-1:
-    allowed_federation_tenants:
-      - tenant-1
-      - tenant-2
-
-  # Admin tenant can query all tenants
-  admin-tenant:
-    allowed_federation_tenants:
-      - "*"
+# Enforce which callers may send multi-tenant X-Scope-OrgID headers
+# in your authentication proxy before requests reach Mimir.
 ```
 
 ## Cost Allocation and Billing
@@ -503,8 +512,8 @@ server:
     key_file: /certs/server.key
 
 # Enable authentication at ingester level
-ingester:
-  client_config:
+ingester_client:
+  grpc_client_config:
     tls_enabled: true
     tls_cert_path: /certs/client.crt
     tls_key_path: /certs/client.key
