@@ -25,7 +25,7 @@ docker run -d \
   --name web \
   --restart unless-stopped \
   -p 8080:80 \
-  --health-cmd="curl -f http://localhost:80/ || exit 1" \
+  --health-cmd="wget -q -O /dev/null http://localhost:80/ || exit 1" \
   --health-interval=15s \
   --health-timeout=5s \
   --health-retries=3 \
@@ -60,7 +60,7 @@ FROM node:20-alpine
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 
 # Health check that tests the application's /health endpoint
@@ -98,7 +98,7 @@ Try it yourself:
 docker run -d \
   --name broken-app \
   --restart unless-stopped \
-  --health-cmd="curl -f http://localhost:8080/health || exit 1" \
+  --health-cmd="wget -q -O /dev/null http://localhost:8080/health || exit 1" \
   --health-interval=5s \
   --health-timeout=3s \
   --health-retries=2 \
@@ -145,10 +145,13 @@ while true; do
             log "  Image: $IMAGE"
 
             # Restart the container
-            docker restart "$CONTAINER" --time 10
-
-            # Log the restart event
-            log "  Restarted $CONTAINER successfully"
+            if docker restart --timeout 10 "$CONTAINER"; then
+                # Log the restart event
+                log "  Restarted $CONTAINER successfully"
+            else
+                log "  Failed to restart $CONTAINER"
+                continue
+            fi
 
             # Wait a bit before checking the next container
             sleep 5
@@ -324,8 +327,6 @@ Here is a complete Compose setup with health checks and the autoheal container:
 
 ```yaml
 # docker-compose.yml - Application stack with auto-healing
-version: "3.9"
-
 services:
   app:
     image: myapp:latest
@@ -371,7 +372,7 @@ Start the stack:
 docker compose up -d
 
 # Watch the autoheal logs
-docker logs -f autoheal
+docker compose logs -f autoheal
 ```
 
 ## Monitoring Auto-Heal Events
@@ -380,7 +381,7 @@ Track how often containers are being restarted. Frequent restarts indicate an un
 
 ```bash
 # Check recent restart events from the autoheal log
-docker logs autoheal --since 24h 2>&1 | grep -i restart
+docker compose logs autoheal --since 24h 2>&1 | grep -i restart
 
 # Check a specific container's restart count
 docker inspect --format='{{.RestartCount}}' my-app
