@@ -12,7 +12,7 @@ Docker containers often need to communicate with each other, and Docker networks
 
 ## The Basics
 
-Every Docker container starts attached to at least one network. By default, that is the `bridge` network. But you can connect a container to additional networks at any time, and a container can belong to multiple networks simultaneously.
+Every Docker container starts attached to a network unless you choose a special network mode such as `--network none`. By default, that is the `bridge` network. But you can connect a container to additional networks at any time, and a container can belong to multiple networks simultaneously.
 
 Think of it like plugging an ethernet cable into an additional switch. The container gets a new network interface, a new IP address on that network, and can immediately communicate with other containers on that network.
 
@@ -70,21 +70,17 @@ docker inspect web --format '{{range $net, $config := .NetworkSettings.Networks}
 
 ## Connecting with a Specific IP Address
 
-You can assign a specific IP address when connecting to a network:
+You can assign a specific IP address when connecting to a network. This requires that the network was created with a subnet that includes the requested IP. If you need a specific subnet:
 
 ```bash
-# Connect to the backend network with a specific IP
-docker network connect --ip 172.20.0.100 backend web
-```
+# Start a separate demo container
+docker run -d --name ip-demo nginx:latest
 
-This requires that the network was created with a subnet that includes the requested IP. If you need a specific subnet:
-
-```bash
 # Create a network with a specific subnet
 docker network create --subnet 172.25.0.0/16 custom-net
 
 # Connect a container with a specific IP on that subnet
-docker network connect --ip 172.25.0.50 custom-net web
+docker network connect --ip 172.25.0.50 custom-net ip-demo
 ```
 
 ## Connecting with Aliases
@@ -93,16 +89,18 @@ Network aliases let other containers discover your container by alternative name
 
 ```bash
 # Connect with a network alias
-docker network connect --alias webserver --alias http-service backend web
+docker run -d --name alias-demo nginx:latest
+docker network create alias-net
+docker network connect --alias webserver --alias http-service alias-net alias-demo
 ```
 
-Now other containers on the `backend` network can reach the `web` container using the names `webserver` or `http-service`:
+Now other containers on the `alias-net` network can reach the `alias-demo` container using the names `webserver` or `http-service`:
 
 ```bash
-# From another container on the backend network, all of these resolve
-docker run --rm --network backend alpine ping -c 1 web
-docker run --rm --network backend alpine ping -c 1 webserver
-docker run --rm --network backend alpine ping -c 1 http-service
+# From another container on the alias-net network, all of these resolve
+docker run --rm --network alias-net alpine ping -c 1 alias-demo
+docker run --rm --network alias-net alpine ping -c 1 webserver
+docker run --rm --network alias-net alpine ping -c 1 http-service
 ```
 
 ## Disconnecting a Container from a Network
@@ -268,7 +266,7 @@ docker network disconnect myproject_frontend myproject-db-1
 
 A few things to watch for when using these commands:
 
-1. You cannot disconnect a container from its last network. Every running container must be on at least one network (unless you use `--network none`).
+1. You can disconnect a running container from its last network, but it will no longer have Docker-managed network connectivity until you connect it to another network.
 2. Network aliases are per-network. An alias set on one network does not carry over when you connect to another network.
 3. The default bridge network does not support automatic DNS resolution. Use custom networks for service discovery by container name.
 4. Connecting to a network does not automatically expose ports. Port publishing (`-p`) is separate from network connectivity.
