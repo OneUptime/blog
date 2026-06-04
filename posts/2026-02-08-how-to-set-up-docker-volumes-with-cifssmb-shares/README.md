@@ -64,34 +64,28 @@ Test the volume by running a container:
 docker run --rm -v my_cifs_volume:/mnt/share alpine ls -la /mnt/share
 ```
 
-## Securing Credentials with a Credentials File
+## Handling Credentials
 
-Putting passwords in plain text on the command line is a bad practice. Instead, store credentials in a protected file on the Docker host:
+Putting passwords in plain text on the command line is a bad practice. However, Docker's built-in `local` volume driver forwards the options directly to the Linux mount operation; it does not run the `mount.cifs` helper that expands `credentials=/path/to/file`. For direct CIFS volumes, pass the username and password as mount options and protect access to Docker commands and volume metadata:
 
 ```bash
-# Create a credentials file with restricted permissions
-sudo tee /etc/docker-cifs-credentials > /dev/null <<EOF
-username=dockeruser
-password=secret123
-domain=MYDOMAIN
-EOF
-
-# Lock down the file so only root can read it
-sudo chmod 600 /etc/docker-cifs-credentials
+# Keep the password out of the literal command by reading it from an environment variable
+read -rsp "SMB password: " SMB_PASSWORD
+echo
 ```
 
-Now reference the credentials file when creating the volume:
+Now reference the variable when creating the volume:
 
 ```bash
-# Create CIFS volume using a credentials file instead of inline password
+# Create CIFS volume using shell variables for the sensitive value
 docker volume create --driver local \
   --opt type=cifs \
   --opt device=//192.168.1.50/shared-data \
-  --opt o=addr=192.168.1.50,credentials=/etc/docker-cifs-credentials,file_mode=0644,dir_mode=0755 \
+  --opt o=addr=192.168.1.50,username=dockeruser,password="${SMB_PASSWORD}",file_mode=0644,dir_mode=0755 \
   my_secure_cifs_volume
 ```
 
-This keeps credentials out of shell history, Docker inspect output, and process listings.
+This keeps the password out of the literal shell history, but Docker still stores the resolved mount options for the volume. If you need a credentials file, mount the CIFS share on the host with `mount.cifs` or `/etc/fstab`, then bind-mount that host path into Docker instead of creating the CIFS mount through the local volume driver.
 
 ## Using CIFS Volumes in Docker Compose
 
@@ -99,8 +93,6 @@ For production deployments, declare your CIFS volumes in `docker-compose.yml`:
 
 ```yaml
 # docker-compose.yml - service with CIFS-backed volume
-version: "3.8"
-
 services:
   fileprocessor:
     image: python:3.12-slim
@@ -121,24 +113,24 @@ volumes:
     driver_opts:
       type: cifs
       device: "//fileserver.local/incoming"
-      o: "addr=fileserver.local,credentials=/etc/docker-cifs-credentials,file_mode=0644,dir_mode=0755,vers=3.0"
+      o: "addr=fileserver.local,username=${SMB_USERNAME},password=${SMB_PASSWORD},file_mode=0644,dir_mode=0755,vers=3.0"
 
   smb_output:
     driver: local
     driver_opts:
       type: cifs
       device: "//fileserver.local/processed"
-      o: "addr=fileserver.local,credentials=/etc/docker-cifs-credentials,file_mode=0666,dir_mode=0777,vers=3.0"
+      o: "addr=fileserver.local,username=${SMB_USERNAME},password=${SMB_PASSWORD},file_mode=0666,dir_mode=0777,vers=3.0"
 
   smb_backup:
     driver: local
     driver_opts:
       type: cifs
       device: "//fileserver.local/backups"
-      o: "addr=fileserver.local,credentials=/etc/docker-cifs-credentials,vers=3.0"
+      o: "addr=fileserver.local,username=${SMB_USERNAME},password=${SMB_PASSWORD},vers=3.0"
 ```
 
-Notice the `vers=3.0` option. This forces SMB version 3.0, which you should use for better security and performance. Older SMB versions (1.0 and 2.0) have known security vulnerabilities.
+Notice the `vers=3.0` option. This forces SMB version 3.0, which you should use for better security and performance on modern servers. SMB 1.0 is obsolete, and SMB 2.x lacks newer SMB 3.x features such as SMB encryption.
 
 ## Specifying SMB Protocol Versions
 
@@ -149,21 +141,21 @@ Different servers support different SMB protocol versions. Here is how to specif
 docker volume create --driver local \
   --opt type=cifs \
   --opt device=//nas.local/media \
-  --opt o=addr=nas.local,credentials=/etc/docker-cifs-credentials,vers=2.1 \
+  --opt o=addr=nas.local,username=dockeruser,password="${SMB_PASSWORD}",vers=2.1 \
   media_vol
 
 # Force SMB 3.0 for modern Windows servers (recommended)
 docker volume create --driver local \
   --opt type=cifs \
   --opt device=//winserver.local/data \
-  --opt o=addr=winserver.local,credentials=/etc/docker-cifs-credentials,vers=3.0 \
+  --opt o=addr=winserver.local,username=dockeruser,password="${SMB_PASSWORD}",vers=3.0 \
   data_vol
 
-# Force SMB 3.1.1 for Windows Server 2022+ with encryption
+# Force SMB 3.1.1 for Windows Server 2016+ with encryption
 docker volume create --driver local \
   --opt type=cifs \
   --opt device=//winserver.local/secure \
-  --opt o=addr=winserver.local,credentials=/etc/docker-cifs-credentials,vers=3.1.1,seal \
+  --opt o=addr=winserver.local,username=dockeruser,password="${SMB_PASSWORD}",vers=3.1.1,seal \
   secure_vol
 ```
 
@@ -178,7 +170,7 @@ CIFS mounts do not support standard Linux ownership changes with `chown`. Instea
 docker volume create --driver local \
   --opt type=cifs \
   --opt device=//192.168.1.50/appdata \
-  --opt o=addr=192.168.1.50,credentials=/etc/docker-cifs-credentials,uid=1000,gid=1000,file_mode=0644,dir_mode=0755 \
+  --opt o=addr=192.168.1.50,username=dockeruser,password="${SMB_PASSWORD}",uid=1000,gid=1000,file_mode=0644,dir_mode=0755 \
   appdata_vol
 ```
 
@@ -186,12 +178,12 @@ This is critical when your container process runs as a non-root user. Without ex
 
 ## Troubleshooting Common Issues
 
-**Mount fails with "host is down":** This usually means the server requires a newer SMB version than the client is offering. Add `vers=3.0` or `vers=2.1` explicitly.
+**Mount fails with "host is down":** This can mean the server requires a different SMB version than the client is offering. Add `vers=3.0` or `vers=2.1` explicitly after checking that the host is reachable.
 
 ```bash
 # Debug CIFS mount issues by testing manually on the host
 sudo mount -t cifs //192.168.1.50/shared-data /mnt/test \
-  -o credentials=/etc/docker-cifs-credentials,vers=3.0
+  -o username=dockeruser,password="${SMB_PASSWORD}",vers=3.0
 ```
 
 **Permission denied after successful mount:** Check the UID/GID mapping. Also verify that the SMB user has proper share-level and filesystem-level permissions on the Windows side.
@@ -203,7 +195,7 @@ sudo mount -t cifs //192.168.1.50/shared-data /mnt/test \
 docker volume create --driver local \
   --opt type=cifs \
   --opt device=//192.168.1.50/highperf \
-  --opt o=addr=192.168.1.50,credentials=/etc/docker-cifs-credentials,vers=3.0,cache=loose,rsize=1048576,wsize=1048576 \
+  --opt o=addr=192.168.1.50,username=dockeruser,password="${SMB_PASSWORD}",vers=3.0,cache=loose,rsize=1048576,wsize=1048576 \
   fast_cifs_vol
 ```
 
@@ -226,12 +218,12 @@ Some shares allow anonymous access. For these, use the `guest` option:
 docker volume create --driver local \
   --opt type=cifs \
   --opt device=//192.168.1.50/public \
-  --opt o=addr=192.168.1.50,guest,file_mode=0444,dir_mode=0555 \
+  --opt o=addr=192.168.1.50,guest,ro,file_mode=0444,dir_mode=0555 \
   public_share
 ```
 
-The read-only file and directory modes (0444 and 0555) add an extra safety layer for public shares.
+The `ro` option mounts the share read-only, and the read-only file and directory modes (0444 and 0555) add an extra client-side safety layer for public shares.
 
 ## Summary
 
-CIFS/SMB volumes let you bridge Windows-based storage into Docker containers cleanly. The key points to remember: always use a credentials file instead of inline passwords, specify the SMB protocol version explicitly, map UIDs and GIDs to match your container users, and prefer SMB 3.0 or newer for security. With these practices in place, you can share data between Windows servers and Linux containers reliably.
+CIFS/SMB volumes let you bridge Windows-based storage into Docker containers cleanly. The key points to remember: handle credentials carefully, specify the SMB protocol version explicitly, map UIDs and GIDs to match your container users, and prefer SMB 3.0 or newer for security. With these practices in place, you can share data between Windows servers and Linux containers reliably.
