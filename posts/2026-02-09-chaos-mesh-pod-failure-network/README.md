@@ -16,9 +16,9 @@ In this guide, we'll set up Chaos Mesh and create experiments that test applicat
 
 Chaos Mesh runs as a set of controllers in your Kubernetes cluster that watch for chaos experiment resources. When you create a chaos experiment, Chaos Mesh controllers inject the specified fault into targeted pods using various mechanisms depending on the chaos type.
 
-For pod failures, Chaos Mesh terminates pods directly through the Kubernetes API. For network chaos, it uses iptables rules or tc (traffic control) to manipulate network behavior at the kernel level. This approach requires no modification to application code or container images.
+For pod-kill experiments, Chaos Mesh terminates pods directly through the Kubernetes API. For pod-failure experiments, it makes the target pods unavailable for the experiment duration. For network chaos, it uses iptables rules or tc (traffic control) to manipulate network behavior at the kernel level. This approach requires no modification to application code or container images.
 
-Chaos experiments are defined as Kubernetes custom resources with selectors that target specific pods, duration settings that control how long the chaos runs, and scheduler specifications for recurring experiments.
+Chaos experiments are defined as Kubernetes custom resources with selectors that target specific pods and duration settings that control how long the chaos runs. Recurring experiments are defined with separate Schedule resources.
 
 ## Installing Chaos Mesh
 
@@ -39,6 +39,8 @@ helm install chaos-mesh chaos-mesh/chaos-mesh \
   --set dashboard.create=true \
   --set dashboard.securityMode=false
 ```
+
+If your cluster uses containerd, CRI-O, K3s, or MicroK8s, set the matching `chaosDaemon.runtime` and `chaosDaemon.socketPath` values from the Chaos Mesh installation guide.
 
 Verify the installation:
 
@@ -148,16 +150,9 @@ spec:
 
   # Kill one pod at a time
   mode: one
-
-  # Run for 5 minutes
-  duration: "5m"
-
-  # Schedule (optional)
-  scheduler:
-    cron: "@every 1h"
 ```
 
-This experiment kills one pod every hour for 5 minutes, testing that your application maintains availability during pod failures.
+This one-time experiment kills one matching pod, testing that your application maintains availability during pod failures.
 
 Apply the experiment:
 
@@ -169,6 +164,30 @@ kubectl get pods -l app=web-app -w
 
 # Check experiment status
 kubectl get podchaos pod-kill-experiment -o yaml
+```
+
+To run this experiment every hour, wrap it in a Schedule resource:
+
+```yaml
+# scheduled-pod-failure.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: scheduled-pod-kill
+  namespace: default
+spec:
+  schedule: "@every 1h"
+  historyLimit: 2
+  concurrencyPolicy: Forbid
+  type: PodChaos
+  podChaos:
+    action: pod-kill
+    selector:
+      namespaces:
+        - default
+      labelSelectors:
+        app: web-app
+    mode: one
 ```
 
 ## Testing Multiple Pod Failures
@@ -194,8 +213,6 @@ spec:
   # Kill 2 pods simultaneously
   mode: fixed
   value: "2"
-
-  duration: "2m"
 ```
 
 This tests whether your application maintains availability when losing multiple replicas:
@@ -343,7 +360,6 @@ spec:
 
   # Block access to Kubernetes API
   target:
-    mode: all
     selector:
       namespaces:
         - kube-system
@@ -356,7 +372,7 @@ spec:
   duration: "2m"
 ```
 
-This tests how your application behaves when it cannot communicate with the Kubernetes API server.
+This tests how your application behaves when it cannot communicate with Kubernetes API server pods that match those labels.
 
 ## Implementing Chaos Workflows
 
@@ -462,14 +478,14 @@ kubectl logs -n chaos-mesh -l app.kubernetes.io/component=chaos-daemon --all-con
 
 Pause a running experiment without deleting it:
 
-```yaml
+```bash
 # Update experiment with paused annotation
 kubectl annotate podchaos pod-kill-experiment \
-  chaos-mesh.org/pause=true
+  experiment.chaos-mesh.org/pause=true
 
 # Resume experiment
 kubectl annotate podchaos pod-kill-experiment \
-  chaos-mesh.org/pause-
+  experiment.chaos-mesh.org/pause-
 ```
 
 ## Testing Application Metrics During Chaos
@@ -519,17 +535,17 @@ chmod +x check-metrics.sh
 
 ## Implementing Safety Controls
 
-Add safeguards to prevent chaos experiments from affecting production:
+Add safeguards to prevent chaos experiments from affecting production. When the FilterNamespace feature is enabled during installation, Chaos Mesh only injects faults into namespaces annotated with `chaos-mesh.org/inject=enabled`:
 
 ```yaml
-# protected-namespace.yaml
+# chaos-test-namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: production
+  name: chaos-test
   annotations:
-    # Prevent chaos experiments in this namespace
-    chaos-mesh.org/inject: "false"
+    # Allow chaos experiments in this namespace
+    chaos-mesh.org/inject: "enabled"
 ```
 
 Use selectors carefully to avoid unintended targets:
@@ -553,7 +569,6 @@ spec:
       chaos-test: "enabled"
 
   mode: one
-  duration: "2m"
 ```
 
 ## Conclusion
