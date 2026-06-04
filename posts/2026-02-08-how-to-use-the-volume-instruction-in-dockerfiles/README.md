@@ -35,7 +35,7 @@ When you include `VOLUME /data` in a Dockerfile, Docker does the following:
 3. Any data written to `/data` inside the container goes to the volume, not the container's writable layer
 4. The volume persists even after the container is removed (unless you use `docker rm -v`)
 
-Here is an important detail: any changes to the VOLUME path after the VOLUME instruction in the Dockerfile are discarded. This catches many people off guard.
+Here is an important detail: changes to the VOLUME path after the VOLUME instruction in the Dockerfile depend on the builder. With Docker's legacy builder, those changes are discarded. With BuildKit, which is the default builder in modern Docker installations, those changes are kept.
 
 ```dockerfile
 FROM ubuntu:22.04
@@ -43,12 +43,12 @@ FROM ubuntu:22.04
 # Mark /data as a volume
 VOLUME /data
 
-# This file will NOT appear in the volume at runtime
-# Changes after VOLUME are silently discarded during build
+# With the legacy builder, this file will NOT appear in the volume at runtime.
+# With BuildKit, it is kept and can be copied into a newly created volume.
 RUN echo "hello" > /data/greeting.txt
 ```
 
-The `greeting.txt` file is created during the build, but it does not appear when the container runs because the volume mount replaces the directory contents. To pre-populate volume data, write files before the VOLUME instruction:
+With the legacy builder, the `greeting.txt` file is created during the build but does not appear when the container runs. For portable Dockerfiles that work the same way with both builders, write files before the VOLUME instruction:
 
 ```dockerfile
 FROM ubuntu:22.04
@@ -281,4 +281,4 @@ docker rm -v mycontainer
 
 ## Summary
 
-The VOLUME instruction declares a mount point in the container that Docker backs with an anonymous volume by default. It is useful for persistent data like databases and logs, but it has quirks: modifications after the VOLUME instruction in a Dockerfile are discarded, and anonymous volumes can accumulate if not managed. For production use, always override VOLUME declarations with named volumes using the `-v` flag. Use VOLUME for data that needs to persist or be shared, and avoid it for application code or configuration files.
+The VOLUME instruction declares a mount point in the container that Docker backs with an anonymous volume by default. It is useful for persistent data like databases and logs, but it has quirks: modifications after the VOLUME instruction in a Dockerfile behave differently between the legacy builder and BuildKit, and anonymous volumes can accumulate if not managed. For production use, always override VOLUME declarations with named volumes using the `-v` flag. Use VOLUME for data that needs to persist or be shared, and avoid it for application code or configuration files.
