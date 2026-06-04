@@ -30,7 +30,7 @@ kubectl get pods -o jsonpath='{.items[0].status.phase}'
 kubectl get deployment nginx -o jsonpath='{.metadata.namespace}'
 ```
 
-The `{.items[*]}` pattern appears frequently. Most `kubectl get` commands return a list, even for single resources, so you access the items array first.
+The `{.items[*]}` pattern appears frequently when `kubectl get` returns a collection, such as `kubectl get pods` without a specific resource name. When you request a named resource, such as `kubectl get deployment nginx`, the JSONPath starts from that single object instead.
 
 ## Extracting Nested Container Data
 
@@ -152,7 +152,7 @@ JSONPath expressions fail silently when fields don't exist. Test paths and provi
 kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].resources.limits.memory}{"\n"}{end}'
 
 # This returns empty strings for pods without limits
-# Use || to provide defaults in shell processing
+# Post-process the output if you need explicit defaults
 ```
 
 For production scripts, validate that expected fields exist before relying on output.
@@ -219,7 +219,7 @@ This enables custom cluster health checks beyond standard metrics.
 
 ## Comparison with jq
 
-JSONPath works natively with kubectl, while jq requires JSON output and pipe processing. JSONPath runs faster for simple queries, but jq offers more powerful transformations. Choose based on complexity:
+JSONPath works natively with kubectl, while jq requires JSON output and pipe processing. JSONPath is convenient for simple queries, but jq offers more powerful transformations. Choose based on complexity:
 
 ```bash
 # JSONPath - simpler, faster
