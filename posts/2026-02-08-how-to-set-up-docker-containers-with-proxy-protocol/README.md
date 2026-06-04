@@ -10,7 +10,7 @@ Description: Configure Proxy Protocol for Docker containers to preserve client I
 
 When traffic passes through a load balancer or reverse proxy before reaching your Docker container, the original client IP address is lost. The container sees the proxy's IP as the source. This is a fundamental problem for logging, rate limiting, geolocation, and security rules that depend on knowing who is making the request.
 
-Proxy Protocol solves this by adding a small header to each connection that carries the original client IP and port. Unlike X-Forwarded-For headers, Proxy Protocol works at the TCP level and cannot be forged by application-layer attackers. This guide shows you how to configure Proxy Protocol across common Docker setups.
+Proxy Protocol solves this by adding a small header to each connection that carries the original client IP and port. Unlike X-Forwarded-For headers, Proxy Protocol works at the TCP level, so application-layer header spoofing does not affect it when backends only accept trusted proxy connections. This guide shows you how to configure Proxy Protocol across common Docker setups.
 
 ## How Proxy Protocol Works
 
@@ -105,6 +105,12 @@ The backend Nginx containers need to be configured to read the Proxy Protocol he
 
 ```nginx
 # nginx-proxy-protocol.conf - Nginx configured to accept Proxy Protocol
+# log_format is defined in the http context; files in /etc/nginx/conf.d
+# are included from the nginx:alpine image's http block.
+log_format proxy_log '$proxy_protocol_addr - $remote_user [$time_local] '
+                     '"$request" $status $body_bytes_sent '
+                     '"$http_referer" "$http_user_agent"';
+
 server {
     # The 'proxy_protocol' parameter tells Nginx to expect the PP header
     listen 80 proxy_protocol;
@@ -117,22 +123,19 @@ server {
     real_ip_header proxy_protocol;
 
     # Log the real client IP
-    log_format proxy_log '$proxy_protocol_addr - $remote_user [$time_local] '
-                         '"$request" $status $body_bytes_sent '
-                         '"$http_referer" "$http_user_agent"';
     access_log /var/log/nginx/access.log proxy_log;
 
     location / {
         # Pass the real client IP to upstream applications
         proxy_set_header X-Real-IP $proxy_protocol_addr;
         proxy_set_header X-Forwarded-For $proxy_protocol_addr;
+        default_type text/plain;
         return 200 'Client IP: $proxy_protocol_addr\nServer: $hostname\n';
-        add_header Content-Type text/plain;
     }
 
     location /health {
+        default_type application/json;
         return 200 '{"status": "ok"}';
-        add_header Content-Type application/json;
     }
 }
 ```
@@ -148,8 +151,8 @@ docker compose up -d
 # Make a request through HAProxy
 curl http://localhost/
 
-# The response should show your actual client IP, not the HAProxy container IP
-# Output: Client IP: 172.17.0.1 (or your host IP)
+# The response should show the Docker bridge gateway or host IP, not the HAProxy container IP
+# Output: Client IP: 172.18.0.1 (or your host IP)
 ```
 
 Check the Nginx logs to confirm the real IP is being recorded:
@@ -181,20 +184,21 @@ services:
     command:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.proxyProtocol.trustedIPs=10.0.0.0/8,172.16.0.0/12"
-      - "--providers.docker.swarmMode=true"
+      - "--providers.swarm.endpoint=unix:///var/run/docker.sock"
 
   web:
     image: nginx:alpine
     deploy:
       replicas: 3
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.web.rule=Host(`example.com`)"
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.web.rule=Host(`example.com`)"
+        - "traefik.http.services.web.loadbalancer.server.port=80"
 ```
 
 ## Proxy Protocol v2 with TLS (HTTPS)
 
-For HTTPS traffic, Proxy Protocol wraps the TLS connection:
+For HTTPS traffic terminated by HAProxy, Proxy Protocol is sent on the backend connection after TLS has been decrypted:
 
 ```text
 # haproxy.cfg - HTTPS with Proxy Protocol v2
@@ -212,11 +216,11 @@ HAProxy terminates TLS and then sends the plaintext request to the backend with 
 
 ## Proxy Protocol Between Multiple Proxy Layers
 
-In multi-layer proxy setups, each layer must forward the Proxy Protocol header:
+In multi-layer proxy setups, each layer must accept Proxy Protocol from the previous proxy and send a new Proxy Protocol header to the next backend:
 
 ```text
 # Layer 1: External load balancer (e.g., cloud provider) sends PP to HAProxy
-# Layer 2: HAProxy reads PP and forwards to Nginx with PP
+# Layer 2: HAProxy reads PP and sends PP to Nginx
 
 # haproxy.cfg for Layer 2 - Receive PP from upstream, send PP to backend
 frontend http_front
@@ -253,7 +257,7 @@ Common issues:
 - **400 Bad Request** - Backend not configured to expect Proxy Protocol but receiving it
 - **Empty client IP** - Backend not configured with `proxy_protocol` on the listen directive
 - **Proxy's IP shown instead of client IP** - Missing `real_ip_header proxy_protocol` in Nginx
-- **Connection refused** - Proxy Protocol version mismatch (v1 vs v2)
+- **Connection closes or parsing errors** - Proxy Protocol version mismatch (v1 vs v2) or a receiver that does not support the version being sent
 
 ## Security Considerations
 
