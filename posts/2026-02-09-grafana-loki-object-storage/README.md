@@ -12,9 +12,9 @@ Storing logs on local disks limits your log retention and creates scaling bottle
 
 ## Understanding Loki's Storage Architecture
 
-Loki separates its storage into two components: chunks and indexes. Chunks contain the actual compressed log data, while indexes map labels to chunks for efficient querying. Both can be stored in object storage, though recent index entries typically live in a database for faster access.
+Loki separates its storage into two components: chunks and indexes. Chunks contain the actual compressed log data, while indexes map labels to chunks for efficient querying. With the TSDB single-store index, both chunks and index files are stored in the configured object storage backend.
 
-This separation allows Loki to keep hot data close for fast queries while pushing older data to cheaper object storage automatically.
+Ingesters keep active chunks and index data locally while they are being built, then flush chunks and ship TSDB index files to object storage.
 
 ## Configuring S3 Storage for Loki
 
@@ -31,10 +31,6 @@ server:
 
 common:
   path_prefix: /loki
-  storage:
-    filesystem:
-      chunks_directory: /loki/chunks
-      rules_directory: /loki/rules
   replication_factor: 1
   ring:
     instance_addr: 127.0.0.1
@@ -59,7 +55,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache
-    shared_store: s3
 
 limits_config:
   retention_period: 744h  # 31 days
@@ -69,7 +64,7 @@ This configuration stores both chunks and indexes in S3 using the newer TSDB ind
 
 ## Using AWS Credentials with S3
 
-Loki needs AWS credentials to access S3. Provide them through environment variables, IAM roles, or explicit configuration.
+Loki needs AWS credentials to access S3. Provide them through environment variables, IAM roles, or explicit configuration. When using environment variable references in the YAML file, start Loki with `-config.expand-env=true`.
 
 ```yaml
 # loki-config.yaml storage section with credentials
@@ -79,8 +74,9 @@ storage_config:
     access_key_id: ${AWS_ACCESS_KEY_ID}
     secret_access_key: ${AWS_SECRET_ACCESS_KEY}
 
-    # Optional: use IAM role instead
-    # sse_encryption: true
+    # Optional: use server-side encryption
+    # sse:
+    #   type: SSE-S3
     # s3forcepathstyle: false
 ```
 
@@ -106,7 +102,7 @@ spec:
       serviceAccountName: loki
       containers:
         - name: loki
-          image: grafana/loki:2.9.0
+          image: grafana/loki:3.7.2
           # Loki automatically uses IAM role credentials
 ```
 
@@ -132,7 +128,7 @@ services:
       - minio-data:/data
 
   loki:
-    image: grafana/loki:2.9.0
+    image: grafana/loki:3.7.2
     ports:
       - "3100:3100"
     volumes:
@@ -156,7 +152,7 @@ storage_config:
     insecure: true
 ```
 
-The `s3forcepathstyle` and `insecure` flags are necessary for MinIO compatibility.
+The `s3forcepathstyle` flag is commonly required for MinIO compatibility. Use `insecure: true` only when connecting to MinIO over plain HTTP or with TLS verification disabled.
 
 ## Implementing Retention Policies
 
@@ -171,9 +167,9 @@ limits_config:
 # Compactor manages retention
 compactor:
   working_directory: /loki/compactor
-  shared_store: s3
   compaction_interval: 10m
   retention_enabled: true
+  delete_request_store: s3
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
 ```
@@ -182,7 +178,7 @@ The compactor runs as a separate Loki component that marks old chunks for deleti
 
 ## Configuring Multi-Tenancy with Object Storage
 
-When running multi-tenant Loki, each tenant's data is isolated in object storage using path prefixes.
+When running multi-tenant Loki, each tenant's data is isolated by the tenant ID that Loki receives with each request.
 
 ```yaml
 # loki-config.yaml
@@ -195,7 +191,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache
-    shared_store: s3
 
 # Per-tenant limits
 limits_config:
@@ -216,7 +211,7 @@ overrides:
     max_query_length: 168h
 ```
 
-Each tenant's logs are stored under `s3://bucket/fake/tenant-id/` allowing independent retention policies.
+Each tenant's logs are isolated by tenant ID in Loki's object storage keys. When `auth_enabled: false`, Loki uses the single tenant ID `fake`; when `auth_enabled: true`, the tenant comes from the `X-Scope-OrgID` request header, allowing independent retention policies.
 
 ## Optimizing Chunk Size for Storage Efficiency
 
@@ -226,9 +221,9 @@ Chunk size affects both query performance and storage costs. Larger chunks reduc
 # loki-config.yaml
 chunk_store_config:
   chunk_cache_config:
-    enable_fifocache: true
-    fifocache:
-      max_size_bytes: 1GB
+    embedded_cache:
+      enabled: true
+      max_size_mb: 1024
       ttl: 1h
 
 ingester:
@@ -251,16 +246,16 @@ query_range:
   cache_results: true
   results_cache:
     cache:
-      enable_fifocache: true
-      fifocache:
-        max_size_bytes: 500MB
+      embedded_cache:
+        enabled: true
+        max_size_mb: 500
         ttl: 24h
 
 chunk_store_config:
   chunk_cache_config:
-    enable_fifocache: true
-    fifocache:
-      max_size_bytes: 1GB
+    embedded_cache:
+      enabled: true
+      max_size_mb: 1024
       ttl: 1h
 
 storage_config:
@@ -282,7 +277,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache
-    shared_store: gcs
 
 schema_config:
   configs:
@@ -323,16 +317,14 @@ rate(loki_ingester_chunks_flushed_total[5m])
 # Size of data uploaded
 rate(loki_ingester_chunk_stored_bytes_total[5m])
 
-# Cache hit rates
-sum(rate(loki_chunk_store_index_lookups_total{type="cache-hit"}[5m]))
-/
-sum(rate(loki_chunk_store_index_lookups_total[5m]))
+# Loki request errors
+sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[5m]))
 
-# Object storage request errors
-rate(loki_boltdb_shipper_request_duration_seconds_count{status_code!~"2.."}[5m])
+# Compactor health
+sum(loki_boltdb_shipper_compactor_running)
 ```
 
-High cache hit rates indicate efficient caching configuration, while upload rates help predict storage costs.
+Upload rates help predict storage costs, while request errors and compactor health help catch storage and retention problems.
 
 ## Handling Object Storage Failures
 
@@ -387,15 +379,21 @@ schema_config:
       index:
         prefix: index_
         period: 24h
+
+storage_config:
+  filesystem:
+    directory: /loki/chunks
+  aws:
+    s3: s3://us-east-1/loki-logs-bucket
 ```
 
 This configuration reads old logs from filesystem while writing new logs to S3, allowing gradual migration.
 
 ## Best Practices for Object Storage
 
-Enable compression to reduce storage costs. Loki compresses chunks by default using Snappy or LZ4.
+Enable compression to reduce storage costs. Loki compresses chunks by default, and the chunk encoding can be configured with `ingester.chunk_encoding` when you need a different compression algorithm.
 
-Use lifecycle policies on your S3 bucket to transition older logs to cheaper storage tiers like Glacier.
+Use lifecycle policies carefully. They can be useful as a safeguard after Loki's retention window, but transitioning queryable chunks to archival tiers like Glacier can make old logs slow or unavailable to query.
 
 Monitor your S3 costs using AWS Cost Explorer and set budgets to prevent unexpected charges.
 
