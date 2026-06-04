@@ -14,7 +14,7 @@ Running a TFTP server in Docker keeps this utility contained and portable. You c
 
 ## Why TFTP Still Matters
 
-FTP and SCP have largely replaced TFTP for general file transfers, but TFTP occupies a niche that nothing else fills. PXE boot requires TFTP. Most Cisco, Juniper, and Arista devices default to TFTP for firmware and configuration transfers. DHCP option 66 points clients to a TFTP server for boot files. The protocol's simplicity means it works even on devices with minimal network stacks.
+FTP and SCP have largely replaced TFTP for general file transfers, but TFTP occupies a niche that nothing else fills. Traditional PXE boot commonly uses TFTP. Most Cisco, Juniper, and Arista devices default to TFTP for firmware and configuration transfers. DHCP option 66 points clients to a TFTP server for boot files. The protocol's simplicity means it works even on devices with minimal network stacks.
 
 ## Quick Start
 
@@ -54,7 +54,6 @@ For a more maintainable deployment, use Docker Compose.
 ```yaml
 # docker-compose.yml - TFTP server for network operations
 # Serves files from a local directory over TFTP
-version: "3.8"
 
 services:
   tftp:
@@ -81,7 +80,7 @@ If you need more control over the TFTP server configuration, build a custom imag
 ```dockerfile
 # Dockerfile - Custom TFTP server with tftpd-hpa
 # Includes write support for receiving files from devices
-FROM alpine:3.19
+FROM alpine:3.23
 
 # Install the tftpd-hpa server
 RUN apk add --no-cache tftp-hpa
@@ -93,10 +92,11 @@ RUN mkdir -p /var/tftpboot && chmod 777 /var/tftpboot
 EXPOSE 69/udp
 
 # Run tftpd-hpa in the foreground
+# --listen makes in.tftpd bind the UDP socket itself
 # --foreground keeps the process running for Docker
 # --create allows clients to upload new files
 # --secure restricts access to the specified directory
-CMD ["in.tftpd", "--foreground", "--create", "--secure", "--verbose", "/var/tftpboot"]
+CMD ["in.tftpd", "--listen", "--foreground", "--create", "--secure", "--verbose", "/var/tftpboot"]
 ```
 
 ```bash
@@ -118,41 +118,26 @@ A common use case is combining TFTP with DHCP for PXE network booting. This Dock
 ```yaml
 # docker-compose.yml - PXE Boot stack with DHCP and TFTP
 # Enables network booting of servers and workstations
-version: "3.8"
 
 services:
   tftp:
     image: pghalliday/tftp:latest
     container_name: pxe-tftp
     restart: unless-stopped
-    ports:
-      - "69:69/udp"
     volumes:
       - ./pxe-boot:/var/tftpboot
-    networks:
-      pxe-net:
-        ipv4_address: 192.168.100.2
+    network_mode: host
 
   # dnsmasq provides both DHCP and additional TFTP if needed
   dnsmasq:
     image: jpillora/dnsmasq:latest
     container_name: pxe-dhcp
     restart: unless-stopped
-    ports:
-      - "67:67/udp"
-      - "53:53/udp"
     volumes:
       - ./dnsmasq.conf:/etc/dnsmasq.conf:ro
     cap_add:
       - NET_ADMIN
     network_mode: host
-
-networks:
-  pxe-net:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 192.168.100.0/24
 ```
 
 Create the dnsmasq configuration for PXE.
@@ -162,14 +147,14 @@ Create the dnsmasq configuration for PXE.
 # Tells clients where to find the TFTP server and boot file
 
 # DHCP settings
-dhcp-range=192.168.100.50,192.168.100.150,12h
-dhcp-option=option:router,192.168.100.1
+dhcp-range=192.168.1.50,192.168.1.150,12h
+dhcp-option=option:router,192.168.1.1
 dhcp-option=option:dns-server,8.8.8.8,8.8.4.4
 
 # PXE boot settings
 # Option 66 specifies the TFTP server address
-dhcp-boot=pxelinux.0,pxeserver,192.168.100.2
-enable-tftp=false
+dhcp-boot=pxelinux.0,pxeserver,192.168.1.5
+# enable-tftp is omitted because TFTP is provided by the tftp container
 
 # Log DHCP transactions for debugging
 log-dhcp
@@ -283,9 +268,9 @@ for DEVICE in "${DEVICES[@]}"; do
         1.3.6.1.4.1.9.9.96.1.1.1.1.2.111 i 1 \
         1.3.6.1.4.1.9.9.96.1.1.1.1.3.111 i 4 \
         1.3.6.1.4.1.9.9.96.1.1.1.1.4.111 i 1 \
-        1.3.6.1.4.1.9.9.96.1.1.1.1.5.111 s "$FILENAME" \
-        1.3.6.1.4.1.9.9.96.1.1.1.1.6.111 a $TFTP_SERVER \
-        1.3.6.1.4.1.9.9.96.1.1.1.1.14.111 i 1
+        1.3.6.1.4.1.9.9.96.1.1.1.1.5.111 a $TFTP_SERVER \
+        1.3.6.1.4.1.9.9.96.1.1.1.1.6.111 s "$FILENAME" \
+        1.3.6.1.4.1.9.9.96.1.1.1.1.14.111 i 4
 
     sleep 5
 done
@@ -298,9 +283,8 @@ echo "Backup complete. Files saved to /opt/tftp-data/backups/"
 TFTP has no built-in authentication or encryption. Keep these points in mind for any deployment. Never expose the TFTP port to the internet. Use firewall rules to restrict access to known management IPs only. Run the container with read-only access unless devices need to write back to it. Place the TFTP server on a dedicated management VLAN separate from user traffic. Monitor the TFTP directory for unexpected file uploads. Consider shutting down the TFTP container when it is not actively needed.
 
 ```bash
-# Restrict TFTP access using iptables on the Docker host
-iptables -A INPUT -p udp --dport 69 -s 192.168.1.0/24 -j ACCEPT
-iptables -A INPUT -p udp --dport 69 -j DROP
+# Restrict TFTP access to a source subnet for Docker-published ports
+iptables -I DOCKER-USER -p udp -m conntrack --ctorigdstport 69 ! -s 192.168.1.0/24 -j DROP
 ```
 
 ## Health Monitoring
