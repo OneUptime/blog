@@ -21,7 +21,7 @@ Pod Topology Spread Constraints distribute pods across topology domains. A topol
 - topology.kubernetes.io/region (cloud regions)
 - Custom labels like rack, datacenter, or cluster
 
-maxSkew defines the maximum allowed difference in pod count between any two domains. Lower maxSkew means more even distribution.
+maxSkew defines how uneven the matching pod counts can be across eligible topology domains. With DoNotSchedule, Kubernetes compares the target topology domain to the global minimum pod count. Lower maxSkew means more even distribution.
 
 whenUnsatisfiable determines what happens when spreading cannot be satisfied:
 - DoNotSchedule refuses to schedule if constraints cannot be met (hard constraint)
@@ -69,7 +69,7 @@ Perfect distribution with maxSkew: 1.
 
 ## Understanding maxSkew
 
-maxSkew controls distribution strictness. It defines the maximum difference in pod count between the domain with the most pods and the domain with the fewest pods.
+maxSkew controls distribution strictness. In simple cases where all topology domains are eligible, it matches the difference in pod count between the domain with the most pods and the domain with the fewest pods.
 
 maxSkew: 1 (strict distribution):
 
@@ -152,7 +152,10 @@ With only 2 zones available and 4 replicas:
 - Zone B: 2 pods
 
 Perfect distribution. If you increase to 5 replicas:
-- One pod stays pending because adding it to any zone would violate maxSkew: 1
+- Zone A: 3 pods
+- Zone B: 2 pods
+
+This still satisfies maxSkew: 1 because the difference is 1. A pod stays pending only when the scheduler cannot place it without increasing the skew beyond 1, such as when one zone has no remaining eligible nodes or resources.
 
 Use DoNotSchedule when availability is more important than running all replicas.
 
@@ -437,11 +440,14 @@ echo "Pod distribution by $TOPOLOGY_KEY:"
 kubectl get pods -l $LABEL_SELECTOR -o json | \
   jq -r '.items[] | .spec.nodeName' | \
   while read node; do
-    kubectl get node $node -o jsonpath="{.metadata.labels.$TOPOLOGY_KEY}{\"\\n\"}"
+    kubectl get node "$node" -o json | \
+      jq -r --arg key "$TOPOLOGY_KEY" '.metadata.labels[$key] // "<missing>"'
   done | sort | uniq -c | sort -rn
 ```
 
 Create alerts for uneven distribution:
+
+This example assumes kube-state-metrics exposes the pod and node labels used in the query through its metric labels allowlist.
 
 ```yaml
 # PrometheusRule
@@ -450,8 +456,24 @@ groups:
   rules:
   - alert: UnevenPodDistribution
     expr: |
-      max(count(kube_pod_info{app="myapp"}) by (topology_zone)) -
-      min(count(kube_pod_info{app="myapp"}) by (topology_zone)) > 2
+      max(
+        count by (label_topology_kubernetes_io_zone) (
+          kube_pod_info
+            * on (namespace, pod) group_left(label_app)
+              kube_pod_labels{label_app="myapp"}
+            * on (node) group_left(label_topology_kubernetes_io_zone)
+              kube_node_labels
+        )
+      ) -
+      min(
+        count by (label_topology_kubernetes_io_zone) (
+          kube_pod_info
+            * on (namespace, pod) group_left(label_app)
+              kube_pod_labels{label_app="myapp"}
+            * on (node) group_left(label_topology_kubernetes_io_zone)
+              kube_node_labels
+        )
+      ) > 2
     annotations:
       summary: "Pods not evenly distributed across zones"
 ```
@@ -488,16 +510,17 @@ topologySpreadConstraints:
   whenUnsatisfiable: DoNotSchedule
 ```
 
-With only 2 zones, you can only run an even number of replicas.
+With only 2 zones and maxSkew: 1, odd replica counts are valid because a 3-to-2 distribution has a skew of 1. Scheduling fails when resource, affinity, taint, or label constraints force the next pod into a domain that would make the skew greater than 1.
 
 Missing topology labels:
 
 ```bash
-# Check all nodes have zone labels
-kubectl get nodes -o jsonpath='{.items[*].metadata.labels.topology\.kubernetes\.io/zone}'
+# Check each node's zone label
+kubectl get nodes -o json | \
+  jq -r '.items[] | [.metadata.name, (.metadata.labels["topology.kubernetes.io/zone"] // "<missing>")] | @tsv'
 ```
 
-If some nodes lack labels, distribution fails.
+If some nodes lack the topology key, those nodes are skipped for that topology spread calculation. This can reduce the set of eligible domains and make placement different from what you expect.
 
 Conflicting constraints:
 
