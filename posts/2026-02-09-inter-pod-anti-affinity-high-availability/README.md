@@ -218,12 +218,10 @@ affinity:
             operator: In
             values:
             - web
-          # Match pods with same version
-          - key: pod-template-hash
-            operator: In
-            values:
-            - ${POD_TEMPLATE_HASH}
         topologyKey: kubernetes.io/hostname
+        # Match pods with same version
+        matchLabelKeys:
+        - pod-template-hash
 ```
 
 This spreads pods of the same version across nodes while allowing different versions to co-locate during rolling updates.
