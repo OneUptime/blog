@@ -36,29 +36,33 @@ spec:
     command:
     - kube-apiserver
     # OIDC issuer configuration
-    - --service-account-issuer=https://kubernetes.default.svc.cluster.local
+    - --service-account-issuer=https://your-cluster.example.com
     - --service-account-signing-key-file=/etc/kubernetes/pki/sa.key
     - --service-account-key-file=/etc/kubernetes/pki/sa.pub
     # Make OIDC discovery endpoint public
     - --service-account-jwks-uri=https://your-cluster.example.com/openid/v1/jwks
     # Supported audiences
-    - --api-audiences=https://kubernetes.default.svc.cluster.local,vault,custom-service
+    - --api-audiences=https://your-cluster.example.com,vault,custom-service
 ```
 
-The issuer URL must be accessible by external services that need to validate tokens. For managed Kubernetes services (EKS, GKE, AKS), this is configured automatically.
+The issuer URL must use HTTPS and its discovery document must be accessible by external services that need to validate tokens. If your API server is not publicly reachable, serve the discovery document and JWKS through a public endpoint or use a managed Kubernetes provider's issuer endpoint. For managed Kubernetes services (EKS, GKE, AKS), this is configured automatically when workload identity features are enabled.
 
 Verify OIDC discovery is working:
 
 ```bash
-# Get the OIDC issuer URL
-ISSUER=$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')
+# Get the OIDC discovery document
+DISCOVERY=$(kubectl get --raw /.well-known/openid-configuration)
+ISSUER=$(echo "$DISCOVERY" | jq -r '.issuer')
+JWKS_URI=$(echo "$DISCOVERY" | jq -r '.jwks_uri')
 echo "OIDC Issuer: $ISSUER"
+echo "JWKS URI: $JWKS_URI"
+echo "$DISCOVERY" | jq .
 
 # Fetch the JWKS (public keys for token verification)
-curl -s ${ISSUER}/.well-known/openid-configuration | jq .
+kubectl get --raw /openid/v1/jwks | jq .
 ```
 
-This should return the OIDC discovery document with endpoints for key retrieval.
+This should return the OIDC discovery document and the public keys for token verification.
 
 ## Creating ServiceAccount Tokens with Custom Audiences
 
@@ -95,32 +99,32 @@ spec:
           audience: vault
 ```
 
-The audience claim must match what Vault expects. When the application presents this token to Vault, Vault can validate it against the Kubernetes OIDC endpoint.
+The audience claim must match what Vault expects. When the application presents this token to Vault, Vault can validate it with the Kubernetes TokenReview API.
 
 ## Configuring HashiCorp Vault to Accept ServiceAccount Tokens
 
-Vault supports Kubernetes authentication using OIDC token validation:
+Vault supports Kubernetes authentication using ServiceAccount JWTs and the Kubernetes TokenReview API:
 
 ```bash
 # Enable Kubernetes auth method in Vault
 vault auth enable -path=k8s kubernetes
 
-# Configure Vault with your cluster's OIDC information
+# Configure Vault with your cluster's Kubernetes API information
 vault write auth/k8s/config \
     kubernetes_host="https://kubernetes.default.svc.cluster.local" \
     kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-    token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token \
-    issuer="https://kubernetes.default.svc.cluster.local"
+    token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token
 
 # Create a Vault role for your ServiceAccount
 vault write auth/k8s/role/app-role \
     bound_service_account_names=vault-app \
     bound_service_account_namespaces=production \
-    policies=app-policy \
-    ttl=1h
+    audience=vault \
+    token_policies=app-policy \
+    token_ttl=1h
 ```
 
-Now applications can authenticate with Vault using their ServiceAccount token:
+Now applications can authenticate with Vault using their ServiceAccount token. If Vault is outside the cluster and cannot call the Kubernetes API server for TokenReview, use Vault's JWT auth method with Kubernetes OIDC discovery instead.
 
 ```go
 // vault-auth.go
@@ -128,7 +132,7 @@ package main
 
 import (
     "fmt"
-    "io/ioutil"
+    "os"
 
     vault "github.com/hashicorp/vault/api"
 )
@@ -144,7 +148,7 @@ func authenticateWithVault() (*vault.Client, error) {
     }
 
     // Read the ServiceAccount token
-    jwt, err := ioutil.ReadFile("/var/run/secrets/vault/token")
+    jwt, err := os.ReadFile("/var/run/secrets/vault/token")
     if err != nil {
         return nil, err
     }
@@ -158,6 +162,9 @@ func authenticateWithVault() (*vault.Client, error) {
     secret, err := client.Logical().Write("auth/k8s/login", data)
     if err != nil {
         return nil, err
+    }
+    if secret == nil || secret.Auth == nil {
+        return nil, fmt.Errorf("Vault authentication response did not include auth data")
     }
 
     // Set the Vault token
@@ -264,7 +271,14 @@ GCP Workload Identity uses OIDC token exchange:
 ```bash
 # Enable Workload Identity on your GKE cluster
 gcloud container clusters update my-cluster \
+    --location=LOCATION \
     --workload-pool=PROJECT_ID.svc.id.goog
+
+# For Standard clusters, enable the GKE metadata server on the node pool
+gcloud container node-pools update NODEPOOL_NAME \
+    --cluster=my-cluster \
+    --location=LOCATION \
+    --workload-metadata=GKE_METADATA
 
 # Create a GCP service account
 gcloud iam service-accounts create gcs-app \
@@ -313,37 +327,34 @@ Access GCS with the bound identity:
 kubectl exec -it gcs-reader -n production -- gcloud storage ls
 ```
 
-## Integrating with Azure AD Workload Identity
+## Integrating with Microsoft Entra Workload ID
 
-Azure AD Workload Identity uses federated credentials:
+Microsoft Entra Workload ID uses federated credentials:
 
 ```bash
-# Create an Azure AD application
-az ad app create --display-name k8s-workload-app
+# Create a user-assigned managed identity
+az identity create --name k8s-workload-identity --resource-group my-rg
 
-APP_ID=$(az ad app list --display-name k8s-workload-app --query [].appId -o tsv)
+CLIENT_ID=$(az identity show --name k8s-workload-identity --resource-group my-rg --query clientId -o tsv)
+PRINCIPAL_ID=$(az identity show --name k8s-workload-identity --resource-group my-rg --query principalId -o tsv)
 
 # Get OIDC issuer URL
 OIDC_ISSUER=$(az aks show --name my-cluster --resource-group my-rg --query "oidcIssuerProfile.issuerUrl" -o tsv)
 
 # Create federated credential
-az ad app federated-credential create \
-    --id $APP_ID \
-    --parameters '{
-        "name": "k8s-fed-credential",
-        "issuer": "'$OIDC_ISSUER'",
-        "subject": "system:serviceaccount:production:azure-app",
-        "audiences": ["api://AzureADTokenExchange"]
-    }'
-
-# Create a managed identity
-az identity create --name k8s-workload-identity --resource-group my-rg
+az identity federated-credential create \
+    --name k8s-fed-credential \
+    --identity-name k8s-workload-identity \
+    --resource-group my-rg \
+    --issuer "$OIDC_ISSUER" \
+    --subject "system:serviceaccount:production:azure-app" \
+    --audience api://AzureADTokenExchange
 
 # Grant permissions
 az role assignment create \
-    --assignee $APP_ID \
+    --assignee $PRINCIPAL_ID \
     --role "Storage Blob Data Reader" \
-    --scope /subscriptions/SUB_ID/resourceGroups/my-rg
+    --scope /subscriptions/SUB_ID/resourceGroups/my-rg/providers/Microsoft.Storage/storageAccounts/STORAGE_ACCOUNT_NAME
 ```
 
 Configure the ServiceAccount:
@@ -356,7 +367,7 @@ metadata:
   name: azure-app
   namespace: production
   annotations:
-    azure.workload.identity/client-id: "<APP_ID>"
+    azure.workload.identity/client-id: "<CLIENT_ID>"
     azure.workload.identity/tenant-id: "<TENANT_ID>"
 ---
 apiVersion: v1
@@ -411,23 +422,27 @@ func validateToken(tokenString string, issuerURL string, audience string) error 
 
     // Extract claims
     var claims struct {
-        Sub       string `json:"sub"`
-        Namespace string `json:"kubernetes.io/serviceaccount/namespace"`
-        SAName    string `json:"kubernetes.io/serviceaccount/name"`
+        Sub        string `json:"sub"`
+        Kubernetes struct {
+            Namespace      string `json:"namespace"`
+            ServiceAccount struct {
+                Name string `json:"name"`
+            } `json:"serviceaccount"`
+        } `json:"kubernetes.io"`
     }
 
     if err := idToken.Claims(&claims); err != nil {
         return fmt.Errorf("failed to parse claims: %v", err)
     }
 
-    fmt.Printf("Authenticated: %s/%s\n", claims.Namespace, claims.SAName)
+    fmt.Printf("Authenticated: %s/%s\n", claims.Kubernetes.Namespace, claims.Kubernetes.ServiceAccount.Name)
     return nil
 }
 
 func main() {
     // Example usage
     token := "eyJhbGc..." // ServiceAccount token
-    issuer := "https://kubernetes.default.svc.cluster.local"
+    issuer := "https://your-cluster.example.com"
     audience := "custom-service"
 
     if err := validateToken(token, issuer, audience); err != nil {
@@ -440,4 +455,4 @@ This validates tokens issued by your Kubernetes cluster in custom applications.
 
 ## Conclusion
 
-OIDC integration transforms Kubernetes ServiceAccounts into universal identities. By configuring your cluster as an OIDC provider and using audience-scoped tokens, you enable seamless authentication with external services. This works with HashiCorp Vault, AWS IAM, GCP Workload Identity, Azure AD, and custom services. The result is a unified identity system where applications use a single credential - their ServiceAccount token - to access everything they need.
+OIDC integration transforms Kubernetes ServiceAccounts into universal identities. By configuring your cluster as an OIDC provider and using audience-scoped tokens, you enable seamless authentication with external services. This works with HashiCorp Vault, AWS IAM, GCP Workload Identity, Microsoft Entra Workload ID, and custom services. The result is a unified identity system where applications use a single credential - their ServiceAccount token - to access everything they need.
