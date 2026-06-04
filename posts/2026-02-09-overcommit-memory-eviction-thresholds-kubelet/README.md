@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kubelet, Resource Management
 
-Description: Learn how to configure kubelet's overcommit memory settings and pod eviction thresholds to prevent node resource exhaustion and optimize memory allocation in your Kubernetes cluster.
+Description: Learn how to configure Linux kernel overcommit memory settings and kubelet pod eviction thresholds to prevent node resource exhaustion and optimize memory allocation in your Kubernetes cluster.
 
 ---
 
-Kubernetes nodes can run out of memory when pods collectively request more resources than are physically available. The kubelet component manages memory overcommitment and eviction thresholds to protect nodes from resource exhaustion. Understanding how to configure these settings properly ensures your cluster remains stable while maximizing resource utilization.
+Kubernetes nodes can run out of memory when pods collectively use more resources than are physically available. The Linux kernel controls virtual memory overcommit behavior, while the kubelet manages eviction thresholds to protect nodes from resource exhaustion. Understanding how to configure these settings properly ensures your cluster remains stable while maximizing resource utilization.
 
-Memory overcommitment occurs when the sum of pod memory requests exceeds the node's allocatable memory. The kubelet uses eviction thresholds to preemptively terminate pods before the node runs out of resources completely. This article walks through configuring both overcommit behavior and eviction thresholds for production Kubernetes clusters.
+Kubernetes memory overcommitment usually means scheduling pods whose memory limits, or actual usage, can exceed the node's allocatable memory even though their requests fit. The kubelet uses eviction thresholds to preemptively terminate pods before the node runs out of resources completely. This article walks through configuring both kernel overcommit behavior and kubelet eviction thresholds for production Kubernetes clusters.
 
 ## Understanding Memory Overcommitment
 
@@ -65,16 +65,19 @@ evictionHard:
   nodefs.available: "10%"
   nodefs.inodesFree: "5%"
   imagefs.available: "15%"
+  imagefs.inodesFree: "5%"
 evictionSoft:
   memory.available: "1Gi"
   nodefs.available: "15%"
   nodefs.inodesFree: "10%"
   imagefs.available: "20%"
+  imagefs.inodesFree: "10%"
 evictionSoftGracePeriod:
   memory.available: "1m30s"
   nodefs.available: "2m"
   nodefs.inodesFree: "2m"
   imagefs.available: "2m"
+  imagefs.inodesFree: "2m"
 evictionMaxPodGracePeriod: 90
 evictionPressureTransitionPeriod: 5m
 ```
@@ -85,7 +88,7 @@ Hard thresholds trigger immediate evictions when crossed. Soft thresholds requir
 
 The kubelet monitors several signals for eviction decisions:
 
-- **memory.available**: Available memory on the node (MemAvailable from /proc/meminfo)
+- **memory.available**: Available memory on the node, calculated from cgroup accounting
 - **nodefs.available**: Available disk space on the node filesystem
 - **nodefs.inodesFree**: Available inodes on the node filesystem
 - **imagefs.available**: Available disk space on the image filesystem (if separate)
@@ -104,11 +107,12 @@ If you use kubeadm to bootstrap your cluster, configure eviction thresholds in t
 
 ```yaml
 # kubeadm-config.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 ---
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
+mergeDefaultEvictionSettings: true
 evictionHard:
   memory.available: "500Mi"
 evictionSoft:
@@ -202,6 +206,7 @@ kubeReserved:
   memory: "1Gi"
   cpu: "500m"
   ephemeral-storage: "5Gi"
+mergeDefaultEvictionSettings: true
 evictionHard:
   memory.available: "1Gi"
 enforceNodeAllocatable:
@@ -261,6 +266,7 @@ For workloads with predictable memory patterns, you can use tighter thresholds. 
 
 ```yaml
 # Conservative configuration for production (high stability)
+mergeDefaultEvictionSettings: true
 evictionHard:
   memory.available: "2Gi"
 evictionSoft:
@@ -269,6 +275,7 @@ evictionSoftGracePeriod:
   memory.available: "5m"
 
 # Aggressive configuration for dev/test (high utilization)
+mergeDefaultEvictionSettings: true
 evictionHard:
   memory.available: "256Mi"
 evictionSoft:
