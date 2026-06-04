@@ -14,7 +14,7 @@ This guide covers deploying NATS Surveyor alongside your NATS cluster with compr
 
 ## Understanding NATS Surveyor Architecture
 
-NATS Surveyor works by polling NATS server monitoring endpoints and exposing metrics in Prometheus format. It collects data about:
+NATS Surveyor connects to NATS with a system account user, requests server monitoring data through NATS system services, and exposes the collected data in Prometheus format. It collects data about:
 
 - Server connections and subscriptions
 - Message rates and byte rates
@@ -64,6 +64,16 @@ data:
       "namespace:nats-system",
       "cluster:nats-cluster"
     ]
+
+    # Enable system account access for Surveyor
+    accounts: {
+      SYS: {
+        users: [
+          {user: surveyor, password: surveyor-password}
+        ]
+      }
+    }
+    system_account: SYS
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -83,7 +93,7 @@ spec:
     spec:
       containers:
       - name: nats
-        image: nats:2.10-alpine
+        image: nats:2.14-alpine
         ports:
         - containerPort: 4222
           name: client
@@ -177,27 +187,25 @@ spec:
       serviceAccountName: nats-surveyor
       containers:
       - name: surveyor
-        image: natsio/nats-surveyor:0.5.0
+        image: natsio/nats-surveyor:0.9.10
         ports:
         - containerPort: 7777
           name: metrics
         args:
-        - -varz
-        - -connz
-        - -routez
-        - -subz
-        - -gatewayz
-        - -healthz
-        - -jsz=all
-        - -observe
-        - nats://nats-0.nats:8222
-        - nats://nats-1.nats:8222
-        - nats://nats-2.nats:8222
+        - --servers=nats://nats:4222
+        - --count=3
+        - --gatewayz
+        - --jsz=all
+        - --jsz-leaders-only
+        - --user=surveyor
+        - --password=surveyor-password
         env:
         - name: NATS_SURVEYOR_SERVERS
           value: "nats://nats:4222"
-        - name: NATS_SURVEYOR_JETSTREAM
-          value: "true"
+        - name: NATS_SURVEYOR_USER
+          value: "surveyor"
+        - name: NATS_SURVEYOR_PASSWORD
+          value: "surveyor-password"
         resources:
           requests:
             memory: "128Mi"
@@ -277,97 +285,95 @@ metadata:
 data:
   nats-surveyor-dashboard.json: |
     {
-      "dashboard": {
-        "title": "NATS Cluster Overview",
-        "panels": [
+      "title": "NATS Cluster Overview",
+      "panels": [
           {
             "title": "Server Status",
             "type": "stat",
             "targets": [{
-              "expr": "nats_core_server_info",
+              "expr": "nats_core_info",
               "legendFormat": "{{server_name}}"
             }]
           },
           {
             "title": "Message Rate (msg/sec)",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [{
-              "expr": "rate(nats_core_in_msgs[5m])",
+              "expr": "rate(nats_core_recv_msgs_count[5m])",
               "legendFormat": "In - {{server_name}}"
             }, {
-              "expr": "rate(nats_core_out_msgs[5m])",
+              "expr": "rate(nats_core_sent_msgs_count[5m])",
               "legendFormat": "Out - {{server_name}}"
             }]
           },
           {
             "title": "Byte Rate (bytes/sec)",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [{
-              "expr": "rate(nats_core_in_bytes[5m])",
+              "expr": "rate(nats_core_recv_bytes[5m])",
               "legendFormat": "In - {{server_name}}"
             }, {
-              "expr": "rate(nats_core_out_bytes[5m])",
+              "expr": "rate(nats_core_sent_bytes[5m])",
               "legendFormat": "Out - {{server_name}}"
             }]
           },
           {
             "title": "Active Connections",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [{
-              "expr": "nats_core_total_connections",
+              "expr": "nats_core_connection_count",
               "legendFormat": "{{server_name}}"
             }]
           },
           {
             "title": "Active Subscriptions",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [{
-              "expr": "nats_core_total_subscriptions",
+              "expr": "nats_core_subs_count",
               "legendFormat": "{{server_name}}"
             }]
           },
           {
             "title": "Slow Consumers",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [{
-              "expr": "nats_core_slow_consumers",
+              "expr": "nats_core_slow_consumer_count",
               "legendFormat": "{{server_name}}"
             }]
           },
           {
             "title": "JetStream Storage Used",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [{
-              "expr": "nats_jetstream_store_bytes",
+              "expr": "nats_stream_total_bytes",
               "legendFormat": "{{server_name}} - {{stream}}"
             }]
           },
           {
             "title": "JetStream Messages Stored",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [{
-              "expr": "nats_jetstream_store_msgs",
+              "expr": "nats_stream_total_messages",
               "legendFormat": "{{server_name}} - {{stream}}"
             }]
           },
           {
             "title": "CPU Usage",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [{
-              "expr": "nats_core_cpu",
+              "expr": "nats_core_cpu_percentage",
               "legendFormat": "{{server_name}}"
             }]
           },
           {
             "title": "Memory Usage",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [{
-              "expr": "nats_core_mem",
+              "expr": "nats_core_mem_bytes",
               "legendFormat": "{{server_name}}"
             }]
           }
-        ]
-      }
+      ]
     }
 ```
 
@@ -387,7 +393,7 @@ spec:
     interval: 30s
     rules:
     - alert: NATSServerDown
-      expr: up{job="nats-surveyor"} == 0
+      expr: nats_up == 0
       for: 1m
       labels:
         severity: critical
@@ -396,7 +402,7 @@ spec:
         description: "NATS server {{ $labels.instance }} has been down for 1 minute"
 
     - alert: NATSSlowConsumer
-      expr: nats_core_slow_consumers > 0
+      expr: nats_core_slow_consumer_count > 0
       for: 5m
       labels:
         severity: warning
@@ -405,7 +411,7 @@ spec:
         description: "{{ $value }} slow consumers on {{ $labels.server_name }}"
 
     - alert: NATSHighConnectionCount
-      expr: nats_core_total_connections > 10000
+      expr: nats_core_connection_count > 10000
       for: 5m
       labels:
         severity: warning
@@ -414,25 +420,25 @@ spec:
         description: "{{ $labels.server_name }} has {{ $value }} connections"
 
     - alert: NATSJetStreamStorageHigh
-      expr: (nats_jetstream_store_bytes / nats_jetstream_config_max_storage) > 0.8
+      expr: (sum by (server_id, server_name, cluster_name) (nats_stream_total_bytes) / nats_jetstream_server_max_storage) > 0.8
       for: 10m
       labels:
         severity: warning
       annotations:
         summary: "JetStream storage usage high"
-        description: "Stream {{ $labels.stream }} is at {{ $value | humanizePercentage }} capacity"
+        description: "{{ $labels.server_name }} JetStream storage is at {{ $value | humanizePercentage }} capacity"
 
     - alert: NATSJetStreamConsumerLagging
-      expr: nats_jetstream_consumer_num_pending > 10000
+      expr: nats_consumer_num_pending > 10000
       for: 15m
       labels:
         severity: warning
       annotations:
         summary: "JetStream consumer lagging"
-        description: "Consumer {{ $labels.consumer }} has {{ $value }} pending messages"
+        description: "Consumer {{ $labels.consumer_name }} has {{ $value }} pending messages"
 
     - alert: NATSHighMemoryUsage
-      expr: (nats_core_mem / nats_core_mem_max) > 0.85
+      expr: (nats_core_mem_bytes / nats_core_go_memlimit_bytes) > 0.85 and nats_core_go_memlimit_bytes > 0
       for: 5m
       labels:
         severity: warning
@@ -441,7 +447,7 @@ spec:
         description: "{{ $labels.server_name }} memory at {{ $value | humanizePercentage }}"
 
     - alert: NATSHighCPUUsage
-      expr: nats_core_cpu > 80
+      expr: nats_core_cpu_percentage > 80
       for: 10m
       labels:
         severity: warning
@@ -450,7 +456,7 @@ spec:
         description: "{{ $labels.server_name }} CPU at {{ $value }}%"
 
     - alert: NATSClusterSplitBrain
-      expr: count(nats_core_server_info) != count(nats_core_route_connections)
+      expr: count(nats_core_info) != 3
       for: 2m
       labels:
         severity: critical
@@ -464,24 +470,24 @@ spec:
 Query specific JetStream metrics:
 
 ```promql
-# Stream message rate
+# Stream messages stored
 
-rate(nats_jetstream_stream_msg_count[5m])
+nats_stream_total_messages
 
 # Consumer delivery rate
-rate(nats_jetstream_consumer_delivered_count[5m])
+rate(nats_consumer_delivered_consumer_seq[5m])
 
 # Consumer acknowledgment rate
-rate(nats_jetstream_consumer_ack_count[5m])
+rate(nats_consumer_ack_floor_consumer_seq[5m])
 
 # Stream storage usage by stream
-nats_jetstream_stream_bytes
+nats_stream_total_bytes
 
 # Consumer lag
-nats_jetstream_consumer_num_pending
+nats_consumer_num_pending
 
 # Failed deliveries
-nats_jetstream_consumer_num_redelivered
+nats_consumer_num_redelivered
 ```
 
 ## Advanced Surveyor Configuration
@@ -490,19 +496,19 @@ For larger deployments, configure Surveyor with additional options:
 
 ```yaml
 env:
-- name: NATS_SURVEYOR_OBSERVE_ONLY
-  value: "true"  # Don't poll, only observe service latency
+- name: NATS_SURVEYOR_OBSERVE
+  value: "/etc/nats-surveyor/observations"  # Read service observation configs from this directory
 
 - name: NATS_SURVEYOR_ACCOUNTS
   value: "true"  # Include account-specific metrics
 
-- name: NATS_SURVEYOR_COUNT_CONNECTIONS
-  value: "true"  # Count connections per account
+- name: NATS_SURVEYOR_ACCOUNTS_DETAILED
+  value: "true"  # Include detailed per-account bytes and message metrics
 
-- name: NATS_SURVEYOR_POLL_TIMEOUT
+- name: NATS_SURVEYOR_TIMEOUT
   value: "3s"  # Polling timeout
 
-- name: NATS_SURVEYOR_EXPECTED_SERVERS
+- name: NATS_SURVEYOR_COUNT
   value: "3"  # Number of servers to expect
 
 - name: NATS_SURVEYOR_CREDS
@@ -521,26 +527,26 @@ Use Surveyor metrics to diagnose common issues:
 ```bash
 # Check if all servers are reporting
 kubectl exec -it nats-surveyor-xxx -n nats-system -- \
-  curl -s localhost:7777/metrics | grep nats_core_server_info
+  curl -s localhost:7777/metrics | grep nats_core_info
 
 # View slow consumers
 kubectl exec -it nats-surveyor-xxx -n nats-system -- \
-  curl -s localhost:7777/metrics | grep nats_core_slow_consumers
+  curl -s localhost:7777/metrics | grep nats_core_slow_consumer_count
 
 # Check JetStream storage
 kubectl exec -it nats-surveyor-xxx -n nats-system -- \
-  curl -s localhost:7777/metrics | grep nats_jetstream_store
+  curl -s localhost:7777/metrics | grep nats_stream_total
 
 # View connection counts
 kubectl exec -it nats-surveyor-xxx -n nats-system -- \
-  curl -s localhost:7777/metrics | grep nats_core_total_connections
+  curl -s localhost:7777/metrics | grep nats_core_connection_count
 ```
 
 ## Best Practices
 
 Follow these practices for effective NATS monitoring with Surveyor:
 
-1. Deploy Surveyor with high availability (consider multiple replicas)
+1. Deploy Surveyor with availability in mind, and avoid double-counting if you scrape multiple replicas
 2. Use service discovery to automatically detect NATS servers
 3. Configure appropriate scrape intervals (30s default)
 4. Set memory limits based on cluster size
