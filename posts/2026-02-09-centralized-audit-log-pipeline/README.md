@@ -10,7 +10,7 @@ Description: Learn how to configure and deploy a centralized audit logging pipel
 
 Kubernetes audit logs provide a chronological record of all API server activities, including who performed what action, when, and what the outcome was. These logs are essential for security monitoring, compliance auditing, and troubleshooting. However, audit logs are verbose and require a dedicated pipeline to collect, store, and analyze them effectively.
 
-This guide walks you through building a production-ready centralized audit log pipeline for Kubernetes that captures all API server events and makes them searchable for security teams.
+This guide walks you through building a production-ready centralized audit log pipeline for Kubernetes that captures the API server events selected by your audit policy and makes them searchable for security teams.
 
 ## Understanding Kubernetes Audit Logging
 
@@ -35,11 +35,6 @@ kind: Policy
 omitStages:
   - "RequestReceived"
 rules:
-  # Log all requests at Metadata level by default
-  - level: Metadata
-    omitStages:
-      - "RequestReceived"
-
   # Don't log read-only requests to certain resources
   - level: None
     resources:
@@ -85,8 +80,10 @@ rules:
       - "RequestReceived"
     users: ["system:anonymous"]
 
-  # Default catch-all for everything else
+  # Log all other requests at Metadata level by default
   - level: Metadata
+    omitStages:
+      - "RequestReceived"
 ```
 
 This policy balances comprehensive logging with performance considerations by excluding verbose read operations on less sensitive resources.
@@ -189,6 +186,11 @@ data:
         Total_file_size 50M
         Upload_timeout  1m
         Store_dir       /var/log/fluent-bit-buffer
+
+  parsers.conf: |
+    [PARSER]
+        Name        json
+        Format      json
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -270,18 +272,17 @@ data:
     schema_config:
       configs:
       - from: 2024-01-01
-        store: boltdb-shipper
+        store: tsdb
         object_store: s3
-        schema: v11
+        schema: v13
         index:
           prefix: audit_index_
           period: 24h
 
     storage_config:
-      boltdb_shipper:
+      tsdb_shipper:
         active_index_directory: /loki/index
         cache_location: /loki/cache
-        shared_store: s3
       aws:
         s3: s3://us-east-1/kubernetes-audit-loki
         s3forcepathstyle: true
@@ -292,18 +293,14 @@ data:
       reject_old_samples_max_age: 168h
       ingestion_rate_mb: 50
       ingestion_burst_size_mb: 100
-
-    chunk_store_config:
-      max_look_back_period: 2160h  # 90 days
-
-    table_manager:
-      retention_deletes_enabled: true
+      max_query_lookback: 2160h  # 90 days
       retention_period: 2160h  # 90 days for audit logs
 
     compactor:
       working_directory: /loki/compactor
-      shared_store: s3
       compaction_interval: 10m
+      retention_enabled: true
+      delete_request_store: s3
 ```
 
 ## Creating Audit Log Alerts
@@ -327,8 +324,7 @@ data:
             expr: |
               sum(rate({job="audit"}
                 | json
-                | responseStatus_code >= 401
-                | responseStatus_code < 500 [5m])) by (user_username, verb, objectRef_resource) > 0
+                | responseStatus_code=~"401|403" [5m])) by (user_username, verb, objectRef_resource) > 0
             for: 5m
             labels:
               severity: warning
@@ -402,12 +398,11 @@ topk(10,
   )
 )
 
-# Failed authentication attempts
+# Failed authentication/authorization attempts
 sum by (user_username) (
   rate({job="audit"}
     | json
-    | responseStatus_code >= 401
-    | responseStatus_code < 500 [5m])
+    | responseStatus_code=~"401|403" [5m])
 )
 
 # Resource creation/deletion trends
@@ -427,7 +422,7 @@ sum by (objectRef_namespace) (
 
 For compliance, archive audit logs to object storage with lifecycle policies:
 
-```yaml
+```json
 # S3 lifecycle policy for audit logs
 {
   "Rules": [
@@ -467,11 +462,10 @@ Example queries for common security investigations:
   | objectRef_resource="secrets"
   | objectRef_namespace="production"
 
-# Find failed authorization attempts
+# Find failed authentication/authorization attempts
 {job="audit"}
   | json
-  | responseStatus_code >= 401
-  | responseStatus_code < 500
+  | responseStatus_code=~"401|403"
 
 # Find all pod deletions in the last hour
 {job="audit"}
@@ -482,4 +476,4 @@ Example queries for common security investigations:
 
 ## Conclusion
 
-A centralized audit log pipeline is critical for Kubernetes security and compliance. This pipeline captures all API server activity, stores it durably, and makes it searchable for security teams. Regular review of audit logs and alerts helps detect security incidents early and provides the evidence needed for compliance audits. Remember to balance audit verbosity with performance impact, and always test your audit policy before deploying to production.
+A centralized audit log pipeline is critical for Kubernetes security and compliance. This pipeline captures API server activity according to your audit policy, stores it durably, and makes it searchable for security teams. Regular review of audit logs and alerts helps detect security incidents early and provides the evidence needed for compliance audits. Remember to balance audit verbosity with performance impact, and always test your audit policy before deploying to production.
