@@ -67,7 +67,7 @@ spec:
       hostNetwork: true
       containers:
       - name: node-problem-detector
-        image: registry.k8s.io/node-problem-detector/node-problem-detector:v0.8.15
+        image: registry.k8s.io/node-problem-detector/node-problem-detector:v1.35.2
         command:
         - /node-problem-detector
         - --logtostderr
@@ -136,9 +136,6 @@ Kernel monitors parse kernel logs to detect issues:
 ```json
 {
   "plugin": "kmsg",
-  "pluginConfig": {
-    "source": "kmsg"
-  },
   "logPath": "/dev/kmsg",
   "lookback": "5m",
   "bufferSize": 10,
@@ -224,7 +221,7 @@ Custom plugin monitors run scripts to detect specific problems:
       "timeout": "10s"
     },
     {
-      "type": "temporary",
+      "type": "permanent",
       "condition": "NetworkLatency",
       "reason": "HighNetworkLatency",
       "path": "/home/kubernetes/bin/check-network-latency.sh",
@@ -250,23 +247,26 @@ Create a disk IO monitoring script:
 # check-disk-io.sh
 
 # Test disk write performance
-TEST_FILE="/tmp/npd-disk-test"
+TEST_FILE=$(mktemp /tmp/npd-disk-test.XXXXXX)
 THRESHOLD_MB=50
 
 # Write 100MB and measure time
 START=$(date +%s%N)
-dd if=/dev/zero of=$TEST_FILE bs=1M count=100 conv=fdatasync 2>/dev/null
+dd if=/dev/zero of="$TEST_FILE" bs=1M count=100 conv=fdatasync 2>/dev/null
 END=$(date +%s%N)
 
 # Calculate MB/s
 DURATION=$(( (END - START) / 1000000 ))
+if [ "$DURATION" -le 0 ]; then
+  DURATION=1
+fi
 SPEED=$(( 100000 / DURATION ))
 
 # Cleanup
-rm -f $TEST_FILE
+rm -f "$TEST_FILE"
 
 # Return non-zero if slow
-if [ $SPEED -lt $THRESHOLD_MB ]; then
+if [ "$SPEED" -lt "$THRESHOLD_MB" ]; then
   echo "Disk IO slow: ${SPEED}MB/s (threshold: ${THRESHOLD_MB}MB/s)"
   exit 1
 fi
@@ -316,23 +316,34 @@ CPU throttling check:
 
 THRESHOLD_PERCENT=20
 
-# Get CPU throttling statistics
-THROTTLED=$(cat /sys/fs/cgroup/cpu/cpu.stat | \
-  grep nr_throttled | \
-  awk '{print $2}')
+# Get CPU throttling statistics. The first path is used by cgroup v2;
+# the second is common for cgroup v1 CPU controller mounts.
+CPU_STAT="/sys/fs/cgroup/cpu.stat"
+if [ ! -f "$CPU_STAT" ]; then
+  CPU_STAT="/sys/fs/cgroup/cpu/cpu.stat"
+fi
 
-PERIODS=$(cat /sys/fs/cgroup/cpu/cpu.stat | \
-  grep nr_periods | \
-  awk '{print $2}')
+if [ ! -f "$CPU_STAT" ]; then
+  echo "Cannot find cpu.stat"
+  exit 0
+fi
 
-if [ $PERIODS -eq 0 ]; then
+THROTTLED=$(awk '/nr_throttled/ {print $2}' "$CPU_STAT")
+PERIODS=$(awk '/nr_periods/ {print $2}' "$CPU_STAT")
+
+if [ -z "$THROTTLED" ] || [ -z "$PERIODS" ]; then
+  echo "Cannot read CPU throttling statistics"
+  exit 0
+fi
+
+if [ "$PERIODS" -eq 0 ]; then
   exit 0
 fi
 
 # Calculate throttling percentage
 PERCENT=$(( THROTTLED * 100 / PERIODS ))
 
-if [ $PERCENT -gt $THRESHOLD_PERCENT ]; then
+if [ "$PERCENT" -gt "$THRESHOLD_PERCENT" ]; then
   echo "High CPU throttling: ${PERCENT}% of periods throttled"
   exit 1
 fi
@@ -537,14 +548,11 @@ spec:
 Query NPD metrics:
 
 ```promql
-# Count nodes with problems
-count(problem_counter{type!=""} > 0) by (type, reason)
+# Count detected problems by reason
+sum by (reason) (problem_counter)
 
 # Problem gauge
 problem_gauge{type="DiskSlowIO"}
-
-# Problem duration
-problem_duration_seconds{type="NetworkLatency"}
 ```
 
 ## Creating Alerts for Node Problems
