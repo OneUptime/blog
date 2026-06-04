@@ -27,6 +27,8 @@ docker run -d \
   --name chromadb \
   -p 8000:8000 \
   -v chroma_data:/chroma/chroma \
+  -e IS_PERSISTENT=TRUE \
+  -e PERSIST_DIRECTORY=/chroma/chroma \
   -e ANONYMIZED_TELEMETRY=FALSE \
   chromadb/chroma:0.5.0
 ```
@@ -252,6 +254,11 @@ collection.add(
 )
 
 # Query using the same embedding function
+collection = client.get_collection(
+    name="high_quality_docs",
+    embedding_function=embedding_fn
+)
+
 results = collection.query(
     query_texts=["Which database is best for AI applications?"],
     n_results=2
@@ -268,10 +275,11 @@ Here is a complete RAG (Retrieval-Augmented Generation) example using ChromaDB f
 ```python
 # rag_pipeline.py
 import chromadb
-import openai
+from openai import OpenAI
 
 # Connect to ChromaDB
 chroma_client = chromadb.HttpClient(host="localhost", port=8000)
+openai_client = OpenAI()
 
 # Set up the knowledge base collection
 collection = chroma_client.get_or_create_collection("company_docs")
@@ -310,10 +318,10 @@ Question: {question}
 Answer:"""
 
     # Step 3: Send to LLM (example with OpenAI)
-    response = openai.chat.completions.create(
-        model="gpt-4",
+    response = openai_client.chat.completions.create(
+        model="gpt-5.4",
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=200
+        max_completion_tokens=200
     )
 
     return response.choices[0].message.content
@@ -333,7 +341,7 @@ import chromadb
 client = chromadb.HttpClient(host="localhost", port=8000)
 collection = client.get_collection("knowledge_base")
 
-# Update a document (upsert)
+# Update an existing document
 collection.update(
     ids=["doc1"],
     documents=["Docker containers package applications with all their dependencies for consistent deployment"],
@@ -360,10 +368,10 @@ docker stats chromadb --no-stream
 docker logs chromadb --tail 50
 
 # List collections via API
-curl http://localhost:8000/api/v1/collections
+curl -H "Authorization: Bearer my-secret-token" http://localhost:8000/api/v1/collections
 
 # Get collection details
-curl http://localhost:8000/api/v1/collections/knowledge_base
+curl -H "Authorization: Bearer my-secret-token" http://localhost:8000/api/v1/collections/knowledge_base
 ```
 
 ## Summary
