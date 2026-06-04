@@ -361,7 +361,7 @@ Here's a Python implementation using the Kubernetes client library:
 from kubernetes import client, config, watch
 import time
 import logging
-from typing import Optional
+from datetime import datetime, timezone
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -473,7 +473,7 @@ class ExternalValidatorController:
         new_condition = client.V1PodCondition(
             type=READINESS_GATE_TYPE,
             status=status,
-            last_transition_time=client.V1Time(),
+            last_transition_time=datetime.now(timezone.utc),
             reason=reason,
             message=message
         )
