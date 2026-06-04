@@ -32,10 +32,11 @@ Install the operator using kubectl:
 # Install CloudNativePG operator
 
 kubectl apply -f \
-  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.22/releases/cnpg-1.22.0.yaml
+  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.29/releases/cnpg-1.29.1.yaml
 
 # Verify installation
-kubectl get deployment -n cnpg-system
+kubectl rollout status deployment \
+  -n cnpg-system cnpg-controller-manager
 kubectl get pods -n cnpg-system
 ```
 
@@ -92,6 +93,8 @@ spec:
 Create the credentials secret:
 
 ```bash
+kubectl create namespace database
+
 kubectl create secret generic postgres-credentials \
   --from-literal=username=myapp \
   --from-literal=password=securePassword123 \
@@ -117,7 +120,10 @@ Check cluster status:
 kubectl get cluster postgres-ha -n database -o yaml
 
 # Check replication status
-kubectl exec postgres-ha-1 -n database -- \
+PRIMARY=$(kubectl get cluster postgres-ha -n database \
+  -o jsonpath='{.status.currentPrimary}')
+
+kubectl exec "$PRIMARY" -n database -- \
   psql -U postgres -c "SELECT * FROM pg_stat_replication;"
 
 # Verify all instances
@@ -130,7 +136,37 @@ The output shows the primary and replica instances with their status.
 
 Enable continuous backups with WAL archiving:
 
+Install the Barman Cloud plugin in the same namespace as the CloudNativePG operator. The plugin requires cert-manager to be installed in the cluster.
+
+```bash
+kubectl apply -f \
+  https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.12.0/manifest.yaml
+
+kubectl rollout status deployment \
+  -n cnpg-system barman-cloud
+```
+
 ```yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: postgres-ha-backup-store
+  namespace: database
+spec:
+  configuration:
+    destinationPath: s3://postgres-backups/postgres-ha/
+    s3Credentials:
+      accessKeyId:
+        name: aws-creds
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: aws-creds
+        key: SECRET_ACCESS_KEY
+    wal:
+      compression: gzip
+      maxParallel: 2
+  retentionPolicy: "30d"
+---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -155,20 +191,11 @@ spec:
     size: 20Gi
     storageClass: fast-ssd
 
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://postgres-backups/postgres-ha/
-      s3Credentials:
-        accessKeyId:
-          name: aws-creds
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: aws-creds
-          key: SECRET_ACCESS_KEY
-      wal:
-        compression: gzip
-        maxParallel: 2
-    retentionPolicy: "30d"
+  plugins:
+  - name: barman-cloud.cloudnative-pg.io
+    isWALArchiver: true
+    parameters:
+      barmanObjectName: postgres-ha-backup-store
 
   resources:
     requests:
@@ -199,10 +226,13 @@ metadata:
   name: postgres-daily-backup
   namespace: database
 spec:
-  schedule: "0 2 * * *"  # Daily at 2 AM
+  schedule: "0 0 2 * * *"  # Daily at 2 AM
   backupOwnerReference: self
   cluster:
     name: postgres-ha
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
 ```
 
 Apply the schedule:
@@ -244,39 +274,22 @@ Add PgBouncer for connection pooling:
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
-kind: Cluster
+kind: Pooler
 metadata:
-  name: postgres-ha
+  name: postgres-ha-pooler-rw
   namespace: database
 spec:
-  instances: 3
-
-  postgresql:
+  cluster:
+    name: postgres-ha
+  type: rw  # Read-write pooler
+  instances: 2
+  pgbouncer:
+    poolMode: transaction
     parameters:
-      max_connections: "200"
-
-  # Enable PgBouncer pooling
-  managed:
-    roles:
-    - name: myapp
-      ensure: present
-      login: true
-      connectionLimit: 50
-
-  pooler:
-    type: rw  # Read-write pooler
-    instances: 2
-    pgbouncer:
-      poolMode: transaction
-      parameters:
-        max_client_conn: "1000"
-        default_pool_size: "25"
-        max_db_connections: "50"
-        server_idle_timeout: "300"
-
-  storage:
-    size: 20Gi
-    storageClass: fast-ssd
+      max_client_conn: "1000"
+      default_pool_size: "25"
+      max_db_connections: "50"
+      server_idle_timeout: "300"
 ```
 
 Access through the pooler:
@@ -292,19 +305,19 @@ kubectl run psql-client -it --rm --image=postgres:16 -- \
 
 ## Monitoring with Prometheus
 
-CloudNativePG exports Prometheus metrics automatically. Create a ServiceMonitor:
+CloudNativePG exports Prometheus metrics automatically. Create a PodMonitor:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: postgres-ha
   namespace: database
 spec:
   selector:
     matchLabels:
-      cnpg.io/cluster: postgres-ha
-  endpoints:
+      "cnpg.io/cluster": postgres-ha
+  podMetricsEndpoints:
   - port: metrics
     interval: 30s
 ```
@@ -323,7 +336,7 @@ spec:
     interval: 30s
     rules:
     - alert: PostgreSQLDown
-      expr: up{job="postgres-ha"} == 0
+      expr: up{namespace="database", pod=~"postgres-ha-[0-9]+"} == 0
       for: 1m
       labels:
         severity: critical
@@ -332,7 +345,7 @@ spec:
 
     - alert: PostgreSQLReplicationLag
       expr: |
-        pg_replication_lag{job="postgres-ha"} > 60
+        cnpg_pg_replication_lag{namespace="database", pod=~"postgres-ha-[0-9]+"} > 60
       for: 5m
       labels:
         severity: warning
@@ -341,7 +354,8 @@ spec:
 
     - alert: PostgreSQLTooManyConnections
       expr: |
-        pg_stat_database_numbackends / pg_settings_max_connections > 0.8
+        sum(cnpg_backends_total{namespace="database", pod=~"postgres-ha-[0-9]+"})
+          / max(cnpg_pg_settings_setting{namespace="database", pod=~"postgres-ha-[0-9]+",name="max_connections"}) > 0.8
       for: 5m
       labels:
         severity: warning
@@ -371,15 +385,11 @@ spec:
 
   externalClusters:
   - name: postgres-ha
-    barmanObjectStore:
-      destinationPath: s3://postgres-backups/postgres-ha/
-      s3Credentials:
-        accessKeyId:
-          name: aws-creds
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: aws-creds
-          key: SECRET_ACCESS_KEY
+    plugin:
+      name: barman-cloud.cloudnative-pg.io
+      parameters:
+        barmanObjectName: postgres-ha-backup-store
+        serverName: postgres-ha
 
   storage:
     size: 20Gi
@@ -407,22 +417,22 @@ spec:
   managed:
     services:
       additional:
-      - serviceTemplate:
+      - selectorType: ro
+        serviceTemplate:
           metadata:
-            name: postgres-ha-ro
+            name: postgres-ha-read-replicas
           spec:
             type: ClusterIP
-            selector:
-              cnpg.io/instanceRole: replica
             ports:
-            - port: 5432
+            - name: postgres
+              port: 5432
               targetPort: 5432
 
   storage:
     size: 20Gi
 ```
 
-Applications can connect to read replicas via the `postgres-ha-ro` service.
+Applications can connect to read replicas via the default `postgres-ha-ro` service, or via the additional `postgres-ha-read-replicas` service shown above.
 
 ## Rolling Updates
 
@@ -437,7 +447,7 @@ metadata:
 spec:
   instances: 3
 
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.1  # Update version
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.10-system-trixie  # Update version
 
   postgresql:
     parameters:
@@ -512,23 +522,11 @@ spec:
       secret:
         name: postgres-credentials
 
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://postgres-backups/production/
-      s3Credentials:
-        accessKeyId:
-          name: aws-creds
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: aws-creds
-          key: SECRET_ACCESS_KEY
-      wal:
-        compression: gzip
-        encryption: AES256
-    retentionPolicy: "30d"
-
-  monitoring:
-    enablePodMonitor: true
+  plugins:
+  - name: barman-cloud.cloudnative-pg.io
+    isWALArchiver: true
+    parameters:
+      barmanObjectName: postgres-production-backup-store
 
   affinity:
     podAntiAffinity:
