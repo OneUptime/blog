@@ -216,13 +216,8 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 10
           readinessProbe:
-            exec:
-              command:
-                - bash
-                - -c
-                - |
-                  mysql -h 127.0.0.1 -P 6032 -u radmin -pradmin_password \
-                    -e "SELECT 1" 2>/dev/null | grep -q 1
+            tcpSocket:
+              port: 6032
             initialDelaySeconds: 10
             periodSeconds: 5
       volumes:
@@ -233,7 +228,7 @@ spec:
           emptyDir: {}
 ```
 
-The readiness probe queries the ProxySQL admin interface to verify it is operational. The liveness probe checks that the MySQL-facing port is accepting connections.
+The readiness probe checks that the ProxySQL admin port is accepting connections. The liveness probe checks that the MySQL-facing port is accepting connections.
 
 ## Step 4: Create the Service
 
@@ -243,6 +238,8 @@ kind: Service
 metadata:
   name: proxysql
   namespace: database
+  labels:
+    app: proxysql
 spec:
   selector:
     app: proxysql
@@ -253,6 +250,9 @@ spec:
     - name: admin
       port: 6032
       targetPort: 6032
+    - name: metrics
+      port: 6070
+      targetPort: 6070
   type: ClusterIP
 ```
 
@@ -275,14 +275,14 @@ The monitor user checks connectivity and read-only status of each backend, which
 Connect to the ProxySQL admin interface:
 
 ```bash
-kubectl exec -it deploy/proxysql -n database -- \
-  mysql -h 127.0.0.1 -P 6032 -u radmin -pradmin_password --prompt='ProxySQL Admin> '
+kubectl run mysql-client --rm -it --restart=Never -n database --image=mysql:8.0 -- \
+  mysql -h proxysql.database.svc.cluster.local -P 6032 -u radmin -pradmin_password --prompt='ProxySQL Admin> '
 ```
 
 Check backend server status:
 
 ```sql
-SELECT hostgroup_id, hostname, port, status, ConnUsed, ConnFree, ConnOK, ConnERR
+SELECT hostgroup, srv_host, srv_port, status, ConnUsed, ConnFree, ConnOK, ConnERR
 FROM stats_mysql_connection_pool;
 ```
 
@@ -320,18 +320,7 @@ This caches product catalog queries for 60 seconds.
 
 ### Monitoring with Prometheus
 
-ProxySQL exposes metrics through its REST API. Deploy a Prometheus exporter sidecar:
-
-```yaml
-- name: exporter
-  image: epflsti/proxysql_exporter:latest
-  ports:
-    - name: metrics
-      containerPort: 42004
-  env:
-    - name: PROXYSQL_CONNECTION
-      value: "radmin:radmin_password@tcp(127.0.0.1:6032)/"
-```
+ProxySQL includes a built-in Prometheus exporter exposed through its REST API. The earlier configuration enables it on port 6070.
 
 Create a ServiceMonitor if you are using the Prometheus Operator:
 
