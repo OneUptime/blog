@@ -10,20 +10,20 @@ Description: Learn how to build custom Crossplane providers that integrate inter
 
 Crossplane providers exist for major cloud platforms, but organizations often have internal APIs for legacy systems, custom platforms, or proprietary services. Building a custom provider lets you manage these through Crossplane compositions, creating a unified control plane for all infrastructure.
 
-This guide shows you how to build a custom provider using Upjet, which generates most code automatically from an OpenAPI specification or Go API client.
+This guide shows you how to build a custom provider with `crossplane-runtime`, which provides the managed resource reconciler used by many Crossplane providers. Upjet is useful when you are generating a provider from a Terraform provider schema, but a hand-written provider is a better fit when your source of truth is an internal HTTP API or Go client.
 
 ## Understanding Crossplane Provider Architecture
 
 Providers contain controllers that reconcile managed resources. When you create a resource, the controller calls external APIs to provision infrastructure. Controllers watch for changes, updating external resources to match desired state.
 
-Custom providers follow the same pattern. You define managed resources, implement controllers that call your APIs, and package everything as a container image.
+Custom providers follow the same pattern. You define managed resources, implement controllers that call your APIs, build a runtime image, and publish it as a Crossplane provider package.
 
 ## Setting Up Provider Development Environment
 
 Install required tools:
 
 ```bash
-# Install Go 1.21+
+# Install Go 1.23+
 
 brew install go
 
@@ -34,8 +34,8 @@ curl -sL https://raw.githubusercontent.com/crossplane/crossplane/master/install.
 curl -L -o kubebuilder https://go.kubebuilder.io/dl/latest/$(go env GOOS)/$(go env GOARCH)
 chmod +x kubebuilder && sudo mv kubebuilder /usr/local/bin/
 
-# Install Upjet
-go install github.com/crossplane/upjet/cmd/upjet@latest
+# Install controller-gen
+go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.0
 ```
 
 ## Creating Provider Scaffold
@@ -50,7 +50,7 @@ mkdir provider-platform && cd provider-platform
 go mod init github.com/yourorg/provider-platform
 
 # Create provider structure
-mkdir -p apis pkg/controller config
+mkdir -p apis/database/v1alpha1 cmd/provider pkg/controller/database pkg/clients/platform package config
 ```
 
 Create the provider configuration:
@@ -61,7 +61,8 @@ package apis
 
 import (
     "k8s.io/apimachinery/pkg/runtime"
-    "sigs.k8s.io/controller-runtime/pkg/scheme"
+
+    databasev1alpha1 "github.com/yourorg/provider-platform/apis/database/v1alpha1"
 )
 
 var (
@@ -75,7 +76,7 @@ func init() {
 
 // AddToScheme adds all types to the scheme
 func AddToScheme(s *runtime.Scheme) error {
-    return scheme.AddToScheme(s)
+    return databasev1alpha1.AddToScheme(s)
 }
 ```
 
@@ -88,10 +89,24 @@ Create API types for your platform:
 package v1alpha1
 
 import (
-    "reflect"
-
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "github.com/crossplane/crossplane-runtime/apis/common/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/runtime/schema"
+    "sigs.k8s.io/controller-runtime/pkg/scheme"
+)
+
+const (
+    DatabaseGroup = "database.platform.example.com"
+    DatabaseKind  = "Database"
+)
+
+var (
+    DatabaseGroupVersion     = schema.GroupVersion{Group: DatabaseGroup, Version: "v1alpha1"}
+    DatabaseGroupKind        = schema.GroupKind{Group: DatabaseGroup, Kind: DatabaseKind}.String()
+    DatabaseGroupVersionKind = DatabaseGroupVersion.WithKind(DatabaseKind)
+
+    SchemeBuilder = &scheme.Builder{GroupVersion: DatabaseGroupVersion}
+    AddToScheme   = SchemeBuilder.AddToScheme
 )
 
 // DatabaseParameters defines configuration for the database
@@ -175,6 +190,10 @@ type DatabaseList struct {
     metav1.ListMeta `json:"metadata,omitempty"`
     Items           []Database `json:"items"`
 }
+
+func init() {
+    SchemeBuilder.Register(&Database{}, &DatabaseList{})
+}
 ```
 
 ## Implementing the Controller
@@ -189,21 +208,22 @@ import (
     "context"
     "fmt"
 
+    "github.com/crossplane/crossplane-runtime/pkg/controller"
+    "github.com/crossplane/crossplane-runtime/pkg/event"
+    "github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
+    "github.com/crossplane/crossplane-runtime/pkg/resource"
     "github.com/pkg/errors"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
-
-    "github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-    "github.com/crossplane/crossplane-runtime/pkg/resource"
 
     "github.com/yourorg/provider-platform/apis/database/v1alpha1"
     "github.com/yourorg/provider-platform/pkg/clients/platform"
 )
 
 const (
-    errNotDatabase    = "managed resource is not a Database"
-    errCreateDatabase = "cannot create database"
-    errDeleteDatabase = "cannot delete database"
+    errNotDatabase      = "managed resource is not a Database"
+    errCreateDatabase   = "cannot create database"
+    errDeleteDatabase   = "cannot delete database"
     errDescribeDatabase = "cannot describe database"
 )
 
@@ -327,18 +347,22 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
     return managed.ExternalUpdate{}, err
 }
 
-func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
+func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
     cr, ok := mg.(*v1alpha1.Database)
     if !ok {
-        return errors.New(errNotDatabase)
+        return managed.ExternalDelete{}, errors.New(errNotDatabase)
     }
 
     // Delete database via platform API
     err := e.client.DeleteDatabase(ctx, cr.Spec.ForProvider.Name)
     if err != nil && !platform.IsNotFound(err) {
-        return errors.Wrap(err, errDeleteDatabase)
+        return managed.ExternalDelete{}, errors.Wrap(err, errDeleteDatabase)
     }
 
+    return managed.ExternalDelete{}, nil
+}
+
+func (e *external) Disconnect(ctx context.Context) error {
     return nil
 }
 ```
@@ -352,8 +376,10 @@ Implement the client for your platform:
 package platform
 
 import (
+    "bytes"
     "context"
     "encoding/json"
+    "errors"
     "fmt"
     "net/http"
 )
@@ -378,6 +404,12 @@ type CreateDatabaseRequest struct {
     Version       string `json:"version,omitempty"`
     Size          string `json:"size"`
     Region        string `json:"region,omitempty"`
+    BackupEnabled *bool  `json:"backupEnabled,omitempty"`
+}
+
+type UpdateDatabaseRequest struct {
+    Name          string `json:"name"`
+    Size          string `json:"size"`
     BackupEnabled *bool  `json:"backupEnabled,omitempty"`
 }
 
@@ -414,6 +446,44 @@ func (c *Client) CreateDatabase(ctx context.Context, req *CreateDatabaseRequest)
         return nil, err
     }
     defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
+    }
+
+    var db DatabaseResponse
+    if err := json.NewDecoder(resp.Body).Decode(&db); err != nil {
+        return nil, err
+    }
+
+    return &db, nil
+}
+
+func (c *Client) UpdateDatabase(ctx context.Context, req *UpdateDatabaseRequest) (*DatabaseResponse, error) {
+    data, err := json.Marshal(req)
+    if err != nil {
+        return nil, err
+    }
+
+    httpReq, err := http.NewRequestWithContext(ctx, "PATCH",
+        fmt.Sprintf("%s/databases/%s", c.baseURL, req.Name),
+        bytes.NewReader(data))
+    if err != nil {
+        return nil, err
+    }
+
+    httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+    httpReq.Header.Set("Content-Type", "application/json")
+
+    resp, err := c.httpClient.Do(httpReq)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode == http.StatusNotFound {
+        return nil, &NotFoundError{}
+    }
 
     if resp.StatusCode != http.StatusOK {
         return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
@@ -491,8 +561,8 @@ func (e *NotFoundError) Error() string {
 }
 
 func IsNotFound(err error) bool {
-    _, ok := err.(*NotFoundError)
-    return ok
+    var notFound *NotFoundError
+    return errors.As(err, &notFound)
 }
 ```
 
@@ -502,7 +572,7 @@ Create Dockerfile:
 
 ```dockerfile
 # Dockerfile
-FROM golang:1.21 as builder
+FROM golang:1.23 as builder
 
 WORKDIR /workspace
 
@@ -528,19 +598,37 @@ USER 65532:65532
 ENTRYPOINT ["/provider"]
 ```
 
-Build and push:
+Build and push the provider runtime image:
 
 ```bash
 # Build image
-docker build -t yourorg/provider-platform:v0.1.0 .
+docker build -t docker.io/yourorg/provider-platform:v0.1.0 .
 
 # Push to registry
-docker push yourorg/provider-platform:v0.1.0
+docker push docker.io/yourorg/provider-platform:v0.1.0
+```
+
+Create the Crossplane package metadata:
+
+```yaml
+# package/crossplane.yaml
+apiVersion: meta.pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-platform
+spec: {}
+```
+
+Build and push the provider package:
+
+```bash
+crossplane xpkg build --package-root=package --package-file=provider-platform.xpkg --embed-runtime-image=docker.io/yourorg/provider-platform:v0.1.0
+crossplane xpkg push -f provider-platform.xpkg docker.io/yourorg/provider-platform-package:v0.1.0
 ```
 
 ## Installing the Custom Provider
 
-Create provider package:
+Install the provider package:
 
 ```yaml
 # provider.yaml
@@ -549,22 +637,18 @@ kind: Provider
 metadata:
   name: provider-platform
 spec:
-  package: yourorg/provider-platform:v0.1.0
-  controllerConfigRef:
+  package: docker.io/yourorg/provider-platform-package:v0.1.0
+  runtimeConfigRef:
     name: platform-config
 ---
-apiVersion: pkg.crossplane.io/v1alpha1
-kind: ControllerConfig
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
 metadata:
   name: platform-config
 spec:
-  serviceAccountName: provider-platform
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: provider-platform
-  namespace: crossplane-system
+  serviceAccountTemplate:
+    metadata:
+      name: provider-platform
 ```
 
 Install the provider:
