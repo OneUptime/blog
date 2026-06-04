@@ -42,8 +42,6 @@ Start with a standard Docker Compose setup for your primary environment.
 # docker-compose.primary.yml
 
 # Primary production environment with database, application, and cache
-version: "3.8"
-
 services:
   app:
     image: registry.example.com/myapp:latest
@@ -56,7 +54,7 @@ services:
       - db
       - cache
     deploy:
-      replicas: 3
+      replicas: 1
 
   db:
     image: postgres:16
@@ -89,7 +87,7 @@ On the primary, configure replication settings:
 ```bash
 # Add replication settings to postgresql.conf on the primary
 # These enable write-ahead log shipping to the standby server
-cat >> /var/lib/postgresql/data/postgresql.conf << 'EOF'
+docker exec primary_db_1 bash -c "cat >> /var/lib/postgresql/data/postgresql.conf" << 'EOF'
 wal_level = replica
 max_wal_senders = 5
 wal_keep_size = 512MB
@@ -97,11 +95,14 @@ hot_standby = on
 EOF
 
 # Allow the standby server to connect for replication
-echo "host replication replicator standby-server-ip/32 md5" >> /var/lib/postgresql/data/pg_hba.conf
+docker exec primary_db_1 bash -c "echo 'host replication replicator standby-server-ip/32 md5' >> /var/lib/postgresql/data/pg_hba.conf"
 
 # Create the replication user
 docker exec -it primary_db_1 psql -U app -d myapp -c \
   "CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'repl_password';"
+
+# Restart the primary so the WAL sender settings take effect
+docker restart primary_db_1
 ```
 
 On the standby site, set up the replica:
@@ -109,8 +110,6 @@ On the standby site, set up the replica:
 ```yaml
 # docker-compose.standby.yml
 # Standby environment with PostgreSQL replica and pre-pulled application images
-version: "3.8"
-
 services:
   app:
     image: registry.example.com/myapp:latest
@@ -149,8 +148,9 @@ Initialize the standby database from the primary:
 
 ```bash
 # Take a base backup from the primary and restore it on the standby
-docker exec -it standby_db_1 bash -c "
-  rm -rf /var/lib/postgresql/data/*
+docker compose -f /opt/dr/docker-compose.standby.yml stop db
+docker compose -f /opt/dr/docker-compose.standby.yml run --rm --no-deps --user postgres db bash -c "
+  rm -rf /var/lib/postgresql/data/* /var/lib/postgresql/data/.[!.]*
   PGPASSWORD=repl_password pg_basebackup \
     -h primary-server-ip \
     -U replicator \
@@ -159,8 +159,8 @@ docker exec -it standby_db_1 bash -c "
 "
 
 # The -R flag creates standby.signal and sets primary_conninfo automatically
-# Restart the standby database to begin streaming replication
-docker restart standby_db_1
+# Start the standby database to begin streaming replication
+docker compose -f /opt/dr/docker-compose.standby.yml up -d db
 ```
 
 ## Synchronizing Configuration and Images
@@ -252,7 +252,7 @@ echo "[$(date)] Starting failover procedure"
 
 # Step 1: Promote the PostgreSQL replica to primary
 echo "[$(date)] Promoting database replica..."
-docker exec standby_db_1 pg_ctl promote -D /var/lib/postgresql/data
+docker exec -u postgres standby_db_1 /usr/lib/postgresql/16/bin/pg_ctl promote -D /var/lib/postgresql/data
 
 # Step 2: Wait for the database to accept write connections
 echo "[$(date)] Waiting for database to accept writes..."
@@ -266,7 +266,7 @@ done
 
 # Step 3: Scale up the application containers
 echo "[$(date)] Starting application containers..."
-docker compose -f "$STANDBY_COMPOSE" up -d --scale app=3
+docker compose -f "$STANDBY_COMPOSE" up -d --scale app=1
 
 # Step 4: Update DNS to point to the standby site
 echo "[$(date)] Updating DNS records..."
@@ -296,8 +296,8 @@ Never wait for a real disaster to test your failover. Run regular drills.
 echo "=== Failover Drill Started ==="
 
 # Check replication lag before starting
-LAG=$(docker exec standby_db_1 psql -U app -d myapp -t -c \
-    "SELECT EXTRACT(EPOCH FROM replay_lag) FROM pg_stat_replication;" 2>/dev/null)
+LAG=$(ssh primary-server "docker exec primary_db_1 psql -U app -d myapp -t -c \
+    \"SELECT EXTRACT(EPOCH FROM replay_lag) FROM pg_stat_replication;\"" 2>/dev/null)
 echo "Current replication lag: ${LAG}s"
 
 # Simulate primary failure by stopping the primary app containers
