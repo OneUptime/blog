@@ -108,7 +108,7 @@ Java exceptions span multiple lines with a predictable pattern. The first line s
   flush_interval 10s
   timeout_label @NORMAL
 
-  # Keep entries in memory for up to 60 seconds
+  # Use the timestamp from the first line for the concatenated event
   use_first_timestamp true
 </filter>
 ```
@@ -139,11 +139,8 @@ Python stack traces have a different structure, starting with "Traceback":
   key log
   stream_identity_key pod_name
 
-  # Python logs start with timestamp or "Traceback"
-  multiline_start_regexp /^(\d{4}-\d{2}-\d{2}|Traceback)/
-
-  # Continue lines start with whitespace or specific markers
-  multiline_end_regexp /^(?!\s+|  File|    )/
+  # Python log entries start with a timestamp
+  multiline_start_regexp /^\d{4}-\d{2}-\d{2}/
 
   flush_interval 5s
 </filter>
@@ -227,7 +224,7 @@ The stream_identity_key parameter is critical when processing logs from multiple
 <filter kubernetes.**>
   @type concat
   key log
-  stream_identity_key $.kubernetes.container_name
+  stream_identity_key container_id
   multiline_start_regexp /^\d{4}/
 </filter>
 ```
@@ -250,14 +247,11 @@ Control how long concat waits before emitting incomplete entries:
   # Flush incomplete entries after 30 seconds
   flush_interval 30s
 
-  # Maximum time to keep an entry (prevents memory leaks)
+  # Route timeout-flushed entries to a label instead of Fluentd's error stream
   timeout_label @INCOMPLETE
 
   # Use first line's timestamp for the event
   use_first_timestamp true
-
-  # Keep partial entries in memory
-  use_partial_metadata true
 </filter>
 
 # Handle incomplete entries
@@ -336,14 +330,14 @@ After concatenation, parse the complete log entry:
   reserve_data true
   <parse>
     @type regexp
-    expression /^(?<time>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3})\s+(?<level>\w+)\s+\[(?<thread>[^\]]+)\]\s+(?<message>.*)/s
+    expression /^(?<time>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3})\s+(?<level>\w+)\s+\[(?<thread>[^\]]+)\]\s+(?<message>.*)/m
     time_key time
     time_format %Y-%m-%d %H:%M:%S.%L
   </parse>
 </filter>
 ```
 
-The /s modifier at the end of the regex enables multi-line matching, so the message field can contain newlines.
+The /m modifier at the end of the regex enables multi-line matching, so the message field can contain newlines.
 
 ## Performance Considerations
 
@@ -360,15 +354,15 @@ Concat plugin keeps lines in memory until complete entries are identified. Monit
   # Limit memory usage
   flush_interval 10s
 
-  # Maximum entries to buffer per stream
-  max_lines 1000
+  # Maximum buffer size per stream
+  buffer_limit_size 1m
 
-  # Fail if entry exceeds size
-  max_line_size 1048576  # 1MB
+  # Flush the current buffer and keep the current record in a new buffer on overflow
+  buffer_overflow_method new
 </filter>
 ```
 
-For high-volume logs, tune these parameters to prevent memory exhaustion. If individual log entries exceed max_lines or max_line_size, they get flushed incomplete.
+For high-volume logs, tune these parameters to prevent memory exhaustion. If a buffered entry exceeds buffer_limit_size, buffer_overflow_method controls whether concat ignores, truncates, drops, or starts a new buffer.
 
 ## Debugging Concat Configuration
 
@@ -432,10 +426,9 @@ Complete configuration for a Kubernetes environment with multiple application ty
 </filter>
 
 # Concat Java application logs
-<filter kubernetes.var.log.containers.**java**.log>
+<filter /kubernetes\.var\.log\.containers\..*java.*\.log/>
   @type concat
   key log
-  stream_identity_key $.kubernetes.container_name
   multiline_start_regexp /^\d{4}-\d{2}-\d{2}/
   flush_interval 10s
   timeout_label @NORMAL
@@ -443,25 +436,32 @@ Complete configuration for a Kubernetes environment with multiple application ty
 </filter>
 
 # Concat Python application logs
-<filter kubernetes.var.log.containers.**python**.log>
+<filter /kubernetes\.var\.log\.containers\..*python.*\.log/>
   @type concat
   key log
-  stream_identity_key $.kubernetes.container_name
-  multiline_start_regexp /^(\d{4}-\d{2}-\d{2}|Traceback)/
+  multiline_start_regexp /^\d{4}-\d{2}-\d{2}/
   flush_interval 5s
   timeout_label @NORMAL
 </filter>
 
-# Output to Elasticsearch
+# Route normal logs to the same label used by timeout-flushed concat buffers
 <match kubernetes.**>
-  @type elasticsearch
-  host elasticsearch.logging.svc.cluster.local
-  port 9200
-  index_name kubernetes-${record['kubernetes']['namespace_name']}
-  <buffer>
-    flush_interval 10s
-  </buffer>
+  @type relabel
+  @label @NORMAL
 </match>
+
+# Output to Elasticsearch
+<label @NORMAL>
+  <match kubernetes.**>
+    @type elasticsearch
+    host elasticsearch.logging.svc.cluster.local
+    port 9200
+    index_name kubernetes-${$.kubernetes.namespace_name}
+    <buffer tag, $.kubernetes.namespace_name>
+      flush_interval 10s
+    </buffer>
+  </match>
+</label>
 ```
 
 ## Conclusion
