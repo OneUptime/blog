@@ -61,8 +61,6 @@ For a real home automation deployment, Docker Compose gives you reproducible con
 
 ```yaml
 # docker-compose.yml - InfluxDB with Telegraf for home automation metrics
-version: "3.8"
-
 services:
   influxdb:
     image: influxdb:2.7
@@ -133,7 +131,7 @@ Telegraf acts as the bridge between your sensor data and InfluxDB. Here is a bas
 # Output plugin: send all collected data to InfluxDB 2.x
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
-  token = "$INFLUX_TOKEN"
+  token = "${INFLUX_TOKEN}"
   organization = "home"
   bucket = "homeassistant"
 
@@ -215,7 +213,7 @@ Running InfluxDB on a Raspberry Pi requires some tuning. Add these environment v
 # Additional environment variables for resource-constrained devices
 environment:
   # Limit the in-memory cache size
-  INFLUXD_STORAGE_CACHE_MAX_MEMORY_SIZE: "256m"
+  INFLUXD_STORAGE_CACHE_MAX_MEMORY_SIZE: "268435456"
   # Reduce the WAL throughput limit
   INFLUXD_STORAGE_WAL_MAX_CONCURRENT_WRITES: "1"
   # Lower query memory limit
@@ -229,7 +227,7 @@ Losing months of sensor data is painful. Set up automated backups with a simple 
 ```bash
 # Backup InfluxDB data to a local directory
 docker exec influxdb influx backup /tmp/backup \
-  --token your-api-token-here
+  --token your-root-token-here
 
 # Copy the backup from the container to the host
 docker cp influxdb:/tmp/backup ./influxdb-backup-$(date +%Y%m%d)
@@ -249,18 +247,18 @@ docker exec influxdb influx backup /tmp/backup --token "$INFLUX_TOKEN"
 docker cp influxdb:/tmp/backup "$BACKUP_DIR/$DATE"
 
 # Clean up backups older than 30 days
-find "$BACKUP_DIR" -type d -mtime +30 -exec rm -rf {} +
+find "$BACKUP_DIR" -mindepth 1 -type d -mtime +30 -exec rm -rf {} +
 
 # Clean up the temporary backup inside the container
 docker exec influxdb rm -rf /tmp/backup
 ```
 
-Restoring from a backup is just as straightforward.
+Restore into a fresh InfluxDB instance, or use `--full` if you want to replace all data and metadata in the target instance.
 
 ```bash
-# Copy backup into the container and restore
+# Copy backup into the container and run a full restore
 docker cp ./influxdb-backup-20260208 influxdb:/tmp/restore
-docker exec influxdb influx restore /tmp/restore --token your-api-token-here
+docker exec influxdb influx restore --full /tmp/restore --token your-root-token-here
 ```
 
 ## Retention Policies and Downsampling
