@@ -30,7 +30,7 @@ Common use cases:
 Deploy Multus as a DaemonSet:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset.yml
+kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml
 ```
 
 Verify installation:
@@ -60,10 +60,16 @@ spec:
     "mode": "bridge",
     "ipam": {
       "type": "host-local",
-      "subnet": "192.168.1.0/24",
-      "rangeStart": "192.168.1.200",
-      "rangeEnd": "192.168.1.250",
-      "gateway": "192.168.1.1"
+      "ranges": [
+        [
+          {
+            "subnet": "192.168.1.0/24",
+            "rangeStart": "192.168.1.200",
+            "rangeEnd": "192.168.1.250",
+            "gateway": "192.168.1.1"
+          }
+        ]
+      ]
     }
   }'
 ```
@@ -74,6 +80,8 @@ Apply the network definition:
 kubectl apply -f macvlan-network.yaml
 kubectl get network-attachment-definitions
 ```
+
+The `host-local` IPAM plugin stores allocations on each node, so use non-overlapping per-node ranges or a cluster-wide IPAM plugin for multi-node secondary networks.
 
 ## Attaching Networks to Pods
 
@@ -125,9 +133,15 @@ spec:
     "master": "eth1",
     "ipam": {
       "type": "host-local",
-      "subnet": "10.10.0.0/24",
-      "rangeStart": "10.10.0.100",
-      "rangeEnd": "10.10.0.200"
+      "ranges": [
+        [
+          {
+            "subnet": "10.10.0.0/24",
+            "rangeStart": "10.10.0.100",
+            "rangeEnd": "10.10.0.200"
+          }
+        ]
+      ]
     }
   }'
 ---
@@ -143,7 +157,13 @@ spec:
     "bridge": "mybridge",
     "ipam": {
       "type": "host-local",
-      "subnet": "10.20.0.0/24"
+      "ranges": [
+        [
+          {
+            "subnet": "10.20.0.0/24"
+          }
+        ]
+      ]
     }
   }'
 ---
@@ -182,7 +202,7 @@ metadata:
       [
         {
           "name": "macvlan-conf",
-          "ips": ["192.168.1.100/24"]
+          "ips": ["192.168.1.210/24"]
         }
       ]
 spec:
@@ -211,9 +231,15 @@ spec:
     "mtu": 9000,
     "ipam": {
       "type": "host-local",
-      "subnet": "172.16.0.0/16",
-      "rangeStart": "172.16.10.0",
-      "rangeEnd": "172.16.10.255"
+      "ranges": [
+        [
+          {
+            "subnet": "172.16.0.0/16",
+            "rangeStart": "172.16.10.0",
+            "rangeEnd": "172.16.10.255"
+          }
+        ]
+      ]
     }
   }'
 ---
@@ -275,7 +301,13 @@ spec:
     "bridge": "ctrl-br0",
     "ipam": {
       "type": "host-local",
-      "subnet": "10.1.0.0/16"
+      "ranges": [
+        [
+          {
+            "subnet": "10.1.0.0/16"
+          }
+        ]
+      ]
     }
   }'
 ---
@@ -293,7 +325,13 @@ spec:
     "mode": "bridge",
     "ipam": {
       "type": "host-local",
-      "subnet": "10.2.0.0/16"
+      "ranges": [
+        [
+          {
+            "subnet": "10.2.0.0/16"
+          }
+        ]
+      ]
     }
   }'
 ---
@@ -393,7 +431,13 @@ spec:
     "master": "eth1",
     "ipam": {
       "type": "host-local",
-      "subnet": "192.168.100.0/24",
+      "ranges": [
+        [
+          {
+            "subnet": "192.168.100.0/24"
+          }
+        ]
+      ],
       "routes": [
         {"dst": "192.168.200.0/24", "gw": "192.168.100.1"},
         {"dst": "192.168.201.0/24", "gw": "192.168.100.1"}
@@ -440,7 +484,7 @@ kubectl get pod multi-net-pod -o jsonpath='{.metadata.annotations}' | jq
 
 Different CNI plugins have different performance characteristics:
 
-- **Macvlan**: Low overhead, near-native performance, requires promiscuous mode
+- **Macvlan**: Low overhead, near-native performance, may require switch or virtualization support for multiple MAC addresses
 - **IPvlan**: Similar to macvlan, no promiscuous mode required
 - **Bridge**: Higher overhead, more flexible, works in more environments
 - **SR-IOV**: Highest performance, requires SR-IOV capable hardware
@@ -471,7 +515,7 @@ metadata:
 rules:
 - apiGroups: ["k8s.cni.cncf.io"]
   resources: ["network-attachment-definitions"]
-  verbs: ["get", "list"]
+  verbs: ["get"]
   resourceNames: ["macvlan-conf"]  # Only specific networks
 ```
 
