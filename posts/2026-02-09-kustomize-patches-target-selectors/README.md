@@ -31,7 +31,7 @@ patches:
     kind: Deployment
     name: api-server
   patch: |-
-    - op: replace
+    - op: add
       path: /spec/replicas
       value: 5
 ```
@@ -102,11 +102,15 @@ kind: Kustomization
 
 patches:
 - target:
+    kind: Deployment
     labelSelector: "tier=frontend"
   patch: |-
-    - op: add
-      path: /metadata/annotations/prometheus.io~1scrape
-      value: "true"
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: not-important
+      annotations:
+        prometheus.io/scrape: "true"
 ```
 
 The labelSelector uses the same syntax as Kubernetes label selectors. You can use equality-based (=, ==, !=) and set-based (in, notin, exists) operators:
@@ -114,6 +118,7 @@ The labelSelector uses the same syntax as Kubernetes label selectors. You can us
 ```yaml
 patches:
 - target:
+    kind: Deployment
     labelSelector: "environment in (staging, production), tier=backend"
   patch: |-
     - op: add
@@ -135,14 +140,20 @@ kind: Kustomization
 
 patches:
 - target:
+    kind: Deployment
     annotationSelector: "config-version=v2"
   patch: |-
-    - op: add
-      path: /spec/template/spec/volumes/-
-      value:
-        name: config-v2
-        configMap:
-          name: app-config-v2
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: not-important
+    spec:
+      template:
+        spec:
+          volumes:
+          - name: config-v2
+            configMap:
+              name: app-config-v2
 ```
 
 This is useful when you use annotations to track versions or other metadata that should trigger specific configurations.
@@ -162,9 +173,12 @@ patches:
     version: v1
     kind: Deployment
   patch: |-
-    - op: add
-      path: /metadata/labels/deployed-by
-      value: kustomize
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: not-important
+      labels:
+        deployed-by: kustomize
 ```
 
 This explicitly targets Deployments from the apps/v1 API group. This is important when you have multiple API versions of the same resource kind and want to patch only specific versions.
@@ -183,9 +197,12 @@ patches:
     kind: Service
     namespace: monitoring
   patch: |-
-    - op: add
-      path: /metadata/annotations/external-dns.alpha.kubernetes.io~1hostname
-      value: monitoring.example.com
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: not-important
+      annotations:
+        external-dns.alpha.kubernetes.io/hostname: monitoring.example.com
 ```
 
 This ensures your patches only affect resources in the intended namespace, preventing accidental modifications to similarly named resources elsewhere.
@@ -306,9 +323,12 @@ patches:
 - target:
     kind: Deployment
   patch: |-
-    - op: add
-      path: /metadata/annotations/prometheus.io~1scrape
-      value: "true"
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: not-important
+      annotations:
+        prometheus.io/scrape: "true"
 
 # Extra configuration for frontend deployments
 - target:
@@ -330,7 +350,7 @@ patches:
     kind: Deployment
     name: critical-api
   patch: |-
-    - op: replace
+    - op: add
       path: /spec/replicas
       value: 10
 ```
