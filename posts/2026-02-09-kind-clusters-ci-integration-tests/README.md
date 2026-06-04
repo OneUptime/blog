@@ -27,7 +27,7 @@ Install Kind for local development:
 ```bash
 # Install on Linux
 
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
 chmod +x ./kind
 sudo mv ./kind /usr/local/bin/kind
 
@@ -96,10 +96,10 @@ import (
     "testing"
     "time"
 
-    "sigs.k8s.io/kind/pkg/cluster"
-    "sigs.k8s.io/kind/pkg/cmd"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/tools/clientcmd"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "sigs.k8s.io/kind/pkg/cluster"
 )
 
 func TestControllerIntegration(t *testing.T) {
@@ -223,10 +223,12 @@ openssl req -x509 -new -nodes -key ca.key -days 100 -out ca.crt -subj "/CN=admis
 
 # Generate webhook cert
 openssl genrsa -out webhook.key 2048
-openssl req -new -key webhook.key -out webhook.csr -subj "/CN=webhook.default.svc"
+openssl req -new -key webhook.key -out webhook.csr -subj "/CN=webhook.default.svc" \
+  -addext "subjectAltName=DNS:webhook.default.svc"
 
 # Sign webhook cert
-openssl x509 -req -in webhook.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out webhook.crt -days 100
+openssl x509 -req -in webhook.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+  -out webhook.crt -days 100 -copy_extensions copy
 
 # Create Kubernetes secret
 kubectl create secret tls webhook-certs \
@@ -256,7 +258,8 @@ spec:
     spec:
       containers:
       - name: webhook
-        image: localhost/webhook:test
+        image: webhook:test
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8443
         volumeMounts:
@@ -293,6 +296,7 @@ package integration
 import (
     "fmt"
     "testing"
+    "time"
 
     "sigs.k8s.io/kind/pkg/cluster"
 )
@@ -354,15 +358,15 @@ jobs:
   integration-test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v6
 
     - name: Setup Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v6
       with:
-        go-version: 1.21
+        go-version: 1.25
 
     - name: Create Kind cluster
-      uses: helm/kind-action@v1.8.0
+      uses: helm/kind-action@v1.14.0
       with:
         cluster_name: test-cluster
         config: kind-test-config.yaml
@@ -396,12 +400,21 @@ Configure GitLab runner with Kind:
 # .gitlab-ci.yml
 integration-test:
   stage: test
-  image: golang:1.21
+  image: golang:1.25
   services:
-    - docker:dind
+    - name: docker:24.0.5-dind
+      variables:
+        HEALTHCHECK_TCP_PORT: "2375"
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
+    # Install Docker CLI
+    - apt-get update
+    - apt-get install -y docker.io
+
     # Install Kind
-    - curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+    - curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
     - chmod +x ./kind
     - mv ./kind /usr/local/bin/kind
 
@@ -412,7 +425,7 @@ integration-test:
 
   script:
     - kind create cluster --wait 5m
-    - export KUBECONFIG="$(kind get kubeconfig --name kind)"
+    - kind export kubeconfig --name kind
     - kubectl apply -f config/
     - go test ./test/integration/... -v
 
@@ -470,7 +483,7 @@ kubectl cluster-info dump > cluster-dump.txt
 # Get all pod logs
 for pod in $(kubectl get pods -A -o name); do
   echo "=== Logs for $pod ===" >> pod-logs.txt
-  kubectl logs $pod -A --all-containers >> pod-logs.txt 2>&1
+  kubectl logs "$pod" --all-containers >> pod-logs.txt 2>&1
 done
 
 # Export events
