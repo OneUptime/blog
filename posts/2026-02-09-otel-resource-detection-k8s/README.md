@@ -33,12 +33,12 @@ receivers:
 
 processors:
   # Resource detection processor for Kubernetes
-  resourcedetection/k8s:
+  resource_detection/k8s:
     detectors:
       - env          # Detect from environment variables
       - system       # Detect system information
       - docker       # Detect Docker container info
-      - k8snode      # Detect Kubernetes node information
+      - k8s_api      # Detect Kubernetes node and cluster information
     timeout: 5s
     override: false
 
@@ -85,19 +85,19 @@ exporters:
     endpoint: tempo:4317
     tls:
       insecure: true
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection/k8s, k8sattributes, batch]
-      exporters: [otlp, logging]
+      processors: [resource_detection/k8s, k8sattributes, batch]
+      exporters: [otlp, debug]
     metrics:
       receivers: [otlp]
-      processors: [resourcedetection/k8s, k8sattributes, batch]
-      exporters: [otlp, logging]
+      processors: [resource_detection/k8s, k8sattributes, batch]
+      exporters: [otlp, debug]
 ```
 
 This configuration adds comprehensive Kubernetes metadata to all telemetry data.
@@ -192,27 +192,11 @@ spec:
           - /otelcol-contrib
           - --config=/conf/collector-config.yaml
         env:
-          # Environment variables for resource detection
+          # Environment variable for k8s_api resource detection
           - name: K8S_NODE_NAME
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
-          - name: K8S_POD_NAME
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.name
-          - name: K8S_POD_NAMESPACE
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.namespace
-          - name: K8S_POD_IP
-            valueFrom:
-              fieldRef:
-                fieldPath: status.podIP
-          - name: K8S_POD_UID
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.uid
         volumeMounts:
         - name: config
           mountPath: /conf
@@ -227,7 +211,7 @@ spec:
           name: otel-collector-config
 ```
 
-The environment variables provide pod information to the resource detection processor.
+The `K8S_NODE_NAME` environment variable provides the node name required by the `k8s_api` detector.
 
 ```bash
 # Create ConfigMap with collector configuration
@@ -250,8 +234,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.resourcedetector.kubernetes import K8sResourceDetector
 from opentelemetry.sdk.resources import get_aggregated_resources
+from opentelemetry_resourcedetector_kubernetes import KubernetesDownwardAPIEnvironmentResourceDetector
 import os
 
 def configure_tracing():
@@ -261,15 +245,16 @@ def configure_tracing():
     base_resource = Resource.create({
         "service.name": os.getenv("OTEL_SERVICE_NAME", "python-app"),
         "service.version": os.getenv("SERVICE_VERSION", "1.0.0"),
-        "deployment.environment": os.getenv("DEPLOYMENT_ENV", "production"),
+        "deployment.environment.name": os.getenv("DEPLOYMENT_ENV", "production"),
     })
 
-    # Detect Kubernetes resources
-    k8s_detector = K8sResourceDetector()
-    k8s_resource = k8s_detector.detect()
+    # Detect Kubernetes resources from Downward API environment variables
+    detected_resource = get_aggregated_resources([
+        KubernetesDownwardAPIEnvironmentResourceDetector(prefix="OTEL_RD")
+    ])
 
     # Merge resources
-    resource = get_aggregated_resources([base_resource, k8s_resource])
+    resource = base_resource.merge(detected_resource)
 
     # Create tracer provider with merged resource
     provider = TracerProvider(resource=resource)
@@ -300,7 +285,7 @@ def get_data():
         return {"data": "example"}
 ```
 
-The SDK automatically adds detected Kubernetes attributes to all spans.
+The SDK resource configuration adds detected Kubernetes attributes to all spans.
 
 ## Java SDK Resource Detection
 
@@ -310,31 +295,32 @@ Configure Kubernetes resource detection in Java applications using the OpenTelem
 // KubernetesResourceConfiguration.java
 package com.example.tracing;
 
-import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.resources.Resource;
+import io.opentelemetry.sdk.resources.ResourceBuilder;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
-import io.opentelemetry.semconv.resource.attributes.ResourceAttributes;
-import io.opentelemetry.contrib.resourceproviders.AppServerServiceNameProvider;
 
 public class KubernetesResourceConfiguration {
 
     public static Tracer configureTracing() {
-        // Create base resource
-        Resource baseResource = Resource.getDefault()
-            .merge(Resource.builder()
-                .put(ResourceAttributes.SERVICE_NAME,
-                     System.getenv().getOrDefault("OTEL_SERVICE_NAME", "java-app"))
-                .put(ResourceAttributes.SERVICE_VERSION, "1.0.0")
-                .put(ResourceAttributes.DEPLOYMENT_ENVIRONMENT,
-                     System.getenv().getOrDefault("DEPLOYMENT_ENV", "production"))
-                .build());
+        ResourceBuilder resourceBuilder = Resource.builder()
+            .put("service.name",
+                 System.getenv().getOrDefault("OTEL_SERVICE_NAME", "java-app"))
+            .put("service.version", "1.0.0")
+            .put("deployment.environment.name",
+                 System.getenv().getOrDefault("DEPLOYMENT_ENV", "production"));
 
-        // Kubernetes attributes are detected from environment variables
-        // K8S_NAMESPACE_NAME, K8S_POD_NAME, K8S_NODE_NAME, etc.
+        // Kubernetes attributes are added from Downward API environment variables.
+        putIfPresent(resourceBuilder, "k8s.namespace.name", "OTEL_RD_K8S_NAMESPACE_NAME");
+        putIfPresent(resourceBuilder, "k8s.pod.name", "OTEL_RD_K8S_POD_NAME");
+        putIfPresent(resourceBuilder, "k8s.pod.uid", "OTEL_RD_K8S_POD_UID");
+        putIfPresent(resourceBuilder, "k8s.node.name", "OTEL_RD_K8S_NODE_NAME");
+        putIfPresent(resourceBuilder, "k8s.pod.ip", "OTEL_RD_K8S_POD_IP");
+
+        Resource baseResource = Resource.getDefault().merge(resourceBuilder.build());
 
         // Configure OTLP exporter
         OtlpGrpcSpanExporter spanExporter = OtlpGrpcSpanExporter.builder()
@@ -356,6 +342,13 @@ public class KubernetesResourceConfiguration {
         // Return tracer
         return openTelemetry.getTracer("com.example.app");
     }
+
+    private static void putIfPresent(ResourceBuilder builder, String attributeName, String envName) {
+        String value = System.getenv(envName);
+        if (value != null && !value.isEmpty()) {
+            builder.put(attributeName, value);
+        }
+    }
 }
 ```
 
@@ -368,21 +361,24 @@ Configure Kubernetes resource detection in Node.js applications.
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Create resource with Kubernetes attributes from environment
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'nodejs-app',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'production',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'nodejs-app',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
+  'deployment.environment.name': process.env.NODE_ENV || 'production',
 
   // Kubernetes attributes from downward API
-  'k8s.namespace.name': process.env.K8S_NAMESPACE_NAME,
-  'k8s.pod.name': process.env.K8S_POD_NAME,
-  'k8s.pod.uid': process.env.K8S_POD_UID,
-  'k8s.node.name': process.env.K8S_NODE_NAME,
-  'k8s.pod.ip': process.env.K8S_POD_IP,
+  'k8s.namespace.name': process.env.OTEL_RD_K8S_NAMESPACE_NAME,
+  'k8s.pod.name': process.env.OTEL_RD_K8S_POD_NAME,
+  'k8s.pod.uid': process.env.OTEL_RD_K8S_POD_UID,
+  'k8s.node.name': process.env.OTEL_RD_K8S_NODE_NAME,
+  'k8s.pod.ip': process.env.OTEL_RD_K8S_POD_IP,
 });
 
 // Initialize SDK with resource
@@ -444,23 +440,23 @@ spec:
             value: "production"
 
           # Kubernetes metadata from downward API
-          - name: K8S_NAMESPACE_NAME
+          - name: OTEL_RD_K8S_NAMESPACE_NAME
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
-          - name: K8S_POD_NAME
+          - name: OTEL_RD_K8S_POD_NAME
             valueFrom:
               fieldRef:
                 fieldPath: metadata.name
-          - name: K8S_POD_UID
+          - name: OTEL_RD_K8S_POD_UID
             valueFrom:
               fieldRef:
                 fieldPath: metadata.uid
-          - name: K8S_NODE_NAME
+          - name: OTEL_RD_K8S_NODE_NAME
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
-          - name: K8S_POD_IP
+          - name: OTEL_RD_K8S_POD_IP
             valueFrom:
               fieldRef:
                 fieldPath: status.podIP
