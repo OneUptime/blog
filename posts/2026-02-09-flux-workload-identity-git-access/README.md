@@ -8,9 +8,9 @@ Description: Learn how to use cloud workload identity federation with Flux to ac
 
 ---
 
-Traditional Git authentication uses SSH keys or personal access tokens stored as Kubernetes secrets. These credentials are long-lived, hard to rotate, and risky if compromised. Workload identity federation lets Flux authenticate using short-lived tokens tied to cloud IAM roles. No secrets stored in clusters, automatic credential rotation, and full audit trails through cloud IAM.
+Traditional Git authentication uses SSH keys or personal access tokens stored as Kubernetes secrets. These credentials are long-lived, hard to rotate, and risky if compromised. Workload identity federation lets Flux authenticate using short-lived tokens tied to cloud IAM roles where the Git provider supports it. No long-lived Git secrets stored in clusters, automatic credential rotation, and full audit trails through cloud IAM.
 
-This guide shows you how to configure workload identity for Flux across AWS, Azure, and GCP.
+For Flux `GitRepository` resources, native workload identity support is currently available for Azure DevOps through the `azure` provider. AWS and GCP workload identity are useful for other Flux source types such as OCI repositories and buckets, but they do not provide native secretless Git authentication for `GitRepository` resources.
 
 ## Why Workload Identity
 
@@ -22,20 +22,22 @@ Traditional approach problems:
 - No centralized audit trail
 - Secrets stored in cluster
 
-Workload identity benefits:
+Workload identity benefits where supported:
 
-- Short-lived tokens (15 minutes to 1 hour)
+- Short-lived tokens with provider-managed lifetimes
 - Automatic rotation
 - Cloud IAM controls access
 - Complete audit trail
-- No secrets in cluster
+- No long-lived Git secrets in cluster
 
 ## AWS: IRSA (IAM Roles for Service Accounts)
+
+Flux can use IRSA for AWS APIs in supported source types such as OCI repositories and buckets. Flux `GitRepository` resources do not have an `aws` provider, so IRSA alone does not make CodeCommit or GitHub Git clones secretless.
 
 ### Prerequisites
 
 - EKS cluster with OIDC provider enabled
-- GitHub repository (this example uses GitHub)
+- AWS CodeCommit repository, if you are using CodeCommit
 - AWS IAM permissions to create roles and policies
 
 ### Enable OIDC Provider
@@ -91,14 +93,11 @@ aws iam create-role \
   --assume-role-policy-document file://trust-policy.json
 ```
 
-### Grant GitHub Access
+### Grant CodeCommit Access
 
-For GitHub with OIDC, add permissions to assume GitHub's OIDC role:
+For CodeCommit, grant the role read access. This is useful for AWS-aware tooling in the pod, but Flux `GitRepository` does not automatically use these IAM credentials for Git authentication:
 
 ```bash
-# This example assumes using AWS CodeCommit
-# For GitHub/GitLab, you'd set up app-based authentication
-
 # Create policy for CodeCommit access
 cat > codecommit-policy.json <<EOF
 {
@@ -150,7 +149,7 @@ kubectl rollout restart deployment source-controller -n flux-system
 
 ### Configure GitRepository
 
-For AWS CodeCommit:
+For AWS CodeCommit, Flux still needs a supported Git authentication method such as HTTPS credentials in a Kubernetes secret:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -167,7 +166,7 @@ spec:
     name: codecommit-credentials
 ```
 
-However, for true workload identity without secrets, use the IAM authenticator helper (requires custom setup).
+There is no `spec.provider: aws` for Flux `GitRepository` resources. For true secretless Flux sources on AWS, use Flux source types that support AWS workload identity, such as `OCIRepository` with Amazon ECR or `Bucket` with Amazon S3, instead of Git.
 
 ## Azure: Workload Identity
 
@@ -176,6 +175,7 @@ However, for true workload identity without secrets, use the IAM authenticator h
 - AKS cluster with workload identity enabled
 - Azure DevOps or GitHub repository
 - Azure AD permissions
+- Azure DevOps organization connected to Microsoft Entra ID
 
 ### Enable Workload Identity on AKS
 
@@ -245,7 +245,8 @@ az identity federated-credential create \
   --identity-name flux-git-identity \
   --resource-group myResourceGroup \
   --issuer "${OIDC_ISSUER}" \
-  --subject system:serviceaccount:flux-system:source-controller
+  --subject system:serviceaccount:flux-system:source-controller \
+  --audiences api://AzureADTokenExchange
 ```
 
 ### Configure Flux ServiceAccount
@@ -267,6 +268,13 @@ Apply:
 
 ```bash
 kubectl apply -f flux-system/source-controller-sa-patch.yaml
+
+# Patch the source-controller pod template so the Azure Workload Identity
+# webhook injects the projected token
+kubectl patch deployment source-controller \
+  -n flux-system \
+  -p '{"metadata":{"labels":{"azure.workload.identity/use":"true"}},"spec":{"template":{"metadata":{"labels":{"azure.workload.identity/use":"true"}}}}}'
+
 kubectl rollout restart deployment source-controller -n flux-system
 ```
 
@@ -280,20 +288,23 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m
+  provider: azure
   url: https://dev.azure.com/organization/project/_git/repository
   ref:
     branch: main
 ```
 
-With workload identity configured, Flux automatically uses the managed identity.
+With workload identity configured and `provider: azure` set, Flux uses the managed identity.
 
 ## GCP: Workload Identity
 
 ### Prerequisites
 
 - GKE cluster
-- Cloud Source Repositories or GitHub
+- Cloud Source Repositories, if your organization used it before June 17, 2024
 - GCP IAM permissions
+
+Flux can use GKE Workload Identity Federation for supported source types such as OCI repositories and buckets. Flux `GitRepository` resources do not have a `gcp` provider, so GKE Workload Identity Federation does not provide native secretless Git authentication for Flux.
 
 ### Enable Workload Identity on GKE
 
@@ -352,7 +363,7 @@ kubectl rollout restart deployment source-controller -n flux-system
 
 ### Configure GitRepository
 
-For Cloud Source Repositories:
+For Cloud Source Repositories, Flux still needs a supported Git authentication method. Cloud Source Repositories is also unavailable to new customers unless the organization used it before June 17, 2024:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -367,9 +378,11 @@ spec:
     branch: main
 ```
 
-## GitHub with OIDC (All Clouds)
+This manifest is syntactically valid, but it is not secretless by itself because Flux `GitRepository` does not use the annotated GCP service account for Git authentication.
 
-GitHub supports OIDC federation for all cloud providers:
+## GitHub App Authentication (All Clusters)
+
+Flux supports GitHub App authentication through the `github` provider. This avoids personal access tokens, but it still requires storing the GitHub App private key in a Kubernetes secret.
 
 ### Create GitHub App
 
@@ -378,42 +391,45 @@ GitHub supports OIDC federation for all cloud providers:
 3. Repository permissions: Contents (Read-only)
 4. Generate private key
 
-### Install GitHub App Authentication Helper
+### Create GitHub App Secret
 
-Use a sidecar or init container to exchange workload identity token for GitHub token:
+Store the GitHub App credentials in the format expected by Flux:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: Secret
 metadata:
-  name: source-controller
+  name: github-app
   namespace: flux-system
-spec:
-  template:
-    spec:
-      serviceAccountName: source-controller
-      initContainers:
-      - name: github-token-fetcher
-        image: ghcr.io/fluxcd/github-app-token-helper:v1
-        env:
-        - name: GITHUB_APP_ID
-          value: "123456"
-        - name: GITHUB_APP_INSTALLATION_ID
-          value: "7891011"
-        - name: GITHUB_APP_PRIVATE_KEY
-          valueFrom:
-            secretKeyRef:
-              name: github-app-key
-              key: private-key
-        volumeMounts:
-        - name: github-token
-          mountPath: /tmp/github
-      volumes:
-      - name: github-token
-        emptyDir: {}
+type: Opaque
+stringData:
+  githubAppID: "123456"
+  githubAppInstallationID: "7891011"
+  githubAppPrivateKey: |
+    -----BEGIN RSA PRIVATE KEY-----
+    ...
+    -----END RSA PRIVATE KEY-----
 ```
 
-This is more complex and still requires a secret. For true secretless, use cloud-native Git services (CodeCommit, Cloud Source Repositories, Azure Repos).
+Configure the `GitRepository` to use the GitHub provider:
+
+```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 1m
+  provider: github
+  url: https://github.com/organization/repository
+  ref:
+    branch: main
+  secretRef:
+    name: github-app
+```
+
+This is not workload identity federation, but it is a tokenless alternative to personal access tokens.
 
 ## Verifying Configuration
 
@@ -423,7 +439,7 @@ Check workload identity is working:
 # View service account
 kubectl get sa source-controller -n flux-system -o yaml
 
-# Check pod has identity token
+# For Azure, check that the pod has the injected identity token
 kubectl exec -n flux-system deploy/source-controller -- \
   cat /var/run/secrets/azure/tokens/azure-identity-token
 
@@ -459,4 +475,4 @@ kubectl logs -n flux-system deploy/source-controller -f | grep auth
 
 ## Conclusion
 
-Workload identity eliminates long-lived secrets from Flux deployments. Cloud providers automatically rotate credentials, IAM provides centralized access control, and audit logs show every repository access. While initial setup is more complex than storing tokens, the security benefits are substantial. Implement workload identity for production Flux deployments to align with security best practices and reduce secret management overhead.
+Workload identity eliminates long-lived secrets from Flux deployments where the source type and provider support it. For `GitRepository` resources, use the native Azure DevOps workload identity integration, or use GitHub App authentication when you want to avoid personal access tokens but can store an app private key. On AWS and GCP, use workload identity with Flux source types that support cloud IAM, such as OCI repositories or buckets. While initial setup is more complex than storing tokens, the security benefits are substantial when the provider integration is supported.
