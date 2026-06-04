@@ -12,7 +12,7 @@ While Pod Security Standards provide essential security controls, some workloads
 
 ## Understanding Exemption Mechanisms
 
-Pod Security Admission supports three exemption types: namespace exemptions, user exemptions, and runtime class exemptions. These exemptions let specific workloads bypass policy enforcement while audit and warning modes continue tracking violations. This approach balances security with operational requirements.
+Pod Security Admission supports three exemption types: namespace exemptions, user exemptions, and runtime class exemptions. These exemptions let specific workloads bypass the admission controller for enforcement, audit, and warning checks. This approach balances security with operational requirements.
 
 Exemptions should be narrowly scoped and well-documented. Every exemption represents a potential security risk and requires regular review to ensure it remains necessary.
 
@@ -41,7 +41,7 @@ plugins:
       - logging
 ```
 
-This configuration exempts system namespaces and infrastructure namespaces from enforcement while still auditing and warning about violations.
+This configuration exempts system namespaces and infrastructure namespaces from the Pod Security admission controller checks.
 
 ## User-Based Exemptions
 
@@ -68,7 +68,7 @@ plugins:
       namespaces: []
 ```
 
-User exemptions apply regardless of which namespace creates the pod. This enables specific system controllers to create privileged pods even in otherwise restricted namespaces.
+User exemptions apply regardless of which namespace creates the pod. Be careful with controller service accounts, because exempting a controller can implicitly exempt users who can create the corresponding workload resource.
 
 ## Runtime Class Exemptions
 
@@ -211,7 +211,7 @@ Segregate workloads by security requirements into appropriate namespaces.
 Track usage of exemptions to prevent abuse:
 
 ```bash
-# List exempted namespaces
+# List namespaces using privileged enforcement
 
 kubectl get namespaces -l pod-security.kubernetes.io/enforce=privileged
 
@@ -223,7 +223,9 @@ kubectl get pods --all-namespaces -o json | \
 
 # Check for unexpected privileged pods
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.securityContext.privileged == true) |
+  jq -r '.items[] |
+         select([.spec.containers[], .spec.initContainers[]?, .spec.ephemeralContainers[]?] |
+                any(.securityContext.privileged == true)) |
          "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
@@ -267,6 +269,8 @@ webhooks:
       name: pod-security-webhook
       namespace: security-system
       path: /validate
+  admissionReviewVersions: ["v1"]
+  sideEffects: None
   rules:
   - apiGroups: [""]
     apiVersions: ["v1"]
@@ -286,10 +290,10 @@ Webhooks enable sophisticated exemption logic based on multiple factors.
 Exemptions weaken security posture. Minimize their scope:
 
 ```yaml
-# BAD: Broad exemption
+# BAD: Wildcards are not supported in PSA exemptions
 exemptions:
   namespaces:
-  - "*-system"  # Too broad, exempts everything ending in -system
+  - "*-system"  # This does not match namespaces by pattern
 
 # GOOD: Specific exemption
 exemptions:
