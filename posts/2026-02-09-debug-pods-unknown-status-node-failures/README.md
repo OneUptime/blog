@@ -18,7 +18,7 @@ Pods enter Unknown status when:
 
 - Node network connectivity is lost
 - Kubelet process crashes or stops responding
-- Node runs out of resources and becomes unresponsive
+- Severe resource pressure makes the node unresponsive
 - Hardware failure affects the node
 
 Check for Unknown pods:
@@ -75,11 +75,14 @@ kubectl get events -n <namespace> --sort-by='.lastTimestamp'
 Kubernetes has built-in mechanisms to handle node failures:
 
 ```bash
-# Check the pod-eviction-timeout setting (default 5 minutes)
-kubectl get node <node-name> -o yaml | grep -A 5 "taints"
+# Check the not-ready/unreachable taints on the node
+kubectl get node <node-name> -o jsonpath='{.spec.taints}'
+
+# Check whether a pod has custom tolerationSeconds
+kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.tolerations}'
 ```
 
-After the timeout, pods are automatically evicted and rescheduled if controlled by a higher-level controller (Deployment, StatefulSet, etc.):
+By default, Kubernetes adds `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable` tolerations with `tolerationSeconds=300`, so pods remain bound to the failing node for 5 minutes unless you set those tolerations explicitly. After the toleration expires, pods that do not tolerate the taint are evicted. Deployment and ReplicaSet pods are replaced by their controllers; StatefulSet pods require extra care because the old pod identity must be safely removed before a replacement with the same identity can run:
 
 ```yaml
 # This deployment will automatically recover
@@ -127,7 +130,7 @@ kubectl cordon <node-name>
 # Drain the node (evicts pods gracefully)
 kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
 
-# If drain hangs due to Unknown pods, add --force
+# If drain is blocked by unmanaged pods, add --force
 kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data --force --grace-period=30
 ```
 
@@ -176,7 +179,7 @@ ssh <node-ip>  # Try to connect
 
 # 2. Check if any process is still running on the node
 # If you can SSH to the node:
-ssh <node-ip> "docker ps | grep <pod-name>"
+ssh <node-ip> "sudo crictl ps | grep <pod-name>"
 
 # 3. Only after confirming the pod is not running, force delete
 kubectl delete pod database-cluster-0 --grace-period=0 --force
@@ -187,7 +190,7 @@ kubectl get pod database-cluster-0 -w
 
 ## Preventing Split-Brain Scenarios
 
-For distributed systems, prevent split-brain by using pod disruption budgets and proper fencing:
+For distributed systems, prevent split-brain with application-level quorum and proper fencing. Pod disruption budgets help limit voluntary disruptions, but they do not prevent involuntary node failures:
 
 ```yaml
 apiVersion: policy/v1
@@ -204,6 +207,8 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: database-with-fencing
+  labels:
+    app: database
 spec:
   containers:
   - name: db
@@ -217,6 +222,7 @@ spec:
           - |
             # Implement fencing logic
             # Ensure no other instance can write to the same storage
+            # This hook only runs during graceful termination, not hard node failure
             pg_ctl stop -m fast
     volumeMounts:
     - name: data
@@ -237,7 +243,11 @@ from kubernetes import client, config, watch
 import time
 from datetime import datetime, timedelta
 
-config.load_kube_config()
+try:
+    config.load_incluster_config()
+except config.ConfigException:
+    config.load_kube_config()
+
 v1 = client.CoreV1Api()
 
 UNKNOWN_TIMEOUT_MINUTES = 10
@@ -394,7 +404,7 @@ data:
     - name: pod-status
       rules:
       - alert: PodsInUnknownStatus
-        expr: kube_pod_status_phase{phase="Unknown"} > 0
+        expr: sum(kube_pod_status_phase{phase="Unknown"} == 1) > 0
         for: 5m
         labels:
           severity: critical
@@ -403,7 +413,7 @@ data:
           description: "{{ $value }} pods have been in Unknown status for >5 minutes"
 
       - alert: NodeNotReady
-        expr: kube_node_status_condition{condition="Ready",status="false"} == 1
+        expr: kube_node_status_condition{condition="Ready",status=~"false|unknown"} == 1
         for: 3m
         labels:
           severity: warning
@@ -416,9 +426,9 @@ data:
 
 Never force delete StatefulSet pods unless you're absolutely certain they're not running. Check multiple times and verify node status.
 
-Implement proper health checks and readiness probes. This helps Kubernetes understand pod state even during network issues.
+Implement proper health checks and readiness probes. This helps Kubernetes understand pod state during normal operation and recovery.
 
-Use pod disruption budgets to limit the impact of node failures on application availability.
+Use pod disruption budgets to limit voluntary disruptions during node maintenance.
 
 Monitor node health proactively. Address NotReady conditions before pods enter Unknown status.
 
@@ -430,6 +440,6 @@ Consider using node auto-repair features if running on cloud providers. Services
 
 Implement fencing mechanisms for stateful workloads. Ensure only one instance can access shared storage at a time.
 
-Set appropriate pod-eviction-timeout values based on your requirements. Default is 5 minutes, but you might need longer for some workloads.
+Set appropriate `tolerationSeconds` values for the `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable` taints based on your requirements. The default toleration is 300 seconds, but you might need longer for some workloads.
 
 Understanding and properly handling pods in Unknown status is essential for maintaining Kubernetes cluster reliability and preventing data loss during node failures.
