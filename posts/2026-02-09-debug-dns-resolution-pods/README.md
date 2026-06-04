@@ -121,18 +121,18 @@ Run DNS tests directly from pods experiencing issues:
 # Test DNS resolution from the problem pod
 kubectl exec -it <pod-name> -- nslookup kubernetes.default
 
-# If nslookup is not available, use wget or curl
-kubectl exec -it <pod-name> -- wget -O- --timeout=5 http://kubernetes.default.svc.cluster.local:443
+# If nslookup is not available, use wget to force a hostname lookup
+kubectl exec -it <pod-name> -- wget -O- --timeout=5 --no-check-certificate https://kubernetes.default.svc.cluster.local:443/version
 
-# Or test with raw DNS query
-kubectl exec -it <pod-name> -- sh -c "echo 'test' > /dev/udp/10.96.0.10/53"
+# Or test TCP connectivity to the DNS service
+kubectl exec -it <pod-name> -- nc -zv 10.96.0.10 53
 ```
 
 If DNS tools are not available in the pod, install them temporarily:
 
 ```bash
 # For Debian/Ubuntu based images
-kubectl exec -it <pod-name> -- apt-get update && apt-get install -y dnsutils
+kubectl exec -it <pod-name> -- sh -c "apt-get update && apt-get install -y dnsutils"
 
 # For Alpine based images
 kubectl exec -it <pod-name> -- apk add --no-cache bind-tools
@@ -152,9 +152,13 @@ kubectl get endpoints -n kube-system kube-dns
 # NAME       ENDPOINTS                           AGE
 # kube-dns   10.244.0.5:53,10.244.1.3:53        100d
 
-# Test connectivity from problem pod to CoreDNS pods
+# Test TCP connectivity from problem pod to CoreDNS pods
 kubectl exec -it <pod-name> -- nc -zv 10.244.0.5 53
 kubectl exec -it <pod-name> -- nc -zv 10.244.1.3 53
+
+# Test UDP connectivity if your nc implementation supports it
+kubectl exec -it <pod-name> -- nc -zvu 10.244.0.5 53
+kubectl exec -it <pod-name> -- nc -zvu 10.244.1.3 53
 ```
 
 If connectivity fails, check for network policies blocking DNS traffic:
@@ -184,8 +188,8 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
-    - podSelector:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
         matchLabels:
           k8s-app: kube-dns
     ports:
@@ -344,7 +348,7 @@ This happens when CoreDNS forwards to upstream nameservers that point back to Co
 
 ```bash
 # Check node's resolv.conf (what CoreDNS uses)
-kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- cat /etc/resolv.conf
+kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- cat /host/etc/resolv.conf
 
 # If it points to 127.0.0.1 or the CoreDNS service IP, fix by:
 # - Updating forward plugin to use specific upstream servers like 8.8.8.8
@@ -412,10 +416,10 @@ nslookup kubernetes.default
 # Test external DNS
 nslookup google.com
 
-# Trace DNS query path
-dig +trace kubernetes.default.svc.cluster.local
+# Query CoreDNS directly
+dig @10.96.0.10 kubernetes.default.svc.cluster.local
 
-# Check DNS server reachability
+# Check TCP DNS server reachability
 nc -zv 10.96.0.10 53
 
 # Monitor DNS queries with tcpdump
