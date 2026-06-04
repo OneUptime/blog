@@ -12,7 +12,7 @@ Strategic merge patches in Kustomize allow you to modify specific fields in Kube
 
 ## Understanding strategic merge patches
 
-Strategic merge is the default patching strategy used by kubectl apply and Kustomize. It knows how to merge different field types: replace scalars, merge maps, and use merge keys for lists. This intelligence comes from Kubernetes API definitions that specify how each field should be merged.
+Strategic merge is the default patching strategy used by `kubectl patch`, and Kustomize can apply strategic merge patches through the `patches` field. It knows how to merge different field types: replace scalars, merge maps, and use merge keys for lists. This intelligence comes from Kubernetes API definitions that specify how each field should be merged.
 
 For example, when patching a container's environment variables, strategic merge knows to merge by the name field rather than replacing the entire env array. This behavior makes patches more resilient to changes in the base configuration.
 
@@ -76,8 +76,8 @@ kind: Kustomization
 resources:
 - ../../base
 
-patchesStrategicMerge:
-- env-patch.yaml
+patches:
+- path: env-patch.yaml
 ```
 
 The patch adds environment variables without affecting other container configuration.
@@ -106,7 +106,7 @@ spec:
             cpu: "2000m"
 ```
 
-This replaces the entire resources block while leaving other container fields unchanged.
+This updates the specified requests and limits while leaving other container fields unchanged.
 
 ## Adding volume mounts
 
@@ -261,7 +261,7 @@ metadata:
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9090"
-    deployment.kubernetes.io/revision: "5"
+    prometheus.io/path: /metrics
   labels:
     team: platform
     cost-center: engineering
@@ -375,11 +375,11 @@ kind: Kustomization
 resources:
 - ../../base
 
-patchesStrategicMerge:
-- security-patch.yaml      # Apply security first
-- resources-patch.yaml     # Then resources
-- volume-patch.yaml        # Then volumes
-- env-patch.yaml           # Finally environment
+patches:
+- path: security-patch.yaml      # Apply security first
+- path: resources-patch.yaml     # Then resources
+- path: volume-patch.yaml        # Then volumes
+- path: env-patch.yaml           # Finally environment
 ```
 
 Later patches can override earlier ones if they modify the same fields.
@@ -443,7 +443,7 @@ spec:
           storage: 100Gi
 ```
 
-VolumeClaimTemplates merge by name like other list fields.
+The `volumeClaimTemplates` list is not a merge-by-name list in the Kubernetes API, so include the full desired list when patching it. Existing StatefulSets also restrict updates to most fields outside `replicas`, `template`, and update-related settings, so test this carefully before applying it to a live workload.
 
 ## Validation and testing
 
@@ -453,8 +453,8 @@ Test your strategic merge patches:
 # Build and view the result
 kustomize build overlays/production/ | less
 
-# Check specific resource
-kustomize build overlays/production/ | kubectl get -f - -o yaml deployment/api-server
+# Check rendered resources
+kustomize build overlays/production/ | kubectl apply --dry-run=client -f - -o yaml
 
 # Validate before applying
 kustomize build overlays/production/ | kubectl apply --dry-run=server -f -
