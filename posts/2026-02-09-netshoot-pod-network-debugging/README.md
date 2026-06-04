@@ -14,7 +14,7 @@ Created by Nicolaka, netshoot includes everything from basic connectivity tools 
 
 ## What netshoot Contains
 
-The netshoot image packages an extensive collection of tools organized by function. For basic connectivity testing, it includes ping, curl, wget, netcat, telnet, and httpie. For DNS troubleshooting, it has dig, nslookup, host, and dog. For network analysis, it provides tcpdump, wireshark-cli, ngrep, and termshark. For performance testing, it includes iperf, iperf3, and ab. For security testing, it has nmap, masscan, and nikto. For protocol debugging, it contains openssl, gnutls-cli, and various protocol-specific tools.
+The netshoot image packages an extensive collection of tools organized by function. For basic connectivity testing, it includes ping, curl, netcat, telnet, and httpie. For DNS troubleshooting, it has dig, nslookup, host, drill, and dhcping. For network analysis, it provides tcpdump, tshark, ngrep, and termshark. For performance testing, it includes iperf, iperf3, ab, and fortio. For security testing, it has nmap and nmap scripts. For protocol debugging, it contains openssl, grpcurl, websocat, swaks, and other protocol-specific tools.
 
 This comprehensive toolkit eliminates the need to remember which image has which tool or to build custom debug images.
 
@@ -49,12 +49,13 @@ Attach netshoot to existing pods as an ephemeral container:
 
 ```bash
 # Attach netshoot to a running pod
-kubectl debug -it pod/my-app-pod --image=nicolaka/netshoot
+kubectl debug -it pod/my-app-pod --image=nicolaka/netshoot --container=netshoot-debug
 
-# Share the process namespace with the target container
-kubectl debug -it pod/my-app-pod --image=nicolaka/netshoot --target=my-app-container
+# Target the process namespace of the application container
+kubectl debug -it pod/my-app-pod --image=nicolaka/netshoot \
+  --container=netshoot-debug --target=my-app-container
 
-# This gives you the exact network view of the application
+# This gives you the same pod network view as the application
 ```
 
 The ephemeral container approach is ideal when debugging specific pod network issues without modifying the pod definition.
@@ -76,22 +77,23 @@ curl -v http://my-service.my-namespace.svc.cluster.local:8080
 # Test with httpie for better formatted output
 http http://my-service.my-namespace.svc.cluster.local:8080/api/health
 
-# Test specific service endpoints
+# Test resolved service IPs
 for ip in $(dig +short my-service.my-namespace.svc.cluster.local); do
   echo "Testing $ip"
   curl -s -o /dev/null -w "HTTP %{http_code} - %{time_total}s\n" http://$ip:8080
 done
 ```
 
-This quickly identifies service discovery or connectivity problems.
+For a normal Service, DNS usually resolves to the Service ClusterIP. For a headless Service, it resolves to the backing Pod IPs. This quickly identifies service discovery or connectivity problems.
 
 ## Capturing and Analyzing Network Traffic
 
 netshoot includes tcpdump and termshark for packet capture:
 
 ```bash
-# Attach netshoot to target pod
-kubectl debug -it pod/my-app-pod --image=nicolaka/netshoot --target=my-app-container
+# Attach netshoot to target pod with network administration privileges
+kubectl debug -it pod/my-app-pod --image=nicolaka/netshoot \
+  --container=netshoot-debug --target=my-app-container --profile=netadmin
 
 # Capture all traffic
 tcpdump -i any -w /tmp/capture.pcap
@@ -107,7 +109,7 @@ termshark -i any port 8080
 
 # Copy capture file for local analysis
 # From another terminal:
-kubectl cp my-app-pod:/tmp/capture.pcap ./capture.pcap
+kubectl cp my-app-pod:/tmp/capture.pcap ./capture.pcap -c netshoot-debug
 ```
 
 The ability to capture and analyze traffic directly in the cluster simplifies debugging complex protocol issues.
@@ -130,8 +132,8 @@ dig @10.96.0.10 my-service.my-namespace.svc.cluster.local
 # Test DNS over TCP
 dig +tcp my-service.my-namespace.svc.cluster.local
 
-# Use dog for modern DNS queries with better output
-dog my-service.my-namespace.svc.cluster.local
+# Use drill for another detailed DNS query
+drill my-service.my-namespace.svc.cluster.local
 
 # Check DNS response time
 dig my-service.my-namespace.svc.cluster.local +stats
@@ -178,7 +180,7 @@ nmap pod-ip
 # Service version detection
 nmap -sV pod-ip
 
-# Scan service endpoints
+# Scan service ClusterIP
 nmap -p 80,443,8080 service-cluster-ip
 
 # TCP SYN scan
@@ -211,7 +213,7 @@ iperf3 -c server-pod-ip
 iperf3 -c server-pod-ip -u -b 1G
 
 # Test bidirectional
-iperf3 -c server-pod-ip -d
+iperf3 -c server-pod-ip --bidir
 
 # Measure latency with multiple streams
 iperf3 -c server-pod-ip -P 10
@@ -233,8 +235,8 @@ ab -n 1000 -c 10 -k http://my-service:8080/
 # POST request load test
 ab -n 100 -c 10 -p data.json -T application/json http://my-service:8080/api
 
-# Use httping for latency measurement
-httping -c 100 http://my-service:8080/
+# Use fortio for latency and load measurement
+fortio load -n 100 http://my-service:8080/
 
 # Use httpie for API testing
 http POST http://my-service:8080/api/users name=test
@@ -274,14 +276,14 @@ Verify NetworkPolicy enforcement:
 kubectl run netshoot-source -n source-ns --rm -it --image=nicolaka/netshoot -- bash
 
 # Test allowed connection
-curl -v --max-time 5 http://allowed-service.dest-ns:8080
+curl -v --max-time 5 http://allowed-service.dest-ns.svc:8080
 
 # Test blocked connection (should timeout)
-curl -v --max-time 5 http://blocked-service.dest-ns:8080
+curl -v --max-time 5 http://blocked-service.dest-ns.svc:8080
 
 # Use netcat to test raw TCP
-nc -zv allowed-service.dest-ns 8080
-nc -zv blocked-service.dest-ns 8080
+nc -zv allowed-service.dest-ns.svc 8080
+nc -zv blocked-service.dest-ns.svc 8080
 
 # Use nmap to discover what's actually accessible
 nmap -p 1-65535 destination-pod-ip
@@ -295,7 +297,7 @@ netshoot helps understand network namespace isolation:
 
 ```bash
 # Deploy netshoot on a node
-kubectl debug node/my-node -it --image=nicolaka/netshoot
+kubectl debug node/my-node -it --image=nicolaka/netshoot --profile=sysadmin
 
 # List network namespaces
 ip netns list
@@ -407,7 +409,7 @@ dig +short $SERVICE.$NAMESPACE.svc.cluster.local
 
 echo "=== HTTP Test ==="
 curl -s -o /dev/null -w "Status: %{http_code}, Time: %{time_total}s\n" \
-  http://$SERVICE.$NAMESPACE:8080
+  http://$SERVICE.$NAMESPACE.svc:8080
 
 echo "=== Port Scan ==="
 nmap -p 1-10000 $(dig +short $SERVICE.$NAMESPACE.svc.cluster.local | head -1)
