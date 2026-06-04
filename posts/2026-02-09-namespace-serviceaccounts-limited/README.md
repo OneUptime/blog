@@ -214,6 +214,7 @@ spec:
         app: backend-api
     spec:
       serviceAccountName: backend-api
+      automountServiceAccountToken: false
       containers:
       - name: api
         image: myapp/backend:latest
@@ -354,10 +355,15 @@ for SA in $SERVICE_ACCOUNTS; do
         for RB in $ROLEBINDINGS; do
             echo "  RoleBinding: $RB"
             ROLE=$(kubectl get rolebinding "$RB" -n "$NAMESPACE" -o jsonpath='{.roleRef.name}')
-            echo "  Role: $ROLE"
+            ROLE_KIND=$(kubectl get rolebinding "$RB" -n "$NAMESPACE" -o jsonpath='{.roleRef.kind}')
+            echo "  $ROLE_KIND: $ROLE"
 
             # Show permissions
-            kubectl get role "$ROLE" -n "$NAMESPACE" -o jsonpath='{range .rules[*]}{.apiGroups[*]}{" "}{.resources[*]}{" "}{.verbs[*]}{"\n"}{end}' | \
+            if [ "$ROLE_KIND" = "ClusterRole" ]; then
+                kubectl get clusterrole "$ROLE" -o jsonpath='{range .rules[*]}{.apiGroups[*]}{" "}{.resources[*]}{" "}{.verbs[*]}{"\n"}{end}'
+            else
+                kubectl get role "$ROLE" -n "$NAMESPACE" -o jsonpath='{range .rules[*]}{.apiGroups[*]}{" "}{.resources[*]}{" "}{.verbs[*]}{"\n"}{end}'
+            fi | \
                 awk '{print "    API Groups: " $1 ", Resources: " $2 ", Verbs: " $3}'
         done
     fi
@@ -379,87 +385,10 @@ done
 
 ## Implementing Service Account Rotation
 
-Create a controller to rotate service account tokens periodically:
+Avoid rotating legacy service account token Secrets yourself. In current Kubernetes versions, projected service account tokens expire automatically and the kubelet rotates them before they expire. For one-off access outside a pod, request a short-lived token with the TokenRequest API:
 
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "time"
-
-    corev1 "k8s.io/api/core/v1"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/client-go/kubernetes"
-    "k8s.io/client-go/rest"
-)
-
-type ServiceAccountRotator struct {
-    clientset *kubernetes.Clientset
-}
-
-func NewServiceAccountRotator() (*ServiceAccountRotator, error) {
-    config, err := rest.InClusterConfig()
-    if err != nil {
-        return nil, err
-    }
-
-    clientset, err := kubernetes.NewForConfig(config)
-    if err != nil {
-        return nil, err
-    }
-
-    return &ServiceAccountRotator{
-        clientset: clientset,
-    }, nil
-}
-
-func (sar *ServiceAccountRotator) RotateTokens(ctx context.Context, namespace string) error {
-    secrets, err := sar.clientset.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{
-        FieldSelector: "type=kubernetes.io/service-account-token",
-    })
-    if err != nil {
-        return err
-    }
-
-    for _, secret := range secrets.Items {
-        creationTime := secret.CreationTimestamp.Time
-        age := time.Since(creationTime)
-
-        // Rotate tokens older than 90 days
-        if age > 90*24*time.Hour {
-            fmt.Printf("Rotating token for secret: %s\n", secret.Name)
-
-            // Delete old secret
-            err := sar.clientset.CoreV1().Secrets(namespace).Delete(
-                ctx,
-                secret.Name,
-                metav1.DeleteOptions{},
-            )
-            if err != nil {
-                fmt.Printf("Failed to delete secret %s: %v\n", secret.Name, err)
-                continue
-            }
-
-            fmt.Printf("Rotated token for secret: %s\n", secret.Name)
-        }
-    }
-
-    return nil
-}
-
-func main() {
-    rotator, err := NewServiceAccountRotator()
-    if err != nil {
-        panic(err)
-    }
-
-    ctx := context.Background()
-    if err := rotator.RotateTokens(ctx, "myapp"); err != nil {
-        panic(err)
-    }
-}
+```bash
+kubectl create token backend-api -n myapp --duration=1h --audience=api
 ```
 
 ## Validating Least Privilege
@@ -468,8 +397,11 @@ Test that service accounts have minimal permissions:
 
 ```bash
 # Test backend API permissions
-kubectl auth can-i get secrets --as=system:serviceaccount:myapp:backend-api -n myapp
-# Should return "yes" only for specific secrets
+kubectl auth can-i get secret/database-credentials --as=system:serviceaccount:myapp:backend-api -n myapp
+# Should return "yes"
+
+kubectl auth can-i get secret/unrelated-secret --as=system:serviceaccount:myapp:backend-api -n myapp
+# Should return "no"
 
 kubectl auth can-i delete pods --as=system:serviceaccount:myapp:backend-api -n myapp
 # Should return "no"
