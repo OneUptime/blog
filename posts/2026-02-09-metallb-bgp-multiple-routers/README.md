@@ -27,7 +27,7 @@ Key concepts:
 Install MetalLB using manifests:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-frr-k8s.yaml
 ```
 
 Or with Helm:
@@ -97,7 +97,6 @@ spec:
   peerAddress: 192.168.1.1
   holdTime: 90s
   keepaliveTime: 30s
-  sourceAddress: 192.168.1.10
 
 ---
 apiVersion: metallb.io/v1beta2
@@ -111,7 +110,6 @@ spec:
   peerAddress: 192.168.1.2
   holdTime: 90s
   keepaliveTime: 30s
-  sourceAddress: 192.168.1.10
 
 ---
 apiVersion: metallb.io/v1beta2
@@ -125,7 +123,6 @@ spec:
   peerAddress: 192.168.1.3
   holdTime: 90s
   keepaliveTime: 30s
-  sourceAddress: 192.168.1.10
   password: "bgp-shared-secret"
 ```
 
@@ -256,9 +253,9 @@ router bgp 64501
     maximum-paths 4
 ```
 
-## Implementing Graceful Shutdown
+## Implementing Graceful Restart
 
-Configure graceful BGP session shutdown:
+Configure graceful BGP session restart:
 
 ```yaml
 # graceful-shutdown.yaml
@@ -273,10 +270,7 @@ spec:
   peerAddress: 192.168.1.1
 
   # BGP Graceful Restart
-  bfdProfile: default
-  gracefulRestart:
-    enabled: true
-    restartTime: 120s
+  enableGracefulRestart: true
 ```
 
 ## Setting Up BFD for Fast Failover
@@ -315,8 +309,8 @@ spec:
 Check BGP session status:
 
 ```bash
-# View MetalLB controller logs
-kubectl logs -n metallb-system -l component=controller
+# View MetalLB speaker logs
+kubectl logs -n metallb-system -l component=speaker
 
 # Check BGP peer status
 kubectl get bgppeers -n metallb-system
@@ -361,19 +355,19 @@ Common problems and solutions:
 
 ```bash
 # BGP session not establishing
-kubectl logs -n metallb-system -l component=controller | grep -i "bgp"
+kubectl logs -n metallb-system -l component=speaker | grep -i "bgp"
 
-# Check if router is reachable
-kubectl exec -n metallb-system deploy/controller -- ping -c 3 192.168.1.1
+# Check FRR-K8s BGP session status
+kubectl get bgpsessionstates -n metallb-system
 
 # Verify BGP configuration
 kubectl describe bgppeer -n metallb-system router-1
 
-# Check for route advertisements
-kubectl exec -n metallb-system deploy/controller -- vtysh -c "show ip bgp"
+# Check FRR-K8s node state
+kubectl get frrnodestates -n metallb-system
 
 # Verify service announcements
-kubectl logs -n metallb-system -l component=speaker | grep "announcing"
+kubectl describe svc -n default critical-service
 ```
 
 ## Implementing Route Filtering
@@ -412,9 +406,10 @@ metadata:
   name: critical-service
   labels:
     metallb-advertise: "true"
+  annotations:
+    metallb.io/loadBalancerIPs: 192.168.1.240
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.240
   ports:
   - port: 80
     targetPort: 8080
@@ -424,35 +419,36 @@ spec:
 
 ## Advanced BGP Configuration
 
-Implement AS path prepending:
+Implement lower route preference with BGP communities:
 
 ```yaml
-# as-path-prepending.yaml
+# lower-preference.yaml
 apiVersion: metallb.io/v1beta1
 kind: BGPAdvertisement
 metadata:
-  name: prepend-advertisement
+  name: lower-preference-advertisement
   namespace: metallb-system
 spec:
   ipAddressPools:
   - production-pool
   peers:
   - router-3
-  localPref: 50
-
-  # Make this path less preferred
-  asPrepend:
-    count: 2
-    asn: 64500
+  communities:
+  - 64500:50
 ```
 
 Configure route maps on routers:
 
 ```bash
 # Cisco IOS
+ip bgp-community new-format
+ip community-list standard METALLB-LOW-PREF permit 64500:50
+
 route-map METALLB-IN permit 10
-  match community 64500:100
-  set local-preference 150
+  match community METALLB-LOW-PREF
+  set local-preference 50
+
+route-map METALLB-IN permit 20
 
 router bgp 64501
   neighbor 192.168.1.10 remote-as 64500
@@ -464,15 +460,15 @@ router bgp 64501
 Configure different load balancing modes:
 
 ```yaml
-# Service with specific node assignment
+# Service with specific IP assignment
 apiVersion: v1
 kind: Service
 metadata:
   name: pinned-service
   annotations:
-    metallb.universe.tf/address-pool: production-pool
-    metallb.universe.tf/loadBalancerIPs: 192.168.1.241
-    metallb.universe.tf/allow-shared-ip: "shared-key"
+    metallb.io/address-pool: production-pool
+    metallb.io/loadBalancerIPs: 192.168.1.241
+    metallb.io/allow-shared-ip: "shared-key"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
