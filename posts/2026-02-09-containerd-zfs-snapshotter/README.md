@@ -12,9 +12,9 @@ ZFS provides advanced storage features like copy-on-write, snapshots, and data i
 
 ## Understanding ZFS Benefits for Containers
 
-ZFS copy-on-write means creating new containers from images requires no data copying, only metadata operations. Containers start instantly regardless of image size. ZFS compression reduces storage requirements for layers. Built-in checksums detect data corruption. Snapshots enable instant backups without copying data.
+ZFS copy-on-write means creating container snapshots from already-unpacked image layers avoids copying the parent data. Containers can start quickly when the image is already present on the node, though pulling and unpacking image layers still takes time. ZFS compression reduces storage requirements for layers. Built-in checksums detect data corruption. Snapshots enable point-in-time copies without duplicating unchanged data.
 
-For Kubernetes, ZFS improves pod startup time by eliminating layer extraction overhead. Multiple pods sharing images consume minimal additional storage due to copy-on-write. ZFS compression can reduce storage requirements by 2-3x for text-heavy images. These benefits make ZFS ideal for high-density container deployments.
+For Kubernetes, ZFS can improve pod startup time by making writable snapshot creation efficient after layers have been unpacked. Multiple pods sharing images consume minimal additional storage due to copy-on-write. ZFS compression can reduce storage requirements significantly for text-heavy images, depending on the image contents. These benefits make ZFS useful for high-density container deployments.
 
 ## Installing ZFS
 
@@ -58,8 +58,9 @@ version = 2
     default_runtime_name = "runc"
 
 [plugins."io.containerd.snapshotter.v1.zfs"]
-  # ZFS pool name
-  pool_name = "containerd-pool/containerd"
+  # Optional: set this only if you use a non-default snapshotter path.
+  # The path must be the mount point of a ZFS filesystem.
+  root_path = "/var/lib/containerd/io.containerd.snapshotter.v1.zfs"
 ```
 
 Restart containerd:
@@ -86,12 +87,13 @@ sudo zfs set atime=off containerd-pool/containerd
 echo "options zfs zfs_arc_max=8589934592" | sudo tee -a /etc/modprobe.d/zfs.conf
 # 8GB ARC cache
 
-# Configure prefetch
+# Configure ARC and L2ARC caching
 sudo zfs set primarycache=all containerd-pool/containerd
 sudo zfs set secondarycache=all containerd-pool/containerd
 
-# Enable async writes for better performance
-sudo zfs set sync=disabled containerd-pool/containerd
+# Optional: disable synchronous writes only if you understand the data-loss
+# and application-consistency risks during crashes or power loss.
+# sudo zfs set sync=disabled containerd-pool/containerd
 ```
 
 ## Monitoring ZFS Performance
@@ -115,4 +117,4 @@ arc_misses=$(cat /proc/spl/kstat/zfs/arcstats | grep "^misses" | awk '{print $3}
 echo "ARC hit rate: $(echo "scale=2; $arc_hits * 100 / ($arc_hits + $arc_misses)" | bc)%"
 ```
 
-ZFS snapshotter provides substantial benefits for Kubernetes container storage through copy-on-write efficiency, compression, and data integrity features. By eliminating layer extraction overhead and enabling instant container cloning, ZFS significantly improves pod startup times and storage utilization. For high-density Kubernetes clusters, ZFS offers a compelling alternative to traditional overlay filesystems.
+ZFS snapshotter provides substantial benefits for Kubernetes container storage through copy-on-write efficiency, compression, and data integrity features. By avoiding full data copies when creating writable snapshots from existing image layers, ZFS can improve pod startup times and storage utilization. For high-density Kubernetes clusters, ZFS offers a compelling alternative to traditional overlay filesystems.
