@@ -48,11 +48,13 @@ data:
             good_events_query: |
               count_over_time({namespace="production", app="api-service"}
                 | json
-                | status_code < 500 [1m])
+                | status_code < 500
+                | __error__="" [1m])
             total_events_query: |
               count_over_time({namespace="production", app="api-service"}
                 | json
-                | status_code=~".+" [1m])
+                | status_code=~".+"
+                | __error__="" [1m])
             target: 99.9
 
           # Latency SLI: Percentage of requests faster than 500ms
@@ -62,11 +64,13 @@ data:
             good_events_query: |
               count_over_time({namespace="production", app="api-service"}
                 | json
-                | duration_ms < 500 [1m])
+                | duration_ms < 500
+                | __error__="" [1m])
             total_events_query: |
               count_over_time({namespace="production", app="api-service"}
                 | json
-                | duration_ms > 0 [1m])
+                | duration_ms > 0
+                | __error__="" [1m])
             target: 95.0
 
           # Quality SLI: Percentage of requests without errors
@@ -75,10 +79,12 @@ data:
             good_events_query: |
               count_over_time({namespace="production", app="api-service"}
                 | json
-                | error_code="" or error_code="null" [1m])
+                | error_code="" or error_code="null"
+                | __error__="" [1m])
             total_events_query: |
               count_over_time({namespace="production", app="api-service"}
-                | json [1m])
+                | json
+                | __error__="" [1m])
             target: 99.0
 ```
 
@@ -103,11 +109,13 @@ data:
             expr: |
               sum(count_over_time({namespace="production", app="api-service"}
                 | json
-                | status_code < 500 [1m]))
+                | status_code < 500
+                | __error__="" [1m]))
               /
               sum(count_over_time({namespace="production", app="api-service"}
                 | json
-                | status_code=~".+" [1m]))
+                | status_code=~".+"
+                | __error__="" [1m]))
             labels:
               service: api-service
               sli_type: availability
@@ -117,11 +125,13 @@ data:
             expr: |
               sum(count_over_time({namespace="production", app="api-service"}
                 | json
-                | duration_ms < 500 [1m]))
+                | duration_ms < 500
+                | __error__="" [1m]))
               /
               sum(count_over_time({namespace="production", app="api-service"}
                 | json
-                | duration_ms > 0 [1m]))
+                | duration_ms > 0
+                | __error__="" [1m]))
             labels:
               service: api-service
               sli_type: latency
@@ -131,9 +141,18 @@ data:
           - record: sli:error_budget:ratio
             expr: |
               1 - (
-                (1 - 0.999) -  # SLO target
-                (1 - sli:availability:ratio{service="api-service"})
-              ) / (1 - 0.999)
+                (
+                  sum(count_over_time({namespace="production", app="api-service"}
+                    | json
+                    | status_code >= 500
+                    | __error__="" [30d]))
+                  /
+                  sum(count_over_time({namespace="production", app="api-service"}
+                    | json
+                    | status_code=~".+"
+                    | __error__="" [30d]))
+                ) / (1 - 0.999)
+              )
             labels:
               service: api-service
 
@@ -145,11 +164,13 @@ data:
             expr: |
               sum(count_over_time({namespace="production", app="payment-service"}
                 | json
-                | payment_status="success" [1m]))
+                | payment_status="success"
+                | __error__="" [1m]))
               /
               sum(count_over_time({namespace="production", app="payment-service"}
                 | json
-                | payment_status=~".+" [1m]))
+                | payment_status=~".+"
+                | __error__="" [1m]))
             labels:
               service: payment-service
               sli_type: success_rate
@@ -159,11 +180,13 @@ data:
             expr: |
               sum(count_over_time({namespace="production", app="payment-service"}
                 | json
-                | processing_time_ms < 3000 [1m]))
+                | processing_time_ms < 3000
+                | __error__="" [1m]))
               /
               sum(count_over_time({namespace="production", app="payment-service"}
                 | json
-                | processing_time_ms > 0 [1m]))
+                | processing_time_ms > 0
+                | __error__="" [1m]))
             labels:
               service: payment-service
               sli_type: latency
@@ -177,11 +200,13 @@ data:
             expr: |
               sum(count_over_time({namespace="production", app="database"}
                 | json
-                | query_status!="error" [1m]))
+                | query_status!="error"
+                | __error__="" [1m]))
               /
               sum(count_over_time({namespace="production", app="database"}
                 | json
-                | query_status=~".+" [1m]))
+                | query_status=~".+"
+                | __error__="" [1m]))
             labels:
               service: database
               sli_type: success_rate
@@ -191,11 +216,13 @@ data:
             expr: |
               sum(count_over_time({namespace="production", app="database"}
                 | json
-                | query_duration_ms < 100 [1m]))
+                | query_duration_ms < 100
+                | __error__="" [1m]))
               /
               sum(count_over_time({namespace="production", app="database"}
                 | json
-                | query_duration_ms > 0 [1m]))
+                | query_duration_ms > 0
+                | __error__="" [1m]))
             labels:
               service: database
               sli_type: latency
@@ -218,25 +245,29 @@ data:
       - name: slo_alerts
         interval: 1m
         rules:
-          # Fast burn: 2% error budget consumed in 1 hour
+          # Fast burn: 2% of a 30-day error budget consumed in 1 hour
           - alert: SLOFastBurn
             expr: |
               (
-                1 - sum(rate({namespace="production", app="api-service"}
-                  | json
-                  | status_code < 500 [1h]))
-                /
-                sum(rate({namespace="production", app="api-service"}
-                  | json
-                  | status_code=~".+" [1h]))
-              ) > 0.02  # More than 2% errors
+                (
+                  sum(rate({namespace="production", app="api-service"}
+                    | json
+                    | status_code >= 500
+                    | __error__="" [1h]))
+                  /
+                  sum(rate({namespace="production", app="api-service"}
+                    | json
+                    | status_code=~".+"
+                    | __error__="" [1h]))
+                ) / 0.001
+              ) > 14.4  # Burns more than 2% of a 30-day budget in 1 hour
             for: 5m
             labels:
               severity: critical
               service: api-service
             annotations:
               summary: "Fast burn detected for api-service"
-              description: "Error rate is {{ $value | printf \"%.2f%%\" }}, consuming error budget rapidly"
+              description: "Error budget burn rate is {{ $value | printf \"%.1f\" }}x"
 
           # Slow burn: SLI below target for extended period
           - alert: SLOSlowBurn
@@ -244,11 +275,13 @@ data:
               (
                 sum(rate({namespace="production", app="api-service"}
                   | json
-                  | status_code < 500 [6h]))
+                  | status_code < 500
+                  | __error__="" [6h]))
                 /
                 sum(rate({namespace="production", app="api-service"}
                   | json
-                  | status_code=~".+" [6h]))
+                  | status_code=~".+"
+                  | __error__="" [6h]))
               ) < 0.999  # Below 99.9% SLO
             for: 30m
             labels:
@@ -256,7 +289,7 @@ data:
               service: api-service
             annotations:
               summary: "Slow burn detected for api-service"
-              description: "SLI is {{ $value | printf \"%.4f%%\" }}, below 99.9% target"
+              description: "SLI is {{ $value | humanizePercentage }}, below 99.9% target"
 
           # Error budget exhausted
           - alert: ErrorBudgetExhausted
@@ -264,11 +297,13 @@ data:
               (
                 sum(count_over_time({namespace="production", app="api-service"}
                   | json
-                  | status_code >= 500 [30d]))
+                  | status_code >= 500
+                  | __error__="" [30d]))
                 /
                 sum(count_over_time({namespace="production", app="api-service"}
                   | json
-                  | status_code=~".+" [30d]))
+                  | status_code=~".+"
+                  | __error__="" [30d]))
               ) > 0.001  # More than 0.1% errors over 30 days
             labels:
               severity: critical
@@ -283,11 +318,13 @@ data:
               (
                 sum(count_over_time({namespace="production", app="api-service"}
                   | json
-                  | duration_ms < 500 [1h]))
+                  | duration_ms < 500
+                  | __error__="" [1h]))
                 /
                 sum(count_over_time({namespace="production", app="api-service"}
                   | json
-                  | duration_ms > 0 [1h]))
+                  | duration_ms > 0
+                  | __error__="" [1h]))
               ) < 0.95  # Below 95% latency target
             for: 15m
             labels:
@@ -295,7 +332,7 @@ data:
               service: api-service
             annotations:
               summary: "Latency SLO violation for api-service"
-              description: "Only {{ $value | printf \"%.2f%%\" }} of requests under 500ms"
+              description: "Only {{ $value | humanizePercentage }} of requests under 500ms"
 ```
 
 ## Building SLI Dashboards in Grafana
@@ -312,7 +349,7 @@ Create comprehensive SLI dashboards:
         "type": "stat",
         "targets": [
           {
-            "expr": "(\n  sum(count_over_time({namespace=\"production\", app=\"api-service\"}\n    | json\n    | status_code < 500 [30d]))\n  /\n  sum(count_over_time({namespace=\"production\", app=\"api-service\"}\n    | json\n    | status_code=~\".+\" [30d]))\n) * 100",
+            "expr": "(\n  sum(count_over_time({namespace=\"production\", app=\"api-service\"}\n    | json\n    | status_code < 500\n    | __error__=\"\" [30d]))\n  /\n  sum(count_over_time({namespace=\"production\", app=\"api-service\"}\n    | json\n    | status_code=~\".+\"\n    | __error__=\"\" [30d]))\n) * 100",
             "legendFormat": "Availability %"
           }
         ],
@@ -335,7 +372,7 @@ Create comprehensive SLI dashboards:
         "type": "gauge",
         "targets": [
           {
-            "expr": "100 - (\n  (\n    sum(count_over_time({namespace=\"production\", app=\"api-service\"}\n      | json\n      | status_code >= 500 [30d]))\n    /\n    sum(count_over_time({namespace=\"production\", app=\"api-service\"}\n      | json\n      | status_code=~\".+\" [30d]))\n  ) / 0.001\n) * 100",
+            "expr": "100 - (\n  (\n    sum(count_over_time({namespace=\"production\", app=\"api-service\"}\n      | json\n      | status_code >= 500\n      | __error__=\"\" [30d]))\n    /\n    sum(count_over_time({namespace=\"production\", app=\"api-service\"}\n      | json\n      | status_code=~\".+\"\n      | __error__=\"\" [30d]))\n  ) / 0.001\n) * 100",
             "legendFormat": "Budget %"
           }
         ]
@@ -345,7 +382,7 @@ Create comprehensive SLI dashboards:
         "type": "timeseries",
         "targets": [
           {
-            "expr": "(\n  sum(rate({namespace=\"production\", app=\"api-service\"}\n    | json\n    | duration_ms < 500 [$__interval]))\n  /\n  sum(rate({namespace=\"production\", app=\"api-service\"}\n    | json\n    | duration_ms > 0 [$__interval]))\n) * 100",
+            "expr": "(\n  sum(rate({namespace=\"production\", app=\"api-service\"}\n    | json\n    | duration_ms < 500\n    | __error__=\"\" [$__interval]))\n  /\n  sum(rate({namespace=\"production\", app=\"api-service\"}\n    | json\n    | duration_ms > 0\n    | __error__=\"\" [$__interval]))\n) * 100",
             "legendFormat": "Latency SLI"
           }
         ]
@@ -365,33 +402,39 @@ Implement multi-window SLO tracking for better alerting:
 (
   sum(rate({namespace="production", app="api-service"}
     | json
-    | status_code < 500 [1h]))
+    | status_code < 500
+    | __error__="" [1h]))
   /
   sum(rate({namespace="production", app="api-service"}
     | json
-    | status_code=~".+" [1h]))
+    | status_code=~".+"
+    | __error__="" [1h]))
 )
 
 # 6-hour window (moderate burn)
 (
   sum(rate({namespace="production", app="api-service"}
     | json
-    | status_code < 500 [6h]))
+    | status_code < 500
+    | __error__="" [6h]))
   /
   sum(rate({namespace="production", app="api-service"}
     | json
-    | status_code=~".+" [6h]))
+    | status_code=~".+"
+    | __error__="" [6h]))
 )
 
 # 30-day window (overall SLO)
 (
   sum(count_over_time({namespace="production", app="api-service"}
     | json
-    | status_code < 500 [30d]))
+    | status_code < 500
+    | __error__="" [30d]))
   /
   sum(count_over_time({namespace="production", app="api-service"}
     | json
-    | status_code=~".+" [30d]))
+    | status_code=~".+"
+    | __error__="" [30d]))
 )
 ```
 
@@ -400,18 +443,25 @@ Implement multi-window SLO tracking for better alerting:
 Track how fast you're consuming error budget:
 
 ```logql
-# Current burn rate (errors per hour)
+# Current error volume (errors per hour)
 sum(rate({namespace="production", app="api-service"}
   | json
-  | status_code >= 500 [1h])) * 3600
+  | status_code >= 500
+  | __error__="" [1h])) * 3600
 
 # Burn rate as multiple of budget
 (
-  sum(rate({namespace="production", app="api-service"}
-    | json
-    | status_code >= 500 [1h]))
-  /
-  (0.001 / 720)  # 0.1% budget / hours in 30 days
+  (
+    sum(rate({namespace="production", app="api-service"}
+      | json
+      | status_code >= 500
+      | __error__="" [1h]))
+    /
+    sum(rate({namespace="production", app="api-service"}
+      | json
+      | status_code=~".+"
+      | __error__="" [1h]))
+  ) / 0.001  # Current error ratio / 0.1% budget
 )
 ```
 
@@ -424,22 +474,26 @@ Track SLIs for complete user journeys:
 sum(count_over_time({namespace="production"}
   | json
   | journey="checkout"
-  | status="success" [1m]))
+  | status="success"
+  | __error__="" [1m]))
 /
 sum(count_over_time({namespace="production"}
   | json
   | journey="checkout"
-  | status=~".+" [1m]))
+  | status=~".+"
+  | __error__="" [1m]))
 
 # Average journey duration
 sum(sum_over_time({namespace="production"}
   | json
   | journey="checkout"
-  | unwrap duration_ms [5m]))
+  | unwrap duration_ms
+  | __error__="" [5m]))
 /
 sum(count_over_time({namespace="production"}
   | json
-  | journey="checkout" [5m]))
+  | journey="checkout"
+  | __error__="" [5m]))
 ```
 
 ## Best Practices for Log-Based SLIs
@@ -460,18 +514,26 @@ Generate monthly SLO reports:
 # Monthly availability report
 sum(count_over_time({namespace="production", app="api-service"}
   | json
-  | status_code < 500 [30d]))
+  | status_code < 500
+  | __error__="" [30d]))
 /
 sum(count_over_time({namespace="production", app="api-service"}
   | json
-  | status_code=~".+" [30d]))
+  | status_code=~".+"
+  | __error__="" [30d]))
 
-# Error budget consumption by week
-sum by (week) (
-  count_over_time({namespace="production", app="api-service"}
+# Error budget consumption over the last 7 days
+(
+  sum(count_over_time({namespace="production", app="api-service"}
     | json
-    | status_code >= 500 [7d])
-)
+    | status_code >= 500
+    | __error__="" [7d]))
+  /
+  sum(count_over_time({namespace="production", app="api-service"}
+    | json
+    | status_code=~".+"
+    | __error__="" [7d]))
+) / 0.001
 ```
 
 ## Conclusion
