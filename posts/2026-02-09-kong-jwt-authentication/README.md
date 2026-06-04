@@ -27,11 +27,13 @@ This stateless design means Kong nodes don't need to share session data or query
 First, ensure Kong Ingress Controller is running:
 
 ```bash
-helm install kong kong/kong \
+helm repo add kong https://charts.konghq.com
+helm repo update
+
+helm install kong kong/ingress \
   --namespace kong \
   --create-namespace \
-  --set ingressController.enabled=true \
-  --set ingressController.installCRDs=true
+  --wait
 ```
 
 Create a Kong consumer to represent API clients:
@@ -48,6 +50,8 @@ metadata:
     kubernetes.io/ingress.class: kong
 username: mobile-app
 custom_id: "mobile-app-v1"
+credentials:
+- mobile-app-jwt-secret
 ```
 
 Apply the consumer:
@@ -73,6 +77,7 @@ stringData:
   kongCredType: jwt
   key: "mobile-app-key"  # JWT issuer identifier
   algorithm: RS256
+  secret: "unused-for-rs256-but-required-by-kic"
   rsa_public_key: |
     -----BEGIN PUBLIC KEY-----
     MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0Z3VS5JJcds3xfn/ygWz
@@ -82,15 +87,6 @@ stringData:
   # For HMAC algorithms, use 'secret' instead:
   # algorithm: HS256
   # secret: your-shared-secret-here
----
-# Link credential to consumer
-apiVersion: v1
-kind: Secret
-metadata:
-  name: mobile-app-jwt-secret
-  namespace: default
-  annotations:
-    konghq.com/consumer: mobile-app
 ```
 
 For symmetric algorithms (HS256), use shared secrets:
@@ -99,18 +95,18 @@ For symmetric algorithms (HS256), use shared secrets:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: web-app-jwt-secret
+  name: mobile-app-hs256-secret
   namespace: default
   labels:
     konghq.com/credential: jwt
-  annotations:
-    konghq.com/consumer: web-app
 stringData:
   kongCredType: jwt
-  key: "web-app-key"
+  key: "mobile-app-hs256-key"
   algorithm: HS256
   secret: "super-secret-shared-key-minimum-32-characters"
 ```
+
+Add the Secret name to the consumer's `credentials` list if you use this credential instead of the RS256 example.
 
 Apply credentials:
 
@@ -145,9 +141,9 @@ config:
   - nbf  # Not before time
   # Key claim name (identifies which credential to use)
   key_claim_name: iss
-  # Allow tokens from anonymous consumers
-  anonymous: false
-  # Run even if authentication fails (for optional auth)
+  # Optional anonymous consumer username or UUID to use when authentication fails
+  # anonymous: anonymous-consumer
+  # Run on CORS preflight requests
   run_on_preflight: true
 plugin: jwt
 ---
@@ -190,18 +186,18 @@ Create a script to generate valid JWTs for testing:
 
 import jwt
 import datetime
-import sys
 
 def generate_jwt(key, algorithm, secret_or_private_key):
     """Generate a JWT token for Kong authentication"""
 
+    now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         'iss': key,  # Must match the 'key' in JWT credential
         'sub': 'mobile-app',  # Subject (user identifier)
         'aud': 'api.example.com',  # Audience
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1),  # Expires in 1 hour
-        'nbf': datetime.datetime.utcnow(),  # Not before now
-        'iat': datetime.datetime.utcnow(),  # Issued at
+        'exp': now + datetime.timedelta(hours=1),  # Expires in 1 hour
+        'nbf': now,  # Not before now
+        'iat': now,  # Issued at
         'jti': 'unique-token-id-12345',  # JWT ID
         # Custom claims
         'user_id': '12345',
@@ -221,7 +217,7 @@ def generate_jwt(key, algorithm, secret_or_private_key):
 if __name__ == '__main__':
     # For HS256 (symmetric)
     token_hs256 = generate_jwt(
-        key='web-app-key',
+        key='mobile-app-hs256-key',
         algorithm='HS256',
         secret_or_private_key='super-secret-shared-key-minimum-32-characters'
     )
@@ -250,7 +246,7 @@ Test the protected endpoint without authentication:
 
 ```bash
 # Get Kong proxy address
-KONG_PROXY=$(kubectl get svc kong-proxy -n kong -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+KONG_PROXY=$(kubectl get svc kong-gateway-proxy -n kong -o jsonpath='{range .status.loadBalancer.ingress[0]}{@.ip}{@.hostname}{end}')
 
 # Request without token (should fail with 401)
 curl -i http://${KONG_PROXY}/protected \
@@ -290,7 +286,7 @@ config:
   - nbf
   # Accept tokens with any of these issuers
   key_claim_name: iss
-  # Maximum allowed clock skew for exp/nbf validation
+  # Maximum allowed token lifetime, in seconds
   maximum_expiration: 3600  # 1 hour max token lifetime
 plugin: jwt
 ```
@@ -306,13 +302,11 @@ metadata:
   namespace: default
   labels:
     konghq.com/credential: jwt
-  annotations:
-    konghq.com/consumer: mobile-app
 stringData:
   kongCredType: jwt
   key: "mobile-app-prod-key"
   algorithm: HS256
-  secret: "production-secret-key"
+  secret: "production-secret-key-minimum-32-characters"
 ---
 apiVersion: v1
 kind: Secret
@@ -321,14 +315,14 @@ metadata:
   namespace: default
   labels:
     konghq.com/credential: jwt
-  annotations:
-    konghq.com/consumer: mobile-app
 stringData:
   kongCredType: jwt
   key: "mobile-app-dev-key"
   algorithm: HS256
-  secret: "development-secret-key"
+  secret: "development-secret-key-minimum-32-characters"
 ```
+
+Add each Secret name to the `KongConsumer` credentials list so Kong Ingress Controller provisions it for that consumer.
 
 ## Extracting Consumer Identity in Backend
 
@@ -468,7 +462,7 @@ async function refreshToken() {
 
 **Set short expiration times** - Tokens should expire within hours, not days. Use refresh tokens for long-lived sessions.
 
-**Validate all required claims** - Always verify exp, nbf, and aud claims to prevent misuse.
+**Validate all required claims** - Configure Kong to verify exp and nbf claims, and enforce application-specific claims such as aud in your backend or an additional validation layer.
 
 **Rotate signing keys regularly** - Implement key rotation schedules and support multiple active keys during transitions.
 
@@ -490,6 +484,7 @@ metadata:
   name: prometheus
 config:
   per_consumer: true
+  status_code_metrics: true
 plugin: prometheus
 ```
 
@@ -497,7 +492,7 @@ Query authentication failures:
 
 ```promql
 # Prometheus query for JWT auth failures
-rate(kong_http_status{code="401"}[5m])
+rate(kong_http_requests_total{code="401"}[5m])
 
 # Per-consumer request rates
 sum(rate(kong_http_requests_total[5m])) by (consumer)
