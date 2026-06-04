@@ -39,7 +39,7 @@ spec:
     email: certificates@example.com
 
     # Secret for ACME account private key
-    # This secret will be created in the cert-manager namespace
+    # This secret will be created in the cluster resource namespace
     privateKeySecretRef:
       name: letsencrypt-prod-account-key
 
@@ -47,7 +47,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 Apply the ClusterIssuer:
@@ -62,7 +62,7 @@ kubectl get clusterissuer
 kubectl describe clusterissuer letsencrypt-prod
 ```
 
-The ClusterIssuer should show a "Ready" condition. The ACME account private key secret is created in the cert-manager namespace (typically cert-manager), regardless of where certificates are requested.
+The ClusterIssuer should show a "Ready" condition. The ACME account private key secret is created in the cluster resource namespace (typically cert-manager), regardless of where certificates are requested.
 
 ## Using ClusterIssuer from Any Namespace
 
@@ -123,11 +123,10 @@ spec:
     # HTTP-01 solver for standard domains
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
       # Only use this solver for specific domains
       selector:
-        dnsNames:
-        - "*.public.example.com"
+        dnsZones:
         - "public.example.com"
 
     # DNS-01 solver for wildcard certificates and internal domains
@@ -137,9 +136,16 @@ spec:
           # Use IAM role for authentication (recommended)
           role: arn:aws:iam::123456789012:role/cert-manager-route53
       selector:
+        dnsNames:
+        - "*.example.com"
+    - dns01:
+        route53:
+          region: us-east-1
+          # Use IAM role for authentication (recommended)
+          role: arn:aws:iam::123456789012:role/cert-manager-route53
+      selector:
         dnsZones:
         - "internal.example.com"
-        - "*.example.com"
 ```
 
 cert-manager automatically selects the appropriate solver based on the certificate's DNS names and the selector configuration. This enables flexible certificate management without creating multiple ClusterIssuers.
@@ -192,11 +198,11 @@ metadata:
 spec:
   ca:
     # Reference to the CA certificate and private key secret
-    # This secret must exist in the cert-manager namespace
+    # This secret must exist in the cluster resource namespace
     secretName: internal-ca-key-pair
 ```
 
-First, create the CA secret in the cert-manager namespace:
+First, create the CA secret in the cluster resource namespace:
 
 ```bash
 # Create a self-signed CA (or use your existing CA)
@@ -204,7 +210,7 @@ openssl genrsa -out ca.key 4096
 openssl req -new -x509 -key ca.key -out ca.crt -days 3650 \
   -subj "/CN=Internal CA/O=Example Org"
 
-# Create the secret in cert-manager namespace
+# Create the secret in the default cluster resource namespace
 kubectl create secret tls internal-ca-key-pair \
   --cert=ca.crt \
   --key=ca.key \
@@ -239,7 +245,7 @@ spec:
         # Kubernetes service account for authentication
         role: cert-manager
         secretRef:
-          # Secret containing service account token
+          # Secret containing service account token in the cluster resource namespace
           name: cert-manager-vault-token
           key: token
 ```
@@ -355,7 +361,7 @@ Document ClusterIssuer usage in your platform documentation. Application teams n
 
 Implement monitoring and alerting for ClusterIssuer health. Since ClusterIssuers serve the entire cluster, their failure affects all applications.
 
-Use namespace selectors in solver configurations when different namespaces require different challenge methods.
+Use solver selectors in ACME configurations when different DNS names require different challenge methods.
 
 Regularly review ClusterIssuer configurations. As your infrastructure evolves, ensure ClusterIssuers reflect current requirements and security policies.
 
