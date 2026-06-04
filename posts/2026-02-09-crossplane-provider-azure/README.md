@@ -8,9 +8,9 @@ Description: Learn how to configure and use the Crossplane Azure provider to man
 
 ---
 
-The Crossplane Azure provider lets you manage Azure resources using Kubernetes manifests. Provision Azure SQL databases, storage accounts, virtual networks, and AKS clusters through kubectl instead of Azure CLI or ARM templates. The provider translates Kubernetes resources into Azure API calls, maintaining continuous reconciliation.
+The Crossplane Azure provider lets you manage Azure resources using Kubernetes manifests. Provision Cosmos DB accounts, storage accounts, virtual networks, and AKS clusters through kubectl instead of Azure CLI or ARM templates. The provider translates Kubernetes resources into Azure API calls, maintaining continuous reconciliation.
 
-Azure's API surface is vast, and the Crossplane provider exposes it through hundreds of CRDs. Each Azure resource type gets a corresponding Kubernetes resource, bringing infrastructure management into your GitOps workflows.
+Azure's API surface is vast, and the legacy Crossplane provider exposes a focused set of Azure CRDs. Each supported Azure resource type gets a corresponding Kubernetes resource, bringing infrastructure management into your GitOps workflows.
 
 ## Installing the Azure Provider
 
@@ -18,9 +18,14 @@ Install the provider package:
 
 ```bash
 # Install Azure provider
-
-kubectl crossplane install provider \
-  xpkg.upbound.io/crossplane-contrib/provider-azure:v0.35.0
+kubectl apply -f - <<EOF
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-azure
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-azure:v0.20.1
+EOF
 
 # Check installation status
 kubectl get providers
@@ -49,7 +54,7 @@ az ad sp create-for-rbac \
   --name crossplane-sp \
   --role Contributor \
   --scopes /subscriptions/YOUR_SUBSCRIPTION_ID \
-  --sdk-auth > azure-credentials.json
+  --json-auth true > azure-credentials.json
 
 # View credentials
 cat azure-credentials.json
@@ -113,12 +118,10 @@ apiVersion: azure.crossplane.io/v1alpha3
 kind: ResourceGroup
 metadata:
   name: crossplane-rg
+  labels:
+    name: crossplane-rg
 spec:
   location: eastus
-  tags:
-    Environment: Development
-    ManagedBy: Crossplane
-    Team: Platform
   providerConfigRef:
     name: default
 ```
@@ -148,16 +151,14 @@ kind: Account
 metadata:
   name: crossplanestorage001
 spec:
-  resourceGroupNameSelector:
-    matchLabels:
-      name: crossplane-rg
+  resourceGroupName: crossplane-rg
   storageAccountSpec:
-    kind: StorageV2
+    kind: Storage
     location: eastus
     sku:
       name: Standard_LRS
+      tier: Standard
     properties:
-      accessTier: Hot
       enableHttpsTrafficOnly: true
       encryption:
         services:
@@ -176,74 +177,38 @@ spec:
     name: default
 ```
 
-The `resourceGroupNameSelector` automatically links to the resource group created earlier.
+The `resourceGroupName` field links the storage account to the resource group created earlier.
 
-## Provisioning Azure SQL Database
+## Provisioning Azure Cosmos DB
 
-Create an Azure SQL Server and database:
+Create an Azure Cosmos DB account:
 
 ```yaml
-apiVersion: database.azure.crossplane.io/v1beta1
-kind: SQLServer
+apiVersion: database.azure.crossplane.io/v1alpha3
+kind: CosmosDBAccount
 metadata:
-  name: crossplane-sql-server
+  name: crossplane-cosmos
 spec:
   forProvider:
     resourceGroupNameSelector:
       matchLabels:
         name: crossplane-rg
+    kind: MongoDB
     location: eastus
-    version: "12.0"
-    administratorLogin: sqladmin
-    sslEnforcement: Enabled
-    tags:
-      Environment: Production
+    properties:
+      databaseAccountOfferType: Standard
+      locations:
+      - failoverPriority: 0
+        locationName: East US
+        isZoneRedundant: false
   writeConnectionSecretToRef:
     namespace: default
-    name: sql-server-conn
-  providerConfigRef:
-    name: default
----
-apiVersion: database.azure.crossplane.io/v1alpha3
-kind: SQLServerFirewallRule
-metadata:
-  name: allow-azure-services
-spec:
-  serverNameSelector:
-    matchLabels:
-      name: crossplane-sql-server
-  resourceGroupNameSelector:
-    matchLabels:
-      name: crossplane-rg
-  properties:
-    startIpAddress: "0.0.0.0"
-    endIpAddress: "0.0.0.0"
-  providerConfigRef:
-    name: default
----
-apiVersion: database.azure.crossplane.io/v1alpha3
-kind: SQLDatabase
-metadata:
-  name: app-database
-spec:
-  forProvider:
-    serverNameSelector:
-      matchLabels:
-        name: crossplane-sql-server
-    resourceGroupNameSelector:
-      matchLabels:
-        name: crossplane-rg
-    location: eastus
-    sku:
-      name: S0
-      tier: Standard
-    properties:
-      collation: SQL_Latin1_General_CP1_CI_AS
+    name: cosmos-connection
   providerConfigRef:
     name: default
 ```
 
-The connection secret contains endpoint, username, and password for the SQL server.
+The connection secret contains endpoint and key details for the Cosmos DB account.
 
 ## Managing Virtual Networks
 
@@ -254,6 +219,8 @@ apiVersion: network.azure.crossplane.io/v1alpha3
 kind: VirtualNetwork
 metadata:
   name: crossplane-vnet
+  labels:
+    name: crossplane-vnet
 spec:
   resourceGroupNameSelector:
     matchLabels:
@@ -274,6 +241,8 @@ apiVersion: network.azure.crossplane.io/v1alpha3
 kind: Subnet
 metadata:
   name: app-subnet
+  labels:
+    name: app-subnet
 spec:
   virtualNetworkNameSelector:
     matchLabels:
@@ -305,21 +274,15 @@ spec:
   resourceGroupNameSelector:
     matchLabels:
       name: crossplane-rg
+  vnetSubnetIDSelector:
+    matchLabels:
+      name: app-subnet
   location: eastus
-  version: "1.27"
+  version: "1.35"
   nodeCount: 3
   nodeVMSize: Standard_D2s_v3
   dnsNamePrefix: crossplane-aks
-  enableRBAC: true
-  networkProfile:
-    networkPlugin: azure
-    serviceCidr: 10.240.0.0/16
-    dnsServiceIP: 10.240.0.10
-  identity:
-    type: SystemAssigned
-  tags:
-    Environment: Production
-    ManagedBy: Crossplane
+  disableRBAC: false
   writeConnectionSecretToRef:
     namespace: default
     name: aks-kubeconfig
@@ -330,28 +293,30 @@ spec:
 Retrieve the kubeconfig:
 
 ```bash
-kubectl get secret aks-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 -d > aks-kubeconfig.yaml
+kubectl get secret aks-kubeconfig -n default -o jsonpath='{.data.kubeconfig}' | base64 -d > aks-kubeconfig.yaml
 
 # Connect to AKS cluster
 export KUBECONFIG=aks-kubeconfig.yaml
 kubectl get nodes
 ```
 
-## Using Managed Identity Authentication
+## Using File-Based Authentication
 
-Configure Crossplane to use Azure Managed Identity:
+Configure Crossplane to read Azure credentials from a file mounted into the provider pod:
 
 ```yaml
 apiVersion: azure.crossplane.io/v1beta1
 kind: ProviderConfig
 metadata:
-  name: managed-identity
+  name: file-credentials
 spec:
   credentials:
-    source: InjectedIdentity
+    source: Filesystem
+    fs:
+      path: /path/to/azure-credentials.json
 ```
 
-This requires configuring Azure AD Pod Identity or Workload Identity for the provider pods.
+The legacy provider also supports `Secret`, `Environment`, `Filesystem`, and `None` credential sources. For Azure Workload Identity or managed identity authentication, use the newer Azure provider-family packages.
 
 ## Implementing Resource References
 
@@ -373,10 +338,7 @@ spec:
       family: C
       capacity: 0
     enableNonSslPort: false
-    minimumTlsVersion: "1.2"
-    subnetIdSelector:
-      matchLabels:
-        name: cache-subnet
+    minimumTlsVersion: OneFullStopTwo
   writeConnectionSecretToRef:
     namespace: default
     name: redis-connection
@@ -400,7 +362,6 @@ spec:
       namespace: crossplane-system
       name: azure-prod-creds
       key: creds
-  subscriptionID: PROD_SUBSCRIPTION_ID
 ---
 apiVersion: azure.crossplane.io/v1beta1
 kind: ProviderConfig
@@ -413,10 +374,9 @@ spec:
       namespace: crossplane-system
       name: azure-dev-creds
       key: creds
-  subscriptionID: DEV_SUBSCRIPTION_ID
 ```
 
-Reference the appropriate config in resources.
+Create each credential file for the target subscription and reference the appropriate ProviderConfig in resources.
 
 ## Monitoring Azure Resources
 
@@ -427,10 +387,10 @@ Track resource status:
 kubectl get managed | grep azure
 
 # Check specific resource type
-kubectl get sqlserver
+kubectl get cosmosdbaccount
 
 # Describe for detailed status
-kubectl describe sqlserver crossplane-sql-server
+kubectl describe cosmosdbaccount crossplane-cosmos
 
 # Check synchronization
 kubectl get account -o jsonpath='{.items[*].status.conditions[?(@.type=="Synced")].status}'
@@ -475,4 +435,4 @@ az role assignment create \
 
 ## Conclusion
 
-The Crossplane Azure provider enables managing Azure infrastructure through Kubernetes APIs. By configuring authentication with service principals or managed identity, using resource selectors for dependencies, and implementing proper RBAC controls, you create a robust platform for Azure resource management. The provider's comprehensive Azure API coverage allows provisioning and managing virtually any Azure service through familiar kubectl commands and GitOps workflows.
+The Crossplane Azure provider enables managing Azure infrastructure through Kubernetes APIs. By configuring authentication with service principals, using resource selectors for dependencies, and implementing proper RBAC controls, you create a robust platform for Azure resource management. The provider's Azure API coverage allows provisioning and managing supported Azure services through familiar kubectl commands and GitOps workflows.
