@@ -8,15 +8,15 @@ Description: Learn how to configure Bridge to Kubernetes in VS Code to debug app
 
 ---
 
-Debugging Kubernetes applications traditionally requires building container images, pushing them to registries, updating deployments, and waiting for pods to restart. This cycle can take several minutes per iteration, drastically slowing development. Bridge to Kubernetes (formerly Local Process with Kubernetes) solves this by allowing you to run and debug code locally while seamlessly routing traffic from your cluster to your development machine.
+Debugging Kubernetes applications traditionally requires building container images, pushing them to registries, updating deployments, and waiting for pods to restart. This cycle can take several minutes per iteration, drastically slowing development. Bridge to Kubernetes (formerly Local Process with Kubernetes) solved this by allowing you to run and debug code locally while seamlessly routing traffic from your cluster to your development machine. Bridge to Kubernetes was retired on April 30, 2025, so use these steps only for legacy environments where the extension or CLI is already available.
 
 This enables you to set breakpoints, step through code, and inspect variables in your local IDE while your application interacts with real Kubernetes services. In this guide, you'll learn how to set up and use Bridge to Kubernetes with Visual Studio Code.
 
 ## Understanding Bridge to Kubernetes Architecture
 
-Bridge to Kubernetes works by intercepting traffic destined for a specific Kubernetes service and redirecting it to your local development machine. It creates a bidirectional connection where your local process can call cluster services and cluster services can call your local process.
+Bridge to Kubernetes works by redirecting traffic for a specific Kubernetes service to your local development machine. It creates a bidirectional connection where your local process can call cluster services and cluster services can call your local process.
 
-The tool modifies your local network stack to make Kubernetes services accessible via their cluster DNS names, injects environment variables from the target pod, mounts volumes used by the pod, and routes traffic through a sidecar proxy. This creates a hybrid environment where your code runs locally but behaves as if it's running in the cluster.
+The tool runs a remote agent in the cluster, uses `kubectl port-forward`, updates your local hosts file to make Kubernetes services accessible by service name, and makes environment variables and mounted files from the target pod available locally. In isolation mode, it also deploys routing components in the namespace. This creates a hybrid environment where your code runs locally but behaves as if it's running in the cluster.
 
 ## Installing Bridge to Kubernetes Extension
 
@@ -37,14 +37,10 @@ kubectl cluster-info
 kubectl get nodes
 ```
 
-Configure VS Code workspace settings:
+Bridge to Kubernetes stores the selected namespace and service in `.vscode/tasks.json` after you run the Configure command. You can also set the current namespace with kubectl before configuring:
 
-```json
-{
-  "bridge-to-kubernetes.namespace": "development",
-  "bridge-to-kubernetes.isolateAs": "your-name",
-  "bridge-to-kubernetes.useKubernetesServiceEnvironmentVariables": true
-}
+```bash
+kubectl config set-context --current --namespace=development
 ```
 
 ## Creating a Debuggable Application
@@ -76,16 +72,22 @@ app.get('/health', (req, res) => {
 app.get('/api/user/:id', async (req, res) => {
     try {
         const userId = req.params.id;
+        const bridgeHeaders = req.headers['kubernetes-route-as']
+            ? { 'kubernetes-route-as': req.headers['kubernetes-route-as'] }
+            : {};
 
         // Call auth service to verify token
         const authResponse = await axios.get(`${AUTH_SERVICE_URL}/verify`, {
             headers: {
-                'Authorization': req.headers.authorization
+                'Authorization': req.headers.authorization,
+                ...bridgeHeaders
             }
         });
 
         // Call data service to get user data
-        const userResponse = await axios.get(`${DATA_SERVICE_URL}/users/${userId}`);
+        const userResponse = await axios.get(`${DATA_SERVICE_URL}/users/${userId}`, {
+            headers: bridgeHeaders
+        });
 
         res.json({
             authenticated: authResponse.data.valid,
@@ -103,7 +105,12 @@ app.get('/api/user/:id', async (req, res) => {
 
 app.post('/api/data', async (req, res) => {
     try {
-        const response = await axios.post(`${DATA_SERVICE_URL}/data`, req.body);
+        const bridgeHeaders = req.headers['kubernetes-route-as']
+            ? { 'kubernetes-route-as': req.headers['kubernetes-route-as'] }
+            : {};
+        const response = await axios.post(`${DATA_SERVICE_URL}/data`, req.body, {
+            headers: bridgeHeaders
+        });
         res.json(response.data);
     } catch (error) {
         console.error('Error:', error.message);
@@ -236,7 +243,7 @@ The extension will:
 - Create a connection to the cluster
 - Redirect traffic from the service to your local machine
 - Inject environment variables
-- Make cluster services accessible via DNS
+- Make cluster services accessible by updating local host name resolution or by using Kubernetes service environment variables
 - Start your application in debug mode
 
 ## Advanced Bridge Configuration
@@ -303,6 +310,8 @@ Update launch configuration to use the task:
 
 For microservices architectures, debug multiple services simultaneously:
 
+When using isolation mode for multiple services, use the same `isolateAs` value in each service's Bridge to Kubernetes task and make sure each local service listens on a different port.
+
 ```json
 {
   "version": "0.2.0",
@@ -350,13 +359,17 @@ Isolate your debugging session from other developers:
 # Other developers working on the same service won't be affected
 ```
 
-Configure isolation in VS Code settings:
+Configure isolation in the Bridge to Kubernetes task:
 
 ```json
 {
-  "bridge-to-kubernetes.isolateAs": "${env:USER}-debug",
-  "bridge-to-kubernetes.useKubernetesServiceEnvironmentVariables": true,
-  "bridge-to-kubernetes.enableAdvancedLogging": true
+  "label": "bridge-to-kubernetes.service",
+  "type": "bridge-to-kubernetes.service",
+  "service": "api-service",
+  "ports": [3000],
+  "targetNamespace": "development",
+  "isolateAs": "${env:USER}-debug",
+  "useKubernetesServiceEnvironmentVariables": true
 }
 ```
 
@@ -382,8 +395,13 @@ def health():
 @app.route('/api/data/<int:id>')
 def get_data(id):
     # Breakpoint here for debugging
-    auth_response = requests.get(f"{AUTH_SERVICE}/verify")
-    data_response = requests.get(f"{DATA_SERVICE}/items/{id}")
+    bridge_headers = {}
+    route_as = request.headers.get('kubernetes-route-as')
+    if route_as:
+        bridge_headers['kubernetes-route-as'] = route_as
+
+    auth_response = requests.get(f"{AUTH_SERVICE}/verify", headers=bridge_headers)
+    data_response = requests.get(f"{DATA_SERVICE}/items/{id}", headers=bridge_headers)
 
     return jsonify({
         "auth": auth_response.json(),
@@ -406,14 +424,14 @@ Launch configuration for Python:
   "configurations": [
     {
       "name": "Bridge to Kubernetes - Python",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/app.py",
       "preLaunchTask": "bridge-to-kubernetes.service",
       "console": "integratedTerminal",
       "env": {
         "FLASK_APP": "app.py",
-        "FLASK_ENV": "development",
+        "FLASK_DEBUG": "1",
         "PORT": "5000"
       }
     }
@@ -465,17 +483,17 @@ Track active Bridge connections:
 ```bash
 # View Bridge logs
 # On macOS/Linux
-tail -f ~/.vscode/extensions/mindaro.mindaro-*/bridge-logs/*.log
+tail -f "${TMPDIR:-/tmp}/Bridge to Kubernetes"/*.log
 
-# Check network routes added by Bridge
-# On macOS
-netstat -rn | grep -i bridge
+# Check host name entries added by Bridge
+# On macOS/Linux
+grep -i "Bridge to Kubernetes" /etc/hosts
 
-# On Linux
-ip route show
+# Check local port forwarding processes
+ps aux | grep '[k]ubectl port-forward'
 
 # Monitor traffic
 sudo tcpdump -i any -n port 3000
 ```
 
-Bridge to Kubernetes transforms the Kubernetes development experience by eliminating the container rebuild cycle. By allowing you to debug locally while connected to real cluster services, you can iterate rapidly with immediate feedback, dramatically improving productivity while maintaining production-like testing conditions.
+For legacy environments where it is still available, Bridge to Kubernetes transforms the Kubernetes development experience by eliminating the container rebuild cycle. By allowing you to debug locally while connected to real cluster services, you can iterate rapidly with immediate feedback, dramatically improving productivity while maintaining production-like testing conditions.
