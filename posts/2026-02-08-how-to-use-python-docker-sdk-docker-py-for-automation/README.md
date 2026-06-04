@@ -221,7 +221,10 @@ def check_container_health(container):
                 stats["precpu_stats"]["cpu_usage"]["total_usage"]
     system_delta = stats["cpu_stats"]["system_cpu_usage"] - \
                    stats["precpu_stats"]["system_cpu_usage"]
-    cpu_percent = (cpu_delta / system_delta) * 100.0 if system_delta > 0 else 0
+    online_cpus = stats["cpu_stats"].get("online_cpus") or \
+                  len(stats["cpu_stats"]["cpu_usage"].get("percpu_usage", []))
+    cpu_percent = (cpu_delta / system_delta) * online_cpus * 100.0 \
+        if system_delta > 0 and online_cpus > 0 else 0
 
     mem_usage = stats["memory_stats"].get("usage", 0)
     mem_limit = stats["memory_stats"].get("limit", 1)
