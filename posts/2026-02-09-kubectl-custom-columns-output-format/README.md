@@ -40,7 +40,7 @@ kubectl get deployments -o custom-columns=NAME:.metadata.name,DESIRED:.spec.repl
 kubectl get services -o custom-columns=NAME:.metadata.name,TYPE:.spec.type,CLUSTER-IP:.spec.clusterIP
 ```
 
-Column headers appear in uppercase by convention but accept any characters. Keep them concise for readable output.
+Column headers appear in uppercase by convention. Keep them concise for readable output, and avoid commas in inline definitions because commas separate columns.
 
 ## Extracting Container Information
 
@@ -74,7 +74,7 @@ kubectl get nodes -o custom-columns=NODE:.metadata.name,CPU-ALLOC:.status.alloca
 kubectl get nodes -o custom-columns=NAME:.metadata.name,OS:.status.nodeInfo.osImage,KERNEL:.status.nodeInfo.kernelVersion,KUBELET:.status.nodeInfo.kubeletVersion
 
 # Node IP addresses
-kubectl get nodes -o custom-columns=NAME:.metadata.name,INTERNAL-IP:.status.addresses[0].address,HOSTNAME:.status.addresses[1].address
+kubectl get nodes -o custom-columns='NAME:.metadata.name,INTERNAL-IP:.status.addresses[?(@.type=="InternalIP")].address,HOSTNAME:.status.addresses[?(@.type=="Hostname")].address'
 ```
 
 These views help with capacity planning and node inventory management.
@@ -91,10 +91,10 @@ kubectl get pods -o custom-columns=NAME:.metadata.name,STATUS:.status.phase,REAS
 kubectl get pods -o custom-columns=NAME:.metadata.name,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount,STATE:.status.containerStatuses[0].state
 
 # Deployment conditions
-kubectl get deployments -o custom-columns=NAME:.metadata.name,AVAILABLE:.status.conditions[0].status,PROGRESSING:.status.conditions[1].status
+kubectl get deployments -o custom-columns='NAME:.metadata.name,AVAILABLE:.status.conditions[?(@.type=="Available")].status,PROGRESSING:.status.conditions[?(@.type=="Progressing")].status'
 ```
 
-Conditions arrays contain multiple items. Access specific conditions by index or use JSONPath filters to find conditions by type.
+Conditions arrays contain multiple items. Use JSONPath filters to find conditions by type instead of relying on a specific array order.
 
 ## Metadata and Labels
 
@@ -124,11 +124,11 @@ kubectl get pods -o custom-columns=POD:.metadata.name,CONTAINERS:.spec.container
 # Show all container images
 kubectl get pods -o custom-columns=POD:.metadata.name,IMAGES:.spec.containers[*].image
 
-# Combined view with counts
-kubectl get pods -o custom-columns=NAME:.metadata.name,CONTAINER-COUNT:.spec.containers,IMAGE-LIST:.spec.containers[*].image
+# Combined view with names and images
+kubectl get pods -o custom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name,IMAGE-LIST:.spec.containers[*].image
 ```
 
-The `[*]` wildcard selects all array elements. Output appears space-separated when multiple values exist.
+The `[*]` wildcard selects all array elements. Output appears comma-separated when multiple values exist.
 
 ## Storage and Volume Information
 
@@ -171,20 +171,15 @@ Long column definitions become unwieldy. Save them to files for reuse:
 ```bash
 # Save column definition to file
 cat > pod-columns.txt << 'EOF'
-NAME:.metadata.name,
-NAMESPACE:.metadata.namespace,
-IMAGE:.spec.containers[0].image,
-NODE:.spec.nodeName,
-STATUS:.status.phase,
-RESTARTS:.status.containerStatuses[0].restartCount,
-AGE:.metadata.creationTimestamp
+NAME NAMESPACE IMAGE NODE STATUS RESTARTS AGE
+metadata.name metadata.namespace spec.containers[0].image spec.nodeName status.phase status.containerStatuses[0].restartCount metadata.creationTimestamp
 EOF
 
 # Use the saved definition
 kubectl get pods --all-namespaces -o custom-columns-file=pod-columns.txt
 ```
 
-The `--custom-columns-file` flag reads column definitions from a file. Split long definitions across multiple lines for readability.
+The `custom-columns-file` output format reads column definitions from a file. The template file uses two whitespace-separated lines: one line for headers and one line for the matching JSONPath field specs.
 
 ## Combining with Selectors
 
@@ -212,7 +207,7 @@ kubectl get pods --all-namespaces -o custom-columns=NAMESPACE:.metadata.namespac
 kubectl get pods --all-namespaces -o custom-columns=NAMESPACE:.metadata.namespace,POD:.metadata.name,IMAGE:.spec.containers[*].image,PULL-POLICY:.spec.containers[*].imagePullPolicy > image-inventory.txt
 
 # Node health report
-kubectl get nodes -o custom-columns=NODE:.metadata.name,STATUS:.status.conditions[3].type,READY:.status.conditions[3].status,CPU:.status.capacity.cpu,MEMORY:.status.capacity.memory > node-health.txt
+kubectl get nodes -o custom-columns='NODE:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,CPU:.status.capacity.cpu,MEMORY:.status.capacity.memory' > node-health.txt
 ```
 
 These reports feed into capacity planning, compliance audits, and inventory tracking.
@@ -256,7 +251,7 @@ Combine custom columns with aliases for frequently used views:
 # Add to .bashrc or .zshrc
 alias kpods='kubectl get pods -o custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[0].image,NODE:.spec.nodeName,STATUS:.status.phase'
 
-alias knodes='kubectl get nodes -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[3].status,CPU:.status.capacity.cpu,MEMORY:.status.capacity.memory'
+alias knodes="kubectl get nodes -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type==\"Ready\")].status,CPU:.status.capacity.cpu,MEMORY:.status.capacity.memory'"
 
 alias kdeploy='kubectl get deployments -o custom-columns=NAME:.metadata.name,REPLICAS:.spec.replicas,AVAILABLE:.status.availableReplicas,IMAGE:.spec.template.spec.containers[0].image'
 ```
