@@ -180,7 +180,7 @@ spec:
           storage: 100Gi
 ```
 
-This StatefulSet places PostgreSQL replicas in different zones with local persistent storage. The database handles replication at the application level while Kubernetes ensures physical separation.
+This StatefulSet places PostgreSQL pods in different zones with local persistent storage. Configure PostgreSQL replication separately, or use a PostgreSQL operator that manages replication, while Kubernetes ensures physical separation.
 
 For applications without built-in replication, use storage solutions that replicate across zones:
 
@@ -208,7 +208,7 @@ Regional persistent disks replicate data synchronously across zones, allowing po
 
 Network traffic between zones incurs latency and costs. Design your traffic routing to minimize cross-zone communication while maintaining availability.
 
-Use service topology to prefer same-zone endpoints when possible:
+Use Topology Aware Routing to prefer same-zone endpoints when possible:
 
 ```yaml
 apiVersion: v1
@@ -217,7 +217,7 @@ metadata:
   name: api-service
   namespace: production
   annotations:
-    service.kubernetes.io/topology-aware-hints: auto
+    service.kubernetes.io/topology-mode: Auto
 spec:
   selector:
     app: api-service
@@ -241,7 +241,7 @@ metadata:
     # GCP: Use regional load balancer
     cloud.google.com/load-balancer-type: "External"
     # AWS: Use NLB with cross-zone enabled
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
 spec:
   type: LoadBalancer
   selector:
@@ -258,10 +258,10 @@ The cloud provider load balancer distributes incoming traffic across all zones, 
 Test multi-zone resilience by simulating zone failures in non-production environments. This validates that your deployment continues operating when a zone becomes unavailable.
 
 ```bash
-# Simulate zone failure by cordoning all nodes in a zone
+# Simulate zone evacuation by draining all schedulable pods from nodes in a zone
 ZONE="us-central1-a"
 kubectl get nodes -l topology.kubernetes.io/zone=$ZONE -o name | \
-  xargs -I {} kubectl cordon {}
+  xargs -I {} kubectl drain {} --ignore-daemonsets --delete-emptydir-data
 
 # Verify pods reschedule to other zones
 kubectl get pods --all-namespaces -o wide
@@ -291,16 +291,30 @@ kubectl get nodes -l topology.kubernetes.io/zone=$ZONE -o name | \
 Configure cluster autoscaler to maintain balanced node distribution across zones during scaling events:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: cluster-autoscaler-config
+  name: cluster-autoscaler
   namespace: kube-system
-data:
-  balance-similar-node-groups: "true"
-  skip-nodes-with-system-pods: "false"
-  scale-down-enabled: "true"
-  scale-down-delay-after-add: "10m"
+spec:
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+  template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
+    spec:
+      serviceAccountName: cluster-autoscaler
+      containers:
+      - name: cluster-autoscaler
+        image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.36.0
+        command:
+        - ./cluster-autoscaler
+        - --balance-similar-node-groups=true
+        - --skip-nodes-with-system-pods=false
+        - --scale-down-enabled=true
+        - --scale-down-delay-after-add=10m
 ```
 
 The autoscaler maintains similar node counts across zones when scaling up or down, preventing imbalanced distributions that reduce zone failure resilience.
@@ -331,13 +345,29 @@ Track zone-specific metrics to detect imbalances or zone degradation:
 
 ```promql
 # Pods per zone
-count by (topology_kubernetes_io_zone) (kube_pod_info)
+count by (label_topology_kubernetes_io_zone) (
+  kube_pod_info
+  * on (node) group_left(label_topology_kubernetes_io_zone)
+    kube_node_labels
+)
 
 # Available capacity per zone
-sum by (topology_kubernetes_io_zone) (kube_node_status_allocatable{resource="cpu"})
+sum by (label_topology_kubernetes_io_zone) (
+  kube_node_status_allocatable{resource="cpu", unit="core"}
+  * on (node) group_left(label_topology_kubernetes_io_zone)
+    kube_node_labels
+)
 
 # Failed pods per zone
-sum by (topology_kubernetes_io_zone) (kube_pod_status_phase{phase="Failed"})
+sum by (label_topology_kubernetes_io_zone) (
+  (
+    kube_pod_status_phase{phase="Failed"}
+    * on (namespace, pod) group_left(node)
+      kube_pod_info
+  )
+  * on (node) group_left(label_topology_kubernetes_io_zone)
+    kube_node_labels
+)
 ```
 
 Create alerts for zone imbalances:
@@ -349,8 +379,16 @@ groups:
   - alert: UnbalancedZoneDistribution
     expr: |
       abs(
-        count by (topology_kubernetes_io_zone) (kube_pod_info{namespace="production"})
-        - avg(count by (topology_kubernetes_io_zone) (kube_pod_info{namespace="production"}))
+        count by (label_topology_kubernetes_io_zone) (
+          kube_pod_info{namespace="production"}
+          * on (node) group_left(label_topology_kubernetes_io_zone)
+            kube_node_labels
+        )
+        - scalar(avg(count by (label_topology_kubernetes_io_zone) (
+          kube_pod_info{namespace="production"}
+          * on (node) group_left(label_topology_kubernetes_io_zone)
+            kube_node_labels
+        )))
       ) > 2
     for: 15m
     labels:
