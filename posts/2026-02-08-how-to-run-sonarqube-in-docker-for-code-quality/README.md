@@ -47,8 +47,6 @@ For production use, connect SonarQube to PostgreSQL. The embedded H2 database do
 
 ```yaml
 # docker-compose.yml - SonarQube with PostgreSQL
-version: "3.8"
-
 services:
   sonarqube:
     image: sonarqube:10.7-community
@@ -78,7 +76,7 @@ services:
         hard: 131072
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:15-alpine
     container_name: sonarqube-db
     environment:
       POSTGRES_DB: sonarqube
@@ -123,8 +121,7 @@ docker run --rm \
   -e SONAR_TOKEN=your_project_token \
   sonarsource/sonar-scanner-cli \
   -Dsonar.projectKey=my-project \
-  -Dsonar.sources=src \
-  -Dsonar.language=java
+  -Dsonar.sources=src
 ```
 
 Generate the project token from the SonarQube web interface: go to your user profile, then Security, and create a new token.
@@ -187,7 +184,7 @@ jobs:
           fetch-depth: 0  # Full history needed for blame data
 
       - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@v3
+        uses: sonarsource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -225,12 +222,11 @@ curl -u admin:newpassword -X POST \
 SonarQube supports plugins for additional languages and features. Install them by placing the JAR files in the extensions directory:
 
 ```bash
-# Download and install a plugin
+# Create the plugin directory
 docker exec sonarqube mkdir -p /opt/sonarqube/extensions/plugins
 
-# Example: install the community branch plugin
-docker exec sonarqube wget -O /opt/sonarqube/extensions/plugins/sonarqube-community-branch-plugin.jar \
-  https://github.com/mc1arke/sonarqube-community-branch-plugin/releases/download/1.19.0/sonarqube-community-branch-plugin-1.19.0.jar
+# Copy a downloaded plugin JAR into the container
+docker cp ./your-plugin.jar sonarqube:/opt/sonarqube/extensions/plugins/your-plugin.jar
 
 # Restart SonarQube to load the plugin
 docker compose restart sonarqube
