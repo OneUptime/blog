@@ -25,7 +25,7 @@ flowchart LR
 
 ## Prerequisites
 
-Install the Heroku CLI and the container plugin:
+Install the Heroku CLI and log in:
 
 ```bash
 # Install Heroku CLI
@@ -39,8 +39,8 @@ heroku login
 # Login to the Container Registry
 heroku container:login
 
-# Create a new app (or use an existing one)
-heroku create myapp-docker
+# Create a new app on the container stack (or use an existing one)
+heroku create myapp-docker --stack container
 ```
 
 ## The Heroku Dockerfile Requirements
@@ -49,7 +49,7 @@ Heroku containers have specific requirements:
 
 1. The web process must listen on the `$PORT` environment variable (Heroku assigns a random port)
 2. The CMD or ENTRYPOINT must start your web server
-3. Images must be Linux-based
+3. Images must be Linux-based and built for `x86_64`/`linux/amd64`
 
 Here is a Dockerfile that works with Heroku:
 
@@ -65,9 +65,6 @@ RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
-
-# Heroku assigns PORT dynamically - your app must use this variable
-EXPOSE $PORT
 
 # Start the application (PORT is set by Heroku at runtime)
 CMD ["node", "server.js"]
@@ -134,7 +131,7 @@ Heroku process types map to different images. A typical web application might ha
 
 ```bash
 # Build and push both process types
-heroku container:push web worker --app myapp-docker
+heroku container:push web worker --recursive --app myapp-docker
 
 # Release both
 heroku container:release web worker --app myapp-docker
@@ -188,8 +185,6 @@ build:
   docker:
     web: Dockerfile.web
     worker: Dockerfile.worker
-  config:
-    NODE_ENV: production
 
 run:
   web: node server.js
@@ -263,6 +258,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Install Heroku CLI
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
+
       # Login to Heroku Container Registry
       - name: Login to Heroku
         env:
@@ -307,6 +306,7 @@ jobs:
         run: |
           docker pull registry.heroku.com/${{ env.HEROKU_APP }}/web || true
           docker build \
+            --platform linux/amd64 \
             --cache-from registry.heroku.com/${{ env.HEROKU_APP }}/web \
             --tag registry.heroku.com/${{ env.HEROKU_APP }}/web \
             .
@@ -333,7 +333,7 @@ jobs:
 heroku logs --tail --app myapp-docker
 
 # View logs for a specific process type
-heroku logs --tail --dyno web --app myapp-docker
+heroku logs --tail --process-type web --app myapp-docker
 
 # Run a one-off command inside the container
 heroku run bash --app myapp-docker
@@ -370,14 +370,16 @@ COPY . .
 CMD ["node", "scripts/migrate.js"]
 ```
 
-## Health Checks and Timeouts
-
-Heroku expects the web process to bind to `$PORT` within 60 seconds. If your container takes longer to start, increase the boot timeout:
+Push and release the release image along with the web image:
 
 ```bash
-# Increase boot timeout to 120 seconds
-heroku config:set WEB_CONCURRENCY=2 --app myapp-docker
+heroku container:push web release --recursive --app myapp-docker
+heroku container:release web release --app myapp-docker
 ```
+
+## Health Checks and Timeouts
+
+Heroku expects the web process to bind to `$PORT` within 60 seconds. If your container takes longer to start, reduce startup work or image size first. As a temporary last resort, use Heroku's boot timeout tool or contact Heroku Support to request a higher boot timeout.
 
 For applications with slow startup (Java, .NET), consider using a lightweight health check that responds immediately while the main application finishes loading.
 
