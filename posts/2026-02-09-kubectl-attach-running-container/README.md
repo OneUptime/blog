@@ -10,13 +10,13 @@ Description: Learn how to use kubectl attach to connect to running container pro
 
 When containers run in production, you often need to see what is happening inside them without disrupting their operation. The `kubectl attach` command lets you connect to a running container process and interact with its stdin, stdout, and stderr streams. This is invaluable for debugging and monitoring applications.
 
-Unlike `kubectl exec`, which starts a new process inside a container, `kubectl attach` connects to the main process that is already running. This makes it perfect for viewing application output or interacting with programs that expect stdin input.
+Unlike `kubectl exec`, which starts a new process inside a container, `kubectl attach` connects to a process that is already running inside the container. This makes it perfect for viewing application output or interacting with programs that expect stdin input.
 
 ## Understanding kubectl attach vs kubectl exec
 
 The difference between attach and exec is crucial. When you run `kubectl exec`, you start a new process inside the container. This is useful for running diagnostic commands like `ps`, `netstat`, or opening a shell.
 
-When you run `kubectl attach`, you connect to the container's main process (PID 1). You see the exact same output that the process is generating. If the process reads from stdin, you can send input to it.
+When you run `kubectl attach`, you connect to the container's existing process. You see output that the process writes after you attach. If the process reads from stdin, you can send input to it.
 
 Here is when to use each:
 
@@ -38,7 +38,7 @@ Attaching to a running pod is straightforward:
 kubectl attach my-pod
 ```
 
-This connects to the main process in the first container of the pod. You see the stdout and stderr output from that process.
+This connects to the process in the container selected by the `kubectl.kubernetes.io/default-container` annotation, or the first container in the pod if that annotation is not set. You see stdout and stderr output from that process.
 
 For pods with multiple containers, specify which container:
 
@@ -52,7 +52,7 @@ The `-i` flag makes the connection interactive, letting you send stdin to the pr
 kubectl attach -i my-pod
 ```
 
-The `-t` flag allocates a TTY, which is needed for programs that expect a terminal:
+The `-t` flag marks stdin as a TTY, which is needed for programs that expect a terminal. Use it with `-i` for interactive sessions:
 
 ```bash
 kubectl attach -it my-pod
@@ -91,10 +91,10 @@ env:
 
 Some applications are designed to be interactive. They read from stdin and respond on stdout. kubectl attach works perfectly for these.
 
-Attach to a Redis container and run commands:
+Attach to a container whose main process is `redis-cli` and run commands:
 
 ```bash
-kubectl attach -it redis-pod
+kubectl attach -it redis-cli-pod
 
 # Now you can type Redis commands
 
@@ -298,6 +298,9 @@ kubectl apply -f migration-job.yaml
 # Get the pod name
 POD=$(kubectl get pod -l job-name=migration -o jsonpath='{.items[0].metadata.name}')
 
+# Wait for the pod to be running
+kubectl wait --for=jsonpath='{.status.phase}'=Running pod/$POD --timeout=60s
+
 # Attach and monitor
 kubectl attach $POD
 ```
@@ -313,7 +316,7 @@ Monitor a smoke test pod:
 kubectl apply -f smoke-test-pod.yaml
 
 # Wait for pod to be running
-kubectl wait --for=condition=Ready pod/smoke-test --timeout=60s
+kubectl wait --for=jsonpath='{.status.phase}'=Running pod/smoke-test --timeout=60s
 
 # Attach and capture output
 kubectl attach smoke-test > test-results.log
