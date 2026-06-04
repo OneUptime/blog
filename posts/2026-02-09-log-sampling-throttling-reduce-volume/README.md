@@ -25,7 +25,7 @@ Both techniques reduce log volume, but they serve different purposes:
 
 ## Implementing Sampling in Fluent Bit
 
-Fluent Bit supports sampling through the `nest` and `grep` filters. Here's a configuration that samples different log levels at different rates:
+Fluent Bit supports sampling by combining the `lua` filter for sampling decisions with the `grep` filter to drop records. Here's a configuration that samples different log levels at different rates:
 
 ```yaml
 apiVersion: v1
@@ -82,7 +82,7 @@ data:
         Match           kube.*
         Host            loki.logging.svc.cluster.local
         Port            3100
-        Labels          job=kubernetes
+        Labels          job=kubernetes,namespace=$kubernetes['namespace_name'],level=$level
 
   sampling.lua: |
     function sample_logs(tag, timestamp, record)
@@ -104,6 +104,7 @@ data:
             record["sampled_out"] = true
         else
             record["sample_rate"] = rate
+            record["sample_weight"] = 1 / rate
         end
 
         return 2, timestamp, record
@@ -133,6 +134,7 @@ function smart_sample(tag, timestamp, record)
     for _, pattern in ipairs(always_keep) do
         if string.match(message:lower(), pattern) then
             record["sample_rate"] = 1.0
+            record["sample_weight"] = 1
             return 2, timestamp, record
         end
     end
@@ -152,6 +154,10 @@ function smart_sample(tag, timestamp, record)
             if random > 0.01 then  -- Keep only 1%
                 record["sampled_out"] = true
                 return 2, timestamp, record
+            else
+                record["sample_rate"] = 0.01
+                record["sample_weight"] = 100
+                return 2, timestamp, record
             end
         end
     end
@@ -161,6 +167,7 @@ function smart_sample(tag, timestamp, record)
         record["sampled_out"] = true
     else
         record["sample_rate"] = 0.2
+        record["sample_weight"] = 5
     end
 
     return 2, timestamp, record
@@ -186,9 +193,9 @@ data:
     [transforms.throttle_by_namespace]
     type = "throttle"
     inputs = ["kubernetes_logs"]
-    threshold = 1000  # events per second
+    threshold = 10000  # events per second
     window_secs = 1
-    key_field = "kubernetes.namespace_name"
+    key_field = "{{ kubernetes.pod_namespace }}"
 
     # Separate throttling for high-volume namespaces
     [transforms.route_by_volume]
@@ -198,21 +205,24 @@ data:
     [transforms.route_by_volume.route.high_volume]
     type = "vrl"
     source = '''
-      .kubernetes.namespace_name == "production" ||
-      .kubernetes.namespace_name == "staging"
+      .kubernetes.pod_namespace == "production" ||
+      .kubernetes.pod_namespace == "staging"
     '''
 
     [transforms.route_by_volume.route.low_volume]
     type = "vrl"
-    source = "true"
+    source = '''
+      .kubernetes.pod_namespace != "production" &&
+      .kubernetes.pod_namespace != "staging"
+    '''
 
     # Aggressive throttling for high-volume namespaces
     [transforms.throttle_high_volume]
     type = "throttle"
     inputs = ["route_by_volume.high_volume"]
-    threshold = 5000
+    threshold = 500
     window_secs = 1
-    key_field = "kubernetes.pod_name"
+    key_field = "{{ kubernetes.pod_name }}"
 
     # Lenient throttling for low-volume namespaces
     [transforms.throttle_low_volume]
@@ -245,8 +255,6 @@ Adaptive sampling adjusts sampling rates based on system load:
 
 ```lua
 -- adaptive-sampling.lua
-local current_load = 0.1  -- Initial sample rate
-
 function get_system_load()
     -- In practice, fetch from metrics or environment
     -- This is a simplified example
@@ -282,6 +290,7 @@ function adaptive_sample(tag, timestamp, record)
         record["sampled_out"] = true
     else
         record["sample_rate"] = final_rate
+        record["sample_weight"] = 1 / final_rate
         record["system_load"] = system_load
     end
 
@@ -304,7 +313,8 @@ Apply different sampling policies to different namespaces:
 ```lua
 -- namespace-sampling.lua
 function namespace_sample(tag, timestamp, record)
-    local namespace = record["kubernetes"]["namespace_name"] or "default"
+    local kubernetes = record["kubernetes"] or {}
+    local namespace = kubernetes["namespace_name"] or "default"
 
     -- Define sampling policies by namespace
     local namespace_policies = {
@@ -342,6 +352,7 @@ function namespace_sample(tag, timestamp, record)
         record["sampled_out"] = true
     else
         record["sample_rate"] = sample_rate
+        record["sample_weight"] = 1 / sample_rate
         record["sampling_policy"] = namespace
     end
 
@@ -366,7 +377,8 @@ Implement sophisticated rate limiting using a token bucket:
 local buckets = {}
 
 function token_bucket_throttle(tag, timestamp, record)
-    local key = record["kubernetes"]["pod_name"] or "default"
+    local kubernetes = record["kubernetes"] or {}
+    local key = kubernetes["pod_name"] or "default"
     local now = os.time()
 
     -- Bucket configuration
@@ -416,10 +428,11 @@ Track sampling statistics to ensure you're not losing critical logs:
     call    track_sampling
 
 [OUTPUT]
-    Name            prometheus_exporter
-    Match           sampling.metrics
-    Host            0.0.0.0
-    Port            9090
+    Name            loki
+    Match           kube.*
+    Host            loki.logging.svc.cluster.local
+    Port            3100
+    Labels          job=kubernetes
 ```
 
 ```lua
@@ -451,10 +464,11 @@ function track_sampling(tag, timestamp, record)
             kept_logs = stats.sampled_in,
             dropped_logs = stats.sampled_out,
             sample_rate = stats.sampled_in / stats.total,
+            sampling_metric = true,
             by_level = stats.by_level
         }
 
-        -- Output metrics as a separate log stream
+        -- Output metrics as a separate metrics log entry
         return 2, timestamp, metrics
     end
 
@@ -467,18 +481,20 @@ end
 When querying sampled data, compensate for the sampling rate:
 
 ```logql
-# Count requests accounting for sampling
-sum(
-  count_over_time({namespace="production"} [5m])
-  * on() group_left() (1 / avg(sample_rate))
-)
+# Count logs accounting for sampling
+sum(sum_over_time(
+  {namespace="production"} | json | unwrap sample_weight [5m]
+))
 
 # Estimate error rate from sampled data
-sum(rate({namespace="production", level="error"} [5m]))
+sum(count_over_time({namespace="production", level="error"}[5m]))
   /
-sum(rate({namespace="production"} [5m]))
-  * avg(sample_rate)
+sum(sum_over_time(
+  {namespace="production"} | json | unwrap sample_weight [5m]
+))
 ```
+
+For these queries, add a `sample_weight` field such as `1 / sample_rate` to each retained sampled log. Logs retained at 100% sampling should use `sample_weight = 1`.
 
 ## Best Practices for Log Sampling
 
@@ -494,13 +510,13 @@ sum(rate({namespace="production"} [5m]))
 Adjust alert thresholds for sampled data:
 
 ```yaml
-# Alert accounting for 10% sampling rate
+# Alert accounting for sampled logs
 - alert: HighErrorRate
   expr: |
     (
-      sum(rate({namespace="production", level="error"} [5m]))
+      sum(rate({namespace="production", level="error"}[5m]))
       /
-      (sum(rate({namespace="production"} [5m])) * 0.1)
+      (sum(sum_over_time({namespace="production"} | json | unwrap sample_weight [5m])) / 300)
     ) > 0.01
   annotations:
     description: "Error rate exceeds 1% (compensated for sampling)"
