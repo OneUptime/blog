@@ -143,16 +143,34 @@ data:
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["kind", "namespace", "name"],
+                "required": ["apiVersion", "kind", "namespace", "name", "operation"],
                 "properties": {
+                  "apiVersion": {"type": "string"},
                   "kind": {"type": "string"},
                   "namespace": {"type": "string"},
                   "name": {"type": "string"},
                   "operation": {
                     "type": "string",
                     "enum": ["create", "update", "delete"]
+                  },
+                  "manifest": {
+                    "type": "object"
                   }
-                }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "operation": {
+                          "enum": ["create", "update"]
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": ["manifest"]
+                    }
+                  }
+                ]
               }
             },
             "rollback_plan": {
@@ -178,6 +196,9 @@ data:
     import json
     import jsonschema
     from flask import Flask, request, jsonify
+    from kubernetes import client, config
+    from kubernetes.dynamic import DynamicClient
+    from kubernetes.dynamic.exceptions import NotFoundError
 
     app = Flask(__name__)
 
@@ -185,13 +206,39 @@ data:
     with open('/config/schema.json') as f:
         schema = json.load(f)
 
+    config.load_incluster_config()
+    dynamic_client = DynamicClient(client.ApiClient())
+
+    def is_blackout_window():
+        # Replace with your organization's blackout-window calendar lookup.
+        return False
+
+    def resource_exists(resource):
+        if resource['operation'] == 'create':
+            return True
+
+        api = dynamic_client.resources.get(
+            api_version=resource['apiVersion'],
+            kind=resource['kind']
+        )
+
+        try:
+            api.get(name=resource['name'], namespace=resource['namespace'])
+            return True
+        except NotFoundError:
+            return False
+
     @app.route('/validate', methods=['POST'])
     def validate_change():
         change_request = request.json
 
         try:
             # Validate against schema
-            jsonschema.validate(instance=change_request, schema=schema)
+            jsonschema.validate(
+                instance=change_request,
+                schema=schema,
+                format_checker=jsonschema.FormatChecker()
+            )
 
             # Additional validations
             errors = []
@@ -234,42 +281,59 @@ data:
   policies.rego: |
     package kubernetes.changes
 
+    import rego.v1
+
     # Deny changes that violate security policies
-    deny[msg] {
-      input.spec.resources[_].kind == "Pod"
-      not input.spec.resources[_].manifest.spec.securityContext.runAsNonRoot
+    deny contains msg if {
+      resource := input.spec.resources[_]
+      resource.kind == "Pod"
+      not resource.manifest.spec.securityContext.runAsNonRoot
       msg := "Pods must run as non-root user"
     }
 
-    deny[msg] {
-      input.spec.resources[_].kind == "Deployment"
-      not input.spec.resources[_].manifest.spec.template.spec.securityContext.runAsNonRoot
+    deny contains msg if {
+      resource := input.spec.resources[_]
+      resource.kind == "Deployment"
+      not resource.manifest.spec.template.spec.securityContext.runAsNonRoot
       msg := "Deployments must run as non-root user"
     }
 
     # Deny privileged containers
-    deny[msg] {
-      input.spec.resources[_].manifest.spec.containers[_].securityContext.privileged == true
+    deny contains msg if {
+      resource := input.spec.resources[_]
+      resource.kind == "Pod"
+      container := resource.manifest.spec.containers[_]
+      container.securityContext.privileged == true
+      msg := "Privileged containers are not allowed"
+    }
+
+    deny contains msg if {
+      resource := input.spec.resources[_]
+      resource.kind == "Deployment"
+      container := resource.manifest.spec.template.spec.containers[_]
+      container.securityContext.privileged == true
       msg := "Privileged containers are not allowed"
     }
 
     # Require resource limits
-    deny[msg] {
-      input.spec.resources[_].kind == "Deployment"
-      container := input.spec.resources[_].manifest.spec.template.spec.containers[_]
+    deny contains msg if {
+      resource := input.spec.resources[_]
+      resource.kind == "Deployment"
+      container := resource.manifest.spec.template.spec.containers[_]
       not container.resources.limits.cpu
       msg := sprintf("Container %v missing CPU limit", [container.name])
     }
 
-    deny[msg] {
-      input.spec.resources[_].kind == "Deployment"
-      container := input.spec.resources[_].manifest.spec.template.spec.containers[_]
+    deny contains msg if {
+      resource := input.spec.resources[_]
+      resource.kind == "Deployment"
+      container := resource.manifest.spec.template.spec.containers[_]
       not container.resources.limits.memory
       msg := sprintf("Container %v missing memory limit", [container.name])
     }
 
     # Deny changes to production during business hours without approval
-    deny[msg] {
+    deny contains msg if {
       input.metadata.priority != "critical"
       input.spec.resources[_].namespace == "production"
       is_business_hours
@@ -278,32 +342,33 @@ data:
     }
 
     # Validate rollback plan exists for risky changes
-    deny[msg] {
+    deny contains msg if {
       is_high_risk_change
       count(input.spec.rollback_plan) < 50
       msg := "High-risk changes require detailed rollback plan (minimum 50 characters)"
     }
 
     # Helper functions
-    is_business_hours {
+    is_business_hours if {
       hour := time.clock([time.now_ns(), "America/New_York"])[0]
       hour >= 9
       hour < 17
     }
 
-    has_emergency_approval {
-      input.metadata.approvals[_].role == "director"
+    has_emergency_approval if {
+      approval := object.get(input.metadata, "approvals", [])[_]
+      approval.role == "director"
     }
 
-    is_high_risk_change {
+    is_high_risk_change if {
       input.spec.resources[_].kind == "StatefulSet"
     }
 
-    is_high_risk_change {
+    is_high_risk_change if {
       input.spec.resources[_].operation == "delete"
     }
 
-    is_high_risk_change {
+    is_high_risk_change if {
       input.spec.resources[_].namespace == "production"
       count(input.spec.resources) > 5
     }
@@ -442,6 +507,8 @@ spec:
   - name: v1
     served: true
     storage: true
+    subresources:
+      status: {}
     schema:
       openAPIV3Schema:
         type: object
@@ -484,7 +551,7 @@ spec:
     singular: changeapproval
     kind: ChangeApproval
 ---
-# Example approval request
+# Example approval request after status is recorded
 apiVersion: change.example.com/v1
 kind: ChangeApproval
 metadata:
@@ -558,12 +625,12 @@ spec:
 
           while [ $(date +%s) -lt $END_TIME ]; do
             # Query metrics for baseline
-            BASELINE_ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query?query=rate(http_requests_total{deployment='$BASELINE_DEPLOYMENT',status=~'5..'}[1m])/rate(http_requests_total{deployment='$BASELINE_DEPLOYMENT'}[1m])" | jq -r '.data.result[0].value[1]')
-            BASELINE_LATENCY=$(curl -s "http://prometheus:9090/api/v1/query?query=histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{deployment='$BASELINE_DEPLOYMENT'}[1m]))" | jq -r '.data.result[0].value[1]')
+            BASELINE_ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query?query=sum(rate(http_requests_total{deployment='$BASELINE_DEPLOYMENT',status=~'5..'}[1m]))/sum(rate(http_requests_total{deployment='$BASELINE_DEPLOYMENT'}[1m]))" | jq -r '.data.result[0].value[1]')
+            BASELINE_LATENCY=$(curl -s "http://prometheus:9090/api/v1/query?query=histogram_quantile(0.95, sum by (deployment, le) (rate(http_request_duration_seconds_bucket{deployment='$BASELINE_DEPLOYMENT'}[1m])))" | jq -r '.data.result[0].value[1]')
 
             # Query metrics for canary
-            CANARY_ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query?query=rate(http_requests_total{deployment='$CANARY_DEPLOYMENT',status=~'5..'}[1m])/rate(http_requests_total{deployment='$CANARY_DEPLOYMENT'}[1m])" | jq -r '.data.result[0].value[1]')
-            CANARY_LATENCY=$(curl -s "http://prometheus:9090/api/v1/query?query=histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{deployment='$CANARY_DEPLOYMENT'}[1m]))" | jq -r '.data.result[0].value[1]')
+            CANARY_ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query?query=sum(rate(http_requests_total{deployment='$CANARY_DEPLOYMENT',status=~'5..'}[1m]))/sum(rate(http_requests_total{deployment='$CANARY_DEPLOYMENT'}[1m]))" | jq -r '.data.result[0].value[1]')
+            CANARY_LATENCY=$(curl -s "http://prometheus:9090/api/v1/query?query=histogram_quantile(0.95, sum by (deployment, le) (rate(http_request_duration_seconds_bucket{deployment='$CANARY_DEPLOYMENT'}[1m])))" | jq -r '.data.result[0].value[1]')
 
             # Compare metrics
             if (( $(echo "$CANARY_ERROR_RATE > $BASELINE_ERROR_RATE * 1.5" | bc -l) )); then
@@ -618,7 +685,7 @@ if [ $? -eq 0 ]; then
   # Verify service health
   sleep 60
 
-  ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query?query=rate(http_requests_total{deployment='$DEPLOYMENT',status=~'5..'}[5m])/rate(http_requests_total{deployment='$DEPLOYMENT'}[5m])" | jq -r '.data.result[0].value[1]')
+  ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query?query=sum(rate(http_requests_total{deployment='$DEPLOYMENT',status=~'5..'}[5m]))/sum(rate(http_requests_total{deployment='$DEPLOYMENT'}[5m]))" | jq -r '.data.result[0].value[1]')
 
   if (( $(echo "$ERROR_RATE < 0.01" | bc -l) )); then
     echo "Service health restored after rollback"
