@@ -40,7 +40,7 @@ type: Opaque
 stringData:
   AWS_ACCESS_KEY_ID: "your-access-key"
   AWS_SECRET_ACCESS_KEY: "your-secret-key"
-  BACKUP_URI: "s3://cockroachdb-backups/cluster-prod?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx&AWS_REGION=us-east-1"
+  BACKUP_URI: "s3://cockroachdb-backups/cluster-prod/full?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx&AWS_REGION=us-east-1"
 ```
 
 Apply the secret:
@@ -72,7 +72,7 @@ spec:
           serviceAccountName: cockroachdb-backup
           containers:
           - name: backup
-            image: cockroachdb/cockroach:v23.1.0
+            image: cockroachdb/cockroach:v26.2.1
             command:
               - /bin/bash
               - -c
@@ -83,20 +83,20 @@ spec:
                 
                 # Get backup URI from secret
                 BACKUP_URI=$(cat /secrets/BACKUP_URI)
-                TIMESTAMP=$(date +%Y%m%d_%H%M%S)
                 
                 # Perform full backup with revision history
-                cockroach sql \
+                JOB_ID=$(cockroach sql \
                   --url "postgresql://root@cockroachdb-public:26257/defaultdb?sslmode=verify-full&sslcert=/cockroach-certs/client.root.crt&sslkey=/cockroach-certs/client.root.key&sslrootcert=/cockroach-certs/ca.crt" \
-                  --execute="BACKUP DATABASE movr INTO '${BACKUP_URI}/full' AS OF SYSTEM TIME '-10s' WITH REVISION_HISTORY, detached;"
+                  --execute="BACKUP DATABASE movr INTO '${BACKUP_URI}' AS OF SYSTEM TIME '-10s' WITH revision_history, detached;" \
+                  --format=tsv | tail -1)
                 
-                echo "Full backup initiated successfully"
+                echo "Full backup initiated successfully as job ${JOB_ID}"
                 
                 # Monitor backup progress
                 while true; do
                   STATUS=$(cockroach sql \
                     --url "postgresql://root@cockroachdb-public:26257/defaultdb?sslmode=verify-full&sslcert=/cockroach-certs/client.root.crt&sslkey=/cockroach-certs/client.root.key&sslrootcert=/cockroach-certs/ca.crt" \
-                    --execute="SHOW JOBS SELECT id FROM [SHOW JOBS] WHERE job_type='BACKUP' ORDER BY created DESC LIMIT 1;" --format=tsv | tail -1)
+                    --execute="SELECT status FROM [SHOW JOBS] WHERE job_id = ${JOB_ID};" --format=tsv | tail -1)
                   
                   if echo "$STATUS" | grep -q "succeeded"; then
                     echo "Backup completed successfully"
@@ -155,7 +155,7 @@ spec:
           serviceAccountName: cockroachdb-backup
           containers:
           - name: incremental-backup
-            image: cockroachdb/cockroach:v23.1.0
+            image: cockroachdb/cockroach:v26.2.1
             command:
               - /bin/bash
               - -c
@@ -169,7 +169,7 @@ spec:
                 # Check if full backup exists
                 FULL_BACKUP_EXISTS=$(cockroach sql \
                   --url "postgresql://root@cockroachdb-public:26257/defaultdb?sslmode=verify-full&sslcert=/cockroach-certs/client.root.crt&sslkey=/cockroach-certs/client.root.key&sslrootcert=/cockroach-certs/ca.crt" \
-                  --execute="SHOW BACKUP FROM LATEST IN '${BACKUP_URI}/full';" --format=tsv 2>&1 || echo "none")
+                  --execute="SHOW BACKUP FROM LATEST IN '${BACKUP_URI}';" --format=tsv 2>&1 || echo "none")
                 
                 if echo "$FULL_BACKUP_EXISTS" | grep -q "none\|error"; then
                   echo "No full backup found. Run full backup first."
@@ -177,9 +177,29 @@ spec:
                 fi
                 
                 # Perform incremental backup
-                cockroach sql \
+                JOB_ID=$(cockroach sql \
                   --url "postgresql://root@cockroachdb-public:26257/defaultdb?sslmode=verify-full&sslcert=/cockroach-certs/client.root.crt&sslkey=/cockroach-certs/client.root.key&sslrootcert=/cockroach-certs/ca.crt" \
-                  --execute="BACKUP DATABASE movr INTO LATEST IN '${BACKUP_URI}/full' AS OF SYSTEM TIME '-10s' WITH REVISION_HISTORY, detached;"
+                  --execute="BACKUP DATABASE movr INTO LATEST IN '${BACKUP_URI}' AS OF SYSTEM TIME '-10s' WITH revision_history, detached;" \
+                  --format=tsv | tail -1)
+                
+                echo "Incremental backup initiated successfully as job ${JOB_ID}"
+                
+                # Monitor backup progress
+                while true; do
+                  STATUS=$(cockroach sql \
+                    --url "postgresql://root@cockroachdb-public:26257/defaultdb?sslmode=verify-full&sslcert=/cockroach-certs/client.root.crt&sslkey=/cockroach-certs/client.root.key&sslrootcert=/cockroach-certs/ca.crt" \
+                    --execute="SELECT status FROM [SHOW JOBS] WHERE job_id = ${JOB_ID};" --format=tsv | tail -1)
+                  
+                  if echo "$STATUS" | grep -q "succeeded"; then
+                    echo "Incremental backup completed successfully"
+                    break
+                  elif echo "$STATUS" | grep -q "failed\|canceled"; then
+                    echo "Incremental backup failed"
+                    exit 1
+                  fi
+                  
+                  sleep 30
+                done
                 
                 echo "Incremental backup completed at $(date)"
             volumeMounts:
@@ -212,18 +232,13 @@ CockroachDB has built-in backup scheduling:
 -- Connect to CockroachDB
 cockroach sql --url "postgresql://root@cockroachdb-public:26257/defaultdb?sslmode=verify-full"
 
--- Create scheduled full backup (daily at 2 AM)
-CREATE SCHEDULE daily_full_backup
+-- Create scheduled backups with incrementals every 4 hours and full backups daily at 2 AM UTC
+CREATE SCHEDULE movr_backup_schedule
 FOR BACKUP DATABASE movr
-INTO 's3://cockroachdb-backups/scheduled/full?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx'
-RECURRING '0 2 * * *'
-WITH SCHEDULE OPTIONS first_run = 'now';
-
--- Create scheduled incremental backup (every 4 hours)
-CREATE SCHEDULE hourly_incremental_backup
-FOR BACKUP DATABASE movr
-INTO LATEST IN 's3://cockroachdb-backups/scheduled/full?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx'
+INTO 's3://cockroachdb-backups/scheduled?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx'
+WITH revision_history
 RECURRING '0 */4 * * *'
+FULL BACKUP '0 2 * * *'
 WITH SCHEDULE OPTIONS first_run = 'now';
 
 -- View scheduled backups
@@ -245,20 +260,20 @@ Restore to specific timestamp:
 
 ```sql
 -- View available backups
-SHOW BACKUP FROM LATEST IN 's3://cockroachdb-backups/scheduled/full?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx';
+SHOW BACKUP FROM LATEST IN 's3://cockroachdb-backups/scheduled?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx';
 
 -- Restore to specific time
 RESTORE DATABASE movr
-FROM LATEST IN 's3://cockroachdb-backups/scheduled/full?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx'
+FROM LATEST IN 's3://cockroachdb-backups/scheduled?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx'
 AS OF SYSTEM TIME '2026-02-08 14:30:00';
 
 -- Restore specific tables
 RESTORE TABLE movr.users, movr.rides
-FROM LATEST IN 's3://cockroachdb-backups/scheduled/full?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx';
+FROM LATEST IN 's3://cockroachdb-backups/scheduled?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx';
 
 -- Restore with new database name
 RESTORE DATABASE movr
-FROM LATEST IN 's3://cockroachdb-backups/scheduled/full?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx'
+FROM LATEST IN 's3://cockroachdb-backups/scheduled?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx'
 WITH new_db_name = 'movr_restored';
 ```
 
@@ -284,25 +299,26 @@ fi
 echo "Starting restore from $BACKUP_LOCATION"
 
 if [ "$RESTORE_TIME" = "LATEST" ]; then
-    RESTORE_SQL="RESTORE DATABASE $DATABASE FROM LATEST IN '$BACKUP_LOCATION';"
+    RESTORE_SQL="RESTORE DATABASE $DATABASE FROM LATEST IN '$BACKUP_LOCATION' WITH detached;"
 else
-    RESTORE_SQL="RESTORE DATABASE $DATABASE FROM LATEST IN '$BACKUP_LOCATION' AS OF SYSTEM TIME '$RESTORE_TIME';"
+    RESTORE_SQL="RESTORE DATABASE $DATABASE FROM LATEST IN '$BACKUP_LOCATION' AS OF SYSTEM TIME '$RESTORE_TIME' WITH detached;"
 fi
 
 # Execute restore
-kubectl exec -it cockroachdb-0 -n cockroachdb -- \
+JOB_ID=$(kubectl exec cockroachdb-0 -n cockroachdb -- \
     cockroach sql \
     --url "postgresql://root@localhost:26257/defaultdb?sslmode=verify-full" \
-    --execute="$RESTORE_SQL"
+    --execute="$RESTORE_SQL" \
+    --format=tsv | tail -1)
 
-echo "Restore initiated. Monitoring progress..."
+echo "Restore initiated as job $JOB_ID. Monitoring progress..."
 
 # Monitor restore job
 while true; do
-    STATUS=$(kubectl exec -it cockroachdb-0 -n cockroachdb -- \
+    STATUS=$(kubectl exec cockroachdb-0 -n cockroachdb -- \
         cockroach sql \
         --url "postgresql://root@localhost:26257/defaultdb?sslmode=verify-full" \
-        --execute="SELECT status FROM [SHOW JOBS] WHERE job_type='RESTORE' ORDER BY created DESC LIMIT 1;" \
+        --execute="SELECT status FROM [SHOW JOBS] WHERE job_id = $JOB_ID;" \
         --format=tsv | tail -1)
     
     echo "Restore status: $STATUS"
@@ -337,11 +353,11 @@ ORDER BY created DESC
 LIMIT 10;
 
 -- Check backup size
-SHOW BACKUP FROM LATEST IN 's3://cockroachdb-backups/scheduled/full?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx';
+SHOW BACKUP FROM LATEST IN 's3://cockroachdb-backups/scheduled?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx';
 
 -- View backup details with revision history
-SHOW BACKUP FROM LATEST IN 's3://cockroachdb-backups/scheduled/full?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx'
-WITH revision_history;
+SHOW BACKUPS IN 's3://cockroachdb-backups/scheduled?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx'
+WITH REVISION START TIME;
 ```
 
 ## Implementing Backup Validation
@@ -352,18 +368,18 @@ Verify backup integrity regularly:
 #!/bin/bash
 # validate-backups.sh
 
-BACKUP_URI="s3://cockroachdb-backups/scheduled/full"
+BACKUP_URI="s3://cockroachdb-backups/scheduled?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=xxx"
 
 echo "Validating backups..."
 
 # Show backup metadata
-kubectl exec -it cockroachdb-0 -n cockroachdb -- \
+kubectl exec cockroachdb-0 -n cockroachdb -- \
     cockroach sql \
     --url "postgresql://root@localhost:26257/defaultdb?sslmode=verify-full" \
     --execute="SHOW BACKUP FROM LATEST IN '$BACKUP_URI';"
 
 # Check for corruption
-kubectl exec -it cockroachdb-0 -n cockroachdb -- \
+kubectl exec cockroachdb-0 -n cockroachdb -- \
     cockroach sql \
     --url "postgresql://root@localhost:26257/defaultdb?sslmode=verify-full" \
     --execute="SHOW BACKUP FROM LATEST IN '$BACKUP_URI' WITH check_files;"
