@@ -12,9 +12,9 @@ Kubernetes scheduler's default spreading behavior distributes pods evenly across
 
 ## Default Scheduler vs Bin Packing
 
-The default scheduler uses the `BalancedResourceAllocation` and `NodeResourcesLeastAllocated` plugins. These spread pods to balance resource usage across nodes. This approach is resilient but inefficient.
+The default scheduler uses the `NodeResourcesFit` plugin with the `LeastAllocated` scoring strategy, along with `NodeResourcesBalancedAllocation`. These spread pods to balance resource usage across nodes. This approach is resilient but inefficient.
 
-Bin packing uses the `NodeResourcesMostAllocated` plugin instead. It prioritizes nodes with highest resource utilization, packing pods tightly. This concentrates workloads on fewer nodes.
+Bin packing configures the `NodeResourcesFit` plugin to use the `MostAllocated` scoring strategy instead. It prioritizes nodes with highest requested resource utilization, packing pods tightly. This concentrates workloads on fewer nodes.
 
 The tradeoff is concentration risk. If a heavily-packed node fails, more pods are affected. Mitigate this with pod disruption budgets and anti-affinity rules for critical services.
 
@@ -30,21 +30,23 @@ profiles:
   plugins:
     score:
       disabled:
-      - name: NodeResourcesLeastAllocated
+      - name: NodeResourcesBalancedAllocation
       enabled:
-      - name: NodeResourcesMostAllocated
+      - name: NodeResourcesFit
         weight: 100
   pluginConfig:
-  - name: NodeResourcesMostAllocated
+  - name: NodeResourcesFit
     args:
-      resources:
-      - name: cpu
-        weight: 1
-      - name: memory
-        weight: 1
+      scoringStrategy:
+        type: MostAllocated
+        resources:
+        - name: cpu
+          weight: 1
+        - name: memory
+          weight: 1
 ```
 
-This configuration disables the spreading plugin and enables bin packing with equal weight for CPU and memory.
+This configuration disables the balancing score plugin and switches resource scoring to bin packing with equal weight for CPU and memory.
 
 Apply this configuration by modifying the scheduler manifest:
 
@@ -53,7 +55,7 @@ Apply this configuration by modifying the scheduler manifest:
 
 vi /etc/kubernetes/manifests/kube-scheduler.yaml
 
-# Add the config file mount and argument
+# Add the config file volume, mount, and argument
 --config=/etc/kubernetes/scheduler-config.yaml
 ```
 
@@ -65,13 +67,15 @@ Adjust resource weights to prioritize specific resources:
 
 ```yaml
 pluginConfig:
-- name: NodeResourcesMostAllocated
+- name: NodeResourcesFit
   args:
-    resources:
-    - name: cpu
-      weight: 2  # Prioritize CPU packing
-    - name: memory
-      weight: 1
+    scoringStrategy:
+      type: MostAllocated
+      resources:
+      - name: cpu
+        weight: 2  # Prioritize CPU packing
+      - name: memory
+        weight: 1
 ```
 
 This configuration packs CPU more aggressively than memory. Use this when CPU costs dominate your infrastructure spending or when memory utilization is naturally high.
@@ -80,15 +84,17 @@ For GPU workloads:
 
 ```yaml
 pluginConfig:
-- name: NodeResourcesMostAllocated
+- name: NodeResourcesFit
   args:
-    resources:
-    - name: cpu
-      weight: 1
-    - name: memory
-      weight: 1
-    - name: nvidia.com/gpu
-      weight: 5  # Strongly prefer GPU-packed nodes
+    scoringStrategy:
+      type: MostAllocated
+      resources:
+      - name: cpu
+        weight: 1
+      - name: memory
+        weight: 1
+      - name: nvidia.com/gpu
+        weight: 5  # Strongly prefer GPU-packed nodes
 ```
 
 GPU resources are expensive. High weights ensure GPU nodes fill completely before scheduling spreads to additional GPU nodes.
@@ -106,25 +112,27 @@ profiles:
   plugins:
     score:
       enabled:
-      - name: NodeResourcesLeastAllocated
+      - name: NodeResourcesFit
         weight: 1
 # Bin packing scheduler
 - schedulerName: bin-packing-scheduler
   plugins:
     score:
       disabled:
-      - name: NodeResourcesLeastAllocated
+      - name: NodeResourcesBalancedAllocation
       enabled:
-      - name: NodeResourcesMostAllocated
+      - name: NodeResourcesFit
         weight: 100
   pluginConfig:
-  - name: NodeResourcesMostAllocated
+  - name: NodeResourcesFit
     args:
-      resources:
-      - name: cpu
-        weight: 1
-      - name: memory
-        weight: 1
+      scoringStrategy:
+        type: MostAllocated
+        resources:
+        - name: cpu
+          weight: 1
+        - name: memory
+          weight: 1
 ```
 
 Critical production services use the default scheduler for resilience:
@@ -135,11 +143,18 @@ kind: Deployment
 metadata:
   name: critical-api
 spec:
+  selector:
+    matchLabels:
+      app: critical-api
   template:
+    metadata:
+      labels:
+        app: critical-api
     spec:
       schedulerName: default-scheduler
       containers:
       - name: api
+        image: nginx:1.27
         resources:
           requests:
             cpu: "500m"
@@ -157,8 +172,11 @@ spec:
   template:
     spec:
       schedulerName: bin-packing-scheduler
+      restartPolicy: OnFailure
       containers:
       - name: processor
+        image: busybox:1.37
+        command: ["sh", "-c", "echo processing && sleep 30"]
         resources:
           requests:
             cpu: "1000m"
@@ -169,19 +187,16 @@ This balances cost optimization with reliability requirements.
 
 ## Combining with Cluster Autoscaler
 
-Bin packing works best with cluster autoscaler. As pods pack onto fewer nodes, autoscaler detects empty nodes and scales them down:
+Bin packing works best with cluster autoscaler. As pods pack onto fewer nodes, autoscaler detects empty or underutilized nodes and scales them down. Configure scale-down settings as Cluster Autoscaler flags on its Deployment:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cluster-autoscaler-config
-  namespace: kube-system
-data:
-  scale-down-enabled: "true"
-  scale-down-delay-after-add: "5m"
-  scale-down-unneeded-time: "10m"
-  scale-down-utilization-threshold: "0.5"
+containers:
+- name: cluster-autoscaler
+  args:
+  - --scale-down-enabled=true
+  - --scale-down-delay-after-add=5m
+  - --scale-down-unneeded-time=10m
+  - --scale-down-utilization-threshold=0.5
 ```
 
 The utilization threshold of 0.5 means nodes with less than 50% utilization are candidates for scale-down. Bin packing creates these lightly-loaded nodes naturally.
@@ -205,7 +220,13 @@ metadata:
   name: web-frontend
 spec:
   replicas: 6
+  selector:
+    matchLabels:
+      app: web-frontend
   template:
+    metadata:
+      labels:
+        app: web-frontend
     spec:
       schedulerName: bin-packing-scheduler
       topologySpreadConstraints:
@@ -223,6 +244,7 @@ spec:
             app: web-frontend
       containers:
       - name: web
+        image: nginx:1.27
         resources:
           requests:
             cpu: "200m"
@@ -233,16 +255,10 @@ The hostname constraint prevents more than one replica difference per node. The 
 
 ## Node Affinity for Bin Packing Zones
 
-Designate specific node pools for bin-packed workloads:
+Designate specific node pools for bin-packed workloads by labeling existing nodes:
 
-```yaml
-apiVersion: v1
-kind: Node
-metadata:
-  name: worker-binpack-1
-  labels:
-    node-pool: bin-packing
-    workload-type: batch
+```bash
+kubectl label node worker-binpack-1 node-pool=bin-packing workload-type=batch
 ```
 
 Target these nodes for batch workloads:
@@ -256,6 +272,7 @@ spec:
   template:
     spec:
       schedulerName: bin-packing-scheduler
+      restartPolicy: OnFailure
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -267,6 +284,8 @@ spec:
                 - bin-packing
       containers:
       - name: analytics
+        image: busybox:1.37
+        command: ["sh", "-c", "echo analytics && sleep 30"]
         resources:
           requests:
             cpu: "2000m"
@@ -296,8 +315,8 @@ avg(
 # Nodes below utilization threshold
 count(
   (
-    sum by (node) (kube_pod_container_resource_requests_cpu_cores) /
-    sum by (node) (kube_node_status_allocatable_cpu_cores)
+    sum by (node) (kube_pod_container_resource_requests{resource="cpu", unit="core"}) /
+    sum by (node) (kube_node_status_allocatable{resource="cpu", unit="core"})
   ) < 0.3
 )
 ```
@@ -309,7 +328,7 @@ After implementing bin packing, you should see:
 
 ## Request-Based Scoring
 
-The bin packing plugin scores nodes based on requested resources, not actual usage. This means overcommitted nodes (many pods with low requests) may score poorly even if actual usage is low.
+The bin packing strategy scores nodes based on requested resources, not actual usage. This means nodes with many pods that have low requests can still score as lightly allocated even if actual usage is high.
 
 For workloads with accurate requests, this works well. For workloads with inflated requests, consider adjusting request values before enabling bin packing.
 
@@ -317,11 +336,11 @@ Calculate request-to-usage ratios:
 
 ```promql
 # CPU request vs usage
-sum(kube_pod_container_resource_requests_cpu_cores) /
+sum(kube_pod_container_resource_requests{resource="cpu", unit="core"}) /
 sum(rate(container_cpu_usage_seconds_total[5m]))
 
 # Memory request vs usage
-sum(kube_pod_container_resource_requests_memory_bytes) /
+sum(kube_pod_container_resource_requests{resource="memory", unit="byte"}) /
 sum(container_memory_working_set_bytes)
 ```
 
@@ -331,13 +350,8 @@ Ratios above 2.0 indicate significant over-requesting. Right-size these pods bef
 
 Test bin packing on a subset of nodes before full deployment:
 
-```yaml
-apiVersion: v1
-kind: Node
-metadata:
-  name: worker-test-1
-  labels:
-    bin-packing: enabled
+```bash
+kubectl label node worker-test-1 bin-packing=enabled
 ```
 
 Create a test scheduler profile that only affects these nodes:
@@ -348,12 +362,11 @@ kind: KubeSchedulerConfiguration
 profiles:
 - schedulerName: bin-packing-test
   plugins:
-    filter:
-      enabled:
-      - name: NodeAffinity
     score:
+      disabled:
+      - name: NodeResourcesBalancedAllocation
       enabled:
-      - name: NodeResourcesMostAllocated
+      - name: NodeResourcesFit
         weight: 100
   pluginConfig:
   - name: NodeAffinity
@@ -366,6 +379,10 @@ profiles:
               operator: In
               values:
               - enabled
+  - name: NodeResourcesFit
+    args:
+      scoringStrategy:
+        type: MostAllocated
 ```
 
 Test pods use this scheduler and only land on labeled nodes. Compare utilization and costs before expanding to production.
@@ -428,6 +445,6 @@ evictionSoftGracePeriod:
   nodefs.available: "2m"
 ```
 
-More generous thresholds reduce eviction frequency at the cost of less aggressive bin packing.
+More conservative thresholds leave more headroom before hard resource exhaustion at the cost of less aggressive bin packing.
 
 Bin packing is a powerful technique for reducing infrastructure costs in Kubernetes. Combined with cluster autoscaling and right-sized resource requests, it can cut compute expenses by 30-50% while maintaining acceptable reliability levels for non-critical workloads.
