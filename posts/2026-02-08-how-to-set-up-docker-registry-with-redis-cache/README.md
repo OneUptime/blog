@@ -8,7 +8,7 @@ Description: Speed up your private Docker registry by adding a Redis caching lay
 
 ---
 
-A Docker registry serves image manifests and layers to clients during pull operations. When multiple developers or CI runners pull the same images repeatedly, the registry hits its storage backend for every request. Adding a Redis cache in front of the storage layer dramatically reduces latency and backend load. Manifest lookups, layer existence checks, and metadata queries all benefit from caching.
+A Docker registry serves image manifests and layers to clients during pull operations. When multiple developers or CI runners pull the same images repeatedly, the registry performs repeated metadata lookups against its storage backend. Adding Redis for the registry's blob descriptor cache can reduce latency and backend load for those lookups. Layer existence checks and blob metadata queries benefit from caching.
 
 This guide shows you how to configure a Docker registry with Redis caching using Docker Compose, including tuning options for different workloads.
 
@@ -16,24 +16,23 @@ This guide shows you how to configure a Docker registry with Redis caching using
 
 Every `docker pull` triggers multiple API calls to the registry. First, it fetches the manifest to determine which layers make up the image. Then it checks each layer, downloading only the ones not already present locally. For a registry serving dozens of CI pipelines, that adds up fast.
 
-Redis caching helps in three key areas:
+Redis caching helps in two key areas:
 
-1. **Manifest caching** - The most frequently accessed resource. Caching manifests means the registry does not hit the storage backend for every pull.
-2. **Blob metadata caching** - Layer existence checks become near-instant.
-3. **Descriptor caching** - Internal registry lookups for tags and digests resolve faster.
+1. **Blob metadata caching** - Layer existence checks can avoid repeated storage backend metadata reads.
+2. **Descriptor caching** - Internal registry lookups for blob digests resolve faster.
 
 ## Architecture
 
 ```mermaid
 graph LR
     Client["Docker Client"] --> Registry["Docker Registry"]
-    Registry -->|Cache Hit| Redis
-    Registry -->|Cache Miss| Storage["Storage Backend"]
+    Registry -->|Descriptor Cache Hit| Redis
+    Registry -->|Descriptor Cache Miss| Storage["Storage Backend"]
     Storage --> Registry
     Registry --> Redis
 ```
 
-The registry checks Redis first for any cacheable data. On a hit, it returns the cached result immediately. On a miss, it fetches from the storage backend and populates the cache for future requests.
+For blob descriptor lookups, the registry checks Redis first. On a hit, it returns the cached descriptor immediately. On a miss, it reads the metadata from the storage backend and populates the cache for future requests.
 
 ## Docker Compose Configuration
 
@@ -204,7 +203,11 @@ docker push localhost:5000/alpine:latest
 # Remove the local image
 docker rmi localhost:5000/alpine:latest
 
-# Pull it back - this should be faster on the second pull
+# Pull it back once to warm the descriptor cache
+docker pull localhost:5000/alpine:latest
+docker rmi localhost:5000/alpine:latest
+
+# Pull it back again - this should be faster after the cache is warm
 time docker pull localhost:5000/alpine:latest
 ```
 
@@ -267,6 +270,8 @@ For production, add a password to Redis:
 redis:
   image: redis:7-alpine
   command: redis-server --requirepass your-redis-password --maxmemory 256mb --maxmemory-policy allkeys-lru
+  healthcheck:
+    test: ["CMD-SHELL", "REDISCLI_AUTH=your-redis-password redis-cli ping"]
 
 # Registry with Redis password
 registry:
@@ -276,14 +281,13 @@ registry:
 
 ## High Availability with Redis Sentinel
 
-For production registries that need high availability, consider Redis Sentinel:
+The `registry:2` Redis cache configuration supports a single Redis address. If you need Redis high availability, point the registry at a stable Redis endpoint provided by your Redis deployment or managed Redis service:
 
 ```yaml
-# Registry configured for Redis Sentinel
+# Registry pointed at a stable Redis endpoint
 registry:
   environment:
-    REGISTRY_REDIS_SENTINEL_MASTERNAME: mymaster
-    REGISTRY_REDIS_SENTINEL_ADDRS: "sentinel1:26379,sentinel2:26379,sentinel3:26379"
+    REGISTRY_REDIS_ADDR: redis-ha.example.com:6379
 ```
 
 ## Troubleshooting
