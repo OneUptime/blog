@@ -22,12 +22,15 @@ Group Replication supports both single-primary (one writable node) and multi-pri
 
 ## Prerequisites
 
-Install MySQL Shell for cluster management:
+Start a MySQL Shell client for cluster management:
 
 ```bash
-# Download MySQL Shell
+kubectl create namespace database --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl run mysql-shell --image=mysql/mysql-shell:8.0 -it --rm -- bash
+kubectl run mysql-shell -n database \
+  --image=mysql/mysql-shell:8.0 \
+  --restart=Never \
+  --command -- sleep 3600
 ```
 
 ## Deploying the Primary MySQL Instance
@@ -47,13 +50,9 @@ data:
     server_id=1
     gtid_mode=ON
     enforce_gtid_consistency=ON
-    binlog_checksum=NONE
     log_bin=binlog
-    log_slave_updates=ON
+    log_replica_updates=ON
     binlog_format=ROW
-    master_info_repository=TABLE
-    relay_log_info_repository=TABLE
-    transaction_write_set_extraction=XXHASH64
 
     # Group Replication settings
     plugin_load_add='group_replication.so'
@@ -115,8 +114,9 @@ spec:
           echo "[mysqld]" > /mnt/conf.d/server-id.cnf
           echo "server-id=$((100 + $ordinal))" >> /mnt/conf.d/server-id.cnf
 
-          # Update group replication local address
-          sed "s/mysql-0/mysql-$ordinal/g" /mnt/config-map/my.cnf > /mnt/conf.d/my.cnf
+          # Update only the local Group Replication address; keep the seed list intact
+          cp /mnt/config-map/my.cnf /mnt/conf.d/my.cnf
+          sed -i "s/group_replication_local_address=\"mysql-0/group_replication_local_address=\"mysql-$ordinal/" /mnt/conf.d/my.cnf
         volumeMounts:
         - name: conf
           mountPath: /mnt/conf.d
@@ -131,6 +131,8 @@ spec:
             secretKeyRef:
               name: mysql-credentials
               key: root-password
+        - name: MYSQL_ROOT_HOST
+          value: "%"
         ports:
         - name: mysql
           containerPort: 3306
@@ -187,10 +189,14 @@ kubectl wait --for=condition=ready pod -l app=mysql -n database --timeout=300s
 Bootstrap the cluster using MySQL Shell:
 
 ```bash
-# Connect to first instance
-kubectl exec -it mysql-0 -n database -- mysqlsh root@localhost
+# Connect to the first instance from the MySQL Shell client pod
+kubectl exec -it mysql-shell -n database -- \
+  mysqlsh root@mysql-0.mysql.database.svc.cluster.local:3306
 
 # In MySQL Shell:
+dba.configureInstance('root@mysql-0.mysql.database.svc.cluster.local:3306')
+dba.configureInstance('root@mysql-1.mysql.database.svc.cluster.local:3306')
+dba.configureInstance('root@mysql-2.mysql.database.svc.cluster.local:3306')
 dba.createCluster('productionCluster')
 
 # Add remaining instances
@@ -209,57 +215,6 @@ Expected output shows all three instances in the cluster with one primary.
 MySQL Router routes connections to the appropriate cluster members:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mysql-router-config
-  namespace: database
-data:
-  mysqlrouter.conf: |
-    [DEFAULT]
-    name=mysqlrouter
-    user=mysqlrouter
-    logging_folder=/tmp
-
-    [logger]
-    level=INFO
-
-    [metadata_cache:productionCluster]
-    cluster_name=productionCluster
-    router_id=1
-    bootstrap_server_addresses=mysql-0.mysql.database.svc.cluster.local:3306,mysql-1.mysql.database.svc.cluster.local:3306,mysql-2.mysql.database.svc.cluster.local:3306
-    user=root
-    metadata_cluster=productionCluster
-    ttl=0.5
-
-    [routing:productionCluster_rw]
-    bind_address=0.0.0.0
-    bind_port=6446
-    destinations=metadata-cache://productionCluster/?role=PRIMARY
-    routing_strategy=first-available
-    protocol=classic
-
-    [routing:productionCluster_ro]
-    bind_address=0.0.0.0
-    bind_port=6447
-    destinations=metadata-cache://productionCluster/?role=SECONDARY
-    routing_strategy=round-robin
-    protocol=classic
-
-    [routing:productionCluster_x_rw]
-    bind_address=0.0.0.0
-    bind_port=6448
-    destinations=metadata-cache://productionCluster/?role=PRIMARY
-    routing_strategy=first-available
-    protocol=x
-
-    [routing:productionCluster_x_ro]
-    bind_address=0.0.0.0
-    bind_port=6449
-    destinations=metadata-cache://productionCluster/?role=SECONDARY
-    routing_strategy=round-robin
-    protocol=x
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -277,7 +232,7 @@ spec:
     spec:
       containers:
       - name: mysql-router
-        image: mysql/mysql-router:8.0
+        image: container-registry.oracle.com/mysql/community-router:8.0
         env:
         - name: MYSQL_HOST
           value: "mysql-0.mysql.database.svc.cluster.local"
@@ -298,9 +253,9 @@ spec:
         - name: ro-port
           containerPort: 6447
         - name: x-rw-port
-          containerPort: 6448
+          containerPort: 64460
         - name: x-ro-port
-          containerPort: 6449
+          containerPort: 64470
         resources:
           requests:
             cpu: 200m
@@ -388,12 +343,13 @@ kubectl exec mysql-0 -n database -- \
 # Simulate primary failure by deleting its pod
 kubectl delete pod mysql-0 -n database
 
-# Watch automatic failover
+# Wait briefly for election, then check the new primary
+sleep 10
 kubectl exec mysql-1 -n database -- \
   mysql -uroot -psecureRootPassword123 -e "
     SELECT MEMBER_HOST, MEMBER_ROLE
     FROM performance_schema.replication_group_members;
-  " --wait
+  "
 
 # MySQL Router automatically redirects to new primary
 ```
@@ -413,7 +369,7 @@ cluster = dba.getCluster()
 cluster.status()
 ```
 
-Monitor replication lag:
+Monitor replication group status:
 
 ```bash
 kubectl exec mysql-0 -n database -- \
@@ -429,6 +385,8 @@ kubectl exec mysql-0 -n database -- \
 Implement read-write splitting in your application:
 
 ```python
+import mysql.connector
+
 class DatabaseConnections:
     def __init__(self):
         self.write_config = {
@@ -478,6 +436,18 @@ with db.get_read_connection() as conn:
 Create backup CronJob:
 
 ```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-backups
+  namespace: database
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 100Gi
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -512,16 +482,14 @@ spec:
               # Compress backup
               gzip /backup/$BACKUP_FILE
 
-              # Upload to S3
-              aws s3 cp /backup/$BACKUP_FILE.gz s3://mysql-backups/
-
               echo "Backup completed: $BACKUP_FILE.gz"
             volumeMounts:
             - name: backup
               mountPath: /backup
           volumes:
           - name: backup
-            emptyDir: {}
+            persistentVolumeClaim:
+              claimName: mysql-backups
           restartPolicy: OnFailure
 ```
 
@@ -545,6 +513,14 @@ cluster.addInstance('root@mysql-4.mysql.database.svc.cluster.local:3306')
 ## Monitoring with Prometheus
 
 Export InnoDB Cluster metrics:
+
+```bash
+kubectl exec mysql-0 -n database -- \
+  mysql -uroot -psecureRootPassword123 -e "
+    CREATE USER IF NOT EXISTS 'exporter'@'%' IDENTIFIED BY 'exporterPassword' WITH MAX_USER_CONNECTIONS 3;
+    GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'exporter'@'%';
+  "
+```
 
 ```yaml
 apiVersion: v1
@@ -576,12 +552,23 @@ spec:
       containers:
       - name: mysqld-exporter
         image: prom/mysqld-exporter:latest
-        env:
-        - name: DATA_SOURCE_NAME
-          value: "exporter:exporterPassword@(mysql-0.mysql.database.svc.cluster.local:3306)/"
+        args:
+        - "--mysqld.address=mysql-0.mysql.database.svc.cluster.local:3306"
+        - "--config.my-cnf=/.my.cnf"
+        - "--collect.perf_schema.replication_group_members"
+        - "--collect.perf_schema.replication_group_member_stats"
         ports:
         - containerPort: 9104
           name: metrics
+        volumeMounts:
+        - name: exporter-config
+          mountPath: /.my.cnf
+          subPath: .my.cnf
+          readOnly: true
+      volumes:
+      - name: exporter-config
+        configMap:
+          name: mysqld-exporter-config
 ---
 apiVersion: v1
 kind: Service
@@ -620,13 +607,13 @@ spec:
       annotations:
         summary: "MySQL instance is down"
 
-    - alert: MySQLReplicationLag
-      expr: mysql_slave_lag_seconds > 30
+    - alert: MySQLGroupReplicationQueue
+      expr: mysql_perf_schema_replication_group_member_stats_transactions_in_queue > 30
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "MySQL replication lag is high"
+        summary: "MySQL Group Replication queue is high"
 ```
 
 ## Best Practices
