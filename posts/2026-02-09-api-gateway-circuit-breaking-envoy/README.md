@@ -12,9 +12,9 @@ Circuit breakers prevent cascading failures in distributed systems by stopping r
 
 ## Understanding Circuit Breaking in Envoy
 
-Envoy implements circuit breaking through connection and request limits at the cluster level. When a backend service becomes unhealthy or overloaded, Envoy stops sending traffic to it, giving the service time to recover. This differs from simple health checks because circuit breakers respond to real-time error rates and performance degradation, not just availability.
+Envoy implements circuit breaking through connection, request, pending request, and retry limits at the cluster level. When a backend service is overloaded, Envoy rejects excess traffic instead of allowing unbounded resource consumption. Outlier detection complements these limits by ejecting individual unhealthy hosts from the load balancing pool based on observed failures.
 
-The circuit breaker operates in three states: closed (normal operation), open (blocking requests), and half-open (testing recovery). Envoy tracks metrics like consecutive errors, timeout rates, and connection failures to determine when to trip the circuit breaker.
+Envoy's circuit breaker gauges show whether each configured resource limit is still admitting traffic or is at capacity. Outlier detection tracks signals like consecutive 5xx responses, gateway failures, and statistical success rates to decide when to eject and later reintroduce individual hosts.
 
 ## Basic Circuit Breaker Configuration
 
@@ -94,7 +94,7 @@ Istio builds on Envoy's circuit breaking capabilities with Kubernetes-native con
 
 ```yaml
 # user-service-circuit-breaker.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: user-service
@@ -110,21 +110,21 @@ spec:
         http2MaxRequests: 100
         maxRequestsPerConnection: 2
     outlierDetection:
-      consecutiveErrors: 5
+      consecutive5xxErrors: 5
       interval: 30s
       baseEjectionTime: 60s
       maxEjectionPercent: 50
       minHealthPercent: 40
 ```
 
-The connectionPool settings control resource limits. `maxConnections` limits TCP connections to each instance, while `http1MaxPendingRequests` limits requests queued waiting for available connections. The `maxRequestsPerConnection` setting forces connection recycling, which helps detect network issues faster.
+The connectionPool settings control resource limits. `maxConnections` limits TCP connections to each instance, while `http1MaxPendingRequests` limits requests queued waiting for available connections. The `maxRequestsPerConnection` setting limits how many requests can use a single upstream connection before Envoy opens a new one.
 
 ## Progressive Circuit Breaking
 
-Implement progressive circuit breaking that tightens limits as error rates increase. This provides more responsive failure handling.
+Apply different circuit breaking thresholds to different service versions. This provides more cautious failure handling for newer or less-proven versions.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -138,7 +138,6 @@ spec:
         http1MaxPendingRequests: 100
         http2MaxRequests: 200
     outlierDetection:
-      consecutiveErrors: 3
       consecutive5xxErrors: 3
       interval: 10s
       baseEjectionTime: 30s
@@ -150,18 +149,18 @@ spec:
       version: v1
     trafficPolicy:
       outlierDetection:
-        consecutiveErrors: 5
+        consecutive5xxErrors: 5
         baseEjectionTime: 60s
   - name: v2
     labels:
       version: v2
     trafficPolicy:
       outlierDetection:
-        consecutiveErrors: 2
+        consecutive5xxErrors: 2
         baseEjectionTime: 15s
 ```
 
-This configuration applies different circuit breaking thresholds to different service versions. The v2 subset has more aggressive circuit breaking (trips after 2 errors) because it's newer and less proven, while v1 has more lenient thresholds.
+This configuration applies different outlier detection thresholds to different service versions. The v2 subset has more aggressive ejection (after 2 consecutive 5xx errors) because it's newer and less proven, while v1 has more lenient thresholds.
 
 ## Ambassador Circuit Breakers
 
@@ -197,11 +196,6 @@ spec:
     max_connections: 500
     max_pending_requests: 500
     max_requests: 500
-  outlier_detection:
-    consecutive_5xx: 5
-    interval: 10s
-    base_ejection_time: 30s
-    max_ejection_percent: 50
 ```
 
 Ambassador allows circuit breaker configuration at both the global level (Module) and per-route level (Mapping). The Mapping configuration overrides global settings for specific services that need tighter or looser limits.
@@ -211,7 +205,7 @@ Ambassador allows circuit breaker configuration at both the global level (Module
 Circuit breakers work closely with retry policies. Aggressive retry policies can worsen cascading failures, so coordinate them with your circuit breaking thresholds.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: catalog-service
@@ -228,7 +222,7 @@ spec:
       retryOn: 5xx,reset,connect-failure,refused-stream
     timeout: 10s
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: catalog-service
@@ -242,25 +236,25 @@ spec:
         http1MaxPendingRequests: 50
         maxRetries: 5
     outlierDetection:
-      consecutiveErrors: 3
+      consecutive5xxErrors: 3
       interval: 10s
       baseEjectionTime: 30s
 ```
 
-This configuration allows up to 3 retry attempts per request but limits the cluster to 5 concurrent retries. Without the `maxRetries` limit in the circuit breaker, a single failing request could spawn hundreds of retries that overwhelm the backend.
+This configuration allows up to 3 retry attempts per request but limits the cluster to 5 concurrent retries. Without the `maxRetries` limit in the circuit breaker, many failing requests can create enough concurrent retries to overwhelm the backend.
 
 ## Testing Circuit Breakers
 
 Verify your circuit breakers work correctly by simulating failures. Use a load generator to trigger the circuit breaker.
 
 ```bash
-# Install fortio for load testing
+# Start a fortio pod for load testing
 kubectl run fortio --image=fortio/fortio -- load -c 50 -qps 0 -n 1000 \
   http://user-service:8080/api/users
 
 # Check circuit breaker stats in Envoy
 kubectl exec -it <envoy-pod> -c istio-proxy -- \
-  curl localhost:15000/stats | grep user_service | grep circuit
+  curl localhost:15000/stats | grep user-service | grep circuit
 
 # Expected output showing circuit breaker engagement
 cluster.outbound|8080||user-service.default.svc.cluster.local.circuit_breakers.default.cx_open: 1
@@ -268,7 +262,7 @@ cluster.outbound|8080||user-service.default.svc.cluster.local.circuit_breakers.d
 cluster.outbound|8080||user-service.default.svc.cluster.local.circuit_breakers.default.rq_pending_open: 1
 ```
 
-When the circuit breaker trips, you'll see counters increment for connection limits (`cx_open`), request limits (`rq_open`), and pending request limits (`rq_pending_open`).
+When a circuit breaker is at capacity, you'll see gauges set to 1 for connection limits (`cx_open`), request limits (`rq_open`), and pending request limits (`rq_pending_open`).
 
 ## Monitoring Circuit Breaker State
 
@@ -305,22 +299,22 @@ spec:
     rules:
     - alert: CircuitBreakerOpen
       expr: |
-        increase(envoy_cluster_circuit_breakers_default_rq_open[5m]) > 10
+        max_over_time(envoy_cluster_circuit_breakers_default_rq_open[5m]) == 1
       for: 2m
       labels:
         severity: warning
       annotations:
         summary: "Circuit breaker tripped for {{ $labels.cluster_name }}"
-        description: "Circuit breaker has opened {{ $value }} times in the last 5 minutes"
+        description: "The request circuit breaker has been open in the last 5 minutes"
 
-    - alert: HighEjectionRate
+    - alert: OutlierEjectionsActive
       expr: |
-        rate(envoy_cluster_outlier_detection_ejections_active[5m]) > 0.3
+        max_over_time(envoy_cluster_outlier_detection_ejections_active[5m]) > 0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "High outlier detection ejection rate for {{ $labels.cluster_name }}"
+        summary: "Outlier detection ejections active for {{ $labels.cluster_name }}"
 ```
 
 ## Graceful Degradation
@@ -328,7 +322,7 @@ spec:
 Combine circuit breakers with graceful degradation strategies. When a circuit breaker opens, return cached data or reduced functionality instead of failing completely.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: recommendation-service
@@ -342,10 +336,10 @@ spec:
     route:
     - destination:
         host: recommendation-service
-      weight: 100
+      weight: 90
     - destination:
         host: recommendation-fallback
-      weight: 0
+      weight: 10
     timeout: 3s
     retries:
       attempts: 2
@@ -357,7 +351,7 @@ spec:
         httpStatus: 503
 ```
 
-When the primary service circuit breaker opens, Istio can route traffic to a fallback service that returns cached recommendations or generic popular items.
+This configuration sends a small percentage of requests to a fallback service that returns cached recommendations or generic popular items. A circuit breaker opening does not automatically change Istio route weights, so use monitoring alerts or application logic to increase fallback traffic during an incident.
 
 ## Conclusion
 
