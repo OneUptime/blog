@@ -120,7 +120,7 @@ Download and extract data archives:
 ```yaml
 initContainers:
 - name: download-and-extract-data
-  image: alpine:3.19
+  image: alpine:3.23
   command:
   - sh
   - -c
@@ -244,7 +244,7 @@ Populate volumes from multiple sources:
 ```yaml
 initContainers:
 - name: fetch-config
-  image: alpine:3.19
+  image: alpine:3.23
   command:
   - sh
   - -c
@@ -275,13 +275,12 @@ initContainers:
     mountPath: /templates
 
 - name: fetch-static-assets
-  image: amazon/aws-cli:2.13.0
-  command:
-  - sh
-  - -c
-  - |
-    echo "Downloading static assets from S3..."
-    aws s3 sync s3://my-bucket/assets/ /assets/
+  image: public.ecr.aws/aws-cli/aws-cli:2.34.44
+  args:
+  - s3
+  - sync
+  - s3://my-bucket/assets/
+  - /assets/
   volumeMounts:
   - name: static-assets
     mountPath: /assets
@@ -413,7 +412,7 @@ spec:
     spec:
       initContainers:
       - name: fetch-or-use-cached-data
-        image: alpine:3.19
+        image: alpine:3.23
         command:
         - sh
         - -c
