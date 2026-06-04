@@ -27,13 +27,17 @@ We'll use Prophet, a forecasting library from Facebook, to predict CPU usage bas
 
 Install dependencies:
 
-```python
+```text
 # requirements.txt
 
 prophet==1.1.5
 pandas==2.2.0
 prometheus-api-client==0.5.3
+prometheus-client==0.20.0
 kubernetes==29.0.0
+numpy==1.26.4
+scikit-learn==1.4.0
+tensorflow==2.15.0
 ```
 
 Create the forecasting service:
@@ -45,6 +49,8 @@ from prophet import Prophet
 from prometheus_api_client import PrometheusConnect
 from kubernetes import client, config
 import datetime
+import math
+import os
 import time
 
 class PredictiveScaler:
@@ -61,9 +67,11 @@ class PredictiveScaler:
         start_time = end_time - datetime.timedelta(days=days)
 
         query = f'''
-            avg(rate(container_cpu_usage_seconds_total{{
+            sum(rate(container_cpu_usage_seconds_total{{
                 namespace="{self.namespace}",
-                pod=~"{self.deployment_name}-.*"
+                pod=~"{self.deployment_name}-.*",
+                container!="",
+                image!=""
             }}[5m]))
         '''
 
@@ -114,7 +122,7 @@ class PredictiveScaler:
         target_cpu_per_pod = 0.7
 
         # Add 20% buffer for safety
-        required_replicas = int((predicted_cpu / target_cpu_per_pod) * 1.2)
+        required_replicas = math.ceil((predicted_cpu / target_cpu_per_pod) * 1.2)
 
         # Respect min/max bounds
         min_replicas = 2
@@ -196,9 +204,9 @@ class PredictiveScaler:
 # Run the scaler
 if __name__ == "__main__":
     scaler = PredictiveScaler(
-        prometheus_url="http://prometheus.monitoring:9090",
-        namespace="production",
-        deployment_name="webapp-deployment"
+        prometheus_url=os.getenv("PROMETHEUS_URL", "http://prometheus.monitoring:9090"),
+        namespace=os.getenv("NAMESPACE", "production"),
+        deployment_name=os.getenv("DEPLOYMENT", "webapp-deployment")
     )
     scaler.run_scaling_loop()
 ```
@@ -327,7 +335,8 @@ class LSTMPredictor:
     def predict_next_steps(self, recent_data, steps=12):
         """Predict next N time steps"""
         predictions = []
-        current_sequence = recent_data[-self.lookback_periods:].reshape(1, -1, 1)
+        scaled_recent = self.scaler.transform(np.array(recent_data).reshape(-1, 1))
+        current_sequence = scaled_recent[-self.lookback_periods:].reshape(1, -1, 1)
 
         for _ in range(steps):
             # Predict next value
@@ -335,7 +344,10 @@ class LSTMPredictor:
             predictions.append(next_pred[0, 0])
 
             # Update sequence
-            current_sequence = np.append(current_sequence[0, 1:], next_pred).reshape(1, -1, 1)
+            current_sequence = np.concatenate(
+                [current_sequence[:, 1:, :], next_pred.reshape(1, 1, 1)],
+                axis=1
+            )
 
         # Inverse transform to get actual values
         predictions = self.scaler.inverse_transform(np.array(predictions).reshape(-1, 1))
@@ -363,7 +375,7 @@ spec:
     metadata:
       serverAddress: http://prometheus.monitoring:9090
       query: |
-        rate(http_requests_total{namespace="production"}[1m])
+        sum(rate(http_requests_total{namespace="production"}[1m]))
       threshold: "2000"
   # Reactive trigger for CPU
   - type: cpu
@@ -372,15 +384,21 @@ spec:
       value: "80"
 ```
 
-The predictive scaler adjusts `minReplicaCount` based on forecasts, while KEDA handles reactive scaling for unexpected spikes.
+A predictive scaler can adjust `minReplicaCount` based on forecasts, while KEDA handles reactive scaling for unexpected spikes.
 
 ## Monitoring Prediction Accuracy
 
 Track how well predictions match reality:
 
 ```python
+import datetime
+import numpy as np
+
 def calculate_prediction_error(predicted, actual):
     """Calculate Mean Absolute Percentage Error"""
+    if actual == 0:
+        return 0 if predicted == 0 else float('inf')
+
     mape = np.mean(np.abs((actual - predicted) / actual)) * 100
     return mape
 
@@ -398,7 +416,7 @@ predictions_log.append({
 actual_cpu = fetch_actual_cpu_for_period()
 predictions_log[-1]['actual'] = actual_cpu
 
-error = calculate_prediction_error(predicted, actual_cpu)
+error = calculate_prediction_error(predictions_log[-1]['predicted'], actual_cpu)
 print(f"Prediction error: {error:.2f}%")
 ```
 
