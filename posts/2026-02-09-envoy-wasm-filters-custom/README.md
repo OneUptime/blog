@@ -8,13 +8,13 @@ Description: Learn how to build and deploy custom WASM filters in Envoy proxy fo
 
 ---
 
-WebAssembly (WASM) filters represent one of the most powerful extensibility mechanisms in Envoy proxy. Instead of modifying Envoy's core codebase or relying solely on built-in filters, WASM lets you write custom logic in languages like Rust, C++, or AssemblyScript, compile it to WASM bytecode, and run it directly within Envoy. This approach gives you near-native performance with strong sandboxing and portability across different Envoy versions and platforms.
+WebAssembly (WASM) filters represent one of the most powerful extensibility mechanisms in Envoy proxy. Instead of modifying Envoy's core codebase or relying solely on built-in filters, WASM lets you write custom logic in languages like Rust, C++, or AssemblyScript, compile it to WASM bytecode, and run it directly within Envoy. This approach gives you strong sandboxing and portability across different Envoy versions and platforms, although Envoy's HTTP WASM filter is still documented with production-readiness and security caveats.
 
-WASM filters operate within Envoy's filter chain, intercepting HTTP requests and responses just like native filters. The difference is that WASM filters run in a secure sandbox with defined resource limits, making them safer for production deployments. You can use WASM filters for custom authentication, request transformation, protocol translation, or any processing logic that doesn't exist in Envoy's standard filter set.
+WASM filters operate within Envoy's filter chain, intercepting HTTP requests and responses just like native filters. The difference is that WASM filters run in a sandbox with a defined host ABI and limited access to Envoy internals, making them safer than loading arbitrary native extension code. You can use WASM filters for custom authentication, request transformation, protocol translation, or any processing logic that doesn't exist in Envoy's standard filter set.
 
 ## Understanding Envoy WASM Architecture
 
-Envoy embeds a WASM runtime (typically V8 or WAVM) that executes your compiled WASM modules. Each filter instance runs in its own sandbox with limited access to Envoy internals through the proxy-wasm ABI (Application Binary Interface). This ABI defines how WASM code interacts with Envoy's host environment, including reading headers, accessing request bodies, making HTTP calls, and logging.
+Envoy embeds a WASM runtime (typically V8 in official builds, with WAMR and Wasmtime also supported by the API) that executes your compiled WASM modules. Each filter instance runs in a sandbox with limited access to Envoy internals through the proxy-wasm ABI (Application Binary Interface). This ABI defines how WASM code interacts with Envoy's host environment, including reading headers, accessing request bodies, making HTTP calls, and logging.
 
 The proxy-wasm specification provides SDKs for multiple languages. The most mature is proxy-wasm-rust-sdk, but proxy-wasm-cpp-sdk and AssemblyScript versions also exist. Your WASM filter implements callback functions like `on_request_headers`, `on_request_body`, and `on_response_headers` that Envoy invokes at different stages of request processing.
 
@@ -50,6 +50,7 @@ Now implement the filter logic:
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
 use log::info;
+use std::time::UNIX_EPOCH;
 
 // Define the root context for configuration
 struct CustomHeaderRoot;
@@ -79,7 +80,11 @@ impl Context for CustomHeaderFilter {}
 impl HttpContext for CustomHeaderFilter {
     fn on_http_request_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
         // Generate a unique request ID
-        self.request_id = self.get_current_time_nanoseconds() as u32;
+        self.request_id = self
+            .get_current_time()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u32;
 
         // Add custom headers to the request
         self.set_http_request_header("X-Custom-Request-ID", Some(&self.request_id.to_string()));
@@ -207,7 +212,7 @@ admin:
 
 ## Advanced WASM Filter Features
 
-Let's enhance the filter with more advanced capabilities like reading request bodies and making external HTTP calls.
+Let's enhance the filter with more advanced capabilities like reading request bodies and handling responses from external HTTP calls.
 
 ```rust
 impl HttpContext for CustomHeaderFilter {
@@ -271,9 +276,8 @@ http_filters:
               cluster: wasm_storage_cluster
               timeout: 10s
             sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-          # Cache the WASM module locally
-          retry_policy:
-            num_retries: 3
+            retry_policy:
+              num_retries: 3
 ```
 
 You need to add a cluster for the remote storage:
@@ -298,9 +302,9 @@ clusters:
       "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
 ```
 
-Resource Limits and Performance
+VM Options and Performance
 
-WASM filters run in a sandbox with resource limits. Configure these limits to prevent runaway filters from impacting Envoy:
+WASM filters run in a sandbox, and Envoy exposes VM options for environment variables, code-cache behavior, and precompiled modules:
 
 ```yaml
 vm_config:
@@ -312,7 +316,7 @@ vm_config:
   code:
     local:
       filename: "/etc/envoy/filters/custom_header_filter.wasm"
-  # Resource limits for the WASM VM
+  # Code-cache and precompiled-module options for the WASM VM
   nack_on_code_cache_miss: true
   allow_precompiled: true
 ```
@@ -334,13 +338,14 @@ docker run -d \
 curl -v http://localhost:8080/api/test
 
 # Check for custom headers in the response
-# You should see X-Custom-Request-ID and X-Processed-By headers
+# You should see the X-Request-ID response header; the X-Custom-Request-ID
+# and X-Processed-By request headers are forwarded to the backend service.
 ```
 
-View filter logs in the Envoy admin interface:
+Inspect Envoy logging and WASM stats through the admin interface:
 
 ```bash
-# Check logs
+# View or adjust log levels
 curl http://localhost:9901/logging
 
 # View stats for WASM filters
@@ -358,18 +363,37 @@ Debugging WASM can be challenging. Use these techniques:
 
 ```rust
 // Add metrics to your filter
+use proxy_wasm::hostcalls::{define_metric, increment_metric};
+
+struct CustomHeaderRoot {
+    requests_processed: u32,
+}
+
 impl RootContext for CustomHeaderRoot {
     fn on_vm_start(&mut self, _vm_configuration_size: usize) -> bool {
         // Define custom metrics
-        self.define_metric(MetricType::Counter, "requests_processed").unwrap();
+        self.requests_processed = define_metric(MetricType::Counter, "requests_processed")
+            .unwrap_or(0);
         true
     }
+
+    fn create_http_context(&self, _context_id: u32) -> Option<Box<dyn HttpContext>> {
+        Some(Box::new(CustomHeaderFilter {
+            request_id: 0,
+            requests_processed: self.requests_processed,
+        }))
+    }
+}
+
+struct CustomHeaderFilter {
+    request_id: u32,
+    requests_processed: u32,
 }
 
 impl HttpContext for CustomHeaderFilter {
     fn on_http_request_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
         // Increment the counter
-        self.increment_metric("requests_processed", 1);
+        increment_metric(self.requests_processed, 1).ok();
         Action::Continue
     }
 }
