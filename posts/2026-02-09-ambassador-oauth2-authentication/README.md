@@ -18,7 +18,7 @@ The OAuth2 filter in Ambassador Edge Stack provides:
 - Session management with cookies
 - Support for authorization code flow
 - Token validation and claims verification
-- Seamless integration with Mapping resources
+- Seamless integration with FilterPolicy and Mapping resources
 
 The filter handles the OAuth2 dance automatically, redirecting unauthenticated users to the identity provider and managing tokens transparently.
 
@@ -34,13 +34,12 @@ helm repo update
 
 # Install Ambassador Edge Stack
 kubectl create namespace ambassador
-kubectl apply -f https://app.getambassador.io/yaml/edge-stack/latest/aes-crds.yaml
+kubectl apply -f https://app.getambassador.io/yaml/edge-stack/3.13.1/aes-crds.yaml
 kubectl wait --timeout=90s --for=condition=available deployment emissary-apiext -n emissary-system
 
 helm install edge-stack datawire/edge-stack \
   --namespace ambassador \
-  --create-namespace \
-  --set emissary-ingress.agent.cloudConnectToken=$CLOUD_CONNECT_TOKEN
+  --set licenseKey.value=$LICENSE_KEY
 ```
 
 Verify the installation:
@@ -73,8 +72,7 @@ metadata:
   namespace: ambassador
 type: Opaque
 stringData:
-  client-id: YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com
-  client-secret: YOUR_GOOGLE_CLIENT_SECRET
+  oauth2-client-secret: YOUR_GOOGLE_CLIENT_SECRET
 ```
 
 Apply the secret:
@@ -96,8 +94,7 @@ metadata:
   namespace: ambassador
 type: Opaque
 stringData:
-  client-id: YOUR_AUTH0_CLIENT_ID
-  client-secret: YOUR_AUTH0_CLIENT_SECRET
+  oauth2-client-secret: YOUR_AUTH0_CLIENT_SECRET
 ```
 
 ## Configuring the OAuth2 Filter
@@ -114,39 +111,33 @@ metadata:
 spec:
   OAuth2:
     # OAuth2 provider configuration
-    authorizationURL: https://accounts.google.com/o/oauth2/v2/auth
+    authorizationURL: https://accounts.google.com
 
     # Client credentials from secret
     clientID: YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com
-    secret: google-oauth-client
+    secretName: google-oauth-client
 
-    # Required scopes
-    scopes:
-    - "openid"
-    - "email"
-    - "profile"
-
-    # Token endpoint
-    accessTokenValidation: auto
+    # The scheme and host that users access through Ambassador Edge Stack
+    protectedOrigins:
+    - origin: "https://your-domain.com"
 
     # Where tokens come from after authentication
     grantType: "AuthorizationCode"
 
-    # Cookie configuration for session management
-    cookieName: "ambassador_session"
-    cookieDomain: ".example.com"
+    # Maximum idle session duration (1 week)
+    clientSessionMaxIdle: "168h"
 
-    # Maximum session duration (1 week)
+    # Cache OIDC discovery and JWKS responses for up to 1 week
     maxStale: "168h"
 
     # Inject user info into headers
     injectRequestHeaders:
     - name: "X-User-Email"
-      value: "{{ .token.email }}"
+      value: "{{ index .idToken.Claims \"email\" }}"
     - name: "X-User-ID"
-      value: "{{ .token.sub }}"
+      value: "{{ index .idToken.Claims \"sub\" }}"
     - name: "X-User-Name"
-      value: "{{ .token.name }}"
+      value: "{{ index .idToken.Claims \"name\" }}"
 ```
 
 For Auth0, the configuration would be:
@@ -160,13 +151,11 @@ metadata:
   namespace: ambassador
 spec:
   OAuth2:
-    authorizationURL: https://YOUR_DOMAIN.auth0.com/authorize
+    authorizationURL: https://YOUR_DOMAIN.auth0.com
     clientID: YOUR_AUTH0_CLIENT_ID
-    secret: auth0-oauth-client
-    scopes:
-    - "openid"
-    - "profile"
-    - "email"
+    secretName: auth0-oauth-client
+    protectedOrigins:
+    - origin: "https://api.example.com"
     grantType: "AuthorizationCode"
 
     # Auth0 specific configuration
@@ -175,12 +164,7 @@ spec:
 
     # Token endpoint
     accessTokenValidation: auto
-    accessTokenJWTFilter:
-      issuer: "https://YOUR_DOMAIN.auth0.com/"
-      audience: "https://api.example.com"
-
-    cookieName: "auth0_session"
-    maxStale: "24h"
+    clientSessionMaxIdle: "24h"
 ```
 
 Apply the filter:
@@ -208,14 +192,18 @@ spec:
     filters:
     - name: oauth2-google
       namespace: ambassador
+      arguments:
+        scope:
+        - "openid"
+        - "email"
+        - "profile"
 
   # Allow public endpoints
   - host: "api.example.com"
     path: "/public/*"
-    filters: null
 ```
 
-Or apply directly to a Mapping:
+Create a Mapping for the protected service; the FilterPolicy above applies authentication based on the host and path:
 
 ```yaml
 # protected-mapping.yaml
@@ -226,22 +214,36 @@ metadata:
   namespace: default
 spec:
   hostname: api.example.com
-  prefix: /api/
+  prefix: /protected/
   service: backend-service:80
-
-  # Apply OAuth2 filter
-  filters:
-  - name: oauth2-google
-    namespace: ambassador
 ```
 
 ## Advanced Configuration Options
 
 ### Token Validation and Claims
 
-Configure JWT token validation with specific claims:
+Configure JWT token validation with issuer, audience, timestamp, and signing algorithm checks:
 
 ```yaml
+apiVersion: getambassador.io/v3alpha1
+kind: Filter
+metadata:
+  name: jwt-token-validation
+  namespace: ambassador
+spec:
+  JWT:
+    jwksURI: https://login.microsoftonline.com/YOUR_TENANT_ID/discovery/v2.0/keys
+    issuer: "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0"
+    requireIssuer: true
+    audience: "api://YOUR_API_ID"
+    requireAudience: true
+    requireExpiresAt: true
+    requireIssuedAt: true
+    validAlgorithms:
+    - "RS256"
+    - "RS384"
+    - "RS512"
+---
 apiVersion: getambassador.io/v3alpha1
 kind: Filter
 metadata:
@@ -249,37 +251,21 @@ metadata:
   namespace: ambassador
 spec:
   OAuth2:
-    authorizationURL: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+    authorizationURL: https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0
     clientID: YOUR_AZURE_CLIENT_ID
-    secret: azure-oauth-client
+    secretName: azure-oauth-client
+    protectedOrigins:
+    - origin: "https://api.example.com"
 
-    # Validate JWT tokens
+    # Validate access tokens with the JWT Filter above
     accessTokenValidation: jwt
     accessTokenJWTFilter:
-      issuer: "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0"
-      audience: "api://YOUR_API_ID"
-
-      # Require specific claims
-      requireClaims:
-      - name: "roles"
-        values:
-        - "admin"
-        - "user"
-
-      # Validate token expiration
-      requireExpiresAt: true
-      requireIssuedAt: true
-
-      # Allowed signing algorithms
-      supportedAlgs:
-      - "RS256"
-      - "RS384"
-      - "RS512"
+      name: jwt-token-validation
 ```
 
-### Custom Redirect URLs
+### Multiple Protected Origins
 
-Customize the OAuth2 callback handling:
+Configure multiple external origins that share the same authentication system:
 
 ```yaml
 apiVersion: getambassador.io/v3alpha1
@@ -289,22 +275,14 @@ metadata:
   namespace: ambassador
 spec:
   OAuth2:
-    authorizationURL: https://oauth.provider.com/authorize
+    authorizationURL: https://oauth.provider.com
     clientID: YOUR_CLIENT_ID
-    secret: oauth-client-secret
+    secretName: oauth-client-secret
 
-    # Custom redirect endpoint
+    # Register each origin as {{ORIGIN}}/.ambassador/oauth2/redirection-endpoint with the IdP
     protectedOrigins:
     - origin: "https://app.example.com"
     - origin: "https://admin.example.com"
-
-    # Where to redirect after authentication
-    redirectURL: "https://app.example.com/.ambassador/oauth2/redirection-endpoint"
-
-    # Allow specific return paths
-    allowedRedirectURLs:
-    - "https://app.example.com/dashboard"
-    - "https://app.example.com/profile"
 ```
 
 ### Session Configuration
@@ -319,24 +297,21 @@ metadata:
   namespace: ambassador
 spec:
   OAuth2:
-    authorizationURL: https://accounts.google.com/o/oauth2/v2/auth
+    authorizationURL: https://accounts.google.com
     clientID: YOUR_CLIENT_ID
-    secret: google-oauth-client
+    secretName: google-oauth-client
+    protectedOrigins:
+    - origin: "https://app.example.com"
 
-    # Session cookie settings
-    cookieName: "app_session"
-    cookieDomain: ".example.com"
-    cookiePath: "/"
-    cookieHttpOnly: true
-    cookieSecure: true
-    cookieSameSite: "Lax"
+    # Use browser-session cookies instead of cookies with a fixed expiration time
+    useSessionCookies:
+      value: true
 
-    # Session duration
+    # Maximum idle session duration
+    clientSessionMaxIdle: "24h"
+
+    # Cache OIDC discovery and JWKS responses for up to 24 hours
     maxStale: "24h"
-
-    # Token refresh
-    useRefreshToken: true
-    refreshTokenExpiryBuffer: "5m"
 ```
 
 ### Multiple OAuth2 Providers
@@ -353,24 +328,28 @@ metadata:
   namespace: ambassador
 spec:
   OAuth2:
-    authorizationURL: https://accounts.google.com/o/oauth2/v2/auth
+    authorizationURL: https://accounts.google.com
     clientID: GOOGLE_CLIENT_ID
-    secret: google-oauth-client
-    scopes: ["openid", "email", "profile"]
+    secretName: google-oauth-client
+    protectedOrigins:
+    - origin: "https://app.example.com"
 
-# GitHub OAuth2
+# Auth0 OAuth2
 ---
 apiVersion: getambassador.io/v3alpha1
 kind: Filter
 metadata:
-  name: oauth2-github
+  name: oauth2-auth0
   namespace: ambassador
 spec:
   OAuth2:
-    authorizationURL: https://github.com/login/oauth/authorize
-    clientID: GITHUB_CLIENT_ID
-    secret: github-oauth-client
-    scopes: ["read:user", "user:email"]
+    authorizationURL: https://YOUR_DOMAIN.auth0.com
+    clientID: AUTH0_CLIENT_ID
+    secretName: auth0-oauth-client
+    extraAuthorizationParameters:
+      audience: "https://api.example.com"
+    protectedOrigins:
+    - origin: "https://admin.example.com"
 
 # Apply different providers to different paths
 ---
@@ -386,11 +365,19 @@ spec:
     filters:
     - name: oauth2-google
       namespace: ambassador
+      arguments:
+        scope:
+        - "openid"
+        - "email"
+        - "profile"
   - host: "app.example.com"
-    path: "/github-login/*"
+    path: "/auth0-login/*"
     filters:
-    - name: oauth2-github
+    - name: oauth2-auth0
       namespace: ambassador
+      arguments:
+        scope:
+        - "openid"
 ```
 
 ## Testing OAuth2 Configuration
@@ -401,8 +388,9 @@ Test the OAuth2 flow:
 # Access a protected endpoint (should redirect to OAuth2 provider)
 curl -L https://api.example.com/protected/resource
 
-# After authentication, check injected headers
-curl -H "Cookie: ambassador_session=YOUR_SESSION_TOKEN" \
+# After authentication in a browser, copy the Ambassador Edge Stack session cookie
+# from the browser dev tools and check the protected endpoint
+curl -H "Cookie: ambassador_session.oauth2-google.ambassador=YOUR_SESSION_TOKEN" \
   https://api.example.com/protected/resource -v
 ```
 
@@ -443,7 +431,7 @@ Common issues:
 - **Redirect loop**: Check that `protectedOrigins` matches your actual domain
 - **Invalid client**: Verify client ID and secret are correct
 - **Token validation fails**: Ensure issuer and audience match your provider configuration
-- **Cookie not set**: Check cookie domain and secure settings match your environment
+- **Cookie not set**: Check that `protectedOrigins` uses the same scheme and host that users access
 
 Test OAuth2 configuration:
 
