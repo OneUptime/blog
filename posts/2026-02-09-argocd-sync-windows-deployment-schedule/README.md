@@ -109,7 +109,7 @@ spec:
     # Allow deployments: Weekday nights and Sundays
 ```
 
-Windows are evaluated in order. First matching window applies.
+When multiple windows match an application, deny windows take precedence over allow windows. If any allow window matches an application, syncs are allowed only while a matching allow window is active.
 
 ## Cron Schedule Syntax
 
@@ -158,9 +158,9 @@ metadata:
 spec:
   syncWindows:
     # Critical apps only deploy during maintenance window
-    - kind: deny
-      schedule: '0 0 * * *'
-      duration: 24h
+    - kind: allow
+      schedule: '0 2 * * *'
+      duration: 4h
       applications:
         - payment-processor
         - order-system
@@ -195,8 +195,6 @@ spec:
       duration: 12h
       namespaces:
         - production
-      applications:
-        - '*'
 
     # Staging can deploy anytime
     - kind: allow
@@ -204,8 +202,6 @@ spec:
       duration: 24h
       namespaces:
         - staging
-      applications:
-        - '*'
 ```
 
 ## Manual Sync Behavior
@@ -231,26 +227,7 @@ Use `manualSync: true` when you want to prevent accidents but allow emergency fi
 
 ## Timezone Configuration
 
-Sync windows use the ArgoCD server's timezone. Configure it via environment variable:
-
-```yaml
-# argocd-server deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-      - name: argocd-server
-        env:
-        - name: TZ
-          value: America/New_York
-```
-
-Or configure timezone in the AppProject:
+Sync windows use UTC by default. Configure a different timezone in the AppProject:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -273,11 +250,8 @@ spec:
 View sync window status in the ArgoCD CLI:
 
 ```bash
-# List projects with sync windows
-argocd proj list
-
-# Get detailed project info including active windows
-argocd proj get production
+# List sync windows for a project
+argocd proj windows list production
 
 # Check specific application sync status
 argocd app get my-app
@@ -338,6 +312,7 @@ spec:
     - kind: allow
       schedule: '0 2 * * *'
       duration: 4h
+      timeZone: America/New_York
       applications:
         - '*'
       manualSync: true
@@ -346,6 +321,7 @@ spec:
     - kind: deny
       schedule: '0 0 23 11 *'
       duration: 72h
+      timeZone: America/New_York
       applications:
         - '*'
       manualSync: false
@@ -354,6 +330,7 @@ spec:
     - kind: allow
       schedule: '0 0 * * *'
       duration: 24h
+      timeZone: America/New_York
       applications:
         - analytics-pipeline
         - reporting-dashboard
@@ -413,7 +390,7 @@ metadata:
   namespace: argocd
 spec:
   syncWindows:
-    # Deny syncs for next 5 minutes
+    # Deny syncs for three minutes every five minutes
     - kind: deny
       schedule: '*/5 * * * *'  # Every 5 minutes
       duration: 3m
@@ -427,7 +404,7 @@ Try syncing the test app:
 argocd app sync test-app
 ```
 
-Should fail with sync window error.
+Should fail with a sync window error when run during an active deny window.
 
 ## Best Practices
 
