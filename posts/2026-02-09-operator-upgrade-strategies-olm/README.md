@@ -10,7 +10,7 @@ Description: Learn how to implement operator upgrade strategies using Operator L
 
 Operator Lifecycle Manager (OLM) automates the deployment and upgrade of Kubernetes operators. It handles version management, dependency resolution, and upgrade strategies, making it easier to distribute and maintain operators across clusters. Understanding OLM upgrade strategies ensures smooth operator updates without disrupting workloads.
 
-OLM provides structured upgrade paths, automated dependency management, and rollback capabilities that manual operator deployment cannot match.
+OLM provides structured upgrade paths and automated dependency management that manual operator deployment cannot match.
 
 ## Installing OLM
 
@@ -102,18 +102,17 @@ spec:
 
 ## Defining Upgrade Paths
 
-Specify which versions can upgrade to this version:
+Specify which versions can upgrade to this version in your file-based catalog channel:
 
 ```yaml
-apiVersion: operators.coreos.com/v1alpha1
-kind: ClusterServiceVersion
-metadata:
-  name: myoperator.v2.0.0
-spec:
-  version: 2.0.0
+schema: olm.channel
+package: myoperator
+name: stable
+entries:
+- name: myoperator.v2.0.0
   replaces: myoperator.v1.0.0  # Replaces this version
 
-  # Or specify multiple previous versions
+  # Or specify multiple previous versions to skip
   # skips:
   # - myoperator.v1.5.0
   # - myoperator.v1.6.0
@@ -126,20 +125,27 @@ The `replaces` field defines the direct upgrade path. Users on v1.0.0 can upgrad
 Organize versions into channels for different update cadences:
 
 ```yaml
-apiVersion: operators.coreos.com/v1alpha1
-kind: Package
-metadata:
-  name: myoperator
-spec:
-  packageName: myoperator
-  channels:
-  - name: stable
-    currentCSV: myoperator.v2.0.0
-  - name: beta
-    currentCSV: myoperator.v2.1.0-beta
-  - name: alpha
-    currentCSV: myoperator.v3.0.0-alpha
-  defaultChannel: stable
+schema: olm.package
+name: myoperator
+defaultChannel: stable
+---
+schema: olm.channel
+package: myoperator
+name: stable
+entries:
+- name: myoperator.v2.0.0
+---
+schema: olm.channel
+package: myoperator
+name: beta
+entries:
+- name: myoperator.v2.1.0-beta
+---
+schema: olm.channel
+package: myoperator
+name: alpha
+entries:
+- name: myoperator.v3.0.0-alpha
 ```
 
 Users subscribe to a channel and receive updates within that channel:
@@ -207,8 +213,11 @@ package controllers
 
 import (
     "context"
+    "time"
 
     examplev1 "github.com/myorg/myoperator/api/v1"
+    "github.com/blang/semver/v4"
+    ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -239,7 +248,12 @@ func needsMigration(app *examplev1.Application) bool {
     // Check if resource was created by older operator version
     // Look for version annotation
     version := app.Annotations["operator-version"]
-    return version != "" && version < "2.0.0"
+    parsed, err := semver.ParseTolerant(version)
+    if err != nil {
+        return false
+    }
+
+    return parsed.LT(semver.MustParse("2.0.0"))
 }
 
 func (r *UpgradeReconciler) migrateResource(ctx context.Context, app *examplev1.Application) error {
@@ -288,24 +302,15 @@ spec:
 For breaking changes, use separate channels or explicit version skipping:
 
 ```yaml
-apiVersion: operators.coreos.com/v1alpha1
-kind: ClusterServiceVersion
-metadata:
-  name: myoperator.v3.0.0
-spec:
-  version: 3.0.0
+schema: olm.channel
+package: myoperator
+name: stable-v3
+entries:
+- name: myoperator.v3.0.0
   replaces: myoperator.v2.5.0
 
   # Users on older versions must upgrade to v2.5.0 first
   # Document this in description
-  description: |
-    Version 3.0.0 includes breaking changes.
-
-    **Upgrade Path:**
-    - v1.x -> v2.5.0 -> v3.0.0
-    - v2.x -> v2.5.0 -> v3.0.0
-
-    See migration guide at https://docs.example.com/migration-v3
 ```
 
 ## Testing Upgrades
@@ -313,17 +318,17 @@ spec:
 Test the upgrade process:
 
 ```bash
-# Install old version
-kubectl apply -f myoperator-v1.0.0.csv.yaml
+# Install old bundle
+operator-sdk run bundle myregistry/myoperator-bundle:v1.0.0 -n operators
 
 # Wait for operator to be ready
-kubectl wait --for=condition=Succeeded csv/myoperator.v1.0.0 -n operators
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded csv/myoperator.v1.0.0 -n operators
 
 # Create test resources with old operator
 kubectl apply -f test-app.yaml
 
-# Apply new version
-kubectl apply -f myoperator-v2.0.0.csv.yaml
+# Upgrade to the new bundle
+operator-sdk run bundle-upgrade myregistry/myoperator-bundle:v2.0.0 -n operators
 
 # Monitor upgrade
 kubectl get csv -n operators -w
@@ -364,7 +369,12 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
     // Check operator version compatibility
     requiredVersion := app.Annotations["minimum-operator-version"]
-    if requiredVersion != "" && currentOperatorVersion() < requiredVersion {
+    required, err := semver.ParseTolerant(requiredVersion)
+    if requiredVersion != "" && err != nil {
+        return ctrl.Result{}, err
+    }
+    current := semver.MustParse(currentOperatorVersion())
+    if requiredVersion != "" && current.LT(required) {
         // Don't process resources that require newer operator
         log.Info("Skipping resource requiring newer operator version",
             "resource", app.Name,
@@ -391,6 +401,9 @@ metadata:
   namespace: team-a
 spec:
   channel: stable
+  name: myoperator
+  source: my-catalog
+  sourceNamespace: olm
   installPlanApproval: Automatic
 ---
 # Namespace 2: Manual approval
@@ -401,6 +414,9 @@ metadata:
   namespace: team-b
 spec:
   channel: stable
+  name: myoperator
+  source: my-catalog
+  sourceNamespace: olm
   installPlanApproval: Manual
 ```
 
@@ -427,34 +443,50 @@ kubectl get installplan -n operators
 Package your operator for OperatorHub.io:
 
 ```bash
-# Create bundle
-operator-sdk bundle create \
-  myregistry/myoperator-bundle:v2.0.0 \
+# Generate bundle manifests
+operator-sdk generate bundle \
+  --version 2.0.0 \
   --channels stable,beta \
   --default-channel stable
 
 # Validate bundle
-operator-sdk bundle validate \
-  myregistry/myoperator-bundle:v2.0.0
+operator-sdk bundle validate ./bundle
+
+# Build bundle image
+docker build -f bundle.Dockerfile -t myregistry/myoperator-bundle:v2.0.0 .
 
 # Push bundle
 docker push myregistry/myoperator-bundle:v2.0.0
 
-# Create catalog index
-opm index add \
-  --bundles myregistry/myoperator-bundle:v2.0.0 \
-  --tag myregistry/myoperator-index:latest
+# Create and validate a file-based catalog
+mkdir -p catalog
+opm generate dockerfile catalog
+opm init myoperator --default-channel=stable --output yaml > catalog/myoperator.yaml
+opm render myregistry/myoperator-bundle:v2.0.0 --output=yaml >> catalog/myoperator.yaml
+cat <<EOF >> catalog/myoperator.yaml
+---
+schema: olm.channel
+package: myoperator
+name: stable
+entries:
+- name: myoperator.v2.0.0
+EOF
+opm validate catalog
+
+# Build and push catalog image
+docker build -f catalog.Dockerfile -t myregistry/myoperator-catalog:latest .
+docker push myregistry/myoperator-catalog:latest
 
 # Create catalog source
 kubectl apply -f - <<EOF
 apiVersion: operators.coreos.com/v1alpha1
 kind: CatalogSource
 metadata:
-  name: my-operators
+  name: my-catalog
   namespace: olm
 spec:
   sourceType: grpc
-  image: myregistry/myoperator-index:latest
+  image: myregistry/myoperator-catalog:latest
 EOF
 ```
 
