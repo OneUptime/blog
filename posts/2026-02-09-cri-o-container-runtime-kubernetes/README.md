@@ -14,7 +14,7 @@ CRI-O is a lightweight container runtime built specifically for Kubernetes. Unli
 
 CRI-O offers several advantages for Kubernetes deployments. It has a smaller attack surface compared to full-featured container engines, follows Kubernetes release cycles closely, and provides excellent OCI compliance. The runtime is maintained by the Kubernetes community and designed to work exclusively with Kubernetes.
 
-The architecture is straightforward: CRI-O receives requests from kubelet via the CRI, manages container lifecycle using runc or other OCI-compliant runtimes, and handles image pulling and storage. It does not include unnecessary features like docker-compose support or standalone CLI tools beyond what Kubernetes requires.
+The architecture is straightforward: CRI-O receives requests from kubelet via the CRI, manages container lifecycle using crun, runc, or other OCI-compliant runtimes, and handles image pulling and storage. It does not include unnecessary features like docker-compose support or standalone CLI tools beyond what Kubernetes requires.
 
 ## Installing CRI-O on Ubuntu
 
@@ -23,31 +23,44 @@ Install CRI-O on Ubuntu 22.04 or later:
 ```bash
 # Set up environment variables for your Kubernetes version
 
-export OS=xUbuntu_22.04
-export VERSION=1.28
+export KUBERNETES_VERSION=v1.36
+export CRIO_VERSION=v1.36
+
+# Install dependencies for package repositories
+sudo apt-get update
+sudo apt-get install -y software-properties-common curl gpg
+sudo mkdir -p -m 755 /etc/apt/keyrings
+
+# Add Kubernetes repository
+curl -fsSL https://pkgs.k8s.io/core:/stable:/$KUBERNETES_VERSION/deb/Release.key | \
+  sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/$KUBERNETES_VERSION/deb/ /" | \
+  sudo tee /etc/apt/sources.list.d/kubernetes.list
 
 # Add CRI-O repository
-echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/ /" | \
-  sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+curl -fsSL https://download.opensuse.org/repositories/isv:/cri-o:/stable:/$CRIO_VERSION/deb/Release.key | \
+  sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/cri-o-apt-keyring.gpg
 
-echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/$VERSION/$OS/ /" | \
-  sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable:cri-o:$VERSION.list
-
-# Add GPG keys
-curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/Release.key | \
-  sudo apt-key add -
-
-curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/$VERSION/$OS/Release.key | \
-  sudo apt-key add -
+echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/cri-o:/stable:/$CRIO_VERSION/deb/ /" | \
+  sudo tee /etc/apt/sources.list.d/cri-o.list
 
 # Install CRI-O
 sudo apt-get update
-sudo apt-get install cri-o cri-o-runc
+sudo apt-get install -y cri-o kubelet kubeadm kubectl
 
 # Enable and start CRI-O
 sudo systemctl daemon-reload
 sudo systemctl enable crio
 sudo systemctl start crio
+
+# Configure crictl to use CRI-O explicitly
+cat <<EOF | sudo tee /etc/crictl.yaml
+runtime-endpoint: unix:///var/run/crio/crio.sock
+image-endpoint: unix:///var/run/crio/crio.sock
+timeout: 10
+debug: false
+EOF
 ```
 
 Verify the installation:
@@ -85,12 +98,12 @@ Add these settings:
   # Directory for runtime state
   runroot = "/var/run/containers/storage"
 
-  # Storage driver (overlay2 recommended)
-  storage_driver = "overlay2"
+  # Storage driver (overlay recommended)
+  storage_driver = "overlay"
 
   # Storage options
   storage_option = [
-    "overlay2.override_kernel_check=1",
+    "overlay.override_kernel_check=1",
   ]
 
 [crio.api]
@@ -102,8 +115,8 @@ Add these settings:
   stream_port = "0"
 
 [crio.runtime]
-  # Default runtime (runc)
-  default_runtime = "runc"
+  # Default runtime (crun)
+  default_runtime = "crun"
 
   # Container runtime options
   no_pivot = false
@@ -146,15 +159,15 @@ Add these settings:
     "KILL",
   ]
 
-[crio.runtime.runtimes.runc]
-  # Path to runc binary
-  runtime_path = "/usr/bin/runc"
+[crio.runtime.runtimes.crun]
+  # Path to crun binary
+  runtime_path = "/usr/bin/crun"
 
   # Runtime type
   runtime_type = "oci"
 
   # Runtime root
-  runtime_root = "/run/runc"
+  runtime_root = "/run/crun"
 
 [crio.image]
   # Default transport for pulling images
@@ -164,7 +177,7 @@ Add these settings:
   global_auth_file = ""
 
   # Pause image for pod infrastructure containers
-  pause_image = "registry.k8s.io/pause:3.9"
+  pause_image = "registry.k8s.io/pause:3.10.1"
 
   # Pause image authentication
   pause_image_auth_file = ""
@@ -206,16 +219,20 @@ When initializing a Kubernetes cluster with kubeadm, specify CRI-O as the runtim
 ```bash
 # Create kubeadm configuration
 cat <<EOF > kubeadm-config.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
-kubernetesVersion: v1.28.0
+kubernetesVersion: v1.36.0
 networking:
   podSubnet: 10.244.0.0/16
 ---
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: InitConfiguration
 nodeRegistration:
   criSocket: unix:///var/run/crio/crio.sock
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
 EOF
 
 # Initialize cluster
@@ -228,16 +245,15 @@ sudo kubeadm join <control-plane-ip>:6443 \
   --cri-socket unix:///var/run/crio/crio.sock
 ```
 
-Configure kubelet to use CRI-O:
+For kubelet installations not bootstrapped by kubeadm, configure the runtime endpoint in the kubelet configuration file:
 
 ```bash
-# Create kubelet configuration drop-in
-sudo mkdir -p /etc/systemd/system/kubelet.service.d
+# Edit kubelet configuration
+sudo nano /var/lib/kubelet/config.yaml
 
-cat <<EOF | sudo tee /etc/systemd/system/kubelet.service.d/0-crio.conf
-[Service]
-Environment="KUBELET_EXTRA_ARGS=--container-runtime-endpoint=unix:///var/run/crio/crio.sock --cgroup-driver=systemd"
-EOF
+# Set these fields
+containerRuntimeEndpoint: unix:///var/run/crio/crio.sock
+cgroupDriver: systemd
 
 # Reload and restart kubelet
 sudo systemctl daemon-reload
@@ -249,11 +265,11 @@ sudo systemctl restart kubelet
 Set up authentication for private registries:
 
 ```bash
-# Create registry auth directory
-sudo mkdir -p /etc/crio/crio.conf.d
+# Create registry configuration directory
+sudo mkdir -p /etc/containers/registries.conf.d
 
 # Add registry configuration
-cat <<EOF | sudo tee /etc/crio/crio.conf.d/02-registries.conf
+cat <<EOF | sudo tee /etc/containers/registries.conf.d/02-registries.conf
 [[registry]]
   prefix = "docker.io"
   insecure = false
@@ -281,6 +297,13 @@ cat <<EOF | sudo tee /var/lib/kubelet/config.json
     }
   }
 }
+EOF
+
+# Point CRI-O at the global auth file for node-level pulls
+sudo mkdir -p /etc/crio/crio.conf.d
+cat <<EOF | sudo tee /etc/crio/crio.conf.d/02-auth.conf
+[crio.image]
+  global_auth_file = "/var/lib/kubelet/config.json"
 EOF
 
 # Restart CRI-O
@@ -391,7 +414,7 @@ Enable and access CRI-O metrics:
 # Check if metrics are enabled
 curl http://localhost:9090/metrics
 
-# Install Prometheus to scrape metrics
+# Expose one node's CRI-O metrics endpoint for Prometheus scraping
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Service
@@ -405,9 +428,19 @@ spec:
   - name: metrics
     port: 9090
     targetPort: 9090
-  selector:
-    app: crio
   type: ClusterIP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: crio-metrics
+  namespace: kube-system
+subsets:
+- addresses:
+  - ip: <node-ip>
+  ports:
+  - name: metrics
+    port: 9090
 EOF
 ```
 
