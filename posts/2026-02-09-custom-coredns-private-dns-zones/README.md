@@ -234,19 +234,19 @@ Combine private zone records with Kubernetes service discovery:
 internal.company.com:53 {
     errors
     log
-    # Serve static records from zone file
-    file /etc/coredns/zones/private/internal.zone
-    # Fall through to Kubernetes for dynamic services
-    kubernetes cluster.local in-addr.arpa ip6.arpa {
+    # Serve Kubernetes records in the same DNS zone
+    kubernetes internal.company.com {
         pods insecure
-        fallthrough in-addr.arpa ip6.arpa
+        fallthrough
         ttl 30
     }
+    # Fall through to static records from the zone file
+    file /etc/coredns/zones/private/internal.zone
     prometheus :9153
 }
 ```
 
-This configuration serves static records from the zone file while allowing Kubernetes services to be queried using the same domain.
+This configuration serves Kubernetes service records under the `internal.company.com` zone and falls through to static records from the zone file when Kubernetes does not have a matching record.
 
 ## Creating Wildcard Records for Dynamic Services
 
@@ -273,10 +273,10 @@ data:
     @       IN  NS  ns.apps.company.com.
 
     ; Wildcard for all application subdomains
-    *.apps  IN  A   10.200.1.100
+    *       IN  A   10.200.1.100
 
     ; Specific overrides
-    admin.apps  IN  A   10.200.1.101
+    admin   IN  A   10.200.1.101
 ```
 
 With this configuration, any query for `<anything>.apps.company.com` resolves to 10.200.1.100, except for `admin.apps.company.com` which has a specific override.
@@ -351,15 +351,13 @@ data:
     db      IN  A   10.20.1.20
 ```
 
-Each tenant gets an isolated zone with its own namespace, preventing cross-tenant DNS queries.
+Each tenant gets a separate DNS namespace, keeping tenant records organized under distinct zones. Use CoreDNS access controls, Kubernetes NetworkPolicies, or separate DNS deployments if you also need to restrict which clients can query each zone.
 
-## Implementing Split-Horizon DNS
+## Serving Internal Overrides with Public Forwarding
 
-Serve different records for the same domain based on the query source:
+Serve internal records for selected private domains while forwarding other names to public DNS:
 
 ```yaml
-# Internal view
-
 company.com:53 {
     errors
     log
@@ -378,14 +376,14 @@ company.com:53 {
         fallthrough in-addr.arpa ip6.arpa
         ttl 30
     }
-    # Forward external queries
+    # Forward all other queries
     forward . 8.8.8.8 8.8.4.4
     cache 300
     prometheus :9153
 }
 ```
 
-Internal clients resolve `company.com` records to private IPs, while external queries forward to public DNS.
+Clients using this CoreDNS instance resolve `company.com` records to private IPs, while unrelated queries are forwarded upstream.
 
 ## Automating Zone Updates with External DNS
 
@@ -408,7 +406,7 @@ spec:
     targetPort: 8080
 ```
 
-Configure external-dns to update your private zone ConfigMap when services change.
+Configure external-dns with a DNS provider that supports your private zone. For CoreDNS-backed zones, external-dns commonly uses the CoreDNS provider with an etcd backend rather than editing a zone-file ConfigMap directly.
 
 ## Testing Private Zone Configuration
 
@@ -427,7 +425,7 @@ kubectl exec dns-test -- nslookup myapp.apps.company.com
 # Test SRV record
 kubectl exec dns-test -- nslookup -type=srv _vault._tcp.internal.company.com
 
-# Verify isolation (should fail)
+# Verify a missing record (should fail)
 kubectl exec dns-test -- nslookup vault.tenant-a.internal
 ```
 
@@ -443,12 +441,12 @@ sum(rate(coredns_dns_requests_total[5m])) by (zone)
 
 # Response time by zone
 histogram_quantile(0.99,
-  rate(coredns_dns_request_duration_seconds_bucket[5m])
-) by (zone)
+  sum(rate(coredns_dns_request_duration_seconds_bucket[5m])) by (zone, le)
+)
 
 # Cache hit rate for private zones
-sum(rate(coredns_cache_hits_total{type="success"}[5m])) by (zone) /
-sum(rate(coredns_dns_requests_total[5m])) by (zone)
+sum(rate(coredns_cache_hits_total{type="success"}[5m])) by (zones) /
+sum(rate(coredns_cache_requests_total[5m])) by (zones)
 ```
 
 These metrics help you optimize cache settings and identify heavily-queried zones.
@@ -489,4 +487,4 @@ This RBAC configuration restricts private zone modifications to authorized servi
 
 ## Conclusion
 
-Custom CoreDNS configurations for private DNS zones provide flexible, secure internal service discovery in Kubernetes environments. By creating separate zones for different environments, tenants, or service categories, you build a maintainable DNS architecture that scales with your organization. Combine static zone files with dynamic Kubernetes service discovery, implement split-horizon DNS for security, and monitor zone performance to ensure reliable name resolution. Proper private zone design simplifies application configuration while maintaining the isolation and security required for production environments.
+Custom CoreDNS configurations for private DNS zones provide flexible, secure internal service discovery in Kubernetes environments. By creating separate zones for different environments, tenants, or service categories, you build a maintainable DNS architecture that scales with your organization. Combine static zone files with dynamic Kubernetes service discovery, configure private overrides and upstream forwarding carefully, and monitor zone performance to ensure reliable name resolution. Proper private zone design simplifies application configuration while maintaining the isolation and security required for production environments.
