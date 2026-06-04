@@ -142,9 +142,9 @@ spec:
     match:
       paths:
       - /api/*
-    plugins:
-    - name: key-auth
+    authentication:
       enable: true
+      type: keyAuth
     backends:
     - serviceName: backend-service
       servicePort: 8080
@@ -175,10 +175,10 @@ curl -i -H "apikey: mobile-app-secret-key-12345" \
 Custom header name:
 
 ```yaml
-plugins:
-- name: key-auth
+authentication:
   enable: true
-  config:
+  type: keyAuth
+  keyAuth:
     header: X-API-Key  # Custom header name
 ```
 
@@ -243,10 +243,10 @@ Log format includes:
   "server": {
     "hostname": "apisix-pod-xyz"
   },
-  "start_time": 1643723400,
-  "latency": 0.045,
-  "upstream_latency": 0.042,
-  "apisix_latency": 0.003,
+  "start_time": 1643723400000,
+  "latency": 45,
+  "upstream_latency": 42,
+  "apisix_latency": 3,
   "client_ip": "10.244.0.5",
   "service_id": "1",
   "route_id": "1"
@@ -265,7 +265,7 @@ plugins:
     path: /var/log/apisix/access.log
 ```
 
-Configure log rotation via ConfigMap:
+Configure APISIX log rotation via ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -276,12 +276,13 @@ metadata:
 data:
   config.yaml: |
     plugins:
-      - file-logger
+      - log-rotate
     plugin_attr:
-      file-logger:
-        path: /var/log/apisix/access.log
+      log-rotate:
+        interval: 3600
+        max_kept: 168
         max_size: 104857600  # 100MB
-        max_backups: 5
+        enable_compression: false
 ```
 
 ## Syslog Plugin
@@ -295,10 +296,9 @@ plugins:
   config:
     host: syslog-server.default.svc.cluster.local
     port: 514
-    facility: local7
-    severity: info
-    max_retry_count: 3
-    retry_delay: 1
+    timeout: 3000
+    sock_type: tcp
+    flush_limit: 4096
 ```
 
 ## TCP Logger Plugin
@@ -326,9 +326,11 @@ plugins:
 - name: kafka-logger
   enable: true
   config:
-    broker_list:
-      - kafka-broker-1.kafka.svc.cluster.local:9092
-      - kafka-broker-2.kafka.svc.cluster.local:9092
+    brokers:
+      - host: kafka-broker-1.kafka.svc.cluster.local
+        port: 9092
+      - host: kafka-broker-2.kafka.svc.cluster.local
+        port: 9092
     kafka_topic: api-logs
     producer_type: async
     required_acks: 1
@@ -382,9 +384,10 @@ spec:
     match:
       paths:
       - /api/*
-    plugins:
-    - name: key-auth
+    authentication:
       enable: true
+      type: keyAuth
+    plugins:
     - name: http-logger
       enable: true
       config:
@@ -396,17 +399,20 @@ spec:
       servicePort: 8080
 ```
 
-Consumer identity is logged automatically:
+Consumer identity can be included in a custom log format:
+
+```yaml
+log_format:
+  consumer_name: $consumer_name
+  method: $request_method
+  uri: $request_uri
+```
 
 ```json
 {
-  "consumer": {
-    "consumer_name": "mobile-app"
-  },
-  "request": {
-    "method": "GET",
-    "uri": "/api/users"
-  }
+  "consumer_name": "mobile-app",
+  "method": "GET",
+  "uri": "/api/users"
 }
 ```
 
