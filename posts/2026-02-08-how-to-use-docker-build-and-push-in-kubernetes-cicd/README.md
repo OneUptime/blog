@@ -8,7 +8,7 @@ Description: Practical approaches to building and pushing Docker images within K
 
 ---
 
-Building Docker images inside a Kubernetes-based CI/CD pipeline presents a unique challenge. The traditional approach of running `docker build` requires access to a Docker daemon, but running Docker inside a container (Docker-in-Docker) has security implications. Fortunately, several tools solve this problem without requiring privileged containers or a Docker socket mount.
+Building Docker images inside a Kubernetes-based CI/CD pipeline presents a unique challenge. The traditional approach of running `docker build` requires access to a Docker daemon, but running Docker inside a container (Docker-in-Docker) has security implications. Fortunately, several tools solve this problem without requiring a Docker socket mount, and some can run without privileged containers.
 
 This guide covers the most practical methods for building and pushing Docker images from within Kubernetes pods, including Kaniko, BuildKit, and integration with popular CI/CD systems.
 
@@ -27,9 +27,9 @@ volumes:
 
 This gives the CI pod full control over the host's Docker daemon, meaning any container can access any other container on that host, pull secrets, or even escape the container boundary. For production clusters, this is unacceptable.
 
-## Method 1: Kaniko (Recommended)
+## Method 1: Kaniko (Daemonless Builds)
 
-Kaniko is Google's tool for building container images inside Kubernetes without needing a Docker daemon. It runs entirely in user space and builds images from a Dockerfile, then pushes the result directly to a registry.
+Kaniko is a tool for building container images inside Kubernetes without needing a Docker daemon. It runs entirely in user space and builds images from a Dockerfile, then pushes the result directly to a registry. The original `GoogleContainerTools/kaniko` repository was archived in 2025, so confirm your team's support and maintenance requirements before standardizing on it.
 
 ### Setting Up Registry Credentials
 
@@ -170,6 +170,13 @@ spec:
             - "unix:///run/buildkit/buildkitd.sock"
             - "--addr"
             - "tcp://0.0.0.0:1234"
+            # Use mTLS when exposing BuildKit over TCP
+            - "--tlscacert"
+            - "/certs/ca.pem"
+            - "--tlscert"
+            - "/certs/cert.pem"
+            - "--tlskey"
+            - "/certs/key.pem"
           # BuildKit needs some elevated permissions for overlay filesystem
           securityContext:
             privileged: true
@@ -178,6 +185,13 @@ spec:
           volumeMounts:
             - name: buildkit-state
               mountPath: /var/lib/buildkit
+            - name: buildkit-certs
+              mountPath: /certs
+              readOnly: true
+      volumes:
+        - name: buildkit-certs
+          secret:
+            secretName: buildkit-daemon-certs
   volumeClaimTemplates:
     - metadata:
         name: buildkit-state
@@ -206,6 +220,9 @@ Send builds to the daemon using the `buildctl` CLI:
 ```bash
 # Build and push using a remote BuildKit daemon
 buildctl --addr tcp://buildkitd.ci.svc.cluster.local:1234 \
+  --tlscacert ./certs/ca.pem \
+  --tlscert ./certs/client-cert.pem \
+  --tlskey ./certs/client-key.pem \
   build \
   --frontend dockerfile.v0 \
   --local context=. \
@@ -226,21 +243,21 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: my-runner-scale-set
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -358,9 +375,10 @@ CMD ["node", "server.js"]
 ```bash
 # Build with inline cache metadata, then use it on the next build
 docker buildx build \
-  --cache-from type=registry,ref=myuser/myapp:cache \
+  --cache-from type=registry,ref=myuser/myapp:latest \
   --cache-to type=inline \
   -t myuser/myapp:v1.0 \
+  -t myuser/myapp:latest \
   --push .
 ```
 
@@ -375,4 +393,4 @@ docker buildx build \
 
 ## Conclusion
 
-Building Docker images inside Kubernetes CI/CD pipelines no longer requires the Docker daemon. Kaniko provides the simplest, most secure approach for most teams, requiring zero privileged access while supporting all Dockerfile features. BuildKit offers more flexibility and speed for complex build scenarios. Whichever tool you choose, the pattern is the same: clone code, build image, push to registry, update deployment. With proper caching, builds complete in seconds rather than minutes, keeping your CI/CD pipeline fast and your developers productive.
+Building Docker images inside Kubernetes CI/CD pipelines no longer requires the Docker daemon. Kaniko provides a simple daemonless approach for many Dockerfile builds, while BuildKit offers more flexibility and speed for complex build scenarios. Whichever tool you choose, the pattern is the same: clone code, build image, push to registry, update deployment. With proper caching, builds can complete much faster, keeping your CI/CD pipeline fast and your developers productive.
