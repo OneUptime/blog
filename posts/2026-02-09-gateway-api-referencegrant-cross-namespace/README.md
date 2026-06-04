@@ -8,7 +8,7 @@ Description: Configure ReferenceGrant resources to enable secure cross-namespace
 
 ---
 
-The Kubernetes Gateway API uses ReferenceGrant to enable secure cross-namespace resource references. By default, routes can only reference backends in the same namespace. ReferenceGrant explicitly grants permission for cross-namespace access, maintaining security while enabling shared infrastructure patterns. This guide shows you how to use ReferenceGrant effectively.
+The Kubernetes Gateway API uses ReferenceGrant to enable secure cross-namespace resource references such as Route backend references and Gateway certificate references. By default, routes can only reference backends in the same namespace. ReferenceGrant explicitly grants permission for cross-namespace access, maintaining security while enabling shared infrastructure patterns. This guide shows you how to use ReferenceGrant effectively.
 
 ## Why Cross-Namespace References Matter
 
@@ -18,7 +18,7 @@ In multi-tenant clusters or complex architectures, you need to reference resourc
 - Shared services (databases, caches) in a platform namespace accessed by application namespaces
 - Development teams deploying routes in their own namespaces connecting to shared infrastructure
 
-Without ReferenceGrant, you'd need to duplicate resources or put everything in one namespace, which creates security and organizational issues.
+Without the appropriate Gateway API cross-namespace controls, you'd need to duplicate resources or put everything in one namespace, which creates security and organizational issues.
 
 ## Basic ReferenceGrant Example
 
@@ -27,7 +27,7 @@ Allow HTTPRoutes in the `frontend` namespace to reference services in the `backe
 ```yaml
 # backend-reference-grant.yaml
 
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-frontend-to-backend
@@ -62,6 +62,8 @@ spec:
       port: 8080
 ```
 
+The `shared-gateway` must also allow the route to attach from the `frontend` namespace using the listener's `allowedRoutes` configuration.
+
 Apply both manifests:
 
 ```bash
@@ -75,7 +77,7 @@ Restrict the grant to specific service names:
 
 ```yaml
 # specific-service-grant.yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-frontend-to-specific-services
@@ -98,7 +100,7 @@ Attempting to reference other services in the `backend` namespace will fail.
 
 ## Gateway Cross-Namespace Access
 
-Allow routes in application namespaces to attach to a central gateway:
+Allow routes in application namespaces to attach to a central gateway. Route-to-Gateway attachment is controlled by the Gateway listener's `allowedRoutes` field, not by ReferenceGrant:
 
 ```yaml
 # shared-gateway.yaml
@@ -117,30 +119,13 @@ spec:
       namespaces:
         from: Selector
         selector:
-          matchLabels:
-            gateway-access: allowed
----
-# Grant access from app namespaces
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata:
-  name: allow-app-namespaces-to-gateway
-  namespace: infrastructure
-spec:
-  from:
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    namespace: app-team-1
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    namespace: app-team-2
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    namespace: app-team-3
-  to:
-  - group: gateway.networking.k8s.io
-    kind: Gateway
-    name: shared-gateway
+          matchExpressions:
+          - key: kubernetes.io/metadata.name
+            operator: In
+            values:
+            - app-team-1
+            - app-team-2
+            - app-team-3
 ```
 
 Teams deploy routes in their own namespaces:
@@ -181,7 +166,7 @@ data:
   tls.key: <base64-encoded-key>
 ---
 # Grant access to the certificate
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-gateway-to-certs
@@ -231,9 +216,19 @@ metadata:
 spec:
   gatewayClassName: kong
   listeners:
-  - name: https
-    protocol: HTTPS
-    port: 443
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchExpressions:
+          - key: kubernetes.io/metadata.name
+            operator: In
+            values:
+            - tenant1
+            - tenant2
 ---
 apiVersion: v1
 kind: Service
@@ -246,8 +241,8 @@ spec:
   ports:
   - port: 8080
 ---
-# Grant tenant1 access to gateway and shared services
-apiVersion: gateway.networking.k8s.io/v1beta1
+# Grant tenant1 access to shared services
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: tenant1-platform-access
@@ -258,15 +253,12 @@ spec:
     kind: HTTPRoute
     namespace: tenant1
   to:
-  - group: gateway.networking.k8s.io
-    kind: Gateway
-    name: platform-gateway
   - group: ""
     kind: Service
     name: shared-auth-service
 ---
-# Grant tenant2 access (separate grant for isolation)
-apiVersion: gateway.networking.k8s.io/v1beta1
+# Grant tenant2 access to shared services (separate grant for isolation)
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: tenant2-platform-access
@@ -277,9 +269,6 @@ spec:
     kind: HTTPRoute
     namespace: tenant2
   to:
-  - group: gateway.networking.k8s.io
-    kind: Gateway
-    name: platform-gateway
   - group: ""
     kind: Service
     name: shared-auth-service
@@ -326,7 +315,7 @@ Grant access for multiple route types:
 
 ```yaml
 # multi-route-type-grant.yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-all-route-types
@@ -487,6 +476,6 @@ Remove a ReferenceGrant to revoke access:
 kubectl delete referencegrant allow-frontend-to-backend -n backend
 ```
 
-Routes referencing the now-forbidden resources will fail with `RefNotPermitted` errors.
+Routes referencing the now-forbidden backend resources will fail with `RefNotPermitted` errors.
 
 ReferenceGrant provides secure, explicit cross-namespace resource sharing in the Gateway API. Use it to enable shared infrastructure patterns while maintaining clear security boundaries. Always grant the minimum necessary access, document why grants exist, and regularly audit grants to remove unused permissions. This approach balances operational flexibility with security best practices in multi-tenant environments.
