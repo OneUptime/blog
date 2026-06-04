@@ -47,6 +47,15 @@ data:
             regex: ([^:]+)(?::\d+)?;(\d+)
             replacement: $1:$2
             target_label: __address__
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: replace
+            target_label: app
 ```
 
 ## Creating a Metrics Validation Script
@@ -58,8 +67,7 @@ Build a reusable validation script:
 
 import requests
 import sys
-import time
-from datetime import datetime, timedelta
+import math
 
 class PrometheusGate:
     def __init__(self, prometheus_url):
@@ -104,8 +112,9 @@ class PrometheusGate:
         return error_rate < threshold
 
     def check_latency(self, app, namespace, percentile=95, threshold_ms=1000, duration="5m"):
+        quantile = percentile / 100
         query = f'''
-          histogram_quantile(0.{percentile},
+          histogram_quantile({quantile},
             sum(rate(http_request_duration_seconds_bucket{{
               app="{app}",
               namespace="{namespace}"
@@ -124,12 +133,14 @@ class PrometheusGate:
 
         return latency_ms < threshold_ms
 
-    def check_cpu_usage(self, app, namespace, threshold=80, duration="5m"):
+    def check_cpu_usage(self, app, namespace, threshold_cores=0.8, duration="5m"):
         query = f'''
-          avg(rate(container_cpu_usage_seconds_total{{
+          sum(rate(container_cpu_usage_seconds_total{{
             pod=~"{app}-.*",
-            namespace="{namespace}"
-          }}[{duration}])) * 100
+            namespace="{namespace}",
+            container!="",
+            image!=""
+          }}[{duration}]))
         '''
 
         results = self.query(query)
@@ -138,10 +149,10 @@ class PrometheusGate:
             print(f"No CPU data found for {app}")
             return False
 
-        cpu_percent = float(results[0]["value"][1])
-        print(f"CPU usage: {cpu_percent:.2f}% (threshold: {threshold}%)")
+        cpu_cores = float(results[0]["value"][1])
+        print(f"CPU usage: {cpu_cores:.2f} cores (threshold: {threshold_cores} cores)")
 
-        return cpu_percent < threshold
+        return not math.isnan(cpu_cores) and cpu_cores < threshold_cores
 
 def main():
     prometheus_url = sys.argv[1]
@@ -153,7 +164,7 @@ def main():
     checks = [
         ("Error Rate", gate.check_error_rate(app, namespace, threshold=0.01)),
         ("P95 Latency", gate.check_latency(app, namespace, percentile=95, threshold_ms=1000)),
-        ("CPU Usage", gate.check_cpu_usage(app, namespace, threshold=80)),
+        ("CPU Usage", gate.check_cpu_usage(app, namespace, threshold_cores=0.8)),
     ]
 
     print("\nDeployment Gate Results:")
@@ -193,7 +204,7 @@ jobs:
   deploy-staging:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Deploy to staging
         run: |
@@ -219,7 +230,7 @@ jobs:
     needs: deploy-staging
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Deploy to production
         run: |
@@ -252,7 +263,7 @@ jobs:
 Create a Tekton task for metrics validation:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: validate-prometheus-metrics
@@ -277,9 +288,11 @@ spec:
         sleep $(params.wait-time)
 
     - name: check-error-rate
-      image: curlimages/curl:latest
+      image: alpine:latest
       script: |
         #!/bin/sh
+        apk add --no-cache curl jq bc
+
         QUERY='sum(rate(http_requests_total{app="$(params.app-name)",namespace="$(params.namespace)",status=~"5.."}[5m]))/sum(rate(http_requests_total{app="$(params.app-name)",namespace="$(params.namespace)"}[5m]))'
 
         RESULT=$(curl -s '$(params.prometheus-url)/api/v1/query' \
@@ -296,9 +309,11 @@ spec:
         fi
 
     - name: check-latency
-      image: curlimages/curl:latest
+      image: alpine:latest
       script: |
         #!/bin/sh
+        apk add --no-cache curl jq bc
+
         QUERY='histogram_quantile(0.95,sum(rate(http_request_duration_seconds_bucket{app="$(params.app-name)",namespace="$(params.namespace)"}[5m]))by(le))*1000'
 
         RESULT=$(curl -s '$(params.prometheus-url)/api/v1/query' \
@@ -318,7 +333,7 @@ spec:
 Use in pipeline:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: deploy-with-gates
@@ -393,30 +408,35 @@ Implement canary deployment with metric validation:
 ```yaml
 - name: Deploy canary
   run: |
-    # Deploy 10% canary
-    kubectl patch deployment myapp -n production -p '{
-      "spec": {
-        "template": {
-          "metadata": {
-            "labels": {"version": "canary"}
-          },
-          "spec": {
-            "containers": [{
-              "name": "myapp",
-              "image": "registry.example.com/myapp:${{ github.sha }}"
-            }]
-          }
-        },
-        "replicas": 1
-      }
-    }'
+    # Deploy one canary replica alongside the stable deployment
+    kubectl apply -n production -f - <<EOF
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp-canary
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: myapp
+          version: canary
+      template:
+        metadata:
+          labels:
+            app: myapp
+            version: canary
+        spec:
+          containers:
+            - name: myapp
+              image: registry.example.com/myapp:${{ github.sha }}
+    EOF
 
 - name: Validate canary metrics
   run: |
     sleep 300  # 5 minutes
 
     # Check canary-specific metrics
-    CANARY_ERROR_RATE=$(curl -s 'http://prometheus:9090/api/v1/query' \
+    CANARY_ERROR_RATE=$(curl -s 'http://prometheus.monitoring.svc:9090/api/v1/query' \
       --data-urlencode 'query=sum(rate(http_requests_total{version="canary",status=~"5.."}[5m]))/sum(rate(http_requests_total{version="canary"}[5m]))' | \
       jq -r '.data.result[0].value[1]')
 
