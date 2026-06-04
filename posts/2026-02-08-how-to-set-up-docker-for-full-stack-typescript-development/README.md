@@ -77,8 +77,9 @@ export interface HealthCheck {
 }
 ```
 
+`shared/package.json`:
+
 ```json
-// shared/package.json
 {
   "name": "@app/shared",
   "version": "1.0.0",
@@ -94,8 +95,15 @@ export interface HealthCheck {
 }
 ```
 
+`shared/src/index.ts`:
+
+```typescript
+export * from './types';
+```
+
+`shared/tsconfig.json`:
+
 ```json
-// shared/tsconfig.json
 {
   "compilerOptions": {
     "target": "ES2022",
@@ -113,8 +121,9 @@ export interface HealthCheck {
 
 Create the Express backend:
 
+`backend/package.json`:
+
 ```json
-// backend/package.json
 {
   "name": "@app/backend",
   "version": "1.0.0",
@@ -140,6 +149,24 @@ Create the Express backend:
     "typescript": "^5.3.0",
     "tsx": "^4.7.0"
   }
+}
+```
+
+`backend/tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"]
 }
 ```
 
@@ -215,7 +242,7 @@ app.get('/api/users', async (req, res) => {
       return res.json(response);
     }
 
-    const result = await pool.query('SELECT * FROM users ORDER BY created_at DESC');
+    const result = await pool.query('SELECT id, email, name, created_at AS "createdAt" FROM users ORDER BY created_at DESC');
     const users: User[] = result.rows;
 
     // Cache for 60 seconds
@@ -238,7 +265,7 @@ app.post('/api/users', async (req, res) => {
 
   try {
     const result = await pool.query(
-      'INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3) RETURNING id, email, name, created_at',
+      'INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3) RETURNING id, email, name, created_at AS "createdAt"',
       [email, name, password] // In production, hash the password
     );
 
@@ -267,7 +294,7 @@ Backend Dockerfile:
 ```dockerfile
 # backend/Dockerfile - production build for Express backend
 
-FROM node:21-alpine AS builder
+FROM node:lts-alpine AS builder
 
 WORKDIR /app
 
@@ -285,7 +312,7 @@ COPY backend/src ./backend/src
 RUN cd backend && npm run build
 
 # Stage 2: Production runtime
-FROM node:21-alpine
+FROM node:lts-alpine
 
 WORKDIR /app
 
@@ -314,8 +341,9 @@ CMD ["node", "dist/index.js"]
 
 Create the React frontend:
 
+`frontend/package.json` (key parts):
+
 ```json
-// frontend/package.json (key parts)
 {
   "name": "@app/frontend",
   "version": "1.0.0",
@@ -343,7 +371,7 @@ Frontend Dockerfile:
 
 ```dockerfile
 # frontend/Dockerfile - multi-stage build for React frontend
-FROM node:21-alpine AS builder
+FROM node:lts-alpine AS builder
 
 WORKDIR /app
 
@@ -414,8 +442,6 @@ This is where everything comes together:
 
 ```yaml
 # docker-compose.dev.yml - full development environment
-version: "3.8"
-
 services:
   frontend:
     build:
@@ -460,7 +486,6 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app"]
       interval: 5s
@@ -483,7 +508,7 @@ Development Dockerfiles use volume mounts for hot reloading:
 
 ```dockerfile
 # backend/Dockerfile.dev
-FROM node:21-alpine
+FROM node:lts-alpine
 
 WORKDIR /app
 
@@ -504,7 +529,7 @@ CMD ["npx", "tsx", "watch", "src/index.ts"]
 
 ```dockerfile
 # frontend/Dockerfile.dev
-FROM node:21-alpine
+FROM node:lts-alpine
 
 WORKDIR /app
 
@@ -527,8 +552,6 @@ CMD ["npx", "vite", "--host", "0.0.0.0"]
 
 ```yaml
 # docker-compose.yml - production configuration
-version: "3.8"
-
 services:
   frontend:
     build:
