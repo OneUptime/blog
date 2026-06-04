@@ -10,13 +10,13 @@ Description: Configure Cluster Autoscaler priority expander to control which nod
 
 When Cluster Autoscaler needs to add nodes, it must choose which node group or pool to expand. The priority expander lets you influence this decision by assigning priorities to different node groups. This enables strategies like preferring spot instances over on-demand, choosing specific instance types, or directing workloads to particular availability zones.
 
-Without a priority expander configured, Cluster Autoscaler uses the random expander by default, which selects node groups randomly. The priority expander gives you control over these decisions, letting you optimize for cost, performance, or other operational requirements.
+Without a priority expander configured, Cluster Autoscaler uses the least-waste expander by default, which selects the node group that leaves the least idle CPU and memory after scale-up. The priority expander gives you control over these decisions, letting you optimize for cost, performance, or other operational requirements.
 
 ## Understanding Priority Expander
 
-The priority expander uses a ConfigMap that defines priority values for node groups. Higher priority groups are preferred during scale-up. You can match node groups using regular expressions, making it easy to apply priorities based on naming conventions.
+The priority expander uses a ConfigMap named `cluster-autoscaler-priority-expander` in the Cluster Autoscaler namespace to define priority values for node groups. Higher priority groups are preferred during scale-up. You can match node groups using regular expressions, making it easy to apply priorities based on naming conventions.
 
-When multiple node groups can satisfy pending pods, Cluster Autoscaler selects the highest priority group. If multiple groups have the same priority, it falls back to other selection criteria like cost or utilization.
+When multiple node groups can satisfy pending pods, Cluster Autoscaler selects the highest priority group. If multiple groups have the same priority, one of those groups is selected at random unless you configure additional expanders as tie-breakers.
 
 ## Basic Priority Expander Configuration
 
@@ -61,23 +61,16 @@ spec:
       serviceAccountName: cluster-autoscaler
       containers:
       - name: cluster-autoscaler
-        image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.27.0
+        image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.34.3
         command:
         - ./cluster-autoscaler
         - --v=4
         - --cloud-provider=aws
         - --expander=priority
         - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/my-cluster
-        volumeMounts:
-        - name: priority-config
-          mountPath: /etc/kubernetes/priority-expander
-      volumes:
-      - name: priority-config
-        configMap:
-          name: cluster-autoscaler-priority-expander
 ```
 
-The --expander=priority flag enables the priority expander.
+The --expander=priority flag enables the priority expander. Use a Cluster Autoscaler image version that matches your cluster's Kubernetes major and minor version.
 
 ## Prioritizing Cost-Optimized Node Groups
 
@@ -146,7 +139,7 @@ data:
       - .*-us-east-1[def]-.*
 ```
 
-This configuration balances workloads across zones while preferring primary zones.
+This configuration prefers specific zones during scale-up. If you want Cluster Autoscaler to keep equivalent zonal node groups balanced, also enable `--balance-similar-node-groups`.
 
 ## Instance Type Hierarchy
 
@@ -284,7 +277,7 @@ kubectl edit configmap cluster-autoscaler-priority-expander -n kube-system
 kubectl logs -n kube-system deployment/cluster-autoscaler | tail -20
 ```
 
-ConfigMap changes take effect within the autoscaler's polling interval without requiring pod restart.
+ConfigMap changes are loaded without requiring a pod restart and are applied on subsequent autoscaler evaluations.
 
 ## Priority Rules for Multi-Tenant Clusters
 
