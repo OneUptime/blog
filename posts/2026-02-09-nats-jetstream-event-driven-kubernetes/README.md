@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, NATS, JetStream, Event-Driven, Microservice
 
-Description: Build scalable event-driven architectures on Kubernetes using NATS JetStream for reliable message streaming with persistence and exactly-once delivery.
+Description: Build scalable event-driven architectures on Kubernetes using NATS JetStream for reliable message streaming with persistence and deduplication support.
 
 ---
 
-NATS JetStream brings persistence, streaming, and exactly-once delivery semantics to the lightweight NATS messaging system. When deployed on Kubernetes, it provides a powerful foundation for event-driven architectures that are both performant and reliable. This guide shows you how to implement NATS JetStream for production event-driven systems.
+NATS JetStream brings persistence, streaming, and publish deduplication support to the lightweight NATS messaging system. When deployed on Kubernetes, it provides a powerful foundation for event-driven architectures that are both performant and reliable. This guide shows you how to implement NATS JetStream for production event-driven systems.
 
 ## Why Choose NATS JetStream for Event-Driven Architecture
 
@@ -36,40 +36,50 @@ Create a values file for JetStream configuration:
 
 ```yaml
 # nats-values.yaml
-nats:
-  image: nats:latest
+config:
+  # Cluster configuration for HA
+  cluster:
+    enabled: true
+    replicas: 3
 
   # Enable JetStream
   jetstream:
     enabled: true
 
     # Storage configuration
-    memStorage:
+    memoryStore:
       enabled: true
-      size: 2Gi
-    fileStorage:
+      maxSize: 2Gi
+    fileStore:
       enabled: true
-      size: 10Gi
-      storageClassName: fast-ssd
+      pvc:
+        enabled: true
+        size: 10Gi
+        storageClassName: fast-ssd
 
-  # Cluster configuration for HA
-  cluster:
+  # Enable monitoring endpoint for Prometheus exporter
+  monitor:
     enabled: true
-    replicas: 3
+
+container:
+  image:
+    repository: nats
+    tag: 2.14.0-alpine
 
   # Resource limits
-  resources:
-    requests:
-      cpu: 500m
-      memory: 1Gi
-    limits:
-      cpu: 2000m
-      memory: 4Gi
+  merge:
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
 
 # Enable monitoring
-exporter:
+promExporter:
   enabled: true
-  serviceMonitor:
+  podMonitor:
     enabled: true
 ```
 
@@ -82,7 +92,7 @@ helm install nats nats/nats \
 
 # Verify installation
 kubectl get pods -n nats-system
-kubectl exec -n nats-system nats-0 -- nats server info
+kubectl exec -n nats-system deployment/nats-box -- nats server info
 ```
 
 ## Creating JetStream Streams
@@ -90,11 +100,8 @@ kubectl exec -n nats-system nats-0 -- nats server info
 Streams are the core of JetStream. They capture and store messages on subjects. Create a stream for user events:
 
 ```bash
-# Connect to NATS pod
-kubectl exec -n nats-system -it nats-0 -- sh
-
 # Create a stream using NATS CLI
-nats stream add USER_EVENTS \
+kubectl exec -n nats-system -it deployment/nats-box -- nats stream add USER_EVENTS \
   --subjects "users.*" \
   --storage file \
   --retention limits \
@@ -102,7 +109,8 @@ nats stream add USER_EVENTS \
   --max-bytes=1GB \
   --max-age=7d \
   --replicas 3 \
-  --discard old
+  --discard old \
+  --defaults
 ```
 
 Or create streams programmatically using the NATS client. Here's a Go example:
@@ -248,6 +256,14 @@ import (
     "github.com/nats-io/nats.go"
 )
 
+type UserEvent struct {
+    EventID   string            `json:"event_id"`
+    UserID    string            `json:"user_id"`
+    Action    string            `json:"action"`
+    Timestamp time.Time         `json:"timestamp"`
+    Metadata  map[string]string `json:"metadata"`
+}
+
 func main() {
     nc, err := nats.Connect("nats://nats.nats-system.svc.cluster.local:4222")
     if err != nil {
@@ -391,12 +407,12 @@ spec:
             memory: 512Mi
 ```
 
-## Implementing Exactly-Once Delivery
+## Implementing Publish Deduplication
 
-JetStream supports message deduplication for exactly-once semantics:
+JetStream supports message deduplication on the publish side. Use a stable message ID when retrying the same event so duplicate publishes inside the configured duplicate window are ignored:
 
 ```go
-// exactly-once-publisher.go
+// deduplicated-publisher.go
 package main
 
 import (
@@ -439,16 +455,16 @@ Monitor your JetStream deployment:
 
 ```bash
 # Check stream status
-kubectl exec -n nats-system nats-0 -- nats stream info USER_EVENTS
+kubectl exec -n nats-system deployment/nats-box -- nats stream info USER_EVENTS
 
 # List consumers
-kubectl exec -n nats-system nats-0 -- nats consumer list USER_EVENTS
+kubectl exec -n nats-system deployment/nats-box -- nats consumer list USER_EVENTS
 
 # Check consumer status
-kubectl exec -n nats-system nats-0 -- nats consumer info USER_EVENTS user-event-processor
+kubectl exec -n nats-system deployment/nats-box -- nats consumer info USER_EVENTS user-event-processor
 
 # Monitor metrics with Prometheus
-kubectl port-forward -n nats-system svc/nats-metrics 7777:7777
+kubectl port-forward -n nats-system pod/nats-0 7777:7777
 ```
 
 ## Best Practices
