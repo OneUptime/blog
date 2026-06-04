@@ -10,15 +10,15 @@ Description: Learn how to configure init container restart behavior, implement f
 
 Init containers are critical for preparing your application environment, but they can also become points of failure. Understanding how Kubernetes handles init container failures and implementing appropriate retry strategies ensures your pods start reliably even when initialization faces temporary issues.
 
-Unlike regular containers, init containers have unique restart behavior. If an init container fails, Kubernetes restarts the entire pod according to the pod's restart policy. This means a single failing init container can prevent your entire application from starting. Proper failure handling is essential for production deployments.
+Unlike regular containers, init containers have unique restart behavior. If a regular init container fails, Kubernetes retries that init container according to the pod's restart policy. This means a single failing init container can prevent your entire application from starting. Proper failure handling is essential for production deployments.
 
 ## Understanding Init Container Failure Behavior
 
-When an init container exits with a non-zero status code, Kubernetes considers it failed. The pod's restart policy determines what happens next. For deployments and stateful sets with the default Always restart policy, Kubernetes will continuously retry the pod, including all init containers.
+When an init container exits with a non-zero status code, Kubernetes considers it failed. The pod's restart policy determines what happens next. For deployments and stateful sets with the default Always restart policy, Kubernetes treats init containers as OnFailure and continuously retries the failed init container until it succeeds.
 
-Init containers run sequentially in the order defined. If the first init container fails, Kubernetes never runs subsequent init containers or the main application containers. This sequential dependency makes error handling in early init containers particularly important.
+Init containers run sequentially in the order defined. If the first init container fails, Kubernetes does not run subsequent init containers or the main application containers until it succeeds. This sequential dependency makes error handling in early init containers particularly important.
 
-The pod remains in Init state while init containers are running or restarting. You can observe this with kubectl get pods, where you'll see status like Init:0/3 indicating the first of three init containers is running.
+The pod remains in Init state while init containers are running or restarting. You can observe this with kubectl get pods, where you'll see status like Init:0/3 indicating that zero of three init containers have completed.
 
 ## Basic Retry Logic in Init Containers
 
@@ -170,38 +170,36 @@ data:
     attempt=0
     delay=$BASE_DELAY
 
-    retry_command() {
-      "$@"
-    }
+    retry_with_backoff() {
+      while [ $attempt -lt $MAX_ATTEMPTS ]; do
+        attempt=$((attempt + 1))
 
-    while [ $attempt -lt $MAX_ATTEMPTS ]; do
-      attempt=$((attempt + 1))
+        echo "Attempt $attempt/$MAX_ATTEMPTS (delay: ${delay}s)"
 
-      echo "Attempt $attempt/$MAX_ATTEMPTS (delay: ${delay}s)"
-
-      if retry_command "$@"; then
-        echo "Command succeeded"
-        return 0
-      fi
-
-      if [ $attempt -lt $MAX_ATTEMPTS ]; then
-        echo "Command failed, waiting ${delay}s before retry..."
-        sleep $delay
-
-        # Exponential backoff with jitter
-        delay=$((delay * 2))
-        jitter=$((RANDOM % 5))
-        delay=$((delay + jitter))
-
-        # Cap at maximum delay
-        if [ $delay -gt $MAX_DELAY ]; then
-          delay=$MAX_DELAY
+        if "$@"; then
+          echo "Command succeeded"
+          return 0
         fi
-      fi
-    done
 
-    echo "Command failed after $MAX_ATTEMPTS attempts"
-    return 1
+        if [ $attempt -lt $MAX_ATTEMPTS ]; then
+          echo "Command failed, waiting ${delay}s before retry..."
+          sleep $delay
+
+          # Exponential backoff with jitter
+          delay=$((delay * 2))
+          jitter=$(od -An -N1 -tu1 /dev/urandom | awk '{print $1 % 5}')
+          delay=$((delay + jitter))
+
+          # Cap at maximum delay
+          if [ $delay -gt $MAX_DELAY ]; then
+            delay=$MAX_DELAY
+          fi
+        fi
+      done
+
+      echo "Command failed after $MAX_ATTEMPTS attempts"
+      return 1
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -225,7 +223,8 @@ spec:
         - sh
         - -c
         - |
-          source /scripts/retry-with-backoff.sh
+          apk add --no-cache curl
+          . /scripts/retry-with-backoff.sh
 
           register() {
             curl -X POST \
@@ -479,8 +478,8 @@ initContainers:
     fi
 
     # Try to parse as YAML
-    if ! command -v python3 >/dev/null; then
-      apk add --no-cache python3
+    if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+      apk add --no-cache python3 py3-yaml
     fi
 
     python3 << 'EOF'
