@@ -26,10 +26,12 @@ Install runsc, the gVisor runtime compatible with OCI runtime specifications.
 ARCH=$(uname -m)
 URL=https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}
 
-wget ${URL}/runsc ${URL}/runsc.sha512
-sha512sum -c runsc.sha512
-chmod +x runsc
-sudo mv runsc /usr/local/bin/
+wget ${URL}/runsc ${URL}/runsc.sha512 \
+  ${URL}/containerd-shim-runsc-v1 ${URL}/containerd-shim-runsc-v1.sha512
+sha512sum -c runsc.sha512 \
+  -c containerd-shim-runsc-v1.sha512
+chmod +x runsc containerd-shim-runsc-v1
+sudo mv runsc containerd-shim-runsc-v1 /usr/local/bin/
 
 # Verify installation
 runsc --version
@@ -39,22 +41,28 @@ Configure runsc with appropriate platform and options:
 
 ```bash
 # Create runsc configuration
-sudo mkdir -p /etc/runsc
-cat <<EOF | sudo tee /etc/runsc/config.toml
-# Platform: ptrace (compatible) or kvm (faster, requires nested virtualization)
-platform = "ptrace"
+sudo mkdir -p /etc/containerd
+cat <<EOF | sudo tee /etc/containerd/runsc.toml
+# Shim logging
+log_path = "/var/log/runsc/%ID%/shim.log"
+log_level = "debug"
+
+[runsc_config]
+# Platform: systrap (default), kvm (bare metal or nested virtualization), or ptrace (deprecated)
+platform = "systrap"
 
 # Network mode
 network = "sandbox"
 
 # Enable debug logging for troubleshooting
-debug-log = "/var/log/runsc/%ID%/"
+debug = "true"
+debug-log = "/var/log/runsc/%ID%/gvisor.%COMMAND%.log"
 
 # Filesystem configuration
 file-access = "exclusive"
 
 # Enable profiling
-profile = true
+profile = "true"
 EOF
 ```
 
@@ -78,25 +86,26 @@ version = 2
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
           SystemdCgroup = true
 
-      # gVisor runtime with ptrace platform
+      # gVisor runtime with systrap platform
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
         runtime_type = "io.containerd.runsc.v1"
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc.options]
           TypeUrl = "io.containerd.runsc.v1.options"
-          ConfigPath = "/etc/runsc/config.toml"
+          ConfigPath = "/etc/containerd/runsc.toml"
 
       # gVisor with KVM platform for better performance
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc-kvm]
         runtime_type = "io.containerd.runsc.v1"
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc-kvm.options]
           TypeUrl = "io.containerd.runsc.v1.options"
-          ConfigPath = "/etc/runsc/config-kvm.toml"
+          ConfigPath = "/etc/containerd/runsc-kvm.toml"
 ```
 
 Create KVM-specific configuration:
 
 ```bash
-cat <<EOF | sudo tee /etc/runsc/config-kvm.toml
+cat <<EOF | sudo tee /etc/containerd/runsc-kvm.toml
+[runsc_config]
 platform = "kvm"
 network = "sandbox"
 file-access = "exclusive"
@@ -211,6 +220,7 @@ metadata:
   name: user-job-12345
   namespace: user-workloads
 spec:
+  backoffLimit: 1
   template:
     spec:
       runtimeClassName: gvisor
@@ -239,7 +249,6 @@ spec:
             drop:
             - ALL
       restartPolicy: Never
-      backoffLimit: 1
 ```
 
 The combination of gVisor and additional security controls provides defense in depth.
@@ -270,22 +279,19 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
       port: 53
   # Allow external HTTPS only
   - to:
-    - namespaceSelector: {}
-    ports:
-    - protocol: TCP
-      port: 443
-  # Block access to metadata service
-  - to:
     - ipBlock:
         cidr: 0.0.0.0/0
         except:
         - 169.254.169.254/32
+    ports:
+    - protocol: TCP
+      port: 443
 ```
 
 gVisor's network sandbox adds another layer beyond Network Policies.
@@ -307,21 +313,19 @@ data:
     - name: gvisor
       interval: 30s
       rules:
-      # Track syscall overhead
-      - record: gvisor_syscall_latency_seconds
-        expr: histogram_quantile(0.99, rate(runsc_syscall_duration_seconds_bucket[5m]))
+      # Track filesystem operations handled by gVisor
+      - record: gvisor_fs_reads_per_second
+        expr: sum by (namespace_name, pod_name) (rate(runsc_fs_reads[5m]))
 
-      # Memory overhead
-      - record: gvisor_memory_overhead_bytes
+      # Average filesystem read wait time in nanoseconds
+      - record: gvisor_fs_read_wait_ns
         expr: |
-          container_memory_usage_bytes{runtime_class="gvisor"} -
-          container_spec_memory_limit_bytes{runtime_class="gvisor"}
+          sum by (namespace_name, pod_name) (rate(runsc_fs_read_wait[5m])) /
+          sum by (namespace_name, pod_name) (rate(runsc_fs_reads[5m]))
 
-      # CPU overhead
-      - record: gvisor_cpu_overhead_ratio
-        expr: |
-          rate(container_cpu_usage_seconds_total{runtime_class="gvisor"}[5m]) /
-          container_spec_cpu_quota{runtime_class="gvisor"}
+      # Filesystem opens by sandbox
+      - record: gvisor_fs_opens_per_second
+        expr: sum by (namespace_name, pod_name) (rate(runsc_fs_opens[5m]))
 ```
 
 Query gVisor-specific metrics:
@@ -330,8 +334,11 @@ Query gVisor-specific metrics:
 # Check runsc logs
 sudo journalctl -u containerd | grep runsc
 
-# View detailed sandbox metrics
-runsc --root /run/containerd/runsc/k8s.io metric list
+# Start the Prometheus metric server
+sudo runsc --root=/run/containerd/runsc/k8s.io --metric-server=localhost:1337 metric-server &
+
+# Query metrics
+curl http://localhost:1337/metrics
 
 # Compare performance between runc and runsc
 kubectl top pod --selector=app=benchmark
@@ -375,7 +382,7 @@ func validateGVisorPod(pod *corev1.Pod) error {
 
     // Check for incompatible features
     if pod.Spec.HostNetwork {
-        return fmt.Errorf("gVisor does not support hostNetwork")
+        return fmt.Errorf("hostNetwork bypasses gVisor's network sandbox isolation")
     }
 
     if pod.Spec.HostPID {
@@ -405,15 +412,16 @@ func validateGVisorPod(pod *corev1.Pod) error {
 Configure gVisor for better performance while maintaining security.
 
 ```toml
-# /etc/runsc/config-optimized.toml
+# /etc/containerd/runsc-optimized.toml
+[runsc_config]
 # Use KVM platform when available for better performance
 platform = "kvm"
 
-# Enable direct IO for better filesystem performance
+# Use shared root filesystem access only when external rootfs updates must be visible
 file-access = "shared"
 
-# Configure overlay filesystem
-overlay = true
+# Configure root filesystem overlay
+overlay2 = "root:self"
 
 # Enable host networking for specific workloads
 network = "host"  # Use with caution
@@ -422,7 +430,7 @@ network = "host"  # Use with caution
 num-network-channels = 4
 
 # Enable profiling
-profile = true
+profile = "true"
 profile-block = "/var/log/runsc/profile/"
 profile-cpu = "/var/log/runsc/profile/"
 profile-heap = "/var/log/runsc/profile/"
@@ -435,7 +443,7 @@ Use admission controllers to automatically assign gVisor based on workload chara
 
 ```go
 // Auto-select runtime based on pod labels
-func selectRuntime(pod *corev1.Pod) string {
+func selectRuntime(pod *corev1.Pod, namespace *corev1.Namespace) string {
     labels := pod.GetLabels()
 
     // Check security profile
@@ -449,8 +457,7 @@ func selectRuntime(pod *corev1.Pod) string {
     }
 
     // Check namespace annotation
-    namespace := pod.GetNamespace()
-    if ns.Annotations["default-runtime"] == "gvisor" {
+    if namespace != nil && namespace.Annotations["default-runtime"] == "gvisor" {
         return "gvisor"
     }
 
@@ -465,16 +472,20 @@ Debug common problems with gVisor sandboxed containers.
 
 ```bash
 # Enable debug logging
-cat <<EOF | sudo tee /etc/runsc/config-debug.toml
-platform = "ptrace"
-debug = true
-debug-log = "/var/log/runsc/debug/"
-strace = true
-log-packets = true
+cat <<EOF | sudo tee /etc/containerd/runsc-debug.toml
+log_path = "/var/log/runsc/%ID%/shim.log"
+log_level = "debug"
+
+[runsc_config]
+platform = "systrap"
+debug = "true"
+debug-log = "/var/log/runsc/%ID%/gvisor.%COMMAND%.log"
+strace = "true"
+log-packets = "true"
 EOF
 
 # View detailed logs
-sudo tail -f /var/log/runsc/debug/*.log
+sudo tail -f /var/log/runsc/*/*.log
 
 # Check sandbox status
 runsc --root /run/containerd/runsc/k8s.io list
@@ -482,8 +493,8 @@ runsc --root /run/containerd/runsc/k8s.io list
 # Get detailed sandbox information
 runsc --root /run/containerd/runsc/k8s.io ps <container-id>
 
-# Test syscall compatibility
-runsc --platform=ptrace do echo "test"
+# Test runsc directly
+sudo runsc do echo "test"
 
 # Verify KVM availability
 ls -la /dev/kvm
