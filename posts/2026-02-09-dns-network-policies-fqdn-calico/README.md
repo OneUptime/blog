@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Calico, DNS
 
-Description: Configure Calico network policies using FQDN matching to control egress traffic based on domain names instead of IP addresses.
+Description: Configure Calico Enterprise or Calico Cloud network policies using FQDN matching to control egress traffic based on domain names instead of IP addresses.
 
 ---
 
-Standard Kubernetes network policies use IP addresses and CIDR ranges to control traffic. This creates problems when targeting external services with dynamic IP addresses. Calico's FQDN-based network policies allow you to specify domain names directly, letting Calico resolve DNS and automatically update firewall rules as IP addresses change.
+Standard Kubernetes network policies use IP addresses and CIDR ranges to control traffic. This creates problems when targeting external services with dynamic IP addresses. Calico Enterprise and Calico Cloud FQDN-based network policies allow you to specify domain names directly, letting Calico learn IP addresses from trusted DNS responses and automatically update firewall rules as IP addresses change.
 
 ## Why FQDN Policies Matter
 
@@ -19,22 +19,22 @@ External services like SaaS APIs, cloud services, and CDNs use dynamic IP addres
 - Handle services with hundreds of IP addresses (like AWS S3)
 - Support geographically distributed services with regional IPs
 
-FQDN policies solve this by matching on domain names. Calico resolves the DNS, extracts IP addresses, and updates eBPF/iptables rules automatically.
+FQDN policies solve this by matching on domain names. Calico learns IP addresses from trusted DNS responses and updates eBPF/iptables rules automatically.
 
 ## Prerequisites
 
-Ensure Calico is installed with DNS policy support:
+Ensure Calico Enterprise or Calico Cloud is installed with DNS policy support:
 
 ```bash
-# Check if DNS policy is enabled
+# Check the DNS policy programming mode
 
-kubectl get felixconfiguration default -o yaml | grep DNSPolicy
+calicoctl get felixconfiguration default -o yaml | grep -i DNSPolicy
 ```
 
-If not enabled, configure it:
+If needed, configure the DNS policy programming mode:
 
 ```bash
-calicoctl patch felixconfiguration default --patch '{"spec":{"DNSPolicyMode":"Enabled"}}'
+calicoctl patch felixconfiguration default --patch '{"spec":{"dnsPolicyMode":"DelayDeniedPacket"}}'
 ```
 
 ## Basic FQDN Egress Policy
@@ -65,7 +65,6 @@ spec:
   - action: Allow
     protocol: UDP
     destination:
-      selector: k8s-app == "kube-dns"
       ports:
       - 53
 ```
@@ -79,7 +78,7 @@ calicoctl apply -f fqdn-basic-policy.yaml
 Test from a pod:
 
 ```bash
-kubectl run backend --image=curlimages/curl -it --rm -- sh
+kubectl run backend --image=curlimages/curl --labels=app=backend -it --rm -- sh
 # Inside pod
 curl https://api.github.com  # Allowed
 curl https://api.gitlab.com  # Blocked
@@ -107,7 +106,8 @@ spec:
     destination:
       domains:
       - "*.s3.amazonaws.com"
-      - "*.s3.*.amazonaws.com"  # Regional endpoints
+      - "s3.us-east-1.amazonaws.com"  # Add the regions your workloads use
+      - "*.s3.us-east-1.amazonaws.com"
       ports:
       - 443
   # Allow AWS DynamoDB
@@ -122,7 +122,6 @@ spec:
   - action: Allow
     protocol: UDP
     destination:
-      selector: k8s-app == "kube-dns"
       ports:
       - 53
 ```
@@ -181,7 +180,6 @@ spec:
   - action: Allow
     protocol: UDP
     destination:
-      selector: k8s-app == "kube-dns"
       ports:
       - 53
 ```
@@ -214,7 +212,6 @@ spec:
   - action: Allow
     protocol: UDP
     destination:
-      selector: k8s-app == "kube-dns"
       ports:
       - 53
 ---
@@ -241,7 +238,6 @@ spec:
   - action: Allow
     protocol: UDP
     destination:
-      selector: k8s-app == "kube-dns"
       ports:
       - 53
 ```
@@ -286,7 +282,6 @@ spec:
   - action: Allow
     protocol: UDP
     destination:
-      selector: k8s-app == "kube-dns"
       ports:
       - 53
 ```
@@ -328,27 +323,26 @@ spec:
   - action: Allow
     protocol: UDP
     destination:
-      selector: k8s-app == "kube-dns"
       ports:
       - 53
 ```
 
 ## Monitoring FQDN Resolution
 
-Check DNS lookups performed by Calico:
+Check DNS policy messages from Calico:
 
 ```bash
-# View DNS policy logs
+# View DNS policy messages
 kubectl logs -n calico-system -l k8s-app=calico-node | grep DNS
 
-# Check which IPs are resolved for a domain
+# Check messages for a specific domain
 kubectl logs -n calico-system -l k8s-app=calico-node | grep "api.github.com"
 ```
 
 Enable more verbose DNS logging:
 
 ```bash
-calicoctl patch felixconfiguration default --patch '{"spec":{"LogSeverityScreen":"Debug"}}'
+calicoctl patch felixconfiguration default --patch '{"spec":{"logSeverityScreen":"Debug"}}'
 ```
 
 ## Handling DNS TTL and Caching
@@ -361,15 +355,10 @@ Force DNS refresh by restarting Calico pods:
 kubectl rollout restart ds/calico-node -n calico-system
 ```
 
-Configure DNS cache settings:
+Configure extra DNS cache retention time:
 
 ```bash
-calicoctl patch felixconfiguration default --patch '{
-  "spec": {
-    "DNSPolicyMaxTTL": "3600",  # Maximum cache time in seconds
-    "DNSPolicyMinTTL": "60"     # Minimum cache time
-  }
-}'
+calicoctl patch felixconfiguration default --patch '{"spec":{"dnsExtraTTL":"60s"}}'
 ```
 
 ## Debugging FQDN Policy Issues
@@ -385,7 +374,7 @@ Verify Calico has resolved the domain:
 
 ```bash
 # Check Calico's DNS cache
-kubectl exec -n calico-system -it calico-node-<id> -- calico-node -felix-live
+kubectl exec -n calico-system -it calico-node-<id> -- cat /var/run/calico/felix-dns-cache.txt
 ```
 
 Test connectivity:
@@ -408,7 +397,7 @@ calicoctl get networkpolicy -n default -o yaml
 
 FQDN policies have some performance characteristics:
 
-- DNS resolution adds overhead when domains are first accessed
+- DNS policy programming can add latency when domains are first accessed
 - Frequent DNS changes can cause policy update churn
 - Large number of domains increases memory usage
 - TTL expiration triggers policy recalculations
@@ -441,20 +430,20 @@ domains:
 - "*.com"
 ```
 
-**2. Combine with default-deny**: Start with deny-all, then allow specific domains:
+**2. Combine with default-deny**: Allow specific domains, then deny everything else:
 
 ```yaml
-# First, deny all egress
-- action: Deny
-  destination:
-    nets:
-    - 0.0.0.0/0
-
-# Then allow specific domains
+# First, allow specific domains
 - action: Allow
   destination:
     domains:
     - "approved-service.com"
+
+# Then deny all other egress
+- action: Deny
+  destination:
+    nets:
+    - 0.0.0.0/0
 ```
 
 **3. Monitor DNS requests**: Alert on unexpected domains:
@@ -462,7 +451,7 @@ domains:
 ```bash
 # Monitor for suspicious DNS queries
 kubectl logs -n calico-system -l k8s-app=calico-node | \
-  grep "DNS" | grep -v "api.github.com|api.stripe.com"
+  grep "DNS" | grep -Ev "api.github.com|api.stripe.com"
 ```
 
 **4. Document approved domains**: Maintain a list of allowed external services:
