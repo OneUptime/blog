@@ -237,7 +237,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   iops: "3000"
@@ -250,7 +250,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: standard-disk
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp2
   encrypted: "true"
@@ -261,7 +261,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: high-performance
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: io2
   iops: "10000"
@@ -333,8 +333,6 @@ spec:
         - name: migrate
           image: myregistry/user-service-migrator:latest
           env:
-            - name: DATABASE_URL
-              value: postgresql://$(DB_USER):$(DB_PASS)@user-db:5432/userdb
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
@@ -345,6 +343,8 @@ spec:
                 secretKeyRef:
                   name: user-db-credentials
                   key: password
+            - name: DATABASE_URL
+              value: postgresql://$(DB_USER):$(DB_PASS)@user-db:5432/userdb
           command:
             - /app/migrate
             - up
@@ -352,8 +352,6 @@ spec:
         - name: user-service
           image: myregistry/user-service:latest
           env:
-            - name: DATABASE_URL
-              value: postgresql://$(DB_USER):$(DB_PASS)@user-db:5432/userdb
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
@@ -364,6 +362,8 @@ spec:
                 secretKeyRef:
                   name: user-db-credentials
                   key: password
+            - name: DATABASE_URL
+              value: postgresql://$(DB_USER):$(DB_PASS)@user-db:5432/userdb
           ports:
             - containerPort: 8080
           resources:
@@ -378,6 +378,8 @@ spec:
 ## Implementing Backup Strategies
 
 Create CronJobs for automated backups of each database:
+
+Use a backup image that includes the PostgreSQL client tools, gzip, and the AWS CLI.
 
 ```yaml
 # user-db-backup-cronjob.yaml
@@ -397,7 +399,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: backup
-              image: postgres:15
+              image: myregistry/postgres-awscli:15
               command:
                 - sh
                 - -c
@@ -413,7 +415,7 @@ spec:
                   # Clean up local file
                   rm /backups/user-db-$TIMESTAMP.sql.gz
 
-                  # Keep only last 7 days in S3
+                  # Keep only the last 7 backups in S3
                   aws s3 ls s3://my-backup-bucket/user-db/ | \
                     awk '{print $4}' | \
                     sort -r | \
