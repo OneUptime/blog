@@ -14,7 +14,7 @@ In this guide, we'll configure K3s nodes with appropriate resource limits and re
 
 ## Understanding Resource Constraints in K3s
 
-K3s reduces Kubernetes's memory footprint from over 1GB to under 512MB, making it suitable for devices with as little as 512MB total RAM. However, the operating system, K3s components, and workloads all compete for these limited resources.
+K3s reduces Kubernetes's memory footprint and supports agent nodes with as little as 512MB RAM, while server nodes require more capacity. However, the operating system, K3s components, and workloads all compete for these limited resources.
 
 Kubernetes tracks two resource types: requests define the minimum resources guaranteed to a pod, while limits set the maximum a pod can consume. On resource-constrained nodes, proper request and limit configuration prevents resource exhaustion and maintains system stability.
 
@@ -38,7 +38,7 @@ These reservations work as follows:
 - `kube-reserved` protects K3s components (kubelet, containerd)
 - `eviction-hard` defines thresholds that trigger pod eviction
 
-On a device with 2GB RAM, these settings reserve 640MB for the system, leaving approximately 1.3GB for workloads after accounting for kernel overhead.
+On a device with 2GB RAM, these settings reserve 640Mi for OS and Kubernetes daemons and keep a 100Mi eviction margin, leaving roughly 1.2-1.3Gi for workloads depending on node capacity reported by the OS.
 
 ## Creating Resource-Aware Node Configuration
 
@@ -73,7 +73,6 @@ kubelet-arg:
 
   # Pod management
   - "max-pods=50"
-  - "pods-per-core=5"
 ```
 
 Restart K3s to apply changes:
@@ -102,12 +101,12 @@ Example output for a 2GB/2-core device:
 ```json
 {
   "cpu": "1000m",
-  "memory": "1340Mi",
+  "memory": "1300Mi",
   "pods": "50"
 }
 ```
 
-This shows that after reservations, 1 CPU core and 1.3GB RAM are available for workloads.
+This shows that after reservations, 1 CPU core and about 1.3Gi RAM are available for workloads.
 
 ## Configuring Pod Resource Requests and Limits
 
@@ -143,9 +142,7 @@ spec:
             cpu: "200m"
             memory: "128Mi"
         # Reduce memory footprint
-        env:
-        - name: NGINX_WORKER_PROCESSES
-          value: "1"
+        command: ["nginx", "-g", "daemon off; worker_processes 1;"]
 ```
 
 Key principles for constrained environments:
@@ -222,11 +219,11 @@ metadata:
 spec:
   hard:
     # Limit total requests
-    requests.cpu: "2000m"
+    requests.cpu: "1000m"
     requests.memory: "1Gi"
     # Limit total limits
-    limits.cpu: "4000m"
-    limits.memory: "2Gi"
+    limits.cpu: "1500m"
+    limits.memory: "1280Mi"
     # Limit pod count
     pods: "20"
 ```
@@ -247,9 +244,9 @@ Reduce K3s's own resource consumption for extremely constrained environments:
 ```bash
 # Install K3s with minimal components
 curl -sfL https://get.k3s.io | sh -s - \
-  --disable traefik \
-  --disable servicelb \
-  --disable metrics-server \
+  --disable=traefik \
+  --disable=servicelb \
+  --disable=metrics-server \
   --kubelet-arg="max-pods=30" \
   --kubelet-arg="image-gc-high-threshold=60" \
   --kubelet-arg="image-gc-low-threshold=50"
@@ -257,26 +254,21 @@ curl -sfL https://get.k3s.io | sh -s - \
 
 These options disable optional components and reduce pod capacity, freeing memory for workloads.
 
-For running nodes, adjust containerd settings to limit memory:
+Kubelet pulls images serially by default, which keeps image downloads from competing heavily for disk I/O and memory. If you have previously enabled parallel image pulls, restore serial pulls in the K3s configuration:
 
 ```bash
-# Edit containerd config
-sudo vim /var/lib/rancher/k3s/agent/etc/containerd/config.toml
+# Edit K3s configuration
+sudo vim /etc/rancher/k3s/config.yaml
 ```
 
-Add runtime memory limits:
+Add the kubelet argument:
 
-```toml
-[plugins."io.containerd.grpc.v1.cri".containerd]
-  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
-    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-      # Limit containerd memory
-      SystemdCgroup = true
-
-[plugins."io.containerd.grpc.v1.cri"]
-  # Reduce image pull parallelism
-  max_concurrent_downloads = 1
+```yaml
+kubelet-arg:
+  - "serialize-image-pulls=true"
 ```
+
+Avoid editing `/var/lib/rancher/k3s/agent/etc/containerd/config.toml` directly because K3s regenerates that file when it starts. Use a K3s-supported containerd config template only for advanced runtime customizations.
 
 Restart K3s after changes:
 
@@ -304,7 +296,7 @@ spec:
     args:
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)'
     ports:
     - containerPort: 9100
       name: metrics
@@ -355,19 +347,16 @@ kubelet-arg:
   - "eviction-soft=memory.available<200Mi"
   - "eviction-soft-grace-period=memory.available=1m30s"
 
-  # Prefer evicting low-priority pods
+  # Shorten the transition period for pressure conditions
   - "eviction-pressure-transition-period=30s"
 
   # Reclaim minimum memory
   - "eviction-minimum-reclaim=memory.available=100Mi"
 ```
 
-Kubelet evicts pods in this order when memory pressure occurs:
-1. BestEffort pods (no requests/limits)
-2. Burstable pods exceeding requests
-3. Guaranteed pods (requests = limits)
+When memory pressure occurs, kubelet first considers pods whose usage exceeds their requests, then ranks them by pod priority and by usage relative to requests. In practice, BestEffort pods and Burstable pods above their requests are the most likely eviction candidates, while Guaranteed pods and Burstable pods below their requests are evicted last.
 
-Mark critical pods to avoid eviction:
+Use a high PriorityClass for critical add-on pods that should be scheduled and rescheduled before regular workloads:
 
 ```yaml
 # critical-pod.yaml
@@ -375,9 +364,9 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: critical-service
+  namespace: kube-system
 spec:
-  # Prevent eviction
-  priorityClassName: system-node-critical
+  priorityClassName: system-cluster-critical
   containers:
   - name: app
     image: critical-app:latest
@@ -467,7 +456,7 @@ This deployment runs 10 replicas consuming only 160MB total, maximizing workload
 
 ## Conclusion
 
-Configuring K3s for resource-constrained environments requires careful balancing of system reservations, eviction policies, and workload resource specifications. By implementing proper resource limits and monitoring, you can run stable Kubernetes clusters on devices with as little as 1GB RAM.
+Configuring K3s for resource-constrained environments requires careful balancing of system reservations, eviction policies, and workload resource specifications. By implementing proper resource limits and monitoring, you can run stable K3s workloads on small nodes, including agent nodes with 512MB RAM and server nodes sized with enough additional capacity for control-plane components.
 
 The key to success in constrained environments is conservative resource allocation, aggressive image size optimization, and comprehensive monitoring. These practices ensure that your edge nodes remain stable and responsive even under load.
 
