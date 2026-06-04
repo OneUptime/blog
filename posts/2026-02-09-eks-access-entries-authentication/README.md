@@ -26,7 +26,7 @@ Access entries replace the aws-auth ConfigMap with an API that manages IAM to Ku
 
 **No more ConfigMap conflicts** from concurrent edits.
 
-Access entries work with EKS clusters version 1.23 and later.
+Access entries require a supported EKS platform version. If your Kubernetes version is listed in the EKS platform version requirements, the cluster platform version must be at or later than the listed version; Kubernetes versions not listed support access entries on all platform versions.
 
 ## Creating Access Entries
 
@@ -179,22 +179,24 @@ aws eks create-access-entry \
   --kubernetes-groups developers
 ```
 
-After migrating all entries, you can delete aws-auth:
+After migrating all entries that you manage, remove those mappings from aws-auth:
 
 ```bash
-# Verify all access works before deleting
-kubectl delete configmap -n kube-system aws-auth
+# Verify all access works before removing
+eksctl delete iamidentitymapping \
+  --cluster my-cluster \
+  --arn arn:aws:iam::ACCOUNT_ID:role/DevRole
 ```
 
 ## Node Group Access Entries
 
-EKS automatically creates access entries for node groups. View them:
+EKS automatically creates access entries for managed node groups and Fargate profiles when access entries are enabled. Self-managed node groups need node access entries. View them:
 
 ```bash
 aws eks list-access-entries --cluster-name my-cluster
 ```
 
-Node entries use type `EC2_LINUX` or `EC2_WINDOWS`:
+Self-managed node entries use type `EC2_LINUX` or `EC2_WINDOWS`:
 
 ```bash
 aws eks describe-access-entry \
@@ -217,22 +219,21 @@ metadata:
 
 accessConfig:
   authenticationMode: API_AND_CONFIG_MAP
+  accessEntries:
+  - principalARN: arn:aws:iam::ACCOUNT_ID:role/AdminRole
+    accessPolicies:
+    - policyARN: arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
+      accessScope:
+        type: cluster
 
-accessEntries:
-- principalARN: arn:aws:iam::ACCOUNT_ID:role/AdminRole
-  accessPolicies:
-  - policyARN: arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
-    accessScope:
-      type: cluster
-
-- principalARN: arn:aws:iam::ACCOUNT_ID:role/DevRole
-  kubernetesGroups:
-  - developers
-  accessPolicies:
-  - policyARN: arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy
-    accessScope:
-      type: namespace
-      namespaces: ["development"]
+  - principalARN: arn:aws:iam::ACCOUNT_ID:role/DevRole
+    kubernetesGroups:
+    - developers
+    accessPolicies:
+    - policyARN: arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy
+      accessScope:
+        type: namespace
+        namespaces: ["development"]
 ```
 
 Apply configuration:
@@ -304,7 +305,7 @@ Update access entry:
 aws eks update-access-entry \
   --cluster-name my-cluster \
   --principal-arn arn:aws:iam::ACCOUNT_ID:role/DevRole \
-  --kubernetes-groups developers,viewers
+  --kubernetes-groups developers viewers
 ```
 
 Delete access entry:
