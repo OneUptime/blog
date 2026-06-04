@@ -166,37 +166,33 @@ spec:
 Essential API gateway metrics:
 
 ```promql
-# Request rate
-sum(rate(http_requests_total[5m])) by (service)
+# Request rate (Kong Prometheus plugin)
+sum(rate(kong_http_requests_total[5m])) by (service)
 
 # Error rate
-sum(rate(http_requests_total{status=~"5.."}[5m])) by (service) /
-sum(rate(http_requests_total[5m])) by (service)
+sum(rate(kong_http_requests_total{code=~"5.."}[5m])) by (service) /
+sum(rate(kong_http_requests_total[5m])) by (service)
 
 # Latency percentiles
 histogram_quantile(0.95,
-  sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service)
+  sum(rate(kong_request_latency_ms_bucket[5m])) by (le, service)
 )
 
 histogram_quantile(0.99,
-  sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service)
+  sum(rate(kong_request_latency_ms_bucket[5m])) by (le, service)
 )
 
 # Upstream health
-avg(upstream_health_check_success) by (upstream)
+avg(kong_upstream_target_health{state="healthy"}) by (upstream)
 
 # Active connections
 sum(kong_nginx_connections_total{state="active"})
 
-# Request size
-histogram_quantile(0.95,
-  sum(rate(request_size_bytes_bucket[5m])) by (le)
-)
+# Request bandwidth
+sum(rate(kong_bandwidth_bytes{direction="ingress"}[5m])) by (service)
 
-# Response size
-histogram_quantile(0.95,
-  sum(rate(response_size_bytes_bucket[5m])) by (le)
-)
+# Response bandwidth
+sum(rate(kong_bandwidth_bytes{direction="egress"}[5m])) by (service)
 ```
 
 ## Creating Grafana Dashboards
@@ -215,35 +211,34 @@ metadata:
 data:
   api-gateway.json: |
     {
-      "dashboard": {
-        "title": "API Gateway Overview",
-        "panels": [
-          {
-            "title": "Request Rate",
-            "targets": [
-              {
-                "expr": "sum(rate(http_requests_total[5m])) by (service)"
-              }
-            ]
-          },
-          {
-            "title": "Error Rate",
-            "targets": [
-              {
-                "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))"
-              }
-            ]
-          },
-          {
-            "title": "Latency (p95)",
-            "targets": [
-              {
-                "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))"
-              }
-            ]
-          }
-        ]
-      }
+      "title": "API Gateway Overview",
+      "schemaVersion": 39,
+      "panels": [
+        {
+          "title": "Request Rate",
+          "targets": [
+            {
+              "expr": "sum(rate(kong_http_requests_total[5m])) by (service)"
+            }
+          ]
+        },
+        {
+          "title": "Error Rate",
+          "targets": [
+            {
+              "expr": "sum(rate(kong_http_requests_total{code=~\"5..\"}[5m])) / sum(rate(kong_http_requests_total[5m]))"
+            }
+          ]
+        },
+        {
+          "title": "Latency (p95)",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(kong_request_latency_ms_bucket[5m])) by (le))"
+            }
+          ]
+        }
+      ]
     }
 ```
 
@@ -254,7 +249,7 @@ Deploy Jaeger for tracing:
 ```bash
 # Install Jaeger operator
 kubectl create namespace observability
-kubectl apply -f https://github.com/jaegertracing/jaeger-operator/releases/download/v1.50.0/jaeger-operator.yaml -n observability
+kubectl apply -f https://github.com/jaegertracing/jaeger-operator/releases/download/v1.76.0/jaeger-operator.yaml -n observability
 
 # Create Jaeger instance
 cat <<EOF | kubectl apply -f -
@@ -290,15 +285,20 @@ config:
   sample_ratio: 1.0
   include_credential: true
   traceid_byte_count: 16
-  header_type: preserve
+  propagation:
+    extract:
+    - b3
+    - w3c
+    inject:
+    - b3
+    default_format: b3
   default_service_name: kong-gateway
-  default_header_type: b3
 plugin: zipkin
 ```
 
-## Ambassador OpenTelemetry Integration
+## Ambassador Zipkin Tracing Integration
 
-Configure Ambassador for OpenTelemetry:
+Configure Ambassador for Zipkin-compatible tracing:
 
 ```yaml
 # ambassador-tracing.yaml
@@ -385,8 +385,8 @@ spec:
     rules:
     - alert: HighErrorRate
       expr: |
-        sum(rate(http_requests_total{status=~"5.."}[5m])) /
-        sum(rate(http_requests_total[5m])) > 0.05
+        sum(rate(kong_http_requests_total{code=~"5.."}[5m])) /
+        sum(rate(kong_http_requests_total[5m])) > 0.05
       for: 5m
       labels:
         severity: critical
@@ -397,14 +397,14 @@ spec:
     - alert: HighLatency
       expr: |
         histogram_quantile(0.95,
-          sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
-        ) > 2
+          sum(rate(kong_request_latency_ms_bucket[5m])) by (le)
+        ) > 2000
       for: 5m
       labels:
         severity: warning
       annotations:
         summary: "High latency detected"
-        description: "P95 latency is {{ $value }}s"
+        description: "P95 latency is {{ $value }}ms"
 
     - alert: GatewayDown
       expr: up{job="kong-metrics"} == 0
@@ -416,7 +416,7 @@ spec:
         description: "Gateway {{ $labels.instance }} is not responding"
 
     - alert: UpstreamUnhealthy
-      expr: upstream_health_check_success < 0.8
+      expr: avg(kong_upstream_target_health{state="healthy"}) by (upstream) < 0.8
       for: 2m
       labels:
         severity: warning
@@ -448,8 +448,8 @@ stringData:
       repeat_interval: 12h
       receiver: 'slack'
       routes:
-      - match:
-          severity: critical
+      - matchers:
+        - severity="critical"
         receiver: pagerduty
 
     receivers:
@@ -464,24 +464,32 @@ stringData:
       - service_key: 'YOUR_PAGERDUTY_KEY'
 ```
 
-## Custom Metrics with Statsd
+## Metrics with StatsD
 
-Emit custom metrics from gateways:
+Emit metrics from Kong with the StatsD plugin:
 
-```lua
--- Kong custom metrics
-local statsd = require "kong.plugins.statsd"
-
--- Increment custom counter
-statsd:counter("api.custom_metric", 1, {
-  tags = {"service:user-api", "env:prod"}
-})
-
--- Record timing
-local start_time = ngx.now()
--- ... perform operation ...
-local duration = ngx.now() - start_time
-statsd:timing("api.operation_duration", duration * 1000)
+```yaml
+# kong-statsd-plugin.yaml
+apiVersion: configuration.konghq.com/v1
+kind: KongClusterPlugin
+metadata:
+  name: statsd
+  labels:
+    global: "true"
+config:
+  host: statsd.monitoring.svc.cluster.local
+  port: 8125
+  metrics:
+  - name: request_count
+    stat_type: counter
+    sample_rate: 1
+  - name: latency
+    stat_type: timer
+  - name: request_size
+    stat_type: timer
+  - name: response_size
+    stat_type: timer
+plugin: statsd
 ```
 
 ## SLO Monitoring
@@ -503,15 +511,14 @@ spec:
     # Availability SLO: 99.9%
     - record: slo:availability:ratio
       expr: |
-        sum(rate(http_requests_total{status!~"5.."}[5m])) /
-        sum(rate(http_requests_total[5m]))
+        sum(rate(kong_http_requests_total{code!~"5.."}[5m])) /
+        sum(rate(kong_http_requests_total[5m]))
 
     # Latency SLO: 95% of requests under 500ms
     - record: slo:latency:ratio
       expr: |
-        histogram_quantile(0.95,
-          sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
-        ) < 0.5
+        sum(rate(kong_request_latency_ms_bucket{le="500"}[5m])) /
+        sum(rate(kong_request_latency_ms_count[5m]))
 
     # Error budget remaining
     - record: slo:error_budget:remaining
