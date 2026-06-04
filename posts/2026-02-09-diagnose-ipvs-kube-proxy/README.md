@@ -8,11 +8,11 @@ Description: Learn how to troubleshoot and diagnose issues with IPVS mode kube-p
 
 ---
 
-IPVS (IP Virtual Server) mode in kube-proxy offers better performance and scalability than iptables mode for Kubernetes service load balancing. However, it introduces different troubleshooting challenges. This guide covers practical techniques for diagnosing IPVS-related issues in your Kubernetes cluster.
+IPVS (IP Virtual Server) mode in kube-proxy was introduced to offer better rule-sync performance and network throughput than iptables mode for Kubernetes service load balancing. However, Kubernetes v1.35 marks IPVS mode as deprecated in favor of nftables mode, and IPVS introduces different troubleshooting challenges. This guide covers practical techniques for diagnosing IPVS-related issues in your Kubernetes cluster.
 
 ## Understanding IPVS Mode
 
-IPVS is a Linux kernel feature that provides layer 4 load balancing. Unlike iptables mode which creates chains of rules, IPVS uses hash tables for more efficient packet processing. This makes it ideal for clusters with thousands of services.
+IPVS is a Linux kernel feature that provides layer 4 load balancing. Unlike iptables mode which creates chains of rules, IPVS uses hash tables for more efficient packet processing. This has historically made it useful for clusters with thousands of services, although nftables mode is now the recommended high-performance Linux proxy mode for new clusters.
 
 When kube-proxy runs in IPVS mode, it creates virtual servers for each Kubernetes service and configures real servers (endpoints) behind them. Traffic to service IPs is load balanced across pod endpoints using various scheduling algorithms.
 
@@ -74,7 +74,7 @@ sudo ipvsadm -L -n --stats
 sudo ipvsadm -L -n -c
 ```
 
-Each Kubernetes service should have corresponding virtual server entries with pod IPs as real servers.
+Each Kubernetes service can have one or more corresponding virtual server entries with endpoint IPs as real servers.
 
 ## Diagnosing Service Resolution Issues
 
@@ -92,6 +92,7 @@ sudo ipvsadm -L -n | grep 10.96.100.50
 
 # Verify backend pods are registered
 kubectl get endpoints my-service
+kubectl get endpointslice -l kubernetes.io/service-name=my-service
 ```
 
 If the service appears in kubectl but not in ipvsadm output, kube-proxy hasn't synced properly.
@@ -131,7 +132,7 @@ curl http://10.96.100.50:80
 
 ### Issue 1: Missing Kernel Modules
 
-IPVS requires specific kernel modules. If they're missing, kube-proxy falls back to iptables:
+IPVS requires specific kernel modules. If they're missing, kube-proxy exits with an error instead of starting the IPVS proxier:
 
 ```bash
 # Check required modules
@@ -187,7 +188,7 @@ kubectl -n kube-system get pods -l k8s-app=kube-proxy -w
 
 ### Issue 3: Connection Tracking Table Full
 
-IPVS uses connection tracking, which can fill up under high load:
+Service traffic in IPVS mode can still depend on netfilter connection tracking for NAT and masquerade behavior, and the conntrack table can fill up under high load:
 
 ```bash
 # Check current conntrack usage
@@ -201,7 +202,7 @@ sudo sysctl -w net.netfilter.nf_conntrack_max=1000000
 echo "net.netfilter.nf_conntrack_max = 1000000" | \
   sudo tee -a /etc/sysctl.conf
 
-# Also increase bucket size
+# Also increase bucket size from the host's initial network namespace if your kernel allows it
 sudo sysctl -w net.netfilter.nf_conntrack_buckets=250000
 ```
 
@@ -211,7 +212,7 @@ If traffic isn't balanced evenly across pods:
 
 ```bash
 # Check connection distribution
-sudo ipvsadm -L -n --stats
+sudo ipvsadm -L -n
 
 # Look at ActiveConn and InActConn for each real server
 # Uneven distribution might indicate:
@@ -225,7 +226,7 @@ kubectl -n kube-system edit configmap kube-proxy
 
 # Add or modify:
 # ipvs:
-#   scheduler: "rr"  # Options: rr, lc, dh, sh, sed, nq
+#   scheduler: "rr"  # Options include: rr, wrr, lc, wlc, lblc, lblcr, dh, sh, sed, nq, mh
 ```
 
 ## Analyzing IPVS Metrics
@@ -241,7 +242,7 @@ sudo ipvsadm -L -n --stats | grep -A 5 "10.96.100.50"
 #   -> 192.168.1.20:8080           Masq    1      1000   500     1G    500M
 #   -> 192.168.1.21:8080           Masq    1      900    450     900M  450M
 #
-# Columns: ActiveConn InActConn Outgoing Incoming Outbytes Inbytes
+# Columns: Conns InPkts OutPkts InBytes OutBytes
 
 # Check rate information
 sudo ipvsadm -L -n --rate
@@ -259,12 +260,11 @@ kubectl get svc my-service -o yaml | grep sessionAffinity
 
 # If set to ClientIP, IPVS uses persistent connections
 
-# View IPVS persistence table
-sudo ipvsadm -L -n -p
+# View IPVS persistent connection counters
+sudo ipvsadm -L -n --persistent-conn
 
-# Clear persistence table if needed (careful in production!)
-sudo ipvsadm -C
-sudo systemctl restart kubelet
+# View current IPVS connections, including persistence-engine data if present
+sudo ipvsadm -L -n -c --persistent-conn
 ```
 
 ## IPVS and NodePort Services
@@ -273,13 +273,13 @@ NodePort services create additional IPVS entries:
 
 ```bash
 # For a NodePort service on port 30080
-# Check if IPVS has entries for all node IPs
+# Check if IPVS has entries on each node where the NodePort should be accepted
 
-# Get node IPs
-kubectl get nodes -o wide
+# Get this node's local IPs
+ip -o addr show scope global | awk '{print $4}' | cut -d/ -f1
 
-# Check IPVS for each node IP
-for ip in $(kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'); do
+# Check IPVS for each local node IP
+for ip in $(ip -o addr show scope global | awk '{print $4}' | cut -d/ -f1); do
   echo "Checking $ip:30080"
   sudo ipvsadm -L -n | grep "$ip:30080"
 done
@@ -297,16 +297,16 @@ echo "=== IPVS Health Check ==="
 echo "Timestamp: $(date)"
 
 # Count virtual servers
-VS_COUNT=$(sudo ipvsadm -L -n | grep -c "^TCP\|^UDP")
+VS_COUNT=$(sudo ipvsadm -L -n | grep -Ec "^(TCP|UDP|SCTP)")
 echo "Virtual Servers: $VS_COUNT"
 
 # Count real servers
-RS_COUNT=$(sudo ipvsadm -L -n | grep -c "->")
+RS_COUNT=$(sudo ipvsadm -L -n | grep -c -- "->")
 echo "Real Servers: $RS_COUNT"
 
 # Check for servers with no backends
 echo "Services with no backends:"
-sudo ipvsadm -L -n | awk '/^TCP|^UDP/{vs=$2} /->/{found[vs]=1} END{for(v in found) if(!found[v]) print v}'
+sudo ipvsadm -L -n | awk '/^(TCP|UDP|SCTP)/{vs=$2; all[vs]=1} /->/{found[vs]=1} END{for(v in all) if(!found[v]) print v}'
 
 # Connection tracking status
 CT_COUNT=$(sudo sysctl -n net.netfilter.nf_conntrack_count)
@@ -370,7 +370,7 @@ kubectl -n kube-system get configmap kube-proxy -o yaml
 # - ipvs.udpTimeout: UDP timeout
 ```
 
-Example optimal configuration:
+Example configuration:
 
 ```yaml
 apiVersion: v1
@@ -380,6 +380,8 @@ metadata:
   namespace: kube-system
 data:
   config.conf: |
+    apiVersion: kubeproxy.config.k8s.io/v1alpha1
+    kind: KubeProxyConfiguration
     mode: "ipvs"
     ipvs:
       scheduler: "rr"
