@@ -35,10 +35,10 @@ Resources:
     Type: AWS::Route53::HealthCheck
     Properties:
       HealthCheckConfig:
-        Type: HTTPS
-        ResourcePath: /healthz
+        Type: HTTP
+        ResourcePath: /
         FullyQualifiedDomainName: cluster-east.example.com
-        Port: 443
+        Port: 80
         RequestInterval: 30
         FailureThreshold: 3
 
@@ -46,10 +46,10 @@ Resources:
     Type: AWS::Route53::HealthCheck
     Properties:
       HealthCheckConfig:
-        Type: HTTPS
-        ResourcePath: /healthz
+        Type: HTTP
+        ResourcePath: /
         FullyQualifiedDomainName: cluster-west.example.com
-        Port: 443
+        Port: 80
         RequestInterval: 30
         FailureThreshold: 3
 
@@ -62,7 +62,7 @@ Resources:
         Type: A
         SetIdentifier: cluster-east
         GeoLocation:
-          ContinentCode: NA
+          CountryCode: US
         HealthCheckId: !Ref ClusterEastHealthCheck
         AliasTarget:
           HostedZoneId: Z0987654321XYZ
@@ -72,7 +72,7 @@ Resources:
         Type: A
         SetIdentifier: cluster-west
         GeoLocation:
-          ContinentCode: NA
+          CountryCode: '*'
         HealthCheckId: !Ref ClusterWestHealthCheck
         AliasTarget:
           HostedZoneId: Z1122334455ABC
@@ -80,7 +80,7 @@ Resources:
           EvaluateTargetHealth: true
 ```
 
-This configuration routes North American traffic to the geographically closest healthy cluster. If health checks fail, Route53 automatically fails over to the next available cluster.
+This configuration routes United States traffic to the east cluster and all other or unmapped locations to the west cluster. If the United States record is unhealthy, Route53 can fall back to the default `CountryCode: '*'` record.
 
 Expose health check endpoints in each cluster:
 
@@ -93,8 +93,8 @@ metadata:
 spec:
   type: LoadBalancer
   ports:
-  - port: 443
-    targetPort: 8080
+  - port: 80
+    targetPort: 80
     protocol: TCP
   selector:
     app: health-check
@@ -119,11 +119,11 @@ spec:
       - name: health-server
         image: nginx:alpine
         ports:
-        - containerPort: 8080
+        - containerPort: 80
         livenessProbe:
           httpGet:
-            path: /healthz
-            port: 8080
+            path: /
+            port: 80
           initialDelaySeconds: 5
           periodSeconds: 10
 ```
@@ -144,7 +144,9 @@ helm install k8gb k8gb/k8gb \
   --create-namespace \
   --set k8gb.clusterGeoTag=us-east \
   --set k8gb.extGslbClustersGeoTags=us-west \
-  --set k8gb.dnsZone=example.com
+  --set k8gb.dnsZones[0].parentZone=example.com \
+  --set k8gb.dnsZones[0].loadBalancedZone=global.example.com \
+  --set k8gb.dnsZones[0].dnsZoneNegTTL=30
 
 # Install in cluster-2
 helm install k8gb k8gb/k8gb \
@@ -152,38 +154,50 @@ helm install k8gb k8gb/k8gb \
   --create-namespace \
   --set k8gb.clusterGeoTag=us-west \
   --set k8gb.extGslbClustersGeoTags=us-east \
-  --set k8gb.dnsZone=example.com
+  --set k8gb.dnsZones[0].parentZone=example.com \
+  --set k8gb.dnsZones[0].loadBalancedZone=global.example.com \
+  --set k8gb.dnsZones[0].dnsZoneNegTTL=30
 ```
 
 Create a Gslb resource to define global load balancing for your application:
 
 ```yaml
-apiVersion: k8gb.absa.oss/v1beta1
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myapp-ingress
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: app.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: myapp-service
+            port:
+              number: 80
+
+---
+apiVersion: k8gb.io/v1beta1
 kind: Gslb
 metadata:
   name: myapp-gslb
   namespace: default
 spec:
-  ingress:
-    ingressClassName: nginx
-    rules:
-    - host: app.example.com
-      http:
-        paths:
-        - path: /
-          pathType: Prefix
-          backend:
-            service:
-              name: myapp-service
-              port:
-                number: 80
+  resourceRef:
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    name: myapp-ingress
   strategy:
     type: roundRobin  # Options: roundRobin, failover, geoip
-    splitBrainThresholdSeconds: 300
     dnsTtlSeconds: 30
 ```
 
-K8GB automatically synchronizes this configuration across clusters and manages DNS records to balance traffic globally. The `splitBrainThresholdSeconds` prevents rapid DNS changes during transient failures.
+When you apply equivalent Gslb resources in each cluster, K8GB manages DNS records to balance traffic globally.
 
 ## Approach 3: Istio Multi-Cluster with Locality-Based Routing
 
@@ -217,6 +231,13 @@ spec:
       interval: 30s
       baseEjectionTime: 30s
       maxEjectionPercent: 50
+  subsets:
+  - name: us-east
+    labels:
+      region: us-east
+  - name: us-west
+    labels:
+      region: us-west
 ```
 
 This configuration keeps 80% of traffic local to each region while sending 20% to the alternate region for testing. Outlier detection automatically removes unhealthy endpoints from the load balancing pool.
@@ -263,14 +284,19 @@ Configure Cloudflare Load Balancing with health checks:
 
 ```javascript
 // cloudflare-lb-config.js
-const cloudflare = require('cloudflare');
+import Cloudflare from 'cloudflare';
 
-const cf = cloudflare({
-  token: process.env.CLOUDFLARE_API_TOKEN
+const cf = new Cloudflare({
+  apiToken: process.env.CLOUDFLARE_API_TOKEN
 });
 
+const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+const zoneId = process.env.CLOUDFLARE_ZONE_ID;
+const monitorId = 'health-check-monitor-id';
+
 // Define origin pools for each cluster
-const eastPool = await cf.user.loadBalancers.pools.create({
+const eastPool = await cf.loadBalancers.pools.create({
+  account_id: accountId,
   name: 'cluster-east-pool',
   origins: [
     {
@@ -280,11 +306,11 @@ const eastPool = await cf.user.loadBalancers.pools.create({
       weight: 1
     }
   ],
-  monitor: 'health-check-monitor-id',
-  notification_email: 'ops@example.com'
+  monitor: monitorId
 });
 
-const westPool = await cf.user.loadBalancers.pools.create({
+const westPool = await cf.loadBalancers.pools.create({
+  account_id: accountId,
   name: 'cluster-west-pool',
   origins: [
     {
@@ -294,12 +320,12 @@ const westPool = await cf.user.loadBalancers.pools.create({
       weight: 1
     }
   ],
-  monitor: 'health-check-monitor-id',
-  notification_email: 'ops@example.com'
+  monitor: monitorId
 });
 
 // Create global load balancer
-const lb = await cf.zones.loadBalancers.create('zone-id', {
+const lb = await cf.loadBalancers.create({
+  zone_id: zoneId,
   name: 'app.example.com',
   default_pools: [eastPool.id, westPool.id],
   fallback_pool: eastPool.id,
