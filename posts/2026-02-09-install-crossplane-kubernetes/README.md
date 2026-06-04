@@ -17,9 +17,9 @@ Crossplane extends Kubernetes with Custom Resource Definitions (CRDs) representi
 Before installing Crossplane, ensure your cluster meets these requirements:
 
 ```bash
-# Check Kubernetes version (1.19+)
+# Check Kubernetes version (actively supported release)
 
-kubectl version --short
+kubectl version
 
 # Verify RBAC is enabled
 kubectl auth can-i create customresourcedefinitions
@@ -48,6 +48,7 @@ kubectl create namespace crossplane-system
 # Install Crossplane
 helm install crossplane \
   --namespace crossplane-system \
+  --create-namespace \
   crossplane-stable/crossplane \
   --wait
 
@@ -80,6 +81,8 @@ kubectl get crds | grep crossplane.io
 # configurationrevisions.pkg.crossplane.io
 # configurations.pkg.crossplane.io
 # locks.pkg.crossplane.io
+# managedresourceactivationpolicies.apiextensions.crossplane.io
+# managedresourcedefinitions.apiextensions.crossplane.io
 # providerrevisions.pkg.crossplane.io
 # providers.pkg.crossplane.io
 
@@ -93,17 +96,17 @@ The Crossplane CLI simplifies package management:
 
 ```bash
 # Install on Linux
-curl -sL https://raw.githubusercontent.com/crossplane/crossplane/master/install.sh | sh
+curl -sL https://raw.githubusercontent.com/crossplane/crossplane/main/install.sh | sh
 sudo mv crossplane /usr/local/bin
 
 # Install on macOS
 brew install crossplane/tap/crossplane
 
 # Verify installation
-crossplane --version
+crossplane version
 
 # Enable CLI autocompletion (bash)
-echo 'source <(crossplane completion bash)' >> ~/.bashrc
+echo 'source <(crossplane completions)' >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -116,7 +119,7 @@ Customize the installation for production environments:
 ```yaml
 # crossplane-values.yaml
 # Configure resource limits
-resources:
+resourcesCrossplane:
   limits:
     cpu: 500m
     memory: 512Mi
@@ -136,8 +139,8 @@ packageCache:
 
 # Set custom image registry (for air-gapped environments)
 image:
-  repository: my-registry.com/crossplane
-  tag: v1.14.0
+  repository: my-registry.com/crossplane/crossplane
+  tag: v2.3.0
 
 # Configure webhook
 webhooks:
@@ -197,7 +200,7 @@ spec:
         summary: "Crossplane is down"
 
     - alert: CrossplaneReconciliationErrors
-      expr: rate(crossplane_reconcile_errors_total[5m]) > 0.1
+      expr: rate(controller_runtime_reconcile_errors_total[5m]) > 0.1
       for: 10m
       labels:
         severity: warning
@@ -222,10 +225,10 @@ metadata:
   name: crossplane-user
   namespace: team-a
 rules:
-- apiGroups: ["database.aws.crossplane.io"]
-  resources: ["rdsinstances"]
+- apiGroups: ["rds.aws.m.upbound.io"]
+  resources: ["instances"]
   verbs: ["get", "list", "watch", "create", "update", "delete"]
-- apiGroups: ["storage.aws.crossplane.io"]
+- apiGroups: ["s3.aws.m.upbound.io"]
   resources: ["buckets"]
   verbs: ["get", "list", "watch", "create", "update", "delete"]
 ---
@@ -251,16 +254,15 @@ This allows team-a to manage databases and storage in their namespace while rest
 Crossplane needs providers to manage cloud resources. Install the provider package (detailed provider setup covered in subsequent posts):
 
 ```bash
-# List available providers
-kubectl crossplane install provider crossplane/provider-aws:v0.40.0
-kubectl crossplane install provider crossplane/provider-azure:v0.35.0
-kubectl crossplane install provider crossplane/provider-gcp:v0.36.0
+# Install provider packages
+crossplane xpkg install provider xpkg.crossplane.io/crossplane-contrib/provider-aws-s3:v2.0.0 --wait=5m
+crossplane xpkg install provider xpkg.crossplane.io/crossplane-contrib/provider-gcp-iam:v2.0.0 --wait=5m
 
 # Check provider installation status
 kubectl get providers
 
 # Wait for providers to become healthy
-kubectl wait --for=condition=Healthy provider/provider-aws --timeout=300s
+kubectl wait --for=condition=Healthy provider/crossplane-contrib-provider-aws-s3 --timeout=300s
 ```
 
 ## Upgrading Crossplane
@@ -309,7 +311,7 @@ kubectl auth can-i create customresourcedefinitions
 **Provider installation hangs**:
 ```bash
 # Check provider status
-kubectl describe provider provider-aws
+kubectl describe provider crossplane-contrib-provider-aws-s3
 
 # Check package manager logs
 kubectl logs -n crossplane-system deployment/crossplane | grep package
@@ -372,7 +374,7 @@ affinity:
           - crossplane
       topologyKey: kubernetes.io/hostname
 
-resources:
+resourcesCrossplane:
   limits:
     cpu: 1000m
     memory: 1Gi
