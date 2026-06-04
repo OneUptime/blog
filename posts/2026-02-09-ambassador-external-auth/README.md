@@ -4,22 +4,22 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ambassador, Authentication, Kubernetes
 
-Description: Learn how to implement custom authentication and authorization logic using Ambassador's External Auth Service.
+Description: Learn how to implement custom authentication and authorization logic using Emissary-ingress's External Auth Service.
 
 ---
 
-Ambassador's External Auth Service pattern delegates authentication and authorization decisions to external microservices. This architecture enables complex authentication logic, custom authorization rules, and integration with existing identity systems without modifying backend services. Every request passes through the auth service before reaching backends, creating a centralized security checkpoint.
+Emissary-ingress's External Auth Service pattern delegates authentication and authorization decisions to external microservices. This architecture enables complex authentication logic, custom authorization rules, and integration with existing identity systems without modifying backend services. Every request passes through the auth service before reaching backends, creating a centralized security checkpoint.
 
 ## Understanding External Auth Architecture
 
 The External Auth flow works as follows:
 
-1. Client sends request to Ambassador
-2. Ambassador forwards request (headers, path, method) to auth service
+1. Client sends request to Emissary-ingress
+2. Emissary-ingress forwards request (headers, path, method) to auth service
 3. Auth service validates credentials and makes allow/deny decision
 4. If allowed, auth service returns 200 with optional headers to add
-5. Ambassador forwards original request to backend with added headers
-6. If denied, auth service returns 401/403 and Ambassador rejects request
+5. Emissary-ingress forwards original request to backend with added headers
+6. If denied, auth service returns 401/403 and Emissary-ingress rejects request
 
 This pattern centralizes authentication logic, keeping backends stateless and focused on business logic.
 
@@ -49,8 +49,8 @@ func authHandler(w http.ResponseWriter, r *http.Request) {
 
     if authHeader == "" {
         // No auth provided
-        w.WriteHeader(http.StatusUnauthorized)
         w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusUnauthorized)
         json.NewEncoder(w).Encode(map[string]string{
             "error": "Authorization header required",
         })
@@ -80,7 +80,12 @@ func authHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     // Check authorization rules
-    if !isAuthorized(user, r.Header.Get("X-Original-URI")) {
+    originalPath := strings.TrimPrefix(r.URL.Path, "/auth")
+    if originalPath == "" {
+        originalPath = "/"
+    }
+
+    if !isAuthorized(user, originalPath) {
         w.WriteHeader(http.StatusForbidden)
         json.NewEncoder(w).Encode(map[string]string{
             "error": "Insufficient permissions",
@@ -133,6 +138,10 @@ type User struct {
 
 func main() {
     http.HandleFunc("/auth", authHandler)
+    http.HandleFunc("/auth/", authHandler)
+    http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+    })
     log.Println("Auth service starting on :8080")
     log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -238,14 +247,16 @@ metadata:
   namespace: default
 spec:
   auth_service: auth-service.default:80
+  proto: http
   path_prefix: /auth
   timeout_ms: 5000
+  status_on_error:
+    code: 403
+  failure_mode_allow: false
 
-  # Headers to send to auth service
+  # Additional headers to send to auth service
   allowed_request_headers:
-  - Authorization
-  - X-Original-URI
-  - X-Forwarded-For
+  - X-API-Key
 
   # Headers to include in backend requests
   allowed_authorization_headers:
@@ -253,27 +264,13 @@ spec:
   - X-Auth-User-ID
   - X-Auth-Roles
 
-  # Add original request info
   add_linkerd_headers: false
   include_body:
     max_bytes: 4096
     allow_partial: true
 ```
 
-Apply global authentication:
-
-```yaml
-apiVersion: getambassador.io/v3alpha1
-kind: Module
-metadata:
-  name: ambassador
-  namespace: ambassador
-spec:
-  config:
-    auth_service: authentication
-```
-
-Or apply per-mapping:
+With an `AuthService` configured, Emissary-ingress authenticates incoming requests before routing them unless a `Mapping` explicitly bypasses authentication:
 
 ```yaml
 apiVersion: getambassador.io/v3alpha1
@@ -284,7 +281,20 @@ metadata:
 spec:
   prefix: /api/
   service: backend-service:8080
-  auth_service: authentication
+```
+
+For public routes, bypass the AuthService per mapping:
+
+```yaml
+apiVersion: getambassador.io/v3alpha1
+kind: Mapping
+metadata:
+  name: public-api
+  namespace: default
+spec:
+  prefix: /public/
+  service: backend-service:8080
+  bypass_auth: true
 ```
 
 ## Implementing JWT Validation
@@ -293,6 +303,8 @@ Extend the auth service with JWT validation:
 
 ```go
 import (
+    "fmt"
+
     "github.com/golang-jwt/jwt/v5"
 )
 
@@ -315,13 +327,45 @@ func validateToken(tokenString string) (*User, bool) {
         return nil, false
     }
 
+    subject, ok := claims["sub"].(string)
+    if !ok {
+        return nil, false
+    }
+
+    username, ok := claims["username"].(string)
+    if !ok {
+        return nil, false
+    }
+
+    roles, ok := interfaceToStringSlice(claims["roles"])
+    if !ok {
+        return nil, false
+    }
+
     user := &User{
-        ID:       claims["sub"].(string),
-        Username: claims["username"].(string),
-        Roles:    interfaceToStringSlice(claims["roles"]),
+        ID:       subject,
+        Username: username,
+        Roles:    roles,
     }
 
     return user, true
+}
+
+func interfaceToStringSlice(value interface{}) ([]string, bool) {
+    values, ok := value.([]interface{})
+    if !ok {
+        return nil, false
+    }
+
+    result := make([]string, 0, len(values))
+    for _, value := range values {
+        role, ok := value.(string)
+        if !ok {
+            return nil, false
+        }
+        result = append(result, role)
+    }
+    return result, true
 }
 ```
 
@@ -353,17 +397,19 @@ func authHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func redirectToOAuth(w http.ResponseWriter, r *http.Request) {
-    originalURL := r.Header.Get("X-Original-URI")
-    state := generateState()
+    originalURL := strings.TrimPrefix(r.URL.Path, "/auth")
+    state := generateState(originalURL)
 
-    // Store state and return URL in session/cache
+    // Store the signed state in session/cache
 
-    authURL := fmt.Sprintf(
-        "https://accounts.google.com/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=openid email profile&state=%s",
-        oauthClientID,
-        oauthRedirectURI,
-        state,
-    )
+    params := url.Values{}
+    params.Set("client_id", oauthClientID)
+    params.Set("redirect_uri", oauthRedirectURI)
+    params.Set("response_type", "code")
+    params.Set("scope", "openid email profile")
+    params.Set("state", state)
+
+    authURL := "https://accounts.google.com/o/oauth2/v2/auth?" + params.Encode()
 
     w.Header().Set("Location", authURL)
     w.WriteHeader(http.StatusFound)
@@ -426,8 +472,9 @@ Implement caching to reduce latency:
 
 ```go
 import (
-    "github.com/go-redis/redis/v8"
     "time"
+
+    "github.com/redis/go-redis/v9"
 )
 
 var rdb = redis.NewClient(&redis.Options{
@@ -459,7 +506,7 @@ func authHandler(w http.ResponseWriter, r *http.Request) {
 
     // Cache the result
     userData, _ := json.Marshal(user)
-    rdb.Set(ctx, cacheKey, userData, 5*time.Minute)
+    rdb.Set(ctx, cacheKey, userData, 5*time.Minute).Err()
 
     setAuthHeaders(w, user)
     w.WriteHeader(http.StatusOK)
@@ -505,21 +552,22 @@ func isAuthorized(user *User, path, method string) bool {
 Test authentication flow:
 
 ```bash
-# Get Ambassador address
-AMBASSADOR=$(kubectl get svc ambassador -n ambassador -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+# Get Emissary-ingress address
+EMISSARY=$(kubectl get svc emissary-emissary-ingress -n emissary \
+  -o "go-template={{range .status.loadBalancer.ingress}}{{or .ip .hostname}}{{end}}")
 
 # Request without auth (should fail)
-curl -i http://${AMBASSADOR}/api/data
+curl -i http://${EMISSARY}/api/data
 # HTTP/1.1 401 Unauthorized
 
 # Request with invalid token (should fail)
 curl -i -H "Authorization: Bearer invalid-token" \
-  http://${AMBASSADOR}/api/data
+  http://${EMISSARY}/api/data
 # HTTP/1.1 403 Forbidden
 
 # Request with valid token (should succeed)
 curl -i -H "Authorization: Bearer valid-token-123" \
-  http://${AMBASSADOR}/api/data
+  http://${EMISSARY}/api/data
 # HTTP/1.1 200 OK
 ```
 
@@ -594,4 +642,4 @@ func main() {
 
 ## Conclusion
 
-Ambassador's External Auth Service pattern provides flexible, centralized authentication and authorization for Kubernetes APIs. By delegating auth decisions to dedicated microservices, you can implement complex authentication workflows, integrate with existing identity systems, and enforce sophisticated authorization policies without modifying backend services. This architecture scales horizontally, supports diverse authentication mechanisms, and maintains separation of concerns between security and business logic, making it ideal for microservices environments requiring fine-grained access control.
+Emissary-ingress's External Auth Service pattern provides flexible, centralized authentication and authorization for Kubernetes APIs. By delegating auth decisions to dedicated microservices, you can implement complex authentication workflows, integrate with existing identity systems, and enforce sophisticated authorization policies without modifying backend services. This architecture scales horizontally, supports diverse authentication mechanisms, and maintains separation of concerns between security and business logic, making it ideal for microservices environments requiring fine-grained access control.
