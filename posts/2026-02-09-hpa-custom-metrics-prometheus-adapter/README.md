@@ -67,7 +67,7 @@ data:
       name:
         matches: "^(.*)_total$"
         as: "${1}_per_second"
-      metricsQuery: 'rate(<<.Series>>{<<.LabelMatchers>>}[2m])'
+      metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
 
     # Expose request queue depth per pod
     - seriesQuery: 'request_queue_depth{namespace!="",pod!=""}'
@@ -80,14 +80,14 @@ data:
       metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[2m])'
 
     # Expose request latency p95 per pod
-    - seriesQuery: 'http_request_duration_seconds{namespace!="",pod!=""}'
+    - seriesQuery: 'http_request_duration_seconds_bucket{namespace!="",pod!="",le!=""}'
       resources:
         overrides:
           namespace: {resource: "namespace"}
           pod: {resource: "pod"}
       name:
         as: "http_request_latency_p95"
-      metricsQuery: 'histogram_quantile(0.95, rate(<<.Series>>_bucket{<<.LabelMatchers>>}[2m]))'
+      metricsQuery: 'histogram_quantile(0.95, sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>, le))'
 
     # Expose active connections per pod
     - seriesQuery: 'active_connections{namespace!="",pod!=""}'
@@ -420,17 +420,17 @@ Write efficient PromQL queries to reduce load on Prometheus.
 rules:
 # Efficient: Uses rate() over appropriate window
 - seriesQuery: 'http_requests_total{namespace!="",pod!=""}'
-  metricsQuery: 'rate(<<.Series>>{<<.LabelMatchers>>}[2m])'
+  metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
 
 # Less efficient: Calculates rate per second with increase()
 # - metricsQuery: 'increase(<<.Series>>{<<.LabelMatchers>>}[1m])/60'
 
 # Good: Aggregates before calculating percentile
-- seriesQuery: 'http_request_duration_seconds{namespace!="",pod!=""}'
-  metricsQuery: 'histogram_quantile(0.95, rate(<<.Series>>_bucket{<<.LabelMatchers>>}[2m]))'
+- seriesQuery: 'http_request_duration_seconds_bucket{namespace!="",pod!="",le!=""}'
+  metricsQuery: 'histogram_quantile(0.95, sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>, le))'
 ```
 
-Use rate windows that match your HPA evaluation period, typically 1-5 minutes.
+Use rate windows long enough to include several Prometheus scrapes, typically 1-5 minutes depending on your scrape interval.
 
 ## Best Practices
 
@@ -438,7 +438,7 @@ Choose metrics that directly reflect your application's capacity constraints. If
 
 Set target values based on observed behavior under load testing. Don't guess - measure actual metric values at different load levels to determine appropriate thresholds.
 
-Use the same time window in your PromQL queries as your HPA stabilization window. This ensures metrics are averaged over an appropriate period.
+Use PromQL range windows that smooth short spikes without hiding sustained load. Configure HPA stabilization windows separately to smooth replica changes.
 
 Monitor both your custom metrics and HPA behavior in production. Set up alerts for when HPA reaches min or max replicas, which indicates scaling constraints.
 
