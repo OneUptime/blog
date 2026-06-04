@@ -8,13 +8,13 @@ Description: Learn how to use kubectl attach to connect to running container pro
 
 ---
 
-While kubectl exec starts new processes in containers, kubectl attach connects to the primary process already running in the container. This is useful for viewing live output from applications without logs, interacting with applications that expect stdin input, debugging containerized interactive applications, and attaching to processes started with tty allocation.
+While kubectl exec starts new processes in containers, kubectl attach connects to a process already running in the container. This is useful for viewing live output from applications without using the logs command, interacting with applications that expect stdin input, debugging containerized interactive applications, and attaching to processes started with tty allocation.
 
-kubectl attach is particularly valuable when debugging containers running interactive applications, monitoring real-time output, or sending signals to running processes.
+kubectl attach is particularly valuable when debugging containers running interactive applications or monitoring real-time output from running processes.
 
 ## Understanding kubectl attach
 
-kubectl attach connects your terminal to a running container's main process (PID 1). It attaches to stdin, stdout, and stderr of the container, allowing bidirectional communication. This differs from kubectl exec which spawns a new process, and kubectl logs which only shows historical output.
+kubectl attach connects your terminal to a process that is already running inside an existing container, usually the container's main process. It attaches to stdin, stdout, and stderr of the container, allowing bidirectional communication when stdin is enabled. This differs from kubectl exec which spawns a new process, and kubectl logs which reads container log output and can optionally follow new log output.
 
 ## Basic kubectl attach Usage
 
@@ -95,14 +95,14 @@ kubectl attach -it db-client-pod
 Monitor live application output:
 
 ```bash
-# View real-time logs without following
+# View real-time output without using kubectl logs
 kubectl attach pod-name
 
 # This is similar to kubectl logs -f but connects to the actual process
 # Useful when the application outputs to stdout/stderr directly
 
 # Compare with logs
-kubectl logs -f pod-name  # Historical + new logs
+kubectl logs -f pod-name  # Existing + new log output
 kubectl attach pod-name   # Only new output from now
 ```
 
@@ -138,7 +138,7 @@ kubectl exec -it pod-name -- bash
 
 # kubectl attach - connects to EXISTING process
 kubectl attach -it pod-name
-# - Connects to PID 1 (main process)
+# - Connects to the container's already-running process
 # - Sees output of running application
 # - Can send input to main process
 ```
@@ -189,13 +189,11 @@ metadata:
 spec:
   containers:
   - name: app
-    image: golang:1.21
+    image: your-registry/go-app-debug:latest
     command: ["dlv"]
-    args: ["debug", "--headless", "--listen=:2345", "--api-version=2", "/app/main.go"]
+    args: ["debug", "/app", "--api-version=2"]
     stdin: true
     tty: true
-    ports:
-    - containerPort: 2345
 ```
 
 Attach to debug session:
@@ -204,7 +202,7 @@ Attach to debug session:
 # Attach to the debugger
 kubectl attach -it go-debug
 
-# The debugger prompts appear
+# The interactive debugger prompt appears
 # You can set breakpoints and step through code
 ```
 
@@ -245,12 +243,13 @@ Troubleshoot common attach issues:
 
 ```bash
 # Error: "Unable to use a TTY"
-# Solution: Container must have tty: true
-kubectl patch pod pod-name --type=json -p='[{"op":"replace","path":"/spec/containers/0/tty","value":true}]'
+# Solution: Create the pod with stdin: true and tty: true
+kubectl delete pod pod-name
+kubectl apply -f pod-with-stdin-and-tty.yaml
 
 # Error: "cannot attach to a container without a terminal"
-# Solution: Use -t flag
-kubectl attach -t pod-name
+# Solution: Omit -t, or create the pod with tty: true before attaching
+kubectl attach pod-name
 
 # Error: "container not running"
 # Solution: Check pod status
