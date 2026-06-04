@@ -14,7 +14,7 @@ This guide covers deploying Uptime Kuma in Docker, configuring various monitor t
 
 ## Why Self-Host Your Monitoring
 
-Third-party monitoring services charge per monitor and per check frequency. When you self-host with Uptime Kuma, you get unlimited monitors at whatever check interval you want. Your monitoring data stays on your infrastructure, and you have full control over retention and alerting. The trade-off is that you need to maintain the monitoring server itself, but Docker makes that straightforward.
+Third-party monitoring services charge per monitor and per check frequency. When you self-host with Uptime Kuma, you can add many monitors and use configurable check intervals without per-monitor billing. Your monitoring data stays on your infrastructure, and you have full control over retention and alerting. The trade-off is that you need to maintain the monitoring server itself, but Docker makes that straightforward.
 
 ## Quick Start with Docker Run
 
@@ -28,22 +28,21 @@ docker run -d \
   --restart unless-stopped \
   -p 3001:3001 \
   -v uptime-kuma-data:/app/data \
-  louislam/uptime-kuma:1
+  louislam/uptime-kuma:2
 ```
 
 Open `http://localhost:3001` in your browser. On the first visit, you will create an admin account. After that, you can start adding monitors immediately.
 
 ## Docker Compose Setup
 
-For a more complete deployment with reverse proxy and automatic HTTPS, use Docker Compose.
+For a more complete deployment with a reverse proxy in front of Uptime Kuma, use Docker Compose. Add TLS at the proxy, for example with Certbot or Caddy, before exposing it publicly.
 
 ```yaml
 # docker-compose.yml - Uptime Kuma with Nginx reverse proxy
-version: "3.8"
 
 services:
   uptime-kuma:
-    image: louislam/uptime-kuma:1
+    image: louislam/uptime-kuma:2
     restart: unless-stopped
     volumes:
       - uptime-kuma-data:/app/data
@@ -55,23 +54,21 @@ services:
       # Set the timezone for accurate timestamps
       - TZ=UTC
     healthcheck:
-      test: ["CMD", "node", "/app/extra/healthcheck.js"]
+      test: ["CMD", "extra/healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
     networks:
       - monitoring
 
-  # Nginx reverse proxy for HTTPS termination
+  # Nginx reverse proxy
   nginx:
     image: nginx:alpine
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
-      - ./certs:/etc/nginx/certs
     depends_on:
       - uptime-kuma
     networks:
@@ -131,7 +128,7 @@ Uptime Kuma supports many monitor types. Here are the most commonly used ones.
 
 **Ping Monitor** - Sends ICMP ping packets to check basic network reachability. Good for monitoring network infrastructure.
 
-**Docker Container Monitor** - When you mount the Docker socket, Uptime Kuma can directly check whether a container is running. This catches cases where a container is up but the service inside has crashed.
+**Docker Container Monitor** - When you mount the Docker socket, Uptime Kuma can directly check whether a container is running. This catches cases where the service process exits and the container stops. Treat Docker socket access as privileged; a read-only bind mount does not make the Docker API read-only.
 
 **DNS Monitor** - Verifies that a DNS record resolves correctly. Useful for catching DNS propagation issues or unauthorized changes.
 
@@ -198,26 +195,33 @@ For Slack notifications, you need a webhook URL. Create one in your Slack worksp
 
 One of Uptime Kuma's best features is the built-in status page. Navigate to Status Pages in the sidebar and create a new page. You can group monitors into categories, add a custom logo and description, and share the URL with your users.
 
-The status page automatically shows current status, uptime percentages, and incident history. It updates in real time via WebSocket, so users see changes without refreshing.
+The status page automatically shows current status, uptime percentages, and incident history. It caches results and refreshes periodically, so it is intended for public communication rather than second-by-second operational dashboards.
 
 ## Backup and Restore
 
-Uptime Kuma stores everything in a SQLite database inside the data volume. Back it up regularly.
+By default, Uptime Kuma stores its data in SQLite files inside the data volume. Stop the container before copying the data directory so the backup is consistent.
 
 ```bash
-# Create a backup of the Uptime Kuma database
-docker compose exec uptime-kuma \
-  cp /app/data/kuma.db /app/data/kuma-backup-$(date +%Y%m%d).db
+# Stop Uptime Kuma before copying SQLite data
+docker compose stop uptime-kuma
 
-# Or copy it to your host
-docker cp uptime-kuma:/app/data/kuma.db ./kuma-backup.db
+# Copy the data directory to your host
+docker compose cp uptime-kuma:/app/data ./uptime-kuma-backup-$(date +%Y%m%d)
+
+# Start Uptime Kuma again
+docker compose up -d uptime-kuma
+
+# If you used docker run instead of Compose
+docker stop uptime-kuma
+docker cp uptime-kuma:/app/data ./uptime-kuma-backup-$(date +%Y%m%d)
+docker start uptime-kuma
 ```
 
-To restore, stop the container, replace the `kuma.db` file in the volume, and start it again.
+To restore, stop the container, replace the data directory in the volume with your backup, and start it again.
 
 Resource Usage
 
-Uptime Kuma is lightweight. With 50 monitors checking every 60 seconds, it uses roughly 80MB of RAM and negligible CPU. The SQLite database grows slowly, typically staying under 100MB even after months of data. For larger deployments with hundreds of monitors, you might see memory usage climb to 200-300MB.
+Uptime Kuma is lightweight for small deployments, but resource usage depends on monitor types, check intervals, notification volume, and database backend. For larger deployments with hundreds of monitors, expect memory and database usage to grow with retention and heartbeat volume.
 
 ## Cleanup
 
