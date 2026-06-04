@@ -25,7 +25,7 @@ Start by installing the operator in your cluster:
 ```bash
 # Install CloudNativePG operator
 
-kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.21/releases/cnpg-1.21.0.yaml
+kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.21/releases/cnpg-1.21.6.yaml
 
 # Verify installation
 kubectl get pods -n cnpg-system
@@ -80,7 +80,6 @@ spec:
       effective_cache_size: "1GB"
       wal_level: "replica"
       max_wal_senders: "10"
-      archive_mode: "on"
 
   # Storage configuration
   storage:
@@ -111,16 +110,6 @@ spec:
       # Backup retention policy
       retentionPolicy: "30d"
 
-    # Schedule base backups
-    schedule:
-      - name: daily-backup
-        schedule: "0 2 * * *"  # 2 AM daily
-        backupOwnerReference: self
-
-      - name: hourly-backup
-        schedule: "0 * * * *"  # Every hour
-        backupOwnerReference: self
-
   # Resource limits
   resources:
     requests:
@@ -135,12 +124,40 @@ spec:
     enablePodMonitor: true
 ```
 
-This configuration sets up continuous WAL archiving and scheduled backups. The operator automatically handles backup lifecycle and retention.
+This configuration sets up continuous WAL archiving. The operator automatically handles backup lifecycle and retention.
+
+Create scheduled backups as separate `ScheduledBackup` resources. CloudNativePG schedules use six fields, including seconds:
+
+```yaml
+# scheduled-backups.yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: daily-backup
+  namespace: postgresql
+spec:
+  schedule: "0 0 2 * * *"  # 2 AM daily
+  backupOwnerReference: self
+  cluster:
+    name: postgres-cluster
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: hourly-backup
+  namespace: postgresql
+spec:
+  schedule: "0 0 * * * *"  # Every hour
+  backupOwnerReference: self
+  cluster:
+    name: postgres-cluster
+```
 
 Deploy the cluster:
 
 ```bash
 kubectl apply -f postgresql-cluster.yaml
+kubectl apply -f scheduled-backups.yaml
 
 # Watch cluster creation
 kubectl get cluster -n postgresql -w
@@ -198,7 +215,7 @@ Connect to the primary pod and verify archiving:
 ```bash
 # Get primary pod name
 PRIMARY_POD=$(kubectl get pod -n postgresql \
-  -l role=primary,cnpg.io/cluster=postgres-cluster \
+  -l cnpg.io/instanceRole=primary,cnpg.io/cluster=postgres-cluster \
   -o jsonpath='{.items[0].metadata.name}')
 
 # Check archiving status
@@ -240,14 +257,11 @@ spec:
 
       # Recovery target
       recoveryTarget:
-        targetTime: "2026-02-09 14:30:00.000000+00"
+        targetTime: "2026-02-09T14:30:00Z"
+        backupID: "20260209T020000"
         # targetName: "before-bad-migration"  # Alternative: named restore point
         # targetXID: "12345"  # Alternative: transaction ID
         # targetLSN: "0/3000000"  # Alternative: log sequence number
-
-      # Backup source
-      backup:
-        name: daily-backup-20260209
 
   # Reference to original cluster for WAL access
   externalClusters:
@@ -309,6 +323,7 @@ bootstrap:
   recovery:
     source: postgres-cluster
     recoveryTarget:
+      backupID: "20260209T020000"
       targetName: "before-migration-v2"
 ```
 
@@ -318,6 +333,36 @@ Verify backups regularly by performing test recoveries. Create a scheduled job:
 
 ```yaml
 # backup-verification.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-verifier
+  namespace: postgresql
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backup-verifier
+  namespace: postgresql
+rules:
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["backups", "clusters"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backup-verifier
+  namespace: postgresql
+subjects:
+  - kind: ServiceAccount
+    name: backup-verifier
+    namespace: postgresql
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: backup-verifier
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -332,16 +377,16 @@ spec:
           serviceAccountName: backup-verifier
           containers:
           - name: verify
-            image: ghcr.io/cloudnative-pg/cloudnative-pg:1.21.0
+            image: bitnami/kubectl:1.28
             command:
-            - /bin/bash
+            - /bin/sh
             - -c
             - |
               # Get latest backup
               LATEST_BACKUP=$(kubectl get backup -n postgresql \
                 -l cnpg.io/cluster=postgres-cluster \
                 --sort-by=.metadata.creationTimestamp \
-                -o jsonpath='{.items[-1].metadata.name}')
+                -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | tail -n 1)
 
               # Create test recovery cluster
               cat <<EOF | kubectl apply -f -
@@ -350,18 +395,14 @@ spec:
               metadata:
                 name: backup-test-$(date +%s)
                 namespace: postgresql
+                labels:
+                  verification: "true"
               spec:
                 instances: 1
                 bootstrap:
                   recovery:
-                    source: postgres-cluster
                     backup:
                       name: ${LATEST_BACKUP}
-                externalClusters:
-                  - name: postgres-cluster
-                    barmanObjectStore:
-                      destinationPath: s3://my-backups/postgres-cluster/
-                      endpointURL: https://s3.amazonaws.com
                 storage:
                   size: 10Gi
               EOF
@@ -404,15 +445,15 @@ spec:
     rules:
     - alert: BackupFailed
       expr: |
-        cnpg_backup_status{status="failed"} > 0
+        cnpg_collector_last_failed_backup_timestamp > cnpg_collector_last_available_backup_timestamp
       for: 5m
       annotations:
         summary: "PostgreSQL backup failed"
-        description: "Backup {{ $labels.backup }} failed"
+        description: "The latest CloudNativePG backup failure is newer than the latest available backup"
 
     - alert: NoRecentBackup
       expr: |
-        time() - cnpg_backup_last_success_timestamp > 86400
+        time() - cnpg_collector_last_available_backup_timestamp > 86400
       for: 1h
       annotations:
         summary: "No successful backup in 24 hours"
@@ -449,9 +490,8 @@ spec:
   backup:
     barmanObjectStore:
       wal:
-        compression: zstd     # Better compression than gzip
+        compression: bzip2    # Better compression ratio than gzip
         maxParallel: 4        # More parallel uploads
-        archiveTimeout: 300s  # Archive frequency
 ```
 
 ## Conclusion
