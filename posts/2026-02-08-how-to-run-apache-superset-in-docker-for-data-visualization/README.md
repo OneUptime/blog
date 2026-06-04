@@ -8,7 +8,7 @@ Description: Deploy Apache Superset in Docker to create interactive dashboards a
 
 ---
 
-Apache Superset is an open-source business intelligence platform that lets you build interactive dashboards and explore data visually. It connects to virtually any SQL database, supports dozens of chart types, and provides a modern web interface for data exploration. Running Superset in Docker is the recommended approach for both development and production, since the project itself maintains official Docker Compose configurations.
+Apache Superset is an open-source business intelligence platform that lets you build interactive dashboards and explore data visually. It connects to virtually any SQL database, supports dozens of chart types, and provides a modern web interface for data exploration. Running Superset in Docker is the fastest way to try it locally, since the project itself maintains official Docker Compose configurations. For production, the Superset project recommends a hardened deployment rather than the stock Docker Compose setup.
 
 ## What Superset Offers
 
@@ -51,6 +51,7 @@ x-superset-common: &superset-common
     SUPERSET_SECRET_KEY: your-secret-key-change-this-in-production
     DATABASE_HOST: postgres
     DATABASE_PORT: 5432
+    DATABASE_DIALECT: postgresql
     DATABASE_USER: superset
     DATABASE_PASSWORD: superset
     DATABASE_DB: superset
@@ -98,6 +99,8 @@ services:
 
   superset-init:
     <<: *superset-common
+    profiles:
+      - init
     command: >
       bash -c "
         superset db upgrade &&
@@ -140,11 +143,14 @@ networks:
 Start the stack and initialize:
 
 ```bash
-# Start all services
-docker compose up -d
+# Start the database and cache
+docker compose up -d postgres redis
 
 # Run the initialization (creates admin user and sets up metadata)
 docker compose run --rm superset-init
+
+# Start Superset and the background workers
+docker compose up -d superset superset-worker superset-beat
 
 # Check that all services are healthy
 docker compose ps
@@ -220,6 +226,7 @@ Create a `superset_config.py` file for advanced settings:
 ```python
 # superset_config.py - Custom Superset configuration
 import os
+from celery.schedules import crontab
 
 # Secret key for session signing (change in production)
 SECRET_KEY = os.environ.get("SUPERSET_SECRET_KEY", "change-me")
@@ -256,9 +263,26 @@ SUPERSET_WEBSERVER_TIMEOUT = 120
 # Celery configuration for async queries and scheduled reports
 class CeleryConfig:
     broker_url = os.environ.get("CELERY_BROKER_URL", "redis://redis:6379/0")
+    imports = (
+        "superset.sql_lab",
+        "superset.tasks.scheduler",
+        "superset.tasks.thumbnails",
+        "superset.tasks.cache",
+        "superset.tasks.slack",
+    )
     result_backend = os.environ.get("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
     worker_prefetch_multiplier = 1
     task_acks_late = True
+    beat_schedule = {
+        "reports.scheduler": {
+            "task": "reports.scheduler",
+            "schedule": crontab(minute="*", hour="*"),
+        },
+        "reports.prune_log": {
+            "task": "reports.prune_log",
+            "schedule": crontab(minute=0, hour=0),
+        },
+    }
 
 CELERY_CONFIG = CeleryConfig
 
@@ -271,16 +295,15 @@ SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_MAIL_FROM = os.environ.get("SMTP_MAIL_FROM", "superset@example.com")
 ```
 
-Mount the config file in Docker Compose:
+Mount the config file in Docker Compose for all Superset services:
 
 ```yaml
-  superset:
-    <<: *superset-common
-    volumes:
-      - ./superset_config.py:/app/pythonpath/superset_config.py
-    environment:
-      <<: *superset-env
-      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+x-superset-common: &superset-common
+  volumes:
+    - ./superset_config.py:/app/pythonpath/superset_config.py
+  environment:
+    <<: *superset-env
+    SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
 ```
 
 ## Loading Example Data
@@ -313,12 +336,12 @@ Import dashboards on a different instance:
 docker compose cp ./dashboards.zip superset:/tmp/dashboards.zip
 
 # Import the dashboards
-docker compose exec superset superset import-dashboards -p /tmp/dashboards.zip
+docker compose exec superset superset import-dashboards -p /tmp/dashboards.zip -u admin
 ```
 
 ## Setting Up Scheduled Reports
 
-With the Celery worker and beat services running, you can schedule email or Slack reports:
+With the Celery worker and beat services running, alert/report configuration enabled, and a headless browser installed in the worker image, you can schedule email or Slack reports:
 
 1. Create a dashboard or chart in the Superset UI
 2. Click the three-dot menu and select "Schedule Email Report"
