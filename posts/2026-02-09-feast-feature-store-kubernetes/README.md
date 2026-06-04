@@ -19,7 +19,7 @@ Feast consists of several components:
 - **Feature Registry**: Stores feature definitions and metadata
 - **Offline Store**: Historical feature data for training (BigQuery, Snowflake, etc.)
 - **Online Store**: Low-latency feature serving for inference (Redis, DynamoDB, etc.)
-- **Feature Server**: REST/gRPC API for retrieving features
+- **Feature Server**: REST API for retrieving features
 - **Python SDK**: For defining and retrieving features
 
 For Kubernetes deployment, we'll use Redis as the online store and PostgreSQL for the registry.
@@ -174,6 +174,9 @@ spec:
             name: postgres-config
         - secretRef:
             name: postgres-secret
+        env:
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         resources:
           requests:
             cpu: "500m"
@@ -226,17 +229,19 @@ Create a Python project with feature definitions:
 ```python
 # features.py
 from datetime import timedelta
-from feast import Entity, Feature, FeatureView, Field, FileSource
+from feast import Entity, FeatureView, Field, FileSource
 from feast.types import Float32, Int64, String
 
 # Define entities
 user = Entity(
-    name="user_id",
+    name="user",
+    join_keys=["user_id"],
     description="User identifier",
 )
 
 item = Entity(
-    name="item_id",
+    name="item",
+    join_keys=["item_id"],
     description="Item identifier",
 )
 
@@ -297,7 +302,7 @@ online_store:
   connection_string: redis:6379
 offline_store:
   type: file
-entity_key_serialization_version: 2
+entity_key_serialization_version: 3
 ```
 
 ## Building a Feast Feature Server Container
@@ -312,7 +317,7 @@ WORKDIR /app
 
 # Install Feast with Redis support
 RUN pip install --no-cache-dir \
-    feast[redis]==0.35.0 \
+    feast[redis]==0.63.0 \
     psycopg2-binary \
     boto3
 
@@ -320,14 +325,12 @@ RUN pip install --no-cache-dir \
 COPY features.py /app/
 COPY feature_store.yaml /app/
 
-# Initialize Feast repository
-RUN feast -c /app apply
-
-# Expose feature server port
+# Expose feature server and metrics ports
 EXPOSE 6566
+EXPOSE 8000
 
 # Start feature server
-CMD ["feast", "-c", "/app", "serve", "--host", "0.0.0.0", "--port", "6566"]
+CMD ["feast", "-c", "/app", "serve", "--host", "0.0.0.0", "--port", "6566", "--metrics"]
 ```
 
 Build and push the image:
@@ -346,6 +349,20 @@ Deploy the feature server on Kubernetes:
 
 ```yaml
 # feast-server-deployment.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: feast-apply
+  namespace: feast
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: apply
+        image: your-registry/feast-server:v1
+        command: ["feast", "-c", "/app", "apply"]
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -367,13 +384,8 @@ spec:
         ports:
         - containerPort: 6566
           name: http
-        env:
-        - name: FEAST_REGISTRY_PATH
-          value: "postgresql://feast:your-secure-password@postgres.feast.svc.cluster.local:5432/feast"
-        - name: FEAST_ONLINE_STORE_TYPE
-          value: "redis"
-        - name: FEAST_ONLINE_STORE_CONNECTION_STRING
-          value: "redis:6379"
+        - containerPort: 8000
+          name: metrics
         resources:
           requests:
             cpu: "500m"
@@ -399,6 +411,8 @@ kind: Service
 metadata:
   name: feast-feature-server
   namespace: feast
+  labels:
+    app: feast-server
 spec:
   selector:
     app: feast-server
@@ -406,6 +420,9 @@ spec:
   - port: 6566
     targetPort: 6566
     name: http
+  - port: 8000
+    targetPort: 8000
+    name: metrics
   type: ClusterIP
 ---
 apiVersion: autoscaling/v2
@@ -439,6 +456,9 @@ Deploy the feature server:
 
 ```bash
 kubectl apply -f feast-server-deployment.yaml
+
+# Wait for feature definitions to be registered
+kubectl wait --for=condition=complete job/feast-apply -n feast --timeout=5m
 
 # Check deployment status
 kubectl get deployments -n feast
@@ -479,14 +499,14 @@ spec:
             - python
             - -c
             - |
-              from datetime import datetime, timedelta
+              from datetime import datetime, timedelta, timezone
               from feast import FeatureStore
 
               # Initialize feature store
               store = FeatureStore(repo_path="/app")
 
               # Materialize features for the last hour
-              end_date = datetime.now()
+              end_date = datetime.now(timezone.utc)
               start_date = end_date - timedelta(hours=1)
 
               print(f"Materializing features from {start_date} to {end_date}")
@@ -495,9 +515,6 @@ spec:
               store.materialize(start_date, end_date)
 
               print("Materialization complete!")
-            env:
-            - name: FEAST_REGISTRY_PATH
-              value: "postgresql://feast:your-secure-password@postgres.feast.svc.cluster.local:5432/feast"
             resources:
               requests:
                 cpu: "1"
@@ -539,7 +556,8 @@ entity_df = pd.DataFrame({
     "item_id": [5001, 5002, 5003, 5004],
     "event_timestamp": pd.to_datetime([
         "2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"
-    ])
+    ], utc=True),
+    "purchased": [1, 0, 1, 0]
 })
 
 # Retrieve features from offline store
@@ -677,7 +695,7 @@ spec:
     matchLabels:
       app: feast-server
   endpoints:
-  - port: http
+  - port: metrics
     path: /metrics
     interval: 30s
 ```
@@ -686,13 +704,13 @@ Query key metrics:
 
 ```promql
 # Feature serving latency
-histogram_quantile(0.95, rate(feast_feature_serving_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum(rate(feast_feature_server_request_latency_seconds_bucket[5m])) by (le))
 
-# Feature cache hit rate
-rate(feast_cache_hits_total[5m]) / rate(feast_cache_requests_total[5m])
+# Online feature request rate
+rate(feast_online_features_request_total[5m])
 
-# Online store connection errors
-rate(feast_online_store_errors_total[5m])
+# Materialization failures
+rate(feast_materialization_total{status="failure"}[5m])
 ```
 
 ## Conclusion
