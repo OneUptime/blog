@@ -153,7 +153,7 @@ The application uses production hostnames but connects to test servers, enabling
 
 ## Multi-Container Pod Coordination
 
-All containers in a pod share the same /etc/hosts file. Use hostAliases for cross-container communication:
+All containers in a pod receive the same /etc/hosts entries. Use hostAliases for cross-container communication:
 
 ```yaml
 apiVersion: v1
@@ -272,7 +272,7 @@ Developers can use production configuration files in development without changin
 
 ## Service Mesh Integration
 
-Override service mesh routing for specific pods:
+Override DNS resolution while debugging service mesh behavior for specific pods:
 
 ```yaml
 apiVersion: v1
@@ -289,21 +289,20 @@ spec:
     image: app:latest
 ```
 
-This pod connects directly to the service instead of going through the mesh, useful for debugging mesh issues.
+This pod resolves the hostname to the specified service IP. Whether traffic still passes through a service mesh sidecar depends on the mesh's interception rules, so use this only as a debugging aid and verify the actual path.
 
 ## Limitations and Caveats
 
-hostAliases only work for pods not using hostNetwork. Pods with hostNetwork: true use the node's /etc/hosts file, which Kubernetes does not modify.
+Pods with hostNetwork: true use the node's network namespace, but kubelet can still generate a pod /etc/hosts file and append hostAliases. The file is based on the node's /etc/hosts content instead of the standard pod-network hosts file.
 
 ```yaml
-# This will NOT work
 apiVersion: v1
 kind: Pod
 metadata:
-  name: invalid-hostalias-pod
+  name: hostnetwork-hostalias-pod
 spec:
   hostNetwork: true
-  hostAliases:  # Ignored because hostNetwork is true
+  hostAliases:
   - ip: "10.0.0.1"
     hostnames:
     - "example.com"
@@ -322,7 +321,7 @@ kubectl edit deployment my-app
 kubectl rollout restart deployment my-app
 ```
 
-hostAliases entries are prepended to /etc/hosts. If Kubernetes adds other entries (like pod IP), they appear after hostAliases.
+hostAliases entries are added after the default Kubernetes-managed entries in /etc/hosts.
 
 ## Combining with DNS Configuration
 
@@ -385,38 +384,7 @@ kubectl get pod my-pod -o jsonpath='{.spec.hostAliases}'
 
 ## Dynamic hostAliases with Init Containers
 
-Generate hostAliases dynamically using init containers is not directly possible, but you can modify /etc/hosts:
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: dynamic-hosts-pod
-spec:
-  initContainers:
-  - name: setup-hosts
-    image: busybox
-    command:
-    - sh
-    - -c
-    - |
-      # Add custom entries to /etc/hosts
-      echo "10.0.0.50 dynamic.example.com" >> /etc/hosts
-    volumeMounts:
-    - name: hosts
-      mountPath: /etc/hosts
-  containers:
-  - name: app
-    image: app:latest
-    volumeMounts:
-    - name: hosts
-      mountPath: /etc/hosts
-  volumes:
-  - name: hosts
-    emptyDir: {}
-```
-
-Note: This approach is complex and not recommended. Use hostAliases when possible.
+Generate hostAliases dynamically using init containers is not directly possible. Kubernetes recommends using the hostAliases field instead of modifying /etc/hosts directly, because kubelet manages that file and changes made by init containers or application containers may be overwritten during pod creation or restart.
 
 ## ConfigMap-Based hostAliases
 
@@ -503,12 +471,12 @@ hostAliases can override legitimate hostnames. An attacker with pod creation pri
 ```yaml
 # Malicious example
 hostAliases:
-- ip: "10.0.0.999"  # Attacker-controlled server
+- ip: "10.0.0.99"  # Attacker-controlled server
   hostnames:
   - "api.production.com"
 ```
 
-Use Pod Security Policies or admission controllers to restrict hostAliases in sensitive namespaces.
+Use ValidatingAdmissionPolicy or admission webhooks to restrict hostAliases in sensitive namespaces.
 
 Audit hostAliases usage:
 
