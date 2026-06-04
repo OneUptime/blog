@@ -8,11 +8,11 @@ Description: Automate database schema migrations in Kubernetes using Flyway Jobs
 
 ---
 
-Database schema migrations need to run reliably before deploying application updates. Kubernetes Jobs provide the perfect mechanism for executing migrations as part of your deployment pipeline. Flyway handles migration versioning, validation, and execution with support for rollbacks and repeatable migrations. This guide shows you how to integrate Flyway migrations into your Kubernetes deployment workflow.
+Database schema migrations need to run reliably before deploying application updates. Kubernetes Jobs provide the perfect mechanism for executing migrations as part of your deployment pipeline. Flyway handles migration versioning, validation, and execution with support for repeatable migrations and undo migrations in Flyway Teams. This guide shows you how to integrate Flyway migrations into your Kubernetes deployment workflow.
 
 ## Why Use Jobs for Migrations
 
-Kubernetes Jobs run to completion once, making them ideal for migrations. They execute before your application pods start, ensuring the schema matches what your code expects. If a migration fails, the Job fails, preventing broken application deployments.
+Kubernetes Jobs run to completion once, making them ideal for migrations. When used as a deployment pipeline step or Helm hook, they execute before your application pods start, ensuring the schema matches what your code expects. If a migration fails, the Job fails, so your pipeline can stop before deploying application pods that depend on the new schema.
 
 Jobs also provide retry logic, logging, and status tracking. You can monitor migration progress through Kubernetes events and integrate with CI/CD pipelines for automated deployments.
 
@@ -25,7 +25,7 @@ migrations/
 ├── V1__initial_schema.sql
 ├── V2__add_users_table.sql
 ├── V3__add_email_index.sql
-└── R__refresh_materialized_views.sql
+└── R__refresh_active_users_view.sql
 ```
 
 Version migrations (V prefix) run once in order. Repeatable migrations (R prefix) run whenever their checksum changes.
@@ -54,7 +54,7 @@ CREATE INDEX idx_users_company ON users(company_id);
 -- V3__add_email_index.sql
 CREATE INDEX idx_users_email ON users(email);
 
--- R__refresh_materialized_views.sql
+-- R__refresh_active_users_view.sql
 CREATE OR REPLACE VIEW active_users AS
 SELECT u.id, u.email, u.name, c.name AS company_name
 FROM users u
@@ -69,7 +69,7 @@ Build a custom image with Flyway and your migrations:
 ```dockerfile
 # Dockerfile
 
-FROM flyway/flyway:9.22
+FROM flyway/flyway:12.0.1
 
 # Copy migration files
 COPY migrations /flyway/sql
@@ -107,7 +107,7 @@ metadata:
     app: myapp
     component: migration
 spec:
-  # Don't restart on failure - investigate issues first
+  # Retry failed migration attempts up to the backoff limit
   backoffLimit: 3
   completions: 1
   parallelism: 1
@@ -209,12 +209,12 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: flyway
-        image: {{ .Values.migration.image }}:{{ .Values.migration.tag }}
+        image: "{{ .Values.migration.image }}:{{ .Values.migration.tag }}"
         env:
         - name: FLYWAY_URL
-          value: {{ .Values.database.url }}
+          value: {{ .Values.database.url | quote }}
         - name: FLYWAY_USER
-          value: {{ .Values.database.user }}
+          value: {{ .Values.database.user | quote }}
         - name: FLYWAY_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -268,7 +268,7 @@ kubectl apply -f migration-job.yaml
 
 ## Implementing Rollback Strategies
 
-Flyway supports rollback through undo migrations (Teams edition) or by running previous versions. For community edition, implement manual rollbacks:
+Flyway Teams supports undo migrations through the `undo` command. Flyway Community does not run downgrade migrations, so implement and test manual rollback scripts when you need a rollback path:
 
 ```sql
 -- V4__add_status_column.sql
@@ -387,7 +387,7 @@ kubectl apply -f migration-job.yaml
 
 ## Monitoring Migration Status
 
-Create a ServiceMonitor for migration metrics:
+Create a ConfigMap with a small exporter for migration metrics:
 
 ```yaml
 # migration-metrics.yaml
@@ -439,7 +439,7 @@ Follow these guidelines:
 
 1. **Test migrations in staging first** - Never run untested migrations in production
 2. **Keep migrations small** - Easier to debug and rollback
-3. **Use transactions** - Ensure all-or-nothing execution
+3. **Use transactions where supported** - Ensure all-or-nothing execution when your database and statements allow it
 4. **Avoid data migrations in schema changes** - Separate concerns
 5. **Backup before migrations** - Create restore points
 6. **Monitor execution time** - Set timeouts appropriately
@@ -464,16 +464,18 @@ spec:
       - name: backup
         image: postgres:15
         command:
-        - pg_dump
-        - -h
-        - postgres
-        - -U
-        - postgres
-        - -F
-        - c
-        - -f
-        - /backups/pre-migration-$(date +%Y%m%d-%H%M%S).dump
-        - myapp
+        - sh
+        - -c
+        - |
+          pg_dump -h postgres -U postgres -F c \
+            -f /backups/pre-migration-$$(date +%Y%m%d-%H%M%S).dump \
+            myapp
+        env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: password
         volumeMounts:
         - name: backups
           mountPath: /backups
