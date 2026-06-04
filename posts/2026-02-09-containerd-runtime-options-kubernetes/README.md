@@ -27,33 +27,36 @@ systemctl restart containerd
 
 The configuration file contains several key sections including plugins, grpc settings, and runtime options.
 
+The examples below use containerd 1.x `version = 2` CRI plugin paths. For containerd 2.x `version = 3` configurations, use the equivalent `io.containerd.cri.v1.images` and `io.containerd.cri.v1.runtime` plugin sections from `containerd config default`.
+
 ## Configuring the CRI Plugin
 
 The CRI (Container Runtime Interface) plugin is the bridge between Kubernetes and containerd. Configure it in the `plugins."io.containerd.grpc.v1.cri"` section:
 
 ```toml
+version = 2
+
 [plugins."io.containerd.grpc.v1.cri"]
-  # Disable the CRI plugin (false = enabled)
+  # Disable serving CRI over containerd's TCP gRPC server
   disable_tcp_service = true
 
   # Stream server settings
   stream_server_address = "127.0.0.1"
   stream_server_port = "0"
 
-  # Enable CRI stats collection
+  # SELinux and TLS streaming settings
   enable_selinux = false
   enable_tls_streaming = false
 
   # Maximum container log line size
   max_container_log_line_size = 16384
 
-  # Disable cgroup driver (false = use cgroupfs, true = systemd)
   [plugins."io.containerd.grpc.v1.cri".containerd]
     snapshotter = "overlayfs"
     default_runtime_name = "runc"
 
-    # Disable snapshot garbage collection
-    discard_unpacked_layers = true
+    # Discard unpacked layer data after extracting snapshots
+    discard_unpacked_layers = false
 ```
 
 The snapshotter option determines how container filesystem layers are managed. The overlayfs snapshotter provides good performance for most workloads.
@@ -84,7 +87,7 @@ Verify the cgroup driver configuration:
 containerd config dump | grep SystemdCgroup
 
 # Verify kubelet is using the same driver
-ps aux | grep kubelet | grep cgroup-driver
+grep -i cgroupDriver /var/lib/kubelet/config.yaml
 ```
 
 Both containerd and kubelet must use the same cgroup driver to avoid pod creation failures.
@@ -146,7 +149,7 @@ Container Network Interface (CNI) plugins handle pod networking. Configure the p
   # Directory containing CNI configuration files
   conf_dir = "/etc/cni/net.d"
 
-  # Maximum number of concurrent CNI operations
+  # Maximum number of CNI config files to load
   max_conf_num = 1
 
   # CNI configuration template
@@ -166,30 +169,38 @@ cat /etc/cni/net.d/10-containerd-net.conflist
 
 ## Registry Configuration and Mirrors
 
-Configure private registries, mirrors, and authentication in the registry section:
+Configure private registries and mirrors by pointing the registry section at a hosts configuration directory:
 
 ```toml
 [plugins."io.containerd.grpc.v1.cri".registry]
-  # Default registry configuration
+  # Directory containing per-registry hosts.toml files
   config_path = "/etc/containerd/certs.d"
-
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-      endpoint = ["https://registry-1.docker.io"]
-
-    # Add a mirror for Docker Hub
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.example.com"]
-      endpoint = ["https://registry.example.com"]
-
-  [plugins."io.containerd.grpc.v1.cri".registry.configs]
-    [plugins."io.containerd.grpc.v1.cri".registry.configs."registry.example.com".tls]
-      insecure_skip_verify = false
-      ca_file = "/etc/containerd/certs.d/registry.example.com/ca.crt"
-
-    [plugins."io.containerd.grpc.v1.cri".registry.configs."registry.example.com".auth]
-      username = "user"
-      password = "password"
 ```
+
+Configure Docker Hub mirrors in `/etc/containerd/certs.d/docker.io/hosts.toml`:
+
+```toml
+server = "https://registry-1.docker.io"
+
+[host."https://registry-1.docker.io"]
+  capabilities = ["pull", "resolve"]
+
+[host."https://docker-mirror.example.com"]
+  capabilities = ["pull"]
+```
+
+Configure a private registry in `/etc/containerd/certs.d/registry.example.com/hosts.toml`:
+
+```toml
+server = "https://registry.example.com"
+
+[host."https://registry.example.com"]
+  capabilities = ["pull", "resolve", "push"]
+  ca = "/etc/containerd/certs.d/registry.example.com/ca.crt"
+  skip_verify = false
+```
+
+For username and password authentication in Kubernetes, use image pull secrets. The older `registry.mirrors`, `registry.configs`, and `registry.auths` settings in `config.toml` are deprecated and only used when `config_path` is not set.
 
 Resource Limits and Performance Tuning
 
@@ -236,19 +247,18 @@ Control how containerd handles image pulls and storage:
 
 ```toml
 [plugins."io.containerd.grpc.v1.cri".containerd]
-  # Disable unpacking of layers after pull
+  # Do not pass snapshot annotations to the snapshotter
   disable_snapshot_annotations = true
 
   # Discard unpacked layers to save disk space
   discard_unpacked_layers = false
 
-  # Image pull timeout
-  [plugins."io.containerd.grpc.v1.cri".image_pull_progress_timeout]
-    duration = "1m"
+[plugins."io.containerd.grpc.v1.cri"]
+  # Image pull progress timeout
+  image_pull_progress_timeout = "1m"
 
   # Maximum concurrent image pulls
-  [plugins."io.containerd.grpc.v1.cri".max_concurrent_downloads]
-    value = 3
+  max_concurrent_downloads = 3
 ```
 
 ## Debugging and Logging Configuration
@@ -293,8 +303,8 @@ journalctl -u containerd -f
 After modifying the configuration, validate it before restarting containerd:
 
 ```bash
-# Check configuration syntax
-containerd config dump > /tmp/config-test.toml
+# Render the final configuration and catch syntax errors
+containerd --config /etc/containerd/config.toml config dump > /tmp/config-test.toml
 
 # Compare with current config
 diff /etc/containerd/config.toml /tmp/config-test.toml
