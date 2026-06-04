@@ -37,7 +37,7 @@ spec:
 
 This quota allocates team-a 20 guaranteed CPU cores, 40Gi guaranteed memory, with burst capacity to 40 cores and 80Gi. They can create up to 50 pods, 10 services, and 20 persistent volume claims.
 
-When quotas exist, pods must specify resource requests and limits. Attempts to create pods without resources or exceeding quota fail:
+When CPU and memory quotas exist, pods must specify resource requests and limits for those resources unless a LimitRange supplies defaults. Attempts to create pods without required resources or exceeding quota fail:
 
 ```bash
 kubectl run test --image=nginx -n team-a
@@ -197,7 +197,7 @@ groups:
   - alert: NamespaceQuotaNearLimit
     expr: |
       kube_resourcequota{type="used"} /
-      kube_resourcequota{type="hard"} > 0.9
+      ignoring(type) kube_resourcequota{type="hard"} > 0.9
     for: 15m
     labels:
       severity: warning
@@ -207,7 +207,7 @@ groups:
   - alert: NamespaceQuotaExhausted
     expr: |
       kube_resourcequota{type="used"} /
-      kube_resourcequota{type="hard"} >= 1
+      ignoring(type) kube_resourcequota{type="hard"} >= 1
     labels:
       severity: critical
     annotations:
