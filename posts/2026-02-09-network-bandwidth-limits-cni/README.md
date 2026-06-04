@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CNI, Networking, Bandwidth, QoS
 
-Description: Configure network bandwidth limits using CNI plugins in Kubernetes including bandwidth plugin setup, per-pod annotations, Calico bandwidth policies.
+Description: Configure network bandwidth limits using CNI plugins in Kubernetes including bandwidth plugin setup, per-pod annotations, and Calico QoS controls.
 
 ---
 
-Network bandwidth limiting prevents pods from consuming excessive network resources and impacting other workloads. While Kubernetes provides CPU and memory limits, network bandwidth often goes unmanaged, leading to unpredictable performance. CNI plugins offer several approaches to bandwidth limiting, from simple annotation-based controls to sophisticated policy-based management.
+Network bandwidth limiting prevents pods from consuming excessive network resources and impacting other workloads. While Kubernetes provides CPU and memory limits, network bandwidth often goes unmanaged, leading to unpredictable performance. CNI plugins offer several approaches to bandwidth limiting, from simple annotation-based controls to native QoS management.
 
 ## Using the Bandwidth CNI Plugin
 
@@ -22,9 +22,9 @@ First, ensure the bandwidth plugin binary is installed on all nodes:
 ls -la /opt/cni/bin/bandwidth
 
 # If not present, install CNI plugins
-CNI_VERSION="v1.3.0"
+CNI_VERSION="v1.9.1"
 curl -L "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-amd64-${CNI_VERSION}.tgz" | \
-  tar -C /opt/cni/bin -xz bandwidth
+  tar -C /opt/cni/bin -xz ./bandwidth
 
 # Verify installation
 /opt/cni/bin/bandwidth --version
@@ -90,9 +90,9 @@ spec:
 ```
 
 The annotations accept bandwidth values with suffixes:
-- `K` or `k`: kilobits per second (1000 bits/s)
-- `M` or `m`: megabits per second (1000000 bits/s)
-- `G` or `g`: gigabits per second
+- `k`: kilobits per second (1000 bits/s)
+- `M`: megabits per second (1000000 bits/s)
+- `G`: gigabits per second
 - `Ki`, `Mi`, `Gi`: kibibits, mebibits, gibibits (powers of 1024)
 
 Verify the bandwidth limits are applied:
@@ -108,11 +108,10 @@ echo "Pod interface: $VETH"
 
 # Check traffic control configuration
 tc qdisc show dev $VETH
-tc class show dev $VETH
+tc -s qdisc show dev $VETH
 
-# Expected output shows HTB qdisc with rate limits
-# qdisc htb 1: root refcnt 2 r2q 10 default 0 direct_packets_stat 0
-# class htb 1:1 root rate 10Mbit ceil 10Mbit burst 1600b cburst 1600b
+# Expected output shows TBF qdisc with rate limits
+# qdisc tbf 1: root refcnt 2 rate 10Mbit burst 1250Kb lat 25ms
 ```
 
 ## Implementing Bandwidth Limits in Deployments
@@ -174,40 +173,64 @@ kubectl patch deployment api-server -n production -p '
 kubectl rollout status deployment/api-server -n production
 ```
 
-## Using Calico Bandwidth Policy
+## Using Calico QoS Controls
 
-Calico provides its own bandwidth management that integrates with Kubernetes NetworkPolicy. This offers more granular control than annotations:
+Calico provides its own bandwidth management through QoS annotations. Calico-specific annotations take precedence over the Kubernetes bandwidth plugin annotations:
 
 ```yaml
-apiVersion: projectcalico.org/v3
-kind singleBandwidthPolicy
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: limit-database-bandwidth
+  name: postgres
   namespace: production
 spec:
-  selector: app == "postgres"
-  ingress:
-    rate: 100M
-    burst: 10M
-  egress:
-    rate: 100M
-    burst: 10M
-  order: 100
+  replicas: 3
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+      annotations:
+        qos.projectcalico.org/ingressBandwidth: "100M"
+        qos.projectcalico.org/ingressBurst: "10M"
+        qos.projectcalico.org/egressBandwidth: "100M"
+        qos.projectcalico.org/egressBurst: "10M"
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16
+        env:
+        - name: POSTGRES_PASSWORD
+          value: example-password
 ```
 
-Calico bandwidth policies support:
-- Selector-based targeting (label matching)
-- Namespace isolation
+Calico QoS annotations support:
+- Ingress and egress bandwidth limits
 - Burst allowances for handling traffic spikes
-- Integration with network policies
+- Peak rate and minburst settings
+- Immediate updates without recreating pods
 
-Apply the policy:
+Apply the workload:
 
 ```bash
-calicoctl apply -f bandwidth-policy.yaml
+kubectl apply -f postgres-deployment.yaml
 
-# Verify policy is applied
-calicoctl get bandwidthpolicy -n production
+# Update limits on the deployment template
+kubectl patch deployment postgres -n production -p '
+{
+  "spec": {
+    "template": {
+      "metadata": {
+        "annotations": {
+          "qos.projectcalico.org/ingressBandwidth": "150M",
+          "qos.projectcalico.org/egressBandwidth": "150M"
+        }
+      }
+    }
+  }
+}'
 ```
 
 Check bandwidth enforcement on specific pods:
@@ -221,7 +244,7 @@ for pod in $(kubectl get pods -n production -l app=postgres -o name); do
   POD_IP=$(kubectl get $pod -n production -o jsonpath='{.status.podIP}')
   echo "Checking $pod ($POD_IP):"
   VETH=$(ip route | grep $POD_IP | awk '{print $3}')
-  tc -s class show dev $VETH 2>/dev/null | grep rate || echo "  No limits found"
+  tc -s qdisc show dev $VETH 2>/dev/null | grep rate || echo "  No limits found"
 done
 ```
 
@@ -341,7 +364,7 @@ iftop -i $VETH
 ifstat -i $VETH 1
 
 # Check traffic control statistics
-tc -s class show dev $VETH
+tc -s qdisc show dev $VETH
 
 # Look for drops or backlog
 tc -s qdisc show dev $VETH | grep -E "dropped|backlog"
@@ -364,8 +387,8 @@ OUTPUT_FILE="$TEXTFILE_DIR/bandwidth_limits.prom"
     POD_IP=$(ip route | grep $veth | awk '{print $1}' | head -1)
 
     if [ ! -z "$POD_IP" ]; then
-      # Get ingress limit
-      INGRESS=$(tc class show dev $veth 2>/dev/null | grep "class htb" | awk '{print $9}' | tr -d 'Mbit' | head -1)
+      # Get a TBF rate such as "10Mbit" from the qdisc output
+      INGRESS=$(tc qdisc show dev $veth 2>/dev/null | awk '/tbf/ {for (i=1; i<=NF; i++) if ($i == "rate") print $(i+1)}' | sed 's/Mbit//' | head -1)
       if [ ! -z "$INGRESS" ]; then
         INGRESS_BPS=$(echo "$INGRESS * 1000000" | bc)
         echo "pod_bandwidth_limit_bps{interface=\"$veth\",pod_ip=\"$POD_IP\",direction=\"ingress\"} $INGRESS_BPS"
@@ -396,7 +419,6 @@ import (
     "fmt"
     "time"
 
-    corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
@@ -474,4 +496,4 @@ tc -s qdisc show dev $VETH | grep dropped
 # (requires CNI configuration change)
 ```
 
-Network bandwidth limits with CNI plugins provide essential QoS capabilities for Kubernetes clusters. Whether using simple annotations with the bandwidth plugin or sophisticated policy-based controls with Calico, proper bandwidth management ensures fair resource allocation and prevents network congestion in multi-tenant environments.
+Network bandwidth limits with CNI plugins provide essential QoS capabilities for Kubernetes clusters. Whether using simple annotations with the bandwidth plugin or native QoS controls with Calico, proper bandwidth management ensures fair resource allocation and prevents network congestion in multi-tenant environments.
