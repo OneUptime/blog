@@ -8,27 +8,27 @@ Description: Implement bound ServiceAccount tokens in Kubernetes for enhanced se
 
 ---
 
-Bound ServiceAccount tokens represent a major security improvement over legacy long-lived tokens. These tokens are cryptographically bound to the pod using them, have limited lifetimes, and include audience restrictions. Understanding how to implement and use bound tokens is essential for securing modern Kubernetes clusters.
+Bound ServiceAccount tokens represent a major security improvement over legacy long-lived tokens. These tokens include signed claims that bind them to the pod using them, have limited lifetimes, and include audience restrictions. Understanding how to implement and use bound tokens is essential for securing modern Kubernetes clusters.
 
 ## The Problem with Legacy Tokens
 
-Before Kubernetes 1.21, ServiceAccount tokens were long-lived secrets that never expired. Once created, these tokens remained valid indefinitely unless manually deleted. This created several security risks.
+Before Kubernetes 1.22, ServiceAccount tokens mounted into Pods were long-lived secrets that never expired. Once created, these tokens remained valid indefinitely unless manually deleted. This created several security risks.
 
 If an attacker obtained a legacy token, they could use it to access your cluster forever. The token wasn't bound to any specific pod, so it could be used from anywhere. These tokens had no audience restrictions, so they worked with any service that accepted Kubernetes authentication.
 
-Legacy tokens also accumulated over time. Each ServiceAccount automatically received a persistent token secret, creating unnecessary secrets that increased the attack surface.
+Legacy tokens also accumulated over time. In Kubernetes versions prior to 1.24, each ServiceAccount automatically received a persistent token secret, creating unnecessary secrets that increased the attack surface.
 
 ## How Bound Tokens Work
 
-Bound ServiceAccount tokens solve these problems through several mechanisms. They're bound to the pod using them through a token binding mechanism that validates the pod's identity. They expire after a configured time, typically one hour. They include audience claims that restrict where they can be used.
+Bound ServiceAccount tokens solve these problems through several mechanisms. They include signed object binding claims that the API server validates against the pod's identity. They expire after a configured time, typically one hour. They include audience claims that restrict where they can be used.
 
 The kubelet manages these tokens automatically. It requests tokens from the API server when pods start, mounts them into containers, and refreshes them before expiration. This happens transparently - applications just read the token file and always get a current, valid token.
 
-Bound tokens are JWTs with specific claims that identify the ServiceAccount, namespace, pod, and other metadata. The API server validates these claims on each request, ensuring the token is being used in the correct context.
+Bound tokens are JWTs with specific claims that identify the ServiceAccount, namespace, pod, and other metadata. The API server validates these claims on each request, ensuring the bound object still exists and the token is valid for the requested audience.
 
 ## Enabling Bound Tokens in Your Cluster
 
-Modern Kubernetes versions (1.21+) use bound tokens by default. Verify your cluster configuration:
+Modern Kubernetes versions (1.22+) use bound tokens by default for tokens mounted into Pods. Verify your cluster configuration:
 
 ```bash
 # Check API server configuration
@@ -86,7 +86,10 @@ The kubelet creates a bound token for this pod. You can verify it's a bound toke
 ```bash
 # From within the pod
 TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-echo $TOKEN | cut -d'.' -f2 | base64 -d | jq .
+PAYLOAD=$(echo "$TOKEN" | cut -d'.' -f2 | tr '_-' '/+')
+PADDING=$(( (4 - ${#PAYLOAD} % 4) % 4 ))
+PAYLOAD="${PAYLOAD}$(printf '%*s' "$PADDING" '' | tr ' ' '=')"
+echo "$PAYLOAD" | base64 -d | jq .
 
 # Look for these claims indicating a bound token:
 # {
@@ -139,7 +142,7 @@ spec:
           audience: api
 ```
 
-Shorter expiration times improve security but increase the frequency of token refresh. The kubelet begins refreshing the token when 80% of its lifetime has elapsed, so a 30-minute token starts refreshing after 24 minutes.
+Shorter expiration times improve security but increase the frequency of token refresh. The kubelet begins refreshing the token when 80% of its lifetime has elapsed or the token is older than 24 hours, so a 30-minute token starts refreshing after 24 minutes.
 
 For highly sensitive workloads, use very short token lifetimes:
 
@@ -163,41 +166,28 @@ spec:
       sources:
       - serviceAccountToken:
           path: token
-          expirationSeconds: 300  # 5 minutes
+          expirationSeconds: 600  # 10 minutes
 ```
 
-This token expires every five minutes, significantly reducing the window for token misuse.
+This token expires every ten minutes, significantly reducing the window for token misuse. Kubernetes requires `expirationSeconds` to be at least 600 seconds.
 
 ## Handling Token Rotation in Applications
 
-Applications must handle token rotation gracefully. The simplest approach is to read the token file on each request:
+Applications must handle token rotation gracefully. When using the Kubernetes Go client, use in-cluster configuration so the client can reload the mounted token file:
 
 ```go
 // token-rotation-aware.go
 package main
 
 import (
+    "context"
     "fmt"
-    "io/ioutil"
     "time"
 
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
-    "k8s.io/client-go/transport"
 )
-
-// TokenSource reads the token file on each call
-type TokenSource struct {
-    tokenPath string
-}
-
-func (t *TokenSource) Token() (string, error) {
-    token, err := ioutil.ReadFile(t.tokenPath)
-    if err != nil {
-        return "", err
-    }
-    return string(token), nil
-}
 
 func main() {
     config, err := rest.InClusterConfig()
@@ -206,7 +196,7 @@ func main() {
     }
 
     // The default config already handles token rotation
-    // It reads the token file on each request
+    // It uses the mounted token file and reloads it periodically
     clientset, err := kubernetes.NewForConfig(config)
     if err != nil {
         panic(err.Error())
@@ -225,7 +215,7 @@ func main() {
 }
 ```
 
-The Kubernetes client libraries handle token rotation automatically when using in-cluster configuration. They read the token file fresh on each request, so they always use the current token.
+The Kubernetes client libraries handle token rotation automatically when using in-cluster configuration. The Go client uses the mounted token file and periodically reloads it, so it can pick up kubelet-rotated tokens without restarting the application.
 
 For custom HTTP clients, implement similar behavior:
 
@@ -313,22 +303,25 @@ Verify that tokens have the expected properties:
 
 TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 
-# Decode the payload
-PAYLOAD=$(echo $TOKEN | cut -d'.' -f2 | base64 -d)
+# Decode the base64url-encoded payload
+PAYLOAD_B64=$(echo "$TOKEN" | cut -d'.' -f2 | tr '_-' '/+')
+PADDING=$(( (4 - ${#PAYLOAD_B64} % 4) % 4 ))
+PAYLOAD_B64="${PAYLOAD_B64}$(printf '%*s' "$PADDING" '' | tr ' ' '=')"
+PAYLOAD=$(echo "$PAYLOAD_B64" | base64 -d)
 
 # Check expiration
-EXP=$(echo $PAYLOAD | jq -r '.exp')
+EXP=$(echo "$PAYLOAD" | jq -r '.exp')
 NOW=$(date +%s)
 TTL=$((EXP - NOW))
 
 echo "Token expires in $TTL seconds"
 
 # Check audience
-AUD=$(echo $PAYLOAD | jq -r '.aud[]')
+AUD=$(echo "$PAYLOAD" | jq -r '.aud[]')
 echo "Token audience: $AUD"
 
 # Check pod binding
-POD=$(echo $PAYLOAD | jq -r '.["kubernetes.io"].pod.name')
+POD=$(echo "$PAYLOAD" | jq -r '.["kubernetes.io"].pod.name')
 echo "Token bound to pod: $POD"
 ```
 
