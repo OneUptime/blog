@@ -38,7 +38,7 @@ docker run -it --rm \
   --name pyspark \
   -p 4040:4040 \
   -v $(pwd)/data:/opt/spark/work-dir/data \
-  apache/spark-py:3.5.1 \
+  apache/spark:3.5.1 \
   /opt/spark/bin/pyspark --master local[*]
 ```
 
@@ -60,8 +60,6 @@ services:
       - "8080:8080"   # Spark Master web UI
       - "7077:7077"   # Spark Master port
       - "4040:4040"   # Spark application UI
-    environment:
-      - SPARK_MODE=master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     volumes:
       - spark-data:/opt/spark/work-dir
@@ -72,8 +70,6 @@ services:
     depends_on:
       - spark-master
     environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_MEMORY=2g
       - SPARK_WORKER_CORES=2
     command: >
@@ -88,8 +84,6 @@ services:
     depends_on:
       - spark-master
     environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_MEMORY=2g
       - SPARK_WORKER_CORES=2
     command: >
@@ -104,8 +98,6 @@ services:
     depends_on:
       - spark-master
     environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_MEMORY=2g
       - SPARK_WORKER_CORES=2
     command: >
@@ -189,7 +181,7 @@ Running PySpark with Jupyter makes interactive data exploration much easier:
     ports:
       - "8888:8888"
     environment:
-      - SPARK_MASTER=spark://spark-master:7077
+      - PYSPARK_SUBMIT_ARGS=--master spark://spark-master:7077 pyspark-shell
     volumes:
       - ./notebooks:/home/jovyan/work
       - spark-data:/opt/spark/work-dir
@@ -205,7 +197,7 @@ When you need additional Python packages or JAR files, build a custom image:
 
 ```dockerfile
 # Dockerfile - Spark with additional Python libraries and JDBC drivers
-FROM apache/spark-py:3.5.1
+FROM apache/spark:3.5.1
 
 USER root
 
@@ -214,10 +206,10 @@ RUN pip install --no-cache-dir \
     pandas \
     numpy \
     pyarrow \
-    delta-spark
+    delta-spark==3.2.0
 
 # Add PostgreSQL JDBC driver for database connectivity
-ADD https://jdbc.postgresql.org/download/postgresql-42.7.1.jar /opt/spark/jars/
+ADD https://jdbc.postgresql.org/download/postgresql-42.7.11.jar /opt/spark/jars/
 
 USER spark
 ```
@@ -258,7 +250,7 @@ from pyspark.sql import SparkSession
 
 spark = SparkSession.builder \
     .appName("PostgresReader") \
-    .config("spark.jars", "/opt/spark/jars/postgresql-42.7.1.jar") \
+    .config("spark.jars", "/opt/spark/jars/postgresql-42.7.11.jar") \
     .getOrCreate()
 
 # Read the users table from PostgreSQL
@@ -278,4 +270,4 @@ spark.stop()
 
 ## Conclusion
 
-Running Apache Spark in Docker lets you develop and test data pipelines without managing a real cluster. The Docker Compose setup with a master and multiple workers closely mirrors production topology, which means your local testing catches configuration issues early. Start with the official Apache Spark images, add custom libraries as needed, and use the Spark UI on port 8080 to understand job execution. When you are ready for production, the same Docker images work with Kubernetes through the Spark Kubernetes scheduler, making the transition smooth.
+Running Apache Spark in Docker lets you develop and test data pipelines without managing a real cluster. The Docker Compose setup with a master and multiple workers closely mirrors production topology, which means your local testing catches configuration issues early. Start with the official Apache Spark images, add custom libraries as needed, and use the Spark Master UI on port 8080 and the application UI on port 4040 to understand cluster state and job execution. When you are ready for production, the same Docker images work with Kubernetes through the Spark Kubernetes scheduler, making the transition smooth.
