@@ -37,13 +37,11 @@ tracer_provider.add_span_processor(
     BatchSpanProcessor(OTLPSpanExporter(endpoint="http://localhost:4317"))
 )
 
-# Instrument logging to inject trace context
-LoggingInstrumentor().instrument(set_logging_format=True)
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - [trace_id=%(otelTraceID)s span_id=%(otelSpanID)s] - %(message)s'
+# Instrument logging to inject trace context and configure logging
+LoggingInstrumentor().instrument(
+    set_logging_format=True,
+    logging_format='%(asctime)s - %(name)s - %(levelname)s - [trace_id=%(otelTraceID)s span_id=%(otelSpanID)s] - %(message)s',
+    log_level=logging.INFO
 )
 
 logger = logging.getLogger(__name__)
@@ -222,7 +220,7 @@ Configure Logback or Log4j2 to include trace context in Java applications.
 ```
 
 ```java
-// JavaLoggingExample.java
+// OrderService.java
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
@@ -238,7 +236,7 @@ public class OrderService {
         this.tracer = tracer;
     }
 
-    public void processOrder(String orderId) {
+    public void processOrder(String orderId) throws Exception {
         Span span = tracer.spanBuilder("processOrder")
             .startSpan();
 
@@ -260,16 +258,17 @@ public class OrderService {
             span.recordException(e);
             throw e;
         } finally {
-            MDC.clear();
+            MDC.remove("trace_id");
+            MDC.remove("span_id");
             span.end();
         }
     }
 
-    private void validateOrder(String orderId) {
+    private void validateOrder(String orderId) throws Exception {
         // Validation logic
     }
 
-    private void chargePayment(String orderId) {
+    private void chargePayment(String orderId) throws Exception {
         // Payment logic
     }
 }
@@ -310,10 +309,8 @@ processors:
         action: upsert
 
 exporters:
-  otlp/logs:
-    endpoint: loki:3100
-    tls:
-      insecure: true
+  otlphttp/logs:
+    endpoint: http://loki:3100/otlp
   
   otlp/traces:
     endpoint: tempo:4317
@@ -325,7 +322,7 @@ service:
     logs:
       receivers: [otlp, filelog]
       processors: [batch, resource]
-      exporters: [otlp/logs]
+      exporters: [otlphttp/logs]
     
     traces:
       receivers: [otlp]
@@ -343,7 +340,7 @@ Query logs using trace IDs from your observability backend.
 Example queries for different backends:
 
 Grafana Loki:
-{service="my-app"} |= "trace_id=4bf92f3577b34da6a3ce929d0e0e4736"
+{service_name="my-application"} | json | trace_id="4bf92f3577b34da6a3ce929d0e0e4736"
 
 Elasticsearch:
 GET /logs-*/_search
