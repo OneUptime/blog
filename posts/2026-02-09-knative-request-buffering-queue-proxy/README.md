@@ -33,11 +33,12 @@ spec:
   template:
     metadata:
       annotations:
-        # Hard limit - requests beyond this are buffered
+        # Soft limit - autoscaler target concurrent requests per pod
+        autoscaling.knative.dev/metric: "concurrency"
         autoscaling.knative.dev/target: "10"
 
     spec:
-      # Soft limit - target concurrent requests per pod
+      # Hard limit - requests beyond this are buffered
       containerConcurrency: 10
 
       containers:
@@ -61,11 +62,13 @@ metadata:
   name: flexible-service
 spec:
   template:
+    metadata:
+      annotations:
+        # Soft limit - autoscaler targets this value
+        # Allows temporary bursts above this
+        autoscaling.knative.dev/metric: "concurrency"
+        autoscaling.knative.dev/target: "10"
     spec:
-      # Soft limit - autoscaler targets this value
-      # Allows temporary bursts above this
-      containerConcurrency: 10
-
       containers:
       - image: your-registry/app:latest
         env:
@@ -107,16 +110,17 @@ spec:
     metadata:
       annotations:
         # Queue proxy resource limits
-        queue.sidecar.serving.knative.dev/resourcePercentage: "20"
+        queue.sidecar.serving.knative.dev/cpu-resource-limit: "200m"
+        queue.sidecar.serving.knative.dev/memory-resource-limit: "128Mi"
 
         # Queue proxy CPU request
-        queue.sidecar.serving.knative.dev/cpu-request: "100m"
+        queue.sidecar.serving.knative.dev/cpu-resource-request: "100m"
 
         # Queue proxy memory request
-        queue.sidecar.serving.knative.dev/memory-request: "64Mi"
+        queue.sidecar.serving.knative.dev/memory-resource-request: "64Mi"
 
-        # Enable request buffering
-        queue.sidecar.serving.knative.dev/buffer-size: "1000"
+        # Keep the Activator in path for burst buffering when spare capacity is low
+        autoscaling.knative.dev/target-burst-capacity: "1000"
 
     spec:
       containerConcurrency: 50
@@ -142,15 +146,13 @@ spec:
     metadata:
       annotations:
         # Allocate more resources to queue proxy
-        queue.sidecar.serving.knative.dev/resourcePercentage: "30"
-        queue.sidecar.serving.knative.dev/cpu-request: "200m"
-        queue.sidecar.serving.knative.dev/memory-request: "128Mi"
+        queue.sidecar.serving.knative.dev/cpu-resource-request: "200m"
+        queue.sidecar.serving.knative.dev/cpu-resource-limit: "500m"
+        queue.sidecar.serving.knative.dev/memory-resource-request: "128Mi"
+        queue.sidecar.serving.knative.dev/memory-resource-limit: "256Mi"
 
-        # Larger buffer for burst handling
-        queue.sidecar.serving.knative.dev/buffer-size: "5000"
-
-        # Longer timeout for slow requests
-        queue.sidecar.serving.knative.dev/timeout: "300s"
+        # Larger Activator burst capacity
+        autoscaling.knative.dev/target-burst-capacity: "5000"
 
     spec:
       containerConcurrency: 100
@@ -180,8 +182,8 @@ spec:
         # Percentage of target before panic mode
         autoscaling.knative.dev/target-utilization-percentage: "70"
 
-        # Buffer size in queue proxy
-        queue.sidecar.serving.knative.dev/buffer-size: "1000"
+        # Activator burst capacity before requests are throttled
+        autoscaling.knative.dev/target-burst-capacity: "1000"
 
         # Stable window for autoscaling decisions
         autoscaling.knative.dev/window: "60s"
@@ -297,7 +299,7 @@ spec:
       annotations:
         autoscaling.knative.dev/target: "50"
         autoscaling.knative.dev/window: "120s"  # Longer window
-        queue.sidecar.serving.knative.dev/buffer-size: "500"
+        autoscaling.knative.dev/target-burst-capacity: "500"
     spec:
       containerConcurrency: 50
       containers:
@@ -315,7 +317,7 @@ spec:
         autoscaling.knative.dev/target: "20"
         autoscaling.knative.dev/window: "30s"  # Shorter window
         autoscaling.knative.dev/panic-window-percentage: "20"
-        queue.sidecar.serving.knative.dev/buffer-size: "2000"  # Large buffer
+        autoscaling.knative.dev/target-burst-capacity: "2000"  # Larger burst capacity
     spec:
       containerConcurrency: 20
       containers:
@@ -331,8 +333,7 @@ spec:
     metadata:
       annotations:
         autoscaling.knative.dev/target: "5"  # Low concurrency
-        queue.sidecar.serving.knative.dev/timeout: "600s"
-        queue.sidecar.serving.knative.dev/buffer-size: "100"
+        autoscaling.knative.dev/target-burst-capacity: "100"
     spec:
       containerConcurrency: 5
       timeoutSeconds: 600
@@ -346,27 +347,32 @@ Track queue proxy metrics to identify bottlenecks:
 
 ```bash
 # View queue proxy metrics
-kubectl port-forward service/api-service 9090:9090
+POD=$(kubectl get pod -l serving.knative.dev/service=api-service \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward pod/$POD 9090:9090
 
 # Query key metrics
-curl http://localhost:9090/metrics | grep queue_
+curl http://localhost:9090/metrics | grep 'kn_serving_queue'
 
 # Important metrics:
-# - queue_requests_per_second
-# - queue_average_concurrent_requests
-# - queue_average_proxied_concurrent_requests
-# - queue_operations_per_second
+# - kn_serving_queue_depth
+# - kn_serving_invocation_duration_seconds_bucket
+# - http_server_request_duration_seconds_bucket
+# - http_client_request_duration_seconds_bucket
 ```
 
 Create Prometheus queries for monitoring:
 
 ```promql
 # Current queue depth
-queue_depth{namespace="default",service="api-service"}
+kn_serving_queue_depth{
+  k8s_namespace_name="default",
+  kn_service_name="api-service"
+}
 
-# Request queue time (how long requests wait)
+# P95 invocation duration
 histogram_quantile(0.95,
-  rate(queue_request_latencies_bucket[5m])
+  rate(kn_serving_invocation_duration_seconds_bucket[5m])
 )
 
 # Queue proxy CPU usage
@@ -377,9 +383,9 @@ container_cpu_usage_seconds_total{
 
 # Percentage of time queue is full
 (
-  sum(rate(queue_depth{service="api-service"}[5m]))
+  sum(kn_serving_queue_depth{kn_service_name="api-service"})
   /
-  queue_operations_per_second{service="api-service"}
+  sum(kn_revision_concurrency_target{kn_service_name="api-service"})
 ) > 0.8
 ```
 
@@ -397,7 +403,7 @@ spec:
     interval: 30s
     rules:
     - alert: HighQueueDepth
-      expr: queue_depth > 500
+      expr: kn_serving_queue_depth > 500
       for: 2m
       labels:
         severity: warning
@@ -405,17 +411,17 @@ spec:
         summary: "High queue depth detected"
         description: "Service {{ $labels.service }} has {{ $value }} requests queued"
 
-    - alert: SlowQueueProcessing
+    - alert: SlowInvocationLatency
       expr: |
         histogram_quantile(0.95,
-          rate(queue_request_latencies_bucket[5m])
+          rate(kn_serving_invocation_duration_seconds_bucket[5m])
         ) > 1.0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Slow queue processing"
-        description: "P95 queue latency is {{ $value }}s"
+        summary: "Slow request processing"
+        description: "P95 invocation duration is {{ $value }}s"
 ```
 
 ## Advanced Configuration Patterns
@@ -439,24 +445,19 @@ spec:
         autoscaling.knative.dev/window: "60s"
         autoscaling.knative.dev/panic-window-percentage: "10"
         autoscaling.knative.dev/panic-threshold-percentage: "200"
+        autoscaling.knative.dev/target-burst-capacity: "1500"
 
         # Queue proxy tuning
-        queue.sidecar.serving.knative.dev/resourcePercentage: "25"
-        queue.sidecar.serving.knative.dev/cpu-request: "150m"
-        queue.sidecar.serving.knative.dev/memory-request: "96Mi"
-        queue.sidecar.serving.knative.dev/buffer-size: "1500"
-
-        # Request handling
-        queue.sidecar.serving.knative.dev/timeout: "180s"
-        queue.sidecar.serving.knative.dev/max-request-header-bytes: "16384"
-
-        # Connection pooling
-        queue.sidecar.serving.knative.dev/max-idle-conns: "100"
-        queue.sidecar.serving.knative.dev/max-idle-conns-per-host: "10"
+        queue.sidecar.serving.knative.dev/cpu-resource-request: "150m"
+        queue.sidecar.serving.knative.dev/cpu-resource-limit: "500m"
+        queue.sidecar.serving.knative.dev/memory-resource-request: "96Mi"
+        queue.sidecar.serving.knative.dev/memory-resource-limit: "256Mi"
 
     spec:
       containerConcurrency: 30
       timeoutSeconds: 180
+      responseStartTimeoutSeconds: 30
+      idleTimeoutSeconds: 60
 
       containers:
       - image: your-registry/optimized-service:latest
@@ -464,7 +465,7 @@ spec:
         - name: http1
           containerPort: 8080
         env:
-        - name: MAX_CONCURRENT_REQUESTS
+        - name: MAX_CONCURRENT
           value: "30"
         resources:
           requests:
@@ -498,7 +499,7 @@ spec:
 
 Match concurrency to your application's capabilities. Test under load to find the optimal containerConcurrency value. Too high causes crashes, too low wastes resources.
 
-Size the queue buffer appropriately. Larger buffers smooth out traffic spikes but increase memory usage. Start with 1000 and adjust based on observed traffic patterns.
+Use target burst capacity appropriately. Larger values keep the Activator in the request path for more burst scenarios, which can smooth traffic spikes while adding another hop. The queue proxy's per-pod pending queue is derived from containerConcurrency rather than a separate Service annotation.
 
 Monitor queue depth consistently. High sustained queue depth indicates undersized deployments. Frequent queue overflow suggests insufficient buffering or too-aggressive autoscaling.
 
@@ -510,4 +511,4 @@ Test scaling behavior under load. Use load testing tools to verify your configur
 
 ## Conclusion
 
-Queue proxy tuning is essential for optimal Knative Serving performance. By properly configuring concurrency limits, request buffering, and resource allocation, you can build serverless services that handle variable load efficiently while maintaining low latency. The queue proxy's ability to buffer excess requests while the autoscaler provisions additional capacity enables smooth scaling transitions. Combined with appropriate health checks and monitoring, these configurations ensure your serverless applications deliver consistent performance under real-world traffic conditions.
+Queue proxy tuning is essential for optimal Knative Serving performance. By properly configuring concurrency limits, Activator burst capacity, and resource allocation, you can build serverless services that handle variable load efficiently while maintaining low latency. The queue proxy's ability to enforce concurrency and queue excess requests while the autoscaler provisions additional capacity enables smooth scaling transitions. Combined with appropriate health checks and monitoring, these configurations ensure your serverless applications deliver consistent performance under real-world traffic conditions.
