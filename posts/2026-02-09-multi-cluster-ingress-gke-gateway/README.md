@@ -26,9 +26,13 @@ Enable required GCP APIs:
 gcloud services enable \
   container.googleapis.com \
   gkehub.googleapis.com \
+  cloudresourcemanager.googleapis.com \
+  dns.googleapis.com \
+  connectgateway.googleapis.com \
   multiclusterservicediscovery.googleapis.com \
   multiclusteringress.googleapis.com \
-  trafficdirector.googleapis.com
+  trafficdirector.googleapis.com \
+  --project=PROJECT_ID
 ```
 
 Create multiple GKE clusters in different regions:
@@ -42,6 +46,7 @@ gcloud container clusters create prod-central \
   --machine-type n2-standard-4 \
   --enable-ip-alias \
   --workload-pool=PROJECT_ID.svc.id.goog \
+  --gateway-api=standard \
   --labels=env=production,region=us-central
 
 # Create cluster in europe-west1
@@ -51,6 +56,7 @@ gcloud container clusters create prod-europe \
   --machine-type n2-standard-4 \
   --enable-ip-alias \
   --workload-pool=PROJECT_ID.svc.id.goog \
+  --gateway-api=standard \
   --labels=env=production,region=europe-west
 
 # Create cluster in asia-southeast1
@@ -60,6 +66,7 @@ gcloud container clusters create prod-asia \
   --machine-type n2-standard-4 \
   --enable-ip-alias \
   --workload-pool=PROJECT_ID.svc.id.goog \
+  --gateway-api=standard \
   --labels=env=production,region=asia-southeast
 ```
 
@@ -89,6 +96,25 @@ gcloud container fleet memberships list
 
 ## Enabling Multi-Cluster Gateway
 
+Enable Multi-Cluster Services and grant the MCS importer the required network viewer role:
+
+```bash
+gcloud container fleet multi-cluster-services enable \
+  --project=PROJECT_ID
+
+gcloud projects add-iam-policy-binding PROJECT_ID \
+  --member "principal://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/PROJECT_ID.svc.id.goog/subject/ns/gke-mcs/sa/gke-mcs-importer" \
+  --role "roles/compute.networkViewer"
+```
+
+If you are using an existing config cluster, make sure the GKE Gateway API is enabled before you enable Fleet ingress:
+
+```bash
+gcloud container clusters update prod-central \
+  --region us-central1 \
+  --gateway-api=standard
+```
+
 Enable the Multi-Cluster Gateway feature on the fleet:
 
 ```bash
@@ -98,12 +124,6 @@ gcloud container fleet ingress enable \
 ```
 
 This designates prod-central as the config cluster where you'll create Gateway and HTTPRoute resources.
-
-Install Gateway API CRDs in the config cluster:
-
-```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml --context prod-central
-```
 
 ## Creating a Multi-Cluster Gateway
 
@@ -116,7 +136,7 @@ metadata:
   name: global-gateway
   namespace: default
 spec:
-  gatewayClassName: gke-l7-global-external-managed
+  gatewayClassName: gke-l7-global-external-managed-mc
   listeners:
   - name: http
     protocol: HTTP
@@ -165,7 +185,7 @@ The Gateway creation triggers provisioning of a Google Cloud Load Balancer. This
 
 ## Deploying Applications Across Clusters
 
-Deploy the same application to all clusters with multi-cluster service annotations:
+Deploy the same application to all clusters with a service capacity annotation:
 
 ```yaml
 apiVersion: v1
@@ -174,7 +194,6 @@ metadata:
   name: store-frontend
   namespace: default
   annotations:
-    cloud.google.com/neg: '{"exposed_ports": {"80":{}}}'
     networking.gke.io/max-rate-per-endpoint: "100"
 spec:
   type: ClusterIP
@@ -228,31 +247,6 @@ kubectl apply -f store-frontend.yaml --context prod-asia
 
 ## Configuring HTTP Routes
 
-Create an HTTPRoute that routes traffic across all clusters:
-
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: store-route
-  namespace: default
-spec:
-  parentRefs:
-  - kind: Gateway
-    name: global-gateway
-  hostnames:
-  - "store.example.com"
-  rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /
-    backendRefs:
-    - name: store-frontend-mcs
-      kind: Service
-      port: 80
-```
-
 Create a Multi-Cluster Service to aggregate backends:
 
 ```yaml
@@ -273,7 +267,7 @@ kubectl apply -f service-export.yaml --context prod-asia
 
 GKE automatically creates a ServiceImport in the config cluster that aggregates all exports.
 
-Update the HTTPRoute to use the multi-cluster service:
+Create an HTTPRoute that routes traffic to the multi-cluster service:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -426,37 +420,27 @@ spec:
 Customize health check parameters:
 
 ```yaml
-apiVersion: cloud.google.com/v1
-kind: BackendConfig
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
 metadata:
   name: custom-health-check
   namespace: default
 spec:
-  healthCheck:
+  default:
     checkIntervalSec: 10
     timeoutSec: 5
     healthyThreshold: 2
     unhealthyThreshold: 3
-    type: HTTP
-    requestPath: /healthz
-    port: 8080
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: store-frontend
-  namespace: default
-  annotations:
-    cloud.google.com/neg: '{"exposed_ports": {"80":{}}}'
-    cloud.google.com/backend-config: '{"default": "custom-health-check"}'
-spec:
-  type: ClusterIP
-  selector:
-    app: store-frontend
-  ports:
-  - port: 80
-    targetPort: 8080
+    config:
+      type: HTTP
+      httpHealthCheck:
+        portSpecification: USE_FIXED_PORT
+        port: 8080
+        requestPath: /healthz
+  targetRef:
+    group: net.gke.io
+    kind: ServiceImport
+    name: store-frontend
 ```
 
 ## Monitoring Multi-Cluster Gateway
@@ -470,29 +454,11 @@ gcloud monitoring time-series list \
   --format=json
 
 # Get backend health
-gcloud compute backend-services describe <backend-service-name> \
-  --global \
-  --format="get(backends[].healthStatus)"
+gcloud compute backend-services get-health <backend-service-name> \
+  --global
 ```
 
-Create alerts for unhealthy backends:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: gateway-alerts
-  namespace: monitoring
-spec:
-  groups:
-  - name: multi-cluster-gateway
-    rules:
-    - alert: UnhealthyBackends
-      expr: sum(backend_unhealthy) by (cluster) > 0
-      for: 5m
-      annotations:
-        summary: "Unhealthy backends detected in {{ $labels.cluster }}"
-```
+Create Cloud Monitoring alert policies for load balancer request, latency, and error metrics. PrometheusRule resources do not automatically receive Google Cloud Load Balancing backend health metrics unless you export those metrics into Prometheus separately.
 
 ## Best Practices
 
