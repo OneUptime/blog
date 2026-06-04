@@ -16,7 +16,7 @@ By default, Kubernetes services use Cluster traffic policy. When a pod sends a r
 
 For a service with pods on nodes A, B, and C, a client pod on node A might send traffic to a pod on node C. This creates a network hop between nodes, adding latency and consuming inter-node bandwidth.
 
-With internalTrafficPolicy set to Local, traffic from node A only goes to pods on node A. If no local pods exist, the connection fails. This behavior differs from externalTrafficPolicy, which applies only to traffic entering through NodePort or LoadBalancer services.
+With internalTrafficPolicy set to Local, traffic from node A only goes to pods on node A. If no local pods exist, the connection fails. This behavior differs from externalTrafficPolicy, which applies to traffic received through externally facing Service addresses such as NodePort, LoadBalancer, and ExternalIP.
 
 ## Basic Configuration
 
@@ -68,7 +68,7 @@ spec:
             cpu: "500m"
 ```
 
-Notice the use of DaemonSet instead of Deployment. DaemonSets ensure exactly one pod runs on each node, guaranteeing local endpoints are always available.
+Notice the use of DaemonSet instead of Deployment. DaemonSets ensure one pod runs on each eligible node, making local endpoints available as long as the pod is scheduled and ready.
 
 Apply the configuration:
 
@@ -82,35 +82,35 @@ Verify that traffic stays on the same node. Deploy a client pod and check which 
 
 ```bash
 # Deploy a client pod on a specific node
-kubectl run cache-client --image=redis:7-alpine --restart=Never \
+kubectl run cache-client -n production --image=redis:7-alpine --restart=Never \
   --overrides='{"spec":{"nodeName":"worker-node-1"}}' \
   --command -- sleep 3600
 
 # Connect to cache service and check which instance responds
-kubectl exec cache-client -- redis-cli -h cache-service PING
+kubectl exec -n production cache-client -- redis-cli -h cache-service PING
 ```
 
 Check the server info to identify which pod handled the request:
 
 ```bash
-kubectl exec cache-client -- redis-cli -h cache-service INFO server | grep process_id
+kubectl exec -n production cache-client -- redis-cli -h cache-service INFO server | grep run_id
 ```
 
-Compare this with the process IDs of cache pods:
+Compare this with the run IDs of cache pods:
 
 ```bash
 # Get the cache pod running on the same node
-kubectl get pods -l app=cache -o wide | grep worker-node-1
+kubectl get pods -n production -l app=cache -o wide | grep worker-node-1
 
-# Check its process ID
-kubectl exec cache-abc123 -- redis-cli INFO server | grep process_id
+# Check its run ID
+kubectl exec -n production cache-abc123 -- redis-cli INFO server | grep run_id
 ```
 
-The process IDs should match, confirming local routing.
+The run IDs should match, confirming local routing.
 
 ## Use Case: Node-Local Caching
 
-Node-local traffic policy works perfectly for caching layers. Deploy a cache on every node and configure applications to use it:
+Node-local traffic policy works well for caching layers. Deploy a cache on every node and configure applications to use it:
 
 ```yaml
 # node-cache-complete.yaml
@@ -199,7 +199,7 @@ spec:
         - -c
         - |
           while true; do
-            if ! nc -zv node-cache.kube-system.svc.cluster.local 11211 2>&1 | grep -q succeeded; then
+            if ! nc -z -w 1 node-cache.kube-system.svc.cluster.local 11211; then
               echo "ERROR: Cannot reach local cache"
             fi
             sleep 30
@@ -236,7 +236,7 @@ cache = get_cache_client()
 
 ## Combining with Topology Aware Hints
 
-For more sophisticated routing, combine internalTrafficPolicy with topology aware hints:
+Topology Aware Routing is useful when you want same-zone preference instead of strict same-node routing, but it does not combine with internalTrafficPolicy on the same Service. To use topology-aware hints, leave internalTrafficPolicy unset or set it to Cluster:
 
 ```yaml
 apiVersion: v1
@@ -247,14 +247,14 @@ metadata:
     service.kubernetes.io/topology-mode: Auto
 spec:
   type: ClusterIP
-  internalTrafficPolicy: Local
+  internalTrafficPolicy: Cluster
   selector:
     app: my-app
   ports:
   - port: 80
 ```
 
-This configuration prefers same-node routing but can fall back to same-zone routing if no local endpoints exist (when supported by your CNI).
+This configuration can prefer same-zone routing when EndpointSlice hints are populated. If you set internalTrafficPolicy to Local, topology-aware hints are not used for that Service and there is no fallback to other nodes.
 
 ## Performance Testing
 
@@ -317,7 +317,7 @@ Run latency tests from a client pod:
 
 ```bash
 # Deploy client
-kubectl run benchmark --image=fortio/fortio --restart=Never -- sleep 3600
+kubectl run benchmark --image=fortio/fortio --restart=Never -- server
 
 # Test Cluster policy latency
 kubectl exec benchmark -- fortio load -c 10 -qps 1000 -t 60s \
@@ -339,12 +339,12 @@ Node-local services create different resource usage patterns. Monitor pod resour
 
 ```bash
 # Check memory usage distribution
-kubectl top pods -l app=node-cache --sort-by=memory
+kubectl top pods -n kube-system -l app=node-cache --sort-by=memory
 
 # Verify each node has consistent cache size
-kubectl get pods -l app=node-cache -o wide
-kubectl exec node-cache-abc -- redis-cli INFO memory | grep used_memory_human
-kubectl exec node-cache-def -- redis-cli INFO memory | grep used_memory_human
+kubectl get pods -n kube-system -l app=node-cache -o wide
+kubectl exec -n kube-system node-cache-abc -- sh -c 'printf "stats\r\nquit\r\n" | nc 127.0.0.1 11211 | grep bytes'
+kubectl exec -n kube-system node-cache-def -- sh -c 'printf "stats\r\nquit\r\n" | nc 127.0.0.1 11211 | grep bytes'
 ```
 
 Uneven usage indicates problems with pod distribution or application traffic patterns.
@@ -375,7 +375,7 @@ spec:
 **Use DaemonSet or ensure sufficient replicas**:
 
 ```yaml
-# GOOD: DaemonSet guarantees local pod on every node
+# GOOD: DaemonSet runs a pod on every eligible node
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -403,17 +403,17 @@ When clients can't connect to a Local policy service, check these areas:
 
 ```bash
 # Verify local pod exists on the client's node
-CLIENT_NODE=$(kubectl get pod my-client -o jsonpath='{.spec.nodeName}')
-kubectl get pods -l app=cache -o wide | grep $CLIENT_NODE
+CLIENT_NODE=$(kubectl get pod -n production my-client -o jsonpath='{.spec.nodeName}')
+kubectl get pods -n production -l app=cache -o wide | grep $CLIENT_NODE
 
 # Check pod readiness
-kubectl get pods -l app=cache -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}'
+kubectl get pods -n production -l app=cache -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}'
 
 # Verify service endpoints
-kubectl get endpointslices -l kubernetes.io/service-name=cache-service
+kubectl get endpointslices -n production -l kubernetes.io/service-name=cache-service
 
 # Check if endpoints are on the right node
-kubectl get endpointslices -l kubernetes.io/service-name=cache-service -o jsonpath='{.items[*].endpoints[*].nodeName}'
+kubectl get endpointslices -n production -l kubernetes.io/service-name=cache-service -o jsonpath='{.items[*].endpoints[*].nodeName}'
 ```
 
 Use tcpdump to verify traffic stays local:
