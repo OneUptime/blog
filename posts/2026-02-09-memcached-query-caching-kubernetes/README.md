@@ -169,7 +169,7 @@ def update_user(user_id, username, email):
 
 ## Configuring Service Discovery
 
-Deploy a headless service for automatic discovery:
+Use the headless Service DNS name for automatic discovery:
 
 ```yaml
 # memcached-discovery.yaml
@@ -237,7 +237,7 @@ spec:
 
 ## Monitoring Cache Performance
 
-Deploy Memcached exporter for Prometheus:
+Deploy Memcached exporter for Prometheus. The exporter connects to one Memcached server; repeat this deployment for each pod or use the exporter's multi-target `/scrape` endpoint to monitor the full cluster:
 
 ```yaml
 # memcached-exporter.yaml
@@ -261,11 +261,9 @@ spec:
     spec:
       containers:
         - name: exporter
-          image: prom/memcached-exporter:v0.14.0
+          image: quay.io/prometheus/memcached-exporter:v0.14.0
           args:
             - --memcached.address=memcached-0.memcached.caching.svc.cluster.local:11211
-            - --memcached.address=memcached-1.memcached.caching.svc.cluster.local:11211
-            - --memcached.address=memcached-2.memcached.caching.svc.cluster.local:11211
           ports:
             - containerPort: 9150
               name: metrics
