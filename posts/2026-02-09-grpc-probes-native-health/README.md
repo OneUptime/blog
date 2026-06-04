@@ -8,7 +8,7 @@ Description: Implement Kubernetes gRPC health probes using the standard gRPC hea
 
 ---
 
-Kubernetes 1.24 introduced native support for gRPC health checks. Instead of wrapping gRPC services with HTTP endpoints or using exec probes, you can now configure probes that speak the gRPC health checking protocol directly. This provides more accurate health status for gRPC-based microservices.
+Kubernetes 1.23 introduced alpha support for gRPC health checks. Kubernetes 1.24 made the feature beta and enabled by default, and Kubernetes 1.27 made it stable. Instead of wrapping gRPC services with HTTP endpoints or using exec probes, you can now configure probes that speak the gRPC health checking protocol directly. This provides more accurate health status for gRPC-based microservices.
 
 This guide shows you how to implement gRPC health checks in your services and configure Kubernetes to use them.
 
@@ -66,7 +66,6 @@ Add health checking to your Go gRPC server:
 package main
 
 import (
-    "context"
     "log"
     "net"
 
@@ -114,6 +113,14 @@ func updateHealthStatus(healthServer *health.Server) {
     } else {
         healthServer.SetServingStatus("my.service.v1.MyService", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
     }
+}
+
+func checkDatabase() bool {
+    return true
+}
+
+func checkCache() bool {
+    return true
 }
 ```
 
@@ -184,18 +191,24 @@ def check_dependencies():
     # Check database, cache, etc.
     return check_database() and check_redis()
 
+def check_database():
+    return True
+
+def check_redis():
+    return True
+
 if __name__ == '__main__':
     serve()
 ```
 
 ## Implementing gRPC Health Checks in Node.js
 
-Use the @grpc/health-check package:
+Use the grpc-health-check package:
 
 ```javascript
 // server.js
 const grpc = require('@grpc/grpc-js');
-const health = require('@grpc/health-check');
+const { HealthImplementation } = require('grpc-health-check');
 const protoLoader = require('@grpc/proto-loader');
 
 // Load your service proto
@@ -203,9 +216,9 @@ const packageDefinition = protoLoader.loadSync('my_service.proto');
 const myServiceProto = grpc.loadPackageDefinition(packageDefinition);
 
 // Create health check service
-const healthImpl = new health.Implementation({
-  '': health.servingStatus.SERVING,
-  'my.service.v1.MyService': health.servingStatus.SERVING,
+const healthImpl = new HealthImplementation({
+  '': 'SERVING',
+  'my.service.v1.MyService': 'SERVING',
 });
 
 function main() {
@@ -219,23 +232,25 @@ function main() {
   });
 
   // Add health check service
-  server.addService(health.service, healthImpl);
+  healthImpl.addToServer(server);
 
   server.bindAsync(
     '0.0.0.0:9090',
     grpc.ServerCredentials.createInsecure(),
-    () => {
+    (error) => {
+      if (error) {
+        throw error;
+      }
       console.log('gRPC server running on port 9090');
-      server.start();
     }
   );
 
   // Update health status periodically
   setInterval(() => {
     if (checkDependencies()) {
-      healthImpl.setStatus('my.service.v1.MyService', health.servingStatus.SERVING);
+      healthImpl.setStatus('my.service.v1.MyService', 'SERVING');
     } else {
-      healthImpl.setStatus('my.service.v1.MyService', health.servingStatus.NOT_SERVING);
+      healthImpl.setStatus('my.service.v1.MyService', 'NOT_SERVING');
     }
   }, 10000);
 }
@@ -381,7 +396,7 @@ func (hm *HealthManager) checkCache() bool {
 
 ## gRPC Health Checks with TLS
 
-Configure probes for services using TLS:
+Native Kubernetes gRPC probes do not support TLS or authentication parameters. For TLS-only gRPC services, expose a separate plaintext health port for the kubelet, or use an exec probe with a tool such as `grpc_health_probe` configured with TLS flags.
 
 ```yaml
 apiVersion: v1
@@ -394,6 +409,9 @@ spec:
     image: secure-grpc-app:latest
     ports:
     - containerPort: 9090
+      name: grpc-tls
+    - containerPort: 9091
+      name: grpc-health
     volumeMounts:
     - name: tls-certs
       mountPath: /etc/tls
@@ -401,14 +419,13 @@ spec:
 
     livenessProbe:
       grpc:
-        port: 9090
-        # Kubernetes automatically handles TLS if service uses it
+        port: 9091
       periodSeconds: 10
       failureThreshold: 3
 
     readinessProbe:
       grpc:
-        port: 9090
+        port: 9091
         service: my.service.v1.MyService
       periodSeconds: 5
       failureThreshold: 2
@@ -419,7 +436,7 @@ spec:
       secretName: grpc-tls-cert
 ```
 
-Kubernetes gRPC probes automatically detect and use TLS when the service requires it.
+Kubernetes gRPC probes connect to the pod IP and numeric port you configure. They do not automatically detect or use TLS when the service requires it.
 
 ## Testing gRPC Health Checks
 
@@ -427,14 +444,13 @@ Test your health check implementation:
 
 ```bash
 # Install grpc_health_probe
-wget https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.19/grpc_health_probe-linux-amd64
-chmod +x grpc_health_probe-linux-amd64
+go install github.com/grpc-ecosystem/grpc-health-probe@latest
 
 # Test health check
-./grpc_health_probe-linux-amd64 -addr=localhost:9090
+grpc_health_probe -addr=localhost:9090
 
 # Check specific service
-./grpc_health_probe-linux-amd64 -addr=localhost:9090 -service=my.service.v1.MyService
+grpc_health_probe -addr=localhost:9090 -service=my.service.v1.MyService
 
 # Test from within pod
 kubectl exec -it my-pod -- grpc_health_probe -addr=localhost:9090
@@ -476,10 +492,10 @@ spec:
 Implement an HTTP bridge in your service:
 
 ```go
-func startHTTPHealthServer() {
+func startHTTPHealthServer(healthServer *health.Server) {
     http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-        status := healthServer.GetServingStatus("")
-        if status == grpc_health_v1.HealthCheckResponse_SERVING {
+        resp, err := healthServer.Check(r.Context(), &grpc_health_v1.HealthCheckRequest{})
+        if err == nil && resp.GetStatus() == grpc_health_v1.HealthCheckResponse_SERVING {
             w.WriteHeader(http.StatusOK)
             w.Write([]byte("OK"))
         } else {
@@ -494,19 +510,19 @@ func startHTTPHealthServer() {
 
 ## Monitoring gRPC Health Checks
 
-Track gRPC health check performance:
+Track kubelet probe performance. These metrics identify liveness, readiness, or startup probes; they do not label the probe mechanism as gRPC:
 
 ```promql
-# gRPC probe success rate
+# Readiness probe success rate
 sum by (namespace, pod) (
-  rate(prober_probe_total{probe_type="GRPC",result="success"}[5m])
+  rate(prober_probe_total{probe_type="Readiness",result="successful"}[5m])
 ) / sum by (namespace, pod) (
-  rate(prober_probe_total{probe_type="GRPC"}[5m])
+  rate(prober_probe_total{probe_type="Readiness"}[5m])
 )
 
-# gRPC probe latency
+# Readiness probe latency
 histogram_quantile(0.95,
-  rate(prober_probe_duration_seconds_bucket{probe_type="GRPC"}[5m])
+  rate(prober_probe_duration_seconds_bucket{probe_type="Readiness"}[5m])
 )
 ```
 
