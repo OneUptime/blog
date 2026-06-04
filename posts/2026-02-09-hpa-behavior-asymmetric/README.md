@@ -12,11 +12,11 @@ The Horizontal Pod Autoscaler's behavior policies allow you to control exactly h
 
 ## Understanding HPA Behavior Policies
 
-Before Kubernetes 1.18, HPA scaling was relatively rigid. You could only configure the scale-down stabilization window and had limited control over scaling rates. The behavior field introduced in v2 HPA gives you fine-grained control over:
+Before Kubernetes 1.18, HPA scaling was relatively rigid. You could only configure the scale-down stabilization window and had limited control over scaling rates. The behavior field, available in `autoscaling/v2beta2` from Kubernetes 1.18 and stable in `autoscaling/v2`, gives you fine-grained control over:
 
 - How fast to scale up or down (rate of change)
 - How to select between multiple scaling policies
-- How long to wait before making scaling decisions (stabilization)
+- How long previous scaling recommendations are considered (stabilization)
 - Different behaviors for scale-up versus scale-down
 
 This enables asymmetric scaling patterns that match real-world operational requirements.
@@ -81,7 +81,7 @@ policies:
   periodSeconds: 15
 ```
 
-This doubles the replica count every 15 seconds. If you have 2 replicas, it scales to 4, then 8, then 16. Percent policies are effective for rapid exponential growth but can overshoot on large deployments.
+This can double the replica count every 15 seconds when the metrics require it. If you have 2 replicas, it can scale to 4, then 8, then 16. Percent policies are effective for rapid exponential growth but can overshoot on large deployments.
 
 ### Pods Policies
 
@@ -94,7 +94,7 @@ policies:
   periodSeconds: 30
 ```
 
-This adds 5 pods every 30 seconds. Pods policies give predictable linear scaling and work well when you know your capacity needs precisely.
+This allows up to 5 pods to be added or removed every 30 seconds. Pods policies give predictable linear scaling and work well when you know your capacity needs precisely.
 
 ## Policy Selection Strategies
 
@@ -184,7 +184,7 @@ behavior:
 ```
 
 This configuration:
-- Adds up to 10 pods or triples capacity every 10 seconds during scale-up
+- Adds up to 10 pods or up to 200% of the current replica count every 10 seconds during scale-up
 - Waits 10 minutes after load decreases before scaling down
 - Removes only 1 pod every 2 minutes during scale-down
 
@@ -230,7 +230,7 @@ spec:
         periodSeconds: 60
 ```
 
-Combine this with a CronJob that adjusts minReplicas based on time of day:
+Combine this with a small in-cluster controller that adjusts minReplicas based on time of day:
 
 ```go
 package main
@@ -328,7 +328,7 @@ This configuration scales down more aggressively than typical patterns. Use it f
 
 ## Combining Multiple Metrics with Asymmetric Behavior
 
-Use different behaviors for different metrics:
+Use multiple metrics with the same asymmetric behavior:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -382,14 +382,14 @@ HPA evaluates all metrics and scales based on whichever requires the most replic
 Track HPA behavior with these Prometheus queries:
 
 ```promql
-# Rate of scale-up events
-rate(kube_hpa_status_current_replicas[5m]) > 0
+# Replica changes in the last 5 minutes
+changes(kube_horizontalpodautoscaler_status_current_replicas[5m])
 
-# Time since last scaling event
-time() - kube_hpa_status_last_scale_time
+# Difference between desired and current replicas
+kube_horizontalpodautoscaler_status_desired_replicas - kube_horizontalpodautoscaler_status_current_replicas
 
 # Scaling velocity (replicas added per hour)
-rate(kube_hpa_status_current_replicas[1h]) * 3600
+deriv(kube_horizontalpodautoscaler_status_current_replicas[1h]) * 3600
 ```
 
 Create alerts for anomalous scaling:
@@ -399,15 +399,15 @@ groups:
 - name: hpa_behavior
   rules:
   - alert: HPAScalingTooFrequent
-    expr: changes(kube_hpa_status_current_replicas[5m]) > 3
+    expr: changes(kube_horizontalpodautoscaler_status_current_replicas[5m]) > 3
     annotations:
-      summary: "HPA {{ $labels.hpa }} scaling too frequently"
+      summary: "HPA {{ $labels.horizontalpodautoscaler }} scaling too frequently"
 
   - alert: HPANotScaling
-    expr: kube_hpa_status_desired_replicas != kube_hpa_status_current_replicas
+    expr: kube_horizontalpodautoscaler_status_desired_replicas != kube_horizontalpodautoscaler_status_current_replicas
     for: 10m
     annotations:
-      summary: "HPA {{ $labels.hpa }} not reaching desired state"
+      summary: "HPA {{ $labels.horizontalpodautoscaler }} not reaching desired state"
 ```
 
 ## Stabilization Window Tuning
@@ -418,7 +418,7 @@ The stabilization window is critical for preventing thrashing. It defines how lo
 stabilizationWindowSeconds: 300
 ```
 
-With a 300-second window, HPA uses the highest metric value observed in the last 5 minutes for scale-up decisions, and the lowest value for scale-down decisions. This prevents rapid scaling cycles caused by temporary metric fluctuations.
+With a 300-second window, HPA considers the desired replica recommendations calculated during the last 5 minutes. For scale-down, it uses the highest recommendation from that interval, which prevents rapid scaling cycles caused by temporary metric fluctuations.
 
 Guidelines for tuning:
 - Shorter windows (0-60s): Highly responsive, risk of thrashing
