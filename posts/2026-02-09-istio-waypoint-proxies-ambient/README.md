@@ -12,7 +12,7 @@ Ambient Mesh's ztunnel provides Layer 4 security and basic telemetry, but advanc
 
 ## Understanding Waypoint Proxy Architecture
 
-Waypoint proxies are Envoy proxies deployed per service account or namespace, not per pod. When you need Layer 7 features for a service, you deploy a waypoint proxy that handles traffic to that service. The waypoint acts as a gateway, processing requests before they reach destination pods.
+Waypoint proxies are Envoy proxies deployed for a namespace, service, or pod, not as per-pod sidecars. When you need Layer 7 features for a service, you deploy a waypoint proxy and enroll that service to use it. The waypoint acts as a gateway, processing requests before they reach destination pods.
 
 This architecture is more efficient than sidecars because one waypoint serves many pods. Unlike ztunnel which handles all traffic on a node, waypoints only process traffic for services that need Layer 7 features. This keeps resource usage low while providing full Istio capabilities.
 
@@ -105,12 +105,13 @@ spec:
 kubectl apply -f sample-apps.yaml
 ```
 
-## Deploying a Waypoint Proxy for a Service Account
+## Deploying a Waypoint Proxy for a Service
 
-Create a waypoint proxy for the httpbin service account. This enables Layer 7 processing for all services using this account:
+Create a waypoint proxy that can process service traffic, then enroll the httpbin service to use it. This enables Layer 7 processing for requests to that service:
 
 ```bash
-istioctl x waypoint apply --service-account httpbin-sa --namespace default
+istioctl waypoint apply --name httpbin-waypoint --namespace default --for service
+kubectl label service httpbin istio.io/use-waypoint=httpbin-waypoint
 ```
 
 This creates a Gateway resource and deploys the waypoint proxy:
@@ -123,17 +124,17 @@ kubectl get pods -n default -l istio.io/gateway-name
 You'll see a waypoint proxy pod running. Check its configuration:
 
 ```bash
-kubectl get gateway waypoint -n default -o yaml
+kubectl get gateway httpbin-waypoint -n default -o yaml
 ```
 
-The Gateway resource tells Istio to route traffic through this waypoint for the specified service account.
+The Gateway resource creates the waypoint. The `istio.io/use-waypoint` label on the Service tells Istio to route traffic for that service through this waypoint.
 
 ## Verifying Waypoint Proxy Activation
 
 Before the waypoint, traffic flowed directly through ztunnel. Now it routes through the waypoint for Layer 7 processing. Verify the routing:
 
 ```bash
-istioctl x describe pod <httpbin-pod-name> -n default
+istioctl experimental describe pod <httpbin-pod-name> -n default
 ```
 
 This shows the traffic path includes the waypoint proxy. You can also check using:
@@ -145,19 +146,19 @@ kubectl exec deploy/sleep -- curl -s http://httpbin:8000/headers
 The request works as before, but now routes through the waypoint. Check waypoint logs to confirm:
 
 ```bash
-WAYPOINT_POD=$(kubectl get pod -n default -l istio.io/gateway-name=waypoint -o jsonpath='{.items[0].metadata.name}')
+WAYPOINT_POD=$(kubectl get pod -n default -l istio.io/gateway-name=httpbin-waypoint -o jsonpath='{.items[0].metadata.name}')
 kubectl logs -n default $WAYPOINT_POD
 ```
 
-You'll see access logs for requests passing through the waypoint.
+If access logging is enabled for proxies in the mesh, you'll see access logs for requests passing through the waypoint.
 
 ## Configuring HTTP Retries with VirtualService
 
-Now that the waypoint is active, configure Layer 7 features. Start with automatic retries for failed requests:
+Now that the waypoint is active, configure Layer 7 features. Istio's Gateway API routes are the preferred traffic management API for ambient mode; `VirtualService` support in ambient is currently alpha and should not be mixed with Gateway API routes for the same traffic. Start with automatic retries for failed requests:
 
 ```yaml
 # virtualservice-retries.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: httpbin
@@ -185,7 +186,7 @@ Test retries by simulating failures. Use httpbin's status endpoint to return err
 kubectl exec deploy/sleep -- curl -s http://httpbin:8000/status/503
 ```
 
-Check waypoint logs. You'll see multiple retry attempts:
+Check waypoint logs. If access logging is enabled, you'll see multiple retry attempts:
 
 ```bash
 kubectl logs -n default $WAYPOINT_POD --tail=20
@@ -235,7 +236,7 @@ Create a DestinationRule to define version subsets:
 
 ```yaml
 # destinationrule-versions.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin
@@ -259,7 +260,7 @@ Update the VirtualService for header-based routing:
 
 ```yaml
 # virtualservice-header-routing.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: httpbin
@@ -292,10 +293,10 @@ Test the routing:
 
 ```bash
 # Default route goes to v1
-kubectl exec deploy/sleep -- curl -s http://httpbin:8000/headers
+kubectl exec deploy/sleep -- curl -s http://httpbin:8000/hostname
 
 # Beta users route to v2
-kubectl exec deploy/sleep -- curl -H "x-user-type: beta" http://httpbin:8000/headers
+kubectl exec deploy/sleep -- curl -H "x-user-type: beta" http://httpbin:8000/hostname
 ```
 
 The waypoint inspects headers and routes accordingly. This requires Layer 7 processing that ztunnel alone cannot provide.
@@ -306,7 +307,7 @@ Split traffic by percentage for gradual rollouts. Send 90% to v1 and 10% to v2:
 
 ```yaml
 # virtualservice-traffic-split.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: httpbin
@@ -333,10 +334,10 @@ kubectl apply -f virtualservice-traffic-split.yaml
 Test by making multiple requests:
 
 ```bash
-kubectl exec deploy/sleep -- sh -c 'for i in $(seq 1 100); do curl -s http://httpbin:8000/headers | grep -i host; done | sort | uniq -c'
+kubectl exec deploy/sleep -- sh -c 'for i in $(seq 1 100); do curl -s http://httpbin:8000/hostname; done | sort | uniq -c'
 ```
 
-You'll see roughly 90 requests to v1 and 10 to v2. The waypoint handles the traffic distribution.
+You'll see roughly 90 responses from httpbin v1 pods and 10 from httpbin v2 pods. The waypoint handles the traffic distribution.
 
 ## Implementing Request Timeouts
 
@@ -344,7 +345,7 @@ Configure timeouts to prevent slow requests from blocking resources:
 
 ```yaml
 # virtualservice-timeout.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: httpbin
@@ -377,7 +378,7 @@ Circuit breakers prevent cascading failures by stopping requests to unhealthy se
 
 ```yaml
 # destinationrule-circuit-breaker.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin
@@ -392,7 +393,7 @@ spec:
         http1MaxPendingRequests: 5
         maxRequestsPerConnection: 1
     outlierDetection:
-      consecutiveErrors: 3
+      consecutive5xxErrors: 3
       interval: 30s
       baseEjectionTime: 30s
   subsets:
@@ -408,7 +409,7 @@ spec:
 kubectl apply -f destinationrule-circuit-breaker.yaml
 ```
 
-The waypoint enforces these limits. If httpbin fails 3 consecutive requests, the waypoint ejects that instance from the load balancing pool for 30 seconds.
+The waypoint enforces these limits. If a httpbin endpoint returns 3 consecutive 5xx responses, the waypoint ejects that instance from the load balancing pool for 30 seconds.
 
 ## Adding Request/Response Header Manipulation
 
@@ -416,7 +417,7 @@ Modify headers as requests pass through the waypoint. Add a custom header to all
 
 ```yaml
 # virtualservice-header-manipulation.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: httpbin
@@ -453,19 +454,25 @@ You'll see the custom headers added by the waypoint. This kind of header manipul
 
 ## Deploying Namespace-Wide Waypoint Proxies
 
-Instead of per-service account, deploy a waypoint for an entire namespace. This simplifies management when all services need Layer 7 features:
+Instead of enrolling a single service, deploy a waypoint for an entire namespace. This simplifies management when all services need Layer 7 features. In a fresh namespace, or after removing service-specific `istio.io/use-waypoint` labels, create the namespace waypoint:
 
 ```bash
-istioctl x waypoint apply --namespace default
+istioctl waypoint apply --namespace default
 ```
 
-This creates a waypoint that handles traffic for all services in the namespace. Check the gateway:
+This creates a namespace waypoint. Enroll the namespace so services in the namespace use it:
+
+```bash
+kubectl label namespace default istio.io/use-waypoint=waypoint
+```
+
+Check the gateway:
 
 ```bash
 kubectl get gateway waypoint -n default -o yaml
 ```
 
-The gateway has no service account selector, so it processes all traffic in the namespace.
+The namespace label enrolls services in the namespace to use the waypoint for east-west traffic.
 
 ## Monitoring Waypoint Proxy Performance
 
@@ -482,15 +489,15 @@ Query Prometheus for waypoint metrics:
 ```promql
 # Request rate through waypoint
 sum(rate(istio_requests_total{
-  reporter="destination",
-  destination_app="waypoint"
+  reporter="source",
+  source_workload="waypoint"
 }[5m]))
 
 # Waypoint latency
 histogram_quantile(0.95,
   sum(rate(istio_request_duration_milliseconds_bucket{
-    reporter="destination",
-    destination_app="waypoint"
+    reporter="source",
+    source_workload="waypoint"
   }[5m])) by (le)
 )
 ```
@@ -500,10 +507,16 @@ histogram_quantile(0.95,
 If you no longer need Layer 7 features, remove the waypoint:
 
 ```bash
-istioctl x waypoint delete --service-account httpbin-sa --namespace default
+istioctl waypoint delete httpbin-waypoint --namespace default
 ```
 
-Traffic continues flowing through ztunnel with Layer 4 features. VirtualService and DestinationRule resources remain but have no effect without a waypoint to process them.
+Remove the service label as well:
+
+```bash
+kubectl label service httpbin istio.io/use-waypoint-
+```
+
+Traffic continues flowing through ztunnel with Layer 4 features. VirtualService and DestinationRule resources that require Layer 7 processing remain but have no effect without a waypoint to process them.
 
 ## When to Use Waypoint vs Sidecar Mode
 
@@ -538,7 +551,7 @@ kubectl get gateway -n default
 Verify traffic routes through the waypoint:
 
 ```bash
-istioctl x describe pod <httpbin-pod-name>
+istioctl experimental describe pod <httpbin-pod-name> -n default
 ```
 
 Check waypoint logs for errors:
@@ -547,12 +560,12 @@ Check waypoint logs for errors:
 kubectl logs -n default <waypoint-pod-name>
 ```
 
-Ensure your VirtualService and DestinationRule resources are in the same namespace as the waypoint.
+For the examples in this guide, keep your VirtualService and DestinationRule resources in the same namespace as the service and waypoint.
 
 ## Conclusion
 
-Waypoint proxies in Istio Ambient Mesh provide Layer 7 traffic management without per-pod sidecar overhead. Deploy waypoints per service account or namespace to enable features like header-based routing, retries, circuit breakers, and traffic splitting.
+Waypoint proxies in Istio Ambient Mesh provide Layer 7 traffic management without per-pod sidecar overhead. Deploy waypoints for services or namespaces to enable features like header-based routing, retries, circuit breakers, and traffic splitting.
 
 The two-layer architecture of ambient mode gives you flexibility. Use ztunnel for Layer 4 security on all services, then add waypoints only where you need advanced traffic management. This minimizes resource consumption while providing full Istio capabilities.
 
-Start by deploying waypoints for critical services that need sophisticated routing. Monitor their performance and expand to more services as needed. The per-service-account model keeps deployment complexity manageable even in large clusters.
+Start by deploying waypoints for critical services that need sophisticated routing. Monitor their performance and expand to more services as needed. The namespace and service enrollment model keeps deployment complexity manageable even in large clusters.
