@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Security, Testing
 
-Description: Learn how to use Kubeaudit to automatically scan Kubernetes clusters for security misconfigurations, identify vulnerabilities, and enforce security best practices in your CI/CD pipeline.
+Description: Learn how to use Kubeaudit to automatically scan Kubernetes clusters for security misconfigurations and enforce security best practices in your CI/CD pipeline.
 
 ---
 
-Security misconfigurations in Kubernetes clusters are one of the most common causes of breaches and compliance failures. While manual security reviews can catch some issues, they are time-consuming, error-prone, and difficult to scale across multiple clusters and environments. Kubeaudit is an open-source tool that automatically audits Kubernetes clusters for common security concerns, helping teams identify and fix vulnerabilities before they reach production.
+Security misconfigurations in Kubernetes clusters are one of the most common causes of breaches and compliance failures. While manual security reviews can catch some issues, they are time-consuming, error-prone, and difficult to scale across multiple clusters and environments. Kubeaudit is an open-source tool that automatically audits Kubernetes clusters for common security concerns, helping teams identify and fix misconfigurations before they reach production.
 
 In this guide, you'll learn how to use Kubeaudit to scan your Kubernetes clusters, interpret the results, integrate security scanning into your CI/CD pipelines, and enforce security policies across your infrastructure.
 
 ## Understanding Kubeaudit and Its Security Checks
 
-Kubeaudit is a command-line tool developed by Shopify that audits Kubernetes clusters for various security concerns. It checks your cluster configuration against security best practices and generates detailed reports about potential vulnerabilities.
+Kubeaudit is a command-line tool developed by Shopify that audits Kubernetes clusters for various security concerns. The project was archived in October 2024, but its final releases can still be useful for auditing supported clusters. It checks your cluster configuration against security best practices and generates detailed reports about potential misconfigurations.
 
 Kubeaudit performs multiple types of security audits including privilege escalation risks, capabilities that should be dropped, security contexts, resource limits, network policies, service account configurations, and more. It can scan live clusters or analyze manifest files before deployment.
 
-The tool checks for issues like containers running as root, missing read-only root filesystems, capabilities that should be dropped or added, missing resource limits that could lead to resource exhaustion, and inadequate network policies that could allow unwanted traffic.
+The tool checks for issues like containers running as root, missing read-only root filesystems, capabilities that should be dropped or added, missing resource limits that could lead to resource exhaustion, and namespaces without default-deny network policies.
 
 ## Installing and Running Basic Kubeaudit Scans
 
@@ -27,7 +27,7 @@ First, install Kubeaudit on your system. You can download pre-built binaries fro
 ```bash
 # Download the latest release for Linux
 
-curl -L https://github.com/Shopify/kubeaudit/releases/download/v0.22.0/kubeaudit_0.22.0_linux_amd64.tar.gz -o kubeaudit.tar.gz
+curl -L https://github.com/Shopify/kubeaudit/releases/download/v0.22.2/kubeaudit_0.22.2_linux_amd64.tar.gz -o kubeaudit.tar.gz
 
 # Extract the binary
 tar -xzf kubeaudit.tar.gz
@@ -58,7 +58,7 @@ kubeaudit rootfs
 kubeaudit seccomp
 ```
 
-The output will show all detected security issues with severity levels and recommendations for fixing them.
+The output will show detected security issues with `error`, `warning`, or `info` severity levels and recommendations for fixing them.
 
 ## Auditing Kubernetes Manifest Files
 
@@ -72,7 +72,7 @@ kubeaudit all -f deployment.yaml
 kubeaudit all -f ./k8s-manifests/
 
 # Output results in JSON format for parsing
-kubeaudit all -f deployment.yaml -o json > audit-results.json
+kubeaudit all -f deployment.yaml --format json --no-color > audit-results.json
 ```
 
 Here's an example deployment manifest with security issues:
@@ -127,6 +127,8 @@ spec:
     metadata:
       labels:
         app: secure-app
+      annotations:
+        container.apparmor.security.beta.kubernetes.io/app: runtime/default
     spec:
       # Use a non-root service account
       serviceAccountName: secure-app-sa
@@ -147,11 +149,10 @@ spec:
           readOnlyRootFilesystem: true
           runAsNonRoot: true
           runAsUser: 10000
+          privileged: false
           capabilities:
             drop:
             - ALL
-            add:
-            - NET_BIND_SERVICE
         resources:
           requests:
             memory: "128Mi"
@@ -171,7 +172,7 @@ spec:
         emptyDir: {}
 ```
 
-This deployment addresses all the security concerns that Kubeaudit would flag, including running as non-root, dropping all capabilities except necessary ones, setting a read-only root filesystem, defining resource limits, and using a secure seccomp profile.
+This deployment addresses the security concerns that Kubeaudit would flag, including running as non-root, dropping all capabilities, explicitly disabling privileged mode, setting a read-only root filesystem, defining resource limits, using an AppArmor profile annotation, and using a secure seccomp profile.
 
 ## Integrating Kubeaudit into CI/CD Pipelines
 
@@ -194,24 +195,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
 
     - name: Install Kubeaudit
       run: |
-        curl -L https://github.com/Shopify/kubeaudit/releases/download/v0.22.0/kubeaudit_0.22.0_linux_amd64.tar.gz -o kubeaudit.tar.gz
+        curl -L https://github.com/Shopify/kubeaudit/releases/download/v0.22.2/kubeaudit_0.22.2_linux_amd64.tar.gz -o kubeaudit.tar.gz
         tar -xzf kubeaudit.tar.gz
         sudo mv kubeaudit /usr/local/bin/
 
     - name: Run Kubeaudit on manifests
       run: |
-        kubeaudit all -f k8s/ -o json > audit-results.json
+        kubeaudit all -f k8s/ --format json --no-color --exitcode 0 > audit-results.json
 
-    - name: Check for critical issues
+    - name: Check for error-level issues
       run: |
-        # Fail if critical security issues are found
-        CRITICAL_COUNT=$(jq '[.[] | select(.AuditResultName != "")]' audit-results.json | jq length)
-        echo "Found $CRITICAL_COUNT security issues"
-        if [ "$CRITICAL_COUNT" -gt 0 ]; then
+        # Fail if error-level security issues are found
+        ERROR_COUNT=$(jq -s '[.[] | select(.level == "error")] | length' audit-results.json)
+        echo "Found $ERROR_COUNT error-level security issues"
+        if [ "$ERROR_COUNT" -gt 0 ]; then
           echo "Security audit failed. Review the issues below:"
           cat audit-results.json
           exit 1
@@ -219,7 +220,7 @@ jobs:
 
     - name: Upload audit results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v7
       with:
         name: kubeaudit-results
         path: audit-results.json
@@ -234,15 +235,15 @@ kubeaudit:
   image: ubuntu:22.04
   before_script:
     - apt-get update && apt-get install -y curl tar jq
-    - curl -L https://github.com/Shopify/kubeaudit/releases/download/v0.22.0/kubeaudit_0.22.0_linux_amd64.tar.gz -o kubeaudit.tar.gz
+    - curl -L https://github.com/Shopify/kubeaudit/releases/download/v0.22.2/kubeaudit_0.22.2_linux_amd64.tar.gz -o kubeaudit.tar.gz
     - tar -xzf kubeaudit.tar.gz
     - mv kubeaudit /usr/local/bin/
   script:
-    - kubeaudit all -f k8s/ -o json > audit-results.json
+    - kubeaudit all -f k8s/ --format json --no-color --exitcode 0 > audit-results.json
     - |
-      ISSUE_COUNT=$(jq '[.[] | select(.AuditResultName != "")]' audit-results.json | jq length)
+      ISSUE_COUNT=$(jq -s '[.[] | select(.level == "error")] | length' audit-results.json)
       if [ "$ISSUE_COUNT" -gt 0 ]; then
-        echo "Found $ISSUE_COUNT security issues"
+        echo "Found $ISSUE_COUNT error-level security issues"
         cat audit-results.json
         exit 1
       fi
@@ -259,41 +260,37 @@ Create a configuration file to customize Kubeaudit's behavior and define excepti
 ```yaml
 # .kubeaudit.yaml
 enabledAuditors:
-  - apparmor
-  - capabilities
-  - hostns
-  - limits
-  - privileged
-  - rootfs
-  - seccomp
+  apparmor: true
+  capabilities: true
+  hostns: true
+  limits: true
+  privileged: true
+  rootfs: true
+  seccomp: true
 
-# Set minimum resource limits
-limits:
-  cpu: "100m"
-  memory: "128Mi"
+auditors:
+  # Set maximum allowed resource limits
+  limits:
+    cpu: "200m"
+    memory: "256Mi"
 
-# Allow specific capabilities if needed
-capabilities:
-  allowAddList:
-    - NET_BIND_SERVICE
-
-# Define exceptions for specific workloads
-auditResults:
-  # Skip rootfs check for init containers
-  - name: "ReadOnlyRootFilesystem"
-    skipContainers:
-      - init-*
+  # Allow specific capabilities if needed
+  capabilities:
+    allowAddList:
+      - NET_BIND_SERVICE
 ```
 
 Run Kubeaudit with the configuration file:
 
 ```bash
-kubeaudit all -f k8s/ --config .kubeaudit.yaml
+kubeaudit all -f k8s/ --kconfig .kubeaudit.yaml
 ```
 
 ## Automating Cluster Audits with CronJobs
 
 Set up regular security audits of your live clusters using Kubernetes CronJobs:
+
+Kubeaudit no longer publishes new Docker Hub images. Build and publish an internal image from the v0.22.2 binary before using this CronJob example.
 
 ```yaml
 apiVersion: v1
@@ -307,9 +304,28 @@ kind: ClusterRole
 metadata:
   name: kubeaudit-scanner
 rules:
-- apiGroups: ["*"]
-  resources: ["*"]
-  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources:
+  - pods
+  - podtemplates
+  - replicationcontrollers
+  - namespaces
+  - serviceaccounts
+  verbs: ["list"]
+- apiGroups: ["apps"]
+  resources:
+  - daemonsets
+  - statefulsets
+  - deployments
+  verbs: ["list"]
+- apiGroups: ["batch"]
+  resources:
+  - cronjobs
+  verbs: ["list"]
+- apiGroups: ["networking.k8s.io"]
+  resources:
+  - networkpolicies
+  verbs: ["list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -338,14 +354,14 @@ spec:
           serviceAccountName: kubeaudit-scanner
           containers:
           - name: kubeaudit
-            image: shopify/kubeaudit:latest
+            image: registry.example.com/security/kubeaudit:v0.22.2
             command:
             - /bin/sh
             - -c
             - |
-              kubeaudit all -o json > /results/audit-$(date +%Y%m%d).json
-              # Send results to monitoring system
-              curl -X POST -H "Content-Type: application/json" \
+              kubeaudit all --format json --no-color --exitcode 0 > /results/audit-$(date +%Y%m%d).json
+              # Send newline-delimited JSON results to monitoring system
+              curl -X POST -H "Content-Type: application/x-ndjson" \
                 -d @/results/audit-$(date +%Y%m%d).json \
                 http://monitoring-service/api/security-audit
             volumeMounts:
@@ -369,17 +385,13 @@ import sys
 def analyze_audit_results(filename):
     """Parse Kubeaudit JSON output and categorize issues."""
     with open(filename, 'r') as f:
-        results = json.load(f)
+        results = [json.loads(line) for line in f if line.strip()]
 
     issues_by_severity = {
-        'critical': [],
-        'high': [],
-        'medium': [],
-        'low': []
+        'error': [],
+        'warning': [],
+        'info': []
     }
-
-    critical_checks = ['privileged', 'hostPID', 'hostNetwork']
-    high_checks = ['runAsRoot', 'allowPrivilegeEscalation']
 
     for issue in results:
         if not issue.get('AuditResultName'):
@@ -387,13 +399,9 @@ def analyze_audit_results(filename):
 
         check_name = issue['AuditResultName']
         resource = f"{issue.get('ResourceNamespace', 'default')}/{issue.get('ResourceName', 'unknown')}"
+        severity = issue.get('level', 'info')
 
-        if check_name in critical_checks:
-            issues_by_severity['critical'].append((resource, check_name))
-        elif check_name in high_checks:
-            issues_by_severity['high'].append((resource, check_name))
-        else:
-            issues_by_severity['medium'].append((resource, check_name))
+        issues_by_severity.setdefault(severity, []).append((resource, check_name))
 
     # Print summary
     print("Security Audit Summary")
@@ -404,8 +412,8 @@ def analyze_audit_results(filename):
             for resource, check in issues[:5]:  # Show first 5
                 print(f"  - {resource}: {check}")
 
-    # Return exit code based on critical issues
-    return 1 if issues_by_severity['critical'] else 0
+    # Return exit code based on error-level issues
+    return 1 if issues_by_severity['error'] else 0
 
 if __name__ == '__main__':
     exit_code = analyze_audit_results('audit-results.json')
