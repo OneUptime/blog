@@ -14,7 +14,7 @@ Pandoc calls itself the "universal document converter," and it earns that title.
 
 Pandoc itself is relatively lightweight, but PDF generation requires a LaTeX distribution, which is enormous. A full TeX Live installation can exceed 4 GB. Docker lets you build an image once with the exact LaTeX packages you need, then reuse it across all your projects without cluttering your host system.
 
-Version pinning is another advantage. Different Pandoc versions may produce slightly different output from the same source. Docker locks the version, ensuring your documents render identically over time.
+Version pinning is another advantage. Different Pandoc versions may produce slightly different output from the same source. Pinning a full Docker image tag locks the version, ensuring your documents render identically over time.
 
 ## Quick Start
 
@@ -23,13 +23,13 @@ The official Pandoc Docker images come in several variants:
 ```bash
 # Convert a Markdown file to HTML
 
-docker run --rm -v $(pwd):/data pandoc/core README.md -o README.html
+docker run --rm -v "$(pwd):/data" pandoc/core README.md -o README.html
 
 # Convert Markdown to PDF (requires the latex variant)
-docker run --rm -v $(pwd):/data pandoc/latex README.md -o README.pdf
+docker run --rm -v "$(pwd):/data" pandoc/latex README.md -o README.pdf
 
 # Convert Markdown to DOCX (Word format)
-docker run --rm -v $(pwd):/data pandoc/core README.md -o README.docx
+docker run --rm -v "$(pwd):/data" pandoc/core README.md -o README.docx
 ```
 
 The `pandoc/core` image handles most conversions. The `pandoc/latex` image adds a TeX Live installation for PDF generation.
@@ -42,7 +42,7 @@ Markdown to styled HTML with a table of contents:
 
 ```bash
 # Convert Markdown to standalone HTML with a table of contents and custom CSS
-docker run --rm -v $(pwd):/data pandoc/core \
+docker run --rm -v "$(pwd):/data" pandoc/core \
   article.md \
   -o article.html \
   --standalone \
@@ -56,7 +56,7 @@ Markdown to PDF with custom margins:
 
 ```bash
 # Convert Markdown to PDF with A4 paper and custom margins
-docker run --rm -v $(pwd):/data pandoc/latex \
+docker run --rm -v "$(pwd):/data" pandoc/latex \
   article.md \
   -o article.pdf \
   --pdf-engine=xelatex \
@@ -72,7 +72,7 @@ Multiple Markdown files into a single PDF:
 
 ```bash
 # Combine multiple chapter files into one PDF document
-docker run --rm -v $(pwd):/data pandoc/latex \
+docker run --rm -v "$(pwd):/data" pandoc/latex \
   chapters/01-intro.md \
   chapters/02-setup.md \
   chapters/03-usage.md \
@@ -87,7 +87,7 @@ HTML to Markdown:
 
 ```bash
 # Convert an HTML page to clean Markdown
-docker run --rm -v $(pwd):/data pandoc/core \
+docker run --rm -v "$(pwd):/data" pandoc/core \
   page.html \
   -f html \
   -t markdown \
@@ -99,7 +99,7 @@ Markdown to EPUB for e-readers:
 
 ```bash
 # Generate an EPUB e-book from Markdown with metadata and cover image
-docker run --rm -v $(pwd):/data pandoc/core \
+docker run --rm -v "$(pwd):/data" pandoc/core \
   book.md \
   -o book.epub \
   --epub-cover-image=cover.jpg \
@@ -112,7 +112,7 @@ DOCX to Markdown (useful for migrating content):
 
 ```bash
 # Extract text and formatting from a Word document as Markdown
-docker run --rm -v $(pwd):/data pandoc/core \
+docker run --rm -v "$(pwd):/data" pandoc/core \
   document.docx \
   -t markdown \
   -o document.md \
@@ -127,7 +127,7 @@ When you need specific LaTeX packages or custom templates, build your own image:
 
 ```dockerfile
 # Dockerfile - Pandoc with custom LaTeX packages and templates
-FROM pandoc/latex:latest
+FROM pandoc/latex:3.9.0.2
 
 # Install additional LaTeX packages for specialized document types
 RUN tlmgr update --self && tlmgr install \
@@ -142,8 +142,9 @@ RUN tlmgr update --self && tlmgr install \
     xstring \
     framed
 
-# Install Python for Pandoc filters
-RUN apk add --no-cache python3 py3-pip
+# Install Python for Pandoc filters and the Flask API
+RUN apk add --no-cache python3 py3-pip py3-flask \
+    && pip3 install --no-cache-dir --break-system-packages panflute
 
 # Copy custom templates and filters
 COPY templates/ /root/.pandoc/templates/
@@ -191,7 +192,7 @@ Use the template:
 
 ```bash
 # Generate a PDF using the custom report template
-docker run --rm -v $(pwd):/data custom-pandoc \
+docker run --rm -v "$(pwd):/data" custom-pandoc \
   report.md \
   -o report.pdf \
   --template=report \
@@ -235,7 +236,7 @@ Apply the filter during conversion:
 
 ```bash
 # Convert with the custom line-numbers filter applied
-docker run --rm -v $(pwd):/data custom-pandoc \
+docker run --rm -v "$(pwd):/data" custom-pandoc \
   code-tutorial.md \
   -o code-tutorial.pdf \
   --filter /root/.pandoc/filters/line-numbers.py \
@@ -248,8 +249,6 @@ Set up a conversion API using Docker Compose:
 
 ```yaml
 # docker-compose.yml - Pandoc document conversion service
-version: "3.8"
-
 services:
   pandoc-api:
     build: .
@@ -257,6 +256,7 @@ services:
     ports:
       - "5000:5000"
     volumes:
+      - ./server.py:/app/server.py:ro
       - ./output:/app/output
       - ./templates:/root/.pandoc/templates
     restart: unless-stopped
@@ -270,6 +270,7 @@ import os
 import subprocess
 import tempfile
 from flask import Flask, request, send_file, jsonify
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
@@ -282,16 +283,20 @@ def convert():
         return jsonify({'error': 'No file uploaded'}), 400
 
     file = request.files['file']
+    filename = secure_filename(file.filename)
+    if not filename:
+        return jsonify({'error': 'No filename provided'}), 400
+
     output_format = request.form.get('format', 'pdf')
 
     if output_format not in SUPPORTED_OUTPUTS:
         return jsonify({'error': f'Unsupported format: {output_format}'}), 400
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        input_path = os.path.join(tmpdir, file.filename)
+        input_path = os.path.join(tmpdir, filename)
         file.save(input_path)
 
-        base_name = os.path.splitext(file.filename)[0]
+        base_name = os.path.splitext(filename)[0]
         output_path = os.path.join(tmpdir, f'{base_name}.{output_format}')
 
         # Build the Pandoc command with appropriate options
