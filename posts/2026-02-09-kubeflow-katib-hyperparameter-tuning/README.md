@@ -19,7 +19,7 @@ Install Katib as part of Kubeflow or standalone:
 ```bash
 # Install standalone Katib
 
-kubectl apply -k "github.com/kubeflow/katib/manifests/v1beta1/installs/katib-standalone?ref=v0.16.0"
+kubectl apply -k "github.com/kubeflow/katib.git/manifests/v1beta1/installs/katib-standalone?ref=v0.17.0"
 
 # Verify installation
 kubectl get pods -n kubeflow
@@ -44,8 +44,7 @@ Create a training script that accepts hyperparameters:
 ```python
 # train.py
 import argparse
-import numpy as np
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.datasets import make_classification
 from sklearn.model_selection import cross_val_score
 
@@ -54,7 +53,8 @@ def train(learning_rate, n_estimators, max_depth):
     X, y = make_classification(n_samples=1000, n_features=20, random_state=42)
 
     # Create model
-    model = RandomForestClassifier(
+    model = GradientBoostingClassifier(
+        learning_rate=learning_rate,
         n_estimators=int(n_estimators),
         max_depth=int(max_depth) if max_depth > 0 else None,
         random_state=42
@@ -89,8 +89,7 @@ FROM python:3.10-slim
 WORKDIR /app
 
 RUN pip install --no-cache-dir \
-    scikit-learn==1.3.0 \
-    numpy==1.24.0
+    scikit-learn==1.7.2
 
 COPY train.py /app/
 
@@ -361,15 +360,18 @@ Update training script to emit intermediate metrics:
 
 ```python
 # train_with_early_stopping.py
+from datetime import datetime, timezone
+
 for epoch in range(num_epochs):
     # Training code
     train_loss = train_epoch(model, train_loader)
     val_accuracy = evaluate(model, val_loader)
 
     # Emit metrics for Katib (each epoch)
-    print(f"epoch={epoch}")
-    print(f"loss={train_loss:.4f}")
-    print(f"accuracy={val_accuracy:.4f}")
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"{timestamp} epoch={epoch}")
+    print(f"{timestamp} loss={train_loss:.4f}")
+    print(f"{timestamp} accuracy={val_accuracy:.4f}")
 ```
 
 ## Hyperparameter Tuning for Deep Learning
@@ -385,6 +387,13 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 
 def train(args):
+    train_x = torch.randn(1024, 784)
+    train_y = torch.randint(0, 10, (1024,))
+    val_x = torch.randn(256, 784)
+    val_y = torch.randint(0, 10, (256,))
+    train_loader = DataLoader(TensorDataset(train_x, train_y), batch_size=args.batch_size, shuffle=True)
+    val_loader = DataLoader(TensorDataset(val_x, val_y), batch_size=args.batch_size)
+
     # Model architecture based on hyperparameters
     model = nn.Sequential(
         nn.Linear(784, args.hidden_size),
@@ -449,16 +458,16 @@ Query Katib metrics:
 
 ```promql
 # Number of running experiments
-katib_experiment_running_total
+katib_experiments_current{status="Running"}
 
 # Succeeded trials
-katib_experiment_succeeded_trials_total
+katib_trial_succeeded_total
 
 # Failed trials
-katib_experiment_failed_trials_total
+katib_trial_failed_total
 
-# Trial duration
-katib_trial_duration_seconds
+# Current trials by status
+katib_trials_current
 ```
 
 Create alerts:
@@ -475,7 +484,7 @@ spec:
   - name: katib
     rules:
     - alert: HighTrialFailureRate
-      expr: rate(katib_experiment_failed_trials_total[10m]) > 0.3
+      expr: rate(katib_trial_failed_total[10m]) > 0.3
       annotations:
         summary: "High trial failure rate detected"
 ```
@@ -487,7 +496,6 @@ Use Katib results in Kubeflow Pipelines:
 ```python
 # pipeline_with_katib.py
 from kfp import dsl
-from kfp import components
 
 @dsl.component
 def run_katib_experiment() -> str:
@@ -498,6 +506,7 @@ def run_katib_experiment() -> str:
     # Create Katib experiment
     # Wait for completion
     # Extract best trial hyperparameters
+    best_params = "{}"
     return best_params
 
 @dsl.component
