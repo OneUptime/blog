@@ -14,10 +14,10 @@ This guide shows you how to implement custom health checks for any Kubernetes re
 
 ## Understanding ArgoCD Health Assessment
 
-ArgoCD uses health assessment to determine Application sync status. For standard resources:
+ArgoCD uses health assessment to determine Application health status. Sync status is tracked separately. For standard resources:
 
-- Deployment: Healthy when desired replicas match ready replicas
-- Service: Always healthy if it exists
+- Deployment: Healthy when its observed generation is current and updated replicas match desired replicas
+- Service: LoadBalancer Services are healthy when they have at least one load balancer ingress address; other Service types are generally considered healthy if they exist
 - Job: Healthy when completed successfully
 
 Custom resources need explicit health assessment logic.
@@ -58,7 +58,7 @@ data:
 ```
 
 The Lua script examines the resource's status and returns:
-- `hs.status`: "Healthy", "Progressing", "Degraded", "Suspended", or "Missing"
+- `hs.status`: "Healthy", "Progressing", "Degraded", or "Suspended"
 - `hs.message`: Human-readable explanation
 
 ## Real Example: Crossplane Managed Resources
@@ -117,7 +117,7 @@ data:
                 if condition.status == "True" then
                   ready = true
                 elseif condition.reason == "DoesNotExist" or condition.reason == "MissingData" then
-                  hs.status = "Missing"
+                  hs.status = "Progressing"
                   hs.message = condition.message
                   return hs
                 end
@@ -168,7 +168,7 @@ data:
 
           if ready < desired then
             hs.status = "Progressing"
-            hs.message = string.format("%d/%d instances ready", ready, desired)
+            hs.message = ready .. "/" .. desired .. " instances ready"
             return hs
           elseif ready == desired then
             hs.status = "Healthy"
@@ -181,58 +181,60 @@ data:
         return hs
 ```
 
-## Handling Multiple Resource Versions
+## Handling Missing Status Fields
 
-Support different API versions:
+Guard against fields that may not be populated yet:
 
 ```yaml
 data:
-  resource.customizations: |
-    argoproj.io/Application:
-      health.lua: |
-        hs = {}
+  resource.customizations.health.argoproj.io_Application: |
+    hs = {}
 
-        -- Helper function to check sync status
-        local function isSynced()
-          return obj.status.sync.status == "Synced"
-        end
+    -- Helper function to check sync status
+    local function isSynced()
+      return obj.status.sync ~= nil and obj.status.sync.status == "Synced"
+    end
 
-        -- Helper function to check health
-        local function isHealthy()
-          return obj.status.health ~= nil and obj.status.health.status == "Healthy"
-        end
+    -- Helper function to check health
+    local function isHealthy()
+      return obj.status.health ~= nil and obj.status.health.status == "Healthy"
+    end
 
-        if obj.status == nil then
-          hs.status = "Progressing"
-          hs.message = "Waiting for application status"
-          return hs
-        end
+    if obj.status == nil then
+      hs.status = "Progressing"
+      hs.message = "Waiting for application status"
+      return hs
+    end
 
-        if obj.status.operationState ~= nil then
-          local state = obj.status.operationState
-          if state.phase == "Running" then
-            hs.status = "Progressing"
-            hs.message = "Sync operation in progress"
-            return hs
-          elseif state.phase == "Failed" then
-            hs.status = "Degraded"
-            hs.message = state.message
-            return hs
-          end
-        end
+    if obj.status.operationState ~= nil then
+      local state = obj.status.operationState
+      if state.phase == "Running" then
+        hs.status = "Progressing"
+        hs.message = "Sync operation in progress"
+        return hs
+      elseif state.phase == "Failed" then
+        hs.status = "Degraded"
+        hs.message = state.message
+        return hs
+      end
+    end
 
-        if isSynced() and isHealthy() then
-          hs.status = "Healthy"
-          return hs
-        elseif not isSynced() then
-          hs.status = "Progressing"
-          hs.message = "Application is out of sync"
-          return hs
-        else
-          hs.status = obj.status.health.status
-          hs.message = obj.status.health.message
-          return hs
-        end
+    if isSynced() and isHealthy() then
+      hs.status = "Healthy"
+      return hs
+    elseif not isSynced() then
+      hs.status = "Progressing"
+      hs.message = "Application is out of sync"
+      return hs
+    elseif obj.status.health ~= nil then
+      hs.status = obj.status.health.status
+      hs.message = obj.status.health.message
+      return hs
+    end
+
+    hs.status = "Progressing"
+    hs.message = "Waiting for application health"
+    return hs
 ```
 
 ## Custom Actions
@@ -241,22 +243,20 @@ Beyond health checks, define custom actions:
 
 ```yaml
 data:
-  resource.customizations: |
-    argoproj.io/Workflow:
-      actions: |
-        discovery.lua: |
-          actions = {}
-          if obj.status ~= nil and obj.status.phase == "Running" then
-            actions["terminate"] = {["disabled"] = false}
-          else
-            actions["terminate"] = {["disabled"] = true}
-          end
-          return actions
-        definitions:
-          - name: terminate
-            action.lua: |
-              obj.spec.shutdown = "Terminate"
-              return obj
+  resource.customizations.actions.argoproj.io_Workflow: |
+    discovery.lua: |
+      actions = {}
+      if obj.status ~= nil and obj.status.phase == "Running" then
+        actions["terminate"] = {["disabled"] = false}
+      else
+        actions["terminate"] = {["disabled"] = true}
+      end
+      return actions
+    definitions:
+      - name: terminate
+        action.lua: |
+          obj.spec.shutdown = "Terminate"
+          return obj
 ```
 
 This adds a "terminate" button in ArgoCD UI for running workflows.
@@ -292,17 +292,21 @@ local obj = {
   }
 }
 
--- Your health check function
-hs = {}
-if obj.status ~= nil and obj.status.conditions ~= nil then
-  for i, condition in ipairs(obj.status.conditions) do
-    if condition.type == "Ready" and condition.status == "True" then
-      hs.status = "Healthy"
-      return hs
+local function assess_health(obj)
+  local hs = {}
+  if obj.status ~= nil and obj.status.conditions ~= nil then
+    for i, condition in ipairs(obj.status.conditions) do
+      if condition.type == "Ready" and condition.status == "True" then
+        hs.status = "Healthy"
+        return hs
+      end
     end
   end
+  hs.status = "Progressing"
+  return hs
 end
 
+local hs = assess_health(obj)
 print(hs.status)
 ```
 
@@ -320,7 +324,7 @@ Update the ConfigMap:
 kubectl edit configmap argocd-cm -n argocd
 ```
 
-Or use Kustomize to manage it declaratively:
+Or manage it declaratively:
 
 ```yaml
 # argocd-cm-patch.yaml
@@ -334,7 +338,7 @@ data:
   resource.customizations: |
     example.com/MyResource:
       health.lua: |
-        # Your health check logic
+        -- Your health check logic
 ```
 
 Apply the patch:
@@ -346,8 +350,8 @@ kubectl apply -f argocd-cm-patch.yaml
 Restart ArgoCD to pick up changes:
 
 ```bash
-kubectl rollout restart deployment argocd-server -n argocd
-kubectl rollout restart deployment argocd-application-controller -n argocd
+kubectl rollout restart deployment/argocd-server -n argocd
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 ```
 
 ## Debugging Health Checks
@@ -355,7 +359,7 @@ kubectl rollout restart deployment argocd-application-controller -n argocd
 Enable detailed logging:
 
 ```bash
-kubectl logs -n argocd deployment/argocd-application-controller -f
+kubectl logs -n argocd statefulset/argocd-application-controller -f
 ```
 
 Look for health assessment logs showing which resources passed or failed health checks.
@@ -409,53 +413,48 @@ Complete example for Argo Rollouts:
 
 ```yaml
 data:
-  resource.customizations: |
-    argoproj.io/Rollout:
-      health.lua: |
-        hs = {}
-        if obj.status ~= nil then
-          if obj.status.phase == "Healthy" then
-            hs.status = "Healthy"
-            hs.message = obj.status.message
-            return hs
-          end
-          if obj.status.phase == "Progressing" then
-            hs.status = "Progressing"
-            hs.message = obj.status.message
-            return hs
-          end
-          if obj.status.phase == "Degraded" then
-            hs.status = "Degraded"
-            hs.message = obj.status.message
-            return hs
-          end
-          if obj.status.phase == "Paused" then
-            hs.status = "Suspended"
-            hs.message = obj.status.message
-            return hs
-          end
-        end
-        hs.status = "Progressing"
-        hs.message = "Waiting for rollout to start"
+  resource.customizations.health.argoproj.io_Rollout: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.phase == "Healthy" then
+        hs.status = "Healthy"
+        hs.message = obj.status.message
         return hs
-      actions: |
-        discovery.lua: |
-          actions = {}
-          if obj.status ~= nil and obj.status.phase == "Paused" then
-            actions["promote-full"] = {["disabled"] = false}
-          else
-            actions["promote-full"] = {["disabled"] = true}
-          end
-          return actions
-        definitions:
-          - name: promote-full
-            action.lua: |
-              if obj.status.currentPodHash == obj.status.stableRS then
-                return obj
-              end
-              terminationGracePeriodSeconds = 30
-              obj.spec.restartAt = os.date("!%Y-%m-%dT%TZ")
-              return obj
+      end
+      if obj.status.phase == "Progressing" then
+        hs.status = "Progressing"
+        hs.message = obj.status.message
+        return hs
+      end
+      if obj.status.phase == "Degraded" then
+        hs.status = "Degraded"
+        hs.message = obj.status.message
+        return hs
+      end
+      if obj.status.phase == "Paused" then
+        hs.status = "Suspended"
+        hs.message = obj.status.message
+        return hs
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "Waiting for rollout to start"
+    return hs
+  resource.customizations.actions.argoproj.io_Rollout: |
+    mergeBuiltinActions: true
+    discovery.lua: |
+      actions = {}
+      if obj.status ~= nil and obj.status.phase == "Paused" then
+        actions["promote-full"] = {["disabled"] = false}
+      else
+        actions["promote-full"] = {["disabled"] = true}
+      end
+      return actions
+    definitions:
+      - name: promote-full
+        action.lua: |
+          obj.spec.paused = false
+          return obj
 ```
 
 ## Best Practices
