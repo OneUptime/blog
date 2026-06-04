@@ -50,12 +50,10 @@ package main
 import (
     "context"
     "fmt"
-    "log"
 
     appsv1 "k8s.io/api/apps/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
-    "k8s.io/client-go/tools/clientcmd"
 )
 
 func updateDeploymentWithConcurrencyControl(clientset *kubernetes.Clientset) error {
@@ -210,39 +208,23 @@ Server-Side Apply takes a different approach. Instead of requiring exact resourc
 
 ```go
 import (
-    corev1 "k8s.io/api/core/v1"
+    appsv1apply "k8s.io/client-go/applyconfigurations/apps/v1"
+    corev1apply "k8s.io/client-go/applyconfigurations/core/v1"
+    metav1apply "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
 func applyWithServerSide(clientset *kubernetes.Clientset) error {
-    deployment := &appsv1.Deployment{
-        TypeMeta: metav1.TypeMeta{
-            APIVersion: "apps/v1",
-            Kind:       "Deployment",
-        },
-        ObjectMeta: metav1.ObjectMeta{
-            Name:      "nginx",
-            Namespace: "default",
-        },
-        Spec: appsv1.DeploymentSpec{
-            Replicas: int32Ptr(5),
-            Selector: &metav1.LabelSelector{
-                MatchLabels: map[string]string{"app": "nginx"},
-            },
-            Template: corev1.PodTemplateSpec{
-                ObjectMeta: metav1.ObjectMeta{
-                    Labels: map[string]string{"app": "nginx"},
-                },
-                Spec: corev1.PodSpec{
-                    Containers: []corev1.Container{
-                        {
-                            Name:  "nginx",
-                            Image: "nginx:1.21",
-                        },
-                    },
-                },
-            },
-        },
-    }
+    deployment := appsv1apply.Deployment("nginx", "default").
+        WithSpec(appsv1apply.DeploymentSpec().
+            WithReplicas(5).
+            WithSelector(metav1apply.LabelSelector().
+                WithMatchLabels(map[string]string{"app": "nginx"})).
+            WithTemplate(corev1apply.PodTemplateSpec().
+                WithLabels(map[string]string{"app": "nginx"}).
+                WithSpec(corev1apply.PodSpec().
+                    WithContainers(corev1apply.Container().
+                        WithName("nginx").
+                        WithImage("nginx:1.21")))))
 
     applyOptions := metav1.ApplyOptions{
         FieldManager: "my-controller",
@@ -259,7 +241,7 @@ func applyWithServerSide(clientset *kubernetes.Clientset) error {
 }
 ```
 
-Server-Side Apply still uses resourceVersion internally but manages conflicts differently through field ownership.
+Server-Side Apply is still an API write operation, but it manages conflicts differently through field ownership.
 
 ## Status Subresource Updates
 
@@ -298,7 +280,7 @@ func updateDeploymentStatus(clientset *kubernetes.Clientset) error {
 }
 ```
 
-The status subresource has its own resourceVersion tracking, separate from the main spec.
+The status subresource lets clients update status independently from spec. Status updates still update the same object's `metadata.resourceVersion`.
 
 ## Patch Operations and ResourceVersion
 
@@ -360,10 +342,6 @@ func patchWithVersionCheck(clientset *kubernetes.Clientset) error {
 The watch API uses resourceVersion to resume watching from a specific point:
 
 ```go
-import (
-    "k8s.io/apimachinery/pkg/watch"
-)
-
 func watchDeployments(clientset *kubernetes.Clientset, startVersion string) error {
     watcher, err := clientset.AppsV1().Deployments("default").Watch(
         context.TODO(),
@@ -388,7 +366,7 @@ func watchDeployments(clientset *kubernetes.Clientset, startVersion string) erro
 }
 ```
 
-This allows you to resume watching after a connection interruption without missing events.
+This allows you to resume watching after a connection interruption without missing events, as long as the requested version is still available. If the API server returns `410 Gone` because the version is too old, relist the resource and start a new watch from the returned `resourceVersion`.
 
 ## Best Practices
 
