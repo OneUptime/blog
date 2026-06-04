@@ -33,7 +33,7 @@ Docker Scout environments let you tag a specific image as belonging to an enviro
 
 ### Prerequisites
 
-You need a Docker Hub account with Scout enabled and the Docker Scout CLI plugin installed.
+You need a Docker Hub account with Scout enabled and the Docker Scout CLI plugin installed. To create new environments or integrations for an organization, you need organization owner permissions.
 
 ```bash
 # Verify Docker Scout is available
@@ -46,11 +46,12 @@ docker login
 
 ### Creating Environments
 
-Environments are defined at the organization or repository level in Docker Scout.
+Environments are defined at the organization level in Docker Scout. Docker Scout only assigns an image to an environment after the image has been analyzed, either manually or through a registry integration.
 
 ```bash
 # Record an image as deployed to the "staging" environment
-docker scout enroll myorg/myapp
+docker scout enroll myorg
+docker scout config organization myorg
 docker scout environment staging myorg/myapp:v1.2.3
 
 # Record an image as deployed to the "production" environment
@@ -70,11 +71,11 @@ docker scout cves --env production myorg/myapp
 # Show CVEs affecting staging
 docker scout cves --env staging myorg/myapp
 
-# Compare vulnerabilities between staging and production
-docker scout compare --to-env production --env staging myorg/myapp
+# Compare the staging image with the image recorded in production
+docker scout compare --to-env production myorg/myapp:v1.2.3
 ```
 
-The compare command is particularly powerful. It shows you exactly what vulnerabilities you are about to introduce or fix by promoting staging to production.
+The compare command is particularly powerful. It shows you exactly what vulnerabilities you are about to introduce or fix by promoting the staging image to production.
 
 ## Integrating with CI/CD
 
@@ -116,10 +117,12 @@ jobs:
 
       # Record the deployment in Docker Scout
       - name: Update Docker Scout environment
-        run: |
-          docker scout environment \
-            ${{ github.event.inputs.environment }} \
-            myorg/myapp:${{ github.sha }}
+        uses: docker/scout-action@v1
+        with:
+          command: environment
+          image: myorg/myapp:${{ github.sha }}
+          environment: ${{ github.event.inputs.environment }}
+          organization: myorg
 ```
 
 ### Kubernetes Deployment Hook
@@ -183,6 +186,14 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Install Docker Scout
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh -o install-scout.sh
+          sh install-scout.sh
+
+      - name: Configure Docker Scout organization
+        run: docker scout config organization myorg
+
       # Check for critical vulnerabilities in each environment
       - name: Scan ${{ matrix.environment }}
         run: |
@@ -190,19 +201,17 @@ jobs:
             --env ${{ matrix.environment }} \
             --only-severity critical,high \
             --exit-code \
-            myorg/myapp || echo "Vulnerabilities found in ${{ matrix.environment }}"
+            myorg/myapp
 
       # Send a Slack notification if critical CVEs are found
       - name: Notify on findings
         if: failure()
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v3.0.3
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
           payload: |
-            {
-              "text": "Critical vulnerabilities found in ${{ matrix.environment }} environment for myorg/myapp"
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+            text: "Critical vulnerabilities found in ${{ matrix.environment }} environment for myorg/myapp"
 ```
 
 ## Viewing Environment Data in Docker Scout Dashboard
@@ -235,12 +244,12 @@ You can script this to read from your deployment manifests:
 
 ```bash
 #!/bin/bash
-# update-scout-env.sh - Read images from docker-compose and update Scout
+# update-scout-env.sh - Read images from Docker Compose and update Scout
 ENVIRONMENT="$1"
 COMPOSE_FILE="$2"
 
-# Extract all image references from docker-compose.yml
-IMAGES=$(grep 'image:' "$COMPOSE_FILE" | awk '{print $2}')
+# Extract all image references from the resolved Compose configuration
+IMAGES=$(docker compose -f "$COMPOSE_FILE" config --images)
 
 for IMAGE in $IMAGES; do
   echo "Recording $IMAGE in $ENVIRONMENT"
@@ -253,11 +262,11 @@ done
 Docker Scout policies let you define rules like "no critical CVEs in production." Combined with environment tracking, policies become enforceable gates.
 
 ```bash
-# Check if an image passes the policy for production
-docker scout policy myorg/myapp:latest --env production
+# Check policy results for the image recorded in production
+docker scout policy myorg/myapp --to-env production
 
 # In CI, fail the pipeline if the policy check fails
-docker scout policy myorg/myapp:$TAG --env production --exit-code
+docker scout policy myorg/myapp:$TAG --exit-code
 ```
 
 This gives you a concrete mechanism to prevent vulnerable images from reaching production. The policy check runs against the actual vulnerability data for that image, and the exit code lets your CI pipeline gate the deployment.
