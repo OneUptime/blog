@@ -34,12 +34,13 @@ tig-stack/
 ├── telegraf/
 │   └── telegraf.conf
 ├── grafana/
+│   ├── dashboards/
+│   │   └── system-metrics.json
 │   └── provisioning/
 │       ├── datasources/
 │       │   └── influxdb.yml
 │       └── dashboards/
-│           ├── dashboard.yml
-│           └── system-metrics.json
+│           └── dashboard.yml
 └── influxdb/
     └── (data persisted via volume)
 ```
@@ -48,8 +49,6 @@ tig-stack/
 
 ```yaml
 # TIG Stack - Telegraf, InfluxDB, Grafana
-
-version: "3.8"
 
 services:
   # InfluxDB - time-series database for metrics storage
@@ -78,15 +77,15 @@ services:
 
   # Telegraf - metrics collection agent
   telegraf:
-    image: telegraf:1.29
+    image: telegraf:1.38.4
     volumes:
       - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
+      - /:/hostfs:ro
     environment:
-      HOST_PROC: /host/proc
-      HOST_SYS: /host/sys
+      HOST_PROC: /hostfs/proc
+      HOST_SYS: /hostfs/sys
+      HOST_MOUNT_PREFIX: /hostfs
       INFLUX_TOKEN: my-super-secret-token
     depends_on:
       influxdb:
@@ -106,6 +105,7 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - influxdb
     networks:
@@ -121,7 +121,7 @@ networks:
     driver: bridge
 ```
 
-The Telegraf service mounts the Docker socket so it can collect container metrics, plus `/proc` and `/sys` for host-level CPU, memory, and disk statistics.
+The Telegraf service mounts the Docker socket so it can collect container metrics, plus the host filesystem under `/hostfs` for host-level CPU, memory, and disk statistics.
 
 ## Telegraf Configuration
 
@@ -143,7 +143,7 @@ This is where you define what metrics to collect and where to send them.
 # Output to InfluxDB v2
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
-  token = "$INFLUX_TOKEN"
+  token = "${INFLUX_TOKEN}"
   organization = "myorg"
   bucket = "telegraf"
 
@@ -177,10 +177,10 @@ This is where you define what metrics to collect and where to send them.
 [[inputs.docker]]
   endpoint = "unix:///var/run/docker.sock"
   gather_services = false
-  container_names = []
+  container_name_include = []
   timeout = "5s"
-  perdevice = true
-  total = false
+  perdevice_include = ["cpu", "blkio", "network"]
+  total_include = ["cpu", "blkio", "network"]
 
 # Collect internal Telegraf metrics
 [[inputs.internal]]
@@ -226,7 +226,7 @@ providers:
     disableDeletion: false
     updateIntervalSeconds: 30
     options:
-      path: /etc/grafana/provisioning/dashboards
+      path: /var/lib/grafana/dashboards
       foldersFromFilesStructure: false
 ```
 
@@ -234,7 +234,7 @@ providers:
 
 ```bash
 # Create the directory structure
-mkdir -p telegraf grafana/provisioning/datasources grafana/provisioning/dashboards
+mkdir -p telegraf grafana/provisioning/datasources grafana/provisioning/dashboards grafana/dashboards
 
 # Start all services
 docker compose up -d
