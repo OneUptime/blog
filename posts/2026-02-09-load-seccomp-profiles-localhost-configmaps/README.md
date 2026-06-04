@@ -237,15 +237,15 @@ spec:
 
 Each container gets its own tailored seccomp profile.
 
-## Dynamic Profile Updates
+## Profile Updates
 
-Update profiles without restarting pods using a versioning strategy:
+Update profiles using a versioning strategy. A seccomp profile is applied when a container is created, so running containers need to be recreated to use a different profile:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: seccomp-profiles-v2
+  name: seccomp-profiles
   namespace: kube-system
 data:
   web-app-profile-v2.json: |
@@ -270,10 +270,10 @@ Deploy the new version:
 # Update ConfigMap with new version
 kubectl apply -f seccomp-profiles-v2.yaml
 
-# The DaemonSet automatically picks up changes
+# Restart the DaemonSet pods so the init container copies the updated ConfigMap data
 kubectl rollout restart daemonset/seccomp-profile-installer -n kube-system
 
-# Update pod to use new profile
+# Update the workload template to use the new profile; this rolls out new pods
 kubectl patch deployment web-app -p '
 {
   "spec": {
@@ -345,6 +345,7 @@ spec:
       - name: host-seccomp
         hostPath:
           path: /var/lib/kubelet/seccomp
+          type: DirectoryOrCreate
       - name: profiles
         configMap:
           name: {{ .Release.Name }}-seccomp-profiles
@@ -452,11 +453,10 @@ Common issues and solutions:
 
 ## Profile Versioning Strategy
 
-Implement version tracking in profile metadata:
+Implement version tracking alongside profile files:
 
 ```json
 {
-  "_comment": "Version: 1.2.0, Updated: 2026-02-09, Author: security-team",
   "defaultAction": "SCMP_ACT_ERRNO",
   "architectures": ["SCMP_ARCH_X86_64"],
   "syscalls": [
@@ -495,19 +495,28 @@ Track which pods use which profiles:
 ```bash
 # List all pods with seccomp profiles
 kubectl get pods --all-namespaces -o json | jq -r '
-  .items[] |
-  select(.spec.securityContext.seccompProfile != null) |
+  .items[] as $pod |
+  ([$pod.spec.containers[]?, $pod.spec.initContainers[]?, $pod.spec.ephemeralContainers[]?] | .[]) as $container |
+  ($container.securityContext.seccompProfile // $pod.spec.securityContext.seccompProfile // empty) as $profile |
   {
-    namespace: .metadata.namespace,
-    pod: .metadata.name,
-    profileType: .spec.securityContext.seccompProfile.type,
-    profilePath: .spec.securityContext.seccompProfile.localhostProfile
+    namespace: $pod.metadata.namespace,
+    pod: $pod.metadata.name,
+    container: $container.name,
+    profileType: $profile.type,
+    profilePath: ($profile.localhostProfile // "")
   }
 '
 
 # Count profile usage
 kubectl get pods --all-namespaces -o json | jq -r '
-  [.items[].spec.securityContext.seccompProfile.localhostProfile] |
+  [
+    .items[] as $pod |
+    ([$pod.spec.containers[]?, $pod.spec.initContainers[]?, $pod.spec.ephemeralContainers[]?] | .[]) as $container |
+    ($container.securityContext.seccompProfile // $pod.spec.securityContext.seccompProfile // empty) |
+    select(.type == "Localhost") |
+    .localhostProfile
+  ] |
+  sort |
   group_by(.) |
   map({profile: .[0], count: length})
 '
