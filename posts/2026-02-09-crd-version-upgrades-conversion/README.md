@@ -14,11 +14,11 @@ Custom Resource Definitions evolve over time, requiring version changes to add f
 
 CRDs can have multiple versions defined simultaneously, with one marked as the storage version. When you upgrade a CRD to a new version, existing resources remain stored in the old version until converted. Conversion webhooks handle this translation transparently.
 
-Without conversion webhooks, you would need to manually migrate all existing custom resources to the new version, risking downtime and data loss. Conversion webhooks automate this process, converting between versions on-the-fly as resources are accessed.
+Without conversion webhooks, Kubernetes can only use the `None` conversion strategy, which changes the `apiVersion` without changing the rest of the object. For schema changes that add, remove, or rename fields, you would need compatible schemas or a manual migration. Conversion webhooks automate this process, converting between versions on-the-fly as resources are accessed.
 
 ## Planning Your CRD Version Migration
 
-Before implementing conversion webhooks, plan your version migration strategy. Determine which fields are being added, removed, or renamed. Decide whether to use automatic or manual conversion strategies. Consider whether you need bidirectional conversion or only forward migration.
+Before implementing conversion webhooks, plan your version migration strategy. Determine which fields are being added, removed, or renamed. Decide whether the built-in `None` strategy is sufficient or whether you need a webhook. For webhook conversions, make sure the webhook can convert between every served version and the storage version.
 
 A typical migration path involves defining both old and new versions in the CRD, implementing conversion webhook logic, deploying the webhook service, updating the CRD to reference the webhook, testing conversions thoroughly, and finally deprecating old versions.
 
@@ -41,7 +41,7 @@ spec:
   versions:
   - name: v1alpha1
     served: true
-    storage: false
+    storage: true
     schema:
       openAPIV3Schema:
         type: object
@@ -58,7 +58,7 @@ spec:
                 type: integer
   - name: v1beta1
     served: true
-    storage: true
+    storage: false
     schema:
       openAPIV3Schema:
         type: object
@@ -113,7 +113,7 @@ package main
 import (
     "encoding/json"
     "fmt"
-    "io/ioutil"
+    "io"
     "net/http"
 
     apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -206,7 +206,7 @@ func convertV1Beta1ToV1Alpha1(src *V1Beta1Application) (*V1Alpha1Application, er
 
 func convertHandler(w http.ResponseWriter, r *http.Request) {
     // Read conversion review request
-    body, err := ioutil.ReadAll(r.Body)
+    body, err := io.ReadAll(r.Body)
     if err != nil {
         http.Error(w, err.Error(), http.StatusBadRequest)
         return
@@ -224,35 +224,39 @@ func convertHandler(w http.ResponseWriter, r *http.Request) {
         var converted runtime.RawExtension
 
         // Determine source and target versions
-        src := conversionReview.Request.Objects[0]
+        src := obj
         desiredVersion := conversionReview.Request.DesiredAPIVersion
 
         var srcObj map[string]interface{}
         if err := json.Unmarshal(src.Raw, &srcObj); err != nil {
-            sendError(w, conversionReview.Request.UID, err)
+            sendError(w, &conversionReview, err)
             return
         }
 
-        currentVersion := srcObj["apiVersion"].(string)
+        currentVersion, ok := srcObj["apiVersion"].(string)
+        if !ok {
+            sendError(w, &conversionReview, fmt.Errorf("object is missing apiVersion"))
+            return
+        }
 
         // Perform conversion based on versions
         if currentVersion == "example.com/v1alpha1" && desiredVersion == "example.com/v1beta1" {
             var v1alpha1Obj V1Alpha1Application
             if err := json.Unmarshal(obj.Raw, &v1alpha1Obj); err != nil {
-                sendError(w, conversionReview.Request.UID, err)
+                sendError(w, &conversionReview, err)
                 return
             }
 
             v1beta1Obj, err := convertV1Alpha1ToV1Beta1(&v1alpha1Obj)
             if err != nil {
-                sendError(w, conversionReview.Request.UID, err)
+                sendError(w, &conversionReview, err)
                 return
             }
 
             v1beta1Obj.APIVersion = desiredVersion
             convertedBytes, err := json.Marshal(v1beta1Obj)
             if err != nil {
-                sendError(w, conversionReview.Request.UID, err)
+                sendError(w, &conversionReview, err)
                 return
             }
             converted = runtime.RawExtension{Raw: convertedBytes}
@@ -260,20 +264,20 @@ func convertHandler(w http.ResponseWriter, r *http.Request) {
         } else if currentVersion == "example.com/v1beta1" && desiredVersion == "example.com/v1alpha1" {
             var v1beta1Obj V1Beta1Application
             if err := json.Unmarshal(obj.Raw, &v1beta1Obj); err != nil {
-                sendError(w, conversionReview.Request.UID, err)
+                sendError(w, &conversionReview, err)
                 return
             }
 
             v1alpha1Obj, err := convertV1Beta1ToV1Alpha1(&v1beta1Obj)
             if err != nil {
-                sendError(w, conversionReview.Request.UID, err)
+                sendError(w, &conversionReview, err)
                 return
             }
 
             v1alpha1Obj.APIVersion = desiredVersion
             convertedBytes, err := json.Marshal(v1alpha1Obj)
             if err != nil {
-                sendError(w, conversionReview.Request.UID, err)
+                sendError(w, &conversionReview, err)
                 return
             }
             converted = runtime.RawExtension{Raw: convertedBytes}
@@ -291,7 +295,7 @@ func convertHandler(w http.ResponseWriter, r *http.Request) {
         UID:              conversionReview.Request.UID,
         ConvertedObjects: convertedObjects,
         Result: metav1.Status{
-            Status: "Success",
+            Status: metav1.StatusSuccess,
         },
     }
 
@@ -305,12 +309,13 @@ func convertHandler(w http.ResponseWriter, r *http.Request) {
     w.Write(responseBytes)
 }
 
-func sendError(w http.ResponseWriter, uid string, err error) {
+func sendError(w http.ResponseWriter, review *apiextensionsv1.ConversionReview, err error) {
     response := apiextensionsv1.ConversionReview{
+        TypeMeta: review.TypeMeta,
         Response: &apiextensionsv1.ConversionResponse{
-            UID: uid,
+            UID: review.Request.UID,
             Result: metav1.Status{
-                Status:  "Failure",
+                Status:  metav1.StatusFailure,
                 Message: err.Error(),
             },
         },
@@ -458,7 +463,7 @@ EOF
 kubectl apply -f test-v1alpha1.yaml
 
 # Retrieve as v1beta1 to test conversion
-kubectl get application test-app -o yaml | grep "apiVersion: example.com/v1beta1"
+kubectl get applications.v1beta1.example.com test-app -o yaml | grep "apiVersion: example.com/v1beta1"
 
 if [ $? -eq 0 ]; then
   echo "Conversion test PASSED: v1alpha1 to v1beta1"
@@ -468,8 +473,8 @@ else
 fi
 
 # Verify converted fields
-kubectl get application test-app -o jsonpath='{.spec.containers[0].image}'
-kubectl get application test-app -o jsonpath='{.spec.containers[0].ports[0].containerPort}'
+kubectl get applications.v1beta1.example.com test-app -o jsonpath='{.spec.containers[0].image}'
+kubectl get applications.v1beta1.example.com test-app -o jsonpath='{.spec.containers[0].ports[0].containerPort}'
 
 # Create a resource using v1beta1
 cat > test-v1beta1.yaml << 'EOF'
@@ -490,7 +495,7 @@ EOF
 kubectl apply -f test-v1beta1.yaml
 
 # Retrieve as v1alpha1 to test backward conversion
-kubectl get application test-app-v2 -o yaml --v=v1alpha1
+kubectl get applications.v1alpha1.example.com test-app-v2 -o yaml
 
 echo "Conversion tests complete"
 ```
@@ -509,7 +514,13 @@ NEW_VERSION="v1beta1"
 
 echo "Migrating $CRD_NAME from $OLD_VERSION to $NEW_VERSION..."
 
-# Get all resources
+# Update CRD to make new version the storage version
+kubectl patch crd $CRD_NAME --type=json -p='[
+  {"op": "replace", "path": "/spec/versions/0/storage", "value": false},
+  {"op": "replace", "path": "/spec/versions/1/storage", "value": true}
+]'
+
+# Get all resources after the new storage version is active
 RESOURCES=$(kubectl get applications -A -o json)
 
 # Re-apply each resource to trigger conversion
@@ -517,16 +528,10 @@ echo "$RESOURCES" | jq -r '.items[] |
   "\(.metadata.namespace) \(.metadata.name)"' | while read ns name; do
 
   echo "Migrating $ns/$name..."
-  kubectl get application $name -n $ns -o json | \
+  kubectl get applications.v1beta1.example.com $name -n $ns -o json | \
     jq --arg newVersion "example.com/$NEW_VERSION" '.apiVersion = $newVersion' | \
     kubectl apply -f -
 done
-
-# Update CRD to make new version the storage version
-kubectl patch crd $CRD_NAME --type=json -p='[
-  {"op": "replace", "path": "/spec/versions/0/storage", "value": false},
-  {"op": "replace", "path": "/spec/versions/1/storage", "value": true}
-]'
 
 echo "Migration complete"
 ```
