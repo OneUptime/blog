@@ -33,9 +33,12 @@ Install Flagger with Helm:
 
 helm repo add flagger https://flagger.app
 
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+
 # Install Flagger for Istio (or use linkerd, nginx, etc.)
-helm install flagger flagger/flagger \
+helm upgrade -i flagger flagger/flagger \
   --namespace istio-system \
+  --set crd.create=false \
   --set meshProvider=istio \
   --set metricsServer=http://prometheus:9090
 
@@ -233,11 +236,22 @@ spec:
 
 Flagger substitutes `{{ namespace }}`, `{{ target }}`, and `{{ interval }}` with actual values during analysis.
 
-## Webhook Notifications
+## Alert Notifications
 
 Send notifications to Slack, Discord, or Microsoft Teams:
 
 ```yaml
+apiVersion: flagger.app/v1beta1
+kind: AlertProvider
+metadata:
+  name: deployment-alerts
+  namespace: production
+spec:
+  type: slack
+  channel: deployments
+  username: flagger
+  address: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+---
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -259,23 +273,21 @@ spec:
       thresholdRange:
         min: 99
       interval: 1m
+    alerts:
+    - name: slack-notification
+      severity: info
+      providerRef:
+        name: deployment-alerts
+        namespace: production
     webhooks:
     # Pre-rollout webhook
     - name: load-test
       type: pre-rollout
-      url: http://load-tester.production/start
+      url: http://flagger-loadtester.production/
       timeout: 5s
       metadata:
         type: bash
-        cmd: "curl -X POST http://load-tester.production/start"
-    # Rollout status webhook (Slack)
-    - name: slack-notification
-      type: event
-      url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-      metadata:
-        slack:
-          channel: deployments
-          username: flagger
+        cmd: "curl -X POST http://api-server-canary.production:80/health"
 ```
 
 ## Load Testing Integration
@@ -341,14 +353,14 @@ spec:
     name: api-server
   service:
     port: 80
-    sessionAffinity:
-      cookieName: flagger-cookie
-      maxAge: 86400  # 24 hours
   analysis:
     interval: 1m
     threshold: 5
     maxWeight: 50
     stepWeight: 10
+    sessionAffinity:
+      cookieName: flagger-cookie
+      maxAge: 86400  # 24 hours
     metrics:
     - name: request-success-rate
       thresholdRange:
@@ -378,24 +390,23 @@ spec:
     interval: 1m
     threshold: 5
     iterations: 10
-    # Blue-Green strategy
-    strategy:
-      blueGreen:
-        enabled: true
-        # Require manual approval
-        confirmation: true
     metrics:
     - name: request-success-rate
       thresholdRange:
         min: 99
       interval: 1m
+    webhooks:
+    # Require manual approval before promotion
+    - name: promotion-gate
+      type: confirm-promotion
+      url: http://flagger-loadtester.production/gate/check
 ```
 
 With blue-green:
 - Green version runs alongside blue
 - Metrics are analyzed
-- If metrics pass, Flagger waits for confirmation
-- After confirmation, traffic switches from blue to green
+- If metrics pass, the confirm-promotion webhook can pause promotion until approval
+- After confirmation, Flagger promotes the canary and routes traffic back to the primary
 
 Approve the promotion:
 
@@ -404,47 +415,26 @@ Approve the promotion:
 kubectl get canary api-server
 
 # Approve promotion
-kubectl annotate canary api-server \
-  flagger.app/confirm=approve
+kubectl -n production exec deploy/flagger-loadtester -- \
+  curl -d '{"name":"api-server","namespace":"production"}' \
+  http://localhost:8080/gate/open
 ```
 
 ## Multi-Cluster Canary
 
-Deploy canaries across multiple clusters:
+With Istio multi-cluster shared control plane, install Flagger on each remote cluster and point it at the host cluster control plane kubeconfig:
 
-```yaml
-apiVersion: flagger.app/v1beta1
-kind: Canary
-metadata:
-  name: api-server
-spec:
-  targetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: api-server
-  service:
-    port: 80
-    # Match pods across clusters
-    meshProvider: istio
-    backends:
-    - cluster-1
-    - cluster-2
-  analysis:
-    interval: 1m
-    threshold: 5
-    maxWeight: 50
-    stepWeight: 10
-    metrics:
-    - name: request-success-rate
-      thresholdRange:
-        min: 99
-      interval: 1m
-      # Aggregate metrics from all clusters
-      templateRef:
-        name: multi-cluster-success-rate
+```bash
+helm upgrade -i flagger flagger/flagger \
+  --namespace istio-system \
+  --set crd.create=false \
+  --set meshProvider=istio \
+  --set metricsServer=http://istio-cluster-prometheus:9090 \
+  --set controlplane.kubeconfig.secretName=istio-kubeconfig \
+  --set controlplane.kubeconfig.key=kubeconfig
 ```
 
-This requires a service mesh with multi-cluster support like Istio.
+This requires a service mesh with multi-cluster support like Istio and a Kubernetes secret containing the host cluster kubeconfig.
 
 ## Monitoring Flagger
 
@@ -457,7 +447,7 @@ flagger_canary_total
 # Canary duration in seconds
 flagger_canary_duration_seconds
 
-# Canary status (0=failed, 1=succeeded)
+# Canary status (0=running, 1=succeeded, 2=failed)
 flagger_canary_status
 ```
 
@@ -468,7 +458,7 @@ groups:
 - name: flagger_alerts
   rules:
   - alert: CanaryFailed
-    expr: flagger_canary_status == 0
+    expr: flagger_canary_status > 1
     for: 1m
     labels:
       severity: warning
