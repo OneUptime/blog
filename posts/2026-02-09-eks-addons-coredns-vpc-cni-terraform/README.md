@@ -8,11 +8,11 @@ Description: Manage EKS add-ons including CoreDNS, kube-proxy, and Amazon VPC CN
 
 ---
 
-EKS add-ons are Amazon-managed components that extend Kubernetes functionality. CoreDNS provides DNS resolution, kube-proxy handles service networking, and VPC CNI integrates pods with AWS networking. Managing these add-ons through Terraform ensures consistent configuration, automated updates, and infrastructure-as-code practices. This guide covers configuring and managing EKS add-ons with Terraform.
+EKS add-ons are Amazon-managed components that extend Kubernetes functionality. CoreDNS provides DNS resolution, kube-proxy handles service networking, and VPC CNI integrates pods with AWS networking. Managing these add-ons through Terraform ensures consistent configuration, controlled updates, and infrastructure-as-code practices. This guide covers configuring and managing EKS add-ons with Terraform.
 
 ## Understanding EKS Add-Ons
 
-EKS add-ons are cluster components managed by AWS with automatic updates, health monitoring, and configuration management. The core add-ons include:
+EKS add-ons are cluster components managed by AWS with version lifecycle, health information, and configuration management. The core add-ons include:
 
 **Amazon VPC CNI** - Assigns AWS VPC IP addresses to pods, enabling native AWS networking integration.
 
@@ -120,6 +120,9 @@ resource "aws_eks_addon" "vpc_cni" {
   service_account_role_arn = aws_iam_role.vpc_cni.arn
 
   configuration_values = jsonencode({
+    # Network policy support
+    enableNetworkPolicy = "true"
+
     env = {
       # Enable prefix delegation for higher pod density
       ENABLE_PREFIX_DELEGATION = "true"
@@ -129,10 +132,6 @@ resource "aws_eks_addon" "vpc_cni" {
       MINIMUM_IP_TARGET = "10"
       # Enable pod ENI
       ENABLE_POD_ENI = "true"
-      # Network policy support
-      ENABLE_NETWORK_POLICY = "true"
-      # Security groups for pods
-      ENABLE_POD_SECURITY_GROUP = "true"
     }
     # Resource limits
     resources = {
@@ -208,54 +207,45 @@ resource "aws_eks_addon" "coredns" {
 
     # Pod disruption budget
     podDisruptionBudget = {
+      enabled        = true
       maxUnavailable = 1
     }
 
-    # Node affinity
-    affinity = {
-      podAntiAffinity = {
-        preferredDuringSchedulingIgnoredDuringExecution = [{
-          weight = 100
-          podAffinityTerm = {
-            topologyKey = "kubernetes.io/hostname"
-            labelSelector = {
-              matchLabels = {
-                "k8s-app" = "kube-dns"
-              }
-            }
+    # Entire CoreDNS Corefile
+    corefile = <<-EOF
+      .:53 {
+          errors
+          health {
+              lameduck 5s
           }
-        }]
+          ready
+          kubernetes cluster.local in-addr.arpa ip6.arpa {
+              pods insecure
+              fallthrough in-addr.arpa ip6.arpa
+          }
+          prometheus :9153
+          forward . /etc/resolv.conf
+          cache 30
+          loop
+          reload
+          loadbalance
       }
-    }
+
+      example.com:53 {
+          errors
+          cache 30
+          forward . 10.0.0.2
+      }
+
+      corp.internal:53 {
+          errors
+          cache 30
+          forward . 10.1.0.2
+      }
+    EOF
   })
 
   depends_on = [aws_eks_node_group.main]
-}
-
-# Custom CoreDNS ConfigMap (managed separately)
-resource "kubernetes_config_map_v1_data" "coredns_custom" {
-  metadata {
-    name      = "coredns-custom"
-    namespace = "kube-system"
-  }
-
-  data = {
-    "custom.server" = <<-EOF
-      # Custom DNS configuration
-      example.com:53 {
-        errors
-        cache 30
-        forward . 10.0.0.2
-      }
-
-      # Conditional forwarding
-      corp.internal:53 {
-        forward . 10.1.0.2
-      }
-    EOF
-  }
-
-  force = true
 }
 ```
 
@@ -286,20 +276,17 @@ resource "aws_eks_addon" "kube_proxy" {
       }
     }
 
-    # Configuration
-    config = {
-      # Connection tracking
-      conntrack = {
-        maxPerCore = 32768
-        min = 131072
-      }
-      # IP tables
-      iptables = {
-        masqueradeAll = false
-        masqueradeBit = 14
-        minSyncPeriod = "0s"
-        syncPeriod = "30s"
-      }
+    # Connection tracking
+    conntrack = {
+      maxPerCore = 32768
+      min = 131072
+    }
+    # IP tables
+    iptables = {
+      masqueradeAll = false
+      masqueradeBit = 14
+      minSyncPeriod = "0s"
+      syncPeriod = "30s"
     }
   })
 }
@@ -395,7 +382,7 @@ resource "aws_eks_addon" "vpc_cni" {
 
 ## Monitoring Add-Ons
 
-Create CloudWatch dashboards:
+Create CloudWatch dashboards with Container Insights metrics:
 
 ```hcl
 # cloudwatch-dashboard.tf
@@ -408,26 +395,28 @@ resource "aws_cloudwatch_dashboard" "eks_addons" {
         type = "metric"
         properties = {
           metrics = [
-            ["AWS/EKS", "AddonHealth", { stat = "Average", label = "VPC CNI Health" }],
-            ["...", { stat = "Average", label = "CoreDNS Health" }],
-            ["...", { stat = "Average", label = "kube-proxy Health" }]
+            ["ContainerInsights", "namespace_number_of_running_pods", "ClusterName", var.cluster_name, "Namespace", "kube-system"]
           ]
           period = 300
           stat   = "Average"
           region = var.aws_region
-          title  = "Add-on Health"
+          title  = "kube-system Running Pods"
         }
       },
       {
         type = "metric"
         properties = {
           metrics = [
-            ["AWS/EKS", "AddonUpdateDuration", { stat = "Average" }]
+            [{
+              expression = "SEARCH('{ContainerInsights,ClusterName,Namespace,PodName} MetricName=\"pod_number_of_container_restarts\" ClusterName=\"${var.cluster_name}\" Namespace=\"kube-system\"', 'Sum', 300)"
+              id         = "pod_restarts"
+              label      = "kube-system pod restarts"
+            }]
           ]
           period = 300
-          stat   = "Average"
+          stat   = "Sum"
           region = var.aws_region
-          title  = "Add-on Update Duration"
+          title  = "kube-system Pod Restarts"
         }
       }
     ]
