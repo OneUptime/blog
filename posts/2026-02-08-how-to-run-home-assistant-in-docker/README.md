@@ -21,7 +21,7 @@ You will need:
 - A Linux server with Docker and Docker Compose installed
 - A dedicated machine or VM (Raspberry Pi 4, Intel NUC, or any x86 server works well)
 - At least 2 GB of RAM
-- Optional: a Zigbee or Z-Wave USB stick for local device communication
+- Optional: a Zigbee USB stick for local device communication, or a Z-Wave stick with a separate Z-Wave JS server
 - Network access to your smart home devices
 
 ## Project Setup
@@ -41,8 +41,6 @@ Home Assistant needs host network mode to discover devices on your local network
 
 ```yaml
 # docker-compose.yml - Home Assistant Container
-version: "3.8"
-
 services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
@@ -62,12 +60,12 @@ services:
     privileged: true
 ```
 
-If you have a Zigbee or Z-Wave USB stick, add the device mapping:
+If you have a Zigbee USB stick, add the device mapping:
 
 ```yaml
 # Add this under the homeassistant service for USB device passthrough
     devices:
-      # Map the Zigbee/Z-Wave USB stick into the container
+      # Map the Zigbee USB stick into the container
       # Check the actual device path with 'ls /dev/serial/by-id/'
       - /dev/serial/by-id/usb-Silicon_Labs_Zigbee_USB-if00-port0:/dev/ttyUSB0
 ```
@@ -118,6 +116,7 @@ Integrations connect Home Assistant to your devices and services. Add them throu
 - **Google Cast** - Controls Chromecast and Google Home devices
 - **MQTT** - Connects to an MQTT broker for IoT devices
 - **Zigbee Home Automation (ZHA)** - Manages Zigbee devices through your USB stick
+- **Z-Wave** - Connects to a Z-Wave JS server, such as a Z-Wave JS UI Docker container
 - **Weather** - Pulls forecast data from OpenWeatherMap or Met.no
 
 ## Creating Automations
@@ -129,21 +128,21 @@ Automations are the heart of Home Assistant. Here is an example YAML automation 
 # Turn on living room lights 30 minutes before sunset
 - id: sunset_lights
   alias: "Turn on lights at sunset"
-  trigger:
-    - platform: sun
+  triggers:
+    - trigger: sun
       event: sunset
       offset: "-00:30:00"
-  condition:
+  conditions:
     - condition: state
       entity_id: binary_sensor.someone_home
       state: "on"
-  action:
-    - service: light.turn_on
+  actions:
+    - action: light.turn_on
       target:
         entity_id: light.living_room
       data:
         brightness_pct: 70
-        color_temp: 370
+        color_temp_kelvin: 2700
 ```
 
 Here is another automation that sends a notification when a door is left open:
@@ -152,14 +151,14 @@ Here is another automation that sends a notification when a door is left open:
 # Alert if the front door stays open for more than 5 minutes
 - id: door_open_alert
   alias: "Front door open alert"
-  trigger:
-    - platform: state
+  triggers:
+    - trigger: state
       entity_id: binary_sensor.front_door
       to: "on"
       for:
         minutes: 5
-  action:
-    - service: notify.mobile_app
+  actions:
+    - action: notify.mobile_app_your_phone
       data:
         title: "Door Alert"
         message: "The front door has been open for 5 minutes."
@@ -203,6 +202,7 @@ services:
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
 
   zigbee2mqtt:
     image: koenkk/zigbee2mqtt:latest
@@ -217,6 +217,8 @@ services:
     environment:
       - TZ=America/New_York
 ```
+
+For Mosquitto 2.x, create `./mosquitto/config/mosquitto.conf` with a listener and authentication settings before relying on it from other containers or devices.
 
 ## Backup and Restore
 
