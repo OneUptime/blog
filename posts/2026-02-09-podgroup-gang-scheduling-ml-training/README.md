@@ -10,15 +10,15 @@ Description: Master gang scheduling with PodGroup in Kubernetes to ensure all po
 
 Distributed machine learning training requires multiple pods to work together simultaneously. If only some pods are scheduled while others remain pending due to resource constraints, the entire training job stalls. This creates inefficient resource usage and can lead to deadlocks where partially scheduled jobs hold resources without making progress.
 
-Gang scheduling solves this by treating groups of pods as an atomic unit. Either all pods in the group are scheduled together, or none are scheduled. This ensures distributed training jobs only consume resources when they can actually run.
+Gang scheduling solves this by treating groups of pods as a scheduling unit. Either the required minimum number of pods in the group can be scheduled together, or the group waits. This ensures distributed training jobs only consume resources when they can actually run.
 
 ## Understanding Gang Scheduling
 
 Traditional Kubernetes scheduling treats each pod independently. Gang scheduling introduces the concept of a PodGroup where:
 
-- All pods in the group must be scheduled simultaneously
-- If resources aren't available for all pods, none are scheduled
-- Resources are reserved atomically for the entire group
+- The required minimum number of pods in the group must be scheduled together
+- If resources aren't available for that minimum, the group waits
+- Pods wait in the scheduler until the group reaches its scheduling quorum
 - Once scheduled, the group runs as a cohesive unit
 
 This is critical for distributed ML training where pods must communicate and synchronize.
@@ -30,22 +30,21 @@ Gang scheduling requires the Kubernetes scheduler-plugins project. Install it us
 ```bash
 # Add the scheduler-plugins Helm repository
 
-helm repo add scheduler-plugins https://kubernetes-sigs.github.io/scheduler-plugins
+helm repo add scheduler-plugins https://scheduler-plugins.sigs.k8s.io
 helm repo update
 
 # Install the scheduler with gang scheduling enabled
 helm install scheduler-plugins scheduler-plugins/scheduler-plugins \
   --namespace scheduler-plugins \
   --create-namespace \
-  --set plugins.enabled="Coscheduling" \
-  --set controller.enabled=true
+  --set 'plugins.enabled={Coscheduling}'
 ```
 
 Verify the installation:
 
 ```bash
 kubectl get pods -n scheduler-plugins
-kubectl get crd | grep scheduling
+kubectl get crd | grep scheduling.x-k8s.io
 ```
 
 ## Creating a PodGroup
@@ -54,7 +53,7 @@ Define a PodGroup for a distributed training job:
 
 ```yaml
 # ml-training-podgroup.yaml
-apiVersion: scheduling.sigs.k8s.io/v1alpha1
+apiVersion: scheduling.x-k8s.io/v1alpha1
 kind: PodGroup
 metadata:
   name: pytorch-training-group
@@ -86,7 +85,6 @@ spec:
   clusterIP: None
   selector:
     app: pytorch-training
-    role: master
   ports:
   - port: 23456
     name: pytorch
@@ -106,29 +104,27 @@ spec:
     metadata:
       labels:
         app: pytorch-training
-        pod-group.scheduling.sigs.k8s.io/name: pytorch-training-group
-        pod-group.scheduling.sigs.k8s.io/min-available: "4"
+        scheduling.x-k8s.io/pod-group: pytorch-training-group
     spec:
       schedulerName: scheduler-plugins-scheduler
       restartPolicy: Always
       containers:
       - name: pytorch
         image: pytorch/pytorch:2.0.0-cuda11.7-cudnn8-runtime
+        workingDir: /workspace
         command:
-        - python
-        - -m
-        - torch.distributed.launch
-        - --nproc_per_node=1
-        - --nnodes=4
-        - --node_rank=$(RANK)
-        - --master_addr=pytorch-master-0.pytorch-master
-        - --master_port=23456
-        - train.py
-        env:
-        - name: RANK
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.labels['statefulset.kubernetes.io/pod-name']
+        - /bin/sh
+        - -c
+        args:
+        - |
+          RANK="${HOSTNAME##*-}"
+          exec torchrun \
+            --nproc-per-node=1 \
+            --nnodes=4 \
+            --node-rank="${RANK}" \
+            --master-addr=pytorch-worker-0.pytorch-master \
+            --master-port=23456 \
+            train.py
         resources:
           requests:
             cpu: 4000m
@@ -164,7 +160,7 @@ Gang scheduling works equally well for TensorFlow:
 
 ```yaml
 # tensorflow-podgroup.yaml
-apiVersion: scheduling.sigs.k8s.io/v1alpha1
+apiVersion: scheduling.x-k8s.io/v1alpha1
 kind: PodGroup
 metadata:
   name: tf-distributed-group
@@ -177,6 +173,35 @@ spec:
     nvidia.com/gpu: "5"
   scheduleTimeoutSeconds: 180
 ---
+# tensorflow-chief-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: tf-chief
+  namespace: ml-training
+spec:
+  selector:
+    app: tensorflow-training
+    role: chief
+  ports:
+  - port: 2222
+    name: tensorflow
+---
+# tensorflow-workers-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: tf-workers
+  namespace: ml-training
+spec:
+  clusterIP: None
+  selector:
+    app: tensorflow-training
+    role: worker
+  ports:
+  - port: 2222
+    name: tensorflow
+---
 # tensorflow-chief.yaml
 apiVersion: v1
 kind: Pod
@@ -186,8 +211,7 @@ metadata:
   labels:
     app: tensorflow-training
     role: chief
-    pod-group.scheduling.sigs.k8s.io/name: tf-distributed-group
-    pod-group.scheduling.sigs.k8s.io/min-available: "5"
+    scheduling.x-k8s.io/pod-group: tf-distributed-group
 spec:
   schedulerName: scheduler-plugins-scheduler
   containers:
@@ -199,7 +223,7 @@ spec:
     - --job_name=chief
     - --task_index=0
     args:
-    - --worker_hosts=tf-worker-0:2222,tf-worker-1:2222,tf-worker-2:2222,tf-worker-3:2222
+    - --worker_hosts=tf-worker-0.tf-workers:2222,tf-worker-1.tf-workers:2222,tf-worker-2.tf-workers:2222,tf-worker-3.tf-workers:2222
     - --chief_host=tf-chief:2222
     resources:
       requests:
@@ -231,8 +255,7 @@ spec:
       labels:
         app: tensorflow-training
         role: worker
-        pod-group.scheduling.sigs.k8s.io/name: tf-distributed-group
-        pod-group.scheduling.sigs.k8s.io/min-available: "5"
+        scheduling.x-k8s.io/pod-group: tf-distributed-group
     spec:
       schedulerName: scheduler-plugins-scheduler
       containers:
@@ -242,9 +265,15 @@ spec:
         - python
         - train_distributed.py
         - --job_name=worker
+        - --task_index=$(WORKER_INDEX)
         args:
-        - --worker_hosts=tf-worker-0:2222,tf-worker-1:2222,tf-worker-2:2222,tf-worker-3:2222
+        - --worker_hosts=tf-worker-0.tf-workers:2222,tf-worker-1.tf-workers:2222,tf-worker-2.tf-workers:2222,tf-worker-3.tf-workers:2222
         - --chief_host=tf-chief:2222
+        env:
+        - name: WORKER_INDEX
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
         resources:
           requests:
             cpu: 4000m
@@ -258,23 +287,9 @@ spec:
 
 ## MPI-Based Distributed Training
 
-For MPI-based frameworks like Horovod:
+For MPI-based frameworks like Horovod, the MPI Operator can create the PodGroup from its scheduling policy:
 
 ```yaml
-# mpi-podgroup.yaml
-apiVersion: scheduling.sigs.k8s.io/v1alpha1
-kind: PodGroup
-metadata:
-  name: horovod-training-group
-  namespace: ml-training
-spec:
-  minMember: 8
-  minResources:
-    cpu: "32"
-    memory: "128Gi"
-    nvidia.com/gpu: "8"
-  scheduleTimeoutSeconds: 300
----
 # horovod-training.yaml
 apiVersion: kubeflow.org/v2beta1
 kind: MPIJob
@@ -285,14 +300,17 @@ spec:
   slotsPerWorker: 1
   runPolicy:
     cleanPodPolicy: Running
+    schedulingPolicy:
+      minAvailable: 8
+      minResources:
+        cpu: "32"
+        memory: "128Gi"
+        nvidia.com/gpu: "8"
+      scheduleTimeoutSeconds: 300
   mpiReplicaSpecs:
     Launcher:
       replicas: 1
       template:
-        metadata:
-          labels:
-            pod-group.scheduling.sigs.k8s.io/name: horovod-training-group
-            pod-group.scheduling.sigs.k8s.io/min-available: "8"
         spec:
           schedulerName: scheduler-plugins-scheduler
           containers:
@@ -314,10 +332,6 @@ spec:
     Worker:
       replicas: 8
       template:
-        metadata:
-          labels:
-            pod-group.scheduling.sigs.k8s.io/name: horovod-training-group
-            pod-group.scheduling.sigs.k8s.io/min-available: "8"
         spec:
           schedulerName: scheduler-plugins-scheduler
           containers:
@@ -346,7 +360,7 @@ kubectl get podgroups -n ml-training
 kubectl describe podgroup pytorch-training-group -n ml-training
 
 # Check if all pods in the group are scheduled
-kubectl get pods -n ml-training -l pod-group.scheduling.sigs.k8s.io/name=pytorch-training-group
+kubectl get pods -n ml-training -l scheduling.x-k8s.io/pod-group=pytorch-training-group
 
 # View scheduling events
 kubectl get events -n ml-training --sort-by='.lastTimestamp' | grep -i podgroup
@@ -368,7 +382,7 @@ kubectl describe nodes | grep -A 5 "Allocated resources"
 
 # List pending pods in the group
 kubectl get pods -n ml-training \
-  -l pod-group.scheduling.sigs.k8s.io/name=pytorch-training-group \
+  -l scheduling.x-k8s.io/pod-group=pytorch-training-group \
   --field-selector=status.phase=Pending
 ```
 
@@ -378,7 +392,7 @@ Combine PodGroups with priority classes:
 
 ```yaml
 # high-priority-podgroup.yaml
-apiVersion: scheduling.sigs.k8s.io/v1alpha1
+apiVersion: scheduling.x-k8s.io/v1alpha1
 kind: PodGroup
 metadata:
   name: critical-training-group
@@ -390,8 +404,6 @@ spec:
     memory: "64Gi"
     nvidia.com/gpu: "4"
   scheduleTimeoutSeconds: 120
-  # Priority for the entire group
-  priorityClassName: ml-training-high
 ---
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
@@ -429,51 +441,50 @@ metadata:
   namespace: scheduler-plugins
 data:
   config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1
+    kind: KubeSchedulerConfiguration
     profiles:
     - schedulerName: scheduler-plugins-scheduler
       plugins:
+        multiPoint:
+          enabled:
+          - name: Coscheduling
         queueSort:
           enabled:
-          - name: PrioritySort
-        preFilter:
-          enabled:
           - name: Coscheduling
-        permit:
-          enabled:
-          - name: Coscheduling
-        reserve:
-          enabled:
-          - name: Coscheduling
-        postBind:
-          enabled:
-          - name: Coscheduling
+          disabled:
+          - name: "*"
       pluginConfig:
       - name: Coscheduling
         args:
           permitWaitingTimeSeconds: 60
-          deniedPGExpirationTimeSeconds: 20
+          podGroupBackoffSeconds: 10
+          podGroupRejectPercentage: 10
 ```
 
 ## Auto-Scaling with Gang Scheduling
 
-Configure cluster autoscaler to handle gang-scheduled workloads:
+Configure cluster autoscaler to handle gang-scheduled workloads by adding the relevant flags to the cluster-autoscaler Deployment:
 
 ```yaml
-# cluster-autoscaler-gang.yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: cluster-autoscaler-config
+  name: cluster-autoscaler
   namespace: kube-system
-data:
-  cluster-autoscaler: |
-    --balance-similar-node-groups=true
-    --skip-nodes-with-system-pods=false
-    --skip-nodes-with-local-storage=false
-    --expander=priority
-    --max-node-provision-time=15m
-    # Important for gang scheduling
-    --new-pod-scale-up-delay=0s
+spec:
+  template:
+    spec:
+      containers:
+      - name: cluster-autoscaler
+        args:
+        - --balance-similar-node-groups=true
+        - --skip-nodes-with-system-pods=false
+        - --skip-nodes-with-local-storage=false
+        - --expander=priority
+        - --max-node-provision-time=15m
+        # Important for gang scheduling
+        - --new-pod-scale-up-delay=0s
 ```
 
 ## Best Practices
@@ -496,7 +507,7 @@ If PodGroups aren't being scheduled:
 kubectl get pods -n scheduler-plugins
 
 # Verify CRD is installed
-kubectl get crd podgroups.scheduling.sigs.k8s.io
+kubectl get crd podgroups.scheduling.x-k8s.io
 
 # Check scheduler logs
 kubectl logs -n scheduler-plugins -l component=scheduler
@@ -516,7 +527,7 @@ kubectl get pods -n ml-training -o jsonpath='{.items[*].spec.schedulerName}'
 
 # Check if all pods in group have the same labels
 kubectl get pods -n ml-training \
-  -l pod-group.scheduling.sigs.k8s.io/name=pytorch-training-group \
+  -l scheduling.x-k8s.io/pod-group=pytorch-training-group \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels}{"\n"}{end}'
 
 # Look for scheduling errors
@@ -538,8 +549,8 @@ kubectl get podgroups --all-namespaces -o json | \
   jq -r '.items[] |
     {name: .metadata.name,
      created: .metadata.creationTimestamp,
-     scheduled: .status.scheduled}' | \
-  jq -s 'map(select(.scheduled != null))'
+     schedulingStarted: .status.scheduleStartTime}' | \
+  jq -s 'map(select(.schedulingStarted != null))'
 
 # Monitor resource efficiency
 kubectl top nodes
@@ -547,4 +558,3 @@ kubectl top pods -n ml-training
 ```
 
 Gang scheduling with PodGroups is essential for distributed ML training in Kubernetes. By ensuring all pods in a training job are scheduled together, you prevent resource deadlocks, improve cluster utilization, and make distributed training more reliable and efficient.
-
