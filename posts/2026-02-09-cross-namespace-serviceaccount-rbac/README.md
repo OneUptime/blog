@@ -16,7 +16,7 @@ By default, RBAC permissions are namespace-scoped. A Role in namespace A cannot 
 
 Monitoring systems need to read metrics from pods across all namespaces. CI/CD systems deploy to multiple namespaces. Service mesh control planes manage sidecars in application namespaces. Ingress controllers route traffic to services in different namespaces.
 
-Cross-namespace access requires ClusterRoles and ClusterRoleBindings instead of namespace-scoped Roles. These grant permissions across namespace boundaries while still allowing fine-grained control over what resources can be accessed.
+Cluster-wide cross-namespace access requires ClusterRoles and ClusterRoleBindings instead of namespace-scoped Roles. For selective access to specific namespaces, you can use RoleBindings in those namespaces and reference either Roles or reusable ClusterRoles.
 
 ## Basic Cross-Namespace Read Access
 
@@ -335,9 +335,9 @@ rules:
 - apiGroups: [""]
   resources: ["services"]
   verbs: ["get", "list", "watch"]
-# Read endpoints to get pod IPs
-- apiGroups: [""]
-  resources: ["endpoints"]
+# Read EndpointSlices to get pod IPs
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
   verbs: ["get", "list", "watch"]
 # Read namespaces
 - apiGroups: [""]
@@ -418,7 +418,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: monitoring
+          kubernetes.io/metadata.name: monitoring
 ```
 
 RBAC controls API access, NetworkPolicies control network access. Both are needed for complete isolation control.
@@ -456,4 +456,4 @@ Consider using admission controllers to prevent unauthorized cross-namespace acc
 
 ## Conclusion
 
-Cross-namespace ServiceAccount access requires ClusterRoles and careful planning. Use ClusterRoleBindings for truly cluster-wide access, or combine ClusterRoles with namespace-scoped RoleBindings for selective cross-namespace permissions. Always follow least privilege - grant only the minimum permissions needed for workloads to function. Test permissions thoroughly and document the reasoning behind cross-namespace access grants. With proper RBAC configuration, you can enable necessary functionality while maintaining strong security boundaries.
+Cross-namespace ServiceAccount access requires careful planning. Use ClusterRoles and ClusterRoleBindings for truly cluster-wide access, or combine namespace-scoped RoleBindings with Roles or reusable ClusterRoles for selective cross-namespace permissions. Always follow least privilege - grant only the minimum permissions needed for workloads to function. Test permissions thoroughly and document the reasoning behind cross-namespace access grants. With proper RBAC configuration, you can enable necessary functionality while maintaining strong security boundaries.
