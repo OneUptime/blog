@@ -41,8 +41,6 @@ For project integration, use Docker Compose:
 
 ```yaml
 # docker-compose.yml - ElasticMQ for local SQS development
-version: "3.8"
-
 services:
   elasticmq:
     image: softwaremill/elasticmq-native
@@ -153,21 +151,23 @@ import json
 import os
 
 # Point to ElasticMQ in development, real SQS in production
-sqs_endpoint = os.getenv('SQS_ENDPOINT', 'http://localhost:9324')
+sqs_endpoint = os.getenv('SQS_ENDPOINT')
 aws_region = os.getenv('AWS_REGION', 'us-east-1')
 
 # Create the SQS client
-# For ElasticMQ, credentials can be any non-empty string
-sqs = boto3.client(
-    'sqs',
-    endpoint_url=sqs_endpoint,
-    region_name=aws_region,
-    aws_access_key_id='local',
-    aws_secret_access_key='local'
-)
+# For ElasticMQ, credentials can be any non-empty string.
+client_config = {'region_name': aws_region}
+if sqs_endpoint:
+    client_config.update({
+        'endpoint_url': sqs_endpoint,
+        'aws_access_key_id': os.getenv('AWS_ACCESS_KEY_ID', 'local'),
+        'aws_secret_access_key': os.getenv('AWS_SECRET_ACCESS_KEY', 'local')
+    })
+
+sqs = boto3.client('sqs', **client_config)
 
 # Get the queue URL
-queue_url = f'{sqs_endpoint}/000000000000/orders-queue'
+queue_url = sqs.get_queue_url(QueueName='orders-queue')['QueueUrl']
 
 # Send a message to the queue
 def send_order(order_data):
@@ -228,24 +228,35 @@ if __name__ == '__main__':
 
 ```javascript
 // sqs-client.js - Node.js SQS client compatible with ElasticMQ
-const { SQSClient, SendMessageCommand, ReceiveMessageCommand, DeleteMessageCommand } = require('@aws-sdk/client-sqs');
+const { SQSClient, GetQueueUrlCommand, SendMessageCommand, ReceiveMessageCommand, DeleteMessageCommand } = require('@aws-sdk/client-sqs');
+
+const sqsEndpoint = process.env.SQS_ENDPOINT;
+const clientConfig = {
+  region: process.env.AWS_REGION || 'us-east-1',
+};
+
+if (sqsEndpoint) {
+  clientConfig.endpoint = sqsEndpoint;
+  clientConfig.credentials = {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'local',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'local',
+  };
+}
 
 // Configure the SQS client to point to ElasticMQ
-const client = new SQSClient({
-  endpoint: process.env.SQS_ENDPOINT || 'http://localhost:9324',
-  region: 'us-east-1',
-  credentials: {
-    accessKeyId: 'local',
-    secretAccessKey: 'local',
-  },
-});
+const client = new SQSClient(clientConfig);
 
-const QUEUE_URL = `${process.env.SQS_ENDPOINT || 'http://localhost:9324'}/000000000000/orders-queue`;
+async function getQueueUrl() {
+  const response = await client.send(new GetQueueUrlCommand({
+    QueueName: 'orders-queue',
+  }));
+  return response.QueueUrl;
+}
 
 // Send a message
-async function sendMessage(body) {
+async function sendMessage(queueUrl, body) {
   const command = new SendMessageCommand({
-    QueueUrl: QUEUE_URL,
+    QueueUrl: queueUrl,
     MessageBody: JSON.stringify(body),
   });
   const response = await client.send(command);
@@ -254,10 +265,10 @@ async function sendMessage(body) {
 }
 
 // Receive and process messages
-async function pollMessages() {
+async function pollMessages(queueUrl) {
   while (true) {
     const command = new ReceiveMessageCommand({
-      QueueUrl: QUEUE_URL,
+      QueueUrl: queueUrl,
       MaxNumberOfMessages: 10,
       WaitTimeSeconds: 20,
     });
@@ -270,14 +281,15 @@ async function pollMessages() {
 
       // Delete after processing
       await client.send(new DeleteMessageCommand({
-        QueueUrl: QUEUE_URL,
+        QueueUrl: queueUrl,
         ReceiptHandle: msg.ReceiptHandle,
       }));
     }
   }
 }
 
-sendMessage({ order_id: '12345', total: 29.99 }).then(() => pollMessages());
+getQueueUrl()
+  .then((queueUrl) => sendMessage(queueUrl, { order_id: '12345', total: 29.99 }).then(() => pollMessages(queueUrl)));
 ```
 
 ## Full Development Stack
@@ -286,8 +298,6 @@ Here is a complete development setup with your application and ElasticMQ:
 
 ```yaml
 # docker-compose.yml - Application stack with local SQS
-version: "3.8"
-
 services:
   elasticmq:
     image: softwaremill/elasticmq-native
@@ -328,6 +338,10 @@ services:
 You can use the standard AWS CLI to interact with ElasticMQ:
 
 ```bash
+# Use dummy local credentials so the AWS CLI can sign requests
+export AWS_ACCESS_KEY_ID=local
+export AWS_SECRET_ACCESS_KEY=local
+
 # Create a queue using the AWS CLI
 aws sqs create-queue \
   --queue-name test-queue \
@@ -386,7 +400,7 @@ def sqs_client():
 @pytest.fixture
 def clean_queue(sqs_client):
     """Purge the queue before each test for a clean state."""
-    queue_url = 'http://localhost:9324/000000000000/orders-queue'
+    queue_url = sqs_client.get_queue_url(QueueName='orders-queue')['QueueUrl']
     sqs_client.purge_queue(QueueUrl=queue_url)
     time.sleep(1)  # Allow purge to complete
     return queue_url
