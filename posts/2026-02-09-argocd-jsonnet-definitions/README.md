@@ -18,7 +18,7 @@ Jsonnet extends JSON with features like variables, functions, conditionals, and 
 
 Key Jsonnet advantages:
 - Pure functions with no side effects
-- Strong typing and validation
+- Runtime type checks with `std.type` and validation through assertions
 - Composable libraries and mixins
 - Native support for multi-environment configurations
 - No custom template syntax to learn
@@ -195,6 +195,7 @@ metadata:
   name: web-app-production
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/app-repo.git
     targetRevision: main
@@ -259,6 +260,7 @@ local k = import 'kubernetes.libsonnet';
         k.networking.v1.httpIngressPath.new(path='/')
         + k.networking.v1.httpIngressPath.backend.service.withName(name)
         + k.networking.v1.httpIngressPath.backend.service.port.withNumber(port)
+        + k.networking.v1.httpIngressPath.withPathType('Prefix')
       ])
     ]),
   },
@@ -399,6 +401,7 @@ metadata:
   name: app-with-tla
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/app.git
     targetRevision: main
@@ -407,7 +410,8 @@ spec:
       jsonnet:
         tlas:
           - name: config
-            code: |
+            code: true
+            value: |
               {
                 replicas: 3,
                 resources: {
@@ -428,10 +432,17 @@ function(config) {
   metadata: { name: 'app' },
   spec: {
     replicas: config.replicas,
+    selector: {
+      matchLabels: { app: 'app' },
+    },
     template: {
+      metadata: {
+        labels: { app: 'app' },
+      },
       spec: {
         containers: [{
           name: 'app',
+          image: 'myorg/app:latest',
           resources: {
             requests: {
               cpu: config.resources.cpu,
