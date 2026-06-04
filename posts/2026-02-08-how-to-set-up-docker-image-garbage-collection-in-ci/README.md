@@ -25,7 +25,7 @@ docker container prune -f
 docker image prune -a -f
 
 # Remove all unused volumes
-docker volume prune -f
+docker volume prune -a -f
 
 # Remove all unused networks
 docker network prune -f
@@ -108,11 +108,11 @@ on:
 
 jobs:
   cleanup-runners:
-    runs-on: self-hosted
     strategy:
       matrix:
-        # Run on all self-hosted runner groups
+        # Run on self-hosted runners with these labels
         runner: [runner-1, runner-2, runner-3]
+    runs-on: [self-hosted, '${{ matrix.runner }}']
     steps:
       - name: Report disk usage before cleanup
         run: |
@@ -133,7 +133,7 @@ jobs:
 
       - name: Remove unused volumes and networks
         run: |
-          docker volume prune -f
+          docker volume prune -a -f
           docker network prune -f
 
       - name: Report disk usage after cleanup
@@ -163,7 +163,7 @@ storage:
       dryrun: false
 ```
 
-Run garbage collection against the registry.
+Run garbage collection against the registry. Put the registry in read-only mode or stop writes before running garbage collection, because uploads during the mark-and-sweep pass can corrupt newly pushed images.
 
 ```bash
 # First, delete tags you no longer need via the API
@@ -176,7 +176,7 @@ curl -X DELETE "https://registry.example.com/v2/myapp/manifests/${TAG_DIGEST}"
 
 # Then run garbage collection to reclaim storage
 # Dry run first to see what would be collected
-docker exec registry bin/registry garbage-collect /etc/docker/registry/config.yml --dry-run
+docker exec registry bin/registry garbage-collect --dry-run /etc/docker/registry/config.yml
 
 # Execute the actual garbage collection
 docker exec registry bin/registry garbage-collect /etc/docker/registry/config.yml
@@ -194,10 +194,10 @@ set -euo pipefail
 
 REGISTRY="https://registry.example.com"
 REPO="myapp"
-KEEP_LAST=10  # Keep the most recent 10 tags
+KEEP_LAST=10  # Keep the highest 10 version-like tags
 
 echo "Fetching tags for ${REPO}..."
-# Get all tags sorted by creation date
+# Get all tags sorted by version-like tag name
 TAGS=$(curl -s "${REGISTRY}/v2/${REPO}/tags/list" | jq -r '.tags[]' | sort -V)
 TAG_COUNT=$(echo "${TAGS}" | wc -l)
 
@@ -265,7 +265,21 @@ Major cloud providers offer built-in lifecycle policies for their registries.
       "description": "Remove dev images older than 14 days",
       "selection": {
         "tagStatus": "tagged",
-        "tagPrefixList": ["dev-", "pr-"],
+        "tagPrefixList": ["dev-"],
+        "countType": "sinceImagePushed",
+        "countUnit": "days",
+        "countNumber": 14
+      },
+      "action": {
+        "type": "expire"
+      }
+    },
+    {
+      "rulePriority": 4,
+      "description": "Remove pull request images older than 14 days",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPrefixList": ["pr-"],
         "countType": "sinceImagePushed",
         "countUnit": "days",
         "countNumber": 14
@@ -291,9 +305,9 @@ aws ecr put-lifecycle-policy \
 # Delete images older than 30 days using gcloud
 gcloud artifacts docker images list us-docker.pkg.dev/myproject/myrepo/myapp \
   --filter="UPDATE_TIME < $(date -d '30 days ago' -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --format="value(DIGEST)" | while read DIGEST; do
+  --format="value(version)" | while read DIGEST; do
     gcloud artifacts docker images delete \
-      us-docker.pkg.dev/myproject/myrepo/myapp@${DIGEST} --quiet
+      us-docker.pkg.dev/myproject/myrepo/myapp@${DIGEST} --delete-tags --quiet
 done
 ```
 
