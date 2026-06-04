@@ -33,8 +33,6 @@ Here is a complete setup with Toxiproxy sitting between an API and its database 
 ```yaml
 # docker-compose.yml - Application stack with Toxiproxy
 
-version: "3.8"
-
 services:
   # Toxiproxy sits between the app and its dependencies
   toxiproxy:
@@ -244,7 +242,7 @@ curl -X POST http://localhost:8474/proxies/postgres/toxics \
 The slicer toxic breaks data into small chunks with delays between them. This simulates extremely slow responses.
 
 ```bash
-# Slice Redis responses into tiny pieces with delays
+# Slice Redis responses into tiny pieces with 100ms delays
 curl -X POST http://localhost:8474/proxies/redis/toxics \
   -H "Content-Type: application/json" \
   -d '{
@@ -254,7 +252,7 @@ curl -X POST http://localhost:8474/proxies/redis/toxics \
     "attributes": {
       "average_size": 10,
       "size_variation": 5,
-      "delay": 100
+      "delay": 100000
     }
   }'
 ```
@@ -275,9 +273,9 @@ curl -X POST http://localhost:8474/proxies/redis \
   -d '{"enabled": true}'
 ```
 
-## Integration Testing with Toxiproxy Client
+## Integration Testing with the Toxiproxy API
 
-Use the Toxiproxy client library in your test code for precise control during integration tests.
+Use the Toxiproxy HTTP API in your test code for precise control during integration tests.
 
 ```python
 # test_resilience.py - Integration tests with Toxiproxy
