@@ -19,8 +19,8 @@ The Linux kernel's network stack processes each packet through multiple layers: 
 DPDK takes a different approach:
 
 - **Poll mode drivers (PMDs)** replace interrupt-driven NIC drivers with continuous polling
-- **Huge pages** provide large, contiguous memory regions without TLB misses
-- **CPU core pinning** dedicates cores to packet processing without context switches
+- **Huge pages** provide large memory pages that reduce TLB misses
+- **CPU core pinning** dedicates cores to packet processing and reduces scheduler interference
 - **User-space drivers** bypass the kernel entirely for data plane traffic
 
 The tradeoff is that DPDK takes exclusive ownership of network interfaces. Those interfaces become invisible to the kernel.
@@ -32,7 +32,9 @@ Before running DPDK in Docker, configure the host:
 ```bash
 # Enable IOMMU in the kernel boot parameters
 
-# Add to /etc/default/grub: GRUB_CMDLINE_LINUX="intel_iommu=on iommu=pt"
+# Add to /etc/default/grub on Intel systems:
+# GRUB_CMDLINE_LINUX="intel_iommu=on iommu=pt"
+# On AMD systems, use "amd_iommu=on iommu=pt" instead.
 sudo update-grub
 sudo reboot
 ```
@@ -109,9 +111,9 @@ RUN apt-get update && apt-get install -y \
 
 # Download and build DPDK
 WORKDIR /opt
-RUN wget https://fast.dpdk.org/rel/dpdk-23.11.tar.xz && \
-    tar xf dpdk-23.11.tar.xz && \
-    cd dpdk-23.11 && \
+RUN wget https://fast.dpdk.org/rel/dpdk-23.11.7.tar.xz && \
+    tar xf dpdk-23.11.7.tar.xz && \
+    cd dpdk-23.11.7 && \
     meson setup build && \
     cd build && \
     ninja && \
@@ -276,6 +278,7 @@ services:
       - /dev/vfio:/dev/vfio
       - /sys/bus/pci:/sys/bus/pci
       - /sys/kernel/mm/hugepages:/sys/kernel/mm/hugepages
+      - dpdk-shared:/var/run/dpdk
     cpuset: "2,3,4,5"
     command: ["-l", "2-5", "-n", "4", "--socket-mem", "2048"]
 
@@ -330,7 +333,7 @@ DPDK provides telemetry through shared memory:
 ```bash
 # Connect to DPDK telemetry socket from the host
 # (if the socket is shared via a volume)
-dpdk-telemetry.py -c /var/run/dpdk/rte/telemetry
+dpdk-telemetry.py
 
 # Query port statistics
 # In the telemetry client:
@@ -346,7 +349,7 @@ import json
 import socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-DPDK_TELEMETRY_SOCK = "/var/run/dpdk/rte/telemetry"
+DPDK_TELEMETRY_SOCK = "/var/run/dpdk/rte/dpdk_telemetry.v2"
 
 def query_dpdk(command):
     """Send a command to the DPDK telemetry socket and return the response."""
@@ -402,7 +405,7 @@ docker run -d \
   dpdk-app:latest
 ```
 
-This grants only the specific capabilities DPDK needs instead of full root privileges.
+This grants the common capabilities and devices needed for a VFIO-based DPDK container instead of full root privileges. Check your PMD and deployment requirements before removing `--privileged` in production.
 
 ## Conclusion
 
