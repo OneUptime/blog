@@ -1,87 +1,62 @@
-# How to Configure Emissary-ingress with Custom Filters for Request Transformation
+# How to Configure Emissary-ingress for Request Transformation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Emissary, API Gateway
 
-Description: Learn how to use Emissary-ingress custom filters to transform requests and responses, modify headers, implement authentication logic, and build sophisticated API gateway patterns in Kubernetes.
+Description: Learn how to use Emissary-ingress mappings and authentication services to transform requests and responses, modify headers, implement authentication logic, and build API gateway patterns in Kubernetes.
 
 ---
 
-Emissary-ingress (formerly Ambassador) is a Kubernetes-native API gateway built on Envoy Proxy that provides powerful request transformation capabilities through its Filter system. Filters allow you to intercept and modify requests and responses, implement custom authentication, add rate limiting, and more. This guide explores how to configure and use custom filters effectively.
+Emissary-ingress (formerly Ambassador) is a Kubernetes-native API gateway built on Envoy Proxy that provides request transformation capabilities through its Mapping system. Mappings allow you to route requests, rewrite paths, modify request and response headers, and call external authentication services before traffic reaches your backend. This guide explores how to configure and use these features effectively.
 
-## Understanding Emissary Filters
+## Understanding Emissary Request Processing
 
-Emissary filters are plugins that process HTTP requests and responses at various stages of the request lifecycle. Filters can:
+Emissary resources process HTTP requests at the edge of your cluster. They can:
 
 - Transform request and response headers
-- Modify request paths and query parameters
-- Implement authentication and authorization
-- Add rate limiting and caching
-- Inject custom logic via external services
-- Integrate with OAuth2, JWT, and other auth systems
+- Rewrite request paths
+- Match requests by host, path, method, query parameters, and headers
+- Implement authentication and authorization with an external AuthService
+- Add rate limiting through RateLimitService
+- Integrate with JWT and OAuth2 when using Ambassador Edge Stack filters
 
-Filters are applied using FilterPolicy resources that specify which Mappings should use which Filters.
+Emissary-ingress itself does not install the Ambassador Edge Stack `Filter` and `FilterPolicy` CRDs. Use Emissary `Mapping`, `AuthService`, and related resources for open source Emissary-ingress deployments; use Ambassador Edge Stack if you need Edge Stack filter resources such as `External`, `JWT`, `OAuth2`, or `Plugin` filters.
 
 ## Installing Emissary-ingress
 
 Install Emissary-ingress in your cluster:
 
 ```bash
-# Add the Emissary Helm repository
-
-helm repo add datawire https://app.getambassador.io
-helm repo update
+# Install the Emissary CRDs
+helm install emissary-crds \
+  oci://ghcr.io/emissary-ingress/emissary-crds-chart --version=4.1.0 \
+  --wait
 
 # Install Emissary
-kubectl create namespace emissary
-kubectl apply -f https://app.getambassador.io/yaml/emissary/3.9.1/emissary-crds.yaml
-kubectl wait --timeout=90s --for=condition=available deployment emissary-apiext -n emissary-system
-
-helm install emissary-ingress datawire/emissary-ingress \
-  --namespace emissary \
-  --create-namespace
+helm install emissary \
+  --namespace emissary --create-namespace \
+  oci://ghcr.io/emissary-ingress/emissary-ingress --version=4.1.0 \
+  --wait
 ```
 
 Verify installation:
 
 ```bash
 kubectl get pods -n emissary
-kubectl get svc -n emissary
+kubectl get svc -n emissary emissary
 ```
 
 ## Request Header Transformation
 
-Transform request headers using the Plugin filter.
+Transform request headers using Mapping configuration.
 
 ### Adding Headers
 
-Add headers to all requests:
+Add headers to requests:
 
 ```yaml
-# add-headers-filter.yaml
-apiVersion: getambassador.io/v3alpha1
-kind: Filter
-metadata:
-  name: add-request-headers
-  namespace: emissary
-spec:
-  Plugin:
-    name: add-headers
----
-apiVersion: getambassador.io/v3alpha1
-kind: FilterPolicy
-metadata:
-  name: header-policy
-  namespace: default
-spec:
-  rules:
-  - host: "api.example.com"
-    path: "/api/*"
-    filters:
-    - name: add-request-headers
-      namespace: emissary
----
+# add-headers-mapping.yaml
 apiVersion: getambassador.io/v3alpha1
 kind: Mapping
 metadata:
@@ -94,10 +69,10 @@ spec:
   add_request_headers:
     x-custom-header:
       value: "custom-value"
-    x-request-id:
-      value: "%DOWNSTREAM_REMOTE_ADDRESS%-%START_TIME%"
+    x-client-ip:
+      value: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
     x-forwarded-proto:
-      value: "https"
+      value: "%PROTOCOL%"
 ```
 
 ### Removing Headers
@@ -130,14 +105,14 @@ spec:
 
 ### Conditional Header Modification
 
-Modify headers based on conditions:
+Modify headers based on request matching conditions:
 
 ```yaml
 # conditional-headers.yaml
 apiVersion: getambassador.io/v3alpha1
 kind: Mapping
 metadata:
-  name: conditional-routing
+  name: mobile-routing
   namespace: default
 spec:
   hostname: api.example.com
@@ -145,7 +120,7 @@ spec:
   service: backend-service:80
 
   # Headers for mobile clients
-  headers:
+  regex_headers:
     user-agent: ".*Mobile.*"
   add_request_headers:
     x-client-type:
@@ -163,7 +138,6 @@ spec:
   hostname: api.example.com
   prefix: /api/
   service: backend-service:80
-  priority: 1
   add_request_headers:
     x-client-type:
       value: "desktop"
@@ -171,7 +145,7 @@ spec:
 
 ## Response Transformation
 
-Modify response headers and bodies.
+Modify response headers.
 
 ### Adding Response Headers
 
@@ -193,8 +167,6 @@ spec:
   add_response_headers:
     x-api-version:
       value: "v1.0"
-    x-response-time:
-      value: "%DURATION%"
     cache-control:
       value: "public, max-age=300"
     strict-transport-security:
@@ -224,7 +196,7 @@ spec:
   - x-internal-version
 ```
 
-## External Authentication Filter
+## External Authentication
 
 Implement custom authentication using an external service.
 
@@ -300,177 +272,60 @@ spec:
     targetPort: 8080
 ```
 
-### Configure External Auth Filter
+### Configure External AuthService
 
-Create an External filter:
+Create an AuthService:
 
 ```yaml
-# external-auth-filter.yaml
+# external-auth-service.yaml
 apiVersion: getambassador.io/v3alpha1
-kind: Filter
+kind: AuthService
 metadata:
   name: external-auth
   namespace: emissary
 spec:
-  External:
-    # Auth service endpoint
-    auth_service: "auth-service.default:80"
+  # Auth service endpoint
+  auth_service: "auth-service.default:80"
 
-    # Path to auth endpoint
-    path_prefix: "/auth"
+  # Path to auth endpoint
+  path_prefix: "/auth"
 
-    # Timeout for auth check
-    timeout_ms: 5000
+  # Timeout for auth check
+  timeout_ms: 5000
 
-    # Headers to send to auth service
-    allowed_request_headers:
-    - "authorization"
-    - "x-api-key"
-    - "cookie"
+  # Headers to send to auth service
+  allowed_request_headers:
+  - "authorization"
+  - "x-api-key"
+  - "cookie"
 
-    # Headers to inject from auth response
-    allowed_authorization_headers:
-    - "x-auth-user"
-    - "x-auth-roles"
-    - "x-auth-scope"
+  # Headers to inject from auth response
+  allowed_authorization_headers:
+  - "x-auth-user"
+  - "x-auth-roles"
 
-    # Include request body in auth check
-    include_body:
-      max_bytes: 4096
-      allow_partial: true
+  # Include request body in auth check
+  include_body:
+    max_bytes: 4096
+    allow_partial: true
 
-    # Status on auth failure
-    status_on_error:
-      code: 401
+  # Status when Emissary cannot communicate with the auth service
+  status_on_error:
+    code: 403
 ```
 
-Apply the filter to services:
+With an `AuthService` configured, Emissary calls the authentication service for incoming HTTP requests before forwarding allowed requests to matching Mappings.
+
+## Request Transformation
+
+Use Mapping configuration for common transformations.
+
+### Path Rewriting
+
+Rewrite paths using Mapping configuration:
 
 ```yaml
-# protected-mapping.yaml
-apiVersion: getambassador.io/v3alpha1
-kind: FilterPolicy
-metadata:
-  name: auth-policy
-  namespace: default
-spec:
-  rules:
-  # Require auth for all /api routes
-  - host: "api.example.com"
-    path: "/api/*"
-    filters:
-    - name: external-auth
-      namespace: emissary
-
-  # Allow public access to /public
-  - host: "api.example.com"
-    path: "/public/*"
-    filters: null
-```
-
-## Request Transformation Filter
-
-Use Lua scripts for advanced transformations.
-
-### Lua Filter for Custom Logic
-
-Create a Lua filter:
-
-```yaml
-# lua-filter.yaml
-apiVersion: getambassador.io/v3alpha1
-kind: Filter
-metadata:
-  name: request-transformer
-  namespace: emissary
-spec:
-  Plugin:
-    name: lua
-    config:
-      inline_code: |
-        function envoy_on_request(request_handle)
-          -- Get request path
-          local path = request_handle:headers():get(":path")
-
-          -- Transform path
-          if string.match(path, "^/old%-api/") then
-            local new_path = string.gsub(path, "^/old%-api/", "/api/v2/")
-            request_handle:headers():replace(":path", new_path)
-          end
-
-          -- Add custom header with timestamp
-          local timestamp = os.time()
-          request_handle:headers():add("x-request-timestamp", tostring(timestamp))
-
-          -- Extract and validate API version
-          local version = request_handle:headers():get("x-api-version")
-          if not version then
-            request_handle:headers():add("x-api-version", "1.0")
-          end
-        end
-
-        function envoy_on_response(response_handle)
-          -- Add response timing
-          response_handle:headers():add("x-processed-by", "emissary-lua-filter")
-        end
-```
-
-### Complex Request Modification
-
-More sophisticated Lua transformations:
-
-```yaml
-# advanced-lua-filter.yaml
-apiVersion: getambassador.io/v3alpha1
-kind: Filter
-metadata:
-  name: advanced-transformer
-  namespace: emissary
-spec:
-  Plugin:
-    name: lua
-    config:
-      inline_code: |
-        function envoy_on_request(request_handle)
-          local headers = request_handle:headers()
-
-          -- Parse and validate JWT from header
-          local auth = headers:get("authorization")
-          if auth and string.match(auth, "^Bearer ") then
-            local token = string.sub(auth, 8)
-
-            -- Simple base64 decode and parse (production should use proper JWT library)
-            -- Add claims as headers
-            headers:add("x-token-present", "true")
-          end
-
-          -- Rate limit key generation
-          local client_ip = headers:get("x-forwarded-for")
-          if not client_ip then
-            client_ip = headers:get("x-real-ip") or "unknown"
-          end
-
-          local rate_limit_key = string.format("ratelimit:%s", client_ip)
-          headers:add("x-rate-limit-key", rate_limit_key)
-
-          -- Add request fingerprint
-          local method = headers:get(":method")
-          local path = headers:get(":path")
-          local fingerprint = string.format("%s:%s", method, path)
-          headers:add("x-request-fingerprint", fingerprint)
-        end
-```
-
-## Plugin Filter for Custom Processing
-
-Use the Plugin filter type for various transformations.
-
-### Path Rewriting Plugin
-
-Rewrite paths using plugin configuration:
-
-```yaml
-# path-rewrite-filter.yaml
+# path-rewrite-mapping.yaml
 apiVersion: getambassador.io/v3alpha1
 kind: Mapping
 metadata:
@@ -490,100 +345,84 @@ spec:
       value: "/api/v2"
 ```
 
-### Query Parameter Manipulation
+### Query Parameter Matching
 
-Modify query parameters:
-
-```yaml
-# query-param-filter.yaml
-apiVersion: getambassador.io/v3alpha1
-kind: Filter
-metadata:
-  name: query-modifier
-  namespace: emissary
-spec:
-  Plugin:
-    name: lua
-    config:
-      inline_code: |
-        function envoy_on_request(request_handle)
-          local path = request_handle:headers():get(":path")
-
-          -- Add default query parameters if missing
-          if not string.match(path, "format=") then
-            local separator = string.match(path, "?") and "&" or "?"
-            path = path .. separator .. "format=json"
-          end
-
-          if not string.match(path, "version=") then
-            local separator = string.match(path, "?") and "&" or "?"
-            path = path .. separator .. "version=v1"
-          end
-
-          request_handle:headers():replace(":path", path)
-        end
-```
-
-## Chaining Multiple Filters
-
-Apply multiple filters in sequence:
+Match requests by query parameters:
 
 ```yaml
-# filter-chain.yaml
+# query-param-routing.yaml
 apiVersion: getambassador.io/v3alpha1
-kind: FilterPolicy
+kind: Mapping
 metadata:
-  name: multi-filter-policy
+  name: json-v1-routing
   namespace: default
 spec:
-  rules:
-  - host: "api.example.com"
-    path: "/secure/*"
-    filters:
-    # 1. Authentication first
-    - name: external-auth
-      namespace: emissary
-
-    # 2. Then request transformation
-    - name: request-transformer
-      namespace: emissary
-
-    # 3. Finally rate limiting
-    - name: rate-limiter
-      namespace: emissary
+  hostname: api.example.com
+  prefix: /api/data
+  service: backend-service:80
+  query_parameters:
+    format: json
+    version: v1
+  add_request_headers:
+    x-api-format:
+      value: "json"
+    x-api-version:
+      value: "v1"
 ```
 
-Filters are executed in the order specified.
+## Combining Multiple Resources
 
-## Testing Custom Filters
+Combine AuthService and Mapping configuration:
 
-Test filter behavior:
+```yaml
+# protected-mapping.yaml
+apiVersion: getambassador.io/v3alpha1
+kind: Mapping
+metadata:
+  name: secure-api
+  namespace: default
+spec:
+  hostname: api.example.com
+  prefix: /secure/
+  service: backend-service:80
+  rewrite: /api/v2/
+  remove_request_headers:
+  - x-internal-auth
+  add_request_headers:
+    x-protected-route:
+      value: "true"
+```
+
+Emissary applies the external `AuthService` check before forwarding matching requests to the upstream service, and Mapping transformations are applied as part of request routing.
+
+## Testing Custom Configuration
+
+Test behavior:
 
 ```bash
 # Test header addition
 curl -v https://api.example.com/api/test
 
-# Test authentication filter
+# Test authentication
 curl -H "Authorization: Bearer valid-token-12345" \
   https://api.example.com/api/protected
 
 # Test path rewriting
-curl -v https://api.example.com/v1/users | grep x-original-prefix
+curl -v https://api.example.com/v1/users
 
-# Test query parameter modification
-curl https://api.example.com/api/data
-# Should add format=json&version=v1
+# Test query parameter matching
+curl "https://api.example.com/api/data?format=json&version=v1"
 ```
 
-Check filter logs:
+Check Emissary logs:
 
 ```bash
 kubectl logs -n emissary -l app.kubernetes.io/name=emissary-ingress --follow
 ```
 
-## Debugging Filters
+## Debugging Configuration
 
-Enable debug logging:
+Enable the diagnostics service:
 
 ```yaml
 # debug-config.yaml
@@ -596,20 +435,15 @@ spec:
   config:
     diagnostics:
       enabled: true
-
-    # Enable Lua filter debugging
-    lua_scripts:
-      enabled: true
-      log_level: debug
 ```
 
 View diagnostics:
 
 ```bash
-kubectl port-forward -n emissary service/emissary-ingress 8877:8877
+kubectl port-forward -n emissary service/emissary 8877:8877
 # Visit http://localhost:8877/ambassador/v0/diag/
 ```
 
 ## Conclusion
 
-Emissary-ingress filters provide powerful request and response transformation capabilities that enable you to implement sophisticated API gateway patterns without modifying application code. By combining external auth filters, Lua scripts, and header manipulation, you can build secure, flexible, and maintainable API gateways. The filter chaining capability allows you to compose complex processing pipelines that handle authentication, rate limiting, transformation, and more in a declarative, Kubernetes-native way.
+Emissary-ingress request and response transformation features enable you to implement API gateway patterns without modifying application code. By combining external authentication, Mapping rewrites, and header manipulation, you can build secure and maintainable gateways in a declarative, Kubernetes-native way. If you need `Filter` and `FilterPolicy` resources for JWT, OAuth2, API key, External, or Plugin filters, use Ambassador Edge Stack rather than the open source Emissary-ingress CRDs.
