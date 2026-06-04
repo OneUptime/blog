@@ -20,7 +20,7 @@ The controller field in an owner reference indicates which owner controls the re
 
 ## Setting Basic OwnerReferences
 
-Use controller-runtime's SetControllerReference to create owner relationships.
+Use controller-runtime's controllerutil.SetControllerReference to create owner relationships.
 
 ```go
 package main
@@ -31,8 +31,10 @@ import (
     appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/runtime"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
+    "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 type MyReconciler struct {
@@ -78,7 +80,7 @@ func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Re
     }
 
     // Set owner reference
-    if err := ctrl.SetControllerReference(&myResource, deployment, r.Scheme); err != nil {
+    if err := controllerutil.SetControllerReference(&myResource, deployment, r.Scheme); err != nil {
         return ctrl.Result{}, err
     }
 
@@ -99,28 +101,28 @@ Establish ownership for all resources your controller creates.
 func (r *MyReconciler) createOwnedResources(ctx context.Context, owner *MyResource) error {
     // Create Deployment
     deployment := r.buildDeployment(owner)
-    if err := ctrl.SetControllerReference(owner, deployment, r.Scheme); err != nil {
+    if err := controllerutil.SetControllerReference(owner, deployment, r.Scheme); err != nil {
         return err
     }
-    if err := r.Create(ctx, deployment); err != nil && !errors.IsAlreadyExists(err) {
+    if err := r.Create(ctx, deployment); err != nil && !apierrors.IsAlreadyExists(err) {
         return err
     }
 
     // Create Service
     service := r.buildService(owner)
-    if err := ctrl.SetControllerReference(owner, service, r.Scheme); err != nil {
+    if err := controllerutil.SetControllerReference(owner, service, r.Scheme); err != nil {
         return err
     }
-    if err := r.Create(ctx, service); err != nil && !errors.IsAlreadyExists(err) {
+    if err := r.Create(ctx, service); err != nil && !apierrors.IsAlreadyExists(err) {
         return err
     }
 
     // Create ConfigMap
     configMap := r.buildConfigMap(owner)
-    if err := ctrl.SetControllerReference(owner, configMap, r.Scheme); err != nil {
+    if err := controllerutil.SetControllerReference(owner, configMap, r.Scheme); err != nil {
         return err
     }
-    if err := r.Create(ctx, configMap); err != nil && !errors.IsAlreadyExists(err) {
+    if err := r.Create(ctx, configMap); err != nil && !apierrors.IsAlreadyExists(err) {
         return err
     }
 
@@ -166,14 +168,15 @@ func (r *MyReconciler) buildConfigMap(owner *MyResource) *corev1.ConfigMap {
 
 ## Understanding Garbage Collection Policies
 
-Kubernetes supports two deletion policies: Foreground and Background.
+Kubernetes supports two cascading deletion policies: Foreground and Background. You can also choose Orphan deletion to leave dependents behind.
 
 Background deletion (default) deletes the owner immediately and garbage collects dependents asynchronously.
 
-Foreground deletion waits until all dependents are deleted before removing the owner.
+Foreground deletion keeps the owner visible until the garbage collector deletes the dependents that block owner deletion.
 
 ```go
 // Delete with foreground cascading
+foregroundDeletion := metav1.DeletePropagationForeground
 deleteOptions := &client.DeleteOptions{
     PropagationPolicy: &foregroundDeletion,
 }
@@ -214,7 +217,7 @@ func (r *MyReconciler) listOwnedDeployments(ctx context.Context, owner *MyResour
     return ownedDeployments, nil
 }
 
-// Alternative: use field selectors for efficient filtering
+// Alternative: use cache field indexes for efficient filtering
 func (r *MyReconciler) listOwnedResourcesEfficiently(ctx context.Context, owner *MyResource) error {
     // This requires setting up field indexes in your controller setup
     var deployments appsv1.DeploymentList
@@ -256,28 +259,10 @@ Resources can have multiple owners, but only one controller.
 
 ```go
 func (r *MyReconciler) addAdditionalOwner(ctx context.Context, resource client.Object, additionalOwner *OtherResource) error {
-    // Get current owner references
-    ownerRefs := resource.GetOwnerReferences()
-
     // Add new owner reference (not as controller)
-    newOwnerRef := metav1.OwnerReference{
-        APIVersion: additionalOwner.APIVersion,
-        Kind:       additionalOwner.Kind,
-        Name:       additionalOwner.Name,
-        UID:        additionalOwner.UID,
-        Controller: pointer.Bool(false), // Not the controller
+    if err := controllerutil.SetOwnerReference(additionalOwner, resource, r.Scheme); err != nil {
+        return err
     }
-
-    // Check if already present
-    for _, ref := range ownerRefs {
-        if ref.UID == newOwnerRef.UID {
-            return nil // Already present
-        }
-    }
-
-    // Append new owner reference
-    ownerRefs = append(ownerRefs, newOwnerRef)
-    resource.SetOwnerReferences(ownerRefs)
 
     // Update resource
     return r.Update(ctx, resource)
@@ -286,26 +271,26 @@ func (r *MyReconciler) addAdditionalOwner(ctx context.Context, resource client.O
 
 ## Preventing Accidental Deletion
 
-Block deletion of resources with finalizers until owners are cleaned up.
+Use finalizers for cleanup that owner references cannot handle, such as external systems or cluster-scoped resources tracked with labels.
 
 ```go
-func (r *MyReconciler) preventOrphanedDeletion(ctx context.Context, resource *MyResource) error {
-    // Check if resource has dependents
-    dependents, err := r.listOwnedResources(ctx, resource)
-    if err != nil {
-        return err
-    }
+const myResourceFinalizer = "example.com/myresource-finalizer"
 
-    if len(dependents) > 0 && resource.DeletionTimestamp.IsZero() {
-        // Has dependents and not being deleted - ok to proceed
+func (r *MyReconciler) handleDeletion(ctx context.Context, resource *MyResource) error {
+    if resource.DeletionTimestamp.IsZero() {
+        if !controllerutil.ContainsFinalizer(resource, myResourceFinalizer) {
+            controllerutil.AddFinalizer(resource, myResourceFinalizer)
+            return r.Update(ctx, resource)
+        }
         return nil
     }
 
-    if len(dependents) > 0 && !resource.DeletionTimestamp.IsZero() {
-        // Being deleted with dependents - wait for garbage collector
-        logger.Info("Waiting for garbage collector to clean up dependents",
-            "count", len(dependents))
-        return nil
+    if controllerutil.ContainsFinalizer(resource, myResourceFinalizer) {
+        if err := r.cleanupClusterResources(ctx, resource); err != nil {
+            return err
+        }
+        controllerutil.RemoveFinalizer(resource, myResourceFinalizer)
+        return r.Update(ctx, resource)
     }
 
     return nil
@@ -314,7 +299,7 @@ func (r *MyReconciler) preventOrphanedDeletion(ctx context.Context, resource *My
 
 ## Cross-Namespace OwnerReferences
 
-OwnerReferences only work within the same namespace for namespaced resources.
+For namespaced dependents, owner references can point to owners in the same namespace or to cluster-scoped owners. Cross-namespace owner references are invalid, and cluster-scoped dependents cannot use namespaced owners.
 
 ```go
 func (r *MyReconciler) createClusterScopedResource(ctx context.Context, owner *MyResource) error {
@@ -360,13 +345,13 @@ func (r *MyReconciler) cleanupClusterResources(ctx context.Context, owner *MyRes
 
 Always set owner references when creating resources from a controller. This ensures proper cleanup.
 
-Use SetControllerReference for the primary owner. This sets both the owner reference and the controller flag.
+Use controllerutil.SetControllerReference for the primary owner. This sets both the owner reference and the controller flag.
 
 Only one owner can be the controller. Multiple owners are allowed, but only one controls the resource.
 
 Watch owned resources with Owns() in your controller setup. This ensures the controller reconciles when owned resources change.
 
-Remember that owner references only work within the same namespace for namespaced resources.
+Remember that namespaced dependents can use owner references to owners in the same namespace or to cluster-scoped owners. Cross-namespace owner references are invalid.
 
 Use labels for cross-namespace or cluster-scoped dependencies that can't use owner references.
 
@@ -376,6 +361,6 @@ Test deletion scenarios to ensure garbage collection works as expected.
 
 OwnerReferences automate resource cleanup and establish clear parent-child relationships in Kubernetes. They ensure that when you delete a custom resource, all its dependents are garbage collected automatically.
 
-Use SetControllerReference for all resources your controller creates. Set up your controller to watch owned resources. Test deletion to verify garbage collection works correctly.
+Use controllerutil.SetControllerReference for all resources your controller creates. Set up your controller to watch owned resources. Test deletion to verify garbage collection works correctly.
 
 Proper use of owner references keeps your cluster clean and prevents resource leaks when custom resources are deleted.
