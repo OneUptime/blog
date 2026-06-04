@@ -8,9 +8,9 @@ Description: Learn how to configure kube-proxy in IPVS mode for scalable Kuberne
 
 ---
 
-IPVS (IP Virtual Server) mode in kube-proxy provides a dramatic performance improvement over iptables for clusters with many services. While iptables uses sequential rule matching that degrades linearly with service count, IPVS uses hash tables for O(1) lookup complexity. This makes IPVS the clear choice for production clusters with hundreds or thousands of services, where iptables can introduce noticeable latency.
+IPVS (IP Virtual Server) mode in kube-proxy can provide a performance improvement over iptables for clusters with many services. While iptables mode creates rules for Services and endpoints, IPVS uses kernel IPVS data structures, including hash tables, for service lookup. This makes IPVS useful for existing clusters with hundreds or thousands of services, where iptables can introduce noticeable latency. In current Kubernetes releases, however, IPVS proxy mode is deprecated and nftables mode is the recommended replacement on Linux nodes that support it.
 
-Beyond performance, IPVS offers richer load balancing algorithms including round-robin, least connection, source hashing, and weighted round-robin. IPVS also integrates deeply with the Linux kernel's connection tracking, providing better session persistence and more efficient packet processing. The trade-off is slightly more complex setup and dependency on kernel IPVS modules.
+Beyond performance, IPVS offers richer load balancing algorithms including round-robin, least connection, source hashing, and weighted round-robin. IPVS can also maintain its own connection and persistence state, and can integrate with Linux conntrack when stateful firewall rules require it. The trade-off is slightly more complex setup, dependency on kernel IPVS modules, and the fact that IPVS does not implement every Kubernetes Service edge case as well as newer kube-proxy backends.
 
 ## Installing IPVS Prerequisites
 
@@ -21,6 +21,7 @@ Before enabling IPVS mode, install required kernel modules:
 
 modprobe ip_vs
 modprobe ip_vs_rr
+modprobe ip_vs_lc
 modprobe ip_vs_wrr
 modprobe ip_vs_sh
 modprobe nf_conntrack
@@ -32,6 +33,7 @@ lsmod | grep ip_vs
 cat > /etc/modules-load.d/ipvs.conf <<EOF
 ip_vs
 ip_vs_rr
+ip_vs_lc
 ip_vs_wrr
 ip_vs_sh
 nf_conntrack
@@ -87,7 +89,7 @@ kubectl logs -n kube-system -l k8s-app=kube-proxy | grep "Using ipvs"
 
 ## Understanding IPVS Load Balancing Algorithms
 
-IPVS supports multiple scheduling algorithms:
+IPVS supports multiple scheduling algorithms, including:
 
 ### Round Robin (rr)
 
@@ -120,18 +122,18 @@ ipvs:
   scheduler: "sh"
 ```
 
-Best for: Sticky sessions without sessionAffinity overhead
+Best for: Source-IP-based distribution when you want the same source IP to map consistently to the same backend
 
 ### Weighted Round Robin (wrr)
 
-Allows different weights per backend:
+Routes based on backend weights in IPVS:
 
 ```yaml
 ipvs:
   scheduler: "wrr"
 ```
 
-Best for: Heterogeneous backends with different capacities
+Best for: Heterogeneous backends with different capacities in direct IPVS configurations. kube-proxy normally programs Kubernetes Service endpoints with equal weights, so this scheduler does not by itself assign different Pod capacities.
 
 ## Viewing IPVS Configuration
 
@@ -175,15 +177,15 @@ iptables-save | wc -l
 ipvsadm -L -n | wc -l
 # Same cluster: ~100-500 entries
 
-# Benchmark service lookup latency
-# iptables: O(n) linear scan, ms increases with services
-# IPVS: O(1) hash table lookup, consistent μs latency
+# Benchmark service lookup latency in your own cluster
+# iptables mode: rule update and packet-processing costs grow with Services/endpoints
+# IPVS mode: uses kernel IPVS hash tables for service lookup
 ```
 
-Real-world performance:
+Performance characteristics are environment-dependent:
 - Cluster with 5,000 services
-- iptables mode: 50ms+ latency for packet processing
-- IPVS mode: < 1ms latency for packet processing
+- iptables mode: larger rule sets and slower rule synchronization
+- IPVS mode: faster rule synchronization and higher throughput than iptables in large clusters, but consider nftables mode for new clusters on supported kernels
 
 ## IPVS with Session Affinity
 
@@ -213,8 +215,7 @@ Check IPVS persistence:
 # View persistent connections
 ipvsadm -L -n --persistent-conn
 
-# IPVS uses kernel connection tracking for persistence
-# More efficient than iptables recent module
+# IPVS uses persistence templates and connection entries for affinity
 ```
 
 ## NodePort Services with IPVS
@@ -230,8 +231,8 @@ ipvsadm -L -n | grep -A 5 30080
 #   -> 10.244.0.10:8080             Masq    1      0          2
 #   -> 10.244.1.20:8080             Masq    1      0          1
 
-# IPVS creates virtual service on 0.0.0.0:NodePort
-# Accessible on all node IPs
+# IPVS creates virtual service entries for NodePort handling
+# NodePort reachability also depends on kube-proxy nodePortAddresses and local firewall rules
 ```
 
 ## IPVS Dummy Interface
@@ -266,8 +267,8 @@ lsmod | grep ip_vs
 kubectl logs -n kube-system -l k8s-app=kube-proxy | grep -i ipvs
 
 # Common errors:
-# "can't use ipvs proxier, fallback to iptables"
-# Solution: Install ipvsadm and load kernel modules
+# "can't use ipvs proxier" or "IPVS proxier will not be used"
+# Solution: Install ipvsadm and load the required kernel modules before kube-proxy starts
 
 # Verify kube-proxy config
 kubectl get cm kube-proxy -n kube-system -o yaml | grep mode
@@ -279,7 +280,8 @@ kubectl get cm kube-proxy -n kube-system -o yaml | grep mode
 # Check if virtual service exists
 ipvsadm -L -n | grep <service-ip>
 
-# If missing, check endpoints
+# If missing, check EndpointSlices or Endpoints
+kubectl get endpointslices -l kubernetes.io/service-name=<service-name>
 kubectl get endpoints <service-name>
 
 # View kube-proxy sync errors
@@ -330,7 +332,7 @@ data:
 Deploy MetalLB:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 ```
 
 ## Monitoring IPVS Performance
@@ -345,12 +347,12 @@ watch -n 1 'ipvsadm -L -n --stats'
 watch -n 1 'ipvsadm -L -n --rate'
 
 # Check connection table usage
-cat /proc/sys/net/ipv4/vs/conn_tab_size
+wc -l /proc/net/ip_vs_conn
 cat /proc/sys/net/netfilter/nf_conntrack_count
 cat /proc/sys/net/netfilter/nf_conntrack_max
 
 # View IPVS parameters
-sysctl -a | grep ipvs
+sysctl -a | grep net.ipv4.vs
 ```
 
 Export metrics to Prometheus:
@@ -410,30 +412,28 @@ iptables:
 Tune kernel parameters:
 
 ```bash
-# Increase connection tracking table
+# Increase conntrack table
 sysctl -w net.netfilter.nf_conntrack_max=1000000
-sysctl -w net.ipv4.vs.conn_tab_size=1000000
 
-# Tune connection timeouts
-sysctl -w net.ipv4.vs.timeout_established=86400
-sysctl -w net.ipv4.vs.timeout_close=120
+# Tune IPVS connection timeouts: TCP TCP_FIN UDP
+ipvsadm --set 86400 120 300
 
-# Enable connection reuse
+# Enable IPVS conntrack integration only if stateful firewall rules need it
 sysctl -w net.ipv4.vs.conntrack=1
+
+# Size the IPVS connection hash table at module load time
+echo "options ip_vs conn_tab_bits=20" > /etc/modprobe.d/ipvs.conf
 
 # Make permanent
 cat >> /etc/sysctl.conf <<EOF
 net.netfilter.nf_conntrack_max=1000000
-net.ipv4.vs.conn_tab_size=1000000
-net.ipv4.vs.timeout_established=86400
-net.ipv4.vs.timeout_close=120
 net.ipv4.vs.conntrack=1
 EOF
 ```
 
 ## Best Practices
 
-1. **Use IPVS for large clusters**: Essential when > 1000 services
+1. **Use IPVS selectively for large clusters**: Useful for existing clusters on older kernels, but evaluate nftables mode for new Linux clusters
 2. **Choose appropriate scheduler**: Match algorithm to workload
 3. **Enable strict ARP**: Required for MetalLB and other LB solutions
 4. **Monitor connection tracking**: Avoid table exhaustion
@@ -441,4 +441,4 @@ EOF
 6. **Test thoroughly**: Verify all service types work (ClusterIP, NodePort, LoadBalancer)
 7. **Keep kernel updated**: Benefit from IPVS improvements
 
-IPVS mode transforms kube-proxy from a scaling bottleneck into a high-performance load balancer. For production clusters, IPVS is the clear choice over iptables mode.
+IPVS mode can transform kube-proxy from a scaling bottleneck into a high-performance load balancer. For production clusters that already rely on IPVS or cannot use nftables mode, it remains a practical option over iptables mode.
