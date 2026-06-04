@@ -20,7 +20,7 @@ CoreDNS plugins are Go packages that implement specific interfaces. Each plugin 
 - Log or monitor queries
 - Integrate with external systems
 
-The plugin chain processes queries in the order defined in the Corefile. Understanding this flow is key to building effective plugins.
+The plugin chain processes queries in the order compiled into CoreDNS from `plugin.cfg`; the Corefile enables and configures plugins for each server block. Understanding this flow is key to building effective plugins.
 
 ## Setting Up Your Development Environment
 
@@ -32,7 +32,7 @@ Before writing plugins, set up a proper development environment:
 git clone https://github.com/coredns/coredns.git
 cd coredns
 
-# Install Go (1.21 or later required)
+# Install the Go version required by the CoreDNS release you are building
 go version
 
 # Build CoreDNS to verify setup
@@ -62,7 +62,6 @@ import (
     "github.com/coredns/caddy"
     "github.com/coredns/coredns/core/dnsserver"
     "github.com/coredns/coredns/plugin"
-    "net"
 )
 
 // init registers the plugin with CoreDNS
@@ -92,7 +91,9 @@ func parseConfig(c *caddy.Controller) (*IPFilter, error) {
     }
 
     for c.Next() {
-        args := c.RemainingArgs()
+        if c.NextArg() {
+            return nil, c.ArgErr()
+        }
 
         // ipfilter {
         //     block 192.168.1.100
@@ -146,10 +147,7 @@ func (ipf *IPFilter) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.
     state := request.Request{W: w, Req: r}
 
     // Get client IP
-    clientIP, _, err := net.SplitHostPort(state.IP())
-    if err != nil {
-        return dns.RcodeServerFailure, err
-    }
+    clientIP := state.IP()
 
     // Check if IP is blocked
     if ipf.isBlocked(clientIP) {
@@ -240,9 +238,14 @@ func (sr *ServiceRewriter) ServeDNS(ctx context.Context, w dns.ResponseWriter, r
 func (sr *ServiceRewriter) shouldRewrite(name string) (string, bool) {
     // Example: rewrite service.env to service.env.svc.cluster.local
     for pattern, replacement := range sr.mappings {
+        pattern = dns.Fqdn(pattern)
         if strings.HasSuffix(name, pattern) {
-            newName := strings.Replace(name, pattern, replacement, 1)
-            return dns.Fqdn(newName), true
+            prefix := strings.TrimSuffix(strings.TrimSuffix(name, pattern), ".")
+            newName := dns.Fqdn(replacement)
+            if prefix != "" {
+                newName = prefix + "." + newName
+            }
+            return newName, true
         }
     }
     return "", false
@@ -256,6 +259,12 @@ type rewriteWriter struct {
 }
 
 func (w *rewriteWriter) WriteMsg(m *dns.Msg) error {
+    for i := range m.Question {
+        if m.Question[i].Name == w.rewrittenName {
+            m.Question[i].Name = w.originalName
+        }
+    }
+
     // Rewrite answer section back to original name
     for i := range m.Answer {
         if m.Answer[i].Header().Name == w.rewrittenName {
@@ -355,7 +364,7 @@ func (dr *DBRecords) queryRecords(name string, qtype uint16) ([]string, error) {
 
 ## Integrating Your Plugin into CoreDNS
 
-To use your custom plugin, you need to compile it into CoreDNS. Edit the CoreDNS `plugin.cfg` file:
+To use your custom plugin, you need to compile it into CoreDNS. After adding setup functions for each plugin package, edit the CoreDNS `plugin.cfg` file:
 
 ```bash
 cd ~/coredns
@@ -389,7 +398,7 @@ Build a container image with your custom CoreDNS:
 
 ```dockerfile
 # Dockerfile
-FROM golang:1.21 as builder
+FROM golang:1.25 AS builder
 
 WORKDIR /build
 COPY . .
