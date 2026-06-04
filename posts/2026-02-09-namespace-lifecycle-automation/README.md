@@ -18,7 +18,7 @@ A namespace lifecycle controller handles:
 
 - Creation events (apply default configurations)
 - Update events (validate and reconcile state)
-- Deletion events (cleanup and archival)
+- Deletion initiation events (cleanup and archival before finalizer removal)
 - Expiration management (temporary namespaces)
 - Resource provisioning (quotas, RBAC, network policies)
 
@@ -32,9 +32,11 @@ package main
 import (
     "context"
     "fmt"
+    "strconv"
     "time"
 
     corev1 "k8s.io/api/core/v1"
+    "k8s.io/apimachinery/pkg/api/resource"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/watch"
     "k8s.io/client-go/kubernetes"
@@ -78,9 +80,13 @@ func (c *NamespaceController) Run(ctx context.Context) error {
         case watch.Added:
             c.handleNamespaceCreated(ctx, namespace)
         case watch.Modified:
+            if namespace.DeletionTimestamp != nil {
+                c.handleNamespaceDeleting(ctx, namespace)
+                continue
+            }
             c.handleNamespaceModified(ctx, namespace)
         case watch.Deleted:
-            c.handleNamespaceDeleted(ctx, namespace)
+            fmt.Printf("Namespace deleted: %s\n", namespace.Name)
         }
     }
 
@@ -93,6 +99,10 @@ func (c *NamespaceController) handleNamespaceCreated(ctx context.Context, ns *co
     // Skip system namespaces
     if c.isSystemNamespace(ns.Name) {
         return
+    }
+
+    if err := c.ensureLifecycleFinalizer(ctx, ns); err != nil {
+        fmt.Printf("Failed to add lifecycle finalizer: %v\n", err)
     }
 
     // Apply default configurations
@@ -228,10 +238,13 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["namespaces"]
-  verbs: ["get", "list", "watch", "update"]
+  verbs: ["get", "list", "watch", "update", "patch", "delete"]
 - apiGroups: [""]
   resources: ["resourcequotas", "limitranges", "serviceaccounts"]
   verbs: ["create", "get", "list", "update"]
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
 - apiGroups: ["networking.k8s.io"]
   resources: ["networkpolicies"]
   verbs: ["create", "get", "list"]
@@ -267,6 +280,7 @@ metadata:
     team: backend
   annotations:
     expiration-days: "14"
+    grace-period: "24h"
     notification-email: "backend-team@company.com"
     created-by: "john.doe@company.com"
 ```
@@ -289,7 +303,13 @@ func (c *NamespaceController) checkExpiredNamespaces(ctx context.Context) {
             c.sendExpirationWarning(&ns)
 
             // Delete if past grace period
-            gracePeriod, _ := time.Parse(ns.Annotations["grace-period"])
+            gracePeriod := 24 * time.Hour
+            if val, ok := ns.Annotations["grace-period"]; ok {
+                if parsed, err := time.ParseDuration(val); err == nil {
+                    gracePeriod = parsed
+                }
+            }
+
             if time.Now().After(expirationDate.Add(gracePeriod)) {
                 c.clientset.CoreV1().Namespaces().Delete(
                     ctx,
@@ -307,7 +327,7 @@ func (c *NamespaceController) checkExpiredNamespaces(ctx context.Context) {
 Automate resource cleanup before deletion:
 
 ```go
-func (c *NamespaceController) handleNamespaceDeleted(ctx context.Context, ns *corev1.Namespace) {
+func (c *NamespaceController) handleNamespaceDeleting(ctx context.Context, ns *corev1.Namespace) {
     // Archive important resources
     c.archiveConfigMaps(ctx, ns.Name)
     c.archiveSecrets(ctx, ns.Name)
@@ -320,6 +340,11 @@ func (c *NamespaceController) handleNamespaceDeleted(ctx context.Context, ns *co
 
     // Send notifications
     c.notifyDeletion(ns)
+
+    // Allow Kubernetes to complete namespace deletion
+    if err := c.removeLifecycleFinalizer(ctx, ns); err != nil {
+        fmt.Printf("Failed to remove lifecycle finalizer: %v\n", err)
+    }
 }
 
 func (c *NamespaceController) archiveConfigMaps(ctx context.Context, namespace string) {
