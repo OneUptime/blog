@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway-API, Networking
 
-Description: Learn how to use ReferenceGrant from the Gateway API to enable secure cross-namespace resource references for services, secrets, and other resources while maintaining namespace isolation.
+Description: Learn how to use ReferenceGrant from the Gateway API to enable secure cross-namespace resource references for services and secrets while maintaining namespace isolation.
 
 ---
 
-ReferenceGrant is a Kubernetes Gateway API resource that enables controlled cross-namespace resource references. It allows specific resources in one namespace to reference resources in another while maintaining security boundaries, enabling shared infrastructure without compromising isolation.
+ReferenceGrant is a Kubernetes Gateway API resource that enables controlled cross-namespace references for supported Gateway API object references. It allows specific resources in one namespace to reference resources in another while maintaining security boundaries, enabling shared infrastructure without compromising isolation.
 
 This guide covers implementing cross-namespace resource sharing using ReferenceGrant.
 
@@ -16,19 +16,18 @@ This guide covers implementing cross-namespace resource sharing using ReferenceG
 
 ReferenceGrant solves the problem of strict namespace isolation when you need to:
 
-- Share backend services across ingress controllers in different namespaces
+- Share backend services across routes in different namespaces
 - Reference TLS secrets from a centralized namespace
-- Allow Gateway resources to route to services in application namespaces
-- Share ConfigMaps or other resources between namespaces
+- Allow routes to forward to services in application namespaces
 
-Without ReferenceGrant, cross-namespace references are blocked for security.
+Without ReferenceGrant, these cross-namespace references are blocked for security. Cross-namespace Route-to-Gateway attachment is the main exception; it is controlled by the Gateway listener's `allowedRoutes` configuration instead.
 
 ## Installing Gateway API CRDs
 
 Install Gateway API with ReferenceGrant support:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml
 ```
 
 Verify installation:
@@ -39,7 +38,7 @@ kubectl get crd referencegrants.gateway.networking.k8s.io
 
 ## Basic ReferenceGrant Configuration
 
-Allow a Gateway to reference services in another namespace:
+Allow an HTTPRoute to reference services in another namespace:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1beta1
@@ -135,9 +134,21 @@ spec:
   - name: http
     protocol: HTTP
     port: 80
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            shared-gateway-access: "true"
   - name: https
     protocol: HTTPS
     port: 443
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            shared-gateway-access: "true"
     tls:
       mode: Terminate
       certificateRefs:
@@ -145,21 +156,29 @@ spec:
         name: default-tls
         namespace: certificates
 ---
-# Allow tenant-a to use the gateway
+# Allow the Gateway to use the centralized certificate
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: ReferenceGrant
 metadata:
-  name: allow-tenant-a
-  namespace: gateway-system
+  name: allow-shared-gateway-tls
+  namespace: certificates
 spec:
   from:
   - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    namespace: tenant-a
-  to:
-  - group: gateway.networking.k8s.io
     kind: Gateway
-    name: shared-gateway
+    namespace: gateway-system
+  to:
+  - group: ""
+    kind: Secret
+    name: default-tls
+---
+# Allow tenant-a routes to attach to the gateway
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-a
+  labels:
+    shared-gateway-access: "true"
 ---
 # Tenant-a HTTPRoute
 apiVersion: gateway.networking.k8s.io/v1
@@ -243,7 +262,7 @@ def audit_referencegrants():
         print(f"\nReferenceGrant: {namespace}/{name}")
         print(f"Allows:")
         for from_ref in from_refs:
-            from_ns = from_ref.get('namespace', 'any')
+            from_ns = from_ref['namespace']
             from_kind = from_ref['kind']
             print(f"  From: {from_kind} in {from_ns}")
 
