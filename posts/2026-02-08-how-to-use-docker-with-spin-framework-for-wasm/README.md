@@ -8,7 +8,7 @@ Description: Learn how to build and run WebAssembly applications using the Spin 
 
 ---
 
-WebAssembly (Wasm) is reshaping how we think about portable application runtimes, and Docker has embraced this shift. The Spin framework, built by Fermyon, provides a developer-friendly way to create Wasm-based microservices. Combined with Docker's Wasm runtime support, you get a powerful stack for building lightweight, secure, and fast applications.
+WebAssembly (Wasm) is reshaping how we think about portable application runtimes, and Docker has experimented with this shift. The Spin framework, built by Fermyon, provides a developer-friendly way to create Wasm-based microservices. Combined with Docker Desktop's beta Wasm runtime support, you get a useful stack for building lightweight, secure, and fast applications.
 
 This guide walks you through setting up Docker with the Spin framework, from initial configuration to deploying a working application.
 
@@ -18,7 +18,7 @@ Spin is an open-source framework for building and running event-driven microserv
 
 Key benefits of Spin include:
 
-- Sub-millisecond cold start times
+- Millisecond cold start times
 - Small binary sizes (often under 5 MB)
 - Language flexibility (Rust, Go, JavaScript, Python, and more)
 - Built-in support for HTTP triggers, Redis triggers, and key-value stores
@@ -28,34 +28,35 @@ Key benefits of Spin include:
 
 Before getting started, make sure you have the following installed:
 
-- Docker Desktop 4.15 or later (with Wasm support enabled)
-- Spin CLI (version 2.0 or later)
+- A current Docker Desktop version with Wasm workloads enabled
+- Spin CLI (version 3.x)
 - Rust toolchain (if writing Spin apps in Rust)
+- Rust `wasm32-wasip1` target for Rust Spin components
 
 Install the Spin CLI with this command:
 
 ```bash
 # Install the latest Spin CLI from Fermyon
 
-curl -fsSL https://developer.fermyon.com/downloads/install.sh | bash
+curl -fsSL https://spinframework.dev/downloads/install.sh | bash
 sudo mv spin /usr/local/bin/
+rustup target add wasm32-wasip1
 ```
 
 ## Enabling Docker Wasm Support
 
-Docker Desktop ships with experimental Wasm runtime support through containerd shims. You need to enable it in Docker Desktop settings.
+Docker Desktop ships with beta Wasm runtime support through containerd shims, but Docker documents this feature as deprecated and no longer actively maintained. For local experimentation, enable it in Docker Desktop settings.
 
 ```bash
 # Verify Docker supports the Wasm runtime
 docker info | grep -i wasm
 ```
 
-If the output is empty, open Docker Desktop, navigate to Settings > Features in Development, and enable "Use containerd for pulling and storing images" along with the Wasm integration.
+If the output is empty, open Docker Desktop, navigate to Settings > General, enable "Use containerd for pulling and storing images", then go to Settings > Features in Development and enable Wasm workloads.
 
-You can also configure the Docker daemon directly:
+On Docker Engine, you can also configure the Docker daemon directly by adding this to `/etc/docker/daemon.json`:
 
 ```json
-// Add to /etc/docker/daemon.json or Docker Desktop settings
 {
   "features": {
     "containerd-snapshotter": true
@@ -88,7 +89,7 @@ use spin_sdk::http::{IntoResponse, Request, Response};
 use spin_sdk::http_component;
 
 #[http_component]
-fn handle_request(req: Request) -> anyhow::Result<impl IntoResponse> {
+async fn handle_request(req: Request) -> anyhow::Result<impl IntoResponse> {
     let uri = req.uri().to_string();
     Ok(Response::builder()
         .status(200)
@@ -105,11 +106,11 @@ Build the application targeting Wasm:
 spin build
 ```
 
-This produces a `.wasm` file in the `target/wasm32-wasi/release/` directory.
+This produces a `.wasm` file in the `target/wasm32-wasip1/release/` directory.
 
 ## Packaging Spin Apps as Docker Images
 
-Docker can now run Wasm workloads natively, but you still need a container image to distribute them. Create a Dockerfile for your Spin application:
+Docker Desktop can run Wasm workloads through containerd shims, but you still need a container image to distribute them. Create a Dockerfile for your Spin application:
 
 ```dockerfile
 # Dockerfile - Package a Spin Wasm application for Docker
@@ -117,7 +118,10 @@ FROM scratch
 
 # Copy the Spin manifest and compiled Wasm binary
 COPY spin.toml /spin.toml
-COPY target/wasm32-wasi/release/my_spin_app.wasm /my_spin_app.wasm
+COPY target/wasm32-wasip1/release/my_spin_app.wasm /my_spin_app.wasm
+
+# The Spin shim starts the application from the Spin manifest
+ENTRYPOINT ["/spin.toml"]
 
 # Expose the default Spin HTTP port
 EXPOSE 80
@@ -200,11 +204,11 @@ route = "/..."
 component = "my-spin-app"
 
 [component.my-spin-app]
-source = "target/wasm32-wasi/release/my_spin_app.wasm"
+source = "target/wasm32-wasip1/release/my_spin_app.wasm"
 allowed_outbound_hosts = ["redis://redis:6379", "https://api.example.com"]
 
 [component.my-spin-app.build]
-command = "cargo build --target wasm32-wasi --release"
+command = "cargo build --target wasm32-wasip1 --release"
 ```
 
 ## Performance Comparison
@@ -232,14 +236,14 @@ docker logs spin-demo
 docker logs -f spin-demo
 ```
 
-For deeper inspection, you can export and inspect the Wasm binary:
+For deeper inspection, you can export the Wasm binary or run the application locally with Spin:
 
 ```bash
 # Copy the Wasm binary out of the container for inspection
 docker cp spin-demo:/my_spin_app.wasm ./debug_copy.wasm
 
-# Use wasmtime to test locally outside Docker
-wasmtime run debug_copy.wasm
+# Test the Spin application locally outside Docker from the project directory
+spin up
 ```
 
 ## Multi-Architecture Builds
@@ -259,7 +263,7 @@ docker buildx build \
 
 ## Production Tips
 
-When deploying Spin Wasm containers in production, keep these practices in mind:
+When using Spin Wasm containers in environments with a supported Spin runtime, keep these practices in mind:
 
 1. **Pin your runtime version** - Wasm shim versions change rapidly. Lock the runtime in your deployment manifests.
 2. **Use health checks** - Add HTTP health endpoints to your Spin app and configure Docker health checks.
@@ -275,4 +279,4 @@ docker stats spin-demo --no-stream
 
 Docker's Wasm support combined with the Spin framework opens up a practical path for building fast, portable microservices. The workflow mirrors traditional Docker development closely enough that existing CI/CD pipelines need only minor adjustments. You build, package, and deploy Spin apps just like regular containers, but with dramatically better startup times and smaller footprints.
 
-Start with a simple HTTP handler, get comfortable with the `spin.toml` configuration, and expand from there. The Spin ecosystem is growing quickly, and Docker integration keeps improving with each release.
+Start with a simple HTTP handler, get comfortable with the `spin.toml` configuration, and expand from there. The Spin ecosystem is growing quickly, while Docker Desktop's Wasm workload feature remains useful mainly for local experimentation because Docker has deprecated it.
