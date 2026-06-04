@@ -54,8 +54,6 @@ Homebridge needs host network mode so that Apple devices can discover it via Bon
 
 ```yaml
 # docker-compose.yml - Homebridge for Apple HomeKit
-version: "3.8"
-
 services:
   homebridge:
     image: homebridge/homebridge:latest
@@ -66,9 +64,8 @@ services:
     environment:
       # Set your timezone
       - TZ=America/New_York
-      # Enable the Homebridge UI on port 8581
-      - HOMEBRIDGE_CONFIG_UI=1
-      - HOMEBRIDGE_CONFIG_UI_PORT=8581
+      # Enable Avahi mDNS inside the container
+      - ENABLE_AVAHI=1
     volumes:
       # Persist configuration, plugins, and pairing data
       - ./homebridge:/homebridge
@@ -150,10 +147,8 @@ Here is an example config snippet for TP-Link smart plugs:
             "platform": "TplinkSmarthome",
             "name": "TP-Link Smart Home",
             "addCustomCharacteristics": true,
-            "discoveryOptions": {
-                "broadcast": "192.168.1.255",
-                "discoveryInterval": 10
-            }
+            "broadcast": "192.168.1.255",
+            "pollingInterval": 10
         }
     ]
 }
@@ -163,19 +158,23 @@ And here is an example for RTSP cameras using the FFmpeg plugin:
 
 ```json
 {
-    "platform": "Camera-ffmpeg",
-    "name": "Security Cameras",
-    "cameras": [
+    "platforms": [
         {
-            "name": "Front Door Camera",
-            "videoConfig": {
-                "source": "-rtsp_transport tcp -i rtsp://user:password@192.168.1.50:554/stream1",
-                "maxStreams": 2,
-                "maxWidth": 1920,
-                "maxHeight": 1080,
-                "maxFPS": 30,
-                "vcodec": "libx264"
-            }
+            "platform": "Camera-ffmpeg",
+            "name": "Security Cameras",
+            "cameras": [
+                {
+                    "name": "Front Door Camera",
+                    "videoConfig": {
+                        "source": "-rtsp_transport tcp -i rtsp://user:password@192.168.1.50:554/stream1",
+                        "maxStreams": 2,
+                        "maxWidth": 1920,
+                        "maxHeight": 1080,
+                        "maxFPS": 30,
+                        "vcodec": "libx264"
+                    }
+                }
+            ]
         }
     ]
 }
@@ -183,9 +182,9 @@ And here is an example for RTSP cameras using the FFmpeg plugin:
 
 ## Child Bridge Mode
 
-Homebridge supports running plugins as "child bridges," which means each plugin operates as a separate HomeKit accessory. This improves stability because a crashing plugin does not bring down the entire bridge.
+Homebridge supports running plugins as "child bridges," which means each plugin operates as a separate HomeKit bridge in its own process. This improves stability because a crashing plugin does not bring down the main bridge.
 
-Enable child bridge mode in the plugin settings through the web UI. Each child bridge gets its own pairing code and appears as a separate bridge in the Apple Home app.
+Enable child bridge mode in the plugin settings through the web UI. Each child bridge is paired separately and appears as a separate bridge in the Apple Home app. Unless you set a custom PIN, child bridges use the same pairing code as the main bridge.
 
 ## Managing Accessories in Apple Home
 
