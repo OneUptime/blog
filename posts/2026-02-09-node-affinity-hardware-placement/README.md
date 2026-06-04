@@ -108,7 +108,13 @@ metadata:
   name: ml-training
 spec:
   replicas: 4
+  selector:
+    matchLabels:
+      app: ml-training
   template:
+    metadata:
+      labels:
+        app: ml-training
     spec:
       affinity:
         nodeAffinity:
@@ -175,9 +181,10 @@ spec:
           requests:
             cpu: "16"
             memory: "64Gi"
+      restartPolicy: Never
 ```
 
-This targets Intel Xeon Platinum or Gold processors, generation 4 or newer, ensuring AVX-512 instruction set availability for vectorized computations.
+This targets nodes you have labeled as Intel Xeon Platinum or Gold processors, generation 4 or newer. Use labels that reflect the exact instruction-set support your workload needs, such as AVX-512 availability.
 
 ## Storage Performance Optimization
 
@@ -190,7 +197,14 @@ metadata:
   name: postgres
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: postgres
+  serviceName: postgres
   template:
+    metadata:
+      labels:
+        app: postgres
     spec:
       affinity:
         nodeAffinity:
@@ -235,7 +249,13 @@ metadata:
   name: hft-trading
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: hft-trading
   template:
+    metadata:
+      labels:
+        app: hft-trading
     spec:
       affinity:
         nodeAffinity:
@@ -274,7 +294,13 @@ metadata:
   name: web-frontend-arm
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: web-frontend-arm
   template:
+    metadata:
+      labels:
+        app: web-frontend-arm
     spec:
       affinity:
         nodeAffinity:
@@ -296,7 +322,13 @@ metadata:
   name: legacy-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: legacy-app
   template:
+    metadata:
+      labels:
+        app: legacy-app
     spec:
       affinity:
         nodeAffinity:
@@ -427,9 +459,15 @@ spec:
     spec:
       hostPID: true
       hostNetwork: true
+      serviceAccountName: node-labeler
       containers:
       - name: labeler
         image: node-labeler:v1
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         securityContext:
           privileged: true
         volumeMounts:
@@ -442,23 +480,23 @@ spec:
           path: /sys
 ```
 
-The DaemonSet detects hardware and applies labels:
+Grant the service account RBAC permissions to patch nodes, then the DaemonSet can detect hardware and apply labels:
 
 ```bash
 #!/bin/bash
 # Detect GPU
 if lspci | grep -i nvidia > /dev/null; then
-  kubectl label node $NODE_NAME accelerator-type=nvidia
+  kubectl label node "$NODE_NAME" accelerator-type=nvidia --overwrite
 fi
 
 # Detect NVMe
 if ls /sys/block/ | grep -q nvme; then
-  kubectl label node $NODE_NAME storage-type=nvme
+  kubectl label node "$NODE_NAME" storage-type=nvme --overwrite
 fi
 
-# Detect CPU family
-CPU_MODEL=$(lscpu | grep "Model name" | awk -F: '{print $2}' | xargs)
-kubectl label node $NODE_NAME cpu-model="$CPU_MODEL"
+# Detect CPU vendor
+CPU_VENDOR=$(lscpu | awk -F: '/Vendor ID/ {print tolower($2)}' | xargs)
+kubectl label node "$NODE_NAME" cpu-vendor="$CPU_VENDOR" --overwrite
 ```
 
 ## Monitoring Affinity Impact
@@ -466,13 +504,11 @@ kubectl label node $NODE_NAME cpu-model="$CPU_MODEL"
 Track scheduling decisions based on affinity:
 
 ```promql
-# Pods by required node affinity
-count by (node_affinity_required) (kube_pod_info)
+# Pods currently unschedulable
+sum by (namespace) (kube_pod_status_unschedulable == 1)
 
-# Pending pods with unsatisfied affinity
-kube_pod_status_phase{phase="Pending"} *
-on(pod, namespace) group_left
-kube_pod_spec_node_affinity_required_nodefield_selector{key="instance-type"}
+# Pods with node affinity reported as the status reason
+sum by (namespace, pod) (kube_pod_status_reason{reason="NodeAffinity"} == 1)
 ```
 
 Alert on pods pending due to affinity constraints:
@@ -488,7 +524,7 @@ spec:
     rules:
     - alert: AffinityBlockingPods
       expr: |
-        kube_pod_status_phase{phase="Pending"} > 0
+        kube_pod_status_unschedulable == 1
       for: 15m
       annotations:
         summary: "Pods pending for 15+ minutes, check affinity rules"
@@ -505,7 +541,13 @@ metadata:
   name: batch-processing
 spec:
   replicas: 50
+  selector:
+    matchLabels:
+      app: batch-processing
   template:
+    metadata:
+      labels:
+        app: batch-processing
     spec:
       affinity:
         nodeAffinity:
@@ -537,7 +579,7 @@ spec:
         image: batch-processor:v1-multi-arch
 ```
 
-The scheduler prefers spot instances first, then Graviton3 ARM instances for cost savings, then right-sized instances, but schedules anywhere if these are unavailable.
+The scheduler adds scores for matching preferences, so nodes that match more or higher-weight preferences are favored, but pods can still schedule elsewhere if these preferences are unavailable.
 
 ## Troubleshooting Affinity Issues
 
@@ -548,8 +590,8 @@ kubectl describe pod <pending-pod> | grep -A 10 "Events:"
 ```
 
 Look for:
-- "MatchNodeSelector" failures
-- "MatchNodeAffinity" failures
+- "node(s) didn't match Pod's node affinity/selector"
+- "node(s) had untolerated taint"
 - No nodes matching affinity rules
 
 Verify node labels exist:
