@@ -12,12 +12,12 @@ Kibana dashboards transform raw Elasticsearch log data into actionable insights 
 
 This guide covers building production-ready Kibana dashboards for Kubernetes log analysis and cluster monitoring.
 
-## Creating index patterns
+## Creating data views
 
-Start by defining index patterns for your logs:
+Start by defining a data view (formerly called an index pattern) for your logs:
 
 ```text
-Settings → Stack Management → Index Patterns → Create index pattern
+Stack Management → Data Views → Create data view
 
 Name: kubernetes-*
 Time field: @timestamp
@@ -76,12 +76,12 @@ Columns: @timestamp, kubernetes.pod_name, kubernetes.namespace_name, message
 
 **Failed Pod Starts:**
 ```text
-kubernetes.container_name:* AND log:(*CrashLoopBackOff* OR *ImagePullBackOff* OR *Failed*)
+kubernetes.container_name: * AND log:(CrashLoopBackOff OR ImagePullBackOff OR Failed)
 ```
 
 **Authentication Failures:**
 ```text
-log:(*authentication* OR *unauthorized*) AND level:ERROR
+log:(authentication OR unauthorized) AND level:ERROR
 ```
 
 ## Best practices
