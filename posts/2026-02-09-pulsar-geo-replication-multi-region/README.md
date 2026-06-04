@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Pulsar, Geo-Replication, Multi-Region
 
-Description: Learn how to configure Apache Pulsar geo-replication for multi-region deployments with automatic failover, low-latency local reads, and globally consistent message delivery.
+Description: Learn how to configure Apache Pulsar geo-replication for multi-region deployments with client-side failover, low-latency local reads, and eventual cross-region message delivery.
 
 ---
 
-Apache Pulsar's built-in geo-replication enables seamless message replication across multiple data centers or cloud regions. Unlike traditional active-passive setups, Pulsar supports active-active multi-region deployments where producers and consumers in any region can read and write messages, with automatic replication maintaining consistency.
+Apache Pulsar's built-in geo-replication enables seamless message replication across multiple data centers or cloud regions. Unlike traditional active-passive setups, Pulsar supports active-active multi-region deployments where producers and consumers in any region can read and write messages, with asynchronous replication providing eventual consistency across clusters.
 
 In this guide, you'll learn how to deploy multi-region Pulsar clusters, configure geo-replication policies, implement cross-region failover, and optimize for global message delivery patterns.
 
@@ -20,7 +20,7 @@ Pulsar geo-replication provides:
 - **Asynchronous replication** - Messages replicate in background
 - **Selective replication** - Choose which topics to replicate
 - **Namespace-level policies** - Configure replication per namespace
-- **Built-in conflict resolution** - Automatic handling of concurrent writes
+- **Message deduplication support** - Optional duplicate detection with stable producer names and sequence IDs
 - **Low-latency local access** - Consumers read from local cluster
 
 Ideal for:
@@ -40,8 +40,8 @@ Deploy separate Pulsar clusters in each region:
 clusterName: pulsar-us-east
 namespace: pulsar-us-east
 
-persistence:
-  enabled: true
+volumes:
+  persistence: true
 
 zookeeper:
   replicaCount: 3
@@ -58,8 +58,9 @@ broker:
   replicaCount: 3
   configData:
     clusterName: pulsar-us-east
-    # Allow replication
-    replicationEnabled: true
+    # Required for topic-level replication policies
+    systemTopicEnabled: "true"
+    topicLevelPoliciesEnabled: "true"
 ```
 
 Deploy in each region:
@@ -98,18 +99,18 @@ AP_SOUTH_BROKER=$(kubectl get svc -n pulsar-ap-south pulsar-ap-south-broker -o j
 # In us-east
 pulsar-admin --admin-url http://${US_EAST_BROKER}:8080 \
   clusters create pulsar-us-east \
-  --url pulsar://${US_EAST_BROKER}:6650 \
-  --broker-url http://${US_EAST_BROKER}:8080
+  --url http://${US_EAST_BROKER}:8080 \
+  --broker-url pulsar://${US_EAST_BROKER}:6650
 
 pulsar-admin --admin-url http://${US_EAST_BROKER}:8080 \
   clusters create pulsar-eu-west \
-  --url pulsar://${EU_WEST_BROKER}:6650 \
-  --broker-url http://${EU_WEST_BROKER}:8080
+  --url http://${EU_WEST_BROKER}:8080 \
+  --broker-url pulsar://${EU_WEST_BROKER}:6650
 
 pulsar-admin --admin-url http://${US_EAST_BROKER}:8080 \
   clusters create pulsar-ap-south \
-  --url pulsar://${AP_SOUTH_BROKER}:6650 \
-  --broker-url http://${AP_SOUTH_BROKER}:8080
+  --url http://${AP_SOUTH_BROKER}:8080 \
+  --broker-url pulsar://${AP_SOUTH_BROKER}:6650
 ```
 
 Repeat for each cluster, or use a script:
@@ -125,8 +126,8 @@ for i in "${!CLUSTERS[@]}"; do
 
   for j in "${!CLUSTERS[@]}"; do
     pulsar-admin --admin-url ${ADMIN_URL} clusters create ${CLUSTERS[$j]} \
-      --url pulsar://${BROKERS[$j]}:6650 \
-      --broker-url http://${BROKERS[$j]}:8080
+      --url http://${BROKERS[$j]}:8080 \
+      --broker-url pulsar://${BROKERS[$j]}:6650
   done
 done
 ```
@@ -150,6 +151,8 @@ pulsar-admin --admin-url http://${US_EAST_BROKER}:8080 \
   namespaces set-clusters global-tenant/replicated-ns \
   --clusters pulsar-us-east,pulsar-eu-west,pulsar-ap-south
 ```
+
+When each cluster uses its own configuration store, repeat the tenant and namespace creation commands with matching replication policies on every participating cluster.
 
 Verify replication configuration:
 
@@ -201,7 +204,7 @@ while True:
     consumer.acknowledge(msg)
 ```
 
-This provides low-latency local reads while maintaining global consistency.
+This provides low-latency local reads while maintaining eventual cross-region consistency.
 
 ## Implementing Selective Replication
 
@@ -213,8 +216,8 @@ pulsar-admin namespaces create global-tenant/local-ns
 
 # Set replication for specific topic only
 pulsar-admin topics set-replication-clusters \
-  persistent://global-tenant/local-ns/global-events \
-  --clusters pulsar-us-east,pulsar-eu-west,pulsar-ap-south
+  --clusters pulsar-us-east,pulsar-eu-west,pulsar-ap-south \
+  persistent://global-tenant/local-ns/global-events
 ```
 
 ## Configuring Replication Lag Monitoring
@@ -255,7 +258,7 @@ spec:
 
     - alert: PulsarReplicationDelayed
       expr: |
-        pulsar_replication_delay_seconds > 60
+        pulsar_replication_delay_in_seconds > 60
       for: 5m
       labels:
         severity: warning
@@ -265,26 +268,11 @@ spec:
 
 ## Implementing Failover Strategy
 
-Configure client failover across regions:
+Configure client failover across regions in your application:
 
 ```python
 import pulsar
 
-# Multiple service URLs for failover
-client = pulsar.Client(
-    service_url='pulsar://us-east-broker:6650',
-    service_urls=[
-        'pulsar://us-east-broker:6650',
-        'pulsar://eu-west-broker:6650',
-        'pulsar://ap-south-broker:6650'
-    ],
-    connection_timeout_ms=5000
-)
-```
-
-Application-level failover:
-
-```python
 REGIONS = [
     'pulsar://us-east-broker:6650',
     'pulsar://eu-west-broker:6650',
@@ -309,7 +297,7 @@ Full namespace backup and restore:
 
 ```bash
 # Backup namespace policies
-pulsar-admin namespaces get-replication-clusters global-tenant/replicated-ns > namespace-config.json
+pulsar-admin namespaces get-clusters global-tenant/replicated-ns > namespace-config.json
 
 # In disaster recovery scenario, restore in new region
 pulsar-admin tenants create global-tenant \
@@ -349,7 +337,7 @@ producer.send_async(
 
 ## Handling Replication Conflicts
 
-Pulsar automatically handles conflicts using message ordering. Configure deduplication:
+Pulsar does not provide application-level conflict resolution for concurrent writes across regions. Configure deduplication to avoid processing duplicate messages:
 
 ```bash
 # Enable deduplication
