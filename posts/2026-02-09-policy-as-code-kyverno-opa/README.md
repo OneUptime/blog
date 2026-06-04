@@ -16,7 +16,7 @@ A hybrid approach lets you use Kyverno for straightforward validation and mutati
 
 Kyverno uses YAML-based policy definitions that Kubernetes administrators find familiar. It handles common patterns like requiring labels, enforcing resource limits, and generating ConfigMaps without writing code. Kyverno mutations can inject sidecars, add labels, or modify resources automatically. Its reporting features provide compliance dashboards out of the box.
 
-OPA Gatekeeper uses Rego policy language, which excels at complex logic, data transformations, and external API integration. Gatekeeper's constraint templates allow reusable policy definitions across multiple clusters. Its audit functionality scans existing resources for violations. Gatekeeper works well for compliance frameworks requiring sophisticated control logic.
+OPA Gatekeeper uses Rego policy language, which excels at complex logic, data transformations, and external data integration. Gatekeeper's constraint templates allow reusable policy definitions across multiple clusters. Its audit functionality scans existing resources for violations. Gatekeeper works well for compliance frameworks requiring sophisticated control logic.
 
 Use Kyverno for operational policies like enforcing naming conventions, requiring resource requests, generating default NetworkPolicies, mutating pod security contexts, and validating label schemas. Use OPA for compliance controls like mapping SOC2 requirements, enforcing complex RBAC rules, validating cryptographic configurations, checking against external inventories, and implementing multi-attribute authorization decisions.
 
@@ -31,13 +31,16 @@ helm repo add kyverno https://kyverno.github.io/kyverno/
 helm install kyverno kyverno/kyverno \
   --namespace kyverno \
   --create-namespace \
-  --set replicaCount=3
+  --set admissionController.replicas=3 \
+  --set backgroundController.replicas=2 \
+  --set cleanupController.replicas=2 \
+  --set reportsController.replicas=2
 
 # Wait for Kyverno to be ready
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=kyverno -n kyverno --timeout=180s
 
 # Install OPA Gatekeeper
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/master/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.2/deploy/gatekeeper.yaml
 
 # Wait for Gatekeeper to be ready
 kubectl wait --for=condition=ready pod -l control-plane=controller-manager -n gatekeeper-system --timeout=180s
@@ -51,29 +54,7 @@ Configure coordination between the tools to avoid duplicate validations:
 
 ```yaml
 # kyverno-gatekeeper-coordination.yaml
----
-# Exclude Gatekeeper from Kyverno policy enforcement
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
-metadata:
-  name: exclude-gatekeeper
-spec:
-  validationFailureAction: enforce
-  rules:
-  - name: skip-gatekeeper-resources
-    match:
-      any:
-      - resources:
-          namespaces:
-          - gatekeeper-system
-    exclude:
-      any:
-      - resources:
-          kinds:
-          - "*"
-
----
-# Configure Gatekeeper to ignore Kyverno resources
+# Configure Gatekeeper to ignore Kyverno resources and sync inventory used by Rego
 apiVersion: config.gatekeeper.sh/v1alpha1
 kind: Config
 metadata:
@@ -83,6 +64,14 @@ spec:
   match:
   - excludedNamespaces: ["kyverno", "kyverno-system"]
     processes: ["*"]
+  sync:
+    syncOnly:
+    - group: ""
+      version: "v1"
+      kind: "ServiceAccount"
+    - group: "rbac.authorization.k8s.io"
+      version: "v1"
+      kind: "Role"
 ```
 
 Apply coordination config:
@@ -106,7 +95,6 @@ metadata:
   annotations:
     policies.kyverno.io/category: Operational
 spec:
-  validationFailureAction: enforce
   background: true
   rules:
   - name: validate-resources
@@ -115,7 +103,13 @@ spec:
       - resources:
           kinds:
           - Pod
+    exclude:
+      any:
+      - resources:
+          namespaces:
+          - gatekeeper-system
     validate:
+      failureAction: Enforce
       message: "CPU and memory resource requests and limits are required"
       pattern:
         spec:
@@ -144,8 +138,14 @@ spec:
       - resources:
           kinds:
           - Namespace
+    exclude:
+      any:
+      - resources:
+          names:
+          - gatekeeper-system
     generate:
       kind: NetworkPolicy
+      apiVersion: networking.k8s.io/v1
       name: default-deny
       namespace: "{{request.object.metadata.name}}"
       synchronize: true
@@ -196,7 +196,6 @@ metadata:
   annotations:
     policies.kyverno.io/category: Operational
 spec:
-  validationFailureAction: enforce
   rules:
   - name: check-required-labels
     match:
@@ -205,7 +204,13 @@ spec:
           kinds:
           - Deployment
           - StatefulSet
+    exclude:
+      any:
+      - resources:
+          namespaces:
+          - gatekeeper-system
     validate:
+      failureAction: Enforce
       message: "Required labels missing: app, environment, owner"
       pattern:
         metadata:
@@ -235,7 +240,7 @@ Create OPA Gatekeeper policies for complex compliance requirements:
 # opa-compliance-policies.yaml
 ---
 # Complex SOC2 control implementation
-apiVersion: templates.gatekeeper.sh/v1beta1
+apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: soc2accesscontrol
@@ -246,13 +251,13 @@ spec:
     spec:
       names:
         kind: SOC2AccessControl
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
   - target: admission.k8s.gatekeeper.sh
     rego: |
       package soc2
-
-      import future.keywords.contains
-      import future.keywords.if
 
       # Validate ServiceAccount has proper RBAC bindings
       violation[{"msg": msg}] {
@@ -270,9 +275,10 @@ spec:
       violation[{"msg": msg}] {
         input.review.kind.kind == "RoleBinding"
         role := input.review.object.roleRef.name
+        namespace := input.review.object.metadata.namespace
 
         # Query for Role definition
-        role_data := data.kubernetes.roles[role]
+        role_data := data.inventory.namespace[namespace]["rbac.authorization.k8s.io/v1"]["Role"][role]
 
         # Check for wildcard permissions
         rule := role_data.rules[_]
@@ -281,13 +287,13 @@ spec:
         msg := sprintf("RoleBinding '%v' grants wildcard permissions, violating least privilege", [input.review.object.metadata.name])
       }
 
-      serviceaccount_exists(namespace, sa) if {
-        data.kubernetes.serviceaccounts[namespace][sa]
+      serviceaccount_exists(namespace, sa) {
+        data.inventory.namespace[namespace]["v1"]["ServiceAccount"][sa]
       }
 
 ---
 # PCI-DSS encryption requirement validation
-apiVersion: templates.gatekeeper.sh/v1beta1
+apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: pcidssencryption
@@ -300,6 +306,7 @@ spec:
         kind: PCIDSSEncryption
       validation:
         openAPIV3Schema:
+          type: object
           properties:
             exemptNamespaces:
               type: array
@@ -478,6 +485,46 @@ Deploy as a CronJob:
 
 ```yaml
 # unified-dashboard-cronjob.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: policy-system
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: policy-reporter
+  namespace: policy-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: policy-reporter
+rules:
+- apiGroups: ["wgpolicyk8s.io"]
+  resources: ["policyreports", "clusterpolicyreports"]
+  verbs: ["get", "list"]
+- apiGroups: ["constraints.gatekeeper.sh"]
+  resources: ["*"]
+  verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: policy-reporter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: policy-reporter
+subjects:
+- kind: ServiceAccount
+  name: policy-reporter
+  namespace: policy-system
+
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -538,11 +585,10 @@ metadata:
   name: test-pod
   namespace: default
   labels:
-    # Missing required labels (Kyverno should catch)
     test: coordination
 spec:
-  # Using default ServiceAccount (OPA should catch)
-  serviceAccountName: default
+  # Using a missing ServiceAccount (OPA should catch)
+  serviceAccountName: missing-sa
   containers:
   - name: nginx
     image: nginx:latest
