@@ -85,7 +85,7 @@ spec:
 
 ## Wildcard Host for Dynamic Tenants
 
-Support unlimited tenants with wildcard routing.
+Support many tenants with wildcard routing.
 
 ### Wildcard Host Configuration
 
@@ -110,13 +110,9 @@ spec:
   hostname: "*.tenants.example.com"
   prefix: /
   service: tenant-router-service:80
-  # Extract tenant ID from hostname
-  add_request_headers:
-    x-tenant-host:
-      value: "%REQ(:authority)%"
 ```
 
-Backend service extracts tenant from header:
+Backend service extracts tenant from the host:
 
 ```python
 # tenant-router.py
@@ -127,7 +123,7 @@ app = Flask(__name__)
 
 @app.route('/<path:path>')
 def route_tenant(path):
-    host = request.headers.get('x-tenant-host', '')
+    host = request.host
 
     # Extract tenant ID from subdomain
     match = re.match(r'([^.]+)\.tenants\.example\.com', host)
@@ -208,22 +204,44 @@ metadata:
   namespace: default
 spec:
   service: ratelimit:8081
+  protocol_version: v3
+  domain: tenants
+---
+apiVersion: getambassador.io/v3alpha1
+kind: RateLimit
+metadata:
+  name: tenant-limits
+  namespace: default
+spec:
+  domain: tenants
+  limits:
+  - name: premium-tenant
+    pattern:
+    - tenant: premium
+    rate: 10000
+    unit: hour
+  - name: basic-tenant
+    pattern:
+    - tenant: basic
+    rate: 1000
+    unit: hour
 ---
 apiVersion: getambassador.io/v3alpha1
 kind: Mapping
 metadata:
   name: premium-tenant
   namespace: default
-  labels:
-    ratelimit-domain: premium
 spec:
   hostname: premium.app.example.com
   prefix: /
   service: premium-backend:80
   labels:
-    ratelimit:
-      requests_per_unit: 10000
-      unit: hour
+    tenants:
+    - tenant-limit:
+      - tenant:
+          generic_key:
+            key: tenant
+            value: premium
 ---
 # Basic tenant - standard limits
 apiVersion: getambassador.io/v3alpha1
@@ -231,16 +249,17 @@ kind: Mapping
 metadata:
   name: basic-tenant
   namespace: default
-  labels:
-    ratelimit-domain: basic
 spec:
   hostname: basic.app.example.com
   prefix: /
   service: basic-backend:80
   labels:
-    ratelimit:
-      requests_per_unit: 1000
-      unit: hour
+    tenants:
+    - tenant-limit:
+      - tenant:
+          generic_key:
+            key: tenant
+            value: basic
 ```
 
 ## Path-Based Multi-Tenancy
@@ -301,7 +320,7 @@ spec:
   load_balancer:
     policy: least_request
   circuit_breakers:
-    max_connections: 10000
+  - max_connections: 10000
 ---
 # Standard tenant
 apiVersion: getambassador.io/v3alpha1
@@ -316,7 +335,7 @@ spec:
   load_balancer:
     policy: round_robin
   circuit_breakers:
-    max_connections: 1000
+  - max_connections: 1000
 ```
 
 ### Tenant-Specific Timeouts
@@ -359,7 +378,6 @@ Automate tenant provisioning.
 # provision-tenant.sh
 
 TENANT_ID=$1
-NAMESPACE="tenants"
 
 echo "Provisioning tenant: $TENANT_ID"
 
@@ -416,12 +434,12 @@ echo "Tenant $TENANT_ID provisioned successfully"
 
 ## Monitoring Multi-Tenant Systems
 
-Track tenant-specific metrics.
+Track tenant-specific request logs.
 
-### Tenant Metrics Collection
+### Tenant Log Collection
 
 ```yaml
-# tenant-metrics.yaml
+# tenant-logs.yaml
 apiVersion: getambassador.io/v3alpha1
 kind: Module
 metadata:
@@ -431,24 +449,20 @@ spec:
   config:
     diagnostics:
       enabled: true
-    # Add tenant labels to metrics
+    # Log tenant headers added by tenant mappings
     add_linkerd_headers: false
     lua_scripts: |
-      function envoy_on_response(response_handle)
-        local tenant = response_handle:headers():get("x-tenant-id")
+      function envoy_on_request(request_handle)
+        local tenant = request_handle:headers():get("x-tenant-id")
         if tenant then
-          response_handle:logInfo("tenant=" .. tenant)
+          request_handle:logInfo("tenant=" .. tenant)
         end
       end
 ```
 
-Query tenant metrics:
+Query tenant logs:
 
 ```bash
-# Get requests per tenant
-kubectl exec -n ambassador <ambassador-pod> -- \
-  curl localhost:8877/metrics | grep tenant
-
 # Monitor tenant traffic
 kubectl logs -n ambassador -l product=aes --follow | grep "tenant="
 ```
@@ -464,8 +478,8 @@ curl https://tenant1.app.example.com/api/test
 # Test tenant2
 curl https://tenant2.app.example.com/api/test
 
-# Verify tenant ID headers
-curl -v https://tenant1.app.example.com/ | grep x-tenant-id
+# Verify tenant ID headers in backend logs
+kubectl logs deploy/tenant1-backend | grep x-tenant-id
 
 # Test authentication isolation
 curl -H "Authorization: Bearer tenant1-token" \
@@ -492,4 +506,4 @@ spec:
 
 ## Conclusion
 
-Ambassador's Host and Mapping CRDs provide powerful primitives for building multi-tenant systems in Kubernetes. By combining subdomain routing, tenant-specific authentication, and isolated rate limiting, you can build secure, scalable multi-tenant platforms. Always implement proper tenant isolation, monitor tenant-specific metrics, and automate tenant onboarding for operational efficiency. The declarative nature of Ambassador's CRDs makes multi-tenant configuration manageable and scalable.
+Ambassador's Host and Mapping CRDs provide powerful primitives for building multi-tenant systems in Kubernetes. By combining subdomain routing, tenant-specific authentication, and isolated rate limiting, you can build secure, scalable multi-tenant platforms. Always implement proper tenant isolation, monitor tenant-specific traffic, and automate tenant onboarding for operational efficiency. The declarative nature of Ambassador's CRDs makes multi-tenant configuration manageable and scalable.
