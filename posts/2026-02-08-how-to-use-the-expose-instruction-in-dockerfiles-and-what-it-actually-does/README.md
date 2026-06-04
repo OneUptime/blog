@@ -52,7 +52,7 @@ Here is a complete example in context:
 FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 
 # Document that the Node.js app listens on port 3000
@@ -163,7 +163,7 @@ CMD ["java", "-jar", "app.jar"]
 Many tools read EXPOSE metadata to configure themselves automatically:
 
 - Reverse proxies (like Traefik) can detect exposed ports
-- Orchestration systems use EXPOSE for health check configuration
+- Container platforms and UIs can surface exposed-port metadata
 - Docker Desktop shows exposed ports in its UI
 - `docker inspect` reports exposed ports
 
