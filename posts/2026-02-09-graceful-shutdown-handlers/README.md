@@ -20,11 +20,11 @@ Kubernetes follows a specific sequence when terminating pods. Understanding this
 
 The termination process:
 
-1. Pod is marked for deletion
+1. Pod is marked for deletion and the grace period countdown begins (default 30 seconds)
 2. PreStop hook executes (if configured)
-3. SIGTERM signal sent to main container process
-4. Grace period countdown begins (default 30 seconds)
-5. After grace period expires, SIGKILL sent to remaining processes
+3. TERM signal sent to process 1 in each container
+4. Kubernetes waits for containers to exit within the remaining grace period
+5. After the grace period expires, KILL signal sent to remaining processes
 
 Configure appropriate termination grace periods based on your application needs:
 
@@ -35,7 +35,13 @@ metadata:
   name: worker-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: worker-app
   template:
+    metadata:
+      labels:
+        app: worker-app
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -151,6 +157,15 @@ func NewWorker() *Worker {
     }
 }
 
+func (w *Worker) Submit(job Job) bool {
+    select {
+    case <-w.ctx.Done():
+        return false
+    case w.jobs <- job:
+        return true
+    }
+}
+
 func (w *Worker) Start(numWorkers int) {
     // Start worker goroutines
     for i := 0; i < numWorkers; i++ {
@@ -165,10 +180,7 @@ func (w *Worker) Start(numWorkers int) {
 
     fmt.Println("Shutting down workers...")
 
-    // Stop accepting new jobs
-    close(w.jobs)
-
-    // Cancel context to signal workers
+    // Stop accepting new jobs and signal idle workers to exit
     w.cancel()
 
     // Wait for all workers to finish with timeout
@@ -216,7 +228,9 @@ func main() {
     // Simulate adding jobs
     go func() {
         for i := 0; i < 10; i++ {
-            worker.jobs <- Job{ID: fmt.Sprintf("job-%d", i)}
+            if !worker.Submit(Job{ID: fmt.Sprintf("job-%d", i)}) {
+                return
+            }
             time.Sleep(1 * time.Second)
         }
     }()
@@ -293,12 +307,16 @@ if __name__ == "__main__":
 For web applications using FastAPI:
 
 ```python
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import uvicorn
-import signal
-import sys
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    print("Application shutdown cleanup complete")
+
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/health")
 async def health():
@@ -308,24 +326,16 @@ async def health():
 async def get_data():
     return {"data": "example"}
 
-def shutdown_handler(signum, frame):
-    print(f"Received signal {signum}, shutting down...")
-    sys.exit(0)
-
 if __name__ == "__main__":
-    # Register signal handlers
-    signal.signal(signal.SIGTERM, shutdown_handler)
-    signal.signal(signal.SIGINT, shutdown_handler)
-
     # Run server with graceful shutdown
-    config = uvicorn.Config(app, host="0.0.0.0", port=8080)
+    config = uvicorn.Config(app, host="0.0.0.0", port=8080, timeout_graceful_shutdown=30)
     server = uvicorn.Server(config)
     server.run()
 ```
 
 ## Using PreStop Hooks for Additional Cleanup
 
-PreStop hooks execute before Kubernetes sends SIGTERM, providing additional time for cleanup operations like deregistering from service discovery or draining connections.
+PreStop hooks execute before Kubernetes sends the TERM signal, providing a place for cleanup operations like deregistering from service discovery or draining connections. The hook runs within the pod's termination grace period, so its runtime counts against the total shutdown budget.
 
 ```yaml
 apiVersion: apps/v1
@@ -334,7 +344,13 @@ metadata:
   name: api-service
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: api-service
   template:
+    metadata:
+      labels:
+        app: api-service
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -357,7 +373,7 @@ spec:
         - containerPort: 8080
 ```
 
-The preStop hook delays SIGTERM, giving load balancers time to remove the pod from rotation before the application begins shutdown. This prevents connection errors during rolling updates.
+The preStop hook delays the TERM signal, giving load balancers time to remove the pod from rotation before the application begins shutdown. Because the hook consumes part of `terminationGracePeriodSeconds`, keep the sleeps shorter than the grace period. This prevents connection errors during rolling updates.
 
 For applications requiring complex cleanup:
 
@@ -387,7 +403,13 @@ kind: Deployment
 metadata:
   name: service
 spec:
+  selector:
+    matchLabels:
+      app: service
   template:
+    metadata:
+      labels:
+        app: service
     spec:
       terminationGracePeriodSeconds: 90
       containers:
