@@ -76,6 +76,7 @@ metadata:
 data:
   flags.json: |
     {
+      "$schema": "https://flagd.dev/schema/v0/flags.json",
       "flags": {
         "new-checkout-flow": {
           "state": "ENABLED",
@@ -85,17 +86,15 @@ data:
           },
           "defaultVariant": "off",
           "targeting": {
-            "if": [
+            "fractional": [
               {
-                "in": ["@openfeature.dev/flagd-web:context:targetingKey", "$flagd.flagKey"]
-              },
-              "on",
-              {
-                "<": [
-                  {"var": ["$flagd.random"]},
-                  {"var": ["rolloutPercentage"]}
+                "cat": [
+                  { "var": "$flagd.flagKey" },
+                  { "var": "targetingKey" }
                 ]
-              }
+              },
+              ["on", 0],
+              ["off", 100]
             ]
           }
         }
@@ -142,10 +141,9 @@ Python example:
 
 ```python
 from openfeature import api
-from openfeature.provider.flagd import FlagdProvider
+from openfeature.contrib.provider.flagd import FlagdProvider
 
 # Configure provider
-
 api.set_provider(FlagdProvider(
     host="flagd.feature-flags.svc.cluster.local",
     port=8013
@@ -180,7 +178,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Build and push image
         run: |
@@ -204,13 +202,23 @@ jobs:
           data:
             flags.json: |
               {
+                "$schema": "https://flagd.dev/schema/v0/flags.json",
                 "flags": {
                   "new-checkout-flow": {
                     "state": "ENABLED",
                     "variants": {"on": true, "off": false},
                     "defaultVariant": "off",
                     "targeting": {
-                      "rolloutPercentage": 0
+                      "fractional": [
+                        {
+                          "cat": [
+                            { "var": "$flagd.flagKey" },
+                            { "var": "targetingKey" }
+                          ]
+                        },
+                        ["on", 0],
+                        ["off", 100]
+                      ]
                     }
                   }
                 }
@@ -252,11 +260,14 @@ spec:
               env:
                 - name: PROMETHEUS_URL
                   value: "http://prometheus.monitoring.svc:9090"
-                - name: FLAGD_URL
-                  value: "http://flagd.feature-flags.svc:8013"
+                - name: CONFIGMAP_NAME
+                  value: "feature-flags"
+                - name: CONFIGMAP_NAMESPACE
+                  value: "feature-flags"
               command:
-                - python
-                - /scripts/progressive-rollout.py
+                - sh
+                - -c
+                - pip install requests kubernetes && python /scripts/progressive-rollout.py
               volumeMounts:
                 - name: scripts
                   mountPath: /scripts
@@ -273,27 +284,36 @@ Progressive rollout script:
 # progressive-rollout.py
 import requests
 import os
-import time
 import json
+from kubernetes import client, config
 
 PROMETHEUS_URL = os.getenv('PROMETHEUS_URL')
+CONFIGMAP_NAME = os.getenv('CONFIGMAP_NAME', 'feature-flags')
+CONFIGMAP_NAMESPACE = os.getenv('CONFIGMAP_NAMESPACE', 'feature-flags')
 FLAG_NAME = "new-checkout-flow"
 
+config.load_incluster_config()
+k8s = client.CoreV1Api()
+
 def get_current_rollout():
-    # Get current rollout percentage from ConfigMap
-    # Implementation depends on your setup
-    return current_percentage
+    configmap = k8s.read_namespaced_config_map(
+        CONFIGMAP_NAME,
+        CONFIGMAP_NAMESPACE
+    )
+    flags = json.loads(configmap.data["flags.json"])
+    targeting = flags["flags"][FLAG_NAME]["targeting"]["fractional"]
+    return next(weight for variant, weight in targeting[1:] if variant == "on")
 
 def get_error_rate(variant):
     query = f'''
-        sum(rate(http_requests_total{{
-            feature_flag="{FLAG_NAME}",
+        sum(rate(feature_flag_evaluations_total{{
+            flag_name="{FLAG_NAME}",
             variant="{variant}",
-            status=~"5.."
+            status="error"
         }}[5m]))
         /
-        sum(rate(http_requests_total{{
-            feature_flag="{FLAG_NAME}",
+        sum(rate(feature_flag_evaluations_total{{
+            flag_name="{FLAG_NAME}",
             variant="{variant}"
         }}[5m]))
     '''
@@ -308,9 +328,31 @@ def get_error_rate(variant):
     return 0
 
 def update_rollout_percentage(percentage):
-    # Update ConfigMap with new percentage
-    # Trigger flagd reload
-    pass
+    configmap = k8s.read_namespaced_config_map(
+        CONFIGMAP_NAME,
+        CONFIGMAP_NAMESPACE
+    )
+    flags = json.loads(configmap.data["flags.json"])
+    flag = flags["flags"][FLAG_NAME]
+    flag["state"] = "ENABLED"
+    flag["targeting"] = {
+        "fractional": [
+            {
+                "cat": [
+                    {"var": "$flagd.flagKey"},
+                    {"var": "targetingKey"}
+                ]
+            },
+            ["on", percentage],
+            ["off", 100 - percentage]
+        ]
+    }
+    configmap.data["flags.json"] = json.dumps(flags, indent=2)
+    k8s.patch_namespaced_config_map(
+        CONFIGMAP_NAME,
+        CONFIGMAP_NAMESPACE,
+        configmap
+    )
 
 def main():
     current_rollout = get_current_rollout()
@@ -401,7 +443,7 @@ data:
           {
             "title": "Rollout Percentage",
             "targets": [{
-              "expr": "feature_flag_rollout_percentage{flag='new-checkout-flow'}"
+              "expr": "sum(rate(feature_flag_evaluations_total{flag_name='new-checkout-flow',variant='on'}[5m])) / sum(rate(feature_flag_evaluations_total{flag_name='new-checkout-flow'}[5m])) * 100"
             }]
           },
           {
@@ -431,12 +473,11 @@ kubectl patch configmap feature-flags -n feature-flags --type=json -p='[
   {
     "op": "replace",
     "path": "/data/flags.json",
-    "value": "{\"flags\": {\"new-checkout-flow\": {\"state\": \"DISABLED\"}}}"
+    "value": "{\"$schema\":\"https://flagd.dev/schema/v0/flags.json\",\"flags\":{\"new-checkout-flow\":{\"state\":\"DISABLED\",\"variants\":{\"on\":true,\"off\":false},\"defaultVariant\":\"off\"}}}"
   }
 ]'
 
-# Trigger config reload
-kubectl rollout restart deployment/flagd -n feature-flags
+# flagd reloads the mounted file after Kubernetes projects the ConfigMap update
 ```
 
 Automated kill switch based on metrics:
