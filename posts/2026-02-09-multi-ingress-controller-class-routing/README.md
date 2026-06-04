@@ -30,7 +30,8 @@ helm install nginx-public ingress-nginx/ingress-nginx \
   --create-namespace \
   --set controller.ingressClass=nginx-public \
   --set controller.ingressClassResource.name=nginx-public \
-  --set controller.service.type=LoadBalancer
+  --set controller.service.type=LoadBalancer \
+  --set controller.metrics.enabled=true
 ```
 
 ### Traefik for Internal Traffic
@@ -41,10 +42,14 @@ helm install traefik-internal traefik/traefik \
   --create-namespace \
   --set ingressClass.enabled=true \
   --set ingressClass.name=traefik-internal \
-  --set service.type=ClusterIP
+  --set ingressClass.isDefaultClass=false \
+  --set service.spec.type=ClusterIP \
+  --set metrics.prometheus.service.enabled=true
 ```
 
 ### IngressClass Resources
+
+The Helm commands above create these IngressClass resources:
 
 ```yaml
 # ingressclass.yaml
@@ -118,9 +123,9 @@ spec:
 
 ## Multi-Tenant Architecture
 
-Isolate tenants using different controllers.
+Isolate tenants using different IngressClasses and controller configuration.
 
-### Tenant A with Dedicated Controller
+### Tenant A with Dedicated IngressClass
 
 ```yaml
 # tenant-a-controller.yaml
@@ -130,10 +135,6 @@ metadata:
   name: tenant-a-nginx
 spec:
   controller: k8s.io/ingress-nginx
-  parameters:
-    apiGroup: k8s.io
-    kind: IngressNGINXControllerParameters
-    name: tenant-a-params
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
