@@ -41,7 +41,7 @@ The asterisk marks the active context. Every kubectl command runs against that c
 
 ## Enabling Kubernetes in Docker Desktop
 
-Docker Desktop includes a built-in single-node Kubernetes cluster. Enable it through Settings > Kubernetes > "Enable Kubernetes."
+Docker Desktop includes a built-in Kubernetes cluster for local development. Enable it through Settings > Kubernetes > "Enable Kubernetes."
 
 After enabling, Docker Desktop downloads the Kubernetes components and starts the cluster. This adds a `docker-desktop` context to your kubeconfig automatically.
 
@@ -133,7 +133,7 @@ kubectl --context=staging-eks get pods
 kubectl --context=docker-desktop get services
 kubectl --context=production-eks get deployments
 
-# You can also set the context per-terminal using an environment variable
+# You can also store the context name in a per-terminal variable and pass it explicitly
 export KUBECONFIG_CONTEXT=staging-eks
 kubectl get pods --context=$KUBECONFIG_CONTEXT
 ```
@@ -268,6 +268,19 @@ Add safeguards to prevent running dangerous commands against production.
 # safe-kubectl.sh - Wrapper that warns before production commands
 
 CONTEXT=$(kubectl config current-context 2>/dev/null)
+
+# Respect an explicit --context flag, because it overrides the current context
+ARGS=("$@")
+for ((i = 0; i < ${#ARGS[@]}; i++)); do
+    case "${ARGS[$i]}" in
+        --context=*)
+            CONTEXT="${ARGS[$i]#--context=}"
+            ;;
+        --context)
+            CONTEXT="${ARGS[$((i + 1))]}"
+            ;;
+    esac
+done
 
 # Define dangerous commands
 DANGEROUS_CMDS="delete|scale|drain|cordon|taint|edit|patch|replace"
