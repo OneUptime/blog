@@ -30,7 +30,7 @@ kubectl logs -n production pod-name --previous
 # For specific container in multi-container pod
 kubectl logs pod-name -c container-name --previous
 
-# Follow previous logs (if container still exists)
+# Tail previous logs
 kubectl logs pod-name --previous --tail=100
 ```
 
@@ -43,7 +43,7 @@ Identify pods that have restarted:
 kubectl get pods
 
 # Show pods with restarts > 0
-kubectl get pods --field-selector=status.containerStatuses[*].restartCount!=0
+kubectl get pods -o json | jq -r '.items[] | select(any(.status.containerStatuses[]?; .restartCount > 0)) | .metadata.name'
 
 # Detailed restart information
 kubectl describe pod failing-pod | grep -A 5 "State:\|Last State:"
