@@ -16,7 +16,7 @@ Different authentication methods offer different security and operational tradeo
 
 ProviderConfig has three key components:
 
-**Credentials source**: Where authentication credentials come from (Secret, InjectedIdentity, Environment)
+**Credentials source**: Where authentication credentials come from (Secret, InjectedIdentity, Environment, Filesystem, or provider-specific sources such as OIDCTokenFile)
 **Credential reference**: Which secret or identity to use
 **Provider-specific settings**: Region, project ID, subscription ID, etc.
 
@@ -72,7 +72,7 @@ aws iam create-policy \
 
 # Create IAM role with OIDC provider
 eksctl create iamserviceaccount \
-  --name crossplane-provider-aws \
+  --name provider-aws \
   --namespace crossplane-system \
   --cluster your-eks-cluster \
   --attach-policy-arn arn:aws:iam::ACCOUNT_ID:policy/CrossplanePolicy \
@@ -99,7 +99,7 @@ The provider automatically uses the IAM role attached to its service account.
 Configure Azure provider with service principal credentials:
 
 ```yaml
-apiVersion: azure.crossplane.io/v1beta1
+apiVersion: azure.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: azure-default
@@ -120,7 +120,7 @@ az ad sp create-for-rbac \
   --name crossplane-sp \
   --role Contributor \
   --scopes /subscriptions/SUBSCRIPTION_ID \
-  --sdk-auth > azure-credentials.json
+  --json-auth > azure-credentials.json
 
 # Create secret
 kubectl create secret generic azure-credentials \
@@ -133,16 +133,19 @@ rm azure-credentials.json
 
 ## Azure ProviderConfig with Managed Identity
 
-Use Azure AD Pod Identity or Workload Identity:
+Use Azure managed identity or AKS Workload Identity:
 
 ```yaml
-apiVersion: azure.crossplane.io/v1beta1
+apiVersion: azure.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: azure-managed-identity
 spec:
+  subscriptionID: SUBSCRIPTION_ID
+  tenantID: TENANT_ID
+  clientID: CLIENT_ID
   credentials:
-    source: InjectedIdentity
+    source: OIDCTokenFile
 ```
 
 Configure Azure AD Workload Identity:
@@ -159,10 +162,33 @@ IDENTITY_CLIENT_ID=$(az identity show \
   --resource-group crossplane-rg \
   --query clientId -o tsv)
 
+TENANT_ID=$(az account show --query tenantId -o tsv)
+
+AKS_OIDC_ISSUER=$(az aks show \
+  --resource-group crossplane-rg \
+  --name AKS_CLUSTER_NAME \
+  --query "oidcIssuerProfile.issuerUrl" -o tsv)
+
+# Create the federated credential
+az identity federated-credential create \
+  --name crossplane-provider-azure \
+  --identity-name crossplane-identity \
+  --resource-group crossplane-rg \
+  --issuer $AKS_OIDC_ISSUER \
+  --subject system:serviceaccount:crossplane-system:provider-azure \
+  --audience api://AzureADTokenExchange
+
 # Annotate service account
 kubectl annotate serviceaccount provider-azure \
   -n crossplane-system \
-  azure.workload.identity/client-id=$IDENTITY_CLIENT_ID
+  azure.workload.identity/client-id=$IDENTITY_CLIENT_ID \
+  azure.workload.identity/tenant-id=$TENANT_ID
+
+# Ensure provider pods have the workload identity label
+kubectl patch deployment provider-azure \
+  -n crossplane-system \
+  --type merge \
+  -p '{"spec":{"template":{"metadata":{"labels":{"azure.workload.identity/use":"true"}}}}}'
 
 # Assign roles
 az role assignment create \
@@ -176,7 +202,7 @@ az role assignment create \
 Configure GCP provider with service account:
 
 ```yaml
-apiVersion: gcp.crossplane.io/v1beta1
+apiVersion: gcp.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: gcp-default
@@ -222,20 +248,21 @@ Use GCP Workload Identity for keyless authentication:
 ```bash
 # Enable Workload Identity on cluster
 gcloud container clusters update CLUSTER_NAME \
+  --location=LOCATION \
   --workload-pool=PROJECT_ID.svc.id.goog
 
 # Create Kubernetes service account
-kubectl create serviceaccount crossplane-gcp \
+kubectl create serviceaccount provider-gcp \
   -n crossplane-system
 
 # Bind to GCP service account
 gcloud iam service-accounts add-iam-policy-binding \
   crossplane-sa@PROJECT_ID.iam.gserviceaccount.com \
   --role roles/iam.workloadIdentityUser \
-  --member "serviceAccount:PROJECT_ID.svc.id.goog[crossplane-system/crossplane-gcp]"
+  --member "serviceAccount:PROJECT_ID.svc.id.goog[crossplane-system/provider-gcp]"
 
 # Annotate Kubernetes service account
-kubectl annotate serviceaccount crossplane-gcp \
+kubectl annotate serviceaccount provider-gcp \
   -n crossplane-system \
   iam.gke.io/gcp-service-account=crossplane-sa@PROJECT_ID.iam.gserviceaccount.com
 ```
@@ -243,7 +270,7 @@ kubectl annotate serviceaccount crossplane-gcp \
 Configure ProviderConfig:
 
 ```yaml
-apiVersion: gcp.crossplane.io/v1beta1
+apiVersion: gcp.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: gcp-workload-identity
@@ -408,6 +435,7 @@ Minimize provider permissions:
         "s3:GetBucketPublicAccessBlock",
         "s3:PutBucketPublicAccessBlock",
         "s3:ListBucket",
+        "s3:GetBucketTagging",
         "s3:PutBucketTagging"
       ],
       "Resource": "arn:aws:s3:::crossplane-*"
@@ -415,17 +443,47 @@ Minimize provider permissions:
     {
       "Effect": "Allow",
       "Action": [
-        "rds:CreateDBInstance",
+        "rds:CreateDBInstance"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/ManagedBy": "Crossplane"
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeDBInstances"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
         "rds:DeleteDBInstance",
-        "rds:DescribeDBInstances",
         "rds:ModifyDBInstance",
-        "rds:AddTagsToResource",
         "rds:ListTagsForResource"
       ],
       "Resource": "*",
       "Condition": {
         "StringEquals": {
           "aws:ResourceTag/ManagedBy": "Crossplane"
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "rds:AddTagsToResource"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": [
+            "ManagedBy"
+          ]
         }
       }
     }
@@ -456,7 +514,7 @@ kubectl run aws-cli --rm -it --image amazon/aws-cli \
 kubectl get sa provider-aws -n crossplane-system -o yaml | grep eks.amazonaws.com
 
 # Verify workload identity (GCP)
-kubectl get sa crossplane-gcp -n crossplane-system -o yaml | grep gke.io
+kubectl get sa provider-gcp -n crossplane-system -o yaml | grep gke.io
 ```
 
 ## Conclusion
