@@ -17,12 +17,13 @@ This guide shows you how to deploy Fluent Operator and build declarative log pip
 Fluent Operator manages Fluent Bit through Kubernetes CRDs:
 
 - **FluentBit** - Defines the Fluent Bit DaemonSet configuration
+- **ClusterFluentBitConfig/FluentBitConfig** - Select inputs, filters, parsers, and outputs and generate the final Fluent Bit configuration
 - **ClusterInput** - Defines cluster-wide log inputs
 - **ClusterFilter** - Defines cluster-wide log filters
 - **ClusterOutput** - Defines cluster-wide log outputs
 - **Input/Filter/Output** - Namespace-scoped versions for multi-tenancy
 
-The operator watches these resources and automatically generates Fluent Bit configurations, eliminating manual ConfigMap management.
+The operator watches these resources, selects pipeline components through label selectors, and automatically generates Fluent Bit configurations, eliminating manual ConfigMap management.
 
 ## Installing Fluent Operator
 
@@ -30,19 +31,13 @@ Deploy Fluent Operator using manifests or Helm:
 
 ```bash
 # Using manifests
-
-kubectl apply -f https://raw.githubusercontent.com/fluent/fluent-operator/master/manifests/setup/setup.yaml
-
-# Wait for CRDs to be created
-kubectl wait --for condition=established --timeout=60s crd/fluentbits.fluentbit.fluent.io
-
-# Deploy the operator
-kubectl apply -f https://raw.githubusercontent.com/fluent/fluent-operator/master/manifests/setup/fluent-operator-deployment.yaml
+kubectl create namespace fluent
+kubectl apply -f https://github.com/fluent/fluent-operator/releases/latest/download/setup.yaml
 
 # Using Helm
 helm repo add fluent https://fluent.github.io/helm-charts
 helm repo update
-helm install fluent-operator fluent/fluent-operator -n fluent --create-namespace
+helm install fluent-operator fluent/fluent-operator --create-namespace -n fluent
 ```
 
 Verify installation:
@@ -57,7 +52,7 @@ kubectl get crd | grep fluent
 
 ## Creating a Basic FluentBit Resource
 
-Define the Fluent Bit DaemonSet:
+Define the Fluent Bit DaemonSet and the config selector it references:
 
 ```yaml
 apiVersion: fluentbit.fluent.io/v1alpha2
@@ -68,7 +63,7 @@ metadata:
   labels:
     app.kubernetes.io/name: fluent-bit
 spec:
-  image: fluent/fluent-bit:2.2
+  image: ghcr.io/fluent/fluent-operator/fluent-bit:5.0.6
   positionDB:
     hostPath:
       path: /var/lib/fluent-bit/
@@ -82,6 +77,29 @@ spec:
   fluentBitConfigName: fluent-bit-config
   tolerations:
   - operator: Exists
+---
+apiVersion: fluentbit.fluent.io/v1alpha2
+kind: ClusterFluentBitConfig
+metadata:
+  name: fluent-bit-config
+  labels:
+    app.kubernetes.io/name: fluent-bit
+spec:
+  service:
+    parsersFile: parsers.conf
+    httpServer: true
+  inputSelector:
+    matchLabels:
+      fluentbit.fluent.io/enabled: "true"
+  filterSelector:
+    matchLabels:
+      fluentbit.fluent.io/enabled: "true"
+  outputSelector:
+    matchLabels:
+      fluentbit.fluent.io/enabled: "true"
+  parserSelector:
+    matchLabels:
+      fluentbit.fluent.io/enabled: "true"
 ```
 
 This creates a Fluent Bit DaemonSet managed by the operator.
@@ -261,7 +279,7 @@ spec:
     - kubernetes.pod_name
     - kubernetes.container_name
     lineFormat: json
-    autoKubernetesLabels: false
+    autoKubernetesLabels: "off"
 ```
 
 Send logs to OpenSearch:
@@ -275,11 +293,10 @@ metadata:
     fluentbit.fluent.io/enabled: "true"
 spec:
   match: kube.*
-  es:
+  opensearch:
     host: opensearch.logging.svc.cluster.local
     port: 9200
     index: kubernetes-logs
-    type: _doc
     generateID: true
     bufferSize: 5MB
     tls:
@@ -298,13 +315,13 @@ metadata:
 spec:
   matchRegex: (?:kube|systemd)\..*
   s3:
-    bucket: kubernetes-logs
-    region: us-east-1
-    s3KeyFormat: /logs/$TAG[2]/$TAG[0]/%Y/%m/%d/%H_%M_%S_$UUID.gz
-    totalFileSize: 100M
-    uploadTimeout: 10m
-    compression: gzip
-    storageClass: STANDARD_IA
+    Bucket: kubernetes-logs
+    Region: us-east-1
+    S3KeyFormat: /logs/$TAG[2]/$TAG[0]/%Y/%m/%d/%H_%M_%S_$UUID.gz
+    TotalFileSize: 100M
+    UploadTimeout: 10m
+    Compression: gzip
+    StorageClass: STANDARD_IA
 ```
 
 ## Namespace-Scoped Logging
@@ -321,11 +338,10 @@ metadata:
   labels:
     fluentbit.fluent.io/enabled: "true"
 spec:
-  match: kube.production.*
+  match: kube.*
   loki:
     host: loki-production.logging.svc.cluster.local
     port: 3100
-    tenantID: production
     labels:
     - namespace=$kubernetes['namespace_name']
     - pod=$kubernetes['pod_name']
@@ -339,11 +355,10 @@ metadata:
   labels:
     fluentbit.fluent.io/enabled: "true"
 spec:
-  match: kube.development.*
+  match: kube.*
   loki:
     host: loki-development.logging.svc.cluster.local
     port: 3100
-    tenantID: development
     labels:
     - namespace=$kubernetes['namespace_name']
     - pod=$kubernetes['pod_name']
@@ -390,6 +405,7 @@ kind: Kustomization
 
 resources:
 - fluentbit.yaml
+- fluentbit-config.yaml
 - cluster-input.yaml
 - cluster-filter.yaml
 - cluster-output-loki.yaml
@@ -398,15 +414,16 @@ resources:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
-patchesStrategicMerge:
-- cluster-filter-patch.yaml
+patches:
+- path: cluster-filter-patch.yaml
 
 # Add production-specific labels
-commonLabels:
-  environment: production
+labels:
+- pairs:
+    environment: production
 
 # overlays/production/cluster-filter-patch.yaml
 apiVersion: fluentbit.fluent.io/v1alpha2
@@ -442,7 +459,7 @@ spec:
   endpoints:
   - port: metrics
     interval: 30s
-    path: /api/v1/metrics/prometheus
+    path: /api/v2/metrics/prometheus
 ```
 
 Key metrics:
@@ -458,7 +475,7 @@ rate(fluentbit_output_proc_records_total[5m])
 rate(fluentbit_output_errors_total[5m])
 
 # Buffer usage
-fluentbit_input_bytes / fluentbit_input_mem_buf_limit
+fluentbit_input_storage_chunks_busy_bytes
 ```
 
 ## GitOps Integration
