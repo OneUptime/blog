@@ -23,9 +23,9 @@ In a Docker environment, the failure modes you care about include container cras
 First, create a microservices application that we can run chaos experiments against. This simple stack has a web frontend, an API backend, and a Redis cache.
 
 ```yaml
-# docker-compose.yml - Target application for chaos experiments
+# compose.yml - Target application for chaos experiments
 
-version: "3.8"
+name: myapp
 
 services:
   frontend:
@@ -36,14 +36,12 @@ services:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - api
-    deploy:
-      replicas: 2
     restart: unless-stopped
 
   api:
     build: ./api
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       - REDIS_URL=redis://redis:6379
     depends_on:
@@ -52,7 +50,7 @@ services:
       replicas: 3
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:3000/health')\""]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -73,6 +71,7 @@ services:
 # api/app.py - Simple API with Redis dependency
 from flask import Flask, jsonify
 import redis
+from redis.exceptions import ConnectionError, TimeoutError
 import os
 import socket
 import time
@@ -95,7 +94,7 @@ def get_data():
         cached = redis_client.get("data")
         if cached:
             return jsonify({"source": "cache", "data": cached.decode()})
-    except redis.ConnectionError:
+    except (ConnectionError, TimeoutError):
         # Gracefully degrade if Redis is unavailable
         pass
 
@@ -107,7 +106,7 @@ def counter():
     try:
         count = redis_client.incr("request_counter")
         return jsonify({"count": count})
-    except redis.ConnectionError:
+    except (ConnectionError, TimeoutError):
         return jsonify({"error": "Cache unavailable", "count": -1}), 503
 
 if __name__ == "__main__":
@@ -203,7 +202,7 @@ docker update --cpus 0.1 myapp-api-1
 
 # Monitor the effect on response times
 for i in $(seq 1 20); do
-    time curl -s http://localhost:3000/api/data > /dev/null
+    time curl -s http://localhost/api/data > /dev/null
 done
 
 # Restore normal CPU allocation
@@ -229,7 +228,7 @@ import time
 import sys
 from datetime import datetime
 
-API_URL = "http://localhost:3000"
+API_URL = "http://localhost"
 CHECK_INTERVAL = 2  # seconds
 
 def check_health():
@@ -303,7 +302,7 @@ log() {
 }
 
 check_app() {
-    local status=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/health)
+    local status=$(curl -s -o /dev/null -w '%{http_code}' http://localhost/health)
     echo "$status"
 }
 
@@ -311,7 +310,7 @@ log "Starting chaos experiment suite"
 
 # Experiment 1: Kill one API container
 log "=== Experiment 1: Single container failure ==="
-CONTAINER=$(docker ps --filter "name=api" --format '{{.ID}}' | head -1)
+CONTAINER=$(docker ps --filter "name=myapp-api" --format '{{.ID}}' | head -1)
 docker kill "$CONTAINER"
 sleep 5
 STATUS=$(check_app)
@@ -320,7 +319,7 @@ sleep 10
 
 # Experiment 2: Kill Redis
 log "=== Experiment 2: Cache failure ==="
-docker kill $(docker ps --filter "name=redis" --format '{{.ID}}')
+docker kill $(docker ps --filter "name=myapp-redis" --format '{{.ID}}')
 sleep 5
 STATUS=$(check_app)
 log "App status after killing Redis: HTTP $STATUS"
@@ -346,7 +345,7 @@ Before running any chaos experiment, define what "normal" looks like. Measure ba
 ```bash
 # Capture baseline metrics with a quick load test
 for i in $(seq 1 100); do
-    curl -s -o /dev/null -w "%{http_code} %{time_total}\n" http://localhost:3000/api/data
+    curl -s -o /dev/null -w "%{http_code} %{time_total}\n" http://localhost/api/data
 done | sort | uniq -c
 ```
 
