@@ -21,7 +21,7 @@ Run a single Redpanda node:
 
 docker run -d \
   --name redpanda \
-  -p 9092:9092 \
+  -p 9092:19092 \
   -p 8081:8081 \
   -p 8082:8082 \
   -p 9644:9644 \
@@ -53,7 +53,8 @@ services:
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:latest
     command:
-      - redpanda start
+      - redpanda
+      - start
       - --smp 1
       - --memory 512M
       - --overprovisioned
@@ -64,6 +65,8 @@ services:
       - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
       - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
       - --advertise-schema-registry-addr internal://redpanda:8081,external://localhost:18081
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
     ports:
       # Kafka API
       - "19092:19092"
@@ -86,6 +89,8 @@ services:
   # Redpanda Console - Web UI for topic management
   console:
     image: docker.redpanda.com/redpandadata/console:latest
+    entrypoint: /bin/sh
+    command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
     ports:
       - "8080:8080"
     environment:
@@ -93,9 +98,9 @@ services:
       CONSOLE_CONFIG_FILE: |
         kafka:
           brokers: ["redpanda:9092"]
-          schemaRegistry:
-            enabled: true
-            urls: ["http://redpanda:8081"]
+        schemaRegistry:
+          enabled: true
+          urls: ["http://redpanda:8081"]
         redpanda:
           adminApi:
             enabled: true
@@ -123,29 +128,29 @@ Redpanda ships with `rpk`, a powerful CLI tool for managing topics and producing
 
 ```bash
 # Create a topic with 3 partitions and replication factor of 1
-docker exec redpanda rpk topic create orders -p 3 -r 1
+docker compose exec redpanda rpk topic create orders -p 3 -r 1
 
 # Create a compacted topic for maintaining latest state per key
-docker exec redpanda rpk topic create user-profiles -p 3 -r 1 \
+docker compose exec redpanda rpk topic create user-profiles -p 3 -r 1 \
   -c cleanup.policy=compact
 
 # List all topics
-docker exec redpanda rpk topic list
+docker compose exec redpanda rpk topic list
 
 # Get detailed topic information
-docker exec redpanda rpk topic describe orders
+docker compose exec redpanda rpk topic describe orders
 
 # Produce messages interactively
-docker exec -it redpanda rpk topic produce orders
+docker compose exec redpanda rpk topic produce orders
 
 # Produce a message with a key
-echo "key1:value1" | docker exec -i redpanda rpk topic produce orders -f '%k:%v\n'
+echo "key1:value1" | docker compose exec -T redpanda rpk topic produce orders -f '%k:%v\n'
 
 # Consume messages from the beginning
-docker exec redpanda rpk topic consume orders --offset start
+docker compose exec redpanda rpk topic consume orders --offset start
 
 # Consume only new messages
-docker exec redpanda rpk topic consume orders --offset end
+docker compose exec redpanda rpk topic consume orders --offset end
 ```
 
 ## Using with Kafka Client Libraries
@@ -273,7 +278,8 @@ services:
   redpanda-0:
     image: docker.redpanda.com/redpandadata/redpanda:latest
     command:
-      - redpanda start
+      - redpanda
+      - start
       - --smp 1
       - --memory 256M
       - --overprovisioned
@@ -281,6 +287,8 @@ services:
       - --seeds redpanda-0:33145
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
       - --advertise-kafka-addr internal://redpanda-0:9092,external://localhost:19092
+      - --rpc-addr redpanda-0:33145
+      - --advertise-rpc-addr redpanda-0:33145
     ports:
       - "19092:19092"
       - "9644:9644"
@@ -290,7 +298,8 @@ services:
   redpanda-1:
     image: docker.redpanda.com/redpandadata/redpanda:latest
     command:
-      - redpanda start
+      - redpanda
+      - start
       - --smp 1
       - --memory 256M
       - --overprovisioned
@@ -298,6 +307,8 @@ services:
       - --seeds redpanda-0:33145
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:29092
       - --advertise-kafka-addr internal://redpanda-1:9092,external://localhost:29092
+      - --rpc-addr redpanda-1:33145
+      - --advertise-rpc-addr redpanda-1:33145
     ports:
       - "29092:29092"
     volumes:
@@ -306,7 +317,8 @@ services:
   redpanda-2:
     image: docker.redpanda.com/redpandadata/redpanda:latest
     command:
-      - redpanda start
+      - redpanda
+      - start
       - --smp 1
       - --memory 256M
       - --overprovisioned
@@ -314,6 +326,8 @@ services:
       - --seeds redpanda-0:33145
       - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:39092
       - --advertise-kafka-addr internal://redpanda-2:9092,external://localhost:39092
+      - --rpc-addr redpanda-2:33145
+      - --advertise-rpc-addr redpanda-2:33145
     ports:
       - "39092:39092"
     volumes:
