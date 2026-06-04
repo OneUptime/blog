@@ -61,7 +61,7 @@ head -c 32 /dev/urandom | base64
 
 Example output:
 ```text
-XJ7f3kR2+9aH5mL1pN8qT0vW3yZ6xC4bA9dE1fG2hI=
+CYh6lD+ljrFtoogh3TQ7aDqYcKvioYXJ8FBpHpj4CN0=
 ```
 
 Use this in your configuration:
@@ -76,7 +76,7 @@ resources:
       - aescbc:
           keys:
             - name: key1
-              secret: XJ7f3kR2+9aH5mL1pN8qT0vW3yZ6xC4bA9dE1fG2hI=
+              secret: CYh6lD+ljrFtoogh3TQ7aDqYcKvioYXJ8FBpHpj4CN0=
       - identity: {}  # Allow reading old unencrypted secrets
 ```
 
@@ -181,7 +181,7 @@ ETCDCTL_API=3 etcdctl \
 
 Kubernetes supports multiple encryption providers:
 
-**AES-CBC (recommended for most use cases):**
+**AES-CBC (fast, but not recommended when stronger options such as KMS are available):**
 
 ```yaml
 providers:
@@ -191,7 +191,7 @@ providers:
           secret: <32-byte-base64-key>
 ```
 
-**AES-GCM (faster but requires careful key management):**
+**AES-GCM (fastest, but not recommended unless you have automated key rotation):**
 
 ```yaml
 providers:
@@ -225,7 +225,7 @@ resources:
       - aescbc:
           keys:
             - name: secret-key1
-              secret: XJ7f3kR2+9aH5mL1pN8qT0vW3yZ6xC4bA9dE1fG2hI=
+              secret: CYh6lD+ljrFtoogh3TQ7aDqYcKvioYXJ8FBpHpj4CN0=
       - identity: {}
 
   - resources:
@@ -234,7 +234,7 @@ resources:
       - aescbc:
           keys:
             - name: configmap-key1
-              secret: Y8KgTN2p9X5qR3wL6mH1fC4bA9dE1fG2hI7j3kZ0vW=
+              secret: LfNNDVKKZ17z5RmuPUVd86yBHfcCorC94RA7YoHOQ20=
       - identity: {}
 
   - resources:
@@ -243,7 +243,7 @@ resources:
       - aescbc:
           keys:
             - name: pv-key1
-              secret: Z9LhUN3q0Y6rS4xM7nI2gD5cB0eF2gH3iJ8k4lA1wX=
+              secret: 6BdbXzGdf2llXJrfDHm9DojaFsY0JxfY5QXih04dvtc=
       - identity: {}
 ```
 
@@ -260,27 +260,33 @@ resources:
     providers:
       - aescbc:
           keys:
-            - name: key2  # New key for encryption
-              secret: <new-32-byte-base64-key>
             - name: key1  # Old key for decryption
               secret: <old-32-byte-base64-key>
+            - name: key2  # New key, added for decryption before promotion
+              secret: <new-32-byte-base64-key>
       - identity: {}
 ```
 
 Key rotation process:
 
-1. Add new key as first in the list
-2. Restart API servers
-3. Rewrite all secrets to encrypt with new key
-4. Remove old key from configuration
-5. Restart API servers again
+1. Add the new key after the current key on all control plane nodes
+2. Restart API servers so every server can decrypt data encrypted with either key
+3. Move the new key to the first position in the list
+4. Restart API servers again so new writes use the new key
+5. Rewrite all secrets to encrypt with new key
+6. Remove old key from configuration after verifying the rewrite
+7. Restart API servers again
 
 ```bash
-# Step 3: Rewrite all secrets
+# Step 5: Rewrite all secrets
 kubectl get secrets --all-namespaces -o json | kubectl replace -f -
 
-# Verify new key is used
-ETCDCTL_API=3 etcdctl get /registry/secrets/default/test-secret
+# Verify new key is used, using the same etcdctl certificate options shown earlier
+ETCDCTL_API=3 etcdctl \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key \
+  get /registry/secrets/default/test-secret
 # Should show k8s:enc:aescbc:v1:key2:
 ```
 
@@ -371,7 +377,7 @@ sudo journalctl -u kubelet -f | grep apiserver
 
 Common issues:
 - Invalid base64 in key
-- File permissions too permissive
+- File permissions prevent the API server from reading the configuration
 - File path incorrect
 
 **Problem**: Cannot read existing secrets
@@ -391,4 +397,4 @@ providers:
 
 Encrypting Kubernetes secrets at rest is essential for protecting sensitive data from unauthorized access to etcd. By configuring EncryptionConfiguration with strong encryption providers and implementing regular key rotation, you ensure that secrets remain secure even if the underlying storage is compromised.
 
-Start with AES-CBC encryption for secrets, gradually extend to other sensitive resources, implement a key rotation schedule, and maintain secure backups of encryption configurations. Monitor encryption status with OneUptime to ensure all secrets remain properly protected over time.
+Start with encryption for secrets, prefer KMS when you have a managed key provider available, gradually extend to other sensitive resources, implement a key rotation schedule, and maintain secure backups of encryption configurations. Monitor encryption status with OneUptime to ensure all secrets remain properly protected over time.
