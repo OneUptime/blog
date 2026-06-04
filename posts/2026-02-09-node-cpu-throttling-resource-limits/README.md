@@ -27,7 +27,7 @@ The confusing part is that when you check CPU usage metrics, the container appea
 Container runtime metrics expose throttling statistics. These metrics tell you how often and for how long containers were throttled.
 
 ```bash
-# Check throttling metrics for a pod using kubectl top
+# Check current CPU usage for a pod
 
 kubectl top pod my-app-pod -n production --containers
 
@@ -35,11 +35,11 @@ kubectl top pod my-app-pod -n production --containers
 kubectl get --raw "/api/v1/nodes/worker-node-1/proxy/metrics/cadvisor" | \
   grep container_cpu_cfs_throttled_periods_total
 
-# Check cgroup throttling stats directly
-kubectl exec my-app-pod -n production -- cat /sys/fs/cgroup/cpu/cpu.stat
+# Check cgroup throttling stats directly (cgroup v2, with cgroup v1 fallback)
+kubectl exec my-app-pod -n production -- sh -c 'cat /sys/fs/cgroup/cpu.stat 2>/dev/null || cat /sys/fs/cgroup/cpu/cpu.stat'
 ```
 
-Look for `nr_throttled` and `throttled_time` values. If these numbers are high, your container is being throttled frequently.
+Look for `nr_throttled` and either `throttled_usec` on cgroup v2 or `throttled_time` on cgroup v1. If these numbers are high, your container is being throttled frequently.
 
 ## Prometheus Metrics for Throttling
 
@@ -68,7 +68,7 @@ data:
         labels:
           severity: warning
         annotations:
-          summary: "Container {{ $labels.container }} throttled 25% of time"
+          summary: "Container {{ $labels.container }} throttled in 25% of CPU periods"
           description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} experiencing significant CPU throttling"
 
       - alert: ExtremeCPUThrottling
@@ -77,7 +77,7 @@ data:
         labels:
           severity: critical
         annotations:
-          summary: "Container {{ $labels.container }} throttled 75% of time"
+          summary: "Container {{ $labels.container }} throttled in 75% of CPU periods"
           description: "Pod {{ $labels.pod }} experiencing extreme CPU throttling - increase limits immediately"
 ```
 
@@ -195,11 +195,11 @@ resources:
     # No CPU limit = Burstable
 ```
 
-Burstable pods with no CPU limit get throttled less aggressively while still receiving their requested CPU allocation.
+Burstable pods with no CPU limit avoid CPU limit throttling while still receiving their requested CPU allocation.
 
 ## Node-Level CPU Pressure
 
-Sometimes throttling occurs at the node level due to overcommitment. If many pods try to burst simultaneously, they compete for CPU and all get throttled.
+Sometimes CPU contention occurs at the node level due to overcommitment. If many pods try to burst simultaneously, they compete for CPU and may all slow down.
 
 ```bash
 # Check node CPU usage
@@ -211,13 +211,13 @@ kubectl describe node worker-node-1 | grep -A 5 "Allocated resources"
 # View pods on a specific node
 kubectl get pods -A -o wide --field-selector spec.nodeName=worker-node-1
 
-# Calculate total CPU requests on node
-kubectl get pods -A -o wide --field-selector spec.nodeName=worker-node-1 -o json | \
-  jq '.items[].spec.containers[].resources.requests.cpu' | \
-  sed 's/"//g' | awk '{sum+=$1} END {print sum}'
+# Calculate total app container CPU requests on node, in millicores
+kubectl get pods -A --field-selector spec.nodeName=worker-node-1 -o json | \
+  jq '[.items[].spec.containers[].resources.requests.cpu // "0" |
+       if test("m$") then sub("m$"; "") | tonumber else tonumber * 1000 end] | add'
 ```
 
-If CPU requests exceed node capacity, the scheduler won't place new pods. If actual usage exceeds capacity, all pods compete and may experience throttling.
+If CPU requests exceed node allocatable CPU, the scheduler won't place new pods. If actual usage exceeds capacity, all pods compete and may experience latency even without CPU limit throttling.
 
 ## Setting Appropriate Limits
 
@@ -255,7 +255,7 @@ A 4x ratio between limit and request provides headroom for bursts while preventi
 
 ## CPU Manager Policy
 
-Kubernetes nodes can use the CPU manager to allocate exclusive CPU cores to Guaranteed pods. This prevents throttling by dedicating cores.
+Kubernetes nodes can use the CPU manager to allocate exclusive CPU cores to Guaranteed pods. This reduces CPU contention by dedicating cores.
 
 ```yaml
 apiVersion: apps/v1
@@ -285,7 +285,7 @@ spec:
             cpu: "2000m"  # Guaranteed QoS
 ```
 
-Enable CPU manager policy on nodes by setting `--cpu-manager-policy=static` on the kubelet. Pods with whole-number CPU requests and limits get exclusive cores.
+Enable CPU manager policy on nodes by setting `--cpu-manager-policy=static` on the kubelet. Containers in Guaranteed pods with whole-number CPU requests get exclusive cores.
 
 ## Analyzing Throttling Impact
 
@@ -298,8 +298,9 @@ kubectl get --raw "/api/v1/nodes/worker-node-1/proxy/metrics/cadvisor" | \
   grep "pod=\"my-app-pod\"" | \
   grep "container=\"api\""
 
-# Calculate throttle percentage
-# throttled_seconds / total_seconds * 100
+# Calculate throttle percentage by CPU periods
+# rate(container_cpu_cfs_throttled_periods_total[5m])
+# / rate(container_cpu_cfs_periods_total[5m]) * 100
 ```
 
 Create a Grafana dashboard showing throttling percentage alongside latency metrics. Strong correlation confirms throttling as the root cause.
