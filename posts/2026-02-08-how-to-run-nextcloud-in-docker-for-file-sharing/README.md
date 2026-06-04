@@ -45,7 +45,7 @@ Create a dedicated directory for the Nextcloud stack:
 ```bash
 # Create project directory with subdirectories for persistent data
 
-mkdir -p ~/nextcloud/{db,data,config}
+mkdir -p ~/nextcloud/{db,data,config,custom_apps}
 cd ~/nextcloud
 ```
 
@@ -55,7 +55,6 @@ This Compose file defines all three services with proper networking and volume m
 
 ```yaml
 # docker-compose.yml - Full Nextcloud stack with MariaDB and Redis
-version: "3.8"
 
 services:
   db:
@@ -65,10 +64,10 @@ services:
     command: --transaction-isolation=READ-COMMITTED --log-bin=binlog --binlog-format=ROW
     environment:
       # Database credentials - change these for production
-      MYSQL_ROOT_PASSWORD: rootpassword_change_me
-      MYSQL_DATABASE: nextcloud
-      MYSQL_USER: nextcloud
-      MYSQL_PASSWORD: dbpassword_change_me
+      MARIADB_ROOT_PASSWORD: rootpassword_change_me
+      MARIADB_DATABASE: nextcloud
+      MARIADB_USER: nextcloud
+      MARIADB_PASSWORD: dbpassword_change_me
     volumes:
       # Persist database files across restarts
       - ./db:/var/lib/mysql
@@ -110,6 +109,8 @@ services:
       - ./data:/var/www/html/data
       # Configuration files
       - ./config:/var/www/html/config
+      # Installed apps
+      - ./custom_apps:/var/www/html/custom_apps
     depends_on:
       - db
       - redis
@@ -146,7 +147,7 @@ Open your browser and navigate to `http://<your-server-ip>:8080`. You should see
 If you access Nextcloud from multiple addresses (local IP, domain name, localhost), you need to add each one as a trusted domain. Edit the config file directly:
 
 ```bash
-# Add additional trusted domains by editing config.php
+# View config.php before editing trusted domains
 docker exec -it nextcloud-app bash -c "cat /var/www/html/config/config.php"
 ```
 
@@ -177,7 +178,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name cloud.your-domain.com;
 
     ssl_certificate /etc/letsencrypt/live/cloud.your-domain.com/fullchain.pem;
@@ -186,9 +188,18 @@ server {
     # Increase upload size limit to support large files
     client_max_body_size 10G;
 
+    location = /.well-known/carddav {
+        return 301 $scheme://$host/remote.php/dav;
+    }
+
+    location = /.well-known/caldav {
+        return 301 $scheme://$host/remote.php/dav;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -202,7 +213,7 @@ After setting up the reverse proxy, tell Nextcloud it is behind one by adding th
 // Tell Nextcloud to trust the reverse proxy
 'overwriteprotocol' => 'https',
 'overwrite.cli.url' => 'https://cloud.your-domain.com',
-'trusted_proxies' => ['127.0.0.1'],
+'trusted_proxies' => ['172.16.0.0/12'],
 ```
 
 ## Installing Apps
@@ -223,7 +234,7 @@ Nextcloud needs background tasks to run regularly for maintenance, file scanning
 
 ```bash
 # Add a cron job on the host to trigger Nextcloud background tasks every 5 minutes
-(crontab -l 2>/dev/null; echo "*/5 * * * * docker exec -u www-data nextcloud-app php cron.php") | crontab -
+(crontab -l 2>/dev/null; echo "*/5 * * * * docker exec -u www-data nextcloud-app php -f /var/www/html/cron.php") | crontab -
 ```
 
 Then set Nextcloud to use cron for background jobs in Settings > Administration > Basic settings.
@@ -246,15 +257,19 @@ Enable APCu memory caching and configure Redis file locking in `config.php`:
 
 ## Backup Strategy
 
-Regular backups are essential. Back up three things: the database, the data directory, and the config directory.
+Regular backups are essential. Back up the database, the data directory, the config directory, and installed apps.
 
 ```bash
-# Back up the MariaDB database to a SQL file
-docker exec nextcloud-db mysqldump -u root -prootpassword_change_me nextcloud > ~/nextcloud-backup/db_$(date +%Y%m%d).sql
+# Create backup directories
+mkdir -p ~/nextcloud-backup/{data,config,custom_apps}
 
-# Back up data and config directories
+# Back up the MariaDB database to a SQL file
+docker exec nextcloud-db mariadb-dump -u root -prootpassword_change_me nextcloud > ~/nextcloud-backup/db_$(date +%Y%m%d).sql
+
+# Back up data, config, and installed apps directories
 rsync -a ~/nextcloud/data/ ~/nextcloud-backup/data/
 rsync -a ~/nextcloud/config/ ~/nextcloud-backup/config/
+rsync -a ~/nextcloud/custom_apps/ ~/nextcloud-backup/custom_apps/
 ```
 
 ## Updating Nextcloud
