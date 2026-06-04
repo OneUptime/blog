@@ -16,7 +16,7 @@ Before starting, make sure you have:
 
 - Docker and Docker Compose installed
 - At least 8 GB of RAM (16 GB recommended)
-- A NVIDIA GPU with CUDA drivers installed (optional but strongly recommended for performance)
+- An NVIDIA GPU with the NVIDIA driver installed (optional but strongly recommended for performance)
 - At least 20 GB of free disk space for model storage
 
 ```bash
@@ -27,7 +27,7 @@ docker info
 # Check available disk space
 df -h /var/lib/docker
 
-# If you have an NVIDIA GPU, verify the drivers and nvidia-container-toolkit
+# If you have an NVIDIA GPU, verify the driver
 nvidia-smi
 ```
 
@@ -56,8 +56,6 @@ For a more robust deployment, use Docker Compose to run Open WebUI and Ollama as
 ```yaml
 # docker-compose.yml
 # Production-ready Open WebUI setup with separate Ollama service
-version: "3.8"
-
 services:
   ollama:
     image: ollama/ollama:latest
@@ -213,8 +211,6 @@ For production, put Open WebUI behind a reverse proxy with TLS.
 
 ```yaml
 # docker-compose.yml with Caddy reverse proxy for automatic HTTPS
-version: "3.8"
-
 services:
   caddy:
     image: caddy:2
@@ -267,19 +263,19 @@ Protect your chat history and settings by backing up the volumes.
 # Backup Open WebUI data (chat history, users, settings)
 docker run --rm \
   -v open_webui_data:/data \
-  -v $(pwd):/backup \
+  -v "$PWD":/backup \
   alpine tar czf /backup/open-webui-backup.tar.gz -C /data .
 
 # Backup Ollama models
 docker run --rm \
   -v ollama_data:/data \
-  -v $(pwd):/backup \
+  -v "$PWD":/backup \
   alpine tar czf /backup/ollama-models-backup.tar.gz -C /data .
 
 # Restore Open WebUI data
 docker run --rm \
   -v open_webui_data:/data \
-  -v $(pwd):/backup \
+  -v "$PWD":/backup \
   alpine sh -c "cd /data && tar xzf /backup/open-webui-backup.tar.gz"
 ```
 
