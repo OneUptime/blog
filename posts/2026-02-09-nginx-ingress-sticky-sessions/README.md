@@ -19,9 +19,8 @@ Session affinity solves the problem of state management in distributed systems. 
 - Authentication might fail intermittently
 - User experience becomes inconsistent
 
-NGINX Ingress Controller supports two types of session affinity:
+NGINX Ingress Controller supports cookie-based session affinity:
 - **Cookie-based affinity**: Uses a cookie to track which pod served the client
-- **IP-based affinity**: Routes based on client IP address (less reliable with proxies)
 
 ## Installing NGINX Ingress Controller
 
@@ -105,7 +104,7 @@ metadata:
     # Cookie name
     nginx.ingress.kubernetes.io/session-cookie-name: "SESSIONID"
 
-    # Cookie path (default: /)
+    # Cookie path (defaults to the matched path)
     nginx.ingress.kubernetes.io/session-cookie-path: "/app"
 
     # Cookie max-age in seconds
@@ -119,9 +118,6 @@ metadata:
 
     # Make cookie secure (HTTPS only)
     nginx.ingress.kubernetes.io/session-cookie-secure: "true"
-
-    # Make cookie HttpOnly
-    nginx.ingress.kubernetes.io/session-cookie-httponly: "true"
 
     # Cookie domain
     nginx.ingress.kubernetes.io/session-cookie-domain: ".example.com"
@@ -243,14 +239,12 @@ metadata:
     nginx.ingress.kubernetes.io/session-cookie-name: "secure_session"
     nginx.ingress.kubernetes.io/session-cookie-max-age: "7200"
     nginx.ingress.kubernetes.io/session-cookie-secure: "true"
-    nginx.ingress.kubernetes.io/session-cookie-httponly: "true"
     nginx.ingress.kubernetes.io/session-cookie-samesite: "Strict"
 
     # Force HTTPS redirect
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 
-    # SSL configuration
-    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    # SSL cipher configuration
     nginx.ingress.kubernetes.io/ssl-ciphers: "HIGH:!aNULL:!MD5"
 spec:
   ingressClassName: nginx
@@ -312,6 +306,8 @@ spec:
 
 Add custom headers to sticky session responses:
 
+This requires snippet annotations to be enabled on the ingress-nginx controller.
+
 ```yaml
 # sticky-with-headers.yaml
 apiVersion: networking.k8s.io/v1
@@ -366,9 +362,9 @@ metadata:
     # Change cookie on failure (reassign to new pod)
     nginx.ingress.kubernetes.io/session-cookie-change-on-failure: "true"
 
-    # Upstream configuration
-    nginx.ingress.kubernetes.io/upstream-fail-timeout: "10"
-    nginx.ingress.kubernetes.io/upstream-max-fails: "3"
+    # Retry another upstream when a request fails
+    nginx.ingress.kubernetes.io/proxy-next-upstream: "error timeout http_502 http_503 http_504"
+    nginx.ingress.kubernetes.io/proxy-next-upstream-tries: "3"
 spec:
   ingressClassName: nginx
   rules:
@@ -472,8 +468,9 @@ Monitor session distribution across pods:
 kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx | grep upstream
 
 # View NGINX statistics
-kubectl exec -n ingress-nginx <nginx-pod> -- cat /var/log/nginx/access.log | \
-  awk '{print $7}' | sort | uniq -c
+kubectl exec -n ingress-nginx <nginx-pod> -- sh -c \
+  "grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+:[0-9]+' /var/log/nginx/access.log" | \
+  sort | uniq -c
 ```
 
 Create a ConfigMap for enhanced logging:
@@ -486,6 +483,8 @@ metadata:
   name: nginx-configuration
   namespace: ingress-nginx
 data:
+  # If you installed with Helm, set this under controller.config instead
+  # of creating a separate unmanaged ConfigMap.
   log-format-upstream: |
     $remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" $request_length $request_time [$proxy_upstream_name] [$proxy_alternative_upstream_name] $upstream_addr $upstream_response_length $upstream_response_time $upstream_status $req_id $http_cookie
 ```
