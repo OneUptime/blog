@@ -37,7 +37,7 @@ import (
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initResource() (*resource.Resource, error) {
@@ -61,7 +61,7 @@ func initResource() (*resource.Resource, error) {
         ),
         // Deployment metadata
         resource.WithAttributes(
-            semconv.DeploymentEnvironment(os.Getenv("ENVIRONMENT")),
+            semconv.DeploymentEnvironmentName(os.Getenv("ENVIRONMENT")),
         ),
         // Auto-detect additional attributes
         resource.WithFromEnv(),
@@ -147,10 +147,13 @@ Configure your logging library to include the same resource attributes. Here's a
 package main
 
 import (
+    "context"
     "log/slog"
     "os"
 
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/sdk/resource"
+    "go.opentelemetry.io/otel/trace"
 )
 
 func initLogger(res *resource.Resource) {
@@ -184,7 +187,7 @@ func (h *ResourceHandler) Enabled(ctx context.Context, level slog.Level) bool {
 func (h *ResourceHandler) Handle(ctx context.Context, r slog.Record) error {
     // Add resource attributes to every log record
     for _, attr := range h.attrs {
-        r.AddAttrs(slog.String(string(attr.Key), attr.Value.AsString()))
+        r.AddAttrs(slog.String(string(attr.Key), attr.Value.Emit()))
     }
 
     // Extract trace context if present
@@ -371,18 +374,17 @@ exporters:
       insecure: true
 
   # Export metrics to Prometheus
-  prometheusremotewrite:
+  prometheus_remote_write:
+    # Requires Prometheus to run with --web.enable-remote-write-receiver
     endpoint: http://prometheus.observability.svc.cluster.local:9090/api/v1/write
+    tls:
+      insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
 
   # Export logs to Loki
-  loki:
-    endpoint: http://loki.observability.svc.cluster.local:3100/loki/api/v1/push
-    labels:
-      resource:
-        service.name: "service_name"
-        service.namespace: "service_namespace"
-        k8s.namespace.name: "k8s_namespace"
-        k8s.pod.name: "k8s_pod"
+  otlphttp/loki:
+    endpoint: http://loki.observability.svc.cluster.local:3100/otlp
 
 service:
   pipelines:
@@ -394,12 +396,12 @@ service:
     metrics:
       receivers: [otlp]
       processors: [k8sattributes, resource, transform, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 
     logs:
       receivers: [otlp]
       processors: [k8sattributes, resource, transform, batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 ```
 
 ## Querying Correlated Telemetry in Grafana
@@ -439,7 +441,7 @@ Configure Grafana to leverage resource attributes for correlation. Create a dash
         "targets": [
           {
             "datasource": "Tempo",
-            "query": "{resource.service.name=\"payment-service\"}",
+            "query": "{ resource.service.name = \"payment-service\" }",
             "limit": 20
           }
         ]
@@ -450,7 +452,7 @@ Configure Grafana to leverage resource attributes for correlation. Create a dash
         "targets": [
           {
             "datasource": "Loki",
-            "expr": "{service_name=\"payment-service\", level=\"error\"}"
+            "expr": "{service_name=\"payment-service\"} | json | level=\"ERROR\""
           }
         ]
       }
@@ -484,17 +486,21 @@ data:
     datasources:
     - name: Tempo
       type: tempo
+      uid: tempo
       access: proxy
       url: http://tempo-query-frontend.observability.svc.cluster.local:3100
       jsonData:
-        tracesToLogs:
+        tracesToLogsV2:
           datasourceUid: 'loki'
-          tags: ['service.name', 'service.instance.id', 'k8s.namespace.name', 'k8s.pod.name']
-          mappedTags:
+          tags:
             - key: service.name
               value: service_name
             - key: service.instance.id
               value: service_instance_id
+            - key: k8s.namespace.name
+              value: k8s_namespace_name
+            - key: k8s.pod.name
+              value: k8s_pod_name
           filterByTraceID: true
           filterBySpanID: true
         tracesToMetrics:
@@ -503,19 +509,20 @@ data:
             - key: service.name
               value: service_name
             - key: 'k8s.pod.name'
-              value: k8s_pod
+              value: k8s_pod_name
           queries:
             - name: 'Request rate'
               query: 'sum(rate(http_server_duration_count{$$__tags}[5m]))'
 
     - name: Loki
       type: loki
+      uid: loki
       access: proxy
       url: http://loki.observability.svc.cluster.local:3100
       jsonData:
         derivedFields:
           - datasourceUid: tempo
-            matcherRegex: "trace_id=(\\w+)"
+            matcherRegex: '"trace_id":"(\w+)"'
             name: TraceID
             url: "$${__value.raw}"
 ```
@@ -529,7 +536,6 @@ Create a test to verify that all three signals are properly correlated:
 import requests
 import time
 from prometheus_api_client import PrometheusConnect
-import json
 
 def test_signal_correlation():
     """Verify that traces, metrics, and logs are correlated"""
@@ -562,7 +568,7 @@ def test_signal_correlation():
     # Query Prometheus for metrics with same resource attributes
     prom = PrometheusConnect(url='http://prometheus.observability.svc.cluster.local:9090')
     metrics = prom.custom_query(
-        f'http_server_duration_count{{service_name="{service_name}", k8s_pod="{pod_name}"}}'
+        f'http_server_duration_count{{service_name="{service_name}", k8s_pod_name="{pod_name}"}}'
     )
     assert len(metrics) > 0, "No metrics found with matching resource attributes"
 
@@ -570,7 +576,7 @@ def test_signal_correlation():
     loki_response = requests.get(
         'http://loki.observability.svc.cluster.local:3100/loki/api/v1/query_range',
         params={
-            'query': f'{{service_name="{service_name}", k8s_pod="{pod_name}", trace_id="{trace_id}"}}',
+            'query': f'{{service_name="{service_name}", k8s_pod_name="{pod_name}"}} | json | trace_id="{trace_id}"',
             'limit': 100,
         }
     )
