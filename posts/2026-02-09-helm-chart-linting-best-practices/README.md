@@ -72,31 +72,31 @@ spec:
   replicas: {{ .Values.replicaCount }}
 ```
 
-Values file references that don't exist cause runtime errors that linting catches.
+Some missing values render as empty strings, while missing nested objects can cause template errors. Use defaults, the `required` function, or a values schema when a value must be present.
 
 ```yaml
 # templates/service.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Values.serviceName }}  # Must exist in values.yaml
+  name: {{ required "serviceName is required" .Values.serviceName }}
 spec:
-  type: {{ .Values.service.type | default "ClusterIP" }}  # Safe with default
+  type: {{ dig "service" "type" "ClusterIP" .Values }}  # Safe with default
   ports:
-  - port: {{ .Values.service.port }}  # Fails if service.port not defined
+  - port: {{ required "service.port is required" (dig "service" "port" "" .Values) }}
 ```
 
 ## Configuring Chart Testing (ct)
 
-Chart-testing goes beyond basic linting by installing charts in a test cluster, running smoke tests, and validating upgrade paths. Install ct to add comprehensive validation to your workflow.
+Chart-testing goes beyond basic linting by linting YAML, validating chart metadata, installing charts in a test cluster, running Helm tests, and optionally validating upgrade paths. Install ct to add comprehensive validation to your workflow.
 
 ```bash
 # Install chart-testing
 brew install chart-testing
 
 # Or download binary from GitHub releases
-curl -LO https://github.com/helm/chart-testing/releases/download/v3.8.0/chart-testing_3.8.0_linux_amd64.tar.gz
-tar -xzf chart-testing_3.8.0_linux_amd64.tar.gz
+curl -LO https://github.com/helm/chart-testing/releases/download/v3.14.0/chart-testing_3.14.0_linux_amd64.tar.gz
+tar -xzf chart-testing_3.14.0_linux_amd64.tar.gz
 sudo mv ct /usr/local/bin/
 ```
 
@@ -110,27 +110,17 @@ chart-repos:
   - bitnami=https://charts.bitnami.com/bitnami
   - stable=https://charts.helm.sh/stable
 
-# Directories containing test values files
-test-values:
-  - test-values
-
-# Kubernetes versions to test against
-kubernetes-versions:
-  - v1.27.0
-  - v1.28.0
-  - v1.29.0
-
 # Validate maintainers field
 validate-maintainers: true
 
 # Check version increments
 check-version-increment: true
 
-# Require values schema
+# Validate Chart.yaml against the chart schema
 validate-chart-schema: true
 
 # Additional helm lint flags
-helm-extra-args: --timeout 600s
+helm-lint-extra-args: --strict
 
 # Namespace for testing
 namespace: ct-testing
@@ -178,6 +168,9 @@ ct install --charts charts/myapp
 
 # Install changed charts only
 ct install --target-branch main
+
+# Test upgrade paths as well
+ct install --target-branch main --upgrade
 ```
 
 Create test value files that ct uses during installation.
@@ -205,7 +198,7 @@ testing:
   mock: true
 ```
 
-Place test values files in a ci/ directory within each chart. Chart-testing automatically finds and uses these during installation tests.
+Place test values files that match `*-values.yaml` in a ci/ directory within each chart. Chart-testing automatically finds and uses these during linting and installation tests.
 
 ## Integrating Linting in CI/CD
 
@@ -225,28 +218,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5.0.0
         with:
           fetch-depth: 0  # Full history for version comparison
 
       - name: Set up Helm
-        uses: azure/setup-helm@v3
-        with:
-          version: v3.12.0
+        uses: azure/setup-helm@v4.3.1
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6.0.0
         with:
-          python-version: 3.11
+          python-version: '3.x'
 
       - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2
+        uses: helm/chart-testing-action@v2.8.0
 
       - name: Run chart-testing (lint)
         run: ct lint --config ct.yaml --target-branch ${{ github.event.repository.default_branch }}
 
       - name: Create kind cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.12.0
 
       - name: Run chart-testing (install)
         run: ct install --config ct.yaml --target-branch ${{ github.event.repository.default_branch }}
@@ -364,7 +355,7 @@ Define a JSON schema for your values.yaml to enable strict validation of user in
 }
 ```
 
-Save this as values.schema.json in your chart directory. Helm automatically validates values against this schema during installation.
+Save this as values.schema.json in your chart directory. Helm automatically validates values against this schema during linting, templating, installation, and upgrades.
 
 ## Pre-commit Hooks
 
