@@ -8,7 +8,9 @@ Description: Learn how to deploy Docker container images to AWS App Runner from 
 
 ---
 
-AWS App Runner is a fully managed service that makes it simple to deploy containerized web applications. You push a Docker image to Amazon Elastic Container Registry (ECR), point App Runner at it, and the service handles provisioning, scaling, TLS, and load balancing. There is no cluster to manage, no Kubernetes to configure, and no infrastructure to babysit.
+AWS App Runner is a fully managed service that makes it simple to deploy containerized web applications. Existing App Runner customers can push a Docker image to Amazon Elastic Container Registry (ECR), point App Runner at it, and the service handles provisioning, scaling, TLS, and load balancing. There is no cluster to manage, no Kubernetes to configure, and no infrastructure to babysit.
+
+Note: AWS App Runner is no longer open to new customers. Existing customers can continue to use the service normally, including creating new services and resources.
 
 This guide covers the entire workflow, from building your Docker image to deploying it on App Runner, including automatic deployments when you push new images.
 
@@ -16,10 +18,10 @@ This guide covers the entire workflow, from building your Docker image to deploy
 
 If you have ever deployed containers on ECS or EKS, you know the overhead. Task definitions, target groups, listener rules, autoscaling policies, VPC configurations - the list goes on. App Runner strips all of that away. You get:
 
-- Automatic scaling from zero to thousands of requests per second
+- Automatic scaling from a configured minimum capacity to handle increased traffic
 - Built-in HTTPS with managed TLS certificates
-- Health checks and automatic rollbacks
-- Pay-per-use pricing with no idle charges when scaled to zero
+- Health checks for monitoring service availability
+- Pay-per-use pricing while the service is running, with pause and resume controls to help manage idle costs
 
 The trade-off is less control. You cannot customize the load balancer, pick specific instance types, or run sidecar containers. For straightforward web services and APIs, though, App Runner hits a sweet spot between simplicity and power.
 
@@ -62,12 +64,12 @@ The Dockerfile keeps things lean with a multi-stage build:
 ```dockerfile
 # Dockerfile - Multi-stage build for a Node.js app
 
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 # Copy only production dependencies from the builder stage
 COPY --from=builder /app/node_modules ./node_modules
@@ -228,8 +230,17 @@ aws apprunner create-auto-scaling-configuration \
 ```
 
 - **max-concurrency**: The number of concurrent requests per instance before scaling out. The default is 100.
-- **min-size**: The minimum number of instances. Set to 1 to avoid cold starts, or 0 to save costs during idle periods.
+- **min-size**: The minimum number of provisioned instances. The minimum valid value is 1.
 - **max-size**: The ceiling for scale-out.
+
+The command creates an auto-scaling configuration. To apply it to an existing service, use the `AutoScalingConfigurationArn` from the command output with `update-service`:
+
+```bash
+aws apprunner update-service \
+  --service-arn arn:aws:apprunner:us-east-1:123456789012:service/demo-api/<service-id> \
+  --auto-scaling-configuration-arn arn:aws:apprunner:us-east-1:123456789012:autoscalingconfiguration/custom-scaling/1/<config-id> \
+  --region us-east-1
+```
 
 ## Step 8: Set Up a Custom Domain
 
@@ -291,10 +302,10 @@ Every push to `main` builds the image, pushes it to ECR, and App Runner automati
 
 App Runner pricing has two components:
 
-- **Provisioned instances**: You pay for CPU and memory while your service is active, even at minimum scale.
-- **Active instances**: Additional cost when instances are handling requests.
+- **Provisioned instances**: You pay for memory for provisioned container instances while your service is running, including idle time.
+- **Active instances**: You pay for vCPU and memory when instances are actively handling requests.
 
-For low-traffic services, setting `min-size` to 0 lets the service scale to zero, but you will experience cold starts of a few seconds. For production APIs, keeping at least one instance warm avoids latency spikes.
+For low-traffic services, App Runner keeps at least one provisioned instance while the service is running. You can pause and resume the service to manage idle costs. For production APIs, keeping the service running avoids latency spikes.
 
 ## Conclusion
 
