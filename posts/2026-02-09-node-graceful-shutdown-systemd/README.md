@@ -12,9 +12,9 @@ When a Kubernetes node shuts down abruptly, running pods are killed without prop
 
 ## Understanding Graceful Shutdown Phases
 
-Graceful node shutdown happens in two phases. The critical pod phase gives pods with PriorityClass system-cluster-critical or system-node-critical time to shut down. The regular pod phase handles all other pods. Each phase has a configurable duration, and pods that do not exit within their phase timeout are forcefully terminated.
+Graceful node shutdown happens in two phases. The regular pod phase handles all non-critical pods first. The critical pod phase then gives pods with PriorityClass system-cluster-critical or system-node-critical time to shut down last. Each phase has a configurable duration, and pods that do not exit within their phase timeout are forcefully terminated.
 
-The kubelet watches for systemd shutdown events using the systemd inhibitor locks mechanism. When shutdown begins, kubelet starts gracefully terminating pods in priority order, respecting each pod's terminationGracePeriodSeconds up to the phase limit.
+The kubelet watches for systemd shutdown events using the systemd inhibitor locks mechanism. When shutdown begins, kubelet starts gracefully terminating pods according to the configured shutdown phases, respecting each pod's terminationGracePeriodSeconds up to the phase limit.
 
 ## Enabling Graceful Shutdown in Kubelet
 
@@ -45,11 +45,11 @@ featureGates:
   GracefulNodeShutdownBasedOnPodPriority: true
 ```
 
-The shutdownGracePeriod defines the total time kubelet has to shut down all pods. The shutdownGracePeriodCriticalPods is a subset of that time reserved for critical pods. For example, with 60s total and 20s for critical pods, critical pods get 20s to shut down, then regular pods get the remaining 40s.
+The shutdownGracePeriod defines the total time kubelet has to shut down all pods. The shutdownGracePeriodCriticalPods is a subset of that time reserved for critical pods at the end of the shutdown. For example, with 60s total and 20s for critical pods, regular pods get the first 40s to shut down, then critical pods get the final 20s.
 
 ## Configuring Kubelet Service with Shutdown Integration
 
-Update the kubelet systemd service to use the configuration:
+For kubeadm-managed nodes, update the kubelet systemd service to use the configuration:
 
 ```bash
 # Create kubelet service drop-in directory
@@ -93,27 +93,9 @@ journalctl -u kubelet | grep -i shutdown
 
 ## Setting Up Priority Classes for Critical Pods
 
-Define PriorityClasses to control shutdown order:
+Kubernetes already includes the built-in system-cluster-critical and system-node-critical PriorityClasses for critical system components. Define custom PriorityClasses for application workloads:
 
 ```yaml
-# System critical priority (highest)
-apiVersion: scheduling.k8s.io/v1
-kind: PriorityClass
-metadata:
-  name: system-cluster-critical
-value: 2000000000
-globalDefault: false
-description: "Used for system critical pods that must run on the cluster"
----
-# Node critical priority
-apiVersion: scheduling.k8s.io/v1
-kind: PriorityClass
-metadata:
-  name: system-node-critical
-value: 2000001000
-globalDefault: false
-description: "Used for system critical pods that must run on each node"
----
 # High priority for important workloads
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
@@ -146,23 +128,27 @@ Assign priority classes to pods:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: critical-database
+  name: cluster-monitor-addon
   labels:
-    app: database
+    app: monitor
 spec:
-  # This pod shuts down last
+  # Built-in class for critical cluster add-ons; these pods shut down last
   priorityClassName: system-cluster-critical
   containers:
-  - name: postgres
-    image: postgres:16
+  - name: monitor
+    image: busybox:1.36
+    command:
+    - /bin/sh
+    - -c
+    - while true; do sleep 3600; done
     lifecycle:
       preStop:
         exec:
           command:
           - /bin/sh
           - -c
-          - pg_ctl stop -D /var/lib/postgresql/data -m fast
-  terminationGracePeriodSeconds: 30
+          - sleep 5
+  terminationGracePeriodSeconds: 15
 ---
 apiVersion: v1
 kind: Pod
@@ -322,7 +308,7 @@ sudo systemctl reboot
 journalctl -u kubelet -f
 ```
 
-You should see critical pods shutting down first, followed by regular pods, all within the configured grace periods.
+You should see regular pods shutting down first, followed by critical pods, all within the configured grace periods.
 
 ## Configuring Node Shutdown with Pod Priority
 
@@ -331,10 +317,8 @@ Fine-tune shutdown behavior based on pod priority with more granular control:
 ```yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
-shutdownGracePeriod: 120s
-shutdownGracePeriodCriticalPods: 40s
-
-# Advanced: Configure shutdown by priority
+# Advanced: Configure shutdown by priority instead of using
+# shutdownGracePeriod and shutdownGracePeriodCriticalPods.
 shutdownGracePeriodByPodPriority:
 - priority: 2000001000  # system-node-critical
   shutdownGracePeriodSeconds: 30
@@ -361,8 +345,8 @@ Track shutdown events with logging and metrics:
 journalctl -u kubelet -f | grep -i shutdown
 
 # Check for pod termination events
-kubectl get events --all-namespaces \
-  --field-selector reason=NodeShutdown
+kubectl describe pods --all-namespaces | \
+  grep -A2 "Pod was terminated in response to imminent node shutdown"
 
 # View pod status during shutdown
 kubectl get pods --all-namespaces -o wide
@@ -449,7 +433,10 @@ kubectl get --raw /api/v1/nodes/<node-name>/proxy/configz | \
   jq '.kubeletconfig.shutdownGracePeriod'
 
 # Verify systemd integration
-systemctl show kubelet.service | grep InhibitDelayMaxSec
+systemd-inhibit --list | grep -i kubelet
+
+# Check the maximum delay allowed for systemd inhibitor locks
+grep -R '^InhibitDelayMaxSec' /etc/systemd/logind.conf /etc/systemd/logind.conf.d 2>/dev/null
 
 # Check for pods that did not terminate gracefully
 kubectl get events --all-namespaces | grep -i kill
