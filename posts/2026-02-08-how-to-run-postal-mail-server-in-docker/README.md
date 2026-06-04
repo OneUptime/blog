@@ -10,7 +10,7 @@ Description: Deploy Postal, an open-source mail delivery platform, in Docker for
 
 Postal is an open-source mail delivery platform designed for sending outbound and transactional email. If you have ever relied on services like SendGrid, Mailgun, or Amazon SES for sending emails from your applications, Postal gives you the same capabilities on your own infrastructure. It provides HTTP APIs, SMTP relay, click and open tracking, bounce handling, webhooks, and support for multiple organizations and mail servers.
 
-Running Postal in Docker is the recommended deployment method. The platform consists of several components including a web interface, worker processes, an SMTP server, and supporting services like MySQL, RabbitMQ, and Redis. This guide walks through the complete setup.
+Running Postal in Docker is the recommended deployment method. The platform consists of several components including a web interface, worker processes, an SMTP server, and a supporting MariaDB database. This guide walks through the complete setup.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ You need:
 - Docker Compose v2
 - A server with a public IP address (for sending email)
 - A domain name with DNS control
-- At least 2GB of RAM
+- At least 4GB of RAM and 2 CPU cores
 
 ```bash
 # Verify Docker
@@ -36,10 +36,14 @@ Before setting up Postal, configure your DNS records. Proper DNS is critical for
 | Record Type | Name | Value | Purpose |
 |-------------|------|-------|---------|
 | A | postal.yourdomain.com | YOUR_SERVER_IP | Web interface |
-| MX | postal.yourdomain.com | postal.yourdomain.com | Incoming mail |
-| TXT | postal.yourdomain.com | v=spf1 ip4:YOUR_SERVER_IP ~all | SPF authentication |
-| TXT | postal._domainkey.yourdomain.com | (DKIM key from Postal) | DKIM signing |
+| A | mx.postal.yourdomain.com | YOUR_SERVER_IP | Mail exchanger host |
+| TXT | spf.postal.yourdomain.com | v=spf1 ip4:YOUR_SERVER_IP ~all | SPF include domain |
 | A | rp.postal.yourdomain.com | YOUR_SERVER_IP | Return path domain |
+| MX | rp.postal.yourdomain.com | 10 postal.yourdomain.com | Bounce handling |
+| TXT | rp.postal.yourdomain.com | v=spf1 a mx include:spf.postal.yourdomain.com ~all | Return path SPF |
+| TXT | postal._domainkey.rp.postal.yourdomain.com | (from `postal default-dkim-record`) | Default DKIM signing |
+| MX | routes.postal.yourdomain.com | 10 postal.yourdomain.com | Route domain |
+| A | track.postal.yourdomain.com | YOUR_SERVER_IP | Click and open tracking |
 
 ## Project Setup
 
@@ -55,27 +59,24 @@ mkdir -p config
 
 ## Docker Compose Configuration
 
-Postal requires MySQL, RabbitMQ, and a dedicated signing key. Here is the full Docker Compose file.
+Postal requires MariaDB and a dedicated signing key. Here is the full Docker Compose file.
 
 ```yaml
 # docker-compose.yml - Postal mail delivery platform
-version: "3.8"
-
 services:
   # Postal web interface and API
   postal-web:
-    image: ghcr.io/postalserver/postal:latest
+    image: ghcr.io/postalserver/postal:3.3.7
     container_name: postal-web
     command: postal web-server
     ports:
       - "5000:5000"
     volumes:
       - ./config/postal.yml:/config/postal.yml
+      - ./config/signing.key:/config/signing.key
       - postal-assets:/opt/postal/public/assets
     depends_on:
-      mysql:
-        condition: service_healthy
-      rabbitmq:
+      mariadb:
         condition: service_healthy
     networks:
       - postal-network
@@ -83,67 +84,49 @@ services:
 
   # Postal SMTP server for sending and receiving email
   postal-smtp:
-    image: ghcr.io/postalserver/postal:latest
+    image: ghcr.io/postalserver/postal:3.3.7
     container_name: postal-smtp
     command: postal smtp-server
     ports:
       - "25:25"
-      - "587:587"
     volumes:
       - ./config/postal.yml:/config/postal.yml
+      - ./config/signing.key:/config/signing.key
     depends_on:
-      - postal-web
+      mariadb:
+        condition: service_healthy
     networks:
       - postal-network
     restart: unless-stopped
 
   # Postal worker processes for background jobs
   postal-worker:
-    image: ghcr.io/postalserver/postal:latest
+    image: ghcr.io/postalserver/postal:3.3.7
     container_name: postal-worker
     command: postal worker
     volumes:
       - ./config/postal.yml:/config/postal.yml
+      - ./config/signing.key:/config/signing.key
     depends_on:
-      - postal-web
+      mariadb:
+        condition: service_healthy
     networks:
       - postal-network
     restart: unless-stopped
 
-  # MySQL database for Postal data
-  mysql:
-    image: mysql:8.0
-    container_name: postal-mysql
+  # MariaDB database for Postal data
+  mariadb:
+    image: mariadb:10.11
+    container_name: postal-mariadb
     environment:
-      MYSQL_ROOT_PASSWORD: postal_root_pass
-      MYSQL_DATABASE: postal
-      MYSQL_USER: postal
-      MYSQL_PASSWORD: postal_db_pass
+      MARIADB_ROOT_PASSWORD: postal_root_pass
+      MARIADB_DATABASE: postal
+      MARIADB_USER: postal
+      MARIADB_PASSWORD: postal_db_pass
     volumes:
-      - mysql-data:/var/lib/mysql
+      - mariadb-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks:
-      - postal-network
-    restart: unless-stopped
-
-  # RabbitMQ message broker for job queuing
-  rabbitmq:
-    image: rabbitmq:3.12-management-alpine
-    container_name: postal-rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: postal
-      RABBITMQ_DEFAULT_PASS: postal_rabbit_pass
-      RABBITMQ_DEFAULT_VHOST: postal
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
-    ports:
-      - "15672:15672"
-    healthcheck:
-      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -152,8 +135,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  mysql-data:
-  rabbitmq-data:
+  mariadb-data:
   postal-assets:
 
 networks:
@@ -167,6 +149,8 @@ Create the Postal configuration file with your settings.
 
 ```yaml
 # config/postal.yml - Postal server configuration
+version: 2
+
 postal:
   web_hostname: postal.yourdomain.com
   web_protocol: https
@@ -175,37 +159,32 @@ postal:
   default_maximum_delivery_attempts: 18
   default_maximum_hold_expiry_days: 7
   default_suppression_list_automatic_removal_days: 30
+  signing_key_path: /config/signing.key
 
 web_server:
-  bind_address: 0.0.0.0
-  port: 5000
+  default_bind_address: 0.0.0.0
+  default_port: 5000
 
 main_db:
-  host: mysql
+  host: mariadb
   port: 3306
   username: postal
   password: postal_db_pass
   database: postal
 
 message_db:
-  host: mysql
+  host: mariadb
   port: 3306
   username: root
   password: postal_root_pass
-  prefix: postal
+  database_name_prefix: postal
 
 logging:
-  stdout: true
-
-rabbitmq:
-  host: rabbitmq
-  port: 5672
-  username: postal
-  password: postal_rabbit_pass
-  vhost: postal
+  enabled: true
 
 smtp_server:
-  port: 25
+  default_port: 25
+  default_bind_address: 0.0.0.0
   tls_enabled: false
   # For TLS, set the certificate paths
   # tls_certificate_path: /config/certs/cert.pem
@@ -215,7 +194,6 @@ dns:
   # Custom DNS records Postal tells users to set up
   mx_records:
     - mx.postal.yourdomain.com
-  smtp_server_hostname: postal.yourdomain.com
   spf_include: spf.postal.yourdomain.com
   return_path_domain: rp.postal.yourdomain.com
   route_domain: routes.postal.yourdomain.com
@@ -233,12 +211,10 @@ Postal needs a signing key for various security operations.
 # Generate a signing key
 openssl genrsa -out config/signing.key 2048
 
-# The key needs to be accessible to the Postal containers
-# Add this volume mount to all postal services:
-# - ./config/signing.key:/config/signing.key
+# The key is mounted into the Postal containers in docker-compose.yml
 ```
 
-Update the Postal services in docker-compose.yml to mount the signing key.
+Make sure the Postal services in docker-compose.yml mount the signing key.
 
 ```yaml
 # Add to volumes for postal-web, postal-smtp, and postal-worker
@@ -250,8 +226,8 @@ volumes:
 ## Starting the Stack
 
 ```bash
-# Start the database and message broker first
-docker compose up -d mysql rabbitmq
+# Start the database first
+docker compose up -d mariadb
 
 # Wait for them to become healthy
 docker compose ps
@@ -270,7 +246,7 @@ The `postal make-user` command prompts you for an email and password to create t
 
 ## Accessing the Web Interface
 
-Open `http://postal.yourdomain.com:5000` (or your configured hostname) in your browser. Log in with the admin credentials you created during initialization.
+Open `http://postal.yourdomain.com:5000` (or your configured hostname) in your browser. If you put Postal behind an HTTPS reverse proxy such as Caddy or Nginx, use `https://postal.yourdomain.com` instead. Log in with the admin credentials you created during initialization.
 
 ## Setting Up a Mail Server in Postal
 
@@ -288,7 +264,7 @@ Postal provides a REST API for sending email.
 
 ```bash
 # Send an email through the Postal API
-curl -X POST https://postal.yourdomain.com:5000/api/v1/send/message \
+curl -X POST https://postal.yourdomain.com/api/v1/send/message \
   -H "Content-Type: application/json" \
   -H "X-Server-API-Key: YOUR_API_KEY" \
   -d '{
@@ -306,7 +282,7 @@ Configure your application to use Postal as an SMTP relay.
 
 ```text
 SMTP Host: postal.yourdomain.com
-SMTP Port: 25 (or 587)
+SMTP Port: 25
 Username: (from Postal credentials)
 Password: (from Postal credentials)
 ```
@@ -352,24 +328,21 @@ docker compose logs -f postal-web
 docker compose logs -f postal-smtp
 docker compose logs -f postal-worker
 
-# Monitor RabbitMQ queue depths
-# Open http://localhost:15672 with postal/postal_rabbit_pass
-
-# Check MySQL database size
-docker compose exec mysql mysql -u postal -ppostal_db_pass -e "SELECT table_schema, ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS size_mb FROM information_schema.tables WHERE table_schema LIKE 'postal%' GROUP BY table_schema;"
+# Check MariaDB database size
+docker compose exec mariadb mariadb -u postal -ppostal_db_pass -e "SELECT table_schema, ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS size_mb FROM information_schema.tables WHERE table_schema LIKE 'postal%' GROUP BY table_schema;"
 ```
 
 ## Backup and Restore
 
 ```bash
-# Back up the MySQL database
-docker compose exec mysql mysqldump -u root -ppostal_root_pass --all-databases > postal-backup-$(date +%Y%m%d).sql
+# Back up the MariaDB database
+docker compose exec mariadb mariadb-dump -u root -ppostal_root_pass --all-databases > postal-backup-$(date +%Y%m%d).sql
 
 # Back up the configuration
 cp -r config postal-config-backup
 
 # Restore from backup
-cat postal-backup-20260201.sql | docker compose exec -T mysql mysql -u root -ppostal_root_pass
+cat postal-backup-20260201.sql | docker compose exec -T mariadb mariadb -u root -ppostal_root_pass
 ```
 
 ## Stopping and Cleaning Up
@@ -384,4 +357,4 @@ docker compose down -v
 
 ## Summary
 
-Postal gives you a full-featured mail delivery platform that you own and control. Running it in Docker simplifies the deployment of its multi-service architecture, which includes a web interface, SMTP server, background workers, MySQL, and RabbitMQ. With proper DNS configuration, you get SPF, DKIM, and DMARC support for good deliverability. The HTTP API and SMTP relay make it easy to integrate with any application. Postal is a solid self-hosted alternative to commercial transactional email services.
+Postal gives you a full-featured mail delivery platform that you own and control. Running it in Docker simplifies the deployment of its multi-service architecture, which includes a web interface, SMTP server, background workers, and MariaDB. With proper DNS configuration, you get SPF, DKIM, and return-path alignment for good deliverability. The HTTP API and SMTP relay make it easy to integrate with any application. Postal is a solid self-hosted alternative to commercial transactional email services.
