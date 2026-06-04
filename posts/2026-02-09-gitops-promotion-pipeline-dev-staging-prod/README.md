@@ -200,6 +200,15 @@ git push origin v1.2.0
 Configure image policies per environment:
 
 ```yaml
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: api-gateway
+  namespace: flux-system
+spec:
+  image: myregistry.io/api-gateway
+  interval: 1m
+---
 # Development: Use any new image
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
@@ -253,7 +262,13 @@ kind: Deployment
 metadata:
   name: api-gateway
 spec:
+  selector:
+    matchLabels:
+      app: api-gateway
   template:
+    metadata:
+      labels:
+        app: api-gateway
     spec:
       containers:
       - name: api
@@ -265,7 +280,13 @@ kind: Deployment
 metadata:
   name: api-gateway
 spec:
+  selector:
+    matchLabels:
+      app: api-gateway
   template:
+    metadata:
+      labels:
+        app: api-gateway
     spec:
       containers:
       - name: api
@@ -303,8 +324,10 @@ on:
 jobs:
   promote:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         ref: staging
         fetch-depth: 0
@@ -318,7 +341,7 @@ jobs:
 
     - name: Notify Slack
       run: |
-        curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+        curl -X POST "${{ secrets.SLACK_WEBHOOK }}" \
           -H 'Content-type: application/json' \
           --data '{"text":"Promoted to staging"}'
 ```
@@ -338,8 +361,10 @@ on:
 jobs:
   promote:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Create production tag
       run: |
@@ -349,12 +374,9 @@ jobs:
         git push origin ${{ github.event.inputs.version }}
 
     - name: Create release
-      uses: actions/create-release@v1
+      run: gh release create "${{ github.event.inputs.version }}" --title "Release ${{ github.event.inputs.version }}" --notes-from-tag --verify-tag
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.event.inputs.version }}
-        release_name: Release ${{ github.event.inputs.version }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## Implementing ArgoCD App-of-Apps Promotion
@@ -368,6 +390,8 @@ metadata:
   name: multi-env-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
   - matrix:
       generators:
@@ -392,20 +416,24 @@ spec:
             auto: "false"
   template:
     metadata:
-      name: '{{path.basename}}-{{env}}'
+      name: '{{.path.basename}}-{{.env}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/apps
-        targetRevision: '{{revision}}'
-        path: '{{path}}'
+        targetRevision: '{{.revision}}'
+        path: '{{.path.path}}'
       destination:
-        server: '{{cluster}}'
-        namespace: '{{path.basename}}'
+        name: '{{.cluster}}'
+        namespace: '{{.path.basename}}'
+  templatePatch: |
+    {{- if eq .auto "true" }}
+    spec:
       syncPolicy:
         automated:
-          prune: '{{auto}}'
-          selfHeal: '{{auto}}'
+          prune: true
+          selfHeal: true
+    {{- end }}
 ```
 
 ## Adding Approval Gates
@@ -435,9 +463,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Trigger Flux sync
-      run: |
-        kubectl annotate gitrepository flux-system -n flux-system \
-          reconcile.fluxcd.io/requestedAt="$(date +%s)"
+      run: flux reconcile source git flux-system -n flux-system
 ```
 
 ## Monitoring Promotion Status
