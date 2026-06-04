@@ -22,7 +22,7 @@ For Kubernetes, this means capturing deployment manifests, Git commit history, p
 
 GitOps provides inherent change control through Git history. Every change exists as a commit with author, timestamp, and description. Pull requests provide approval workflows. This foundation supports automated documentation.
 
-Configure Flux or ArgoCD with change control requirements:
+Configure Flux with change control requirements:
 
 ```yaml
 # flux-change-control.yaml
@@ -64,17 +64,8 @@ spec:
     name: production-manifests
 
   # Health checks before marking deployment successful
-  healthChecks:
-  - apiVersion: apps/v1
-    kind: Deployment
-    name: "*"
-    namespace: production
-
-  # Post-deployment notifications
-  postBuild:
-    substitute:
-      CHANGE_ID: "${FLUX_REVISION}"
-      DEPLOYED_BY: "${FLUX_SOURCE_AUTHOR}"
+  wait: true
+  timeout: 5m
 ```
 
 ## Creating a Change Request Webhook
@@ -85,10 +76,11 @@ Build a webhook that validates change requests before allowing deployments:
 # change-control-webhook.py
 #!/usr/bin/env python3
 
-from flask import Flask, request, jsonify
-import re
-import requests
 import os
+import re
+
+import requests
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
@@ -141,10 +133,8 @@ def validate():
 
     uid = admission_review['request']['uid']
     obj = admission_review['request']['object']
-    operation = admission_review['request']['operation']
-
     # Only check production namespace deployments
-    namespace = obj['metadata']['namespace']
+    namespace = admission_review['request'].get('namespace', obj['metadata'].get('namespace'))
     if namespace not in ['production', 'prod']:
         return jsonify({
             "apiVersion": "admission.k8s.io/v1",
@@ -186,17 +176,6 @@ def validate():
             }
         }
     }
-
-    # Add change tracking annotation
-    if approved:
-        response['response']['patchType'] = 'JSONPatch'
-        response['response']['patch'] = base64.b64encode(json.dumps([
-            {
-                "op": "add",
-                "path": "/metadata/annotations/change-approved-at",
-                "value": datetime.now().isoformat()
-            }
-        ]).encode()).decode()
 
     return jsonify(response)
 
@@ -289,6 +268,7 @@ OUTPUT_DIR="/change-records"
 START_DATE=$(date -d '30 days ago' +%Y-%m-%d)
 
 cd "$REPO_PATH"
+mkdir -p "$OUTPUT_DIR"
 
 echo "Generating change records since $START_DATE..."
 
@@ -297,7 +277,7 @@ git log --since="$START_DATE" --format="%H|%an|%ae|%ai|%s" production | \
 while IFS='|' read COMMIT AUTHOR EMAIL DATE SUBJECT; do
 
   # Extract change ticket from commit message
-  TICKET=$(echo "$SUBJECT" | grep -oP 'CHG-\d+' | head -1)
+  TICKET=$(echo "$SUBJECT" | grep -Eo 'CHG-[0-9]+' | head -1)
 
   if [ -z "$TICKET" ]; then
     echo "Warning: Commit $COMMIT missing change ticket"
@@ -305,7 +285,7 @@ while IFS='|' read COMMIT AUTHOR EMAIL DATE SUBJECT; do
   fi
 
   # Get files changed
-  FILES=$(git diff-tree --no-commit-id --name-only -r $COMMIT)
+  FILES=$(git diff-tree --no-commit-id --name-only -r "$COMMIT")
 
   # Generate change record
   cat > "$OUTPUT_DIR/${TICKET}_${COMMIT:0:7}.md" <<EOF
@@ -325,14 +305,16 @@ $FILES
 ## Detailed Changes
 
 ```diff
-$(git show $COMMIT)
+$(git show "$COMMIT")
 ```
 
-## Deployment History
+## Recent Cluster Events
 
 ```
-$(kubectl get events --field-selector involvedObject.name=$TICKET --sort-by='.lastTimestamp' 2>/dev/null)
+$(kubectl get events --all-namespaces --field-selector type=Normal 2>/dev/null | head -50)
 ```
+
+Kubernetes Events are supplemental operational context, not durable audit records. Store deployment metadata in a persistent change-control system.
 
 ---
 *Auto-generated change record*
@@ -389,33 +371,50 @@ spec:
           type: Directory
 ````
 
-## Creating Compliance-Ready Change Reports
+## Creating Recent Change Reports
 
-Generate formatted change reports for auditors:
+Generate formatted recent-change reports for operational review:
 
 ```python
 # change-report-generator.py
 #!/usr/bin/env python3
 
-import subprocess
 import json
-from datetime import datetime, timedelta
+import subprocess
+from datetime import datetime, timedelta, timezone
+
+def event_timestamp(event):
+    """Extract a timestamp from core/v1 or events.k8s.io/v1 Event objects"""
+    timestamp = (
+        event.get('lastTimestamp') or
+        event.get('deprecatedLastTimestamp') or
+        event.get('eventTime') or
+        event.get('series', {}).get('lastObservedTime')
+    )
+
+    if not timestamp:
+        return None
+
+    return datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
 
 def get_deployments_history(days=30):
-    """Get deployment history from kubectl"""
-    start_date = datetime.now() - timedelta(days=days)
+    """Get recent deployment-related events from kubectl"""
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
-    cmd = f"kubectl get events --all-namespaces --field-selector type=Normal --sort-by='.lastTimestamp' -o json"
+    cmd = "kubectl get events --all-namespaces --field-selector type=Normal -o json"
     result = subprocess.run(cmd.split(), capture_output=True, text=True)
+    result.check_returncode()
     events = json.loads(result.stdout)
 
     deployments = []
     for event in events['items']:
         if 'Scaled' in event.get('reason', '') or 'Created' in event.get('reason', ''):
-            timestamp = datetime.fromisoformat(event['lastTimestamp'].replace('Z', '+00:00'))
+            timestamp = event_timestamp(event)
+            if not timestamp:
+                continue
 
             if timestamp > start_date:
-                obj = event['involvedObject']
+                obj = event.get('involvedObject', event.get('regarding', {}))
                 deployments.append({
                     'timestamp': timestamp.isoformat(),
                     'namespace': obj.get('namespace', 'N/A'),
@@ -428,7 +427,7 @@ def get_deployments_history(days=30):
     return deployments
 
 def generate_change_report():
-    """Generate compliance change report"""
+    """Generate recent change report"""
     report_date = datetime.now().strftime('%Y-%m-%d')
 
     print(f"# Change Control Report - {report_date}")
