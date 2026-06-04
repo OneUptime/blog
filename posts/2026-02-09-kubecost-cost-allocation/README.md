@@ -15,22 +15,22 @@ Kubecost provides comprehensive cost visibility for Kubernetes clusters. It brea
 Deploy Kubecost using Helm:
 
 ```bash
-helm repo add kubecost https://kubecost.github.io/cost-analyzer/
+helm repo add kubecost https://kubecost.github.io/kubecost/
 helm repo update
 
-helm install kubecost kubecost/cost-analyzer \
+helm install kubecost kubecost/kubecost \
   --namespace kubecost \
   --create-namespace \
-  --set kubecostToken="your-token-here"
+  --set global.clusterId="production-cluster"
 ```
 
-For free tier use, omit the token. The token unlocks enterprise features like multi-cluster visibility and custom alerts.
+For enterprise use, add your product key through the Kubecost Helm values. The free installation does not require a key.
 
 Verify installation:
 
 ```bash
 kubectl get pods -n kubecost
-kubectl port-forward -n kubecost svc/kubecost-cost-analyzer 9090:9090
+kubectl port-forward deployment/kubecost-cost-analyzer -n kubecost 9090:9090
 ```
 
 Access the dashboard at http://localhost:9090.
@@ -48,15 +48,16 @@ metadata:
 stringData:
   cloud-integration.json: |
     {
-      "aws": {
-        "athena": {
-          "bucketName": "my-cur-bucket",
-          "region": "us-east-1",
-          "database": "athenacurcfn_my_cur",
-          "table": "my_cur",
-          "projectID": "production-cluster"
+      "aws": [
+        {
+          "athenaBucketName": "s3://aws-athena-query-results-my-account",
+          "athenaRegion": "us-east-1",
+          "athenaDatabase": "athenacurcfn_my_cur",
+          "athenaTable": "my_cur",
+          "athenaWorkgroup": "primary",
+          "projectID": "123456789012"
         }
-      }
+      ]
     }
 ```
 
@@ -68,13 +69,12 @@ For GCP:
 stringData:
   cloud-integration.json: |
     {
-      "gcp": {
-        "bigQuery": {
+      "gcp": [
+        {
           "projectID": "my-project",
-          "datasetName": "billing_export",
-          "tableName": "gcp_billing_export_v1"
+          "billingDataDataset": "billing_export.gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX"
         }
-      }
+      ]
     }
 ```
 
@@ -85,10 +85,18 @@ stringData:
   cloud-integration.json: |
     {
       "azure": {
-        "subscriptionID": "subscription-id",
-        "clientID": "client-id",
-        "clientSecret": "client-secret",
-        "tenantID": "tenant-id"
+        "storage": [
+          {
+            "subscriptionID": "subscription-id",
+            "account": "storage-account",
+            "container": "cost-exports",
+            "path": "",
+            "cloud": "public",
+            "authorizer": {
+              "authorizerType": "AzureDefaultCredential"
+            }
+          }
+        ]
       }
     }
 ```
@@ -96,9 +104,9 @@ stringData:
 Update the Kubecost installation to use the secret:
 
 ```bash
-helm upgrade kubecost kubecost/cost-analyzer \
+helm upgrade kubecost kubecost/kubecost \
   --namespace kubecost \
-  --set kubecostProductConfigs.cloudIntegrationSecret=kubecost-cloud-integration
+  --set cloudCost.cloudIntegrationSecret=kubecost-cloud-integration
 ```
 
 ## Understanding Cost Allocation
@@ -172,7 +180,7 @@ Process this data in your billing system to charge teams for their Kubernetes us
 
 Kubecost highlights optimization opportunities automatically. The Savings dashboard shows:
 
-**Abandoned Workloads**: Deployments with zero pod replicas still consuming resources through PVCs or LoadBalancers.
+**Abandoned Workloads**: Workloads with little or no network traffic over a configurable window.
 
 **Underutilized Resources**: Pods with low CPU/memory utilization relative to requests.
 
@@ -186,23 +194,24 @@ Review these weekly to find quick wins:
 
 ```bash
 # Get abandoned resources via API
-curl http://localhost:9090/model/savings/abandonment -G
+curl http://localhost:9090/model/savings/abandonedWorkloads -G
 ```
 
-Many organizations find 20-30% waste in abandoned resources alone.
+Abandoned workloads can reveal quick savings opportunities, especially in clusters with stale test or preview environments.
 
 ## Right-Sizing Recommendations
 
 Kubecost provides container-level right-sizing recommendations:
 
 ```bash
-curl http://localhost:9090/model/savings/requestSizing \
+curl http://localhost:9090/model/savings/requestSizingV2 \
   -d window=7d \
-  -d targetUtilization=0.8 \
+  -d targetCPUUtilization=0.8 \
+  -d targetRAMUtilization=0.8 \
   -G
 ```
 
-This returns recommended CPU and memory requests based on actual P95 usage with 80% target utilization.
+This returns recommended CPU and memory requests based on observed usage with 80% target utilization. To use percentile-based recommendations, set the CPU and RAM algorithms and quantiles, for example `algorithmCPU=quantileOfMaxes`, `algorithmRAM=quantileOfMaxes`, `qCPU=0.95`, and `qRAM=0.95`.
 
 Apply recommendations gradually:
 
@@ -226,109 +235,75 @@ Test in staging first, monitoring performance metrics before production rollout.
 
 Allocate shared cluster costs (system pods, node overhead) proportionally:
 
-```yaml
-# Configure shared cost allocation
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-shared-costs
-  namespace: kubecost
-data:
-  sharedNamespaces: "kube-system,istio-system,monitoring"
-  sharedLabelSelector: "app.kubernetes.io/component=infrastructure"
+```bash
+# Share infrastructure namespace costs in an allocation query
+curl http://localhost:9090/model/allocation \
+  -d window=7d \
+  -d aggregate=namespace \
+  -d accumulate=true \
+  -d shareNamespaces=kube-system,istio-system,monitoring \
+  -d shareLabels=app:infrastructure \
+  -G
 ```
 
-Kubecost distributes shared costs across tenant namespaces based on their resource consumption percentage. This ensures fair allocation of overhead.
+Kubecost distributes shared costs across non-idle, unshared allocations. By default, the split is weighted proportionally by allocation cost; use `shareSplit=even` when you want an equal split.
 
-## External Costs Integration
+## Cloud Costs Integration
 
-Track non-Kubernetes costs alongside cluster costs:
+Track non-Kubernetes cloud costs alongside cluster costs by enabling cloud billing integration and querying Cloud Costs:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: external-costs
-  namespace: kubecost
-data:
-  external-costs.json: |
-    [
-      {
-        "zone": "us-east-1",
-        "account": "prod",
-        "name": "rds-production",
-        "cost": 1250.50,
-        "resourceType": "database"
-      },
-      {
-        "zone": "us-east-1",
-        "account": "prod",
-        "name": "s3-data-storage",
-        "cost": 850.25,
-        "resourceType": "storage"
-      }
-    ]
+```bash
+curl http://localhost:9090/model/cloudCost \
+  -d window=7d \
+  -d aggregate=service \
+  -d accumulate=true \
+  -G
 ```
 
-This surfaces RDS, S3, and other cloud service costs in the same dashboard as Kubernetes costs, providing complete infrastructure visibility.
+This surfaces RDS, S3, and other cloud service costs from your cloud bill, providing broader infrastructure visibility.
 
 ## Budget Alerts
 
 Configure budget alerts for proactive cost management:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-alerts
-  namespace: kubecost
-data:
-  alerts.json: |
-    {
-      "alerts": [
-        {
-          "type": "budget",
-          "threshold": 10000,
-          "window": "month",
-          "filter": {
-            "namespace": "production"
-          },
-          "ownerContact": ["ops-team@example.com"]
-        },
-        {
-          "type": "efficiency",
-          "threshold": 0.5,
-          "window": "week",
-          "filter": {
-            "cluster": "*"
-          },
-          "ownerContact": ["platform-team@example.com"]
-        }
-      ]
-    }
+notifications:
+  alertConfigs:
+    frontendUrl: http://localhost:9090
+    globalAlertEmails:
+      - ops-team@example.com
+    alerts:
+      - type: budget
+        threshold: 10000
+        window: 7d
+        aggregation: namespace
+        filter: production
+      - type: efficiency
+        efficiencyThreshold: 0.5
+        spendThreshold: 100
+        window: 7d
+        aggregation: cluster
+        ownerContact:
+          - platform-team@example.com
 ```
 
-The budget alert triggers when monthly production namespace costs exceed $10,000. The efficiency alert fires when cluster efficiency drops below 50%.
+The budget alert triggers when production namespace costs exceed $10,000 over seven days. The efficiency alert fires when cluster efficiency drops below 50% for clusters that spent more than $100 during the window.
 
 ## Multi-Cluster Visibility
 
 For enterprise Kubecost, aggregate costs across multiple clusters:
 
-```bash
-# Install Kubecost primary in a management cluster
-helm install kubecost kubecost/cost-analyzer \
-  --namespace kubecost \
-  --set kubecostAggregator.enabled=true \
-  --set kubecostToken="your-token"
+For Kubecost 3.x, Aggregator is enabled by default and multi-cluster visibility uses Federated ETL. Configure every cluster to push ETL data to the shared object store, then install or upgrade the primary with the federated storage secret:
 
-# Install agents in workload clusters
-helm install kubecost-agent kubecost/cost-analyzer \
+```bash
+helm upgrade --install kubecost \
+  --repo https://kubecost.github.io/kubecost/ kubecost \
   --namespace kubecost \
-  --set kubecostAggregator.enabled=false \
-  --set federatedStorageConfigSecret=kubecost-federated-storage
+  --set global.clusterId=management \
+  --set global.federatedStorage.existingSecret=federated-store
 ```
 
-The primary aggregates data from all agents, providing unified cost visibility.
+The primary reads data from the federated store, providing unified cost visibility.
 
 ## API Integration for Automation
 
@@ -336,8 +311,6 @@ Integrate Kubecost data into existing tools:
 
 ```python
 import requests
-import json
-
 # Fetch namespace costs
 response = requests.get(
     'http://kubecost:9090/model/allocation',
@@ -351,15 +324,15 @@ response = requests.get(
 costs = response.json()
 
 # Process costs
-for item in costs['data']:
-    namespace = item['name']
-    total_cost = item['totalCost']
-    cpu_cost = item['cpuCost']
-    memory_cost = item['memoryCost']
+for allocation_set in costs['data']:
+    for namespace, item in allocation_set.items():
+        total_cost = item['totalCost']
+        cpu_cost = item['cpuCost']
+        ram_cost = item['ramCost']
 
-    print(f"{namespace}: ${total_cost:.2f}")
-    print(f"  CPU: ${cpu_cost:.2f}")
-    print(f"  Memory: ${memory_cost:.2f}")
+        print(f"{namespace}: ${total_cost:.2f}")
+        print(f"  CPU: ${cpu_cost:.2f}")
+        print(f"  RAM: ${ram_cost:.2f}")
 ```
 
 Export to spreadsheets, billing systems, or data warehouses for further analysis.
@@ -369,14 +342,14 @@ Export to spreadsheets, billing systems, or data warehouses for further analysis
 Export Kubecost data to Prometheus for custom alerting:
 
 ```promql
-# Namespace cost in dollars
-kubecost_namespace_cost_total{namespace="production"}
+# Hourly CPU cost per node
+node_cpu_hourly_cost
 
-# Cost per pod
-kubecost_pod_cost_hourly
+# Hourly persistent volume cost per GiB
+pv_hourly_cost
 
-# Cluster efficiency percentage
-kubecost_cluster_efficiency_ratio * 100
+# Pod-level network egress bytes
+kubecost_pod_network_egress_bytes_total
 ```
 
 Create custom alerts:
@@ -390,10 +363,10 @@ spec:
   groups:
   - name: cost-alerts
     rules:
-    - alert: HighNamespaceCost
-      expr: increase(kubecost_namespace_cost_total[1h]) > 100
+    - alert: HighProductionEgress
+      expr: sum(kubecost_pod_network_egress_bytes_total{namespace="production"}) > 10737418240
       annotations:
-        summary: "Namespace cost increased by $100+ in the last hour"
+        summary: "Production namespace network egress exceeded 10 GiB"
 ```
 
 ## Troubleshooting
@@ -409,7 +382,7 @@ kubectl exec -n kubecost deployment/kubecost-cost-analyzer -- \
   wget -O- http://prometheus-server:80/api/v1/query?query=up
 ```
 
-Kubecost requires Prometheus for metrics collection. Ensure Prometheus scrapes node-exporter and kube-state-metrics.
+Kubecost 2.x uses Prometheus for metrics collection. If you are running a 2.x deployment, ensure Prometheus scrapes node-exporter and kube-state-metrics. Kubecost 3.x uses the IBM FinOps agent and Aggregator architecture instead.
 
 Inaccurate costs:
 
@@ -421,6 +394,6 @@ kubectl get secret -n kubecost kubecost-cloud-integration -o yaml
 curl http://localhost:9090/model/pricing -G
 ```
 
-Without cloud integration, Kubecost uses list prices which can be 20-40% higher than actual negotiated rates.
+Without cloud integration, Kubecost uses public on-demand pricing by default, which can differ significantly from actual billing for accounts with discounts, reservations, Savings Plans, Spot usage, or other negotiated rates.
 
 Kubecost transforms Kubernetes cost management from reactive to proactive. The combination of granular cost visibility, optimization recommendations, and automated alerting enables teams to control cloud spending while maintaining performance and reliability.
