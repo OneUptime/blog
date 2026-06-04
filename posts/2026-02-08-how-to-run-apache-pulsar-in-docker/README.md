@@ -14,7 +14,7 @@ Running Pulsar in Docker is the fastest way to get started with local developmen
 
 ## Pulsar Architecture Basics
 
-Pulsar separates message serving from message storage. Brokers handle producer and consumer connections while BookKeeper stores the actual messages. ZooKeeper manages metadata and coordination. In standalone mode, all three components run inside a single process, which is perfect for development.
+Pulsar separates message serving from message storage. Brokers handle producer and consumer connections while BookKeeper stores the actual messages. ZooKeeper manages metadata and coordination in a full cluster. In standalone mode, the broker, local bookie, and local metadata store run together, which is perfect for development.
 
 ```mermaid
 graph TB
@@ -54,7 +54,7 @@ docker exec pulsar bin/pulsar-admin clusters list
 docker exec pulsar bin/pulsar-client produce my-topic --messages "Hello Pulsar"
 
 # Consume the message
-docker exec pulsar bin/pulsar-client consume my-topic -s "test-sub" -n 1
+docker exec pulsar bin/pulsar-client consume my-topic -s "test-sub" -p Earliest -n 1
 ```
 
 ## Docker Compose Setup
@@ -122,7 +122,7 @@ services:
       start_period: 30s
 
   pulsar-manager:
-    image: apachepulsar/pulsar-manager:latest
+    image: apachepulsar/pulsar-manager:v0.2.0
     ports:
       # Web UI port
       - "9527:9527"
@@ -142,7 +142,11 @@ After starting the stack, initialize the Pulsar Manager admin account:
 
 ```bash
 # Create the initial admin user for Pulsar Manager
+CSRF_TOKEN=$(curl http://localhost:7750/pulsar-manager/csrf-token)
+
 curl -X PUT http://localhost:7750/pulsar-manager/users/superuser \
+  -H "X-XSRF-TOKEN: $CSRF_TOKEN" \
+  -H "Cookie: XSRF-TOKEN=$CSRF_TOKEN;" \
   -H "Content-Type: application/json" \
   -d '{"name": "admin", "password": "apachepulsar", "description": "Admin user", "email": "admin@example.com"}'
 ```
@@ -212,7 +216,8 @@ client = pulsar.Client('pulsar://localhost:6650')
 consumer = client.subscribe(
     'persistent://my-company/events/orders',
     subscription_name='order-processor',
-    consumer_type=pulsar.ConsumerType.Shared
+    consumer_type=pulsar.ConsumerType.Shared,
+    initial_position=pulsar.InitialPosition.Earliest
 )
 
 # Process messages in a loop
@@ -253,8 +258,8 @@ services:
     command: >
       bin/pulsar initialize-cluster-metadata
         --cluster docker-cluster
-        --zookeeper zookeeper:2181
-        --configuration-store zookeeper:2181
+        --metadata-store zk:zookeeper:2181
+        --configuration-metadata-store zk:zookeeper:2181
         --web-service-url http://broker:8080
         --broker-service-url pulsar://broker:6650
     depends_on:
@@ -262,12 +267,14 @@ services:
 
   bookkeeper:
     image: apachepulsar/pulsar:3.3.0
-    command: bin/bookkeeper bookie
+    command: >
+      sh -c "bin/apply-config-from-env.py conf/bookkeeper.conf &&
+             bin/bookkeeper bookie"
     ports:
       - "3181:3181"
     environment:
-      clusterName: docker-cluster
-      zkServers: zookeeper:2181
+      PULSAR_PREFIX_metadataServiceUri: zk+hierarchical://zookeeper:2181/ledgers
+      PULSAR_PREFIX_advertisedAddress: bookkeeper
       PULSAR_MEM: "-Xms256m -Xmx512m"
     volumes:
       - bk_data:/pulsar/data/bookkeeper
@@ -277,17 +284,19 @@ services:
 
   broker:
     image: apachepulsar/pulsar:3.3.0
-    command: bin/pulsar broker
+    command: >
+      sh -c "bin/apply-config-from-env.py conf/broker.conf &&
+             bin/pulsar broker"
     ports:
       - "6650:6650"
       - "8080:8080"
     environment:
-      zookeeperServers: zookeeper:2181
-      configurationStoreServers: zookeeper:2181
-      clusterName: docker-cluster
-      managedLedgerDefaultEnsembleSize: 1
-      managedLedgerDefaultWriteQuorum: 1
-      managedLedgerDefaultAckQuorum: 1
+      PULSAR_PREFIX_metadataStoreUrl: zk:zookeeper:2181
+      PULSAR_PREFIX_configurationMetadataStoreUrl: zk:zookeeper:2181
+      PULSAR_PREFIX_clusterName: docker-cluster
+      PULSAR_PREFIX_managedLedgerDefaultEnsembleSize: 1
+      PULSAR_PREFIX_managedLedgerDefaultWriteQuorum: 1
+      PULSAR_PREFIX_managedLedgerDefaultAckQuorum: 1
       PULSAR_MEM: "-Xms256m -Xmx512m"
     depends_on:
       - zookeeper
