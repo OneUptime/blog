@@ -288,7 +288,7 @@ Production overlay:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 secretGenerator:
@@ -311,7 +311,7 @@ Staging overlay:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 secretGenerator:
@@ -343,7 +343,7 @@ When you update a secret:
 
 ```bash
 # Update password in production
-echo "NewSecurePassword456" > overlays/production/database.env
+sed -i 's/^DB_PASSWORD=.*/DB_PASSWORD=NewSecurePassword456/' overlays/production/database.env
 
 # Build and apply
 kubectl kustomize overlays/production | kubectl apply -f -
@@ -353,8 +353,8 @@ Kustomize:
 1. Generates new Secret with new hash
 2. Updates deployment to reference new Secret
 3. Kubernetes triggers rolling update
-4. Old Secret remains until deployment completes
-5. Old Secret can be deleted safely
+4. Old Secret remains in the cluster
+5. Old Secret can be deleted safely after the rollout completes
 
 ## Garbage Collection of Old Secrets
 
@@ -392,10 +392,9 @@ spec:
             - |
               # Keep only the 3 most recent versions of each secret
               for base_name in database-config api-keys; do
-                kubectl get secrets -n production -o name | \
+                kubectl get secrets -n production --sort-by=.metadata.creationTimestamp -o name | \
                   grep "^secret/${base_name}-" | \
-                  sort -r | \
-                  tail -n +4 | \
+                  head -n -3 | \
                   xargs -r kubectl delete -n production
               done
           restartPolicy: OnFailure
