@@ -14,13 +14,13 @@ Istio generates vast amounts of telemetry data by default, but you don't always 
 
 The Telemetry API v2 replaces the older Mixer-based telemetry architecture with a more efficient Envoy-native approach. Instead of sending every metric through an external Mixer component, proxies generate telemetry directly and send it to configured backends.
 
-You can configure telemetry at three levels: mesh-wide in the IstioOperator, namespace-wide with Telemetry resources, or workload-specific using selector labels. More specific configurations override broader ones, giving you fine-grained control.
+You can configure telemetry at three levels: mesh-wide with a Telemetry resource in the root configuration namespace, namespace-wide with Telemetry resources, or workload-specific using selector labels. More specific configurations override broader ones, giving you fine-grained control.
 
 The API controls three telemetry types: metrics (Prometheus-style), traces (distributed tracing), and access logs (request-level logging). You can configure each independently.
 
 ## Prerequisites
 
-You need a Kubernetes cluster with Istio 1.11 or later installed. The Telemetry API v2 is the default in recent versions. Verify your Istio installation:
+You need a Kubernetes cluster with Istio 1.22 or later installed for the stable `telemetry.istio.io/v1` API. The Envoy-native telemetry implementation is the default in recent versions. Verify your Istio installation:
 
 ```bash
 istioctl version
@@ -109,7 +109,7 @@ By default, Istio collects a standard set of metrics. Create a Telemetry resourc
 
 ```yaml
 # telemetry-custom-metrics.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-metrics
@@ -154,7 +154,7 @@ Apply different metric configurations to specific workloads using selectors:
 
 ```yaml
 # telemetry-workload-metrics.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: backend-metrics
@@ -189,7 +189,7 @@ Now only backend pods report metrics with the request path dimension. This preve
 
 ## Configuring Custom Access Logs
 
-Access logs show request-level details. By default, Istio doesn't enable access logging because it generates significant data. Enable it selectively:
+Access logs show request-level details. By default, Istio doesn't enable access logging because it generates significant data. Enable it selectively. CEL access log filters are still an alpha Telemetry field, so these filter examples use `telemetry.istio.io/v1alpha1`:
 
 ```yaml
 # telemetry-access-logs.yaml
@@ -202,7 +202,7 @@ spec:
   accessLogging:
   - providers:
     - name: envoy
-    # Custom log format with specific fields
+    # Log only error responses
     filter:
       expression: "response.code >= 400"
 ```
@@ -221,11 +221,42 @@ You'll see access log entries for failed requests.
 
 ## Creating a JSON-Formatted Access Log Pipeline
 
-Send access logs in JSON format for better parsing by log aggregators:
+Send access logs in JSON format for better parsing by log aggregators. Define a formatted Envoy file access log provider in mesh configuration:
+
+```yaml
+# istio-json-access-log-provider.yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: istio-json-access-logs
+  namespace: istio-system
+spec:
+  meshConfig:
+    extensionProviders:
+    - name: json-envoy
+      envoyFileAccessLog:
+        path: /dev/stdout
+        logFormat:
+          labels:
+            timestamp: "%START_TIME%"
+            method: "%REQ(:METHOD)%"
+            path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+            protocol: "%PROTOCOL%"
+            response_code: "%RESPONSE_CODE%"
+            duration: "%DURATION%"
+            user_agent: "%REQ(USER-AGENT)%"
+            request_id: "%REQ(X-REQUEST-ID)%"
+```
+
+```bash
+istioctl install -f istio-json-access-log-provider.yaml
+```
+
+Then select that provider for the frontend workload:
 
 ```yaml
 # telemetry-json-access-logs.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: json-access-logs
@@ -236,21 +267,9 @@ spec:
       app: frontend
   accessLogging:
   - providers:
-    - name: envoy
-    # Custom JSON format
+    - name: json-envoy
     match:
       mode: CLIENT_AND_SERVER
-    # Define custom log format
-    format:
-      labels:
-        timestamp: "%START_TIME%"
-        method: "%REQ(:METHOD)%"
-        path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-        protocol: "%PROTOCOL%"
-        response_code: "%RESPONSE_CODE%"
-        duration: "%DURATION%"
-        user_agent: "%REQ(USER-AGENT)%"
-        request_id: "%REQ(X-REQUEST-ID)%"
 ```
 
 ```bash
@@ -265,7 +284,7 @@ Enable distributed tracing to track requests across services. Configure trace sa
 
 ```yaml
 # telemetry-tracing.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: tracing-config
@@ -273,7 +292,7 @@ metadata:
 spec:
   tracing:
   - providers:
-    - name: jaeger
+    - name: otel-tracing
     # Sample 10% of requests
     randomSamplingPercentage: 10.0
     # Add custom tags to traces
@@ -290,7 +309,7 @@ spec:
 kubectl apply -f telemetry-tracing.yaml
 ```
 
-This sends 10% of traces to Jaeger with custom tags. Configure the Jaeger provider in your Istio installation:
+This sends 10% of traces to an OpenTelemetry collector with custom tags. Configure the provider in your Istio installation:
 
 ```yaml
 # istio-tracing-config.yaml
@@ -301,11 +320,12 @@ metadata:
   namespace: istio-system
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
-    - name: jaeger
+    - name: otel-tracing
       opentelemetry:
-        service: jaeger-collector.observability.svc.cluster.local
-        port: 9411
+        service: opentelemetry-collector.observability.svc.cluster.local
+        port: 4317
 ```
 
 Apply with istioctl:
@@ -316,23 +336,20 @@ istioctl install -f istio-tracing-config.yaml
 
 ## Creating a Multi-Provider Telemetry Pipeline
 
-Send telemetry to multiple backends simultaneously. For example, send metrics to both Prometheus and a custom aggregator:
+Send telemetry to multiple backends simultaneously. For example, send access logs to both stdout and an OpenTelemetry collector:
 
 ```yaml
 # telemetry-multi-provider.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: multi-provider
   namespace: default
 spec:
-  metrics:
-  # Send to Prometheus
+  accessLogging:
   - providers:
-    - name: prometheus
-  # Send to custom OTEL collector
-  - providers:
-    - name: otel-collector
+    - name: envoy
+    - name: otel-logs
 ```
 
 Define the custom provider in your mesh configuration:
@@ -347,13 +364,13 @@ metadata:
 spec:
   meshConfig:
     extensionProviders:
-    - name: otel-collector
-      opentelemetry:
+    - name: otel-logs
+      envoyOtelAls:
         service: opentelemetry-collector.observability.svc.cluster.local
         port: 4317
 ```
 
-Now telemetry flows to both backends. This is useful for sending data to both internal monitoring and external SaaS platforms.
+Now access logs flow to both backends. This is useful for sending data to both internal logging and external SaaS platforms.
 
 ## Reducing Metric Cardinality
 
@@ -361,7 +378,7 @@ High-cardinality metrics consume excessive memory and storage. Reduce cardinalit
 
 ```yaml
 # telemetry-low-cardinality.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: low-cardinality
@@ -397,7 +414,7 @@ Create a namespace-wide configuration that applies to all workloads:
 
 ```yaml
 # telemetry-namespace-default.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: namespace-default
@@ -406,7 +423,7 @@ spec:
   # Enable tracing for all production services
   tracing:
   - providers:
-    - name: jaeger
+    - name: otel-tracing
     randomSamplingPercentage: 100.0
   # Enable access logs for all production services
   accessLogging:
@@ -437,7 +454,7 @@ spec:
     - name: envoy
     # Log only slow requests or errors
     filter:
-      expression: "response.duration > 1000 || response.code >= 500"
+      expression: "request.duration > duration('1s') || response.code >= 500"
 ```
 
 ```bash
@@ -452,7 +469,7 @@ Some workloads don't need telemetry, like internal health checkers or test pods.
 
 ```yaml
 # telemetry-disabled.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: telemetry-disabled
@@ -505,7 +522,7 @@ Export custom metrics and visualize them in Grafana. Add business-level metrics:
 
 ```yaml
 # telemetry-business-metrics.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: business-metrics
