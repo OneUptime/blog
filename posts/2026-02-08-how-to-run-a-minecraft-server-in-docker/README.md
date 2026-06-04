@@ -51,12 +51,12 @@ For a more manageable setup with persistent configuration, use Docker Compose.
 
 ```yaml
 # docker-compose.yml - Minecraft Java Edition server
-version: "3.8"
-
 services:
   minecraft:
     image: itzg/minecraft-server
     container_name: minecraft-server
+    stdin_open: true
+    tty: true
     ports:
       # Default Minecraft port
       - "25565:25565"
@@ -72,6 +72,9 @@ services:
 
       # Memory allocation for the JVM
       MEMORY: "2G"
+
+      # Explicit RCON password used by rcon-cli and backup containers
+      RCON_PASSWORD: "minecraft"
 
       # Server configuration
       SERVER_NAME: "My Docker Server"
@@ -148,12 +151,12 @@ Paper is a high-performance fork of Spigot that supports plugins and has better 
 
 ```yaml
 # docker-compose.yml - Paper server with plugins support
-version: "3.8"
-
 services:
   minecraft:
     image: itzg/minecraft-server
     container_name: minecraft-paper
+    stdin_open: true
+    tty: true
     ports:
       - "25565:25565"
     environment:
@@ -181,12 +184,12 @@ Forge lets you run modpacks with custom content.
 
 ```yaml
 # docker-compose.yml - Forge modded server
-version: "3.8"
-
 services:
   minecraft:
     image: itzg/minecraft-server
     container_name: minecraft-forge
+    stdin_open: true
+    tty: true
     ports:
       - "25565:25565"
     environment:
@@ -264,8 +267,8 @@ You can also create manual backups.
 
 ```bash
 # Create a manual backup by copying the world directory
-docker compose exec minecraft rcon-cli save-all
 docker compose exec minecraft rcon-cli save-off
+docker compose exec minecraft rcon-cli save-all
 
 # Copy the world data out to your host
 docker cp minecraft-server:/data/world ./world-backup-$(date +%Y%m%d)
@@ -279,12 +282,12 @@ docker compose exec minecraft rcon-cli save-on
 Optimize your server for better performance.
 
 ```bash
-# Monitor server performance with TPS (ticks per second)
+# Monitor server performance with TPS (ticks per second) on Paper servers
 docker exec minecraft-server rcon-cli tps
 
-# Adjust view distance in server.properties for better performance
-# Lower values reduce server load - 6-8 is good for constrained setups
-docker exec minecraft-server rcon-cli gamerule viewDistance 8
+# To adjust view distance, set VIEW_DISTANCE in docker-compose.yml
+# Lower values reduce server load; 6-8 is good for constrained setups
+docker compose up -d
 ```
 
 For Paper servers, you can tune additional settings in the `paper-global.yml` and `paper-world-defaults.yml` files located in the `/data/config` directory.
