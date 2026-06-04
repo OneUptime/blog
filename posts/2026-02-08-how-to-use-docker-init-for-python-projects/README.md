@@ -101,7 +101,7 @@ RUN adduser \
 # Install dependencies using cache mount for pip
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.txt,target=requirements.txt \
-    pip install --no-cache-dir -r requirements.txt
+    python -m pip install -r requirements.txt
 
 # Switch to non-root user
 USER appuser
@@ -130,6 +130,12 @@ Django projects need a few additional considerations. Create a Django project:
 pip install django gunicorn psycopg2-binary whitenoise
 django-admin startproject mysite .
 pip freeze > requirements.txt
+```
+
+If you plan to collect static files during the image build, make sure `mysite/settings.py` defines `STATIC_ROOT`:
+
+```python
+STATIC_ROOT = BASE_DIR / "staticfiles"
 ```
 
 Modify the generated Dockerfile for Django:
@@ -164,7 +170,7 @@ RUN adduser \
 # Install Python dependencies
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.txt,target=requirements.txt \
-    pip install -r requirements.txt
+    python -m pip install -r requirements.txt
 
 # Copy application code
 COPY . .
@@ -179,7 +185,7 @@ EXPOSE 8000
 CMD ["gunicorn", "mysite.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
 ```
 
-The Django compose.yaml should include a database:
+A Django compose.yaml can include a database; configure your Django settings to read the `DATABASE_URL`, `DJANGO_SECRET_KEY`, and `DJANGO_DEBUG` environment variables:
 
 ```yaml
 # compose.yaml - Django with PostgreSQL
@@ -270,10 +276,12 @@ WORKDIR /app
 
 # Install Poetry
 ENV POETRY_HOME=/opt/poetry
-ENV POETRY_VERSION=1.7.1
+ENV POETRY_VERSION=2.4.1
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install "poetry==${POETRY_VERSION}"
 
-# Configure Poetry to not create virtual environments in containers
+# Install dependencies into the container virtual environment
 ENV POETRY_VIRTUALENVS_CREATE=false
 
 # Install dependencies (copy lock file for caching)
@@ -318,7 +326,9 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Final stage - runtime only
 FROM python:${PYTHON_VERSION}-slim as final
@@ -333,8 +343,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages from builder
-COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 ARG UID=10001
 RUN adduser \
