@@ -79,11 +79,12 @@ Identify which fields are mandatory:
 kubectl explain pods.spec
 
 # Look for "-required-" in output
-# Required fields are marked in the description
+# Required fields are marked in the FIELD line
 
 # Check container requirements
 kubectl explain pods.spec.containers
-# Shows "name" and "image" are required fields
+# Shows that containers are required; kubectl explain pods.spec.containers.name
+# shows that the container name is required
 ```
 
 Required fields must be present for resources to be valid.
@@ -114,7 +115,7 @@ Array elements have their own schema definitions.
 Show entire resource schema at once:
 
 ```bash
-# Recursive explain (shows all nested fields)
+# Recursive explain (shows nested fields; currently only one level deep)
 kubectl explain pods --recursive
 
 # Recursive with grep to find specific fields
@@ -124,7 +125,7 @@ kubectl explain pods --recursive | grep -i volume
 kubectl explain pods.spec --recursive
 ```
 
-Recursive mode outputs the complete field hierarchy.
+Recursive mode outputs nested field information for the requested schema level.
 
 ## Checking API Versions
 
@@ -233,16 +234,12 @@ kubectl explain pods.spec.containers.resources
 
 # Requests
 kubectl explain pods.spec.containers.resources.requests
-kubectl explain pods.spec.containers.resources.requests.cpu
-kubectl explain pods.spec.containers.resources.requests.memory
 
 # Limits
 kubectl explain pods.spec.containers.resources.limits
-kubectl explain pods.spec.containers.resources.limits.cpu
-kubectl explain pods.spec.containers.resources.limits.memory
 ```
 
-This shows how to specify resource constraints.
+This shows how to specify resource constraints. CPU and memory are common keys in the requests and limits maps.
 
 ## Discovering Probe Configurations
 
@@ -298,7 +295,7 @@ kubectl explain services.spec.type
 kubectl explain services.spec.clusterIP
 
 # LoadBalancer specific
-kubectl explain services.spec.loadBalancerIP
+kubectl explain services.spec.loadBalancerClass
 kubectl explain services.spec.loadBalancerSourceRanges
 
 # NodePort specific
@@ -437,7 +434,7 @@ echo "metadata:"
 echo "  name: example-pod"
 echo "spec:"
 
-# Get required fields from explain
+# Get field hints from explain
 kubectl explain pods.spec --recursive | grep -E "^\s+\w+" | while read field; do
     echo "  # $field"
 done
