@@ -17,7 +17,7 @@ This guide walks through deploying a production-ready MLflow setup on Kubernetes
 The MLflow deployment consists of:
 
 - **MLflow Tracking Server**: REST API for logging experiments and metrics
-- **MLflow Model Registry**: Manages model versions and stages
+- **MLflow Model Registry**: Manages model versions and aliases
 - **PostgreSQL**: Stores experiment metadata
 - **MinIO**: S3-compatible storage for artifacts (models, plots, etc.)
 - **Nginx**: Reverse proxy with authentication
@@ -160,7 +160,7 @@ spec:
     spec:
       containers:
       - name: minio
-        image: minio/minio:RELEASE.2024-01-01T00-00-00Z
+        image: minio/minio:RELEASE.2024-01-01T16-36-33Z
         command:
         - /bin/bash
         - -c
@@ -239,7 +239,7 @@ kubectl run -n mlflow minio-client --image=minio/mc --command -- sleep 3600
 # Create MLflow bucket
 kubectl exec -n mlflow minio-client -- mc alias set minio http://mlflow-minio:9000 minio-admin minio-secure-password
 kubectl exec -n mlflow minio-client -- mc mb minio/mlflow
-kubectl exec -n mlflow minio-client -- mc policy set download minio/mlflow
+kubectl exec -n mlflow minio-client -- mc anonymous set private minio/mlflow
 
 # Cleanup client pod
 kubectl delete pod -n mlflow minio-client
@@ -265,6 +265,9 @@ data:
 
   # MinIO endpoint
   MLFLOW_S3_ENDPOINT_URL: "http://mlflow-minio:9000"
+
+  # Prometheus metrics
+  MLFLOW_EXPOSE_PROMETHEUS: "/tmp/mlflow-prometheus"
 ---
 apiVersion: v1
 kind: Secret
@@ -281,6 +284,8 @@ kind: Deployment
 metadata:
   name: mlflow-server
   namespace: mlflow
+  labels:
+    app: mlflow-server
 spec:
   replicas: 3
   selector:
@@ -338,6 +343,8 @@ kind: Service
 metadata:
   name: mlflow-server
   namespace: mlflow
+  labels:
+    app: mlflow-server
 spec:
   selector:
     app: mlflow-server
@@ -395,12 +402,12 @@ metadata:
   name: mlflow-ingress
   namespace: mlflow
   annotations:
-    kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/auth-type: basic
     nginx.ingress.kubernetes.io/auth-secret: mlflow-basic-auth
     nginx.ingress.kubernetes.io/auth-realm: "MLflow Authentication"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - mlflow.yourdomain.com
@@ -576,7 +583,7 @@ client = MlflowClient("http://mlflow.yourdomain.com")
 models = client.search_registered_models()
 for model in models:
     print(f"Model: {model.name}")
-    print(f"  Latest version: {model.latest_versions}")
+    print(f"  Aliases: {model.aliases}")
 
 # Get specific model version
 model_name = "churn-prediction-model"
@@ -589,17 +596,17 @@ model_details = client.get_model_version(
 
 print(f"Model Version Details:")
 print(f"  Status: {model_details.status}")
-print(f"  Stage: {model_details.current_stage}")
+print(f"  Aliases: {model_details.aliases}")
 print(f"  Run ID: {model_details.run_id}")
 
-# Transition model to staging
-client.transition_model_version_stage(
+# Mark model as a candidate for validation
+client.set_registered_model_alias(
     name=model_name,
-    version=model_version,
-    stage="Staging"
+    alias="Candidate",
+    version=model_version
 )
 
-print(f"Model version {model_version} moved to Staging")
+print(f"Model version {model_version} marked as Candidate")
 
 # Add description
 client.update_model_version(
@@ -608,18 +615,17 @@ client.update_model_version(
     description="Random Forest model with 100 estimators, trained on 10k samples"
 )
 
-# Transition to production after validation
-client.transition_model_version_stage(
+# Promote to production after validation
+client.set_registered_model_alias(
     name=model_name,
-    version=model_version,
-    stage="Production",
-    archive_existing_versions=True  # Archive previous production versions
+    alias="Champion",
+    version=model_version
 )
 
-print(f"Model version {model_version} moved to Production")
+print(f"Model version {model_version} promoted to Champion")
 
 # Load production model for inference
-model_uri = f"models:/{model_name}/Production"
+model_uri = f"models:/{model_name}@Champion"
 model = mlflow.sklearn.load_model(model_uri)
 
 # Make predictions
@@ -631,7 +637,7 @@ print(f"Predictions: {predictions}")
 
 ## Creating a Model Deployment Pipeline
 
-Automate model deployment based on registry stages:
+Automate model deployment based on registry aliases:
 
 ```python
 # model_deployer.py
@@ -655,18 +661,12 @@ class ModelDeployer:
     def check_and_deploy(self):
         """Check for new production models and deploy them"""
 
-        # Get latest production model
+        # Get the model version promoted to production
         try:
-            versions = self.client.get_latest_versions(
+            latest_prod = self.client.get_model_version_by_alias(
                 self.model_name,
-                stages=["Production"]
+                alias="Champion"
             )
-
-            if not versions:
-                logging.info(f"No production version for {self.model_name}")
-                return
-
-            latest_prod = versions[0]
             model_version = latest_prod.version
             run_id = latest_prod.run_id
 
@@ -794,4 +794,4 @@ spec:
 
 ## Conclusion
 
-Deploying MLflow on Kubernetes provides a scalable, centralized platform for managing ML experiments and models. The combination of experiment tracking, model registry, and artifact storage makes it easier to collaborate across teams and maintain reproducibility. By integrating with Kubernetes, you can automate model deployments based on registry stages and build complete MLOps pipelines that handle the full model lifecycle from training to production.
+Deploying MLflow on Kubernetes provides a scalable, centralized platform for managing ML experiments and models. The combination of experiment tracking, model registry, and artifact storage makes it easier to collaborate across teams and maintain reproducibility. By integrating with Kubernetes, you can automate model deployments based on registry aliases and build complete MLOps pipelines that handle the full model lifecycle from training to production.
