@@ -14,7 +14,7 @@ Pulumi component resources solve this by encapsulating best practices into reusa
 
 ## Understanding Pulumi Component Resources
 
-Component resources are custom abstractions that bundle multiple cloud resources together. Unlike cloud provider resources that map to specific APIs, components are pure Pulumi constructs that exist only in your program.
+Component resources are custom abstractions that bundle multiple cloud resources together. Unlike cloud provider resources that map to specific APIs, components are Pulumi constructs that appear in your Pulumi state and resource graph but do not create their own Kubernetes API object.
 
 A namespace component might create the namespace itself, resource quotas, limit ranges, network policies, role bindings, and monitoring configuration. Users interact with a single high-level interface rather than managing individual resources.
 
@@ -46,10 +46,11 @@ export class Namespace extends pulumi.ComponentResource {
         name: args.name,
         labels: {
           ...args.labels,
-          "managed-by": "pulumi",
-          "created-at": new Date().toISOString()
+          "managed-by": "pulumi"
         },
-        annotations: args.annotations
+        annotations: {
+          ...args.annotations
+        },
       }
     }, { parent: this });
 
@@ -170,9 +171,17 @@ const limitedNamespace = new Namespace("limited-ns", {
 
 ## Implementing Network Policies
 
-Add network isolation:
+Add network isolation. Network policies are enforced only when your cluster uses a network plugin that supports Kubernetes NetworkPolicy:
 
 ```typescript
+export interface QuotaConfig {
+  cpu: string;
+  memory: string;
+  pods: number;
+  services: number;
+  persistentVolumeClaims: number;
+}
+
 export interface NamespaceArgs {
   name: string;
   labels?: { [key: string]: string };
@@ -268,7 +277,7 @@ export class Namespace extends pulumi.ComponentResource {
               from: [{
                 namespaceSelector: {
                   matchLabels: {
-                    name: ns
+                    "kubernetes.io/metadata.name": ns
                   }
                 }
               }]
@@ -293,12 +302,15 @@ export class Namespace extends pulumi.ComponentResource {
                 to: [{
                   namespaceSelector: {
                     matchLabels: {
-                      name: "kube-system"
+                      "kubernetes.io/metadata.name": "kube-system"
                     }
                   }
                 }],
                 ports: [{
                   protocol: "UDP",
+                  port: 53
+                }, {
+                  protocol: "TCP",
                   port: 53
                 }]
               },
@@ -307,7 +319,7 @@ export class Namespace extends pulumi.ComponentResource {
                 to: [{
                   namespaceSelector: {
                     matchLabels: {
-                      name: ns
+                      "kubernetes.io/metadata.name": ns
                     }
                   }
                 }]
