@@ -65,7 +65,7 @@ kubectl exec -it my-pod -- curl -v http://my-service:8080/
 # - Response body
 
 # Even more detail with trace
-kubectl exec -it my-pod -- curl -v --trace-ascii /dev/stdout http://my-service:8080/
+kubectl exec -it my-pod -- curl --trace-ascii - http://my-service:8080/
 ```
 
 Verbose output reveals where HTTP requests fail.
@@ -291,7 +291,7 @@ kubectl exec -it my-pod -- cat headers.txt
 # Extract specific header
 kubectl exec -it my-pod -- curl -s -D - http://my-service:8080/ | grep "Content-Type"
 
-# wget saves headers with -S
+# wget prints headers with -S
 kubectl exec -it my-pod -- wget -S -O response.html http://my-service:8080/
 ```
 
@@ -307,8 +307,8 @@ for i in {1..10}; do
   kubectl exec my-pod -- curl -s http://my-service:8080/ | grep -i "hostname"
 done
 
-# Should see different backend pod hostnames
-# Even distribution indicates proper load balancing
+# Should see different backend pod hostnames when multiple ready endpoints exist
+# and session affinity or traffic policies are not pinning requests
 
 # Track distribution
 for i in {1..100}; do
@@ -316,7 +316,7 @@ for i in {1..100}; do
 done | sort | uniq -c
 ```
 
-Uneven distribution indicates load balancing issues.
+Persistent single-backend responses or unexpected skew can indicate load balancing issues.
 
 ## Testing External Endpoints
 
@@ -326,14 +326,14 @@ Verify pods can reach external APIs:
 # Test external HTTPS endpoint
 kubectl exec -it my-pod -- curl -v https://api.github.com
 
-# Test with specific DNS
+# Test with specific DNS (requires curl built with c-ares support)
 kubectl exec -it my-pod -- curl --dns-servers 8.8.8.8 https://api.example.com
 
 # Test through proxy if required
 kubectl exec -it my-pod -- curl -x http://proxy:8080 https://api.example.com
 
 # wget through proxy
-kubectl exec -it my-pod -- wget -e use_proxy=yes -e http_proxy=proxy:8080 https://api.example.com
+kubectl exec -it my-pod -- wget -e use_proxy=yes -e http_proxy=http://proxy:8080 https://api.example.com
 ```
 
 External endpoint tests verify egress configuration.
@@ -353,7 +353,7 @@ kubectl exec -it my-pod -- curl --socks5 proxy:1080 http://my-service:8080/
 kubectl exec -it my-pod -- curl -v -x http://proxy:8080 http://my-service:8080/
 
 # wget with proxy
-kubectl exec -it my-pod -- wget -e use_proxy=yes -e http_proxy=proxy:8080 \
+kubectl exec -it my-pod -- wget -e use_proxy=yes -e http_proxy=http://proxy:8080 \
   -O- http://my-service:8080/
 ```
 
@@ -453,4 +453,4 @@ curl and wget are essential HTTP testing tools in Kubernetes. They test complete
 
 Master verbose mode to see complete request and response details. Use timing options to measure performance. Test different HTTP methods, status codes, headers, and TLS configurations. Create monitoring loops for continuous endpoint verification.
 
-Understanding how to use curl and wget effectively makes you efficient at debugging HTTP connectivity, testing APIs, verifying service behavior, and troubleshooting web applications in Kubernetes. These tools are always available in standard container images or easily added, making them reliable debugging companions.
+Understanding how to use curl and wget effectively makes you efficient at debugging HTTP connectivity, testing APIs, verifying service behavior, and troubleshooting web applications in Kubernetes. These tools are available in many utility images or easily added, making them reliable debugging companions.
