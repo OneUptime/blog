@@ -50,12 +50,22 @@ kubectl create secret docker-registry ecr-creds \
   --docker-password="${ECR_TOKEN}"
 ```
 
-For Google Container Registry (GCR) or Artifact Registry:
+For Google Container Registry (GCR):
 
 ```bash
 # Create the secret using a GCP service account key
 kubectl create secret docker-registry gcr-creds \
-  --docker-server=gcr.io \
+  --docker-server=https://gcr.io \
+  --docker-username=_json_key \
+  --docker-password="$(cat service-account-key.json)"
+```
+
+For Artifact Registry, use the regional or multi-regional registry host:
+
+```bash
+# Create the secret using a GCP service account key
+kubectl create secret docker-registry artifact-registry-creds \
+  --docker-server=https://us-docker.pkg.dev \
   --docker-username=_json_key \
   --docker-password="$(cat service-account-key.json)"
 ```
@@ -224,9 +234,9 @@ Copy the secret to another namespace:
 
 ```bash
 # Export the secret from one namespace and apply it in another
-kubectl get secret dockerhub-creds -n default -o yaml | \
-  sed 's/namespace: default/namespace: production/' | \
-  kubectl apply -f -
+kubectl get secret dockerhub-creds -n default -o json | \
+  jq 'del(.metadata.namespace, .metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.managedFields)' | \
+  kubectl apply -n production -f -
 ```
 
 Use a tool like Reflector to automatically sync secrets across namespaces:
@@ -245,10 +255,36 @@ kubectl annotate secret dockerhub-creds \
 
 ## Handling ECR Token Rotation
 
-ECR tokens expire after 12 hours, which makes static secrets problematic. Use a CronJob to refresh the token automatically.
+ECR tokens expire after 12 hours, which makes static secrets problematic. Use a CronJob to refresh the token automatically. The container image in the CronJob needs both the AWS CLI and `kubectl` installed. The service account also needs AWS permissions to call ECR, such as through your cluster's IAM integration or mounted AWS credentials.
 
 ```yaml
 # ecr-token-refresh.yaml - CronJob to refresh ECR credentials every 6 hours
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ecr-refresher
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ecr-refresher
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ecr-refresher
+subjects:
+  - kind: ServiceAccount
+    name: ecr-refresher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ecr-refresher
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -262,17 +298,17 @@ spec:
           serviceAccountName: ecr-refresher
           containers:
             - name: ecr-refresh
-              image: amazon/aws-cli:latest
+              image: mycompany/aws-kubectl:latest
               command:
                 - /bin/sh
                 - -c
                 - |
                   TOKEN=$(aws ecr get-login-password --region us-east-1)
-                  kubectl delete secret ecr-creds --ignore-not-found
                   kubectl create secret docker-registry ecr-creds \
                     --docker-server=123456789012.dkr.ecr.us-east-1.amazonaws.com \
                     --docker-username=AWS \
-                    --docker-password="${TOKEN}"
+                    --docker-password="${TOKEN}" \
+                    --dry-run=client -o yaml | kubectl apply -f -
           restartPolicy: OnFailure
 ```
 
