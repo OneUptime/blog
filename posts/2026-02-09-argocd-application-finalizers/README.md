@@ -28,7 +28,7 @@ This finalizer ensures that all resources managed by the Application are deleted
 **resources-finalizer.argocd.argoproj.io/background:**
 This finalizer performs deletion in the background, allowing the Application to be removed immediately while resources are cleaned up asynchronously.
 
-By default, ArgoCD applications include the standard resources finalizer.
+Declarative ArgoCD Applications only include a resources finalizer if you add one. The `argocd app delete` command adds the standard resources finalizer automatically when you use cascading deletion.
 
 ## Default Application with finalizer
 
@@ -135,9 +135,9 @@ spec:
 ```
 
 With the background finalizer:
-1. The Application deletion request returns immediately
+1. The Application deletion request returns faster
 2. ArgoCD starts deleting resources in the background
-3. The Application object is removed after all resources are deleted
+3. The Application object can be removed before all child resources finish deleting
 
 This is particularly useful for applications managing hundreds of resources where synchronous deletion would timeout.
 
@@ -163,9 +163,6 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: production
-  syncPolicy:
-    syncOptions:
-      - PruneLast=true
 ```
 
 In your manifests, mark resources that should be preserved:
@@ -178,7 +175,7 @@ metadata:
   name: database-storage
   namespace: production
   annotations:
-    argocd.argoproj.io/sync-options: "Prune=false"
+    argocd.argoproj.io/sync-options: "Delete=false"
 spec:
   accessModes:
     - ReadWriteOnce
@@ -188,7 +185,7 @@ spec:
   storageClassName: fast-ssd
 ```
 
-The `Prune=false` annotation tells ArgoCD not to delete this resource during pruning, effectively preserving it even when the Application is deleted with a finalizer.
+The `Delete=false` annotation tells ArgoCD not to delete this resource during Application deletion, effectively preserving it even when the Application is deleted with a finalizer.
 
 ## Handling stuck finalizers
 
@@ -337,7 +334,7 @@ kubectl get app -n argocd -o json | \
   .metadata.name'
 ```
 
-6. **Use selective pruning for stateful resources:** Protect PVCs, Secrets, and ConfigMaps containing important data with `Prune=false` annotations.
+6. **Use selective deletion protection for stateful resources:** Protect PVCs, Secrets, and ConfigMaps containing important data with `Delete=false` annotations.
 
 ## Finalizer decision matrix
 
