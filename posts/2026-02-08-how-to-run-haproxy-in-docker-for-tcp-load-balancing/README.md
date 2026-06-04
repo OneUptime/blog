@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, HAProxy, Load Balancing, TCP, Networking, Reverse Proxy, High Availability
 
-Description: Configure HAProxy in Docker for TCP load balancing across backend services with health checks, sticky sessions, and TLS termination.
+Description: Configure HAProxy in Docker for TCP load balancing across backend services with health checks, sticky sessions, and TLS passthrough.
 
 ---
 
@@ -29,7 +29,7 @@ graph TD
 
 ## Quick Start
 
-Get HAProxy running in TCP mode with a minimal configuration.
+After creating the configuration file shown in the next section, start HAProxy in TCP mode.
 
 ```bash
 # Create a directory for HAProxy configuration
@@ -41,20 +41,19 @@ docker run -d \
   --name haproxy \
   -p 3306:3306 \
   -v /opt/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro \
-  haproxy:2.9-alpine
+  haproxy:3.4-alpine
 ```
 
 ## Basic TCP Configuration
 
-Create a haproxy.cfg file that distributes MySQL connections across three database replicas.
+Create a haproxy.cfg file that distributes MySQL client connections across three database replicas.
 
 ```bash
 # haproxy.cfg - TCP load balancing for MySQL replicas
-# This configuration distributes read queries across three MySQL servers
+# This configuration distributes client connections across three MySQL servers
 
 global
-    # Run HAProxy in the foreground (required for Docker)
-    daemon
+    # Keep HAProxy in the foreground for Docker
     maxconn 4096
     log stdout format raw local0
 
@@ -101,7 +100,7 @@ version: "3.8"
 
 services:
   haproxy:
-    image: haproxy:2.9-alpine
+    image: haproxy:3.4-alpine
     container_name: haproxy-lb
     restart: unless-stopped
     ports:
@@ -263,11 +262,11 @@ frontend tls_passthrough
     mode tcp
     # Wait briefly to capture the SNI header from the TLS ClientHello
     tcp-request inspect-delay 5s
-    tcp-request content accept if { req_ssl_hello_type 1 }
+    tcp-request content accept if { req.ssl_hello_type 1 }
 
     # Route based on the SNI hostname
-    use_backend web_servers if { req_ssl_sni -i web.example.com }
-    use_backend api_servers if { req_ssl_sni -i api.example.com }
+    use_backend web_servers if { req.ssl_sni -i web.example.com }
+    use_backend api_servers if { req.ssl_sni -i api.example.com }
     default_backend web_servers
 
 backend web_servers
