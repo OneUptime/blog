@@ -22,8 +22,8 @@ Namespace creation detection, automatically adding bundles to new namespaces
 Format conversion and validation of CA certificates
 
 The core concept is the Bundle custom resource, which defines:
-- Source CA certificates (from secrets, ConfigMaps, or inline)
-- Target ConfigMap name and key
+- Source CA certificates (from secrets and ConfigMaps in the trust namespace, or inline)
+- Target ConfigMap key
 - Namespace selector (all namespaces or specific labels)
 
 ## Installing trust-manager
@@ -32,8 +32,10 @@ Install trust-manager in your cluster:
 
 ```bash
 # Install trust-manager
-
-kubectl apply -f https://github.com/cert-manager/trust-manager/releases/download/v0.7.0/trust-manager.yaml
+helm upgrade trust-manager oci://quay.io/jetstack/charts/trust-manager \
+  --install \
+  --namespace cert-manager \
+  --wait
 
 # Verify installation
 kubectl get pods -n cert-manager -l app.kubernetes.io/name=trust-manager
@@ -57,14 +59,14 @@ metadata:
 spec:
   # Sources of CA certificates
   sources:
-  # CA certificate from a secret
+  # CA certificate from a secret in the trust namespace
   - secret:
       name: "mtls-ca-key-pair"
       key: "tls.crt"
 
   # Target ConfigMap configuration
   target:
-    # ConfigMap name in each namespace
+    # ConfigMap key in each namespace
     configMap:
       key: "ca-bundle.crt"
 
@@ -100,12 +102,12 @@ metadata:
   name: all-cas-bundle
 spec:
   sources:
-  # Internal CA from secret
+  # Internal CA from a secret in the trust namespace
   - secret:
       name: "internal-ca-key-pair"
       key: "tls.crt"
 
-  # Public CA from ConfigMap
+  # Public CA from a ConfigMap in the trust namespace
   - configMap:
       name: "public-ca-certs"
       key: "ca.crt"
@@ -143,6 +145,7 @@ metadata:
   name: production-ca-bundle
 spec:
   sources:
+  # Production CA from a secret in the trust namespace
   - secret:
       name: "production-ca-key-pair"
       key: "tls.crt"
@@ -200,7 +203,7 @@ metadata:
   name: internal-services-ca
 spec:
   sources:
-  # Internal CA only
+  # Internal CA only, read from the trust namespace
   - secret:
       name: "internal-ca-key-pair"
       key: "tls.crt"
@@ -221,6 +224,7 @@ spec:
   sources:
   # Both public and internal CAs
   - useDefaultCAs: true
+  # Internal CA from a secret in the trust namespace
   - secret:
       name: "internal-ca-key-pair"
       key: "tls.crt"
@@ -261,14 +265,13 @@ spec:
         env:
         # Set CA bundle path for application
         - name: SSL_CERT_FILE
-          value: /etc/ssl/certs/ca-bundle.crt
+          value: /etc/trust-bundle/ca-bundle.crt
         - name: REQUESTS_CA_BUNDLE
-          value: /etc/ssl/certs/ca-bundle.crt
+          value: /etc/trust-bundle/ca-bundle.crt
         volumeMounts:
         # Mount trust bundle
         - name: ca-bundle
-          mountPath: /etc/ssl/certs/ca-bundle.crt
-          subPath: ca-bundle.crt
+          mountPath: /etc/trust-bundle
           readOnly: true
       volumes:
       - name: ca-bundle
@@ -302,18 +305,19 @@ kubectl get configmap internal-ca-bundle -n production -w
 
 Applications referencing the ConfigMap receive the updated CA certificate. Applications that cache certificates need mechanisms to reload when ConfigMaps change.
 
-## Filtering Certificates in Bundles
+## Additional Formats in Bundles
 
-trust-manager can filter certificates based on validity and format:
+trust-manager can write additional trust store formats alongside the PEM bundle:
 
 ```yaml
-# filtered-bundle.yaml
+# additional-format-bundle.yaml
 apiVersion: trust.cert-manager.io/v1alpha1
 kind: Bundle
 metadata:
-  name: filtered-ca-bundle
+  name: additional-format-ca-bundle
 spec:
   sources:
+  # CA bundle from a secret in the trust namespace
   - secret:
       name: "ca-certificates"
       key: "ca-bundle.crt"
@@ -323,18 +327,18 @@ spec:
     configMap:
       key: "ca-bundle.crt"
 
-    # Additional metadata on target ConfigMap
+    # Additional trust store formats on target ConfigMap
     additionalFormats:
-      # Also create JKS format for Java applications
-      jks:
-        key: "ca-bundle.jks"
+      # Also create PKCS#12 format for Java applications
+      pkcs12:
+        key: "ca-bundle.p12"
         password: "changeit"
 
     namespaceSelector:
       matchLabels: {}
 ```
 
-This feature is useful when dealing with bundles containing expired or invalid certificates that need filtering.
+This feature is useful when applications require a binary trust store format instead of a PEM file.
 
 ## Monitoring Trust Bundle Synchronization
 
@@ -356,9 +360,9 @@ kubectl get configmap internal-ca-bundle --all-namespaces \
 ```
 
 Bundle status shows:
-- Number of namespaces synced
-- Last sync time
-- Synchronization errors
+- Synchronization condition, status, reason, and message
+- Observed generation for the latest reconciled Bundle spec
+- Default CA package version when `useDefaultCAs` is enabled
 
 ## Handling New Namespaces
 
@@ -379,7 +383,7 @@ This ensures new applications automatically have access to required CA certifica
 
 ## Bundle Priority and Conflicts
 
-If multiple Bundles target the same ConfigMap name, the behavior depends on Bundle configuration. Avoid conflicts by using unique ConfigMap names for each Bundle:
+Each Bundle creates target resources that match the Bundle name. Avoid confusion by using descriptive, unique Bundle names:
 
 ```yaml
 # Good: unique ConfigMap names
@@ -389,6 +393,7 @@ metadata:
   name: internal-ca
 spec:
   sources:
+  # Internal CA from a secret in the trust namespace
   - secret:
       name: "internal-ca-key-pair"
       key: "tls.crt"
@@ -423,12 +428,12 @@ metadata:
   name: mesh-ca-bundle
 spec:
   sources:
-  # Service mesh CA
+  # Service mesh CA, read from the trust namespace
   - secret:
       name: "istio-ca-secret"
       key: "ca-cert.pem"
 
-  # Application CAs
+  # Application CAs, read from the trust namespace
   - secret:
       name: "internal-ca-key-pair"
       key: "tls.crt"
@@ -459,7 +464,7 @@ Test CA rotation procedures before production rollout. Verify applications handl
 
 Use trust-manager for CA distribution instead of manual ConfigMap copying. This ensures consistency and reduces operational overhead.
 
-Consider additional formats (JKS for Java) when applications require specific trust store formats.
+Consider additional formats (PKCS#12 for Java) when applications require specific trust store formats.
 
 ## Troubleshooting
 
@@ -479,8 +484,8 @@ kubectl logs -n cert-manager -l app.kubernetes.io/name=trust-manager
 ### ConfigMap Not Updating After CA Rotation
 
 ```bash
-# Verify source secret updated
-kubectl get secret <ca-secret> -o yaml
+# Verify source secret updated in the trust namespace
+kubectl get secret <ca-secret> -n cert-manager -o yaml
 
 # Check Bundle generation number increased
 kubectl get bundle <bundle-name> -o jsonpath='{.metadata.generation}'
@@ -493,7 +498,7 @@ kubectl annotate bundle <bundle-name> force-sync="$(date)"
 
 ```bash
 # Verify ConfigMap mounted correctly
-kubectl exec -it <pod> -- cat /etc/ssl/certs/ca-bundle.crt
+kubectl exec -it <pod> -- cat /etc/trust-bundle/ca-bundle.crt
 
 # Check CA certificate in bundle
 kubectl get configmap <bundle-name> -n <namespace> \
