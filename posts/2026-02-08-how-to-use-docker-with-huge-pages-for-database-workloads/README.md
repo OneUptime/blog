@@ -89,7 +89,7 @@ sudo reboot
 
 ### Configure Huge Page Groups
 
-Docker containers need permission to use huge pages. Set up a group:
+Processes need permission to use huge pages: either the `IPC_LOCK` capability or membership in the group configured with `vm.hugetlb_shm_group`. Set up a group if you want group-based access:
 
 ```bash
 # Create a group for huge page users
@@ -106,6 +106,8 @@ sudo sysctl -p /etc/sysctl.d/hugepages.conf
 
 ### Mount the hugetlbfs Filesystem
 
+Mounting `hugetlbfs` is optional for applications that allocate huge pages with `mmap` or System V shared memory, but it is useful for software that maps files from a hugetlbfs mount.
+
 ```bash
 # Create the mount point
 sudo mkdir -p /dev/hugepages
@@ -121,19 +123,21 @@ echo "hugetlbfs /dev/hugepages hugetlbfs gid=$(getent group hugetlb | cut -d: -f
 
 ## Step 2: Configure Docker to Use Huge Pages
 
-Docker supports huge pages through the `--shm-size` flag and direct hugetlbfs mounts.
+Docker containers can use the host's HugeTLB pool when the process has permission to allocate huge pages. The `--shm-size` flag only changes the container's `/dev/shm` size; it is useful for PostgreSQL dynamic shared memory, but it does not allocate HugeTLB pages by itself.
 
-### Mount hugetlbfs into the Container
+### Grant Huge Page Access to the Container
 
 ```bash
-# Run PostgreSQL with huge pages mounted
+# Run PostgreSQL with permission to allocate huge pages
 docker run -d \
   --name postgres-hugepages \
-  -v /dev/hugepages:/dev/hugepages \
+  --cap-add IPC_LOCK \
+  --ulimit memlock=-1:-1 \
   --shm-size=8g \
   -e POSTGRES_PASSWORD=secret \
-  -e POSTGRES_SHARED_PRELOAD_LIBRARIES='pg_stat_statements' \
-  postgres:16-alpine
+  postgres:16-alpine \
+  -c huge_pages=on \
+  -c shared_buffers=8GB
 ```
 
 ### Using Docker Compose
@@ -143,9 +147,11 @@ docker run -d \
 services:
   postgres:
     image: postgres:16-alpine
+    cap_add:
+      - IPC_LOCK
+    ulimits:
+      memlock: -1
     volumes:
-      # Mount hugetlbfs for huge page support
-      - /dev/hugepages:/dev/hugepages
       - pgdata:/var/lib/postgresql/data
       - ./postgresql.conf:/etc/postgresql/postgresql.conf
     shm_size: '8g'
@@ -186,7 +192,7 @@ wal_buffers = 64MB
 Start the container and verify huge pages are being used:
 
 ```bash
-# Check PostgreSQL is using huge pages
+# Check PostgreSQL is configured to require huge pages
 docker exec postgres-hugepages psql -U postgres -c "SHOW huge_pages;"
 # Output: on
 
@@ -216,15 +222,14 @@ Run MySQL with huge pages:
 # Run MySQL with huge pages and required capabilities
 docker run -d \
   --name mysql-hugepages \
-  -v /dev/hugepages:/dev/hugepages \
-  --cap-add SYS_NICE \
   --cap-add IPC_LOCK \
+  --ulimit memlock=-1:-1 \
   -v ./my.cnf:/etc/mysql/conf.d/hugepages.cnf \
   -e MYSQL_ROOT_PASSWORD=secret \
   mysql:8.0
 ```
 
-The `IPC_LOCK` capability is required for the process to lock memory into huge pages without being subject to the mlock limit.
+The `IPC_LOCK` capability or membership in the group configured with `vm.hugetlb_shm_group` is required for the process to allocate huge pages. The `memlock` ulimit also needs to be high enough for MySQL's large page allocation.
 
 ## Step 4: Verify Huge Page Usage
 
@@ -286,26 +291,29 @@ Measure the impact of huge pages on your database:
 # Benchmark PostgreSQL without huge pages
 docker run --rm -d --name pg-nohuge \
   -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_DB=testdb \
   -p 5432:5432 \
   postgres:16-alpine -c huge_pages=off -c shared_buffers=8GB
 
 # Wait for startup, then benchmark
-pgbench -i -s 100 -h localhost -U postgres testdb
-pgbench -c 32 -j 8 -T 120 -h localhost -U postgres testdb
+PGPASSWORD=test pgbench -i -s 100 -h localhost -U postgres testdb
+PGPASSWORD=test pgbench -c 32 -j 8 -T 120 -h localhost -U postgres testdb
 
 # Stop and restart with huge pages
 docker stop pg-nohuge
 
 docker run --rm -d --name pg-huge \
-  -v /dev/hugepages:/dev/hugepages \
+  --cap-add IPC_LOCK \
+  --ulimit memlock=-1:-1 \
   --shm-size=8g \
   -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_DB=testdb \
   -p 5432:5432 \
   postgres:16-alpine -c huge_pages=on -c shared_buffers=8GB
 
 # Run the same benchmark
-pgbench -i -s 100 -h localhost -U postgres testdb
-pgbench -c 32 -j 8 -T 120 -h localhost -U postgres testdb
+PGPASSWORD=test pgbench -i -s 100 -h localhost -U postgres testdb
+PGPASSWORD=test pgbench -c 32 -j 8 -T 120 -h localhost -U postgres testdb
 ```
 
 Typical results show 5-15% improvement in transactions per second and 20-40% reduction in TLB misses. The improvement is more pronounced with larger buffer pools and higher concurrency.
@@ -315,12 +323,12 @@ Typical results show 5-15% improvement in transactions per second and 20-40% red
 **Problem**: "could not map anonymous shared memory: Cannot allocate memory"
 **Solution**: Not enough huge pages allocated. Increase `vm.nr_hugepages`.
 
-**Problem**: PostgreSQL falls back to regular pages despite `huge_pages = on`
+**Problem**: PostgreSQL fails to start with `huge_pages = on`
 **Solution**: Check that enough free huge pages are available with `grep HugePages_Free /proc/meminfo`.
 
 **Problem**: Huge pages show allocated but not used
-**Solution**: Verify the hugetlbfs mount is accessible inside the container and the process has the IPC_LOCK capability.
+**Solution**: Verify that the process has the `IPC_LOCK` capability or is in the group configured with `vm.hugetlb_shm_group`, and that the container has a high enough `memlock` ulimit.
 
 ## Wrapping Up
 
-Huge pages reduce TLB pressure and improve database performance in Docker containers. The setup requires host-level configuration (allocating pages, mounting hugetlbfs, disabling THP) and container-level access (volume mounts, capabilities). The performance gains are most significant for memory-intensive workloads with large buffer pools and high concurrency. If you run databases in Docker, huge pages should be part of your production configuration.
+Huge pages reduce TLB pressure and improve database performance in Docker containers. The setup requires host-level configuration (allocating pages, configuring permissions, disabling THP) and container-level access (capabilities and ulimits). The performance gains are most significant for memory-intensive workloads with large buffer pools and high concurrency. If you run databases in Docker, huge pages should be part of your production configuration.
