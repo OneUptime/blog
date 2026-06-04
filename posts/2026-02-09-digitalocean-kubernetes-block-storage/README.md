@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DigitalOcean, DOKS, Storage, CSI
 
-Description: Learn how to configure and use DigitalOcean Block Storage with the CSI driver in DOKS clusters for persistent storage, snapshots, volume expansion, and multi-attach capabilities.
+Description: Learn how to configure and use DigitalOcean Block Storage with the CSI driver in DOKS clusters for persistent storage, snapshots, and volume expansion.
 
 ---
 
-DigitalOcean Kubernetes (DOKS) includes a Container Storage Interface (CSI) driver for Block Storage volumes. This driver enables dynamic provisioning of persistent volumes, volume snapshots, online expansion, and ReadWriteMany access modes. Understanding the CSI driver capabilities helps optimize storage for stateful applications in DOKS clusters.
+DigitalOcean Kubernetes (DOKS) includes a Container Storage Interface (CSI) driver for Block Storage volumes. This driver enables dynamic provisioning of persistent volumes, volume snapshots, and online expansion. DigitalOcean Block Storage volumes support the ReadWriteOnce access mode; use DigitalOcean NFS shares when you need ReadWriteMany. Understanding the CSI driver capabilities helps optimize storage for stateful applications in DOKS clusters.
 
 ## Understanding DigitalOcean Block Storage
 
-DigitalOcean Block Storage provides SSD-backed network volumes that attach to Droplets and Kubernetes nodes. Volumes persist independently of cluster nodes, surviving pod and node failures. They support sizes from 1GB to 16TB and provide consistent performance based on volume size.
+DigitalOcean Block Storage provides network-attached volumes that attach to Droplets and Kubernetes nodes. Volumes persist independently of cluster nodes, surviving pod and node failures. They support sizes from 1 GiB to 16 TiB and provide performance based on the Droplet type the volume is attached to.
 
 The CSI driver automatically handles volume lifecycle: creating volumes when PersistentVolumeClaims are bound, attaching volumes to nodes running pods, mounting volumes into pod filesystems, and cleaning up when volumes are deleted.
 
@@ -25,7 +25,7 @@ DOKS clusters include the CSI driver by default. Verify installation:
 ```bash
 # Check CSI driver pods
 
-kubectl get pods -n kube-system -l app.kubernetes.io/name=csi-do
+kubectl get pods -n kube-system -l role=csi-do
 
 # View CSI driver version
 kubectl get daemonset -n kube-system csi-do-node \
@@ -35,7 +35,7 @@ kubectl get daemonset -n kube-system csi-do-node \
 kubectl get storageclass
 ```
 
-The default StorageClass is do-block-storage, which creates standard SSD volumes.
+The default StorageClass is do-block-storage, which creates DigitalOcean Block Storage volumes.
 
 Inspect the storage class configuration:
 
@@ -145,6 +145,8 @@ spec:
   volumeClaimTemplates:
   - metadata:
       name: data
+      labels:
+        app: mongodb
     spec:
       accessModes:
       - ReadWriteOnce
@@ -178,10 +180,10 @@ kubectl get storageclass do-block-storage \
   -o jsonpath='{.allowVolumeExpansion}'
 ```
 
-If false, patch the storage class:
+The default do-block-storage StorageClass has expansion enabled. If you are using a custom storage class and the output is false, patch that storage class:
 
 ```bash
-kubectl patch storageclass do-block-storage \
+kubectl patch storageclass <storage-class-name> \
   -p '{"allowVolumeExpansion": true}'
 ```
 
@@ -245,12 +247,12 @@ kubectl get volumesnapshot -n production
 kubectl describe volumesnapshot database-snapshot-20260209 -n production
 ```
 
-The snapshot creates a point-in-time copy of the volume. Snapshots are stored separately from the cluster and persist even if the cluster is deleted.
+The snapshot creates a point-in-time copy of the volume. Snapshots are stored separately from the source volume, and their lifecycle follows the VolumeSnapshotClass deletionPolicy.
 
 List snapshots in DigitalOcean:
 
 ```bash
-doctl compute volume-snapshot list
+doctl compute snapshot list --resource volume
 ```
 
 Restore from a snapshot:
@@ -278,17 +280,15 @@ This creates a new volume populated with data from the snapshot.
 
 ## Implementing Automated Snapshot Schedules
 
-Use snapshot schedules for regular backups:
+Use a retained snapshot class for regular backups:
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
-  name: do-block-storage
+  name: do-block-storage-retain
 driver: dobs.csi.digitalocean.com
 deletionPolicy: Retain
-parameters:
-  snapshots.storage.k8s.io/deletion-policy: Retain
 ```
 
 Create a CronJob for scheduled snapshots:
@@ -321,7 +321,7 @@ spec:
                 name: $SNAPSHOT_NAME
                 namespace: production
               spec:
-                volumeSnapshotClassName: do-block-storage
+                volumeSnapshotClassName: do-block-storage-retain
                 source:
                   persistentVolumeClaimName: database-storage
               EOF
@@ -372,13 +372,12 @@ metadata:
   name: fast-storage
 provisioner: dobs.csi.digitalocean.com
 parameters:
-  # No custom parameters available for DO Block Storage
+  fstype: xfs
 allowVolumeExpansion: true
 reclaimPolicy: Retain
-volumeBindingMode: WaitForFirstConsumer
 ```
 
-The Retain reclaim policy prevents volume deletion when PVCs are removed. WaitForFirstConsumer delays volume creation until a pod is scheduled, ensuring the volume is created in the correct zone.
+The Retain reclaim policy prevents volume deletion when PVCs are removed. The fstype parameter formats new volumes with XFS instead of the default ext4 filesystem.
 
 Use the custom storage class:
 
@@ -412,45 +411,14 @@ kubectl exec -n production database -- df -h /var/lib/postgresql/data
 kubectl exec -n production database -- iostat -x 1 5
 ```
 
-For detailed monitoring, deploy Prometheus and collect CSI metrics:
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: csi-do-controller-metrics
-  namespace: kube-system
-  labels:
-    app: csi-do-controller
-spec:
-  ports:
-  - name: metrics
-    port: 9808
-    targetPort: 9808
-  selector:
-    app: csi-do-controller
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: csi-do-controller
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      app: csi-do-controller
-  endpoints:
-  - port: metrics
-```
-
-Query volume metrics in Prometheus:
+For detailed monitoring, deploy Prometheus and collect kubelet volume statistics. Query volume metrics in Prometheus:
 
 ```promql
-# Volume attachment time
-kubelet_csi_operations_seconds{operation_name="volume_attach"}
+# Volume usage
+kubelet_volume_stats_used_bytes{namespace="production", persistentvolumeclaim="database-storage"}
 
-# Volume provisioning errors
-kubelet_csi_operations_errors_total{operation_name="volume_provision"}
+# Volume capacity
+kubelet_volume_stats_capacity_bytes{namespace="production", persistentvolumeclaim="database-storage"}
 ```
 
 ## Troubleshooting Storage Issues
@@ -464,7 +432,7 @@ Check volume attachment status:
 doctl compute volume list --format ID,Name,DropletIDs
 
 # Check CSI driver logs
-kubectl logs -n kube-system -l app.kubernetes.io/name=csi-do --tail=100
+kubectl logs -n kube-system -l role=csi-do --tail=100
 
 # Verify volume exists
 kubectl get pv -o yaml | grep volumeHandle
@@ -476,7 +444,7 @@ If a pod fails to start due to volume attachment:
 # Describe pod to see events
 kubectl describe pod database -n production
 
-# Check node attachment limit (DigitalOcean supports 7 volumes per node)
+# Check node attachment limit (DigitalOcean supports 15 volumes per node)
 kubectl get pods -o json | jq '.items[] | select(.spec.nodeName=="<node>") | .spec.volumes[] | select(.persistentVolumeClaim) | .persistentVolumeClaim.claimName'
 ```
 
