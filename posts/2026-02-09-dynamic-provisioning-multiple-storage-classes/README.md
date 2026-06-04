@@ -137,7 +137,7 @@ spec:
   storageClassName: budget-hdd
   resources:
     requests:
-      storage: 100Gi
+      storage: 125Gi
 ```
 
 Deploy and verify:
@@ -445,13 +445,18 @@ kubectl get pv -o json | jq -r '.items[] |
   select(.status.phase == "Bound") |
   "\(.spec.storageClassName) \(.spec.capacity.storage)"' |
   awk '{
-    # Parse storage size (e.g., "10Gi" -> 10)
     size = $2
-    gsub(/[^0-9]/, "", size)
+    unit = size
+    gsub(/^[0-9.]+/, "", unit)
+    gsub(/[^0-9.]/, "", size)
+    if (unit == "Ki") size = size / 1048576
+    else if (unit == "Mi") size = size / 1024
+    else if (unit == "Ti") size = size * 1024
+    else if (unit == "Pi") size = size * 1048576
     sum[$1] += size
   }
   END {
-    for (sc in sum) print sc, sum[sc] "Gi"
+    for (sc in sum) printf "%s %.2fGi\n", sc, sum[sc]
   }'
 
 # Find unbound PVCs
@@ -523,11 +528,6 @@ spec:
     # Limit total standard storage
     standard-ssd.storageclass.storage.k8s.io/requests.storage: "2Ti"
     # Unlimited budget storage
-  scopeSelector:
-    matchExpressions:
-    - operator: In
-      scopeName: PriorityClass
-      values: ["high", "medium"]
 ```
 
 ## Best Practices
