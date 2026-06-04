@@ -1,22 +1,22 @@
-# Use Istio ProxyConfig to Tune Envoy Resource Limits per Kubernetes Namespace
+# Use Istio ProxyConfig and Annotations to Tune Envoy Resource Limits per Kubernetes Namespace
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Istio, Envoy, Kubernetes, Resource Management, Performance Tuning
 
-Description: Learn how to configure Istio ProxyConfig resources to fine-tune Envoy proxy memory limits, CPU allocations.
+Description: Learn how to combine Istio ProxyConfig resources and sidecar annotations to fine-tune Envoy proxy memory limits and CPU allocations.
 
 ---
 
 The Envoy proxy in your Istio sidecar containers consumes resources that directly impact application performance and cluster costs. Default proxy configurations work for basic scenarios, but production workloads require precise tuning based on traffic patterns, service criticality, and resource constraints.
 
-This guide demonstrates how to use Istio's ProxyConfig resource to apply namespace-specific Envoy tuning that balances performance against resource consumption.
+This guide demonstrates how to combine Istio's ProxyConfig resource with sidecar resource annotations to apply namespace-specific Envoy tuning that balances performance against resource consumption.
 
 ## Understanding ProxyConfig Resource Types
 
 Istio offers multiple levels of proxy configuration granularity. You can set global defaults during installation, override settings per namespace, or apply pod-specific configurations using annotations.
 
-The ProxyConfig CRD provides the most flexible approach for namespace-level tuning. It affects all sidecars in a namespace without requiring changes to individual workload manifests.
+The ProxyConfig CRD provides a flexible approach for namespace-level proxy settings. It affects all sidecars in a namespace without requiring changes to individual workload manifests when you omit the workload selector.
 
 ## Global Proxy Resource Defaults
 
@@ -42,18 +42,20 @@ spec:
       # Global proxy resource settings
       concurrency: 2  # Number of worker threads
 
-      # Resource requests and limits
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
 
-    # Set resource defaults for all proxies
-    defaultResources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
-        cpu: 2000m
-        memory: 1024Mi
+  # Set resource defaults for injected sidecars
+  values:
+    global:
+      proxy:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 2000m
+            memory: 1024Mi
 ```
 
 ## Configuring Namespace-Specific ProxyConfig
@@ -67,15 +69,11 @@ metadata:
   name: production-proxy-config
   namespace: production
 spec:
-  selector:
-    matchLabels: {}  # Apply to all workloads in namespace
-
   concurrency: 4  # Increase worker threads for high throughput
 
   # Environment variables for Envoy
   environmentVariables:
-    MALLOC_ARENA_MAX: "2"  # Reduce memory fragmentation
-    GODEBUG: "madvdontneed=1"  # Aggressive memory release
+    MALLOC_ARENA_MAX: "2"  # Reduce allocator arena growth when applicable
 
   # Image pull policy
   image:
@@ -94,8 +92,13 @@ metadata:
   name: api-gateway
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: api-gateway
   template:
     metadata:
+      labels:
+        app: api-gateway
       annotations:
         # Increase proxy resources for high-traffic gateway
         sidecar.istio.io/proxyCPU: "500m"
@@ -142,8 +145,8 @@ spec:
   concurrency: 8  # More threads for handling concurrent requests
 
   environmentVariables:
-    # Tune for high connection counts
-    ENVOY_INITIAL_FETCH_TIMEOUT: "5s"
+    # Reduce allocator arena growth when applicable
+    MALLOC_ARENA_MAX: "2"
 ```
 
 ## Memory Optimization Strategies
@@ -164,15 +167,11 @@ metadata:
   name: dev-resource-limits
   namespace: development
 spec:
-  selector:
-    matchLabels: {}
-
   concurrency: 2  # Limited concurrency for dev
 
   environmentVariables:
-    # Aggressive memory management
+    # Reduce allocator arena growth when applicable
     MALLOC_ARENA_MAX: "1"
-    GODEBUG: "madvdontneed=1"
 ```
 
 Add annotations to enforce limits:
@@ -184,8 +183,13 @@ metadata:
   name: test-service
   namespace: development
 spec:
+  selector:
+    matchLabels:
+      app: test-service
   template:
     metadata:
+      labels:
+        app: test-service
       annotations:
         # Conservative memory allocation for dev
         sidecar.istio.io/proxyMemory: "64Mi"
@@ -217,8 +221,8 @@ spec:
   concurrency: 4
 
   environmentVariables:
-    # Tune for long-lived connections
-    ENVOY_STATS_FLUSH_INTERVAL: "60s"
+    # Reduce allocator arena growth when applicable
+    MALLOC_ARENA_MAX: "2"
 
   # Configure via deployment annotation
 ---
@@ -231,13 +235,24 @@ metadata:
     app: database-proxy
     version: v2
 spec:
+  selector:
+    matchLabels:
+      app: database-proxy
+      version: v2
   template:
     metadata:
+      labels:
+        app: database-proxy
+        version: v2
       annotations:
         sidecar.istio.io/proxyCPU: "200m"
         sidecar.istio.io/proxyCPULimit: "1000m"
         sidecar.istio.io/proxyMemory: "256Mi"
         sidecar.istio.io/proxyMemoryLimit: "512Mi"
+    spec:
+      containers:
+      - name: database-proxy
+        image: database-proxy:v2
 ```
 
 ## Configuring Connection Pool Sizes
@@ -337,7 +352,7 @@ Create Grafana dashboard panels:
 
 ## Applying Settings with IstioOperator
 
-Set namespace defaults during mesh installation:
+Set mesh-wide sidecar defaults during mesh installation:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -346,6 +361,12 @@ metadata:
   name: mesh-config
   namespace: istio-system
 spec:
+  meshConfig:
+    defaultConfig:
+      # Concurrency and lifecycle settings
+      concurrency: 2
+      holdApplicationUntilProxyStarts: true
+
   values:
     global:
       proxy:
@@ -358,17 +379,6 @@ spec:
             cpu: 2000m
             memory: 1024Mi
 
-        # Concurrency settings
-        concurrency: 2
-
-        # Lifecycle settings
-        holdApplicationUntilProxyStarts: true
-
-    # Namespace-specific overrides
-    pilot:
-      env:
-        # Map namespace patterns to resource profiles
-        PILOT_ENABLE_CONFIG_DISTRIBUTION_TRACKING: "true"
 ```
 
 ## Validating Configuration Changes
@@ -381,10 +391,10 @@ kubectl get pod -n production api-gateway-xxxxx -o jsonpath='{.spec.containers[?
 
 # Verify concurrency setting
 kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
-  curl -s localhost:15000/server_info | jq '.concurrency'
+  curl -s localhost:15000/server_info | jq '.command_line_options.concurrency'
 
 # Check environment variables
-kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- env | grep -E "(MALLOC|ENVOY)"
+kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- env | grep MALLOC
 ```
 
 Compare before and after metrics:
@@ -421,23 +431,32 @@ metadata:
   name: webhook-receiver
   namespace: webhooks
 spec:
+  selector:
+    matchLabels:
+      app: webhook-receiver
   template:
     metadata:
+      labels:
+        app: webhook-receiver
       annotations:
         # Allow bursting beyond requests
         sidecar.istio.io/proxyCPU: "500m"
         sidecar.istio.io/proxyCPULimit: "4000m"
         sidecar.istio.io/proxyMemory: "512Mi"
         sidecar.istio.io/proxyMemoryLimit: "2048Mi"
+    spec:
+      containers:
+      - name: webhook-receiver
+        image: webhook-receiver:v1.0
 ```
 
 ## Best Practices and Recommendations
 
 Start with conservative settings and increase based on observed metrics. Monitor proxy CPU throttling and memory OOMs to identify when increases are needed.
 
-Set concurrency equal to the number of CPU cores allocated to the proxy. Higher concurrency without sufficient CPU causes context switching overhead.
+Leave concurrency unset when automatic sizing from CPU requests and limits is sufficient. When you set concurrency explicitly, keep it close to the CPU cores allocated to the proxy because higher concurrency without sufficient CPU can cause context switching overhead.
 
-Use MALLOC_ARENA_MAX=2 or lower to reduce memory fragmentation in long-running proxies. This trades some allocation speed for better memory efficiency.
+Use MALLOC_ARENA_MAX=2 or lower to reduce allocator arena growth where the proxy image and allocator honor the setting. This trades some allocation speed for better memory efficiency.
 
 Always set both requests and limits. Requests ensure scheduling, while limits prevent runaway resource consumption from impacting neighbors.
 
