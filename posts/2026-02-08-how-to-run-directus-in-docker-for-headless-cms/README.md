@@ -82,6 +82,8 @@ services:
       RATE_LIMITER_STORE: redis
       RATE_LIMITER_POINTS: 50
       RATE_LIMITER_DURATION: 1
+      # Real-time WebSocket support
+      WEBSOCKETS_ENABLED: "true"
       # Email configuration
       EMAIL_FROM: directus@yourdomain.com
       EMAIL_TRANSPORT: smtp
@@ -171,7 +173,7 @@ environment:
   DB_PASSWORD: your-db-password
 ```
 
-Directus will scan the database schema and automatically generate an admin interface for all existing tables. Foreign keys become relationship fields. Unique constraints become enforced validations. You get a full content management interface without changing a single table.
+Directus will scan the database schema and automatically generate an admin interface for existing tables that have the primary keys Directus needs to manage rows. Foreign keys become relationship fields, and unique constraints are reflected in the field schema. You get a full content management interface without changing your existing tables.
 
 ## Data Modeling
 
@@ -303,7 +305,7 @@ curl -X POST \
   "http://localhost:8055/roles"
 ```
 
-Then configure permissions for that role in Settings > Roles & Permissions.
+Then configure permissions for that role in Settings > Access Control.
 
 ## Backup and Restore
 
