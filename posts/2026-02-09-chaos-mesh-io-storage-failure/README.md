@@ -63,15 +63,17 @@ metadata:
   name: io-mixed-chaos
   namespace: default
 spec:
-  action: mixed
+  action: fault
   mode: all
   selector:
     labelSelectors:
       app: statefulapp
   volumePath: /data
   path: "/data/**/*"
-  delay: "500ms"
-  errno: 28  # ENOSPC - No space left on device
+  methods:
+    - READ
+    - WRITE
+  errno: 5  # EIO - Input/output error
   percent: 20
   duration: "10m"
 ```
