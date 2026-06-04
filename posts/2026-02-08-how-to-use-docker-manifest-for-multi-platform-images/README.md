@@ -8,36 +8,31 @@ Description: Create and manage Docker manifest lists to publish multi-platform i
 
 ---
 
-When someone runs `docker pull nginx`, they get the right image for their CPU architecture automatically. That magic happens through manifest lists. A manifest list is a pointer that maps a single image tag to multiple platform-specific images. The `docker manifest` command lets you create these lists for your own images, so users on any architecture can pull your image with one tag.
+When someone runs `docker pull nginx`, they get the right image for their CPU architecture automatically. That magic happens through manifest lists. A manifest list is a pointer that maps a single image tag to multiple platform-specific image manifests. The `docker manifest` command lets you create these lists for your own images, so users on any architecture can pull your image with one tag.
 
 ## How Manifest Lists Work
 
-A regular Docker image is built for a specific platform, like `linux/amd64`. A manifest list sits on top of multiple platform-specific images and acts as a router. When a Docker client pulls the image, it sends its platform information to the registry. The registry checks the manifest list and returns the correct image for that platform.
+A regular Docker image is built for a specific platform, like `linux/amd64`. A manifest list sits on top of multiple platform-specific image manifests and acts as an index. When a Docker client pulls a multi-platform image, the registry returns the manifest list, and Docker selects the correct variant based on the host's platform.
 
 ```mermaid
 flowchart TD
-    A[docker pull myapp:latest] --> B{Registry checks manifest list}
-    B --> C[linux/amd64 image]
-    B --> D[linux/arm64 image]
-    B --> E[linux/arm/v7 image]
+    A[docker pull myapp:latest] --> B[Registry returns manifest list]
+    B --> C{Docker selects platform}
+    C --> D[linux/amd64 manifest]
+    C --> E[linux/arm64 manifest]
+    C --> F[linux/arm/v7 manifest]
 ```
 
 ## Enabling Docker Manifest
 
-The `docker manifest` command is an experimental feature. You need to enable it in your Docker configuration.
+The `docker manifest` command is still marked as an experimental feature. Starting with Docker 20.10, experimental CLI features are enabled by default. If you are using an older Docker CLI and the command is not available, enable experimental CLI features for your shell.
 
 ```bash
 # Enable experimental CLI features
 
 export DOCKER_CLI_EXPERIMENTAL=enabled
 
-# Or add it to your Docker config file permanently
-mkdir -p ~/.docker
-cat > ~/.docker/config.json << 'CONF'
-{
-  "experimental": "enabled"
-}
-CONF
+# Or add "experimental": "enabled" to your existing ~/.docker/config.json
 ```
 
 Verify it is enabled:
@@ -95,12 +90,12 @@ The output shows each platform variant:
 
 ```bash
 # Quick check: which platforms does an image support?
-docker manifest inspect --verbose nginx:alpine | jq '.[].Descriptor.platform'
+docker manifest inspect nginx:alpine | jq '.manifests[].platform | select(.os != "unknown")'
 ```
 
 ## Creating a Multi-Platform Image with docker manifest
 
-The workflow has three steps: build platform-specific images, push them, then create and push the manifest list.
+The workflow has four steps: build platform-specific images, push them, create the manifest list, then push the manifest list.
 
 ### Step 1: Build Platform-Specific Images
 
@@ -270,6 +265,10 @@ jobs:
             suffix: arm64
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: matrix.platform != 'linux/amd64'
+        uses: docker/setup-qemu-action@v4
 
       - name: Build and push platform image
         run: |
