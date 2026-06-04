@@ -55,7 +55,8 @@ metadata:
   annotations:
     # Enable PROXY protocol v2 on AWS NLB
     service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
 spec:
   type: LoadBalancer
   selector:
@@ -66,41 +67,22 @@ spec:
     protocol: TCP
 ```
 
-The `*` value means PROXY protocol is enabled for all backend instances. You can also specify specific target groups if needed.
+The `*` value means PROXY protocol v2 is enabled for all target groups. You can also use `service.beta.kubernetes.io/aws-load-balancer-proxy-protocol-per-target-group` to enable it for specific service ports if needed.
 
 ### Google Cloud Load Balancer
 
-GCP load balancers require different configuration. For internal load balancers, you can enable PROXY protocol through a BackendService:
+GCP load balancers require different configuration. Proxy Network Load Balancers support PROXY protocol v1 through the target TCP proxy's proxy header setting:
 
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: web-service
-  annotations:
-    cloud.google.com/backend-config: '{"default": "proxy-protocol-config"}'
-spec:
-  type: LoadBalancer
-  selector:
-    app: web
-  ports:
-  - port: 443
-    targetPort: 8443
----
-apiVersion: cloud.google.com/v1
-kind: BackendConfig
-metadata:
-  name: proxy-protocol-config
-spec:
-  connectionDraining:
-    drainingTimeoutSec: 60
-  # Note: PROXY protocol support varies by load balancer type
-  # Consult GCP documentation for current support
+```bash
+gcloud compute target-tcp-proxies update TARGET_PROXY_NAME \
+  --proxy-header=PROXY_V1
 ```
+
+Application Load Balancers preserve the client IP with `X-Forwarded-For` instead of PROXY protocol, and passthrough Network Load Balancers preserve the source IP at the packet level.
 
 ### Azure Load Balancer
 
-Azure load balancers have limited native PROXY protocol support. You often need to use an additional proxy layer like NGINX or HAProxy within the cluster that terminates the load balancer connection and adds PROXY headers.
+Azure Load Balancer preserves the original source IP for inbound flows and does not add HAProxy PROXY protocol headers. If your backend specifically needs PROXY protocol, use an additional proxy layer like NGINX or HAProxy within the cluster that terminates the load balancer connection and adds PROXY headers.
 
 ## Configuring Ingress Controllers for PROXY Protocol
 
@@ -121,8 +103,6 @@ data:
   use-proxy-protocol: "true"
   # Define trusted proxy CIDRs
   proxy-real-ip-cidr: "10.0.0.0/8,172.16.0.0/12"
-  # Set the real IP from PROXY protocol header
-  real-ip-header: "proxy_protocol"
 ```
 
 Apply this configuration to your NGINX ingress deployment:
@@ -138,7 +118,7 @@ spec:
     spec:
       containers:
       - name: nginx-ingress-controller
-        image: k8s.gcr.io/ingress-nginx/controller:v1.8.0
+        image: registry.k8s.io/ingress-nginx/controller:v1.13.0
         args:
         - /nginx-ingress-controller
         - --configmap=$(POD_NAMESPACE)/nginx-configuration
@@ -155,14 +135,12 @@ HAProxy has excellent PROXY protocol support:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: haproxy-ingress
+  name: haproxy-kubernetes-ingress
 data:
-  # Accept PROXY protocol on frontend
-  accept-proxy: "true"
+  # Accept PROXY protocol from these source IPs
+  proxy-protocol: "10.0.0.0/8"
   # Send PROXY protocol to backends
-  backend-proxy-protocol: "v2"
-  # Which IPs to trust for PROXY headers
-  proxy-protocol-trusted-ips: "10.0.0.0/8"
+  send-proxy-protocol: "proxy-v2"
 ```
 
 ### Traefik
@@ -236,30 +214,38 @@ func main() {
 
 ### Python Application
 
-Use the `proxyprotocol` library:
+Use the `proxy-protocol` library:
 
 ```python
-import socket
-from proxyprotocol import ProxyProtocolSocket
+import asyncio
+from asyncio import StreamReader, StreamWriter
 
-# Create a socket that understands PROXY protocol
+from proxyprotocol.detect import ProxyProtocolDetect
+from proxyprotocol.reader import ProxyProtocolReader
+from proxyprotocol.sock import SocketInfo
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(('0.0.0.0', 8080))
-sock.listen(128)
 
-while True:
-    conn, addr = sock.accept()
-    # Wrap connection with PROXY protocol parser
-    proxy_conn = ProxyProtocolSocket(conn)
+async def on_connection(
+    reader: StreamReader,
+    writer: StreamWriter,
+    info: SocketInfo,
+) -> None:
+    # info.peername contains the client address from the PROXY header
+    print(f"Connection from: {info.peername}")
+    writer.close()
+    await writer.wait_closed()
 
-    # Get the real client address
-    real_client = proxy_conn.get_proxy_data()
-    print(f"Connection from: {real_client['src_addr']}:{real_client['src_port']}")
 
-    # Handle the connection
-    proxy_conn.close()
+async def main() -> None:
+    pp_detect = ProxyProtocolDetect()
+    callback = ProxyProtocolReader(pp_detect).get_callback(on_connection)
+    server = await asyncio.start_server(callback, "0.0.0.0", 8080)
+
+    async with server:
+        await server.serve_forever()
+
+
+asyncio.run(main())
 ```
 
 ## Testing PROXY Protocol Configuration
@@ -270,8 +256,8 @@ Verify your setup works correctly by sending test traffic with PROXY headers.
 
 ```bash
 # Send HTTP request with PROXY v1 header
-echo -e "PROXY TCP4 203.0.113.42 10.0.0.5 54321 443\r\nGET / HTTP/1.1\r\nHost: example.com\r\n\r\n" | \
-  socat - TCP:your-service.example.com:443
+echo -e "PROXY TCP4 203.0.113.42 10.0.0.5 54321 80\r\nGET / HTTP/1.1\r\nHost: example.com\r\n\r\n" | \
+  socat - TCP:your-service.example.com:80
 
 # Send with PROXY v2 (binary format)
 # Use a proper PROXY protocol client tool
@@ -294,7 +280,7 @@ frontend test
 
 backend app
     # Send PROXY protocol to backend
-    server app1 your-service:443 send-proxy-v2
+    server app1 your-service:80 send-proxy-v2
 EOF
 
 haproxy -f haproxy.cfg
@@ -353,13 +339,7 @@ Applications should validate that PROXY headers come from expected sources and r
 // Configure allowed source IPs
 proxyListener := &proxyproto.Listener{
     Listener: listener,
-    Policy: func(upstream net.Addr) (proxyproto.Policy, error) {
-        // Check if upstream is from trusted LB
-        if isTrustedSource(upstream) {
-            return proxyproto.USE, nil
-        }
-        return proxyproto.REJECT, nil
-    },
+    ConnPolicy: proxyproto.ConnMustStrictWhiteListPolicy([]string{"10.0.0.0/8"}),
 }
 ```
 
@@ -385,7 +365,7 @@ proxyListener := &proxyproto.Listener{
 
 **Symptom**: Connections hang or timeout after configuration changes.
 
-**Solution**: Verify both ends of the connection are configured consistently. If the load balancer sends PROXY headers but the backend doesn't expect them, the backend will treat the header as application data and wait indefinitely.
+**Solution**: Verify both ends of the connection are configured consistently. If the load balancer sends PROXY headers but the backend doesn't expect them, the backend will treat the header as application data and usually return malformed request or TLS errors.
 
 ## Best Practices
 
