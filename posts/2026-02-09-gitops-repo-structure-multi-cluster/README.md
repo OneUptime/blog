@@ -269,15 +269,14 @@ Override values for each environment:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: production
-bases:
+resources:
   - ../../../base/apps/api-server
+  - hpa.yaml  # Add autoscaling in production
 images:
   - name: myregistry.io/api-server
     newTag: v2.4.1  # Pin production to specific version
 patches:
   - path: patches.yaml
-resources:
-  - hpa.yaml  # Add autoscaling in production
 ```
 
 ```yaml
@@ -371,7 +370,7 @@ Never commit secrets to Git. Use sealed-secrets or external-secrets-operator:
 
 ```yaml
 # base/apps/api-server/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-server-secrets
@@ -395,13 +394,13 @@ Different clusters reference different secret paths based on environment.
 
 ## Region-Specific Configuration
 
-Handle region-specific values with Kustomize components:
+Handle region-specific values with Kustomize overlays:
 
 ```yaml
 # overlays/production/regions/us-east-1/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
   - ../../api-server
 patches:
   - target:
@@ -446,7 +445,7 @@ Maintain consistency:
 
 Include a README at the repository root:
 
-```markdown
+````markdown
 # Fleet GitOps Repository
 
 ## Structure
@@ -470,8 +469,8 @@ Include a README at the repository root:
 ```bash
 git revert <commit-hash>
 git push origin main
-```bash
-```text
+```
+````
 
 ## Testing Your Structure
 
@@ -484,8 +483,8 @@ kustomize build overlays/production/api-server
 # Dry run
 kubectl apply --dry-run=server -k overlays/production/api-server
 
-# Validate with kubeval
-kustomize build overlays/production | kubeval
+# Validate with kubeconform
+kustomize build overlays/production | kubeconform -summary
 ```
 
 ## Conclusion
