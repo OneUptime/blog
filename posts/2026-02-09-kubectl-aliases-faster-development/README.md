@@ -108,6 +108,7 @@ Build functions that handle complex operations:
 klogs() {
     local pod=$1
     local namespace=${2:-$(kubectl config view --minify -o jsonpath='{..namespace}')}
+    namespace=${namespace:-default}
 
     if [ -z "$pod" ]; then
         echo "Usage: klogs <pod-name> [namespace]"
@@ -116,19 +117,25 @@ klogs() {
 
     # Find matching pods
     local pods=$(kubectl get pods -n "$namespace" --no-headers | grep "$pod" | awk '{print $1}')
-    local pod_count=$(echo "$pods" | wc -l | tr -d ' ')
-
-    if [ "$pod_count" -eq 0 ]; then
+    if [ -z "$pods" ]; then
         echo "No pods found matching: $pod"
         return 1
-    elif [ "$pod_count" -eq 1 ]; then
+    fi
+
+    local pod_count=$(printf "%s\n" "$pods" | wc -l | tr -d ' ')
+
+    if [ "$pod_count" -eq 1 ]; then
         kubectl logs -f "$pods" -n "$namespace"
     else
         echo "Multiple pods found:"
         echo "$pods" | nl
         echo -n "Select pod number: "
-        read selection
+        read -r selection
         local selected_pod=$(echo "$pods" | sed -n "${selection}p")
+        if [ -z "$selected_pod" ]; then
+            echo "Invalid selection"
+            return 1
+        fi
         kubectl logs -f "$selected_pod" -n "$namespace"
     fi
 }
@@ -136,15 +143,18 @@ klogs() {
 # Execute command in pod
 kexec() {
     local pod=$1
-    shift
-    local command=${@:-/bin/sh}
 
     if [ -z "$pod" ]; then
         echo "Usage: kexec <pod-name> [command]"
         return 1
     fi
 
-    kubectl exec -it "$pod" -- $command
+    shift
+    if [ "$#" -eq 0 ]; then
+        set -- /bin/sh
+    fi
+
+    kubectl exec -it "$pod" -- "$@"
 }
 
 # Port forward with automatic port detection
@@ -170,7 +180,7 @@ kpf() {
     kubectl port-forward "$resource" "$port:$port"
 }
 
-# Watch resources with color
+# Watch resources in a compact view
 kwatch() {
     local resource=${1:-pods}
     watch -n 2 -c "kubectl get $resource --no-headers | awk '{printf \"%-50s %-20s %-10s\n\", \$1, \$2, \$3}'"
@@ -206,12 +216,12 @@ kevents() {
     local name=$2
 
     if [ -z "$resource" ] || [ -z "$name" ]; then
-        echo "Usage: kevents <resource-type> <resource-name>"
-        echo "Example: kevents pod nginx-abc123"
+        echo "Usage: kevents <resource-kind> <resource-name>"
+        echo "Example: kevents Pod nginx-abc123"
         return 1
     fi
 
-    kubectl get events --field-selector involvedObject.kind="$resource",involvedObject.name="$name" --sort-by='.lastTimestamp'
+    kubectl get events --field-selector involvedObject.kind="$resource",involvedObject.name="$name" --sort-by='.metadata.creationTimestamp'
 }
 ```
 
@@ -234,18 +244,22 @@ kscale() {
     kubectl get deployment "$deployment"
 }
 
-# Delete all pods in error state
+# Delete all pods that are not Running or Succeeded
 kdelerror() {
     local namespace=$(kubectl config view --minify -o jsonpath='{..namespace}')
-    echo "Deleting error pods in namespace: $namespace"
+    namespace=${namespace:-default}
+    echo "Deleting non-running pods in namespace: $namespace"
 
     kubectl get pods -n "$namespace" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name | \
-        xargs -r kubectl delete -n "$namespace"
+        while read -r pod; do
+            [ -n "$pod" ] && kubectl delete -n "$namespace" "$pod"
+        done
 }
 
 # Get resource usage for pods
 kusage() {
     local namespace=${1:-$(kubectl config view --minify -o jsonpath='{..namespace}')}
+    namespace=${namespace:-default}
 
     echo "Resource usage in namespace: $namespace"
     kubectl top pods -n "$namespace" --sort-by=memory
@@ -301,13 +315,18 @@ kgetapp() {
 kdebug() {
     local pod=$1
     local image=${2:-busybox}
+    local target=$3
 
     if [ -z "$pod" ]; then
-        echo "Usage: kdebug <pod-name> [debug-image]"
+        echo "Usage: kdebug <pod-name> [debug-image] [target-container]"
         return 1
     fi
 
-    kubectl debug -it "$pod" --image="$image" --target=container-name
+    if [ -n "$target" ]; then
+        kubectl debug -it "$pod" --image="$image" --target="$target"
+    else
+        kubectl debug -it "$pod" --image="$image"
+    fi
 }
 
 # Show pod resource requests and limits
@@ -398,6 +417,7 @@ Build interactive selection menus:
 # Interactive pod selection
 kpod() {
     local namespace=$(kubectl config view --minify -o jsonpath='{..namespace}')
+    namespace=${namespace:-default}
     local pods=$(kubectl get pods -n "$namespace" --no-headers -o custom-columns=":metadata.name")
 
     if [ -z "$pods" ]; then
