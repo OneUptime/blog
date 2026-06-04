@@ -20,7 +20,7 @@ Use Kubecost API to find pods with low utilization:
 curl -G http://kubecost.kubecost.svc:9090/model/allocation \
   --data-urlencode 'window=7d' \
   --data-urlencode 'aggregate=pod' | \
-  jq '.data[] | select(.cpuCoreRequestAverage > 0) | select((.cpuCoreUsageAverage / .cpuCoreRequestAverage) < 0.2) | {name, namespace, cpuUtilization: ((.cpuCoreUsageAverage / .cpuCoreRequestAverage) * 100)}'
+  jq '.data[] | to_entries[] | .value | select(.cpuCoreRequestAverage > 0) | select((.cpuCoreUsageAverage / .cpuCoreRequestAverage) < 0.2) | {name, namespace: .properties.namespace, cpuUtilization: ((.cpuCoreUsageAverage / .cpuCoreRequestAverage) * 100)}'
 ```
 
 Create automated detection script:
@@ -49,23 +49,27 @@ def get_idle_pods(window='7d'):
 
     idle_pods = []
 
-    for allocation in data:
-        cpu_request = allocation.get('cpuCoreRequestAverage', 0)
-        cpu_usage = allocation.get('cpuCoreUsageAverage', 0)
-        mem_request = allocation.get('ramByteRequestAverage', 0)
-        mem_usage = allocation.get('ramByteUsageAverage', 0)
+    for allocation_set in data:
+        for allocation in allocation_set.values():
+            if not isinstance(allocation, dict):
+                continue
 
-        cpu_util = (cpu_usage / cpu_request) if cpu_request > 0 else 0
-        mem_util = (mem_usage / mem_request) if mem_request > 0 else 0
+            cpu_request = allocation.get('cpuCoreRequestAverage', 0)
+            cpu_usage = allocation.get('cpuCoreUsageAverage', 0)
+            mem_request = allocation.get('ramByteRequestAverage', 0)
+            mem_usage = allocation.get('ramByteUsageAverage', 0)
 
-        if cpu_util < CPU_THRESHOLD and mem_util < MEMORY_THRESHOLD:
-            idle_pods.append({
-                'name': allocation['name'],
-                'namespace': allocation['properties'].get('namespace'),
-                'cpu_utilization': cpu_util * 100,
-                'memory_utilization': mem_util * 100,
-                'cost': allocation.get('totalCost', 0)
-            })
+            cpu_util = (cpu_usage / cpu_request) if cpu_request > 0 else 0
+            mem_util = (mem_usage / mem_request) if mem_request > 0 else 0
+
+            if cpu_util < CPU_THRESHOLD and mem_util < MEMORY_THRESHOLD:
+                idle_pods.append({
+                    'name': allocation['name'],
+                    'namespace': allocation['properties'].get('namespace'),
+                    'cpu_utilization': cpu_util * 100,
+                    'memory_utilization': mem_util * 100,
+                    'cost': allocation.get('totalCost', 0)
+                })
 
     return idle_pods
 
@@ -211,8 +215,9 @@ for namespace in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
       cost=$(curl -s -G http://kubecost.kubecost.svc:9090/model/allocation \
         --data-urlencode "window=30d" \
         --data-urlencode "aggregate=namespace" \
-        --data-urlencode "filter=namespace:$namespace" | \
-        jq -r '.data[0].totalCost // 0')
+        --data-urlencode "accumulate=true" \
+        --data-urlencode "filterNamespaces=$namespace" | \
+        jq -r '[.data[] | to_entries[] | .value.totalCost // 0] | add // 0')
 
       echo "Abandoned namespace: $namespace (inactive for $days_since days, cost: \$$cost/month)"
     fi
@@ -265,23 +270,44 @@ import json
 import requests
 from datetime import datetime, timedelta
 
+def get_scalable_owner(pod_name, namespace):
+    """Return the workload that should be scaled for a pod."""
+    cmd = f"kubectl get pod {pod_name} -n {namespace} -o json"
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    pod = json.loads(result.stdout)
+    owners = pod.get('metadata', {}).get('ownerReferences', [])
+
+    if not owners:
+        return None, None
+
+    owner_kind = owners[0]['kind']
+    owner_name = owners[0]['name']
+
+    if owner_kind == 'ReplicaSet':
+        cmd = f"kubectl get rs {owner_name} -n {namespace} -o json"
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        replica_set = json.loads(result.stdout)
+        rs_owners = replica_set.get('metadata', {}).get('ownerReferences', [])
+
+        if rs_owners and rs_owners[0]['kind'] == 'Deployment':
+            return 'deployment', rs_owners[0]['name']
+
+    return owner_kind.lower(), owner_name
+
 def cleanup_idle_pods(dry_run=True):
-    """Scale down idle deployments"""
-    idle_pods = detect_idle_pods()  # From previous script
+    """Scale down idle workloads"""
+    idle_pods = get_idle_pods()  # From previous script
 
     for pod in idle_pods:
-        # Get deployment name
-        cmd = f"kubectl get pod {pod['name']} -n {pod['namespace']} -o jsonpath='{{.metadata.ownerReferences[0].name}}'"
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        deployment = result.stdout.strip()
+        workload_kind, workload_name = get_scalable_owner(pod['name'], pod['namespace'])
 
-        if deployment:
-            print(f"Would scale down deployment {deployment} in namespace {pod['namespace']}")
+        if workload_kind and workload_name:
+            print(f"Would scale down {workload_kind} {workload_name} in namespace {pod['namespace']}")
 
             if not dry_run:
-                cmd = f"kubectl scale deployment {deployment} -n {pod['namespace']} --replicas=0"
+                cmd = f"kubectl scale {workload_kind} {workload_name} -n {pod['namespace']} --replicas=0"
                 subprocess.run(cmd, shell=True)
-                print(f"  Scaled down {deployment}")
+                print(f"  Scaled down {workload_kind} {workload_name}")
 
 def cleanup_unused_pvcs(min_age_days=30, dry_run=True):
     """Delete unused PVCs"""
