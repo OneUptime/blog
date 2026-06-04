@@ -23,7 +23,7 @@ When you combine these patterns, your mesh becomes self-healing. Istio monitors 
 Start with a basic DestinationRule that defines connection limits and circuit breaking thresholds:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-cb
@@ -40,21 +40,21 @@ spec:
         maxRequestsPerConnection: 2
         maxRetries: 3
     outlierDetection:
-      consecutiveErrors: 5
+      consecutive5xxErrors: 5
       interval: 30s
       baseEjectionTime: 30s
       maxEjectionPercent: 50
       minHealthPercent: 50
 ```
 
-This configuration sets conservative defaults. The circuit breaker opens after 5 consecutive errors, and unhealthy instances are ejected for at least 30 seconds.
+This configuration sets conservative defaults. The connection pool limits reject overflow requests, and outlier detection can eject unhealthy instances for at least 30 seconds after 5 consecutive 5xx errors.
 
 ## Advanced Outlier Detection with Custom Thresholds
 
 Real-world services need more nuanced detection. Configure split thresholds for different error types:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-gateway-advanced-cb
@@ -74,42 +74,34 @@ spec:
         idleTimeout: 60s
     outlierDetection:
       # Split detection for different error types
-      consecutive5xxErrors: 3  # Gateway errors trigger faster
+      consecutive5xxErrors: 3  # 5xx responses trigger ejection
       consecutiveGatewayErrors: 2  # Even faster for 502/503/504
+      splitExternalLocalOriginErrors: true
       consecutiveLocalOriginFailures: 5
 
       # Time-based detection window
       interval: 10s  # Check every 10 seconds
       baseEjectionTime: 60s  # Start with 60s ejection
-      maxEjectionTime: 300s  # Cap at 5 minutes
 
       # Protection thresholds
       maxEjectionPercent: 30  # Never eject more than 30%
-      minHealthPercent: 70  # Require 70% healthy instances
-
-      # Success rate enforcement
-      enforcingConsecutive5xx: 100  # Always eject on 5xx
-      enforcingConsecutiveGatewayFailure: 100
-      enforcingSuccessRate: 80  # 80% probability based on stats
-      successRateMinimumHosts: 5  # Need at least 5 hosts
-      successRateRequestVolume: 100  # Minimum 100 requests
-      successRateStdevFactor: 1900  # Sensitivity factor
+      minHealthPercent: 70  # Disable ejection if fewer than 70% are healthy
 ```
 
-This advanced configuration separates gateway errors from application errors, applies probability-based ejection, and prevents over-ejection that could destabilize your service.
+This advanced configuration separates gateway errors from broader 5xx responses, accounts for locally originated failures, and prevents over-ejection that could destabilize your service.
 
 ## Namespace-Specific Circuit Breaking Policies
 
-Apply different policies based on service criticality:
+Create per-service policies based on service criticality:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: critical-services-cb
+  name: checkout-service-cb
   namespace: production
 spec:
-  host: "*.production.svc.cluster.local"
+  host: checkout-service.production.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -127,13 +119,13 @@ spec:
 For non-critical services, use more lenient settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: batch-services-cb
+  name: report-generator-cb
   namespace: batch-processing
 spec:
-  host: "*.batch-processing.svc.cluster.local"
+  host: report-generator.batch-processing.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -149,7 +141,7 @@ spec:
 
 ## Monitoring Circuit Breaker Behavior
 
-Deploy a ServiceMonitor to track circuit breaker metrics:
+Create a dashboard ConfigMap to track circuit breaker metrics:
 
 ```yaml
 apiVersion: v1
@@ -164,7 +156,8 @@ data:
         "envoy_cluster_upstream_rq_pending_overflow",
         "envoy_cluster_upstream_rq_pending_failure_eject",
         "envoy_cluster_upstream_rq_timeout",
-        "envoy_cluster_outlier_detection_ejections_active"
+        "envoy_cluster_outlier_detection_ejections_active",
+        "envoy_cluster_outlier_detection_ejections_enforced_total"
       ]
     }
 ```
@@ -177,7 +170,7 @@ Query Prometheus for ejection events:
 sum by (cluster_name) (envoy_cluster_outlier_detection_ejections_active)
 
 # Ejection rate over time
-rate(envoy_cluster_outlier_detection_ejections_total[5m])
+rate(envoy_cluster_outlier_detection_ejections_enforced_total[5m])
 
 # Circuit breaker overflow events
 rate(envoy_cluster_upstream_rq_pending_overflow[5m])
@@ -205,12 +198,12 @@ kubectl exec -it circuit-breaker-test -n production -- \
   http://payment-service.production:8080/health
 ```
 
-Inject failures to trigger outlier detection:
+Inject HTTP aborts to validate client behavior during failures:
 
 ```bash
 # Deploy fault injection
 kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-fault-injection
@@ -235,14 +228,20 @@ spec:
     - destination:
         host: payment-service
 EOF
+
+# Send requests that match the injected fault rule
+kubectl exec -it circuit-breaker-test -n production -- \
+  fortio load -c 50 -qps 100 -t 60s \
+  -H "x-test-fault: true" \
+  http://payment-service.production:8080/health
 ```
 
 ## Handling Gradual Ejection Recovery
 
-Configure exponential backoff for ejected instances:
+Configure increasing ejection duration for repeatedly ejected instances:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: gradual-recovery-cb
@@ -251,15 +250,14 @@ spec:
   host: database-proxy.production.svc.cluster.local
   trafficPolicy:
     outlierDetection:
-      consecutiveErrors: 5
+      consecutive5xxErrors: 5
       interval: 30s
       baseEjectionTime: 30s
-      maxEjectionTime: 600s  # Maximum 10 minutes
-      # Each subsequent ejection doubles duration
-      # 30s -> 60s -> 120s -> 240s -> 480s -> 600s
+      # Each subsequent ejection increases the duration
+      # 30s -> 60s -> 90s -> 120s -> 150s
 ```
 
-The ejection time increases exponentially for instances that repeatedly fail, preventing flapping behavior while giving transient issues time to recover.
+The ejection time increases for instances that repeatedly fail, preventing flapping behavior while giving transient issues time to recover.
 
 ## Production Best Practices
 
@@ -289,7 +287,7 @@ spec:
     - alert: TooManyEjectedInstances
       expr: |
         (envoy_cluster_outlier_detection_ejections_active /
-         envoy_cluster_membership_healthy) > 0.5
+         envoy_cluster_membership_total) > 0.5
       for: 5m
       labels:
         severity: critical
