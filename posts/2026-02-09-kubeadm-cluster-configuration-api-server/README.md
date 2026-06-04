@@ -65,10 +65,10 @@ apiServer:
     encryption-provider-config: "/etc/kubernetes/encryption-config.yaml"
     # API priority and fairness
     enable-priority-and-fairness: "true"
-    # Request timeout
-    default-watch-cache-size: "200"
+    # Watch cache
+    watch-cache: "true"
     # Enable features
-    feature-gates: "TTLAfterFinished=true,EphemeralContainers=true"
+    feature-gates: "ValidatingAdmissionPolicy=true"
   extraVolumes:
   - name: audit-log
     hostPath: "/var/log/kubernetes"
@@ -163,7 +163,7 @@ Generate an encryption key:
 # Generate random 32-byte key and encode
 head -c 32 /dev/urandom | base64
 
-# Example output: NTRhNGU3YjAtMzE2Ny00OGEwLWI3YzgtNmQ5MjQwNzU1NzU1Cg==
+# Example output: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
 
 # Place in encryption-config.yaml
 ```
@@ -289,8 +289,8 @@ Configure additional admission controllers:
 ```yaml
 apiServer:
   extraArgs:
-    enable-admission-plugins: "NodeRestriction,PodSecurityPolicy,ResourceQuota,LimitRanger,MutatingAdmissionWebhook,ValidatingAdmissionWebhook"
-    disable-admission-plugins: "PersistentVolumeLabel"
+    enable-admission-plugins: "NodeRestriction,PodSecurity,ResourceQuota,LimitRanger,MutatingAdmissionWebhook,ValidatingAdmissionWebhook"
+    disable-admission-plugins: "DefaultStorageClass"
     admission-control-config-file: "/etc/kubernetes/admission-config.yaml"
   extraVolumes:
   - name: admission-config
@@ -310,8 +310,7 @@ apiServer:
     max-requests-inflight: "800"
     max-mutating-requests-inflight: "400"
     # Watch cache
-    default-watch-cache-size: "500"
-    watch-cache-sizes: "persistentvolumes#1000,persistentvolumeclaims#1000"
+    watch-cache: "true"
     # Event rate limiting
     event-ttl: "1h"
     # API priority and fairness
@@ -349,7 +348,7 @@ Check that your custom flags are active:
 # View API server process arguments
 ps aux | grep kube-apiserver
 
-# Check API server flags via API
+# Check API server metrics
 kubectl get --raw /metrics | grep apiserver
 
 # Verify specific features
@@ -367,11 +366,11 @@ When upgrading Kubernetes, preserve custom configuration:
 ```bash
 # Upgrade kubeadm
 sudo apt-mark unhold kubeadm
-sudo apt-get update && sudo apt-get install -y kubeadm=1.28.x-00
+sudo apt-get update && sudo apt-get install -y kubeadm='1.28.x-*'
 sudo apt-mark hold kubeadm
 
-# Upgrade with custom config
-sudo kubeadm upgrade apply v1.28.x --config kubeadm-config.yaml
+# Upgrade to the selected patch version
+sudo kubeadm upgrade apply v1.28.x
 
 # Verify upgrade preserved settings
 kubectl logs -n kube-system kube-apiserver-<node> | grep "audit-log-path"
@@ -386,7 +385,6 @@ apiServer:
   extraArgs:
     # Security
     anonymous-auth: "false"
-    insecure-port: "0"
     tls-min-version: "VersionTLS12"
     tls-cipher-suites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
 
@@ -406,7 +404,7 @@ apiServer:
     enable-priority-and-fairness: "true"
 
     # Features
-    feature-gates: "EphemeralContainers=true"
+    feature-gates: "ValidatingAdmissionPolicy=true"
     runtime-config: "api/all=true"
 ```
 
