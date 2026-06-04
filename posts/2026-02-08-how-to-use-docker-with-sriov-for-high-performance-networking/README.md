@@ -8,7 +8,7 @@ Description: Configure SR-IOV virtual functions with Docker containers to achiev
 
 ---
 
-SR-IOV (Single Root I/O Virtualization) lets a physical network card present itself as multiple virtual network interfaces. Each virtual function (VF) acts as an independent NIC that can be assigned directly to a container, bypassing the kernel's network stack almost entirely. The result is network performance that approaches bare metal, with latency measured in microseconds and throughput limited only by the physical hardware.
+SR-IOV (Single Root I/O Virtualization) lets a physical network card present itself as multiple virtual network interfaces. Each virtual function (VF) acts as an independent NIC that can be assigned directly to a container, bypassing Docker's bridge and NAT path. The result is network performance that approaches bare metal, with latency measured in microseconds and throughput limited primarily by the physical hardware.
 
 This guide shows you how to set up SR-IOV with Docker containers for workloads where bridge networking overhead is unacceptable: financial trading systems, real-time data processing, high-frequency packet capture, and network function virtualization.
 
@@ -35,7 +35,7 @@ SR-IOV requires:
 - A physical NIC that supports SR-IOV (Intel X710, Mellanox ConnectX series, etc.)
 - BIOS/UEFI with SR-IOV and VT-d (Intel) or AMD-Vi (AMD) enabled
 - A Linux kernel with SR-IOV support (4.x or later)
-- The sriov-cni or docker-sriov-plugin
+- The Docker SR-IOV network plugin for Docker, or sriov-cni for Kubernetes/CNI deployments
 
 Check if your NIC supports SR-IOV:
 
@@ -121,24 +121,24 @@ docker run -v /run/docker/plugins:/run/docker/plugins \
   rdma/sriov-plugin
 
 # Verify the plugin is running
-docker plugin ls
+docker ps --filter ancestor=rdma/sriov-plugin
 ```
 
-If you need the SR-IOV network device plugin (commonly used with Kubernetes, but also useful for managing device pools), you can build it from source:
+If you are also deploying SR-IOV workloads on Kubernetes, the SR-IOV network device plugin can advertise VF resource pools to kubelet. You can build its image from source:
 
 ```bash
 # Clone and build the SR-IOV network device plugin
-git clone https://github.com/intel/sriov-network-device-plugin.git
+git clone https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin.git
 cd sriov-network-device-plugin
 
-# Build the plugin
-make build
+# Build the plugin image
+make image
 
 # Or use a pre-built Docker image
 docker pull ghcr.io/k8snetworkplumbingwg/sriov-network-device-plugin:latest
 ```
 
-The device plugin requires a `config.json` that maps your SR-IOV devices. Create one based on your hardware - note that the device ID varies between NICs and setups:
+The Kubernetes device plugin requires a `config.json` that maps your SR-IOV devices. Create one based on your hardware - note that the device ID varies between NICs and setups:
 
 ```json
 {
@@ -176,16 +176,16 @@ docker network create \
 If using the macvlan driver as a simpler alternative with SR-IOV VFs:
 
 ```bash
-# Assign a specific VF to a macvlan network
-# First, get the VF interface name
-ip link show | grep "eth0v"
+# Assign a VF netdevice to a macvlan network
+# First, identify the VF interface name, such as enp3s0f0v0 on some systems
+ip -o link show
 
 # Create a macvlan network using the VF
 docker network create \
   --driver macvlan \
   --subnet=10.100.0.0/24 \
   --gateway=10.100.0.1 \
-  -o parent=eth0 \
+  -o parent=enp3s0f0v0 \
   sriov-macvlan
 ```
 
@@ -202,6 +202,7 @@ docker run -d \
   nginx:alpine
 
 # Verify the container has a VF interface
+docker exec sriov-app apk add --no-cache iproute2 ethtool
 docker exec sriov-app ip addr show
 docker exec sriov-app ethtool -i eth0
 ```
@@ -322,7 +323,8 @@ VF_PCI=$(readlink -f /sys/class/net/eth0/device/virtfn0 | sed 's|.*\/||')
 echo "VF PCI address: $VF_PCI"
 
 # Unbind from the kernel driver
-echo "$VF_PCI" | sudo tee /sys/bus/pci/drivers/iavf/unbind
+VF_DRIVER=$(basename "$(readlink -f /sys/bus/pci/devices/$VF_PCI/driver)")
+echo "$VF_PCI" | sudo tee /sys/bus/pci/drivers/$VF_DRIVER/unbind
 
 # Bind to vfio-pci
 echo "vfio-pci" | sudo tee /sys/bus/pci/devices/$VF_PCI/driver_override
