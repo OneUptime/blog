@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, k3s, Air-Gapped
 
-Description: Learn how to set up K3s with an embedded registry mirror for air-gapped edge deployments, enabling container image distribution without internet access or external registry dependencies.
+Description: Learn how to set up K3s with private registry mirrors and the embedded distributed registry mirror for air-gapped edge deployments, enabling container image distribution without internet access.
 
 ---
 
-Air-gapped edge environments like military installations, secure facilities, and remote industrial sites have no internet connectivity. Container images must be pre-loaded and distributed through local registries. K3s supports embedded registry mirrors that cache images locally, enabling fully disconnected operations.
+Air-gapped edge environments like military installations, secure facilities, and remote industrial sites have no internet connectivity. Container images must be pre-loaded and distributed through local registries. K3s supports private registry mirror configuration, and its embedded distributed registry mirror can share images between cluster nodes, enabling fully disconnected operations.
 
 In this guide, you'll configure K3s with registry mirrors, pre-load images, and implement image distribution strategies for air-gapped deployments.
 
 ## Understanding Registry Mirrors
 
-Registry mirrors act as pull-through caches. When a node needs an image, it first checks the mirror. If the image exists locally, it's served immediately. If not found, the mirror attempts to pull from upstream (if connectivity exists) and caches it for future use.
+Registry mirrors redirect image pulls to configured mirror endpoints. When a node needs an image, containerd tries the mirror endpoint first. If the mirror is configured as a pull-through cache and connectivity exists, it can pull from upstream and cache the image for future use. In air-gapped deployments, the mirror must already contain all required images.
 
 For air-gapped deployments, you pre-populate the mirror with all required images before deployment.
 
@@ -38,13 +38,18 @@ mirrors:
 EOF
 ```
 
+Ensure `registry.local` resolves from every node to the registry host or load balancer. Cluster DNS names such as `registry.kube-system.svc.cluster.local` are not available to containerd on the host.
+
 Install K3s:
 
 ```bash
-curl -sfL https://get.k3s.io | sh -s - server --write-kubeconfig-mode 644
+curl -sfL https://get.k3s.io | sh -s - server \
+  --write-kubeconfig-mode 644 \
+  --embedded-registry \
+  --disable-default-registry-endpoint
 ```
 
-K3s reads the registry configuration and uses local mirrors for all image pulls.
+K3s reads the registry configuration, uses the configured local mirror endpoints, and enables the embedded distributed registry mirror for peer-to-peer image sharing between nodes. The `--disable-default-registry-endpoint` option prevents fallback to upstream registries for registries listed in `registries.yaml`.
 
 ## Deploying Local Container Registry
 
@@ -68,17 +73,26 @@ spec:
       labels:
         app: registry
     spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: registry
           image: registry:2
           ports:
             - containerPort: 5000
+            - containerPort: 5001
           volumeMounts:
             - name: storage
               mountPath: /var/lib/registry
           env:
             - name: REGISTRY_STORAGE_DELETE_ENABLED
               value: "true"
+            - name: REGISTRY_HTTP_DEBUG_ADDR
+              value: "0.0.0.0:5001"
+            - name: REGISTRY_HTTP_DEBUG_PROMETHEUS_ENABLED
+              value: "true"
+            - name: REGISTRY_HTTP_DEBUG_PROMETHEUS_PATH
+              value: "/metrics"
       volumes:
         - name: storage
           hostPath:
@@ -111,10 +125,10 @@ REGISTRY="registry.local:5000"
 
 # List of required images
 IMAGES=(
-  "nginx:alpine"
-  "postgres:15-alpine"
-  "redis:7-alpine"
-  "busybox:latest"
+  "docker.io/library/nginx:alpine"
+  "docker.io/library/postgres:15-alpine"
+  "docker.io/library/redis:7-alpine"
+  "docker.io/library/busybox:1.36"
 )
 
 for image in "${IMAGES[@]}"; do
@@ -124,7 +138,7 @@ for image in "${IMAGES[@]}"; do
   docker pull $image
 
   # Tag for local registry
-  local_tag="$REGISTRY/$image"
+  local_tag="$REGISTRY/${image#docker.io/}"
   docker tag $image $local_tag
 
   # Push to local registry
@@ -144,9 +158,9 @@ For completely air-gapped environments, create image tarballs:
 
 # Save images to tarball
 docker save \
-  nginx:alpine \
-  postgres:15-alpine \
-  redis:7-alpine \
+  docker.io/library/nginx:alpine \
+  docker.io/library/postgres:15-alpine \
+  docker.io/library/redis:7-alpine \
   > images-bundle.tar
 
 # Compress for transfer
@@ -160,7 +174,7 @@ At the edge site:
 ```bash
 # Load images from bundle
 gunzip images-bundle.tar.gz
-sudo k3s ctr images import images-bundle.tar
+sudo k3s ctr -n k8s.io image import images-bundle.tar
 
 # Verify images loaded
 sudo k3s crictl images
@@ -210,20 +224,21 @@ spec:
         spec:
           containers:
             - name: sync
-              image: docker:dind
+              image: quay.io/skopeo/stable:latest
               command:
                 - /bin/sh
                 - -c
                 - |
                   # Check if upstream registry is reachable
-                  if wget -q --spider https://registry-1.docker.io/v2/; then
+                  if skopeo inspect docker://docker.io/library/alpine:3.20 >/dev/null 2>&1; then
                     echo "Upstream reachable, syncing images"
 
                     # Pull and cache popular images
-                    for tag in alpine:latest nginx:alpine postgres:15; do
-                      docker pull $tag
-                      docker tag $tag registry.local:5000/$tag
-                      docker push registry.local:5000/$tag
+                    for image in alpine:3.20 nginx:alpine postgres:15; do
+                      skopeo copy \
+                        --dest-tls-verify=false \
+                        docker://docker.io/library/$image \
+                        docker://registry.local:5000/library/$image
                     done
                   else
                     echo "Upstream unreachable, skipping sync"
@@ -309,6 +324,7 @@ spec:
 Clean up unused images:
 
 ```bash
+# Stop writes to the registry before running garbage collection.
 # Run registry garbage collection
 kubectl exec -n kube-system deployment/registry -- \
   registry garbage-collect /etc/docker/registry/config.yml --delete-untagged
