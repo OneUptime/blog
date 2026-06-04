@@ -8,13 +8,13 @@ Description: Implement PCI-DSS compliant network segmentation in Kubernetes to i
 
 ---
 
-PCI-DSS Requirement 1.3 mandates network segmentation to isolate the cardholder data environment (CDE) from the rest of your infrastructure. In traditional networks, this meant VLANs and firewalls. In Kubernetes, network segmentation requires a combination of NetworkPolicies, namespace isolation, service mesh controls, and careful architectural design.
+PCI-DSS Requirement 1.3 requires network access to and from the cardholder data environment (CDE) to be restricted. Segmentation is not mandatory for every environment, but it is a common way to isolate the CDE from the rest of your infrastructure and reduce PCI scope. In traditional networks, this meant VLANs and firewalls. In Kubernetes, network segmentation requires a combination of NetworkPolicies, namespace isolation, service mesh controls, and careful architectural design.
 
 Proper segmentation reduces your PCI scope by limiting which systems handle cardholder data. This shrinks the attack surface, simplifies compliance efforts, and reduces audit costs. However, implementing effective segmentation in a dynamic container environment requires understanding both PCI requirements and Kubernetes networking primitives.
 
 ## Understanding PCI-DSS Network Segmentation Requirements
 
-PCI-DSS Requirement 1.3 specifies that the CDE must be segmented from untrusted networks. Sub-requirements mandate DMZ placement of public-facing systems (1.3.1), restriction of inbound traffic to necessary protocols (1.3.2), direct connection prohibition between internet and CDE (1.3.3), implementation of anti-spoofing measures (1.3.4), and restriction of outbound traffic (1.3.5).
+PCI-DSS Requirement 1.3 specifies that network access to and from the CDE must be restricted. Related Requirement 1.4 covers controls between trusted and untrusted networks, including restrictions on inbound traffic from untrusted networks and prohibiting unauthorized outbound traffic from the CDE.
 
 For Kubernetes, this means creating network zones with strict ingress and egress controls, ensuring payment processing workloads can only communicate with authorized services, and preventing direct internet connectivity to CDE pods.
 
@@ -111,7 +111,7 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
       port: 53
@@ -132,7 +132,7 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
       port: 53
@@ -168,7 +168,7 @@ spec:
     - namespaceSelector:
         matchLabels:
           pci-zone: dmz
-    - podSelector:
+      podSelector:
         matchLabels:
           app: api-gateway
     ports:
@@ -189,9 +189,10 @@ spec:
   policyTypes:
   - Egress
   egress:
-  # Allow connection to external payment gateway
+  # Allow connection to external payment gateway CIDRs
   - to:
-    - podSelector: {}
+    - ipBlock:
+        cidr: 203.0.113.0/24  # Replace with approved payment gateway CIDRs
     ports:
     - protocol: TCP
       port: 443
@@ -199,7 +200,7 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
       port: 53
@@ -227,21 +228,21 @@ spec:
       port: 5432
 
 ---
-# Deny internet egress from CDE (PCI 1.3.3)
+# Allow internal-only egress from CDE workloads (PCI 1.3, 1.4)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: deny-internet-egress
+  name: allow-internal-egress
   namespace: cardholder-data-environment
 spec:
   podSelector: {}
   policyTypes:
   - Egress
   egress:
-  # Only allow internal cluster communication
+  # Kubernetes NetworkPolicies are additive allow lists; external egress must be
+  # allowed explicitly in separate policies, such as the payment gateway rule.
   - to:
     - namespaceSelector: {}
-  # Block all external traffic
 ```
 
 Apply CDE policies:
@@ -271,7 +272,8 @@ spec:
   - Ingress
   ingress:
   - from:
-    - namespaceSelector: {}
+    - ipBlock:
+        cidr: 0.0.0.0/0
     ports:
     - protocol: TCP
       port: 443
@@ -295,7 +297,7 @@ spec:
     - namespaceSelector:
         matchLabels:
           pci-zone: cde
-    - podSelector:
+      podSelector:
         matchLabels:
           app: payment-processor
     ports:
@@ -305,7 +307,7 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
       port: 53
@@ -322,6 +324,9 @@ spec:
   policyTypes:
   - Egress
   egress:
+  # Kubernetes NetworkPolicies do not support explicit deny rules. This policy
+  # allows DMZ workloads to reach non-CDE namespaces; the separate api-gateway
+  # policy above is the only CDE egress allow rule.
   - to:
     - namespaceSelector:
         matchExpressions:
@@ -337,7 +342,9 @@ Cilium provides Layer 7 network policies and better observability:
 ```yaml
 # pci-cilium-policies.yaml
 ---
-# Layer 7 policy for API gateway to payment processor
+# Layer 7 HTTP policy for API gateway to payment processor.
+# HTTP rules require traffic that is visible to Cilium, such as TLS terminated
+# before this service-to-service hop.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -364,7 +371,7 @@ spec:
           path: "/api/v1/transaction-status"
 
 ---
-# Block all except specific endpoints (PCI 1.3.2)
+# Block all except specific endpoints (PCI 1.3)
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -383,7 +390,8 @@ spec:
       - port: "443"
         protocol: TCP
 
-  # Deny all other external traffic
+  # Allow in-cluster traffic. Other external traffic remains denied because it
+  # is not matched by an egress allow rule.
   - toEntities:
     - cluster
 ```
@@ -395,7 +403,10 @@ helm repo add cilium https://helm.cilium.io/
 helm install cilium cilium/cilium \
   --namespace kube-system \
   --set policyEnforcementMode=always \
-  --set hubble.enabled=true
+  --set hubble.enabled=true \
+  --set hubble.relay.enabled=true \
+  --set hubble.ui.enabled=true \
+  --set hubble.metrics.enabled="{drop:destinationContext=namespace,flow:sourceContext=reserved-identity;destinationContext=namespace,flows-to-world}"
 
 kubectl apply -f pci-cilium-policies.yaml
 ```
@@ -481,8 +492,8 @@ spec:
     rules:
     - alert: CDEUnauthorizedAccess
       expr: |
-        rate(cilium_drop_count_total{
-          destination_namespace="cardholder-data-environment",
+        rate(hubble_drop_total{
+          destination="cardholder-data-environment",
           reason="Policy denied"
         }[5m]) > 0.1
       for: 2m
@@ -495,14 +506,15 @@ spec:
 
     - alert: InternetTrafficToCDE
       expr: |
-        sum(rate(cilium_forward_count_total{
-          destination_namespace="cardholder-data-environment",
-          source="world"
+        sum(rate(hubble_flows_processed_total{
+          destination="cardholder-data-environment",
+          source=~".*world.*",
+          verdict="FORWARDED"
         }[5m])) > 0
       for: 1m
       labels:
         severity: critical
-        pci_requirement: "1.3.3"
+        pci_requirement: "1.4"
       annotations:
         summary: "Direct internet traffic to CDE detected"
         description: "Internet traffic bypassing DMZ"
