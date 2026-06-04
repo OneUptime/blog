@@ -52,18 +52,23 @@ docker run -d --name test_cgroup \
 # Find the container's cgroup path
 CONTAINER_ID=$(docker inspect --format '{{.Id}}' test_cgroup)
 
-# On cgroups v2, Docker creates cgroups under this path
+# On cgroups v2 with the systemd cgroup driver, Docker creates cgroups under this path
 ls /sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope/
+
+# Or get the exact cgroup path from the container's init process
+PID=$(docker inspect --format '{{.State.Pid}}' test_cgroup)
+SCOPE="/sys/fs/cgroup$(awk -F: '{print $3}' /proc/${PID}/cgroup)"
+ls "${SCOPE}/"
 ```
 
 On cgroups v2, all resource controllers live under a single hierarchy:
 
 ```bash
 # List the cgroup directory contents for the container
-ls /sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope/
+ls "${SCOPE}/"
 
 # You will see files like:
-# cgroup.controllers   - Active controllers
+# cgroup.controllers   - Available controllers
 # cpu.max              - CPU limit
 # memory.max           - Memory limit
 # memory.current       - Current memory usage
@@ -84,9 +89,8 @@ docker run -d --name mem_test \
     nginx:alpine
 
 # Inspect the cgroup memory settings
-CGROUP_PATH=$(docker inspect --format '{{.HostConfig.CgroupParent}}' mem_test)
-CONTAINER_ID=$(docker inspect --format '{{.Id}}' mem_test)
-SCOPE="/sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope"
+PID=$(docker inspect --format '{{.State.Pid}}' mem_test)
+SCOPE="/sys/fs/cgroup$(awk -F: '{print $3}' /proc/${PID}/cgroup)"
 
 # Read the memory limit (in bytes)
 cat "${SCOPE}/memory.max"
@@ -125,7 +129,7 @@ docker events --filter event=oom
 
 ## CPU Cgroup in Detail
 
-Docker CPU limits work through two mechanisms: CFS (Completely Fair Scheduler) quotas and CPU shares.
+Docker CPU controls work through two mechanisms: CFS (Completely Fair Scheduler) quotas for hard limits, and CPU shares or weights for relative priority under contention.
 
 ```bash
 # Run a container with CPU constraints
@@ -135,7 +139,8 @@ docker run -d --name cpu_test \
     nginx:alpine
 
 CONTAINER_ID=$(docker inspect --format '{{.Id}}' cpu_test)
-SCOPE="/sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope"
+PID=$(docker inspect --format '{{.State.Pid}}' cpu_test)
+SCOPE="/sys/fs/cgroup$(awk -F: '{print $3}' /proc/${PID}/cgroup)"
 
 # Read the CPU bandwidth limit
 cat "${SCOPE}/cpu.max"
@@ -174,7 +179,8 @@ echo "================================"
 
 for CONTAINER_ID in $(docker ps -q); do
     NAME=$(docker inspect --format '{{.Name}}' "$CONTAINER_ID" | sed 's/^\//')
-    SCOPE="/sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope"
+    PID=$(docker inspect --format '{{.State.Pid}}' "$CONTAINER_ID")
+    SCOPE="/sys/fs/cgroup$(awk -F: '{print $3}' /proc/${PID}/cgroup)"
 
     if [ -f "${SCOPE}/cpu.stat" ]; then
         THROTTLED=$(grep nr_throttled "${SCOPE}/cpu.stat" | awk '{print $2}')
@@ -202,7 +208,8 @@ docker run -d --name pinned_test \
     nginx:alpine
 
 CONTAINER_ID=$(docker inspect --format '{{.Id}}' pinned_test)
-SCOPE="/sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope"
+PID=$(docker inspect --format '{{.State.Pid}}' pinned_test)
+SCOPE="/sys/fs/cgroup$(awk -F: '{print $3}' /proc/${PID}/cgroup)"
 
 # Verify the CPU affinity
 cat "${SCOPE}/cpuset.cpus"
@@ -224,7 +231,8 @@ docker run -d --name io_test \
     nginx:alpine
 
 CONTAINER_ID=$(docker inspect --format '{{.Id}}' io_test)
-SCOPE="/sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope"
+PID=$(docker inspect --format '{{.State.Pid}}' io_test)
+SCOPE="/sys/fs/cgroup$(awk -F: '{print $3}' /proc/${PID}/cgroup)"
 
 # Check I/O limits
 cat "${SCOPE}/io.max"
@@ -244,7 +252,8 @@ docker run -d --name pid_test \
     nginx:alpine
 
 CONTAINER_ID=$(docker inspect --format '{{.Id}}' pid_test)
-SCOPE="/sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope"
+PID=$(docker inspect --format '{{.State.Pid}}' pid_test)
+SCOPE="/sys/fs/cgroup$(awk -F: '{print $3}' /proc/${PID}/cgroup)"
 
 # Check the PID limit
 cat "${SCOPE}/pids.max"
@@ -260,12 +269,16 @@ Cgroups v2 introduces a unified hierarchy with important changes:
 
 ```bash
 # Cgroups v1: separate hierarchies per controller
-/sys/fs/cgroup/memory/docker/CONTAINER_ID/memory.limit_in_bytes
-/sys/fs/cgroup/cpu/docker/CONTAINER_ID/cpu.cfs_quota_us
+/sys/fs/cgroup/memory/docker/CONTAINER_ID/memory.limit_in_bytes                   # cgroupfs driver
+/sys/fs/cgroup/cpu/docker/CONTAINER_ID/cpu.cfs_quota_us                           # cgroupfs driver
+/sys/fs/cgroup/memory/system.slice/docker-CONTAINER_ID.scope/memory.limit_in_bytes # systemd driver
+/sys/fs/cgroup/cpu/system.slice/docker-CONTAINER_ID.scope/cpu.cfs_quota_us         # systemd driver
 
 # Cgroups v2: single unified hierarchy
-/sys/fs/cgroup/system.slice/docker-CONTAINER_ID.scope/memory.max
-/sys/fs/cgroup/system.slice/docker-CONTAINER_ID.scope/cpu.max
+/sys/fs/cgroup/docker/CONTAINER_ID/memory.max                                     # cgroupfs driver
+/sys/fs/cgroup/docker/CONTAINER_ID/cpu.max                                        # cgroupfs driver
+/sys/fs/cgroup/system.slice/docker-CONTAINER_ID.scope/memory.max                  # systemd driver
+/sys/fs/cgroup/system.slice/docker-CONTAINER_ID.scope/cpu.max                     # systemd driver
 ```
 
 Key naming changes from v1 to v2:
@@ -293,7 +306,8 @@ while true; do
 
     for CONTAINER_ID in $(docker ps -q); do
         NAME=$(docker inspect --format '{{.Name}}' "$CONTAINER_ID" | sed 's/^\//' | cut -c1-20)
-        SCOPE="/sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope"
+        PID=$(docker inspect --format '{{.State.Pid}}' "$CONTAINER_ID")
+        SCOPE="/sys/fs/cgroup$(awk -F: '{print $3}' /proc/${PID}/cgroup)"
 
         if [ ! -d "$SCOPE" ]; then
             continue
@@ -332,7 +346,8 @@ When containers behave unexpectedly, cgroups data helps you diagnose the root ca
 
 ```bash
 # Check if a container is being memory-throttled (swapping)
-SCOPE="/sys/fs/cgroup/system.slice/docker-${CONTAINER_ID}.scope"
+PID=$(docker inspect --format '{{.State.Pid}}' "${CONTAINER_ID}")
+SCOPE="/sys/fs/cgroup$(awk -F: '{print $3}' /proc/${PID}/cgroup)"
 grep -E "pgfault|pgmajfault" "${SCOPE}/memory.stat"
 # High pgmajfault means the container is heavily swapping
 
@@ -347,4 +362,4 @@ cat "${SCOPE}/memory.pressure"
 
 ## Summary
 
-Cgroups are the enforcement mechanism behind every Docker resource limit. They operate at the kernel level, providing hard guarantees about CPU time, memory usage, I/O bandwidth, and process counts. Understanding how Docker translates `--memory`, `--cpus`, and other flags into cgroup configurations helps you debug performance issues, optimize resource allocation, and understand what happens when containers hit their limits. Read the cgroup filesystem directly for real-time data that is more detailed than what `docker stats` provides. This knowledge is especially valuable when diagnosing CPU throttling problems or memory pressure situations that affect application performance.
+Cgroups are the enforcement mechanism behind Docker resource limits. They operate at the kernel level, providing hard limits or accounting controls for CPU time, memory usage, I/O bandwidth, and process counts. Understanding how Docker translates `--memory`, `--cpus`, and other flags into cgroup configurations helps you debug performance issues, optimize resource allocation, and understand what happens when containers hit their limits. Read the cgroup filesystem directly for real-time data that is more detailed than what `docker stats` provides. This knowledge is especially valuable when diagnosing CPU throttling problems or memory pressure situations that affect application performance.
