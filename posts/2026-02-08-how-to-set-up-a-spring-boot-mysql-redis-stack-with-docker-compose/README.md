@@ -86,8 +86,6 @@ This is the core of the stack. The `docker-compose.yml` file ties Spring Boot, M
 
 ```yaml
 # Docker Compose file for Spring Boot + MySQL + Redis stack
-version: "3.8"
-
 services:
   # Spring Boot application service
   app:
@@ -100,8 +98,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/appdb?useSSL=false&allowPublicKeyRetrieval=true
       SPRING_DATASOURCE_USERNAME: appuser
       SPRING_DATASOURCE_PASSWORD: apppassword
-      SPRING_REDIS_HOST: redis
-      SPRING_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
     depends_on:
       mysql:
         condition: service_healthy
@@ -176,9 +174,10 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: false
-  redis:
-    host: ${SPRING_REDIS_HOST:localhost}
-    port: ${SPRING_REDIS_PORT:6379}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
   cache:
     type: redis
     redis:
@@ -237,7 +236,7 @@ You should see MySQL initialize, Redis start accepting connections, and then Spr
 Test that each service is accessible:
 
 ```bash
-# Check if the Spring Boot app is running
+# Check if the Spring Boot app is running, if Actuator is on the classpath
 curl http://localhost:8080/actuator/health
 
 # Connect to MySQL from your host
@@ -256,7 +255,6 @@ For production, never hardcode passwords in your compose file. Use a `.env` file
 MYSQL_ROOT_PASSWORD=your_secure_root_password
 MYSQL_USER=appuser
 MYSQL_PASSWORD=your_secure_password
-REDIS_PASSWORD=your_redis_password
 ```
 
 Then reference these in your compose file:
