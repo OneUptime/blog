@@ -10,11 +10,11 @@ Description: Detect performance regressions automatically by running reproducibl
 
 Performance regressions sneak into codebases silently. A new feature adds 50ms to API response times. A dependency upgrade doubles memory usage. An ORM query change turns a 10ms lookup into a 200ms full table scan. None of these show up in unit tests. You only notice when users complain or your monitoring alerts fire. Performance regression testing catches these problems at build time, before they reach production.
 
-Docker makes performance regression testing practical by providing identical execution environments for every benchmark run. The results are comparable across builds because the hardware abstraction is consistent.
+Docker makes performance regression testing practical by providing consistent execution environments for every benchmark run. The results are more comparable across builds because the runtime configuration is consistent.
 
 ## The Performance Regression Testing Approach
 
-The process has four steps: establish a baseline, run benchmarks on new code, compare results against the baseline, and fail the build if performance degrades beyond a threshold. Docker ensures that the benchmark environment is identical every time, removing environmental noise from the measurements.
+The process has four steps: establish a baseline, run benchmarks on new code, compare results against the baseline, and fail the build if performance degrades beyond a threshold. Docker keeps the benchmark environment consistent across runs, reducing environmental noise in the measurements.
 
 ## Setting Up the Benchmark Environment
 
@@ -22,8 +22,6 @@ Create a controlled Docker environment for running performance benchmarks.
 
 ```yaml
 # docker-compose.benchmark.yml - Performance benchmarking environment
-
-version: "3.8"
 
 services:
   # Database with deterministic configuration
@@ -44,7 +42,7 @@ services:
       interval: 2s
       timeout: 2s
       retries: 10
-    # Disable WAL for faster writes during benchmarks
+    # Relax durability settings for faster writes during benchmarks
     command:
       - "postgres"
       - "-c"
@@ -105,7 +103,7 @@ services:
       - ./benchmark-results:/results
 ```
 
-The fixed resource limits are essential. Without them, benchmark results vary depending on what else is running on the host machine.
+The fixed resource limits are essential. Without them, benchmark results vary more depending on what else is running on the host machine.
 
 ## Writing Benchmark Tests
 
@@ -387,6 +385,8 @@ cp benchmark-results/benchmark-results.json benchmark-results/baseline.json
 
 ## CI/CD Integration
 
+This workflow assumes `benchmark-results/baseline.json` is available in the checked-out repository. Store or update that file when you intentionally accept new performance characteristics.
+
 ```yaml
 # .github/workflows/perf-regression.yml - Performance regression testing
 name: Performance Regression Test
@@ -402,13 +402,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download baseline
-        uses: actions/download-artifact@v4
-        with:
-          name: performance-baseline
-          path: benchmark-results/
-        continue-on-error: true  # No baseline on first run
-
       - name: Run performance benchmarks
         run: |
           docker compose -f docker-compose.benchmark.yml up \
@@ -417,13 +410,6 @@ jobs:
             --exit-code-from benchmark
         env:
           REGRESSION_THRESHOLD: "15"
-
-      - name: Save baseline for future runs
-        if: github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: performance-baseline
-          path: benchmark-results/baseline.json
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
