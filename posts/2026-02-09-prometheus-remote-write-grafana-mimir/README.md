@@ -24,7 +24,7 @@ The flow works like this:
 4. Mimir ingests samples and stores them in object storage
 5. Grafana queries can use either Prometheus or Mimir as a data source
 
-Remote write is fire-and-forget. If Mimir is unavailable, samples queue in memory until the buffer fills or connectivity restores.
+Remote write is asynchronous. If Mimir is unavailable, Prometheus retries from its write-ahead log (WAL); if the remote endpoint remains unavailable long enough for unsent WAL data to be compacted, samples can be lost.
 
 ## Installing Grafana Mimir
 
@@ -54,6 +54,10 @@ data:
       ring:
         kvstore:
           store: memberlist
+
+    memberlist:
+      join_members:
+        - mimir.mimir.svc.cluster.local
 
     ingester:
       ring:
@@ -171,6 +175,8 @@ spec:
 
   remoteWrite:
   - url: http://mimir-write.mimir.svc.cluster.local:8080/api/v1/push
+    headers:
+      X-Scope-OrgID: cluster-east-1
     queueConfig:
       capacity: 10000
       maxShards: 50
@@ -180,10 +186,6 @@ spec:
       minBackoff: 30ms
       maxBackoff: 5s
     writeRelabelConfigs:
-    # Add tenant ID header for multi-tenancy
-    - sourceLabels: [__tmp_tenant_id]
-      targetLabel: __tenant_id__
-      replacement: "cluster-east-1"
     # Drop high-cardinality metrics
     - sourceLabels: [__name__]
       regex: 'container_network_tcp_usage_total|container_tasks_state'
@@ -240,8 +242,8 @@ remoteWrite:
     minBackoff: 100ms
     maxBackoff: 10s
 
-    # Retry attempts before dropping samples
-    maxRetries: 10
+    # Retry 429 responses from the remote endpoint
+    retryOnRateLimit: true
 ```
 
 Monitor remote write metrics to tune these values:
@@ -324,7 +326,7 @@ This separates critical real-time metrics from bulk historical data.
 
 ## Configuring Authentication
 
-Secure remote write with authentication. Mimir supports basic auth, bearer tokens, and OAuth.
+Secure remote write with an authenticating proxy in front of Mimir. The Prometheus Operator supports basic auth, bearer tokens, and OAuth for remote write clients.
 
 ### Basic Auth
 
@@ -461,19 +463,18 @@ Use Prometheus for short-term queries (last 7 days) and Mimir for historical ana
 
 ## Handling Backfill
 
-If you enable remote write on an existing Prometheus instance, historical data is not automatically sent. Use promtool to backfill:
+If you enable remote write on an existing Prometheus instance, historical data is not automatically sent. Enable Mimir's block upload feature and use mimirtool to backfill existing Prometheus TSDB blocks:
+
+```yaml
+limits:
+  compactor_block_upload_enabled: true
+```
 
 ```bash
-# Export data from Prometheus
-kubectl exec -n monitoring prometheus-0 -- promtool tsdb dump /prometheus \
-  --match='{job="kubernetes-pods"}' \
-  --min-time=1706832000000 \
-  --max-time=1707436800000 > metrics.txt
-
-# Import to Mimir using remote write
-cat metrics.txt | promtool push metrics \
-  --url=http://mimir-write.mimir.svc.cluster.local:8080/api/v1/push \
-  --header='X-Scope-OrgID: production-cluster'
+mimirtool backfill \
+  --address=http://mimir.mimir.svc.cluster.local:8080 \
+  --id=production-cluster \
+  /prometheus/01HZY0M8G2QK2W8Q8M3M2K0A1B
 ```
 
 ## Testing Remote Write Configuration
