@@ -19,6 +19,8 @@ LogQL has two query types:
 
 For error rate analysis, you'll use metric queries with aggregation functions like `rate()`, `count_over_time()`, and `sum()`.
 
+The examples below assume the selected streams contain logs that parse cleanly with the parser shown. If a parser or numeric label filter can produce pipeline errors in your data, add a `| __error__=""` filter after that stage because Loki metric queries cannot contain pipeline errors.
+
 ## Basic Error Counting
 
 Start with simple error counting across all logs:
@@ -294,8 +296,8 @@ topk(5,
   ) * 100
 )
 
-# Bottom 5 performing services (highest errors)
-bottomk(5,
+# Worst 5 performing services (highest errors)
+topk(5,
   sum by (app) (
     rate({namespace="production"} | json | level="error" [5m])
   )
@@ -371,7 +373,7 @@ sum by (app) (
 Pre-calculate common error rate queries:
 
 ```yaml
-# Loki recording rule (requires Grafana Mimir or similar)
+# Loki recording rule (evaluated by the Loki ruler and remote-written to a Prometheus-compatible backend)
 groups:
   - name: error_rates
     interval: 1m
