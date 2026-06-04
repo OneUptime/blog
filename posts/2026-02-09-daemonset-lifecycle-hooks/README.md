@@ -8,11 +8,11 @@ Description: Learn how to use PostStart and PreStop lifecycle hooks in DaemonSet
 
 ---
 
-Lifecycle hooks in DaemonSets allow you to execute custom logic during container startup and shutdown. These hooks are critical for node-level services that need to register with external systems, drain connections gracefully, or clean up resources before termination. Proper lifecycle hook configuration ensures zero-downtime updates and clean state transitions.
+Lifecycle hooks in DaemonSets allow you to execute custom logic during container startup and shutdown. These hooks are critical for node-level services that need to register with external systems, drain connections gracefully, or clean up resources before termination. Proper lifecycle hook configuration helps reduce downtime during updates and supports clean state transitions.
 
 ## Understanding container lifecycle hooks
 
-Kubernetes provides two lifecycle hooks: PostStart runs immediately after a container starts, and PreStop runs before a container terminates. These hooks execute synchronously, blocking the container's main process until they complete. For DaemonSets managing critical node services, lifecycle hooks ensure proper coordination with the rest of your infrastructure.
+Kubernetes provides PostStart and PreStop hooks for startup and shutdown behavior. PostStart runs immediately after a container is created, but Kubernetes does not guarantee whether it runs before or after the container entrypoint begins. PreStop runs before a container terminates and must complete before Kubernetes sends the TERM signal, with the pod's termination grace period already counting down. For DaemonSets managing critical node services, lifecycle hooks help coordinate with the rest of your infrastructure.
 
 PostStart hooks are useful for service registration, waiting for dependencies, or performing initialization that cannot happen in init containers. PreStop hooks enable graceful shutdown, connection draining, and cleanup operations before the pod terminates.
 
@@ -66,11 +66,11 @@ spec:
               fieldPath: spec.nodeName
 ```
 
-This PostStart hook ensures the gateway registers with the service mesh only after it's ready to accept traffic.
+This PostStart hook registers the gateway with the service mesh only after the `/health` endpoint reports that it is ready to accept traffic.
 
 ## DaemonSet with PreStop hook for graceful shutdown
 
-Use PreStop hooks to drain connections before termination:
+Use PreStop hooks to drain connections before termination. This example assumes HAProxy has an admin socket enabled at `/var/run/haproxy.sock`, a frontend named `http-in`, and `socat` available in the image:
 
 ```yaml
 apiVersion: apps/v1
@@ -129,7 +129,7 @@ spec:
         emptyDir: {}
 ```
 
-This PreStop hook ensures HAProxy stops accepting new connections and waits for existing ones to complete.
+This PreStop hook tells HAProxy to stop accepting new connections and waits for existing ones to complete.
 
 ## HTTP-based lifecycle hooks
 
@@ -180,11 +180,11 @@ spec:
           periodSeconds: 3
 ```
 
-HTTP-based hooks are cleaner when your application already exposes management endpoints.
+HTTP-based hooks can be cleaner when your application already exposes management endpoints. For PostStart, remember that Kubernetes starts the hook as the container is created, so the endpoint might not be serving yet unless the application starts very quickly.
 
 ## Complex PostStart for dependency waiting
 
-Wait for multiple dependencies before considering the pod ready:
+Wait for multiple dependencies before completing startup initialization:
 
 ```yaml
 apiVersion: apps/v1
@@ -256,7 +256,7 @@ spec:
           path: /var/run
 ```
 
-This ensures all dependencies are available before the agent starts processing.
+This waits for all dependencies before the PostStart hook completes. Use a readiness probe as well if you need Kubernetes to withhold traffic until initialization is complete.
 
 ## PreStop hook with external cleanup
 
@@ -288,9 +288,8 @@ spec:
               - /bin/sh
               - -c
               - |
-                # Flush all buffers
-                echo "Flushing log buffers..."
-                kill -SIGUSR1 $(pidof fluent-bit)
+                # Give Fluent Bit time to flush on its configured interval
+                echo "Waiting for log buffers to flush..."
                 sleep 5
 
                 # Upload any pending files
@@ -323,7 +322,7 @@ spec:
         emptyDir: {}
 ```
 
-This ensures no logs are lost during pod termination.
+This reduces the risk of losing logs during pod termination.
 
 ## Combined lifecycle hooks with state management
 
@@ -470,10 +469,10 @@ kubectl logs -n monitoring daemonset/monitoring-agent -c agent --timestamps
 # Check termination logs
 kubectl logs -n monitoring <pod-name> -c agent --previous
 
-# Monitor termination grace period violations
-kubectl get pods -A -o json | jq -r '.items[] | select(.status.reason=="DeadlineExceeded") | "\(.metadata.namespace)/\(.metadata.name)"'
+# Monitor hook failures and forced container termination events
+kubectl get events -A --sort-by='.lastTimestamp' | grep -i "failedpoststarthook\|failedprestophook\|killing"
 ```
 
 ## Conclusion
 
-Lifecycle hooks in DaemonSets enable sophisticated startup and shutdown behavior for node-level services. PostStart hooks ensure proper initialization and service registration, while PreStop hooks guarantee graceful shutdown and cleanup. By combining these hooks with appropriate termination grace periods and timeout handling, you create robust DaemonSets that maintain service availability during rolling updates and handle failures gracefully.
+Lifecycle hooks in DaemonSets enable sophisticated startup and shutdown behavior for node-level services. PostStart hooks support initialization and service registration, while PreStop hooks support graceful shutdown and cleanup. By combining these hooks with appropriate termination grace periods and timeout handling, you create robust DaemonSets that maintain service availability during rolling updates and handle failures gracefully.
