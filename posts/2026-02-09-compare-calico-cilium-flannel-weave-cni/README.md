@@ -8,7 +8,7 @@ Description: Compare the performance characteristics of Calico, Cilium, Flannel,
 
 ---
 
-Choosing the right Container Network Interface (CNI) plugin is one of the most critical decisions you'll make when building a Kubernetes cluster. The CNI plugin you select directly impacts network performance, security capabilities, and operational complexity. This guide walks you through comparing the four most popular CNI plugins - Calico, Cilium, Flannel, and Weave - using real performance benchmarks.
+Choosing the right Container Network Interface (CNI) plugin is one of the most critical decisions you'll make when building a Kubernetes cluster. The CNI plugin you select directly impacts network performance, security capabilities, and operational complexity. This guide walks you through comparing four well-known CNI plugins - Calico, Cilium, Flannel, and Weave - using real performance benchmarks.
 
 ## Understanding CNI Plugin Architecture
 
@@ -34,7 +34,7 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 networking:
   disableDefaultCNI: true  # Important: disable default CNI
-  podSubnet: "10.244.0.0/16"
+  podSubnet: "10.244.0.0/16"  # Adjust if your CNI manifest uses a different CIDR
 nodes:
 - role: control-plane
 - role: worker
@@ -51,18 +51,22 @@ For each CNI plugin, you'll install it separately and run the same benchmarks. L
 kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 
 # Install Calico
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/custom-resources.yaml
 
 # Install Cilium (using Helm)
 helm repo add cilium https://helm.cilium.io/
-helm install cilium cilium/cilium --version 1.15.0 \
+helm install cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
+  --set ipam.mode=kubernetes \
   --set operator.replicas=1
 
 # Install Weave
 kubectl apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml
 ```
+
+When using the default manifests, make sure the cluster pod CIDR matches the CNI manifest you install. For example, Flannel's default manifest uses `10.244.0.0/16`, while Calico's default custom resources use `192.168.0.0/16`.
 
 ## Throughput Benchmarking with iperf3
 
@@ -103,6 +107,8 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: iperf3-client
+  labels:
+    app: iperf3-client
 spec:
   containers:
   - name: iperf3
@@ -143,10 +149,10 @@ Latency matters more than throughput for request-response workloads. Use netperf
 
 ```bash
 # Deploy netperf server
-kubectl run netperf-server --image=networkstatic/netperf --command -- netserver -D
+kubectl run netperf-server --image=networkstatic/netserver --restart=Never --command -- netserver -D
 
 # Deploy netperf client
-kubectl run netperf-client --image=networkstatic/netperf --command -- sleep 3600
+kubectl run netperf-client --image=networkstatic/netperf --restart=Never --command -- sleep 3600
 
 # Get server IP
 SERVER_IP=$(kubectl get pod netperf-server -o jsonpath='{.status.podIP}')
@@ -174,7 +180,7 @@ CNI plugin resource consumption affects your cluster's capacity. Monitor CPU and
 kubectl top pods -n kube-system | grep -E "calico|cilium|flannel|weave"
 
 # Get detailed metrics for Cilium
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -E "drops|forward"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep -E "drops|forward"
 ```
 
 Resource usage for a 100-pod cluster:
@@ -247,6 +253,6 @@ Choose your CNI plugin based on your priorities:
 
 **Use Flannel** if you want simplicity and minimal overhead. It's perfect for development clusters or environments where network policies aren't required.
 
-**Use Weave** if you need easy encrypted networking out of the box. The performance trade-off is worth it when security requirements mandate encryption.
+**Use Weave** if you need easy encrypted networking and can accept using an archived project. The performance trade-off is worth it when security requirements mandate encryption.
 
 Run these benchmarks in your own environment with your specific hardware and workload patterns. Performance characteristics change based on network infrastructure, node specifications, and traffic patterns. The numbers shared here provide a baseline, but your results will vary based on your specific setup.
