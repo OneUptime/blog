@@ -31,13 +31,13 @@ Istio provides the most mature egress gateway implementation. Start by installin
 # Download Istio
 
 curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.20.2
+cd istio-*
 export PATH=$PWD/bin:$PATH
 
 # Install with egress gateway enabled
 istioctl install --set profile=default \
-  --set components.egressGateways[0].name=istio-egressgateway \
-  --set components.egressGateways[0].enabled=true -y
+  --set "components.egressGateways[0].name=istio-egressgateway" \
+  --set "components.egressGateways[0].enabled=true" -y
 ```
 
 Verify the egress gateway is running:
@@ -51,9 +51,10 @@ kubectl get pod -n istio-system -l istio=egressgateway
 By default, Istio allows all outbound traffic. Change this to require explicit configuration:
 
 ```bash
-kubectl get configmap istio -n istio-system -o yaml | \
-  sed 's/mode: ALLOW_ANY/mode: REGISTRY_ONLY/' | \
-  kubectl replace -n istio-system -f -
+istioctl install --set profile=default \
+  --set "components.egressGateways[0].name=istio-egressgateway" \
+  --set "components.egressGateways[0].enabled=true" \
+  --set meshConfig.outboundTrafficPolicy.mode=REGISTRY_ONLY -y
 ```
 
 Now pods can only reach services explicitly configured in the service registry.
@@ -64,7 +65,7 @@ Define an external service and route it through the gateway:
 
 ```yaml
 # external-service.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -73,12 +74,12 @@ spec:
   - api.example.com
   ports:
   - number: 443
-    name: https
-    protocol: HTTPS
+    name: tls
+    protocol: TLS
   location: MESH_EXTERNAL
   resolution: DNS
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: egress-gateway
@@ -88,14 +89,23 @@ spec:
   servers:
   - port:
       number: 443
-      name: https
-      protocol: HTTPS
+      name: tls
+      protocol: TLS
     hosts:
     - api.example.com
     tls:
       mode: PASSTHROUGH
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: egressgateway-for-external-api
+spec:
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  subsets:
+  - name: external-api
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api-through-egress
@@ -105,20 +115,25 @@ spec:
   gateways:
   - mesh
   - egress-gateway
-  http:
+  tls:
   - match:
     - gateways:
       - mesh
       port: 443
+      sniHosts:
+      - api.example.com
     route:
     - destination:
         host: istio-egressgateway.istio-system.svc.cluster.local
+        subset: external-api
         port:
           number: 443
   - match:
     - gateways:
       - egress-gateway
       port: 443
+      sniHosts:
+      - api.example.com
     route:
     - destination:
         host: api.example.com
@@ -144,6 +159,8 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: egress-test
+  annotations:
+    sidecar.istio.io/inject: "true"
   labels:
     app: egress-test
 spec:
@@ -164,14 +181,14 @@ kubectl exec -it egress-test -- curl -I https://api.example.com
 Check egress gateway logs to confirm traffic passed through:
 
 ```bash
-kubectl logs -n istio-system -l istio=egressgateway -f
+kubectl logs -n istio-system -l istio=egressgateway -c istio-proxy -f
 ```
 
 You should see log entries for requests to api.example.com.
 
 ## Implementing Without Istio
 
-If you don't want the complexity of Istio, implement egress gateways with basic Kubernetes resources and iptables.
+If you don't want the complexity of Istio, implement egress gateways with basic Kubernetes resources and an HTTP proxy.
 
 ### Create Egress Gateway Pods
 
@@ -247,7 +264,7 @@ data:
     http_access deny all
 
     # Logging
-    access_log /var/log/squid/access.log squid
+    access_log stdio:/var/log/squid/access.log squid
 
     # Cache settings
     cache deny all
@@ -271,7 +288,13 @@ kind: Deployment
 metadata:
   name: app-with-egress
 spec:
+  selector:
+    matchLabels:
+      app: app-with-egress
   template:
+    metadata:
+      labels:
+        app: app-with-egress
     spec:
       containers:
       - name: app
@@ -312,6 +335,8 @@ spec:
     ports:
     - protocol: UDP
       port: 53
+    - protocol: TCP
+      port: 53
   # Allow traffic to egress gateway only
   - to:
     - namespaceSelector:
@@ -331,25 +356,23 @@ This forces all pods in the production namespace to use the egress gateway for e
 
 For services that need to allowlist your cluster's IP, ensure the egress gateway has a stable external IP.
 
-With Istio:
+With Istio, use dedicated gateway nodes and route their outbound traffic through a stable cloud NAT, NAT gateway, or firewall egress address:
 
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: istio-egressgateway
-  namespace: istio-system
-spec:
-  type: LoadBalancer
-  loadBalancerIP: 203.0.113.10  # Your reserved IP
-  selector:
-    istio: egressgateway
-  ports:
-  - port: 443
-    name: https
+```bash
+kubectl patch deployment istio-egressgateway -n istio-system --type merge -p '{
+  "spec": {
+    "template": {
+      "spec": {
+        "nodeSelector": {
+          "node-role.kubernetes.io/egress": "true"
+        }
+      }
+    }
+  }
+}'
 ```
 
-For bare-metal with MetalLB:
+For bare-metal with MetalLB, a LoadBalancer IP gives the proxy a stable inbound address for clients that connect to it directly:
 
 ```yaml
 apiVersion: v1
@@ -358,7 +381,7 @@ metadata:
   name: egress-gateway
   namespace: egress-system
   annotations:
-    metallb.universe.tf/address-pool: egress-pool
+    metallb.io/address-pool: egress-pool
 spec:
   type: LoadBalancer
   selector:
@@ -367,7 +390,7 @@ spec:
   - port: 3128
 ```
 
-External services see all traffic coming from this stable IP.
+External services see the source IP chosen by your node routing and NAT path. Configure that path so traffic from the egress gateway nodes is translated to your reserved public IP.
 
 ## Egress Gateway for Specific Namespaces
 
@@ -375,7 +398,24 @@ Route only specific namespaces through the egress gateway:
 
 ```yaml
 # namespace-specific-egress.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: partner-api
+  namespace: production
+spec:
+  hosts:
+  - api.partner.com
+  exportTo:
+  - "."
+  ports:
+  - number: 443
+    name: tls
+    protocol: TLS
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api
@@ -386,20 +426,30 @@ spec:
   gateways:
   - mesh
   - egress-gateway
-  http:
+  tls:
   - match:
     - gateways:
       - mesh
+      port: 443
+      sniHosts:
+      - api.partner.com
       sourceNamespace: production  # Only production namespace
     route:
     - destination:
         host: istio-egressgateway.istio-system.svc.cluster.local
+        port:
+          number: 443
   - match:
     - gateways:
       - egress-gateway
+      port: 443
+      sniHosts:
+      - api.partner.com
     route:
     - destination:
         host: api.partner.com
+        port:
+          number: 443
 ```
 
 Other namespaces can't reach api.partner.com at all (with REGISTRY_ONLY mode).
@@ -413,7 +463,7 @@ Implement comprehensive monitoring of egress traffic:
 ```bash
 # View egress gateway metrics
 kubectl port-forward -n istio-system \
-  svc/istio-egressgateway 15090:15090
+  deploy/istio-egressgateway 15090:15090
 
 # Query Prometheus metrics
 curl http://localhost:15090/stats/prometheus | grep istio_requests_total
@@ -430,8 +480,8 @@ Create a Grafana dashboard tracking:
 Parse Squid access logs:
 
 ```bash
-kubectl logs -n egress-system -l app=egress-gateway | \
-  awk '{print $7}' | sort | uniq -c | sort -nr
+kubectl exec -n egress-system deploy/egress-gateway -- \
+  awk '{print $7}' /var/log/squid/access.log | sort | uniq -c | sort -nr
 ```
 
 Ship logs to your logging system for analysis:
@@ -448,7 +498,6 @@ data:
     [INPUT]
         Name              tail
         Path              /var/log/squid/access.log
-        Parser            squid
         Tag               egress.*
 
     [OUTPUT]
@@ -471,7 +520,13 @@ metadata:
   name: egress-gateway
   namespace: egress-system
 spec:
+  selector:
+    matchLabels:
+      app: egress-gateway
   template:
+    metadata:
+      labels:
+        app: egress-gateway
     spec:
       affinity:
         nodeAffinity:
@@ -509,7 +564,7 @@ Egress gateways enhance security but need proper configuration:
 Example rate limiting with Istio:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api-circuit-breaker
@@ -523,7 +578,7 @@ spec:
         http1MaxPendingRequests: 50
         http2MaxRequests: 100
     outlierDetection:
-      consecutiveErrors: 5
+      consecutive5xxErrors: 5
       interval: 30s
       baseEjectionTime: 60s
 ```
