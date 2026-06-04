@@ -45,7 +45,7 @@ Wazuh provides an official Docker deployment repository. Clone it and configure 
 
 ```bash
 # Clone the Wazuh Docker repository
-git clone https://github.com/wazuh/wazuh-docker.git -b v4.7.0
+git clone https://github.com/wazuh/wazuh-docker.git -b v4.14.5
 cd wazuh-docker/single-node
 ```
 
@@ -77,83 +77,123 @@ If you prefer to build your own compose file instead of using the repository ver
 
 ```yaml
 # docker-compose.yml - Wazuh single-node deployment
-version: "3.8"
-
 services:
-  wazuh-indexer:
-    image: wazuh/wazuh-indexer:4.7.0
-    container_name: wazuh-indexer
-    environment:
-      # OpenSearch configuration
-      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
-      - "bootstrap.memory_lock=true"
-      - "discovery.type=single-node"
+  wazuh.manager:
+    image: wazuh/wazuh-manager:4.14.5
+    hostname: wazuh.manager
+    restart: always
     ulimits:
       memlock:
         soft: -1
         hard: -1
-    volumes:
-      - indexer_data:/var/lib/wazuh-indexer
-      - ./certs/indexer.pem:/usr/share/wazuh-indexer/certs/indexer.pem
-      - ./certs/indexer-key.pem:/usr/share/wazuh-indexer/certs/indexer-key.pem
-      - ./certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem
-    networks:
-      - wazuh-net
-    restart: unless-stopped
-
-  wazuh-manager:
-    image: wazuh/wazuh-manager:4.7.0
-    container_name: wazuh-manager
+      nofile:
+        soft: 655360
+        hard: 655360
     ports:
-      # Agent registration port
-      - "1514:1514"
       # Agent communication port
+      - "1514:1514"
+      # Agent enrollment port
       - "1515:1515"
+      # Syslog collection port
+      - "514:514/udp"
       # Wazuh API port
       - "55000:55000"
     environment:
-      - INDEXER_URL=https://wazuh-indexer:9200
+      - INDEXER_URL=https://wazuh.indexer:9200
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=SecretPassword
+      - FILEBEAT_SSL_VERIFICATION_MODE=full
+      - SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/root-ca.pem
+      - SSL_CERTIFICATE=/etc/ssl/filebeat.pem
+      - SSL_KEY=/etc/ssl/filebeat.key
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=MyS3cr37P450r.*-
     volumes:
-      # Persist manager configuration and data
-      - manager_etc:/var/ossec/etc
-      - manager_logs:/var/ossec/logs
-      - manager_queue:/var/ossec/queue
-      - manager_api:/var/ossec/api/configuration
-    networks:
-      - wazuh-net
-    restart: unless-stopped
+      - wazuh_api_configuration:/var/ossec/api/configuration
+      - wazuh_etc:/var/ossec/etc
+      - wazuh_logs:/var/ossec/logs
+      - wazuh_queue:/var/ossec/queue
+      - wazuh_var_multigroups:/var/ossec/var/multigroups
+      - wazuh_integrations:/var/ossec/integrations
+      - wazuh_active_response:/var/ossec/active-response/bin
+      - wazuh_agentless:/var/ossec/agentless
+      - wazuh_wodles:/var/ossec/wodles
+      - filebeat_etc:/etc/filebeat
+      - filebeat_var:/var/lib/filebeat
+      - ./config/wazuh_indexer_ssl_certs/root-ca-manager.pem:/etc/ssl/root-ca.pem
+      - ./config/wazuh_indexer_ssl_certs/wazuh.manager.pem:/etc/ssl/filebeat.pem
+      - ./config/wazuh_indexer_ssl_certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key
+      - ./config/wazuh_cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
 
-  wazuh-dashboard:
-    image: wazuh/wazuh-dashboard:4.7.0
-    container_name: wazuh-dashboard
-    depends_on:
-      - wazuh-indexer
-      - wazuh-manager
+  wazuh.indexer:
+    image: wazuh/wazuh-indexer:4.14.5
+    hostname: wazuh.indexer
+    restart: always
+    ports:
+      - "9200:9200"
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - wazuh-indexer-data:/var/lib/wazuh-indexer
+      - ./config/wazuh_indexer_ssl_certs/root-ca.pem:/usr/share/wazuh-indexer/config/certs/root-ca.pem
+      - ./config/wazuh_indexer_ssl_certs/wazuh.indexer-key.pem:/usr/share/wazuh-indexer/config/certs/wazuh.indexer.key
+      - ./config/wazuh_indexer_ssl_certs/wazuh.indexer.pem:/usr/share/wazuh-indexer/config/certs/wazuh.indexer.pem
+      - ./config/wazuh_indexer_ssl_certs/admin.pem:/usr/share/wazuh-indexer/config/certs/admin.pem
+      - ./config/wazuh_indexer_ssl_certs/admin-key.pem:/usr/share/wazuh-indexer/config/certs/admin-key.pem
+      - ./config/wazuh_indexer/wazuh.indexer.yml:/usr/share/wazuh-indexer/config/opensearch.yml
+      - ./config/wazuh_indexer/internal_users.yml:/usr/share/wazuh-indexer/config/opensearch-security/internal_users.yml
+
+  wazuh.dashboard:
+    image: wazuh/wazuh-dashboard:4.14.5
+    hostname: wazuh.dashboard
+    restart: always
     ports:
       # Dashboard web interface
       - "443:5601"
     environment:
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=SecretPassword
-      - WAZUH_API_URL=https://wazuh-manager
+      - WAZUH_API_URL=https://wazuh.manager
+      - DASHBOARD_USERNAME=kibanaserver
+      - DASHBOARD_PASSWORD=kibanaserver
       - API_USERNAME=wazuh-wui
-      - API_PASSWORD=MyS3cr3tP4ssw0rd
-    networks:
-      - wazuh-net
-    restart: unless-stopped
+      - API_PASSWORD=MyS3cr37P450r.*-
+    volumes:
+      - ./config/wazuh_indexer_ssl_certs/wazuh.dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
+      - ./config/wazuh_indexer_ssl_certs/wazuh.dashboard-key.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
+      - ./config/wazuh_indexer_ssl_certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem
+      - ./config/wazuh_dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
+      - ./config/wazuh_dashboard/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
+      - wazuh-dashboard-config:/usr/share/wazuh-dashboard/data/wazuh/config
+      - wazuh-dashboard-custom:/usr/share/wazuh-dashboard/plugins/wazuh/public/assets/custom
+    depends_on:
+      - wazuh.indexer
+    links:
+      - wazuh.indexer:wazuh.indexer
+      - wazuh.manager:wazuh.manager
 
 volumes:
-  indexer_data:
-  manager_etc:
-  manager_logs:
-  manager_queue:
-  manager_api:
-
-networks:
-  wazuh-net:
-    driver: bridge
+  wazuh_api_configuration:
+  wazuh_etc:
+  wazuh_logs:
+  wazuh_queue:
+  wazuh_var_multigroups:
+  wazuh_integrations:
+  wazuh_active_response:
+  wazuh_agentless:
+  wazuh_wodles:
+  filebeat_etc:
+  filebeat_var:
+  wazuh-indexer-data:
+  wazuh-dashboard-config:
+  wazuh-dashboard-custom:
 ```
 
 ## Connecting Agents
@@ -162,7 +202,10 @@ Agents are what make Wazuh useful. They run on your servers, workstations, and c
 
 ```bash
 # Install the Wazuh agent on a Ubuntu/Debian endpoint
-curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --dearmor -o /usr/share/keyrings/wazuh.gpg
+apt-get install gnupg apt-transport-https
+curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | \
+  gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import
+chmod 644 /usr/share/keyrings/wazuh.gpg
 echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | \
   tee /etc/apt/sources.list.d/wazuh.list
 
@@ -170,6 +213,7 @@ apt-get update
 WAZUH_MANAGER="your-docker-host-ip" apt-get install wazuh-agent
 
 # Start the agent
+systemctl daemon-reload
 systemctl enable wazuh-agent
 systemctl start wazuh-agent
 ```
@@ -179,13 +223,9 @@ For containerized environments, you can run the agent as a Docker container too.
 ```bash
 # Run the Wazuh agent as a Docker container
 docker run -d --name wazuh-agent \
-  --network host \
-  -e WAZUH_MANAGER="your-docker-host-ip" \
-  -e WAZUH_AGENT_NAME="docker-host-01" \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v /var/log:/var/log:ro \
-  -v /etc:/etc:ro \
-  wazuh/wazuh-agent:4.7.0
+  -e WAZUH_MANAGER_SERVER="your-docker-host-ip" \
+  -v ./config/wazuh-agent-conf:/wazuh-config-mount/etc/ossec.conf \
+  wazuh/wazuh-agent:4.14.5
 ```
 
 ## Creating Custom Detection Rules
@@ -198,7 +238,7 @@ Wazuh comes with thousands of built-in rules, but custom rules let you detect th
 <group name="custom_ssh,">
   <rule id="100001" level="10" frequency="5" timeframe="120">
     <if_matched_sid>5710</if_matched_sid>
-    <same_source_ip />
+    <same_srcip />
     <description>Brute force attack: 5+ failed SSH logins in 2 minutes from same IP</description>
     <mitre>
       <id>T1110</id>
@@ -209,16 +249,16 @@ Wazuh comes with thousands of built-in rules, but custom rules let you detect th
 <!-- Detect new Docker containers being created -->
 <group name="custom_docker,">
   <rule id="100010" level="5">
-    <decoded_as>json</decoded_as>
-    <field name="docker.action">create</field>
-    <description>New Docker container created: $(docker.name)</description>
+    <if_sid>87900</if_sid>
+    <field name="docker.Action">create</field>
+    <description>New Docker container created: $(docker.Actor.Attributes.name)</description>
   </rule>
 
-  <!-- Alert on privileged containers -->
+  <!-- Alert when containers start -->
   <rule id="100011" level="12">
-    <if_sid>100010</if_sid>
-    <field name="docker.attributes.privileged">true</field>
-    <description>ALERT: Privileged Docker container created - $(docker.name)</description>
+    <if_sid>87900</if_sid>
+    <field name="docker.Action">start</field>
+    <description>ALERT: Docker container started - $(docker.Actor.Attributes.name)</description>
   </rule>
 </group>
 ```
@@ -227,10 +267,10 @@ Apply custom rules by copying them into the manager container.
 
 ```bash
 # Copy custom rules to the manager
-docker cp local_rules.xml wazuh-manager:/var/ossec/etc/rules/local_rules.xml
+docker compose cp local_rules.xml wazuh.manager:/var/ossec/etc/rules/local_rules.xml
 
 # Restart the manager to load new rules
-docker exec wazuh-manager /var/ossec/bin/wazuh-control restart
+docker compose exec wazuh.manager /var/ossec/bin/wazuh-control restart
 ```
 
 ## Configuring Active Response
@@ -240,6 +280,7 @@ Wazuh can automatically respond to threats. For example, you can block an IP add
 ```xml
 <!-- Add to ossec.conf inside the manager container -->
 <active-response>
+  <disabled>no</disabled>
   <command>firewall-drop</command>
   <location>local</location>
   <rules_id>100001</rules_id>
@@ -249,7 +290,7 @@ Wazuh can automatically respond to threats. For example, you can block an IP add
 
 ## Monitoring Docker Containers
 
-Configure the Wazuh manager to monitor Docker events from the host.
+Configure the Wazuh agent on the Docker host to monitor Docker events from that host.
 
 ```xml
 <!-- Add Docker listener configuration to ossec.conf -->
@@ -264,18 +305,19 @@ Configure the Wazuh manager to monitor Docker events from the host.
 ## Backup and Maintenance
 
 ```bash
-# Back up the Wazuh indexer data
-docker exec wazuh-indexer curl -k -u admin:SecretPassword \
+# Register a snapshot repository after mounting /snapshots in the indexer
+# and setting path.repo: /snapshots in the indexer's opensearch.yml
+docker compose exec wazuh.indexer curl -k -u admin:SecretPassword \
   -X PUT "https://localhost:9200/_snapshot/backup" \
   -H "Content-Type: application/json" \
   -d '{"type": "fs", "settings": {"location": "/snapshots"}}'
 
 # Check cluster health
-docker exec wazuh-indexer curl -k -u admin:SecretPassword \
+docker compose exec wazuh.indexer curl -k -u admin:SecretPassword \
   "https://localhost:9200/_cluster/health?pretty"
 
 # View manager logs for troubleshooting
-docker logs wazuh-manager --tail 100
+docker compose logs wazuh.manager --tail 100
 ```
 
 ## Conclusion
