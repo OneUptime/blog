@@ -17,8 +17,6 @@ Set sysctls in Docker Compose using the `sysctls` key:
 ```yaml
 # docker-compose.yml - basic sysctl configuration
 
-version: "3.8"
-
 services:
   web:
     image: nginx:alpine
@@ -68,15 +66,13 @@ sysctls:
   - kernel.sem=250 256000 32 1024  # Semaphore limits
 ```
 
-Non-namespaced sysctls (like `vm.*` and most `kernel.*`) cannot be set inside a container without running in privileged mode.
+Non-namespaced sysctls (like `vm.*` and most `kernel.*`) cannot be set with the Compose `sysctls` key. Set them on the host instead, or run an explicit `sysctl -w` command from a privileged container only when you intentionally want to change the host.
 
 ## Tuning a High-Performance Web Server
 
 For nginx or any web server handling thousands of concurrent connections:
 
 ```yaml
-version: "3.8"
-
 services:
   nginx:
     image: nginx:alpine
@@ -131,22 +127,14 @@ http {
 
 ## Tuning a Database Server
 
-PostgreSQL and MySQL benefit from specific sysctl settings:
+Database servers can benefit from specific sysctl settings, but modern PostgreSQL on Linux usually does not need large System V shared memory limits unless you explicitly configure it to use System V shared memory. For the official PostgreSQL Docker image, use `shm_size` when you need a larger `/dev/shm`:
 
 ```yaml
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16
+    shm_size: 1gb
     sysctls:
-      # Shared memory - required for PostgreSQL large shared_buffers
-      - kernel.shmmax=2147483648      # 2GB max shared memory segment
-      - kernel.shmall=524288          # Total shared memory in pages
-
-      # Semaphores - PostgreSQL uses semaphores for process synchronization
-      - kernel.sem=250 256000 32 1024
-
       # Network tuning for connection handling
       - net.core.somaxconn=1024
       - net.ipv4.tcp_keepalive_time=600
@@ -176,7 +164,7 @@ services:
       - net.core.somaxconn=65535
 
       # Enable memory overcommit (Redis fork for background saves)
-      # Note: This requires privileged mode as it is not namespaced
+      # Note: This cannot be set with Docker sysctls because it is not namespaced
       # - vm.overcommit_memory=1    # Must set on host instead
     command: redis-server --tcp-backlog 65535 --maxmemory 2gb
 ```
@@ -194,8 +182,6 @@ echo "vm.overcommit_memory=1" | sudo tee -a /etc/sysctl.d/99-redis.conf
 Use sysctls to harden container networking:
 
 ```yaml
-version: "3.8"
-
 services:
   secure-app:
     image: myapp:latest
@@ -225,8 +211,6 @@ services:
 For HAProxy, Envoy, or any proxy handling many upstream connections:
 
 ```yaml
-version: "3.8"
-
 services:
   haproxy:
     image: haproxy:2.9-alpine
@@ -250,22 +234,15 @@ services:
       - net.core.wmem_max=16777216
       - net.ipv4.tcp_rmem=4096 87380 16777216
       - net.ipv4.tcp_wmem=4096 87380 16777216
-
-      # Allow more connections in the netfilter tracking table
-      - net.netfilter.nf_conntrack_max=262144
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
 ```
 
-Note: `net.netfilter.nf_conntrack_max` requires the container to have the `NET_ADMIN` capability:
+Note: `net.netfilter.nf_conntrack_max` is often rejected by Docker or the kernel with a permission error even though it is under `net.*`. Set it on the host instead:
 
-```yaml
-services:
-  haproxy:
-    cap_add:
-      - NET_ADMIN
-    sysctls:
-      - net.netfilter.nf_conntrack_max=262144
+```bash
+sudo sysctl -w net.netfilter.nf_conntrack_max=262144
+echo "net.netfilter.nf_conntrack_max=262144" | sudo tee -a /etc/sysctl.d/99-conntrack.conf
 ```
 
 ## IPv6 Configuration
@@ -335,7 +312,7 @@ This is a security risk because a privileged container can modify any host setti
 
 ## Troubleshooting
 
-**Error: "sysctl is not in a separate kernel namespace":** You are trying to set a non-namespaced sysctl. Either set it on the host or use privileged mode.
+**Error: "sysctl is not in a separate kernel namespace":** You are trying to set a non-namespaced sysctl with the Compose `sysctls` key. Remove it from the Compose file and set it on the host instead.
 
 **Error: "invalid argument":** The value format is wrong. Some sysctls expect space-separated values (like `ip_local_port_range`), not comma-separated.
 
