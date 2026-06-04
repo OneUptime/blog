@@ -27,7 +27,7 @@ FROM node:20-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-liberation \
-    libappindicator3-1 \
+    libayatana-appindicator3-1 \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -48,7 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Tell Puppeteer to use the system-installed Chromium instead of downloading its own
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 # Create a non-root user for security
 RUN groupadd -r scraper && useradd -r -g scraper -G audio,video scraper \
@@ -59,7 +59,7 @@ WORKDIR /home/scraper/app
 
 # Install Node.js dependencies
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 # Copy application source
 COPY src/ ./src/
@@ -106,7 +106,7 @@ async function launchBrowser() {
   // Launch Chromium with flags suitable for running inside Docker
   return puppeteer.launch({
     executablePath: CHROMIUM_PATH,
-    headless: 'new',
+    headless: true,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -210,23 +210,18 @@ For more complex setups, use Docker Compose to manage the scraper and its output
 
 ```yaml
 # docker-compose.yml - Puppeteer scraper with volume-mounted output
-version: "3.8"
-
 services:
   scraper:
     build: .
     container_name: puppeteer-scraper
     environment:
-      OUTPUT_DIR: /app/output
+      OUTPUT_DIR: /home/scraper/app/output
       NODE_ENV: production
     volumes:
       # Persist scraped data to the host filesystem
-      - ./output:/app/output
+      - ./output:/home/scraper/app/output
     # Increase shared memory to prevent Chromium crashes
     shm_size: "1g"
-    # Security options required for Chromium inside Docker
-    security_opt:
-      - seccomp=unconfined
 ```
 
 Build and run:
@@ -282,7 +277,8 @@ for i in $(seq 1 5); do
     --shm-size=1g \
     -e BATCH_ID=$i \
     -e TOTAL_BATCHES=5 \
-    -v $(pwd)/output:/app/output \
+    -e OUTPUT_DIR=/home/scraper/app/output \
+    -v $(pwd)/output:/home/scraper/app/output \
     puppeteer-scraper
 done
 ```
@@ -298,7 +294,7 @@ The full Puppeteer Docker image can be large. Here are ways to trim it:
 FROM node:20-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 FROM node:20-slim
 # Install only the minimal Chromium dependencies
@@ -324,4 +320,4 @@ This multi-stage build keeps the final image clean by excluding build tools and 
 
 ## Wrapping Up
 
-Puppeteer in Docker gives you a locked-down, reproducible scraping environment that handles JavaScript-rendered pages reliably. The combination of system-installed Chromium, proper security flags, and adequate shared memory configuration covers the most common pain points. Whether you are scraping a handful of pages or millions, this Docker-based setup scales from a single container to a fleet of parallel scrapers.
+Puppeteer in Docker gives you a reproducible scraping environment that handles JavaScript-rendered pages reliably. The combination of system-installed Chromium, Docker-compatible launch flags, and adequate shared memory configuration covers the most common pain points. Whether you are scraping a handful of pages or millions, this Docker-based setup scales from a single container to a fleet of parallel scrapers.
