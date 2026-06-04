@@ -52,38 +52,13 @@ metadata:
   name: fluent-bit-java-parsers
   namespace: logging
 data:
-  parsers.conf: |
-    [PARSER]
-        Name        java_log_start
-        Format      regex
-        Regex       /^(?<time>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[.,]\d{3})\s+(?<level>\w+)\s+(?<logger>[\w.$]+)\s+-\s+(?<message>.*)/
-        Time_Key    time
-        Time_Format %Y-%m-%d %H:%M:%S,%L
-
-    [PARSER]
-        Name        java_exception
-        Format      regex
-        Regex       /^(?<exception>[\w.$]+Exception|[\w.$]+Error):\s+(?<exception_message>.*)/
-
-    [PARSER]
-        Name        java_stacktrace
-        Format      regex
-        Regex       /^\s+at\s+(?<class>[\w.$]+)\.(?<method>[\w$]+)\((?<location>.*)\)/
-
-    [PARSER]
-        Name        java_caused_by
-        Format      regex
-        Regex       /^Caused\s+by:\s+(?<caused_by_exception>[\w.$]+):\s+(?<caused_by_message>.*)/
-
-    [PARSER]
-        Name        java_suppressed
-        Format      regex
-        Regex       /^\s+Suppressed:\s+(?<suppressed_exception>[\w.$]+):\s+(?<suppressed_message>.*)/
-
-    [PARSER]
-        Name        java_more_frames
-        Format      regex
-        Regex       /^\s+\.\.\.\s+(?<more_frames>\d+)\s+more/
+  parsers_multiline.conf: |
+    [MULTILINE_PARSER]
+        Name          multiline_java_exception
+        Type          regex
+        Flush_Timeout 4000
+        Rule          "start_state" "/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:[.,]\d{3})?\s+(?:ERROR|WARN|WARNING|SEVERE)\b.*/" "cont"
+        Rule          "cont"        "/^(?:[\w.$]+(?:Exception|Error|Throwable):.*|\s+at\s+.*|Caused by:.*|\s+Suppressed:.*|\s+\.\.\.\s+\d+\s+more).*/" "cont"
 ```
 
 ## Configuring Fluent Bit Input for Java Logs
@@ -102,27 +77,25 @@ data:
         Flush           5
         Daemon          off
         Log_Level       info
-        Parsers_File    /fluent-bit/etc/parsers.conf
+        Parsers_File    /fluent-bit/etc/parsers_multiline.conf
 
     [INPUT]
         Name                tail
         Path                /var/log/containers/*java*.log
-        Parser              docker
         Tag                 java.*
         Refresh_Interval    5
         Mem_Buf_Limit       10MB
         Skip_Long_Lines     Off
         DB                  /var/log/flb-java.db
 
-        # Multiline configuration for Java
-        Multiline           On
-        Multiline_Flush     4
-        Parser_Firstline    java_log_start
-        Parser_1            java_exception
-        Parser_2            java_stacktrace
-        Parser_3            java_caused_by
-        Parser_4            java_suppressed
-        Parser_5            java_more_frames
+        # Reassemble container-runtime log fragments first.
+        Multiline.Parser    docker, cri
+
+    [FILTER]
+        Name                  multiline
+        Match                 java.*
+        multiline.key_content log
+        multiline.parser      multiline_java_exception
 
     [FILTER]
         Name                kubernetes
@@ -154,47 +127,13 @@ metadata:
   name: fluent-bit-python-parsers
   namespace: logging
 data:
-  parsers.conf: |
-    [PARSER]
-        Name        python_log_start
-        Format      regex
-        Regex       /^(?<time>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3})\s+-\s+(?<logger>\S+)\s+-\s+(?<level>\w+)\s+-\s+(?<message>.*)/
-        Time_Key    time
-        Time_Format %Y-%m-%d %H:%M:%S,%L
-
-    [PARSER]
-        Name        python_traceback_start
-        Format      regex
-        Regex       /^Traceback\s+\(most\s+recent\s+call\s+last\):/
-
-    [PARSER]
-        Name        python_traceback_file
-        Format      regex
-        Regex       /^\s+File\s+"(?<file>[^"]+)",\s+line\s+(?<line>\d+),\s+in\s+(?<function>\w+)/
-
-    [PARSER]
-        Name        python_traceback_code
-        Format      regex
-        Regex       /^\s+(?<code>.*)/
-
-    [PARSER]
-        Name        python_exception
-        Format      regex
-        Regex       /^(?<exception_type>\w+Error|Exception):\s+(?<exception_message>.*)/
-
-    [PARSER]
-        Name        python_django_log
-        Format      regex
-        Regex       /^\[(?<time>[^\]]+)\]\s+(?<level>\w+)\s+\[(?<logger>[^\]]+)\]\s+(?<message>.*)/
-        Time_Key    time
-        Time_Format %d/%b/%Y %H:%M:%S
-
-    [PARSER]
-        Name        python_flask_log
-        Format      regex
-        Regex       /^\[(?<time>[^\]]+)\]\s+(?<level>\w+)\s+in\s+(?<module>\w+):\s+(?<message>.*)/
-        Time_Key    time
-        Time_Format %Y-%m-%d %H:%M:%S,%L
+  parsers_multiline.conf: |
+    [MULTILINE_PARSER]
+        Name          multiline_python_exception
+        Type          regex
+        Flush_Timeout 3000
+        Rule          "start_state" "/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d{3})?\s+-\s+\S+\s+-\s+(?:ERROR|WARNING|CRITICAL)\s+-\s+.*/" "cont"
+        Rule          "cont"        "/^(?:Traceback \(most recent call last\):|\s+File\s+\"[^\"]+\",\s+line\s+\d+,\s+in\s+.*|\s+.*|[\w.]+(?:Error|Exception):.*).*/" "cont"
 ```
 
 ## Configuring Fluent Bit Input for Python Logs
@@ -205,21 +144,20 @@ Set up Python-specific multiline handling:
 [INPUT]
     Name                tail
     Path                /var/log/containers/*python*.log
-    Parser              docker
     Tag                 python.*
     Refresh_Interval    5
     Mem_Buf_Limit       10MB
     Skip_Long_Lines     Off
     DB                  /var/log/flb-python.db
 
-    # Multiline configuration for Python
-    Multiline           On
-    Multiline_Flush     3
-    Parser_Firstline    python_log_start
-    Parser_1            python_traceback_start
-    Parser_2            python_traceback_file
-    Parser_3            python_traceback_code
-    Parser_4            python_exception
+    # Reassemble container-runtime log fragments first.
+    Multiline.Parser    docker, cri
+
+[FILTER]
+    Name                  multiline
+    Match                 python.*
+    multiline.key_content log
+    multiline.parser      multiline_python_exception
 
 [FILTER]
     Name                kubernetes
@@ -240,7 +178,7 @@ Set up Python-specific multiline handling:
 
 ## Handling Multiple Log Formats from the Same Application
 
-Some applications produce logs in different formats. Handle this with conditional parsing:
+Some applications produce logs in different formats. Tag the detected format for downstream routing:
 
 ```yaml
 [FILTER]
@@ -252,7 +190,7 @@ Some applications produce logs in different formats. Handle this with conditiona
 [FILTER]
     Name    modify
     Match   java.*
-    Add     multiline true
+    Add     inspected_by_lua true
 ```
 
 Create the Lua script:
@@ -277,17 +215,14 @@ function detect_and_parse(tag, timestamp, record)
     -- Detect exception start
     elseif string.match(log, "^%w+Exception:") or string.match(log, "^%w+Error:") then
         record["is_exception"] = true
-        record["multiline_start"] = true
 
     -- Detect stack trace continuation
     elseif string.match(log, "^%s+at ") then
         record["is_stacktrace"] = true
-        record["multiline_continuation"] = true
 
     -- Detect caused by
     elseif string.match(log, "^Caused by:") then
         record["is_caused_by"] = true
-        record["multiline_continuation"] = true
     end
 
     return 2, timestamp, record
@@ -316,7 +251,7 @@ spec:
       serviceAccountName: fluent-bit
       containers:
       - name: fluent-bit
-        image: fluent/fluent-bit:2.2
+        image: fluent/fluent-bit:5.0
         volumeMounts:
         - name: varlog
           mountPath: /var/log
@@ -326,8 +261,8 @@ spec:
         - name: fluent-bit-config
           mountPath: /fluent-bit/etc/
         - name: parsers
-          mountPath: /fluent-bit/etc/parsers.conf
-          subPath: parsers.conf
+          mountPath: /fluent-bit/etc/parsers_multiline.conf
+          subPath: parsers_multiline.conf
         - name: lua-scripts
           mountPath: /fluent-bit/scripts/
         resources:
@@ -361,12 +296,37 @@ Deploy test applications that generate exceptions:
 **Java Test Application**:
 ```java
 // ExceptionGenerator.java
+import java.io.*;
 import java.util.logging.*;
 
 public class ExceptionGenerator {
     private static final Logger logger = Logger.getLogger(ExceptionGenerator.class.getName());
 
     public static void main(String[] args) throws InterruptedException {
+        logger.setUseParentHandlers(false);
+        ConsoleHandler handler = new ConsoleHandler();
+        handler.setFormatter(new Formatter() {
+            @Override
+            public String format(LogRecord record) {
+                return String.format("%1$tF %1$tT %2$s %3$s - %4$s%n%5$s",
+                    new java.util.Date(record.getMillis()),
+                    record.getLevel().getName(),
+                    record.getLoggerName(),
+                    record.getMessage(),
+                    formatThrowable(record.getThrown()));
+            }
+
+            private String formatThrowable(Throwable throwable) {
+                if (throwable == null) {
+                    return "";
+                }
+                StringWriter writer = new StringWriter();
+                throwable.printStackTrace(new PrintWriter(writer));
+                return writer.toString();
+            }
+        });
+        logger.addHandler(handler);
+
         while (true) {
             try {
                 logger.info("Processing request");
@@ -421,17 +381,13 @@ Query Loki to verify complete exception capture:
 
 ```logql
 # View Java exceptions
-{job="java-apps", level="SEVERE"}
+{job="java-apps"} |= "SEVERE"
 
 # View Python exceptions
-{job="python-apps", level="ERROR"}
+{job="python-apps"} |= "Traceback (most recent call last):"
 
 # Check for fragmented stack traces (should be empty)
-{job=~"java-apps|python-apps"}
-  | line_format "{{.log}}"
-  |= "at "
-  | logfmt
-  | level!="ERROR" and level!="SEVERE"
+{job=~"java-apps|python-apps"} |~ "^\\s+(at\\s+|File\\s+)"
 ```
 
 ## Tuning Multiline Performance
@@ -440,13 +396,13 @@ Adjust timeouts based on application behavior:
 
 ```yaml
 # For applications with long stack traces
-Multiline_Flush     10
+Flush_Timeout 10000
 
 # For fast-paced applications
-Multiline_Flush     2
+Flush_Timeout 2000
 
 # Increase memory for large exceptions
-Mem_Buf_Limit       20MB
+multiline_buffer_limit 20MB
 ```
 
 ## Handling Edge Cases
@@ -455,37 +411,28 @@ Address common edge cases in multiline parsing:
 
 ```yaml
 # Handle truncated stack traces
-[PARSER]
-    Name        truncation_marker
-    Format      regex
-    Regex       /^\s+\.\.\.\s+\d+\s+more/
+Rule "cont" "/^\s+\.\.\.\s+\d+\s+more/" "cont"
 
 # Handle nested exceptions
-[PARSER]
-    Name        nested_exception
-    Format      regex
-    Regex       /^\s+Suppressed:\s+/
+Rule "cont" "/^\s+Suppressed:\s+.*/" "cont"
 
 # Handle async stack traces (Java)
-[PARSER]
-    Name        async_stacktrace
-    Format      regex
-    Regex       /^\s+at\s+java\.base\/java\.util\.concurrent/
+Rule "cont" "/^\s+at\s+java\.base\/java\.util\.concurrent.*/" "cont"
 ```
 
 ## Common Issues and Solutions
 
 **Issue**: Stack traces still appearing as separate log entries.
 
-**Solution**: Verify `Parser_Firstline` regex matches your log format exactly. Test with actual log samples.
+**Solution**: Verify the `start_state` rule matches your log format exactly. Test with actual log samples.
 
 **Issue**: High memory consumption in Fluent Bit.
 
-**Solution**: Reduce `Multiline_Flush` timeout and increase `Mem_Buf_Limit` gradually. Consider filtering debug logs.
+**Solution**: Reduce `Flush_Timeout` and set `multiline_buffer_limit` to a size that fits your workload. Consider filtering debug logs.
 
 **Issue**: Missing parts of very long stack traces.
 
-**Solution**: Increase `Multiline_Flush` and ensure `Skip_Long_Lines` is Off.
+**Solution**: Increase `Flush_Timeout` and `multiline_buffer_limit` for the multiline parser.
 
 ## Conclusion
 
