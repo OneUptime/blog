@@ -8,7 +8,7 @@ Description: Master PodDisruptionBudgets to protect your applications during vol
 
 ---
 
-When Kubernetes needs to drain a node for maintenance, upgrades, or autoscaling, it evicts all pods from that node. Without PodDisruptionBudgets (PDBs), this can take down too many replicas at once, causing service outages. PDBs ensure a minimum number of pods remain available during voluntary disruptions.
+When Kubernetes needs to drain a node for maintenance, upgrades, or autoscaling, it tries to evict the eligible pods from that node. Without PodDisruptionBudgets (PDBs), this can take down too many replicas at once, causing service outages. PDBs ensure a minimum number of pods remain available during voluntary disruptions.
 
 ## Understanding PodDisruptionBudgets
 
@@ -32,13 +32,13 @@ metadata:
   name: web-app-pdb
   namespace: production
 spec:
-  minAvailable: 2  # Keep at least 2 pods running
+  minAvailable: 2  # Keep at least 2 pods available
   selector:
     matchLabels:
       app: web-app
 ```
 
-This ensures at least 2 pods with label `app=web-app` remain running during drains.
+This ensures at least 2 pods with label `app=web-app` remain available during drains.
 
 ## PDB with maxUnavailable
 
@@ -73,7 +73,7 @@ metadata:
   name: worker-pdb
   namespace: production
 spec:
-  minAvailable: 75%  # Keep 75% of pods available
+  minAvailable: "75%"  # Keep 75% of pods available
   selector:
     matchLabels:
       app: worker
@@ -93,7 +93,7 @@ metadata:
   name: payment-processor-pdb
   namespace: production
 spec:
-  minAvailable: 3  # Always keep at least 3 running
+  minAvailable: 3  # Always keep at least 3 available
   selector:
     matchLabels:
       app: payment-processor
@@ -174,46 +174,32 @@ spec:
           storage: 500Gi
 ```
 
-## Multiple PDBs for Same Pods
+## Adjusting a PDB for Critical Times
 
-Use different PDBs for different scenarios:
+Do not create overlapping PDBs for the same pods. If you need a stricter budget during peak hours, patch the existing PDB instead:
 
 ```yaml
 # multi-pdb.yaml
-# PDB for normal operations
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: app-normal-pdb
+  name: app-pdb
   namespace: production
 spec:
   minAvailable: 3
   selector:
     matchLabels:
       app: multi-replica-app
----
-# More restrictive PDB for critical times
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: app-critical-pdb
-  namespace: production
-spec:
-  minAvailable: 5  # More conservative
-  selector:
-    matchLabels:
-      app: multi-replica-app
-      critical-window: "true"
 ```
 
-Toggle criticality during peak hours:
+Adjust the budget during peak hours:
 
 ```bash
-# During peak hours, label pods as critical
-kubectl label pods -l app=multi-replica-app critical-window=true
+# During peak hours, make the PDB more conservative
+kubectl patch pdb app-pdb -n production -p '{"spec":{"minAvailable":5}}'
 
-# After peak, remove label
-kubectl label pods -l app=multi-replica-app critical-window-
+# After peak, restore the normal budget
+kubectl patch pdb app-pdb -n production -p '{"spec":{"minAvailable":3}}'
 ```
 
 ## Testing PDB Protection
@@ -232,7 +218,7 @@ kubectl drain worker-node-1 --ignore-daemonsets --delete-emptydir-data
 # It will wait if draining would violate the PDB
 
 # Check PDB status
-kubectl get pdb web-app-pdb -o yaml
+kubectl get pdb web-app-pdb -n production -o yaml
 
 # Look for status
 # status:
@@ -278,7 +264,7 @@ kind: PodDisruptionBudget
 metadata:
   name: ha-app-pdb
 spec:
-  minAvailable: 6  # 2 per zone minimum
+  minAvailable: 6  # Global minimum across all zones
   selector:
     matchLabels:
       app: ha-app
@@ -296,16 +282,16 @@ kubectl get pdb --all-namespaces
 kubectl describe pdb web-app-pdb -n production
 
 # Check disruptions allowed
-kubectl get pdb web-app-pdb -o jsonpath='{.status.disruptionsAllowed}'
+kubectl get pdb web-app-pdb -n production -o jsonpath='{.status.disruptionsAllowed}'
 
 # If you need to force drain (USE CAREFULLY)
 kubectl drain worker-node-1 --ignore-daemonsets --delete-emptydir-data --disable-eviction
 
 # Or temporarily lower PDB
-kubectl patch pdb web-app-pdb -p '{"spec":{"minAvailable":1}}'
+kubectl patch pdb web-app-pdb -n production -p '{"spec":{"minAvailable":1}}'
 
 # After drain, restore PDB
-kubectl patch pdb web-app-pdb -p '{"spec":{"minAvailable":3}}'
+kubectl patch pdb web-app-pdb -n production -p '{"spec":{"minAvailable":3}}'
 ```
 
 ## Cluster Upgrade with PDBs
@@ -423,17 +409,17 @@ If drain hangs indefinitely:
 kubectl get pdb --all-namespaces -o wide
 
 # Find pods blocking drain
-kubectl get pods --field-selector spec.nodeName=worker-node-1
+kubectl get pods --all-namespaces --field-selector spec.nodeName=worker-node-1
 
 # Check if any PDBs affect these pods
-for pod in $(kubectl get pods --field-selector spec.nodeName=worker-node-1 -o name); do
-  labels=$(kubectl get $pod -o jsonpath='{.metadata.labels}')
-  echo "Pod: $pod"
+kubectl get pods --all-namespaces --field-selector spec.nodeName=worker-node-1 -o json | \
+  jq -r '.items[] | [.metadata.namespace, .metadata.name, (.metadata.labels // {} | @json)] | @tsv' | \
+while IFS=$'\t' read -r namespace name labels; do
+  echo "Pod: $namespace/$name"
   echo "Labels: $labels"
-  kubectl get pdb --all-namespaces -o json | \
-    jq -r --argjson labels "$labels" '.items[] | select(.spec.selector.matchLabels as $sel | $labels | contains($sel))'
+  kubectl get pdb -n "$namespace" -o json | \
+    jq -r --argjson labels "$labels" '.items[] | select((.spec.selector.matchLabels // {}) as $sel | $labels | contains($sel))'
 done
 ```
 
 PodDisruptionBudgets are essential for maintaining application availability during cluster maintenance. By carefully configuring PDBs, you ensure that voluntary disruptions never take down too many pods at once, keeping your services running smoothly through upgrades and scaling events.
-
