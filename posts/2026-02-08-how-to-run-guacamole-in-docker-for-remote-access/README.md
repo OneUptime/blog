@@ -83,10 +83,10 @@ services:
     environment:
       GUACD_HOSTNAME: guacd
       GUACD_PORT: 4822
-      POSTGRES_HOSTNAME: postgres
-      POSTGRES_DATABASE: guacamole_db
-      POSTGRES_USER: guacamole
-      POSTGRES_PASSWORD: guac_db_password
+      POSTGRESQL_HOSTNAME: postgres
+      POSTGRESQL_DATABASE: guacamole_db
+      POSTGRESQL_USER: guacamole
+      POSTGRESQL_PASSWORD: guac_db_password
     depends_on:
       postgres:
         condition: service_healthy
@@ -250,10 +250,10 @@ Integrate Guacamole with Active Directory or LDAP for centralized authentication
       GUACD_HOSTNAME: guacd
       GUACD_PORT: 4822
       # PostgreSQL for connection storage
-      POSTGRES_HOSTNAME: postgres
-      POSTGRES_DATABASE: guacamole_db
-      POSTGRES_USER: guacamole
-      POSTGRES_PASSWORD: guac_db_password
+      POSTGRESQL_HOSTNAME: postgres
+      POSTGRESQL_DATABASE: guacamole_db
+      POSTGRESQL_USER: guacamole
+      POSTGRESQL_PASSWORD: guac_db_password
       # LDAP authentication settings
       LDAP_HOSTNAME: ldap.example.com
       LDAP_PORT: 389
