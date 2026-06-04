@@ -34,11 +34,40 @@ spec:
       labels:
         app: example
     spec:
+      securityContext:
+        fsGroup: 2000
+      initContainers:
+      - name: generate-certificates
+        image: alpine/openssl:3.5.0
+        command:
+        - sh
+        - -c
+        - |
+          set -eu
+          openssl req -x509 -nodes -newkey rsa:2048 \
+            -keyout /certs/tls.key \
+            -out /certs/tls.crt \
+            -days 30 \
+            -subj "/CN=example-app.default.svc"
+          chgrp 2000 /certs/tls.key /certs/tls.crt
+          chmod 0440 /certs/tls.key /certs/tls.crt
+        volumeMounts:
+        - name: tls-certs
+          mountPath: /certs
       containers:
       - name: app
-        image: myapp:latest
+        image: myapp:1.0.0
         ports:
         - containerPort: 8080
+        env:
+        - name: TLS_CERT_FILE
+          value: /etc/tls/tls.crt
+        - name: TLS_KEY_FILE
+          value: /etc/tls/tls.key
+        volumeMounts:
+        - name: tls-certs
+          mountPath: /etc/tls
+          readOnly: true
         resources:
           requests:
             memory: "256Mi"
@@ -46,6 +75,10 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+      volumes:
+      - name: tls-certs
+        emptyDir:
+          medium: Memory
 ```
 
 ## Advanced Configuration
@@ -53,6 +86,11 @@ spec:
 Building on the basics, here's a more sophisticated implementation:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-service-account
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -84,22 +122,56 @@ spec:
         prometheus.io/port: "9090"
     spec:
       serviceAccountName: app-service-account
+      securityContext:
+        fsGroup: 2000
+      initContainers:
+      - name: generate-certificates
+        image: alpine/openssl:3.5.0
+        command:
+        - sh
+        - -c
+        - |
+          set -eu
+          openssl req -x509 -nodes -newkey rsa:2048 \
+            -keyout /certs/tls.key \
+            -out /certs/tls.crt \
+            -days 30 \
+            -subj "/CN=advanced-app.default.svc"
+          chgrp 2000 /certs/tls.key /certs/tls.crt
+          chmod 0440 /certs/tls.key /certs/tls.crt
+        volumeMounts:
+        - name: tls-certs
+          mountPath: /certs
       containers:
       - name: main
-        image: myapp:latest
+        image: myapp:1.0.0
         ports:
         - containerPort: 8080
           name: http
+        - containerPort: 9090
+          name: metrics
         volumeMounts:
         - name: config
           mountPath: /etc/config
+        - name: tls-certs
+          mountPath: /etc/tls
+          readOnly: true
         env:
         - name: CONFIG_PATH
           value: "/etc/config/config.yaml"
+        - name: TLS_CERT_FILE
+          value: "/etc/tls/tls.crt"
+        - name: TLS_KEY_FILE
+          value: "/etc/tls/tls.key"
+        - name: TLS_ENABLED
+          value: "true"
       volumes:
       - name: config
         configMap:
           name: app-config
+      - name: tls-certs
+        emptyDir:
+          medium: Memory
 ```
 
 ## Implementation with Go
@@ -121,14 +193,17 @@ import (
 )
 
 func main() {
+    certFile := envOrDefault("TLS_CERT_FILE", "/etc/tls/tls.crt")
+    keyFile := envOrDefault("TLS_KEY_FILE", "/etc/tls/tls.key")
+
     server := &http.Server{
         Addr:    ":8080",
-        Handler: setupRoutes(),
+        Handler: setupRoutes(certFile, keyFile),
     }
 
     go func() {
-        log.Println("Server starting on :8080")
-        if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+        log.Println("TLS server starting on :8080")
+        if err := server.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
             log.Fatalf("Server error: %v", err)
         }
     }()
@@ -146,10 +221,18 @@ func main() {
     }
 }
 
-func setupRoutes() http.Handler {
+func envOrDefault(name, fallback string) string {
+    value := os.Getenv(name)
+    if value == "" {
+        return fallback
+    }
+    return value
+}
+
+func setupRoutes(certFile, keyFile string) http.Handler {
     mux := http.NewServeMux()
     mux.HandleFunc("/health", healthHandler)
-    mux.HandleFunc("/ready", readinessHandler)
+    mux.HandleFunc("/ready", readinessHandler(certFile, keyFile))
     return mux
 }
 
@@ -158,9 +241,20 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, "OK")
 }
 
-func readinessHandler(w http.ResponseWriter, r *http.Request) {
-    w.WriteHeader(http.StatusOK)
-    fmt.Fprintf(w, "Ready")
+func readinessHandler(certFile, keyFile string) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        if _, err := os.Stat(certFile); err != nil {
+            http.Error(w, "certificate not ready", http.StatusServiceUnavailable)
+            return
+        }
+        if _, err := os.Stat(keyFile); err != nil {
+            http.Error(w, "certificate key not ready", http.StatusServiceUnavailable)
+            return
+        }
+
+        w.WriteHeader(http.StatusOK)
+        fmt.Fprintf(w, "Ready")
+    }
 }
 ```
 
@@ -170,10 +264,13 @@ Python equivalent implementation:
 
 ```python
 from flask import Flask, jsonify
+import os
 import signal
 import sys
 
 app = Flask(__name__)
+CERT_FILE = os.environ.get("TLS_CERT_FILE", "/etc/tls/tls.crt")
+KEY_FILE = os.environ.get("TLS_KEY_FILE", "/etc/tls/tls.key")
 
 @app.route('/health')
 def health():
@@ -181,6 +278,8 @@ def health():
 
 @app.route('/ready')
 def ready():
+    if not os.path.exists(CERT_FILE) or not os.path.exists(KEY_FILE):
+        return jsonify({"status": "not ready"}), 503
     return jsonify({"status": "ready"}), 200
 
 def graceful_shutdown(signum, frame):
@@ -190,7 +289,7 @@ def graceful_shutdown(signum, frame):
 if __name__ == '__main__':
     signal.signal(signal.SIGTERM, graceful_shutdown)
     signal.signal(signal.SIGINT, graceful_shutdown)
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080, ssl_context=(CERT_FILE, KEY_FILE))
 ```
 
 ## Production Considerations
@@ -301,8 +400,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: azure/k8s-set-context@v3
+      - uses: actions/checkout@v6
+      - uses: azure/k8s-set-context@v4
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
@@ -401,7 +500,7 @@ spec:
       type: RuntimeDefault
   containers:
   - name: app
-    image: myapp:latest
+    image: myapp:1.0.0
     securityContext:
       allowPrivilegeEscalation: false
       readOnlyRootFilesystem: true
