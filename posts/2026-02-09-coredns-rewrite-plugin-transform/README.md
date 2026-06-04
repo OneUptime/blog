@@ -145,9 +145,9 @@ For services hosted outside Kubernetes that need internal routing:
 
 This allows applications to use external hostnames while routing through cluster services.
 
-## Conditional Rewriting Based on Query Type
+## Rewriting Request Types
 
-Apply rewrites only to specific query types:
+Rewrite DNS request types when you need CoreDNS to ask upstream resolvers for a different record type:
 
 ```yaml
 .:53 {
@@ -155,11 +155,11 @@ Apply rewrites only to specific query types:
     health
     ready
 
-    # Rewrite only A record queries
-    rewrite name type A ipv4-api.company.com api-service.production.svc.cluster.local
+    # Rewrite ANY queries to HINFO
+    rewrite type ANY HINFO
 
-    # Rewrite only AAAA record queries
-    rewrite name type AAAA ipv6-api.company.com api-service-v6.production.svc.cluster.local
+    # Rewrite A record queries to AAAA
+    rewrite type A AAAA
 
     kubernetes cluster.local in-addr.arpa ip6.arpa {
        pods insecure
@@ -177,7 +177,7 @@ Apply rewrites only to specific query types:
 
 ## Answer Section Rewriting
 
-Rewrite responses instead of queries:
+Rewrite response names when queries are rewritten:
 
 ```yaml
 .:53 {
@@ -185,20 +185,17 @@ Rewrite responses instead of queries:
     health
     ready
 
-    # Forward to external DNS
-    forward . 8.8.8.8 8.8.4.4
-
-    # Rewrite response addresses
-    rewrite answer name external.company.com internal-proxy.svc.cluster.local
+    # Rewrite the query name and map response names back to the original name
+    rewrite stop {
+        name regex (.*)\.external\.company\.com {1}.backend.external-provider.com
+        answer name (.*)\.backend\.external-provider\.com {1}.external.company.com
+    }
 
     # Rewrite TTL in responses
-    rewrite ttl 300
+    rewrite ttl regex (.*)\.external\.company\.com 300
 
-    kubernetes cluster.local in-addr.arpa ip6.arpa {
-       pods insecure
-       fallthrough in-addr.arpa ip6.arpa
-       ttl 30
-    }
+    # Forward to external DNS
+    forward . 8.8.8.8 8.8.4.4
 
     prometheus :9153
     cache 30
@@ -249,7 +246,7 @@ Applications use consistent naming (e.g., api.prod.company.com) while DNS transp
 
 ## Implementing Canary Deployments with Rewrites
 
-Route a percentage of traffic to canary versions:
+Route requests that use a canary hostname to the canary version:
 
 ```yaml
 .:53 {
@@ -257,9 +254,9 @@ Route a percentage of traffic to canary versions:
     health
     ready
 
-    # Route 10% of api queries to canary
+    # Route canary api queries to canary
     rewrite stop {
-        name regex ^api\.company\.com$ api-canary.production.svc.cluster.local
+        name regex ^api-canary\.company\.com$ api-canary.production.svc.cluster.local
         answer auto
     }
 
@@ -280,7 +277,7 @@ Route a percentage of traffic to canary versions:
 }
 ```
 
-Note: For true percentage-based routing, combine with service mesh features or use weighted DNS responses.
+Note: The rewrite plugin does not provide percentage-based routing by itself. For true percentage-based canary routing, combine DNS rewriting with service mesh features or use weighted DNS responses.
 
 ## Rewriting for Legacy Application Integration
 
