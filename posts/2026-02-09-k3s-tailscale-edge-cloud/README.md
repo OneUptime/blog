@@ -20,7 +20,7 @@ Tailscale builds on WireGuard to create a mesh VPN where each node gets a stable
 - Works through NAT and firewalls
 - Zero-touch device authentication
 - Built-in access controls
-- Automatic certificate rotation
+- Automatic key management
 
 Each K3s node joins the Tailscale network (tailnet), enabling direct encrypted communication between edge and cloud clusters.
 
@@ -34,7 +34,7 @@ On each K3s node, install Tailscale:
 curl -fsSL https://tailscale.com/install.sh | sh
 
 # Authenticate and join tailnet
-sudo tailscale up --authkey=<your-auth-key> \
+sudo tailscale up --auth-key=<your-auth-key> \
   --advertise-tags=tag:k3s,tag:edge \
   --hostname=edge-node-01
 ```
@@ -69,64 +69,21 @@ This makes K3s accessible via Tailscale network.
 
 ## Deploying Tailscale Operator
 
-Run Tailscale as Kubernetes operator:
-
-```yaml
-# tailscale-operator.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: tailscale
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: operator-oauth
-  namespace: tailscale
-stringData:
-  client_id: <your-client-id>
-  client_secret: <your-client-secret>
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: operator
-  namespace: tailscale
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: operator
-  template:
-    metadata:
-      labels:
-        app: operator
-    spec:
-      serviceAccountName: operator
-      containers:
-      - name: operator
-        image: tailscale/k8s-operator:latest
-        env:
-        - name: OPERATOR_HOSTNAME
-          value: "k3s-operator"
-        - name: OPERATOR_SECRET
-          value: "operator-oauth"
-        - name: OPERATOR_NAMESPACE
-          value: "tailscale"
-        - name: PROXY_IMAGE
-          value: "tailscale/tailscale:latest"
-        - name: PROXY_TAGS
-          value: "tag:k8s"
-        resources:
-          requests:
-            cpu: "100m"
-            memory: "128Mi"
-```
-
-Apply:
+Create an OAuth client with Devices Core, Auth Keys, and Services write scopes, tagged with `tag:k8s-operator`, then install the operator:
 
 ```bash
-kubectl apply -f tailscale-operator.yaml
+helm repo add tailscale https://pkgs.tailscale.com/helmcharts
+helm repo update
+
+helm upgrade \
+  --install \
+  tailscale-operator \
+  tailscale/tailscale-operator \
+  --namespace=tailscale \
+  --create-namespace \
+  --set-string oauth.clientId="<your-client-id>" \
+  --set-string oauth.clientSecret="<your-client-secret>" \
+  --wait
 ```
 
 ## Exposing Services via Tailscale
@@ -140,7 +97,6 @@ kind: Service
 metadata:
   name: nginx
   annotations:
-    tailscale.com/expose: "true"
     tailscale.com/hostname: "edge-nginx"
 spec:
   type: LoadBalancer
@@ -160,7 +116,7 @@ Join cloud cluster nodes to same tailnet:
 
 ```bash
 # On cloud nodes
-sudo tailscale up --authkey=<auth-key> \
+sudo tailscale up --auth-key=<auth-key> \
   --advertise-tags=tag:k3s,tag:cloud \
   --hostname=cloud-node-01
 ```
@@ -183,7 +139,7 @@ data:
     cloud.local:53 {
         errors
         cache 30
-        forward . 100.64.0.1  # Tailscale DNS
+        forward . <cloud-coredns-tailscale-ip>
     }
 ```
 
@@ -193,7 +149,7 @@ Restart CoreDNS:
 kubectl rollout restart -n kube-system deployment/coredns
 ```
 
-Now edge pods can resolve `nginx.default.svc.cloud.local`.
+Now edge pods can resolve `nginx.default.svc.cloud.local` if the cloud cluster is configured with `cloud.local` as its cluster domain and its CoreDNS endpoint is reachable over Tailscale.
 
 ## Implementing Zero-Trust Access Control
 
@@ -242,20 +198,25 @@ spec:
           hostNetwork: true
           containers:
           - name: monitor
-            image: alpine:latest
+            image: tailscale/tailscale:stable
             command:
             - sh
             - -c
             - |
-              apk add --no-cache curl jq
-              STATUS=$(tailscale status --json)
-              PEER_COUNT=$(echo "$STATUS" | jq '.Peer | length')
-              echo "Tailscale peers: $PEER_COUNT"
-              if [ "$PEER_COUNT" -lt 1 ]; then
-                echo "WARNING: No Tailscale peers detected"
+              tailscale status
+              if ! tailscale ping --timeout=10s cloud-node-01; then
+                echo "WARNING: cloud-node-01 is not reachable over Tailscale"
                 exit 1
               fi
+            volumeMounts:
+            - name: tailscale-socket
+              mountPath: /var/run/tailscale/tailscaled.sock
           restartPolicy: OnFailure
+          volumes:
+          - name: tailscale-socket
+            hostPath:
+              path: /var/run/tailscale/tailscaled.sock
+              type: Socket
 ```
 
 ## Creating Tailscale Subnet Router
@@ -268,13 +229,11 @@ echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.conf
 echo 'net.ipv6.conf.all.forwarding = 1' | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 
-# Advertise cluster CIDR
-sudo tailscale up \
-  --advertise-routes=10.42.0.0/16 \
-  --accept-routes
+# Advertise the default K3s Pod and Service CIDRs
+sudo tailscale set --advertise-routes=10.42.0.0/16,10.43.0.0/16
 ```
 
-Now all pods are accessible via Tailscale.
+Approve the advertised routes in the Tailscale admin console, or configure `autoApprovers` in the tailnet policy file. Pod and Service IPs are then reachable via Tailscale, assuming Kubernetes NetworkPolicies and host firewall rules allow the traffic.
 
 ## Implementing Failover
 
@@ -282,17 +241,17 @@ Configure multiple edge nodes as subnet routers:
 
 ```bash
 # On edge-node-01
-sudo tailscale up --advertise-routes=10.42.0.0/16
+sudo tailscale set --advertise-routes=10.42.0.0/16,10.43.0.0/16
 
 # On edge-node-02 (backup)
-sudo tailscale up --advertise-routes=10.42.0.0/16
+sudo tailscale set --advertise-routes=10.42.0.0/16,10.43.0.0/16
 ```
 
-Tailscale automatically fails over if primary route becomes unavailable.
+Tailscale automatically fails over between subnet routers that advertise the exact same route prefixes if the primary route becomes unavailable.
 
 ## Deploying Tailscale Sidecar
 
-Run Tailscale as sidecar for individual pods:
+Run Tailscale as sidecar for individual pods after creating the `tailscale-auth` Secret and RBAC needed for Tailscale state storage:
 
 ```yaml
 apiVersion: v1
@@ -304,15 +263,19 @@ spec:
   - name: app
     image: my-app:v1
   - name: tailscale
-    image: tailscale/tailscale:latest
+    image: tailscale/tailscale:stable
     env:
+    - name: TS_KUBE_SECRET
+      value: tailscale-auth
     - name: TS_AUTHKEY
       valueFrom:
         secretKeyRef:
           name: tailscale-auth
-          key: authkey
+          key: TS_AUTHKEY
     - name: TS_HOSTNAME
       value: "my-app-pod"
+    - name: TS_USERSPACE
+      value: "false"
     securityContext:
       capabilities:
         add: ["NET_ADMIN"]
