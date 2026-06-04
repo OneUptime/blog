@@ -17,7 +17,7 @@ Prometheus federation works by having one Prometheus server scrape the `/federat
 - **Leaf Prometheus instances** scrape metrics from applications and infrastructure within each cluster
 - **Central Prometheus instance** federates aggregated metrics from all leaf instances
 
-Federation is distinct from remote write. Federation pulls metrics on-demand, while remote write pushes metrics continuously. Use federation when you need selective metric aggregation and can tolerate slightly stale data.
+Federation is distinct from remote write. Federation pulls selected metrics through scheduled scrapes, while remote write pushes metrics continuously. Use federation when you need selective metric aggregation and can tolerate slightly stale data.
 
 ## Basic Federation Setup
 
@@ -196,11 +196,11 @@ spec:
         # Node resource usage
         - record: cluster:node_cpu_utilization:avg
           expr: |
-            avg(rate(node_cpu_seconds_total{mode!="idle"}[5m])) by (node)
+            1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (node)
 
         - record: cluster:node_memory_utilization:avg
           expr: |
-            avg(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) by (node)
+            1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
 ```
 
 Then federate only the aggregated metrics:
@@ -239,59 +239,57 @@ params:
 
 ## Authentication and Security
 
-Secure federation endpoints with authentication:
+Secure federation endpoints with authentication. For a native Prometheus server, Basic Auth is configured with a web configuration file:
 
 ```yaml
-# On leaf Prometheus, create BasicAuth for federation endpoint
+# web.yml on the leaf Prometheus
+basic_auth_users:
+  federate-user: $2b$12$bcrypt_password_hash
+```
+
+Start the leaf Prometheus with the web configuration file:
+
+```bash
+prometheus --config.file=/etc/prometheus/prometheus.yml \
+  --web.config.file=/etc/prometheus/web.yml
+```
+
+For Prometheus Operator or kube-prometheus-stack deployments, put an authenticated ingress or reverse proxy in front of the leaf Prometheus service, then configure the central Prometheus to send credentials:
+
+```yaml
+# Password secret mounted into the central Prometheus pod
 apiVersion: v1
 kind: Secret
 metadata:
-  name: prometheus-federation-auth
+  name: federation-password
   namespace: monitoring
 stringData:
-  auth: |
-    # Generated with: htpasswd -nB federate-user
-    federate-user:$2y$05$encrypted_password_hash
-
----
-# Configure Prometheus to use BasicAuth
-prometheus:
-  prometheusSpec:
-    web:
-      httpConfig:
-        http2: true
-        headers:
-          X-Frame-Options: SAMEORIGIN
+  password: your-plain-text-password
 
 ---
 # In central Prometheus, add credentials
-additionalScrapeConfigs:
-  - job_name: 'federate-cluster-1'
-    scrape_interval: 60s
-    honor_labels: true
-    metrics_path: '/federate'
-
-    # Basic authentication
-    basic_auth:
-      username: federate-user
-      password_file: /etc/prometheus/secrets/federation-password
-
-    params:
-      'match[]':
-        - '{job="kubernetes-nodes"}'
-
-    static_configs:
-      - targets:
-          - 'prometheus.cluster-1.example.com:9090'
-```
-
-Mount the password secret:
-
-```yaml
 prometheus:
   prometheusSpec:
     secrets:
       - federation-password
+    additionalScrapeConfigs:
+      - job_name: 'federate-cluster-1'
+        scrape_interval: 60s
+        honor_labels: true
+        metrics_path: '/federate'
+
+        # Basic authentication for the leaf Prometheus endpoint
+        basic_auth:
+          username: federate-user
+          password_file: /etc/prometheus/secrets/federation-password/password
+
+        params:
+          'match[]':
+            - '{job="kubernetes-nodes"}'
+
+        static_configs:
+          - targets:
+              - 'prometheus.cluster-1.example.com:9090'
 ```
 
 ## Service Discovery for Federation
@@ -452,7 +450,7 @@ scrape_duration_seconds{job=~"federate-.*"}
 # Number of samples scraped
 scrape_samples_scraped{job=~"federate-.*"}
 
-# Scrape failures
+# Samples remaining after metric relabeling
 scrape_samples_post_metric_relabeling{job=~"federate-.*"}
 ```
 
@@ -484,7 +482,7 @@ Choose the right approach:
 - You want to use specialized storage (Mimir, Thanos, Cortex)
 
 **Use Both when:**
-- Federation for real-time global dashboards
+- Federation for near-real-time global dashboards
 - Remote write for long-term storage and historical queries
 
 ## Best Practices
