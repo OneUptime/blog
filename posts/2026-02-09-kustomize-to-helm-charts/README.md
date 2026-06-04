@@ -26,13 +26,13 @@ find . -name "kustomization.yaml" -o -name "kustomization.yml"
 
 # Analyze base directory
 echo -e "\n=== Base Resources ==="
-kubectl kustomize base/ --dry-run=client -o yaml | kubectl get -f - --show-kind --ignore-not-found=true
+kubectl kustomize base/ | yq eval -N '.kind + "/" + .metadata.name' -
 
 # Analyze overlays
 for OVERLAY in overlays/*; do
   if [ -d "$OVERLAY" ]; then
     echo -e "\n=== Overlay: $OVERLAY ==="
-    kubectl kustomize $OVERLAY --dry-run=client -o yaml | grep -E "^kind:|name:" | head -20
+    kubectl kustomize "$OVERLAY" | grep -E "^kind:|name:" | head -20
   fi
 done
 
@@ -74,9 +74,17 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: myapp
+  labels:
+    app: myapp
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
       - name: app
@@ -182,7 +190,7 @@ Map each overlay to a Helm values file.
 # overlays/dev/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
 - ../../base
 namePrefix: dev-
 namespace: development
@@ -231,7 +239,9 @@ resources:
 env:
 - name: NAMESPACE
   value: "development"
----
+```
+
+```yaml
 # values-staging.yaml
 nameOverride: ""
 fullnameOverride: "staging-myapp"
@@ -254,7 +264,9 @@ resources:
   requests:
     cpu: 500m
     memory: 512Mi
----
+```
+
+```yaml
 # values-production.yaml
 nameOverride: ""
 fullnameOverride: "prod-myapp"
@@ -321,7 +333,13 @@ kind: Deployment
 metadata:
   name: {{ include "myapp.fullname" . }}
 spec:
+  selector:
+    matchLabels:
+      {{- include "myapp.selectorLabels" . | nindent 6 }}
   template:
+    metadata:
+      labels:
+        {{- include "myapp.selectorLabels" . | nindent 8 }}
     spec:
       {{- if .Values.affinity }}
       affinity:
@@ -382,7 +400,7 @@ data:
 #     database.yaml
 ```
 
-Helm's `.Files` provides similar functionality to ConfigMap generators.
+Helm's `.Files` provides similar file-loading functionality to ConfigMap generators, but it does not automatically add Kustomize's generated name hash suffix unless you template that behavior yourself.
 
 ## Creating Migration Script
 
@@ -427,15 +445,15 @@ for overlay_dir in $KUSTOMIZE_DIR/overlays/*; do
     echo "Creating values-$env.yaml..."
 
     # Extract values from kustomization
-    kubectl kustomize $overlay_dir --dry-run=client -o yaml > /tmp/overlay-$env.yaml
+    kubectl kustomize "$overlay_dir" > /tmp/overlay-$env.yaml
 
     # Parse and create values file (simplified)
     cat > $CHART_NAME/values-$env.yaml <<EOF
 # Generated from Kustomize overlay: $env
-replicaCount: $(kubectl kustomize $overlay_dir -o yaml | yq eval 'select(.kind == "Deployment") | .spec.replicas' -)
+replicaCount: $(kubectl kustomize "$overlay_dir" | yq eval 'select(.kind == "Deployment") | .spec.replicas' -)
 image:
-  repository: $(kubectl kustomize $overlay_dir -o yaml | yq eval 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image' - | cut -d: -f1)
-  tag: "$(kubectl kustomize $overlay_dir -o yaml | yq eval 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image' - | cut -d: -f2)"
+  repository: $(kubectl kustomize "$overlay_dir" | yq eval 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image' - | cut -d: -f1)
+  tag: "$(kubectl kustomize "$overlay_dir" | yq eval 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image' - | cut -d: -f2)"
 EOF
   fi
 done
@@ -458,7 +476,7 @@ HELM_CHART="myapp"
 VALUES_FILE="values-production.yaml"
 
 # Generate Kustomize output
-kubectl kustomize $KUSTOMIZE_DIR -o yaml > /tmp/kustomize-output.yaml
+kubectl kustomize "$KUSTOMIZE_DIR" > /tmp/kustomize-output.yaml
 
 # Generate Helm output
 helm template $HELM_CHART ./$HELM_CHART -f ./$HELM_CHART/$VALUES_FILE > /tmp/helm-output.yaml
@@ -468,14 +486,14 @@ echo "=== Comparing Kustomize vs Helm output ==="
 
 # Extract resource types and counts
 echo "Kustomize resources:"
-cat /tmp/kustomize-output.yaml | yq eval '.kind' - | sort | uniq -c
+yq eval -N '.kind' /tmp/kustomize-output.yaml | sort | uniq -c
 
 echo "Helm resources:"
-cat /tmp/helm-output.yaml | yq eval '.kind' - | sort | uniq -c
+yq eval -N '.kind' /tmp/helm-output.yaml | sort | uniq -c
 
 # Detailed diff (may show metadata differences)
-diff -u <(kubectl get -f /tmp/kustomize-output.yaml --dry-run=client -o yaml) \
-        <(kubectl get -f /tmp/helm-output.yaml --dry-run=client -o yaml) || true
+diff -u <(kubectl apply --dry-run=client -f /tmp/kustomize-output.yaml -o yaml) \
+        <(kubectl apply --dry-run=client -f /tmp/helm-output.yaml -o yaml) || true
 
 echo "Review differences above"
 ```
