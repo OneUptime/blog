@@ -27,7 +27,7 @@ version: "3.8"
 
 services:
   qdrant:
-    image: qdrant/qdrant:v1.9.0
+    image: qdrant/qdrant:latest
     container_name: qdrant
     ports:
       - "6333:6333"   # REST API
@@ -57,7 +57,7 @@ curl -X PUT http://localhost:6333/collections/documents \
   -H "Content-Type: application/json" \
   -d '{
     "vectors": {
-      "size": 384,
+      "size": 4,
       "distance": "Cosine"
     }
   }'
@@ -85,10 +85,10 @@ Search with filtering.
 
 ```bash
 # Search for similar vectors with a category filter
-curl -X POST http://localhost:6333/collections/documents/points/search \
+curl -X POST http://localhost:6333/collections/documents/points/query \
   -H "Content-Type: application/json" \
   -d '{
-    "vector": [0.1, 0.2, 0.35, 0.45],
+    "query": [0.1, 0.2, 0.35, 0.45],
     "limit": 5,
     "filter": {
       "must": [
@@ -132,12 +132,12 @@ client.upsert(collection_name="articles", points=points)
 
 # Query (similar to Pinecone's query)
 query_vector = model.encode("container orchestration").tolist()
-results = client.search(
+results = client.query_points(
     collection_name="articles",
-    query_vector=query_vector,
+    query=query_vector,
     limit=3
 )
-for result in results:
+for result in results.points:
     print(f"Score: {result.score:.4f} - {result.payload['text']}")
 ```
 
@@ -151,7 +151,7 @@ version: "3.8"
 
 services:
   weaviate:
-    image: cr.weaviate.io/semitechnologies/weaviate:1.25.0
+    image: cr.weaviate.io/semitechnologies/weaviate:1.37.4
     container_name: weaviate
     ports:
       - "8080:8080"   # REST API
@@ -190,7 +190,7 @@ client = weaviate.connect_to_local()
 # Create a collection (class in Weaviate terminology)
 collection = client.collections.create(
     name="Article",
-    vectorizer_config=wvc.config.Configure.Vectorizer.none(),
+    vector_config=wvc.config.Configure.Vectors.self_provided(),
     properties=[
         wvc.config.Property(name="title", data_type=wvc.config.DataType.TEXT),
         wvc.config.Property(name="category", data_type=wvc.config.DataType.TEXT),
@@ -235,9 +235,9 @@ Here is how these alternatives compare to Pinecone.
 | Hosting | Managed only | Self-hosted + Cloud | Self-hosted + Cloud |
 | API style | REST/gRPC | REST/gRPC | REST/GraphQL/gRPC |
 | Filtering | Metadata filters | Payload filters | Property filters |
-| Built-in vectorizers | No | No | Yes (optional modules) |
-| Languages | Python, JS, Go | Python, JS, Rust, Go | Python, JS, Go, Java |
-| Pricing | Per query + storage | Free (self-hosted) | Free (self-hosted) |
+| Built-in vectorizers | Yes (integrated embedding) | No | Yes (optional modules) |
+| Languages | Python, JS, Java, Go, C#, Rust | Python, JS/TS, Rust, Go, Java, C# | Python, JS/TS, Go, Java, C# |
+| Pricing | Usage-based read/write units + storage | Free (self-hosted) | Free (self-hosted) |
 | Persistence | Managed | Disk-based | Disk-based |
 
 ## Migration Pattern: Pinecone to Qdrant
@@ -248,11 +248,12 @@ If you have an existing Pinecone application, migrating to Qdrant is straightfor
 # migration.py - Migrate from Pinecone to Qdrant
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
-import pinecone
+from pinecone import Pinecone
+import uuid
 
 # Source: Pinecone
-pinecone.init(api_key="your-pinecone-key", environment="us-east1-gcp")
-pinecone_index = pinecone.Index("source-index")
+pc = Pinecone(api_key="your-pinecone-key")
+pinecone_index = pc.index(name="source-index")
 
 # Target: Qdrant
 qdrant = QdrantClient(host="localhost", port=6333)
@@ -275,7 +276,7 @@ for i in range(0, len(vector_ids), batch_size):
     points = []
     for vid, data in fetched["vectors"].items():
         points.append(PointStruct(
-            id=hash(vid) % (2**63),  # Convert string ID to int
+            id=str(uuid.uuid5(uuid.NAMESPACE_URL, vid)),  # Convert string ID to deterministic UUID
             vector=data["values"],
             payload=data.get("metadata", {})
         ))
