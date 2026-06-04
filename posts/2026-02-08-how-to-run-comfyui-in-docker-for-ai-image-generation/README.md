@@ -35,8 +35,6 @@ Create a Docker Compose configuration for ComfyUI.
 ```yaml
 # docker-compose.yml
 # ComfyUI with GPU support, persistent models and output
-version: "3.8"
-
 services:
   comfyui:
     image: ghcr.io/ai-dock/comfyui:latest-cuda
@@ -54,7 +52,8 @@ services:
       # Persist workflow files
       - ./workflows:/workspace/ComfyUI/user
     environment:
-      - CLI_ARGS=--listen 0.0.0.0
+      - COMFYUI_ARGS=--listen 0.0.0.0
+      - WEB_ENABLE_AUTH=false
     deploy:
       resources:
         reservations:
@@ -159,7 +158,7 @@ Custom nodes extend ComfyUI with additional functionality like face restoration,
 ```bash
 # Install ComfyUI Manager (the most useful custom node - provides a UI for installing other nodes)
 cd custom_nodes
-git clone https://github.com/ltdrdata/ComfyUI-Manager.git
+git clone https://github.com/ltdrdata/ComfyUI-Manager.git comfyui-manager
 
 # Install other popular custom nodes
 git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git
@@ -169,11 +168,13 @@ git clone https://github.com/WASasquatch/was-node-suite-comfyui.git
 # Go back to the project root
 cd ..
 
+# Install node dependencies inside the container
+docker exec comfyui bash -lc "pip install -r /workspace/ComfyUI/custom_nodes/comfyui-manager/requirements.txt"
+docker exec comfyui bash -lc "pip install -r /workspace/ComfyUI/custom_nodes/comfyui_controlnet_aux/requirements.txt"
+docker exec comfyui bash -lc "pip install -r /workspace/ComfyUI/custom_nodes/was-node-suite-comfyui/requirements.txt"
+
 # Restart ComfyUI to load the new custom nodes
 docker compose restart comfyui
-
-# Install node dependencies inside the container
-docker exec comfyui pip3 install -r /app/custom_nodes/ComfyUI-Manager/requirements.txt
 ```
 
 ## Using the ComfyUI API
@@ -273,8 +274,8 @@ LoRAs (Low-Rank Adaptations) let you add trained styles or concepts on top of ba
 
 ```bash
 # Download a LoRA model
-wget -P ./models/loras/ \
-  "https://civitai.com/api/download/models/example-lora.safetensors"
+wget -O ./models/loras/lcm-lora-sdv1-5.safetensors \
+  "https://huggingface.co/latent-consistency/lcm-lora-sdv1-5/resolve/main/pytorch_lora_weights.safetensors"
 ```
 
 In the ComfyUI interface, add a "Load LoRA" node between the checkpoint loader and the CLIP text encoder to apply the LoRA to your generation.
@@ -319,7 +320,7 @@ Add memory-saving arguments to the Docker Compose environment:
 ```yaml
   environment:
     # Use low VRAM mode for GPUs with less than 8 GB
-    - CLI_ARGS=--listen 0.0.0.0 --lowvram
+    - COMFYUI_ARGS=--listen 0.0.0.0 --lowvram
 ```
 
 ## Backing Up Workflows
@@ -346,7 +347,7 @@ docker compose pull
 docker compose up -d
 
 # Update custom nodes inside the container
-docker exec comfyui bash -c "cd /app/custom_nodes/ComfyUI-Manager && git pull"
+docker exec comfyui bash -lc "cd /workspace/ComfyUI/custom_nodes/comfyui-manager && git pull"
 ```
 
 ## Summary
