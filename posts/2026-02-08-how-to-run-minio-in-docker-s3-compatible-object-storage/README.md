@@ -8,7 +8,7 @@ Description: Deploy MinIO in Docker as a self-hosted S3-compatible object storag
 
 ---
 
-MinIO is a high-performance, S3-compatible object storage server. It implements the full Amazon S3 API, which means any application built for S3 works with MinIO without code changes. This makes it useful in two scenarios: as a local S3 replacement for development (so you do not need an AWS account during development), and as a production object storage solution for organizations that want to keep data on-premises. Docker is the simplest way to deploy MinIO, whether for a single-node setup or a distributed cluster.
+MinIO is a high-performance, S3-compatible object storage server. It supports the core Amazon S3 API, which means many applications built for S3 work with MinIO by changing the endpoint and credentials rather than changing storage logic. This makes it useful in two scenarios: as a local S3 replacement for development (so you do not need an AWS account during development), and as a production object storage solution for organizations that want to keep data on-premises. Docker is the simplest way to deploy MinIO, whether for a single-node setup or a distributed cluster.
 
 This guide covers deploying MinIO in Docker, using it with the AWS SDK, setting up bucket policies, and configuring it for production workloads.
 
@@ -24,7 +24,7 @@ docker run -d \
   -p 9000:9000 \
   -p 9001:9001 \
   -v minio-data:/data \
-  minio/minio:latest server /data --console-address ":9001"
+  quay.io/minio/minio:latest server /data --console-address ":9001"
 ```
 
 MinIO is now available at:
@@ -43,7 +43,7 @@ version: "3.8"
 
 services:
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: minio
     ports:
       - "9000:9000"   # S3 API
@@ -81,7 +81,7 @@ MinIO provides a CLI tool called `mc` for managing your storage:
 # Run mc from a temporary container to configure and use it
 docker run --rm -it --entrypoint /bin/sh \
   --network host \
-  minio/mc
+  quay.io/minio/mc
 
 # Inside the container, configure the alias
 mc alias set local http://localhost:9000 admin supersecretpassword
@@ -103,9 +103,10 @@ Alternatively, use `mc` directly from Docker:
 
 ```bash
 # Create a bucket using mc from Docker
-docker run --rm --network host minio/mc \
-  alias set local http://localhost:9000 admin supersecretpassword && \
+docker run --rm --network host --entrypoint /bin/sh quay.io/minio/mc -c "
+  mc alias set local http://localhost:9000 admin supersecretpassword &&
   mc mb local/uploads
+"
 ```
 
 ## Using MinIO with the AWS SDK
@@ -154,7 +155,7 @@ print(f"Presigned URL: {url}")
 
 ```javascript
 // s3_example.js - use MinIO with the AWS SDK for JavaScript
-const { S3Client, PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 
 const s3Client = new S3Client({
   endpoint: "http://localhost:9000",
@@ -182,14 +183,14 @@ uploadFile();
 
 ## Distributed Mode for High Availability
 
-MinIO supports distributed mode with erasure coding for data redundancy. This setup uses 4 nodes with 4 drives each:
+MinIO supports distributed mode with erasure coding for data redundancy. This setup uses 4 nodes with 2 drives each:
 
 ```yaml
 # docker-compose-distributed.yml - MinIO distributed cluster
 version: "3.8"
 
 x-minio-common: &minio-common
-  image: minio/minio:latest
+  image: quay.io/minio/minio:latest
   environment:
     MINIO_ROOT_USER: admin
     MINIO_ROOT_PASSWORD: supersecretpassword
@@ -255,8 +256,8 @@ Configure automatic cleanup of old objects:
 
 ```bash
 # Set lifecycle rule to delete objects after 30 days
-docker run --rm --network host minio/mc sh -c "
-  mc alias set local http://localhost:9000 admin supersecretpassword
+docker run --rm --network host --entrypoint /bin/sh quay.io/minio/mc -c "
+  mc alias set local http://localhost:9000 admin supersecretpassword &&
   mc ilm rule add --expire-days 30 local/temp-uploads
 "
 ```
@@ -267,8 +268,13 @@ MinIO exposes Prometheus metrics:
 
 ```bash
 # Scrape MinIO metrics
-curl http://localhost:9000/minio/v2/metrics/cluster \
-  -H "Authorization: Bearer $(docker exec minio mc admin prometheus generate local | grep bearer_token | awk '{print $2}')"
+TOKEN=$(docker run --rm --network host --entrypoint /bin/sh quay.io/minio/mc -c "
+  mc alias set local http://localhost:9000 admin supersecretpassword >/dev/null &&
+  mc admin prometheus generate local cluster --api-version v3 | awk '/bearer_token:/ {print \$2}'
+")
+
+curl http://localhost:9000/minio/metrics/v3/cluster \
+  -H "Authorization: Bearer ${TOKEN}"
 ```
 
 ## Event Notifications
@@ -277,12 +283,19 @@ MinIO can send notifications when objects are created or deleted. Configure it t
 
 ```bash
 # Configure webhook notification target
-docker run --rm --network host minio/mc sh -c "
-  mc alias set local http://localhost:9000 admin supersecretpassword
-  mc event add local/my-bucket arn:minio:sqs::1:webhook --event put,delete
+docker run --rm --network host --entrypoint /bin/sh quay.io/minio/mc -c "
+  mc alias set local http://localhost:9000 admin supersecretpassword &&
+  mc admin config set local notify_webhook:primary endpoint='http://webhook.example.com' &&
+  mc admin service restart local
+"
+
+# After MinIO restarts, add the bucket event rule
+docker run --rm --network host --entrypoint /bin/sh quay.io/minio/mc -c "
+  mc alias set local http://localhost:9000 admin supersecretpassword &&
+  mc event add --event put,delete local/my-bucket arn:minio:sqs::primary:webhook
 "
 ```
 
 ## Conclusion
 
-MinIO in Docker provides S3-compatible object storage that works everywhere. For development, it eliminates the need for cloud accounts and network access. For production, distributed mode offers high availability and data protection. The S3 API compatibility means you can develop against MinIO locally and deploy to AWS S3, or vice versa, without changing your application code. Start with a single-node setup, use the standard AWS SDKs in your applications, and move to distributed mode when you need redundancy.
+MinIO in Docker provides S3-compatible object storage that works everywhere. For development, it eliminates the need for cloud accounts and network access. For production, distributed mode offers high availability and data protection. The S3 API compatibility means you can develop against MinIO locally and deploy to AWS S3, or vice versa, while keeping the same S3 storage logic. Start with a single-node setup, use the standard AWS SDKs in your applications, and move to distributed mode when you need redundancy.
