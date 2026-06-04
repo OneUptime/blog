@@ -10,7 +10,7 @@ Description: Set up ntfy in Docker as a self-hosted push notification service wi
 
 ntfy (pronounced "notify") is a simple, HTTP-based pub/sub notification service. You publish a message to a topic using a plain HTTP request, and anyone subscribed to that topic receives it instantly. No accounts, no API keys, no complex configuration. This simplicity makes ntfy extremely versatile for scripts, cron jobs, CI/CD pipelines, and monitoring alerts.
 
-While ntfy.sh offers a free hosted version, running your own instance in Docker gives you full control over your data, no rate limits, and the ability to work entirely offline. This guide walks through deploying ntfy in Docker, configuring it for production, and integrating it with your workflows.
+While ntfy.sh offers a free hosted version, running your own instance in Docker gives you full control over your data, configurable rate limits, and the ability to work offline for clients that can connect directly to your server. This guide walks through deploying ntfy in Docker, configuring it for production, and integrating it with your workflows.
 
 ## How ntfy Works
 
@@ -63,8 +63,6 @@ For a persistent, configurable deployment, use Docker Compose with a proper conf
 
 ```yaml
 # docker-compose.yml - ntfy push notification server
-version: "3.8"
-
 services:
   ntfy:
     image: binwiederhier/ntfy:latest
@@ -111,8 +109,14 @@ cache-duration: "24h"
 # Store cached messages in a SQLite database
 cache-file: "/var/cache/ntfy/cache.db"
 
-# Enable the web UI
-enable-web: true
+# Keep the web UI available at the root path
+web-root: "/"
+
+# Allow web/API login when authentication is enabled
+enable-login: true
+
+# Forward poll requests for iOS instant push notifications
+upstream-base-url: "https://ntfy.sh"
 
 # Attachment settings
 attachment-cache-dir: "/var/cache/ntfy/attachments"
@@ -155,8 +159,7 @@ docker exec -it ntfy ntfy user add --role=admin admin
 docker exec -it ntfy ntfy user add alerts-user
 
 # Grant access to specific topics
-docker exec -it ntfy ntfy access alerts-user "server-*" write
-docker exec -it ntfy ntfy access alerts-user "server-*" read
+docker exec -it ntfy ntfy access alerts-user "server-*" read-write
 
 # Grant read access to everyone for public topics (optional)
 docker exec -it ntfy ntfy access everyone "public-*" read
@@ -243,7 +246,7 @@ ntfy has official apps for both Android (F-Droid and Google Play) and iOS (App S
 4. Add your credentials if authentication is enabled
 5. Subscribe to topics by tapping the + button
 
-The app maintains a persistent connection and delivers notifications in real time, similar to any other push notification.
+The Android app can maintain a persistent connection to your self-hosted server. For instant iOS notifications, configure `upstream-base-url` so ntfy can forward poll requests through an APNS-connected upstream server such as ntfy.sh.
 
 ## Subscribing from the Command Line
 
@@ -263,7 +266,12 @@ done
 
 ## Putting ntfy Behind a Reverse Proxy
 
-For HTTPS access, put ntfy behind your reverse proxy. The WebSocket and SSE connections need proper proxy configuration.
+For HTTPS access, put ntfy behind your reverse proxy. The WebSocket and SSE connections need proper proxy configuration, and `behind-proxy: true` should be set in `server.yml` so ntfy uses forwarded client IPs for per-visitor rate limits.
+
+```yaml
+# Add to server.yml when ntfy is behind a trusted reverse proxy
+behind-proxy: true
+```
 
 ```yaml
 # Traefik labels for ntfy
@@ -315,4 +323,4 @@ curl \
 
 ## Summary
 
-ntfy stands out for its radical simplicity. There is no complex setup, no API key management, and no client libraries to install. Any tool that can make an HTTP request can send notifications, and the mobile apps deliver them to your pocket in real time. Running it in Docker keeps the deployment clean, and adding authentication ensures your topics stay private. For teams and home labs alike, ntfy is one of the easiest self-hosted services you can deploy.
+ntfy stands out for its radical simplicity. There is no complex setup, no API key management, and no client libraries to install. Any tool that can make an HTTP request can send notifications, and the mobile apps can deliver them to your pocket in real time when push support is configured. Running it in Docker keeps the deployment clean, and adding authentication ensures your topics stay private. For teams and home labs alike, ntfy is one of the easiest self-hosted services you can deploy.
