@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Service Mesh, Networking, Consul, Envoy, Microservice, Container
 
-Description: Implement a service mesh on Docker networks using Envoy and Consul for traffic management, observability, and security.
+Description: Implement a service mesh-style setup on Docker networks using Envoy and Consul for traffic management, observability, and security integrations.
 
 ---
 
-A service mesh adds infrastructure-level capabilities to your microservices without changing application code. Features like traffic encryption, load balancing, circuit breaking, retries, and observability all happen transparently through sidecar proxies. While service meshes are often associated with Kubernetes, they work perfectly well with plain Docker and Docker Compose.
+A service mesh adds infrastructure-level capabilities to your microservices without changing application code. Features like traffic encryption, load balancing, circuit breaking, retries, and observability can happen through sidecar proxies. While service meshes are often associated with Kubernetes, they can also run with plain Docker and Docker Compose.
 
-This guide shows you how to build a service mesh on Docker using Envoy as the data plane and Consul as the control plane. Every example uses Docker Compose and runs on a single machine.
+This guide shows you how to build a service mesh-style setup on Docker using Envoy as the data plane and Consul for service discovery and control-plane integrations. Every example uses Docker Compose and runs on a single machine.
 
 ## What a Service Mesh Does
 
@@ -23,7 +23,7 @@ Without a service mesh, every microservice must implement its own:
 - Metrics collection
 - Access control
 
-A service mesh moves all of this into sidecar proxies that intercept network traffic. Your application code makes plain HTTP calls, and the sidecar handles everything else.
+A service mesh moves this infrastructure behavior into sidecar proxies. In a full mesh, your application code can make plain local calls while the sidecar handles routing, policy, telemetry, and encryption.
 
 ```mermaid
 graph LR
@@ -52,13 +52,13 @@ docker network create \
 
 ## Deploying Consul as the Control Plane
 
-Consul handles service discovery and provides configuration to the Envoy proxies:
+Consul handles service discovery and can provide configuration to Envoy proxies when you register services and start Envoy through Consul. In this example, Consul runs alongside the mesh infrastructure while the Envoy snippets use static configuration:
 
 ```yaml
 # docker-compose.yml - Consul server and mesh infrastructure
 services:
   consul:
-    image: hashicorp/consul:1.17
+    image: hashicorp/consul:1.21.3
     ports:
       - "8500:8500"   # HTTP API
       - "8600:8600"   # DNS
@@ -222,7 +222,7 @@ Deploy three services, each with an Envoy sidecar:
 # docker-compose.mesh.yml - Full service mesh deployment
 services:
   consul:
-    image: hashicorp/consul:1.17
+    image: hashicorp/consul:1.21.3
     ports:
       - "8500:8500"
     command: agent -server -bootstrap-expect=1 -ui -client=0.0.0.0 -data-dir=/consul/data
@@ -237,7 +237,7 @@ services:
     network_mode: "service:frontend-envoy"
 
   frontend-envoy:
-    image: envoyproxy/envoy:v1.28-latest
+    image: envoyproxy/envoy:v1.37.1
     volumes:
       - ./envoy-frontend.yaml:/etc/envoy/envoy.yaml:ro
     ports:
@@ -254,7 +254,7 @@ services:
     network_mode: "service:user-envoy"
 
   user-envoy:
-    image: envoyproxy/envoy:v1.28-latest
+    image: envoyproxy/envoy:v1.37.1
     volumes:
       - ./envoy-user.yaml:/etc/envoy/envoy.yaml:ro
     networks:
@@ -268,7 +268,7 @@ services:
     network_mode: "service:order-envoy"
 
   order-envoy:
-    image: envoyproxy/envoy:v1.28-latest
+    image: envoyproxy/envoy:v1.37.1
     volumes:
       - ./envoy-order.yaml:/etc/envoy/envoy.yaml:ro
     networks:
@@ -283,7 +283,7 @@ Notice the `network_mode: "service:frontend-envoy"` line. This puts the applicat
 
 ## Adding Circuit Breaking
 
-Configure Envoy to stop sending traffic to a failing service:
+Configure Envoy to limit concurrent connections and requests to an upstream service:
 
 ```yaml
 # Add circuit breaker settings to a cluster definition
@@ -362,12 +362,12 @@ curl http://localhost:8080/
 curl http://localhost:8080/api/users
 curl http://localhost:8080/api/orders
 
-# Generate load to test circuit breaking
-for i in $(seq 1 1000); do
-  curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/users
-done | sort | uniq -c
+# Generate concurrent load to test circuit breaking
+seq 1 1000 | xargs -P200 -I{} \
+  curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/api/users \
+  | sort | uniq -c
 ```
 
 ## Conclusion
 
-A service mesh on Docker gives you the same traffic management, security, and observability features that Kubernetes-based meshes provide, without the complexity of a full orchestration platform. Envoy sidecars handle the networking concerns, Consul manages service discovery, and your application code stays focused on business logic. Start by adding a sidecar to your most critical service, configure basic routing and retries, then expand the mesh to cover more services as you gain confidence.
+A service mesh-style setup on Docker can give you many of the traffic management, security, and observability features that Kubernetes-based meshes provide, without the complexity of a full orchestration platform. Envoy sidecars handle the networking concerns, Consul can manage service discovery and control-plane configuration when integrated with registered services, and your application code stays focused on business logic. Start by adding a sidecar to your most critical service, configure basic routing and retries, then expand the mesh to cover more services as you gain confidence.
