@@ -14,7 +14,7 @@ Modern Linux distributions are transitioning from cgroup v1 to cgroup v2, a unif
 
 Cgroup v1 uses multiple hierarchies, one for each controller (CPU, memory, I/O). This creates complexity and some controllers have overlapping functionality. Cgroup v2 provides a single unified hierarchy where all controllers work together consistently.
 
-Kubernetes has supported cgroup v2 since version 1.25, but older versions and some container runtimes still expect v1. When nodes switch to v2, these components break if not configured correctly.
+Kubernetes cgroup v2 support has been stable since version 1.25, but older versions and some container runtimes still expect v1. When nodes switch to v2, these components break if not configured correctly.
 
 ## Symptoms of Cgroup v2 Issues
 
@@ -63,16 +63,13 @@ cat /proc/cgroups
 
 ## Configuring Kubelet for Cgroup v2
 
-Kubelet needs explicit cgroup driver configuration for v2 compatibility.
+Kubelet should use the systemd cgroup driver for v2 compatibility. The kubelet automatically detects cgroup v2 when the OS uses it.
 
 ```yaml
 # /var/lib/kubelet/config.yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 cgroupDriver: systemd  # Use systemd cgroup driver
-cgroupRoot: /
-featureGates:
-  CgroupsV2: true  # Explicitly enable cgroup v2 support
 ```
 
 Restart kubelet after configuration changes.
@@ -85,10 +82,10 @@ systemctl status kubelet
 
 ## Container Runtime Configuration
 
-Container runtimes must also support cgroup v2. Containerd configuration for cgroup v2.
+Container runtimes must also support cgroup v2. Containerd configuration for cgroup v2 depends on the containerd major version.
 
 ```toml
-# /etc/containerd/config.toml
+# /etc/containerd/config.toml for containerd 1.x
 version = 2
 
 [plugins."io.containerd.grpc.v1.cri"]
@@ -96,7 +93,16 @@ version = 2
     [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
       runtime_type = "io.containerd.runc.v2"
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-        SystemdCgroup = true  # Required for cgroup v2
+        SystemdCgroup = true  # Match kubelet systemd cgroup driver
+```
+
+```toml
+# /etc/containerd/config.toml for containerd 2.x
+
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc]
+  runtime_type = "io.containerd.runc.v2"
+  [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc.options]
+    SystemdCgroup = true
 ```
 
 Restart containerd after changes.
@@ -111,7 +117,7 @@ crictl --runtime-endpoint unix:///var/run/containerd/containerd.sock version
 
 ## Docker/Dockerd Cgroup Configuration
 
-If using Docker as the container runtime (deprecated but still used), configure it for cgroup v2.
+If using Docker Engine through cri-dockerd as the container runtime, configure dockerd for the systemd cgroup driver. Kubernetes removed the built-in dockershim in version 1.24.
 
 ```json
 {
@@ -136,9 +142,12 @@ systemctl status docker
 Check that Kubernetes components are using the correct cgroup driver.
 
 ```bash
-# Check kubelet cgroup driver
+# Check versions that affect cgroup support
 kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.kubeletVersion}'
 kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.containerRuntimeVersion}'
+
+# On each node, check the configured kubelet cgroup driver
+grep cgroupDriver /var/lib/kubelet/config.yaml
 
 # Verify pod cgroup placement
 kubectl exec -it test-pod -- cat /proc/self/cgroup
@@ -164,7 +173,7 @@ ssh node-1
 sudo apt-get update && sudo apt-get upgrade -y
 
 # Step 3: Configure cgroup v2 if not default
-# Edit /etc/default/grub to remove cgroup_no_v1 if present
+# Edit /etc/default/grub and add systemd.unified_cgroup_hierarchy=1
 sudo update-grub
 sudo reboot
 
@@ -222,21 +231,22 @@ kubectl exec -it resource-test -- sh -c '
 Some cgroup v1 features aren't available in v2 or work differently.
 
 ```bash
-# cgroup v1 memory.swappiness not available in v2
-# Use memory.swap.max instead
+# cgroup v1 memory.swappiness is not available in v2
+# Use cgroup v2 swap controls such as memory.swap.max where applicable
 
 # Check available controllers
 cat /sys/fs/cgroup/cgroup.controllers
 
 # Should show: cpu memory io pids
 
-# Enable controllers for subtree
-echo "+cpu +memory +io" > /sys/fs/cgroup/cgroup.subtree_control
+# Enable controllers for a subtree you manage
+# Do not change Kubernetes or systemd-managed cgroups directly
+echo "+cpu +memory +io" > /sys/fs/cgroup/my-cgroup/cgroup.subtree_control
 ```
 
 ## Monitoring Cgroup Resource Usage
 
-Monitor cgroup v2 metrics with Prometheus and node-exporter.
+Monitor cgroup v2 metrics with Prometheus and kubelet/cAdvisor metrics.
 
 ```yaml
 apiVersion: v1
@@ -276,11 +286,23 @@ Test cgroup v2 in a development cluster before production migration.
 kubectl apply -f test-workloads.yaml
 
 # Run stress tests
-kubectl run stress-test --image=polinux/stress \
-  --restart=Never \
-  --requests='memory=512Mi' \
-  --limits='memory=1Gi' \
-  -- stress --vm 1 --vm-bytes 800M --timeout 60s
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: stress-test
+spec:
+  restartPolicy: Never
+  containers:
+  - name: stress-test
+    image: polinux/stress
+    args: ["stress", "--vm", "1", "--vm-bytes", "800M", "--timeout", "60s"]
+    resources:
+      requests:
+        memory: "512Mi"
+      limits:
+        memory: "1Gi"
+EOF
 
 # Monitor pod behavior
 kubectl top pod stress-test
@@ -294,15 +316,12 @@ kubectl get events | grep stress-test
 
 Roll out cgroup v2 gradually across the cluster.
 
-```yaml
-# Phase 1: Create node pool with cgroup v2
-apiVersion: v1
-kind: Node
-metadata:
-  name: node-cgroupv2-1
-  labels:
-    cgroup-version: v2
+```bash
+# Phase 1: Label nodes in the cgroup v2 node pool
+kubectl label node node-cgroupv2-1 cgroup-version=v2
+```
 
+```yaml
 # Phase 2: Deploy test workloads to v2 nodes
 apiVersion: apps/v1
 kind: Deployment
@@ -357,9 +376,9 @@ Debug container runtime issues related to cgroups.
 # Check containerd cgroup configuration
 crictl --runtime-endpoint unix:///var/run/containerd/containerd.sock info | grep -i cgroup
 
-# Test container creation
+# Test pod sandbox creation
 crictl --runtime-endpoint unix:///var/run/containerd/containerd.sock \
-  run container-config.json pod-config.json
+  runp pod-config.json
 
 # View containerd logs
 journalctl -u containerd -n 100 --no-pager | grep -i cgroup
