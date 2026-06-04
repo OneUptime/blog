@@ -8,13 +8,13 @@ Description: Deep dive into how Docker bridge networking works internally, cover
 
 ---
 
-Every Docker container you run connects to a network. By default, that network is a Linux bridge called `docker0`. Most developers use Docker networking without thinking about what happens under the hood. But when containers cannot reach each other, when port conflicts arise, or when performance degrades, you need to understand the internals.
+Every Docker container you run uses a network mode. Unless you choose a mode such as `host` or `none`, the default network is a Linux bridge called `docker0`. Most developers use Docker networking without thinking about what happens under the hood. But when containers cannot reach each other, when port conflicts arise, or when performance degrades, you need to understand the internals.
 
 This guide takes you through the layers of Docker bridge networking, from the virtual Ethernet pairs to the routing tables that make container communication possible.
 
 ## What Is a Linux Bridge?
 
-A Linux bridge is a virtual Layer 2 network switch implemented in the kernel. It forwards Ethernet frames between connected interfaces, just like a physical switch forwards frames between ports. Docker creates a bridge named `docker0` at installation time and connects each container to it using virtual Ethernet pairs.
+A Linux bridge is a virtual Layer 2 network switch implemented in the kernel. It forwards Ethernet frames between connected interfaces, just like a physical switch forwards frames between ports. Docker creates a bridge named `docker0` when the daemon starts and connects each default-bridge container to it using virtual Ethernet pairs.
 
 Inspect the default bridge:
 
@@ -164,10 +164,10 @@ docker run -d \
 
 ## Port Publishing and NAT
 
-When you publish a port with `-p 8080:80`, Docker does two things:
+When you publish a port with `-p 8080:80`, Docker typically does two things:
 
 1. Creates an iptables DNAT rule to redirect host port 8080 to the container's IP on port 80
-2. Starts a docker-proxy process that listens on the host port
+2. Starts a docker-proxy process that listens on the host port, if the daemon's userland proxy is enabled (the default)
 
 ```bash
 # Start a container with a published port
@@ -180,7 +180,7 @@ sudo iptables -t nat -L DOCKER -n -v
 ps aux | grep docker-proxy
 ```
 
-The iptables rule handles most traffic. The docker-proxy covers edge cases like hairpin NAT (when a container tries to reach itself through the published port).
+The iptables rule handles most traffic. The docker-proxy covers cases such as loopback traffic and IPv6-to-IPv4 mappings when the userland proxy is enabled. If the proxy is disabled, Docker relies on kernel NAT behavior such as hairpin NAT instead.
 
 ## Inter-Container Communication (ICC)
 
