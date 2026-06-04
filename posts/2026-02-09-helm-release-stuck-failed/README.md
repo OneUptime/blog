@@ -8,20 +8,20 @@ Description: Learn how to diagnose and fix Helm releases stuck in failed state d
 
 ---
 
-Helm releases can get stuck in a failed state when resource conflicts prevent successful deployment. This blocks future upgrades and leaves your application in an inconsistent state. Understanding how to recover from failed releases is essential for maintaining Helm-managed applications.
+Helm releases can get stuck in a failed state when resource conflicts prevent successful deployment. This leaves your application in an inconsistent state until you correct the underlying issue with another upgrade, rollback, or cleanup action. Understanding how to recover from failed releases is essential for maintaining Helm-managed applications.
 
 ## Understanding Helm Release States
 
 Helm tracks release history and state in Kubernetes secrets or configmaps. Each deployment creates a new release revision with a status: deployed, failed, superseded, or pending. When a release fails, Helm records the failure but doesn't automatically clean up.
 
-Failed releases occur when resources can't be created due to conflicts, validation errors, or timeout issues. The previous successful release remains deployed, but you can't upgrade or rollback until you resolve the failure.
+Failed releases occur when resources can't be created due to conflicts, validation errors, or timeout issues. The previous successful release may remain deployed, but you need to resolve the failed revision with a successful upgrade, rollback, or cleanup.
 
 ## Identifying Failed Releases
 
 Check release status to see if any are stuck in failed state.
 
 ```bash
-# List all releases
+# List releases across all namespaces
 
 helm list -A
 
@@ -68,16 +68,16 @@ Immutable field changes are another common cause. Resources like Services have i
 
 Validation errors from admission webhooks or PSA policies can cause failures. Missing CRDs that the chart depends on also trigger failures.
 
-## Example: Service Port Conflict
+## Example: Service ClusterIP Conflict
 
-A common conflict occurs when changing Service port configurations.
+A common conflict occurs when a chart changes how it renders immutable Service fields.
 
 ```bash
 # Original deployment
-helm install my-app ./chart --set service.port=80
+helm install my-app ./chart --set service.clusterIP=10.96.10.20
 
-# Attempt to change port type (fails on some fields)
-helm upgrade my-app ./chart --set service.port=8080
+# Attempt to remove or change the allocated ClusterIP
+helm upgrade my-app ./chart --set service.clusterIP=""
 
 Error: UPGRADE FAILED: cannot patch "my-app" with kind Service:
 Service "my-app" is invalid: spec.clusterIP: Invalid value: "": field is immutable
@@ -111,7 +111,7 @@ When rollback isn't suitable, manually fix the conflicting resources.
 
 ```bash
 # Identify conflicting resources from error message
-helm upgrade my-app ./chart -n production --dry-run --debug
+helm upgrade my-app ./chart -n production --dry-run=server --debug
 
 # Delete the conflicting resource
 kubectl delete service my-app -n production
@@ -119,21 +119,21 @@ kubectl delete service my-app -n production
 # Retry the upgrade
 helm upgrade my-app ./chart -n production
 
-# Or force resource recreation
-helm upgrade my-app ./chart -n production --force
+# Or force resource replacement
+helm upgrade my-app ./chart -n production --force-replace
 ```
 
-The `--force` flag forces resource recreation by deleting and recreating them.
+The `--force-replace` flag forces resource updates through a replacement strategy.
 
 ## Cleaning Up Failed Release Metadata
 
-Sometimes you need to clean up failed release metadata without affecting deployed resources.
+Sometimes you need to clean up failed release metadata after deciding the failed release should be uninstalled.
 
 ```bash
-# Delete failed release revision (keeps resources)
-helm delete my-app -n production --keep-history
+# Uninstall the release and keep its history
+helm uninstall my-app -n production --keep-history
 
-# Or delete specific revision from history
+# Or delete specific release metadata manually
 kubectl delete secret -n production \
   sh.helm.release.v1.my-app.v5
 
@@ -144,7 +144,7 @@ kubectl get secrets -n production | grep sh.helm.release
 helm history my-app -n production
 ```
 
-Be careful with this approach as it can leave resources orphaned.
+Be careful with manual metadata deletion as it can leave Helm history inconsistent.
 
 ## Adopting Existing Resources
 
@@ -152,11 +152,11 @@ When resources exist but aren't managed by Helm, adopt them into the release.
 
 ```bash
 # Annotate existing resources to adopt them
-kubectl annotate deployment my-app -n production \
+kubectl annotate deployment my-app -n production --overwrite \
   meta.helm.sh/release-name=my-app \
   meta.helm.sh/release-namespace=production
 
-kubectl label deployment my-app -n production \
+kubectl label deployment my-app -n production --overwrite \
   app.kubernetes.io/managed-by=Helm
 
 # Retry Helm operation
@@ -185,22 +185,22 @@ helm install my-app ./app-chart -n production
 
 Separate CRD installation from application deployment prevents conflicts.
 
-## Using Helm Upgrade --force
+## Using Helm Upgrade --force-replace
 
-The force flag recreates resources that have conflicts.
+The force-replace flag recreates resources that have conflicts.
 
 ```bash
-# Force recreation of all resources
-helm upgrade my-app ./chart -n production --force
+# Force replacement where needed
+helm upgrade my-app ./chart -n production --force-replace
 
 # Combine with wait for completion
-helm upgrade my-app ./chart -n production --force --wait --timeout 10m
+helm upgrade my-app ./chart -n production --force-replace --wait --timeout 10m
 
-# Force with atomic rollback on failure
-helm upgrade my-app ./chart -n production --force --atomic
+# Force with rollback on failure
+helm upgrade my-app ./chart -n production --force-replace --rollback-on-failure
 ```
 
-Force upgrades cause brief downtime as resources are deleted and recreated.
+Force-replace upgrades can cause brief downtime as resources are replaced.
 
 ## Debugging with Dry Run
 
@@ -208,7 +208,7 @@ Test upgrades before applying them to identify potential conflicts.
 
 ```bash
 # Dry run with debug output
-helm upgrade my-app ./chart -n production --dry-run --debug
+helm upgrade my-app ./chart -n production --dry-run=server --debug
 
 # Validate chart without installing
 helm template my-app ./chart -n production | kubectl apply --dry-run=server -f -
@@ -254,19 +254,19 @@ kubectl describe pod my-app-xxx -n production
 
 StatefulSets and complex applications often need longer timeouts.
 
-## Atomic Upgrades
+## Rollback-on-Failure Upgrades
 
-Use atomic flag to automatically rollback on failure.
+Use rollback-on-failure to automatically rollback on failure.
 
 ```bash
-# Atomic upgrade (auto-rollback on failure)
-helm upgrade my-app ./chart -n production --atomic --timeout 10m
+# Upgrade with auto-rollback on failure
+helm upgrade my-app ./chart -n production --rollback-on-failure --timeout 10m
 
 # If upgrade fails, Helm automatically rolls back
 # No manual intervention needed
 ```
 
-Atomic upgrades prevent stuck failed states by auto-recovering.
+Rollback-on-failure upgrades prevent stuck failed states by auto-recovering.
 
 ## Cleaning Up Release Completely
 
@@ -339,7 +339,7 @@ Always test Helm upgrades in staging environments first. Use `--dry-run` and `he
 
 Set appropriate timeouts for your workloads. Complex applications need more time to deploy.
 
-Use `--atomic` flag for production upgrades to automatically rollback on failure.
+Use `--rollback-on-failure` flag for production upgrades to automatically rollback on failure.
 
 Keep Helm charts versioned and stored in chart repositories. This makes rollbacks reliable.
 
