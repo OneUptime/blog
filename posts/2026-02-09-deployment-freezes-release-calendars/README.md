@@ -28,6 +28,8 @@ package main
 
 import (
     "encoding/json"
+    "fmt"
+    "log"
     "net/http"
     "time"
 
@@ -64,12 +66,23 @@ func getFreezeWindows() ([]FreezeWindow, error) {
     }, nil
 }
 
+func main() {
+    http.HandleFunc("/validate", handleAdmission)
+    log.Fatal(http.ListenAndServeTLS(
+        ":8443",
+        "/etc/webhook/certs/tls.crt",
+        "/etc/webhook/certs/tls.key",
+        nil,
+    ))
+}
+
 func handleAdmission(w http.ResponseWriter, r *http.Request) {
     var admissionReview admissionv1.AdmissionReview
     if err := json.NewDecoder(r.Body).Decode(&admissionReview); err != nil {
         http.Error(w, err.Error(), http.StatusBadRequest)
         return
     }
+    w.Header().Set("Content-Type", "application/json")
 
     // Check if we're in a freeze window
     freezeWindows, err := getFreezeWindows()
@@ -79,7 +92,11 @@ func handleAdmission(w http.ResponseWriter, r *http.Request) {
     }
 
     request := admissionReview.Request
-    now := time.Now()
+    if request == nil {
+        respondError(w, admissionReview, "missing admission request")
+        return
+    }
+    now := time.Now().UTC()
 
     for _, window := range freezeWindows {
         if now.After(window.Start) && now.Before(window.End) {
@@ -93,6 +110,34 @@ func handleAdmission(w http.ResponseWriter, r *http.Request) {
 
     // No freeze active - allow the deployment
     respondAllowed(w, admissionReview)
+}
+
+func contains(values []string, target string) bool {
+    for _, value := range values {
+        if value == target {
+            return true
+        }
+    }
+    return false
+}
+
+func respondError(w http.ResponseWriter, review admissionv1.AdmissionReview, message string) {
+    response := admissionv1.AdmissionReview{
+        TypeMeta: metav1.TypeMeta{
+            APIVersion: "admission.k8s.io/v1",
+            Kind:       "AdmissionReview",
+        },
+        Response: &admissionv1.AdmissionResponse{
+            Allowed: false,
+            Result: &metav1.Status{
+                Message: message,
+            },
+        },
+    }
+    if review.Request != nil {
+        response.Response.UID = review.Request.UID
+    }
+    json.NewEncoder(w).Encode(response)
 }
 
 func respondDenied(w http.ResponseWriter, review admissionv1.AdmissionReview, window FreezeWindow) {
@@ -184,7 +229,7 @@ kind: ValidatingWebhookConfiguration
 metadata:
   name: freeze-enforcement
 webhooks:
-  - name: freeze.deployment.k8s.io
+  - name: freeze.company.com
     clientConfig:
       service:
         name: freeze-webhook
@@ -310,19 +355,46 @@ metadata:
     freeze.company.com/override: "true"
     freeze.company.com/override-reason: "Critical security patch CVE-2026-12345"
     freeze.company.com/override-approver: "john.doe@company.com"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-server
+  template:
+    metadata:
+      labels:
+        app: api-server
+    spec:
+      containers:
+        - name: api-server
+          image: your-registry/api-server:patched
 ```
 
-Update the webhook to honor this annotation:
+Update the webhook to honor this annotation by checking it before `respondDenied`:
+
+```go
+if isOverrideValid(request) {
+    respondAllowed(w, admissionReview)
+    return
+}
+respondDenied(w, admissionReview, window)
+return
+```
+
+Then add the override validation helper:
 
 ```go
 func isOverrideValid(request *admissionv1.AdmissionRequest) bool {
-    // Parse the deployment object
-    var deployment appsv1.Deployment
-    json.Unmarshal(request.Object.Raw, &deployment)
+    // Parse the deployment metadata
+    var deployment metav1.PartialObjectMetadata
+    if err := json.Unmarshal(request.Object.Raw, &deployment); err != nil {
+        return false
+    }
 
-    override := deployment.Annotations["freeze.company.com/override"]
-    reason := deployment.Annotations["freeze.company.com/override-reason"]
-    approver := deployment.Annotations["freeze.company.com/override-approver"]
+    annotations := deployment.GetAnnotations()
+    override := annotations["freeze.company.com/override"]
+    reason := annotations["freeze.company.com/override-reason"]
+    approver := annotations["freeze.company.com/override-approver"]
 
     if override != "true" {
         return false
@@ -334,7 +406,8 @@ func isOverrideValid(request *admissionv1.AdmissionRequest) bool {
     }
 
     // Log the override for audit trail
-    logOverride(deployment.Name, reason, approver)
+    log.Printf("freeze override accepted for deployment %s: reason=%q approver=%q",
+        deployment.Name, reason, approver)
 
     return true
 }
@@ -434,7 +507,8 @@ metadata:
   name: freeze-notifier
   namespace: kube-system
 spec:
-  schedule: "0 9,17 * * *"  # 9 AM and 5 PM daily
+  schedule: "0 9,17 * * *"  # 9 AM and 5 PM UTC daily
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
