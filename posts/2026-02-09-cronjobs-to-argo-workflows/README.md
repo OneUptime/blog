@@ -80,7 +80,7 @@ spec:
         spec:
           containers:
           - name: backup
-            image: postgres:15
+            image: myorg/postgres-aws-cli:15
             command:
             - /bin/bash
             - -c
@@ -140,7 +140,7 @@ spec:
         - |
           BACKUP_FILE="mydb-$(date +%Y%m%d-%H%M%S).sql.gz"
           pg_dump -h postgres.production.svc -U admin mydb | gzip > /backup/$BACKUP_FILE
-          echo $BACKUP_FILE > /tmp/backup-file.txt
+          echo $BACKUP_FILE > /backup/backup-file.txt
         env:
         - name: PGPASSWORD
           valueFrom:
@@ -154,7 +154,7 @@ spec:
         parameters:
         - name: backup-file
           valueFrom:
-            path: /tmp/backup-file.txt
+            path: /backup/backup-file.txt
 
     - name: s3-upload
       inputs:
@@ -162,7 +162,7 @@ spec:
         - name: backup-file
       container:
         image: amazon/aws-cli
-        command: [bash, -c]
+        command: [sh, -c]
         args:
         - |
           aws s3 cp /backup/{{inputs.parameters.backup-file}} \
@@ -182,9 +182,14 @@ spec:
               name: aws-credentials
               key: secret-access-key
 
-    volumes:
-    - name: backup-volume
-      emptyDir: {}
+    volumeClaimTemplates:
+    - metadata:
+        name: backup-volume
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
 ```
 
 Apply the CronWorkflow:
@@ -276,7 +281,7 @@ spec:
           if pg_dump -h postgres.production.svc -U admin mydb | gzip > /backup/$BACKUP_FILE; then
             SIZE=$(stat -f%z /backup/$BACKUP_FILE 2>/dev/null || stat -c%s /backup/$BACKUP_FILE)
             echo "Backup completed. Size: $SIZE bytes"
-            echo $BACKUP_FILE > /tmp/backup-file.txt
+            echo $BACKUP_FILE > /backup/backup-file.txt
             exit 0
           else
             echo "Backup failed"
@@ -295,7 +300,7 @@ spec:
         parameters:
         - name: backup-file
           valueFrom:
-            path: /tmp/backup-file.txt
+            path: /backup/backup-file.txt
 
     - name: s3-upload-with-retry
       inputs:
@@ -309,7 +314,7 @@ spec:
           factor: 2
       container:
         image: amazon/aws-cli
-        command: [bash, -c]
+        command: [sh, -c]
         args:
         - |
           aws s3 cp /backup/{{inputs.parameters.backup-file}} \
@@ -318,6 +323,17 @@ spec:
         volumeMounts:
         - name: backup-volume
           mountPath: /backup
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: secret-access-key
 
     - name: verify-s3-backup
       inputs:
@@ -325,7 +341,7 @@ spec:
         - name: backup-file
       container:
         image: amazon/aws-cli
-        command: [bash, -c]
+        command: [sh, -c]
         args:
         - |
           aws s3 ls s3://backups/database/{{inputs.parameters.backup-file}}
@@ -336,6 +352,17 @@ spec:
             echo "Backup not found in S3"
             exit 1
           fi
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: secret-access-key
 
     - name: cleanup-handler
       container:
@@ -350,14 +377,19 @@ spec:
             echo "Backup workflow failed - alerting required"
           fi
 
-    volumes:
-    - name: backup-volume
-      emptyDir: {}
+    volumeClaimTemplates:
+    - metadata:
+        name: backup-volume
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
 ```
 
 ## Complex Multi-Step Workflow with Conditionals
 
-Convert a complex set of interdependent CronJobs into a single orchestrated workflow:
+Convert a complex set of interdependent CronJobs into a single orchestrated workflow. Before running workflows that pass artifacts between tasks, configure an artifact repository for Argo Workflows:
 
 ```yaml
 # cronworkflow-etl-pipeline.yaml
@@ -396,7 +428,7 @@ spec:
               value: "orders"
 
         - name: check-data-quality-users
-          dependencies: [extract-users]
+          depends: "extract-users.Succeeded"
           template: data-quality-check
           arguments:
             parameters:
@@ -407,7 +439,7 @@ spec:
               from: "{{tasks.extract-users.outputs.artifacts.data-file}}"
 
         - name: check-data-quality-orders
-          dependencies: [extract-orders]
+          depends: "extract-orders.Succeeded"
           template: data-quality-check
           arguments:
             parameters:
@@ -418,8 +450,8 @@ spec:
               from: "{{tasks.extract-orders.outputs.artifacts.data-file}}"
 
         - name: transform-users
-          dependencies: [check-data-quality-users]
-          when: "{{tasks.check-data-quality-users.outputs.result}} == success"
+          depends: "check-data-quality-users.Succeeded"
+          when: "{{tasks.check-data-quality-users.outputs.parameters.quality-status}} == success"
           template: transform-data
           arguments:
             parameters:
@@ -430,8 +462,8 @@ spec:
               from: "{{tasks.extract-users.outputs.artifacts.data-file}}"
 
         - name: transform-orders
-          dependencies: [check-data-quality-orders]
-          when: "{{tasks.check-data-quality-orders.outputs.result}} == success"
+          depends: "check-data-quality-orders.Succeeded"
+          when: "{{tasks.check-data-quality-orders.outputs.parameters.quality-status}} == success"
           template: transform-data
           arguments:
             parameters:
@@ -442,7 +474,7 @@ spec:
               from: "{{tasks.extract-orders.outputs.artifacts.data-file}}"
 
         - name: load-to-warehouse
-          dependencies: [transform-users, transform-orders]
+          depends: "transform-users.Succeeded && transform-orders.Succeeded"
           template: load-data
           arguments:
             artifacts:
@@ -452,8 +484,7 @@ spec:
               from: "{{tasks.transform-orders.outputs.artifacts.transformed-file}}"
 
         - name: send-success-notification
-          dependencies: [load-to-warehouse]
-          when: "{{tasks.load-to-warehouse.outputs.result}} == success"
+          depends: "load-to-warehouse.Succeeded"
           template: send-notification
           arguments:
             parameters:
@@ -461,8 +492,7 @@ spec:
               value: "ETL pipeline completed successfully"
 
         - name: send-failure-notification
-          dependencies: [load-to-warehouse]
-          when: "{{tasks.load-to-warehouse.outputs.result}} == failure"
+          depends: "extract-users.Failed || extract-orders.Failed || check-data-quality-users.Failed || check-data-quality-orders.Failed || transform-users.Failed || transform-orders.Failed || load-to-warehouse.Failed || load-to-warehouse.Errored"
           template: send-notification
           arguments:
             parameters:
@@ -511,7 +541,13 @@ spec:
               sys.exit(1)
 
           print(f"Quality check passed: {len(rows)} rows validated")
-          print("success")  # This becomes the task output
+          with open('/tmp/quality-status.txt', 'w') as f:
+              f.write('success')
+      outputs:
+        parameters:
+        - name: quality-status
+          valueFrom:
+            path: /tmp/quality-status.txt
 
     - name: transform-data
       inputs:
@@ -563,11 +599,11 @@ spec:
         command: [sh, -c]
         args:
         - |
-          curl -X POST http://warehouse-api.data.svc:8080/load \
+          curl -f -X POST http://warehouse-api.data.svc:8080/load \
             -H "Content-Type: application/json" \
             --data-binary @/tmp/users.json
 
-          curl -X POST http://warehouse-api.data.svc:8080/load \
+          curl -f -X POST http://warehouse-api.data.svc:8080/load \
             -H "Content-Type: application/json" \
             --data-binary @/tmp/orders.json
 
@@ -582,7 +618,7 @@ spec:
         command: [sh, -c]
         args:
         - |
-          curl -X POST https://hooks.slack.com/services/YOUR/WEBHOOK/URL \
+          curl -f -X POST https://hooks.slack.com/services/YOUR/WEBHOOK/URL \
             -H "Content-Type: application/json" \
             -d "{\"text\": \"{{inputs.parameters.message}}\"}"
 ```
@@ -593,7 +629,7 @@ Apply and monitor the workflow:
 kubectl apply -f cronworkflow-etl-pipeline.yaml
 
 # Watch workflow execution
-argo watch -n data
+argo watch -n data @latest
 
 # Get workflow logs
 argo logs -n data @latest
@@ -601,7 +637,7 @@ argo logs -n data @latest
 
 ## Migrating Multiple Related CronJobs
 
-Create a migration script to automate conversion of multiple CronJobs:
+Create a migration script to generate starter CronWorkflow manifests for multiple CronJobs:
 
 ```bash
 #!/bin/bash
@@ -610,13 +646,15 @@ Create a migration script to automate conversion of multiple CronJobs:
 NAMESPACE="production"
 
 # Get all CronJobs
-CRONJOBS=$(kubectl get cronjobs -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}')
+CRONJOBS=$(kubectl get cronjobs -n "$NAMESPACE" -o jsonpath='{.items[*].metadata.name}')
 
 for cj in $CRONJOBS; do
   echo "Migrating CronJob: $cj"
 
   # Extract schedule
-  SCHEDULE=$(kubectl get cronjob $cj -n $NAMESPACE -o jsonpath='{.spec.schedule}')
+  SCHEDULE=$(kubectl get cronjob "$cj" -n "$NAMESPACE" -o jsonpath='{.spec.schedule}')
+  CONTAINER=$(kubectl get cronjob "$cj" -n "$NAMESPACE" -o json | jq -c '.spec.jobTemplate.spec.template.spec.containers[0]')
+  VOLUMES=$(kubectl get cronjob "$cj" -n "$NAMESPACE" -o json | jq -c '.spec.jobTemplate.spec.template.spec.volumes // []')
 
   # Create CronWorkflow manifest
   cat <<EOF > cronworkflow-$cj.yaml
@@ -632,10 +670,8 @@ spec:
     entrypoint: main
     templates:
     - name: main
-      container:
-        # Extract from original CronJob
-        image: $(kubectl get cronjob $cj -n $NAMESPACE -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].image}')
-        command: $(kubectl get cronjob $cj -n $NAMESPACE -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].command}')
+      container: $CONTAINER
+      volumes: $VOLUMES
 EOF
 
   echo "Created cronworkflow-$cj.yaml"
@@ -648,6 +684,22 @@ Set up Prometheus monitoring for Argo Workflows:
 
 ```yaml
 # servicemonitor-argo.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: workflow-controller
+  name: workflow-controller-metrics
+  namespace: argo
+spec:
+  ports:
+  - name: metrics
+    port: 9090
+    protocol: TCP
+    targetPort: 9090
+  selector:
+    app: workflow-controller
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -677,7 +729,7 @@ spec:
     interval: 30s
     rules:
     - alert: ArgoWorkflowFailed
-      expr: argo_workflow_status_phase{phase="Failed"} > 0
+      expr: argo_workflows_count{phase="Failed"} > 0
       for: 5m
       labels:
         severity: warning
