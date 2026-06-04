@@ -30,8 +30,6 @@ The syntax accepts duration strings with unit suffixes.
 ```yaml
 # Give the service 30 seconds to shut down gracefully
 
-version: "3.8"
-
 services:
   api:
     image: my-api:latest
@@ -247,8 +245,6 @@ Here is a complete Compose file with appropriate grace periods for each service.
 
 ```yaml
 # Production stack with tuned grace periods
-version: "3.8"
-
 services:
   # Reverse proxy - drain connections
   nginx:
