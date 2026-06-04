@@ -78,8 +78,8 @@ Automatically detect and add resource attributes from the environment:
 
 ```yaml
 processors:
-  resourcedetection:
-    # Detector order matters - first match wins
+  resource_detection:
+    # Detector order matters - first detector to add an attribute wins
     detectors:
     - env          # Environment variables
     - system       # System hostname, OS
@@ -87,7 +87,8 @@ processors:
     - ec2          # AWS EC2 metadata
     - gcp          # Google Cloud metadata
     - azure        # Azure VM metadata
-    - k8s          # Kubernetes metadata
+    - eks          # Amazon EKS metadata
+    - aks          # Azure AKS metadata
 
     timeout: 5s
     override: false  # Don't override existing attributes
@@ -102,20 +103,15 @@ processors:
     # EC2 detector config
     ec2:
       tags:
-      - ^tag:Name$
-      - ^tag:Environment$
-      - ^tag:Team$
-
-    # Kubernetes detector config
-    k8s:
-      auth_type: serviceAccount
-      node_from_env_var: K8S_NODE_NAME
+      - ^Name$
+      - ^Environment$
+      - ^Team$
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
+      processors: [resource_detection, batch]
       exporters: [otlp]
 ```
 
@@ -177,33 +173,17 @@ processors:
     # Hash email addresses
     - key: user.email
       action: hash
-    # Redact sensitive paths
+    # Extract user IDs from sensitive paths
     - key: http.target
-      pattern: /api/users/([0-9]+)/private
+      pattern: /api/users/(?P<user_id>[0-9]+)/private
       action: extract
-      extracted_attribute: user.id
-    - key: http.target
-      pattern: /api/users/[0-9]+/private
-      value: /api/users/{user_id}/private
-      action: update
 
   attributes/standardize:
     actions:
-    # Convert to lowercase
-    - key: http.method
-      action: update
-      value: "${lowercase(http.method)}"
     # Extract hostname from URL
     - key: http.url
-      pattern: "^https?://([^/]+)"
+      pattern: "^https?://(?P<http_host>[^/]+)"
       action: extract
-      extracted_attribute: http.host
-    # Add error flag
-    - key: error
-      value: true
-      action: insert
-      from_context: "status.code"
-      pattern: "^[45][0-9]{2}$"
 
 service:
   pipelines:
@@ -220,29 +200,25 @@ Drop unwanted telemetry based on criteria:
 ```yaml
 processors:
   filter/drop-health-checks:
-    traces:
-      span:
-      - 'attributes["http.target"] == "/health"'
-      - 'attributes["http.target"] == "/readiness"'
-      - 'attributes["http.target"] == "/livez"'
+    trace_conditions:
+    - 'span.attributes["http.target"] == "/health"'
+    - 'span.attributes["http.target"] == "/readiness"'
+    - 'span.attributes["http.target"] == "/livez"'
 
   filter/drop-debug-logs:
-    logs:
-      log_record:
-      - 'severity_text == "DEBUG"'
-      - 'severity_text == "TRACE"'
+    log_conditions:
+    - 'log.severity_text == "DEBUG"'
+    - 'log.severity_text == "TRACE"'
 
   filter/drop-low-value-metrics:
-    metrics:
-      metric:
-      - 'name == "process.runtime.go.mem.heap_idle"'
-      - 'name == "process.runtime.go.gc.count"'
+    metric_conditions:
+    - 'metric.name == "process.runtime.go.mem.heap_idle"'
+    - 'metric.name == "process.runtime.go.gc.count"'
 
   filter/drop-internal:
-    traces:
-      span:
-      - 'resource.attributes["service.namespace"] == "internal"'
-      - 'IsMatch(resource.attributes["service.name"], ".*-test")'
+    trace_conditions:
+    - 'resource.attributes["service.namespace"] == "internal"'
+    - 'IsMatch(resource.attributes["service.name"], ".*-test")'
 
 service:
   pipelines:
@@ -296,7 +272,7 @@ processors:
         - payment-service
         - auth-service
 
-    # Sample based on trace ID (for consistent sampling)
+    # Sample based on trace state
     - name: trace-id-hash
       type: trace_state
       trace_state:
@@ -326,14 +302,13 @@ processors:
       separator: " "
       to_attributes:
         rules:
-        - pattern: "^GET /api/users/[0-9]+$"
-          name: "GET /api/users/{id}"
+        - "^GET /api/users/(?P<id>[0-9]+)$"
 
   span/add-attributes:
-    status:
-      code: Error
-      conditions:
-      - 'attributes["http.status_code"] >= 500'
+    name:
+      to_attributes:
+        rules:
+        - "^GET /api/users/(?P<id>[0-9]+)$"
 
 service:
   pipelines:
@@ -354,34 +329,34 @@ processors:
     - context: span
       statements:
       # Add service version from resource
-      - set(attributes["service.version"], resource.attributes["service.version"])
+      - set(span.attributes["service.version"], resource.attributes["service.version"])
 
       # Normalize HTTP method
-      - replace_pattern(attributes["http.method"], "get", "GET")
+      - replace_pattern(span.attributes["http.method"], "(?i)^get$", "GET")
 
       # Extract user ID from path
-      - set(attributes["user.id"], ExtractPatterns(attributes["http.target"], "/users/(?P<id>[0-9]+)"))
+      - merge_maps(span.attributes, ExtractPatterns(span.attributes["http.target"], "/users/(?P<user_id>[0-9]+)"), "upsert")
 
       # Set error flag
-      - set(attributes["error"], true) where status.code == STATUS_CODE_ERROR
+      - set(span.attributes["error"], true) where span.status.code == STATUS_CODE_ERROR
 
     metric_statements:
-    - context: metric
+    - context: datapoint
       statements:
       # Add cluster name to all metrics
       - set(resource.attributes["cluster"], "production")
 
       # Convert bytes to megabytes
-      - set(gauge.data_points[0].value, gauge.data_points[0].value / 1048576) where name == "memory.usage"
+      - set(datapoint.value_double, datapoint.value_double / 1048576) where metric.name == "memory.usage"
 
     log_statements:
     - context: log
       statements:
       # Parse JSON body
-      - merge_maps(attributes, ParseJSON(body), "upsert")
+      - merge_maps(log.attributes, ParseJSON(log.body), "upsert")
 
       # Add timestamp
-      - set(attributes["processed_at"], Now())
+      - set(log.attributes["processed_at"], Now())
 
 service:
   pipelines:
@@ -401,8 +376,6 @@ processors:
     check_interval: 1s
     limit_mib: 1024  # Hard limit
     spike_limit_mib: 256  # Spike allowance
-    limit_percentage: 75  # Use 75% of total memory
-    spike_limit_percentage: 20
 
 service:
   pipelines:
@@ -437,21 +410,23 @@ processors:
 
   # 2. Filter early to reduce processing
   filter/drop-health:
-    traces:
-      span:
-      - 'attributes["http.target"] == "/health"'
+    trace_conditions:
+    - 'span.attributes["http.target"] == "/health"'
 
   # 3. Sample before expensive operations
   tail_sampling:
     policies:
     - name: errors
       type: status_code
+      status_code:
+        status_codes: [ERROR]
 
   # 4. Add attributes/resources
   resource:
     attributes:
     - key: cluster
       value: prod
+      action: insert
 
   # 5. Batch last before export
   batch:
@@ -474,7 +449,7 @@ service:
 
 Debug processor issues:
 
-```bash
+```yaml
 # Enable detailed logging
 service:
   telemetry:
@@ -484,7 +459,9 @@ service:
       encoding: json
       output_paths:
       - stderr
+```
 
+```bash
 # Check processor metrics
 kubectl port-forward -n observability svc/otel-collector 8888:8888
 curl http://localhost:8888/metrics | grep processor
