@@ -33,7 +33,6 @@ package main
 
 import (
     "context"
-    "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/trace"
     "go.uber.org/zap"
 )
@@ -57,9 +56,9 @@ func processRequest(ctx context.Context, logger *zap.Logger) {
 **Java with Log4j2**:
 ```java
 import io.opentelemetry.api.trace.Span;
+import org.apache.logging.log4j.CloseableThreadContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.ThreadContext;
 
 public class OrderService {
     private static final Logger logger = LogManager.getLogger(OrderService.class);
@@ -70,12 +69,13 @@ public class OrderService {
         String spanId = span.getSpanContext().getSpanId();
 
         // Add to MDC for automatic inclusion in logs
-        ThreadContext.put("trace_id", traceId);
-        ThreadContext.put("span_id", spanId);
+        try (CloseableThreadContext.Instance ignored = CloseableThreadContext
+                .put("trace_id", traceId)
+                .put("span_id", spanId)) {
+            logger.info("Processing order: {}", orderId);
 
-        logger.info("Processing order: {}", orderId);
-
-        // Business logic
+            // Business logic
+        }
     }
 }
 ```
@@ -102,7 +102,7 @@ def process_order(order_id):
 
 ## Extracting Trace IDs with Fluent Bit
 
-Configure Fluent Bit to extract and label trace IDs:
+Configure Fluent Bit to extract trace IDs and attach them as structured metadata:
 
 ```yaml
 apiVersion: v1
@@ -120,26 +120,19 @@ data:
         Mem_Buf_Limit     5MB
 
     [FILTER]
-        Name                kubernetes
-        Match               kube.*
-        Kube_URL            https://kubernetes.default.svc:443
-        Merge_Log           On
-        Keep_Log            Off
-
-    # Extract trace_id from JSON logs
-    [FILTER]
         Name          parser
         Match         kube.*
         Key_Name      log
         Parser        json
         Reserve_Data  On
+        Preserve_Key  On
 
-    # Extract trace context as labels
     [FILTER]
-        Name          nest
-        Match         kube.*
-        Operation     lift
-        Nested_under  log
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Merge_Log           On
+        Keep_Log            Off
 
     # Add trace_id as top-level field if present
     [FILTER]
@@ -153,9 +146,9 @@ data:
         Match           kube.*
         Host            loki.logging.svc.cluster.local
         Port            3100
-        Labels          job=kubernetes
-        # Include trace_id in labels for correlation
-        Label_keys      $trace_id,$span_id
+        Labels          job=kubernetes,namespace=$kubernetes['namespace_name']
+        # Store high-cardinality IDs as structured metadata, not stream labels
+        Structured_Metadata trace_id=$trace_id,span_id=$span_id,pod=$kubernetes['pod_name']
         RemoveKeys      trace_id,span_id
 
   extract-trace.lua: |
@@ -185,7 +178,7 @@ data:
 
 ## Configuring Loki for Trace Correlation
 
-Enable trace correlation in Loki configuration:
+Use a Loki schema that supports structured metadata:
 
 ```yaml
 apiVersion: v1
@@ -211,30 +204,24 @@ data:
     schema_config:
       configs:
       - from: 2024-01-01
-        store: boltdb-shipper
+        store: tsdb
         object_store: filesystem
-        schema: v11
+        schema: v13
         index:
           prefix: index_
           period: 24h
 
     storage_config:
-      boltdb_shipper:
+      tsdb_shipper:
         active_index_directory: /loki/index
         cache_location: /loki/cache
-        shared_store: filesystem
       filesystem:
         directory: /loki/chunks
 
-    # Enable trace correlation
+    # Enable structured metadata for trace and span IDs
     limits_config:
-      enforce_metric_name: false
+      allow_structured_metadata: true
       max_label_names_per_series: 30
-
-    # Link to Tempo for traces
-    tempo:
-      enabled: true
-      datasource_uid: tempo-uid
 ```
 
 ## Querying Logs by Trace ID
@@ -244,17 +231,17 @@ Find all logs for a specific trace:
 ```logql
 # Find all logs for a trace
 
-{trace_id="4bf92f3577b34da6a3ce929d0e0e4736"}
+{job="kubernetes"} | trace_id="4bf92f3577b34da6a3ce929d0e0e4736"
 
 # Find logs with trace IDs (any trace)
-{trace_id!=""}
+{job="kubernetes"} | trace_id!=""
 
-# Find errors for a specific trace
-{trace_id="4bf92f3577b34da6a3ce929d0e0e4736", level="error"}
+# Find errors for a specific trace in JSON logs
+{job="kubernetes"} | trace_id="4bf92f3577b34da6a3ce929d0e0e4736" | json | level="error"
 
 # Count logs per trace
 sum by (trace_id) (
-  count_over_time({namespace="production", trace_id!=""}[1h])
+  count_over_time({namespace="production"} | trace_id!="" [1h])
 )
 ```
 
@@ -262,60 +249,48 @@ sum by (trace_id) (
 
 Create automatic links between logs and traces:
 
-```json
-{
-  "datasource": "Loki",
-  "dataLinks": [
-    {
-      "title": "View Trace in Tempo",
-      "url": "/explore?left=%7B%22queries%22:%5B%7B%22refId%22:%22A%22,%22datasource%22:%22Tempo%22,%22query%22:%22${__value.raw}%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D",
-      "urlDisplayLabel": "Trace: ${__value.raw}",
-      "field": "trace_id"
-    }
-  ]
-}
+```yaml
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki.logging.svc.cluster.local:3100
+    jsonData:
+      derivedFields:
+        - datasourceUid: tempo
+          matcherType: label
+          matcherRegex: 'trace[_]?id'
+          name: TraceID
+          url: '$${__value.raw}'
+          urlDisplayLabel: 'View Trace in Tempo'
 ```
 
 Configure Tempo to link back to logs:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: tempo-config
-  namespace: tracing
-data:
-  tempo.yaml: |
-    server:
-      http_listen_port: 3200
+apiVersion: 1
 
-    distributor:
-      receivers:
-        jaeger:
-          protocols:
-            grpc:
-        otlp:
-          protocols:
-            grpc:
-
-    ingester:
-      trace_idle_period: 10s
-      max_block_bytes: 1048576
-      max_block_duration: 5m
-
-    storage:
-      trace:
-        backend: local
-        local:
-          path: /var/tempo/traces
-
-    # Link to Loki for logs
-    overrides:
-      trace_id_label_name: "trace_id"
-      user_configurable_overrides:
-        log_derived_labels:
-          - name: "trace_id"
-            source: "trace_id"
+datasources:
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo.tracing.svc.cluster.local:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-2s'
+        spanEndTimeShift: '2s'
+        tags:
+          - key: service.name
+            value: service_name
+          - key: namespace
+          - key: pod
+        filterByTraceID: true
+        filterBySpanID: false
 ```
 
 ## Building Correlation Dashboard
@@ -341,7 +316,7 @@ Create a Grafana dashboard with linked logs and traces:
         "type": "logs",
         "datasource": "Loki",
         "targets": [{
-          "expr": "{namespace=\"$namespace\", trace_id=\"$trace_id\"}",
+          "expr": "{namespace=\"$namespace\"} | trace_id=\"$trace_id\"",
           "refId": "A"
         }]
       },
@@ -350,7 +325,7 @@ Create a Grafana dashboard with linked logs and traces:
         "type": "bargauge",
         "datasource": "Loki",
         "targets": [{
-          "expr": "sum by (trace_id) (count_over_time({namespace=\"$namespace\", level=\"error\", trace_id!=\"\"}[1h]))"
+          "expr": "sum by (trace_id) (count_over_time({namespace=\"$namespace\"} | trace_id!=\"\" | json | level=\"error\" [1h]))"
         }]
       }
     ],
@@ -375,38 +350,22 @@ Create a Grafana dashboard with linked logs and traces:
 
 ## Implementing Automatic Correlation
 
-Use Grafana's exemplar feature for automatic correlation:
+Use Grafana's exemplar feature for metric-to-trace correlation:
 
 ```yaml
-# Loki config with exemplars
-ruler:
-  alertmanager_url: http://alertmanager:9093
-  enable_api: true
-  enable_sharding: false
-  storage:
-    type: local
-    local:
-      directory: /loki/rules
-
-  # Enable exemplars
-  wal:
-    dir: /loki/ruler-wal
-  remote_write:
-    enabled: true
-    client:
-      url: http://prometheus:9090/api/v1/write
-
 # Prometheus config
 global:
   evaluation_interval: 15s
 
-remote_write:
-  - url: http://tempo:3200/api/v1/push
-    write_relabel_configs:
-      - source_labels: [__name__]
-        regex: '.*'
-        target_label: __tmp_exemplar_trace_id
-        replacement: '${trace_id}'
+scrape_configs:
+  - job_name: orders
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['orders:8080']
+    scrape_protocols: [OpenMetricsText1.0.0, OpenMetricsText0.0.1, PrometheusText0.0.4]
+
+# Start Prometheus with:
+# --enable-feature=exemplar-storage
 ```
 
 ## Best Practices
@@ -414,7 +373,7 @@ remote_write:
 1. **Standardize trace ID format**: Use consistent field names across services
 2. **Include span IDs**: Enables precise log-to-span mapping
 3. **Propagate context**: Ensure trace context flows through all service calls
-4. **Index trace IDs carefully**: Balance queryability with cardinality
+4. **Store trace IDs as structured metadata**: Avoid high-cardinality stream labels
 5. **Sample intelligently**: Keep all logs for sampled traces
 6. **Add correlation metadata**: Include service name, operation, etc.
 7. **Test correlation**: Verify links work in both directions
@@ -432,10 +391,10 @@ remote_write:
 - Ensure trace ID format is consistent
 
 **Performance issues**:
-- Index trace IDs in Loki
-- Limit trace ID cardinality
+- Store trace IDs as structured metadata in Loki
+- Keep high-cardinality fields out of stream labels
 - Use appropriate retention policies
 
 ## Conclusion
 
-Correlating logs with traces creates a powerful troubleshooting workflow. By ensuring trace IDs flow through your entire observability stack, you enable quick navigation between detailed logs and high-level trace views. Start by instrumenting your applications to emit trace IDs, configure your log pipeline to extract and index them, and set up Grafana to link the data sources. This investment pays dividends during incident response when every second counts.
+Correlating logs with traces creates a powerful troubleshooting workflow. By ensuring trace IDs flow through your entire observability stack, you enable quick navigation between detailed logs and high-level trace views. Start by instrumenting your applications to emit trace IDs, configure your log pipeline to extract and store them as structured metadata, and set up Grafana to link the data sources. This investment pays dividends during incident response when every second counts.
