@@ -8,7 +8,7 @@ Description: A comprehensive guide to configuring Elasticsearch snapshot and res
 
 ---
 
-Elasticsearch is one of the most widely deployed search and analytics engines in production environments. When running Elasticsearch on Kubernetes, implementing a robust backup and restore strategy is not optional. Losing an index due to node failure, accidental deletion, or cluster corruption without a backup can be catastrophic. This guide walks through setting up Elasticsearch snapshot and restore using S3-compatible storage on Kubernetes, covering everything from plugin installation to automated snapshot lifecycle management.
+Elasticsearch is one of the most widely deployed search and analytics engines in production environments. When running Elasticsearch on Kubernetes, implementing a robust backup and restore strategy is not optional. Losing an index due to node failure, accidental deletion, or cluster corruption without a backup can be catastrophic. This guide walks through setting up Elasticsearch snapshot and restore using S3-compatible storage on Kubernetes, covering everything from S3 client configuration to automated snapshot lifecycle management.
 
 ## Why S3-Compatible Storage for Elasticsearch Snapshots
 
@@ -23,9 +23,9 @@ Before proceeding, ensure you have the following:
 - Access credentials (access key and secret key) for the S3 bucket
 - kubectl configured to interact with your cluster
 
-## Step 1: Deploy Elasticsearch with the Repository S3 Plugin
+## Step 1: Deploy Elasticsearch with S3 Repository Support
 
-If you are using ECK, you can specify the S3 repository plugin in your Elasticsearch custom resource. The plugin must be installed on every node in the cluster.
+If you are using ECK with Elasticsearch 8.12.0, S3 repository support is already included in Elasticsearch. You do not need to install a separate `repository-s3` plugin; just deploy the cluster normally and configure the S3 client settings in the following steps.
 
 ```yaml
 apiVersion: elasticsearch.k8s.elastic.co/v1
@@ -40,18 +40,9 @@ spec:
       count: 3
       config:
         node.store.allow_mmap: false
-      podTemplate:
-        spec:
-          initContainers:
-            - name: install-plugins
-              command:
-                - sh
-                - -c
-                - |
-                  bin/elasticsearch-plugin install --batch repository-s3
 ```
 
-This init container runs before Elasticsearch starts and installs the `repository-s3` plugin. The `--batch` flag suppresses interactive prompts.
+This creates a three-node Elasticsearch cluster managed by ECK. In older Elasticsearch versions where `repository-s3` was not bundled, any plugin installation had to be handled consistently on every node before startup.
 
 ## Step 2: Create a Kubernetes Secret for S3 Credentials
 
@@ -83,7 +74,7 @@ spec:
     - secretName: s3-credentials
 ```
 
-After applying the updated Elasticsearch resource, ECK will automatically reload the keystore. You can verify the keystore entries by exec-ing into a pod:
+After applying the updated Elasticsearch resource, ECK injects these settings into the keystore for each pod and watches the referenced secret for changes. You can verify the keystore entries by exec-ing into a pod:
 
 ```bash
 kubectl exec -it my-elasticsearch-es-default-0 -n elastic-system -- \
@@ -98,12 +89,12 @@ If you are using a non-AWS S3-compatible service like MinIO, you need to configu
 
 ```yaml
 config:
-  s3.client.default.endpoint: "minio.minio-system.svc.cluster.local:9000"
-  s3.client.default.protocol: "http"
+  s3.client.default.endpoint: "http://minio.minio-system.svc.cluster.local:9000"
+  s3.client.default.region: "us-east-1"
   s3.client.default.path_style_access: true
 ```
 
-For AWS S3, you can skip custom endpoint configuration. The default client settings will use the standard AWS endpoints. If your bucket is in a specific region, set:
+The `endpoint` should include the URL scheme. For S3-compatible services, also set the region value expected by that service. For AWS S3, you can skip custom endpoint configuration. The default client settings will use the standard AWS endpoints. If your bucket is in a specific region, set:
 
 ```yaml
 config:
@@ -112,7 +103,7 @@ config:
 
 ## Step 4: Register a Snapshot Repository
 
-Once the plugin is installed and credentials are configured, register a snapshot repository using the Elasticsearch API. You can do this through a port-forward or a Kubernetes Job.
+Once S3 repository support and credentials are configured, register a snapshot repository using the Elasticsearch API. You can do this through a port-forward or a Kubernetes Job.
 
 ```bash
 kubectl port-forward svc/my-elasticsearch-es-http 9200:9200 -n elastic-system
@@ -137,7 +128,7 @@ curl -k -u "elastic:$(kubectl get secret my-elasticsearch-es-elastic-user \
   }'
 ```
 
-The `compress` setting enables metadata compression. The `chunk_size` setting splits large files into manageable chunks, which is important for network reliability. The throughput settings prevent snapshots from saturating your network bandwidth.
+The `compress` setting enables metadata compression. The `chunk_size` setting limits the maximum size of objects written to the repository, so larger files are split across multiple objects. The throughput settings prevent snapshots from saturating your network bandwidth.
 
 Verify the repository:
 
@@ -263,10 +254,10 @@ curl -k -u "elastic:$PASSWORD" \
 
 ## Security Considerations
 
-Never store S3 credentials in plaintext in your Elasticsearch configuration files. Always use the Elasticsearch keystore mechanism, which encrypts secrets at rest. In ECK, the `secureSettings` approach handles this automatically.
+Never store S3 credentials in plaintext in your Elasticsearch configuration files. Always use the Elasticsearch keystore mechanism for secure settings; you can also password-protect the keystore in self-managed deployments. In ECK, the `secureSettings` approach handles keystore injection automatically.
 
-If running on AWS, consider using IAM Roles for Service Accounts (IRSA) instead of static credentials. This eliminates the need for long-lived access keys entirely. Annotate the Elasticsearch service account with the IAM role ARN, and the S3 plugin will pick up temporary credentials from the instance metadata service.
+If running on AWS, consider using IAM Roles for Service Accounts (IRSA) instead of static credentials. This eliminates the need for long-lived access keys entirely. Configure the Elasticsearch pods to use a service account annotated with the IAM role ARN, and the S3 client can pick up temporary credentials from the AWS SDK credential chain.
 
 ## Conclusion
 
-Setting up Elasticsearch snapshot and restore with S3-compatible storage on Kubernetes is a multi-step process, but each step is straightforward. The combination of the repository-s3 plugin, secure credential management through Kubernetes secrets, and Snapshot Lifecycle Management gives you a fully automated, production-grade backup solution. Test your restores regularly. A backup that has never been tested is not a backup. Schedule periodic restore drills to a staging environment to confirm that your snapshots are valid and your recovery procedures work under pressure.
+Setting up Elasticsearch snapshot and restore with S3-compatible storage on Kubernetes is a multi-step process, but each step is straightforward. The combination of built-in S3 repository support, secure credential management through Kubernetes secrets, and Snapshot Lifecycle Management gives you a fully automated, production-grade backup solution. Test your restores regularly. A backup that has never been tested is not a backup. Schedule periodic restore drills to a staging environment to confirm that your snapshots are valid and your recovery procedures work under pressure.
