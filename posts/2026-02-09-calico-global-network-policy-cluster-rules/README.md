@@ -23,7 +23,7 @@ Standard Kubernetes NetworkPolicy applies only within a single namespace. Calico
 GlobalNetworkPolicy is perfect for:
 - Denying all traffic by default (zero-trust networking)
 - Allowing infrastructure pods (DNS, monitoring) cluster-wide access
-- Blocking egress to specific external IPs or domains
+- Blocking egress to specific external IPs (and domains in Calico Enterprise or Calico Cloud)
 - Enforcing compliance requirements across all applications
 
 ## Installing Calico
@@ -31,8 +31,9 @@ GlobalNetworkPolicy is perfect for:
 If you haven't installed Calico:
 
 ```bash
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/custom-resources.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/custom-resources.yaml
 ```
 
 Verify installation:
@@ -129,39 +130,38 @@ spec:
       services:
         name: kubernetes
         namespace: default
-      ports:
-      - 443
 ```
 
 ## Namespace-Based Global Policies
 
-Allow traffic between pods in the same namespace while blocking cross-namespace traffic:
+Allow traffic between pods in a specific namespace while blocking cross-namespace traffic:
 
 ```yaml
-# global-same-namespace.yaml
+# global-production-namespace.yaml
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: allow-same-namespace
+  name: allow-production-namespace
 spec:
   order: 200
   selector: all()
+  namespaceSelector: projectcalico.org/name == "production"
   types:
   - Ingress
   - Egress
   ingress:
-  # Allow from same namespace
+  # Allow from the production namespace
   - action: Allow
     source:
-      namespaceSelector: projectcalico.org/name == "$namespace"
+      namespaceSelector: projectcalico.org/name == "production"
   egress:
-  # Allow to same namespace
+  # Allow to the production namespace
   - action: Allow
     destination:
-      namespaceSelector: projectcalico.org/name == "$namespace"
+      namespaceSelector: projectcalico.org/name == "production"
 ```
 
-The `$namespace` variable automatically matches the pod's namespace.
+The `projectcalico.org/name` label is an automatic Calico namespace label. Create equivalent policies for other namespaces that need same-namespace isolation.
 
 ## Allowing Monitoring and Logging Infrastructure
 
@@ -182,16 +182,16 @@ spec:
   - action: Allow
     protocol: TCP
     source:
-      namespaceSelector: name == "monitoring"
+      namespaceSelector: projectcalico.org/name == "monitoring"
       selector: app == "prometheus"
     destination:
       ports:
-      - 9090-9999  # Common metrics ports
+      - "9090:9999"  # Common metrics ports
   # Allow Grafana to query all services
   - action: Allow
     protocol: TCP
     source:
-      namespaceSelector: name == "monitoring"
+      namespaceSelector: projectcalico.org/name == "monitoring"
       selector: app == "grafana"
 ---
 apiVersion: projectcalico.org/v3
@@ -207,7 +207,7 @@ spec:
   - action: Allow
     protocol: TCP
     source:
-      namespaceSelector: name == "logging"
+      namespaceSelector: projectcalico.org/name == "logging"
       selector: app in {"fluentd", "fluent-bit"}
 ```
 
@@ -330,9 +330,9 @@ Apply policies to tiers:
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: security-baseline
-  tier: security
+  name: security.security-baseline
 spec:
+  tier: security
   order: 100
   selector: all()
   types:
@@ -352,7 +352,7 @@ spec:
 
 ## Host Endpoint Protection
 
-Apply policies to host network interfaces:
+Apply policies to host network interfaces, assuming your HostEndpoint resources are labeled by node role:
 
 ```yaml
 # global-host-protection.yaml
@@ -362,7 +362,7 @@ metadata:
   name: protect-host-interfaces
 spec:
   order: 100
-  selector: has(host-endpoint)
+  selector: role == "k8s-worker"
   types:
   - Ingress
   ingress:
@@ -373,7 +373,7 @@ spec:
       ports:
       - 10250
     source:
-      selector: k8s-app == "kube-apiserver"
+      selector: role == "k8s-control-plane"
   # Allow node exporter for monitoring
   - action: Allow
     protocol: TCP
@@ -381,7 +381,7 @@ spec:
       ports:
       - 9100
     source:
-      namespaceSelector: name == "monitoring"
+      namespaceSelector: projectcalico.org/name == "monitoring"
 ```
 
 ## Monitoring Global Policies
@@ -398,10 +398,9 @@ Check policy order:
 calicoctl get globalnetworkpolicy -o yaml | grep -A 2 "order:"
 ```
 
-View policy statistics:
+View Felix configuration:
 
 ```bash
-# Get policy stats (requires Calico Enterprise or certain versions)
 calicoctl get felixconfiguration default -o yaml
 ```
 
