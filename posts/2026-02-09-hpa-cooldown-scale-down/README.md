@@ -8,7 +8,7 @@ Description: Configure HPA cooldown period and stabilization windows to control 
 
 ---
 
-Cooldown periods in HPA control the delay between scaling operations, particularly for scale-down actions. Without proper cooldown configuration, HPA can rapidly add and remove pods in response to fluctuating metrics, causing unnecessary churn. The cooldown period, implemented through stabilizationWindowSeconds in HPA v2, ensures metrics remain below thresholds for a sustained period before triggering scale-down.
+Cooldown periods in HPA control the delay between scaling operations, particularly for scale-down actions. Without proper cooldown configuration, HPA can rapidly add and remove pods in response to fluctuating metrics, causing unnecessary churn. The cooldown period, implemented through stabilizationWindowSeconds in HPA v2, ensures scale-down recommendations remain lower for a sustained period before triggering scale-down.
 
 This stabilization prevents premature capacity reduction during temporary traffic dips. If load drops for 30 seconds but then rebounds, you don't want to scale down and immediately scale back up. Proper cooldown configuration maintains stability while still responding to genuine load decreases, balancing responsiveness with operational efficiency.
 
@@ -259,7 +259,7 @@ kubectl get events --field-selector involvedObject.name=stable-scaling-hpa --sor
 watch -n 5 'kubectl get hpa stable-scaling-hpa -o json | jq "{current: .status.currentReplicas, desired: .status.desiredReplicas}"'
 ```
 
-If desired replicas is lower than current for extended periods, cooldown is preventing scale-down.
+If the HPA reports a `ScalingLimited` condition or repeated scale-down recommendations are held at a higher replica count, cooldown may be preventing scale-down.
 
 ## Cooldown with Multiple Metrics
 
