@@ -14,7 +14,7 @@ Kubernetes provides three restart policies: Always, OnFailure, and Never. Each s
 
 ## Understanding Restart Policies
 
-The restart policy determines what happens when a container exits, regardless of exit code. The policy applies to all containers in a pod.
+The restart policy determines what happens when a container exits, regardless of exit code. The pod-level policy applies to app containers and regular init containers in a pod. Kubernetes-native sidecar containers use their own container-level restartPolicy: Always.
 
 Always restarts containers whenever they exit, whether successfully or with an error. Use Always for long-running services that should always be running.
 
@@ -96,6 +96,7 @@ kind: Job
 metadata:
   name: data-processor
 spec:
+  backoffLimit: 4
   template:
     spec:
       restartPolicy: OnFailure
@@ -103,7 +104,6 @@ spec:
       - name: processor
         image: data-processor:v1.0
         command: ['python', 'process_data.py']
-      backoffLimit: 4
 ```
 
 Jobs typically use OnFailure. The job retries on failure but completes on success.
@@ -154,17 +154,17 @@ With Never policy, each pod attempt counts toward backoffLimit. If a pod fails, 
 Understand how each policy handles different exit codes:
 
 Container exits with code 0 (success):
-- Always: Restarts immediately
+- Always: Restarts
 - OnFailure: Stays stopped
 - Never: Stays stopped
 
 Container exits with code 1 (failure):
-- Always: Restarts immediately
+- Always: Restarts after backoff delay
 - OnFailure: Restarts after backoff delay
 - Never: Stays stopped
 
 Container is killed by OOM:
-- Always: Restarts immediately
+- Always: Restarts after backoff delay
 - OnFailure: Restarts after backoff delay
 - Never: Stays stopped
 
@@ -449,7 +449,7 @@ Never prevents retries within the same pod. backoffLimit allows creating new pod
 
 ## Init Containers and Restart Policy
 
-Init containers share the pod's restart policy but behave differently:
+Regular init containers share the pod's restart policy but behave differently:
 
 ```yaml
 apiVersion: v1
@@ -471,7 +471,7 @@ If an init container fails:
 - With Always or OnFailure, the init container restarts
 - With Never, the pod fails
 
-Init containers must complete successfully before main containers start. They retry according to the restart policy.
+Regular init containers must complete successfully before main containers start. They retry according to the restart policy. Kubernetes-native sidecar containers are configured under initContainers but use their own container-level restartPolicy: Always.
 
 ## Monitoring Restart Behavior
 
