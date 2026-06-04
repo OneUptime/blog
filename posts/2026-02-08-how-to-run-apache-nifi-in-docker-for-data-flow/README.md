@@ -26,6 +26,7 @@ Launch NiFi with a single command:
 docker run -d \
   --name nifi \
   -p 8443:8443 \
+  -e NIFI_WEB_PROXY_HOST=localhost:8443 \
   -e SINGLE_USER_CREDENTIALS_USERNAME=admin \
   -e SINGLE_USER_CREDENTIALS_PASSWORD=adminpassword123 \
   apache/nifi:latest
@@ -40,7 +41,7 @@ Note that NiFi uses HTTPS by default. Your browser will show a certificate warni
 For a production-like configuration with persistent state:
 
 ```yaml
-# docker-compose.yml - Apache NiFi with persistent storage and ZooKeeper
+# docker-compose.yml - Apache NiFi with persistent storage
 version: "3.8"
 
 services:
@@ -53,6 +54,7 @@ services:
       # Authentication credentials for single-user mode
       SINGLE_USER_CREDENTIALS_USERNAME: admin
       SINGLE_USER_CREDENTIALS_PASSWORD: adminpassword123
+      NIFI_WEB_PROXY_HOST: localhost:8443
       # JVM memory settings
       NIFI_JVM_HEAP_INIT: 1g
       NIFI_JVM_HEAP_MAX: 2g
@@ -112,6 +114,7 @@ services:
     environment:
       SINGLE_USER_CREDENTIALS_USERNAME: admin
       SINGLE_USER_CREDENTIALS_PASSWORD: adminpassword123
+      NIFI_WEB_PROXY_HOST: localhost:8443
       NIFI_JVM_HEAP_INIT: 1g
       NIFI_JVM_HEAP_MAX: 2g
     volumes:
@@ -123,7 +126,7 @@ services:
       - nifi-provenance:/opt/nifi/nifi-current/provenance_repository
       - ./data:/data
       # Mount custom NAR files (NiFi plugins)
-      - ./nars:/opt/nifi/nifi-current/extensions
+      - ./nars:/opt/nifi/nifi-current/nar_extensions
     networks:
       - nifi-net
 
@@ -241,7 +244,7 @@ graph LR
 
 ## NiFi Registry for Version Control
 
-Use NiFi Registry to version control your flows:
+NiFi Registry can version control your flows, but Apache NiFi Registry is deprecated and planned for removal in NiFi 3.0. For new NiFi 2 deployments, prefer the built-in Git-based Flow Registry Clients when they fit your workflow.
 
 ```yaml
 # Add to docker-compose.yml - NiFi Registry for flow version control
@@ -256,7 +259,7 @@ Use NiFi Registry to version control your flows:
       - nifi-net
 ```
 
-Connect NiFi to the Registry through the NiFi UI under Controller Settings > Registry Clients.
+If you still use NiFi Registry, connect NiFi to it through the NiFi UI under Controller Settings > Registry Clients.
 
 ## Performance Tuning
 
@@ -268,14 +271,13 @@ environment:
   # Increase JVM heap for large data volumes
   NIFI_JVM_HEAP_INIT: 2g
   NIFI_JVM_HEAP_MAX: 4g
-  # Increase the number of threads for concurrent processing
-  NIFI_WEB_THREADS: 200
 ```
 
 For high-throughput scenarios, tune these NiFi properties:
 
 ```properties
 # nifi.properties overrides for high throughput
+nifi.web.jetty.threads=200
 nifi.queue.backpressure.count=100000
 nifi.queue.backpressure.size=1 GB
 nifi.content.repository.implementation=org.apache.nifi.controller.repository.FileSystemRepository
