@@ -20,16 +20,27 @@ Kubernetes monitors disk usage on each node using these signals:
 - `nodefs.inodesFree`: Available inodes on the node filesystem
 - `imagefs.available`: Available disk space on the image filesystem (if separate from nodefs)
 - `imagefs.inodesFree`: Available inodes on the image filesystem
+- `containerfs.available`: Available disk space on the container filesystem (if separate from nodefs and imagefs)
+- `containerfs.inodesFree`: Available inodes on the container filesystem
 
-Default eviction thresholds:
+Default hard eviction thresholds include:
 
 ```yaml
 # Kubelet configuration
 
 evictionHard:
+  memory.available: "100Mi"
   nodefs.available: "10%"
   nodefs.inodesFree: "5%"
   imagefs.available: "15%"
+  imagefs.inodesFree: "5%"
+```
+
+Soft eviction thresholds are not enabled by default; configure them explicitly if you want a grace period before eviction:
+
+```yaml
+# Kubelet configuration
+
 evictionSoft:
   nodefs.available: "15%"
   imagefs.available: "20%"
@@ -38,7 +49,7 @@ evictionSoftGracePeriod:
   imagefs.available: "90s"
 ```
 
-When these thresholds are crossed, kubelet begins evicting pods starting with BestEffort QoS, then Burstable, and finally Guaranteed.
+When these thresholds are crossed, kubelet first tries node-level cleanup such as removing dead pods, containers, and unused images. If that is not enough, it evicts pods based on whether usage exceeds requests, Pod Priority, and usage relative to requests. QoS class can help estimate eviction order for memory pressure, but Kubernetes does not use QoS class directly to rank pods for ephemeral-storage pressure.
 
 ## Detecting Disk Pressure
 
@@ -206,12 +217,12 @@ data:
         annotations:
           summary: "Node {{ $labels.instance }} disk usage above 85%"
 
-      - alert: EphemeralStorageExceeded
+      - alert: PVCVolumeUsageHigh
         expr: kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 0.9
         labels:
           severity: warning
         annotations:
-          summary: "Pod {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} using >90% ephemeral storage"
+          summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} using >90% of its reported capacity"
 ```
 
 Create a disk monitoring script:
@@ -280,13 +291,13 @@ Manual cleanup when needed:
 
 ```bash
 # Clean unused images on a node
-kubectl debug node/<node-name> -it --image=ubuntu
+kubectl debug node/<node-name> -it --image=ubuntu --profile=sysadmin
 # Inside debug container:
-crictl rmi --prune
+chroot /host crictl rmi --prune
 
-# Or via kubectl
-kubectl get nodes -o name | xargs -I {} kubectl debug {} -it --image=ubuntu -- \
-  sh -c "crictl rmi --prune"
+# Or run the same cleanup command from the debug container
+kubectl debug node/<node-name> -it --image=ubuntu --profile=sysadmin -- \
+  chroot /host crictl rmi --prune
 ```
 
 Create a cleanup DaemonSet:
@@ -322,7 +333,7 @@ spec:
             # Clean old log files
             find /var/log/pods -name "*.log" -mtime +7 -delete
 
-            # Clean old container layers
+            # Report container runtime disk usage
             df -h /var/lib/containerd
 
             sleep 3600  # Run every hour
