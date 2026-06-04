@@ -14,7 +14,7 @@ Mimir accepts Prometheus remote write data, stores it on object storage, and mak
 
 ## Quick Start
 
-Run Mimir in monolithic mode (all components in a single process):
+After creating the `mimir.yaml` configuration shown below, run Mimir in monolithic mode (all components in a single process):
 
 ```bash
 # Start Mimir with local filesystem storage
@@ -22,9 +22,10 @@ Run Mimir in monolithic mode (all components in a single process):
 docker run -d \
   --name mimir \
   -p 9009:9009 \
+  -v "$(pwd)"/mimir.yaml:/etc/mimir.yaml \
   -v mimir_data:/data \
   grafana/mimir:latest \
-  -config.file=/etc/mimir/demo.yaml
+  -config.file=/etc/mimir.yaml
 ```
 
 ## Docker Compose Setup
@@ -33,8 +34,6 @@ For a practical development environment with Prometheus and Grafana:
 
 ```yaml
 # docker-compose.yml - Mimir metrics stack
-version: "3.8"
-
 services:
   mimir:
     image: grafana/mimir:latest
@@ -55,6 +54,7 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yaml:/etc/prometheus/prometheus.yml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       - mimir
 
@@ -126,17 +126,23 @@ blocks_storage:
   bucket_store:
     sync_dir: /data/tsdb-sync
   filesystem:
-    dir: /data/tsdb
+    dir: /data/blocks
   tsdb:
-    dir: /data/tsdb/ingester
+    dir: /data/ingester
 
 # Ruler configuration for alerting rules
 ruler:
   rule_path: /data/rules
   alertmanager_url: http://localhost:9093
+  enable_api: true
   ring:
     kvstore:
       store: memberlist
+
+ruler_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/ruler
 
 # Limits and retention
 limits:
@@ -144,7 +150,7 @@ limits:
   max_global_series_per_user: 100000
   # Keep metrics for 90 days
   compactor_blocks_retention_period: 90d
-  # Allow ingestion of samples up to 1 hour old
+  # Allow high ingestion throughput for development workloads
   ingestion_rate: 100000
   ingestion_burst_size: 1000000
 
@@ -199,6 +205,11 @@ scrape_configs:
       - source_labels: [__meta_docker_container_label_prometheus_scrape]
         regex: 'true'
         action: keep
+
+  # Scrape cAdvisor for container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
 ```
 
 ## Grafana Data Source Configuration
@@ -227,8 +238,6 @@ Add common metric exporters for a complete monitoring setup:
 
 ```yaml
 # docker-compose.yml - Complete monitoring stack with Mimir
-version: "3.8"
-
 services:
   mimir:
     image: grafana/mimir:latest
@@ -245,6 +254,7 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yaml:/etc/prometheus/prometheus.yml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       - mimir
 
@@ -346,7 +356,7 @@ Push recording rules to Mimir for pre-computation:
 # Upload alerting and recording rules via the Mimir ruler API
 curl -X POST http://localhost:9009/prometheus/config/v1/rules/default \
   -H "Content-Type: application/yaml" \
-  -d '
+  --data-binary '
 name: app_rules
 rules:
   - record: job:http_requests:rate5m
