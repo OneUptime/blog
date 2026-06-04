@@ -185,11 +185,19 @@ desired=$(kubectl get pdb -n $NAMESPACE $APP_NAME-pdb -o jsonpath='{.status.desi
 echo "Current healthy: $current"
 echo "Desired healthy: $desired"
 
-# Try to evict a pod
+# Try to evict a pod through the Eviction API
 POD=$(kubectl get pods -n $NAMESPACE -l app=$APP_NAME -o jsonpath='{.items[0].metadata.name}')
 
 echo "Attempting to evict pod: $POD"
-kubectl delete pod $POD -n $NAMESPACE --grace-period=30
+cat <<EOF | kubectl create -f -
+apiVersion: policy/v1
+kind: Eviction
+metadata:
+  name: $POD
+  namespace: $NAMESPACE
+deleteOptions:
+  gracePeriodSeconds: 30
+EOF
 
 # Watch PDB status change
 echo "Watching PDB status..."
@@ -227,8 +235,12 @@ while true; do
     "\(.metadata.namespace)/\(.metadata.name): \(.status.currentHealthy)/\(.status.desiredHealthy)"
   '
 
-  # Check for pods pending eviction
-  kubectl get pods -A --field-selector status.phase=Terminating
+  # Check for pods pending deletion after eviction
+  kubectl get pods -A -o json | jq -r '
+    .items[] |
+    select(.metadata.deletionTimestamp != null) |
+    "\(.metadata.namespace)/\(.metadata.name)"
+  '
 
   sleep 30
 done
@@ -260,13 +272,17 @@ echo "$PODS"
 
 # Check which PDBs apply to these pods
 echo "$PODS" | while read ns pod; do
-  labels=$(kubectl get pod $pod -n $ns -o jsonpath='{.metadata.labels}' | jq -r 'to_entries | map("\(.key)=\(.value)") | join(",")')
+  if [ -z "$pod" ]; then
+    continue
+  fi
+
+  labels=$(kubectl get pod $pod -n $ns -o json | jq -c '.metadata.labels')
 
   # Find matching PDBs
   matching_pdbs=$(kubectl get pdb -n $ns -o json | \
-    jq -r --arg labels "$labels" '
+    jq -r --argjson labels "$labels" '
     .items[] |
-    select(.spec.selector.matchLabels | to_entries | map("\(.key)=\(.value)") | join(",") | contains($labels)) |
+    select((.spec.selector.matchLabels // {}) as $selector | all($selector | keys[]; $labels[.] == $selector[.])) |
     .metadata.name
   ')
 
@@ -381,9 +397,13 @@ while read ns name replicas; do
   fi
 
   # Check if PDB already exists
-  labels=$(kubectl get deploy $name -n $ns -o jsonpath='{.spec.selector.matchLabels}')
+  labels=$(kubectl get deploy $name -n $ns -o json | jq -c '.spec.selector.matchLabels')
   existing=$(kubectl get pdb -n $ns -o json | \
-    jq -r --arg labels "$labels" '.items[] | select(.spec.selector.matchLabels == ($labels | fromjson)) | .metadata.name')
+    jq -r --argjson labels "$labels" '
+    .items[] |
+    select((.spec.selector.matchLabels // {}) as $selector | all($selector | keys[]; $labels[.] == $selector[.])) |
+    .metadata.name
+  ')
 
   if [ ! -z "$existing" ]; then
     echo "PDB already exists for $ns/$name: $existing"
@@ -402,7 +422,7 @@ metadata:
 spec:
   maxUnavailable: 1
   selector:
-    matchLabels: $(echo $labels | jq '.')
+    matchLabels: $labels
 EOF
 
 done
@@ -426,12 +446,12 @@ while read deploy; do
   ns=$(echo $deploy | cut -d/ -f1)
   name=$(echo $deploy | cut -d/ -f2)
 
-  labels=$(kubectl get deploy $name -n $ns -o jsonpath='{.spec.selector.matchLabels}')
+  labels=$(kubectl get deploy $name -n $ns -o json | jq -c '.spec.selector.matchLabels')
 
   # Check for matching PDB
   pdb=$(kubectl get pdb -n $ns -o json | \
-    jq -r --arg labels "$labels" \
-    '.items[] | select(.spec.selector.matchLabels == ($labels | fromjson)) | .metadata.name')
+    jq -r --argjson labels "$labels" \
+    '.items[] | select((.spec.selector.matchLabels // {}) as $selector | all($selector | keys[]; $labels[.] == $selector[.])) | .metadata.name')
 
   if [ -z "$pdb" ]; then
     echo "WARNING: No PDB found for $deploy"
