@@ -51,6 +51,42 @@ groups:
         sum(rate(http_requests_total[1h]))
         /
         (1 - 0.999)
+
+    # Thirty minute window
+    - record: error_budget:burn_rate:30m
+      expr: |
+        sum(rate(http_requests_total{status=~"5.."}[30m]))
+        /
+        sum(rate(http_requests_total[30m]))
+        /
+        (1 - 0.999)
+
+    # Six hour window
+    - record: error_budget:burn_rate:6h
+      expr: |
+        sum(rate(http_requests_total{status=~"5.."}[6h]))
+        /
+        sum(rate(http_requests_total[6h]))
+        /
+        (1 - 0.999)
+
+    # One day window
+    - record: error_budget:burn_rate:1d
+      expr: |
+        sum(rate(http_requests_total{status=~"5.."}[1d]))
+        /
+        sum(rate(http_requests_total[1d]))
+        /
+        (1 - 0.999)
+
+    # Three day window
+    - record: error_budget:burn_rate:3d
+      expr: |
+        sum(rate(http_requests_total{status=~"5.."}[3d]))
+        /
+        sum(rate(http_requests_total[3d]))
+        /
+        (1 - 0.999)
 ```
 
 These recording rules provide burn rates for different time windows.
@@ -85,7 +121,7 @@ data:
             alert_type: page
           annotations:
             summary: "Error budget burning at 14.4x rate"
-            description: "At this rate, error budget exhausts in 2 hours"
+            description: "At this rate, error budget exhausts in about 2 days"
             impact: "Users experiencing service degradation"
 
         # Moderate burn (5% error budget in 6 hours)
@@ -108,17 +144,17 @@ data:
         - alert: ErrorBudgetSlowBurn
           expr: |
             (
-              error_budget:burn_rate:2h > (3 * 1)
+              error_budget:burn_rate:6h > 1
               and
-              error_budget:burn_rate:1d > (3 * 1)
+              error_budget:burn_rate:3d > 1
             )
           for: 1h
           labels:
             severity: warning
             alert_type: ticket
           annotations:
-            summary: "Error budget burning at 3x rate"
-            description: "At this rate, error budget exhausts in 10 days"
+            summary: "Error budget burning at 1x rate"
+            description: "At this rate, error budget exhausts in 30 days"
 ```
 
 Different burn rates trigger different response types: pages for fast burns, tickets for slow burns.
@@ -148,6 +184,14 @@ data:
         - record: api_service:burn_rate:5m
           expr: api_service:error_rate:5m / (1 - 0.9995)
 
+        - record: api_service:burn_rate:1h
+          expr: |
+            sum(rate(http_requests_total{service="api",status=~"5.."}[1h]))
+            /
+            sum(rate(http_requests_total{service="api"}[1h]))
+            /
+            (1 - 0.9995)
+
         - alert: APIServiceFastBurn
           expr: |
             api_service:burn_rate:5m > 14.4
@@ -171,6 +215,14 @@ data:
 
         - record: payment_service:burn_rate:5m
           expr: payment_service:error_rate:5m / (1 - 0.9999)
+
+        - record: payment_service:burn_rate:1h
+          expr: |
+            sum(rate(payment_requests_total{result="error"}[1h]))
+            /
+            sum(rate(payment_requests_total[1h]))
+            /
+            (1 - 0.9999)
 
         - alert: PaymentServiceFastBurn
           expr: |
@@ -198,7 +250,7 @@ groups:
     # Total error budget for 30-day period
     - record: error_budget:total:30d
       expr: |
-        (1 - 0.999) * 30 * 24 * 60  # 0.1% of 30 days in minutes
+        vector((1 - 0.999) * 30 * 24 * 60)  # 0.1% of 30 days in minutes
 
     # Errors in last 30 days
     - record: errors:total:30d
@@ -253,6 +305,18 @@ groups:
     - record: latency:burn_rate:5m
       expr: latency:error_rate:5m / (1 - 0.99)
 
+    - record: latency:burn_rate:1h
+      expr: |
+        (
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{le="0.5"}[1h]))
+            /
+            sum(rate(http_request_duration_seconds_count[1h]))
+          )
+        )
+        /
+        (1 - 0.99)
+
     - alert: LatencyBudgetFastBurn
       expr: |
         latency:burn_rate:5m > 14.4
@@ -303,6 +367,42 @@ groups:
     # Composite burn rate
     - record: composite:burn_rate:5m
       expr: composite:error_rate:5m / (1 - 0.995)
+
+    - record: composite:burn_rate:1h
+      expr: |
+        (
+          (
+            sum(rate(requests_total{status=~"5.."}[1h]))
+            /
+            sum(rate(requests_total[1h]))
+          )
+          +
+          (
+            1 - (
+              sum(rate(request_duration_bucket{le="0.5"}[1h]))
+              /
+              sum(rate(request_duration_count[1h]))
+            )
+          )
+          -
+          (
+            (
+              sum(rate(requests_total{status=~"5.."}[1h]))
+              /
+              sum(rate(requests_total[1h]))
+            )
+            *
+            (
+              1 - (
+                sum(rate(request_duration_bucket{le="0.5"}[1h]))
+                /
+                sum(rate(request_duration_count[1h]))
+              )
+            )
+          )
+        )
+        /
+        (1 - 0.995)
 
     - alert: ServiceHealthDegraded
       expr: |
@@ -366,11 +466,13 @@ spec:
     spec:
       containers:
       - name: budget-check
-        image: curlimages/curl:latest
+        image: alpine:3.22
         command:
         - sh
         - -c
         - |
+          apk add --no-cache curl jq bc >/dev/null
+
           BUDGET=$(curl -s http://prometheus:9090/api/v1/query \
             --data-urlencode 'query=error_budget:remaining:ratio' \
             | jq -r '.data.result[0].value[1]')
