@@ -76,8 +76,6 @@ For real training workloads, Docker Compose keeps the configuration manageable. 
 
 ```yaml
 # docker-compose.yml - Multi-GPU PyTorch training environment
-version: "3.8"
-
 services:
   trainer:
     image: pytorch/pytorch:2.2.0-cuda12.1-cudnn8-devel
@@ -162,7 +160,7 @@ def train(args):
     ])
     dataset = datasets.MNIST("./data", train=True, download=True, transform=transform)
     sampler = DistributedSampler(dataset)
-    dataloader = DataLoader(dataset, batch_size=64, sampler=sampler, num_workers=4)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, num_workers=4)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
@@ -215,8 +213,6 @@ If you prefer TensorFlow, the setup follows a similar pattern but uses TensorFlo
 
 ```yaml
 # docker-compose-tf.yml - TensorFlow multi-GPU setup
-version: "3.8"
-
 services:
   tf-trainer:
     image: tensorflow/tensorflow:2.15.0-gpu
@@ -293,8 +289,6 @@ Sometimes you want to split GPUs between different tasks, such as training on tw
 
 ```yaml
 # docker-compose-split.yml - Split GPUs across containers
-version: "3.8"
-
 services:
   # Training job gets GPUs 0 and 1
   trainer:
@@ -328,7 +322,7 @@ services:
 
 The most frequent problem is NCCL communication failures between GPUs. Set the `NCCL_DEBUG=INFO` environment variable to get detailed logs. If you see socket errors, try setting `NCCL_SOCKET_IFNAME` to your network interface.
 
-Out-of-memory errors during multi-GPU training usually mean your batch size is too large. Remember that each GPU holds a full copy of the model plus its share of the batch. Reduce the per-GPU batch size, not the global batch size.
+Out-of-memory errors during multi-GPU training usually mean your batch size is too large. Remember that each GPU holds a full copy of the model plus its share of the batch. Reduce the per-GPU batch size, or use gradient accumulation if you need to keep the same global batch size.
 
 Shared memory errors (`RuntimeError: DataLoader worker is killed`) always mean `shm_size` is too small. Increase it in your compose file or pass `--shm-size` to `docker run`.
 
