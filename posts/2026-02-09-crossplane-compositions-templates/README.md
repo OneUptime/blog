@@ -18,13 +18,13 @@ Compositions work with three key concepts:
 
 **Composite Resource Definition (XRD)**: Defines the API schema for your custom resource
 **Composition**: Implements the XRD by defining which managed resources to create
-**Claim**: Instance of an XRD that application teams create to request infrastructure
+**Claim**: Namespaced resource that application teams create to request infrastructure when an XRD defines claim names
 
 Think of XRDs as the interface, Compositions as the implementation, and Claims as the requests.
 
 ## Creating a Basic Composition
 
-Start with a simple example that provisions an S3 bucket with standard settings:
+Start with a simple example that provisions an S3 bucket with standard settings. These examples use Crossplane's Pipeline mode with Function Patch and Transform, so the `function-patch-and-transform` Function must be installed first.
 
 ```yaml
 apiVersion: apiextensions.crossplane.io/v1
@@ -38,30 +38,73 @@ spec:
   compositeTypeRef:
     apiVersion: custom.example.com/v1alpha1
     kind: XObjectStorage
-  resources:
-  - name: bucket
-    base:
-      apiVersion: s3.aws.crossplane.io/v1beta1
-      kind: Bucket
-      spec:
-        forProvider:
-          acl: private
-          publicAccessBlockConfiguration:
-            blockPublicAcls: true
-            blockPublicPolicy: true
-            ignorePublicAcls: true
-            restrictPublicBuckets: true
-          versioning:
-            status: Enabled
-          serverSideEncryptionConfiguration:
-            rules:
-            - applyServerSideEncryptionByDefault:
-                sseAlgorithm: AES256
-        providerConfigRef:
-          name: default
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: bucket
+        base:
+          apiVersion: s3.aws.m.upbound.io/v1beta1
+          kind: Bucket
+          spec:
+            forProvider:
+              region: us-west-2
+            providerConfigRef:
+              kind: ClusterProviderConfig
+              name: default
+      - name: public-access-block
+        base:
+          apiVersion: s3.aws.m.upbound.io/v1beta1
+          kind: BucketPublicAccessBlock
+          spec:
+            forProvider:
+              region: us-west-2
+              blockPublicAcls: true
+              blockPublicPolicy: true
+              ignorePublicAcls: true
+              restrictPublicBuckets: true
+              bucketSelector:
+                matchControllerRef: true
+            providerConfigRef:
+              kind: ClusterProviderConfig
+              name: default
+      - name: versioning
+        base:
+          apiVersion: s3.aws.m.upbound.io/v1beta1
+          kind: BucketVersioning
+          spec:
+            forProvider:
+              region: us-west-2
+              versioningConfiguration:
+                status: Enabled
+              bucketSelector:
+                matchControllerRef: true
+            providerConfigRef:
+              kind: ClusterProviderConfig
+              name: default
+      - name: encryption
+        base:
+          apiVersion: s3.aws.m.upbound.io/v1beta1
+          kind: BucketServerSideEncryptionConfiguration
+          spec:
+            forProvider:
+              region: us-west-2
+              rule:
+              - applyServerSideEncryptionByDefault:
+                  sseAlgorithm: AES256
+              bucketSelector:
+                matchControllerRef: true
+            providerConfigRef:
+              kind: ClusterProviderConfig
+              name: default
 ```
 
-This Composition creates a single S3 bucket with sensible security defaults whenever someone creates an XObjectStorage resource.
+This Composition creates an S3 bucket and the related S3 configuration resources with sensible security defaults whenever someone creates an XObjectStorage resource.
 
 ## Building a Multi-Resource Composition
 
@@ -79,52 +122,66 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: XPostgreSQLInstance
-  resources:
-  - name: subnet-group
-    base:
-      apiVersion: database.aws.crossplane.io/v1beta1
-      kind: DBSubnetGroup
-      spec:
-        forProvider:
-          description: Subnet group for PostgreSQL
-          region: us-west-2
-          subnetIds:
-          - subnet-abc123
-          - subnet-def456
-          - subnet-ghi789
-  - name: parameter-group
-    base:
-      apiVersion: rds.aws.crossplane.io/v1alpha1
-      kind: DBParameterGroup
-      spec:
-        forProvider:
-          description: PostgreSQL 14 parameters
-          family: postgres14
-          region: us-west-2
-          parameters:
-          - name: shared_buffers
-            value: "256MB"
-          - name: max_connections
-            value: "200"
-  - name: rds-instance
-    base:
-      apiVersion: database.aws.crossplane.io/v1beta1
-      kind: RDSInstance
-      spec:
-        forProvider:
-          region: us-west-2
-          engine: postgres
-          engineVersion: "14.7"
-          dbInstanceClass: db.t3.large
-          allocatedStorage: 100
-          storageEncrypted: true
-          publiclyAccessible: false
-          skipFinalSnapshot: false
-          backupRetentionPeriod: 7
-          preferredBackupWindow: "03:00-04:00"
-          preferredMaintenanceWindow: "sun:04:00-sun:05:00"
-        writeConnectionSecretToRef:
-          namespace: crossplane-system
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: subnet-group
+        base:
+          apiVersion: rds.aws.m.upbound.io/v1beta1
+          kind: SubnetGroup
+          spec:
+            forProvider:
+              description: Subnet group for PostgreSQL
+              region: us-west-2
+              subnetIds:
+              - subnet-abc123
+              - subnet-def456
+              - subnet-ghi789
+      - name: parameter-group
+        base:
+          apiVersion: rds.aws.m.upbound.io/v1beta1
+          kind: ParameterGroup
+          spec:
+            forProvider:
+              description: PostgreSQL 14 parameters
+              family: postgres14
+              region: us-west-2
+              parameter:
+              - name: log_min_duration_statement
+                value: "1000"
+              - name: max_connections
+                value: "200"
+      - name: rds-instance
+        base:
+          apiVersion: rds.aws.m.upbound.io/v1beta1
+          kind: Instance
+          spec:
+            forProvider:
+              region: us-west-2
+              engine: postgres
+              engineVersion: "14.7"
+              instanceClass: db.t3.large
+              allocatedStorage: 100
+              username: appuser
+              autoGeneratePassword: true
+              storageEncrypted: true
+              publiclyAccessible: false
+              skipFinalSnapshot: false
+              backupRetentionPeriod: 7
+              backupWindow: "03:00-04:00"
+              maintenanceWindow: "sun:04:00-sun:05:00"
+              dbSubnetGroupNameSelector:
+                matchControllerRef: true
+              parameterGroupNameSelector:
+                matchControllerRef: true
+            writeConnectionSecretToRef:
+              name: postgres-production-connection
 ```
 
 This creates a production-grade database with proper networking, parameters, and backup configuration.
@@ -142,29 +199,37 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: XPostgreSQLInstance
-  resources:
-  - name: rds-instance
-    base:
-      apiVersion: database.aws.crossplane.io/v1beta1
-      kind: RDSInstance
-      spec:
-        forProvider:
-          region: us-west-2
-          engine: postgres
-          storageEncrypted: true
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.storageGB
-      toFieldPath: spec.forProvider.allocatedStorage
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.version
-      toFieldPath: spec.forProvider.engineVersion
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.instanceClass
-      toFieldPath: spec.forProvider.dbInstanceClass
-    - type: FromCompositeFieldPath
-      fromFieldPath: metadata.labels
-      toFieldPath: spec.forProvider.tags
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: rds-instance
+        base:
+          apiVersion: rds.aws.m.upbound.io/v1beta1
+          kind: Instance
+          spec:
+            forProvider:
+              region: us-west-2
+              engine: postgres
+              storageEncrypted: true
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.storageGB
+          toFieldPath: spec.forProvider.allocatedStorage
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.version
+          toFieldPath: spec.forProvider.engineVersion
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.instanceClass
+          toFieldPath: spec.forProvider.instanceClass
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.labels
+          toFieldPath: spec.forProvider.tags
 ```
 
 Now users can specify storage size, version, and instance class when creating a database, and those values flow through to the RDS instance.
@@ -177,7 +242,7 @@ Transform patches modify values during patching:
 patches:
 - type: FromCompositeFieldPath
   fromFieldPath: spec.parameters.size
-  toFieldPath: spec.forProvider.dbInstanceClass
+  toFieldPath: spec.forProvider.instanceClass
   transforms:
   - type: map
     map:
@@ -190,8 +255,8 @@ patches:
   transforms:
   - type: math
     math:
+      type: multiply
       multiply: 1
-      type: int64
 ```
 
 The size patch maps user-friendly names to actual instance classes. This abstracts cloud-specific details from users.
@@ -204,30 +269,31 @@ Expose database connection details to application namespaces:
 resources:
 - name: rds-instance
   base:
-    apiVersion: database.aws.crossplane.io/v1beta1
-    kind: RDSInstance
+    apiVersion: rds.aws.m.upbound.io/v1beta1
+    kind: Instance
     spec:
       writeConnectionSecretToRef:
-        namespace: crossplane-system
+        name: postgres-connection
   patches:
   - type: FromCompositeFieldPath
     fromFieldPath: spec.writeConnectionSecretToRef.name
     toFieldPath: spec.writeConnectionSecretToRef.name
-  - type: FromCompositeFieldPath
-    fromFieldPath: spec.writeConnectionSecretToRef.namespace
-    toFieldPath: spec.writeConnectionSecretToRef.namespace
   connectionDetails:
   - name: username
+    type: FromConnectionSecretKey
     fromConnectionSecretKey: username
   - name: password
+    type: FromConnectionSecretKey
     fromConnectionSecretKey: password
   - name: endpoint
+    type: FromConnectionSecretKey
     fromConnectionSecretKey: endpoint
   - name: port
+    type: FromConnectionSecretKey
     fromConnectionSecretKey: port
 ```
 
-This allows application teams to specify where connection secrets should be created.
+This allows application teams to specify the connection secret name.
 
 ## Using Composition Selection
 
@@ -244,17 +310,25 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: XPostgreSQLInstance
-  resources:
-  - name: rds-instance
-    base:
-      apiVersion: database.aws.crossplane.io/v1beta1
-      kind: RDSInstance
-      spec:
-        forProvider:
-          dbInstanceClass: db.t3.micro
-          allocatedStorage: 20
-          backupRetentionPeriod: 1
-          skipFinalSnapshot: true
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: rds-instance
+        base:
+          apiVersion: rds.aws.m.upbound.io/v1beta1
+          kind: Instance
+          spec:
+            forProvider:
+              instanceClass: db.t3.micro
+              allocatedStorage: 20
+              backupRetentionPeriod: 1
+              skipFinalSnapshot: true
 ---
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
@@ -266,20 +340,28 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: XPostgreSQLInstance
-  resources:
-  - name: rds-instance
-    base:
-      apiVersion: database.aws.crossplane.io/v1beta1
-      kind: RDSInstance
-      spec:
-        forProvider:
-          dbInstanceClass: db.r5.large
-          allocatedStorage: 100
-          backupRetentionPeriod: 30
-          multiAZ: true
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: rds-instance
+        base:
+          apiVersion: rds.aws.m.upbound.io/v1beta1
+          kind: Instance
+          spec:
+            forProvider:
+              instanceClass: db.r5.large
+              allocatedStorage: 100
+              backupRetentionPeriod: 30
+              multiAz: true
 ```
 
-Users select Compositions via labels in their Claims.
+Users select Compositions with a `compositionSelector.matchLabels` block in their composite resources or Claims.
 
 ## Implementing Resource References
 
@@ -289,17 +371,17 @@ Link resources within Compositions using references:
 resources:
 - name: security-group
   base:
-    apiVersion: ec2.aws.crossplane.io/v1beta1
+    apiVersion: ec2.aws.m.upbound.io/v1beta1
     kind: SecurityGroup
     spec:
       forProvider:
         region: us-west-2
         description: Security group for RDS
-        groupName: ""
+        name: postgres-rds
 - name: rds-instance
   base:
-    apiVersion: database.aws.crossplane.io/v1beta1
-    kind: RDSInstance
+    apiVersion: rds.aws.m.upbound.io/v1beta1
+    kind: Instance
     spec:
       forProvider:
         region: us-west-2
@@ -324,11 +406,19 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: XPostgreSQLInstance
-  resources:
-  - name: rds
-    base:
-      apiVersion: database.aws.crossplane.io/v1beta1
-      kind: RDSInstance
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: rds
+        base:
+          apiVersion: rds.aws.m.upbound.io/v1beta1
+          kind: Instance
 ---
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
@@ -340,11 +430,19 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: XPostgreSQLInstance
-  resources:
-  - name: cloudsql
-    base:
-      apiVersion: database.gcp.crossplane.io/v1beta1
-      kind: CloudSQLInstance
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: cloudsql
+        base:
+          apiVersion: sql.gcp.m.upbound.io/v1beta1
+          kind: DatabaseInstance
 ```
 
 Users select the provider through composition selection.
@@ -367,7 +465,8 @@ spec:
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: XPostgreSQLInstance
-  # Updated resources...
+  mode: Pipeline
+  # Updated pipeline...
 ```
 
 Use labels and annotations to track versions and document changes.
