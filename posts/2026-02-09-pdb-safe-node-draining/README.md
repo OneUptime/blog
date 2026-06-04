@@ -12,9 +12,9 @@ Pod Disruption Budgets define minimum availability requirements for applications
 
 ## Understanding Voluntary vs Involuntary Disruptions
 
-Kubernetes distinguishes between disruption types. Voluntary disruptions are planned actions you control: node drains, deployments, cluster upgrades. Involuntary disruptions are unplanned: hardware failures, kernel panics, out-of-memory kills.
+Kubernetes distinguishes between disruption types. Voluntary disruptions are planned actions you control: node drains, direct pod deletion, workload template updates, cluster upgrades. Involuntary disruptions are unplanned: hardware failures, kernel panics, out-of-memory kills.
 
-PDBs protect against voluntary disruptions only. They cannot prevent hardware failures. However, by maintaining minimum replica counts during planned maintenance, PDBs ensure sufficient capacity remains when involuntary disruptions occur.
+PDBs protect against voluntary evictions only. They cannot prevent hardware failures, direct pod deletion, or workload controllers from replacing pods during application rollouts. However, by maintaining minimum replica counts during planned maintenance that uses the eviction API, PDBs ensure sufficient capacity remains when involuntary disruptions occur.
 
 ## Creating Basic PDBs
 
@@ -33,7 +33,7 @@ spec:
       app: web-frontend
 ```
 
-This PDB prevents any action that would reduce web-frontend pods below 3. If the deployment has 5 replicas, draining can affect at most 2 pods simultaneously.
+This PDB prevents any eviction that would reduce web-frontend pods below 3. If the deployment has 5 replicas, draining can affect at most 2 pods simultaneously.
 
 Alternatively, specify maximum unavailable:
 
@@ -126,7 +126,7 @@ spec:
         image: confluentinc/cp-kafka:7.4.0
 ```
 
-The PDB ensures at least 2 Kafka brokers remain during node drains, maintaining quorum and preventing data loss.
+The PDB ensures at least 2 Kafka brokers remain during node drains, helping maintain quorum for a three-broker cluster and reducing disruption risk.
 
 ## Combining Multiple Selectors
 
@@ -158,7 +158,7 @@ This PDB protects any production frontend or backend pod labeled as critical, en
 
 ## PDBs During Rolling Updates
 
-Rolling updates count as voluntary disruptions. PDBs affect how deployments roll out:
+Pods that are unavailable during rolling updates count against the disruption budget, but workload controllers such as Deployments are not limited by PDBs when performing rolling updates:
 
 ```yaml
 apiVersion: apps/v1
@@ -176,6 +176,9 @@ spec:
     matchLabels:
       app: api-gateway
   template:
+    metadata:
+      labels:
+        app: api-gateway
     spec:
       containers:
       - name: gateway
@@ -192,9 +195,9 @@ spec:
       app: api-gateway
 ```
 
-The deployment's maxUnavailable allows removing 2 pods. The PDB requires 8 minimum. During rollout, Kubernetes terminates old pods while respecting the PDB, ensuring smooth updates without service degradation.
+The deployment's maxUnavailable allows removing 2 pods during the rollout. The PDB requires 8 minimum for voluntary evictions such as node drains. Configure both so planned node maintenance and application rollouts have compatible availability targets.
 
-If the PDB is too restrictive (minAvailable: 10 in this example), rolling updates would block because terminating any pod violates the budget.
+If the PDB is too restrictive (minAvailable: 10 in this example), node drains and other eviction API operations would block because evicting any pod violates the budget.
 
 ## Handling Node Drains
 
@@ -238,19 +241,23 @@ spec:
       app: node-exporter
 ```
 
-This ensures at least one node-exporter pod remains during cluster-wide operations. However, draining individual nodes still works because DaemonSets reschedule immediately on other nodes.
+This ensures at least one node-exporter pod remains for eviction API operations that target these pods. However, `kubectl drain` does not delete DaemonSet-managed pods; with `--ignore-daemonsets`, it ignores them because the DaemonSet controller manages one pod per eligible node.
 
 For critical DaemonSets like monitoring or security agents, consider:
 
 ```yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: security-agent
 spec:
-  minAvailable: "90%"
-  selector:
-    matchLabels:
-      app: security-agent
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 10%
 ```
 
-This allows disrupting 10% of DaemonSet pods at once, enabling rolling node updates while maintaining broad coverage.
+This allows DaemonSet rolling updates to make 10% of the DaemonSet pods unavailable at once while maintaining broad coverage.
 
 ## Cluster Autoscaler Integration
 
@@ -301,9 +308,9 @@ spec:
       periodSeconds: 10
 ```
 
-If the readiness probe fails, Kubernetes does not count this pod toward minAvailable. This allows draining nodes with unhealthy pods even if the PDB would otherwise prevent it.
+If the readiness probe fails, Kubernetes does not count this pod toward minAvailable. By default, unhealthy running pods can still block eviction unless the guarded application has enough healthy pods. Set `unhealthyPodEvictionPolicy: AlwaysAllow` on the PDB when you want drains to evict unhealthy running pods regardless of the budget.
 
-This behavior prevents broken pods from blocking maintenance but can cause issues if readiness probes are too sensitive.
+This behavior prevents evicting additional pods from an already disrupted application, but can cause maintenance issues if readiness probes are too sensitive.
 
 ## Monitoring PDB Status
 
@@ -324,8 +331,7 @@ Monitor PDB violations:
 
 ```promql
 # PDBs at zero allowed disruptions
-kube_poddisruptionbudget_status_current_healthy -
-kube_poddisruptionbudget_status_desired_healthy <= 0
+kube_poddisruptionbudget_status_pod_disruptions_allowed == 0
 ```
 
 Alert when PDBs block operations for too long:
@@ -341,8 +347,7 @@ spec:
     rules:
     - alert: PDBBlockingDrain
       expr: |
-        kube_poddisruptionbudget_status_current_healthy ==
-        kube_poddisruptionbudget_status_desired_healthy
+        kube_poddisruptionbudget_status_pod_disruptions_allowed == 0
       for: 30m
       annotations:
         summary: "PDB preventing disruptions for 30+ minutes"
@@ -385,7 +390,7 @@ spec:
       tier: frontend
 ```
 
-If myapp is also labeled tier: frontend, both PDBs apply. Kubernetes uses the most restrictive (8 minimum).
+If myapp is also labeled tier: frontend, both PDBs apply. The eviction API disallows eviction of pods covered by multiple PDBs, so avoid overlapping selectors except during controlled transitions between PDBs.
 
 Missing PDBs for critical services is common. Review all production deployments and ensure PDB coverage.
 
@@ -412,10 +417,10 @@ Simulate disruptions:
 # Delete pods manually to test PDB
 kubectl delete pod myapp-abc123
 
-# Check if PDB prevented deletion
+# Verify the deletion was not blocked by the PDB
 kubectl get events | grep "PodDisruptionBudget"
 ```
 
-PDBs do not prevent manual pod deletion with kubectl delete. They only affect eviction API calls used by drain and rollouts.
+PDBs do not prevent manual pod deletion with kubectl delete. They limit voluntary disruptions through eviction API calls, such as those used by drain and cluster management tools.
 
 Pod Disruption Budgets are essential for production Kubernetes clusters. They provide the safety net enabling confident cluster maintenance without service degradation. Combine them with proper replica counts, health checks, and monitoring for comprehensive availability protection.
