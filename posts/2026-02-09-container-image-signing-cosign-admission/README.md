@@ -144,13 +144,16 @@ Deploy Sigstore Policy Controller for admission control:
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
 
 # Wait for cert-manager to be ready
-kubectl wait --for=condition=Available -n cert-manager deployment/cert-manager --timeout=300s
+kubectl wait --for=condition=Available -n cert-manager deployment --all --timeout=300s
 
 # Install Policy Controller
-kubectl apply -f https://github.com/sigstore/policy-controller/releases/download/v0.8.0/release.yaml
+kubectl apply -f https://github.com/sigstore/policy-controller/releases/download/v0.8.0/policy-controller-v0.8.0.yaml
 
 # Verify installation
 kubectl get pods -n cosign-system
+
+# Enable admission checks for a namespace
+kubectl label namespace production policy.sigstore.dev/include=true
 ```
 
 ## Creating Image Policies
@@ -203,7 +206,16 @@ kubectl run test --image=myregistry.com/myapp:v1.0.0
 
 ## Namespace-Specific Policies
 
-Apply different policies to different namespaces:
+Enable admission checks for the namespaces where policies should apply:
+
+```bash
+kubectl label namespace production policy.sigstore.dev/include=true
+kubectl label namespace critical-services policy.sigstore.dev/include=true
+kubectl label namespace development policy.sigstore.dev/include=true
+kubectl label namespace staging policy.sigstore.dev/include=true
+```
+
+Apply different policies by image pattern or workload labels:
 
 ```yaml
 apiVersion: policy.sigstore.dev/v1beta1
@@ -211,12 +223,9 @@ kind: ClusterImagePolicy
 metadata:
   name: production-strict-policy
 spec:
-  match:
-  - namespaces:
-    - production
-    - critical-services
   images:
-  - glob: "**"
+  - glob: "myregistry.com/production/**"
+  - glob: "myregistry.com/critical-services/**"
   authorities:
   - key:
       data: |
@@ -231,9 +240,18 @@ metadata:
   name: dev-warn-policy
 spec:
   match:
-  - namespaces:
-    - development
-    - staging
+  - resource: deployments
+    group: apps
+    version: v1
+    selector:
+      matchLabels:
+        environment: development
+  - resource: deployments
+    group: apps
+    version: v1
+    selector:
+      matchLabels:
+        environment: staging
   images:
   - glob: "myregistry.com/**"
   authorities:
@@ -311,12 +329,16 @@ spec:
     data: |
       package main
 
-      import "time"
+      import "list"
 
       // Require both signatures
-      authorizations: {
-        "security-team": true
-        "release-team": true
+      authorityMatches: {
+        "security-team": {
+          signatures: list.MinItems(1)
+        }
+        "release-team": {
+          signatures: list.MinItems(1)
+        }
       }
 ```
 
@@ -329,10 +351,10 @@ Sign attestations about image contents:
 syft myregistry.com/myapp:v1.0.0 -o spdx-json > sbom.json
 
 # Attest and sign the SBOM
-cosign attest --key cosign.key --predicate sbom.json myregistry.com/myapp:v1.0.0
+cosign attest --key cosign.key --predicate sbom.json --type https://spdx.dev/Document myregistry.com/myapp:v1.0.0
 
 # Verify attestation
-cosign verify-attestation --key cosign.pub --type spdx myregistry.com/myapp:v1.0.0
+cosign verify-attestation --key cosign.pub --type https://spdx.dev/Document myregistry.com/myapp:v1.0.0
 ```
 
 Require attestation verification:
@@ -353,10 +375,11 @@ spec:
         -----END PUBLIC KEY-----
     attestations:
     - name: sbom
-      predicateType: spdx
+      predicateType: https://spdx.dev/Document
       policy:
         type: cue
         data: |
+          predicateType: "https://spdx.dev/Document"
           predicate: {
             SPDXID: "SPDXRef-DOCUMENT"
           }
@@ -396,19 +419,23 @@ groups:
 
 Exempt trusted system images:
 
+```bash
+# If you configure policy-controller as opt-out, exclude system namespaces
+kubectl label namespace kube-system policy.sigstore.dev/exclude=true
+```
+
 ```yaml
 apiVersion: policy.sigstore.dev/v1beta1
 kind: ClusterImagePolicy
 metadata:
   name: allow-system-images
 spec:
-  match:
-  - namespaces:
-    - kube-system
   images:
   - glob: "k8s.gcr.io/**"
   - glob: "docker.io/library/**"
-  mode: warn
+  authorities:
+  - static:
+      action: pass
 ```
 
 ## Rotating Signing Keys
