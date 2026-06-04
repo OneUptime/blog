@@ -18,20 +18,14 @@ The default seccomp profile blocks dangerous syscalls like reboot, module loadin
 
 ## Configuring CRI-O Seccomp Support
 
-Enable seccomp profile support in CRI-O.
+Configure the default seccomp profile in CRI-O. Kubernetes `Localhost` profiles are loaded from the kubelet seccomp directory, not from a CRI-O profile-root setting.
 
 ```toml
 # /etc/crio/crio.conf
 
 [crio.runtime]
-# Enable seccomp
+# Default profile used when a workload requests RuntimeDefault
 seccomp_profile = "/usr/share/containers/seccomp.json"
-
-# Allow custom profiles
-seccomp_use_default_when_empty = true
-
-# Profile directory
-seccomp_profile_root = "/var/lib/kubelet/seccomp"
 ```
 
 Create profile directory:
@@ -58,32 +52,60 @@ Build restrictive profiles for different workload types.
       "names": [
         "accept",
         "accept4",
+        "arch_prctl",
         "bind",
+        "brk",
+        "clock_gettime",
         "close",
         "connect",
+        "dup2",
         "epoll_create",
+        "epoll_create1",
+        "epoll_pwait",
         "epoll_ctl",
         "epoll_wait",
+        "execve",
         "exit",
         "exit_group",
+        "fcntl",
+        "fstat",
+        "fstatfs",
         "futex",
+        "getdents64",
         "getcwd",
         "getpid",
+        "getrlimit",
+        "gettid",
+        "getuid",
         "getsockopt",
+        "ioctl",
         "listen",
+        "madvise",
         "mmap",
+        "mprotect",
         "munmap",
         "open",
         "openat",
+        "pipe2",
+        "poll",
+        "pselect6",
         "read",
+        "readlinkat",
         "recv",
         "recvfrom",
         "rt_sigaction",
         "rt_sigprocmask",
+        "rt_sigreturn",
+        "sched_getaffinity",
+        "sched_yield",
         "send",
         "sendto",
+        "set_tid_address",
+        "setitimer",
         "setsockopt",
+        "sigaltstack",
         "socket",
+        "vfork",
         "write"
       ],
       "action": "SCMP_ACT_ALLOW"
@@ -103,13 +125,14 @@ Web server profile:
   "syscalls": [
     {
       "names": [
-        "accept4", "bind", "brk", "clone", "close", "connect",
+        "accept4", "arch_prctl", "bind", "brk", "clone", "close", "connect",
         "epoll_create1", "epoll_ctl", "epoll_wait", "exit_group",
         "fcntl", "fstat", "futex", "getcwd", "getpeername", "getpid",
-        "getsockname", "getsockopt", "listen", "mmap", "mprotect",
-        "munmap", "open", "openat", "read", "recvfrom", "rt_sigaction",
-        "rt_sigprocmask", "sendto", "setsockopt", "socket", "stat",
-        "write", "writev"
+        "gettid", "getsockname", "getsockopt", "listen", "madvise", "mmap",
+        "mprotect", "munmap", "open", "openat", "read", "readlinkat",
+        "recvfrom", "rt_sigaction", "rt_sigprocmask", "rt_sigreturn",
+        "sched_getaffinity", "sendto", "set_tid_address", "setsockopt",
+        "sigaltstack", "socket", "stat", "write", "writev"
       ],
       "action": "SCMP_ACT_ALLOW"
     }
@@ -207,7 +230,7 @@ Debug blocked syscalls:
 
 ```bash
 # Enable audit logging
-sudo auditctl -a exit,always -F arch=b64 -S all
+sudo auditctl -a always,exit -F arch=b64 -S all
 
 # View blocked syscalls
 sudo ausearch -m SECCOMP
