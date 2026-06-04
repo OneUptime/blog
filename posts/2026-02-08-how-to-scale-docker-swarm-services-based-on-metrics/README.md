@@ -123,10 +123,6 @@ scrape_configs:
           - "tasks.node-exporter"
         type: "A"
         port: 9100
-
-  - job_name: "docker"
-    static_configs:
-      - targets: ["172.17.0.1:9323"]
 ```
 
 Deploy the monitoring stack:
@@ -153,7 +149,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 
 # Configuration
-PROMETHEUS_URL = "http://prometheus:9090"
+PROMETHEUS_URL = "http://monitoring_prometheus:9090"
 DOCKER_CLIENT = docker.from_env()
 CHECK_INTERVAL = 30  # seconds between scaling checks
 
@@ -350,10 +346,18 @@ SCALE_UP_CPU=70
 SCALE_DOWN_CPU=30
 
 while true; do
-  # Get average CPU usage across all tasks
-  AVG_CPU=$(docker stats --no-stream --format "{{.CPUPerc}}" \
-    $(docker service ps -q "$SERVICE" --filter "desired-state=running") 2>/dev/null | \
-    sed 's/%//' | awk '{sum+=$1; count++} END {if(count>0) print sum/count; else print 0}')
+  # Get average CPU usage across running containers for this service
+  CONTAINERS=$(docker ps -q \
+    --filter "label=com.docker.swarm.service.name=$SERVICE" \
+    --filter "status=running")
+
+  if [ -n "$CONTAINERS" ]; then
+    AVG_CPU=$(docker stats --no-stream --format "{{.CPUPerc}}" \
+      $CONTAINERS 2>/dev/null | \
+      sed 's/%//' | awk '{sum+=$1; count++} END {if(count>0) print sum/count; else print 0}')
+  else
+    AVG_CPU=0
+  fi
 
   CURRENT=$(docker service inspect "$SERVICE" --format '{{.Spec.Mode.Replicated.Replicas}}')
 
