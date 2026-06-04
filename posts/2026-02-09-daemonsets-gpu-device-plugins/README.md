@@ -46,13 +46,10 @@ spec:
       priorityClassName: system-node-critical
       containers:
       - name: nvidia-device-plugin
-        image: nvcr.io/nvidia/k8s-device-plugin:v0.14.3
+        image: nvcr.io/nvidia/k8s-device-plugin:v0.17.1
         args:
         - --fail-on-init-error=false
         - --pass-device-specs=true
-        env:
-        - name: NVIDIA_MIG_MONITOR_DEVICES
-          value: all
         securityContext:
           privileged: true
           capabilities:
@@ -103,16 +100,17 @@ spec:
       hostNetwork: true
       containers:
       - name: amdgpu-device-plugin
-        image: rocm/k8s-device-plugin:1.25.2.7
+        image: rocm/k8s-device-plugin
         securityContext:
           privileged: true
+          capabilities:
+            drop:
+            - ALL
         volumeMounts:
         - name: device-plugin
           mountPath: /var/lib/kubelet/device-plugins
         - name: sys
           mountPath: /sys
-        - name: dev
-          mountPath: /dev/dri
       volumes:
       - name: device-plugin
         hostPath:
@@ -120,9 +118,6 @@ spec:
       - name: sys
         hostPath:
           path: /sys
-      - name: dev
-        hostPath:
-          path: /dev/dri
 ```
 
 The AMD plugin works similarly but uses ROCm drivers and exposes amd.com/gpu resources.
@@ -147,20 +142,10 @@ spec:
         name: intel-gpu-plugin
     spec:
       nodeSelector:
-        gpu.intel.com/gpu: "true"
-      initContainers:
-      - name: intel-gpu-initcontainer
-        image: intel/intel-gpu-plugin:0.27.1
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          cp /usr/local/bin/intel_gpu_device_plugin /shared/
-        volumeMounts:
-        - name: shared
-          mountPath: /shared
+        intel.feature.node.kubernetes.io/gpu: "true"
       containers:
       - name: intel-gpu-plugin
-        image: intel/intel-gpu-plugin:0.27.1
+        image: intel/intel-gpu-plugin:0.34.0
         args:
         - -shared-dev-num=1
         env:
@@ -179,6 +164,8 @@ spec:
         - name: sys
           mountPath: /sys/class/drm
           readOnly: true
+        - name: cdi
+          mountPath: /var/run/cdi
       volumes:
       - name: device-plugin
         hostPath:
@@ -189,93 +176,29 @@ spec:
       - name: sys
         hostPath:
           path: /sys/class/drm
-      - name: shared
-        emptyDir: {}
+      - name: cdi
+        hostPath:
+          path: /var/run/cdi
+          type: DirectoryOrCreate
 ```
 
-Intel's plugin supports time-slicing for sharing GPUs across multiple workloads.
+Intel's plugin exposes resources such as gpu.intel.com/i915 and gpu.intel.com/xe. It supports sharing GPUs across multiple workloads with the shared device count option.
 
 ## NVIDIA GPU operator approach
 
 The NVIDIA GPU Operator deploys the entire GPU software stack including drivers and monitoring:
 
-```yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: nvidia-gpu-operator
-  namespace: gpu-operator
-spec:
-  selector:
-    matchLabels:
-      app: nvidia-gpu-operator
-  template:
-    metadata:
-      labels:
-        app: nvidia-gpu-operator
-    spec:
-      nodeSelector:
-        nvidia.com/gpu.present: "true"
-      priorityClassName: system-node-critical
-      tolerations:
-      - operator: Exists
-      hostPID: true
-      containers:
-      - name: nvidia-driver-installer
-        image: nvidia/driver:525.85.12-ubuntu22.04
-        command:
-        - /bin/bash
-        - -c
-        - |
-          # Install NVIDIA drivers if not present
-          if ! nvidia-smi > /dev/null 2>&1; then
-            echo "Installing NVIDIA drivers..."
-            /usr/local/bin/install-driver.sh
-          fi
+```bash
+helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+helm repo update
 
-          # Keep container running
-          sleep infinity
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: root-mount
-          mountPath: /root
-        - name: dev
-          mountPath: /dev
+kubectl create namespace gpu-operator
 
-      - name: device-plugin
-        image: nvcr.io/nvidia/k8s-device-plugin:v0.14.3
-        volumeMounts:
-        - name: device-plugin
-          mountPath: /var/lib/kubelet/device-plugins
-
-      - name: dcgm-exporter
-        image: nvcr.io/nvidia/k8s/dcgm-exporter:3.1.7-3.1.4-ubuntu22.04
-        ports:
-        - name: metrics
-          containerPort: 9400
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: nvidia
-          mountPath: /usr/local/nvidia
-
-      volumes:
-      - name: device-plugin
-        hostPath:
-          path: /var/lib/kubelet/device-plugins
-      - name: root-mount
-        hostPath:
-          path: /
-      - name: dev
-        hostPath:
-          path: /dev
-      - name: nvidia
-        hostPath:
-          path: /usr/local/nvidia
+helm install gpu-operator nvidia/gpu-operator \
+  --namespace gpu-operator
 ```
 
-This comprehensive approach includes driver installation, device plugin, and GPU metrics exporters in one DaemonSet.
+This comprehensive approach installs the operator, which manages driver containers, the device plugin, GPU Feature Discovery, and GPU metrics exporters as separate components.
 
 ## GPU feature discovery
 
@@ -296,16 +219,28 @@ spec:
       labels:
         app: gpu-feature-discovery
     spec:
-      nodeSelector:
-        nvidia.com/gpu.present: "true"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: feature.node.kubernetes.io/pci-10de.present
+                operator: In
+                values:
+                - "true"
+            - matchExpressions:
+              - key: nvidia.com/gpu.present
+                operator: In
+                values:
+                - "true"
       containers:
       - name: gpu-feature-discovery
-        image: nvcr.io/nvidia/gpu-feature-discovery:v0.8.2
-        args:
-        - --mig-strategy=single
-        - --fail-on-init-error=true
-        - --oneshot=false
-        - --sleep-interval=60s
+        image: nvcr.io/nvidia/k8s-device-plugin:v0.17.1
+        command:
+        - /usr/bin/gpu-feature-discovery
+        env:
+        - name: MIG_STRATEGY
+          value: single
         volumeMounts:
         - name: output-dir
           mountPath: /etc/kubernetes/node-feature-discovery/features.d
@@ -313,11 +248,6 @@ spec:
           mountPath: /sys
         securityContext:
           privileged: true
-        env:
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
       volumes:
       - name: output-dir
         hostPath:
@@ -353,15 +283,10 @@ spec:
         nvidia.com/mig.capable: "true"
       containers:
       - name: nvidia-mig-device-plugin
-        image: nvcr.io/nvidia/k8s-device-plugin:v0.14.3
+        image: nvcr.io/nvidia/k8s-device-plugin:v0.17.1
         args:
         - --mig-strategy=mixed
         - --pass-device-specs=true
-        env:
-        - name: NVIDIA_MIG_MONITOR_DEVICES
-          value: all
-        - name: MIG_STRATEGY
-          value: mixed
         securityContext:
           privileged: true
         volumeMounts:
