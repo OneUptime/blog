@@ -188,8 +188,8 @@ Critical features for training jobs:
 
 1. **Lower priorityClassName**: Allows preemption by inference
 2. **Checkpoint support**: Training can resume after preemption
-3. **backoffLimit**: Retries after being evicted
-4. **restartPolicy: OnFailure**: Restarts the pod if preempted
+3. **backoffLimit**: Allows the Job controller to retry failed pods before marking the Job failed
+4. **restartPolicy: OnFailure**: Restarts failed containers in the pod; if the pod is deleted during preemption, the Job controller creates a replacement pod
 
 ## Implementing Graceful Checkpoint Handling
 
@@ -252,7 +252,7 @@ def train():
             if handler.preemption_requested:
                 handler.save_checkpoint(model, optimizer, epoch, loss.item())
                 print("Checkpoint saved, exiting gracefully")
-                sys.exit(0)
+                sys.exit(143)
 
             # Training step
             optimizer.zero_grad()
@@ -269,7 +269,7 @@ if __name__ == '__main__':
     train()
 ```
 
-This code catches the SIGTERM signal that Kubernetes sends before terminating a pod, saves a checkpoint, and exits gracefully. On restart, it resumes from the last checkpoint.
+This code catches the SIGTERM signal that Kubernetes sends before terminating a pod, saves a checkpoint, and exits with a non-zero code so the Job retries rather than treating the interrupted training run as complete. On restart, it resumes from the last checkpoint.
 
 ## Configuring Preemption Policies
 
@@ -289,12 +289,14 @@ data:
     profiles:
       - schedulerName: default-scheduler
         plugins:
-          preemption:
+          postFilter:
             enabled:
               - name: DefaultPreemption
         pluginConfig:
           - name: DefaultPreemption
             args:
+              apiVersion: kubescheduler.config.k8s.io/v1
+              kind: DefaultPreemptionArgs
               minCandidateNodesPercentage: 10
               minCandidateNodesAbsolute: 100
 ```
@@ -303,7 +305,7 @@ These settings control how many nodes the scheduler evaluates when looking for p
 
 ## Setting Pod Disruption Budgets
 
-For inference services, use PodDisruptionBudgets to limit how many pods can be down simultaneously:
+For inference services, use PodDisruptionBudgets to limit how many pods can be down simultaneously during voluntary disruptions such as node drains:
 
 ```yaml
 # inference-pdb.yaml
@@ -319,7 +321,7 @@ spec:
       app: bert-inference
 ```
 
-This ensures that even during maintenance or cluster autoscaling, you maintain minimum inference capacity.
+This helps ensure that during maintenance or cluster autoscaling, you maintain minimum inference capacity. PodDisruptionBudgets do not block every termination path, including scheduler preemption by higher-priority pods.
 
 ## Implementing Time-Based Priority Adjustments
 
@@ -334,6 +336,7 @@ metadata:
   namespace: ml-training
 spec:
   schedule: "0 8 * * 1-5"  # 8 AM weekdays
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -360,6 +363,7 @@ metadata:
   namespace: ml-training
 spec:
   schedule: "0 18 * * 1-5"  # 6 PM weekdays
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -441,14 +445,14 @@ spec:
             summary: "Inference pods stuck in pending state"
             description: "{{ $value }} inference pods cannot be scheduled"
 
-        - alert: HighPreemptionRate
+        - alert: HighTrainingRestartRate
           expr: |
             rate(kube_pod_container_status_restarts_total{namespace="ml-training"}[5m]) > 0.5
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "Training pods being preempted frequently"
+            summary: "Training containers restarting frequently"
             description: "Training workload restart rate is {{ $value }}/sec"
 ```
 
@@ -464,7 +468,7 @@ kubectl apply -f inference-deployment.yaml
 kubectl apply -f training-job-low-priority.yaml
 
 # Wait for training to consume all GPUs
-kubectl wait --for=condition=Running pod -l workload-type=training --timeout=60s
+kubectl wait --for=jsonpath='{.status.phase}'=Running pod -l workload-type=training --timeout=60s
 
 # Scale up inference (should preempt training)
 kubectl scale deployment bert-sentiment-inference --replicas=6
