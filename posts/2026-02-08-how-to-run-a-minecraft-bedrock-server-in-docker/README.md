@@ -18,7 +18,7 @@ You need:
 
 - Docker Engine 20.10+
 - Docker Compose v2
-- At least 1GB of RAM (2GB recommended)
+- At least 4GB of RAM
 - Minecraft Bedrock Edition client on any supported device
 
 ```bash
@@ -42,7 +42,7 @@ docker run -d \
   itzg/minecraft-bedrock-server
 ```
 
-Connect from your Bedrock client by adding a server with the address `localhost` and port `19132`.
+Connect from your Bedrock client by adding a server with your host machine's IP address and port `19132`. Use `localhost` only if the client is running on the same machine as Docker.
 
 ## Important Note About UDP
 
@@ -54,8 +54,6 @@ A complete Docker Compose file with all the common settings.
 
 ```yaml
 # docker-compose.yml - Minecraft Bedrock Edition server
-version: "3.8"
-
 services:
   bedrock:
     image: itzg/minecraft-bedrock-server
@@ -151,15 +149,19 @@ curl ifconfig.me
 
 ### Console Players
 
-Xbox, PlayStation, and Switch players cannot add custom servers directly through the game UI. They need to use a workaround involving DNS redirection or the "BedrockConnect" tool.
+Xbox, PlayStation, and Switch players cannot add custom servers directly through the game UI. They need to use a workaround involving DNS redirection or the "BedrockConnect" tool. BedrockConnect also listens on UDP port 19132, so run it on a different host or move your Bedrock server to a different port.
 
 ```bash
+# Create a custom server list for BedrockConnect
+printf '[{"name":"My Server","address":"YOUR_SERVER_IP","port":19132}]' > custom_servers.json
+
 # Run BedrockConnect to allow console players to join custom servers
 docker run -d \
   --name bedrockconnect \
   -p 19132:19132/udp \
-  ghcr.io/pugmatt/bedrockconnect \
-  --custom-servers '[{"name":"My Server","address":"YOUR_SERVER_IP","port":19132}]'
+  -v "$PWD/custom_servers.json:/custom_servers.json:ro" \
+  pugmatt/bedrock-connect \
+  custom_servers=/custom_servers.json
 ```
 
 ## Server Console Commands
