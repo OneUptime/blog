@@ -8,7 +8,7 @@ Description: Learn how to deploy and configure the CSI snapshot controller in Ku
 
 ---
 
-The CSI snapshot controller is a critical component that watches VolumeSnapshot resources and coordinates with CSI drivers to create, delete, and manage snapshots. Proper configuration ensures reliable snapshot operations.
+The CSI snapshot controller is a critical component that watches VolumeSnapshot resources and coordinates with CSI snapshotter sidecars to create, delete, and manage snapshots. Proper configuration ensures reliable snapshot operations.
 
 ## Understanding the CSI Snapshot Controller
 
@@ -17,7 +17,7 @@ The snapshot controller consists of two main components:
 1. **Snapshot Controller** - Watches VolumeSnapshot and VolumeSnapshotContent resources
 2. **CSI Snapshotter Sidecar** - Communicates with CSI drivers to perform snapshot operations
 
-The controller translates Kubernetes snapshot requests into CSI driver operations.
+Together, the controller and CSI snapshotter sidecar translate Kubernetes snapshot requests into CSI driver operations.
 
 ## Installing CSI Snapshot CRDs
 
@@ -26,9 +26,9 @@ First, install the snapshot Custom Resource Definitions:
 ```bash
 # Install snapshot CRDs (v1 API)
 
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.6.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.6.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.6.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
 
 # Verify CRDs are installed
 kubectl get crd | grep snapshot
@@ -39,18 +39,17 @@ kubectl get crd | grep snapshot
 Deploy the snapshot controller in your cluster:
 
 ```bash
-# Create namespace
-kubectl create namespace snapshot-controller
+# The upstream manifests install the controller in kube-system
 
 # Install RBAC
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.6.0/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
 
 # Install snapshot controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.6.0/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
 
 # Verify deployment
 kubectl get deployment snapshot-controller -n kube-system
-kubectl get pods -n kube-system -l app=snapshot-controller
+kubectl get pods -n kube-system -l app.kubernetes.io/name=snapshot-controller
 ```
 
 ## Custom Snapshot Controller Configuration
@@ -67,21 +66,22 @@ spec:
   replicas: 2  # For high availability
   selector:
     matchLabels:
-      app: snapshot-controller
+      app.kubernetes.io/name: snapshot-controller
   template:
     metadata:
       labels:
-        app: snapshot-controller
+        app.kubernetes.io/name: snapshot-controller
     spec:
       serviceAccountName: snapshot-controller
       containers:
       - name: snapshot-controller
-        image: registry.k8s.io/sig-storage/snapshot-controller:v6.3.0
+        image: registry.k8s.io/sig-storage/snapshot-controller:v8.5.0
         args:
         - --v=5  # Logging level
         - --leader-election=true  # Enable leader election for HA
         - --leader-election-namespace=kube-system
-        - --timeout=300s  # Snapshot operation timeout
+        - --http-endpoint=:8080  # Enable metrics and leader-election health checks
+        - --retry-interval-max=5m  # Maximum retry interval for failed snapshot operations
         env:
         - name: POD_NAMESPACE
           valueFrom:
@@ -96,16 +96,10 @@ spec:
             memory: 512Mi
         livenessProbe:
           httpGet:
-            path: /healthz
+            path: /healthz/leader-election
             port: 8080
           initialDelaySeconds: 30
           periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 5
 ```
 
 ## CSI Snapshotter Sidecar Configuration
@@ -123,11 +117,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: csi-snapshotter
+      app.kubernetes.io/name: csi-snapshotter
   template:
     metadata:
       labels:
-        app: csi-snapshotter
+        app.kubernetes.io/name: csi-snapshotter
     spec:
       serviceAccountName: csi-snapshotter
       containers:
@@ -135,7 +129,7 @@ spec:
       - name: csi-driver
         image: your-csi-driver:latest
         args:
-        - --endpoint=/csi/csi.sock
+        - --endpoint=unix:///csi/csi.sock
         - --nodeid=$(NODE_ID)
         volumeMounts:
         - name: socket-dir
@@ -143,7 +137,7 @@ spec:
 
       # Snapshotter sidecar
       - name: csi-snapshotter
-        image: registry.k8s.io/sig-storage/csi-snapshotter:v6.3.0
+        image: registry.k8s.io/sig-storage/csi-snapshotter:v8.5.0
         args:
         - --csi-address=/csi/csi.sock
         - --leader-election=true
@@ -170,7 +164,7 @@ spec:
 
 ## Monitoring Snapshot Controller
 
-Create a monitoring dashboard:
+Create monitoring rules after exposing metrics with `--http-endpoint`:
 
 ```yaml
 apiVersion: v1
@@ -192,7 +186,7 @@ data:
           summary: "Snapshot controller is down"
 
       - alert: SnapshotCreationFailing
-        expr: rate(snapshot_controller_create_snapshot_errors_total[5m]) > 0.1
+        expr: sum(rate(snapshot_controller_operation_total_seconds_count{operation_name="CreateSnapshot",operation_status!="success"}[5m])) > 0
         for: 10m
         labels:
           severity: warning
@@ -200,7 +194,7 @@ data:
           summary: "High rate of snapshot creation failures"
 
       - alert: SnapshotDeletionFailing
-        expr: rate(snapshot_controller_delete_snapshot_errors_total[5m]) > 0.1
+        expr: sum(rate(snapshot_controller_operation_total_seconds_count{operation_name="DeleteSnapshot",operation_status!="success"}[5m])) > 0
         for: 10m
         labels:
           severity: warning
@@ -212,13 +206,13 @@ Check controller logs:
 
 ```bash
 # Get controller pods
-kubectl get pods -n kube-system -l app=snapshot-controller
+kubectl get pods -n kube-system -l app.kubernetes.io/name=snapshot-controller
 
 # View logs
-kubectl logs -n kube-system -l app=snapshot-controller -f
+kubectl logs -n kube-system -l app.kubernetes.io/name=snapshot-controller -f
 
 # Check for errors
-kubectl logs -n kube-system -l app=snapshot-controller | grep -i error
+kubectl logs -n kube-system -l app.kubernetes.io/name=snapshot-controller | grep -i error
 
 # View snapshotter sidecar logs
 kubectl logs -n kube-system <csi-driver-pod> -c csi-snapshotter
@@ -246,12 +240,12 @@ kubectl get deployment snapshot-controller -n kube-system || echo "WARNING: Cont
 # Check controller pods
 echo
 echo "Checking controller pods..."
-kubectl get pods -n kube-system -l app=snapshot-controller
+kubectl get pods -n kube-system -l app.kubernetes.io/name=snapshot-controller
 
 # Check controller logs for errors
 echo
 echo "Recent errors in controller logs..."
-kubectl logs -n kube-system -l app=snapshot-controller --tail=50 | grep -i error || echo "No errors found"
+kubectl logs -n kube-system -l app.kubernetes.io/name=snapshot-controller --tail=50 | grep -i error || echo "No errors found"
 
 # Check snapshot operations
 echo
@@ -273,6 +267,35 @@ kubectl get volumesnapshotclass
 Verify the controller is working:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: snapshot-tester
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: snapshot-tester
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+- apiGroups: ["snapshot.storage.k8s.io"]
+  resources: ["volumesnapshots"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: snapshot-tester
+subjects:
+- kind: ServiceAccount
+  name: snapshot-tester
+roleRef:
+  kind: Role
+  name: snapshot-tester
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -293,7 +316,7 @@ spec:
 
           echo "=== Testing Snapshot Controller ==="
 
-          # Create test PVC
+          # Create test PVC. Replace storageClassName with a CSI storage class that supports snapshots.
           kubectl apply -f - <<EOF
           apiVersion: v1
           kind: PersistentVolumeClaim
@@ -305,19 +328,19 @@ spec:
             resources:
               requests:
                 storage: 1Gi
-            storageClassName: standard
+            storageClassName: your-csi-storage-class
           EOF
 
           kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/test-pvc --timeout=60s
 
-          # Create snapshot
+          # Create snapshot. Replace volumeSnapshotClassName with a VolumeSnapshotClass for the same CSI driver.
           kubectl apply -f - <<EOF
           apiVersion: snapshot.storage.k8s.io/v1
           kind: VolumeSnapshot
           metadata:
             name: test-snapshot
           spec:
-            volumeSnapshotClassName: csi-snapshot-class
+            volumeSnapshotClassName: your-csi-snapshot-class
             source:
               persistentVolumeClaimName: test-pvc
           EOF
