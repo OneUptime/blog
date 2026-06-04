@@ -14,7 +14,7 @@ Ephemeral volumes provide temporary storage that exists only for the pod's lifet
 
 Kubernetes supports several ephemeral volume types. EmptyDir volumes are the most common, created empty when the pod starts and deleted when it terminates. CSI ephemeral volumes use storage drivers to provide temporary volumes. Generic ephemeral volumes use PersistentVolumeClaim templates for more sophisticated temporary storage.
 
-Each type requires different security considerations. EmptyDir volumes can be memory-backed or disk-backed. CSI ephemeral volumes depend on driver capabilities. Generic ephemeral volumes inherit security from their PVC specifications.
+Each type requires different security considerations. EmptyDir volumes can be memory-backed or disk-backed. CSI ephemeral volumes depend on driver capabilities. Generic ephemeral volumes use the settings from their PVC templates and the storage class that provisions them.
 
 ## Basic EmptyDir with Restricted Permissions
 
@@ -55,7 +55,7 @@ spec:
       sizeLimit: 500Mi
 ```
 
-The fsGroup ensures proper ownership of emptyDir volumes. Size limits prevent resource exhaustion.
+The fsGroup sets the volume's group ownership for volume types that support fsGroup, and adds that group to the container processes. Size limits help prevent resource exhaustion.
 
 ## Memory-Backed EmptyDir
 
@@ -95,7 +95,7 @@ spec:
 
 Memory-backed emptyDir counts against container memory limits. Set sizeLimit to prevent excessive memory usage.
 
-## Multiple Ephemeral Volumes with Different Permissions
+## Multiple Ephemeral Volumes with Different Purposes
 
 Configure various ephemeral volumes for different purposes:
 
@@ -143,7 +143,7 @@ spec:
       sizeLimit: 50Mi
 ```
 
-Each volume serves a specific purpose with appropriate size limits.
+Each volume serves a specific purpose with appropriate size limits. These mounts share the Pod-level fsGroup; use separate Pods or container-specific mounts when you need stronger permission isolation.
 
 ## CSI Ephemeral Volumes
 
@@ -177,7 +177,7 @@ spec:
         type: "ephemeral"
 ```
 
-CSI ephemeral volumes provide driver-specific features while maintaining ephemeral behavior.
+CSI ephemeral volumes provide driver-specific features while maintaining ephemeral behavior. Replace the driver name and volumeAttributes with values supported by an installed CSI driver that advertises inline ephemeral volume support.
 
 ## Generic Ephemeral Volumes
 
@@ -218,7 +218,7 @@ spec:
           storageClassName: fast-ssd
 ```
 
-Generic ephemeral volumes create a PVC automatically and delete it when the pod terminates.
+Generic ephemeral volumes create a PVC automatically and delete it when the pod is deleted. The backing volume is usually deleted as well, depending on the StorageClass reclaim policy.
 
 ## Read-Only Ephemeral Volume Mounts
 
@@ -317,9 +317,9 @@ spec:
       sizeLimit: 1Gi
 ```
 
-Both containers access the ephemeral volume through shared fsGroup membership.
+Both containers access the ephemeral volume through shared fsGroup membership, while the reader's volumeMount is marked read-only.
 
-Resource Limits on Ephemeral Volumes
+## Resource Limits on Ephemeral Volumes
 
 Prevent resource exhaustion with proper limits:
 
@@ -450,4 +450,4 @@ Combine read-only root filesystems, fsGroup, size limits, and resource constrain
 
 ## Conclusion
 
-Ephemeral volumes provide necessary temporary storage while maintaining security when properly configured. Use fsGroup to control ownership, set sizeLimit to prevent resource exhaustion, and combine with read-only root filesystems for defense in depth. Choose appropriate ephemeral volume types based on performance needs and security requirements. Memory-backed emptyDir offers speed for small temporary data, while disk-backed emptyDir and generic ephemeral volumes suit larger datasets. Always run containers as non-root users, drop unnecessary capabilities, and prevent privilege escalation. Monitor ephemeral volume usage to detect anomalies that might indicate security issues or application problems. Properly configured ephemeral volumes enable applications to function while maintaining strong security boundaries.
+Ephemeral volumes provide necessary temporary storage while maintaining security when properly configured. Use fsGroup to control supported volume group ownership, set sizeLimit to prevent resource exhaustion, and combine with read-only root filesystems for defense in depth. Choose appropriate ephemeral volume types based on performance needs and security requirements. Memory-backed emptyDir offers speed for small temporary data, while disk-backed emptyDir and generic ephemeral volumes suit larger datasets. Always run containers as non-root users, drop unnecessary capabilities, and prevent privilege escalation. Monitor ephemeral volume usage to detect anomalies that might indicate security issues or application problems. Properly configured ephemeral volumes enable applications to function while maintaining strong security boundaries.
