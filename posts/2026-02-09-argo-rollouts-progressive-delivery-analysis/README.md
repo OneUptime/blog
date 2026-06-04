@@ -140,12 +140,18 @@ spec:
           templates:
           - templateName: success-rate
           - templateName: latency
+          args:
+          - name: service-name
+            value: api-canary
       - setWeight: 50
       - pause: {duration: 10m}
       - analysis:
           templates:
           - templateName: success-rate
           - templateName: latency
+          args:
+          - name: service-name
+            value: api-canary
       - setWeight: 75
       - pause: {duration: 10m}
 ---
@@ -268,11 +274,13 @@ spec:
   args:
   - name: canary-service
   - name: stable-service
+  - name: canary-pod-regex
   metrics:
   # Error rate comparison
   - name: error-rate-comparison
     interval: 2m
     count: 5
+    successCondition: result[0] == 1
     failureLimit: 2
     provider:
       prometheus:
@@ -283,7 +291,7 @@ spec:
             /
             sum(rate(http_requests_total{service="{{args.canary-service}}"}[5m]))
           )
-          <=
+          <= bool
           (
             sum(rate(http_requests_total{service="{{args.stable-service}}",status=~"5.."}[5m]))
             /
@@ -300,11 +308,13 @@ spec:
         address: http://prometheus:9090
         query: |
           sum(rate(container_cpu_usage_seconds_total{
-            pod=~"{{args.canary-service}}.*"
+            pod=~"{{args.canary-pod-regex}}"
           }[5m]))
           /
-          sum(container_spec_cpu_quota{
-            pod=~"{{args.canary-service}}.*"
+          sum(kube_pod_container_resource_limits{
+            pod=~"{{args.canary-pod-regex}}",
+            resource="cpu",
+            unit="core"
           })
 
   # Memory usage check
@@ -317,11 +327,13 @@ spec:
         address: http://prometheus:9090
         query: |
           sum(container_memory_working_set_bytes{
-            pod=~"{{args.canary-service}}.*"
+            pod=~"{{args.canary-pod-regex}}"
           })
           /
-          sum(container_spec_memory_limit_bytes{
-            pod=~"{{args.canary-service}}.*"
+          sum(kube_pod_container_resource_limits{
+            pod=~"{{args.canary-pod-regex}}",
+            resource="memory",
+            unit="byte"
           })
 ```
 
@@ -489,6 +501,7 @@ spec:
   - name: conversion-rate
     interval: 1m
     count: 10
+    successCondition: result[0] == 1
     provider:
       prometheus:
         address: http://prometheus:9090
@@ -496,7 +509,7 @@ spec:
           sum(rate(conversions_total{version="canary"}[5m]))
           /
           sum(rate(requests_total{version="canary"}[5m]))
-          >=
+          >= bool
           sum(rate(conversions_total{version="stable"}[5m]))
           /
           sum(rate(requests_total{version="stable"}[5m]))
@@ -526,18 +539,18 @@ data:
     - name: argo-rollouts
       rules:
       - alert: RolloutAborted
-        expr: argo_rollout_phase{phase="Degraded"} == 1
+        expr: rollout_info{phase="Abort"} == 1
         labels:
           severity: critical
         annotations:
-          summary: "Rollout {{ $labels.rollout }} was aborted"
+          summary: "Rollout {{ $labels.name }} was aborted"
 
       - alert: RolloutStuck
-        expr: time() - argo_rollout_phase_timestamp > 1800
+        expr: min_over_time(rollout_info{phase!="Completed"}[30m]) == 1
         labels:
           severity: warning
         annotations:
-          summary: "Rollout {{ $labels.rollout }} stuck for >30min"
+          summary: "Rollout {{ $labels.name }} stuck for >30min"
 ```
 
 ## Best Practices
