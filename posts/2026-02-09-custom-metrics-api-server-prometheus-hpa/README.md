@@ -8,7 +8,7 @@ Description: Learn how to deploy and configure a custom metrics API server using
 
 ---
 
-Kubernetes HPA supports three metric types: Resource (CPU/memory), Pods (custom per-pod metrics), and Object (metrics from other Kubernetes objects). To use custom metrics, you need a Custom Metrics API server that implements the `custom.metrics.k8s.io` API. The Prometheus Adapter serves this role, translating Prometheus queries into Kubernetes custom metrics.
+Kubernetes HPA supports several metric sources, including Resource (CPU/memory), Pods (custom per-pod metrics), Object (metrics from other Kubernetes objects), External, and ContainerResource. To use Pods or Object custom metrics, you need a Custom Metrics API server that implements the `custom.metrics.k8s.io` API. The Prometheus Adapter serves this role, translating Prometheus queries into Kubernetes custom metrics.
 
 ## Understanding the Custom Metrics Pipeline
 
@@ -92,9 +92,11 @@ spec:
     app: webapp
   ports:
   - name: http
-    port: 8080
+    port: 80
+    targetPort: 8080
   - name: metrics
     port: 8080
+    targetPort: 8080
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -138,48 +140,42 @@ v1beta1.custom.metrics.k8s.io    monitoring/prometheus-adapter    True    2m
 
 ## Configuring Custom Metrics Rules
 
-The adapter uses configuration rules to translate Prometheus metrics into Kubernetes custom metrics. Edit the adapter configuration:
+The adapter uses configuration rules to translate Prometheus metrics into Kubernetes custom metrics. Create an `adapter-config.yaml` values file for the Helm chart:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: adapter-config
-  namespace: monitoring
-data:
-  config.yaml: |
-    rules:
-    # Rule for HTTP requests per second
-    - seriesQuery: 'http_requests_total{namespace!="",pod!=""}'
-      seriesFilters: []
-      resources:
-        overrides:
-          namespace: {resource: "namespace"}
-          pod: {resource: "pod"}
-      name:
-        matches: "^(.*)_total$"
-        as: "${1}_per_second"
-      metricsQuery: 'rate(<<.Series>>{<<.LabelMatchers>>}[2m])'
+rules:
+  custom:
+  # Rule for HTTP requests per second
+  - seriesQuery: 'http_requests_total{namespace!="",pod!=""}'
+    seriesFilters: []
+    resources:
+      overrides:
+        namespace: {resource: "namespace"}
+        pod: {resource: "pod"}
+    name:
+      matches: "^(.*)_total$"
+      as: "${1}_per_second"
+    metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
 
-    # Rule for request latency p95
-    - seriesQuery: 'http_request_duration_seconds_bucket{namespace!="",pod!=""}'
-      resources:
-        overrides:
-          namespace: {resource: "namespace"}
-          pod: {resource: "pod"}
-      name:
-        as: "http_request_duration_p95"
-      metricsQuery: 'histogram_quantile(0.95, rate(<<.Series>>{<<.LabelMatchers>>}[5m]))'
+  # Rule for request latency p95
+  - seriesQuery: 'http_request_duration_seconds_bucket{namespace!="",pod!=""}'
+    resources:
+      overrides:
+        namespace: {resource: "namespace"}
+        pod: {resource: "pod"}
+    name:
+      as: "http_request_duration_p95"
+    metricsQuery: 'histogram_quantile(0.95, sum(rate(<<.Series>>{<<.LabelMatchers>>}[5m])) by (<<.GroupBy>>, le))'
 
-    # Rule for custom business metric
-    - seriesQuery: 'queue_depth{namespace!="",pod!=""}'
-      resources:
-        overrides:
-          namespace: {resource: "namespace"}
-          pod: {resource: "pod"}
-      name:
-        as: "queue_depth"
-      metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[2m])'
+  # Rule for custom business metric
+  - seriesQuery: 'queue_depth{namespace!="",pod!=""}'
+    resources:
+      overrides:
+        namespace: {resource: "namespace"}
+        pod: {resource: "pod"}
+    name:
+      as: "queue_depth"
+    metricsQuery: 'avg(avg_over_time(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
 ```
 
 Update the adapter with this configuration:
@@ -334,10 +330,10 @@ rules:
   resources:
     overrides:
       namespace: {resource: "namespace"}
-      ingress: {resource: "ingress"}
+      ingress: {group: "networking.k8s.io", resource: "ingress"}
   name:
     as: "requests_per_second"
-  metricsQuery: 'rate(<<.Series>>{<<.LabelMatchers>>}[2m])'
+  metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
 ```
 
 HPA configuration:
