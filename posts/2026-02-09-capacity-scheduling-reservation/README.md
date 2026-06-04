@@ -16,11 +16,11 @@ Understanding capacity scheduling helps you maintain predictable resource availa
 
 ## Understanding Capacity Scheduling Challenges
 
-Traditional Kubernetes scheduling works on a first-come, first-served basis. When a pod needs scheduling, the scheduler finds a node with available resources and places the pod there. This approach works well for homogeneous workloads but creates problems for heterogeneous environments.
+Traditional Kubernetes scheduling places pods as they become eligible for scheduling, with higher-priority pending pods considered before lower-priority pods. When a pod needs scheduling, the scheduler finds a node with available resources and places the pod there. This approach works well for homogeneous workloads but creates problems for heterogeneous environments.
 
 Consider a cluster with five nodes, each having 16 CPU cores. If small 2-core pods gradually fill the cluster, you might end up with 3 cores free on each node. The cluster has 15 cores available total, but a single 8-core pod cannot schedule because no individual node has enough capacity.
 
-Capacity scheduling prevents this fragmentation. It reserves resources on specific nodes, ensuring that large workloads can always find placement. This involves placeholder pods, pod priority and preemption, and careful capacity planning.
+Capacity scheduling reduces this fragmentation. It reserves resources on specific nodes, improving the chance that large workloads can find placement. This involves placeholder pods, pod priority and preemption, and careful capacity planning.
 
 ## Using Placeholder Pods for Capacity Reservation
 
@@ -54,7 +54,7 @@ spec:
         topologyKey: kubernetes.io/hostname
 ```
 
-This placeholder reserves 8 cores and 16GB of memory. The `pause` container uses minimal actual resources while holding the reservation. The anti-affinity rule ensures placeholders spread across nodes rather than clustering on one node.
+This placeholder reserves 8 cores and 16GiB of memory. The `pause` container uses minimal actual resources while holding the reservation. The anti-affinity rule ensures placeholders spread across nodes rather than clustering on one node.
 
 Create a priority class for these placeholders:
 
@@ -111,6 +111,7 @@ import (
     "time"
 
     corev1 "k8s.io/api/core/v1"
+    "k8s.io/apimachinery/pkg/api/resource"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/labels"
     "k8s.io/client-go/kubernetes"
@@ -195,9 +196,9 @@ func (c *CapacityController) reconcile(ctx context.Context) error {
         currentReservedCores, currentReservedMemoryGi, activePlaceholders)
 
     // Adjust placeholder count if needed
-    if currentReservedCores < c.targetReservedCores {
+    if currentReservedCores < c.targetReservedCores || currentReservedMemoryGi < c.targetReservedMemoryGi {
         return c.scaleUpPlaceholders(ctx, activePlaceholders)
-    } else if currentReservedCores > c.targetReservedCores {
+    } else if currentReservedCores > c.targetReservedCores && currentReservedMemoryGi > c.targetReservedMemoryGi {
         return c.scaleDownPlaceholders(ctx, activePlaceholders)
     }
 
@@ -215,6 +216,9 @@ func (c *CapacityController) scaleUpPlaceholders(ctx context.Context, currentCou
         },
         Spec: corev1.PodSpec{
             PriorityClassName: "low-priority-placeholder",
+            NodeSelector: map[string]string{
+                "capacity-pool": "reserved",
+            },
             Containers: []corev1.Container{
                 {
                     Name:  "placeholder",
@@ -280,7 +284,6 @@ func (c *CapacityController) scaleDownPlaceholders(ctx context.Context, currentC
 }
 
 func parseQuantity(s string) resource.Quantity {
-    // Simplified - use proper quantity parsing in production
     return resource.MustParse(s)
 }
 ```
@@ -318,16 +321,11 @@ spec:
 
 Another approach uses dedicated node pools for specific workload types. This provides hard isolation and prevents resource fragmentation:
 
-```yaml
+```bash
 # Label nodes in the reserved pool
-
-apiVersion: v1
-kind: Node
-metadata:
-  name: node-reserved-1
-  labels:
-    capacity-pool: reserved
-    workload-type: large-batch
+kubectl label node node-reserved-1 capacity-pool=reserved workload-type=large-batch
+kubectl label node node-reserved-2 capacity-pool=reserved workload-type=large-batch
+kubectl label node node-reserved-3 capacity-pool=reserved workload-type=large-batch
 ```
 
 Create node taints to prevent regular workloads from using reserved capacity:
@@ -363,6 +361,7 @@ spec:
           requests:
             cpu: "16"
             memory: "32Gi"
+      restartPolicy: Never
 ```
 
 ## Capacity-Aware Autoscaling
@@ -385,7 +384,7 @@ data:
       - .*
 ```
 
-This configuration tells the cluster autoscaler to prefer creating reserved node pools when scaling up. Combined with placeholder pods, this ensures that capacity is always available for large workloads.
+This configuration tells the cluster autoscaler to prefer matching reserved node groups when multiple node groups could satisfy a pending pod. Combined with placeholder pods, this helps maintain capacity for large workloads.
 
 Configure the autoscaler to maintain minimum capacity:
 
@@ -426,16 +425,16 @@ data:
     # Prometheus queries for capacity monitoring
     - name: reserved_capacity_utilization
       query: |
-        sum(kube_pod_container_resource_requests{pod=~"capacity-placeholder.*"})
-        / sum(kube_node_status_allocatable)
+        sum(kube_pod_container_resource_requests{pod=~"capacity-placeholder.*", resource="cpu"})
+        / sum(kube_node_status_allocatable{resource="cpu"})
 
-    - name: placeholder_preemption_rate
+    - name: current_preempted_placeholders
       query: |
-        rate(kube_pod_status_phase{pod=~"capacity-placeholder.*",phase="Failed"}[5m])
+        sum(kube_pod_status_reason{pod=~"capacity-placeholder.*", reason="PreemptionByScheduler"})
 
     - name: large_pod_scheduling_failures
       query: |
-        sum(rate(scheduler_schedule_attempts_total{result="error"}[5m]))
+        sum(rate(scheduler_schedule_attempts_total{result="unschedulable"}[5m]))
 ```
 
 Create a Grafana dashboard to visualize capacity metrics:
@@ -449,15 +448,15 @@ Create a Grafana dashboard to visualize capacity metrics:
         "title": "Reserved Capacity",
         "targets": [
           {
-            "expr": "sum(kube_pod_container_resource_requests{pod=~'capacity-placeholder.*', resource='cpu'})"
+            "expr": "sum(kube_pod_container_resource_requests{pod=~\"capacity-placeholder.*\", resource=\"cpu\"})"
           }
         ]
       },
       {
-        "title": "Placeholder Preemptions",
+        "title": "Preempted Placeholders",
         "targets": [
           {
-            "expr": "rate(kube_pod_status_phase{pod=~'capacity-placeholder.*',phase='Failed'}[5m])"
+            "expr": "sum(kube_pod_status_reason{pod=~\"capacity-placeholder.*\", reason=\"PreemptionByScheduler\"})"
           }
         ]
       }
@@ -476,4 +475,4 @@ Document your capacity requirements clearly. Include expected workload sizes, fr
 
 Test capacity scheduling thoroughly before deploying to production. Create test workloads that simulate your largest jobs and verify they can schedule successfully even when the cluster is busy with smaller workloads.
 
-Capacity scheduling ensures that critical workloads can always find resources, even in busy clusters. By reserving resources strategically and using priority-based preemption, you maintain predictable capacity without wasting resources.
+Capacity scheduling helps critical workloads find resources, even in busy clusters. By reserving resources strategically and using priority-based preemption, you maintain more predictable capacity without wasting resources.
