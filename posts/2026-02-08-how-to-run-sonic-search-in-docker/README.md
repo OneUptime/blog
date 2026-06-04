@@ -32,7 +32,7 @@ graph LR
 
 ## Quick Start
 
-Run Sonic with Docker:
+After creating the `sonic.cfg` file below, run Sonic with Docker:
 
 ```bash
 # Start Sonic on port 1491
@@ -40,6 +40,7 @@ Run Sonic with Docker:
 docker run -d \
   --name sonic \
   -p 1491:1491 \
+  -v "$(pwd)/sonic.cfg:/etc/sonic.cfg" \
   -v sonic_data:/var/lib/sonic/store \
   valeriansaliou/sonic:v1.4.9
 ```
@@ -75,14 +76,16 @@ Create a Sonic configuration file:
 # sonic.cfg - Sonic search engine configuration
 
 [server]
-# Bind to all interfaces inside the container
 log_level = "info"
 
 [channel]
+# Bind to all interfaces inside the container
 inet = "0.0.0.0:1491"
 tcp_timeout = 300
 
 # Authentication password for connecting to Sonic
+auth_password = "SecretPassword"
+
 [channel.search]
 query_limit_default = 10
 query_limit_maximum = 100
@@ -114,7 +117,7 @@ max_size = 2048
 max_words = 250000
 ```
 
-Note: The default password for Sonic is `SecretPassword`. Change it in production by adding an `auth_password` setting under `[channel]`.
+Note: This sample configuration uses `SecretPassword`. Change the `auth_password` value under `[channel]` in production.
 
 ## Interacting with Sonic
 
@@ -131,7 +134,7 @@ Sonic has three channels:
 
 - **ingest** - Push data into the index
 - **search** - Query the index
-- **control** - Manage the index (flush, consolidate, etc.)
+- **control** - Run administrative commands such as consolidation and server info
 
 ## Using the Node.js Client
 
@@ -146,10 +149,6 @@ const ingestChannel = new Sonic.Ingest({
   host: 'localhost',
   port: 1491,
   auth: 'SecretPassword',
-}).connect({
-  connected: () => {
-    console.log('Connected to Sonic ingest channel');
-  },
 });
 
 // Index product data
@@ -175,13 +174,18 @@ async function indexProducts() {
     auth: 'SecretPassword',
   }).connect({
     connected: async () => {
-      await controlChannel.consolidate();
+      await controlChannel.trigger('consolidate');
       console.log('Index consolidated');
     },
   });
 }
 
-indexProducts();
+ingestChannel.connect({
+  connected: async () => {
+    console.log('Connected to Sonic ingest channel');
+    await indexProducts();
+  },
+});
 ```
 
 ```javascript
@@ -231,7 +235,7 @@ def index_articles():
 
     # Consolidate to make data searchable
     with ControlClient("localhost", 1491, "SecretPassword") as control:
-        control.consolidate()
+        control.trigger("consolidate")
         print("Index consolidated")
 
 # Search the index
@@ -302,22 +306,22 @@ volumes:
 ## Managing the Index
 
 ```bash
-# Connect to Sonic control channel to manage the index
+# Connect to Sonic ingest or control channels to manage the index
 # Using a Sonic client or raw TCP:
 
-# Flush all data from a collection
+# In ingest mode: flush all data from a collection
 # FLUSHC products
 
-# Flush a specific bucket
+# In ingest mode: flush a specific bucket
 # FLUSHB products default
 
-# Flush a specific object (re-index a single item)
+# In ingest mode: flush a specific object (re-index a single item)
 # FLUSHO products default prod-1
 
-# Trigger index consolidation (makes recently pushed data searchable)
+# In control mode: trigger index consolidation (makes recently pushed data searchable)
 # TRIGGER consolidate
 
-# Get server info
+# In control mode: get server info
 # INFO
 ```
 
