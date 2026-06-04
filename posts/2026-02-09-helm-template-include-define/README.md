@@ -234,7 +234,7 @@ fsGroup: {{ .Values.podSecurityContext.fsGroup | default 1000 }}
 {{- if .Values.podSecurityContext.fsGroupChangePolicy }}
 fsGroupChangePolicy: {{ .Values.podSecurityContext.fsGroupChangePolicy }}
 {{- end }}
-{{- if semverCompare ">=1.22-0" .Capabilities.KubeVersion.GitVersion }}
+{{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
 seccompProfile:
   type: {{ .Values.podSecurityContext.seccompProfile | default "RuntimeDefault" }}
 {{- end }}
@@ -254,7 +254,7 @@ capabilities:
   add:
   {{- toYaml .Values.securityContext.addCapabilities | nindent 2 }}
   {{- end }}
-readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem | default true }}
+readOnlyRootFilesystem: {{- if hasKey .Values.securityContext "readOnlyRootFilesystem" }} {{ .Values.securityContext.readOnlyRootFilesystem }}{{- else }} true{{- end }}
 runAsNonRoot: true
 runAsUser: {{ .Values.securityContext.runAsUser | default 1000 }}
 {{- end }}
