@@ -22,7 +22,7 @@ The architecture includes:
 
 **Application Load Balancers** in each region exposing cluster services.
 
-**Route 53** for DNS management with health checks.
+**Route 53** for DNS management.
 
 **Data replication** between regions using RDS cross-region read replicas or DynamoDB global tables.
 
@@ -41,8 +41,11 @@ eksctl create cluster \
   --node-type t3.large \
   --nodes 3 \
   --nodes-min 2 \
-  --nodes-max 6 \
-  --managed
+  --nodes-max 6
+aws eks update-kubeconfig \
+  --name prod-east \
+  --region us-east-1 \
+  --alias prod-east
 ```
 
 Create secondary cluster in us-west-2:
@@ -56,8 +59,11 @@ eksctl create cluster \
   --node-type t3.large \
   --nodes 3 \
   --nodes-min 2 \
-  --nodes-max 6 \
-  --managed
+  --nodes-max 6
+aws eks update-kubeconfig \
+  --name prod-west \
+  --region us-west-2 \
+  --alias prod-west
 ```
 
 Using Terraform for both regions:
@@ -87,11 +93,53 @@ module "eks_west" {
 Install in both regions:
 
 ```bash
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update eks
+
+curl -o iam_policy.json \
+  https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.14.1/docs/install/iam_policy.json
+
+aws iam create-policy \
+  --policy-name AWSLoadBalancerControllerIAMPolicy \
+  --policy-document file://iam_policy.json
+
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
 # East region
-kubectl --context=prod-east apply -f aws-load-balancer-controller.yaml
+eksctl create iamserviceaccount \
+  --cluster=prod-east \
+  --region us-east-1 \
+  --namespace=kube-system \
+  --name=aws-load-balancer-controller \
+  --attach-policy-arn=arn:aws:iam::$ACCOUNT_ID:policy/AWSLoadBalancerControllerIAMPolicy \
+  --override-existing-serviceaccounts \
+  --approve
+
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  -n kube-system \
+  --kube-context=prod-east \
+  --set clusterName=prod-east \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=aws-load-balancer-controller \
+  --version 1.14.0
 
 # West region
-kubectl --context=prod-west apply -f aws-load-balancer-controller.yaml
+eksctl create iamserviceaccount \
+  --cluster=prod-west \
+  --region us-west-2 \
+  --namespace=kube-system \
+  --name=aws-load-balancer-controller \
+  --attach-policy-arn=arn:aws:iam::$ACCOUNT_ID:policy/AWSLoadBalancerControllerIAMPolicy \
+  --override-existing-serviceaccounts \
+  --approve
+
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  -n kube-system \
+  --kube-context=prod-west \
+  --set clusterName=prod-west \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=aws-load-balancer-controller \
+  --version 1.14.0
 ```
 
 ## Deploying Applications to Both Regions
@@ -134,6 +182,17 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-app
+spec:
+  selector:
+    app: web-app
+  ports:
+  - port: 80
+    targetPort: 8080
 ```
 
 Deploy to both regions:
@@ -250,55 +309,57 @@ Get ALB ARNs:
 ```bash
 ALB_EAST_ARN=$(aws elbv2 describe-load-balancers \
   --region us-east-1 \
-  --query "LoadBalancers[?contains(DNSName, '$(echo $ALB_EAST | cut -d- -f1)')].LoadBalancerArn" \
+  --query "LoadBalancers[?DNSName=='$ALB_EAST'].LoadBalancerArn | [0]" \
   --output text)
 
 ALB_WEST_ARN=$(aws elbv2 describe-load-balancers \
   --region us-west-2 \
-  --query "LoadBalancers[?contains(DNSName, '$(echo $ALB_WEST | cut -d- -f1)')].LoadBalancerArn" \
+  --query "LoadBalancers[?DNSName=='$ALB_WEST'].LoadBalancerArn | [0]" \
   --output text)
 ```
 
 Create endpoint group for us-east-1:
 
 ```bash
-aws globalaccelerator create-endpoint-group \
+EAST_GROUP_ARN=$(aws globalaccelerator create-endpoint-group \
   --listener-arn $LISTENER_ARN \
   --endpoint-group-region us-east-1 \
   --endpoint-configurations \
     "EndpointId=$ALB_EAST_ARN,Weight=100,ClientIPPreservationEnabled=true" \
-  --health-check-interval-seconds 30 \
-  --threshold-count 3
+  --query 'EndpointGroup.EndpointGroupArn' \
+  --output text)
 ```
 
 Create endpoint group for us-west-2:
 
 ```bash
-aws globalaccelerator create-endpoint-group \
+WEST_GROUP_ARN=$(aws globalaccelerator create-endpoint-group \
   --listener-arn $LISTENER_ARN \
   --endpoint-group-region us-west-2 \
   --endpoint-configurations \
     "EndpointId=$ALB_WEST_ARN,Weight=100,ClientIPPreservationEnabled=true" \
-  --health-check-interval-seconds 30 \
-  --threshold-count 3
+  --query 'EndpointGroup.EndpointGroupArn' \
+  --output text)
 ```
 
 ## Configuring Traffic Distribution
 
-Adjust traffic weights (70% east, 30% west):
+Adjust regional traffic dials. The percentage applies to traffic that Global Accelerator would otherwise route to that Region based on health and proximity:
 
 ```bash
 # Update east endpoint group
 aws globalaccelerator update-endpoint-group \
   --endpoint-group-arn $EAST_GROUP_ARN \
+  --traffic-dial-percentage 100 \
   --endpoint-configurations \
-    "EndpointId=$ALB_EAST_ARN,Weight=70"
+    "EndpointId=$ALB_EAST_ARN,Weight=100,ClientIPPreservationEnabled=true"
 
 # Update west endpoint group
 aws globalaccelerator update-endpoint-group \
   --endpoint-group-arn $WEST_GROUP_ARN \
+  --traffic-dial-percentage 30 \
   --endpoint-configurations \
-    "EndpointId=$ALB_WEST_ARN,Weight=30"
+    "EndpointId=$ALB_WEST_ARN,Weight=100,ClientIPPreservationEnabled=true"
 ```
 
 ## Setting Up Data Replication
@@ -309,17 +370,19 @@ For RDS cross-region replication:
 # Create read replica in secondary region
 aws rds create-db-instance-read-replica \
   --db-instance-identifier prod-db-replica \
-  --source-db-instance-identifier prod-db-primary \
+  --source-db-instance-identifier arn:aws:rds:us-east-1:ACCOUNT_ID:db:prod-db-primary \
   --db-instance-class db.r5.large \
+  --source-region us-east-1 \
   --region us-west-2
 ```
 
 For DynamoDB global tables:
 
 ```bash
-aws dynamodb create-global-table \
-  --global-table-name sessions \
-  --replication-group RegionName=us-east-1 RegionName=us-west-2
+aws dynamodb update-table \
+  --table-name sessions \
+  --replica-updates Create={RegionName=us-west-2} \
+  --region us-east-1
 ```
 
 ## Testing Failover
@@ -331,7 +394,11 @@ Simulate failure in primary region:
 kubectl --context=prod-east scale deployment web-app --replicas=0
 
 # Traffic should automatically route to west
-curl http://$ACC_IPS[0]
+ACC_IP=$(aws globalaccelerator list-accelerators \
+  --query 'Accelerators[?Name==`eks-global`].IpSets[0].IpAddresses[0]' \
+  --output text)
+
+curl http://$ACC_IP
 
 # Should return response from us-west-2
 ```
@@ -404,9 +471,7 @@ resource "aws_globalaccelerator_listener" "main" {
 resource "aws_globalaccelerator_endpoint_group" "east" {
   listener_arn = aws_globalaccelerator_listener.main.id
   endpoint_group_region = "us-east-1"
-
-  health_check_interval_seconds = 30
-  threshold_count              = 3
+  traffic_dial_percentage = 100
 
   endpoint_configuration {
     endpoint_id = data.aws_lb.east.arn
@@ -418,9 +483,7 @@ resource "aws_globalaccelerator_endpoint_group" "east" {
 resource "aws_globalaccelerator_endpoint_group" "west" {
   listener_arn = aws_globalaccelerator_listener.main.id
   endpoint_group_region = "us-west-2"
-
-  health_check_interval_seconds = 30
-  threshold_count              = 3
+  traffic_dial_percentage = 100
 
   endpoint_configuration {
     endpoint_id = data.aws_lb.west.arn
@@ -434,4 +497,4 @@ resource "aws_globalaccelerator_endpoint_group" "west" {
 
 AWS Global Accelerator with multi-region EKS clusters provides high availability, automatic failover, and improved performance for global applications. The static anycast IP addresses simplify DNS management while health-based routing ensures traffic only reaches healthy regions.
 
-This architecture eliminates regional single points of failure and reduces latency by routing users to the nearest healthy endpoint. Combined with cross-region data replication, you achieve a fully redundant Kubernetes platform capable of surviving regional outages.
+This architecture eliminates regional single points of failure for stateless application traffic and reduces latency by routing users to the nearest healthy endpoint. Combined with cross-region data replication and a tested database failover plan, you achieve a redundant Kubernetes platform capable of surviving regional outages.
