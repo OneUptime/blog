@@ -73,6 +73,7 @@ import (
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
 
@@ -82,6 +83,8 @@ const (
 )
 
 type FPGAPlugin struct {
+    pluginapi.UnimplementedDevicePluginServer
+
     socket     string
     devices    []*pluginapi.Device
     server     *grpc.Server
@@ -152,7 +155,7 @@ func (p *FPGAPlugin) Allocate(ctx context.Context, req *pluginapi.AllocateReques
     for _, containerReq := range req.ContainerRequests {
         containerResp := &pluginapi.ContainerAllocateResponse{}
 
-        for _, deviceID := range containerReq.DevicesIDs {
+        for _, deviceID := range containerReq.DevicesIds {
             // Map device ID to device path
             devicePath := fmt.Sprintf("/dev/fpga%s", deviceID[len("fpga-"):])
 
@@ -188,12 +191,9 @@ Register the plugin with kubelet:
 
 ```go
 func (p *FPGAPlugin) Register() error {
-    conn, err := grpc.Dial(
-        pluginapi.KubeletSocket,
-        grpc.WithInsecure(),
-        grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
-            return net.DialTimeout("unix", addr, timeout)
-        }),
+    conn, err := grpc.NewClient(
+        "unix://"+pluginapi.KubeletSocket,
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
         return err
@@ -282,7 +282,6 @@ spec:
       labels:
         name: fpga-device-plugin
     spec:
-      hostNetwork: true
       containers:
       - name: fpga-plugin
         image: example.com/fpga-device-plugin:latest
@@ -322,7 +321,7 @@ spec:
         example.com/fpga: "1"
 ```
 
-The container will have `/dev/fpga0` mounted and the `FPGA_DEVICE` environment variable set.
+The container will have the allocated FPGA device, such as `/dev/fpga0`, mounted and the `FPGA_DEVICE` environment variable set.
 
 ## Implementing Health Checks
 
@@ -397,7 +396,7 @@ func (p *FPGAPlugin) watchForDeviceChanges() {
 
 ## Best Practices
 
-- Run as privileged containers with host network access
+- Run as privileged containers with the required hostPath mounts
 - Implement robust health checks
 - Handle kubelet restarts gracefully
 - Use gRPC keepalives to detect connection loss
