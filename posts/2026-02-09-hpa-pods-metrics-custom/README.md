@@ -25,7 +25,7 @@ Start by instrumenting your application to export custom metrics.
 ```python
 # Python Flask example with prometheus_client
 
-from flask import Flask
+from flask import Flask, g, request
 from prometheus_client import Counter, Gauge, Histogram, generate_latest, REGISTRY
 import time
 
@@ -40,12 +40,12 @@ queue_size = Gauge('local_queue_size', 'Number of items in local processing queu
 @app.before_request
 def before_request():
     active_connections.inc()
-    request.start_time = time.time()
+    g.request_start_time = time.time()
 
 @app.after_request
 def after_request(response):
     active_connections.dec()
-    duration = time.time() - request.start_time
+    duration = time.time() - g.request_start_time
     request_duration.labels(endpoint=request.path).observe(duration)
     request_counter.labels(method=request.method, endpoint=request.path, status=response.status_code).inc()
     return response
@@ -122,7 +122,7 @@ data:
       name:
         matches: "^(.*)_total$"
         as: "${1}_per_second"
-      metricsQuery: 'rate(<<.Series>>{<<.LabelMatchers>>}[2m])'
+      metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
 
     # Expose active connections per pod
     - seriesQuery: 'active_connections{namespace!="",pod!=""}'
@@ -143,6 +143,17 @@ data:
       name:
         as: "local_queue_size"
       metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[2m])'
+
+    # Expose p95 request latency per pod
+    - seriesQuery: 'http_request_duration_seconds_bucket{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace: {resource: "namespace"}
+          pod: {resource: "pod"}
+      name:
+        matches: "^(.*)_seconds_bucket$"
+        as: "${1}_p95_seconds"
+      metricsQuery: 'histogram_quantile(0.95, sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>, le))'
 ```
 
 Apply and restart the adapter.
@@ -248,7 +259,7 @@ spec:
         periodSeconds: 180
 ```
 
-This prevents any single pod from being overwhelmed by too many connections.
+This helps keep the average connection count per pod below the target so new pods can take additional connections.
 
 ## Combining Multiple Pods Metrics
 
@@ -378,7 +389,7 @@ Choose metrics that directly represent your application's capacity. If your app 
 
 Set target values based on load testing. Don't guess what "good" throughput per pod looks like - measure it under realistic conditions.
 
-Use 2-minute time windows in Prometheus queries to match typical HPA evaluation periods and smooth out momentary spikes.
+Use 2-minute time windows in Prometheus queries to smooth out momentary spikes across several HPA syncs.
 
 Combine custom metrics with resource metrics. Even if you scale on request rate, monitor CPU and memory to catch unexpected resource pressure.
 
