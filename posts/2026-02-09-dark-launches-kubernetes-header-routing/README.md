@@ -253,17 +253,16 @@ spec:
 Detect dark launch mode in your application:
 
 ```javascript
-const isDarkLaunch = req.headers['x-dark-launch'] === 'enabled' ||
-                     req.cookies.dark_launch_access === 'always';
-
 app.get('/api/products', async (req, res) => {
+  const isDarkLaunch = req.headers['x-dark-launch'] === 'enabled' ||
+                       req.cookies.dark_launch_access === 'always';
   const products = await getProducts();
 
   if (isDarkLaunch) {
     // Show new feature to dark launch users
-    products.forEach(p => {
+    await Promise.all(products.map(async p => {
       p.aiRecommendations = await getAIRecommendations(p.id);
-    });
+    }));
   }
 
   res.json(products);
@@ -332,7 +331,8 @@ Track dark launch usage:
 ```javascript
 // Middleware to track dark launch access
 app.use((req, res, next) => {
-  const isDarkLaunch = req.headers['x-dark-launch'] === 'enabled';
+  const isDarkLaunch = req.headers['x-dark-launch'] === 'enabled' ||
+                       req.cookies.dark_launch_access === 'always';
 
   if (isDarkLaunch) {
     metrics.increment('dark_launch.requests', {
@@ -357,9 +357,9 @@ rate(dark_launch_requests_total{status=~"5.."}[5m])
 rate(dark_launch_requests_total[5m])
 
 # Compare production vs dark launch
-rate(http_requests_total{version="production"}[5m])
-vs
-rate(http_requests_total{version="dark"}[5m])
+sum by (version) (
+  rate(http_requests_total{version=~"production|dark"}[5m])
+)
 ```
 
 ## Dark Launch Rollout Automation
@@ -429,7 +429,7 @@ function isFeatureEnabled(featureName, userGroup) {
   if (!feature) return false;
 
   // Infrastructure routed to dark version
-  const isDarkVersion = process.env.VERSION === 'dark';
+  const isDarkVersion = process.env.DARK_LAUNCH_MODE === 'true';
 
   // Check if feature is in dark launch mode
   if (feature.darkLaunch && !isDarkVersion) {
