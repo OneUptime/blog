@@ -20,7 +20,7 @@ Extracting this data for visualization requires querying the Kubernetes API, par
 
 ## Exposing Gatekeeper Metrics to Prometheus
 
-Configure Gatekeeper to expose audit metrics in Prometheus format:
+Gatekeeper exposes Prometheus metrics by default on port `8888` at `/metrics`. Add a Service and ServiceMonitor so Prometheus Operator can scrape the audit controller:
 
 ```yaml
 # gatekeeper-metrics-config.yaml
@@ -125,9 +125,11 @@ def get_constraints():
     crds = api_instance.list_custom_resource_definition()
 
     for crd in crds.items:
-        if 'constraints.gatekeeper.sh' in crd.spec.group:
+        if crd.spec.group == 'constraints.gatekeeper.sh':
             group = crd.spec.group
-            version = crd.spec.versions[0].name
+            version = next(
+                version.name for version in crd.spec.versions if version.served
+            )
             plural = crd.spec.names.plural
 
             try:
@@ -141,6 +143,8 @@ def get_constraints():
                     constraints.append({
                         'kind': constraint['kind'],
                         'name': constraint['metadata']['name'],
+                        'metadata': constraint.get('metadata', {}),
+                        'spec': constraint.get('spec', {}),
                         'status': constraint.get('status', {})
                     })
 
@@ -152,7 +156,11 @@ def get_constraints():
 def extract_severity(constraint):
     """Extract severity from constraint annotations"""
     annotations = constraint.get('metadata', {}).get('annotations', {})
-    return annotations.get('severity', 'medium')
+    severity = annotations.get(
+        'policy.open-cluster-management.io/severity',
+        annotations.get('severity', 'medium')
+    )
+    return severity if severity in {'critical', 'high', 'medium', 'low'} else 'medium'
 
 def update_metrics():
     """Update Prometheus metrics from Gatekeeper audit data"""
@@ -163,10 +171,11 @@ def update_metrics():
     for constraint in constraints:
         name = constraint['name']
         kind = constraint['kind']
+        spec = constraint['spec']
         status = constraint['status']
 
         total_violations = status.get('totalViolations', 0)
-        enforcement_action = status.get('enforcementAction', 'deny')
+        enforcement_action = spec.get('enforcementAction', 'deny')
 
         # Update constraint-level metrics
         violations_by_constraint.labels(
@@ -246,6 +255,8 @@ kind: Service
 metadata:
   name: compliance-exporter
   namespace: gatekeeper-system
+  labels:
+    app: compliance-exporter
 spec:
   selector:
     app: compliance-exporter
@@ -435,17 +446,20 @@ Build an automated report generator for auditors:
 #!/usr/bin/env python3
 
 import requests
-from datetime import datetime, timedelta
-import json
+from datetime import datetime
+import os
 
-PROMETHEUS_URL = "http://prometheus:9090"
+PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
+REPORT_DIR = os.getenv("REPORT_DIR", ".")
 
-def query_prometheus(query, time_range='1h'):
+def query_prometheus(query):
     """Query Prometheus for compliance metrics"""
     response = requests.get(
         f"{PROMETHEUS_URL}/api/v1/query",
-        params={'query': query}
+        params={'query': query},
+        timeout=10
     )
+    response.raise_for_status()
     return response.json()['data']['result']
 
 def generate_compliance_report():
@@ -532,8 +546,12 @@ if __name__ == "__main__":
     print(report)
 
     # Save to file
-    filename = f"compliance-report-{datetime.now().strftime('%Y%m%d')}.md"
-    with open(filename, 'w') as f:
+    os.makedirs(REPORT_DIR, exist_ok=True)
+    filename = os.path.join(
+        REPORT_DIR,
+        f"compliance-report-{datetime.now().strftime('%Y%m%d')}.md"
+    )
+    with open(filename, 'w', encoding='utf-8') as f:
         f.write(report)
 
     print(f"\nReport saved to {filename}")
@@ -560,6 +578,8 @@ spec:
             env:
             - name: PROMETHEUS_URL
               value: "http://prometheus-server.monitoring.svc:80"
+            - name: REPORT_DIR
+              value: "/reports"
             volumeMounts:
             - name: reports
               mountPath: /reports
@@ -606,9 +626,9 @@ spec:
         summary: "Critical compliance violations detected"
         description: "{{ $value }} critical violations require immediate attention"
 
-    - alert: ViolationsTrending Up
+    - alert: ViolationsTrendingUp
       expr: |
-        delta(sum(gatekeeper_constraint_violations)[1h]) > 10
+        sum(delta(gatekeeper_constraint_violations[1h])) > 10
       for: 15m
       labels:
         severity: warning
