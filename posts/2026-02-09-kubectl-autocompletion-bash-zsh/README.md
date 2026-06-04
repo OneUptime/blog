@@ -42,7 +42,7 @@ Install on macOS using Homebrew:
 brew install bash-completion@2
 ```
 
-After installing bash-completion, enable kubectl completion. Add this line to your `~/.bashrc`:
+After installing bash-completion, enable kubectl completion. Add this line to your `~/.bashrc` on Linux, or to your `~/.bash_profile` on macOS:
 
 ```bash
 source <(kubectl completion bash)
@@ -52,6 +52,8 @@ For immediate effect without restarting your shell:
 
 ```bash
 source ~/.bashrc
+# or on macOS:
+source ~/.bash_profile
 ```
 
 Now you can use Tab to complete kubectl commands:
@@ -109,7 +111,7 @@ alias k=kubectl
 complete -o default -F __start_kubectl k
 ```
 
-For Zsh, add to `~/.zshrc`:
+For Zsh, add to `~/.zshrc` if completion does not work automatically with your alias:
 
 ```bash
 alias k=kubectl
@@ -123,14 +125,9 @@ k get po<Tab>
 # Completes to: k get pods
 ```
 
-You can create multiple aliases:
+You can create multiple Zsh aliases:
 
 ```bash
-# Bash
-alias kgp='kubectl get pods'
-alias kgs='kubectl get services'
-alias kgd='kubectl get deployments'
-
 # Zsh
 alias kgp='kubectl get pods'
 alias kgs='kubectl get services'
@@ -217,14 +214,14 @@ This is especially helpful when you cannot remember the exact command name.
 
 Autocompletion queries your cluster for resource names. In large clusters, this can be slow. Here are optimizations to improve performance.
 
-Cache completion results by adding to your shell configuration:
+Avoid regenerating the completion script on every shell startup by writing it to a completion file:
 
 ```bash
 # Bash
-complete -o default -o nospace -F __start_kubectl kubectl
+kubectl completion bash | sudo tee /etc/bash_completion.d/kubectl > /dev/null
 
 # Zsh
-zstyle ':completion:*:*:kubectl:*' cache-policy _kubectl_cache_policy
+kubectl completion zsh > "${fpath[1]}/_kubectl"
 ```
 
 Use specific resource types instead of `all`:
@@ -383,7 +380,7 @@ kubectl completion powershell >> $PROFILE
 
 Here are practical ways to maximize autocompletion productivity.
 
-Use partial names with wildcards:
+Use completion for namespace names:
 
 ```bash
 kubectl delete pod --all -n staging<Tab>
@@ -398,13 +395,13 @@ watch kubectl get pods -n prod<Tab>
 Use completion to discover API resources:
 
 ```bash
-kubectl api-resources | grep <Tab>
+kubectl get <Tab>
 ```
 
-Complete JSON paths for output formatting:
+Complete output format names:
 
 ```bash
-kubectl get pod my-pod -o jsonpath='{.status.<Tab>
+kubectl get pod my-pod -o json<Tab>
 ```
 
 Chain commands with completion:
@@ -413,7 +410,7 @@ Chain commands with completion:
 kubectl exec -it $(kubectl get pod -l app=redis -o name | head -1) -- redis-cli
 ```
 
-Use completion in scripts to reduce errors:
+Use commands you verified with completion in scripts:
 
 ```bash
 #!/bin/bash
