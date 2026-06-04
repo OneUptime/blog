@@ -8,7 +8,7 @@ Description: Explore how Docker uses Linux network namespaces to isolate contain
 
 ---
 
-Network namespaces are the Linux kernel feature that makes container networking possible. Each Docker container gets its own network namespace, which gives it a private view of the network stack: its own interfaces, routing tables, iptables rules, and socket tables. From inside a container, it looks like a standalone machine with its own networking. From the host, it is just another namespace linked through virtual Ethernet pairs.
+Network namespaces are the Linux kernel feature that makes container networking possible. By default, each Docker container gets its own network namespace, which gives it a private view of the network stack: its own interfaces, routing tables, iptables rules, and socket tables. From inside a container, it looks like a standalone machine with its own networking. From the host, it is just another namespace linked through virtual Ethernet pairs.
 
 Understanding network namespaces helps you debug connectivity issues, optimize network performance, and build advanced networking configurations that Docker's high-level tools do not directly support.
 
@@ -22,7 +22,7 @@ A network namespace is a kernel construct that provides an isolated copy of the 
 - Its own socket table
 - Its own /proc/net entries
 
-The host has a default (root) namespace. Docker creates additional namespaces for each container.
+The host has a default (root) namespace. Docker creates additional namespaces for containers that use isolated networking.
 
 ```bash
 # List network namespaces visible to the ip command
@@ -48,14 +48,15 @@ echo "Container PID: $CONTAINER_PID"
 ls -la /proc/$CONTAINER_PID/ns/net
 ```
 
-To make the namespace visible to `ip netns` commands, create a symbolic link:
+To make the namespace visible to `ip netns` commands, create a bind mount under `/var/run/netns/`:
 
 ```bash
 # Create the netns directory if it does not exist
 sudo mkdir -p /var/run/netns
 
-# Link the container's namespace so ip netns can see it
-sudo ln -sf /proc/$CONTAINER_PID/ns/net /var/run/netns/ns-demo
+# Create the mount point and bind-mount the namespace so ip netns can see it
+sudo touch /var/run/netns/ns-demo
+sudo mount --bind /proc/$CONTAINER_PID/ns/net /var/run/netns/ns-demo
 
 # Now it appears in the namespace list
 sudo ip netns list
@@ -96,7 +97,7 @@ When Docker starts a container, the process follows these steps:
 4. Attach the other end to the bridge (docker0 or a custom bridge)
 5. Assign an IP address to the interface inside the namespace
 6. Set up the default route pointing to the bridge gateway
-7. Configure DNS resolution (usually 127.0.0.11)
+7. Configure DNS resolution (custom networks usually use Docker's embedded DNS server at 127.0.0.11, while the default bridge receives a copy of the host's `/etc/resolv.conf`)
 
 You can replicate this manually to understand each step:
 
@@ -180,8 +181,8 @@ sudo nsenter -t $CONTAINER_PID -n iptables -L -n
 # View connection tracking table
 sudo nsenter -t $CONTAINER_PID -n conntrack -L 2>/dev/null
 
-# Test DNS resolution from the namespace
-sudo nsenter -t $CONTAINER_PID -n nslookup google.com 127.0.0.11
+# Test DNS lookup traffic from the namespace using the host resolver configuration
+sudo nsenter -t $CONTAINER_PID -n getent hosts google.com
 ```
 
 The `nsenter` command is powerful because it lets you use host tools inside the container's namespace. This is valuable when the container image does not include debugging utilities.
@@ -198,16 +199,11 @@ sudo watch -n 1 'ls -la /proc/*/ns/net 2>/dev/null | wc -l'
 docker run --rm --name lifecycle-test alpine sleep 5
 ```
 
-If a container's network namespace is deleted while you have a reference to it (through `/var/run/netns/`), the reference becomes stale:
+If you created a named entry in `/var/run/netns/` with a bind mount, that mount can keep the namespace alive after the container exits. Remove the entry when you are done:
 
 ```bash
-# Clean up stale namespace links
-for ns in $(sudo ip netns list 2>/dev/null | awk '{print $1}'); do
-    if ! sudo ip netns exec "$ns" true 2>/dev/null; then
-        echo "Removing stale namespace: $ns"
-        sudo rm -f /var/run/netns/$ns
-    fi
-done
+# Remove the named namespace entry created earlier
+sudo ip netns del ns-demo 2>/dev/null || sudo rm -f /var/run/netns/ns-demo
 ```
 
 ## Advanced: Custom Namespace Networking
@@ -270,8 +266,8 @@ sudo ip netns del manual-container
 sudo ip netns del ns-alpha
 sudo ip netns del ns-beta
 
-# Remove stale symlinks
-sudo rm -f /var/run/netns/ns-demo
+# Remove the named namespace entry
+sudo ip netns del ns-demo 2>/dev/null || sudo rm -f /var/run/netns/ns-demo
 ```
 
 ## Conclusion
