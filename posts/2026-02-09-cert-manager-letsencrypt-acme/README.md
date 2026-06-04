@@ -14,18 +14,18 @@ cert-manager is a Kubernetes native certificate management controller that autom
 
 ## Understanding cert-manager and ACME
 
-cert-manager extends Kubernetes with custom resources for certificate management. It watches for Certificate resources, validates domain ownership through ACME challenges, and stores the issued certificates as Kubernetes secrets. Let's Encrypt provides free TLS certificates valid for 90 days, and cert-manager handles renewal automatically before expiration.
+cert-manager extends Kubernetes with custom resources for certificate management. It watches for Certificate resources, validates domain ownership through ACME challenges, and stores the issued certificates as Kubernetes secrets. Let's Encrypt provides free TLS certificates; its default classic profile currently issues 90-day certificates, and cert-manager handles renewal automatically before expiration.
 
-The ACME protocol defines how certificate authorities communicate with applicants to verify domain ownership. cert-manager supports two primary challenge types: HTTP-01 (validates via HTTP endpoint) and DNS-01 (validates via DNS records). We'll explore both in this guide.
+The ACME protocol defines how certificate authorities communicate with applicants to verify domain ownership. cert-manager supports two primary challenge types: HTTP-01 (validates via HTTP endpoint) and DNS-01 (validates via DNS records). This guide uses HTTP-01 for the examples.
 
 ## Installing cert-manager
 
 First, install cert-manager in your cluster using kubectl. The official installation method uses a single manifest file that includes all necessary resources.
 
-```yaml
+```bash
 # Install cert-manager CRDs and controller
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Verify the installation
 kubectl get pods -n cert-manager
@@ -59,8 +59,8 @@ spec:
     # Use this for testing to avoid rate limits
     server: https://acme-staging-v02.api.letsencrypt.org/directory
 
-    # Email address used for ACME registration
-    # Let's Encrypt will send expiration notices here
+    # Email address associated with the ACME account
+    # Let's Encrypt no longer sends expiration notices, so use monitoring for expiry alerts
     email: your-email@example.com
 
     # Name of the secret used to store ACME account private key
@@ -71,8 +71,8 @@ spec:
     solvers:
     - http01:
         ingress:
-          # Use the default ingress class
-          class: nginx
+          # Use the nginx IngressClass
+          ingressClassName: nginx
 ```
 
 Apply the issuer configuration:
@@ -109,7 +109,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 Apply the production issuer:
@@ -134,7 +134,7 @@ spec:
   # Name of the secret where certificate will be stored
   secretName: example-com-tls-secret
 
-  # Certificate validity duration (Let's Encrypt issues 90-day certs)
+  # Certificate validity duration requested from the issuer
   duration: 2160h # 90 days
 
   # Renew certificate 30 days before expiration
@@ -169,7 +169,7 @@ kubectl describe certificate example-com-tls -n default
 kubectl get secret example-com-tls-secret -n default -o yaml
 ```
 
-cert-manager creates a temporary pod and service to complete the HTTP-01 challenge. Let's Encrypt verifies domain ownership by accessing a specific path on your domain, and once validated, issues the certificate.
+cert-manager creates temporary challenge resources, including an acmesolver pod, service, and Ingress, to complete the HTTP-01 challenge. Let's Encrypt verifies domain ownership by accessing a specific path on your domain, and once validated, issues the certificate.
 
 ## Using Certificates with Ingress
 
@@ -185,8 +185,8 @@ metadata:
   annotations:
     # Tell cert-manager to create a certificate automatically
     cert-manager.io/issuer: "letsencrypt-prod"
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - example.com
@@ -233,7 +233,7 @@ If certificate issuance fails, check the Challenge and Order resources for error
 
 ## Automatic Renewal
 
-cert-manager automatically renews certificates based on the renewBefore setting. By default, it attempts renewal 30 days before expiration. You can monitor renewal activity through certificate events:
+cert-manager automatically renews certificates based on the renewBefore setting. By default, it schedules renewal two-thirds of the way through the actual certificate lifetime; for a 90-day certificate, that is roughly 30 days before expiration. You can monitor renewal activity through certificate events:
 
 ```bash
 # Watch for renewal events
@@ -249,9 +249,9 @@ The renewal process is identical to initial issuance: cert-manager creates a new
 
 Start with the staging environment to test your configuration. The staging environment has more lenient rate limits and helps you identify issues before using production certificates.
 
-Use email addresses you actively monitor for ACME registration. Let's Encrypt sends important notifications about certificate expiration (as a backup in case auto-renewal fails) and changes to their service.
+Use a real email address for ACME registration, but do not rely on it for expiration alerts. Let's Encrypt ended its expiration notification email service in 2025, so use certificate monitoring to catch renewal failures.
 
-Set appropriate renewal windows. The default 30-day window provides plenty of buffer time. If renewal fails, cert-manager retries with exponential backoff, giving you time to address issues before certificates expire.
+Set appropriate renewal windows. The default two-thirds renewal point provides a buffer for typical public TLS certificates. If renewal fails, cert-manager retries with exponential backoff, giving you time to address issues before certificates expire.
 
 Monitor certificate expiration dates using Prometheus metrics (covered in a future article) or tools like OneUptime. While cert-manager handles renewal automatically, having external monitoring provides defense in depth.
 
