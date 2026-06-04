@@ -8,7 +8,7 @@ Description: Learn how to use Kyverno to verify container image signatures with 
 
 ---
 
-Container image verification ensures only trusted, signed images run in your Kubernetes cluster. Kyverno integrates with Cosign to verify image signatures and attestations at admission time, blocking unsigned or tampered images. This implements supply chain security without requiring changes to application deployments or CI/CD pipelines. This guide shows you how to configure Kyverno for comprehensive image verification.
+Container image verification ensures only trusted, signed images run in your Kubernetes cluster. Kyverno integrates with Cosign to verify image signatures and attestations at admission time, blocking unsigned or tampered images. This implements supply chain security without requiring changes to application deployments, although signing is typically added to CI/CD pipelines. This guide shows you how to configure Kyverno for comprehensive image verification.
 
 ## Prerequisites
 
@@ -54,10 +54,10 @@ metadata:
     policies.kyverno.io/description: >-
       Verify container images are signed with Cosign before allowing pod creation.
 spec:
-  validationFailureAction: Enforce
+  webhookConfiguration:
+    failurePolicy: Fail
+    timeoutSeconds: 30  # Image verification needs more time
   background: false  # Image verification doesn't work in background mode
-  webhookTimeoutSeconds: 30  # Image verification needs more time
-  failurePolicy: Fail
   rules:
     - name: verify-signature
       match:
@@ -68,6 +68,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
@@ -90,9 +91,9 @@ kind: ClusterPolicy
 metadata:
   name: verify-with-secret-key
 spec:
-  validationFailureAction: Enforce
+  webhookConfiguration:
+    timeoutSeconds: 30
   background: false
-  webhookTimeoutSeconds: 30
   rules:
     - name: verify-images
       match:
@@ -103,6 +104,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
@@ -110,6 +112,7 @@ spec:
                     secret:
                       name: cosign-pub-key
                       namespace: kyverno
+                      key: cosign.pub
 ```
 
 This loads the public key from the Kubernetes secret.
@@ -124,9 +127,9 @@ kind: ClusterPolicy
 metadata:
   name: verify-all-registries
 spec:
-  validationFailureAction: Enforce
+  webhookConfiguration:
+    timeoutSeconds: 30
   background: false
-  webhookTimeoutSeconds: 30
   rules:
     - name: verify-company-images
       match:
@@ -137,6 +140,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.company.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
@@ -144,6 +148,7 @@ spec:
                     secret:
                       name: company-cosign-key
                       namespace: kyverno
+                      key: cosign.pub
 
     - name: verify-vendor-images
       match:
@@ -154,6 +159,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "vendor-registry.io/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
@@ -161,6 +167,7 @@ spec:
                     secret:
                       name: vendor-cosign-key
                       namespace: kyverno
+                      key: cosign.pub
 
     - name: allow-public-images
       match:
@@ -186,9 +193,9 @@ kind: ClusterPolicy
 metadata:
   name: verify-attestations
 spec:
-  validationFailureAction: Enforce
+  webhookConfiguration:
+    timeoutSeconds: 30
   background: false
-  webhookTimeoutSeconds: 30
   rules:
     - name: verify-provenance
       match:
@@ -199,6 +206,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestations:
             - predicateType: https://slsa.dev/provenance/v0.2
               attestors:
@@ -208,6 +216,7 @@ spec:
                         secret:
                           name: cosign-pub-key
                           namespace: kyverno
+                          key: cosign.pub
               conditions:
                 - all:
                     - key: "{{ builder.id }}"
@@ -230,9 +239,9 @@ kind: ClusterPolicy
 metadata:
   name: verify-scan-results
 spec:
-  validationFailureAction: Enforce
+  webhookConfiguration:
+    timeoutSeconds: 30
   background: false
-  webhookTimeoutSeconds: 30
   rules:
     - name: check-vulnerabilities
       match:
@@ -243,6 +252,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestations:
             - predicateType: https://cosign.sigstore.dev/attestation/vuln/v1
               attestors:
@@ -252,6 +262,7 @@ spec:
                         secret:
                           name: cosign-pub-key
                           namespace: kyverno
+                          key: cosign.pub
               conditions:
                 - all:
                     - key: "{{ scanner.vendor }}"
@@ -277,9 +288,9 @@ kind: ClusterPolicy
 metadata:
   name: verify-keyless
 spec:
-  validationFailureAction: Enforce
+  webhookConfiguration:
+    timeoutSeconds: 30
   background: false
-  webhookTimeoutSeconds: 30
   rules:
     - name: keyless-verification
       match:
@@ -290,11 +301,12 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
                 - keyless:
-                    subject: "https://github.com/company/workflows/*"
+                    subjectRegExp: "https://github\\.com/company/.+"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
@@ -312,9 +324,9 @@ kind: ClusterPolicy
 metadata:
   name: conditional-verification
 spec:
-  validationFailureAction: Enforce
+  webhookConfiguration:
+    timeoutSeconds: 30
   background: false
-  webhookTimeoutSeconds: 30
   rules:
     - name: require-signatures-production
       match:
@@ -328,6 +340,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
@@ -335,6 +348,7 @@ spec:
                     secret:
                       name: cosign-pub-key
                       namespace: kyverno
+                      key: cosign.pub
 
     - name: allow-unsigned-dev
       match:
@@ -359,13 +373,13 @@ Test with signed and unsigned images:
 
 ```bash
 # Try to deploy unsigned image (should fail)
-kubectl run test-unsigned --image=nginx:latest
+kubectl run test-unsigned --image=registry.example.com/app:unsigned
 
 # Sign the image
-cosign sign --key cosign.key nginx:latest
+cosign sign --key cosign.key registry.example.com/app:signed
 
 # Try again with signed image (should succeed)
-kubectl run test-signed --image=nginx:latest
+kubectl run test-signed --image=registry.example.com/app:signed
 
 # Check policy reports
 kubectl get policyreport -A
@@ -402,10 +416,10 @@ kind: ClusterPolicy
 metadata:
   name: optimized-verification
 spec:
-  validationFailureAction: Enforce
+  webhookConfiguration:
+    failurePolicy: Ignore  # Don't block on Kyverno failures
+    timeoutSeconds: 15  # Lower timeout for faster failure
   background: false
-  webhookTimeoutSeconds: 15  # Lower timeout for faster failure
-  failurePolicy: Ignore  # Don't block on Kyverno failures
   rules:
     - name: verify-images-cached
       match:
@@ -416,6 +430,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
@@ -423,6 +438,7 @@ spec:
                     secret:
                       name: cosign-pub-key
                       namespace: kyverno
+                      key: cosign.pub
 ```
 
 Kyverno caches verification results, so repeated deployments of the same image are fast.
