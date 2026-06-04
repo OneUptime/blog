@@ -393,7 +393,7 @@ kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090 &
 
 # Check targets in the UI at http://localhost:9090/targets
 # Or query the API
-curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | select(.labels.job == "web-app-monitor")'
+curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | select(.labels.job == "web-app")'
 ```
 
 Check Prometheus logs for any errors:
