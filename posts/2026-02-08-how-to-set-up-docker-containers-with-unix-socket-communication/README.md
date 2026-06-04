@@ -16,7 +16,7 @@ This guide shows you how to set up Unix socket communication between Docker cont
 
 TCP communication between containers goes through the Docker bridge network. Even on the same host, packets traverse the full networking stack: source container, virtual ethernet, bridge, virtual ethernet, destination container. Unix sockets bypass all of that.
 
-Benchmarks consistently show 10-30% lower latency with Unix sockets compared to TCP loopback. For high-throughput services where two containers exchange thousands of messages per second, this difference adds up.
+Benchmarks commonly show lower latency with Unix sockets compared to TCP loopback, but the exact difference depends on workload, message size, runtime, and host configuration. For high-throughput services where two containers exchange thousands of messages per second, this difference can add up.
 
 The tradeoff is that Unix sockets only work between containers on the same host. If you plan to distribute services across multiple machines later, you will need to switch back to TCP. But for sidecar patterns, local proxies, and tightly coupled services that always run together, Unix sockets are the better choice.
 
@@ -60,7 +60,7 @@ if os.path.exists(sock_path):
     os.unlink(sock_path)
 server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 server.bind(sock_path)
-# Make the socket world-readable so other containers can connect
+# Make the socket world-writable so other containers can connect
 os.chmod(sock_path, 0o777)
 server.listen(1)
 print('Server listening on', sock_path)
@@ -103,8 +103,6 @@ Here is a Docker Compose setup for Nginx proxying to Gunicorn via Unix socket:
 
 ```yaml
 # docker-compose.yml - Nginx to Gunicorn communication via Unix socket
-version: "3.8"
-
 services:
   app:
     build: ./app
@@ -161,7 +159,7 @@ server {
 
 ## Handling Permissions
 
-Unix socket permissions are a common source of "connection refused" errors. The process that creates the socket sets its file permissions, and any connecting process must have the right access.
+Unix socket permissions are a common source of connection errors. On Linux, connecting to a pathname Unix stream socket requires write permission on the socket file, and the process must also be able to traverse the directory path.
 
 There are several approaches to handle this.
 
@@ -258,12 +256,17 @@ A special case of Unix socket sharing is mounting the Docker daemon socket itsel
 Mount the Docker socket into a container:
 
 ```bash
+docker volume create portainer_data
+
 # Give a container access to the Docker daemon via its Unix socket
 docker run -d \
   --name portainer \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -p 9000:9000 \
-  portainer/portainer-ce
+  -v portainer_data:/data \
+  -p 9443:9443 \
+  -p 8000:8000 \
+  portainer/portainer-ce:lts
 ```
 
 This is powerful but dangerous. A container with access to the Docker socket can create, modify, and delete any container on the host. Treat it as root-level access.
