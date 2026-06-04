@@ -33,7 +33,9 @@ openssl genrsa -out mtls-ca.key 4096
 
 # Create self-signed CA certificate
 openssl req -new -x509 -days 3650 -key mtls-ca.key -out mtls-ca.crt -subj \
-  "/C=US/ST=California/O=Example Org/OU=Security/CN=mTLS Root CA"
+  "/C=US/ST=California/O=Example Org/OU=Security/CN=mTLS Root CA" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 
 # Create Kubernetes secret with CA
 kubectl create secret tls mtls-ca-key-pair \
@@ -227,7 +229,7 @@ data:
 
         location / {
           # Pass client certificate info to backend
-          proxy_set_header X-Client-Cert $ssl_client_cert;
+          proxy_set_header X-Client-Cert $ssl_client_escaped_cert;
           proxy_set_header X-Client-DN $ssl_client_s_dn;
           proxy_pass http://backend:8080;
         }
@@ -464,13 +466,12 @@ Applications must reload certificates when secrets update. Use mechanisms like:
 Monitor certificate expiration and renewal:
 
 ```bash
-# List all mTLS certificates
-kubectl get certificates --all-namespaces \
-  -l cert-type=mtls
+# List all certificates managed by cert-manager
+kubectl get certificates --all-namespaces
 
 # Check certificate status
 kubectl get certificate -n production \
-  -o custom-columns=NAME:.metadata.name,READY:.status.conditions[0].status,EXPIRATION:.status.notAfter
+  -o 'custom-columns=NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,EXPIRATION:.status.notAfter'
 
 # View renewal events
 kubectl get events --field-selector involvedObject.kind=Certificate \
@@ -491,12 +492,12 @@ spec:
     rules:
     - alert: MTLSCertificateExpiringSoon
       expr: |
-        (certmanager_certificate_expiration_timestamp_seconds{usage="client auth"} - time()) / 86400 < 7
+        (certmanager_certificate_not_after_timestamp_seconds - time()) / 86400 < 7
       labels:
         severity: warning
       annotations:
         summary: "mTLS certificate expiring soon"
-        description: "Certificate {{ $labels.name }} expires in {{ $value }} days"
+        description: "Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} expires in {{ $value }} days"
 ```
 
 ## Troubleshooting mTLS
