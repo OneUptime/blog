@@ -18,7 +18,7 @@ The plugin system is flexible and supports any programming language, but shell s
 
 ## Plugin Directory Structure
 
-Every Helm plugin follows a standard structure:
+A typical Helm plugin follows a standard structure. The only required file is `plugin.yaml`, and additional files depend on the plugin implementation:
 
 ```text
 helm-myplugin/
@@ -45,8 +45,9 @@ helm-myplugin/
 Let's build a plugin that lists all releases with their resource counts. Create the plugin directory:
 
 ```bash
-mkdir -p ~/.local/share/helm/plugins/helm-release-info
-cd ~/.local/share/helm/plugins/helm-release-info
+PLUGIN_DIR="$(helm env HELM_PLUGINS)/helm-release-info"
+mkdir -p "$PLUGIN_DIR"
+cd "$PLUGIN_DIR"
 ```
 
 Create the `plugin.yaml` file:
@@ -56,7 +57,8 @@ name: "release-info"
 version: "0.1.0"
 usage: "Display detailed information about releases"
 description: "Shows release information with resource counts"
-command: "$HELM_PLUGIN_DIR/release-info.sh"
+platformCommand:
+  - command: "$HELM_PLUGIN_DIR/release-info.sh"
 ```
 
 Create the executable script `release-info.sh`:
@@ -262,17 +264,14 @@ package main
 import (
     "fmt"
     "os"
-    "path/filepath"
 
     "github.com/spf13/cobra"
-    "helm.sh/helm/v3/pkg/action"
-    "helm.sh/helm/v3/pkg/cli"
+    "helm.sh/helm/v3/pkg/chart"
     "helm.sh/helm/v3/pkg/chart/loader"
 )
 
 var (
-    settings = cli.New()
-    verbose  bool
+    verbose bool
 )
 
 func main() {
@@ -351,17 +350,17 @@ func analyzeValues(values map[string]interface{}, indent string) {
     }
 }
 
-func calculateComplexity(chart *chart.Chart) int {
+func calculateComplexity(ch *chart.Chart) int {
     score := 0
 
     // Base score from template count
-    score += len(chart.Templates) * 5
+    score += len(ch.Templates) * 5
 
     // Dependencies add complexity
-    score += len(chart.Metadata.Dependencies) * 10
+    score += len(ch.Metadata.Dependencies) * 10
 
     // Count total lines in templates
-    for _, tmpl := range chart.Templates {
+    for _, tmpl := range ch.Templates {
         score += len(tmpl.Data) / 100
     }
 
@@ -376,9 +375,11 @@ name: "chart-analyzer"
 version: "0.1.0"
 usage: "Analyze Helm chart structure and complexity"
 description: "Provides detailed analysis of chart templates, dependencies, and complexity"
-command: "$HELM_PLUGIN_DIR/chart-analyzer"
-hooks:
-  install: "cd $HELM_PLUGIN_DIR && scripts/install-plugin.sh"
+platformCommand:
+  - command: "$HELM_PLUGIN_DIR/chart-analyzer"
+platformHooks:
+  install:
+    - command: "$HELM_PLUGIN_DIR/scripts/install-plugin.sh"
 ```
 
 Create the installation script `scripts/install-plugin.sh`:
@@ -388,9 +389,9 @@ Create the installation script `scripts/install-plugin.sh`:
 
 set -e
 
-cd "$HELM_PLUGIN_DIR"
-
 if [ -n "$HELM_PLUGIN_DIR" ]; then
+    cd "$HELM_PLUGIN_DIR"
+
     # Build the plugin
     echo "Building plugin..."
     go build -o chart-analyzer main.go
@@ -443,16 +444,16 @@ Package your plugin for distribution:
 
 ```bash
 # Create a release archive
-tar -czf helm-chart-analyzer-v0.1.0.tar.gz helm-chart-analyzer/
+helm plugin package --sign=false helm-chart-analyzer/
 
 # Publish to GitHub releases
-gh release create v0.1.0 helm-chart-analyzer-v0.1.0.tar.gz
+gh release create v0.1.0 chart-analyzer-0.1.0.tgz
 ```
 
 Users can install directly from the release:
 
 ```bash
-helm plugin install https://github.com/yourusername/helm-chart-analyzer/releases/download/v0.1.0/helm-chart-analyzer-v0.1.0.tar.gz
+helm plugin install https://github.com/yourusername/helm-chart-analyzer/releases/download/v0.1.0/chart-analyzer-0.1.0.tgz --verify=false
 ```
 
 Helm plugins unlock powerful customization capabilities, allowing you to build tools that integrate seamlessly with your deployment workflows. Whether you choose shell scripts for simplicity or Go for performance, plugins extend Helm to match your exact requirements.
