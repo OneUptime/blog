@@ -48,7 +48,7 @@ code --install-extension metalbear.mirrord
 Run a local process with Mirrord:
 
 ```bash
-# Run with default target (first pod in default namespace)
+# Run without an explicit target (targetless mode)
 mirrord exec node app.js
 
 # Target specific deployment
@@ -61,7 +61,7 @@ mirrord exec --target pod/api-7f8c9d-abc123 node app.js
 mirrord exec --target deployment/api --namespace production node app.js
 ```
 
-The local process now has access to:
+With a targeted run, the local process now has access to:
 - Services running in the cluster
 - Environment variables from the target pod
 - ConfigMaps and Secrets mounted in the pod
@@ -71,8 +71,9 @@ The local process now has access to:
 
 Create a mirrord configuration file for reusable settings:
 
+`.mirrord/mirrord.json`:
+
 ```json
-// .mirrord/mirrord.json
 {
   "target": {
     "path": "deployment/api",
@@ -107,7 +108,7 @@ Create a mirrord configuration file for reusable settings:
 Use the configuration:
 
 ```bash
-mirrord exec --config-file .mirrord/mirrord.json node app.js
+mirrord exec -f .mirrord/mirrord.json node app.js
 ```
 
 ## Network Configuration Modes
@@ -184,7 +185,8 @@ Control which file system operations go to the cluster:
 
 Modes:
 - `local`: File operations use local file system (default)
-- `remote`: File operations go to the cluster
+- `read`: File reads go to the cluster
+- `write`: File reads and writes go to the cluster
 - `localwithoverrides`: Local by default, with specific remote overrides
 
 ## Environment Variable Filtering
@@ -215,8 +217,9 @@ This configuration:
 
 Configure VS Code launch.json for debugging with Mirrord:
 
+`.vscode/launch.json`:
+
 ```json
-// .vscode/launch.json
 {
   "version": "0.2.0",
   "configurations": [
@@ -228,7 +231,7 @@ Configure VS Code launch.json for debugging with Mirrord:
       "runtimeExecutable": "mirrord",
       "runtimeArgs": [
         "exec",
-        "--config-file",
+        "-f",
         ".mirrord/mirrord.json",
         "--"
       ],
@@ -248,7 +251,7 @@ For JetBrains IDEs, create a run configuration:
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Mirrord API" type="NodeJSConfigurationType">
     <node-interpreter>mirrord</node-interpreter>
-    <node-parameters>exec --config-file .mirrord/mirrord.json --</node-parameters>
+    <node-parameters>exec -f .mirrord/mirrord.json --</node-parameters>
     <working-dir>$PROJECT_DIR$</working-dir>
     <js-file>src/index.js</js-file>
     <method v="2" />
@@ -283,7 +286,7 @@ Access production databases safely:
 }
 ```
 
-This lets you query production data without affecting the running service.
+This lets you query production data without affecting the running service, as long as your application honors the read-only setting.
 
 ### Multi-Service Development
 
@@ -291,13 +294,13 @@ Run multiple local processes in the same cluster context:
 
 ```bash
 # Terminal 1: API service
-mirrord exec --target deployment/api --config .mirrord/api.json npm start
+mirrord exec --target deployment/api -f .mirrord/api.json npm start
 
 # Terminal 2: Worker service
-mirrord exec --target deployment/worker --config .mirrord/worker.json npm run worker
+mirrord exec --target deployment/worker -f .mirrord/worker.json npm run worker
 
 # Terminal 3: Frontend (accessing cluster services)
-mirrord exec --target deployment/frontend --config .mirrord/frontend.json npm run dev
+mirrord exec --target deployment/frontend -f .mirrord/frontend.json npm run dev
 ```
 
 ### Testing Service Mesh Integration
@@ -321,14 +324,15 @@ Work with Istio or Linkerd without local mesh components:
 }
 ```
 
-Your local process automatically gets mesh identity and mTLS.
+Your local process can use cluster networking through the remote pod in mesh-enabled clusters without running local mesh components.
 
 ## Creating Development Profiles
 
 Build different configurations for different scenarios:
 
+`.mirrord/local-only.json`:
+
 ```json
-// .mirrord/local-only.json
 {
   "feature": {
     "network": {
@@ -338,15 +342,14 @@ Build different configurations for different scenarios:
     "fs": {
       "mode": "local"
     },
-    "env": {
-      "include": "none"
-    }
+    "env": false
   }
 }
 ```
 
+`.mirrord/full-cluster.json`:
+
 ```json
-// .mirrord/full-cluster.json
 {
   "feature": {
     "network": {
@@ -354,7 +357,7 @@ Build different configurations for different scenarios:
       "outgoing": true
     },
     "fs": {
-      "mode": "remote"
+      "mode": "read"
     },
     "env": {
       "include": "*"
@@ -363,8 +366,9 @@ Build different configurations for different scenarios:
 }
 ```
 
+`.mirrord/staging.json`:
+
 ```json
-// .mirrord/staging.json
 {
   "target": {
     "namespace": "staging"
@@ -383,9 +387,9 @@ Use with npm scripts:
 ```json
 {
   "scripts": {
-    "dev": "mirrord exec --config .mirrord/local-only.json node src/index.js",
-    "dev:cluster": "mirrord exec --config .mirrord/full-cluster.json node src/index.js",
-    "dev:staging": "mirrord exec --config .mirrord/staging.json node src/index.js"
+    "dev": "mirrord exec -f .mirrord/local-only.json node src/index.js",
+    "dev:cluster": "mirrord exec -f .mirrord/full-cluster.json node src/index.js",
+    "dev:staging": "mirrord exec -f .mirrord/staging.json node src/index.js"
   }
 }
 ```
@@ -405,11 +409,12 @@ Common issues and solutions:
 # Verify kubectl access
 kubectl get pods
 
-# Check Mirrord agent deployment
-kubectl get pods -n mirrord
+# Check mirrord agent or operator pods
+kubectl get pods --all-namespaces | grep mirrord
 
 # Verify RBAC permissions
-kubectl auth can-i create pods --subresource=exec
+kubectl auth can-i create pods
+kubectl auth can-i create pods/exec
 ```
 
 **Network traffic not intercepted:**
@@ -444,8 +449,8 @@ Mirrord adds latency for remote operations. Optimize with local overrides:
 {
   "feature": {
     "fs": {
-      "mode": "local",
-      "read_only": [
+      "mode": "read",
+      "local": [
         "/etc/ssl",
         "/usr/share/zoneinfo"
       ]
@@ -457,8 +462,8 @@ Mirrord adds latency for remote operations. Optimize with local overrides:
         "udp": true,
         "filter": {
           "local": [
-            "3000-3999",
-            "5432"
+            ":3000",
+            ":5432"
           ]
         }
       }
@@ -494,10 +499,10 @@ Run locally with cluster context:
 npm run dev:mirrord
 
 # Staging cluster
-mirrord exec --config .mirrord/staging.json npm start
+mirrord exec -f .mirrord/staging.json npm start
 
 # Production (read-only)
-mirrord exec --config .mirrord/production-ro.json npm start
+mirrord exec -f .mirrord/production-ro.json npm start
 ```
 ````
 
