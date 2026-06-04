@@ -21,7 +21,7 @@ Key components:
 - **Distributors**: Receive metrics via remote write and forward to ingesters
 - **Ingesters**: Store recent metrics in memory and flush to object storage
 - **Queriers**: Execute PromQL queries across ingesters and object storage
-- **Compactors**: Merge and downsample blocks in object storage
+- **Compactors**: Merge, deduplicate, and enforce retention for blocks in object storage
 - **Store-gateways**: Serve queries from object storage
 
 Mimir can run in monolithic mode (all components in one process) or distributed mode (separate deployments).
@@ -50,6 +50,10 @@ data:
       http_listen_port: 8080
       grpc_listen_port: 9095
       log_level: info
+
+    memberlist:
+      join_members:
+        - dnssrv+mimir.mimir.svc.cluster.local:7946
 
     distributor:
       ring:
@@ -84,6 +88,7 @@ data:
       ingestion_rate: 100000
       ingestion_burst_size: 200000
       max_query_lookback: 2160h  # 90 days
+      compactor_blocks_retention_period: 2160h  # 90 days
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -103,7 +108,7 @@ spec:
     spec:
       containers:
       - name: mimir
-        image: grafana/mimir:2.10.0
+        image: grafana/mimir:3.1.0
         args:
           - -config.file=/etc/mimir/mimir.yaml
           - -target=all
@@ -226,7 +231,7 @@ blocks_storage:
 blocks_storage:
   backend: azure
   azure:
-    storage_account_name: mimirstorage
+    account_name: mimirstorage
     container_name: mimir-blocks
 ```
 
@@ -268,7 +273,7 @@ spec:
     spec:
       containers:
       - name: distributor
-        image: grafana/mimir:2.10.0
+        image: grafana/mimir:3.1.0
         args:
           - -config.file=/etc/mimir/mimir.yaml
           - -target=distributor
@@ -304,7 +309,7 @@ spec:
     spec:
       containers:
       - name: ingester
-        image: grafana/mimir:2.10.0
+        image: grafana/mimir:3.1.0
         args:
           - -config.file=/etc/mimir/mimir.yaml
           - -target=ingester
@@ -346,7 +351,7 @@ spec:
     spec:
       containers:
       - name: querier
-        image: grafana/mimir:2.10.0
+        image: grafana/mimir:3.1.0
         args:
           - -config.file=/etc/mimir/mimir.yaml
           - -target=querier
@@ -379,10 +384,53 @@ spec:
     spec:
       containers:
       - name: compactor
-        image: grafana/mimir:2.10.0
+        image: grafana/mimir:3.1.0
         args:
           - -config.file=/etc/mimir/mimir.yaml
           - -target=compactor
+        volumeMounts:
+        - name: config
+          mountPath: /etc/mimir
+        - name: data
+          mountPath: /data
+      volumes:
+      - name: config
+        configMap:
+          name: mimir-config
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 50Gi
+---
+# Store-gateways
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mimir-store-gateway
+  namespace: mimir
+spec:
+  serviceName: mimir-store-gateway
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mimir
+      component: store-gateway
+  template:
+    metadata:
+      labels:
+        app: mimir
+        component: store-gateway
+    spec:
+      containers:
+      - name: store-gateway
+        image: grafana/mimir:3.1.0
+        args:
+          - -config.file=/etc/mimir/mimir.yaml
+          - -target=store-gateway
         volumeMounts:
         - name: config
           mountPath: /etc/mimir
@@ -404,16 +452,21 @@ spec:
 
 ## Configuring Multi-Tenancy
 
-Enable per-tenant limits and isolation:
+Enable default limits in the main Mimir configuration and per-tenant overrides in a runtime configuration file:
 
 ```yaml
+# mimir.yaml
 limits:
   # Global defaults
   max_global_series_per_user: 2000000
   ingestion_rate: 100000
   ingestion_burst_size: 200000
+runtime_config:
+  file: /etc/mimir/runtime.yaml
+```
 
-  # Per-tenant overrides
+```yaml
+# runtime.yaml
 overrides:
   tenant-production:
     max_global_series_per_user: 5000000
@@ -438,27 +491,21 @@ compactor:
     - 2h    # First compaction at 2h
     - 12h   # Second at 12h
     - 24h   # Third at 24h
-  retention_enabled: true
-  retention_period: 2160h  # 90 days total retention
+
+limits:
+  compactor_blocks_retention_period: 2160h  # 90 days total retention
 ```
 
-## Setting Up Downsampling
+## Managing Storage Costs
 
-Reduce storage costs with downsampling:
+Mimir does not support Thanos-style downsampling. Reduce storage costs with retention limits and by recording lower-cardinality aggregate series:
 
 ```yaml
-compactor:
-  downsampling_enabled: true
-  downsampling:
-    - from: 0
-      to: 720h     # 30 days at full resolution
-      resolution: 1m
-    - from: 720h
-      to: 2160h    # 30-90 days at 5m resolution
-      resolution: 5m
-    - from: 2160h
-      to: 0        # > 90 days at 1h resolution
-      resolution: 1h
+groups:
+- name: aggregated-kubernetes-metrics
+  rules:
+  - record: namespace:container_cpu_usage_seconds_total:rate5m
+    expr: sum by (namespace) (rate(container_cpu_usage_seconds_total[5m]))
 ```
 
 ## Connecting Prometheus Remote Write
@@ -537,10 +584,15 @@ Reduce series per tenant or increase ingester memory:
 limits:
   max_global_series_per_user: 1000000  # Lower limit
 
-ingester:
+containers:
+- name: ingester
   resources:
+    requests:
+      memory: 8Gi
+      cpu: 2
     limits:
-      memory: 16Gi  # More memory
+      memory: 16Gi
+      cpu: 4
 ```
 
 ### Slow Queries
@@ -548,7 +600,8 @@ ingester:
 Enable query result caching:
 
 ```yaml
-query_frontend:
+frontend:
+  cache_results: true
   results_cache:
     backend: memcached
     memcached:
@@ -560,8 +613,12 @@ query_frontend:
 Increase compactor resources:
 
 ```yaml
-compactor:
+containers:
+- name: compactor
   resources:
+    requests:
+      memory: 4Gi
+      cpu: 2
     limits:
       memory: 8Gi
       cpu: 4
