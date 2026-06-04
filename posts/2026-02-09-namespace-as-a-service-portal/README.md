@@ -31,10 +31,11 @@ Create a FastAPI backend for namespace management:
 ```python
 # namespace_api.py
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from kubernetes import client, config
-from typing import List, Optional
+from kubernetes.config.config_exception import ConfigException
+from typing import Optional
 import uuid
 
 app = FastAPI()
@@ -56,9 +57,16 @@ class NamespaceStatus(BaseModel):
     created_at: str
     approved_by: Optional[str]
 
-config.load_kube_config()
+try:
+    config.load_incluster_config()
+except ConfigException:
+    config.load_kube_config()
+
 v1 = client.CoreV1Api()
 rbac_v1 = client.RbacAuthorizationV1Api()
+
+def get_namespace_name(request: NamespaceRequest):
+    return request.name or f"{request.team}-{request.environment}"
 
 @app.post("/api/namespaces/request")
 async def request_namespace(request: NamespaceRequest):
@@ -85,7 +93,7 @@ async def approve_namespace(request_id: str, approver: str):
     # Create namespace
     namespace = client.V1Namespace(
         metadata=client.V1ObjectMeta(
-            name=f"{request.team}-{request.environment}",
+            name=get_namespace_name(request),
             labels={
                 "team": request.team,
                 "environment": request.environment,
@@ -110,7 +118,7 @@ async def approve_namespace(request_id: str, approver: str):
     create_network_policies(request)
 
     return {
-        "namespace": f"{request.team}-{request.environment}",
+        "namespace": get_namespace_name(request),
         "status": "created",
         "kubeconfig": generate_kubeconfig(request)
     }
@@ -154,7 +162,7 @@ async def get_namespace_usage(namespace: str):
         raise HTTPException(status_code=404, detail="Namespace not found")
 
 def create_resource_quota(request: NamespaceRequest):
-    namespace = f"{request.team}-{request.environment}"
+    namespace = get_namespace_name(request)
     quota = client.V1ResourceQuota(
         metadata=client.V1ObjectMeta(name="tenant-quota"),
         spec=client.V1ResourceQuotaSpec(
@@ -169,7 +177,7 @@ def create_resource_quota(request: NamespaceRequest):
     v1.create_namespaced_resource_quota(namespace, quota)
 
 def create_rbac_bindings(request: NamespaceRequest):
-    namespace = f"{request.team}-{request.environment}"
+    namespace = get_namespace_name(request)
 
     # Create admin role binding
     role_binding = client.V1RoleBinding(
@@ -234,6 +242,16 @@ const NamespaceRequestForm = () => {
     <div className="namespace-request-form">
       <h2>Request New Namespace</h2>
       <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label>Namespace Name</label>
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) => setFormData({...formData, name: e.target.value})}
+            required
+          />
+        </div>
+
         <div className="form-group">
           <label>Team Name</label>
           <input
@@ -350,9 +368,10 @@ spec:
         template: approval-gate
     - - name: create-namespace
         template: provision-namespace
-        when: "{{steps.wait-for-approval.outputs.result}} == approved"
+        when: "{{steps.wait-for-approval.outputs.parameters.approval}} == approved"
     - - name: configure-resources
         template: setup-resources
+        when: "{{steps.wait-for-approval.outputs.parameters.approval}} == approved"
 
   - name: send-notification
     container:
@@ -370,6 +389,19 @@ spec:
 
   - name: approval-gate
     suspend: {}
+    inputs:
+      parameters:
+      - name: approval
+        default: rejected
+        enum:
+        - approved
+        - rejected
+        description: Select approved to provision the namespace
+    outputs:
+      parameters:
+      - name: approval
+        valueFrom:
+          supplied: {}
 
   - name: provision-namespace
     script:
@@ -405,6 +437,43 @@ spec:
 Deploy the NaaS portal on Kubernetes:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: naas-portal-sa
+  namespace: naas-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: naas-portal
+rules:
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["create", "get", "list", "watch", "patch", "update"]
+- apiGroups: [""]
+  resources: ["resourcequotas"]
+  verbs: ["create", "get", "list", "watch", "patch", "update"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["rolebindings"]
+  verbs: ["create", "get", "list", "watch", "patch", "update"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["create", "get", "list", "watch", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: naas-portal
+subjects:
+- kind: ServiceAccount
+  name: naas-portal-sa
+  namespace: naas-system
+roleRef:
+  kind: ClusterRole
+  name: naas-portal
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -425,7 +494,8 @@ spec:
       - name: backend
         image: myorg/naas-backend:v1.0.0
         ports:
-        - containerPort: 8000
+        - name: backend
+          containerPort: 8000
         env:
         - name: DATABASE_URL
           valueFrom:
@@ -439,7 +509,8 @@ spec:
       - name: frontend
         image: myorg/naas-frontend:v1.0.0
         ports:
-        - containerPort: 3000
+        - name: frontend
+          containerPort: 3000
 ---
 apiVersion: v1
 kind: Service
@@ -449,8 +520,12 @@ metadata:
 spec:
   type: LoadBalancer
   ports:
-  - port: 80
-    targetPort: 3000
+  - name: http
+    port: 80
+    targetPort: frontend
+  - name: api
+    port: 8000
+    targetPort: backend
   selector:
     app: naas-portal
 ```
@@ -484,6 +559,18 @@ async def get_namespace_cost(namespace: str, period: str = "month"):
         "total_cost": total_cost,
         "currency": "USD"
     }
+
+def parse_cpu(cpu_value: str) -> float:
+    if cpu_value.endswith("m"):
+        return float(cpu_value[:-1]) / 1000
+    return float(cpu_value)
+
+def parse_memory(memory_value: str) -> float:
+    units = {"Ki": 1 / (1024 * 1024), "Mi": 1 / 1024, "Gi": 1, "Ti": 1024}
+    for suffix, multiplier in units.items():
+        if memory_value.endswith(suffix):
+            return float(memory_value[:-len(suffix)]) * multiplier
+    return float(memory_value) / (1024 * 1024 * 1024)
 ```
 
 ## Best Practices
