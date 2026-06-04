@@ -31,7 +31,7 @@ Before starting, make sure you have:
 - A Linux system running Ubuntu 20.04+, Debian 11+, or a similar distribution
 - A dedicated disk or partition for the ZFS pool (do not share it with your root filesystem)
 - Root or sudo access
-- Docker Engine installed (but stopped)
+- Docker Engine installed (but stopped) and configured to use classic storage drivers rather than the containerd image store
 
 ## Step 1: Install ZFS
 
@@ -49,11 +49,14 @@ sudo apt install -y zfsutils-linux
 On Fedora or CentOS, the process requires enabling a third-party repository:
 
 ```bash
-# Install ZFS on Fedora/CentOS (requires the ZFS repo)
-sudo dnf install -y https://zfsonlinux.org/fedora/zfs-release-2-4.fc$(rpm -E %fedora).noarch.rpm
-sudo dnf install -y kernel-devel zfs
+# Install ZFS on Fedora (requires the OpenZFS repo)
+sudo dnf install -y https://zfsonlinux.org/fedora/zfs-release-3-1$(rpm --eval "%{dist}").noarch.rpm
+sudo dnf install -y kernel-devel-$(uname -r | awk -F'-' '{print $1}')
+sudo dnf install -y zfs
 sudo modprobe zfs
 ```
+
+For RHEL and CentOS-compatible distributions, use the OpenZFS repository package for your Enterprise Linux release instead of the Fedora package.
 
 Verify that ZFS is loaded:
 
@@ -62,7 +65,7 @@ Verify that ZFS is loaded:
 lsmod | grep zfs
 ```
 
-You should see `zfs` listed along with its dependencies like `spl` and `zavl`.
+You should see `zfs` listed along with related OpenZFS modules.
 
 ## Step 2: Create a ZFS Pool
 
@@ -94,11 +97,11 @@ sudo zpool list docker-pool
 
 ## Step 3: Create a ZFS Dataset for Docker
 
-Create a dedicated dataset within the pool for Docker's data:
+Create a dedicated dataset within the pool for Docker's data. Set the mountpoint after the old Docker data has been backed up and removed:
 
 ```bash
 # Create a dataset specifically for Docker
-sudo zfs create -o mountpoint=/var/lib/docker docker-pool/docker
+sudo zfs create -o mountpoint=none docker-pool/docker
 ```
 
 Enable compression on the dataset to save disk space. LZ4 compression is fast and provides good compression ratios:
@@ -127,8 +130,11 @@ sudo systemctl stop containerd
 # Back up existing Docker data if needed
 sudo cp -au /var/lib/docker /var/lib/docker.bak
 
-# Remove old Docker data (the ZFS dataset is mounted at /var/lib/docker now)
-# If the ZFS mount replaced the directory, this step may not be needed
+# Remove old Docker data before mounting the ZFS dataset
+sudo rm -rf /var/lib/docker/*
+
+# Mount the ZFS dataset at Docker's data directory
+sudo zfs set mountpoint=/var/lib/docker docker-pool/docker
 ```
 
 ## Step 5: Configure Docker to Use ZFS
@@ -136,9 +142,10 @@ sudo cp -au /var/lib/docker /var/lib/docker.bak
 Edit or create the Docker daemon configuration file to specify the ZFS storage driver:
 
 ```json
-// /etc/docker/daemon.json
-// This tells Docker to use ZFS for all image and container storage
 {
+  "features": {
+    "containerd-snapshotter": false
+  },
   "storage-driver": "zfs"
 }
 ```
@@ -149,6 +156,9 @@ Write the configuration:
 # Write the Docker daemon configuration
 sudo tee /etc/docker/daemon.json <<EOF
 {
+  "features": {
+    "containerd-snapshotter": false
+  },
   "storage-driver": "zfs"
 }
 EOF
@@ -230,7 +240,17 @@ ZFS supports deduplication, but enabling it for Docker workloads is generally a 
 
 ## Setting Container Storage Quotas
 
-One useful ZFS feature is the ability to set storage quotas on individual containers. While Docker does not expose this directly, you can set a quota on the Docker dataset to limit total Docker storage:
+One useful ZFS feature is the ability to set storage quotas. Docker can set a default quota for each container's writable layer with the ZFS storage driver, and you can set a quota on the Docker dataset to limit total Docker storage:
+
+```json
+{
+  "features": {
+    "containerd-snapshotter": false
+  },
+  "storage-driver": "zfs",
+  "storage-opts": ["size=256M"]
+}
+```
 
 ```bash
 # Limit Docker to 100GB of storage
@@ -261,24 +281,24 @@ sudo zpool status docker-pool | grep scan
 
 ## Backing Up Docker Data with ZFS Snapshots
 
-ZFS snapshots give you a powerful backup mechanism. You can snapshot the entire Docker dataset before major changes:
+ZFS snapshots give you a powerful backup mechanism. You can snapshot the Docker dataset tree before major changes:
 
 ```bash
-# Create a snapshot of the Docker dataset
-sudo zfs snapshot docker-pool/docker@before-upgrade
+# Create a recursive snapshot of the Docker dataset tree
+sudo zfs snapshot -r docker-pool/docker@before-upgrade
 
 # List all snapshots
 sudo zfs list -t snapshot
 
-# Roll back to a snapshot if something goes wrong
+# Roll back an individual dataset snapshot if something goes wrong
 sudo zfs rollback docker-pool/docker@before-upgrade
 ```
 
 You can also send snapshots to a remote system for offsite backup:
 
 ```bash
-# Send a snapshot to a remote ZFS system
-sudo zfs send docker-pool/docker@before-upgrade | ssh remote-host sudo zfs recv backup-pool/docker-backup
+# Send the recursive snapshot stream to a remote ZFS system
+sudo zfs send -R docker-pool/docker@before-upgrade | ssh remote-host sudo zfs recv backup-pool/docker-backup
 ```
 
 ## Troubleshooting
