@@ -15,7 +15,7 @@ Kong Ingress Controller can integrate with service mesh platforms to provide com
 Service meshes manage east-west (service-to-service) traffic, while ingress controllers handle north-south (external-to-internal) traffic. Integrating Kong with a service mesh provides:
 
 - Unified traffic policies across ingress and mesh
-- End-to-end mTLS from external clients through to backend services
+- TLS at ingress and mTLS between meshed workloads
 - Consistent observability and tracing
 - Advanced traffic management at both ingress and mesh layers
 - Policy enforcement throughout the request path
@@ -52,13 +52,14 @@ Install Kong without conflicting with Istio:
 helm install kong kong/ingress \
   --namespace kong \
   --create-namespace \
-  --set ingressController.installCRDs=true \
-  --set proxy.type=LoadBalancer \
-  --set proxy.annotations."sidecar\.istio\.io/inject"="false" \
-  --set ingressController.env.CONTROLLER_ISTIO_SERVICE_MESH="true"
+  --set gateway.proxy.type=LoadBalancer \
+  --set gateway.deployment.serviceAccount.automountServiceAccountToken=true \
+  --set gateway.podAnnotations."sidecar\.istio\.io/inject"="true" \
+  --set gateway.podAnnotations."traffic\.sidecar\.istio\.io/includeInboundPorts"="" \
+  --set controller.podAnnotations."sidecar\.istio\.io/inject"="false"
 ```
 
-The annotation prevents Istio from injecting sidecars into Kong pods, as Kong handles ingress traffic before it enters the mesh.
+The annotations inject an Istio sidecar into the Kong Gateway pod for outbound mesh traffic while leaving Kong's inbound proxy ports handled by Kong itself. The controller pod does not proxy user traffic, so it does not need sidecar injection.
 
 ### Configure Kong to Respect Istio mTLS
 
@@ -92,6 +93,8 @@ kind: Service
 metadata:
   name: backend-service
   namespace: default
+  annotations:
+    ingress.kubernetes.io/service-upstream: "true"
 spec:
   selector:
     app: backend
@@ -100,7 +103,7 @@ spec:
     targetPort: 8080
 ---
 # Istio PeerAuthentication for strict mTLS
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -123,7 +126,7 @@ metadata:
   namespace: default
   annotations:
     konghq.com/strip-path: "true"
-    # Kong will connect to Istio sidecar
+    # Kong accepts HTTPS requests from external clients
     konghq.com/protocols: "https"
 spec:
   ingressClassName: kong
@@ -178,7 +181,7 @@ spec:
               number: 80
 ---
 # Istio VirtualService for mesh-level routing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-routing
@@ -199,6 +202,21 @@ spec:
     - destination:
         host: backend-service
         subset: v1
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: backend-subsets
+  namespace: default
+spec:
+  host: backend-service
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
 ```
 
 ## Kong with Linkerd Integration
@@ -219,6 +237,9 @@ linkerd install | kubectl apply -f -
 
 # Verify installation
 linkerd check
+
+# Optional: install the deprecated SMI extension if you need TrafficSplit
+linkerd smi install | kubectl apply -f -
 ```
 
 ### Kong Configuration for Linkerd
@@ -229,9 +250,8 @@ Install Kong with Linkerd compatibility:
 helm install kong kong/ingress \
   --namespace kong \
   --create-namespace \
-  --set ingressController.installCRDs=true \
-  --set proxy.type=LoadBalancer \
-  --set proxy.annotations."linkerd\.io/inject"="disabled"
+  --set gateway.proxy.type=LoadBalancer \
+  --set controller.podAnnotations."linkerd\.io/inject"="disabled"
 ```
 
 ### Mesh Services with Linkerd
@@ -268,6 +288,8 @@ kind: Service
 metadata:
   name: backend-linkerd
   namespace: default
+  annotations:
+    ingress.kubernetes.io/service-upstream: "true"
 spec:
   selector:
     app: backend-linkerd
@@ -289,8 +311,7 @@ metadata:
   namespace: default
   annotations:
     konghq.com/protocols: "http"
-    # Let Linkerd handle mTLS
-    konghq.com/connect-timeout: "60000"
+    # Linkerd handles mTLS between meshed workloads after ingress
 spec:
   ingressClassName: kong
   rules:
@@ -308,7 +329,7 @@ spec:
 
 ### Traffic Splitting with Kong and Linkerd
 
-Implement canary deployments:
+Implement canary deployments with Linkerd's SMI extension. TrafficSplit support is deprecated in current Linkerd releases, so use Linkerd's HTTPRoute-based dynamic request routing for new deployments.
 
 ```yaml
 # canary-with-linkerd.yaml
@@ -358,15 +379,18 @@ Configure telemetry integration:
 ```yaml
 # istio-telemetry.yaml
 apiVersion: configuration.konghq.com/v1
-kind: KongPlugin
+kind: KongClusterPlugin
 metadata:
   name: prometheus
-  namespace: kong
+  annotations:
+    kubernetes.io/ingress.class: kong
+  labels:
+    global: "true"
 config:
   per_consumer: true
 plugin: prometheus
 ---
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: kong-telemetry
@@ -375,8 +399,12 @@ spec:
   metrics:
   - providers:
     - name: prometheus
-    dimensions:
-      kong_service: request.headers["x-kong-service"]
+    overrides:
+    - match:
+        metric: ALL_METRICS
+      tagOverrides:
+        kong_service:
+          value: request.headers["x-kong-service"]
 ```
 
 ### Distributed Tracing
@@ -389,7 +417,7 @@ apiVersion: configuration.konghq.com/v1
 kind: KongPlugin
 metadata:
   name: zipkin
-  namespace: kong
+  namespace: default
 config:
   http_endpoint: http://zipkin.istio-system:9411/api/v2/spans
   sample_ratio: 1.0
@@ -424,29 +452,50 @@ Implement end-to-end security with Kong and service mesh.
 
 ### mTLS from Kong to Mesh
 
-Configure Kong to use certificates for mesh communication:
+Configure Kong to use a client certificate when calling an upstream service that requires mTLS:
 
 ```yaml
 # kong-mtls-config.yaml
-apiVersion: configuration.konghq.com/v1
-kind: KongPlugin
+apiVersion: v1
+kind: Secret
 metadata:
-  name: mtls-auth
-  namespace: kong
-config:
-  ca_certificates:
-  - kong-mesh-ca
-  skip_consumer_lookup: true
-plugin: mtls-auth
+  name: kong-upstream-client-cert
+  namespace: default
+type: kubernetes.io/tls
+data:
+  tls.crt: <base64-encoded-client-cert>
+  tls.key: <base64-encoded-client-key>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: default
+  annotations:
+    konghq.com/protocol: "https"
+    konghq.com/client-cert: kong-upstream-client-cert
+    konghq.com/tls-verify: "true"
+    konghq.com/ca-certificates-secrets: backend-ca-cert
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 443
+    targetPort: 8443
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: kong-mesh-ca
-  namespace: kong
+  name: backend-ca-cert
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: kong
+  labels:
+    konghq.com/ca-cert: "true"
 type: Opaque
 data:
-  cert: <base64-encoded-ca-cert>
+  ca.crt: <base64-encoded-ca-cert>
+  id: <base64-encoded-uuid>
 ```
 
 ### Service-to-Service Authentication
@@ -466,7 +515,7 @@ config:
 plugin: jwt
 ---
 # Istio AuthorizationPolicy
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: backend-authz
@@ -475,10 +524,11 @@ spec:
   selector:
     matchLabels:
       app: backend
+  action: ALLOW
   rules:
   - from:
     - source:
-        principals: ["cluster.local/ns/kong/sa/kong"]
+        principals: ["cluster.local/ns/kong/sa/kong-gateway"]
     to:
     - operation:
         methods: ["GET", "POST"]
@@ -496,14 +546,15 @@ curl -v https://api.example.com/api/health
 kubectl get pods -n default -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].name}{"\n"}'
 
 # Verify mTLS in mesh
-kubectl exec -n istio-system <istio-proxy-pod> -- \
+kubectl apply -f samples/curl/curl.yaml
+kubectl exec deploy/curl -c curl -- \
   curl http://backend-service.default/healthz
 
-# Check tracing
+# Check tracing if you installed the Istio Zipkin add-on
 kubectl port-forward -n istio-system svc/zipkin 9411:9411
 # Visit http://localhost:9411
 
-# Monitor traffic metrics
+# Monitor traffic metrics if you installed the Istio Grafana add-on
 kubectl port-forward -n istio-system svc/grafana 3000:3000
 # Visit http://localhost:3000
 ```
