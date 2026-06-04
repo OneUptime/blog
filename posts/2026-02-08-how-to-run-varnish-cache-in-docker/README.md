@@ -21,10 +21,10 @@ Run Varnish with a basic configuration that proxies to a backend server:
 
 docker run -d \
   --name varnish \
+  --network app-network \
   -p 8080:80 \
-  -e VARNISH_BACKEND_HOST=backend \
-  -e VARNISH_BACKEND_PORT=80 \
-  varnish:7.5
+  -e VARNISH_BACKEND_HOST=http://backend/ \
+  varnish
 ```
 
 ## Docker Compose with a Backend
@@ -33,11 +33,9 @@ Set up Varnish in front of an Nginx web server:
 
 ```yaml
 # docker-compose.yml - Varnish cache in front of Nginx
-version: "3.8"
-
 services:
   varnish:
-    image: varnish:7.5
+    image: varnish
     ports:
       # Varnish serves cached content on this port
       - "8080:80"
@@ -83,19 +81,24 @@ backend default {
 
 # Handle incoming requests
 sub vcl_recv {
+    # Do not cache non-GET/HEAD requests
+    if (req.method != "GET" && req.method != "HEAD") {
+        return (pass);
+    }
+
+    # Do not cache requests with Authorization headers
+    if (req.http.Authorization) {
+        return (pass);
+    }
+
     # Remove cookies for static assets so they can be cached
     if (req.url ~ "\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$") {
         unset req.http.Cookie;
         return (hash);
     }
 
-    # Do not cache POST requests
-    if (req.method == "POST") {
-        return (pass);
-    }
-
-    # Do not cache requests with Authorization headers
-    if (req.http.Authorization) {
+    # Do not cache stateful requests with cookies
+    if (req.http.Cookie) {
         return (pass);
     }
 
@@ -114,6 +117,15 @@ sub vcl_backend_response {
     if (bereq.url ~ "\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2)$") {
         set beresp.ttl = 7d;
         unset beresp.http.Set-Cookie;
+    }
+
+    # Do not cache stateful or explicitly uncacheable responses
+    if (beresp.http.Set-Cookie ||
+        beresp.http.Cache-Control ~ "(?i:no-cache|no-store|private)" ||
+        beresp.http.Vary == "*") {
+        set beresp.ttl = 0s;
+        set beresp.uncacheable = true;
+        return (deliver);
     }
 
     # Cache HTML pages for 5 minutes
@@ -223,11 +235,9 @@ The corresponding Docker Compose file:
 
 ```yaml
 # docker-compose.yml - Varnish with multiple backends
-version: "3.8"
-
 services:
   varnish:
-    image: varnish:7.5
+    image: varnish
     ports:
       - "80:80"
     volumes:
@@ -260,6 +270,8 @@ Invalidate cached content when the backend data changes:
 
 ```vcl
 # Add purging support to VCL
+import std;
+
 acl purge {
     "localhost";
     "172.16.0.0"/12;  # Docker network range
@@ -279,8 +291,10 @@ sub vcl_recv {
         if (!client.ip ~ purge) {
             return (synth(405, "Not allowed"));
         }
-        ban("req.url ~ " + req.url);
-        return (synth(200, "Banned"));
+        if (std.ban("req.url ~ " + req.url)) {
+            return (synth(200, "Banned"));
+        }
+        return (synth(400, std.ban_error()));
     }
 }
 ```
@@ -304,11 +318,9 @@ Export Varnish metrics for Prometheus:
 
 ```yaml
 # docker-compose.yml - Varnish with Prometheus metrics
-version: "3.8"
-
 services:
   varnish:
-    image: varnish:7.5
+    image: varnish
     ports:
       - "80:80"
     volumes:
