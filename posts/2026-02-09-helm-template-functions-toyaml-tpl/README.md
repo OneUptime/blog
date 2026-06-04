@@ -115,10 +115,13 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "myapp.fullname" . }}
-  annotations:
-    {{- range $key, $value := .Values.podAnnotations }}
-    {{ $key }}: {{ tpl $value $ | quote }}
-    {{- end }}
+spec:
+  template:
+    metadata:
+      annotations:
+        {{- range $key, $value := .Values.podAnnotations }}
+        {{ $key }}: {{ tpl $value $ | quote }}
+        {{- end }}
 ```
 
 The tpl function takes two arguments: the template string and the context (usually $ for root context). This evaluates the template expressions within the annotation values.
@@ -332,7 +335,7 @@ metadata:
 
 ## Dynamic Resource Generation
 
-Generate multiple resources from a list using include and toYaml.
+Generate multiple resources from a list using include and merge.
 
 ```yaml
 # values.yaml
@@ -381,7 +384,7 @@ Render multiple services.
 
 ## Error Handling in Templates
 
-Add validation using fail and required functions combined with tpl.
+Add validation using fail and conditional logic.
 
 ```yaml
 # templates/_helpers.tpl
