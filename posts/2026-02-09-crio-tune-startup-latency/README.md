@@ -18,24 +18,33 @@ The critical path includes image pulling, layer extraction, network namespace se
 
 ## Configuring Parallel Image Pulls
 
-Enable concurrent image layer downloads to speed up image pulling, which often dominates startup time for large images.
+Enable concurrent image pulls in kubelet and configure CRI-O to use fast registry mirrors, which often dominates startup time for large images.
+
+```yaml
+# /var/lib/kubelet/config.yaml
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+
+# Enable parallel image pulls across different pods
+serializeImagePulls: false
+
+# Limit concurrent pulls to avoid saturating disk or network I/O
+maxParallelImagePulls: 10
+```
 
 ```toml
 # /etc/crio/crio.conf
-
 [crio.image]
-# Enable parallel image pulls
-parallel_image_pull = true
 
-# Increase concurrent layer downloads
-max_parallel_downloads = 10
+# Cancel an image pull if it stops making progress
+pull_progress_timeout = "5m"
 
-# Configure image pull timeout
-image_pull_timeout = "5m"
+# Reload registry mirror changes without restarting CRI-O
+auto_reload_registries = true
+```
 
-# Set image pull policy
-default_pull_policy = "IfNotPresent"
-
+```toml
+# /etc/containers/registries.conf
 # Configure registry mirrors for faster pulls
 [[registry]]
 prefix = "docker.io"
@@ -51,36 +60,30 @@ location = "registry-cache.local:5000"
 insecure = false
 ```
 
-Parallel downloads reduce image pull time from minutes to seconds for images with many layers.
+Parallel pulls can reduce startup time during scale events where multiple pods need different images.
 
 ## Optimizing Storage Configuration
 
 Configure the storage driver and options for faster layer extraction and container filesystem creation.
 
 ```toml
-# /etc/crio/crio.conf
-[crio.runtime]
+# /etc/containers/storage.conf
+[storage]
 # Use overlay for better performance
-storage_driver = "overlay"
+driver = "overlay"
+runroot = "/var/run/containers/storage"
+graphroot = "/var/lib/containers/storage"
 
+[storage.options]
 # Optimize overlay options
-storage_option = [
-  "overlay.mountopt=nodev",
-  "overlay.size=10G",
-  # Use native diff for faster operations
-  "overlay.use_native_diff=true",
-  # Skip metadata check for speed
-  "overlay.skip_mount_home=true"
-]
+additionalimagestores = []
 
-# Set container storage root
-default_runtime_root = "/var/lib/containers/storage"
-
-# Enable quota support if needed
-storage_quota = true
+[storage.options.overlay]
+mountopt = "nodev,metacopy=on"
+size = "10G"
 ```
 
-The overlay driver with native diff significantly outperforms other options for layer operations.
+The overlay driver is the default and generally performs well for layer operations.
 
 ## Tuning Network Namespace Setup
 
@@ -97,30 +100,22 @@ plugin_dirs = [
 # Network configuration directory
 network_dir = "/etc/cni/net.d/"
 
-# Optimize CNI plugin timeout
-cni_plugin_timeout = 10
-
-# Enable CNI result caching
-cni_cache_dir = "/var/lib/crio/cni-cache"
-
-# Use host network for network-critical pods
-default_network_mode = "bridge"
+# Select the default CNI network when multiple configs exist
+cni_default_network = "pod-network"
 ```
 
-Pre-create network namespaces during node initialization:
+Validate CNI configuration during node initialization:
 
 ```bash
 #!/bin/bash
-# pre-warm-network.sh
-# Pre-create network namespaces to reduce startup overhead
+# validate-cni.sh
 
-for i in {1..20}; do
-  ip netns add warm-ns-$i
-  # Configure basic networking
-  ip netns exec warm-ns-$i ip link set lo up
-done
+test -d /opt/cni/bin
+test -d /etc/cni/net.d
+find /opt/cni/bin -maxdepth 1 -type f -perm -111 -print
+find /etc/cni/net.d -maxdepth 1 -type f \( -name '*.conf' -o -name '*.conflist' \) -print
 
-echo "Pre-warmed 20 network namespaces"
+echo "CNI plugins and configuration are present"
 ```
 
 ## Implementing Image Pre-Pulling
@@ -172,10 +167,13 @@ Tune CRI-O resource limits to prevent bottlenecks during high pod creation rates
 ```toml
 # /etc/crio/crio.conf
 [crio]
-# Increase worker thread pool
-max_workers = 100
+# Increase CRI gRPC message limits if large pod specs or responses require it
+grpc_max_send_msg_size = 83886080
+grpc_max_recv_msg_size = 83886080
 
-# Configure container operation timeouts
+[crio.runtime]
+
+# Keep the default capability set explicit
 default_capabilities = [
   "CHOWN",
   "DAC_OVERRIDE",
@@ -188,23 +186,16 @@ default_capabilities = [
   "KILL",
 ]
 
-# Set reasonable timeouts
-default_runtime_timeout = 60
-default_container_create_timeout = 30
-
-[crio.runtime]
-# Increase concurrent container starts
-max_concurrent_downloads = 10
-
-# Pre-allocate resources
-pids_limit = 4096
-
 # Configure cgroup parent
 cgroup_manager = "systemd"
 conmon_cgroup = "system.slice"
+
+[crio.runtime.runtimes.crun]
+# Set container creation timeout for the default runtime handler
+container_create_timeout = 60
 ```
 
-Higher concurrency limits allow more pods to start simultaneously during scale events.
+Make kubelet and CRI-O runtime timeouts consistent so container creation is not canceled earlier than expected.
 
 ## Enabling Container Creation Optimizations
 
@@ -218,7 +209,6 @@ no_pivot = false
 
 # Optimize seccomp profile loading
 seccomp_profile = "/usr/share/containers/seccomp.json"
-seccomp_use_default_when_empty = true
 
 # Configure AppArmor
 apparmor_profile = "crio-default"
@@ -248,71 +238,36 @@ runroot = "/var/run/containers/storage"
 graphroot = "/var/lib/containers/storage"
 
 [storage.options]
-# Keep images longer
-imagestore = "/var/lib/containers/storage"
-
-# Don't automatically prune
-auto_remove = false
+# Use read-only image stores when you pre-populate images out of band
+additionalimagestores = []
 
 [storage.options.overlay]
 # Optimize for cache hits
 mountopt = "nodev,metacopy=on"
 
-# Use native diff
-use_native_diff = true
-
-# Larger mount cache
-mount_program = ""
+[storage.options.pull_options]
+# Reuse existing content when pulling compatible chunked images
+enable_partial_images = "true"
+use_hard_links = "true"
 EOF
 ```
 
 Implement a custom image warming strategy:
 
-```go
-// image-warmer/main.go
-package main
+```bash
+#!/bin/bash
+# image-warmer.sh
+set -euo pipefail
 
-import (
-    "context"
-    "time"
-
-    "github.com/containers/image/v5/docker"
-    "github.com/containers/image/v5/signature"
-    "github.com/containers/image/v5/types"
+images=(
+  "mycompany/app:v1.2.3"
+  "mycompany/sidecar:latest"
+  "mycompany/init:latest"
 )
 
-func warmImages(images []string) error {
-    ctx := context.Background()
-    policy := &signature.Policy{Default: []signature.PolicyRequirement{signature.NewPRInsecureAcceptAnything()}}
-    policyContext, err := signature.NewPolicyContext(policy)
-    if err != nil {
-        return err
-    }
-
-    for _, img := range images {
-        ref, err := docker.ParseReference("//" + img)
-        if err != nil {
-            continue
-        }
-
-        // Pull image layers
-        src, err := ref.NewImageSource(ctx, &types.SystemContext{})
-        if err != nil {
-            continue
-        }
-
-        // Trigger layer download
-        _, _, err = src.GetManifest(ctx, nil)
-        if err != nil {
-            continue
-        }
-
-        src.Close()
-        time.Sleep(100 * time.Millisecond)
-    }
-
-    return nil
-}
+for image in "${images[@]}"; do
+  crictl --runtime-endpoint unix:///var/run/crio/crio.sock pull "$image"
+done
 ```
 
 ## Monitoring Startup Performance
@@ -338,16 +293,12 @@ data:
     # Image pull time
     - record: image_pull_duration_seconds
       expr: |
-        histogram_quantile(0.99,
-          sum(rate(crio_image_pulls_duration_seconds_bucket[5m])) by (le)
-        )
+        max_over_time(crio_operations_latency_seconds{operation="PullImage"}[5m])
 
     # Container creation time
     - record: container_creation_duration_seconds
       expr: |
-        histogram_quantile(0.99,
-          sum(rate(crio_container_create_duration_seconds_bucket[5m])) by (le)
-        )
+        max_over_time(crio_operations_latency_seconds{operation="CreateContainer"}[5m])
 ```
 
 Query startup metrics:
@@ -362,7 +313,7 @@ kubectl get pod <pod-name> -o json | \
   jq '.status.containerStatuses[].state.running.startedAt'
 
 # CRI-O metrics
-curl http://localhost:9090/metrics | grep crio_operations_duration
+curl http://localhost:9090/metrics | grep crio_operations_latency_seconds
 ```
 
 ## Optimizing Init Container Execution
@@ -427,7 +378,7 @@ kind: KubeletConfiguration
 serializeImagePulls: false
 maxParallelImagePulls: 10
 
-# Reduce startup probe overhead
+# CRI-O runtime endpoint
 containerRuntimeEndpoint: unix:///var/run/crio/crio.sock
 
 # Optimize status sync
@@ -448,6 +399,9 @@ systemReserved:
 kubeReserved:
   cpu: 500m
   memory: 1Gi
+
+# Limit pod process counts through kubelet instead of CRI-O pids_limit
+podPidsLimit: 4096
 ```
 
 ## Implementing Pod Priority for Critical Workloads
@@ -516,4 +470,4 @@ echo "Average startup time: ${avg_time}s"
 
 Run this before and after optimizations to measure improvement.
 
-Tuning CRI-O for reduced startup latency involves optimizing every step of the pod creation pipeline. By enabling parallel operations, implementing aggressive caching strategies, and pre-warming images and network namespaces, you can reduce startup time by 50-80%. These optimizations are critical for environments with frequent scaling events, rapid deployments, or strict latency requirements. Monitor startup metrics continuously to ensure configurations remain optimal as workload patterns evolve.
+Tuning CRI-O for reduced startup latency involves optimizing every step of the pod creation pipeline. By enabling parallel operations, implementing aggressive caching strategies, and pre-warming images, you can reduce startup time substantially depending on how much image pulling and CNI setup dominate your workload. These optimizations are critical for environments with frequent scaling events, rapid deployments, or strict latency requirements. Monitor startup metrics continuously to ensure configurations remain optimal as workload patterns evolve.
