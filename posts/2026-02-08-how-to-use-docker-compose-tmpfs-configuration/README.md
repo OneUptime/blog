@@ -12,7 +12,7 @@ Not every piece of data needs to survive a container restart. Temporary files, s
 
 ## What Is tmpfs?
 
-tmpfs is a Linux filesystem that lives entirely in memory (and swap, if configured). Files stored in tmpfs are never written to disk. Reads and writes happen at memory speed, which is orders of magnitude faster than even the fastest SSDs.
+tmpfs is a Linux filesystem that lives in virtual memory and can use swap if swap is configured. Files stored in tmpfs are not written to the container's writable layer, but the kernel may swap tmpfs pages to disk. Reads and writes usually happen at memory speed, which is orders of magnitude faster than even the fastest SSDs.
 
 In Docker, a tmpfs mount creates a temporary filesystem at a specified path inside the container. The data only exists for the lifetime of the container. When the container stops, the data is gone.
 
@@ -22,8 +22,6 @@ The simplest form mounts a tmpfs at a single path.
 
 ```yaml
 # Mount a tmpfs at /tmp inside the container
-
-version: "3.8"
 
 services:
   app:
@@ -47,7 +45,7 @@ services:
 
 ## Configuring tmpfs Options
 
-The extended format lets you control the size and mount options for each tmpfs.
+The short syntax lets you pass mount options after the path.
 
 ```yaml
 # tmpfs with size limits and options
@@ -55,19 +53,10 @@ services:
   app:
     image: my-app:latest
     tmpfs:
-      - type: tmpfs
-        target: /tmp
-        tmpfs:
-          size: 100000000  # 100MB in bytes
-
-  # Alternative short syntax with options
-  app2:
-    image: my-app:latest
-    tmpfs:
       - /tmp:size=100m,mode=1777
 ```
 
-The short syntax after the colon accepts standard Linux mount options:
+The short syntax after the colon accepts tmpfs mount options:
 
 - `size` - Maximum size of the tmpfs (e.g., `100m`, `1g`)
 - `mode` - File permission mode (e.g., `1777` for /tmp)
@@ -93,8 +82,6 @@ For more complex configurations, use the `volumes` section with a tmpfs type.
 
 ```yaml
 # Long-form tmpfs configuration under volumes
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -157,8 +144,10 @@ services:
     tmpfs:
       - /tmp:size=50m,mode=1777
       - /var/lib/php/sessions:size=100m,mode=1733
-    environment:
-      PHP_SESSION_SAVE_PATH: /var/lib/php/sessions
+    command:
+      - "php-fpm"
+      - "-d"
+      - "session.save_path=/var/lib/php/sessions"
 ```
 
 ### Read-Only Containers with Writable tmpfs
@@ -188,7 +177,7 @@ This is a strong security pattern. The application cannot modify its own binarie
 Databases use temporary storage for sort operations, hash joins, and other intermediate results.
 
 ```yaml
-# PostgreSQL with in-memory temp tablespace
+# PostgreSQL with tmpfs for shared memory and OS temp files
 services:
   postgres:
     image: postgres:16
@@ -201,9 +190,10 @@ services:
     command:
       - "postgres"
       - "-c"
-      - "temp_tablespaces=pg_default"
-      - "-c"
       - "work_mem=64MB"
+
+volumes:
+  pgdata:
 ```
 
 ### CI/CD Build Caches
@@ -230,10 +220,10 @@ Each storage type serves a different purpose.
 | Feature | tmpfs | Volume | Bind Mount |
 |---|---|---|---|
 | Persists after stop | No | Yes | Yes |
-| Storage location | RAM | Docker managed | Host filesystem |
+| Storage location | RAM/swap | Docker managed | Host filesystem |
 | Speed | Fastest (RAM) | Fast (disk) | Fast (disk) |
 | Sharable between containers | No | Yes | Yes |
-| Size limited by | RAM | Disk | Disk |
+| Size limited by | Configured size and available memory/swap | Disk | Disk |
 | Good for | Temp files, caches | Database data, persistent state | Source code, config |
 
 Use tmpfs when the data is temporary and speed matters. Use volumes when data must survive restarts. Use bind mounts when you need to share specific files between host and container.
@@ -280,8 +270,6 @@ Here is a hardened production configuration combining tmpfs with other security 
 
 ```yaml
 # Production stack with strategic tmpfs usage
-version: "3.8"
-
 services:
   nginx:
     image: nginx:alpine
