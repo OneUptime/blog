@@ -30,14 +30,15 @@ Benefits of dashboards as code:
 Install the Jsonnet compiler and Grafonnet library:
 
 ```bash
-# Install jsonnet
+# Install go-jsonnet and jsonnet-bundler on macOS
+brew install go-jsonnet jsonnet-bundler
 
-brew install jsonnet  # macOS
-# Or download from https://github.com/google/jsonnet/releases
+# Install Grafonnet
+jb init
+jb install github.com/grafana/grafonnet/gen/grafonnet-latest@main
 
-# Clone Grafonnet
-git clone https://github.com/grafana/grafonnet-lib.git
-export JSONNET_PATH="$(pwd)/grafonnet-lib"
+# Optional portable import file
+echo "import 'github.com/grafana/grafonnet/gen/grafonnet-latest/main.libsonnet'" > g.libsonnet
 ```
 
 ## Creating Your First Dashboard
@@ -46,52 +47,45 @@ Create a basic dashboard in Grafonnet:
 
 ```jsonnet
 // dashboard.jsonnet
-local grafana = import 'grafonnet/grafana.libsonnet';
-local dashboard = grafana.dashboard;
-local graphPanel = grafana.graphPanel;
-local prometheus = grafana.prometheus;
+local g = import 'g.libsonnet';
 
-dashboard.new(
-  'Kubernetes Cluster Overview',
-  schemaVersion=16,
-  tags=['kubernetes', 'cluster'],
-  time_from='now-6h',
-  refresh='30s',
-)
-.addPanel(
-  graphPanel.new(
-    'CPU Usage',
-    datasource='Prometheus',
-    span=6,
-  )
-  .addTarget(
-    prometheus.target(
-      'sum(rate(container_cpu_usage_seconds_total{container!=""}[5m]))',
-      legendFormat='CPU Cores',
+local prometheus = g.query.prometheus;
+local timeSeries = g.panel.timeSeries;
+
+g.dashboard.new('Kubernetes Cluster Overview')
++ g.dashboard.withSchemaVersion(39)
++ g.dashboard.withTags(['kubernetes', 'cluster'])
++ g.dashboard.time.withFrom('now-6h')
++ g.dashboard.withRefresh('30s')
++ g.dashboard.withPanels([
+  timeSeries.new('CPU Usage')
+  + timeSeries.queryOptions.withTargets([
+    prometheus.new(
+      'prometheus',
+      'sum(rate(container_cpu_usage_seconds_total{container!=""}[5m]))'
     )
-  ),
-  gridPos={h: 8, w: 12, x: 0, y: 0}
-)
-.addPanel(
-  graphPanel.new(
-    'Memory Usage',
-    datasource='Prometheus',
-    span=6,
-  )
-  .addTarget(
-    prometheus.target(
-      'sum(container_memory_working_set_bytes{container!=""}) / 1024 / 1024 / 1024',
-      legendFormat='Memory (GB)',
+    + prometheus.withLegendFormat('CPU Cores'),
+  ])
+  + timeSeries.standardOptions.withUnit('short')
+  + timeSeries.panelOptions.withGridPos(h=8, w=12, x=0, y=0),
+
+  timeSeries.new('Memory Usage')
+  + timeSeries.queryOptions.withTargets([
+    prometheus.new(
+      'prometheus',
+      'sum(container_memory_working_set_bytes{container!=""})'
     )
-  ),
-  gridPos={h: 8, w: 12, x: 12, y: 0}
-)
+    + prometheus.withLegendFormat('Memory'),
+  ])
+  + timeSeries.standardOptions.withUnit('bytes')
+  + timeSeries.panelOptions.withGridPos(h=8, w=12, x=12, y=0),
+])
 ```
 
 Compile to JSON:
 
 ```bash
-jsonnet -J grafonnet-lib dashboard.jsonnet > dashboard.json
+jsonnet -J vendor dashboard.jsonnet > dashboard.json
 ```
 
 ## Creating Reusable Panel Templates
@@ -99,57 +93,48 @@ jsonnet -J grafonnet-lib dashboard.jsonnet > dashboard.json
 Define reusable panel functions:
 
 ```jsonnet
-local grafana = import 'grafonnet/grafana.libsonnet';
-local graphPanel = grafana.graphPanel;
-local prometheus = grafana.prometheus;
+local g = import 'g.libsonnet';
+local prometheus = g.query.prometheus;
+local timeSeries = g.panel.timeSeries;
 
 {
   // Reusable CPU panel function
   cpuPanel(title, query, legendFormat)::
-    graphPanel.new(
-      title,
-      datasource='Prometheus',
-      format='percentunit',
-      min=0,
-      max=1,
-    )
-    .addTarget(
-      prometheus.target(
-        query,
-        legendFormat=legendFormat,
-      )
-    ),
+    timeSeries.new(title)
+    + timeSeries.queryOptions.withTargets([
+      prometheus.new('prometheus', query)
+      + prometheus.withLegendFormat(legendFormat),
+    ])
+    + timeSeries.standardOptions.withUnit('percentunit')
+    + timeSeries.standardOptions.withMin(0)
+    + timeSeries.standardOptions.withMax(1),
 
   // Reusable memory panel function
   memoryPanel(title, query, legendFormat)::
-    graphPanel.new(
-      title,
-      datasource='Prometheus',
-      format='bytes',
-    )
-    .addTarget(
-      prometheus.target(
-        query,
-        legendFormat=legendFormat,
-      )
-    ),
+    timeSeries.new(title)
+    + timeSeries.queryOptions.withTargets([
+      prometheus.new('prometheus', query)
+      + prometheus.withLegendFormat(legendFormat),
+    ])
+    + timeSeries.standardOptions.withUnit('bytes'),
 }
 ```
 
 Use templates in dashboards:
 
 ```jsonnet
+local g = import 'g.libsonnet';
 local panels = import 'panels.libsonnet';
 
-dashboard.new('Namespace Metrics')
-.addPanel(
+g.dashboard.new('Namespace Metrics')
++ g.dashboard.withPanels([
   panels.cpuPanel(
     'Namespace CPU Usage',
     'sum by (namespace) (rate(container_cpu_usage_seconds_total[5m]))',
     '{{namespace}}'
-  ),
-  gridPos={h: 8, w: 12, x: 0, y: 0}
-)
+  )
+  + g.panel.timeSeries.panelOptions.withGridPos(h=8, w=12, x=0, y=0),
+])
 ```
 
 ## Creating Dashboard Variables
@@ -157,126 +142,120 @@ dashboard.new('Namespace Metrics')
 Add template variables to dashboards:
 
 ```jsonnet
-local template = grafana.template;
+local g = import 'g.libsonnet';
+local var = g.dashboard.variable;
 
-dashboard.new('Per-Namespace Dashboard')
-.addTemplate(
-  template.new(
-    'namespace',
-    'Prometheus',
-    'label_values(kube_namespace_status_phase, namespace)',
-    label='Namespace',
-    refresh='time',
-    multi=true,
-    includeAll=true,
-  )
-)
-.addTemplate(
-  template.new(
-    'pod',
-    'Prometheus',
-    'label_values(kube_pod_info{namespace="$namespace"}, pod)',
-    label='Pod',
-    refresh='time',
-    multi=true,
-  )
-)
+g.dashboard.new('Per-Namespace Dashboard')
++ g.dashboard.withVariables([
+  var.query.new('namespace')
+  + var.query.withDatasource(type='prometheus', uid='prometheus')
+  + var.query.queryTypes.withLabelValues('namespace', 'kube_namespace_status_phase')
+  + var.query.generalOptions.withLabel('Namespace')
+  + var.query.refresh.onTime()
+  + var.query.selectionOptions.withMulti()
+  + var.query.selectionOptions.withIncludeAll(),
+
+  var.query.new('pod')
+  + var.query.withDatasource(type='prometheus', uid='prometheus')
+  + var.query.queryTypes.withLabelValues('pod', 'kube_pod_info{namespace=~"$namespace"}')
+  + var.query.generalOptions.withLabel('Pod')
+  + var.query.refresh.onTime()
+  + var.query.selectionOptions.withMulti(),
+])
 ```
 
 Reference variables in queries:
 
 ```jsonnet
-.addTarget(
-  prometheus.target(
-    'rate(container_cpu_usage_seconds_total{namespace="$namespace", pod="$pod"}[5m])',
-    legendFormat='{{pod}}',
+local g = import 'g.libsonnet';
+local prometheus = g.query.prometheus;
+local timeSeries = g.panel.timeSeries;
+
+timeSeries.queryOptions.withTargets([
+  prometheus.new(
+    'prometheus',
+    'rate(container_cpu_usage_seconds_total{namespace=~"$namespace", pod=~"$pod"}[5m])'
   )
-)
+  + prometheus.withLegendFormat('{{pod}}'),
+])
 ```
 
 ## Building Complete Kubernetes Dashboard
 
-Here's a production-ready Kubernetes dashboard:
+Here's a complete Kubernetes dashboard:
 
 ```jsonnet
-local grafana = import 'grafonnet/grafana.libsonnet';
-local dashboard = grafana.dashboard;
-local row = grafana.row;
-local graphPanel = grafana.graphPanel;
-local statPanel = grafana.statPanel;
-local prometheus = grafana.prometheus;
-local template = grafana.template;
+local g = import 'g.libsonnet';
+local prometheus = g.query.prometheus;
+local row = g.panel.row;
+local stat = g.panel.stat;
+local timeSeries = g.panel.timeSeries;
+local var = g.dashboard.variable;
 
-local namespace = template.new(
-  'namespace',
-  'Prometheus',
-  'label_values(kube_namespace_status_phase{phase="Active"}, namespace)',
-  label='Namespace',
-  refresh='time',
-  sort=1,
-);
+local namespace =
+  var.query.new('namespace')
+  + var.query.withDatasource(type='prometheus', uid='prometheus')
+  + var.query.queryTypes.withLabelValues('namespace', 'kube_namespace_status_phase{phase="Active"}')
+  + var.query.generalOptions.withLabel('Namespace')
+  + var.query.refresh.onTime()
+  + var.query.withSort(1);
 
-local cpuPanel = graphPanel.new(
-  'CPU Usage',
-  datasource='Prometheus',
-  format='short',
-  legend_show=true,
-  legend_values=true,
-  legend_current=true,
-  legend_alignAsTable=true,
-)
-.addTarget(
-  prometheus.target(
-    'sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace="$namespace", container!=""}[5m]))',
-    legendFormat='{{namespace}}',
-  )
-);
+local cpuPanel =
+  timeSeries.new('CPU Usage')
+  + timeSeries.queryOptions.withTargets([
+    prometheus.new(
+      'prometheus',
+      'sum by (namespace) (rate(container_cpu_usage_seconds_total{namespace=~"$namespace", container!=""}[5m]))'
+    )
+    + prometheus.withLegendFormat('{{namespace}}'),
+  ])
+  + timeSeries.standardOptions.withUnit('short')
+  + timeSeries.options.legend.withDisplayMode('table')
+  + timeSeries.options.legend.withCalcs(['lastNotNull', 'max']);
 
-local memoryPanel = graphPanel.new(
-  'Memory Usage',
-  datasource='Prometheus',
-  format='bytes',
-  legend_show=true,
-)
-.addTarget(
-  prometheus.target(
-    'sum by (namespace) (container_memory_working_set_bytes{namespace="$namespace", container!=""})',
-    legendFormat='{{namespace}}',
-  )
-);
+local memoryPanel =
+  timeSeries.new('Memory Usage')
+  + timeSeries.queryOptions.withTargets([
+    prometheus.new(
+      'prometheus',
+      'sum by (namespace) (container_memory_working_set_bytes{namespace=~"$namespace", container!=""})'
+    )
+    + prometheus.withLegendFormat('{{namespace}}'),
+  ])
+  + timeSeries.standardOptions.withUnit('bytes')
+  + timeSeries.options.legend.withDisplayMode('table');
 
-local podCountStat = statPanel.new(
-  'Running Pods',
-  datasource='Prometheus',
-  reducerFunction='lastNotNull',
-  graphMode='none',
-  colorMode='value',
-)
-.addTarget(
-  prometheus.target(
-    'count(kube_pod_status_phase{namespace="$namespace", phase="Running"})',
-  )
-)
-.addThreshold({color: 'red', value: 0})
-.addThreshold({color: 'green', value: 1});
+local podCountStat =
+  stat.new('Running Pods')
+  + stat.queryOptions.withTargets([
+    prometheus.new(
+      'prometheus',
+      'count(kube_pod_status_phase{namespace=~"$namespace", phase="Running"})'
+    ),
+  ])
+  + stat.options.reduceOptions.withCalcs(['lastNotNull'])
+  + stat.options.withGraphMode('none')
+  + stat.options.withColorMode('value')
+  + stat.standardOptions.thresholds.withSteps([
+    {color: 'red', value: null},
+    {color: 'green', value: 1},
+  ]);
 
-dashboard.new(
-  'Kubernetes Namespace Monitoring',
-  tags=['kubernetes', 'namespace'],
-  schemaVersion=16,
-  refresh='30s',
-  time_from='now-1h',
-  editable=true,
-)
-.addTemplate(namespace)
-.addRow(
-  row.new(title='Resource Usage')
-  .addPanel(cpuPanel, gridPos={h: 8, w: 12, x: 0, y: 0})
-  .addPanel(memoryPanel, gridPos={h: 8, w: 12, x: 12, y: 0})
-)
-.addRow(
-  row.new(title='Pod Statistics')
-  .addPanel(podCountStat, gridPos={h: 4, w: 6, x: 0, y: 8})
+g.dashboard.new('Kubernetes Namespace Monitoring')
++ g.dashboard.withTags(['kubernetes', 'namespace'])
++ g.dashboard.withSchemaVersion(39)
++ g.dashboard.withRefresh('30s')
++ g.dashboard.time.withFrom('now-1h')
++ g.dashboard.withEditable()
++ g.dashboard.withVariables([namespace])
++ g.dashboard.withPanels(
+  g.util.grid.makeGrid([
+    row.new('Resource Usage')
+    + row.withPanels([cpuPanel, memoryPanel]),
+
+    row.new('Pod Statistics')
+    + row.withPanels([podCountStat]),
+  ], panelWidth=12)
 )
 ```
 
@@ -286,67 +265,63 @@ Organize common panels into libraries:
 
 ```jsonnet
 // kubernetes-panels.libsonnet
-local grafana = import 'grafonnet/grafana.libsonnet';
-local graphPanel = grafana.graphPanel;
-local prometheus = grafana.prometheus;
+local g = import 'g.libsonnet';
+local prometheus = g.query.prometheus;
+local timeSeries = g.panel.timeSeries;
 
 {
   cpuUsageByNamespace::
-    graphPanel.new(
-      'CPU Usage by Namespace',
-      datasource='Prometheus',
-      format='short',
-    )
-    .addTarget(
-      prometheus.target(
-        'sum by (namespace) (rate(container_cpu_usage_seconds_total{container!=""}[5m]))',
-        legendFormat='{{namespace}}',
+    timeSeries.new('CPU Usage by Namespace')
+    + timeSeries.queryOptions.withTargets([
+      prometheus.new(
+        'prometheus',
+        'sum by (namespace) (rate(container_cpu_usage_seconds_total{container!=""}[5m]))'
       )
-    ),
+      + prometheus.withLegendFormat('{{namespace}}'),
+    ])
+    + timeSeries.standardOptions.withUnit('short'),
 
   memoryUsageByNamespace::
-    graphPanel.new(
-      'Memory Usage by Namespace',
-      datasource='Prometheus',
-      format='bytes',
-    )
-    .addTarget(
-      prometheus.target(
-        'sum by (namespace) (container_memory_working_set_bytes{container!=""})',
-        legendFormat='{{namespace}}',
+    timeSeries.new('Memory Usage by Namespace')
+    + timeSeries.queryOptions.withTargets([
+      prometheus.new(
+        'prometheus',
+        'sum by (namespace) (container_memory_working_set_bytes{container!=""})'
       )
-    ),
+      + prometheus.withLegendFormat('{{namespace}}'),
+    ])
+    + timeSeries.standardOptions.withUnit('bytes'),
 
   networkThroughput::
-    graphPanel.new(
-      'Network Throughput',
-      datasource='Prometheus',
-      format='Bps',
-    )
-    .addTarget(
-      prometheus.target(
-        'sum(rate(container_network_receive_bytes_total[5m]))',
-        legendFormat='Receive',
+    timeSeries.new('Network Throughput')
+    + timeSeries.queryOptions.withTargets([
+      prometheus.new(
+        'prometheus',
+        'sum(rate(container_network_receive_bytes_total[5m]))'
       )
-    )
-    .addTarget(
-      prometheus.target(
-        'sum(rate(container_network_transmit_bytes_total[5m]))',
-        legendFormat='Transmit',
+      + prometheus.withLegendFormat('Receive'),
+      prometheus.new(
+        'prometheus',
+        'sum(rate(container_network_transmit_bytes_total[5m]))'
       )
-    ),
+      + prometheus.withLegendFormat('Transmit'),
+    ])
+    + timeSeries.standardOptions.withUnit('Bps'),
 }
 ```
 
 Import and use:
 
 ```jsonnet
+local g = import 'g.libsonnet';
 local k8s = import 'kubernetes-panels.libsonnet';
 
-dashboard.new('Cluster Overview')
-.addPanel(k8s.cpuUsageByNamespace, gridPos={h: 8, w: 12, x: 0, y: 0})
-.addPanel(k8s.memoryUsageByNamespace, gridPos={h: 8, w: 12, x: 12, y: 0})
-.addPanel(k8s.networkThroughput, gridPos={h: 8, w: 24, x: 0, y: 8})
+g.dashboard.new('Cluster Overview')
++ g.dashboard.withPanels([
+  k8s.cpuUsageByNamespace + g.panel.timeSeries.panelOptions.withGridPos(h=8, w=12, x=0, y=0),
+  k8s.memoryUsageByNamespace + g.panel.timeSeries.panelOptions.withGridPos(h=8, w=12, x=12, y=0),
+  k8s.networkThroughput + g.panel.timeSeries.panelOptions.withGridPos(h=8, w=24, x=0, y=8),
+])
 ```
 
 ## Programmatic Dashboard Generation
@@ -354,17 +329,14 @@ dashboard.new('Cluster Overview')
 Generate multiple dashboards from configuration:
 
 ```jsonnet
-local grafana = import 'grafonnet/grafana.libsonnet';
-local dashboard = grafana.dashboard;
+local g = import 'g.libsonnet';
 
 local namespaces = ['production', 'staging', 'development'];
 
 {
   ['namespace-' + ns + '.json']:
-    dashboard.new(
-      'Namespace: ' + ns,
-      tags=['kubernetes', ns],
-    )
+    g.dashboard.new('Namespace: ' + ns)
+    + g.dashboard.withTags(['kubernetes', ns])
     // Add panels specific to namespace
   for ns in namespaces
 }
@@ -373,37 +345,55 @@ local namespaces = ['production', 'staging', 'development'];
 Compile all dashboards:
 
 ```bash
-jsonnet -J grafonnet-lib -m dashboards/ multi-dashboard.jsonnet
+jsonnet -J vendor -m dashboards/ multi-dashboard.jsonnet
 ```
 
-## Adding Alerts to Panels
+## Adding Alerts
 
-Include alert rules in panels:
+Use Grafana-managed alert rules instead of legacy dashboard alerts:
 
 ```jsonnet
-graphPanel.new(
-  'CPU Usage',
-  datasource='Prometheus',
-)
-.addTarget(
-  prometheus.target(
-    'sum(rate(container_cpu_usage_seconds_total[5m]))',
-  )
-)
-.addAlert(
-  'High CPU Usage',
-  executionErrorState='alerting',
-  frequency='1m',
-  notifications=[
-    {id: 1, uid: 'slack-channel'},
-  ],
-)
-.addCondition({
-  type: 'query',
-  query: {params: ['A', '5m', 'now']},
-  reducer: {type: 'avg', params: []},
-  evaluator: {type: 'gt', params: [0.8]},
-})
+local g = import 'g.libsonnet';
+local ruleGroup = g.alerting.ruleGroup;
+local rule = ruleGroup.rule;
+local data = rule.data;
+
+ruleGroup.withName('Kubernetes alerts')
++ ruleGroup.withFolderUid('monitoring')
++ ruleGroup.withInterval(60)
++ ruleGroup.withRules([
+  rule.withName('High CPU Usage')
+  + rule.withCondition('B')
+  + rule.withFor('5m')
+  + rule.withNoDataState('OK')
+  + rule.withExecErrState('Error')
+  + rule.withData([
+    data.withRefId('A')
+    + data.withDatasourceUid('prometheus')
+    + data.relativeTimeRange.withFrom(300)
+    + data.relativeTimeRange.withTo(0)
+    + data.withModel({
+      refId: 'A',
+      expr: 'sum(rate(container_cpu_usage_seconds_total[5m]))',
+      datasource: {type: 'prometheus', uid: 'prometheus'},
+    }),
+    data.withRefId('B')
+    + data.withDatasourceUid('__expr__')
+    + data.relativeTimeRange.withFrom(0)
+    + data.relativeTimeRange.withTo(0)
+    + data.withModel({
+      refId: 'B',
+      type: 'threshold',
+      expression: 'A',
+      conditions: [{
+        evaluator: {type: 'gt', params: [0.8]},
+        reducer: {type: 'avg', params: []},
+        type: 'query',
+      }],
+      datasource: {type: '__expr__', uid: '__expr__'},
+    }),
+  ]),
+])
 ```
 
 ## Versioning and CI/CD Integration
@@ -416,21 +406,24 @@ compile-dashboards:
   stage: build
   image: bitnami/jsonnet:latest
   script:
-    - jsonnet -J grafonnet-lib -m dashboards/ src/*.jsonnet
+    - jsonnet -J vendor -m dashboards/ src/*.jsonnet
   artifacts:
     paths:
       - dashboards/
 
 deploy-dashboards:
   stage: deploy
-  image: curlimages/curl:latest
+  image: alpine:3.20
   script:
+    - apk add --no-cache curl jq
     - |
       for dashboard in dashboards/*.json; do
+        jq -n --argfile dashboard "$dashboard" \
+          '{dashboard: $dashboard, overwrite: true}' > payload.json
         curl -X POST \
           -H "Content-Type: application/json" \
           -H "Authorization: Bearer $GRAFANA_API_KEY" \
-          -d @$dashboard \
+          -d @payload.json \
           http://grafana.monitoring.svc.cluster.local:3000/api/dashboards/db
       done
 ```
@@ -441,7 +434,7 @@ Validate generated JSON:
 
 ```bash
 # Check JSON is valid
-jsonnet dashboard.jsonnet | jq empty
+jsonnet -J vendor dashboard.jsonnet | jq empty
 
 # Lint Jsonnet code
 jsonnetfmt --test dashboard.jsonnet
@@ -464,9 +457,13 @@ metadata:
     grafana_dashboard: "1"
 data:
   kubernetes-overview.json: |-
-    {{ include "dashboards/kubernetes-overview.json" }}
+    {
+      "title": "Kubernetes Overview",
+      "schemaVersion": 39,
+      "panels": []
+    }
 ```
 
-Use Grafana dashboard provisioning to load automatically.
+Use Grafana dashboard provisioning, or a sidecar configured to watch labeled ConfigMaps, to load the files automatically.
 
 Grafonnet transforms dashboard management from manual UI work into version-controlled, testable, reusable code that scales across hundreds of dashboards.
