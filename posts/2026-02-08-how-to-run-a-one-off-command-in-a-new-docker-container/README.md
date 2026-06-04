@@ -90,7 +90,7 @@ docker run --rm \
   --network myapp_default \
   -v "$(pwd)/backups:/backups" \
   postgres:16-alpine \
-  pg_dump -h postgres -U myuser mydb > /backups/dump.sql
+  sh -c 'pg_dump -h postgres -U myuser mydb > /backups/dump.sql'
 
 # Restore a database from backup
 docker run --rm \
@@ -116,13 +116,13 @@ docker run --rm -v "$(pwd):/work" -w /work dpokidov/imagemagick \
   convert input.png -resize 50% output.png
 
 # Format JSON files with jq
-docker run --rm -v "$(pwd):/work" -w /work stedolan/jq '.' /work/data.json > formatted.json
+docker run --rm -v "$(pwd):/work" -w /work ghcr.io/jqlang/jq:latest '.' /work/data.json > formatted.json
 
 # Lint a Dockerfile
 docker run --rm -i hadolint/hadolint < Dockerfile
 
 # Run a security scan on a project
-docker run --rm -v "$(pwd):/src" returntocorp/semgrep --config=auto /src
+docker run --rm -v "$(pwd):/src" semgrep/semgrep semgrep --config=auto /src
 ```
 
 ## Network Debugging
@@ -244,7 +244,7 @@ docker run --rm \
   myapp:latest \
   node scripts/heavy-computation.js
 
-# Set a timeout using the --stop-timeout flag
+# Set the stop grace period if the container is stopped
 docker run --rm \
   --stop-timeout 300 \
   myapp:latest \
