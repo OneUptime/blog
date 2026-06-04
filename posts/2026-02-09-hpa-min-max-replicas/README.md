@@ -107,12 +107,12 @@ With maxUnavailable of 1 and minAvailable of 8, you need at least 9 replicas, so
 Prevent HPA from consuming entire cluster resources.
 
 ```bash
-# Check node capacity
+# Check node allocatable resources
 
-kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, cpu: .status.capacity.cpu, memory: .status.capacity.memory}'
+kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, cpu: .status.allocatable.cpu, memory: .status.allocatable.memory}'
 
 # Calculate maximum pods for your deployment
-# If cluster has 100 cores total and each pod requests 200m CPU
+# If cluster has 100 allocatable cores and each pod requests 200m CPU
 # Maximum pods = 100 cores / 0.2 cores per pod = 500 pods
 # Set maxReplicas to 70-80% of maximum to leave headroom
 ```
@@ -305,20 +305,18 @@ Set up Prometheus alerts.
     summary: "HPA {{ $labels.horizontalpodautoscaler }} at maximum replicas"
     description: "Consider increasing maxReplicas or investigating high load"
 
-# Alert when consistently at minReplicas with low CPU
+# Alert when consistently limited at minReplicas
 - alert: HPAOverProvisionedMin
   expr: |
     kube_horizontalpodautoscaler_status_current_replicas == kube_horizontalpodautoscaler_spec_min_replicas
-    and
+    and on (namespace, horizontalpodautoscaler)
     kube_horizontalpodautoscaler_status_condition{condition="ScalingLimited",status="true"} == 1
-    and
-    avg(container_cpu_usage_seconds_total) by (pod) < 0.3
   for: 6h
   labels:
     severity: info
   annotations:
     summary: "HPA {{ $labels.horizontalpodautoscaler }} may have excessive minReplicas"
-    description: "Consider reducing minReplicas to save costs"
+    description: "Review workload utilization and consider reducing minReplicas to save costs"
 ```
 
 ## Gradually Adjusting Boundaries
