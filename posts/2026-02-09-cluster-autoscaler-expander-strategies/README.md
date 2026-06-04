@@ -14,12 +14,14 @@ When pods are pending due to insufficient resources, the Cluster Autoscaler adds
 
 Cluster Autoscaler supports several expander strategies:
 
-- **random**: Choose a random node pool (default)
+- **random**: Choose a random node pool
 - **most-pods**: Select pool that can schedule the most pending pods
 - **least-waste**: Choose pool that will have least idle resources after scaling
-- **price**: Select cheapest node pool (requires cloud provider pricing info)
+- **price**: Select cheapest node pool (supported only by cloud providers with pricing support, such as GCE/GKE and Equinix Metal)
 - **priority**: Use priority-based selection
 - **grpc**: Query external service for decision
+
+The default expander is **least-waste**. Use **random** only when you explicitly want random node group selection.
 
 ## Configuring the Expander
 
@@ -46,7 +48,7 @@ spec:
       serviceAccountName: cluster-autoscaler
       containers:
       - name: cluster-autoscaler
-        image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.2
+        image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.35.0
         command:
         - ./cluster-autoscaler
         - --v=4
@@ -95,6 +97,8 @@ This configuration:
 - Prioritizes spot instance pools (priority 10)
 - Falls back to on-demand pools (priority 5)
 - Uses expensive pools as last resort (priority 1)
+
+The ConfigMap is watched by Cluster Autoscaler, so changes are loaded without restarting the autoscaler.
 
 ## Cost-Optimized Strategy
 
@@ -210,22 +214,20 @@ The autoscaler will:
 
 Maximize pod scheduling efficiency:
 
-```yaml
+```bash
 # Update autoscaler to use most-pods
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: cluster-autoscaler
-  namespace: kube-system
-spec:
-  template:
-    spec:
-      containers:
-      - name: cluster-autoscaler
-        command:
-        - ./cluster-autoscaler
-        - --expander=most-pods
-        - --max-node-provision-time=15m
+kubectl patch deployment cluster-autoscaler -n kube-system --type=json -p='[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/command/-",
+    "value": "--expander=most-pods"
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/command/-",
+    "value": "--max-node-provision-time=15m"
+  }
+]'
 ```
 
 This selects the node pool that can schedule the most pending pods, reducing overall scaling operations.
@@ -242,14 +244,29 @@ metadata:
   name: cluster-autoscaler
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
   template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
     spec:
       containers:
       - name: cluster-autoscaler
         command:
         - ./cluster-autoscaler
         - --expander=grpc
-        - --grpc-expander-url=expander-service.kube-system:9090
+        - --grpc-expander-url=expander-service.kube-system.svc.cluster.local:9090
+        - --grpc-expander-cert=/etc/grpc-expander/tls.crt
+        volumeMounts:
+        - name: grpc-expander-cert
+          mountPath: /etc/grpc-expander
+          readOnly: true
+      volumes:
+      - name: grpc-expander-cert
+        secret:
+          secretName: grpc-expander-cert
 ---
 apiVersion: v1
 kind: Service
@@ -313,8 +330,7 @@ kubectl create configmap cluster-autoscaler-priority-expander \
   -n kube-system \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Restart autoscaler to pick up new config
-kubectl rollout restart deployment cluster-autoscaler -n kube-system
+# Cluster Autoscaler watches this ConfigMap and loads updates automatically
 ```
 
 Run this as a CronJob:
@@ -370,14 +386,19 @@ kubectl get events -n kube-system --field-selector source=cluster-autoscaler -o 
 Monitor autoscaler performance:
 
 ```promql
-# Scale-up events by node group
+# Scale-up events
 rate(cluster_autoscaler_scaled_up_nodes_total[5m])
 
 # Failed scale-up attempts
 rate(cluster_autoscaler_failed_scale_ups_total[5m])
 
-# Current node count by node group
+# Current node count by node state
 cluster_autoscaler_nodes_count
+
+# Node group size bounds and target size, if --emit-per-nodegroup-metrics=true is enabled
+cluster_autoscaler_node_group_min_count
+cluster_autoscaler_node_group_max_count
+cluster_autoscaler_node_group_target_count
 
 # Pending pods triggering scale-up
 cluster_autoscaler_unschedulable_pods_count
@@ -441,4 +462,3 @@ kubectl logs -n kube-system deployment/cluster-autoscaler | grep -i error
 ```
 
 Cluster Autoscaler expander strategies give you fine-grained control over which node pools scale when your cluster needs capacity. By choosing the right strategy or combination of strategies, you can optimize for cost, performance, availability, or custom business requirements.
-
