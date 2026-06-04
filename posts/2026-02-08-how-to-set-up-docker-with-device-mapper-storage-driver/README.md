@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Device Mapper, Storage Driver, DevOps, Linux, LVM
 
-Description: Configure Docker to use the device mapper storage driver with direct-lvm mode for production-grade container storage.
+Description: Configure legacy Docker Engine hosts to use the device mapper storage driver with direct-lvm mode for block-level container storage.
 
 ---
 
-Device Mapper is a Linux kernel framework that provides a generic way to map one block device to another. Docker's `devicemapper` storage driver leverages this framework to provide thin provisioning and copy-on-write capabilities for container storage. While overlay2 has become the default storage driver for most distributions, Device Mapper remains relevant for environments running older kernels or using block-level storage solutions.
+Device Mapper is a Linux kernel framework that provides a generic way to map one block device to another. Docker's `devicemapper` storage driver leverages this framework to provide thin provisioning and copy-on-write capabilities for container storage. While overlay2 has become the default storage driver for most distributions, Device Mapper remains relevant only for legacy Docker Engine environments running older kernels or existing block-level storage setups. The `devicemapper` storage driver was deprecated in Docker Engine 18.09, disabled by default in Docker Engine 23.0, and removed in Docker Engine 25.0, so this guide applies only to Docker Engine versions that still include the driver.
 
 This guide explains how to configure Docker with Device Mapper in both loop-lvm (for testing) and direct-lvm (for production) modes, and how to manage the setup over time.
 
@@ -28,7 +28,7 @@ For direct-lvm mode, you need:
 
 - A Linux system (CentOS, RHEL, Ubuntu, or Debian)
 - A dedicated, unused block device (e.g., `/dev/sdb`)
-- Docker Engine installed but stopped
+- Docker Engine installed but stopped, using a version that still supports `devicemapper`
 - Root or sudo access
 - LVM2 tools installed
 
@@ -95,7 +95,7 @@ Create a thin pool logical volume. Allocate 95% of the volume group for data and
 sudo lvcreate --wipesignatures y -n thinpool docker-vg -l 95%VG
 
 # Create the metadata logical volume using 1% of the volume group
-sudo lvcreate --wipesignatures y -n thinpoolmeta docker-vg -l 1%FREE
+sudo lvcreate --wipesignatures y -n thinpoolmeta docker-vg -l 1%VG
 ```
 
 Convert the volumes to a thin pool:
@@ -133,6 +133,9 @@ Verify the thin pool is configured correctly:
 ```bash
 # Check the logical volume status
 sudo lvs -o+seg_monitor
+
+# Enable monitoring if the Monitor column reports "not monitored"
+sudo lvchange --monitor y docker-vg/thinpool
 ```
 
 You should see the `thinpool` volume with monitoring enabled.
@@ -252,19 +255,12 @@ sudo pvcreate /dev/sdc
 sudo vgextend docker-vg /dev/sdc
 ```
 
-## Setting Per-Container Storage Limits
+## Setting the Default Container Base Size
 
-Device Mapper supports per-container storage limits through the `--storage-opt` flag:
-
-```bash
-# Run a container with a 10GB storage limit
-docker run -it --storage-opt size=10G ubuntu bash
-```
-
-You can also set a default size for all containers in the daemon configuration:
+The current Docker `docker run --storage-opt size=...` option is documented for other storage drivers, not for `devicemapper`. For legacy `devicemapper` setups, set the default base device size for newly created containers in the daemon configuration:
 
 ```bash
-# Set default container size in daemon.json
+# Set default base device size in daemon.json
 {
   "storage-driver": "devicemapper",
   "storage-opts": [
@@ -294,7 +290,7 @@ docker system df
 
 ## Troubleshooting
 
-**"devmapper: Thin Pool has free data blocks" warning**: The thin pool is getting full. Verify autoextend is working, or manually extend the thin pool.
+**"devmapper: Thin Pool has X free data blocks which is less than minimum required" error**: The thin pool is getting full. Verify autoextend is working, or manually extend the thin pool.
 
 **Container creation fails with "no space left"**: Check both the thin pool data and metadata usage. Metadata can fill up separately from data.
 
