@@ -8,13 +8,13 @@ Description: How to configure Docker Engine with systemd socket activation for o
 
 ---
 
-Systemd socket activation is a mechanism where a service starts only when something connects to its socket. For Docker, this means the Docker daemon does not need to run continuously. It starts on demand when you run your first Docker command and stops after a period of inactivity. This saves resources on development machines, CI/CD runners, and systems where Docker is used intermittently.
+Systemd socket activation is a mechanism where a service starts only when something connects to its socket. For Docker, this means the Docker daemon does not need to run continuously. It starts on demand when you run your first Docker command. With an additional idle-stop mechanism, it can also be stopped after a period of inactivity. This saves resources on development machines, CI/CD runners, and systems where Docker is used intermittently.
 
 ## How Socket Activation Works
 
 Traditional Docker setup: the Docker daemon starts at boot and runs continuously, consuming memory and CPU even when no containers are running.
 
-Socket activation setup: systemd listens on Docker's Unix socket. When a client connects (by running `docker ps`, for example), systemd starts the Docker daemon, hands off the connection, and Docker takes over. The daemon can then stop itself when idle.
+Socket activation setup: systemd listens on Docker's Unix socket. When a client connects (by running `docker ps`, for example), systemd starts the Docker daemon, passes the socket file descriptor, and Docker takes over. By default, the daemon keeps running until it is stopped.
 
 ```mermaid
 sequenceDiagram
@@ -27,8 +27,7 @@ sequenceDiagram
     Docker->>Systemd: Ready
     Systemd->>User: Connection forwarded
     User->>Docker: docker ps (etc.)
-    Note over Docker: Runs until idle timeout
-    Docker->>Systemd: Stops (optional)
+    Note over Docker: Keeps running until stopped
 ```
 
 ## Prerequisites
@@ -55,7 +54,7 @@ systemctl status docker.socket
 systemctl status docker.service
 ```
 
-On most installations, both are enabled by default. The socket unit tells systemd to listen on `/var/run/docker.sock` and start `docker.service` when a connection arrives.
+On many systemd-based Docker installations, `docker.service` is enabled by default, and `docker.socket` is installed alongside it. The socket unit tells systemd to listen on `/var/run/docker.sock` and start `docker.service` when a connection arrives. The service must be configured to use systemd socket activation, typically with `dockerd -H fd://`, which is the standard Docker package configuration on systemd-based distributions.
 
 ## Step 1: Examine the Default Socket Unit
 
@@ -156,12 +155,13 @@ sudo tee /etc/systemd/system/docker.socket.d/tcp.conf <<'EOF'
 ListenStream=0.0.0.0:2375
 EOF
 
-# Reload systemd and restart the socket
+# Reload systemd, stop the daemon if it is running, and restart the socket
 sudo systemctl daemon-reload
+sudo systemctl stop docker.service
 sudo systemctl restart docker.socket
 ```
 
-**Security warning**: This exposes the Docker daemon without authentication. Only use this on trusted networks or add TLS. See the section on TLS below.
+**Security warning**: This exposes the Docker daemon without authentication. Remote access without TLS can let remote non-root users gain root-level control of the host. Bind to a trusted interface only, or add TLS. See the section on TLS below.
 
 ### Change the Socket Path
 
@@ -176,6 +176,7 @@ ListenStream=/run/docker-custom.sock
 EOF
 
 sudo systemctl daemon-reload
+sudo systemctl stop docker.service
 sudo systemctl restart docker.socket
 ```
 
@@ -214,12 +215,13 @@ sudo tee /etc/docker/daemon.json <<'EOF'
 EOF
 
 sudo systemctl daemon-reload
+sudo systemctl stop docker.service
 sudo systemctl restart docker.socket
 ```
 
 ## Step 6: Set Up Idle Timeout (Optional)
 
-By default, once started, the Docker daemon runs indefinitely. You can configure an idle timeout using systemd's `StopWhenUnneeded` directive. However, Docker does not natively support idle stopping, so this requires a wrapper approach.
+By default, once started, the Docker daemon runs indefinitely. Docker does not natively support idle stopping, and systemd's `StopWhenUnneeded` is dependency-based rather than an activity timer, so an idle timeout requires a wrapper approach.
 
 A simpler alternative is to use a systemd timer to check for idle Docker daemons.
 
