@@ -1,14 +1,14 @@
-# How to Implement CoreDNS Federation Plugin for Multi-Cluster DNS Resolution
+# How to Implement CoreDNS-Based Federation for Multi-Cluster DNS Resolution
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CoreDNS, Multi-Cluster, DNS
 
-Description: Learn how to configure the CoreDNS federation plugin to enable DNS resolution across multiple Kubernetes clusters, facilitating service discovery and communication in multi-cluster architectures.
+Description: Learn how to configure CoreDNS to enable DNS resolution across multiple Kubernetes clusters, facilitating service discovery and communication in multi-cluster architectures.
 
 ---
 
-Multi-cluster Kubernetes deployments require cross-cluster service discovery for distributed applications. The CoreDNS federation plugin enables DNS-based service discovery across clusters by allowing queries for services in remote clusters to resolve correctly. This creates a unified DNS namespace spanning multiple Kubernetes environments.
+Multi-cluster Kubernetes deployments require cross-cluster service discovery for distributed applications. CoreDNS can enable DNS-based service discovery across clusters by routing queries for remote services to the right DNS backend. This creates a unified DNS namespace spanning multiple Kubernetes environments.
 
 This guide shows you how to implement CoreDNS federation for multi-cluster DNS resolution.
 
@@ -37,7 +37,7 @@ A federated DNS setup typically includes:
 1. **Home clusters**: Where services run
 2. **Federation DNS**: Centralized or distributed DNS for federation
 3. **CoreDNS configuration**: Routes federation queries appropriately
-4. **Service exports**: Services made available to other clusters
+4. **Service exports or registrations**: Services made available to other clusters
 
 Basic federation pattern:
 
@@ -104,7 +104,7 @@ This configuration routes queries for `federation.svc.cluster.local` to dedicate
 
 ## Multi-Cluster Service Discovery Pattern
 
-Implement standard naming convention:
+Implement a consistent custom naming convention:
 
 ```text
 <service>.<namespace>.<cluster-id>.federation.svc.cluster.local
@@ -145,7 +145,7 @@ data:
         cache 60
 
         # Rewrite local cluster queries
-        rewrite name regex (.+)\.(.+)\.us-east-1\.federation\.svc\.cluster\.local {1}.{2}.svc.cluster.local
+        rewrite name regex (.+)\.(.+)\.us-east-1\.federation\.svc\.cluster\.local {1}.{2}.svc.cluster.local answer auto
 
         # Try local cluster first
         kubernetes cluster.local {
@@ -197,7 +197,7 @@ data:
         cache 60
 
         # Rewrite local cluster queries
-        rewrite name regex (.+)\.(.+)\.us-west-2\.federation\.svc\.cluster\.local {1}.{2}.svc.cluster.local
+        rewrite name regex (.+)\.(.+)\.us-west-2\.federation\.svc\.cluster\.local {1}.{2}.svc.cluster.local answer auto
 
         kubernetes cluster.local {
            pods insecure
@@ -326,6 +326,7 @@ data:
     CLUSTER_ID="us-east-1"
     ETCD_ENDPOINT="http://etcd-cluster.federation-system:2379"
     FEDERATION_ZONE="federation.svc.cluster.local"
+    ETCD_PREFIX="/coredns"
 
     # Watch for service changes
     kubectl get svc --all-namespaces -w --output-watch-events | while read event type namespace name rest; do
@@ -335,11 +336,12 @@ data:
 
             if [[ -n "$CLUSTER_IP" && "$CLUSTER_IP" != "None" ]]; then
                 # Register in etcd
-                KEY="/coredns/${FEDERATION_ZONE}/${CLUSTER_ID}/${namespace}/${name}"
+                # CoreDNS etcd plugin uses SkyDNS-style reversed DNS labels under the configured path.
+                KEY="${ETCD_PREFIX}/local/cluster/svc/federation/${CLUSTER_ID}/${namespace}/${name}"
                 VALUE="{\"host\": \"$CLUSTER_IP\"}"
 
                 echo "Registering: $KEY -> $VALUE"
-                curl -X PUT "${ETCD_ENDPOINT}/v2/keys${KEY}" -d value="$VALUE"
+                ETCDCTL_API=3 etcdctl --endpoints="$ETCD_ENDPOINT" put "$KEY" "$VALUE"
             fi
         fi
     done
