@@ -100,8 +100,6 @@ This Compose file defines the same three-service setup with proper networking:
 
 ```yaml
 # docker-compose.test.yml
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16-alpine
