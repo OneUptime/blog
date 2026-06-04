@@ -18,7 +18,7 @@ The ingress controller watches Ingress resources and translates them into native
 
 ## Basic Configuration
 
-Deploy the ingress controller and create basic routing:
+After deploying the ingress controller, create basic routing:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -43,7 +43,7 @@ spec:
 
 ## Advanced Features
 
-The ingress controller supports sophisticated traffic management patterns including weighted routing, header-based routing, rate limiting, authentication, and custom middleware chains.
+The ingress controller supports sophisticated traffic management patterns including weighted canary routing, header-based routing, cookie-based routing, rate limiting, authentication, and custom NGINX configuration snippets.
 
 Configure these features using annotations or custom resource definitions depending on your ingress controller choice. Each controller provides unique capabilities tailored to specific use cases.
 
