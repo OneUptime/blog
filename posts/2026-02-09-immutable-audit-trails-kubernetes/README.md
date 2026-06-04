@@ -57,7 +57,7 @@ rules:
     verbs: ["create", "update", "patch"]
     resources:
       - group: ""
-        resources: ["namespaces"]
+        resources: ["pods", "namespaces"]
 
   # Default: log metadata for everything else
   - level: Metadata
@@ -131,6 +131,7 @@ package main
 
 import (
     "bytes"
+    "context"
     "crypto"
     "crypto/rand"
     "crypto/rsa"
@@ -142,12 +143,19 @@ import (
     "io"
     "log"
     "net/http"
+    "os"
+    "sync"
     "time"
 
-    "github.com/aws/aws-sdk-go/aws"
-    "github.com/aws/aws-sdk-go/aws/session"
-    "github.com/aws/aws-sdk-go/service/s3"
+    "github.com/aws/aws-sdk-go-v2/aws"
+    "github.com/aws/aws-sdk-go-v2/config"
+    "github.com/aws/aws-sdk-go-v2/service/s3"
+    "github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
+
+type AuditEventList struct {
+    Items []AuditEvent `json:"items"`
+}
 
 type AuditEvent struct {
     Level             string    `json:"level"`
@@ -182,7 +190,8 @@ var (
     privateKey *rsa.PrivateKey
     publicKey  *rsa.PublicKey
     lastHash   string
-    s3Client   *s3.S3
+    hashMu     sync.Mutex
+    s3Client   *s3.Client
     bucketName = "immutable-audit-logs"
 )
 
@@ -196,12 +205,32 @@ func init() {
     publicKey = &privateKey.PublicKey
 
     // Initialize S3 client
-    sess := session.Must(session.NewSession())
-    s3Client = s3.New(sess)
+    cfg, err := config.LoadDefaultConfig(context.Background())
+    if err != nil {
+        log.Fatal(err)
+    }
+    s3Client = s3.NewFromConfig(cfg)
+    if bucket := os.Getenv("S3_BUCKET"); bucket != "" {
+        bucketName = bucket
+    }
+}
+
+func canonicalJSON(v any) ([]byte, error) {
+    data, err := json.Marshal(v)
+    if err != nil {
+        return nil, err
+    }
+
+    var canonical any
+    if err := json.Unmarshal(data, &canonical); err != nil {
+        return nil, err
+    }
+
+    return json.Marshal(canonical)
 }
 
 func signEvent(event AuditEvent) (string, error) {
-    eventJSON, err := json.Marshal(event)
+    eventJSON, err := canonicalJSON(event)
     if err != nil {
         return "", err
     }
@@ -215,31 +244,71 @@ func signEvent(event AuditEvent) (string, error) {
     return base64.StdEncoding.EncodeToString(signature), nil
 }
 
-func computeHash(signedEvent SignedAuditEvent) string {
-    data, _ := json.Marshal(signedEvent)
+func computeHash(signedEvent SignedAuditEvent) (string, error) {
+    data, err := canonicalJSON(signedEvent)
+    if err != nil {
+        return "", err
+    }
     hash := sha256.Sum256(data)
-    return base64.StdEncoding.EncodeToString(hash[:])
+    return base64.StdEncoding.EncodeToString(hash[:]), nil
 }
 
 func storeInS3(signedEvent SignedAuditEvent) error {
-    data, err := json.Marshal(signedEvent)
+    data, err := canonicalJSON(signedEvent)
     if err != nil {
         return err
     }
 
-    key := fmt.Sprintf("audit-logs/%s/%s.json",
+    key := fmt.Sprintf("audit-logs/%s/%s-%s.json",
         signedEvent.Timestamp.Format("2006/01/02"),
+        signedEvent.Timestamp.Format("150405.000000000"),
         signedEvent.Event.AuditID)
 
-    _, err = s3Client.PutObject(&s3.PutObjectInput{
-        Bucket:            aws.String(bucketName),
-        Key:               aws.String(key),
-        Body:              bytes.NewReader(data),
-        ObjectLockMode:    aws.String("GOVERNANCE"),
+    _, err = s3Client.PutObject(context.Background(), &s3.PutObjectInput{
+        Bucket:                    aws.String(bucketName),
+        Key:                       aws.String(key),
+        Body:                      bytes.NewReader(data),
+        ObjectLockMode:            types.ObjectLockModeCompliance,
         ObjectLockRetainUntilDate: aws.Time(time.Now().AddDate(7, 0, 0)), // 7 years
     })
 
     return err
+}
+
+func processEvent(event AuditEvent) error {
+    hashMu.Lock()
+    defer hashMu.Unlock()
+
+    signature, err := signEvent(event)
+    if err != nil {
+        return fmt.Errorf("sign event: %w", err)
+    }
+
+    publicKeyBytes, err := x509.MarshalPKIXPublicKey(publicKey)
+    if err != nil {
+        return fmt.Errorf("marshal public key: %w", err)
+    }
+    publicKeyStr := base64.StdEncoding.EncodeToString(publicKeyBytes)
+
+    signedEvent := SignedAuditEvent{
+        Event:     event,
+        Signature: signature,
+        PublicKey: publicKeyStr,
+        Timestamp: time.Now().UTC(),
+        PrevHash:  lastHash,
+    }
+
+    newHash, err := computeHash(signedEvent)
+    if err != nil {
+        return fmt.Errorf("compute hash: %w", err)
+    }
+
+    if err := storeInS3(signedEvent); err != nil {
+        return fmt.Errorf("store in S3: %w", err)
+    }
+
+    lastHash = newHash
+    return nil
 }
 
 func auditHandler(w http.ResponseWriter, r *http.Request) {
@@ -249,40 +318,18 @@ func auditHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    var event AuditEvent
-    if err := json.Unmarshal(body, &event); err != nil {
+    var eventList AuditEventList
+    if err := json.Unmarshal(body, &eventList); err != nil || len(eventList.Items) == 0 {
         http.Error(w, "Invalid JSON", http.StatusBadRequest)
         return
     }
 
-    // Sign the event
-    signature, err := signEvent(event)
-    if err != nil {
-        log.Printf("Failed to sign event: %v", err)
-        http.Error(w, "Signing failed", http.StatusInternalServerError)
-        return
-    }
-
-    // Create signed event with hash chain
-    publicKeyBytes, _ := x509.MarshalPKIXPublicKey(publicKey)
-    publicKeyStr := base64.StdEncoding.EncodeToString(publicKeyBytes)
-
-    signedEvent := SignedAuditEvent{
-        Event:     event,
-        Signature: signature,
-        PublicKey: publicKeyStr,
-        Timestamp: time.Now(),
-        PrevHash:  lastHash,
-    }
-
-    // Compute hash for next event
-    lastHash = computeHash(signedEvent)
-
-    // Store in immutable S3
-    if err := storeInS3(signedEvent); err != nil {
-        log.Printf("Failed to store in S3: %v", err)
-        http.Error(w, "Storage failed", http.StatusInternalServerError)
-        return
+    for _, event := range eventList.Items {
+        if err := processEvent(event); err != nil {
+            log.Printf("Failed to process audit event: %v", err)
+            http.Error(w, "Processing failed", http.StatusInternalServerError)
+            return
+        }
     }
 
     w.WriteHeader(http.StatusOK)
@@ -290,7 +337,7 @@ func auditHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
     http.HandleFunc("/audit", auditHandler)
-    log.Fatal(http.ListenAndServeTLS(":443", "tls.crt", "tls.key", nil))
+    log.Fatal(http.ListenAndServeTLS(":443", "/etc/tls/tls.crt", "/etc/tls/tls.key", nil))
 }
 ```
 
@@ -304,7 +351,7 @@ metadata:
   name: audit-receiver
   namespace: audit-system
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: audit-receiver
@@ -365,7 +412,7 @@ aws s3api put-object-lock-configuration \
     "ObjectLockEnabled": "Enabled",
     "Rule": {
       "DefaultRetention": {
-        "Mode": "GOVERNANCE",
+        "Mode": "COMPLIANCE",
         "Years": 7
       }
     }
@@ -403,15 +450,16 @@ import json
 import hashlib
 import base64
 import sys
-from datetime import datetime
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import padding
+
+def canonical_json(value):
+    """Serialize JSON with the same deterministic formatting used by the receiver"""
+    return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
 
 def load_audit_logs(directory):
     """Load all audit logs from directory"""
     import glob
-    import os
 
     log_files = sorted(glob.glob(f"{directory}/**/*.json", recursive=True))
     logs = []
@@ -426,12 +474,9 @@ def verify_signature(event, signature, public_key_str):
     """Verify cryptographic signature of an audit event"""
     try:
         public_key_bytes = base64.b64decode(public_key_str)
-        public_key = serialization.load_der_public_key(
-            public_key_bytes,
-            backend=default_backend()
-        )
+        public_key = serialization.load_der_public_key(public_key_bytes)
 
-        event_json = json.dumps(event, sort_keys=True).encode()
+        event_json = canonical_json(event)
         signature_bytes = base64.b64decode(signature)
 
         public_key.verify(
@@ -447,7 +492,7 @@ def verify_signature(event, signature, public_key_str):
 
 def compute_hash(signed_event):
     """Compute hash of signed event"""
-    data = json.dumps(signed_event, sort_keys=True).encode()
+    data = canonical_json(signed_event)
     return base64.b64encode(hashlib.sha256(data).digest()).decode()
 
 def verify_hash_chain(logs):
