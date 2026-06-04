@@ -28,26 +28,30 @@ Unlike traditional service mesh or VPN solutions, FabEdge focuses on efficient e
 
 You need:
 
-- Multiple K3s or K8s edge clusters
+- Kubernetes clusters running supported networking, such as Flannel or Calico
+- Edge nodes or edge clusters managed with a supported edge framework when applicable
 - One central cloud cluster (for control plane)
 - Network connectivity between sites (can be indirect)
 - Helm 3.x installed
 
-## Installing FabEdge Operator
+## Installing FabEdge on the Host Cluster
 
-On your cloud cluster, install the FabEdge operator:
+On your host cluster, install FabEdge with the published Helm chart:
 
 ```bash
 # Add FabEdge Helm repository
-
 helm repo add fabedge https://fabedge.github.io/helm-chart
 helm repo update
 
-# Install operator on cloud cluster
-helm install fabedge-operator fabedge/fabedge-operator \
-  --namespace fabedge \
-  --create-namespace \
-  --set role=host
+# Install FabEdge on the host cluster
+curl https://fabedge.github.io/helm-chart/scripts/quickstart.sh | bash -s -- \
+  --cluster-name cloud \
+  --cluster-role host \
+  --cluster-zone central \
+  --cluster-region us \
+  --connectors cloud-node-01 \
+  --connector-public-addresses <cloud-connector-ip> \
+  --chart fabedge/fabedge
 ```
 
 Verify installation:
@@ -56,26 +60,36 @@ Verify installation:
 kubectl get pods -n fabedge
 ```
 
-## Deploying FabEdge Agent on Edge Clusters
+## Deploying FabEdge on Edge Clusters
 
-On each edge cluster, install the FabEdge agent:
+Register each edge cluster on the host cluster and use the registration token when installing FabEdge in that member cluster:
 
 ```bash
-# Get connector token from cloud cluster
-CONNECTOR_TOKEN=$(kubectl get secret -n fabedge fabedge-connector-token -o jsonpath='{.data.token}' | base64 -d)
+# Run on the host cluster
+cat > edge-cluster-01.yaml <<EOF
+apiVersion: fabedge.io/v1alpha1
+kind: Cluster
+metadata:
+  name: edge-cluster-01
+EOF
+kubectl apply -f edge-cluster-01.yaml
+INIT_TOKEN=$(kubectl get cluster edge-cluster-01 -o go-template --template='{{.spec.token}}' | awk 'END{print}')
 
-# Install agent on edge cluster
-helm install fabedge-agent fabedge/fabedge-agent \
-  --namespace fabedge \
-  --create-namespace \
-  --set role=member \
-  --set connector.server=<cloud-fabedge-ip>:500 \
-  --set connector.token=$CONNECTOR_TOKEN \
-  --set cluster.name=edge-cluster-01 \
-  --set cluster.cidr=10.42.0.0/16
+# Run on edge-cluster-01
+curl https://fabedge.github.io/helm-chart/scripts/quickstart.sh | bash -s -- \
+  --cluster-name edge-cluster-01 \
+  --cluster-role member \
+  --cluster-zone edge-01 \
+  --cluster-region us \
+  --connectors edge-node-01 \
+  --connector-public-addresses <edge-connector-ip> \
+  --operator-api-server https://<cloud-connector-ip>:30303 \
+  --service-hub-api-server https://<cloud-connector-ip>:30000 \
+  --init-token "$INIT_TOKEN" \
+  --chart fabedge/fabedge
 ```
 
-Repeat for each edge cluster with unique cluster names and CIDRs.
+Repeat for each edge cluster with unique cluster names and non-overlapping CIDRs.
 
 ## Configuring Pod CIDR Allocation
 
@@ -109,15 +123,12 @@ apiVersion: fabedge.io/v1alpha1
 kind: Community
 metadata:
   name: retail-stores
-  namespace: fabedge
 spec:
   members:
-  - name: edge-cluster-01
-    role: connector
-  - name: edge-cluster-02
-    role: connector
-  - name: edge-cluster-03
-    role: connector
+  - cloud.connector
+  - edge-cluster-01.connector
+  - edge-cluster-02.connector
+  - edge-cluster-03.connector
 ```
 
 Apply on cloud cluster:
@@ -164,8 +175,8 @@ kind: Service
 metadata:
   name: api-service
   namespace: default
-  annotations:
-    fabedge.io/service-export: "true"
+  labels:
+    fabedge.io/global-service: "true"
 spec:
   selector:
     app: api
@@ -178,14 +189,14 @@ Access from other clusters:
 
 ```bash
 # From edge-cluster-02
-curl http://api-service.default.edge-cluster-01.svc:8080
+curl http://api-service.default.svc.global:8080
 ```
 
-FabEdge creates DNS entries for exported services.
+FabEdge creates global service DNS entries when FabDNS is enabled and CoreDNS forwards the `global` zone to it.
 
 ## Configuring Network Policies
 
-Control cross-cluster traffic with NetworkPolicies:
+Control cross-cluster traffic with NetworkPolicies in the destination cluster. Use a CNI that enforces NetworkPolicy and match the remote cluster's pod CIDR:
 
 ```yaml
 # cross-cluster-policy.yaml
@@ -202,12 +213,10 @@ spec:
   - Ingress
   ingress:
   - from:
-    - namespaceSelector:
-        matchLabels:
-          fabedge.io/cluster: edge-cluster-02
-    - namespaceSelector:
-        matchLabels:
-          fabedge.io/cluster: edge-cluster-03
+    - ipBlock:
+        cidr: 10.43.0.0/16
+    - ipBlock:
+        cidr: 10.44.0.0/16
     ports:
     - protocol: TCP
       port: 8080
@@ -215,49 +224,42 @@ spec:
 
 ## Implementing High-Availability Connectors
 
-Deploy multiple connectors for redundancy:
+Deploy multiple connectors for redundancy with connector replicas and keepalived:
 
 ```yaml
-# ha-connector.yaml
-apiVersion: fabedge.io/v1alpha1
-kind: Community
-metadata:
-  name: retail-stores-ha
-spec:
-  members:
-  - name: edge-cluster-01
-    role: connector
-    connectors:
-    - endpoint: 192.168.1.10:500
-    - endpoint: 192.168.1.11:500  # Backup connector
-  - name: edge-cluster-02
-    role: connector
-    connectors:
-    - endpoint: 192.168.2.10:500
-    - endpoint: 192.168.2.11:500
+# values-ha.yaml
+cluster:
+  name: cloud
+  role: host
+  region: us
+  zone: central
+  cniType: flannel
+  connectorPublicAddresses:
+  - 203.0.113.10
+  connectorPublicPort: 45000
+  connectorAsMediator: true
+
+connector:
+  replicas: 2
+
+keepalived:
+  create: true
+  vip: 192.168.1.200
+  interface: eth0
+  routerID: 51
 ```
 
 ## Monitoring FabEdge Networking
 
-Track FabEdge metrics:
+Track FabEdge status with Kubernetes resources and StrongSwan tunnel state:
 
-```yaml
-# servicemonitor.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: fabedge-metrics
-  namespace: fabedge
-spec:
-  selector:
-    matchLabels:
-      app: fabedge-agent
-  endpoints:
-  - port: metrics
-    interval: 30s
+```bash
+kubectl get pods -n fabedge -o wide
+kubectl get communities.fabedge.io
+kubectl exec -n fabedge fabedge-agent-xxx -c strongswan -- swanctl --list-sas
 ```
 
-Key metrics:
+Key checks:
 
 - Tunnel status and packet counts
 - Cross-cluster latency
@@ -266,55 +268,42 @@ Key metrics:
 
 ## Optimizing for Bandwidth-Constrained Links
 
-Configure compression for slow links:
+Tune FabEdge agent behavior for constrained links with supported Helm values, such as disabling optional proxy and DNS helpers when they are not needed:
 
 ```yaml
-# fabedge-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: fabedge-config
-  namespace: fabedge
-data:
-  enable-compression: "true"
-  compression-level: "6"  # 1-9, higher = more compression
-  mtu: "1400"  # Account for tunnel overhead
+# values-constrained-link.yaml
+agent:
+  args:
+    ENABLE_PROXY: "false"
+    ENABLE_DNS: "false"
+    MASQ_OUTGOING: "true"
 ```
 
 ## Implementing Traffic Prioritization
 
-Prioritize critical traffic between edges:
+Prioritize critical traffic between edges with Kubernetes scheduling and application-level QoS. FabEdge does not define a TrafficPolicy CRD:
 
 ```yaml
 # priority-policy.yaml
-apiVersion: fabedge.io/v1alpha1
-kind: TrafficPolicy
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
 metadata:
   name: prioritize-control
-  namespace: fabedge
-spec:
-  selector:
-    matchLabels:
-      type: control-plane
-  priority: high
-  bandwidth:
-    min: 10Mbps
-    max: 100Mbps
+value: 100000
+globalDefault: false
+description: "Priority for latency-sensitive control traffic workloads."
 ```
 
 ## Handling NAT Traversal
 
-For clusters behind NAT, configure STUN servers:
+For clusters behind NAT, use the connector as a mediator for hole punching and expose the connector public address and port:
 
 ```yaml
-spec:
-  connector:
-    stunServers:
-    - stun:stun.l.google.com:19302
-    - stun:stun1.l.google.com:19302
-  nat:
-    enabled: true
-    strategy: udp-hole-punching
+cluster:
+  connectorPublicAddresses:
+  - <connector-public-ip>
+  connectorPublicPort: 45000
+  connectorAsMediator: true
 ```
 
 ## Creating Disaster Recovery Patterns
@@ -333,17 +322,23 @@ spec:
     matchLabels:
       app: critical
   template:
+    metadata:
+      labels:
+        app: critical
     spec:
       topologySpreadConstraints:
       - maxSkew: 2
-        topologyKey: fabedge.io/cluster
+        topologyKey: topology.kubernetes.io/zone
         whenUnsatisfiable: DoNotSchedule
         labelSelector:
           matchLabels:
             app: critical
+      containers:
+      - name: critical-app
+        image: nginx:1.27
 ```
 
-This spreads replicas across edge clusters for resilience.
+This spreads replicas across topology domains when nodes are labeled with that topology key.
 
 ## Troubleshooting Connectivity Issues
 
@@ -351,13 +346,13 @@ Debug FabEdge connections:
 
 ```bash
 # Check connector status
-kubectl get connectors -n fabedge
+kubectl get pods -n fabedge -l app=fabedge-connector
 
 # View agent logs
 kubectl logs -n fabedge -l app=fabedge-agent
 
 # Test tunnel
-kubectl exec -n fabedge fabedge-agent-xxx -- ping <remote-pod-ip>
+kubectl exec -n fabedge fabedge-agent-xxx -c strongswan -- swanctl --list-sas
 
 # Check routing table
 kubectl exec -n fabedge fabedge-agent-xxx -- ip route
@@ -365,18 +360,10 @@ kubectl exec -n fabedge fabedge-agent-xxx -- ip route
 
 ## Implementing Bandwidth Shaping
 
-Limit bandwidth between specific clusters:
+Limit bandwidth between specific clusters outside FabEdge, for example with Linux traffic control on connector nodes. FabEdge does not define a BandwidthPolicy CRD:
 
-```yaml
-apiVersion: fabedge.io/v1alpha1
-kind: BandwidthPolicy
-metadata:
-  name: limit-test-traffic
-spec:
-  from: edge-cluster-01
-  to: edge-cluster-02
-  maxBandwidth: 50Mbps
-  priority: low
+```bash
+tc qdisc add dev eth0 root tbf rate 50mbit burst 32kbit latency 400ms
 ```
 
 ## Conclusion
