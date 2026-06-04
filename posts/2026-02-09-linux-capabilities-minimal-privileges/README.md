@@ -8,7 +8,7 @@ Description: Master Linux capabilities to grant containers only the specific pri
 
 ---
 
-Linux capabilities divide root privileges into distinct units that can be granted independently. Rather than running containers as root with all privileges or as non-root with none, capabilities let you grant only the specific privileges each container needs. This implements the principle of least privilege, where containers have just enough permissions to function but nothing more.
+Linux capabilities divide root privileges into distinct units that can be granted independently. Rather than relying on a container runtime's default capability set or running without any added privileges, capabilities let you grant only the specific privileges each container needs. This implements the principle of least privilege, where containers have just enough permissions to function but nothing more.
 
 Understanding capabilities is essential for security-conscious Kubernetes deployments. By dropping unnecessary capabilities and adding only required ones, you minimize the damage an attacker can cause if they compromise a container.
 
@@ -129,9 +129,9 @@ Never grant these capabilities unless absolutely necessary:
 
 These capabilities grant extensive power and should only be used in specialized system containers, never in application containers.
 
-## Running Nginx as non-root with capabilities
+## Running Nginx as non-root without capabilities
 
-Nginx traditionally runs as root to bind port 80, then drops privileges. With capabilities, it can run as non-root from the start:
+Nginx traditionally runs as root to bind port 80, then drops privileges. By listening on an unprivileged port instead, it can run as non-root from the start without extra capabilities:
 
 ```dockerfile
 FROM nginx:alpine
@@ -266,7 +266,7 @@ This shows current capabilities, helping identify what's available.
 
 The Baseline and Restricted Pod Security profiles restrict capabilities:
 
-**Baseline**: Allows any capabilities except those that enable privilege escalation.
+**Baseline**: Allows only an explicit list of capabilities to be added, and disallows adding capabilities such as NET_RAW and SYS_ADMIN.
 
 **Restricted**: Requires dropping ALL capabilities. Can optionally add back NET_BIND_SERVICE.
 
@@ -299,11 +299,13 @@ This pod passes all restricted profile checks including capability restrictions.
 
 Use admission controllers to enforce capability policies:
 
-```yaml
+```rego
 # OPA policy
 package kubernetes.admission
 
-deny[msg] {
+import rego.v1
+
+deny contains msg if {
   input.request.kind.kind == "Pod"
   container := input.request.object.spec.containers[_]
 
@@ -313,23 +315,21 @@ deny[msg] {
   msg := sprintf("Container %v must drop ALL capabilities", [container.name])
 }
 
-deny[msg] {
+deny contains msg if {
   input.request.kind.kind == "Pod"
   container := input.request.object.spec.containers[_]
 
   # Check for dangerous capabilities
   dangerous := {"SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "DAC_OVERRIDE"}
-  added := {cap | cap := container.securityContext.capabilities.add[_]}
-  violations := dangerous & added
-
-  count(violations) > 0
+  cap := object.get(object.get(object.get(container, "securityContext", {}), "capabilities", {}), "add", [])[_]
+  dangerous[cap]
 
   msg := sprintf("Container %v adds dangerous capabilities: %v",
-    [container.name, violations])
+    [container.name, cap])
 }
 
-drops_all_capabilities(container) {
-  container.securityContext.capabilities.drop[_] == "ALL"
+drops_all_capabilities(container) if {
+  "ALL" in object.get(object.get(object.get(container, "securityContext", {}), "capabilities", {}), "drop", [])
 }
 ```
 
