@@ -8,11 +8,11 @@ Description: Learn how to manage Helm release history by configuring revision li
 
 ---
 
-Helm stores every release revision as a Kubernetes Secret or ConfigMap, allowing you to roll back to previous versions. However, unlimited history accumulation consumes storage and clutters your cluster. Managing release history through revision limits and cleanup policies ensures you maintain rollback capability while keeping storage usage under control.
+Helm stores every release revision as a Kubernetes Secret by default, or as another configured storage backend such as ConfigMaps, allowing you to roll back to previous versions. However, unlimited history accumulation consumes storage and clutters your cluster. Managing release history through revision limits and cleanup policies ensures you maintain rollback capability while keeping storage usage under control.
 
 ## Understanding Helm Release History
 
-Each time you install or upgrade a Helm release, Helm creates a new revision stored as a Secret in the release namespace. These secrets contain the complete release manifest, values, and metadata.
+Each time you install or upgrade a Helm release, Helm creates a new revision stored as a Secret in the release namespace by default. These secrets contain the complete release manifest, values, and metadata.
 
 View release history:
 
@@ -36,11 +36,11 @@ kubectl get secrets -l owner=helm
 
 # Show secret sizes
 kubectl get secrets -l owner=helm -o json | \
-  jq '.items[] | {name: .metadata.name, size: (.data | length)}'
+  jq '.items[] | {name: .metadata.name, size: ([.data[] | length] | add // 0)}'
 
 # Calculate total storage used by Helm
 kubectl get secrets -l owner=helm -o json | \
-  jq '[.items[].data | length] | add'
+  jq '[.items[].data[] | length] | add // 0'
 ```
 
 ## Setting Revision History Limits
@@ -48,9 +48,6 @@ kubectl get secrets -l owner=helm -o json | \
 Configure the maximum number of revisions to keep using the `--history-max` flag:
 
 ```bash
-# Install with history limit
-helm install myapp ./mychart --history-max 5
-
 # Upgrade with history limit
 helm upgrade myapp ./mychart --history-max 5
 
@@ -69,11 +66,8 @@ Set default history limits in your Helm environment:
 # Add to your shell profile (.bashrc, .zshrc)
 export HELM_MAX_HISTORY=10
 
-# Or create a Helm configuration file
-mkdir -p ~/.config/helm
-cat > ~/.config/helm/repositories.yaml << EOF
-maxHistory: 10
-EOF
+# Confirm the setting Helm will use
+helm env | grep '^HELM_MAX_HISTORY='
 ```
 
 ## Implementing Cleanup Scripts
@@ -98,23 +92,24 @@ for release in $RELEASES; do
     echo "Processing release: $release"
 
     # Get total revision count
-    TOTAL=$(helm history "$release" -n "$NAMESPACE" --max 1000 -o json | jq '. | length')
+    SECRET_PREFIX="sh.helm.release.v1.${release}.v"
+    HISTORY_SECRETS=$(kubectl get secrets -n "$NAMESPACE" -l owner=helm -o json | \
+      jq --arg prefix "$SECRET_PREFIX" \
+        '[.items[] | select(.metadata.name | startswith($prefix)) |
+          {name: .metadata.name, revision: (.metadata.name | split(".v")[-1] | tonumber)}]')
+    TOTAL=$(echo "$HISTORY_SECRETS" | jq 'length')
 
     if [ "$TOTAL" -gt "$KEEP_REVISIONS" ]; then
         echo "  Found $TOTAL revisions, keeping $KEEP_REVISIONS"
 
-        # Get revisions to delete (all except the last N)
-        TO_DELETE=$((TOTAL - KEEP_REVISIONS))
+        # Get oldest release secrets to delete
+        SECRETS=$(echo "$HISTORY_SECRETS" | \
+          jq -r --argjson keep "$KEEP_REVISIONS" 'sort_by(.revision) | .[0:-$keep] | .[].name')
 
-        # Get revision numbers to delete
-        REVISIONS=$(helm history "$release" -n "$NAMESPACE" --max "$TO_DELETE" -o json | \
-          jq -r '.[].revision')
-
-        # Delete old secrets directly
-        for rev in $REVISIONS; do
-            SECRET_NAME="sh.helm.release.v1.${release}.v${rev}"
-            kubectl delete secret "$SECRET_NAME" -n "$NAMESPACE" 2>/dev/null && \
-              echo "  Deleted revision $rev"
+        # Delete old secrets directly for the default Helm secret storage driver
+        for secret in $SECRETS; do
+            kubectl delete secret "$secret" -n "$NAMESPACE" 2>/dev/null && \
+              echo "  Deleted $secret"
         done
     else
         echo "  Only $TOTAL revisions, no cleanup needed"
@@ -186,7 +181,7 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: cleanup
-            image: alpine/helm:latest
+            image: alpine/k8s:1.35.2
             env:
             - name: KEEP_REVISIONS
               value: "10"
@@ -219,21 +214,24 @@ spec:
                   echo "  Release: $release"
 
                   # Count revisions
-                  TOTAL=$(helm history "$release" -n "$ns" -o json 2>/dev/null | jq '. | length')
+                  SECRET_PREFIX="sh.helm.release.v1.${release}.v"
+                  HISTORY_SECRETS=$(kubectl get secrets -n "$ns" -l owner=helm -o json | \
+                    jq --arg prefix "$SECRET_PREFIX" \
+                      '[.items[] | select(.metadata.name | startswith($prefix)) |
+                        {name: .metadata.name, revision: (.metadata.name | split(".v")[-1] | tonumber)}]')
+                  TOTAL=$(echo "$HISTORY_SECRETS" | jq 'length')
 
                   if [ "$TOTAL" -gt "$KEEP_REVISIONS" ]; then
                     echo "    Found $TOTAL revisions"
 
-                    # Get old revision numbers
-                    TO_DELETE=$((TOTAL - KEEP_REVISIONS))
-                    REVISIONS=$(helm history "$release" -n "$ns" --max "$TO_DELETE" -o json | \
-                      jq -r '.[].revision')
+                    # Get old release secrets
+                    SECRETS=$(echo "$HISTORY_SECRETS" | \
+                      jq -r --argjson keep "$KEEP_REVISIONS" 'sort_by(.revision) | .[0:-$keep] | .[].name')
 
-                    # Delete old secrets
-                    for rev in $REVISIONS; do
-                      SECRET="sh.helm.release.v1.${release}.v${rev}"
-                      kubectl delete secret "$SECRET" -n "$ns" && \
-                        echo "    Deleted revision $rev"
+                    # Delete old secrets for the default Helm secret storage driver
+                    for secret in $SECRETS; do
+                      kubectl delete secret "$secret" -n "$ns" && \
+                        echo "    Deleted $secret"
                     done
                   fi
                 done
@@ -318,7 +316,7 @@ for ns in $NAMESPACES; do
   # Count secrets and calculate size
   SECRETS=$(kubectl get secrets -n "$ns" -l owner=helm -o json)
   COUNT=$(echo "$SECRETS" | jq '.items | length')
-  SIZE=$(echo "$SECRETS" | jq '[.items[].data | to_entries | .[].value | length] | add')
+  SIZE=$(echo "$SECRETS" | jq '[.items[].data | to_entries | .[].value | length] | add // 0')
 
   TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
   TOTAL_SECRETS=$((TOTAL_SECRETS + COUNT))
@@ -337,9 +335,9 @@ echo "Total Helm Secrets: $TOTAL_SECRETS"
 echo "Total Storage: ${TOTAL_MB}MB"
 ```
 
-## Backup Before Cleanup
+## Backup Current State Before Cleanup
 
-Always backup releases before cleaning history:
+Always backup the current release state before cleaning history:
 
 ```bash
 #!/bin/bash
@@ -356,7 +354,7 @@ RELEASES=$(helm list -n "$NAMESPACE" -q)
 for release in $RELEASES; do
   echo "Backing up $release..."
 
-  # Export all revisions
+  # Export revision history metadata
   helm history "$release" -n "$NAMESPACE" -o json > \
     "$BACKUP_DIR/${release}-history.json"
 
@@ -375,9 +373,9 @@ echo "Backup complete: $BACKUP_DIR"
 ./helm-cleanup.sh "$NAMESPACE" 5
 ```
 
-## Restoring from Backup
+## Restoring Current State from Backup
 
-Restore releases from backups:
+Restore the current release state from backups:
 
 ```bash
 #!/bin/bash
@@ -443,7 +441,7 @@ WEBHOOK_URL="$SLACK_WEBHOOK_URL"
 
 # Calculate total storage
 TOTAL_SIZE=$(kubectl get secrets --all-namespaces -l owner=helm -o json | \
-  jq '[.items[].data | to_entries | .[].value | length] | add')
+  jq '[.items[].data | to_entries | .[].value | length] | add // 0')
 
 TOTAL_MB=$((TOTAL_SIZE / 1024 / 1024))
 
