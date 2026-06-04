@@ -20,7 +20,7 @@ Triggers support filtering on any CloudEvents attribute including type, source, 
 
 ## Setting Up a Broker
 
-Create an in-memory broker for development:
+Create a default broker for development:
 
 ```yaml
 # development-broker.yaml
@@ -256,16 +256,28 @@ spec:
     attributes:
       type: com.company.order.created
 
-  # Transform events before delivery
+  # Transform events before delivery. Returned CloudEvents are sent back
+  # through the Broker reply path, so use a different event type to avoid loops.
   subscriber:
     ref:
       apiVersion: serving.knative.dev/v1
       kind: Service
       name: event-enricher
     uri: /transform
+---
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: process-enriched-order
+  namespace: default
+spec:
+  broker: kafka-broker
 
-  # Forward transformed events
-  reply:
+  filter:
+    attributes:
+      type: com.company.order.enriched
+
+  subscriber:
     ref:
       apiVersion: serving.knative.dev/v1
       kind: Service
@@ -283,8 +295,24 @@ app.use(express.json());
 
 const ENRICHMENT_API = process.env.ENRICHMENT_API_URL;
 
+function getCloudEvent(req) {
+  if (req.body && req.body.specversion && req.body.type) {
+    return req.body;
+  }
+
+  return {
+    specversion: req.get('Ce-Specversion') || '1.0',
+    id: req.get('Ce-Id'),
+    type: req.get('Ce-Type'),
+    source: req.get('Ce-Source'),
+    subject: req.get('Ce-Subject'),
+    time: req.get('Ce-Time'),
+    data: req.body
+  };
+}
+
 app.post('/transform', async (req, res) => {
-  const event = req.body;
+  const event = getCloudEvent(req);
 
   console.log(`Enriching event ${event.id} of type ${event.type}`);
 
@@ -306,6 +334,9 @@ app.post('/transform', async (req, res) => {
     // Create enriched event
     const enrichedEvent = {
       ...event,
+      type: 'com.company.order.enriched',
+      source: `${event.source}/event-enricher`,
+      enriched: 'true',
       data: {
         ...orderData,
         customer: {
@@ -324,17 +355,15 @@ app.post('/transform', async (req, res) => {
       }
     };
 
-    // Add custom extension attribute
-    res.set('Ce-Enriched', 'true');
-
     // Return enriched event
+    res.set('Content-Type', 'application/cloudevents+json');
     res.status(200).json(enrichedEvent);
 
   } catch (error) {
     console.error('Enrichment failed:', error.message);
 
     // Return original event on failure
-    res.set('Ce-Enrichment-Failed', 'true');
+    res.set('Content-Type', 'application/cloudevents+json');
     res.status(200).json(event);
   }
 });
@@ -378,8 +407,19 @@ spec:
       apiVersion: serving.knative.dev/v1
       kind: Service
       name: transaction-validator
-  # Valid events sent to processing broker
-  reply:
+---
+# Valid events are returned by the validator with type com.company.transaction.validated,
+# then republished through the Broker reply path.
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: validated-transaction-router
+spec:
+  broker: kafka-broker
+  filter:
+    attributes:
+      type: com.company.transaction.validated
+  subscriber:
     ref:
       apiVersion: eventing.knative.dev/v1
       kind: Broker
@@ -436,10 +476,10 @@ metadata:
 spec:
   broker: kafka-broker
 
-  # Match all events with type starting with "com.company.user"
-  filter:
-    attributes:
-      type: com.company.user
+  # Match all events with type starting with "com.company.user."
+  filters:
+    - prefix:
+        type: com.company.user.
       # This implicitly matches:
       # - com.company.user.registered
       # - com.company.user.updated
@@ -535,13 +575,17 @@ def handle_failed_event():
     event_type = request.headers.get('Ce-Type')
     event_source = request.headers.get('Ce-Source')
 
-    # Get failure context
-    attempts = request.headers.get('Ce-Knativedeliveryattempts', '0')
+    # Get documented Knative error context when the delivery implementation adds it
+    error_dest = request.headers.get('Ce-Knativeerrordest')
+    error_code = request.headers.get('Ce-Knativeerrorcode')
+    error_data = request.headers.get('Ce-Knativeerrordata')
 
     event_data = request.get_json()
 
-    logging.error(f"Event {event_id} failed after {attempts} attempts")
+    logging.error(f"Event {event_id} failed delivery")
     logging.error(f"Type: {event_type}, Source: {event_source}")
+    logging.error(f"Destination: {error_dest}, HTTP status: {error_code}")
+    logging.error(f"Error data: {error_data}")
     logging.error(f"Data: {json.dumps(event_data, indent=2)}")
 
     # Store failed event for analysis
@@ -549,7 +593,9 @@ def handle_failed_event():
         'id': event_id,
         'type': event_type,
         'source': event_source,
-        'attempts': attempts,
+        'error_dest': error_dest,
+        'error_code': error_code,
+        'error_data': error_data,
         'data': event_data,
         'headers': dict(request.headers)
     })
@@ -601,7 +647,7 @@ Create Prometheus queries for monitoring:
 
 ```promql
 # Events received by broker
-rate(event_count{namespace="default",broker_name="kafka-broker"}[5m])
+rate(event_count{namespace_name="default",broker_name="kafka-broker"}[5m])
 
 # Events dispatched by trigger
 rate(event_dispatch_latencies_count{trigger_name="user-registration-trigger"}[5m])
@@ -614,7 +660,7 @@ rate(event_dispatch_latencies_count{trigger_name="user-registration-trigger"}[5m
 )
 
 # Failed event deliveries
-rate(event_dispatch_latencies_count{response_code=~"5.."}[5m])
+rate(event_count{trigger_name!="",response_code_class="5xx"}[5m])
 ```
 
 ## Best Practices
