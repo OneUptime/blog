@@ -34,8 +34,6 @@ cd ~/duplicati
 
 ```yaml
 # docker-compose.yml - Duplicati Backup Solution
-version: "3.8"
-
 services:
   duplicati:
     image: lscr.io/linuxserver/duplicati:latest
@@ -49,6 +47,8 @@ services:
       - PUID=0
       - PGID=0
       - TZ=America/New_York
+      - SETTINGS_ENCRYPTION_KEY=change_this_settings_key
+      - DUPLICATI__WEBSERVICE_PASSWORD=change_this_web_password
     volumes:
       # Duplicati configuration and database
       - ./config:/config
@@ -76,7 +76,7 @@ Check the logs:
 docker compose logs -f duplicati
 ```
 
-Open `http://<your-server-ip>:8200` in your browser. The first time you access the web UI, Duplicati asks if you want to set a password to protect the interface. Set a strong password since this interface controls your backup configuration.
+Open `http://<your-server-ip>:8200` in your browser and sign in with the `DUPLICATI__WEBSERVICE_PASSWORD` value from your Compose file. Set a strong password since this interface controls your backup configuration.
 
 ## Creating Your First Backup Job
 
@@ -110,7 +110,7 @@ For Backblaze B2:
 ```text
 Storage Type: B2 Cloud Storage
 Bucket: your-backup-bucket
-Account ID: your_account_id
+Application ID: your_application_id
 Application Key: your_application_key
 Folder path: server-daily
 ```
@@ -121,8 +121,8 @@ For Amazon S3:
 Storage Type: S3 Compatible
 Server: s3.amazonaws.com
 Bucket: your-backup-bucket
-AWS Access ID: your_access_key
-AWS Access Key: your_secret_key
+AWS Access Key ID: your_access_key_id
+AWS Secret Access Key: your_secret_access_key
 Region: us-east-1
 Folder path: server-daily
 ```
@@ -163,11 +163,8 @@ Schedule: Every day at 02:00 AM
 Configure retention policy:
 
 ```text
-# Keep backups for a rolling period
-Keep all backups that are newer than: 7 days
-Keep one backup per day that is newer than: 30 days
-Keep one backup per week that is newer than: 90 days
-Keep one backup per month that is newer than: 365 days
+# Custom backup retention
+Retention policy: 7D:U,30D:1D,90D:1W,365D:1M
 ```
 
 This retention policy keeps recent backups granular and older ones sparse, balancing storage usage with recovery flexibility.
@@ -194,8 +191,10 @@ Never trust backups you have not tested. A backup that cannot be restored is not
 Duplicati includes a command-line interface for scripted operations:
 
 ```bash
-# List backup jobs configured in Duplicati
-docker exec duplicati duplicati-cli list-backup-sets /backups/server-daily
+# List backup versions in the backup destination
+docker exec duplicati duplicati-cli find \
+  "file:///backups/server-daily" \
+  --passphrase="your_passphrase"
 
 # Run a backup job from the command line
 docker exec duplicati duplicati-cli backup \
@@ -263,6 +262,8 @@ Duplicati uses block-level deduplication. If you have similar data across multip
 # For large files (databases, media): use larger blocks
 --blocksize=1MB
 ```
+
+Set the block size before the first backup for a destination. Duplicati does not let you change the block size after remote backup files are created.
 
 ## Disaster Recovery
 
