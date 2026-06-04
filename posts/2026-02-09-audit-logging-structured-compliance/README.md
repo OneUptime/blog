@@ -29,7 +29,7 @@ Configure audit policy to apply appropriate levels to different resource types:
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-# Log all authentication events with full details
+# Log service account token requests with full details
 
 - level: RequestResponse
   verbs: ["create"]
@@ -80,7 +80,7 @@ Configure audit logging to output structured JSON for easy parsing and analysis:
 
 Create audit policy file on control plane nodes:
 
-```bash
+```yaml
 # /etc/kubernetes/audit-policy.yaml
 apiVersion: audit.k8s.io/v1
 kind: Policy
@@ -159,8 +159,9 @@ data:
       tag kubernetes.audit
       <parse>
         @type json
-        time_key timestamp
+        time_key requestReceivedTimestamp
         time_format %Y-%m-%dT%H:%M:%S.%N%:z
+        keep_time_key true
       </parse>
     </source>
 
@@ -188,6 +189,12 @@ data:
         flush_thread_count 2
       </buffer>
     </match>
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluentd
+  namespace: kube-system
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -233,19 +240,19 @@ Query audit logs to investigate security events:
 
 ```bash
 # Find all failed authentication attempts
-kubectl logs -n kube-system kube-apiserver-xxx | \
+sudo tail -n 1000 /var/log/kubernetes/audit.log | \
   jq 'select(.verb=="create" and .responseStatus.code==401)'
 
 # Find all secret access
-kubectl logs -n kube-system kube-apiserver-xxx | \
+sudo tail -n 1000 /var/log/kubernetes/audit.log | \
   jq 'select(.objectRef.resource=="secrets")'
 
 # Find unauthorized access attempts
-kubectl logs -n kube-system kube-apiserver-xxx | \
+sudo tail -n 1000 /var/log/kubernetes/audit.log | \
   jq 'select(.responseStatus.code==403)'
 
 # Find RBAC changes
-kubectl logs -n kube-system kube-apiserver-xxx | \
+sudo tail -n 1000 /var/log/kubernetes/audit.log | \
   jq 'select(.objectRef.apiGroup=="rbac.authorization.k8s.io")'
 ```
 
@@ -281,29 +288,33 @@ echo "================================================"
 
 # Count total API requests
 echo "Total API Requests:"
-kubectl logs -n kube-system kube-apiserver-xxx --since-time=$START_DATE | \
-  jq -s 'length'
+jq --arg start "$START_DATE" --arg end "$END_DATE" \
+  'select(.requestReceivedTimestamp >= $start and .requestReceivedTimestamp <= $end)' \
+  /var/log/kubernetes/audit.log | jq -s 'length'
 
 # Failed authentication attempts
 echo "Failed Authentications:"
-kubectl logs -n kube-system kube-apiserver-xxx --since-time=$START_DATE | \
-  jq 'select(.responseStatus.code==401)' | jq -s 'length'
+jq --arg start "$START_DATE" --arg end "$END_DATE" \
+  'select(.requestReceivedTimestamp >= $start and .requestReceivedTimestamp <= $end and .responseStatus.code==401)' \
+  /var/log/kubernetes/audit.log | jq -s 'length'
 
 # Unauthorized access attempts
 echo "Unauthorized Access Attempts:"
-kubectl logs -n kube-system kube-apiserver-xxx --since-time=$START_DATE | \
-  jq 'select(.responseStatus.code==403)' | jq -s 'length'
+jq --arg start "$START_DATE" --arg end "$END_DATE" \
+  'select(.requestReceivedTimestamp >= $start and .requestReceivedTimestamp <= $end and .responseStatus.code==403)' \
+  /var/log/kubernetes/audit.log | jq -s 'length'
 
 # RBAC changes
 echo "RBAC Modifications:"
-kubectl logs -n kube-system kube-apiserver-xxx --since-time=$START_DATE | \
-  jq 'select(.objectRef.apiGroup=="rbac.authorization.k8s.io")' | \
-  jq -s 'group_by(.verb) | map({verb: .[0].verb, count: length})'
+jq --arg start "$START_DATE" --arg end "$END_DATE" \
+  'select(.requestReceivedTimestamp >= $start and .requestReceivedTimestamp <= $end and .objectRef.apiGroup=="rbac.authorization.k8s.io")' \
+  /var/log/kubernetes/audit.log | jq -s 'group_by(.verb) | map({verb: .[0].verb, count: length})'
 
 # Secret access
 echo "Secret Access Events:"
-kubectl logs -n kube-system kube-apiserver-xxx --since-time=$START_DATE | \
-  jq 'select(.objectRef.resource=="secrets")' | jq -s 'length'
+jq --arg start "$START_DATE" --arg end "$END_DATE" \
+  'select(.requestReceivedTimestamp >= $start and .requestReceivedTimestamp <= $end and .objectRef.resource=="secrets")' \
+  /var/log/kubernetes/audit.log | jq -s 'length'
 ```
 
 ## Monitoring Audit Log Health
@@ -320,18 +331,26 @@ data:
     groups:
     - name: audit-logging
       rules:
-      - alert: AuditLogNotWriting
+      - alert: AuditEventsNotExported
         expr: |
-          time() - kube_audit_log_last_write_timestamp_seconds > 300
+          increase(apiserver_audit_event_total[5m]) == 0
         labels:
           severity: critical
         annotations:
-          summary: "Audit logs have not been written for 5 minutes"
+          summary: "No audit events have been exported for 5 minutes"
+
+      - alert: AuditExportErrors
+        expr: |
+          increase(apiserver_audit_error_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Audit events are being dropped during export"
 
       - alert: AuditLogDiskFull
         expr: |
-          node_filesystem_avail_bytes{mountpoint="/var/log/kubernetes"} /
-          node_filesystem_size_bytes{mountpoint="/var/log/kubernetes"} < 0.1
+          node_filesystem_avail_bytes{mountpoint="/"} /
+          node_filesystem_size_bytes{mountpoint="/"} < 0.1
         labels:
           severity: warning
         annotations:
