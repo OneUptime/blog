@@ -8,13 +8,13 @@ Description: Learn how to configure job history limits in Kubernetes CronJobs to
 
 ---
 
-CronJobs create a new Job object every time they run. Without cleanup, these Job objects accumulate indefinitely, cluttering your cluster and consuming etcd storage. The successfulJobsHistoryLimit and failedJobsHistoryLimit fields control how many completed Job objects Kubernetes retains.
+CronJobs create a new Job object every time they run. If cleanup is disabled or limits are set too high, these Job objects can accumulate, cluttering your cluster and consuming etcd storage. The successfulJobsHistoryLimit and failedJobsHistoryLimit fields control how many completed Job objects Kubernetes retains.
 
 Setting appropriate history limits keeps your cluster clean while preserving enough recent history for debugging and auditing. The defaults retain 3 successful jobs and 1 failed job, but you should adjust based on your operational needs.
 
 ## Understanding History Limits
 
-Kubernetes automatically deletes old Job objects once the history limit is exceeded. This happens when a new Job completes successfully or fails, triggering cleanup of the oldest matching Job object.
+Kubernetes automatically deletes old Job objects once the history limit is exceeded. The CronJob controller keeps the newest matching Jobs and cleans up older completed or failed Jobs.
 
 ```yaml
 apiVersion: batch/v1
@@ -26,6 +26,9 @@ spec:
   successfulJobsHistoryLimit: 3  # Keep last 3 successful runs
   failedJobsHistoryLimit: 1      # Keep last 1 failed run
   jobTemplate:
+    metadata:
+      labels:
+        cronjob-name: backup-job
     spec:
       template:
         spec:
@@ -126,10 +129,10 @@ kubectl get jobs -l cronjob-name=backup-job \
 
 # Count successful and failed jobs
 echo "Successful: $(kubectl get jobs -l cronjob-name=backup-job \
-  --field-selector=status.successful=1 | wc -l)"
+  --field-selector=status.successful=1 --no-headers | wc -l)"
 
 echo "Failed: $(kubectl get jobs -l cronjob-name=backup-job \
-  --field-selector=status.failed=1 | wc -l)"
+  -o go-template='{{range .items}}{{$name := .metadata.name}}{{range .status.conditions}}{{if eq .type "Failed"}}{{$name}}{{"\n"}}{{end}}{{end}}{{end}}' | wc -l)"
 ```
 
 ## Adjusting Limits Over Time
@@ -190,16 +193,31 @@ for cj in cronjobs.items:
     namespace = cj.metadata.namespace
 
     # Get job count for this CronJob
-    jobs = batch_v1.list_namespaced_job(
-        namespace=namespace,
-        label_selector=f'cronjob-name={name}'
+    jobs = batch_v1.list_namespaced_job(namespace=namespace)
+    owned_jobs = [
+        j for j in jobs.items
+        if any(
+            owner.kind == "CronJob" and owner.name == name and owner.uid == cj.metadata.uid
+            for owner in (j.metadata.owner_references or [])
+        )
+    ]
+
+    successful_limit = (
+        cj.spec.successful_jobs_history_limit
+        if cj.spec.successful_jobs_history_limit is not None
+        else 3
+    )
+    failed_limit = (
+        cj.spec.failed_jobs_history_limit
+        if cj.spec.failed_jobs_history_limit is not None
+        else 1
     )
 
-    successful_limit = cj.spec.successful_jobs_history_limit or 3
-    failed_limit = cj.spec.failed_jobs_history_limit or 1
-
-    successful_count = sum(1 for j in jobs.items if j.status.succeeded)
-    failed_count = sum(1 for j in jobs.items if j.status.failed)
+    successful_count = sum(1 for j in owned_jobs if j.status.succeeded)
+    failed_count = sum(
+        1 for j in owned_jobs
+        if any(c.type == "Failed" for c in (j.status.conditions or []))
+    )
 
     print(f"{namespace}/{name}:")
     print(f"  Successful: {successful_count}/{successful_limit}")
