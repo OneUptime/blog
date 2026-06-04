@@ -40,26 +40,32 @@ metadata:
   namespace: logging
 data:
   parsers.conf: |
-    [PARSER]
-        Name        java_multiline
-        Format      regex
-        Regex       /^(?<time>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(?<level>\w+)\s+(?<message>.*)/
-        Time_Key    time
-        Time_Format %Y-%m-%d %H:%M:%S
+    [MULTILINE_PARSER]
+        name          multiline_java
+        type          regex
+        parser        cri
+        key_content   log
+        flush_timeout 5000
+        rule          "start_state" "/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\w+\s+.*/" "cont"
+        rule          "cont"        "/^(\s+at\s+.*|Caused by:.*|\s*\.\.\. \d+ more|[A-Za-z_][A-Za-z0-9_.$]*(Error|Exception):.*)/" "cont"
 
-    [PARSER]
-        Name        python_multiline
-        Format      regex
-        Regex       /^(?<time>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3})\s+-\s+(?<logger>\S+)\s+-\s+(?<level>\w+)\s+-\s+(?<message>.*)/
-        Time_Key    time
-        Time_Format %Y-%m-%d %H:%M:%S,%L
+    [MULTILINE_PARSER]
+        name          multiline_python
+        type          regex
+        parser        cri
+        key_content   log
+        flush_timeout 5000
+        rule          "start_state" "/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3}\s+-\s+\S+\s+-\s+\w+\s+-\s+.*/" "cont"
+        rule          "cont"        "/^(Traceback \(most recent call last\):|\s+File \".*\", line \d+, in .+|\s+.*|[A-Za-z_][A-Za-z0-9_.]*(Error|Exception):.*)/" "cont"
 
-    [PARSER]
-        Name        go_multiline
-        Format      regex
-        Regex       /^(?<time>\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2})\s+(?<message>.*)/
-        Time_Key    time
-        Time_Format %Y/%m/%d %H:%M:%S
+    [MULTILINE_PARSER]
+        name          multiline_go
+        type          regex
+        parser        cri
+        key_content   log
+        flush_timeout 5000
+        rule          "start_state" "/^panic:\s+.*/" "cont"
+        rule          "cont"        "/^(goroutine \d+ \[.*\]:|\s+.*|\t.*|[^\s].+\(\)|created by .*)/" "cont"
 ```
 
 ## Configuring Multiline Input in Fluent Bit
@@ -83,17 +89,13 @@ data:
     [INPUT]
         Name                tail
         Path                /var/log/containers/*.log
-        Parser              docker
         Tag                 kube.*
         Refresh_Interval    5
         Mem_Buf_Limit       5MB
         Skip_Long_Lines     Off
 
         # Multiline configuration for Java stack traces
-        Multiline           On
-        Multiline_Flush     5
-        Parser_Firstline    java_multiline
-        Parser_1            java_continuation
+        multiline.parser    multiline_java
 
     [FILTER]
         Name                kubernetes
@@ -115,62 +117,38 @@ data:
 
 ## Defining Continuation Line Parsers
 
-Continuation lines (indented stack trace lines) need their own parser. Add this to your parsers ConfigMap:
+Continuation lines (indented stack trace lines) need their own rules in the multiline parser. Add rules like these to your parsers ConfigMap:
 
 ```yaml
-[PARSER]
-    Name        java_continuation
-    Format      regex
-    Regex       /^\s+at\s+(?<stacktrace>.*)/
-
-[PARSER]
-    Name        python_continuation
-    Format      regex
-    Regex       /^\s+(?<stacktrace>(File|.*Error).*)/
-
-[PARSER]
-    Name        generic_continuation
-    Format      regex
-    Regex       /^\s+(?<stacktrace>.*)/
+rule "cont" "/^(\s+at\s+.*|Caused by:.*|\s*\.\.\. \d+ more)/" "cont"
+rule "cont" "/^(Traceback \(most recent call last\):|\s+File \".*\", line \d+, in .+|\s+.*|[A-Za-z_][A-Za-z0-9_.]*(Error|Exception):.*)/" "cont"
+rule "cont" "/^(goroutine \d+ \[.*\]:|\s+.*|\t.*|[^\s].+\(\)|created by .*)/" "cont"
 ```
 
 ## Language-Specific Multiline Configurations
 
 ### Java Stack Traces
 
-Java exceptions typically start with a timestamp and exception type:
+Java log records often start with a timestamp and log level:
 
 ```yaml
 [INPUT]
     Name                tail
     Path                /var/log/containers/*java*.log
-    Parser              docker
     Tag                 java.*
-    Multiline           On
-    Multiline_Flush     2
-    Parser_Firstline    java_multiline
-    Parser_1            java_continuation
+    multiline.parser    multiline_java
 ```
 
 ### Python Stack Traces
 
-Python tracebacks have a distinct format with "Traceback" as the start marker:
+Python tracebacks include a distinct "Traceback" continuation line:
 
 ```yaml
-[PARSER]
-    Name        python_traceback_start
-    Format      regex
-    Regex       /^Traceback\s+\(most\s+recent\s+call\s+last\):/
-
 [INPUT]
     Name                tail
     Path                /var/log/containers/*python*.log
-    Parser              docker
     Tag                 python.*
-    Multiline           On
-    Multiline_Flush     3
-    Parser_Firstline    python_traceback_start
-    Parser_1            python_continuation
+    multiline.parser    multiline_python
 ```
 
 ### Go Panic Stack Traces
@@ -178,20 +156,11 @@ Python tracebacks have a distinct format with "Traceback" as the start marker:
 Go panics start with "panic:" and include goroutine information:
 
 ```yaml
-[PARSER]
-    Name        go_panic_start
-    Format      regex
-    Regex       /^panic:\s+(?<message>.*)/
-
 [INPUT]
     Name                tail
     Path                /var/log/containers/*go*.log
-    Parser              docker
     Tag                 go.*
-    Multiline           On
-    Multiline_Flush     2
-    Parser_Firstline    go_panic_start
-    Parser_1            generic_continuation
+    multiline.parser    multiline_go
 ```
 
 ## Deploying Fluent Bit with Multiline Support
@@ -281,7 +250,7 @@ Deploy this application to Kubernetes and verify that Fluent Bit captures the co
 
 ## Tuning Multiline Performance
 
-The `Multiline_Flush` setting controls how long Fluent Bit waits before flushing a multiline buffer. Set this based on your application's behavior:
+The `flush_timeout` setting controls how long Fluent Bit waits before flushing a multiline buffer. Set this based on your application's behavior:
 
 - Short flush times (1-2 seconds) work for fast-paced applications
 - Longer flush times (5-10 seconds) suit batch processing applications
@@ -293,11 +262,11 @@ Monitor memory usage when handling large stack traces. Increase `Mem_Buf_Limit` 
 
 **Problem**: Stack traces are still fragmented despite multiline configuration.
 
-**Solution**: Ensure your `Parser_Firstline` regex accurately matches the beginning of new log entries. Test your regex against actual log samples.
+**Solution**: Ensure your `start_state` regex accurately matches the beginning of new log entries. Test your regex against actual log samples.
 
 **Problem**: High memory consumption in Fluent Bit pods.
 
-**Solution**: Reduce `Multiline_Flush` timeout and increase `Mem_Buf_Limit` incrementally. Consider filtering out verbose debug logs.
+**Solution**: Reduce `flush_timeout` and increase `Mem_Buf_Limit` incrementally. Consider filtering out verbose debug logs.
 
 **Problem**: Logs from different containers mixing together.
 
