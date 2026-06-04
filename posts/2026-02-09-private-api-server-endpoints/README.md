@@ -20,7 +20,7 @@ A private API server endpoint makes the Kubernetes control plane accessible only
 
 **Hybrid** - Both public and private endpoints enabled. Internal traffic uses private endpoint, external uses public with authentication.
 
-**Private with authorized networks** - Private by default but allows specific CIDR ranges through public endpoint.
+**Private with authorized networks** - Private nodes or private endpoint access with specific CIDR ranges allowed through a public endpoint, where the provider supports it.
 
 The security benefit is that network-level access controls supplement Kubernetes RBAC, preventing unauthorized API server discovery and reducing attack surface.
 
@@ -118,7 +118,7 @@ From outside the VPC via bastion host:
 # SSH to bastion in the VPC
 ssh -i key.pem ec2-user@bastion-public-ip
 
-# Install kubectl and aws-iam-authenticator
+# Install kubectl
 curl -LO "https://dl.k8s.io/release/v1.29.0/bin/linux/amd64/kubectl"
 chmod +x kubectl && sudo mv kubectl /usr/local/bin/
 
@@ -229,7 +229,7 @@ gcloud container clusters get-credentials private-cluster \
 kubectl get nodes
 ```
 
-From outside via Cloud NAT gateway:
+For private nodes that need outbound internet access, configure Cloud NAT:
 
 ```hcl
 # cloud-nat.tf
@@ -254,6 +254,7 @@ Use Cloud VPN or Interconnect for on-premises access:
 # Create Cloud VPN tunnel
 gcloud compute vpn-tunnels create office-tunnel \
   --peer-address=203.0.113.50 \
+  --target-vpn-gateway=office-gateway \
   --ike-version=2 \
   --shared-secret=SECRET \
   --router=nat-router \
@@ -271,7 +272,7 @@ az aks create \
   --name private-cluster \
   --network-plugin azure \
   --enable-private-cluster \
-  --private-dns-zone none \
+  --private-dns-zone system \
   --load-balancer-sku standard \
   --node-count 3 \
   --node-vm-size Standard_D2s_v3
@@ -291,7 +292,7 @@ resource "azurerm_kubernetes_cluster" "private" {
 
   # Private cluster configuration
   private_cluster_enabled = true
-  private_dns_zone_id    = azurerm_private_dns_zone.aks.id
+  private_dns_zone_id     = "System"
 
   default_node_pool {
     name                = "default"
@@ -316,14 +317,16 @@ resource "azurerm_kubernetes_cluster" "private" {
 }
 ```
 
-For hybrid access with authorized IP ranges:
+For public API server access with authorized IP ranges:
 
 ```bash
 az aks update \
   --resource-group myResourceGroup \
-  --name private-cluster \
+  --name public-cluster \
   --api-server-authorized-ip-ranges 203.0.113.0/24,198.51.100.0/24
 ```
+
+Authorized IP ranges apply to public AKS API server endpoints, not private endpoints.
 
 ## Accessing Private AKS Clusters
 
@@ -429,12 +432,9 @@ aws ec2 run-instances \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=kubectl-jumphost}]'
 ```
 
-Install Cloud Shell or equivalent:
+Install kubectl on a VM, VPN-connected host, or equivalent:
 
 ```bash
-# GKE Cloud Shell automatically has access
-gcloud cloud-shell ssh
-
 # Install kubectl
 gcloud components install kubectl
 
@@ -445,6 +445,6 @@ gcloud container clusters get-credentials private-cluster \
 
 ## Conclusion
 
-Private API server endpoints provide network-level security for Kubernetes clusters by restricting control plane access to authorized networks. Each cloud provider implements this differently: EKS uses VPC endpoints, GKE uses private IP addresses with authorized networks, and AKS uses Azure Private Link.
+Private API server endpoints provide network-level security for Kubernetes clusters by restricting control plane access to authorized networks. Each cloud provider implements this differently: EKS uses a private API server endpoint and managed private DNS, GKE uses private IP addresses with authorized networks, and AKS uses Azure Private Link.
 
 The trade-off is operational complexity. You need VPN, bastion hosts, or jump boxes for cluster management. However, for production environments handling sensitive data, the additional security layer is worth the overhead. Hybrid configurations with authorized networks provide a middle ground, allowing specific external access while keeping the cluster primarily private.
