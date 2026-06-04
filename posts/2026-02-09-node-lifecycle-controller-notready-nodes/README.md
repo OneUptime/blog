@@ -8,13 +8,13 @@ Description: Learn how the Kubernetes node lifecycle controller manages NotReady
 
 ---
 
-The node lifecycle controller is a Kubernetes control plane component that monitors node health and takes action when nodes become NotReady. It marks nodes as NotReady when kubelet stops sending heartbeats, taints them to prevent new pod scheduling, and eventually evicts pods if the node stays unhealthy. Understanding and configuring this controller is critical for reliable cluster operations.
+The node lifecycle controller is a Kubernetes control plane component that monitors node health and takes action when nodes become NotReady. It marks nodes as NotReady when kubelet stops sending heartbeats and taints them so the scheduler avoids unhealthy nodes. In Kubernetes 1.29 and later, the separate taint eviction controller handles pod eviction from NotReady and unreachable nodes. Understanding these controllers is critical for reliable cluster operations.
 
 ## Understanding Node Lifecycle States
 
 Nodes transition through several states based on kubelet heartbeats and node conditions. The Ready condition indicates whether kubelet is healthy and ready to accept pods. When kubelet fails to send heartbeats within the configured grace period, the controller marks the node as NotReady.
 
-The node lifecycle controller applies taints to NotReady nodes that trigger pod eviction. The default taint `node.kubernetes.io/not-ready:NoExecute` prevents new pods from scheduling and evicts existing pods that do not tolerate the taint.
+The node lifecycle controller applies taints to NotReady nodes. The built-in taint `node.kubernetes.io/not-ready:NoExecute` evicts existing pods that do not tolerate the taint, while node-condition taints with `NoSchedule` prevent new pods from scheduling onto unhealthy nodes.
 
 Check node status and conditions:
 
@@ -56,12 +56,10 @@ spec:
   containers:
   - command:
     - kube-controller-manager
-    # Time before marking node as NotReady (default: 40s)
-    - --node-monitor-grace-period=40s
+    # Time before marking node as unhealthy (default: 50s)
+    - --node-monitor-grace-period=50s
     # Interval for checking node status (default: 5s)
     - --node-monitor-period=5s
-    # Time before starting pod eviction (default: 5m)
-    - --pod-eviction-timeout=5m
     # Other flags...
 ```
 
@@ -69,22 +67,22 @@ These settings control how quickly the controller responds to node failures:
 
 - `--node-monitor-grace-period`: Kubelet must send heartbeat within this time
 - `--node-monitor-period`: How often controller checks node status
-- `--pod-eviction-timeout`: How long to wait before evicting pods from NotReady nodes
 
 ## Configuring Pod Eviction Timeout
 
-Pod eviction timeout determines how long pods remain on NotReady nodes before eviction:
+In current Kubernetes releases, pod eviction timing for NotReady and unreachable nodes is controlled by the `NoExecute` tolerations on pods. For pods that do not explicitly set these tolerations, the API server adds default tolerations for 300 seconds. Configure those defaults in the API server:
 
 ```yaml
 spec:
   containers:
   - command:
-    - kube-controller-manager
-    # Wait 2 minutes before evicting pods (faster than default 5m)
-    - --pod-eviction-timeout=2m
+    - kube-apiserver
+    # Add 2 minute default tolerations for pods that do not set their own
+    - --default-not-ready-toleration-seconds=120
+    - --default-unreachable-toleration-seconds=120
 ```
 
-For critical workloads, use shorter timeouts to enable faster failover. For less critical workloads, longer timeouts prevent unnecessary pod movement during transient issues.
+For critical workloads, set explicit pod tolerations with shorter `tolerationSeconds` to enable faster failover. For less critical workloads, longer tolerations prevent unnecessary pod movement during transient issues.
 
 Test eviction behavior:
 
@@ -128,7 +126,7 @@ spec:
     tolerationSeconds: 30
 ```
 
-This pod will be evicted 30 seconds after the node becomes NotReady, regardless of the global pod eviction timeout.
+This pod will be evicted 30 seconds after the matching `NoExecute` taint is added, regardless of the API server's default toleration duration.
 
 For StatefulSets that should stay on nodes longer:
 
@@ -173,6 +171,7 @@ package main
 
 import (
     "context"
+    "log"
     "time"
 
     v1 "k8s.io/api/core/v1"
@@ -240,6 +239,13 @@ func isNodeReady(node *v1.Node) bool {
 
 func (c *NodeHealthController) handleNotReadyNode(ctx context.Context, node *v1.Node) {
     log.Printf("Node %s is NotReady, taking action", node.Name)
+
+    for _, existing := range node.Spec.Taints {
+        if existing.Key == "custom/node-unhealthy" && existing.Effect == v1.TaintEffectNoSchedule {
+            sendAlert(node.Name, "Node is NotReady")
+            return
+        }
+    }
 
     // Add custom taint
     taint := v1.Taint{
@@ -375,38 +381,28 @@ spec:
         - /bin/bash
         - -c
         - |
+          HOST_NS="nsenter -t 1 -m -u -i -n -p --"
+
           while true; do
             # Check if kubelet is running
-            if ! systemctl is-active --quiet kubelet; then
+            if ! $HOST_NS systemctl is-active --quiet kubelet; then
               echo "Kubelet is down, attempting restart..."
-              systemctl restart kubelet
+              $HOST_NS systemctl restart kubelet
               sleep 30
             fi
 
             # Check disk space
-            DISK_USAGE=$(df -h / | tail -1 | awk '{print $5}' | sed 's/%//')
+            DISK_USAGE=$($HOST_NS df -P / | awk 'NR==2 {print $5}' | sed 's/%//')
             if [ $DISK_USAGE -gt 85 ]; then
               echo "Disk usage is high, cleaning up..."
-              docker system prune -af
-              journalctl --vacuum-time=2d
+              $HOST_NS sh -c 'crictl rmi --prune 2>/dev/null || docker system prune -af 2>/dev/null || true'
+              $HOST_NS journalctl --vacuum-time=2d
             fi
 
             sleep 60
           done
         securityContext:
           privileged: true
-        volumeMounts:
-        - name: systemd
-          mountPath: /run/systemd
-        - name: var-lib-docker
-          mountPath: /var/lib/docker
-      volumes:
-      - name: systemd
-        hostPath:
-          path: /run/systemd
-      - name: var-lib-docker
-        hostPath:
-          path: /var/lib/docker
 ```
 
 ## Troubleshooting NotReady Nodes
