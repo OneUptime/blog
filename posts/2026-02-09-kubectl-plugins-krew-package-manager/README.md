@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, kubectl, Krew
 
-Description: Discover how to install and manage kubectl plugins using Krew, the official package manager that extends kubectl with hundreds of community-built tools and utilities.
+Description: Discover how to install and manage kubectl plugins using Krew, the SIG CLI community-maintained package manager that extends kubectl with hundreds of community-built tools and utilities.
 
 ---
 
@@ -12,7 +12,7 @@ kubectl provides core Kubernetes functionality, but the plugin ecosystem extends
 
 ## What is Krew
 
-Krew is the official kubectl plugin manager maintained by Kubernetes SIG CLI. It provides access to over 200 plugins that add commands for monitoring, debugging, security scanning, cost analysis, and cluster management. Instead of downloading and installing plugins manually, Krew handles dependencies, updates, and removal.
+Krew is the kubectl plugin manager maintained by the Kubernetes SIG CLI community. It provides access to over 200 plugins that add commands for monitoring, debugging, security scanning, cost analysis, and cluster management. Instead of downloading and installing plugins manually, Krew handles plugin installation, updates, and removal.
 
 ## Installing Krew
 
@@ -151,7 +151,7 @@ kubectl view-utilization
 kubectl view-utilization --namespace default
 ```
 
-These plugins aggregate resource requests, limits, and actual usage across nodes and pods, providing capacity planning insights.
+These plugins aggregate resource requests and limits across nodes and pods. Utilization output depends on metrics-server being installed and working in the cluster.
 
 ## Cleaning Up Resource Output
 
@@ -189,8 +189,8 @@ kubectl tree deployment webapp
 # Show resources for a namespace
 kubectl tree namespace production
 
-# Include events
-kubectl tree deployment webapp --events
+# Limit the resource types queried
+kubectl tree deployment webapp --resources=deployments,replicasets,pods
 ```
 
 This reveals relationships between deployments, replicasets, pods, and other owned resources, clarifying how Kubernetes controllers manage resources.
@@ -203,11 +203,14 @@ RBAC permissions grow complex quickly. The `rbac-tool` plugin analyzes roles and
 # Install RBAC tool
 kubectl krew install rbac-tool
 
-# Show all permissions for a user
+# Show role bindings for a user
 kubectl rbac-tool lookup user@example.com
 
-# Show all permissions for a service account
+# Show role bindings for a service account
 kubectl rbac-tool lookup system:serviceaccount:default:my-app
+
+# Show policy rules for matching subjects
+kubectl rbac-tool policy-rules -e 'user@example.com'
 
 # Generate permission matrix
 kubectl rbac-tool viz
@@ -219,25 +222,27 @@ kubectl rbac-tool who-can delete deployments
 
 These commands reveal permission grants and help debug authorization issues.
 
-## Security Scanning with Scorecard
+## Security Scanning with kube-score
 
-The `score` plugin evaluates pod security configurations:
+The `score` plugin installs kube-score, which evaluates Kubernetes object definitions:
 
 ```bash
 # Install score
 kubectl krew install score
 
-# Score a pod
-kubectl score pod webapp
+# Score local manifests
+kubectl score score deployment.yaml
 
-# Score all pods in namespace
-kubectl score --all-namespaces
+# Score manifests rendered from Helm
+helm template my-app | kubectl score score -
 
-# Get detailed recommendations
-kubectl score pod webapp -o detailed
+# Score existing cluster resources
+kubectl api-resources --verbs=list --namespaced -o name \
+  | xargs -n1 -I{} bash -c "kubectl get {} --all-namespaces -oyaml && echo ---" \
+  | kubectl score score -
 ```
 
-Scorecard checks for security best practices like running as non-root, read-only filesystems, and resource limits.
+kube-score checks for security and reliability practices like running as non-root, read-only root filesystems, network policies, probes, and resource limits.
 
 ## Network Debugging
 
@@ -254,28 +259,34 @@ kubectl sniff webapp -o capture.pcap
 # Capture from specific interface
 kubectl sniff webapp -i eth0
 
-# Forward multiple ports
-kubectl net-forward webapp 8080:80 9090:9090
+# Forward local port 9999 to a TCP endpoint reachable from the cluster
+kubectl net-forward -i 10.24.0.1 -p 443
+
+# Forward local port 8888 to a TCP endpoint reachable from the cluster
+kubectl net-forward -i 169.254.169.254 -p 80 -l 8888
 ```
 
 The `sniff` plugin runs tcpdump inside containers and streams packet captures to your local machine. Open captures with Wireshark for detailed analysis.
 
 ## Image Security Scanning
 
-Scan container images for vulnerabilities:
+Scan container images for vulnerabilities with Starboard:
 
 ```bash
-# Install image scan plugin
-kubectl krew install scan
+# Install Starboard
+kubectl krew install starboard
 
-# Scan all images in a namespace
-kubectl scan namespace production
+# Initialize Starboard CRDs and namespace
+kubectl starboard init
 
-# Scan specific deployment images
-kubectl scan deployment webapp
+# Scan a deployment for image vulnerabilities
+kubectl starboard scan vulnerabilityreports deployment/webapp
+
+# Get vulnerability results
+kubectl starboard get vulnerabilities deployment/webapp -o yaml
 ```
 
-This integrates vulnerability scanning into kubectl workflows without separate tools.
+This integrates vulnerability scanning results into Kubernetes custom resources that you can query with kubectl workflows.
 
 ## Cost Analysis
 
@@ -291,11 +302,11 @@ kubectl cost namespace
 # Show costs per node
 kubectl cost node
 
-# Detailed cost breakdown
-kubectl cost --detailed
+# Show all cost components for namespaces
+kubectl cost namespace --show-all-resources
 ```
 
-Cost plugins estimate cloud provider charges based on resource requests and node types.
+The cost plugin queries Kubecost or OpenCost APIs for cost information, so Kubecost or OpenCost must be running in the cluster.
 
 ## Plugin Management Best Practices
 
@@ -427,8 +438,16 @@ Install plugins in CI/CD pipelines for automated workflows:
 ```bash
 #!/bin/bash
 # Install krew in CI environment
+(
+  set -x; cd "$(mktemp -d)" &&
+  OS="$(uname | tr '[:upper:]' '[:lower:]')" &&
+  ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')" &&
+  KREW="krew-${OS}_${ARCH}" &&
+  curl -fsSLO "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz" &&
+  tar zxvf "${KREW}.tar.gz" &&
+  ./"${KREW}" install krew
+)
 export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
-curl -fsSL https://krew.sigs.k8s.io/install | bash
 
 # Install required plugins
 kubectl krew install neat
@@ -436,7 +455,7 @@ kubectl krew install score
 
 # Use plugins in pipeline
 kubectl get deployment app -o yaml | kubectl neat > deployment.yaml
-kubectl score deployment app
+kubectl score score deployment.yaml
 ```
 
 This enables plugin functionality in automated testing and deployment workflows.
@@ -449,12 +468,12 @@ Plugins execute with your kubectl credentials. Only install plugins from trusted
 # Check plugin source before installing
 kubectl krew info plugin-name
 
-# Review plugin manifest
-kubectl krew info plugin-name -o yaml
+# Review plugin URI, checksum, caveats, and homepage
+kubectl krew info plugin-name
 
 # Verify plugin author and repository
 ```
 
-The default Krew index curates plugins, but custom indexes might contain untrusted code. Exercise caution with third-party plugin sources.
+The default Krew index curates plugin manifests, but plugins are third-party binaries and their source code is not audited by Krew maintainers. Exercise caution with custom indexes and third-party plugin sources.
 
 Krew transforms kubectl from a basic CLI into a powerful extensible platform. Install essential plugins, explore the ecosystem, and extend kubectl to match your workflow. The right plugins eliminate custom scripts and external tools, consolidating cluster management into a single interface. For more kubectl efficiency tips, check out https://oneuptime.com/blog/post/2026-02-09-kubectl-aliases-shell-functions/view.
