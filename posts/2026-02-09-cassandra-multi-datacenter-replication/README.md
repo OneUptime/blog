@@ -14,7 +14,7 @@ Running Apache Cassandra across multiple datacenters is one of its strongest cap
 
 Multi-datacenter replication serves several critical purposes:
 
-- **Disaster recovery**: If an entire datacenter fails, the other datacenter can continue serving reads and writes without data loss.
+- **Disaster recovery**: If an entire datacenter fails, another datacenter can continue serving reads and writes, provided your replication strategy, consistency levels, and repair process are configured appropriately.
 - **Geographic locality**: Place data closer to users to reduce read latency.
 - **Workload isolation**: Run analytics queries against one datacenter while the other handles transactional workloads.
 - **Regulatory compliance**: Keep data copies in specific geographic regions to satisfy data residency requirements.
@@ -23,7 +23,7 @@ Multi-datacenter replication serves several critical purposes:
 
 In a Cassandra multi-datacenter topology, each datacenter is a logical grouping of nodes. Data is replicated across datacenters based on the keyspace replication strategy. The `NetworkTopologyStrategy` is the replication strategy designed specifically for multi-datacenter deployments, allowing you to specify the number of replicas per datacenter independently.
 
-Inter-datacenter communication happens through designated seed nodes and uses a gossip protocol for cluster membership and failure detection. Cassandra uses snitch configuration to map nodes to datacenters and racks.
+Seed nodes help nodes discover the cluster topology, and Cassandra uses gossip for cluster membership and failure detection. Cassandra uses snitch configuration to map nodes to datacenters and racks.
 
 ## Setting Up the Kubernetes Infrastructure
 
@@ -66,7 +66,6 @@ spec:
   contextName: dc2-cluster
   kubeConfigSecret:
     name: dc2-kubeconfig
-    namespace: k8ssandra-operator
 ```
 
 Generate the kubeconfig for the data plane cluster and store it as a secret:
@@ -173,7 +172,7 @@ Choosing the right consistency level is crucial in multi-datacenter deployments.
 
 - **LOCAL_ONE**: Reads or writes require acknowledgment from one replica in the local datacenter. Fastest but least consistent.
 - **LOCAL_QUORUM**: Requires a quorum of replicas in the local datacenter. The most common choice for multi-datacenter deployments.
-- **EACH_QUORUM** (writes only): Requires a quorum in each datacenter. Provides the strongest consistency guarantee but increases write latency.
+- **EACH_QUORUM**: Requires a quorum in each datacenter. Provides stronger cross-datacenter consistency guarantees but increases latency and requires every datacenter to be available.
 - **ALL**: Requires acknowledgment from all replicas across all datacenters. Not recommended for multi-datacenter as it makes the entire cluster unavailable if any single node is down.
 
 For most production workloads, use LOCAL_QUORUM for both reads and writes:
@@ -186,7 +185,7 @@ SimpleStatement statement = SimpleStatement.builder("SELECT * FROM users WHERE i
 
 ## Network Configuration
 
-Inter-datacenter traffic needs careful network configuration. Cassandra uses different ports for intra-node and inter-datacenter communication:
+Inter-datacenter traffic needs careful network configuration. Cassandra uses its internode storage port for node-to-node communication and the native transport port for clients:
 
 ```yaml
 spec:
@@ -196,16 +195,16 @@ spec:
         storage_port: 7000
         ssl_storage_port: 7001
         native_transport_port: 9042
-        internode_encryption: all
         server_encryption_options:
           internode_encryption: all
+          legacy_ssl_storage_port_enabled: false
           keystore: /etc/cassandra/keystores/server-keystore.jks
           keystore_password: changeit
           truststore: /etc/cassandra/keystores/server-truststore.jks
           truststore_password: changeit
 ```
 
-Ensure that network policies or firewall rules allow traffic on ports 7000-7001 between the Kubernetes clusters:
+Ensure that network policies or firewall rules allow internode traffic on port 7000 between the Kubernetes clusters. Port 7001 is only used if `legacy_ssl_storage_port_enabled` is enabled:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -254,15 +253,15 @@ Set up alerts for critical multi-datacenter metrics:
 groups:
   - name: cassandra-multi-dc
     rules:
-      - alert: CrossDCLatencyHigh
-        expr: cassandra_client_request_latency_p99{scope="CrossDC"} > 500
+      - alert: LocalQuorumReadLatencyHigh
+        expr: org_apache_cassandra_metrics_client_request_latency{request_type="read", cl="local_quorum", quantile="0.99"} > 500000
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Cross-datacenter latency exceeds 500ms"
+          summary: "LOCAL_QUORUM read latency exceeds 500ms"
       - alert: HintedHandoffBacklog
-        expr: cassandra_storage_total_hints_in_progress > 1000
+        expr: org_apache_cassandra_metrics_storage_total_hints_in_progress > 1000
         for: 5m
         labels:
           severity: critical
@@ -281,9 +280,9 @@ When an entire datacenter becomes unavailable, applications using LOCAL_QUORUM w
 When the failed datacenter recovers:
 
 ```bash
-# Run repair on the recovered datacenter
+# Run repair for affected keyspaces after the recovered datacenter is back
 kubectl exec -it global-cluster-dc2-rack1-sts-0 -n cassandra -- \
-  nodetool repair -dc dc2 --full
+  nodetool repair --full user_data
 ```
 
 ## Adding a New Datacenter
