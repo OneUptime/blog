@@ -28,7 +28,7 @@ docker run -d \
   -p 2379:2379 \
   -p 2380:2380 \
   -v etcd_data:/etcd-data \
-  quay.io/coreos/etcd:v3.5.14 \
+  quay.io/coreos/etcd:v3.5.30 \
   etcd \
     --name node1 \
     --data-dir /etcd-data \
@@ -62,7 +62,7 @@ version: "3.8"
 
 services:
   etcd1:
-    image: quay.io/coreos/etcd:v3.5.14
+    image: quay.io/coreos/etcd:v3.5.30
     container_name: etcd1
     command:
       - etcd
@@ -88,7 +88,7 @@ services:
       retries: 5
 
   etcd2:
-    image: quay.io/coreos/etcd:v3.5.14
+    image: quay.io/coreos/etcd:v3.5.30
     container_name: etcd2
     command:
       - etcd
@@ -109,7 +109,7 @@ services:
       - etcd-net
 
   etcd3:
-    image: quay.io/coreos/etcd:v3.5.14
+    image: quay.io/coreos/etcd:v3.5.30
     container_name: etcd3
     command:
       - etcd
@@ -321,7 +321,7 @@ docker exec etcd1 etcdctl snapshot save /etcd-data/backup.db
 docker cp etcd1:/etcd-data/backup.db ./etcd-backup.db
 
 # Check snapshot status
-docker exec etcd1 etcdctl snapshot status /etcd-data/backup.db --write-out=table
+docker exec etcd1 etcdutl --write-out=table snapshot status /etcd-data/backup.db
 ```
 
 ## Monitoring
