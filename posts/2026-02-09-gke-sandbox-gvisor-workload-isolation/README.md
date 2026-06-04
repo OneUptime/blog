@@ -22,7 +22,7 @@ gVisor implements a substantial portion of the Linux system call interface in us
 
 **Compatibility** with most applications without modification.
 
-**Performance overhead** of 10-30 percent compared to runc.
+**Performance overhead** that varies by workload, especially for syscall-heavy or I/O-heavy applications.
 
 GKE Sandbox is ideal for multi-tenant environments, CI/CD build systems, and running third-party code.
 
@@ -44,10 +44,11 @@ gcloud container node-pools create sandbox-pool \
   --sandbox type=gvisor \
   --num-nodes=3 \
   --machine-type=n2-standard-4 \
+  --image-type=cos_containerd \
   --node-labels=workload=untrusted
 ```
 
-The `--sandbox type=gvisor` flag enables gVisor runtime on the node pool.
+The `--sandbox type=gvisor` flag enables gVisor runtime on the node pool. GKE Sandbox requires the `cos_containerd` node image type, and Standard clusters must keep at least one non-sandbox node pool for GKE-managed system workloads.
 
 Using Terraform:
 
@@ -73,10 +74,11 @@ resource "google_container_node_pool" "sandbox_pool" {
 
   node_config {
     machine_type = "n2-standard-4"
+    image_type   = "COS_CONTAINERD"
 
     # Enable gVisor sandbox
     sandbox_config {
-      sandbox_type = "gvisor"
+      type = "GVISOR"
     }
 
     labels = {
@@ -86,6 +88,17 @@ resource "google_container_node_pool" "sandbox_pool" {
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform"
     ]
+  }
+}
+
+resource "google_container_node_pool" "system_pool" {
+  name       = "system-pool"
+  cluster    = google_container_cluster.sandbox.name
+  location   = "us-central1-a"
+  node_count = 1
+
+  node_config {
+    machine_type = "e2-medium"
   }
 }
 ```
@@ -153,11 +166,11 @@ Check that pods run with gVisor:
 # Deploy test pod
 kubectl apply -f untrusted-workload.yaml
 
-# Verify runtime
-kubectl exec untrusted-app -- dmesg | head
+# Verify runtime class from the Kubernetes API
+kubectl get pod untrusted-app -o jsonpath='{.spec.runtimeClassName}'
 
-# Should show gVisor banner:
-# [    0.000000] Starting gVisor...
+# Should show:
+# gvisor
 ```
 
 Check node configuration:
@@ -169,8 +182,8 @@ NODE=$(kubectl get pod untrusted-app -o jsonpath='{.spec.nodeName}')
 # SSH to node (for debugging)
 gcloud compute ssh $NODE --zone=us-central1-a
 
-# Check runsc (gVisor runtime)
-sudo runsc --version
+# Check kubelet logs for runsc messages
+sudo journalctl -u kubelet | grep runsc
 ```
 
 ## Compatibility Considerations
@@ -181,10 +194,10 @@ Most applications work with gVisor, but some have limitations:
 - Direct hardware access
 - Kernel modules
 - Some eBPF programs
-- Specialized syscalls
+- HostPath volumes
+- Privileged containers
 
 **Limited support:**
-- IPv6 (basic support)
 - Some file system features
 - Performance-critical applications
 
@@ -218,16 +231,7 @@ resources:
     cpu: "4"
 ```
 
-**Use platform=ptrace** for better compatibility but slower performance:
-
-```bash
-gcloud container node-pools create sandbox-ptrace \
-  --cluster=sandbox-cluster \
-  --zone=us-central1-a \
-  --sandbox type=gvisor,platform=ptrace
-```
-
-Default platform=kvm provides better performance.
+GKE Sandbox uses an optimized gVisor configuration and doesn't expose gVisor platform selection through the `gcloud container node-pools create --sandbox` flag.
 
 ## Running CI/CD Builds with gVisor
 
@@ -238,7 +242,7 @@ Secure build environment example:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: build-job
+  name: test-job
 spec:
   template:
     spec:
@@ -247,27 +251,16 @@ spec:
         workload: untrusted
       restartPolicy: Never
       containers:
-      - name: builder
-        image: gcr.io/cloud-builders/docker
+      - name: test-runner
+        image: python:3.12-alpine
         command:
         - /bin/sh
         - -c
         - |
-          docker build -t myapp:${BUILD_ID} .
-          docker push myapp:${BUILD_ID}
-        env:
-        - name: BUILD_ID
-          value: "12345"
-        volumeMounts:
-        - name: docker-socket
-          mountPath: /var/run/docker.sock
-      volumes:
-      - name: docker-socket
-        hostPath:
-          path: /var/run/docker.sock
+          python -c 'print("running untrusted test workload")'
 ```
 
-Note: Docker-in-Docker has limitations with gVisor. Use kaniko instead:
+Note: HostPath volumes, including mounting the host Docker socket, are not supported with GKE Sandbox. Use kaniko instead:
 
 ```yaml
 # kaniko-build.yaml
@@ -340,25 +333,11 @@ spec:
 
 ## Monitoring Sandboxed Workloads
 
-Check gVisor metrics:
+Check sandboxed Pods:
 
 ```bash
-# Install Prometheus
-kubectl apply -f prometheus-operator.yaml
-
-# Configure ServiceMonitor for gVisor
-kubectl apply -f - <<EOF
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: gvisor-metrics
-spec:
-  selector:
-    matchLabels:
-      app: gvisor
-  endpoints:
-  - port: metrics
-EOF
+# List pods with their RuntimeClass
+kubectl get pods -o jsonpath=$'{range .items[*]}{.metadata.name}: {.spec.runtimeClassName}\n{end}'
 ```
 
 View sandbox events:
@@ -367,8 +346,10 @@ View sandbox events:
 # Check pod events
 kubectl describe pod untrusted-app
 
-# View node logs
-kubectl logs -n kube-system ds/gke-metrics-agent
+# View gVisor messages in node logs
+NODE=$(kubectl get pod untrusted-app -o jsonpath='{.spec.nodeName}')
+gcloud compute ssh $NODE --zone=us-central1-a
+sudo journalctl -u kubelet | grep runsc
 ```
 
 ## Troubleshooting
