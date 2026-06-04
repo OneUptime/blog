@@ -12,9 +12,9 @@ Milvus is an open-source vector database designed for embedding vectors from dee
 
 ## Understanding Milvus Architecture
 
-Milvus uses a cloud-native, distributed architecture with separate components for different functions. Coordinator services handle metadata and orchestration. Worker nodes perform indexing and query execution. Storage nodes persist vector data and metadata. This separation allows independent scaling of compute and storage.
+Milvus uses a cloud-native, distributed architecture with separate components for different functions. Coordinator services handle metadata and orchestration. Worker nodes perform data ingestion, indexing, streaming, and query execution. Object storage persists vector data and index files, while etcd stores metadata. This separation allows independent scaling of compute and storage.
 
-The system stores vectors in collections, which are analogous to tables in relational databases. Each collection has a schema defining vector dimensions and additional scalar fields. Milvus builds indexes on collections to accelerate similarity searches using algorithms like HNSW, IVF, and ANNOY.
+The system stores vectors in collections, which are analogous to tables in relational databases. Each collection has a schema defining vector dimensions and additional scalar fields. Milvus builds indexes on collections to accelerate similarity searches using algorithms like HNSW, IVF, SCANN, and DiskANN.
 
 ## Installing Milvus with Helm
 
@@ -23,17 +23,20 @@ Deploy Milvus using the official Helm chart:
 ```bash
 # Add Milvus Helm repository
 
-helm repo add milvus https://milvus-io.github.io/milvus-helm/
+helm repo add zilliztech https://zilliztech.github.io/milvus-helm/
 helm repo update
 
 # Create namespace
 kubectl create namespace milvus
 
 # Install Milvus
-helm install milvus milvus/milvus \
+helm install milvus zilliztech/milvus \
   --namespace milvus \
   --set cluster.enabled=true \
-  --set pulsar.enabled=true \
+  --set streaming.enabled=true \
+  --set woodpecker.enabled=true \
+  --set pulsarv3.enabled=false \
+  --set indexNode.enabled=false \
   --set minio.enabled=true \
   --set etcd.replicaCount=3
 
@@ -41,7 +44,7 @@ helm install milvus milvus/milvus \
 kubectl get pods -n milvus -w
 ```
 
-This deploys a complete cluster with all dependencies including Pulsar for messaging, MinIO for object storage, and etcd for metadata.
+This deploys a complete cluster with all dependencies including Woodpecker for messaging, MinIO for object storage, and etcd for metadata.
 
 ## Configuring Resource Limits
 
@@ -51,6 +54,12 @@ Customize resource allocation for production workloads:
 # milvus-values.yaml
 cluster:
   enabled: true
+streaming:
+  enabled: true
+woodpecker:
+  enabled: true
+pulsarv3:
+  enabled: false
 
 # Query nodes handle search requests
 queryNode:
@@ -63,7 +72,7 @@ queryNode:
       cpu: 2
       memory: 8Gi
 
-# Data nodes handle data insertion
+# Data nodes handle data insertion and index building
 dataNode:
   replicas: 2
   resources:
@@ -74,19 +83,20 @@ dataNode:
       cpu: 1
       memory: 4Gi
 
-# Index nodes build indexes
-indexNode:
+# Streaming nodes handle message-stream processing
+streamingNode:
   replicas: 2
   resources:
     limits:
-      cpu: 4
-      memory: 16Gi
-    requests:
       cpu: 2
       memory: 8Gi
+    requests:
+      cpu: 1
+      memory: 4Gi
 
-# Root coordinator manages metadata
-rootCoordinator:
+# Mix coordinator manages metadata and coordination tasks
+mixCoordinator:
+  enabled: true
   resources:
     limits:
       cpu: 1
@@ -115,22 +125,6 @@ minio:
     size: 500Gi
     storageClass: fast-ssd
 
-# Message queue
-pulsar:
-  broker:
-    replicaCount: 3
-    resources:
-      requests:
-        cpu: 1
-        memory: 4Gi
-  bookkeeper:
-    replicaCount: 3
-    volumes:
-      journal:
-        size: 50Gi
-      ledgers:
-        size: 200Gi
-
 # Metadata storage
 etcd:
   replicaCount: 3
@@ -142,7 +136,7 @@ etcd:
 Deploy with custom values:
 
 ```bash
-helm install milvus milvus/milvus \
+helm install milvus zilliztech/milvus \
   --namespace milvus \
   --values milvus-values.yaml
 ```
@@ -158,7 +152,7 @@ from pymilvus import connections, Collection, FieldSchema, CollectionSchema, Dat
 # Connect to Milvus
 connections.connect(
     alias="default",
-    host="milvus-proxy.milvus.svc.cluster.local",
+    host="milvus.milvus.svc.cluster.local",
     port="19530"
 )
 
@@ -227,7 +221,7 @@ collection.create_index(
 print("Index created successfully")
 
 # Wait for index to be built
-utility.index_building_progress("documents")
+utility.wait_for_index_building_complete("documents")
 
 # Load collection into memory for searching
 collection.load()
@@ -251,11 +245,11 @@ ivf_sq8_params = {
     "params": {"nlist": 128}
 }
 
-# ANNOY - Fast approximate search
-annoy_params = {
+# SCANN - Quantization-based approximate search
+scann_params = {
     "metric_type": "L2",
-    "index_type": "ANNOY",
-    "params": {"n_trees": 8}
+    "index_type": "SCANN",
+    "params": {"nlist": 128}
 }
 ```
 
@@ -321,7 +315,7 @@ class DocumentSearchEngine:
     def __init__(self, collection_name="documents"):
         # Connect to Milvus
         connections.connect(
-            host="milvus-proxy.milvus.svc.cluster.local",
+            host="milvus.milvus.svc.cluster.local",
             port="19530"
         )
 
@@ -330,7 +324,7 @@ class DocumentSearchEngine:
         self.collection.load()
 
         # Load embedding model
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
 
     def add_documents(self, documents):
         """Add documents to the search engine"""
@@ -411,13 +405,13 @@ Scale different node types based on workload:
 
 ```bash
 # Scale query nodes for more concurrent searches
-kubectl scale statefulset milvus-querynode -n milvus --replicas=5
+kubectl scale deployment milvus-querynode -n milvus --replicas=5
 
-# Scale index nodes for faster index building
-kubectl scale statefulset milvus-indexnode -n milvus --replicas=3
+# Scale streaming nodes for higher message-stream throughput
+kubectl scale deployment milvus-streamingnode -n milvus --replicas=3
 
 # Scale data nodes for higher insertion throughput
-kubectl scale statefulset milvus-datanode -n milvus --replicas=3
+kubectl scale deployment milvus-datanode -n milvus --replicas=3
 ```
 
 Configure horizontal pod autoscaling:
@@ -432,7 +426,7 @@ metadata:
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: StatefulSet
+    kind: Deployment
     name: milvus-querynode
   minReplicas: 3
   maxReplicas: 10
@@ -473,11 +467,11 @@ spec:
 
 Key metrics to monitor:
 
-- `milvus_search_latency` - Query response time
-- `milvus_insert_throughput` - Insertion rate
-- `milvus_query_node_memory_usage` - Memory utilization
-- `milvus_index_build_duration` - Index building time
-- `milvus_connection_num` - Active client connections
+- `milvus_proxy_collection_sq_latency` - Collection search/query latency
+- `milvus_proxy_mutation_latency` - Insert and delete request latency
+- `milvus_querynode_sq_req_count` - Search/query request rate
+- `milvus_querynode_sq_req_latency` - Query node search latency
+- `milvus_indexnode_build_index_latency` - Index building latency when index nodes are enabled
 
 Create Grafana dashboard:
 
@@ -490,7 +484,7 @@ Create Grafana dashboard:
         "title": "Search Latency (P99)",
         "targets": [
           {
-            "expr": "histogram_quantile(0.99, rate(milvus_search_latency_bucket[5m]))"
+            "expr": "histogram_quantile(0.99, sum by (le) (rate(milvus_proxy_collection_sq_latency_bucket[5m])))"
           }
         ]
       },
@@ -498,7 +492,7 @@ Create Grafana dashboard:
         "title": "Insert Throughput",
         "targets": [
           {
-            "expr": "rate(milvus_insert_total[5m])"
+            "expr": "sum by (msg_type) (rate(milvus_proxy_mutation_latency_count[5m]))"
           }
         ]
       }
@@ -509,30 +503,27 @@ Create Grafana dashboard:
 
 ## Backup and Recovery
 
-Back up Milvus data stored in MinIO:
+Back up Milvus data with the official Milvus Backup tool:
 
 ```bash
-# Install MinIO client
-kubectl run -it --rm mc --image=minio/mc --restart=Never -- /bin/sh
+# Download the latest Milvus Backup release from:
+# https://github.com/zilliztech/milvus-backup/releases
 
-# Inside the pod, configure MinIO client
-mc alias set myminio http://milvus-minio:9000 minioadmin minioadmin
+# Configure configs/backup.yaml with the Milvus endpoint and MinIO settings.
+# For Helm installs, the default bucket is milvus-bucket and rootPath is file.
 
 # Create backup
-mc mirror myminio/milvus-bucket /backups/milvus-$(date +%Y%m%d)
-
-# Upload to S3
-mc mirror /backups/milvus-$(date +%Y%m%d) s3/my-backup-bucket/milvus/
+./milvus-backup create -n documents-backup-$(date +%Y%m%d) \
+  -c documents
 ```
 
 Restore from backup:
 
 ```bash
-# Download from S3
-mc mirror s3/my-backup-bucket/milvus/milvus-20260209 /restore/
-
-# Restore to MinIO
-mc mirror /restore/ myminio/milvus-bucket
+# Restore into a new collection with a suffix
+./milvus-backup restore -n documents-backup-20260209 \
+  -c documents \
+  -s _restored
 ```
 
 ## Best Practices
