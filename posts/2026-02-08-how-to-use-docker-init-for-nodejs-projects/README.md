@@ -8,7 +8,7 @@ Description: A hands-on guide to using docker init with Node.js projects, coveri
 
 ---
 
-Containerizing a Node.js application involves a surprising number of decisions. Which base image? Alpine or Debian? How do you handle node_modules caching? Should you use npm ci or npm install? What about the .npmrc for private registries? The `docker init` command handles all of this by detecting your Node.js project and generating optimized Docker configuration.
+Containerizing a Node.js application involves a surprising number of decisions. Which base image? Alpine or Debian? How do you handle node_modules caching? Should you use npm ci or npm install? What about the .npmrc for private registries? The `docker init` command helps with the common defaults by detecting your Node.js project and generating starter Docker configuration.
 
 This guide covers using docker init with different types of Node.js projects and customizing the output for real-world scenarios.
 
@@ -20,6 +20,7 @@ Let's start with a typical Express application to demonstrate the workflow:
 # Create and initialize a new project
 
 mkdir node-docker-demo && cd node-docker-demo
+mkdir src
 npm init -y
 
 # Install Express and a few common dependencies
@@ -86,13 +87,13 @@ Docker init detects the package.json and identifies the project as Node.js. You 
 
 ```text
 ? What application platform does your project use? Node
-? What version of Node do you want to use? 20
+? What version of Node do you want to use? 24
 ? Which package manager do you want to use? npm
 ? What command do you want to use to start the app? npm start
 ? What port does your server listen on? 3000
 ```
 
-Answer based on your project's requirements. The tool generates three files: Dockerfile, compose.yaml, and .dockerignore.
+Answer based on your project's requirements. The tool generates Dockerfile, compose.yaml, .dockerignore, and README.Docker.md.
 
 ## Understanding the Generated Dockerfile
 
@@ -102,7 +103,7 @@ The generated Dockerfile uses a multi-stage build pattern that separates depende
 # syntax=docker/dockerfile:1
 
 # Base stage with the chosen Node version
-ARG NODE_VERSION=20
+ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-alpine as base
 WORKDIR /usr/src/app
 
@@ -131,7 +132,7 @@ EXPOSE 3000
 CMD ["npm", "start"]
 ```
 
-This structure has three important advantages. First, the dependency installation is cached separately from your source code. If you change application code but not package.json, Docker skips the npm install entirely. Second, dev dependencies are excluded with `--omit=dev`, keeping the production image small. Third, the non-root user prevents container breakout attacks.
+This structure has three important advantages. First, the dependency installation is cached separately from your source code. If you change application code but not package.json, Docker can reuse the dependency layer. Second, dev dependencies are excluded with `--omit=dev`, keeping the production image small. Third, the non-root user reduces the impact of a container compromise.
 
 ## Customizing for Different Package Managers
 
@@ -167,7 +168,7 @@ TypeScript projects need a build step. Add a build stage to the generated Docker
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-ARG NODE_VERSION=20
+ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-alpine as base
 WORKDIR /usr/src/app
 
@@ -210,7 +211,7 @@ For Next.js applications, the generated Dockerfile needs adjustment to handle th
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-ARG NODE_VERSION=20
+ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-alpine as base
 WORKDIR /app
 
@@ -255,7 +256,7 @@ module.exports = {
 
 ## Extending compose.yaml for Development
 
-The generated compose.yaml works for production. For local development, add volume mounts and environment overrides:
+The generated compose.yaml is a good starting point for running the app. For local development, add volume mounts and environment overrides:
 
 ```yaml
 # compose.yaml - Extended for development
@@ -270,9 +271,10 @@ services:
       # Mount source code for live reload
       - ./src:/usr/src/app/src
       - ./package.json:/usr/src/app/package.json
+      - ./package-lock.json:/usr/src/app/package-lock.json
       # Prevent overwriting container's node_modules
       - /usr/src/app/node_modules
-    command: npx nodemon src/server.js
+    command: sh -c "npm install && npm run dev"
     environment:
       - NODE_ENV=development
       - PORT=3000
@@ -379,4 +381,4 @@ services:
           cpus: '0.5'
 ```
 
-Docker init gives you 80% of a production-ready setup out of the box. The remaining 20% is project-specific customization that only you can decide. Start with what docker init generates, run it, and iterate from there.
+Docker init gives you a useful starting point. The remaining production details are project-specific customization that only you can decide. Start with what docker init generates, run it, and iterate from there.
