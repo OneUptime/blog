@@ -118,7 +118,7 @@ Packs the output into a tar archive. Useful for shipping build artifacts as a si
 docker buildx build --output type=tar,dest=./artifacts.tar .
 
 # You can also pipe it to stdout
-docker buildx build --output type=tar . > artifacts.tar
+docker buildx build --output - . > artifacts.tar
 ```
 
 ### OCI Image Output
@@ -282,10 +282,10 @@ done
 
 File output builds benefit from the same caching strategies as regular builds. Layer caching, multi-stage builds, and BuildKit's cache mounts all apply.
 
-For large outputs, the `tar` type is faster than `local` because it avoids creating many individual files on the host filesystem:
+For large outputs, the `tar` type can be more convenient than `local` because it produces a single archive instead of many individual files on the host filesystem:
 
 ```bash
-# Faster for large outputs - single tar file instead of many files
+# Single tar file instead of many files
 docker buildx build --output type=tar,dest=./output.tar .
 
 # Extract where needed
