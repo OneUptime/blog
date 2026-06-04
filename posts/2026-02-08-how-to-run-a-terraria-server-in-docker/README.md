@@ -37,9 +37,9 @@ The fastest way to get a Terraria server running.
 docker run -d \
   --name terraria \
   -p 7777:7777 \
-  -v terraria-data:/world \
+  -v terraria-data:/root/.local/share/Terraria/Worlds \
   ryshe/terraria:latest \
-  -world /world/myworld.wld \
+  -world /root/.local/share/Terraria/Worlds/myworld.wld \
   -autocreate 3 \
   -worldname "DockerWorld"
 ```
@@ -52,8 +52,6 @@ For a more complete setup with persistent configuration.
 
 ```yaml
 # docker-compose.yml - Terraria TShock server
-version: "3.8"
-
 services:
   terraria:
     image: ryshe/terraria:latest
@@ -65,16 +63,16 @@ services:
       - "7878:7878"
     volumes:
       # Persist world files and TShock configuration
-      - terraria-worlds:/world
+      - terraria-worlds:/root/.local/share/Terraria/Worlds
     # TShock server arguments
     command: >
-      -world /world/docker_world.wld
+      -world /root/.local/share/Terraria/Worlds/docker_world.wld
       -autocreate 2
       -worldname "Docker World"
       -maxplayers 16
       -difficulty 0
       -pass secretpassword
-      -secure 1
+      -secure
       -noupnp
     stdin_open: true
     tty: true
@@ -100,7 +98,7 @@ Here is what each command-line flag does:
 | `-maxplayers` | Maximum concurrent players | 1-255 |
 | `-difficulty` | World difficulty | 0 (normal), 1 (expert), 2 (master), 3 (journey) |
 | `-pass` | Server password | Any string |
-| `-secure` | Anti-cheat protection | 0 or 1 |
+| `-secure` | Anti-cheat protection | Flag only |
 | `-noupnp` | Disable automatic UPnP | Flag only |
 
 ## Starting the Server
@@ -126,11 +124,11 @@ Interact with the server console to manage the game.
 docker attach terraria-server
 # Detach with Ctrl+P then Ctrl+Q
 
-# Send individual commands
-docker exec -i terraria-server send "say Hello everyone!"
-docker exec -i terraria-server send "playing"
-docker exec -i terraria-server send "time noon"
-docker exec -i terraria-server send "settle"
+# Type console commands in the attached session
+say Hello everyone!
+playing
+time noon
+settle
 ```
 
 ## TShock Administration
@@ -139,7 +137,7 @@ TShock adds a powerful administration layer. When you first connect to the serve
 
 ```bash
 # Find the TShock setup code in the logs
-docker compose logs terraria | grep "setup-code"
+docker compose logs terraria | grep -i "auth"
 
 # Use this code in-game by typing:
 # /setup <code>
@@ -153,9 +151,9 @@ TShock uses a group-based permission system.
 
 ```bash
 # Common TShock console commands
-docker exec -i terraria-server send "group addperm default tshock.world.time"
-docker exec -i terraria-server send "group addperm default tshock.tp.home"
-docker exec -i terraria-server send "user group PlayerName vip"
+group addperm default tshock.world.time
+group addperm default tshock.tp.home
+user group PlayerName vip
 ```
 
 ### TShock REST API
@@ -163,8 +161,11 @@ docker exec -i terraria-server send "user group PlayerName vip"
 TShock includes a REST API for remote management.
 
 ```bash
-# Create a REST API token first through the console
-docker exec -i terraria-server send "rest createtoken"
+# Enable RestApiEnabled in config.json, then restart the server
+docker compose restart terraria
+
+# Create a REST API token with an admin user
+curl "http://localhost:7878/v2/token/create?username=YourName&password=password"
 
 # Use the REST API to check server status
 curl "http://localhost:7878/v2/server/status?token=YOUR_TOKEN"
@@ -189,7 +190,7 @@ mkdir -p plugins
 
 # Mount the plugins directory in docker-compose.yml
 # Add to the volumes section:
-# - ./plugins:/world/ServerPlugins
+# - ./plugins:/plugins
 ```
 
 Updated Docker Compose with plugins support.
@@ -204,11 +205,11 @@ services:
       - "7777:7777"
       - "7878:7878"
     volumes:
-      - terraria-worlds:/world
+      - terraria-worlds:/root/.local/share/Terraria/Worlds
       # Mount local plugins directory
-      - ./plugins:/world/ServerPlugins
+      - ./plugins:/plugins
     command: >
-      -world /world/docker_world.wld
+      -world /root/.local/share/Terraria/Worlds/docker_world.wld
       -autocreate 2
       -worldname "Docker World"
       -maxplayers 16
@@ -223,21 +224,21 @@ World files are the most important data to back up.
 
 ```bash
 # Save the world before backing up
-docker exec -i terraria-server send "save"
+curl "http://localhost:7878/v2/world/save?token=YOUR_TOKEN"
 sleep 3
 
 # Copy world files to the host
-docker cp terraria-server:/world ./terraria-backup-$(date +%Y%m%d)
+docker cp terraria-server:/root/.local/share/Terraria/Worlds ./terraria-backup-$(date +%Y%m%d)
 
 # List all world files in the container
-docker exec terraria-server ls -la /world/
+docker exec terraria-server ls -la /root/.local/share/Terraria/Worlds/
 ```
 
 Set up automated backups with cron.
 
 ```bash
 # Add to crontab (crontab -e) - back up every 4 hours
-0 */4 * * * docker exec -i terraria-server send "save" && sleep 3 && docker cp terraria-server:/world /backups/terraria-$(date +\%Y\%m\%d-\%H\%M)
+0 */4 * * * curl -fsS "http://localhost:7878/v2/world/save?token=YOUR_TOKEN" && sleep 3 && docker cp terraria-server:/root/.local/share/Terraria/Worlds /backups/terraria-$(date +\%Y\%m\%d-\%H\%M)
 ```
 
 ## Running Multiple Worlds
@@ -246,8 +247,6 @@ You can run multiple Terraria servers on different ports.
 
 ```yaml
 # docker-compose.yml - Multiple Terraria worlds
-version: "3.8"
-
 services:
   terraria-survival:
     image: ryshe/terraria:latest
@@ -255,8 +254,8 @@ services:
     ports:
       - "7777:7777"
     volumes:
-      - survival-data:/world
-    command: -world /world/survival.wld -autocreate 3 -worldname "Survival" -difficulty 1
+      - survival-data:/root/.local/share/Terraria/Worlds
+    command: -world /root/.local/share/Terraria/Worlds/survival.wld -autocreate 3 -worldname "Survival" -difficulty 1
     stdin_open: true
     tty: true
     restart: unless-stopped
@@ -267,8 +266,8 @@ services:
     ports:
       - "7778:7777"
     volumes:
-      - creative-data:/world
-    command: -world /world/creative.wld -autocreate 2 -worldname "Creative" -difficulty 3
+      - creative-data:/root/.local/share/Terraria/Worlds
+    command: -world /root/.local/share/Terraria/Worlds/creative.wld -autocreate 2 -worldname "Creative" -difficulty 3
     stdin_open: true
     tty: true
     restart: unless-stopped
@@ -282,7 +281,7 @@ volumes:
 
 ```bash
 # Stop the server gracefully
-docker exec -i terraria-server send "exit"
+curl "http://localhost:7878/v2/server/off?confirm=true&token=YOUR_TOKEN"
 
 # Pull the latest image
 docker compose pull
@@ -308,14 +307,14 @@ sudo ufw allow 7777/tcp
 
 ### World Corruption
 
-If a world file gets corrupted, TShock creates backup files automatically.
+If TShock backups are enabled in `config.json`, backup files are stored in the TShock backups directory.
 
 ```bash
 # List available world backups
-docker exec terraria-server ls -la /world/*.bak
+docker exec terraria-server ls -la /tshock/backups/
 
-# Restore from a backup by renaming
-docker exec terraria-server cp /world/docker_world.wld.bak /world/docker_world.wld
+# Restore by copying the chosen backup world file over the active world
+docker exec terraria-server cp /tshock/backups/CHOSEN_BACKUP.wld /root/.local/share/Terraria/Worlds/docker_world.wld
 docker compose restart terraria
 ```
 
@@ -323,7 +322,7 @@ docker compose restart terraria
 
 ```bash
 # Gracefully stop and save the world
-docker exec -i terraria-server send "exit"
+curl "http://localhost:7878/v2/server/off?confirm=true&token=YOUR_TOKEN"
 docker compose down
 
 # Remove everything including world data
