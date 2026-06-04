@@ -24,7 +24,7 @@ Reaper, originally developed by Spotify and now maintained as part of the K8ssan
 - Segmented repairs that minimize impact on cluster performance
 - A web UI and REST API for management and monitoring
 - Support for incremental and full repairs
-- Adaptive repair intensity that throttles based on cluster load
+- Back-pressure and repair intensity controls that reduce pressure on the cluster
 - Multi-datacenter awareness
 
 ## Deploying Reaper with K8ssandra
@@ -82,7 +82,7 @@ Reaper needs a backend to store its own state, including repair schedules, run h
 ```yaml
 reaper:
   keyspace: reaper_db
-  schemaInitMode: CREATE_IF_NOT_EXISTS
+  storageType: cassandra
   cassandraUserSecretRef:
     name: reaper-db-secret
 ```
@@ -112,33 +112,26 @@ The auto-scheduling feature is what makes Reaper truly valuable in production. W
 
 ## Creating Manual Repair Schedules
 
-While auto-scheduling handles most cases, you may need custom repair schedules for specific keyspaces. Use the Reaper REST API or the RepairSchedule custom resource:
+While auto-scheduling handles most cases, you may need custom repair schedules for specific keyspaces. Use the Reaper web UI or REST API:
 
-```yaml
-apiVersion: reaper.k8ssandra.io/v1alpha1
-kind: RepairSchedule
-metadata:
-  name: user-data-repair
-  namespace: cassandra
-spec:
-  clusterRef:
-    name: production-cluster
-  keyspace: user_data
-  tables:
-    - user_profiles
-    - user_sessions
-  repairType: INCREMENTAL
-  scheduleDaysBetween: 7
-  intensity: "0.5"
-  segmentCount: 32
-  repairParallelism: DATACENTER_AWARE
-  owner: platform-team
+```bash
+curl -X POST "http://localhost:8080/repair_schedule" \
+  -H "$REAPER_AUTH_HEADER" \
+  --data-urlencode "clusterName=production-cluster" \
+  --data-urlencode "keyspace=user_data" \
+  --data-urlencode "tables=user_profiles,user_sessions" \
+  --data-urlencode "owner=platform-team" \
+  --data-urlencode "incrementalRepair=true" \
+  --data-urlencode "scheduleDaysBetween=7" \
+  --data-urlencode "intensity=0.5" \
+  --data-urlencode "segmentCountPerNode=32" \
+  --data-urlencode "repairParallelism=DATACENTER_AWARE"
 ```
 
 Key configuration options for repair schedules:
 
 - **intensity**: A value between 0 and 1 controlling how aggressively Reaper runs repairs. Lower values reduce cluster impact but take longer to complete.
-- **segmentCount**: The number of token range segments to break each repair into. More segments mean smaller individual repair operations.
+- **segmentCountPerNode**: The number of token range segments to create per node. More segments mean smaller individual repair operations.
 - **repairParallelism**: Controls whether repairs run sequentially, in parallel, or with datacenter awareness.
 
 ## Accessing the Reaper Web UI
@@ -149,7 +142,20 @@ Reaper includes a web interface for monitoring and managing repairs. Expose it t
 kubectl port-forward svc/production-cluster-dc1-reaper-service 8080:8080 -n cassandra
 ```
 
-Then access the UI at `http://localhost:8080/webui/`. The dashboard shows:
+Then access the UI at `http://localhost:8080/webui/`. The Reaper interface is secured by default; the username is typically `<cluster-name>-reaper-ui`, and the generated password is stored in the matching Kubernetes secret:
+
+```bash
+kubectl get secret production-cluster-reaper-ui -n cassandra \
+  -o jsonpath='{.data.password}' | base64 --decode
+```
+
+For REST API examples, log in and pass the returned JWT as a bearer token:
+
+```bash
+REAPER_AUTH_HEADER="Authorization: Bearer <jwt-token>"
+```
+
+The dashboard shows:
 
 - Active repair runs and their progress
 - Scheduled repairs and their next run times
@@ -158,36 +164,29 @@ Then access the UI at `http://localhost:8080/webui/`. The dashboard shows:
 
 ## Monitoring Repair Progress
 
-Track ongoing repairs using kubectl:
+Track ongoing repairs using the Reaper REST API:
 
 ```bash
 # List all repair schedules
-
-kubectl get repairschedule -n cassandra
+curl -H "$REAPER_AUTH_HEADER" \
+  "http://localhost:8080/repair_schedule?clusterName=production-cluster"
 
 # Check repair run status
-kubectl get repairrun -n cassandra
+curl -H "$REAPER_AUTH_HEADER" \
+  "http://localhost:8080/repair_run?cluster_name=production-cluster"
 
 # View detailed repair information
-kubectl describe repairschedule user-data-repair -n cassandra
+curl -H "$REAPER_AUTH_HEADER" \
+  "http://localhost:8080/repair_schedule/<schedule-id>"
 ```
 
-Reaper also exposes Prometheus-compatible metrics. Add a ServiceMonitor to scrape them:
+Reaper also exposes Prometheus-compatible metrics. In K8ssandra Operator, enable the Reaper Prometheus integration:
 
 ```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: reaper-metrics
-  namespace: cassandra
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/managed-by: reaper
-  endpoints:
-    - port: admin
-      interval: 30s
-      path: /prometheusMetrics
+reaper:
+  telemetry:
+    prometheus:
+      enabled: true
 ```
 
 Important metrics to track include:
@@ -204,7 +203,7 @@ Repairs consume significant I/O and network resources. Tuning is essential for p
 reaper:
   autoScheduling:
     enabled: true
-    adaptiveSchedule: true
+    repairType: AUTO
   heapSize: 1Gi
   resources:
     requests:
@@ -218,30 +217,31 @@ reaper:
 Consider these tuning strategies:
 
 1. **Reduce intensity during peak hours**: Set intensity to 0.25 during business hours and increase to 0.75 during off-peak.
-2. **Use incremental repairs**: For Cassandra 4.x clusters, incremental repairs are significantly faster and less resource-intensive than full repairs.
+2. **Use incremental repairs carefully**: For Cassandra 4.x clusters, incremental repairs can significantly reduce repair time and I/O for new data, but full repairs should still be run occasionally because incremental repair marks data as repaired and will not recheck it on later incremental runs.
 3. **Increase segment count for large tables**: Breaking large tables into more segments reduces the memory pressure per repair operation.
 4. **Set repair thread counts**: Configure `cassandra.yaml` to limit concurrent repair streams with `concurrent_validations` and `concurrent_compactors`.
 
 ## Handling Repair Failures
 
-Repairs can fail for various reasons including node unavailability, timeouts, or resource exhaustion. Reaper handles failures gracefully:
+Repairs can fail for various reasons including node unavailability, timeouts, or resource exhaustion. Reaper can resume or retry failed repair runs from the REST API:
 
 ```bash
 # Check for failed repair runs
-kubectl get repairrun -n cassandra -o json | \
-  jq '.items[] | select(.status.state == "ERROR") | .metadata.name'
+curl -H "$REAPER_AUTH_HEADER" \
+  "http://localhost:8080/repair_run?state=ERROR&cluster_name=production-cluster"
 
 # Retry a failed repair
-kubectl annotate repairrun failed-repair-name \
-  reaper.k8ssandra.io/retry="true" -n cassandra
+curl -X PUT "http://localhost:8080/repair_run/<repair-run-id>/state/RUNNING" \
+  -H "$REAPER_AUTH_HEADER"
 ```
 
-Configure retry behavior in the repair schedule:
+To reduce repeated failures, tune the repair schedule's timeout, intensity, or segment count:
 
-```yaml
-spec:
-  repairRetryCount: 3
-  repairRetryDelayMinutes: 30
+```bash
+curl -X PATCH "http://localhost:8080/repair_schedule/<schedule-id>" \
+  -H "$REAPER_AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  -d '{"intensity": 0.25, "segmentCountPerNode": 64}'
 ```
 
 ## Best Practices
@@ -249,11 +249,11 @@ spec:
 Running Reaper effectively in production requires attention to several operational details:
 
 1. **Repair frequency**: Run repairs at least once within the `gc_grace_seconds` window (default 10 days) to prevent zombie data resurrection. A 7-day schedule provides a safety margin.
-2. **Exclude system keyspaces**: System keyspaces are typically small and repaired automatically. Excluding them reduces unnecessary work.
-3. **Monitor repair duration**: If repairs consistently take longer than the interval between runs, increase parallelism or reduce segment count.
-4. **Coordinate with backups**: Schedule repairs to complete before backup windows so backups contain consistent data.
+2. **Exclude system keyspaces**: K8ssandra auto-scheduling targets non-system keyspaces, and keeping system keyspaces out of manual schedules reduces unnecessary work.
+3. **Monitor repair duration**: If repairs consistently take longer than the interval between runs, increase parallelism or increase segment count.
+4. **Coordinate with backups**: Schedule repairs to complete before backup windows to reduce the chance of backing up inconsistent replicas.
 5. **Use datacenter-aware parallelism**: In multi-datacenter setups, this ensures repairs do not overload any single datacenter.
 
 ## Conclusion
 
-K8ssandra Reaper transforms Cassandra anti-entropy repair from a manual, error-prone task into an automated, observable, and manageable process. By deploying Reaper alongside your Cassandra cluster on Kubernetes, you ensure data consistency across replicas without manual intervention. The auto-scheduling feature handles the common case, while custom RepairSchedule resources give you fine-grained control over specific keyspaces and tables. Combined with proper monitoring and tuning, Reaper keeps your Cassandra cluster healthy and your data consistent with minimal operational overhead.
+K8ssandra Reaper transforms Cassandra anti-entropy repair from a manual, error-prone task into an automated, observable, and manageable process. By deploying Reaper alongside your Cassandra cluster on Kubernetes, you ensure data consistency across replicas without manual intervention. The auto-scheduling feature handles the common case, while the Reaper web UI and REST API give you fine-grained control over specific keyspaces and tables. Combined with proper monitoring and tuning, Reaper keeps your Cassandra cluster healthy and your data consistent with minimal operational overhead.
