@@ -107,14 +107,14 @@ jsonPath: .status.conditions[?(@.type=="Ready")].status
 # Access array elements
 jsonPath: .spec.containers[0].image
 
-# Multiple values from array
-jsonPath: .spec.ports[*].containerPort
+# Access a specific array element
+jsonPath: .spec.ports[0].containerPort
 
-# Conditional access with default
+# Access optional fields
 jsonPath: .spec.enabled
 ```
 
-For arrays, kubectl joins multiple values with commas.
+For arrays, choose a specific element or expose a summary field in your custom resource's status.
 
 ## Column Types and Formatting
 
@@ -318,7 +318,7 @@ kubectl get databases -o wide
 NAME        ENGINE    VERSION  STATUS   READY  ENDPOINT                    STORAGE  BACKUP  AGE
 production  postgres  14.2     Running  true   prod-db.cluster.local:5432  100Gi    2h      30d
 staging     mysql     8.0      Running  true   stage-db.cluster.local:3306 50Gi     1h      15d
-analytics   mongodb   5.0      Pending  false  -                           200Gi    -       5m
+analytics   mongodb   5.0      Pending  false                              200Gi            5m
 ```
 
 ## Using Kubebuilder Markers
@@ -333,7 +333,6 @@ If you use Kubebuilder to generate CRDs, add printer column markers to your Go t
 // +kubebuilder:printcolumn:name="Ready",type=boolean,JSONPath=`.status.ready`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-
 type Application struct {
     metav1.TypeMeta   `json:",inline"`
     metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -379,7 +378,7 @@ Use standard column names when possible:
 
 ## Handling Missing Values
 
-If a JSONPath doesn't match (field doesn't exist or is null), kubectl shows `<none>`. You can't customize this behavior directly, but structure your status to avoid it:
+If a JSONPath doesn't match (field doesn't exist or is null), kubectl leaves the cell empty. You can't customize this behavior directly, but structure your status to avoid it:
 
 ```go
 // In your controller, always populate important status fields
