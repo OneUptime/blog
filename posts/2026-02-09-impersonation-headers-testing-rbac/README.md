@@ -77,9 +77,10 @@ kind: ClusterRole
 metadata:
   name: impersonator
 rules:
-# Allow impersonating users
+# Allow impersonating specific users
 - apiGroups: [""]
   resources: ["users"]
+  resourceNames: ["testuser", "alice", "bob"]
   verbs: ["impersonate"]
 
 # Allow impersonating groups
@@ -92,10 +93,9 @@ rules:
   resources: ["serviceaccounts"]
   verbs: ["impersonate"]
 
-# Optional: limit impersonation to specific users
-- apiGroups: [""]
-  resources: ["users"]
-  resourceNames: ["testuser", "alice", "bob"]
+# Allow impersonating UIDs and the "scopes" extra field
+- apiGroups: ["authentication.k8s.io"]
+  resources: ["uids", "userextras/scopes"]
   verbs: ["impersonate"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -110,6 +110,9 @@ subjects:
 - kind: User
   name: admin
   apiGroup: rbac.authorization.k8s.io
+- kind: ServiceAccount
+  name: impersonator-sa
+  namespace: default
 ```
 
 Apply this configuration:
@@ -126,8 +129,9 @@ When making direct API requests, use impersonation headers:
 # Get the API server URL
 APISERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 
-# Get your token
-TOKEN=$(kubectl create token default)
+# Get a token for a service account with impersonation permission
+kubectl create serviceaccount impersonator-sa -n default
+TOKEN=$(kubectl create token impersonator-sa -n default)
 
 # Make a request impersonating another user
 curl -k -H "Authorization: Bearer $TOKEN" \
@@ -277,8 +281,15 @@ done
 Build a tool to audit what users can do:
 
 ```go
+package main
+
 import (
+    "context"
+    "fmt"
+
     authorizationv1 "k8s.io/api/authorization/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/client-go/kubernetes"
 )
 
 type PermissionAuditor struct {
@@ -391,7 +402,9 @@ Add extra attributes to impersonation:
 kubectl get pods \
     --as=alice \
     --as-group=developers \
-    --as-uid=12345
+    --as-uid=12345 \
+    --as-user-extra=scopes=read \
+    --as-user-extra=scopes=write
 
 # In Go:
 config.Impersonate = rest.ImpersonationConfig{
