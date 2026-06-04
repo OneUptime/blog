@@ -114,7 +114,7 @@ This ensures each replica runs on a different Windows node.
 
 ## Preventing Cross-OS Pod Interference
 
-Use pod anti-affinity to prevent Windows and Linux pods from sharing nodes in dedicated scenarios:
+Use pod anti-affinity to prevent dedicated Windows workloads from scheduling onto nodes that already have pods with specific labels:
 
 ```yaml
 # dedicated-windows-node.yaml
@@ -137,15 +137,15 @@ spec:
       nodeSelector:
         kubernetes.io/os: windows
       affinity:
-        # Prevent scheduling on nodes with Linux pods
+        # Prevent scheduling on nodes with pods labeled workload-type=linux-dedicated
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
           - labelSelector:
               matchExpressions:
-              - key: os
+              - key: workload-type
                 operator: In
                 values:
-                - linux
+                - linux-dedicated
             topologyKey: kubernetes.io/hostname
       containers:
       - name: app
@@ -184,9 +184,7 @@ spec:
                 matchLabels:
                   app: ha-app
               topologyKey: topology.kubernetes.io/zone
-        # Spread across nodes within zones
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
+          # Spread across nodes within zones
           - weight: 50
             podAffinityTerm:
               labelSelector:
