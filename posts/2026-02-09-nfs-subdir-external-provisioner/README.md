@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, NFS, Storage Provisioner
 
-Description: Deploy and configure NFS Subdir External Provisioner for automated PVC management with subdirectory isolation, custom path patterns, quota enforcement, and lifecycle management.
+Description: Deploy and configure NFS Subdir External Provisioner for automated PVC management with subdirectory isolation, custom path patterns, and lifecycle management.
 
 ---
 
@@ -14,7 +14,7 @@ The NFS Subdir External Provisioner automates storage provisioning by creating i
 
 The provisioner runs as a Deployment in your cluster, monitoring the Kubernetes API for PVC creation events. When a PVC requests storage from a StorageClass configured to use this provisioner, it creates a subdirectory on the NFS server, generates a PersistentVolume pointing to that subdirectory, and binds the PV to the PVC.
 
-Each provisioned volume gets its own subdirectory, preventing applications from accessing each other's data even though they share the same underlying NFS export. The provisioner manages the entire lifecycle including creation, deletion, and optionally archiving volumes when PVCs are removed.
+Each provisioned volume gets its own subdirectory, helping separate application data even though volumes share the same underlying NFS export. The provisioner manages the lifecycle for dynamically provisioned directories, including creation, deletion, and optionally archiving volumes when PVCs are removed.
 
 ## Installing with Helm
 
@@ -46,7 +46,7 @@ storageClass:
   pathPattern: "\${.PVC.namespace}/\${.PVC.name}"
 
 image:
-  repository: k8s.gcr.io/sig-storage/nfs-subdir-external-provisioner
+  repository: registry.k8s.io/sig-storage/nfs-subdir-external-provisioner
   tag: v4.0.2
 
 resources:
@@ -152,7 +152,7 @@ spec:
       serviceAccountName: nfs-provisioner
       containers:
       - name: nfs-provisioner
-        image: k8s.gcr.io/sig-storage/nfs-subdir-external-provisioner:v4.0.2
+        image: registry.k8s.io/sig-storage/nfs-subdir-external-provisioner:v4.0.2
         volumeMounts:
         - name: nfs-client-root
           mountPath: /persistentvolumes
@@ -175,6 +175,16 @@ spec:
         nfs:
           server: 192.168.1.100
           path: /mnt/nfs-share
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-client
+provisioner: nfs-storage
+parameters:
+  archiveOnDelete: "false"
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
 ```
 
 ## Advanced Path Patterns
@@ -195,11 +205,11 @@ parameters:
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: nfs-with-date
+  name: nfs-by-app
 provisioner: nfs-storage
 parameters:
   archiveOnDelete: "false"
-  pathPattern: "${.PVC.namespace}/${.PVC.name}-${.PVC.creationTimestamp}"
+  pathPattern: "${.PVC.namespace}/${.PVC.labels.app}/${.PVC.name}"
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -232,7 +242,7 @@ parameters:
   archiveOnDelete: "false"
 reclaimPolicy: Delete
 ---
-# Archive data with timestamp
+# Archive data by renaming the directory
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -253,14 +263,14 @@ parameters:
 reclaimPolicy: Retain
 ```
 
-When `archiveOnDelete: "true"`, the provisioner renames directories with an `archived-` prefix and timestamp instead of deleting them:
+When `archiveOnDelete: "true"`, the provisioner renames directories with an `archived-` prefix instead of deleting them:
 
 ```bash
 # Original directory
 /mnt/nfs-share/default/my-app-data
 
 # After PVC deletion with archiving
-/mnt/nfs-share/archived-default-my-app-data-2026-02-09-12-30-45
+/mnt/nfs-share/archived-my-app-data
 ```
 
 ## Multi-Server Configuration
@@ -274,8 +284,7 @@ helm install nfs-fast nfs-subdir-external-provisioner/nfs-subdir-external-provis
   --set nfs.server=fast-nfs.example.com \
   --set nfs.path=/fast \
   --set storageClass.name=nfs-fast \
-  --set env[0].name=PROVISIONER_NAME \
-  --set env[0].value=nfs-fast-provisioner
+  --set storageClass.provisionerName=example.com/nfs-fast-provisioner
 
 # Provisioner for bulk NFS storage
 helm install nfs-bulk nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
@@ -283,8 +292,7 @@ helm install nfs-bulk nfs-subdir-external-provisioner/nfs-subdir-external-provis
   --set nfs.server=bulk-nfs.example.com \
   --set nfs.path=/bulk \
   --set storageClass.name=nfs-bulk \
-  --set env[0].name=PROVISIONER_NAME \
-  --set env[0].value=nfs-bulk-provisioner
+  --set storageClass.provisionerName=example.com/nfs-bulk-provisioner
 ```
 
 Each provisioner manages its own StorageClass and NFS server independently.
@@ -356,58 +364,15 @@ kubectl exec -n nfs-provisioning deployment/nfs-provisioner -- ls -la /persisten
 kubectl delete -f test-pvc.yaml
 ```
 
-## Volume Expansion
+## Volume Size Limits
 
-Enable volume expansion for growing storage needs.
-
-```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: nfs-expandable
-provisioner: nfs-storage
-parameters:
-  archiveOnDelete: "false"
-allowVolumeExpansion: true
-```
-
-Expand a volume:
-
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: expandable-claim
-spec:
-  accessModes:
-  - ReadWriteMany
-  storageClassName: nfs-expandable
-  resources:
-    requests:
-      storage: 10Gi  # Increase this value to expand
-```
-
-Note: NFS volume expansion doesn't enforce quotas at the filesystem level. The size field is informational for Kubernetes scheduling decisions.
+NFS Subdir External Provisioner does not enforce per-PVC filesystem quotas and does not support Kubernetes volume resize operations. The requested size is copied to the PV capacity during provisioning, but applications can use available space on the NFS export regardless of the requested PVC size.
 
 ## Monitoring and Alerts
 
-Monitor provisioner health and volume provisioning metrics.
+Monitor provisioner health with Kubernetes workload metrics and provisioning events. The following rules assume kube-state-metrics or an equivalent exporter provides deployment and event metrics.
 
 ```yaml
-# ServiceMonitor for Prometheus
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: nfs-provisioner
-  namespace: nfs-provisioning
-spec:
-  selector:
-    matchLabels:
-      app: nfs-provisioner
-  endpoints:
-  - port: metrics
-    interval: 30s
----
 # PrometheusRule for alerts
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -419,7 +384,7 @@ spec:
   - name: nfs-provisioning
     rules:
     - alert: NFSProvisionerDown
-      expr: up{job="nfs-provisioner"} == 0
+      expr: kube_deployment_status_replicas_available{namespace="nfs-provisioning", deployment="nfs-provisioner"} < 1
       for: 5m
       labels:
         severity: critical
@@ -427,7 +392,7 @@ spec:
         summary: "NFS provisioner is down"
 
     - alert: HighProvisioningFailureRate
-      expr: rate(provisioner_volume_provision_failed_total[5m]) > 0.1
+      expr: increase(kube_event_count{namespace="default", reason="ProvisioningFailed"}[10m]) > 3
       for: 10m
       labels:
         severity: warning
@@ -446,9 +411,9 @@ kubectl logs -n nfs-provisioning deployment/nfs-provisioner --tail=100
 # Verify NFS mount in provisioner pod
 kubectl exec -n nfs-provisioning deployment/nfs-provisioner -- df -h /persistentvolumes
 
-# Test NFS connectivity
-kubectl run -it --rm nfs-test --image=busybox --restart=Never -- \
-  mount -t nfs 192.168.1.100:/mnt/nfs-share /mnt
+# Test TCP connectivity to the NFS service
+kubectl run -it --rm nfs-test --image=busybox:stable --restart=Never -- \
+  sh -c 'nc -vz 192.168.1.100 2049'
 
 # Check PVC events for provisioning errors
 kubectl describe pvc <pvc-name>
@@ -463,7 +428,7 @@ kubectl auth can-i update persistentvolumeclaims --as=system:serviceaccount:nfs-
 
 ## Security Considerations
 
-Restrict access and secure NFS mounts.
+Restrict access and secure NFS mounts. Only run the provisioner as a non-root user when the NFS export permissions allow that user to create and update subdirectories.
 
 ```yaml
 # Run provisioner with security context
@@ -504,7 +469,8 @@ spec:
   - Egress
   egress:
   - to:
-    - podSelector: {}
+    - ipBlock:
+        cidr: 10.0.0.1/32  # Kubernetes API server or service IP
     ports:
     - protocol: TCP
       port: 443  # Kubernetes API
