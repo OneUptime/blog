@@ -12,38 +12,25 @@ OCI runtime hooks allow executing custom code at specific points in a container'
 
 ## Understanding OCI Hook Types
 
-The OCI runtime specification defines several hook points during container lifecycle. Prestart hooks run after the container is created but before the user process starts. Poststart hooks execute after the user process starts. Poststop hooks run after the container is deleted. Each hook receives container state information via stdin and can perform actions based on that state.
+The OCI runtime specification defines several hook points during container lifecycle. CreateRuntime hooks run during container creation after the runtime environment has been created but before `pivot_root` or an equivalent operation. CreateContainer and StartContainer hooks run in the container namespace. Prestart hooks cover an older form of create-time hook and are deprecated in favor of CreateRuntime, CreateContainer, and StartContainer hooks. Poststart hooks execute after the user process starts. Poststop hooks run after the container is deleted. Each hook receives container state information via stdin and can perform actions based on that state.
 
-Hooks execute in the runtime namespace, not the container namespace, giving them access to host resources. This makes hooks powerful for system-level operations like network configuration, volume mounting, or security policy enforcement. Understanding when each hook fires is critical for implementing correct behavior.
+CreateRuntime, Poststart, and Poststop hooks execute in the runtime namespace, not the container namespace, giving them access to host resources. CreateContainer and StartContainer hooks execute in the container namespace. This makes hooks powerful for system-level operations like network configuration, volume mounting, or security policy enforcement. Understanding when each hook fires is critical for implementing correct behavior.
 
-## Configuring Runtime Hooks in containerd
+## Configuring Runtime Hooks in an OCI Bundle
 
-Configure containerd to execute hooks at container lifecycle points.
+OCI hooks are configured in the container bundle's `config.json`. With Kubernetes and containerd, the default runc runtime does not load a separate hooks file from containerd's `config.toml`; hooks must be injected into the generated OCI runtime spec by the higher-level runtime integration, a custom runtime wrapper, or a runtime that supports hook injection.
 
-```toml
-# /etc/containerd/config.toml
-
-version = 2
-
-[plugins."io.containerd.grpc.v1.cri".containerd]
-  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
-    runtime_type = "io.containerd.runc.v2"
-    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-      SystemdCgroup = true
-      # Path to runtime hooks configuration
-      ConfigPath = "/etc/containerd/hooks/config.json"
-```
-
-Define hooks configuration:
+Define hooks in the OCI runtime configuration:
 
 ```json
 {
   "hooks": {
-    "prestart": [
+    "createRuntime": [
       {
-        "path": "/usr/local/bin/container-prestart-hook",
-        "args": ["prestart-hook", "--log-level=info"],
-        "env": ["HOOK_TYPE=prestart"]
+        "path": "/usr/local/bin/container-create-runtime-hook",
+        "args": ["create-runtime-hook", "--log-level=info"],
+        "env": ["HOOK_TYPE=createRuntime"],
+        "timeout": 30
       }
     ],
     "poststart": [
@@ -65,19 +52,20 @@ Define hooks configuration:
 }
 ```
 
-## Implementing a Prestart Hook
+## Implementing a CreateRuntime Hook
 
 Create a hook that enforces security policies before container startup.
 
 ```go
-// prestart-hook/main.go
+// create-runtime-hook/main.go
 package main
 
 import (
     "encoding/json"
     "fmt"
-    "io"
     "os"
+    "path/filepath"
+
     "github.com/opencontainers/runtime-spec/specs-go"
 )
 
@@ -107,7 +95,7 @@ func main() {
         fmt.Fprintf(os.Stderr, "Warning: Failed to register monitoring: %v\n", err)
     }
 
-    fmt.Println("Prestart hook completed successfully")
+    fmt.Println("CreateRuntime hook completed successfully")
 }
 
 func enforceSecurityPolicy(state specs.State) error {
@@ -132,6 +120,48 @@ func enforceSecurityPolicy(state specs.State) error {
     return nil
 }
 
+func readContainerSpec(bundle string) (*specs.Spec, error) {
+    configPath := filepath.Join(bundle, "config.json")
+    file, err := os.Open(configPath)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+
+    var spec specs.Spec
+    if err := json.NewDecoder(file).Decode(&spec); err != nil {
+        return nil, err
+    }
+
+    if spec.Process == nil {
+        return nil, fmt.Errorf("missing process configuration")
+    }
+
+    return &spec, nil
+}
+
+func isCapabilityDropped(spec *specs.Spec, cap string) bool {
+    if spec.Process == nil || spec.Process.Capabilities == nil {
+        return true
+    }
+
+    capabilities := spec.Process.Capabilities
+    return !containsCapability(capabilities.Bounding, cap) &&
+        !containsCapability(capabilities.Effective, cap) &&
+        !containsCapability(capabilities.Inheritable, cap) &&
+        !containsCapability(capabilities.Permitted, cap) &&
+        !containsCapability(capabilities.Ambient, cap)
+}
+
+func containsCapability(capabilities []string, cap string) bool {
+    for _, candidate := range capabilities {
+        if candidate == cap {
+            return true
+        }
+    }
+    return false
+}
+
 func configureNetworkPolicies(state specs.State) error {
     // Apply iptables rules specific to this container
     // Implementation depends on your network policy requirements
@@ -148,8 +178,8 @@ func registerWithMonitoring(state specs.State) error {
 Build and install the hook:
 
 ```bash
-go build -o /usr/local/bin/container-prestart-hook .
-chmod +x /usr/local/bin/container-prestart-hook
+go build -o /usr/local/bin/container-create-runtime-hook .
+chmod +x /usr/local/bin/container-create-runtime-hook
 ```
 
 ## Creating a Poststart Hook for Registration
@@ -218,8 +248,8 @@ def update_inventory(container_id, config):
     """Update CMDB with container information"""
     payload = {
         'container_id': container_id,
-        'image': config['root']['path'],
-        'created_at': config.get('created'),
+        'rootfs_path': config['root']['path'],
+        'annotations': config.get('annotations', {}),
         'process': config['process']['args']
     }
     
@@ -301,19 +331,34 @@ import (
     "fmt"
     "os"
     "os/exec"
+    "path/filepath"
     
     specs "github.com/opencontainers/runtime-spec/specs-go"
 )
 
 func main() {
     var state specs.State
-    json.NewDecoder(os.Stdin).Decode(&state)
+    if err := json.NewDecoder(os.Stdin).Decode(&state); err != nil {
+        fmt.Fprintf(os.Stderr, "Failed to decode state: %v\n", err)
+        os.Exit(1)
+    }
     
     // Read container spec
-    spec, _ := readSpec(state.Bundle)
+    spec, err := readSpec(state.Bundle)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Failed to read spec: %v\n", err)
+        os.Exit(1)
+    }
     
-    // Extract image reference from annotations
-    imageRef := spec.Annotations["io.kubernetes.cri.image-ref"]
+    // Extract image reference from annotations injected by your runtime integration
+    imageRef := spec.Annotations["io.kubernetes.cri.image-name"]
+    if imageRef == "" {
+        imageRef = spec.Annotations["io.kubernetes.cri.image-ref"]
+    }
+    if imageRef == "" {
+        fmt.Fprintln(os.Stderr, "Image reference annotation not found")
+        os.Exit(1)
+    }
     
     // Scan image for vulnerabilities
     vulnerabilities, err := scanImage(imageRef)
@@ -341,18 +386,42 @@ func scanImage(imageRef string) ([]Vulnerability, error) {
     }
     
     var result ScanResult
-    json.Unmarshal(output, &result)
+    if err := json.Unmarshal(output, &result); err != nil {
+        return nil, err
+    }
     
-    return result.Vulnerabilities, nil
+    var vulnerabilities []Vulnerability
+    for _, trivyResult := range result.Results {
+        vulnerabilities = append(vulnerabilities, trivyResult.Vulnerabilities...)
+    }
+    
+    return vulnerabilities, nil
+}
+
+func readSpec(bundle string) (*specs.Spec, error) {
+    file, err := os.Open(filepath.Join(bundle, "config.json"))
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+
+    var spec specs.Spec
+    if err := json.NewDecoder(file).Decode(&spec); err != nil {
+        return nil, err
+    }
+
+    return &spec, nil
 }
 
 type Vulnerability struct {
-    Severity string `json:"severity"`
-    VulnID   string `json:"vulnerabilityID"`
+    Severity string `json:"Severity"`
+    VulnID   string `json:"VulnerabilityID"`
 }
 
 type ScanResult struct {
-    Vulnerabilities []Vulnerability `json:"Results"`
+    Results []struct {
+        Vulnerabilities []Vulnerability `json:"Vulnerabilities"`
+    } `json:"Results"`
 }
 
 func countCritical(vulns []Vulnerability) int {
@@ -382,7 +451,7 @@ data:
     - name: oci-hooks
       rules:
       - record: hook_execution_duration_seconds
-        expr: histogram_quantile(0.99, rate(oci_hook_duration_seconds_bucket[5m]))
+        expr: histogram_quantile(0.99, sum by (le, hook_type) (rate(oci_hook_duration_seconds_bucket[5m])))
       
       - record: hook_failure_rate
         expr: rate(oci_hook_failures_total[5m]) / rate(oci_hook_executions_total[5m])
@@ -434,10 +503,10 @@ sudo systemctl restart containerd
 # View hook execution logs
 sudo journalctl -u containerd -f | grep hook
 
-# Test hook manually
-echo '{"id":"test","bundle":"/tmp/test"}' | /usr/local/bin/container-prestart-hook
+# Test hook manually with a bundle that contains config.json
+echo '{"id":"test","bundle":"/tmp/test"}' | /usr/local/bin/container-create-runtime-hook
 
-# Check hook exit codes
+# Check generated runtime spec hooks
 sudo crictl inspect <container-id> | jq '.info.runtimeSpec.hooks'
 ```
 
