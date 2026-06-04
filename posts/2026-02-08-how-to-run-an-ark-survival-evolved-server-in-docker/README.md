@@ -35,8 +35,6 @@ Here is a comprehensive Docker Compose setup for an ARK server.
 
 ```yaml
 # docker-compose.yml - ARK: Survival Evolved dedicated server
-version: "3.8"
-
 services:
   ark:
     image: hermsi/ark-server:latest
@@ -62,25 +60,22 @@ services:
       # TheIsland, TheCenter, Ragnarok, Aberration_P, Extinction,
       # ScorchedEarth_P, Valguero_P, Genesis, CrystalIsles,
       # LostIsland, Fjordur
-      MAP: "TheIsland"
+      SERVER_MAP: "TheIsland"
 
       # Server settings
       MAX_PLAYERS: 20
 
-      # Enable RCON for remote administration
-      ENABLE_RCON: "true"
+      # RCON port for remote administration
+      RCON_PORT: 27020
 
       # Automatic updates on container start
       UPDATE_ON_START: "true"
 
-      # Game settings
-      DIFFICULTY: 1.0
-
     volumes:
       # Server binaries and save data
-      - ark-server:/ark
+      - ark-server:/app
       # Game save files
-      - ark-saves:/ark/server/ShooterGame/Saved
+      - ark-saves:/app/server/ShooterGame/Saved
     restart: unless-stopped
     deploy:
       resources:
@@ -98,17 +93,16 @@ Another popular approach uses a different Docker image with more built-in manage
 
 ```yaml
 # docker-compose.yml - Using turzam/ark image
-version: "3.8"
-
 services:
   ark:
     image: turzam/ark:latest
     container_name: ark-server
     ports:
-      - "7777:7777/udp"
       - "7778:7778/udp"
+      - "7778:7778/tcp"
       - "27015:27015/udp"
-      - "27020:27020/tcp"
+      - "27015:27015/tcp"
+      - "32330:32330/tcp"
     environment:
       SESSIONNAME: "Docker ARK Server"
       SERVERMAP: "TheIsland"
@@ -118,6 +112,7 @@ services:
       UPDATEONSTART: 1
       BACKUPONSTART: 1
       SERVERPORT: 27015
+      STEAMPORT: 7778
       TZ: "America/New_York"
     volumes:
       - ark-data:/ark
@@ -178,7 +173,7 @@ ARK has hundreds of configuration options. The most important ones go in `GameUs
 ```bash
 # Access the configuration file inside the container
 docker exec -it ark-server bash
-# Edit: /ark/server/ShooterGame/Saved/Config/LinuxServer/GameUserSettings.ini
+# Edit: /app/server/ShooterGame/Saved/Config/LinuxServer/GameUserSettings.ini
 ```
 
 Common settings to adjust.
@@ -270,14 +265,15 @@ docker exec ark-server arkmanager rconcmd "DestroyWildDinos"
 
 ARK supports Steam Workshop mods on dedicated servers.
 
+```yaml
+# Add mod IDs to the hermsi/ark-server startup configuration.
+# Find mod IDs on the Steam Workshop page for ARK.
+# Example with S+ (731604991) and Awesome SpyGlass (1404697612).
+environment:
+  GAME_MOD_IDS: "731604991,1404697612"
+```
+
 ```bash
-# Add mod IDs to the server startup configuration
-# Find mod IDs on the Steam Workshop page for ARK
-
-# Set the ActiveMods parameter in GameUserSettings.ini
-# Example with S+ (731604991) and Awesome SpyGlass (1404697612)
-docker exec ark-server bash -c 'echo "ActiveMods=731604991,1404697612" >> /ark/server/ShooterGame/Saved/Config/LinuxServer/GameUserSettings.ini'
-
 # Restart the server to download and install mods
 docker compose restart ark
 ```
@@ -292,11 +288,11 @@ docker exec ark-server arkmanager rconcmd "SaveWorld"
 sleep 10
 
 # Create a backup of the save files
-docker cp ark-server:/ark/server/ShooterGame/Saved ./ark-backup-$(date +%Y%m%d)
+docker cp ark-server:/app/server/ShooterGame/Saved ./ark-backup-$(date +%Y%m%d)
 
 # Set up automated daily backups with cron
 # Add to crontab (crontab -e):
-0 4 * * * docker exec ark-server arkmanager rconcmd "SaveWorld" && sleep 10 && docker cp ark-server:/ark/server/ShooterGame/Saved /backups/ark-$(date +\%Y\%m\%d)
+0 4 * * * docker exec ark-server arkmanager rconcmd "SaveWorld" && sleep 10 && docker cp ark-server:/app/server/ShooterGame/Saved /backups/ark-$(date +\%Y\%m\%d)
 ```
 
 ## Running a Cluster
@@ -305,8 +301,6 @@ ARK clusters let players transfer characters and dinos between maps.
 
 ```yaml
 # docker-compose.yml - ARK cluster with two maps
-version: "3.8"
-
 services:
   ark-island:
     image: hermsi/ark-server:latest
@@ -317,13 +311,16 @@ services:
       - "27015:27015/udp"
     environment:
       SESSION_NAME: "Cluster - The Island"
-      MAP: "TheIsland"
+      SERVER_MAP: "TheIsland"
       ADMIN_PASSWORD: "arkadminpass"
       MAX_PLAYERS: 20
+    command:
+      - --arkopt,-clusterid=docker-ark-cluster
+      - --arkopt,-ClusterDirOverride=/app/server/ShooterGame/Saved/clusters
     volumes:
-      - ark-island:/ark
+      - ark-island:/app
       # Shared cluster directory for character transfers
-      - ark-cluster:/ark/server/ShooterGame/Saved/clusters
+      - ark-cluster:/app/server/ShooterGame/Saved/clusters
     restart: unless-stopped
 
   ark-ragnarok:
@@ -335,13 +332,16 @@ services:
       - "27016:27015/udp"
     environment:
       SESSION_NAME: "Cluster - Ragnarok"
-      MAP: "Ragnarok"
+      SERVER_MAP: "Ragnarok"
       ADMIN_PASSWORD: "arkadminpass"
       MAX_PLAYERS: 20
+    command:
+      - --arkopt,-clusterid=docker-ark-cluster
+      - --arkopt,-ClusterDirOverride=/app/server/ShooterGame/Saved/clusters
     volumes:
-      - ark-ragnarok:/ark
+      - ark-ragnarok:/app
       # Same shared cluster directory
-      - ark-cluster:/ark/server/ShooterGame/Saved/clusters
+      - ark-cluster:/app/server/ShooterGame/Saved/clusters
     restart: unless-stopped
 
 volumes:
