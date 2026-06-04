@@ -24,7 +24,7 @@ The validation happens through your Ingress controller. cert-manager creates tem
 
 ## Setting Up HTTP-01 with nginx Ingress
 
-Let's start with the most common scenario: nginx Ingress controller. First, ensure you have nginx Ingress installed:
+Let's start with the most common scenario: nginx Ingress controller. As of 2026, the community-maintained ingress-nginx project has been retired; existing deployments continue to function and installation artifacts remain available, but new production deployments should evaluate Gateway API or another maintained Ingress controller. First, ensure you have nginx Ingress installed:
 
 ```bash
 # Check nginx Ingress installation
@@ -32,7 +32,7 @@ Let's start with the most common scenario: nginx Ingress controller. First, ensu
 kubectl get pods -n ingress-nginx
 
 # Install nginx Ingress if needed
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/cloud/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/cloud/deploy.yaml
 ```
 
 Create a ClusterIssuer configured for HTTP-01 challenges:
@@ -60,7 +60,7 @@ spec:
     - http01:
         ingress:
           # Ingress class to use for challenge solving
-          class: nginx
+          ingressClassName: nginx
 ```
 
 Apply the ClusterIssuer:
@@ -87,9 +87,9 @@ metadata:
   annotations:
     # Tell cert-manager to manage this certificate
     cert-manager.io/cluster-issuer: "letsencrypt-http01"
-    # Specify Ingress class
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  # Specify Ingress class
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -172,9 +172,8 @@ kind: Ingress
 metadata:
   name: app-ingress
   namespace: production
-  annotations:
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -215,7 +214,7 @@ spec:
     - http01:
         ingress:
           # Specify Traefik as the Ingress class
-          class: traefik
+          ingressClassName: traefik
 ```
 
 Then create an Ingress with Traefik annotations:
@@ -284,6 +283,7 @@ metadata:
   name: multi-domain-ingress
   namespace: production
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -332,7 +332,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
           # Pod template for the solver pods
           podTemplate:
             metadata:
@@ -343,15 +343,13 @@ spec:
               nodeSelector:
                 kubernetes.io/role: ingress
               # Set resource limits for solver pods
-              containers:
-              - name: acmesolver
-                resources:
-                  limits:
-                    cpu: 100m
-                    memory: 64Mi
-                  requests:
-                    cpu: 10m
-                    memory: 16Mi
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
           # Service type for solver service
           serviceType: ClusterIP
           # Annotations to add to solver Ingress
@@ -374,7 +372,7 @@ If challenges time out, check if Let's Encrypt can reach your domain:
 curl http://yourdomain.com/.well-known/acme-challenge/test
 
 # Check solver pod logs
-kubectl logs -n cert-manager -l acme.cert-manager.io/http01-solver=true
+kubectl logs -n <namespace> -l acme.cert-manager.io/http01-solver=true
 
 # Verify solver Ingress was created
 kubectl get ingress --all-namespaces -l acme.cert-manager.io/http01-solver=true
@@ -404,13 +402,13 @@ Look for error messages in the Certificate events and Challenge status.
 
 ### Port 80 Redirect Issues
 
-Some Ingress configurations redirect all HTTP to HTTPS, which breaks HTTP-01 challenges. Ensure the solver Ingress allows HTTP:
+Some Ingress configurations redirect challenge requests in ways that prevent the HTTP-01 token from being served on an allowed HTTP or HTTPS URL. Ensure the solver Ingress allows the challenge path over HTTP:
 
 ```yaml
 solvers:
 - http01:
     ingress:
-      class: nginx
+      ingressClassName: nginx
       ingressTemplate:
         metadata:
           annotations:
