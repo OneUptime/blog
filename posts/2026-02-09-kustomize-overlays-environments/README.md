@@ -93,8 +93,10 @@ resources:
 - deployment.yaml
 - service.yaml
 
-commonLabels:
-  app: web-app
+labels:
+- pairs:
+    app: web-app
+  includeSelectors: true
 ```
 
 This base defines the minimal configuration needed across all environments.
@@ -110,13 +112,14 @@ kind: Kustomization
 
 namespace: development
 
-bases:
+resources:
 - ../../base
 
 namePrefix: dev-
 
-commonLabels:
-  environment: development
+labels:
+- pairs:
+    environment: development
 
 images:
 - name: myapp
@@ -124,7 +127,7 @@ images:
 
 patches:
 - patch: |-
-    - op: replace
+    - op: add
       path: /spec/template/spec/containers/0/env
       value:
       - name: LOG_LEVEL
@@ -159,13 +162,14 @@ kind: Kustomization
 
 namespace: staging
 
-bases:
+resources:
 - ../../base
 
 namePrefix: staging-
 
-commonLabels:
-  environment: staging
+labels:
+- pairs:
+    environment: staging
 
 images:
 - name: myapp
@@ -211,14 +215,12 @@ kind: Kustomization
 
 namespace: production
 
-bases:
-- ../../base
-
 namePrefix: prod-
 
-commonLabels:
-  environment: production
-  managed-by: kustomize
+labels:
+- pairs:
+    environment: production
+    managed-by: kustomize
 
 images:
 - name: myapp
@@ -228,10 +230,11 @@ replicas:
 - name: web-app
   count: 10
 
-patchesStrategicMerge:
-- replica-patch.yaml
+patches:
+- path: replica-patch.yaml
 
 resources:
+- ../../base
 - ingress.yaml
 
 configMapGenerator:
@@ -246,6 +249,13 @@ secretGenerator:
 - name: app-secrets
   envs:
   - secrets.env
+```
+
+Create the secrets file referenced by `secretGenerator`:
+
+```text
+# overlays/production/secrets.env
+API_KEY=replace-with-production-value
 ```
 
 The production replica patch:
@@ -333,13 +343,14 @@ kind: Kustomization
 
 namespace: production
 
-bases:
+resources:
 - ../production
 
 nameSuffix: -us-west
 
-commonLabels:
-  region: us-west
+labels:
+- pairs:
+    region: us-west
 
 patches:
 - patch: |-
@@ -398,6 +409,7 @@ Add it to production kustomization:
 ```yaml
 # overlays/production/kustomization.yaml
 resources:
+- ../../base
 - ingress.yaml
 - hpa.yaml
 ```
@@ -441,7 +453,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Deploy to Development
       if: github.ref == 'refs/heads/develop'
@@ -456,21 +468,23 @@ jobs:
 
 ## Advanced overlay patterns
 
-Compose multiple overlays using bases:
+Compose multiple overlays using resources:
 
 ```yaml
 # overlays/production-debug/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../production
 
 patches:
 - patch: |-
-    - op: replace
-      path: /spec/template/spec/containers/0/env/0/value
-      value: debug
+    - op: add
+      path: /spec/template/spec/containers/0/env
+      value:
+      - name: LOG_LEVEL
+        value: debug
   target:
     kind: Deployment
     name: web-app
@@ -484,13 +498,12 @@ Keep overlays simple and focused:
 
 ```yaml
 # overlays/production/kustomization.yaml - Good
-bases:
-- ../../base
 resources:
+- ../../base
 - ingress.yaml
 - hpa.yaml
-patchesStrategicMerge:
-- replica-patch.yaml
+patches:
+- path: replica-patch.yaml
 configMapGenerator:
 - name: app-config
   literals:
@@ -504,10 +517,10 @@ Avoid deeply nested overlays that become hard to reason about.
 Validate your overlay structure:
 
 ```bash
-# Check for common issues
-kustomize build overlays/production/ | kubeval
+# Validate against the API server schema
+kustomize build overlays/production/ | kubectl apply --dry-run=server -f -
 
-# Validate resource names are unique
+# List generated resource names
 kustomize build overlays/production/ | grep "^  name:"
 
 # Ensure all references resolve
