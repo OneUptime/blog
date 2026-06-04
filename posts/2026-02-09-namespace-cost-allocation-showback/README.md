@@ -16,7 +16,7 @@ This guide covers implementing comprehensive cost allocation for Kubernetes name
 
 Namespace costs come from:
 
-- Compute resources (CPU and memory requests/limits)
+- Compute resources (CPU and memory requests and actual usage)
 - Storage (persistent volumes)
 - Network egress
 - Load balancers and ingress controllers
@@ -50,39 +50,19 @@ metadata:
 Install Kubecost for cost monitoring:
 
 ```bash
-helm repo add kubecost https://kubecost.github.io/cost-analyzer/
-helm install kubecost kubecost/cost-analyzer \
+helm upgrade --install kubecost \
+  --repo https://kubecost.github.io/kubecost/ kubecost \
   --namespace kubecost \
   --create-namespace \
-  --set prometheus.enabled=true \
-  --set prometheus.server.persistentVolume.enabled=true
+  --set global.clusterId=production-cluster
 ```
 
-Configure namespace cost allocation:
+Query namespace cost allocation with shared namespaces:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-config
-  namespace: kubecost
-data:
-  kubecost-config.yaml: |
-    # Cluster configuration
-    clusterName: production-cluster
+```bash
+kubectl port-forward --namespace kubecost deployment/kubecost-cost-analyzer 9090
 
-    # Cost allocation
-    sharedNamespaces:
-      - kube-system
-      - monitoring
-      - ingress-nginx
-
-    # Shared cost allocation method
-    sharedCostSplitMethod: proportional  # or weighted
-
-    # Custom pricing (override cloud pricing)
-    customPricing:
-      enabled: false
+curl "http://localhost:9090/model/allocation?window=month&aggregate=namespace&shareNamespaces=kube-system,monitoring,ingress-nginx&shareSplit=weighted&shareIdle=true"
 ```
 
 ## Implementing Custom Cost Calculation
@@ -104,6 +84,11 @@ class NamespaceCostCalculator:
         self.memory_cost_per_gb = 0.005  # $0.005 per GB-hour
         self.storage_cost_per_gb = 0.0001  # $0.0001 per GB-hour
 
+    def _sum_range_values(self, query_result):
+        if not query_result:
+            return 0
+        return sum(float(v[1]) for series in query_result for v in series['values'])
+
     def calculate_namespace_cost(self, namespace, start_time, end_time):
         # Calculate CPU cost
         cpu_query = f'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}"}}[1h]))'
@@ -113,7 +98,7 @@ class NamespaceCostCalculator:
             end_time=end_time,
             step='1h'
         )
-        total_cpu_hours = sum(float(v[1]) for v in cpu_usage[0]['values'])
+        total_cpu_hours = self._sum_range_values(cpu_usage)
         cpu_cost = total_cpu_hours * self.cpu_cost_per_core
 
         # Calculate memory cost
@@ -124,7 +109,7 @@ class NamespaceCostCalculator:
             end_time=end_time,
             step='1h'
         )
-        total_memory_gb_hours = sum(float(v[1]) for v in memory_usage[0]['values'])
+        total_memory_gb_hours = self._sum_range_values(memory_usage)
         memory_cost = total_memory_gb_hours * self.memory_cost_per_gb
 
         # Calculate storage cost
@@ -133,8 +118,10 @@ class NamespaceCostCalculator:
         if storage_usage:
             storage_gb = float(storage_usage[0]['value'][1])
             hours = (end_time - start_time).total_seconds() / 3600
-            storage_cost = storage_gb * hours * self.storage_cost_per_gb
+            total_storage_gb_hours = storage_gb * hours
+            storage_cost = total_storage_gb_hours * self.storage_cost_per_gb
         else:
+            total_storage_gb_hours = 0
             storage_cost = 0
 
         # Calculate total cost
@@ -143,6 +130,9 @@ class NamespaceCostCalculator:
         return {
             'namespace': namespace,
             'period': f"{start_time} to {end_time}",
+            'cpu_hours': round(total_cpu_hours, 2),
+            'memory_gb_hours': round(total_memory_gb_hours, 2),
+            'storage_gb_hours': round(total_storage_gb_hours, 2),
             'cpu_cost': round(cpu_cost, 2),
             'memory_cost': round(memory_cost, 2),
             'storage_cost': round(storage_cost, 2),
@@ -160,14 +150,18 @@ class NamespaceCostCalculator:
         costs = []
 
         for ns in namespaces.items:
-            if ns.metadata.labels and ns.metadata.labels.get('cost-tracking-enabled') == 'true':
+            annotations = ns.metadata.annotations or {}
+            if annotations.get('cost-tracking-enabled') == 'true':
                 cost = self.calculate_namespace_cost(
                     ns.metadata.name,
                     start_time,
                     end_time
                 )
-                cost['team'] = ns.metadata.labels.get('team', 'unknown')
-                cost['cost_center'] = ns.metadata.labels.get('cost-center', 'unknown')
+                labels = ns.metadata.labels or {}
+                cost['team'] = labels.get('team', 'unknown')
+                cost['cost_center'] = labels.get('cost-center', 'unknown')
+                cost['budget'] = float(annotations.get('monthly-budget', 0))
+                cost['status'] = 'over budget' if cost['budget'] and cost['total_cost'] > cost['budget'] else 'ok'
                 costs.append(cost)
 
         return pd.DataFrame(costs)
@@ -189,7 +183,23 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from jinja2 import Template
 
+def aggregate_by_team(namespace_costs):
+    team_totals = {}
+    for cost in namespace_costs:
+        team = cost['team']
+        team_totals.setdefault(team, {'team': team, 'total': 0, 'count': 0})
+        team_totals[team]['total'] += cost['total_cost']
+        team_totals[team]['count'] += 1
+
+    return [
+        {'team': team, 'total': round(values['total'], 2), 'count': values['count']}
+        for team, values in team_totals.items()
+    ]
+
 def generate_showback_report(namespace_costs):
+    if hasattr(namespace_costs, 'to_dict'):
+        namespace_costs = namespace_costs.to_dict('records')
+
     # HTML template for report
     html_template = """
     <html>
@@ -332,7 +342,7 @@ data:
         "panels": [
           {
             "title": "Total Monthly Cost by Namespace",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [{
               "expr": "sum(rate(container_cpu_usage_seconds_total[30d])) by (namespace) * 0.03 * 24 * 30",
               "legendFormat": "{{ namespace }} - CPU"
@@ -340,7 +350,7 @@ data:
           },
           {
             "title": "Cost Trend Over Time",
-            "type": "graph",
+            "type": "timeseries",
             "targets": [{
               "expr": "sum(rate(container_cpu_usage_seconds_total[1h])) * 0.03"
             }]
@@ -362,8 +372,9 @@ data:
 For chargeback (actual billing):
 
 ```python
-def generate_chargeback_invoice(namespace, period):
-    costs = calculate_namespace_cost(namespace, period)
+def generate_chargeback_invoice(calculator, namespace, start_time, end_time):
+    costs = calculator.calculate_namespace_cost(namespace, start_time, end_time)
+    period = f"{start_time} to {end_time}"
 
     invoice = {
         'invoice_id': f"INV-{namespace}-{period}",
