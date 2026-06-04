@@ -12,7 +12,7 @@ Kustomize vars enable dynamic references between resources by extracting values 
 
 ## Understanding vars
 
-Vars extract values from source resources and make them available for substitution in target resources. They work similarly to variables in programming languages, allowing you to reference computed or dynamic values throughout your configuration.
+Vars extract values from source resources and make them available for substitution in supported target fields. They work similarly to variables in programming languages, allowing you to reference dynamic values in places Kustomize's variable reference transformer recognizes.
 
 The primary use case for vars is handling generated names, such as ConfigMap or Secret names with hash suffixes, and propagating them to resources that reference them.
 
@@ -54,7 +54,13 @@ kind: Deployment
 metadata:
   name: web-app
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
       - name: app
@@ -116,7 +122,13 @@ kind: Deployment
 metadata:
   name: client-app
 spec:
+  selector:
+    matchLabels:
+      app: client
   template:
+    metadata:
+      labels:
+        app: client
     spec:
       containers:
       - name: client
@@ -162,10 +174,14 @@ replacements:
       kind: Deployment
     fieldPaths:
     - metadata.namespace
+    options:
+      create: true
   - select:
       kind: Service
     fieldPaths:
     - metadata.namespace
+    options:
+      create: true
 ```
 
 ## Port number references
@@ -190,7 +206,13 @@ kind: Deployment
 metadata:
   name: web-app
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
       - name: app
@@ -265,11 +287,17 @@ kind: Deployment
 metadata:
   name: main-app
 spec:
+  selector:
+    matchLabels:
+      app: main-app
   template:
+    metadata:
+      labels:
+        app: main-app
     spec:
       containers:
       - name: app
-        image: myapp@sha256:abc123...
+        image: myapp@sha256:1111111111111111111111111111111111111111111111111111111111111111
 ---
 # base/cronjob.yaml
 apiVersion: batch/v1
@@ -313,6 +341,18 @@ metadata:
   name: web-app
   labels:
     version: v2.1.0
+spec:
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      containers:
+      - name: app
+        image: nginx
 ---
 # base/service.yaml
 apiVersion: v1
@@ -338,9 +378,9 @@ replacements:
     - metadata.labels.version
 ```
 
-Resource name construction
+## Resource name component propagation
 
-Build resource names from components:
+Copy resource name components into fields:
 
 ```yaml
 # base/configmap.yaml
@@ -430,9 +470,9 @@ replacements:
     - spec.template.spec.containers.0.envFrom.0.secretRef.name
 ```
 
-## Computed values
+## Partial string replacement
 
-Create computed environment variables:
+Update one part of an existing environment variable:
 
 ```yaml
 # base/deployment.yaml
@@ -442,34 +482,36 @@ spec:
       containers:
       - name: app
         env:
-        - name: SERVICE_URL
-          value: "http://$(SERVICE_NAME).$(NAMESPACE).svc.cluster.local:$(PORT)"
+        - name: SERVICE_HOST
+          value: "placeholder.default.svc.cluster.local"
 ```
 
-Replace each component:
+Replace one delimited component at a time:
 
 ```yaml
 replacements:
 - source:
     kind: Service
+    name: api-service
     fieldPath: metadata.name
   targets:
   - select:
       kind: Deployment
     fieldPaths:
-    - spec.template.spec.containers.0.env.[name=SERVICE_URL].value
+    - spec.template.spec.containers.0.env.[name=SERVICE_HOST].value
     options:
-      delimiter: '://'
-      index: 1
+      delimiter: '.'
+      index: 0
 
 - source:
     kind: Namespace
+    name: production
     fieldPath: metadata.name
   targets:
   - select:
       kind: Deployment
     fieldPaths:
-    - spec.template.spec.containers.0.env.[name=SERVICE_URL].value
+    - spec.template.spec.containers.0.env.[name=SERVICE_HOST].value
     options:
       delimiter: '.'
       index: 1
@@ -566,4 +608,4 @@ kustomize build base/ | yq eval 'select(.kind == "Deployment") | .spec.template.
 
 ## Conclusion
 
-While Kustomize vars are deprecated, the concept of cross-resource references remains essential. Modern replacements provide more flexibility and clarity for dynamic value propagation. Use replacements to link ConfigMaps, Services, and other resources, creating configurations that adapt automatically to generated names and computed values. This approach reduces hardcoding and creates more maintainable Kubernetes configurations that scale across environments.
+While Kustomize vars are deprecated, the concept of cross-resource references remains essential. Modern replacements provide more flexibility and clarity for dynamic value propagation. Use replacements to link ConfigMaps, Services, and other resources, creating configurations that adapt automatically to generated names and copied values. This approach reduces hardcoding and creates more maintainable Kubernetes configurations that scale across environments.
