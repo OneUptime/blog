@@ -10,13 +10,13 @@ Description: Learn how to integrate Crossplane with HashiCorp Vault to securely 
 
 Cloud resources need secrets. Databases require passwords. API keys authenticate service accounts. Certificates secure connections. Storing these in plain Kubernetes secrets creates security risks. Vault centralizes secret storage with encryption, access control, and audit logging.
 
-Crossplane integrates with Vault through External Secrets Operator and the Vault Agent Injector. This guide shows you how to pull secrets from Vault into Crossplane managed resources and push generated credentials back to Vault for centralized management.
+Crossplane integrates with Vault through External Secrets Operator and the Vault Agent Injector. This guide shows you how to pull secrets from Vault into Kubernetes secrets that Crossplane managed resources can reference, and how Crossplane v1.x can publish generated connection details to Vault through its External Secret Stores feature.
 
 ## Architecture Overview
 
-The integration works in two directions. Crossplane reads secrets from Vault when provisioning resources. After provisioning, Crossplane can write generated credentials back to Vault. Applications then read those credentials through Vault's standard mechanisms.
+The integration works in two directions. External Secrets Operator reads secrets from Vault and writes Kubernetes secrets that Crossplane providers reference when provisioning resources. After provisioning, Crossplane v1.x can write generated credentials back to Vault with External Secret Stores. Applications then read those credentials through Vault's standard mechanisms.
 
-External Secrets Operator pulls secrets from Vault and creates Kubernetes secrets that Crossplane references. For the reverse flow, Crossplane function pipelines can push connection details to Vault after resource creation.
+External Secrets Operator pulls secrets from Vault and creates Kubernetes secrets that Crossplane references. For the reverse flow, Crossplane can publish connection details to Vault with External Secret Stores. This feature is alpha, is disabled by default, and is not recommended for production deployments.
 
 ## Installing External Secrets Operator
 
@@ -48,10 +48,19 @@ Set up Kubernetes authentication in Vault.
 vault auth enable kubernetes
 
 # Configure Kubernetes auth
+# Run this from the Vault pod, or substitute the reviewer JWT and CA values.
 vault write auth/kubernetes/config \
   kubernetes_host="https://kubernetes.default.svc:443" \
   kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
   token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token
+```
+
+Allow the Vault service account to call the Kubernetes TokenReview API.
+
+```bash
+kubectl create clusterrolebinding vault-tokenreview \
+  --clusterrole=system:auth-delegator \
+  --serviceaccount=vault-system:vault
 ```
 
 Create a policy for Crossplane to read secrets.
@@ -59,7 +68,11 @@ Create a policy for Crossplane to read secrets.
 ```hcl
 # crossplane-policy.hcl
 path "secret/data/crossplane/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
+}
+
+path "secret/metadata/crossplane/*" {
+  capabilities = ["list"]
 }
 
 path "database/creds/crossplane-*" {
@@ -79,7 +92,8 @@ Create a Vault role for Crossplane.
 vault write auth/kubernetes/role/crossplane \
   bound_service_account_names=crossplane \
   bound_service_account_namespaces=crossplane-system \
-  policies=crossplane-read \
+  audience=vault \
+  token_policies=crossplane-read \
   ttl=24h
 ```
 
@@ -89,7 +103,7 @@ Create a SecretStore that connects to Vault.
 
 ```yaml
 # vault-secretstore.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -106,6 +120,8 @@ spec:
           role: "crossplane"
           serviceAccountRef:
             name: crossplane
+            audiences:
+              - vault
 ```
 
 Apply the SecretStore.
@@ -126,7 +142,7 @@ Create an ExternalSecret to sync from Vault.
 
 ```yaml
 # external-secret-db-password.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-master-password
@@ -186,7 +202,7 @@ spec:
     name: postgres-connection
 ```
 
-The RDS instance uses the password from Vault without Crossplane ever seeing it in plaintext.
+The RDS provider reads the password from the Kubernetes secret created by ESO, so the secret does not need to be stored in Git or written directly in the managed resource manifest.
 
 ## Using Vault in Compositions
 
@@ -194,7 +210,7 @@ Pull multiple secrets from Vault for a composition.
 
 ```yaml
 # external-secret-app-credentials.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-infrastructure-secrets
@@ -225,60 +241,98 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: ApplicationStack
-  resources:
-    - name: database
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-            allocatedStorage: 100
-            username: appuser
-            passwordSecretRef:
-              namespace: crossplane-system
-              name: app-infrastructure-secrets
-              key: db_password
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: database
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
+                  allocatedStorage: 100
+                  username: appuser
+                  passwordSecretRef:
+                    namespace: crossplane-system
+                    name: app-infrastructure-secrets
+                    key: db_password
 
-    - name: s3-bucket
-      base:
-        apiVersion: s3.aws.upbound.io/v1beta1
-        kind: Bucket
-        spec:
-          forProvider:
-            region: us-west-2
+          - name: s3-bucket
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: Bucket
+              spec:
+                forProvider:
+                  region: us-west-2
 
-    - name: bucket-policy
-      base:
-        apiVersion: s3.aws.upbound.io/v1beta1
-        kind: BucketPolicy
-        spec:
-          forProvider:
-            region: us-west-2
-            bucket: ""
-            policy: ""
-      patches:
-        # Pull policy from Vault secret
-        - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.bucket
+          - name: bucket-policy
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: BucketPolicy
+              spec:
+                forProvider:
+                  region: us-west-2
+                  bucket: ""
+                  policy: ""
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.bucket
 ```
 
 ## Pushing Generated Credentials to Vault
 
-Use Crossplane functions to push connection secrets to Vault.
+Use Crossplane External Secret Stores to publish connection details to Vault. This feature is alpha in Crossplane v1.x, disabled by default, and is not recommended for production use. Crossplane v2 migration guidance recommends using native Kubernetes secrets or External Secrets Operator instead of External Secret Stores.
 
 ```yaml
-# function-push-to-vault.yaml
-apiVersion: pkg.crossplane.io/v1beta1
+# function-patch-and-transform.yaml
+apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
-  name: function-vault-push
+  name: function-patch-and-transform
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-vault-push:v0.1.0
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2
+---
+# provider-vault-runtime.yaml
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: enable-ess
+spec:
+  deploymentTemplate:
+    spec:
+      selector: {}
+      template:
+        spec:
+          containers:
+            - name: package-runtime
+              args:
+                - --enable-external-secret-stores
+---
+# vault-storeconfig.yaml
+apiVersion: aws.upbound.io/v1alpha1
+kind: StoreConfig
+metadata:
+  name: vault
+spec:
+  type: Plugin
+  defaultScope: crossplane-system
+  plugin:
+    endpoint: ess-plugin-vault.crossplane-system:4040
+    configRef:
+      apiVersion: secrets.crossplane.io/v1alpha1
+      kind: VaultConfig
+      name: vault-internal
 ```
 
 Create a composition that uses the function.
@@ -290,60 +344,52 @@ kind: Composition
 metadata:
   name: database-with-vault-storage
 spec:
+  publishConnectionDetailsWithStoreConfigRef:
+    name: vault
   compositeTypeRef:
     apiVersion: database.example.com/v1alpha1
     kind: PostgreSQLInstance
 
   mode: Pipeline
   pipeline:
-    - step: provision-resources
+    - step: patch-and-transform
       functionRef:
-        name: function-auto-ready
-
-    - step: push-to-vault
-      functionRef:
-        name: function-vault-push
+        name: function-patch-and-transform
       input:
-        apiVersion: vault.fn.crossplane.io/v1beta1
-        kind: PushSecrets
-        spec:
-          vaultAddress: "http://vault.vault-system.svc.cluster.local:8200"
-          authMethod: kubernetes
-          path: "secret/data/databases"
-          secrets:
-            - name: endpoint
-              connectionSecretKey: endpoint
-            - name: port
-              connectionSecretKey: port
-            - name: username
-              connectionSecretKey: username
-            - name: password
-              connectionSecretKey: password
-
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-            allocatedStorage: 100
-      connectionDetails:
-        - name: endpoint
-          fromConnectionSecretKey: endpoint
-        - name: port
-          fromConnectionSecretKey: port
-        - name: username
-          fromConnectionSecretKey: username
-        - name: password
-          fromConnectionSecretKey: password
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
+                  allocatedStorage: 100
+                publishConnectionDetailsTo:
+                  name: postgres-connection
+                  configRef:
+                    name: vault
+            connectionDetails:
+              - name: endpoint
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: endpoint
+              - name: port
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: port
+              - name: username
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: username
+              - name: password
+                type: FromConnectionSecretKey
+                fromConnectionSecretKey: password
 ```
 
-When the database provisions, Crossplane pushes its connection details to Vault.
+When the database provisions, the provider publishes its connection details to the configured Vault-backed StoreConfig.
 
 ## Using Vault Dynamic Secrets
 
@@ -374,31 +420,45 @@ Applications request credentials from Vault instead of using static passwords.
 
 ```yaml
 # external-secret-dynamic-db-creds.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: app-db-credentials
+  namespace: production
+spec:
+  path: "database/creds/crossplane-app"
+  method: "GET"
+  provider:
+    server: "http://vault.vault-system.svc.cluster.local:8200"
+    auth:
+      kubernetes:
+        mountPath: "kubernetes"
+        role: "crossplane"
+        serviceAccountRef:
+          name: crossplane
+          namespace: crossplane-system
+          audiences:
+            - vault
+---
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-db-credentials
   namespace: production
 spec:
   refreshInterval: 30m
-  secretStoreRef:
-    name: vault-backend
-    kind: SecretStore
   target:
     name: app-db-credentials
     creationPolicy: Owner
-  data:
-    - secretKey: username
-      remoteRef:
-        key: database/creds/crossplane-app
-        property: username
-    - secretKey: password
-      remoteRef:
-        key: database/creds/crossplane-app
-        property: password
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: VaultDynamicSecret
+          name: app-db-credentials
 ```
 
-Vault generates new credentials every 30 minutes, automatically rotating them.
+ESO requests fresh dynamic credentials on each refresh. Vault leases and expires the generated credentials according to the role TTLs.
 
 ## Vault Agent Injector for Crossplane Providers
 
@@ -412,102 +472,61 @@ metadata:
   name: provider-aws
 spec:
   package: xpkg.upbound.io/upbound/provider-aws:v0.45.0
+  runtimeConfigRef:
+    name: provider-aws-vault
 ---
-apiVersion: pkg.crossplane.io/v1
+apiVersion: aws.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
 spec:
   credentials:
-    source: InjectedIdentity
+    source: Filesystem
+    fs:
+      path: /vault/secrets/credentials
 ---
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
 metadata:
-  name: provider-aws
-  namespace: crossplane-system
+  name: provider-aws-vault
 spec:
-  template:
-    metadata:
-      annotations:
-        # Inject AWS credentials from Vault
-        vault.hashicorp.com/agent-inject: "true"
-        vault.hashicorp.com/role: "crossplane-aws"
-        vault.hashicorp.com/agent-inject-secret-credentials: "secret/crossplane/aws/credentials"
-        vault.hashicorp.com/agent-inject-template-credentials: |
-          {{- with secret "secret/crossplane/aws/credentials" -}}
-          [default]
-          aws_access_key_id = {{ .Data.data.access_key }}
-          aws_secret_access_key = {{ .Data.data.secret_key }}
-          {{- end }}
+  deploymentTemplate:
     spec:
-      serviceAccountName: provider-aws
-      containers:
-        - name: provider-aws
-          env:
-            - name: AWS_SHARED_CREDENTIALS_FILE
-              value: /vault/secrets/credentials
+      selector: {}
+      template:
+        metadata:
+          annotations:
+            # Inject AWS credentials from Vault
+            vault.hashicorp.com/agent-inject: "true"
+            vault.hashicorp.com/role: "crossplane-aws"
+            vault.hashicorp.com/agent-inject-secret-credentials: "secret/crossplane/aws/credentials"
+            vault.hashicorp.com/agent-inject-template-credentials: |
+              {{- with secret "secret/crossplane/aws/credentials" -}}
+              [default]
+              aws_access_key_id = {{ .Data.data.access_key }}
+              aws_secret_access_key = {{ .Data.data.secret_key }}
+              {{- end }}
+        spec:
+          containers:
+            - name: package-runtime
+              env:
+                - name: AWS_SHARED_CREDENTIALS_FILE
+                  value: /vault/secrets/credentials
 ```
 
 The Vault agent injects AWS credentials into the provider pod at runtime.
 
-## Encrypting Crossplane Connection Secrets with Vault Transit
+## Encrypting Crossplane Connection Secrets
 
-Use Vault's transit engine to encrypt connection secrets.
+Vault Transit does not automatically encrypt Crossplane Kubernetes connection secrets, and Crossplane does not include a built-in `function-vault-transit-encrypt` function. Use Kubernetes encryption at rest for Kubernetes Secrets, or publish connection details to Vault with Crossplane External Secret Stores when that alpha feature fits your Crossplane version.
 
 ```bash
-# Enable transit engine
-vault secrets enable transit
-
-# Create encryption key
-vault write -f transit/keys/crossplane-secrets
+# Enable Kubernetes API server encryption at rest for Secret resources
+kube-apiserver \
+  --encryption-provider-config=/etc/kubernetes/encryption-config.yaml
 ```
 
-Create a function to encrypt secrets.
-
-```yaml
-# composition-encrypted-secrets.yaml
-apiVersion: apiextensions.crossplane.io/v1
-kind: Composition
-metadata:
-  name: database-encrypted-secrets
-spec:
-  compositeTypeRef:
-    apiVersion: database.example.com/v1alpha1
-    kind: PostgreSQLInstance
-
-  mode: Pipeline
-  pipeline:
-    - step: provision-resources
-      functionRef:
-        name: function-auto-ready
-
-    - step: encrypt-secrets
-      functionRef:
-        name: function-vault-transit-encrypt
-      input:
-        apiVersion: vault.fn.crossplane.io/v1beta1
-        kind: EncryptSecrets
-        spec:
-          vaultAddress: "http://vault.vault-system.svc.cluster.local:8200"
-          transitKey: "crossplane-secrets"
-          secrets:
-            - password
-
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-```
-
-Connection secrets get encrypted before storage in Kubernetes.
+Connection secrets are then encrypted by the Kubernetes API server before they are written to etcd.
 
 ## Auditing Secret Access
 
@@ -535,40 +554,41 @@ data:
     groups:
       - name: vault-crossplane
         rules:
-          - alert: CrossplaneVaultAccessDenied
+          - alert: VaultAuditRequestFailure
             expr: |
-              rate(vault_core_handle_request{path=~"secret/crossplane/.*",error!=""}[5m]) > 0
+              rate(vault_audit_log_request_failure[5m]) > 0
             for: 5m
             labels:
               severity: warning
             annotations:
-              summary: "Crossplane Vault access denied"
+              summary: "Vault audit request logging failed"
 
-          - alert: CrossplaneVaultSecretNotFound
+          - alert: VaultAuditResponseFailure
             expr: |
-              vault_core_handle_request{path=~"secret/crossplane/.*",code="404"}
+              rate(vault_audit_log_response_failure[5m]) > 0
+            for: 5m
             labels:
               severity: critical
             annotations:
-              summary: "Crossplane trying to access non-existent Vault secret"
+              summary: "Vault audit response logging failed"
 ```
+
+Use audit-log processing in your log platform to alert on denied reads or missing secrets for `secret/crossplane/*`; Vault's request audit records include the request path, response errors, and Kubernetes auth metadata.
 
 ## Rotating Vault Secrets
 
-Implement automatic secret rotation for Crossplane credentials.
+Rotate static KV secrets by writing a new value to the same Vault path. For automatic rotation, schedule this update from an external rotation job or use Vault dynamic secrets instead of static KV secrets.
 
 ```bash
-# Create rotation script
-vault write sys/rotate/crossplane-database \
-  rotation_period=24h \
-  secrets_path=secret/crossplane/database
+# Rotate the static password stored in Vault KV
+vault kv put secret/crossplane/database/master-password password="$(openssl rand -base64 32)"
 ```
 
-ExternalSecrets automatically picks up rotated values.
+ExternalSecrets automatically picks up updated values.
 
 ```yaml
 # external-secret-with-rotation.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: rotated-db-password
@@ -594,21 +614,29 @@ spec:
         property: password
 ```
 
+For Vault database root credential rotation, use the database secrets engine endpoint.
+
+```bash
+# Rotate the root credentials for a Vault database secrets engine connection
+vault write -force database/rotate-root/postgres
+```
+
 ## High Availability Configuration
 
 Configure ESO and Vault for high availability.
 
 ```yaml
 # vault-secretstore-ha.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend-ha
 spec:
   provider:
     vault:
-      # Multiple Vault servers
+      # Use the Vault HA service or load balancer address
       server: "https://vault.example.com"
+      # Vault Enterprise namespace; omit this field for Vault Community Edition
       namespace: "crossplane"
       path: "secret"
       version: "v2"
@@ -619,6 +647,8 @@ spec:
           serviceAccountRef:
             name: crossplane
             namespace: crossplane-system
+            audiences:
+              - vault
       # TLS configuration
       caBundle: |
         -----BEGIN CERTIFICATE-----
@@ -628,8 +658,8 @@ spec:
 
 ## Summary
 
-Integrating Crossplane with Vault centralizes secret management. External Secrets Operator syncs secrets from Vault to Kubernetes. Crossplane references these secrets when provisioning resources. Function pipelines can push generated credentials back to Vault.
+Integrating Crossplane with Vault centralizes secret management. External Secrets Operator syncs secrets from Vault to Kubernetes. Crossplane references these secrets when provisioning resources. Crossplane v1.x External Secret Stores can publish generated connection details back to Vault when that alpha feature is enabled.
 
-Use Vault's dynamic secrets for automatic credential rotation. Encrypt connection secrets with Vault Transit. Audit all secret access through Vault's logging. This pattern provides enterprise-grade secret management for infrastructure provisioning.
+Use Vault's dynamic secrets for leased credentials and automatic expiration. Encrypt Kubernetes connection secrets with Kubernetes API server encryption at rest, or publish connection details to Vault with External Secret Stores when it fits your Crossplane version. Audit all secret access through Vault's logging. This pattern provides enterprise-grade secret management for infrastructure provisioning.
 
 Vault integration removes secrets from Git repositories and Kubernetes manifests. Credentials stay encrypted in Vault with fine-grained access control. Applications and infrastructure components retrieve secrets on demand with automatic rotation and comprehensive audit trails.
