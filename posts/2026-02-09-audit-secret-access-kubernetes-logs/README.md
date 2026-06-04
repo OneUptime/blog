@@ -45,19 +45,19 @@ Create audit policy:
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-# Log Secret access at Metadata level
-- level: Metadata
-  resources:
-  - group: ""
-    resources: ["secrets"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
 # Don't log system requests
 - level: None
   users:
   - system:kube-controller-manager
   - system:kube-scheduler
   - system:serviceaccount:kube-system:generic-garbage-collector
+
+# Log Secret access at Metadata level
+- level: Metadata
+  resources:
+  - group: ""
+    resources: ["secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
 # Log everything else at Metadata level
 - level: Metadata
@@ -77,7 +77,7 @@ metadata:
 spec:
   containers:
   - name: kube-apiserver
-    image: k8s.gcr.io/kube-apiserver:v1.28.0
+    image: registry.k8s.io/kube-apiserver:v1.28.0
     command:
     - kube-apiserver
     # Add audit flags
@@ -111,20 +111,26 @@ Enable through cloud provider:
 
 ```bash
 # GKE
-gcloud container clusters update my-cluster \
-  --enable-cloud-logging \
-  --logging=SYSTEM,WORKLOAD,API
+gcloud projects get-iam-policy PROJECT_ID --format=json > /tmp/policy.json
+jq '.auditConfigs = ((.auditConfigs // []) | map(select(.service != "k8s.io")) + [{
+  "service": "k8s.io",
+  "auditLogConfigs": [{"logType": "DATA_READ"}, {"logType": "DATA_WRITE"}]
+}])' /tmp/policy.json > /tmp/policy-updated.json
+gcloud projects set-iam-policy PROJECT_ID /tmp/policy-updated.json
 
 # EKS
 eksctl utils update-cluster-logging \
   --cluster=my-cluster \
-  --enable-types=all
+  --enable-types=audit \
+  --approve
 
 # AKS
-az aks update \
-  --resource-group myResourceGroup \
-  --name myAKSCluster \
-  --enable-azure-monitor-metrics
+az monitor diagnostic-settings create \
+  --name AKS-Diagnostics \
+  --resource /subscriptions/<subscription-id>/resourceGroups/myResourceGroup/providers/Microsoft.ContainerService/managedClusters/myAKSCluster \
+  --logs '[{"category":"kube-audit","enabled":true}]' \
+  --workspace /subscriptions/<subscription-id>/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/myWorkspace \
+  --export-to-resource-specific true
 ```
 
 ## Detailed Secret Audit Policy
@@ -137,8 +143,20 @@ kind: Policy
 omitStages:
 - RequestReceived
 rules:
-# Log Secret access with full request/response for creates and updates
-- level: RequestResponse
+# Don't log Secret access from system components
+- level: None
+  resources:
+  - group: ""
+    resources: ["secrets"]
+  users:
+  - system:kube-controller-manager
+  - system:kube-scheduler
+  userGroups:
+  - system:nodes
+  - system:serviceaccounts:kube-system
+
+# Log Secret writes at Metadata level (don't log secret values)
+- level: Metadata
   resources:
   - group: ""
     resources: ["secrets"]
@@ -160,18 +178,6 @@ rules:
     resources: ["secrets"]
   verbs: ["delete", "deletecollection"]
   namespaces: ["production", "staging"]
-
-# Don't log Secret access from system components
-- level: None
-  resources:
-  - group: ""
-    resources: ["secrets"]
-  users:
-  - system:kube-controller-manager
-  - system:kube-scheduler
-  userGroups:
-  - system:nodes
-  - system:serviceaccounts:kube-system
 
 # Log all other resources at Metadata level
 - level: Metadata
@@ -243,8 +249,8 @@ grep '"username":"system:serviceaccount:production:web-app-sa"' /var/log/kuberne
   grep '"resource":"secrets"' | jq .
 
 # Find failed Secret access attempts
-grep '"resource":"secrets"' /var/log/kubernetes/audit.log | \
-  grep -v '"code":200' | jq .
+jq 'select(.objectRef.resource == "secrets" and (.responseStatus.code >= 400))' \
+  /var/log/kubernetes/audit.log
 
 # Find Secret deletions
 grep '"resource":"secrets"' /var/log/kubernetes/audit.log | \
@@ -294,7 +300,6 @@ data:
       logstash_format true
       logstash_prefix k8s-audit
       include_tag_key true
-      type_name audit
     </match>
 ```
 
@@ -305,7 +310,7 @@ Kibana queries for Secret access:
 objectRef.resource: "secrets"
 
 # Failed Secret access
-objectRef.resource: "secrets" AND NOT responseStatus.code: 200
+objectRef.resource: "secrets" AND responseStatus.code >= 400
 
 # Secret access by specific user
 objectRef.resource: "secrets" AND user.username: "system:serviceaccount:production:web-app-sa"
@@ -319,7 +324,7 @@ objectRef.resource: "secrets" AND NOT sourceIPs: ("10.0.1.*" OR "10.0.2.*")
 
 ## Alerting on Suspicious Secret Access
 
-Create Prometheus alerts from audit logs:
+Create Prometheus alerts from audit logs by exporting audit events as a custom counter metric such as `kubernetes_audit_events_total`:
 
 ```yaml
 apiVersion: v1
@@ -336,9 +341,9 @@ data:
       # Alert on failed Secret access attempts
       - alert: FailedSecretAccess
         expr: |
-          sum(rate(apiserver_audit_event_total{
+          sum(rate(kubernetes_audit_events_total{
             objectRef_resource="secrets",
-            responseStatus_code!="200"
+            responseStatus_code=~"4..|5.."
           }[5m])) > 0
         for: 2m
         labels:
@@ -350,7 +355,7 @@ data:
       # Alert on Secret deletions
       - alert: SecretDeleted
         expr: |
-          sum(rate(apiserver_audit_event_total{
+          sum by (objectRef_namespace) (rate(kubernetes_audit_events_total{
             objectRef_resource="secrets",
             verb="delete"
           }[5m])) > 0
@@ -363,7 +368,7 @@ data:
       # Alert on unusual Secret access volume
       - alert: UnusualSecretAccessVolume
         expr: |
-          sum(rate(apiserver_audit_event_total{
+          sum(rate(kubernetes_audit_events_total{
             objectRef_resource="secrets",
             verb="get"
           }[5m])) > 100
@@ -377,10 +382,10 @@ data:
       # Alert on Secret access from unknown ServiceAccounts
       - alert: UnknownServiceAccountSecretAccess
         expr: |
-          apiserver_audit_event_total{
+          increase(kubernetes_audit_events_total{
             objectRef_resource="secrets",
             user_username!~"system:serviceaccount:(production|staging):.*"
-          } > 0
+          }[5m]) > 0
         labels:
           severity: critical
         annotations:
@@ -393,14 +398,14 @@ data:
 Generate daily Secret access reports:
 
 ```bash
-#!/bin/bash
+#!/bin/sh
 # secret-access-report.sh
 
 AUDIT_LOG="/var/log/kubernetes/audit.log"
 REPORT_DATE=$(date +%Y-%m-%d)
 REPORT_FILE="/tmp/secret-access-report-${REPORT_DATE}.html"
 
-cat > $REPORT_FILE <<EOF
+cat > "$REPORT_FILE" <<EOF
 <html>
 <head><title>Secret Access Report - ${REPORT_DATE}</title></head>
 <body>
@@ -413,15 +418,15 @@ cat > $REPORT_FILE <<EOF
 EOF
 
 # Count accesses by user
-grep '"resource":"secrets"' $AUDIT_LOG | \
+grep '"resource":"secrets"' "$AUDIT_LOG" | \
   grep "$(date +%Y-%m-%d)" | \
   jq -r '.user.username' | \
   sort | uniq -c | sort -rn | \
-  while read count user; do
-    echo "<tr><td>$user</td><td>$count</td></tr>" >> $REPORT_FILE
+  while read -r count user; do
+    echo "<tr><td>$user</td><td>$count</td></tr>" >> "$REPORT_FILE"
   done
 
-cat >> $REPORT_FILE <<EOF
+cat >> "$REPORT_FILE" <<EOF
 </table>
 
 <h3>Failed Access Attempts</h3>
@@ -430,15 +435,14 @@ cat >> $REPORT_FILE <<EOF
 EOF
 
 # Failed access attempts
-grep '"resource":"secrets"' $AUDIT_LOG | \
-  grep "$(date +%Y-%m-%d)" | \
-  grep -v '"code":200' | \
-  jq -r '[.requestReceivedTimestamp, .user.username, .objectRef.name, .responseStatus.code] | @tsv' | \
-  while IFS=$'\t' read time user secret code; do
-    echo "<tr><td>$time</td><td>$user</td><td>$secret</td><td>$code</td></tr>" >> $REPORT_FILE
+jq -r --arg date "$(date +%Y-%m-%d)" \
+  'select(.objectRef.resource == "secrets" and (.requestReceivedTimestamp | startswith($date)) and (.responseStatus.code >= 400)) |
+   [.requestReceivedTimestamp, .user.username, .objectRef.name, .responseStatus.code] | @tsv' "$AUDIT_LOG" | \
+  while read -r time user secret code; do
+    echo "<tr><td>$time</td><td>$user</td><td>$secret</td><td>$code</td></tr>" >> "$REPORT_FILE"
   done
 
-cat >> $REPORT_FILE <<EOF
+cat >> "$REPORT_FILE" <<EOF
 </table>
 </body>
 </html>
@@ -465,7 +469,7 @@ spec:
           containers:
           - name: reporter
             image: alpine:latest
-            command: ["/bin/sh", "/scripts/secret-access-report.sh"]
+            command: ["/bin/sh", "-c", "apk add --no-cache jq && /scripts/secret-access-report.sh"]
             volumeMounts:
             - name: audit-logs
               mountPath: /var/log/kubernetes
@@ -487,7 +491,7 @@ spec:
 
 2. **Use Metadata level for reads**: Don't log Secret values in audit logs for get/list operations.
 
-3. **Use RequestResponse for modifications**: Log full details for create/update/delete operations.
+3. **Avoid RequestResponse for Secrets**: Request and response bodies can contain Secret values, so use Metadata level for Secret create/update/delete operations unless you have a tightly controlled exception.
 
 4. **Retain logs appropriately**: Keep audit logs for compliance requirements (typically 90-365 days).
 
