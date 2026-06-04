@@ -14,112 +14,81 @@ Backend monitoring tells you what's happening on your servers, but it doesn't sh
 
 Faro is Grafana's solution for frontend observability. It collects performance metrics, JavaScript errors, console logs, and user interactions from browsers and sends them to your Grafana stack. Unlike synthetic monitoring that simulates users, Faro captures real data from actual users in production.
 
-Faro integrates with Grafana's existing observability tools, sending metrics to Prometheus or Mimir, logs to Loki, and traces to Tempo.
+Faro integrates with Grafana's observability tools by sending frontend logs, events, exceptions, and measurements to Loki and frontend traces to Tempo. Grafana Cloud Frontend Observability also creates dashboards and alerting rules from the collected Faro data.
 
-## Setting Up Faro Collector
+## Setting Up Grafana Alloy for Faro
 
-The Faro collector receives telemetry from instrumented web applications. Deploy it alongside your Grafana stack.
+For self-managed Grafana stacks, Grafana Alloy can receive telemetry from instrumented web applications with the Faro receiver. Deploy it alongside your Grafana stack.
 
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
-  faro-collector:
-    image: grafana/faro-collector:latest
+  alloy:
+    image: grafana/alloy:latest
     ports:
-      - "12345:12345"
-    environment:
-      - FARO_COLLECTOR_LOKI_URL=http://loki:3100/loki/api/v1/push
-      - FARO_COLLECTOR_TEMPO_URL=http://tempo:4317
-      - FARO_COLLECTOR_PROMETHEUS_URL=http://prometheus:9090/api/v1/write
+      - "12345:12345"  # Alloy UI
+      - "12347:12347"  # Faro receiver
     volumes:
-      - ./faro-collector-config.yaml:/etc/faro/config.yaml
+      - ./config.alloy:/etc/alloy/config.alloy
     command:
-      - "--config.file=/etc/faro/config.yaml"
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
 ```
 
-The collector processes incoming telemetry and forwards it to appropriate backends.
+Alloy processes incoming telemetry and forwards it to the configured backends.
 
-## Configuring Faro Collector
+## Configuring the Faro Receiver
 
 Create a configuration that defines how to handle different telemetry types.
 
-```yaml
-# faro-collector-config.yaml
-server:
-  http_listen_port: 12345
-  http_listen_address: 0.0.0.0
+```alloy
+# config.alloy
+faro.receiver "frontend" {
+  extra_log_labels = {
+    job    = "faro",
+    source = "frontend",
+  }
 
-  # Enable CORS for browser requests
-  cors:
-    allowed_origins:
-      - "https://app.example.com"
-      - "https://www.example.com"
-    allowed_methods:
-      - POST
-      - GET
-      - OPTIONS
+  server {
+    listen_address           = "0.0.0.0"
+    listen_port              = 12347
+    cors_allowed_origins     = ["https://app.example.com", "https://www.example.com"]
+    max_allowed_payload_size = "1MiB"
+  }
 
-receivers:
-  faro:
-    # Maximum payload size
-    max_allowed_payload_size: 1048576  # 1MB
+  output {
+    logs   = [loki.write.local.receiver]
+    traces = [otelcol.processor.batch.default.input]
+  }
+}
 
-processors:
-  # Filter out sensitive data
-  attributes:
-    actions:
-      - key: user.email
-        action: delete
-      - key: user.ip
-        action: hash
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
 
-  # Add environment labels
-  resource:
-    attributes:
-      - key: environment
-        value: production
-        action: insert
+otelcol.processor.batch "default" {
+  output {
+    traces = [otelcol.exporter.otlp.tempo.input]
+  }
+}
 
-exporters:
-  # Send logs to Loki
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    labels:
-      job: faro
-      source: frontend
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
 
-  # Send traces to Tempo
-  otlp/tempo:
-    endpoint: tempo:4317
-    tls:
-      insecure: true
-
-  # Send metrics to Prometheus
-  prometheusremotewrite:
-    endpoint: http://prometheus:9090/api/v1/write
-
-service:
-  pipelines:
-    logs:
-      receivers: [faro]
-      processors: [attributes, resource]
-      exporters: [loki]
-
-    traces:
-      receivers: [faro]
-      processors: [resource]
-      exporters: [otlp/tempo]
-
-    metrics:
-      receivers: [faro]
-      processors: [resource]
-      exporters: [prometheusremotewrite]
+    tls {
+      insecure = true
+    }
+  }
+}
 ```
 
-This configuration ensures sensitive data is filtered before export.
+This configuration accepts Faro telemetry, sends logs and measurements to Loki, and forwards traces to Tempo.
 
 ## Instrumenting Web Applications
 
@@ -127,48 +96,39 @@ Add Faro to your web application with the JavaScript SDK.
 
 ```javascript
 // app.js
-import { initializeFaro } from '@grafana/faro-web-sdk';
+import {
+  FetchTransport,
+  LogLevel,
+  getWebInstrumentations,
+  initializeFaro,
+} from '@grafana/faro-web-sdk';
+import { TracingInstrumentation } from '@grafana/faro-web-tracing';
 
 const faro = initializeFaro({
-  url: 'https://faro-collector.example.com/collect',
   app: {
     name: 'my-web-app',
     version: '1.0.0',
     environment: 'production',
   },
 
-  // Instrument specific features
-  instrumentations: {
-    // Track errors automatically
-    errors: {
-      enabled: true,
-      // Ignore specific errors
-      ignoreErrors: [
-        /^Network request failed$/,
-        /^Extension context invalidated$/,
-      ],
-    },
+  transports: [
+    new FetchTransport({
+      url: 'https://faro-collector.example.com/collect',
+    }),
+  ],
 
-    // Track console logs
-    console: {
-      enabled: true,
-      level: ['error', 'warn'],
-    },
+  instrumentations: [
+    ...getWebInstrumentations({
+      captureConsole: true,
+      enablePerformanceInstrumentation: true,
+    }),
+    new TracingInstrumentation(),
+  ],
 
-    // Track web vitals
-    webVitals: {
-      enabled: true,
-    },
+  ignoreErrors: [/^Network request failed$/, /^Extension context invalidated$/],
 
-    // Track user interactions
-    interactions: {
-      enabled: true,
-    },
-
-    // Track XHR and fetch requests
-    fetch: {
-      enabled: true,
-    },
+  consoleInstrumentation: {
+    disabledLevels: [LogLevel.DEBUG, LogLevel.TRACE, LogLevel.LOG],
   },
 
   // Add custom metadata
@@ -181,9 +141,9 @@ const faro = initializeFaro({
   },
 
   // Session configuration
-  session: {
-    // Track session duration
-    trackSession: true,
+  sessionTracking: {
+    enabled: true,
+    persistent: true,
   },
 
   // Batching configuration
@@ -196,7 +156,7 @@ const faro = initializeFaro({
 // Track custom events
 faro.api.pushEvent('checkout_completed', {
   order_id: '12345',
-  amount: 99.99,
+  amount: '99.99',
 });
 ```
 
@@ -211,7 +171,7 @@ Capture application-specific events for business insights.
 document.getElementById('submit-button').addEventListener('click', () => {
   faro.api.pushEvent('form_submitted', {
     form_name: 'contact',
-    fields_completed: 5,
+    fields_completed: '5',
   });
 });
 
@@ -219,7 +179,7 @@ document.getElementById('submit-button').addEventListener('click', () => {
 function useFeature(featureName) {
   faro.api.pushEvent('feature_used', {
     feature: featureName,
-    timestamp: Date.now(),
+    timestamp: String(Date.now()),
   });
 
   // Feature implementation
@@ -240,8 +200,11 @@ function trackPageLoad() {
   const loadTime = performance.now();
   faro.api.pushMeasurement({
     type: 'page_load',
-    value: loadTime,
-    attributes: {
+    values: {
+      load_time_ms: loadTime,
+    },
+  }, {
+    context: {
       page: window.location.pathname,
     },
   });
@@ -257,31 +220,15 @@ Faro automatically tracks Core Web Vitals that impact user experience.
 ```javascript
 // Faro tracks these automatically when enabled:
 // - LCP (Largest Contentful Paint)
-// - FID (First Input Delay)
+// - INP (Interaction to Next Paint)
 // - CLS (Cumulative Layout Shift)
 // - FCP (First Contentful Paint)
 // - TTFB (Time to First Byte)
-
-// Query web vitals in Grafana
-// LCP metric
-faro_web_vitals_lcp_seconds
-
-// CLS metric
-faro_web_vitals_cls
-
-// FID metric
-faro_web_vitals_fid_seconds
 ```
 
-Create alerts when these metrics exceed thresholds:
+In Grafana Cloud Frontend Observability, Web Vitals alerts are created from Loki-based recording rules. The built-in alerting rules cover LCP, CLS, INP, FCP, TTFB, and other frontend signals.
 
-```promql
-# Alert when LCP is too slow
-histogram_quantile(0.75, rate(faro_web_vitals_lcp_seconds_bucket[5m])) > 2.5
-
-# Alert when CLS is too high
-histogram_quantile(0.75, rate(faro_web_vitals_cls_bucket[5m])) > 0.1
-```
+Use the Frontend Observability alerting settings to enable these rules and adjust thresholds for your application.
 
 ## Tracking Single Page Application Navigation
 
@@ -289,17 +236,18 @@ For SPAs, track route changes and navigation timing.
 
 ```javascript
 // React Router integration
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { faro } from '@grafana/faro-react';
 
 function App() {
   const location = useLocation();
+  const previousPath = useRef(location.pathname);
 
   useEffect(() => {
     // Track navigation
     faro.api.pushEvent('route_change', {
-      from: previousPath,
+      from: previousPath.current,
       to: location.pathname,
     });
 
@@ -307,6 +255,8 @@ function App() {
     faro.api.setView({
       name: location.pathname,
     });
+
+    previousPath.current = location.pathname;
   }, [location]);
 
   return <Router />;
@@ -329,29 +279,31 @@ Prevent sensitive information from being sent to Faro.
 
 ```javascript
 const faro = initializeFaro({
-  url: 'https://faro-collector.example.com/collect',
+  transports: [
+    new FetchTransport({
+      url: 'https://faro-collector.example.com/collect',
+    }),
+  ],
 
   // Filter before sending
-  beforeSend: (payload) => {
+  beforeSend: (item) => {
     // Remove sensitive attributes
-    if (payload.user) {
-      delete payload.user.email;
-      delete payload.user.phone;
+    if (item.meta.user) {
+      delete item.meta.user.email;
+      delete item.meta.user.fullName;
     }
 
     // Redact sensitive URLs
-    if (payload.url) {
-      payload.url = payload.url.replace(/token=([^&]+)/, 'token=REDACTED');
+    if (item.meta.page?.url) {
+      item.meta.page.url = item.meta.page.url.replace(/token=([^&]+)/, 'token=REDACTED');
     }
 
     // Filter console logs
-    if (payload.logs) {
-      payload.logs = payload.logs.filter(log => {
-        return !log.message.includes('password');
-      });
+    if (item.type === 'log' && item.payload.message.includes('password')) {
+      return null;
     }
 
-    return payload;
+    return item;
   },
 
   // Ignore specific URLs
@@ -375,11 +327,13 @@ fetch('/api/data')
     const traceId = response.headers.get('X-Trace-Id');
 
     // Add trace ID to Faro context
-    faro.api.setUser({
-      attributes: {
-        last_trace_id: traceId,
-      },
-    });
+    if (traceId) {
+      faro.api.setUser({
+        attributes: {
+          last_trace_id: traceId,
+        },
+      });
+    }
 
     return response.json();
   })
@@ -399,39 +353,32 @@ Build dashboards that visualize frontend performance and errors.
 {
   "panels": [
     {
-      "title": "Web Vitals - LCP",
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.75, sum(rate(faro_web_vitals_lcp_seconds_bucket[5m])) by (le))",
-          "legendFormat": "75th percentile"
-        }
-      ]
-    },
-    {
-      "title": "JavaScript Errors",
-      "targets": [
-        {
-          "expr": "sum(rate(faro_errors_total[5m])) by (error_type)",
-          "legendFormat": "{{error_type}}"
-        }
-      ]
-    },
-    {
-      "title": "Page Load Time",
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.95, rate(faro_page_load_seconds_bucket[5m]))",
-          "legendFormat": "95th percentile"
-        }
-      ]
-    },
-    {
-      "title": "Error Logs",
+      "title": "Faro Logs",
       "type": "logs",
       "targets": [
         {
-          "expr": "{job=\"faro\"} |= \"error\"",
+          "expr": "{job=\"faro\"}",
           "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Frontend Errors",
+      "type": "logs",
+      "targets": [
+        {
+          "expr": "{job=\"faro\"} |= \"exception\"",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "Web Vitals Measurements",
+      "type": "logs",
+      "targets": [
+        {
+          "expr": "{job=\"faro\"} |= \"web-vitals\"",
+          "refId": "C"
         }
       ]
     }
@@ -439,32 +386,29 @@ Build dashboards that visualize frontend performance and errors.
 }
 ```
 
-These panels provide real-time visibility into user experience.
+These panels provide a starting point for exploring Faro data in Loki. In Grafana Cloud Frontend Observability, the built-in dashboards and alerting rules provide the Web Vitals and error-rate views without manually creating Prometheus metrics.
 
 ## Implementing Session Replay
 
-While Faro doesn't include built-in session replay, you can export events for reconstruction.
+Faro doesn't include built-in session replay, but you can export custom events to add context around errors and performance issues.
 
 ```javascript
 const faro = initializeFaro({
-  url: 'https://faro-collector.example.com/collect',
+  transports: [
+    new FetchTransport({
+      url: 'https://faro-collector.example.com/collect',
+    }),
+  ],
 
-  instrumentations: {
-    interactions: {
-      enabled: true,
-      // Capture detailed interaction data
-      captureType: 'detailed',
-    },
-  },
-
-  // Track DOM mutations for replay
-  session: {
-    trackSession: true,
-    attributes: {
-      // Add page state
-      viewport_width: window.innerWidth,
-      viewport_height: window.innerHeight,
-      user_agent: navigator.userAgent,
+  sessionTracking: {
+    enabled: true,
+    session: {
+      attributes: {
+        // Add page state
+        viewport_width: String(window.innerWidth),
+        viewport_height: String(window.innerHeight),
+        user_agent: navigator.userAgent,
+      },
     },
   },
 });
@@ -473,8 +417,8 @@ const faro = initializeFaro({
 document.addEventListener('click', (event) => {
   faro.api.pushEvent('click', {
     target: event.target.tagName,
-    x: event.clientX,
-    y: event.clientY,
+    x: String(event.clientX),
+    y: String(event.clientY),
   });
 });
 ```
@@ -487,29 +431,27 @@ Track frontend API call performance and errors.
 
 ```javascript
 const faro = initializeFaro({
-  instrumentations: {
-    fetch: {
-      enabled: true,
-      // Add custom attributes
-      requestHeaders: ['X-Request-ID'],
-      responseHeaders: ['X-Trace-ID'],
-    },
-  },
+  instrumentations: [
+    ...getWebInstrumentations(),
+    new TracingInstrumentation({
+      instrumentationOptions: {
+        fetchInstrumentationOptions: {
+          applyCustomAttributesOnSpan: (span, request, result) => {
+            if (result instanceof Response) {
+              span.setAttribute('http.response.header.x_trace_id', result.headers.get('X-Trace-ID') ?? '');
+            }
+          },
+        },
+      },
+    }),
+  ],
 });
 
 // Faro automatically tracks:
 // - Request duration
 // - Response status
-// - URL patterns
-// - Error rates
-
-// Query in Grafana
-// API call duration
-faro_http_request_duration_seconds
-
-// API error rate
-rate(faro_http_requests_total{status_code=~"5.."}[5m])
-/ rate(faro_http_requests_total[5m])
+// - URLs
+// - Related frontend traces
 ```
 
 ## Best Practices for Real-User Monitoring
