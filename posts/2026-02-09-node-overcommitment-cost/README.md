@@ -8,11 +8,11 @@ Description: Safely overcommit cluster resources to increase node utilization an
 
 ---
 
-Node overcommitment allows scheduling more pod requests than node capacity by leveraging the gap between requested and actual resource usage. Most applications use far less than their requests, creating unused capacity. Overcommitment reclaims this waste, fitting more workloads on fewer nodes.
+Node overcommitment allows total pod limits and potential usage to exceed node capacity by setting requests below limits and leveraging the gap between requested and actual resource usage. Kubernetes still schedules pods against node allocatable capacity and their requests. Most applications use far less than their limits, creating unused burst capacity. Overcommitment reclaims this waste, fitting more workloads on fewer nodes.
 
 ## Understanding Overcommitment Fundamentals
 
-Kubernetes schedules pods based on requests, not actual usage. If node has 8 CPU cores and pods request 8 cores but use only 4 cores, half the node sits idle. Overcommitment lets you schedule pods requesting 10+ cores on that 8-core node, knowing actual usage stays below capacity.
+Kubernetes schedules pods based on requests, not actual usage. If node has 8 CPU cores and pods request 8 cores but use only 4 cores, half the node sits idle. Overcommitment lowers right-sized requests while setting higher limits, so scheduled pods can request 8 cores or less on that 8-core node while their total limits exceed 8 cores.
 
 The risk is cumulative usage exceeding physical resources. For CPU, this causes throttling. For memory, it triggers OOM kills. Successful overcommitment requires understanding workload patterns and setting appropriate limits.
 
@@ -26,30 +26,49 @@ Before overcommitting, measure actual resource usage:
 # Average CPU usage vs requests
 
 avg_over_time(
-  container_cpu_usage_seconds_total[24h]
-) / on(pod) group_left()
-container_spec_cpu_quota
+  (
+    sum by (namespace, pod, container) (
+      rate(container_cpu_usage_seconds_total{container!="", image!=""}[5m])
+    )
+    /
+    sum by (namespace, pod, container) (
+      kube_pod_container_resource_requests{resource="cpu", unit="core"}
+    )
+  )[24h:]
+)
 
 # Average memory usage vs requests
 avg_over_time(
-  container_memory_working_set_bytes[24h]
-) / on(pod) group_left()
-container_spec_memory_limit_bytes
+  (
+    container_memory_working_set_bytes{container!="", image!=""}
+    /
+    on(namespace, pod, container)
+    kube_pod_container_resource_requests{resource="memory", unit="byte"}
+  )[24h:]
+)
 ```
 
 Calculate the P95 usage to account for spikes:
 
 ```promql
 quantile_over_time(0.95,
-  container_cpu_usage_seconds_total[24h]
-) / container_spec_cpu_quota
+  (
+    sum by (namespace, pod, container) (
+      rate(container_cpu_usage_seconds_total{container!="", image!=""}[5m])
+    )
+    /
+    sum by (namespace, pod, container) (
+      kube_pod_container_resource_requests{resource="cpu", unit="core"}
+    )
+  )[24h:]
+)
 ```
 
 If P95 usage is consistently 30-50% of requests, you have significant overcommitment opportunity.
 
 ## Configuring Kubelet Overcommitment
 
-The kubelet supports two overcommitment mechanisms: system reserved resources and eviction thresholds. System reserved carves out capacity for OS and Kubernetes components:
+The kubelet supports two safety mechanisms that matter when overcommitting: system reserved resources and eviction thresholds. System reserved carves out capacity for OS and Kubernetes components:
 
 ```yaml
 # kubelet configuration
@@ -65,7 +84,7 @@ kubeReserved:
   ephemeral-storage: "5Gi"
 ```
 
-On a node with 16 CPU and 64Gi memory, this reserves 1.5 CPU and 3Gi for system use. Allocatable capacity becomes 14.5 CPU and 61Gi, but actual physical capacity remains 16 CPU and 64Gi. Pods can burst beyond allocatable up to physical limits.
+On a node with 16 CPU and 64Gi memory, this reserves 1.5 CPU and 3Gi for system use. Allocatable capacity becomes 14.5 CPU and 61Gi before eviction reservations, but actual physical capacity remains 16 CPU and 64Gi. Pods are scheduled against allocatable capacity, and running containers can use more than their requests when spare resources are available, up to their limits or physical pressure.
 
 Eviction thresholds trigger pod eviction when usage exceeds safe levels:
 
@@ -103,8 +122,8 @@ The 10x ratio between request and limit enables significant overcommitment. Ten 
 Monitor throttling to validate overcommitment levels:
 
 ```promql
-# Percentage of time containers are throttled
-rate(container_cpu_cfs_throttled_seconds_total[5m]) /
+# Percentage of CFS periods where containers are throttled
+rate(container_cpu_cfs_throttled_periods_total[5m]) /
 rate(container_cpu_cfs_periods_total[5m]) * 100
 ```
 
@@ -139,7 +158,7 @@ The scheduler sees 512Mi requests. If actual usage stays around 500Mi, the 500Mi
 
 ## Quality of Service and Overcommitment
 
-Kubernetes QoS classes interact with overcommitment. Guaranteed pods (requests equal limits) never get overcommitted. Burstable pods (requests less than limits) enable overcommitment. BestEffort pods (no requests/limits) use only truly idle capacity.
+Kubernetes QoS classes interact with overcommitment. Guaranteed pods (CPU and memory requests equal limits for every container) do not provide request-to-limit headroom. Burstable pods (at least one request or limit set, but not Guaranteed) enable overcommitment. BestEffort pods (no CPU or memory requests/limits) can use unrequested capacity, but are preferred for eviction under resource pressure.
 
 Structure workloads by criticality:
 
@@ -191,7 +210,7 @@ Critical services get guaranteed resources. Normal services enable moderate over
 
 ## Pod Priority and Preemption
 
-Combine overcommitment with pod priorities. Higher priority pods can preempt lower priority pods during resource pressure:
+Combine overcommitment with pod priorities. Higher priority pending pods can preempt lower priority pods when the scheduler needs room to place them:
 
 ```yaml
 apiVersion: scheduling.k8s.io/v1
@@ -226,7 +245,7 @@ spec:
         cpu: "250m"
 ```
 
-During overcommitment, if high-priority pods need resources, Kubernetes evicts low-priority pods. This provides safety for critical workloads while maximizing utilization.
+During overcommitment, if high-priority pods cannot be scheduled, the scheduler can preempt lower-priority pods. During node-pressure eviction, the kubelet also considers pod priority after checking whether pods are exceeding requests. This provides safety for critical workloads while maximizing utilization.
 
 ## Calculating Safe Overcommitment Ratios
 
@@ -255,15 +274,16 @@ Create dashboards tracking overcommitment impact:
 
 ```promql
 # Node allocatable vs actual capacity
-kube_node_status_capacity - kube_node_status_allocatable
+sum by (node, resource, unit) (kube_node_status_capacity) -
+sum by (node, resource, unit) (kube_node_status_allocatable)
 
 # Total pod requests vs node capacity
-sum by (node) (kube_pod_container_resource_requests) /
-sum by (node) (kube_node_status_capacity)
+sum by (node) (kube_pod_container_resource_requests{resource="cpu", unit="core"}) /
+sum by (node) (kube_node_status_capacity{resource="cpu", unit="core"})
 
 # Actual usage vs node capacity
-sum by (node) (container_memory_working_set_bytes) /
-sum by (node) (kube_node_status_capacity_memory_bytes)
+sum by (node) (container_memory_working_set_bytes{container!="", image!=""}) /
+sum by (node) (kube_node_status_capacity{resource="memory", unit="byte"})
 ```
 
 Alert on dangerous conditions:
@@ -271,8 +291,8 @@ Alert on dangerous conditions:
 ```promql
 # Alert when actual usage approaches physical limits
 (
-  sum by (node) (container_memory_working_set_bytes) /
-  sum by (node) (kube_node_status_capacity_memory_bytes)
+  sum by (node) (container_memory_working_set_bytes{container!="", image!=""}) /
+  sum by (node) (kube_node_status_capacity{resource="memory", unit="byte"})
 ) > 0.85
 ```
 
