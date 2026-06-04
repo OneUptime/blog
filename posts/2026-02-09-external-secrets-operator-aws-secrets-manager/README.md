@@ -52,10 +52,13 @@ kubectl get pods -n external-secrets-system
 kubectl get crd | grep external-secrets
 ```
 
-You should see:
+You should see CRDs including:
 ```text
+clusterexternalsecrets.external-secrets.io
+clusterpushsecrets.external-secrets.io
 clustersecretstores.external-secrets.io
 externalsecrets.external-secrets.io
+pushsecrets.external-secrets.io
 secretstores.external-secrets.io
 ```
 
@@ -70,9 +73,17 @@ Create an IAM policy that allows reading secrets from AWS Secrets Manager:
     {
       "Effect": "Allow",
       "Action": [
+        "secretsmanager:ListSecrets"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetResourcePolicy",
         "secretsmanager:GetSecretValue",
         "secretsmanager:DescribeSecret",
-        "secretsmanager:ListSecrets"
+        "secretsmanager:ListSecretVersionIds"
       ],
       "Resource": [
         "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/*"
@@ -119,7 +130,7 @@ For non-EKS clusters, use access keys (less secure):
 ```bash
 # Create Kubernetes Secret with AWS credentials
 kubectl create secret generic aws-credentials \
-  --namespace external-secrets-system \
+  --namespace production \
   --from-literal=access-key-id=AKIAIOSFODNN7EXAMPLE \
   --from-literal=secret-access-key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 ```
@@ -166,7 +177,7 @@ aws secretsmanager create-secret \
 Create a SecretStore that connects to AWS Secrets Manager:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secretsmanager
@@ -176,17 +187,13 @@ spec:
     aws:
       service: SecretsManager
       region: us-east-1
-      # Using IRSA (recommended for EKS)
-      auth:
-        jwt:
-          serviceAccountRef:
-            name: external-secrets
+      # Uses the IAM role attached to the External Secrets Operator pod
 ```
 
 For access key authentication:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secretsmanager
@@ -202,11 +209,9 @@ spec:
           accessKeyIDSecretRef:
             name: aws-credentials
             key: access-key-id
-            namespace: external-secrets-system
           secretAccessKeySecretRef:
             name: aws-credentials
             key: secret-access-key
-            namespace: external-secrets-system
 ```
 
 ## Creating ClusterSecretStore
@@ -214,7 +219,7 @@ spec:
 For secrets accessible from any namespace, use ClusterSecretStore:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secretsmanager-global
@@ -223,11 +228,7 @@ spec:
     aws:
       service: SecretsManager
       region: us-east-1
-      auth:
-        jwt:
-          serviceAccountRef:
-            name: external-secrets
-            namespace: external-secrets-system
+      # Uses the IAM role attached to the External Secrets Operator pod
 ```
 
 ## Creating ExternalSecret Resources
@@ -237,7 +238,7 @@ spec:
 Sync the entire database credentials secret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -295,7 +296,7 @@ data:
 Sync all properties at once using `dataFrom`:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-keys
@@ -320,7 +321,7 @@ This automatically creates keys for `stripe_key`, `sendgrid_key`, and `datadog_k
 For non-JSON secrets:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-license
@@ -344,7 +345,7 @@ spec:
 Transform secret data using templates:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-url
@@ -427,8 +428,8 @@ spec:
             secretKeyRef:
               name: database-url
               key: DATABASE_URL
-        # Use API keys
         envFrom:
+        # Use API keys
         - secretRef:
             name: api-keys
 ```
@@ -491,7 +492,7 @@ Status:
 For multi-region deployments, create separate SecretStores:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secretsmanager-us-east-1
@@ -501,12 +502,8 @@ spec:
     aws:
       service: SecretsManager
       region: us-east-1
-      auth:
-        jwt:
-          serviceAccountRef:
-            name: external-secrets
 ---
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secretsmanager-eu-west-1
@@ -516,10 +513,6 @@ spec:
     aws:
       service: SecretsManager
       region: eu-west-1
-      auth:
-        jwt:
-          serviceAccountRef:
-            name: external-secrets
 ```
 
 ## Best Practices
