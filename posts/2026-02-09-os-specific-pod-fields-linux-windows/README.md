@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Window, Linux
+Tags: Kubernetes, Windows, Linux
 
 Description: Learn how to use OS-specific pod fields in Kubernetes to configure Linux and Windows containers correctly, set sysctls, configure Windows security contexts, and manage hybrid clusters.
 
@@ -46,7 +46,7 @@ spec:
     command: ["powershell", "-Command", "Start-Sleep -Seconds 3600"]
 ```
 
-The Kubernetes scheduler uses this field to ensure pods are placed on nodes running the correct operating system. This prevents scheduling failures and startup errors.
+The Kubernetes scheduler does not use this field to choose a node. In mixed-OS clusters, use standard scheduling mechanisms such as `nodeSelector`, node affinity, taints, or RuntimeClass scheduling to ensure pods land on nodes running the correct operating system.
 
 ## Linux-Specific Security Context
 
@@ -145,12 +145,12 @@ spec:
   securityContext:
     # Safe sysctls (allowed by default)
     sysctls:
+    - name: kernel.shm_rmid_forced
+      value: "0"
     - name: net.ipv4.ip_local_port_range
       value: "32768 60999"
-    - name: net.core.somaxconn
-      value: "1024"
-    - name: net.ipv4.tcp_tw_reuse
-      value: "1"
+    - name: net.ipv4.tcp_keepalive_time
+      value: "600"
   containers:
   - name: high-performance-app
     image: myapp:1.0
@@ -158,7 +158,7 @@ spec:
     - containerPort: 8080
 ```
 
-For unsafe sysctls (like `kernel.*`), you need to enable them in kubelet configuration:
+For unsafe namespaced sysctls (such as `kernel.msg*`, `kernel.shm*`, or `net.core.somaxconn`), you need to enable them in kubelet configuration:
 
 ```yaml
 # Node-level kubelet config (not pod spec)
@@ -168,6 +168,7 @@ kind: KubeletConfiguration
 allowedUnsafeSysctls:
 - "kernel.msg*"
 - "kernel.shm*"
+- "net.core.somaxconn"
 ```
 
 Then use them in pods:
@@ -182,10 +183,10 @@ spec:
     name: linux
   securityContext:
     sysctls:
-    - name: kernel.shmmax
-      value: "68719476736"
-    - name: kernel.shmall
-      value: "4294967296"
+    - name: kernel.msgmax
+      value: "65536"
+    - name: net.core.somaxconn
+      value: "1024"
   containers:
   - name: postgres
     image: postgres:15
@@ -261,7 +262,7 @@ spec:
             cpu: "500m"
 ```
 
-The nodeSelector ensures each pod lands on the correct OS, while the `os` field provides an explicit declaration for better validation.
+The nodeSelector ensures each pod lands on the correct OS, while the `os` field provides an explicit declaration for API validation and OS-aware policy checks.
 
 ## Volume Mount Differences
 
@@ -384,9 +385,6 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: apparmor-pod
-  annotations:
-    # AppArmor profile annotation
-    container.apparmor.security.beta.kubernetes.io/app: localhost/k8s-apparmor-example
 spec:
   os:
     name: linux
@@ -394,6 +392,10 @@ spec:
   - name: app
     image: nginx:1.25
     securityContext:
+      # AppArmor profile
+      appArmorProfile:
+        type: Localhost
+        localhostProfile: k8s-apparmor-example
       # SELinux options
       seLinuxOptions:
         level: "s0:c123,c456"
@@ -438,7 +440,7 @@ spec:
 
 ## Best Practices
 
-Always set the `os` field explicitly. This improves scheduling reliability and makes your intent clear.
+Always set the `os` field explicitly. This improves validation, helps OS-aware policy checks, and makes your intent clear.
 
 Use node selectors in addition to the OS field. This ensures pods land on nodes with the right Windows version or Linux distribution.
 
