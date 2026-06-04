@@ -18,7 +18,7 @@ Install Flux with image automation components:
 
 ```bash
 flux install \
-  --components=source-controller,kustomize-controller,helm-controller,notification-controller,image-reflector-controller,image-automation-controller
+  --components-extra=image-reflector-controller,image-automation-controller
 ```
 
 Verify the image controllers are running:
@@ -106,7 +106,7 @@ spec:
     name: batch-job
   policy:
     alphabetical:
-      order: asc  # Oldest first, or desc for newest
+      order: asc  # Selects the last tag in ascending order
 ---
 # Numerical policy for build numbers
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -119,7 +119,7 @@ spec:
     name: frontend-app
   policy:
     numerical:
-      order: desc  # Highest build number
+      order: asc  # Highest build number
 ```
 
 ## Filtering Tags with Regex
@@ -136,8 +136,8 @@ spec:
   imageRepositoryRef:
     name: api-service
   filterTags:
-    pattern: '^v[0-9]+\.[0-9]+\.[0-9]+-prod$'  # Only prod tags
-    extract: '$0'
+    pattern: '^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-prod$'  # Only prod tags
+    extract: '$version'
   policy:
     semver:
       range: '*'
@@ -191,18 +191,17 @@ spec:
         Automation name: {{ .AutomationObject }}
 
         Files:
-        {{ range $filename, $_ := .Updated.Files -}}
+        {{ range $filename, $_ := .Changed.FileChanges -}}
         - {{ $filename }}
         {{ end -}}
 
         Objects:
-        {{ range $resource, $_ := .Updated.Objects -}}
+        {{ range $resource, $changes := .Changed.Objects -}}
         - {{ $resource.Kind }} {{ $resource.Name }}
+          Changes:
+        {{- range $_, $change := $changes }}
+          - {{ $change.OldValue }} -> {{ $change.NewValue }}
         {{ end -}}
-
-        Images:
-        {{ range .Updated.Images -}}
-        - {{.}}
         {{ end -}}
     push:
       branch: main
@@ -293,6 +292,10 @@ spec:
     checkout:
       ref:
         branch: main
+    commit:
+      author:
+        email: fluxcdbot@users.noreply.github.com
+        name: fluxcdbot
     push:
       branch: main
   update:
@@ -303,7 +306,7 @@ spec:
 Use different ImagePolicies per environment:
 
 ```yaml
-# Staging accepts any tag
+# Staging accepts any semver tag
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
@@ -314,7 +317,7 @@ spec:
     name: api-gateway-image
   policy:
     semver:
-      range: '*'  # Any version
+      range: '*'  # Any semver version
 ---
 # Production only accepts stable releases
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -334,7 +337,7 @@ spec:
 
 ## Using PR-Based Updates
 
-Create automation that opens pull requests instead of direct commits:
+Create automation that pushes updates to a branch for pull requests instead of committing directly to the deployment branch:
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -379,23 +382,27 @@ on:
 jobs:
   create-pr:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
-    - uses: actions/checkout@v3
-      with:
-        ref: flux-image-updates
+    - uses: actions/checkout@v4
 
     - name: Create Pull Request
-      uses: peter-evans/create-pull-request@v5
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        branch: flux-image-updates
-        base: main
-        title: "Automated Image Updates"
-        body: |
-          This PR contains automated image tag updates from Flux.
-
-          Please review and merge to deploy updated images.
-        labels: automated, flux, dependencies
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        if [ "$(gh pr list --head flux-image-updates --base main --json number --jq length)" = "0" ]; then
+          gh pr create \
+            --head flux-image-updates \
+            --base main \
+            --title "Automated Image Updates" \
+            --body "This PR contains automated image tag updates from Flux." \
+            --label automated \
+            --label flux \
+            --label dependencies
+        fi
 ```
 
 ## Monitoring Image Automation
@@ -415,7 +422,7 @@ Check ImagePolicy selection:
 flux get image policy api-gateway-policy
 
 # See selected image
-kubectl get imagepolicy api-gateway-policy -n flux-system -o jsonpath='{.status.latestImage}'
+kubectl get imagepolicy api-gateway-policy -n flux-system -o jsonpath='{.status.latestRef.name}:{.status.latestRef.tag}'
 ```
 
 View automation status:
@@ -432,7 +439,7 @@ kubectl describe imageupdateautomation production-automation -n flux-system
 Get notified when images are updated:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: image-update-alert
@@ -447,7 +454,7 @@ spec:
   - kind: ImagePolicy
     name: '*'
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -455,8 +462,9 @@ metadata:
 spec:
   type: slack
   channel: deployments
+  address: https://slack.com/api/chat.postMessage
   secretRef:
-    name: slack-url
+    name: slack-token
 ```
 
 ## Troubleshooting Common Issues
@@ -477,8 +485,11 @@ kubectl logs -n flux-system deployment/image-automation-controller
 If wrong tags are selected:
 
 ```bash
-# List all available tags
+# Show scanned tag count
 kubectl get imagerepository api-gateway-image -n flux-system -o jsonpath='{.status.lastScanResult.tagCount}'
+
+# View a sample of latest scanned tags
+kubectl get imagerepository api-gateway-image -n flux-system -o jsonpath='{.status.lastScanResult.latestTags}'
 
 # Test policy matching
 flux get image policy api-gateway-policy
