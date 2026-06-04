@@ -46,7 +46,6 @@ spec:
         - '--storage.tsdb.path=/prometheus'
         - '--web.enable-lifecycle'
         - '--enable-feature=exemplar-storage'  # Enable exemplar storage
-        - '--storage.tsdb.max-exemplars=100000'  # Increase exemplar storage limit
         ports:
         - containerPort: 9090
         volumeMounts:
@@ -62,7 +61,13 @@ spec:
         emptyDir: {}
 ```
 
-The `--enable-feature=exemplar-storage` flag activates exemplar support, while `--storage.tsdb.max-exemplars` controls how many exemplars Prometheus retains.
+The `--enable-feature=exemplar-storage` flag activates exemplar support. You can control how many exemplars Prometheus retains in `prometheus.yml`:
+
+```yaml
+storage:
+  exemplars:
+    max_exemplars: 100000
+```
 
 ## Instrumenting Go Applications with Exemplars
 
@@ -72,13 +77,11 @@ For Go applications using the Prometheus client library, add exemplar support to
 package main
 
 import (
-    "context"
     "net/http"
     "time"
 
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promhttp"
-    "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/trace"
 )
 
@@ -109,8 +112,7 @@ func metricsMiddleware(next http.Handler) http.Handler {
         duration := time.Since(start).Seconds()
 
         // Extract trace context from request
-        ctx := r.Context()
-        span := trace.SpanFromContext(ctx)
+        span := trace.SpanFromContext(r.Context())
         spanContext := span.SpanContext()
 
         // Record metric with exemplar if trace is sampled
@@ -168,13 +170,15 @@ Ensure your OpenTelemetry setup propagates trace context correctly:
 
 ```go
 import (
+    "context"
+
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/propagation"
-    "go.opentelemetry.io/otel/sdk/trace"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-func initTracer() *trace.TracerProvider {
+func initTracer() *sdktrace.TracerProvider {
     // Create OTLP exporter
     exporter, err := otlptracegrpc.New(
         context.Background(),
@@ -186,9 +190,9 @@ func initTracer() *trace.TracerProvider {
     }
 
     // Create tracer provider with sampling
-    tp := trace.NewTracerProvider(
-        trace.WithBatcher(exporter),
-        trace.WithSampler(trace.TraceIDRatioBased(0.1)), // Sample 10% of traces
+    tp := sdktrace.NewTracerProvider(
+        sdktrace.WithBatcher(exporter),
+        sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(0.1))), // Sample 10% of root traces
     )
 
     // Set global tracer provider
@@ -273,7 +277,7 @@ def process_request(method, endpoint):
 
 ## Configuring Prometheus Scrape for Exemplars
 
-Update your Prometheus scrape configuration to collect exemplars:
+Update your Prometheus scrape configuration to discover pods that expose metrics. No separate scrape job is required for exemplars; Prometheus negotiates OpenMetrics with targets that support it:
 
 ```yaml
 apiVersion: v1
@@ -286,6 +290,10 @@ data:
     global:
       scrape_interval: 15s
       evaluation_interval: 15s
+
+    storage:
+      exemplars:
+        max_exemplars: 100000
 
     scrape_configs:
     - job_name: 'kubernetes-pods'
@@ -300,20 +308,6 @@ data:
         action: replace
         target_label: __metrics_path__
         regex: (.+)
-
-      # Enable exemplar scraping
-      metric_relabel_configs:
-      - source_labels: [__name__]
-        regex: '.*'
-        action: keep
-
-      # Scrape exemplars for histograms
-      scrape_configs:
-        - job_name: 'kubernetes-pods-exemplars'
-          honor_labels: true
-          kubernetes_sd_configs:
-          - role: pod
-          scrape_interval: 30s
 ```
 
 ## Connecting Prometheus to Tempo in Grafana
@@ -437,10 +431,10 @@ Common issues and solutions:
 scrape_samples_post_metric_relabeling{job="kubernetes-pods"}
 
 # Verify exemplar storage usage
-prometheus_tsdb_exemplar_series_current
+prometheus_tsdb_exemplar_exemplars_appended_total
 
 # Check exemplar out-of-order rejections
-prometheus_tsdb_exemplar_out_of_order_total
+prometheus_tsdb_exemplar_out_of_order_exemplars_total
 ```
 
 ## Conclusion
