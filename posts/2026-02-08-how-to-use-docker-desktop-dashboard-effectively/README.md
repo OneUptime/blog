@@ -10,7 +10,7 @@ Description: Master the Docker Desktop Dashboard to manage containers, images, v
 
 The Docker Desktop Dashboard is more than a pretty wrapper around `docker ps`. It gives you a visual overview of your entire Docker environment, with features for inspecting containers, managing images, cleaning up disk space, and debugging running applications. Many developers only use it to check if Docker is running, which means they miss out on capabilities that save real time during daily development.
 
-This guide covers every section of the Docker Desktop Dashboard and shows practical ways to use each feature effectively.
+This guide covers the main sections of the Docker Desktop Dashboard and shows practical ways to use each feature effectively.
 
 ## The Containers View
 
@@ -42,7 +42,7 @@ docker compose down
 
 Click on a container, then select the "Logs" tab. The Dashboard shows real-time log output with search and filtering.
 
-The search bar at the top of the Logs tab filters log entries. This is faster than piping `docker logs` through grep for quick searches.
+The search feature in the Logs tab highlights matching log entries. This is faster than piping `docker logs` through grep for quick searches.
 
 ```bash
 # CLI equivalent of the Dashboard log viewer
@@ -52,7 +52,7 @@ docker logs -f <container-name>
 docker logs <container-name> 2>&1 | grep "search-term"
 ```
 
-You can also toggle between stdout and stderr output, and copy log entries to your clipboard.
+You can also show timestamps, filter logs for specific containers in multi-container applications, and copy log entries to your clipboard.
 
 ### Inspecting Container Details
 
@@ -65,9 +65,9 @@ docker inspect <container-name>
 
 The Dashboard formats the JSON nicely and lets you search through it, which is more convenient than reading raw JSON in a terminal.
 
-### Container Terminal Access
+### Container Exec Access
 
-The "Terminal" tab opens an interactive shell inside the container. This is equivalent to:
+The "Exec" tab opens an interactive command session inside a running container. This is equivalent to:
 
 ```bash
 # CLI equivalent
@@ -76,7 +76,7 @@ docker exec -it <container-name> /bin/sh
 docker exec -it <container-name> /bin/bash
 ```
 
-The Dashboard detects which shell is available in the container and uses the appropriate one. For Alpine-based containers, it uses `sh`. For Debian/Ubuntu containers, it uses `bash`.
+The Dashboard lets you run commands inside the container, similar to `docker exec`. For Linux containers, `/bin/sh` is the most portable default; use `/bin/bash` only when the image includes Bash.
 
 ### Container File Browser
 
@@ -116,7 +116,7 @@ docker rmi <image-name>         # Remove a specific image
 
 ### Pulling and Pushing Images
 
-Use the search bar in the Images section to search Docker Hub and pull images directly. This is handy when you need to quickly pull a specific version of an image without remembering the exact tag.
+Use Quick Search or the Docker Hub repositories tab in the Images section to find Docker Hub images and pull them directly. This is handy when you need to quickly pull a specific image without leaving Docker Desktop.
 
 ### Vulnerability Scanning
 
@@ -128,7 +128,7 @@ The Volumes section lists all Docker volumes, their sizes, and which containers 
 
 ### Identifying Orphaned Volumes
 
-Volumes that are not attached to any container show "In use: No." These orphaned volumes waste disk space and can be safely removed.
+Volumes that are not attached to any container show an unused status. These orphaned volumes can waste disk space and can be removed when you no longer need the data they contain.
 
 ```bash
 # CLI equivalent for finding orphaned volumes
@@ -142,7 +142,7 @@ The Dashboard lets you click on a volume to see its contents, which is useful fo
 
 ### Volume Data Inspection
 
-Click on a volume, then use the "Data" tab to browse the files stored in it. This saves you from running temporary containers just to check volume contents.
+Click on a volume, then use the "Stored data" tab to browse the files stored in it. This saves you from running temporary containers just to check volume contents.
 
 ```bash
 # CLI equivalent (running a temporary container to browse a volume)
@@ -155,17 +155,17 @@ The Builds section shows your recent Docker build history, including build times
 
 ### Understanding Build Performance
 
-Each build shows:
+Each build provides details such as:
 - Total build time
 - Number of cached vs. executed steps
-- Image size
-- Build source (Dockerfile path)
+- Build source details
+- Build outputs and artifacts
 
 Look for builds with low cache hit rates. These indicate that your Dockerfile layer ordering could be improved. Move frequently changing layers (like COPY . .) toward the end of the Dockerfile so earlier layers stay cached.
 
 ### Build Logs
 
-Click on any build to see the detailed build log with timing per step. Steps that take the longest are highlighted, showing you where optimization efforts will have the biggest impact.
+Click on any build to see the detailed build log and timing information. The timing charts and logs help you identify where optimization efforts will have the biggest impact.
 
 ```bash
 # CLI equivalent with timing output
