@@ -18,11 +18,10 @@ Deploy Jaeger all-in-one for development or production components for scalable d
 # Run Jaeger all-in-one with Docker
 
 docker run -d --name jaeger \
-  -e COLLECTOR_OTLP_ENABLED=true \
   -p 16686:16686 \
   -p 4317:4317 \
   -p 4318:4318 \
-  jaegertracing/all-in-one:latest
+  cr.jaegertracing.io/jaegertracing/jaeger:2.19.0
 
 # Access Jaeger UI at http://localhost:16686
 ```
@@ -101,7 +100,7 @@ service:
 
 ## Kubernetes Deployment
 
-Deploy Jaeger and the collector in Kubernetes.
+Deploy Jaeger in Kubernetes.
 
 ```yaml
 # jaeger-deployment.yaml
@@ -122,10 +121,7 @@ spec:
     spec:
       containers:
       - name: jaeger
-        image: jaegertracing/all-in-one:latest
-        env:
-        - name: COLLECTOR_OTLP_ENABLED
-          value: "true"
+        image: cr.jaegertracing.io/jaegertracing/jaeger:2.19.0
         ports:
         - containerPort: 16686
           name: ui
@@ -166,10 +162,10 @@ Use Jaeger UI to search and analyze traces.
 6. Filter by time range
 
 Example searches:
-- service="order-service" AND error=true
-- service="payment-service" AND duration>1s
-- http.status_code=500
-- trace_id=4bf92f3577b34da6a3ce929d0e0e4736
+- service: order-service, tag: error=true
+- service: payment-service, min duration: 1s
+- tag: http.status_code=500
+- trace ID: 4bf92f3577b34da6a3ce929d0e0e4736
 ```
 
 ## Best Practices
@@ -182,6 +178,6 @@ Third, use sampling to control trace volume sent to Jaeger.
 
 Fourth, add meaningful tags to spans for easier searching and filtering.
 
-Fifth, configure Jaeger storage backend (Elasticsearch, Cassandra) for production deployments.
+Fifth, configure a Jaeger storage backend (OpenSearch, Elasticsearch, or Cassandra) for production deployments.
 
 OpenTelemetry integration with Jaeger provides comprehensive distributed tracing capabilities. Jaeger's visualization and search features make it easy to understand system behavior and troubleshoot issues in microservice architectures.
