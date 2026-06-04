@@ -28,41 +28,42 @@ kubectl get pods -n flux-system -l app=notification-controller
 
 ## Configuring Slack Notifications
 
-Create a Slack incoming webhook:
+Create a Slack bot app token:
 
-1. Go to your Slack workspace settings
-2. Navigate to Apps > Custom Integrations > Incoming Webhooks
-3. Add a new webhook for your channel
-4. Copy the webhook URL
+1. Create a Slack app for your workspace
+2. Add the `chat:write` bot token scope
+3. Install the app to your workspace and invite it to your channels
+4. Copy the bot user OAuth token
 
-Store the webhook in a Kubernetes Secret:
+Store the token in a Kubernetes Secret:
 
 ```bash
-kubectl create secret generic slack-webhook-url \
-  --from-literal=address=https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX \
+kubectl create secret generic slack-bot-token \
+  --from-literal=token=xoxb-000000000000-000000000000-XXXXXXXXXXXXXXXXXXXXXXXX \
   -n flux-system
 ```
 
 Create a Provider resource:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: deployments
   username: FluxBot
   secretRef:
-    name: slack-webhook-url
+    name: slack-bot-token
 ```
 
 Create an Alert to send notifications:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-deployments
@@ -82,32 +83,31 @@ spec:
 
 ## Configuring Microsoft Teams Notifications
 
-Create a Teams incoming webhook:
+Create a Teams incoming webhook workflow:
 
 1. Open your Teams channel
-2. Click "..." > Connectors
-3. Add "Incoming Webhook"
+2. Click "..." > Workflows
+3. Add an incoming webhook workflow
 4. Name it and copy the URL
 
 Store in a Secret:
 
 ```bash
 kubectl create secret generic teams-webhook-url \
-  --from-literal=address=https://outlook.office.com/webhook/... \
+  --from-literal=address='https://prod-xxx.yyy.logic.azure.com:443/workflows/zzz/triggers/manual/paths/invoke?...' \
   -n flux-system
 ```
 
 Create Teams Provider:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: teams
   namespace: flux-system
 spec:
   type: msteams
-  channel: GitOps-Deployments
   secretRef:
     name: teams-webhook-url
 ```
@@ -115,7 +115,7 @@ spec:
 Configure alerts:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: teams-production-alerts
@@ -126,8 +126,10 @@ spec:
   eventSeverity: error
   eventSources:
   - kind: Kustomization
+    name: '*'
     namespace: production
   - kind: HelmRelease
+    name: '*'
     namespace: production
   inclusionList:
   - ".*failed.*"
@@ -141,7 +143,7 @@ Create severity-based alerts:
 ```yaml
 # Info-level for successful deployments
 
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-success
@@ -158,7 +160,7 @@ spec:
   - ".*healthy.*"
 ---
 # Error-level for failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-failures
@@ -185,18 +187,19 @@ Route different environments to different channels:
 
 ```yaml
 # Production to #production-deployments
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-production
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: production-deployments
   secretRef:
-    name: slack-webhook-url
+    name: slack-bot-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: production-only
@@ -207,21 +210,23 @@ spec:
   eventSeverity: info
   eventSources:
   - kind: Kustomization
+    name: '*'
     namespace: production
 ---
 # Staging to #staging-deployments
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-staging
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: staging-deployments
   secretRef:
-    name: slack-webhook-url
+    name: slack-bot-token
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: staging-only
@@ -232,6 +237,7 @@ spec:
   eventSeverity: info
   eventSources:
   - kind: Kustomization
+    name: '*'
     namespace: staging
 ```
 
@@ -240,13 +246,13 @@ spec:
 Send notifications to custom endpoints:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: webhook
   namespace: flux-system
 spec:
-  type: generic
+  type: generic-hmac
   address: https://webhook.example.com/flux-events
   secretRef:
     name: webhook-auth
@@ -263,7 +269,7 @@ stringData:
 Configure webhook payload format:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: webhook-alert
@@ -292,7 +298,7 @@ metadata:
 stringData:
   address: https://discord.com/api/webhooks/xxx/xxx
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: discord
@@ -300,11 +306,10 @@ metadata:
 spec:
   type: discord
   username: FluxCD
-  channel: deployments
   secretRef:
     name: discord-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: discord-notifications
@@ -325,25 +330,17 @@ spec:
 For critical production alerts:
 
 ```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: pagerduty-token
-  namespace: flux-system
-stringData:
-  token: your-pagerduty-integration-key
----
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: pagerduty
   namespace: flux-system
 spec:
   type: pagerduty
-  secretRef:
-    name: pagerduty-token
+  address: https://events.pagerduty.com
+  channel: your-pagerduty-integration-key
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: critical-failures
@@ -354,26 +351,27 @@ spec:
   eventSeverity: error
   eventSources:
   - kind: Kustomization
+    name: '*'
     namespace: production
   - kind: HelmRelease
+    name: '*'
     namespace: production
   inclusionList:
   - ".*failed.*"
   - ".*degraded.*"
 ```
 
-## Implementing Alert Grouping
+## Adding Alert Summary Context
 
-Prevent notification spam with summary alerts:
+Add impact context with alert metadata:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: summary-alert
   namespace: flux-system
 spec:
-  summary: "GitOps Activity Summary"
   providerRef:
     name: slack
   eventSeverity: info
@@ -382,6 +380,8 @@ spec:
     name: '*'
   - kind: HelmRelease
     name: '*'
+  eventMetadata:
+    summary: "GitOps activity summary"
   suspend: false
 ```
 
@@ -390,7 +390,7 @@ spec:
 Include additional context:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: enriched-notifications
@@ -413,7 +413,7 @@ spec:
 Get notified of automatic image updates:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: image-updates
@@ -439,7 +439,7 @@ Send a test notification:
 # Trigger reconciliation
 flux reconcile kustomization production-apps
 
-# Force a notification
+# Trigger another reconciliation
 kubectl annotate kustomization production-apps -n flux-system \
   reconcile.fluxcd.io/requestedAt="$(date +%s)"
 ```
@@ -455,16 +455,17 @@ kubectl logs -n flux-system deployment/notification-controller -f
 Customize message format (in Provider spec):
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-custom
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: deployments
   secretRef:
-    name: slack-webhook-url
+    name: slack-bot-token
 ```
 
 Note: Flux uses predefined templates. For fully custom templates, use a generic webhook with your own formatting service.
@@ -474,17 +475,17 @@ Note: Flux uses predefined templates. For fully custom templates, use a generic 
 Set up alerts for notification failures:
 
 ```bash
-# Check notification controller status
-flux logs --kind=provider --name=slack
+# Check provider status
+flux get alert-providers
 
 # View alert status
 kubectl describe alert production-deployments -n flux-system
 ```
 
-Configure retry policy in Alert:
+Ensure the Alert remains enabled:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: resilient-alert
@@ -496,7 +497,7 @@ spec:
   eventSources:
   - kind: Kustomization
     name: '*'
-  suspend: false  # Keep trying even if provider is down
+  suspend: false
 ```
 
 ## Best Practices
