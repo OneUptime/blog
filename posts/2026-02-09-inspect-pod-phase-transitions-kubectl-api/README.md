@@ -16,10 +16,10 @@ Understanding pod phase transitions is essential for troubleshooting and buildin
 
 The five pod phases are:
 
-- **Pending**: Pod accepted but not running (waiting for scheduling or image pull)
-- **Running**: Pod bound to node, at least one container running
-- **Succeeded**: All containers terminated successfully (exit 0)
-- **Failed**: All containers terminated, at least one failed (non-zero exit)
+- **Pending**: Pod accepted but one or more containers are not yet ready to run (including scheduling and image pull time)
+- **Running**: Pod bound to a node, all containers created, and at least one container running, starting, or restarting
+- **Succeeded**: All containers terminated successfully and will not be restarted
+- **Failed**: All containers terminated, and at least one failed with a non-zero exit status or was terminated by the system
 - **Unknown**: Pod state cannot be determined (usually node communication failure)
 
 View current pod phase:
@@ -38,7 +38,7 @@ kubectl get pod <pod-name> -o jsonpath='{.status.phase}'
 
 ## Tracking Phase Changes with Events
 
-Events provide a timeline of pod lifecycle changes:
+Events provide a timeline of pod lifecycle-related changes that can explain phase changes:
 
 ```bash
 # View events for a specific pod
@@ -52,7 +52,7 @@ kubectl get events --field-selector involvedObject.name=<pod-name> \
 kubectl get events --watch --field-selector involvedObject.name=<pod-name>
 ```
 
-Extract phase transition events:
+Extract lifecycle events that often explain phase changes:
 
 ```bash
 # Show scheduling and startup events
@@ -66,8 +66,8 @@ kubectl get events --field-selector involvedObject.name=<pod-name> -o json | \
 Wait for specific phases programmatically:
 
 ```bash
-# Wait for pod to be running
-kubectl wait --for=condition=ready pod/<pod-name> --timeout=60s
+# Wait for the pod phase to be Running
+kubectl wait --for=jsonpath='{.status.phase}'=Running pod/<pod-name> --timeout=60s
 
 # Wait for job pods to complete
 kubectl wait --for=condition=complete job/<job-name> --timeout=300s
@@ -87,7 +87,7 @@ REASON:.status.reason
 
 # More detailed watch with timestamps
 kubectl get pod <pod-name> -w -o json | \
-  jq --unbuffered -r '[.metadata.name, .status.phase, .status.conditions[]? | select(.type=="Ready") | .status] | @tsv'
+  jq --unbuffered -r '[.metadata.name, .status.phase, (.status.conditions[]? | select(.type=="Ready") | .status)] | @tsv'
 ```
 
 ## Using the Kubernetes API Directly
@@ -163,6 +163,7 @@ phase_transitions = defaultdict(list)
 
 def monitor_deployment_phases(namespace, deployment_name):
     """Monitor phase transitions for all pods in a deployment."""
+    # Adjust this selector to match the Deployment's pod labels.
     label_selector = f"app={deployment_name}"
 
     w = watch.Watch()
@@ -258,7 +259,7 @@ kubectl get pods --all-namespaces --field-selector status.phase=Pending -o json 
   jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name): \(.status.conditions[] | select(.type=="PodScheduled") | .message)"'
 ```
 
-Track time spent in each phase:
+Estimate pod timing from conditions and container start times:
 
 ```python
 #!/usr/bin/env python3
@@ -269,7 +270,7 @@ config.load_kube_config()
 v1 = client.CoreV1Api()
 
 def analyze_pod_timing(namespace, pod_name):
-    """Analyze time spent in each phase."""
+    """Estimate pod timing from current status fields."""
     pod = v1.read_namespaced_pod(pod_name, namespace)
 
     creation_time = pod.metadata.creation_timestamp
@@ -358,11 +359,11 @@ Correlate phase changes with events. Events explain why transitions happened.
 
 Monitor time spent in each phase. Long Pending times indicate scheduling or resource issues.
 
-Log phase transitions in your applications. This helps correlate application behavior with lifecycle changes.
+Log phase transitions in your automation or controllers. This helps correlate application behavior with lifecycle changes.
 
 Set appropriate timeouts when waiting for phases. Prevent indefinite hangs in automation.
 
-Clean up terminal state pods. Failed and Succeeded pods consume cluster resources.
+Clean up terminal pod objects. Failed and Succeeded pods no longer run containers, but their API objects still consume API server and storage resources until removed.
 
 Track patterns across multiple pods. Systemic issues often affect many pods simultaneously.
 
