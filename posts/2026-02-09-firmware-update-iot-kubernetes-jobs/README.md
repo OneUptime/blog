@@ -121,6 +121,8 @@ spec:
   parallelism: 10
   # Total devices to update
   completions: 100
+  # Assign each pod a stable completion index
+  completionMode: Indexed
   # Keep failed pods for debugging
   backoffLimit: 3
   # Clean up completed pods after 1 hour
@@ -212,7 +214,8 @@ class FirmwareUpdater:
         """Get device assigned to this job index"""
         filtered = [d for d in self.devices
                    if d['type'] == self.device_type
-                   and d['target_version'] == self.target_version]
+                   and (d.get('target_version') == self.target_version
+                        or d.get('current_version') == self.target_version)]
 
         if self.job_index < len(filtered):
             return filtered[self.job_index]
@@ -238,12 +241,13 @@ class FirmwareUpdater:
         host, port = endpoint.split(':') if ':' in endpoint else (endpoint, 1883)
 
         client.connect(host, int(port), 60)
+        client.loop_start()
         return client
 
     def upload_firmware(self, client, device, firmware_data):
         """Upload firmware to device in chunks"""
         chunk_size = 1024
-        total_chunks = len(firmware_data) // chunk_size + 1
+        total_chunks = (len(firmware_data) + chunk_size - 1) // chunk_size
 
         # Send update command
         client.publish(f"device/{device['id']}/firmware/start",
@@ -287,7 +291,7 @@ class FirmwareUpdater:
         timeout = 60
         start = time.time()
         while not version_received and time.time() - start < timeout:
-            client.loop(timeout=1)
+            time.sleep(1)
 
         if new_version == self.target_version:
             print(f"✓ Update verified: {device['id']} now running {new_version}")
@@ -306,6 +310,7 @@ class FirmwareUpdater:
 
         print(f"Updating device {device['id']} from {device['current_version']} to {self.target_version}")
 
+        client = None
         try:
             # Load firmware image
             firmware_data = self.load_firmware()
@@ -325,15 +330,20 @@ class FirmwareUpdater:
             # Verify update
             if self.verify_update(client, device):
                 print(f"✓ Device {device['id']} updated successfully")
+                client.loop_stop()
                 client.disconnect()
                 exit(0)
             else:
                 print(f"✗ Device {device['id']} update verification failed")
+                client.loop_stop()
                 client.disconnect()
                 exit(1)
 
         except Exception as e:
             print(f"✗ Update failed: {str(e)}")
+            if client:
+                client.loop_stop()
+                client.disconnect()
             exit(1)
 
 if __name__ == '__main__':
@@ -400,6 +410,7 @@ metadata:
 spec:
   parallelism: 10
   completions: 100
+  completionMode: Indexed
   backoffLimit: 3
   template:
     spec:
@@ -417,9 +428,16 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
-        envFrom:
-        - secretRef:
-            name: device-credentials
+        - name: MQTT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: device-credentials
+              key: mqtt-username
+        - name: MQTT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: device-credentials
+              key: mqtt-password
         volumeMounts:
         - name: firmware
           mountPath: /firmware
