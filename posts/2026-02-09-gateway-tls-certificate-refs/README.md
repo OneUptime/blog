@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Gateway API, TLS
 
-Description: Configure TLS termination in Kubernetes Gateway API with certificate references from Secrets, ConfigMaps, and cert-manager, including SNI-based routing, multiple certificates.
+Description: Configure TLS termination in Kubernetes Gateway API with certificate references from Kubernetes Secrets, including cert-manager-managed Secrets, SNI-based routing, and multiple certificates.
 
 ---
 
-TLS termination at the gateway level provides centralized certificate management and encryption for your applications. The Kubernetes Gateway API supports flexible certificate configuration through certificate references, allowing you to use certificates from various sources including Kubernetes Secrets, cert-manager, and external certificate authorities. This guide shows you how to configure TLS in the Gateway API with different certificate management strategies.
+TLS termination at the gateway level provides centralized certificate management and encryption for your applications. The Kubernetes Gateway API supports flexible certificate configuration through certificate references, allowing you to use Kubernetes TLS Secrets directly or Secrets created by cert-manager and external certificate authorities. This guide shows you how to configure TLS in the Gateway API with different certificate management strategies.
 
 ## Basic TLS Configuration with Kubernetes Secrets
 
@@ -17,9 +17,10 @@ Start by creating a TLS certificate as a Kubernetes Secret. For production, use 
 ```bash
 # Generate a self-signed certificate for testing
 
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+openssl req -x509 -noenc -days 365 -newkey rsa:2048 \
   -keyout tls.key -out tls.crt \
-  -subj "/CN=example.com/O=example"
+  -subj "/CN=example.com/O=example" \
+  -addext "subjectAltName=DNS:example.com"
 
 # Create Kubernetes TLS secret
 kubectl create secret tls example-tls \
@@ -92,7 +93,7 @@ Test the TLS connection:
 GATEWAY_IP=$(kubectl get gateway tls-gateway -o jsonpath='{.status.addresses[0].value}')
 
 # Test with curl (use -k for self-signed certs)
-curl -k https://$GATEWAY_IP/ -H "Host: example.com"
+curl -k --resolve example.com:443:$GATEWAY_IP https://example.com/
 
 # Verify certificate
 openssl s_client -connect $GATEWAY_IP:443 -servername example.com
@@ -211,9 +212,10 @@ Use a wildcard certificate to cover multiple subdomains:
 
 ```bash
 # Generate wildcard certificate
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+openssl req -x509 -noenc -days 365 -newkey rsa:2048 \
   -keyout wildcard.key -out wildcard.crt \
-  -subj "/CN=*.example.com/O=example"
+  -subj "/CN=*.example.com/O=example" \
+  -addext "subjectAltName=DNS:*.example.com"
 
 kubectl create secret tls wildcard-tls \
   --cert=wildcard.crt \
@@ -264,7 +266,7 @@ data:
   tls.key: <base64-key>
 ---
 # Grant access from infrastructure namespace
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-gateway-to-certs
@@ -304,13 +306,19 @@ spec:
 
 ## Integration with cert-manager
 
-cert-manager automates certificate lifecycle management. Install cert-manager first:
+cert-manager automates certificate lifecycle management. For Gateway API HTTP-01 challenges, install the Gateway API CRDs first and enable Gateway API support in cert-manager:
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml
+
+helm upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true \
+  --set config.enableGatewayAPI=true
 ```
 
-Create a ClusterIssuer for Let's Encrypt:
+Create a ClusterIssuer for Let's Encrypt. The `gatewayHTTPRoute` solver must reference an existing Gateway with an HTTP listener on port 80:
 
 ```yaml
 # letsencrypt-issuer.yaml
@@ -328,7 +336,7 @@ spec:
     - http01:
         gatewayHTTPRoute:
           parentRefs:
-          - name: tls-gateway
+          - name: http-gateway
             namespace: default
             kind: Gateway
 ```
@@ -430,7 +438,7 @@ spec:
 
 ## Multiple Certificates per Listener
 
-Some gateway implementations support multiple certificate references per listener for certificate chaining:
+Some gateway implementations support multiple certificate references per listener, for example to serve both RSA and ECDSA certificates. This behavior is implementation-specific:
 
 ```yaml
 # chained-certificates.yaml
@@ -448,17 +456,15 @@ spec:
       mode: Terminate
       certificateRefs:
       - kind: Secret
-        name: server-cert
+        name: example-rsa-tls
       - kind: Secret
-        name: intermediate-cert
-      - kind: Secret
-        name: root-cert
+        name: example-ecdsa-tls
     allowedRoutes:
       namespaces:
         from: All
 ```
 
-This provides the complete certificate chain to clients, improving compatibility.
+Each referenced Secret must contain a complete TLS key pair. If clients need an intermediate certificate chain, include the chain in the Secret's `tls.crt` value.
 
 ## TLS Passthrough Mode
 
@@ -484,7 +490,7 @@ spec:
       namespaces:
         from: All
 ---
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: passthrough-route
@@ -559,8 +565,8 @@ status:
     conditions:
     - type: ResolvedRefs
       status: "False"
-      reason: InvalidCertificateRef
-      message: "Certificate secret 'example-tls' not found"
+      reason: RefNotPermitted
+      message: "Certificate secret 'certs/example-tls' is not permitted by a ReferenceGrant"
 ```
 
 ## Security Best Practices
