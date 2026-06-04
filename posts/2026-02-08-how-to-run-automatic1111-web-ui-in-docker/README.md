@@ -33,8 +33,6 @@ Here is a production-ready Docker Compose configuration for Automatic1111.
 ```yaml
 # docker-compose.yml
 # Automatic1111 Stable Diffusion WebUI with GPU support
-version: "3.8"
-
 services:
   automatic1111:
     image: ghcr.io/ai-dock/stable-diffusion-webui:latest-cuda
@@ -44,19 +42,22 @@ services:
       - "7860:7860"
     volumes:
       # Persist model checkpoints
-      - ./models/Stable-diffusion:/workspace/stable-diffusion-webui/models/Stable-diffusion
+      - ./models/Stable-diffusion:/opt/stable-diffusion-webui/models/Stable-diffusion
       # Persist LoRA models
-      - ./models/Lora:/workspace/stable-diffusion-webui/models/Lora
+      - ./models/Lora:/opt/stable-diffusion-webui/models/Lora
       # Persist VAE models
-      - ./models/VAE:/workspace/stable-diffusion-webui/models/VAE
+      - ./models/VAE:/opt/stable-diffusion-webui/models/VAE
       # Persist ControlNet models
-      - ./models/ControlNet:/workspace/stable-diffusion-webui/models/ControlNet
+      - ./models/ControlNet:/opt/stable-diffusion-webui/models/ControlNet
       # Persist generated images
-      - ./outputs:/workspace/stable-diffusion-webui/outputs
+      - ./outputs:/opt/stable-diffusion-webui/outputs
       # Persist extensions
-      - ./extensions:/workspace/stable-diffusion-webui/extensions
+      - ./extensions:/opt/stable-diffusion-webui/extensions
+      # Persist WebUI settings
+      - ./config.json:/opt/stable-diffusion-webui/config.json
     environment:
-      - CLI_ARGS=--xformers --api --listen
+      - WEBUI_ARGS=--xformers --api --listen
+      - WEB_ENABLE_AUTH=false
     deploy:
       resources:
         reservations:
@@ -70,6 +71,7 @@ services:
 ```bash
 # Create all required directories
 mkdir -p models/Stable-diffusion models/Lora models/VAE models/ControlNet outputs extensions
+printf '{}\n' > config.json
 
 # Start the service
 docker compose up -d
@@ -150,9 +152,9 @@ wget -P ./models/Stable-diffusion/ \
 # Download a popular community model (example: Dreamshaper)
 # Visit civitai.com for more community models
 
-# Download LoRA models for style customization
+# Download an SDXL offset LoRA
 wget -P ./models/Lora/ \
-  "https://huggingface.co/example/lora-model/resolve/main/style-lora.safetensors"
+  "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_offset_example-lora_1.0.safetensors"
 
 # Download a VAE for better color accuracy
 wget -P ./models/VAE/ \
@@ -277,16 +279,16 @@ Running on GPUs with limited VRAM requires optimization flags.
 # Environment variables for different VRAM scenarios
   environment:
     # For 8+ GB VRAM (recommended)
-    - CLI_ARGS=--xformers --api --listen
+    - WEBUI_ARGS=--xformers --api --listen
 
     # For 6 GB VRAM
-    # - CLI_ARGS=--medvram --xformers --api --listen
+    # - WEBUI_ARGS=--medvram --xformers --api --listen
 
     # For 4 GB VRAM
-    # - CLI_ARGS=--lowvram --xformers --api --listen
+    # - WEBUI_ARGS=--lowvram --xformers --api --listen
 
     # For CPU only (very slow)
-    # - CLI_ARGS=--skip-torch-cuda-test --use-cpu all --api --listen
+    # - WEBUI_ARGS=--skip-torch-cuda-test --use-cpu all --precision full --no-half --api --listen
 ```
 
 ## Configuring Settings
@@ -294,8 +296,6 @@ Running on GPUs with limited VRAM requires optimization flags.
 You can set default parameters by mounting a config file.
 
 ```json
-// config.json - Place in the WebUI root directory
-// Sets default generation parameters
 {
   "sd_model_checkpoint": "v1-5-pruned-emaonly.safetensors",
   "sd_vae": "vae-ft-mse-840000-ema-pruned.safetensors",
