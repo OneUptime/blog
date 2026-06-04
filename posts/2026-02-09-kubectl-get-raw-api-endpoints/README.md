@@ -77,7 +77,7 @@ kubectl get --raw /metrics
 # Filter for specific metrics
 kubectl get --raw /metrics | grep apiserver_request_total
 
-# Get API server health status
+# Get deprecated API server health status
 kubectl get --raw /healthz
 
 # Get readiness status
@@ -104,7 +104,7 @@ Pod metrics:
 kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/default/pods
 
 # Get metrics for a specific pod
-kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/default/pods/nginx-xxx | jq '.usage'
+kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/default/pods/nginx-xxx | jq '.containers[].usage'
 ```
 
 ## Querying Resources Directly
@@ -163,13 +163,13 @@ Check API Priority and Fairness configurations:
 
 ```bash
 # List priority level configurations
-kubectl get --raw /apis/flowcontrol.apiserver.k8s.io/v1beta3/prioritylevelconfigurations | jq
+kubectl get --raw /apis/flowcontrol.apiserver.k8s.io/v1/prioritylevelconfigurations | jq
 
 # Get details on a specific priority level
-kubectl get --raw /apis/flowcontrol.apiserver.k8s.io/v1beta3/prioritylevelconfigurations/system | jq
+kubectl get --raw /apis/flowcontrol.apiserver.k8s.io/v1/prioritylevelconfigurations/system | jq
 
 # List flow schemas
-kubectl get --raw /apis/flowcontrol.apiserver.k8s.io/v1beta3/flowschemas | jq
+kubectl get --raw /apis/flowcontrol.apiserver.k8s.io/v1/flowschemas | jq
 ```
 
 ## Working with OpenAPI Specifications
@@ -180,8 +180,8 @@ Kubernetes exposes its API schema via OpenAPI:
 # Get OpenAPI v2 spec
 kubectl get --raw /openapi/v2 > openapi-v2.json
 
-# Get OpenAPI v3 spec (newer, more detailed)
-kubectl get --raw /openapi/v3 > openapi-v3.json
+# Get OpenAPI v3 discovery document
+kubectl get --raw /openapi/v3 > openapi-v3-discovery.json
 
 # Get OpenAPI spec for a specific API group
 kubectl get --raw /openapi/v3/apis/apps/v1 | jq
@@ -267,10 +267,9 @@ Or check API health in monitoring:
 ```bash
 #!/bin/bash
 
-# Check all health endpoints
-for endpoint in /healthz /readyz /livez; do
-    status=$(kubectl get --raw $endpoint 2>&1)
-    if [ "$status" = "ok" ]; then
+# Check liveness and readiness endpoints
+for endpoint in /readyz /livez; do
+    if kubectl get --raw "$endpoint" > /dev/null 2>&1; then
         echo "$endpoint: OK"
     else
         echo "$endpoint: FAILED"
@@ -287,10 +286,10 @@ You can achieve similar results with curl, but `kubectl get --raw` is simpler be
 # Using kubectl get --raw (simple)
 kubectl get --raw /api/v1/pods
 
-# Equivalent curl command (complex)
+# Comparable curl command using a service account token (permissions may differ)
 APISERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
 TOKEN=$(kubectl create token default)
-curl -k -H "Authorization: Bearer $TOKEN" $APISERVER/api/v1/pods
+curl -k -H "Authorization: Bearer $TOKEN" "$APISERVER/api/v1/pods"
 ```
 
 ## Limitations
