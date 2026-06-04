@@ -12,7 +12,7 @@ Node.js applications benefit from OpenTelemetry auto-instrumentation that automa
 
 ## Understanding Node.js Auto-instrumentation
 
-OpenTelemetry for Node.js uses module interception to inject instrumentation automatically. The SDK intercepts `require()` and `import` calls, wrapping instrumented modules with telemetry collection code.
+OpenTelemetry for Node.js uses module interception to inject instrumentation automatically. The SDK intercepts CommonJS `require()` calls, and ESM loading when configured with the Node.js ESM loader/import setup, wrapping instrumented modules with telemetry collection code.
 
 Auto-instrumentation works by registering instrumentation libraries before your application code loads. These libraries hook into framework and library internals, creating spans automatically for operations like HTTP requests and database queries.
 
@@ -25,7 +25,12 @@ Start by installing the OpenTelemetry SDK and auto-instrumentation packages. The
 
 npm install @opentelemetry/sdk-node \
             @opentelemetry/api \
+            @opentelemetry/resources \
+            @opentelemetry/semantic-conventions \
             @opentelemetry/auto-instrumentations-node \
+            @opentelemetry/instrumentation-http \
+            @opentelemetry/instrumentation-express \
+            @opentelemetry/instrumentation-mongodb \
             @opentelemetry/exporter-trace-otlp-grpc
 
 # Verify installation
@@ -43,8 +48,14 @@ Create a separate instrumentation file that initializes OpenTelemetry before you
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
+const {
+  ATTR_DEPLOYMENT_ENVIRONMENT,
+} = require('@opentelemetry/semantic-conventions/incubating');
 
 // Configure OTLP exporter
 const traceExporter = new OTLPTraceExporter({
@@ -53,10 +64,10 @@ const traceExporter = new OTLPTraceExporter({
 
 // Initialize SDK with auto-instrumentations
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'nodejs-app',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'nodejs-app',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
   }),
   traceExporter,
   instrumentations: [
@@ -345,9 +356,10 @@ const sdk = new NodeSDK({
       // Capture command details
       enhancedDatabaseReporting: true,
       // Add response attributes
-      responseHook: (span, result) => {
-        if (result.result && result.result.n !== undefined) {
-          span.setAttribute('db.mongodb.documents_affected', result.result.n);
+      responseHook: (span, responseInfo) => {
+        const result = responseInfo.data.result;
+        if (result && result.n !== undefined) {
+          span.setAttribute('db.mongodb.documents_affected', result.n);
         }
       },
     }),
@@ -398,7 +410,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -460,7 +472,7 @@ Third, verify the OTLP endpoint is reachable. Network connectivity problems prev
 
 ```bash
 # Test collector connectivity
-curl http://localhost:4317
+nc -vz localhost 4317
 ```
 
 Fourth, ensure you're using compatible versions of instrumented libraries. Some instrumentations require specific library versions.
