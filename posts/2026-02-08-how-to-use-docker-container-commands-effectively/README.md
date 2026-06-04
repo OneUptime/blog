@@ -104,7 +104,7 @@ docker container stop web
 Stop with a custom timeout (30 seconds before SIGKILL):
 
 ```bash
-docker container stop --time 30 web
+docker container stop --timeout 30 web
 ```
 
 Stop multiple containers at once:
