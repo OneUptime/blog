@@ -20,8 +20,8 @@ Key differences from normal containers:
 - Can load kernel modules
 - Can modify system settings
 - Bypass AppArmor, SELinux, and seccomp restrictions
-- Access host network namespace
-- Mount host file systems
+- Access host network namespace when `hostNetwork: true` is set
+- Mount host file systems when `hostPath` volumes are configured
 
 ## Creating a Basic Privileged Debug Container
 
@@ -79,7 +79,7 @@ spec:
       # Grant full privileges
       privileged: true
 
-      # Or grant specific capabilities instead
+      # Or, when privileged is false, grant specific capabilities instead
       capabilities:
         add:
         - SYS_ADMIN      # Mount operations, many system admin operations
@@ -135,7 +135,7 @@ spec:
         add:
         - NET_ADMIN      # iptables, routing
         - NET_RAW        # tcpdump, packet capture
-    hostNetwork: true
+  hostNetwork: true
 ```
 
 ```yaml
@@ -153,7 +153,7 @@ spec:
         add:
         - SYS_PTRACE     # strace, gdb
         - SYS_ADMIN      # perf, bpf tools
-    hostPID: true
+  hostPID: true
 ```
 
 ```yaml
@@ -258,12 +258,12 @@ du -sh /host/var/lib/containerd/* | sort -h
 
 # Inspect node logs
 tail -100 /host/var/log/syslog
-journalctl --no-pager -u kubelet | tail -50
+journalctl --root=/host --no-pager -u kubelet | tail -50
 ```
 
 ## Debugging Container Runtime
 
-Access containerd or Docker from inside pod:
+Access containerd from inside pod:
 
 ```yaml
 apiVersion: v1
@@ -328,7 +328,7 @@ spec:
         add:
         - NET_ADMIN
         - NET_RAW
-    hostNetwork: true
+  hostNetwork: true
 EOF
 
 # Exec into it
@@ -373,15 +373,15 @@ modprobe nf_conntrack
 
 ## Using kubectl debug with Privileged Mode
 
-Kubernetes 1.18+ kubectl debug can create privileged debug containers:
+Modern `kubectl debug` can create privileged debug containers by using the `sysadmin` profile:
 
 ```bash
 # Debug existing pod with privileged ephemeral container
 kubectl debug -it myapp-pod --image=nicolaka/netshoot \
-  --target=myapp-container -- /bin/bash
+  --target=myapp-container --profile=sysadmin -- /bin/bash
 
 # Debug node with privileged access
-kubectl debug node/worker-node-1 -it --image=ubuntu
+kubectl debug node/worker-node-1 -it --image=ubuntu --profile=sysadmin
 
 # Inside node debug session
 chroot /host
@@ -431,57 +431,44 @@ Privileged containers bypass security mechanisms. Use them carefully:
 5. **Time-limited** - Delete debug pods after use
 6. **Prefer specific capabilities** over full privilege when possible
 
-Create RBAC policy to control privileged pod creation:
+Use Pod Security Admission labels with RBAC to limit where privileged debug pods can be created:
 
 ```yaml
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: restricted-debug
-spec:
-  privileged: false
-  allowPrivilegeEscalation: false
-  requiredDropCapabilities:
-    - ALL
-  volumes:
-    - 'configMap'
-    - 'emptyDir'
-    - 'projected'
-    - 'secret'
-  hostNetwork: false
-  hostIPC: false
-  hostPID: false
-  runAsUser:
-    rule: 'MustRunAsNonRoot'
-  seLinux:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
-
+  name: debug
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
 ---
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
 metadata:
-  name: privileged-debug
-spec:
-  privileged: true
-  allowPrivilegeEscalation: true
-  allowedCapabilities:
-    - '*'
-  volumes:
-    - '*'
-  hostNetwork: true
-  hostPorts:
-    - min: 0
-      max: 65535
-  hostIPC: true
-  hostPID: true
-  runAsUser:
-    rule: 'RunAsAny'
-  seLinux:
-    rule: 'RunAsAny'
-  fsGroup:
-    rule: 'RunAsAny'
+  namespace: debug
+  name: debug-pod-creator
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/exec", "pods/log"]
+  verbs: ["create", "get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["pods/ephemeralcontainers"]
+  verbs: ["update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: debug
+  name: debug-pod-creators
+subjects:
+- kind: Group
+  name: debug-admins
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: debug-pod-creator
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ## Cleanup
@@ -492,21 +479,27 @@ Always clean up debug pods:
 # Delete specific pod
 kubectl delete pod debug-privileged
 
-# Delete all debug pods
+# Delete all debug pods with the purpose=debug label
 kubectl delete pods -l purpose=debug
+```
 
-# Set up automatic cleanup with TTL
-apiVersion: v1
-kind: Pod
+```yaml
+# Set up automatic cleanup with a finished Job TTL
+apiVersion: batch/v1
+kind: Job
 metadata:
   name: debug-temp
 spec:
   ttlSecondsAfterFinished: 300  # Auto-delete after 5 minutes
-  containers:
-  - name: debug
-    image: nicolaka/netshoot
-    securityContext:
-      privileged: true
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: debug
+        image: nicolaka/netshoot
+        command: ["/bin/bash", "-c", "sleep 3600"]
+        securityContext:
+          privileged: true
 ```
 
 ## Conclusion
