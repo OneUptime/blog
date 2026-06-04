@@ -25,14 +25,19 @@ Start by initializing a management cluster. You can use any Kubernetes cluster, 
 ```bash
 # Install clusterctl CLI
 
-curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.6.0/clusterctl-linux-amd64 -o clusterctl
-chmod +x clusterctl
-sudo mv clusterctl /usr/local/bin/
+curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.13.2/clusterctl-linux-amd64 -o clusterctl
+sudo install -o root -g root -m 0755 clusterctl /usr/local/bin/clusterctl
+
+# Install clusterawsadm CLI for AWS IAM and credential bootstrapping
+curl -L https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/download/v2.11.1/clusterawsadm-linux-amd64 -o clusterawsadm
+chmod +x clusterawsadm
+sudo mv clusterawsadm /usr/local/bin/
 
 # Initialize the management cluster with AWS provider
 export AWS_REGION=us-east-1
 export AWS_ACCESS_KEY_ID=<your-access-key>
 export AWS_SECRET_ACCESS_KEY=<your-secret-key>
+clusterawsadm bootstrap iam create-cloudformation-stack
 export AWS_B64ENCODED_CREDENTIALS=$(clusterawsadm bootstrap credentials encode-as-profile)
 
 clusterctl init --infrastructure aws
@@ -63,7 +68,7 @@ Generate a cluster manifest using clusterctl:
 ```bash
 export AWS_REGION=us-west-2
 export AWS_SSH_KEY_NAME=my-ssh-key
-export KUBERNETES_VERSION=v1.28.5
+export KUBERNETES_VERSION=v1.35.4
 export CLUSTER_NAME=production-west
 
 clusterctl generate cluster ${CLUSTER_NAME} \
@@ -77,7 +82,7 @@ clusterctl generate cluster ${CLUSTER_NAME} \
 Customize the generated manifest:
 
 ```yaml
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: production-west
@@ -91,7 +96,7 @@ spec:
       cidrBlocks:
       - 10.96.0.0/12
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
     kind: KubeadmControlPlane
     name: production-west-control-plane
   infrastructureRef:
@@ -108,7 +113,7 @@ metadata:
 spec:
   region: us-west-2
   sshKeyName: my-ssh-key
-  networkSpec:
+  network:
     vpc:
       availabilityZoneUsageLimit: 3
       availabilityZoneSelection: Ordered
@@ -124,14 +129,14 @@ spec:
       isPublic: true
 
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KubeadmControlPlane
 metadata:
   name: production-west-control-plane
   namespace: default
 spec:
   replicas: 3
-  version: v1.28.5
+  version: v1.35.4
   machineTemplate:
     infrastructureRef:
       apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
@@ -141,18 +146,18 @@ spec:
     initConfiguration:
       nodeRegistration:
         kubeletExtraArgs:
-          cloud-provider: aws
+        - name: cloud-provider
+          value: external
     clusterConfiguration:
-      apiServer:
-        extraArgs:
-          cloud-provider: aws
       controllerManager:
         extraArgs:
-          cloud-provider: aws
+        - name: cloud-provider
+          value: external
     joinConfiguration:
       nodeRegistration:
         kubeletExtraArgs:
-          cloud-provider: aws
+        - name: cloud-provider
+          value: external
 
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
@@ -168,7 +173,7 @@ spec:
       sshKeyName: my-ssh-key
 
 ---
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: production-west-workers
@@ -177,14 +182,18 @@ spec:
   clusterName: production-west
   replicas: 5
   selector:
-    matchLabels: {}
+    matchLabels:
+      nodepool: production-west-workers
   template:
+    metadata:
+      labels:
+        nodepool: production-west-workers
     spec:
       clusterName: production-west
-      version: v1.28.5
+      version: v1.35.4
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
           kind: KubeadmConfigTemplate
           name: production-west-workers
       infrastructureRef:
@@ -206,7 +215,7 @@ spec:
       sshKeyName: my-ssh-key
 
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KubeadmConfigTemplate
 metadata:
   name: production-west-workers
@@ -217,7 +226,8 @@ spec:
       joinConfiguration:
         nodeRegistration:
           kubeletExtraArgs:
-            cloud-provider: aws
+          - name: cloud-provider
+            value: external
 ```
 
 Apply the manifest to create the cluster:
@@ -245,15 +255,22 @@ New clusters need a CNI plugin before nodes become ready:
 
 ```bash
 # Install Calico CNI
-kubectl --kubeconfig ${CLUSTER_NAME}-kubeconfig.yaml apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+kubectl --kubeconfig ${CLUSTER_NAME}-kubeconfig.yaml apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.29.1/manifests/calico.yaml
 
 # Verify nodes are ready
 kubectl --kubeconfig ${CLUSTER_NAME}-kubeconfig.yaml get nodes
 ```
 
-Install a CSI driver for persistent storage:
+Install the external AWS cloud controller manager and a CSI driver for persistent storage:
 
 ```bash
+# Install the AWS cloud controller manager before using AWS load balancers or node provider IDs
+helm repo add aws-cloud-controller-manager https://kubernetes.github.io/cloud-provider-aws
+helm --kubeconfig ${CLUSTER_NAME}-kubeconfig.yaml install aws-cloud-controller-manager \
+  aws-cloud-controller-manager/aws-cloud-controller-manager \
+  --namespace kube-system \
+  --version 0.0.11
+
 # Install AWS EBS CSI driver
 helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
 helm --kubeconfig ${CLUSTER_NAME}-kubeconfig.yaml install aws-ebs-csi-driver \
@@ -292,7 +309,7 @@ Upgrade clusters by updating the version in control plane and worker resources:
 # Upgrade control plane
 kubectl patch kubeadmcontrolplane production-west-control-plane \
   --type merge \
-  --patch '{"spec":{"version":"v1.29.0"}}'
+  --patch '{"spec":{"version":"v1.35.5"}}'
 
 # Watch the rolling upgrade
 kubectl get kubeadmcontrolplane --watch
@@ -301,7 +318,7 @@ kubectl get machines --watch
 # Upgrade workers
 kubectl patch machinedeployment production-west-workers \
   --type merge \
-  --patch '{"spec":{"template":{"spec":{"version":"v1.29.0"}}}}'
+  --patch '{"spec":{"template":{"spec":{"version":"v1.35.5"}}}}'
 ```
 
 Cluster API performs rolling upgrades automatically, replacing nodes one at a time while maintaining cluster availability.
@@ -311,41 +328,40 @@ Cluster API performs rolling upgrades automatically, replacing nodes one at a ti
 ClusterClass provides templates for creating standardized clusters:
 
 ```yaml
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: ClusterClass
 metadata:
   name: production-standard
   namespace: default
 spec:
   controlPlane:
-    ref:
-      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    templateRef:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta2
       kind: KubeadmControlPlaneTemplate
       name: production-control-plane-template
     machineInfrastructure:
-      ref:
+      templateRef:
         apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
         kind: AWSMachineTemplate
         name: production-control-plane-machine
   infrastructure:
-    ref:
+    templateRef:
       apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
       kind: AWSClusterTemplate
       name: production-cluster-template
   workers:
     machineDeployments:
     - class: default-worker
-      template:
-        bootstrap:
-          ref:
-            apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
-            kind: KubeadmConfigTemplate
-            name: production-worker-bootstrap
-        infrastructure:
-          ref:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
-            kind: AWSMachineTemplate
-            name: production-worker-machine
+      bootstrap:
+        templateRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+          kind: KubeadmConfigTemplate
+          name: production-worker-bootstrap
+      infrastructure:
+        templateRef:
+          apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+          kind: AWSMachineTemplate
+          name: production-worker-machine
   variables:
   - name: region
     required: true
@@ -362,15 +378,16 @@ spec:
 Create clusters from the class:
 
 ```yaml
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: production-east
   namespace: default
 spec:
   topology:
-    class: production-standard
-    version: v1.28.5
+    classRef:
+      name: production-standard
+    version: v1.35.5
     controlPlane:
       replicas: 3
     workers:
@@ -457,17 +474,17 @@ spec:
   groups:
   - name: cluster-api
     rules:
-    - alert: ClusterNotReady
-      expr: cluster_status_phase{phase!="Provisioned"} == 1
+    - alert: ClusterAPIControllerDown
+      expr: up{namespace="capi-system"} == 0
       for: 15m
       annotations:
-        summary: "Cluster {{ $labels.cluster }} not ready"
+        summary: "Cluster API controller target {{ $labels.instance }} is down"
 
-    - alert: MachineCreationFailed
-      expr: machine_status_phase{phase="Failed"} == 1
+    - alert: ClusterAPIReconcileErrors
+      expr: increase(controller_runtime_reconcile_errors_total{namespace="capi-system"}[5m]) > 0
       for: 5m
       annotations:
-        summary: "Machine creation failed for {{ $labels.machine }}"
+        summary: "Cluster API controller reconciliation errors detected"
 ```
 
 ## Best Practices
