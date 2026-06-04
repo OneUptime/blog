@@ -14,13 +14,14 @@ Nocalhost eliminates this complexity by providing IDE-integrated Kubernetes deve
 
 ## Understanding Nocalhost Architecture
 
-Nocalhost consists of three main components:
+Nocalhost consists of these main components:
 
 - IDE plugins for VS Code and JetBrains IDEs
-- A server component for managing development spaces
+- The `nhctl` CLI, which communicates with Kubernetes through your kubeconfig
+- An optional Nocalhost Server for managing clusters, applications, users, and development spaces
 - Client-side tools for file synchronization and port forwarding
 
-The system creates isolated development spaces in your Kubernetes cluster where developers can work without interfering with each other.
+With Nocalhost Server, the system creates isolated development spaces in your Kubernetes cluster where developers can work without interfering with each other.
 
 ## Installing Nocalhost
 
@@ -36,28 +37,27 @@ Install the Nocalhost server in your Kubernetes cluster:
 
 ```bash
 # Add Nocalhost Helm repository
-helm repo add nocalhost https://nocalhost.github.io/charts
+helm repo add nocalhost https://nocalhost-helm.pkg.coding.net/nocalhost/nocalhost
+helm repo update
 
 # Install Nocalhost server
 helm install nocalhost nocalhost/nocalhost \
   --namespace nocalhost \
-  --create-namespace \
-  --set mariadb.primary.persistence.enabled=true
+  --create-namespace
 ```
 
 Wait for the installation to complete:
 
 ```bash
-kubectl wait --for=condition=ready pod \
-  -l app.kubernetes.io/name=nocalhost \
-  -n nocalhost \
-  --timeout=300s
+kubectl -n nocalhost rollout status deployment/nocalhost-api --timeout=300s
+kubectl -n nocalhost rollout status deployment/nocalhost-web --timeout=300s
+kubectl -n nocalhost rollout status statefulset/nocalhost-mariadb --timeout=300s
 ```
 
-Get the Nocalhost server URL:
+Port-forward the Nocalhost web service:
 
 ```bash
-kubectl get svc -n nocalhost nocalhost-web -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+kubectl -n nocalhost port-forward service/nocalhost-web 8080:80
 ```
 
 ## Creating a Nocalhost Configuration
@@ -66,16 +66,16 @@ Define your application's development configuration in `.nocalhost/config.yaml`:
 
 ```yaml
 # .nocalhost/config.yaml
-name: myapp
-manifestType: helm
-resourcePath: ["deployment/charts"]
-
 application:
+  name: myapp
+  manifestType: helmGit
+  resourcePath: ["deployment/charts"]
   env:
     - name: DEBUG
       value: "true"
   helmValues:
-    - values.yaml
+    - key: image.pullPolicy
+      value: IfNotPresent
 
   services:
     - name: api
@@ -193,7 +193,17 @@ echo "Setting up Nocalhost development environment..."
 # Install nhctl CLI if not present
 if ! command -v nhctl &> /dev/null; then
     echo "Installing nhctl..."
-    curl -fsSL https://nocalhost.dev/install.sh | bash
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64|amd64) ARCH=amd64 ;;
+        *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+    esac
+    mkdir -p "$HOME/.nh/bin"
+    curl -fsSL -o "$HOME/.nh/bin/nhctl" \
+        "https://github.com/nocalhost/nocalhost/releases/latest/download/nhctl-${OS}-${ARCH}"
+    chmod +x "$HOME/.nh/bin/nhctl"
+    export PATH="$HOME/.nh/bin:$PATH"
 fi
 
 # Configure cluster access
@@ -215,7 +225,7 @@ nhctl install myapp \
   --namespace "$NAMESPACE" \
   --git-url https://github.com/myorg/myapp.git \
   --git-ref main \
-  --config .nocalhost/config.yaml
+  --config config.yaml
 
 echo "Development environment ready!"
 echo "Namespace: $NAMESPACE"
@@ -237,27 +247,19 @@ chmod +x setup-dev-environment.sh
 
 ## Configuring IDE Integration
 
-Set up VS Code settings for your project:
+Set up VS Code debugging for your project:
 
-```json
-// .vscode/settings.json
+```jsonc
+// .vscode/launch.json
 {
-  "nocalhost.enableAutoRefresh": true,
-  "nocalhost.autoStartDevMode": true,
-  "nocalhost.syncFileOnSave": true,
-  "nocalhost.defaultNamespace": "dev",
-  "nocalhost.defaultKubeconfig": "~/.kube/config",
-
-  // Node.js specific settings
-  "nocalhost.terminal.shell": "/bin/sh",
-  "nocalhost.sync.filePattern": [
-    "src/**/*",
-    "package.json"
-  ],
-  "nocalhost.sync.ignoreFilePattern": [
-    "node_modules/**/*",
-    ".git/**/*",
-    "dist/**/*"
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "nocalhost",
+      "request": "attach",
+      "name": "Nocalhost Debug",
+      "trace": true
+    }
   ]
 }
 ```
@@ -276,30 +278,14 @@ application:
         - name: api
           dev:
             # Service mesh sidecar configuration
-            sidecarImage:
-              - envoy
-              - istio-proxy
+            sidecarImage: nocalhost-docker.pkg.coding.net/nocalhost/public/nocalhost-sidecar:sshversion
 
             # Patch deployment for dev mode
             patches:
-              - patch: |
-                  spec:
-                    template:
-                      metadata:
-                        annotations:
-                          sidecar.istio.io/inject: "false"
+              - patch: '{"spec":{"template":{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}}}'
                 type: strategic
 
-              - patch: |
-                  spec:
-                    template:
-                      spec:
-                        containers:
-                        - name: api
-                          securityContext:
-                            capabilities:
-                              add:
-                              - SYS_PTRACE
+              - patch: '{"spec":{"template":{"spec":{"containers":[{"name":"api","securityContext":{"capabilities":{"add":["SYS_PTRACE"]}}}]}}}}'
                 type: strategic
 ```
 
@@ -375,14 +361,14 @@ kubectl create rolebinding "$DEV_NAME-admin" \
 nhctl install myapp \
   --namespace "$NAMESPACE" \
   --git-url https://github.com/myorg/myapp.git \
-  --config ".nocalhost/config-$TEMPLATE.yaml"
+  --config "config-$TEMPLATE.yaml"
 
 echo "Development space created successfully!"
 echo "Namespace: $NAMESPACE"
 echo "Developer: $DEVELOPER"
 echo ""
-echo "Share this command with the developer:"
-echo "nhctl connect --namespace $NAMESPACE --kubeconfig ~/.kube/config"
+echo "Share the namespace and kubeconfig context with the developer:"
+echo "Namespace: $NAMESPACE"
 ```
 
 ## Setting Up Hot Reload for Different Languages
@@ -433,7 +419,7 @@ containers:
         run:
           - /bin/sh
           - -c
-          - "go install github.com/cosmtrek/air@latest && air"
+          - "go install github.com/air-verse/air@latest && air"
 ```
 
 ## Implementing Dependency Management
@@ -461,39 +447,31 @@ containers:
             npm run dev
 ```
 
-## Creating Development Profiles
+## Updating Dev Config Profiles
 
-Set up different profiles for different scenarios:
-
-```yaml
-# .nocalhost/config.yaml
-profiles:
-  - name: full
-    services:
-      - api
-      - worker
-      - postgres
-      - redis
-
-  - name: backend-only
-    services:
-      - api
-      - postgres
-
-  - name: minimal
-    services:
-      - api
-```
-
-Switch between profiles:
+Use `nhctl profile` to inspect or update stored development configuration values:
 
 ```bash
-# Start with full profile
-nhctl dev start api --deployment api --profile full
+# Check the configured development image
+nhctl profile get \
+  --namespace dev \
+  --deployment api \
+  --type deployment \
+  --container api \
+  --key dev.image
 
-# Switch to minimal profile
+# Update the configured development image
+nhctl profile set \
+  --namespace dev \
+  --deployment api \
+  --type deployment \
+  --container api \
+  --key dev.image \
+  --value node:18-alpine
+
+# Restart DevMode after changing the profile
 nhctl dev end api
-nhctl dev start api --deployment api --profile minimal
+nhctl dev start api --deployment api --container api
 ```
 
 ## Monitoring Development Environments
