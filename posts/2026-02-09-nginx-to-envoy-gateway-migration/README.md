@@ -18,22 +18,18 @@ Gateway API is the successor to the Ingress API, providing more expressive routi
 
 ## Installing Envoy Gateway
 
-First, install the Gateway API CRDs and Envoy Gateway:
+First, install Envoy Gateway. The Helm chart installs the Gateway API CRDs and Envoy Gateway CRDs by default:
 
 ```bash
-# Install Gateway API CRDs
-
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
-
-# Install Envoy Gateway
+# Install Envoy Gateway with Gateway API and Envoy Gateway CRDs
 helm install eg oci://docker.io/envoyproxy/gateway-helm \
-  --version v1.0.0 \
+  --version v1.8.0 \
   -n envoy-gateway-system \
   --create-namespace
 
 # Verify installation
 kubectl get pods -n envoy-gateway-system
-kubectl wait --for=condition=available --timeout=300s \
+kubectl wait --for=condition=Available --timeout=300s \
   deployment/envoy-gateway -n envoy-gateway-system
 ```
 
@@ -127,11 +123,30 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
+  name: myapp-http-redirect
+  namespace: production
+spec:
+  parentRefs:
+  - name: myapp-gateway
+    sectionName: http
+  hostnames:
+  - app.example.com
+  rules:
+  - filters:
+    - type: RequestRedirect
+      requestRedirect:
+        scheme: https
+        statusCode: 301
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
   name: myapp-routes
   namespace: production
 spec:
   parentRefs:
   - name: myapp-gateway
+    sectionName: https
   hostnames:
   - app.example.com
   rules:
@@ -139,6 +154,12 @@ spec:
     - path:
         type: PathPrefix
         value: /api
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /
     backendRefs:
     - name: api-service
       port: 8080
@@ -146,6 +167,12 @@ spec:
     - path:
         type: PathPrefix
         value: /web
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /
     backendRefs:
     - name: web-service
       port: 80
@@ -158,6 +185,7 @@ kubectl apply -f gateway.yaml
 
 # Verify Gateway is ready
 kubectl get gateway myapp-gateway -n production
+kubectl get httproute myapp-http-redirect -n production
 kubectl get httproute myapp-routes -n production
 ```
 
@@ -238,7 +266,10 @@ NGINX_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 # Access Envoy Gateway at another IP
-ENVOY_IP=$(kubectl get svc -n envoy-gateway-system envoy-gateway \
+ENVOY_SERVICE=$(kubectl get svc -n envoy-gateway-system \
+  --selector=gateway.envoyproxy.io/owning-gateway-namespace=production,gateway.envoyproxy.io/owning-gateway-name=myapp-gateway \
+  -o jsonpath='{.items[0].metadata.name}')
+ENVOY_IP=$(kubectl get svc -n envoy-gateway-system "$ENVOY_SERVICE" \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 echo "NGINX IP: $NGINX_IP"
@@ -250,7 +281,7 @@ echo "Envoy IP: $ENVOY_IP"
 Gradually shift traffic using DNS:
 
 ```bash
-# Create Route53 weighted routing (example with AWS)
+# Create Route53 weighted routing (example with AWS using IP-backed A records)
 aws route53 change-resource-record-sets \
   --hosted-zone-id Z123456789 \
   --change-batch '{
@@ -279,6 +310,8 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
+If your cloud load balancer returns hostnames instead of IP addresses, use Route53 alias records or weighted CNAME records for a non-apex hostname instead of literal A records.
+
 Gradually increase Envoy weight:
 
 ```bash
@@ -300,7 +333,12 @@ Automate conversion of multiple Ingress resources:
 
 import yaml
 import sys
-from pathlib import Path
+
+PATH_TYPE_MAP = {
+    'Prefix': 'PathPrefix',
+    'Exact': 'Exact',
+    'ImplementationSpecific': 'PathPrefix'
+}
 
 def convert_ingress_to_httproute(ingress):
     """Convert Ingress to HTTPRoute"""
@@ -329,10 +367,11 @@ def convert_ingress_to_httproute(ingress):
     # Convert rules
     for rule in ingress['spec'].get('rules', []):
         for path in rule.get('http', {}).get('paths', []):
+            path_type = PATH_TYPE_MAP.get(path.get('pathType', 'Prefix'), 'PathPrefix')
             route_rule = {
                 'matches': [{
                     'path': {
-                        'type': path.get('pathType', 'Prefix'),
+                        'type': path_type,
                         'value': path['path']
                     }
                 }],
@@ -341,6 +380,21 @@ def convert_ingress_to_httproute(ingress):
                     'port': path['backend']['service']['port']['number']
                 }]
             }
+
+            rewrite_target = ingress.get('metadata', {}).get('annotations', {}).get(
+                'nginx.ingress.kubernetes.io/rewrite-target'
+            )
+            if rewrite_target and path_type == 'PathPrefix':
+                route_rule['filters'] = [{
+                    'type': 'URLRewrite',
+                    'urlRewrite': {
+                        'path': {
+                            'type': 'ReplacePrefixMatch',
+                            'replacePrefixMatch': rewrite_target
+                        }
+                    }
+                }]
+
             httproute['spec']['rules'].append(route_rule)
 
     return httproute
@@ -349,17 +403,22 @@ def main():
     ingress_file = sys.argv[1]
 
     with open(ingress_file, 'r') as f:
-        ingresses = yaml.safe_load_all(f)
+        documents = yaml.safe_load_all(f)
 
-        for ingress in ingresses:
-            if ingress and ingress.get('kind') == 'Ingress':
-                httproute = convert_ingress_to_httproute(ingress)
+        for document in documents:
+            if not document:
+                continue
+            ingresses = document.get('items', []) if document.get('kind') == 'List' else [document]
 
-                output_file = f"httproute-{ingress['metadata']['name']}.yaml"
-                with open(output_file, 'w') as out:
-                    yaml.dump(httproute, out, default_flow_style=False)
+            for ingress in ingresses:
+                if ingress and ingress.get('kind') == 'Ingress':
+                    httproute = convert_ingress_to_httproute(ingress)
 
-                print(f"Converted {ingress['metadata']['name']} to {output_file}")
+                    output_file = f"httproute-{ingress['metadata']['name']}.yaml"
+                    with open(output_file, 'w') as out:
+                        yaml.dump(httproute, out, default_flow_style=False)
+
+                    print(f"Converted {ingress['metadata']['name']} to {output_file}")
 
 if __name__ == '__main__':
     main()
@@ -386,18 +445,19 @@ kubectl apply -f httproute-*.yaml
 Envoy provides rich metrics out of the box:
 
 ```yaml
-# servicemonitor-envoy.yaml
+# podmonitor-envoy.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: envoy-gateway
   namespace: envoy-gateway-system
 spec:
   selector:
     matchLabels:
-      app: envoy-gateway
-  endpoints:
-  - port: metrics
+      gateway.envoyproxy.io/owning-gateway-namespace: production
+      gateway.envoyproxy.io/owning-gateway-name: myapp-gateway
+  podMetricsEndpoints:
+  - portNumber: 19001
     path: /stats/prometheus
 ```
 
@@ -416,20 +476,35 @@ histogram_quantile(0.95,
 rate(envoy_http_downstream_rq_xx{envoy_response_code_class="5"}[5m])
 ```
 
-Enable access logs:
+Customize proxy access logs:
 
 ```yaml
-# envoygateway-config.yaml
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: EnvoyGateway
+# envoyproxy-access-logs.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
 metadata:
-  name: envoy-gateway-config
+  name: envoy-gateway
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: proxy-access-logs
+    namespace: envoy-gateway-system
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: proxy-access-logs
   namespace: envoy-gateway-system
 spec:
-  accessLog:
-    - type: File
-      file:
-        path: /dev/stdout
+  telemetry:
+    accessLog:
+      settings:
+      - sinks:
+        - type: File
+          file:
+            path: /dev/stdout
 ```
 
 ## TLS and Certificate Management
