@@ -22,11 +22,11 @@ Payload stands out for developers who want full control over their CMS. Here is 
 - Local API: query content directly in server-side code without HTTP overhead
 - Powerful hooks: run custom logic before/after CRUD operations
 - Access control: define granular permissions in code
-- Supports MongoDB and PostgreSQL
+- Supports MongoDB, PostgreSQL, and SQLite
 
 ## Prerequisites
 
-Docker and Docker Compose installed. Node.js 18+ is needed for the initial project setup (not needed on the server if you build with Docker). Payload needs at least 1 GB of RAM.
+Docker and Docker Compose installed. Node.js 20.9+ is needed for the initial project setup (not needed on the server if you build with Docker). Payload needs at least 1 GB of RAM.
 
 ```bash
 # Verify Docker installation
@@ -151,6 +151,8 @@ import { buildConfig } from 'payload'
 import { postgresAdapter } from '@payloadcms/db-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { Articles } from './src/collections/Articles'
+import { Media } from './src/collections/Media'
+import { Users } from './src/collections/Users'
 
 export default buildConfig({
   // Database adapter
@@ -162,7 +164,7 @@ export default buildConfig({
   // Rich text editor
   editor: lexicalEditor(),
   // Collections
-  collections: [Articles],
+  collections: [Users, Media, Articles],
   // Secret for JWT signing
   secret: process.env.PAYLOAD_SECRET || '',
   // TypeScript output path
@@ -257,8 +259,6 @@ node_modules
 
 ```yaml
 # docker-compose.yml - Payload CMS with PostgreSQL
-version: "3.8"
-
 services:
   payload:
     build:
@@ -342,7 +342,26 @@ curl -X POST \
   -d '{
     "title": "New Article",
     "slug": "new-article",
-    "content": {"root": {"children": []}},
+    "content": {
+      "root": {
+        "type": "root",
+        "children": [
+          {
+            "type": "paragraph",
+            "children": [],
+            "direction": "ltr",
+            "format": "",
+            "indent": 0,
+            "textFormat": 0,
+            "version": 1
+          }
+        ],
+        "direction": "ltr",
+        "format": "",
+        "indent": 0,
+        "version": 1
+      }
+    },
     "status": "draft"
   }' \
   "http://localhost:3000/api/articles"
