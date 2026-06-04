@@ -8,15 +8,15 @@ Description: Learn how to use ArgoCD sync waves and hooks to control the order o
 
 ---
 
-Kubernetes applies resources in parallel by default, which breaks deployments when resources depend on each other. You need databases running before applications can connect. Namespaces must exist before you create resources in them. CRDs must be installed before custom resources can be created.
+Kubernetes does not enforce dependencies between arbitrary manifests by default, which breaks deployments when resources depend on each other. You need databases running before applications can connect. Namespaces must exist before you create resources in them. CRDs must be installed before custom resources can be created.
 
 ArgoCD sync waves solve this problem by letting you define the order resources deploy in. This guide shows you how to implement sync waves for reliable, ordered deployments.
 
 ## Understanding Sync Waves
 
-Sync waves are phases of deployment defined by the `argocd.argoproj.io/sync-wave` annotation. ArgoCD sorts resources by wave number and deploys them sequentially. Wave 0 deploys first, then wave 1, then wave 2, and so on.
+Sync waves are deployment ordering groups defined by the `argocd.argoproj.io/sync-wave` annotation. ArgoCD sorts resources by phase, wave number, kind, and name. Wave 0 deploys before wave 1, then wave 2, and so on.
 
-Within each wave, resources deploy in parallel. ArgoCD waits for all resources in a wave to become healthy before moving to the next wave.
+Within each wave, resources are processed together and ordered by kind and name. ArgoCD waits for resources in a wave to become healthy before moving to the next wave.
 
 ## Implementing Basic Sync Waves
 
@@ -32,24 +32,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 ---
-# Wave 1: Deploy database
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: postgres
-  namespace: production
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-spec:
-  serviceName: postgres
-  replicas: 1
-  template:
-    spec:
-      containers:
-      - name: postgres
-        image: postgres:15
----
-# Wave 1: Database service (same wave as StatefulSet)
+# Wave 1: Database service
 apiVersion: v1
 kind: Service
 metadata:
@@ -58,22 +41,52 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 spec:
+  clusterIP: None
   selector:
     app: postgres
   ports:
   - port: 5432
 ---
-# Wave 2: Deploy application (after database is ready)
+# Wave 2: Deploy database
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: production
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15
+---
+# Wave 3: Deploy application (after database is ready)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api-gateway
   namespace: production
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: "3"
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: api-gateway
   template:
+    metadata:
+      labels:
+        app: api-gateway
     spec:
       containers:
       - name: api
@@ -86,8 +99,9 @@ spec:
 ArgoCD deploys in this order:
 
 1. Wave 0: Namespace created
-2. Wave 1: Database StatefulSet and Service deploy and become healthy
-3. Wave 2: Application deployment starts after database is ready
+2. Wave 1: Database Service created
+3. Wave 2: Database StatefulSet deploys and becomes healthy
+4. Wave 3: Application deployment starts after database is ready
 
 ## Using Negative Waves for Prerequisites
 
@@ -188,9 +202,11 @@ spec:
 Hook types:
 
 - `PreSync` - Runs before sync starts
-- `Sync` - Runs during normal sync (same as no hook)
-- `PostSync` - Runs after all resources are synced
+- `Sync` - Runs after successful `PreSync` hooks, at the same time as normal synced resources
+- `PostSync` - Runs after synced resources are applied and healthy
 - `SyncFail` - Runs if sync fails
+- `PreDelete` - Runs before application resources are deleted
+- `PostDelete` - Runs after application resources are deleted
 - `Skip` - Resource is ignored
 
 ## Combining Sync Waves with Hooks
@@ -338,20 +354,18 @@ spec:
       restartPolicy: Never
 ```
 
-For non-critical hooks:
+For non-critical cleanup after a failed sync, use a `SyncFail` hook. A failing `PreSync`, `Sync`, or `PostSync` hook marks the sync operation as failed, so do not use those hook phases for work that must be ignored on failure.
 
 ```yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: optional-task
+  name: cleanup-after-failure
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: SyncFail
     argocd.argoproj.io/sync-wave: "10"
     # Delete hook regardless of success
     argocd.argoproj.io/hook-delete-policy: HookSucceeded,HookFailed
-    # Don't fail sync if this hook fails
-    argocd.argoproj.io/sync-options: HookFailed=Ignore
 ```
 
 ## Implementing Blue-Green Deployments with Sync Waves
@@ -370,6 +384,28 @@ spec:
   selector:
     matchLabels:
       version: green
+  template:
+    metadata:
+      labels:
+        version: green
+    spec:
+      containers:
+      - name: app
+        image: myapp:green
+---
+# Wave 0: Preview service for green version
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-green
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    version: green
 ---
 # Wave 1: Test green version
 apiVersion: batch/v1
@@ -379,6 +415,14 @@ metadata:
   annotations:
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/sync-wave: "1"
+spec:
+  template:
+    spec:
+      containers:
+      - name: test
+        image: curlimages/curl
+        command: ["sh", "-c", "curl -f http://app-green/health"]
+      restartPolicy: Never
 ---
 # Wave 2: Switch traffic to green
 apiVersion: v1
@@ -388,6 +432,9 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "2"
 spec:
+  ports:
+  - port: 80
+    targetPort: 8080
   selector:
     version: green  # Updated selector
 ---
@@ -400,6 +447,17 @@ metadata:
     argocd.argoproj.io/sync-wave: "3"
 spec:
   replicas: 0  # Scale down
+  selector:
+    matchLabels:
+      version: blue
+  template:
+    metadata:
+      labels:
+        version: blue
+    spec:
+      containers:
+      - name: app
+        image: myapp:blue
 ```
 
 ## Monitoring Sync Progress
@@ -410,7 +468,7 @@ Track sync wave execution:
 # Watch application sync
 argocd app get myapp --watch
 
-# View sync status
+# Preview apply without affecting the cluster
 argocd app sync myapp --dry-run
 
 # Check hook execution
@@ -428,7 +486,7 @@ argocd app get myapp -o json | jq '.status.operationState.syncResult'
 If sync stalls:
 
 ```bash
-# Check which wave is stuck
+# Check the current operation phase
 argocd app get myapp -o json | jq '.status.operationState.phase'
 
 # View resource health
@@ -450,7 +508,7 @@ Use consistent wave numbering across applications. Reserve -10 to -1 for infrast
 
 Always set hook-delete-policy to clean up Job resources. BeforeHookCreation deletes previous runs, HookSucceeded cleans up after success.
 
-Test sync waves in development first. Use `argocd app sync --dry-run` to preview execution order.
+Test sync waves in development first. Use `argocd app sync --dry-run` to preview the apply without affecting the cluster, then observe a real development sync with `argocd app get --watch` or `argocd app get --show-operation`.
 
 Keep waves sparse. Use wave 0, 10, 20 instead of 0, 1, 2 to leave room for future additions.
 
