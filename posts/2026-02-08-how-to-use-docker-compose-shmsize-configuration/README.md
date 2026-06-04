@@ -42,8 +42,6 @@ The syntax is straightforward. Specify the size as a string with a unit suffix.
 
 ```yaml
 # Set shared memory to 1 gigabyte
-version: "3.8"
-
 services:
   my-service:
     image: my-image:latest
@@ -74,12 +72,10 @@ services:
 
 ## PostgreSQL and Shared Memory
 
-PostgreSQL is the most common reason people need to adjust `shm_size`. PostgreSQL uses shared memory for its shared buffers, WAL buffers, and other internal structures. The PostgreSQL documentation recommends setting `shared_buffers` to about 25% of available RAM. Each shared buffer allocation requires corresponding shared memory.
+PostgreSQL is the most common reason people need to adjust `shm_size`. PostgreSQL uses shared memory for its shared buffers, WAL buffers, parallel queries, and other internal structures. The PostgreSQL documentation recommends setting `shared_buffers` to about 25% of available RAM. In Docker containers, `/dev/shm` is especially important for PostgreSQL dynamic shared memory, which commonly uses POSIX shared memory.
 
 ```yaml
 # PostgreSQL with adequate shared memory
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16
@@ -102,13 +98,13 @@ volumes:
   pgdata:
 ```
 
-Without sufficient `shm_size`, PostgreSQL will fail to start or crash during heavy operations with errors like:
+Without sufficient `shm_size`, PostgreSQL can fail during heavy operations with errors like:
 
 ```text
 FATAL: could not create shared memory segment: No space left on device
 ```
 
-A good rule of thumb is to set `shm_size` to at least the value of `shared_buffers`, plus some overhead for WAL buffers and other shared structures.
+A good rule of thumb is to start with at least 128MB to 256MB for PostgreSQL containers, then increase it if parallel queries, VACUUM, index builds, or other heavy operations report shared memory errors.
 
 ```yaml
 # PostgreSQL production configuration with generous shared memory
@@ -154,8 +150,6 @@ services:
   scraper:
     build: ./scraper
     shm_size: "1g"
-    environment:
-      PUPPETEER_CHROMIUM_REVISION: latest
     cap_add:
       - SYS_ADMIN
 ```
@@ -168,7 +162,7 @@ services:
   chrome:
     image: selenium/standalone-chrome:latest
     environment:
-      JAVA_OPTS: "-Dwebdriver.chrome.args=--disable-dev-shm-usage"
+      SE_BROWSER_ARGS_DISABLE_DSHM: "--disable-dev-shm-usage"
 ```
 
 However, for performance-sensitive workloads, increasing `shm_size` is the better approach.
@@ -204,8 +198,6 @@ CI pipelines that run browser tests or database-heavy integration tests frequent
 
 ```yaml
 # CI/CD test environment with proper shared memory
-version: "3.8"
-
 services:
   test-db:
     image: postgres:16
@@ -286,10 +278,10 @@ The `shm_size` directive is the recommended approach. It is purpose-built for th
 
 ## Memory Budgeting
 
-Shared memory comes from your host's RAM. Allocating 2GB of `shm_size` means that 2GB of host RAM is reserved for that container's shared memory space, on top of the container's regular memory usage.
+Shared memory comes from your host's RAM or swap. Setting `shm_size` to 2GB sets the maximum size of that container's `/dev/shm`; tmpfs grows as files and shared memory objects are written, rather than pre-reserving the full amount.
 
 ```yaml
-# Budget memory properly: shm_size + container memory = total
+# Budget memory properly: /dev/shm usage counts toward the memory limit
 services:
   postgres:
     image: postgres:16
@@ -297,11 +289,11 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2g    # This INCLUDES the shm_size allocation
+          memory: 2g    # This includes /dev/shm usage
         reservations:
           memory: 1g
 ```
 
-Be aware that the memory limit set by `deploy.resources.limits.memory` includes the shared memory allocation. If you set a 2GB memory limit and 512MB of `shm_size`, your application has roughly 1.5GB left for its own use.
+Be aware that the memory limit set by `deploy.resources.limits.memory` includes shared memory usage. If the container actually uses 512MB of `/dev/shm` under a 2GB memory limit, your application has roughly 1.5GB left for its own use.
 
 Getting shared memory right is a small configuration change that prevents frustrating crashes. Check what your applications actually need, set `shm_size` accordingly, and monitor usage to make sure you are not over-allocating. Your PostgreSQL databases, headless browsers, and ML training jobs will run smoothly.
