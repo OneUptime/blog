@@ -21,7 +21,7 @@ Enable Buildx for multi-platform builds:
 ```bash
 # Create builder instance
 
-docker buildx create --name multiarch --use
+docker buildx create --name multiarch --driver docker-container --use
 docker buildx inspect --bootstrap
 
 # Verify platforms
@@ -66,7 +66,7 @@ Optimize Dockerfile for multiple architectures:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM --platform=$BUILDPLATFORM golang:1.21 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
 
 # Build arguments for cross-compilation
 ARG TARGETOS
@@ -101,12 +101,13 @@ Handle architecture-specific base images:
 
 # Use architecture-specific images
 ARG TARGETARCH
-FROM --platform=$TARGETPLATFORM node:18-alpine AS base
+FROM --platform=$TARGETPLATFORM node:24-alpine AS base
+ARG TARGETARCH
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY . .
 
@@ -134,16 +135,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v4
         with:
           registry: registry.example.com
           username: ${{ secrets.REGISTRY_USERNAME }}
@@ -151,7 +152,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v6
         with:
           images: registry.example.com/myapp
           tags: |
@@ -160,7 +161,7 @@ jobs:
             type=sha
 
       - name: Build and push
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -178,18 +179,20 @@ Build with GitLab CI:
 ```yaml
 variables:
   IMAGE_NAME: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  DOCKER_TLS_CERTDIR: "/certs"
 
 stages:
   - build
 
 build-multiarch:
   stage: build
-  image: docker:latest
+  image: docker:cli
   services:
     - docker:dind
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker buildx create --use --name multiarch
+    - docker buildx create --use --driver docker-container --name multiarch
+    - docker buildx inspect --bootstrap
   script:
     - docker buildx build \
         --platform linux/amd64,linux/arm64 \
@@ -212,7 +215,17 @@ jobs:
   build-amd64:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Registry
+        uses: docker/login-action@v4
+        with:
+          registry: registry.example.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Build AMD64
         run: |
@@ -225,10 +238,20 @@ jobs:
   build-arm64:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Registry
+        uses: docker/login-action@v4
+        with:
+          registry: registry.example.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Build ARM64
         run: |
@@ -242,6 +265,13 @@ jobs:
     needs: [build-amd64, build-arm64]
     runs-on: ubuntu-latest
     steps:
+      - name: Login to Registry
+        uses: docker/login-action@v4
+        with:
+          registry: registry.example.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
       - name: Create and push manifest
         run: |
           docker manifest create \
@@ -264,21 +294,43 @@ jobs:
   build-amd64:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
+      - name: Login to Registry
+        uses: docker/login-action@v4
+        with:
+          registry: registry.example.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
       - name: Build AMD64
-        run: docker build -t registry.example.com/myapp:amd64 .
+        run: |
+          docker build -t registry.example.com/myapp:amd64 .
+          docker push registry.example.com/myapp:amd64
 
   build-arm64:
     runs-on: [self-hosted, linux, arm64]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
+      - name: Login to Registry
+        uses: docker/login-action@v4
+        with:
+          registry: registry.example.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
       - name: Build ARM64
-        run: docker build -t registry.example.com/myapp:arm64 .
+        run: |
+          docker build -t registry.example.com/myapp:arm64 .
+          docker push registry.example.com/myapp:arm64
 
   combine:
     needs: [build-amd64, build-arm64]
     runs-on: ubuntu-latest
     steps:
+      - name: Login to Registry
+        uses: docker/login-action@v4
+        with:
+          registry: registry.example.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
       - name: Create manifest
         run: |
           docker manifest create registry.example.com/myapp:latest \
@@ -407,12 +459,12 @@ Check pod distribution:
 # Verify pods run on different architectures
 kubectl get pods -o wide
 
-# Check which architecture each pod is using
-kubectl get pods -o json | jq '.items[] | {
-  name: .metadata.name,
-  node: .spec.nodeName,
-  arch: .status.hostIP
-}'
+# Check which node architecture each pod is using
+kubectl get pods -o json | jq -r '.items[] | [.metadata.name, .spec.nodeName] | @tsv' |
+while read -r pod node; do
+  arch=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.kubernetes\.io/arch}')
+  printf '%s\t%s\t%s\n' "$pod" "$node" "$arch"
+done
 ```
 
 ## Optimizing Build Times
@@ -420,7 +472,9 @@ kubectl get pods -o json | jq '.items[] | {
 Use layer caching effectively:
 
 ```dockerfile
-FROM --platform=$BUILDPLATFORM golang:1.21 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
+ARG TARGETOS
+ARG TARGETARCH
 
 # Cache dependencies separately
 COPY go.mod go.sum ./
@@ -428,7 +482,7 @@ RUN go mod download
 
 # Then copy and build source
 COPY . .
-RUN CGO_ENABLED=0 go build -o app .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o app .
 ```
 
 Enable build caching:
