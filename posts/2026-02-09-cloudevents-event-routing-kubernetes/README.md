@@ -21,14 +21,19 @@ The specification separates event metadata from payload data, enabling routing d
 Deploy an event router using Knative Eventing:
 
 ```bash
+# This guide assumes Knative Serving, including a networking layer, is already installed
+# because the consumers below use serving.knative.dev/v1 Services.
+kubectl create namespace events --dry-run=client -o yaml | kubectl apply -f -
+
 # Install Knative Eventing (includes CloudEvents support)
 
-kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.12.0/eventing-crds.yaml
-kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.12.0/eventing-core.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.22.0/eventing-crds.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.22.0/eventing-core.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.22.0/in-memory-channel.yaml
 
 # Install Kafka support for durable event streams
-kubectl apply -f https://github.com/knative-sandbox/eventing-kafka-broker/releases/download/knative-v1.12.0/eventing-kafka-controller.yaml
-kubectl apply -f https://github.com/knative-sandbox/eventing-kafka-broker/releases/download/knative-v1.12.0/eventing-kafka-broker.yaml
+kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.22.0/eventing-kafka-controller.yaml
+kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.22.0/eventing-kafka-broker.yaml
 ```
 
 Create a Kafka broker for event routing:
@@ -71,7 +76,7 @@ Build a service that produces CloudEvents:
 ```python
 # event_producer/app.py
 from flask import Flask, request, jsonify
-from cloudevents.http import CloudEvent, to_structured
+from cloudevents.v1.http import CloudEvent, to_structured
 import requests
 import uuid
 from datetime import datetime
@@ -193,7 +198,7 @@ Build consumers that receive CloudEvents:
 ```python
 # order_processor/app.py
 from flask import Flask, request
-from cloudevents.http import from_http
+from cloudevents.v1.http import from_http
 import json
 
 app = Flask(__name__)
@@ -318,7 +323,7 @@ spec:
   filter:
     attributes:
       type: com.company.orders.created
-      # Note: Advanced filtering requires custom implementation
+      # Note: Payload-based amount filtering requires custom implementation
   subscriber:
     ref:
       apiVersion: serving.knative.dev/v1
@@ -333,7 +338,7 @@ Transform events between different formats:
 ```python
 # event_transformer/app.py
 from flask import Flask, request
-from cloudevents.http import CloudEvent, to_structured, from_http
+from cloudevents.v1.http import CloudEvent, to_structured, from_http
 import requests
 import uuid
 
@@ -466,7 +471,7 @@ Create a custom event filter:
 ```python
 # event_filter/app.py
 from flask import Flask, request
-from cloudevents.http import from_http, to_structured
+from cloudevents.v1.http import from_http, to_structured
 import requests
 
 app = Flask(__name__)
@@ -516,7 +521,7 @@ Track events through the pipeline:
 ```python
 # event_monitor/app.py
 from flask import Flask, request
-from cloudevents.http import from_http
+from cloudevents.v1.http import from_http
 from prometheus_client import Counter, Histogram, start_http_server
 import time
 
