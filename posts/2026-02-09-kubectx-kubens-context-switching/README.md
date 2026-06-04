@@ -189,7 +189,7 @@ switch_env() {
     local namespace=$2
 
     # Validate context exists
-    if ! kubectx | grep -q "^${context}$"; then
+    if ! kubectl config get-contexts -o name | grep -Fxq "${context}"; then
         echo "Error: Context '${context}' not found"
         return 1
     fi
@@ -199,7 +199,7 @@ switch_env() {
 
     # Switch namespace if provided
     if [ -n "${namespace}" ]; then
-        if ! kubens | grep -q "^${namespace}$"; then
+        if ! kubectl get namespaces -o jsonpath='{range .items[*].metadata.name}{@}{"\n"}{end}' | grep -Fxq "${namespace}"; then
             echo "Error: Namespace '${namespace}' not found"
             return 1
         fi
@@ -359,7 +359,7 @@ fi
 
 echo "Searching for $SERVICE_NAME across all namespaces..."
 
-for ns in $(kubens); do
+for ns in $(kubectl get namespaces -o jsonpath='{range .items[*].metadata.name}{@}{"\n"}{end}'); do
     if kubectl get pods -n "$ns" | grep -q "$SERVICE_NAME"; then
         echo "Found in namespace: $ns"
         kubens "$ns"
@@ -376,20 +376,28 @@ exit 1
 
 Enable tab completion for faster typing:
 
+If you installed manually into `~/.kubectx`, source the completion scripts from the repository.
+
 For Bash:
 
 ```bash
 # Add to ~/.bashrc
-source <(kubectx completion bash)
-source <(kubens completion bash)
+source ~/.kubectx/completion/kubectx.bash
+source ~/.kubectx/completion/kubens.bash
 ```
 
 For Zsh:
 
 ```bash
-# Add to ~/.zshrc
-source <(kubectx completion zsh)
-source <(kubens completion zsh)
+# Link the completion files into a directory in your $fpath
+mkdir -p ~/.zsh/completion
+ln -sf ~/.kubectx/completion/_kubectx.zsh ~/.zsh/completion/_kubectx
+ln -sf ~/.kubectx/completion/_kubens.zsh ~/.zsh/completion/_kubens
+
+# Add to ~/.zshrc before compinit
+fpath=(~/.zsh/completion $fpath)
+autoload -U compinit
+compinit
 ```
 
 Now you can type:
@@ -407,17 +415,17 @@ Run commands across multiple contexts:
 #!/bin/bash
 # ~/bin/kubectl-all-contexts
 
-COMMAND="$@"
+ORIGINAL_CONTEXT=$(kubectx -c)
 
 for context in $(kubectx); do
     echo "=== Context: $context ==="
     kubectx "$context" > /dev/null
-    kubectl $COMMAND
+    kubectl "$@"
     echo ""
 done
 
 # Restore original context
-kubectx -
+kubectx "$ORIGINAL_CONTEXT"
 ```
 
 Use it to check pod status across all clusters:
