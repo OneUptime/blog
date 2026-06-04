@@ -21,14 +21,17 @@ Each node type has different resource requirements and scaling characteristics. 
 Before deploying Druid, you need a Kubernetes cluster with sufficient resources and a few supporting services. Install these dependencies first:
 
 ```bash
-# Install the Druid operator
+# Install the Druid operator in the namespace it will watch
 
-kubectl create namespace druid-system
-kubectl apply -f https://raw.githubusercontent.com/druid-io/druid-operator/master/config/crd/bases/druid.apache.org_druids.yaml
-kubectl apply -f https://raw.githubusercontent.com/druid-io/druid-operator/master/deploy/operator.yaml
+kubectl create namespace druid
+kubectl apply -f https://raw.githubusercontent.com/druid-io/druid-operator/master/deploy/crds/druid.apache.org_druids.yaml
+kubectl apply -n druid -f https://raw.githubusercontent.com/druid-io/druid-operator/master/deploy/service_account.yaml
+kubectl apply -n druid -f https://raw.githubusercontent.com/druid-io/druid-operator/master/deploy/role.yaml
+kubectl apply -n druid -f https://raw.githubusercontent.com/druid-io/druid-operator/master/deploy/role_binding.yaml
+kubectl apply -n druid -f https://raw.githubusercontent.com/druid-io/druid-operator/master/deploy/operator.yaml
 
 # Verify operator is running
-kubectl get pods -n druid-system
+kubectl get pods -n druid
 ```
 
 You'll also need ZooKeeper for cluster coordination and a metadata store like PostgreSQL or MySQL. Deep storage for segments can use S3, Google Cloud Storage, or persistent volumes.
@@ -82,13 +85,15 @@ spec:
           name: peer
         - containerPort: 3888
           name: leader-election
+        command:
+        - sh
+        - -c
+        - |
+          export ZOO_MY_ID=$((${HOSTNAME##*-}+1))
+          exec /docker-entrypoint.sh zkServer.sh start-foreground
         env:
-        - name: ZOO_MY_ID
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
         - name: ZOO_SERVERS
-          value: "server.0=zookeeper-0.zookeeper:2888:3888;2181 server.1=zookeeper-1.zookeeper:2888:3888;2181 server.2=zookeeper-2.zookeeper:2888:3888;2181"
+          value: "server.1=zookeeper-0.zookeeper:2888:3888;2181 server.2=zookeeper-1.zookeeper:2888:3888;2181 server.3=zookeeper-2.zookeeper:2888:3888;2181"
         volumeMounts:
         - name: data
           mountPath: /data
@@ -105,7 +110,6 @@ spec:
 Apply this configuration:
 
 ```bash
-kubectl create namespace druid
 kubectl apply -f zookeeper.yaml
 ```
 
@@ -154,6 +158,8 @@ spec:
           value: druid
         - name: POSTGRES_PASSWORD
           value: druid_password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
@@ -185,21 +191,27 @@ spec:
     app: druid
   podAnnotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: "8080"
+    prometheus.io/port: "9090"
+  commonConfigMountPath: "/opt/druid/conf/druid/cluster/_common"
 
   # Common configuration for all nodes
   common.runtime.properties: |
-    druid.extensions.loadList=["druid-hdfs-storage", "druid-kafka-indexing-service", "druid-datasketches", "postgresql-metadata-storage"]
+    druid.extensions.loadList=["druid-s3-extensions", "druid-kafka-indexing-service", "druid-datasketches", "postgresql-metadata-storage", "prometheus-emitter"]
     druid.metadata.storage.type=postgresql
     druid.metadata.storage.connector.connectURI=jdbc:postgresql://postgres:5432/druid
     druid.metadata.storage.connector.user=druid
     druid.metadata.storage.connector.password=druid_password
-    druid.storage.type=local
-    druid.storage.storageDirectory=/druid/deepstorage
-    druid.indexer.logs.type=file
-    druid.indexer.logs.directory=/druid/indexing-logs
+    druid.storage.type=s3
+    druid.storage.bucket=my-druid-segments
+    druid.storage.baseKey=segments
+    druid.indexer.logs.type=s3
+    druid.indexer.logs.s3Bucket=my-druid-segments
+    druid.indexer.logs.s3Prefix=indexing-logs
     druid.zk.service.host=zookeeper-0.zookeeper:2181,zookeeper-1.zookeeper:2181,zookeeper-2.zookeeper:2181
     druid.zk.paths.base=/druid
+    druid.emitter=prometheus
+    druid.emitter.prometheus.strategy=exporter
+    druid.emitter.prometheus.port=9090
 
   # Coordinator nodes
   nodes:
@@ -211,6 +223,10 @@ spec:
       runtime.properties: |
         druid.service=druid/coordinator
         druid.plaintextPort=8081
+        druid.coordinator.asOverlord.enabled=true
+        druid.coordinator.asOverlord.overlordService=druid/overlord
+        druid.indexer.runner.type=remote
+        druid.indexer.storage.type=metadata
       resources:
         requests:
           memory: 2Gi
@@ -248,6 +264,7 @@ spec:
         druid.service=druid/historical
         druid.plaintextPort=8083
         druid.server.maxSize=300g
+        druid.segmentCache.locations=[{"path":"/druid/segment-cache","maxSize":322122547200}]
         druid.processing.buffer.sizeBytes=268435456
         druid.processing.numThreads=4
       resources:
@@ -308,6 +325,9 @@ spec:
       runtime.properties: |
         druid.service=druid/router
         druid.plaintextPort=8888
+        druid.router.defaultBrokerServiceName=druid/broker
+        druid.router.coordinatorServiceName=druid/coordinator
+        druid.router.managementProxy.enabled=true
       resources:
         requests:
           memory: 1Gi
@@ -338,28 +358,40 @@ kind: Service
 metadata:
   name: druid-router
   namespace: druid
+  labels:
+    app: druid
 spec:
   type: LoadBalancer
   selector:
     app: druid
-    nodeType: router
+    component: router
   ports:
   - port: 8888
+    name: http
     targetPort: 8888
+  - port: 9090
+    name: prometheus
+    targetPort: 9090
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: druid-coordinator
   namespace: druid
+  labels:
+    app: druid
 spec:
   type: ClusterIP
   selector:
     app: druid
-    nodeType: coordinator
+    component: coordinator
   ports:
   - port: 8081
+    name: http
     targetPort: 8081
+  - port: 9090
+    name: prometheus
+    targetPort: 9090
 ```
 
 ## Configuring Real-Time Ingestion
@@ -369,48 +401,53 @@ For real-time analytics, configure a Kafka ingestion spec. First, create an inge
 ```json
 {
   "type": "kafka",
-  "dataSchema": {
-    "dataSource": "events",
-    "timestampSpec": {
-      "column": "timestamp",
-      "format": "iso"
-    },
-    "dimensionsSpec": {
-      "dimensions": [
-        "user_id",
-        "event_type",
-        "country"
-      ]
-    },
-    "metricsSpec": [
-      {
-        "type": "count",
-        "name": "count"
+  "spec": {
+    "dataSchema": {
+      "dataSource": "events",
+      "timestampSpec": {
+        "column": "timestamp",
+        "format": "iso"
       },
-      {
-        "type": "longSum",
-        "name": "value_sum",
-        "fieldName": "value"
+      "dimensionsSpec": {
+        "dimensions": [
+          "user_id",
+          "event_type",
+          "country"
+        ]
+      },
+      "metricsSpec": [
+        {
+          "type": "count",
+          "name": "count"
+        },
+        {
+          "type": "longSum",
+          "name": "value_sum",
+          "fieldName": "value"
+        }
+      ],
+      "granularitySpec": {
+        "type": "uniform",
+        "segmentGranularity": "HOUR",
+        "queryGranularity": "MINUTE"
       }
-    ],
-    "granularitySpec": {
-      "type": "uniform",
-      "segmentGranularity": "HOUR",
-      "queryGranularity": "MINUTE"
-    }
-  },
-  "ioConfig": {
-    "topic": "events",
-    "consumerProperties": {
-      "bootstrap.servers": "kafka:9092"
     },
-    "taskCount": 4,
-    "replicas": 2,
-    "taskDuration": "PT1H"
-  },
-  "tuningConfig": {
-    "type": "kafka",
-    "maxRowsInMemory": 100000
+    "ioConfig": {
+      "topic": "events",
+      "inputFormat": {
+        "type": "json"
+      },
+      "consumerProperties": {
+        "bootstrap.servers": "kafka:9092"
+      },
+      "taskCount": 4,
+      "replicas": 2,
+      "taskDuration": "PT1H"
+    },
+    "tuningConfig": {
+      "type": "kafka",
+      "maxRowsInMemory": 100000
+    }
   }
 }
 ```
@@ -443,7 +480,7 @@ spec:
     matchLabels:
       app: druid
   endpoints:
-  - port: druid-port
+  - port: prometheus
     path: /metrics
 ```
 
