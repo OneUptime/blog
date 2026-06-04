@@ -109,7 +109,7 @@ kubectl get networkpolicy -n production
 kubectl describe networkpolicy allow-init-traffic -n production
 ```
 
-Network policies sometimes forget to allow traffic from init containers because they focus on main container communication.
+Network policies apply to pods, not to individual init or main containers. Make sure the policy for the pod allows the network traffic needed during initialization.
 
 ## Example: Database Migration Init Container
 
@@ -348,8 +348,8 @@ kubectl describe pod my-app -n production | grep -A 10 "Init Containers"
 # "ErrImagePull" - image not found or credentials invalid
 # "InvalidImageName" - malformed image reference
 
-# Verify image exists and is accessible
-kubectl run test-pull --image=curlimages/curl:7.85.0 --rm -it -- /bin/sh
+# Verify the failing image exists and is accessible
+kubectl run test-pull --image=my-private-registry/init-image:tag --rm -it -- /bin/sh
 
 # Check image pull secrets if using private registry
 kubectl get secret -n production | grep docker
