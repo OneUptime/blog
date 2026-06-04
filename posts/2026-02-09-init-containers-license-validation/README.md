@@ -71,7 +71,10 @@ data:
     SIGNATURE=$(grep "Signature:" "$LICENSE_FILE" | cut -d' ' -f2)
 
     # Verify signature
-    echo "$LICENSE_DATA" | openssl dgst -sha256 -verify "$PUBLIC_KEY" -signature <(echo "$SIGNATURE" | base64 -d) || {
+    SIGNATURE_FILE=$(mktemp)
+    trap 'rm -f "$SIGNATURE_FILE"' EXIT
+    echo "$SIGNATURE" | base64 -d > "$SIGNATURE_FILE"
+    printf "%s\n" "$LICENSE_DATA" | openssl dgst -sha256 -verify "$PUBLIC_KEY" -signature "$SIGNATURE_FILE" || {
       echo "ERROR: License signature invalid"
       exit 1
     }
@@ -130,10 +133,13 @@ spec:
     spec:
       initContainers:
       - name: license-validator
-        image: alpine:3.18
+        image: alpine:3.23
         command:
         - sh
-        - /scripts/validate.sh
+        - -c
+        - |
+          apk add --no-cache coreutils openssl
+          sh /scripts/validate.sh
         volumeMounts:
         - name: license
           mountPath: /license
@@ -323,6 +329,17 @@ spec:
         ports:
         - containerPort: 8080
         env:
+        - name: LICENSE_SERVER
+          value: "https://license.vendor.com"
+        - name: LICENSE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: product-license
+              key: license-key
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         - name: LICENSE_INFO_FILE
           value: "/shared/license-info.json"
         volumeMounts:
@@ -459,10 +476,13 @@ spec:
     spec:
       initContainers:
       - name: hardware-license-check
-        image: alpine:3.18
+        image: alpine:3.23
         command:
         - sh
-        - /scripts/validate-hardware.sh
+        - -c
+        - |
+          apk add --no-cache coreutils
+          sh /scripts/validate-hardware.sh
         env:
         - name: NODE_NAME
           valueFrom:
@@ -662,6 +682,7 @@ spec:
     - alert: LicenseExpiringSoon
       expr: |
         (license_expiration_timestamp - time()) / 86400 < 30
+        and (license_expiration_timestamp - time()) / 86400 > 0
       for: 1h
       labels:
         severity: warning
