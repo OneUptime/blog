@@ -8,13 +8,13 @@ Description: Learn systematic approaches to debug CoreDNS plugin chain ordering 
 
 ---
 
-CoreDNS processes queries through a plugin chain where order matters significantly. Misconfigured plugin chains cause subtle DNS issues that are challenging to diagnose. Understanding how to debug plugin chain ordering and configuration errors helps you maintain reliable DNS resolution and quickly resolve problems when they occur.
+CoreDNS processes queries through a plugin chain where order matters significantly. The order for different plugin directives is defined by the CoreDNS build's `plugin.cfg`, while repeated directives of the same plugin can have their own ordering rules. Misconfigured plugin chains cause subtle DNS issues that are challenging to diagnose. Understanding how to debug plugin chain ordering and configuration errors helps you maintain reliable DNS resolution and quickly resolve problems when they occur.
 
 This guide provides systematic debugging techniques for CoreDNS plugin chains.
 
 ## Understanding Plugin Chain Execution
 
-CoreDNS executes plugins in the order they appear in the Corefile. Each plugin can:
+CoreDNS executes different plugins in the static order compiled into the CoreDNS binary, not in the order they appear in the Corefile. Each plugin can:
 
 1. Answer the query and stop processing
 2. Modify the query and pass to next plugin
@@ -27,26 +27,29 @@ Plugin categories:
 - **Query processors**: rewrite, hosts, template
 - **Resolution plugins**: kubernetes, forward, file
 - **Cache plugins**: cache
-- **Monitoring plugins**: prometheus, metrics
+- **Monitoring plugins**: prometheus
 
 ## Common Plugin Chain Issues
 
 Typical problems and their symptoms:
 
-**Issue: Wrong plugin order**
+**Issue: Wrong order for repeated plugin directives**
 
 ```yaml
-# BAD: Cache after forward
-
+# BAD: Parent domain before subdomain
 .:53 {
-    forward . 8.8.8.8
-    cache 30  # Too late - queries already forwarded
+    cache 30
+    forward example.local 10.0.0.1
+    forward lab.example.local 10.20.0.1  # Too late - example.local matched first
+    forward . /etc/resolv.conf
 }
 
-# GOOD: Cache before forward
+# GOOD: More specific forward zones first
 .:53 {
-    cache 30  # Cache first
-    forward . 8.8.8.8
+    cache 30
+    forward lab.example.local 10.20.0.1
+    forward example.local 10.0.0.1
+    forward . /etc/resolv.conf
 }
 ```
 
@@ -58,13 +61,13 @@ kubernetes cluster.local {
    pods insecure
 }
 
-# External queries fail here
+# Unanswered names in cluster.local stop here
 forward . 8.8.8.8
 
 # GOOD: With fallthrough
 kubernetes cluster.local {
    pods insecure
-   fallthrough  # Allow external queries to reach forward
+   fallthrough  # Allow unresolved names in this zone to reach forward
 }
 
 forward . 8.8.8.8
@@ -95,8 +98,8 @@ data:
         }
 
         prometheus :9153
-        forward . /etc/resolv.conf
         cache 30
+        forward . /etc/resolv.conf
         loop
         reload
         loadbalance
@@ -142,12 +145,12 @@ Enable detailed debugging:
        ttl 30
     }
 
-    forward . 8.8.8.8
     cache 30
+    forward . 8.8.8.8
 }
 ```
 
-Debug output shows plugin invocation order and decisions.
+Debug enables CoreDNS debug logging and disables automatic panic recovery. Individual plugins decide which debug details they emit.
 
 ## Testing Plugin Chain Configuration
 
@@ -181,7 +184,7 @@ data:
     if echo "$result" | grep -q "Address:"; then
         echo "PASS: Forward plugin working"
     else
-        echo "FAIL: Forward plugin issue or no fallthrough"
+        echo "FAIL: Forward plugin issue"
         echo "$result"
     fi
     echo ""
@@ -260,12 +263,12 @@ Check for syntax errors before applying:
 # Extract Corefile from ConfigMap
 kubectl get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}' > Corefile
 
-# Validate with CoreDNS binary (if available locally)
-coredns -conf Corefile -validate
+# Parse with CoreDNS binary (if available locally)
+# A timeout after startup is expected; parse errors appear immediately.
+timeout 5s coredns -conf Corefile -dns.port=1053
 
-# Or use a validation container
-kubectl run coredns-validate --image=coredns/coredns:1.10.1 --rm -it -- \
-  coredns -conf /dev/stdin -validate < Corefile
+# Or use a validation container locally
+timeout 5s docker run --rm -i coredns/coredns:1.10.1 -conf /dev/stdin -dns.port=1053 < Corefile
 ```
 
 ## Common Configuration Errors
@@ -354,12 +357,13 @@ data:
 
     # Check CoreDNS metrics
     echo "CoreDNS Metrics (cache):"
-    kubectl exec -n kube-system -l k8s-app=kube-dns -- wget -qO- http://localhost:9153/metrics | grep coredns_cache_hits_total
+    pod=$(kubectl get pods -n kube-system -l k8s-app=kube-dns -o jsonpath='{.items[0].metadata.name}')
+    kubectl exec -n kube-system "$pod" -- wget -qO- http://localhost:9153/metrics | grep coredns_cache_hits_total
     echo ""
 
     # List loaded plugins
     echo "Loaded Plugins:"
-    kubectl exec -n kube-system -l k8s-app=kube-dns -- coredns -plugins
+    kubectl exec -n kube-system "$pod" -- /coredns -plugins
 ```
 
 ## Monitoring Plugin Chain Health
@@ -367,13 +371,13 @@ data:
 Track plugin performance:
 
 ```promql
-# Requests per plugin
-sum(rate(coredns_dns_requests_total[5m])) by (plugin)
+# Responses by answering plugin
+sum(rate(coredns_dns_responses_total[5m])) by (plugin)
 
 # Errors per plugin
-sum(rate(coredns_dns_errors_total[5m])) by (plugin)
+sum(rate(coredns_dns_responses_total{rcode=~"SERVFAIL|REFUSED|FORMERR|NOTIMP"}[5m])) by (plugin)
 
-# Response time by plugin
+# Overall response time
 histogram_quantile(0.95,
   rate(coredns_dns_request_duration_seconds_bucket[5m])
 )
@@ -392,7 +396,7 @@ data:
     - name: coredns-plugins
       rules:
       - alert: CoreDNSPluginErrors
-        expr: rate(coredns_plugin_errors_total[5m]) > 1
+        expr: sum(rate(coredns_dns_responses_total{rcode=~"SERVFAIL|REFUSED|FORMERR|NOTIMP"}[5m])) by (plugin) > 1
         for: 5m
         labels:
           severity: warning
@@ -401,7 +405,7 @@ data:
           description: "Plugin {{ $labels.plugin }} is experiencing errors"
 
       - alert: CoreDNSForwardFailures
-        expr: rate(coredns_forward_healthcheck_failures_total[5m]) > 0
+        expr: rate(coredns_proxy_healthcheck_failures_total{proxy_name="forward"}[5m]) > 0
         for: 5m
         labels:
           severity: warning
@@ -414,7 +418,7 @@ data:
 
 Follow these guidelines:
 
-1. **Order plugins correctly**: Control → Processing → Resolution → Cache
+1. **Know the compiled plugin order**: Different plugins execute in `plugin.cfg` order, while repeated directives like multiple `forward` rules may be order-sensitive
 2. **Use fallthrough appropriately**: Enable for plugins that might not answer all queries
 3. **Test after changes**: Verify both cluster and external resolution
 4. **Enable logging temporarily**: For debugging complex issues
