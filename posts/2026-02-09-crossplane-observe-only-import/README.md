@@ -14,13 +14,13 @@ This mode imports resources into Kubernetes as read-only representations. You ca
 
 ## Understanding Observe-Only Mode
 
-Crossplane supports three management policies:
+Crossplane supports several management policies:
 
-**FullControl** manages the resource completely. Crossplane creates, updates, and deletes it based on your spec.
+**\*** grants full control. Crossplane can observe, create, update, late-initialize, and delete the resource based on your spec.
 
-**ObserveOnly** watches the resource without modifying it. Crossplane imports its current state and keeps it synced, but never makes changes.
+**Observe** watches the resource without modifying it. Crossplane imports its current state and keeps it synced, but never makes changes.
 
-**OrphanOnDelete** manages the resource normally but orphans it instead of deleting it when the Kubernetes object is removed.
+**Create**, **Update**, **Delete**, and **LateInitialize** enable those individual actions. To manage a resource without deleting it when the Kubernetes object is removed, omit **Delete** from `managementPolicies` or set `deletionPolicy: Orphan`.
 
 Observe-only mode is perfect for importing existing infrastructure. You can reference imported resources in new compositions while keeping them untouched.
 
@@ -38,7 +38,7 @@ Create a managed resource in observe-only mode.
 
 ```yaml
 # import-existing-rds.yaml
-apiVersion: rds.aws.upbound.io/v1beta1
+apiVersion: rds.aws.m.upbound.io/v1beta1
 kind: Instance
 metadata:
   name: legacy-database
@@ -90,7 +90,7 @@ Create managed resources for each component.
 # import-app-stack.yaml
 ---
 # Import the database
-apiVersion: rds.aws.upbound.io/v1beta1
+apiVersion: rds.aws.m.upbound.io/v1beta1
 kind: Instance
 metadata:
   name: legacy-app-db
@@ -106,7 +106,7 @@ spec:
     allocatedStorage: 1000
 ---
 # Import the S3 bucket
-apiVersion: s3.aws.upbound.io/v1beta1
+apiVersion: s3.aws.m.upbound.io/v1beta1
 kind: Bucket
 metadata:
   name: legacy-app-storage
@@ -118,7 +118,7 @@ spec:
     region: us-west-2
 ---
 # Import the load balancer
-apiVersion: elbv2.aws.upbound.io/v1beta1
+apiVersion: elbv2.aws.m.upbound.io/v1beta1
 kind: LB
 metadata:
   name: legacy-app-lb
@@ -151,40 +151,62 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: Application
-  resources:
-    # New application deployment
-    - name: app-deployment
-      base:
-        apiVersion: kubernetes.crossplane.io/v1alpha2
-        kind: Object
-        spec:
-          forProvider:
-            manifest:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: myapp
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          # New application deployment
+          - name: app-deployment
+            base:
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
               spec:
-                replicas: 3
-      patches:
-        # Reference the imported database
-        - type: FromCompositeFieldPath
-          fromFieldPath: status.importedDb.endpoint
-          toFieldPath: spec.forProvider.manifest.spec.template.spec.containers[0].env[0].value
-          policy:
-            fromFieldPath: Required
+                forProvider:
+                  manifest:
+                    apiVersion: apps/v1
+                    kind: Deployment
+                    metadata:
+                      name: myapp
+                    spec:
+                      replicas: 3
+                      selector:
+                        matchLabels:
+                          app: myapp
+                      template:
+                        metadata:
+                          labels:
+                            app: myapp
+                        spec:
+                          containers:
+                            - name: myapp
+                              image: nginx:1.27
+                              env:
+                                - name: DATABASE_ENDPOINT
+                                  value: ""
+            patches:
+              # Reference the imported database
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.importedDb.endpoint
+                toFieldPath: spec.forProvider.manifest.spec.template.spec.containers[0].env[0].value
+                policy:
+                  fromFieldPath: Required
 
-    # Cache (new resource under full management)
-    - name: redis-cache
-      base:
-        apiVersion: cache.aws.upbound.io/v1beta1
-        kind: Cluster
-        spec:
-          forProvider:
-            region: us-west-2
-            cacheNodeType: cache.t3.micro
-            engine: redis
-            numCacheNodes: 1
+          # Cache (new resource under full management)
+          - name: redis-cache
+            base:
+              apiVersion: cache.aws.m.upbound.io/v1beta1
+              kind: Cluster
+              spec:
+                forProvider:
+                  region: us-west-2
+                  cacheNodeType: cache.t3.micro
+                  engine: redis
+                  numCacheNodes: 1
 ```
 
 The composition creates new resources while referencing the imported database.
@@ -195,14 +217,14 @@ When ready, transition from observe-only to full management.
 
 ```yaml
 # migrate-to-full-management.yaml
-apiVersion: rds.aws.upbound.io/v1beta1
+apiVersion: rds.aws.m.upbound.io/v1beta1
 kind: Instance
 metadata:
   name: legacy-database
   annotations:
     crossplane.io/external-name: prod-postgres-01
 spec:
-  # Remove ObserveOnly, add full management
+  # Replace Observe with full management
   managementPolicies: ["*"]
   forProvider:
     region: us-west-2
@@ -244,7 +266,7 @@ echo "$instances" | jq -c '.[]' | while read -r instance; do
   storage=$(echo "$instance" | jq -r '.[4]')
 
   cat <<EOF > "import-${identifier}.yaml"
-apiVersion: rds.aws.upbound.io/v1beta1
+apiVersion: rds.aws.m.upbound.io/v1beta1
 kind: Instance
 metadata:
   name: imported-${identifier}
@@ -287,38 +309,40 @@ data:
     groups:
       - name: crossplane-imports
         rules:
-          # Alert when imported resource drifts
-          - alert: ImportedResourceDrift
+          # Alert when any managed resource is not synced
+          - alert: CrossplaneManagedResourceNotSynced
             expr: |
-              crossplane_managed_resource_condition{
-                type="Synced",
-                status="False",
-                management_policy="Observe"
-              } > 0
+              crossplane_managed_resource_synced == 0
             for: 15m
             labels:
               severity: warning
             annotations:
-              summary: "Imported resource out of sync"
-              description: "Resource {{ $labels.name }} has drifted from expected state"
+              summary: "Crossplane managed resource is not synced"
+              description: "Resource {{ $labels.name }} is not synced"
 
-          # Track number of imported resources
-          - record: crossplane_imported_resources_total
+          # Track number of managed resources
+          - record: crossplane_managed_resources_total
             expr: |
-              count(crossplane_managed_resource_info{management_policy="Observe"})
+              count(crossplane_managed_resource_exists)
 ```
 
 Check imported resource health.
 
 ```bash
-# List all imported resources
-kubectl get managed -l crossplane.io/management-policy=Observe
+# List all observe-only resources
+kubectl get managed -o json | jq -r \
+  '.items[] | select(.spec.managementPolicies == ["Observe"]) | .metadata.name'
 
 # Check sync status
-kubectl get managed -l crossplane.io/management-policy=Observe -o custom-columns=\
-NAME:.metadata.name,\
-READY:.status.conditions[?(@.type=='Ready')].status,\
-SYNCED:.status.conditions[?(@.type=='Synced')].status
+kubectl get managed -o json | jq -r '
+  .items[]
+  | select(.spec.managementPolicies == ["Observe"])
+  | [
+      .metadata.name,
+      (.status.conditions[]? | select(.type=="Ready") | .status),
+      (.status.conditions[]? | select(.type=="Synced") | .status)
+    ]
+  | @tsv'
 ```
 
 ## Selective Management Policies
@@ -335,43 +359,51 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: ApplicationStack
-  resources:
-    # Imported legacy database (observe only)
-    - name: legacy-db
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        metadata:
-          annotations:
-            crossplane.io/external-name: legacy-prod-db
-        spec:
-          managementPolicies: ["Observe"]
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "14.7"
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          # Imported legacy database (observe only)
+          - name: legacy-db
+            base:
+              apiVersion: rds.aws.m.upbound.io/v1beta1
+              kind: Instance
+              metadata:
+                annotations:
+                  crossplane.io/external-name: legacy-prod-db
+              spec:
+                managementPolicies: ["Observe"]
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "14.7"
 
-    # New cache (fully managed)
-    - name: cache
-      base:
-        apiVersion: cache.aws.upbound.io/v1beta1
-        kind: Cluster
-        spec:
-          managementPolicies: ["*"]
-          forProvider:
-            region: us-west-2
-            cacheNodeType: cache.t3.micro
-            engine: redis
+          # New cache (fully managed)
+          - name: cache
+            base:
+              apiVersion: cache.aws.m.upbound.io/v1beta1
+              kind: Cluster
+              spec:
+                managementPolicies: ["*"]
+                forProvider:
+                  region: us-west-2
+                  cacheNodeType: cache.t3.micro
+                  engine: redis
 
-    # New storage (fully managed)
-    - name: storage
-      base:
-        apiVersion: s3.aws.upbound.io/v1beta1
-        kind: Bucket
-        spec:
-          managementPolicies: ["*"]
-          forProvider:
-            region: us-west-2
+          # New storage (fully managed)
+          - name: storage
+            base:
+              apiVersion: s3.aws.m.upbound.io/v1beta1
+              kind: Bucket
+              spec:
+                managementPolicies: ["*"]
+                forProvider:
+                  region: us-west-2
 ```
 
 New components get full management. Legacy components stay in observe mode.
@@ -384,7 +416,7 @@ Handle resources that reference each other.
 # import-with-dependencies.yaml
 ---
 # Import VPC first
-apiVersion: ec2.aws.upbound.io/v1beta1
+apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: VPC
 metadata:
   name: legacy-vpc
@@ -397,7 +429,7 @@ spec:
     cidrBlock: "10.0.0.0/16"
 ---
 # Import subnet that references VPC
-apiVersion: ec2.aws.upbound.io/v1beta1
+apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: Subnet
 metadata:
   name: legacy-subnet-a
@@ -414,7 +446,7 @@ spec:
       name: legacy-vpc
 ---
 # Import database in the subnet
-apiVersion: rds.aws.upbound.io/v1beta1
+apiVersion: rds.aws.m.upbound.io/v1beta1
 kind: Instance
 metadata:
   name: legacy-db
@@ -440,14 +472,13 @@ Create import manifests from existing Terraform state.
 
 ```bash
 # Extract resource IDs from Terraform state
-terraform state list | while read -r resource; do
-  # Get resource details
-  terraform state show "$resource" -json > /tmp/resource.json
+terraform show -json > /tmp/terraform-state.json
 
+jq -c '.values.root_module.resources[]?' /tmp/terraform-state.json | while read -r resource; do
   # Generate Crossplane manifest
   # (Simplified example, real implementation needs type mapping)
-  resource_type=$(jq -r '.type' /tmp/resource.json)
-  resource_id=$(jq -r '.values.id' /tmp/resource.json)
+  resource_type=$(echo "$resource" | jq -r '.type')
+  resource_id=$(echo "$resource" | jq -r '.values.id')
 
   # Map to Crossplane resource type
   # Generate manifest with managementPolicies: ["Observe"]
