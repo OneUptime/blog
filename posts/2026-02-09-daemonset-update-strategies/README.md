@@ -136,6 +136,7 @@ kubectl get pods -l app=storage-driver -o wide
 
 # Update one node at a time
 kubectl delete pod storage-driver-abc123 -n storage-system
+kubectl wait --for=delete pod/storage-driver-abc123 -n storage-system
 
 # Wait for new pod to become ready
 kubectl wait --for=condition=ready pod \
@@ -169,6 +170,7 @@ for POD in $PODS; do
 
     # Delete pod
     kubectl delete $POD -n $NAMESPACE
+    kubectl wait --for=delete $POD -n $NAMESPACE --timeout=300s
 
     # Wait for new pod to be ready
     echo "Waiting for new pod on $NODE to be ready..."
@@ -279,6 +281,12 @@ Label canary nodes:
 kubectl label node node-1 canary=true
 kubectl label node node-2 canary=true
 
+# Remove stable pods from canary nodes so they are recreated only on non-canary nodes
+kubectl delete pod -n monitoring -l app=monitoring-agent,version=stable \
+    --field-selector spec.nodeName=node-1
+kubectl delete pod -n monitoring -l app=monitoring-agent,version=stable \
+    --field-selector spec.nodeName=node-2
+
 # Monitor canary performance
 kubectl top pods -l version=canary -n monitoring
 
@@ -298,12 +306,6 @@ Implement rollback procedures for failed updates:
 
 NAMESPACE=$1
 DAEMONSET=$2
-
-# Get current revision
-CURRENT_REVISION=$(kubectl get daemonset $DAEMONSET -n $NAMESPACE \
-    -o jsonpath='{.metadata.annotations.deprecated\.daemonset\.template\.generation}')
-
-echo "Current revision: $CURRENT_REVISION"
 
 # View rollout history
 kubectl rollout history daemonset/$DAEMONSET -n $NAMESPACE
@@ -327,11 +329,10 @@ kubectl rollout status daemonset/log-collector -n logging
 # View rollout history
 kubectl rollout history daemonset/log-collector -n logging
 
-# Pause rollout
-kubectl rollout pause daemonset/log-collector -n logging
-
-# Resume rollout
-kubectl rollout resume daemonset/log-collector -n logging
+# DaemonSets do not support kubectl rollout pause/resume.
+# To regain manual control for future template changes, switch to OnDelete:
+kubectl patch daemonset/log-collector -n logging --type=merge \
+    -p '{"spec":{"updateStrategy":{"type":"OnDelete"}}}'
 ```
 
 ## Setting Update Readiness Gates
@@ -396,7 +397,7 @@ package main
 import (
     "encoding/json"
     "fmt"
-    "net/http"
+    "strings"
 
     admissionv1 "k8s.io/api/admission/v1"
     appsv1 "k8s.io/api/apps/v1"
@@ -404,12 +405,25 @@ import (
 )
 
 func validateDaemonSetUpdate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
+    if ar.Request == nil {
+        return &admissionv1.AdmissionResponse{
+            Allowed: false,
+            Result: &metav1.Status{
+                Message: "admission request is missing",
+            },
+        }
+    }
+
+    uid := ar.Request.UID
+
     // Parse old and new DaemonSet
     oldDS := &appsv1.DaemonSet{}
     newDS := &appsv1.DaemonSet{}
 
     if err := json.Unmarshal(ar.Request.OldObject.Raw, oldDS); err != nil {
         return &admissionv1.AdmissionResponse{
+            UID: uid,
+            Allowed: false,
             Result: &metav1.Status{
                 Message: err.Error(),
             },
@@ -418,6 +432,8 @@ func validateDaemonSetUpdate(ar admissionv1.AdmissionReview) *admissionv1.Admiss
 
     if err := json.Unmarshal(ar.Request.Object.Raw, newDS); err != nil {
         return &admissionv1.AdmissionResponse{
+            UID: uid,
+            Allowed: false,
             Result: &metav1.Status{
                 Message: err.Error(),
             },
@@ -426,8 +442,9 @@ func validateDaemonSetUpdate(ar admissionv1.AdmissionReview) *admissionv1.Admiss
 
     // Validate image tag is not 'latest'
     for _, container := range newDS.Spec.Template.Spec.Containers {
-        if container.Image == "" || container.Image[len(container.Image)-7:] == ":latest" {
+        if container.Image == "" || strings.HasSuffix(container.Image, ":latest") {
             return &admissionv1.AdmissionResponse{
+                UID: uid,
                 Allowed: false,
                 Result: &metav1.Status{
                     Message: "DaemonSet must use specific image tags, not :latest",
@@ -440,6 +457,7 @@ func validateDaemonSetUpdate(ar admissionv1.AdmissionReview) *admissionv1.Admiss
     for _, container := range newDS.Spec.Template.Spec.Containers {
         if container.Resources.Limits == nil {
             return &admissionv1.AdmissionResponse{
+                UID: uid,
                 Allowed: false,
                 Result: &metav1.Status{
                     Message: fmt.Sprintf("Container %s must have resource limits", container.Name),
@@ -449,10 +467,12 @@ func validateDaemonSetUpdate(ar admissionv1.AdmissionReview) *admissionv1.Admiss
     }
 
     // Validate maxUnavailable is safe
-    if newDS.Spec.UpdateStrategy.Type == appsv1.RollingUpdateDaemonSetStrategyType {
+    if newDS.Spec.UpdateStrategy.Type == appsv1.RollingUpdateDaemonSetStrategyType &&
+        newDS.Spec.UpdateStrategy.RollingUpdate != nil {
         maxUnavailable := newDS.Spec.UpdateStrategy.RollingUpdate.MaxUnavailable
         if maxUnavailable != nil && maxUnavailable.IntValue() > 5 {
             return &admissionv1.AdmissionResponse{
+                UID: uid,
                 Allowed: false,
                 Result: &metav1.Status{
                     Message: "maxUnavailable cannot exceed 5 for safety",
@@ -462,6 +482,7 @@ func validateDaemonSetUpdate(ar admissionv1.AdmissionReview) *admissionv1.Admiss
     }
 
     return &admissionv1.AdmissionResponse{
+        UID: uid,
         Allowed: true,
     }
 }
