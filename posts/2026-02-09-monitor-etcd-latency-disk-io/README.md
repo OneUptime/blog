@@ -25,7 +25,7 @@ Exceeding these thresholds leads to degraded performance and potential cluster d
 
 ## Checking Built-in etcd Metrics
 
-etcd exposes Prometheus metrics on port 2381. Query these metrics directly:
+etcd exposes Prometheus metrics under `/metrics` on its client port and, when configured, on any URLs set with `--listen-metrics-urls`. Many kubeadm clusters expose a local metrics listener on port 2381. Query these metrics directly:
 
 ```bash
 # Check if metrics endpoint is accessible
@@ -143,8 +143,6 @@ spec:
   - name: metrics
     port: 2381
     targetPort: 2381
-  selector:
-    component: etcd
 ---
 apiVersion: v1
 kind: Endpoints
@@ -242,7 +240,7 @@ spec:
     # Alert on leader changes
     - alert: EtcdFrequentLeaderChanges
       expr: |
-        rate(etcd_server_leader_changes_seen_total[15m]) > 3
+        increase(etcd_server_leader_changes_seen_total[15m]) > 3
       for: 5m
       labels:
         severity: warning
@@ -274,47 +272,68 @@ Create a comprehensive etcd monitoring dashboard. Import this dashboard JSON:
 
 ```json
 {
-  "dashboard": {
-    "title": "etcd Cluster Monitoring",
-    "panels": [
-      {
-        "title": "Disk WAL Fsync Latency (P99)",
-        "targets": [{
-          "expr": "histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m]))"
-        }],
-        "yaxes": [{
-          "format": "s"
-        }]
-      },
-      {
-        "title": "Backend Commit Latency (P99)",
-        "targets": [{
-          "expr": "histogram_quantile(0.99, rate(etcd_disk_backend_commit_duration_seconds_bucket[5m]))"
-        }],
-        "yaxes": [{
-          "format": "s"
-        }]
-      },
-      {
-        "title": "Network Peer Round Trip Time",
-        "targets": [{
-          "expr": "histogram_quantile(0.99, rate(etcd_network_peer_round_trip_time_seconds_bucket[5m]))"
-        }],
-        "yaxes": [{
-          "format": "s"
-        }]
-      },
-      {
-        "title": "Database Size",
-        "targets": [{
-          "expr": "etcd_mvcc_db_total_size_in_bytes"
-        }],
-        "yaxes": [{
-          "format": "bytes"
-        }]
-      }
-    ]
-  }
+  "id": null,
+  "uid": "etcd-cluster-monitoring",
+  "title": "etcd Cluster Monitoring",
+  "tags": ["etcd", "kubernetes"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 0,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Disk WAL Fsync Latency (P99)",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [{
+        "refId": "A",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "expr": "histogram_quantile(0.99, sum by (instance, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])))"
+      }]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Backend Commit Latency (P99)",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [{
+        "refId": "A",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "expr": "histogram_quantile(0.99, sum by (instance, le) (rate(etcd_disk_backend_commit_duration_seconds_bucket[5m])))"
+      }]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Network Peer Round Trip Time (P99)",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [{
+        "refId": "A",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "expr": "histogram_quantile(0.99, sum by (instance, To, le) (rate(etcd_network_peer_round_trip_time_seconds_bucket[5m])))"
+      }]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Database Size",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [{
+        "refId": "A",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "expr": "etcd_mvcc_db_total_size_in_bytes"
+      }]
+    }
+  ]
 }
 ```
 
@@ -322,21 +341,21 @@ Key queries for the dashboard:
 
 ```promql
 # Disk fsync latency percentiles
-histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m]))
-histogram_quantile(0.95, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m]))
-histogram_quantile(0.50, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, sum by (instance, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])))
+histogram_quantile(0.95, sum by (instance, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])))
+histogram_quantile(0.50, sum by (instance, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])))
 
 # Backend commit latency
-histogram_quantile(0.99, rate(etcd_disk_backend_commit_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, sum by (instance, le) (rate(etcd_disk_backend_commit_duration_seconds_bucket[5m])))
 
 # Network peer latency
-histogram_quantile(0.99, rate(etcd_network_peer_round_trip_time_seconds_bucket[5m]))
+histogram_quantile(0.99, sum by (instance, To, le) (rate(etcd_network_peer_round_trip_time_seconds_bucket[5m])))
 
 # Leader changes
 rate(etcd_server_leader_changes_seen_total[5m])
 
 # Database size growth
-rate(etcd_mvcc_db_total_size_in_bytes[1h])
+deriv(etcd_mvcc_db_total_size_in_bytes[1h])
 
 # Key total
 etcd_debugging_mvcc_keys_total
@@ -368,7 +387,7 @@ spec:
       hostPID: true
       containers:
       - name: node-exporter
-        image: prom/node-exporter:v1.7.0
+        image: prom/node-exporter:v1.11.1
         args:
         - --path.procfs=/host/proc
         - --path.sysfs=/host/sys
@@ -452,24 +471,26 @@ Automate latency monitoring with a script:
 
 set -e
 
-ETCDCTL_API=3
-ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
-ETCDCTL_CACERT=/etc/kubernetes/pki/etcd/ca.crt
-ETCDCTL_CERT=/etc/kubernetes/pki/etcd/server.crt
-ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key
+export ETCDCTL_API=3
+export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
+export ETCDCTL_CACERT=/etc/kubernetes/pki/etcd/ca.crt
+export ETCDCTL_CERT=/etc/kubernetes/pki/etcd/server.crt
+export ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key
 
 METRICS_URL="http://localhost:2381/metrics"
 THRESHOLD_MS=10
 
-# Check fsync latency
-FSYNC_P99=$(curl -s $METRICS_URL | \
+# Check threshold bucket counters. Use Prometheus histogram_quantile for p99 alerts.
+FSYNC_LE_10MS=$(curl -s "$METRICS_URL" | \
   grep 'etcd_disk_wal_fsync_duration_seconds_bucket{le="0.01"}' | \
   awk '{print $2}')
 
-# Check backend commit latency
-COMMIT_P99=$(curl -s $METRICS_URL | \
+COMMIT_LE_25MS=$(curl -s "$METRICS_URL" | \
   grep 'etcd_disk_backend_commit_duration_seconds_bucket{le="0.025"}' | \
   awk '{print $2}')
+
+echo "WAL fsync samples <=10ms: ${FSYNC_LE_10MS:-unavailable}"
+echo "Backend commit samples <=25ms: ${COMMIT_LE_25MS:-unavailable}"
 
 # Test write latency
 START=$(date +%s%N)
@@ -499,7 +520,7 @@ Make it executable and run periodically:
 chmod +x /usr/local/bin/monitor-etcd-latency.sh
 
 # Add to cron
-echo "*/5 * * * * /usr/local/bin/monitor-etcd-latency.sh >> /var/log/etcd-latency.log 2>&1" | \
+(sudo crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/monitor-etcd-latency.sh >> /var/log/etcd-latency.log 2>&1") | \
   sudo crontab -
 ```
 
