@@ -8,11 +8,11 @@ Description: Learn how to migrate from the legacy aws-auth ConfigMap to EKS acce
 
 ---
 
-Amazon EKS cluster access management has evolved significantly. The traditional aws-auth ConfigMap method is being replaced by EKS access entries, which provide native AWS API integration for managing cluster authentication and authorization. This guide walks you through migrating from the legacy aws-auth ConfigMap to the modern access entry approach.
+Amazon EKS cluster access management has evolved significantly. The traditional aws-auth ConfigMap method is deprecated in favor of EKS access entries, which provide native AWS API integration for managing cluster authentication and authorization. This guide walks you through migrating from the legacy aws-auth ConfigMap to the modern access entry approach.
 
 ## Understanding the Legacy aws-auth ConfigMap
 
-The aws-auth ConfigMap maps AWS IAM identities to Kubernetes RBAC permissions. When you authenticate to an EKS cluster using AWS credentials, the cluster checks this ConfigMap to determine your Kubernetes username and groups.
+The aws-auth ConfigMap maps AWS IAM identities to Kubernetes RBAC permissions. When your cluster authentication mode includes the ConfigMap, the EKS authenticator uses this ConfigMap to determine your Kubernetes username and groups.
 
 Here's what a typical aws-auth ConfigMap looks like:
 
@@ -69,9 +69,19 @@ kubectl describe configmap aws-auth -n kube-system
 
 Parse the mapRoles and mapUsers sections to identify all IAM identities that need migration. Pay special attention to node roles, which require specific access entry types.
 
+Before creating access entries on a cluster that still uses only the ConfigMap, enable an authentication mode that includes the EKS API:
+
+```bash
+# Enable access entries while keeping aws-auth active during migration
+aws eks update-cluster-config \
+  --name production-cluster \
+  --access-config authenticationMode=API_AND_CONFIG_MAP \
+  --region us-east-1
+```
+
 ## Creating Access Entries for Node Roles
 
-Node IAM roles require special handling. They need the EC2_LINUX access entry type to properly authenticate worker nodes:
+Self-managed node IAM roles require special handling. Linux and Bottlerocket self-managed nodes need the EC2_LINUX access entry type to properly authenticate worker nodes:
 
 ```bash
 # Create access entry for node role
@@ -82,9 +92,9 @@ aws eks create-access-entry \
   --region us-east-1
 ```
 
-The EC2_LINUX type automatically configures the correct Kubernetes groups (system:nodes, system:bootstrappers) and username format (system:node:{{EC2PrivateDNSName}}) without manual specification.
+The EC2_LINUX type automatically configures the Kubernetes node identity and grants the node permissions required to function in the cluster without manual group or username specification.
 
-For self-managed node groups or custom node configurations, verify that the node role has the necessary permissions:
+For managed node groups and Fargate profiles, Amazon EKS creates access entries when access entries are enabled, or updates the aws-auth ConfigMap when they are unavailable. For self-managed node groups or custom node configurations, verify that the node role has the necessary access entry:
 
 ```bash
 # Verify node access entry was created
@@ -181,14 +191,10 @@ This approach allows gradual migration. You can use EKS access entries for authe
 Before removing the aws-auth ConfigMap, verify that all access entries work correctly. Test with each IAM identity:
 
 ```bash
-# Assume the role you want to test
-aws sts assume-role \
-  --role-arn arn:aws:iam::123456789012:role/developer-role \
-  --role-session-name test-session
-
-# Update kubeconfig with assumed role credentials
+# Update kubeconfig to use the role for kubectl authentication
 aws eks update-kubeconfig \
   --name production-cluster \
+  --role-arn arn:aws:iam::123456789012:role/developer-role \
   --region us-east-1
 
 # Test cluster access
@@ -234,7 +240,7 @@ This approach provides version control for access configurations and enables con
 
 ## Removing the aws-auth ConfigMap
 
-Once all access entries are created and tested, you can remove the aws-auth ConfigMap. EKS will automatically fall back to access entries when the ConfigMap is absent.
+Once all access entries are created and tested, you can stop using the aws-auth ConfigMap by switching the cluster authentication mode to API. This is a one-way change: you can move from CONFIG_MAP to API_AND_CONFIG_MAP, and then from API_AND_CONFIG_MAP to API, but you can't switch back after removing ConfigMap authentication.
 
 However, keep a backup before deletion:
 
@@ -242,15 +248,21 @@ However, keep a backup before deletion:
 # Backup the ConfigMap one final time
 kubectl get configmap aws-auth -n kube-system -o yaml > aws-auth-final-backup.yaml
 
+# Use only EKS access entries for authentication
+aws eks update-cluster-config \
+  --name production-cluster \
+  --access-config authenticationMode=API \
+  --region us-east-1
+
 # Delete the ConfigMap
 kubectl delete configmap aws-auth -n kube-system
 ```
 
-After deletion, test all access patterns again to ensure nothing was missed. The beauty of this approach is that you can restore the ConfigMap if issues arise, as EKS checks the ConfigMap first if present.
+After deletion, test all access patterns again to ensure nothing was missed. If you want a reversible migration window, keep the cluster in API_AND_CONFIG_MAP mode and remove only the migrated entries from aws-auth until you are ready to switch fully to API mode.
 
 ## Monitoring Access Entry Usage
 
-Use AWS CloudTrail to monitor access entry modifications and authentication events:
+Use AWS CloudTrail to monitor access entry modifications, and enable EKS authenticator control plane logs in CloudWatch Logs to monitor cluster authentication events:
 
 ```bash
 # Query CloudTrail for access entry changes
@@ -258,12 +270,18 @@ aws cloudtrail lookup-events \
   --lookup-attributes AttributeKey=EventName,AttributeValue=CreateAccessEntry \
   --region us-east-1
 
-# Monitor authentication attempts
+# Query CloudTrail for policy association changes
 aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=AssociateAccessPolicy \
+  --region us-east-1
+
+# Enable authenticator logs for Kubernetes API authentication events
+aws eks update-cluster-config \
+  --name production-cluster \
+  --logging '{"clusterLogging":[{"types":["authenticator"],"enabled":true}]}' \
   --region us-east-1
 ```
 
-Set up CloudWatch alarms for unauthorized access attempts or unexpected access entry modifications to maintain security visibility.
+Set up CloudWatch metric filters or alarms for unauthorized access attempts in authenticator logs and unexpected access entry modifications to maintain security visibility.
 
 Migrating to EKS access entries modernizes your cluster access management while improving auditability and operational efficiency. The native AWS integration makes access control consistent with other AWS services, reducing the cognitive overhead of managing Kubernetes authentication through kubectl.
