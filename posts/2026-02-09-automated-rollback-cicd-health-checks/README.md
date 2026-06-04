@@ -25,12 +25,18 @@ metadata:
   name: myapp
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
         - name: myapp
@@ -79,7 +85,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Build and push image
         run: |
@@ -90,8 +96,7 @@ jobs:
         run: |
           kubectl set image deployment/myapp \
             myapp=registry.example.com/myapp:${{ github.sha }} \
-            -n production \
-            --record
+            -n production
 
       - name: Monitor rollout
         id: rollout
@@ -241,7 +246,7 @@ jobs:
 Create Tekton rollback task:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: deploy-with-rollback
@@ -268,8 +273,7 @@ spec:
 
         kubectl set image deployment/$(params.deployment) \
           $(params.deployment)=$(params.image) \
-          -n $(params.namespace) \
-          --record
+          -n $(params.namespace)
 
     - name: wait-rollout
       image: bitnami/kubectl:latest
@@ -277,15 +281,11 @@ spec:
       onError: continue
       script: |
         #!/bin/bash
+        set -e
 
         kubectl rollout status deployment/$(params.deployment) \
           -n $(params.namespace) \
           --timeout=$(params.health-check-timeout)
-
-        if [ $? -ne 0 ]; then
-          echo "Rollout failed"
-          echo -n "failed" > /tekton/steps/step-wait-rollout/exitCode
-        fi
 
     - name: health-check
       image: curlimages/curl:latest
@@ -296,14 +296,9 @@ spec:
 
         sleep 30
 
-        # Get service endpoint
-        SERVICE_IP=$(kubectl get svc $(params.deployment) \
-          -n $(params.namespace) \
-          -o jsonpath='{.spec.clusterIP}')
-
         # Health check
         for i in $(seq 1 10); do
-          if curl -f http://$SERVICE_IP:8080/health; then
+          if curl -f http://$(params.deployment).$(params.namespace).svc.cluster.local:8080/health; then
             echo "Health check passed"
             exit 0
           fi
@@ -314,20 +309,23 @@ spec:
         exit 1
 
     - name: metrics-check
-      image: curlimages/curl:latest
+      image: alpine:latest
       timeout: 3m
       onError: continue
       script: |
         #!/bin/sh
+        set -e
+
+        apk add --no-cache curl jq bc
 
         sleep $(params.metrics-check-duration)
 
         # Query Prometheus
         ERROR_RATE=$(curl -s 'http://prometheus.monitoring:9090/api/v1/query' \
-          --data-urlencode 'query=rate(http_requests_total{app="$(params.deployment)",status=~"5.."}[2m])' | \
-          jq -r '.data.result[0].value[1]')
+          --data-urlencode 'query=sum(rate(http_requests_total{app="$(params.deployment)",status=~"5.."}[2m]))/sum(rate(http_requests_total{app="$(params.deployment)"}[2m]))' | \
+          jq -r '.data.result[0].value[1] // "0"')
 
-        if [ "$(echo "$ERROR_RATE > 0.01" | bc)" -eq 1 ]; then
+        if [ "$(echo "$ERROR_RATE > 0.01" | bc -l)" -eq 1 ]; then
           echo "Error rate too high: $ERROR_RATE"
           exit 1
         fi
@@ -340,9 +338,13 @@ spec:
         #!/bin/bash
 
         # Check if any previous step failed
-        if [ -f /tekton/steps/step-wait-rollout/exitCode ] || \
-           [ -f /tekton/steps/step-health-check/exitCode ] || \
-           [ -f /tekton/steps/step-metrics-check/exitCode ]; then
+        WAIT_ROLLOUT_EXIT_CODE=$(cat $(steps.wait-rollout.exitCode.path))
+        HEALTH_CHECK_EXIT_CODE=$(cat $(steps.health-check.exitCode.path))
+        METRICS_CHECK_EXIT_CODE=$(cat $(steps.metrics-check.exitCode.path))
+
+        if [ "$WAIT_ROLLOUT_EXIT_CODE" -ne 0 ] || \
+           [ "$HEALTH_CHECK_EXIT_CODE" -ne 0 ] || \
+           [ "$METRICS_CHECK_EXIT_CODE" -ne 0 ]; then
 
           echo "Deployment failed checks, initiating rollback..."
           echo -n "true" > $(results.rollback-triggered.path)
@@ -372,7 +374,7 @@ Implement canary-based rollback:
 ```yaml
 - name: Deploy canary
   run: |
-    # Deploy canary with 10% traffic
+    # Deploy canary alongside stable pods
     kubectl apply -f - <<EOF
     apiVersion: apps/v1
     kind: Deployment
@@ -402,10 +404,15 @@ Implement canary-based rollback:
     sleep 300  # 5 minute monitoring
 
     # Compare canary vs stable metrics
-    CANARY_ERROR_RATE=$(curl -s prometheus/query?query=rate(errors{version="canary"}[5m]))
-    STABLE_ERROR_RATE=$(curl -s prometheus/query?query=rate(errors{version="stable"}[5m]))
+    CANARY_ERROR_RATE=$(curl -s 'http://prometheus:9090/api/v1/query' \
+      --data-urlencode 'query=sum(rate(errors{version="canary"}[5m]))' | \
+      jq -r '.data.result[0].value[1] // "0"')
+    STABLE_ERROR_RATE=$(curl -s 'http://prometheus:9090/api/v1/query' \
+      --data-urlencode 'query=sum(rate(errors{version="stable"}[5m]))' | \
+      jq -r '.data.result[0].value[1] // "0"')
+    THRESHOLD=$(echo "$STABLE_ERROR_RATE * 2" | bc -l)
 
-    if [ "$CANARY_ERROR_RATE" > "$((STABLE_ERROR_RATE * 2))" ]; then
+    if [ "$(echo "$CANARY_ERROR_RATE > $THRESHOLD" | bc -l)" -eq 1 ]; then
       echo "Canary showing elevated errors, aborting..."
       kubectl delete deployment myapp-canary -n production
       exit 1
