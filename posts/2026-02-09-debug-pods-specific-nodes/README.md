@@ -62,16 +62,18 @@ chroot /host
 
 ## Using kubectl debug for Node Debugging
 
-Kubernetes 1.20+ provides built-in node debugging:
+Modern Kubernetes versions provide built-in node debugging:
 
 ```bash
 # Create a debug pod on a specific node
-kubectl debug node/worker-node-01 -it --image=ubuntu
+kubectl debug node/worker-node-01 -it --image=ubuntu --profile=sysadmin
 
 # This automatically:
-# - Creates a privileged pod on the node
+# - Creates a debug pod on the node
 # - Mounts the host filesystem at /host
 # - Gives you a shell
+
+# The sysadmin profile is needed for privileged operations such as chroot.
 
 # Inside the debug pod:
 chroot /host
@@ -219,10 +221,9 @@ Diagnose node-level networking:
 
 ```bash
 # Deploy debug pod on problematic node
-kubectl debug node/problem-node -it --image=nicolaka/netshoot
+kubectl debug node/problem-node -it --image=nicolaka/netshoot --profile=sysadmin
 
-# Inside the debug container:
-chroot /host
+# Inside the debug container, you are in the node's network namespace.
 
 # Check network interfaces
 ip addr show
@@ -259,9 +260,10 @@ Investigate disk problems:
 
 ```bash
 # Debug pod on node with disk issues
-kubectl debug node/disk-problem-node -it --image=ubuntu
+kubectl debug node/disk-problem-node -it --image=ubuntu --profile=sysadmin
 
 chroot /host
+# Commands below use tools available on the host OS.
 
 # Check disk usage
 df -h
@@ -292,9 +294,10 @@ Investigate performance issues:
 
 ```bash
 # Debug pod on problematic node
-kubectl debug node/slow-node -it --image=ubuntu
+kubectl debug node/slow-node -it --image=ubuntu --profile=sysadmin
 
 chroot /host
+# Commands below use tools available on the host OS.
 
 # Check CPU usage
 top
@@ -321,7 +324,8 @@ vmstat 1 5
 ps aux --sort=-%mem | head -20
 
 # Check CPU throttling
-cat /sys/fs/cgroup/cpu/cpu.stat
+cat /sys/fs/cgroup/cpu.stat        # cgroup v2
+cat /sys/fs/cgroup/cpu/cpu.stat    # cgroup v1
 ```
 
 ## Debugging Kubelet Issues
@@ -330,7 +334,7 @@ Troubleshoot kubelet problems:
 
 ```bash
 # Debug pod on node with kubelet issues
-kubectl debug node/kubelet-problem-node -it --image=ubuntu
+kubectl debug node/kubelet-problem-node -it --image=ubuntu --profile=sysadmin
 
 chroot /host
 
@@ -353,7 +357,7 @@ openssl x509 -in /var/lib/kubelet/pki/kubelet-client-current.pem -text -noout
 systemctl restart kubelet
 
 # Check kubelet metrics
-curl http://localhost:10250/metrics
+curl -k https://localhost:10250/metrics
 ```
 
 ## Automated Node Diagnosis Script
@@ -376,7 +380,7 @@ echo
 
 # Create debug pod
 echo "Creating debug pod on node..."
-kubectl debug node/$NODE_NAME -it --image=ubuntu -- bash -c '
+kubectl debug node/$NODE_NAME -it --image=ubuntu --profile=sysadmin -- bash -c '
 chroot /host bash <<EOF
 echo "=== System Information ==="
 uname -a
@@ -462,7 +466,7 @@ docker build -t node-debug:latest .
 docker push registry.example.com/node-debug:latest
 
 # Use in debug pod
-kubectl debug node/my-node -it --image=registry.example.com/node-debug:latest
+kubectl debug node/my-node -it --image=registry.example.com/node-debug:latest --profile=sysadmin
 ```
 
 ## Quick Node Debug Command
@@ -486,7 +490,7 @@ echo "Using image: $IMAGE"
 echo "To access node filesystem: chroot /host"
 echo
 
-kubectl debug node/$NODE_NAME -it --image=$IMAGE
+kubectl debug node/$NODE_NAME -it --image=$IMAGE --profile=sysadmin
 
 # Usage:
 # kubectl node-debug worker-01
