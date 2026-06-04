@@ -14,9 +14,9 @@ This approach ensures your streaming data pipelines stay responsive to load chan
 
 ## Understanding Kafka Consumer Lag
 
-Consumer lag is the difference between the last message offset in a partition and the last offset committed by a consumer. A consumer group might have lag across multiple partitions and topics, and KEDA aggregates this lag to determine scaling needs.
+Consumer lag is the difference between the last message offset in a partition and the last offset committed by a consumer. A consumer group might have lag across multiple partitions and topics, and KEDA sums this lag to determine scaling needs.
 
-KEDA's Kafka scaler queries Kafka brokers or a monitoring system to fetch current lag values, then calculates how many consumer pods are needed to process messages at the target rate.
+KEDA's Kafka scaler queries Kafka brokers to fetch current lag values, then calculates how many consumer pods are needed to process messages at the target rate.
 
 ## Installing KEDA
 
@@ -35,7 +35,7 @@ helm install keda kedacore/keda \
 kubectl get pods -n keda
 ```
 
-KEDA's Kafka scaler can connect directly to Kafka brokers or use external metrics from monitoring systems.
+KEDA's Kafka scaler connects directly to Kafka brokers to read consumer group lag.
 
 ## Basic Kafka Consumer Scaling Configuration
 
@@ -59,11 +59,11 @@ spec:
       bootstrapServers: kafka-broker.kafka.svc.cluster.local:9092
       consumerGroup: data-processors
       topic: events
-      lagThreshold: "100"  # Scale when average lag exceeds 100 messages per partition
+      lagThreshold: "100"  # Scale based on a target total lag of 100 messages
       offsetResetPolicy: latest
 ```
 
-This configuration monitors the consumer lag for the events topic and scales the deployment to maintain an average lag below 100 messages per partition.
+This configuration monitors the consumer lag for the events topic and scales the deployment based on a target total lag of 100 messages.
 
 ## Configuring Authentication for Kafka
 
@@ -269,11 +269,11 @@ spec:
       topic: events  # Has 32 partitions
       lagThreshold: "100"
 
-      # Exclude lag check if no consumer group exists yet
+      # Include persistent partition lag in scaling calculations
       excludePersistentLag: "false"
 
-      # Allow idle consumers to exist (useful when partitions > replicas initially)
-      allowIdleConsumers: "true"
+      # Keep the default cap at the topic partition count
+      allowIdleConsumers: "false"
 ```
 
 Setting maxReplicaCount to match partition count prevents creating more consumers than can actively process messages, since Kafka only allows one consumer per partition in a consumer group.
@@ -301,7 +301,7 @@ spec:
       consumerGroup: periodic-reports
       topic: report-requests
       lagThreshold: "1"  # Scale up even for single message
-      activationLagThreshold: "1"  # Activate from zero when any lag exists
+      activationLagThreshold: "0"  # Activate from zero when any lag exists
 ```
 
 With minReplicaCount set to 0, KEDA removes all consumer pods when lag is zero, saving resources during idle periods. When messages arrive, KEDA quickly scales up to process them.
@@ -434,7 +434,7 @@ High minimum replica counts ensure baseline processing capacity, while aggressiv
 
 ## Best Practices
 
-Set lagThreshold based on your processing rate and acceptable latency. If each pod processes 100 messages per second and you want to clear lag within 10 seconds, use lagThreshold of 1000.
+Set lagThreshold based on your processing rate and acceptable latency. If each pod processes 100 messages per second and you want each replica to target roughly 10 seconds of backlog, use lagThreshold of 1000.
 
 Configure maxReplicaCount to match your Kafka topic partition count. More consumers than partitions waste resources since the extra pods remain idle.
 
