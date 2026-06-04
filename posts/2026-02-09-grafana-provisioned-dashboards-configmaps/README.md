@@ -31,8 +31,6 @@ kind: ConfigMap
 metadata:
   name: grafana-dashboard-provider
   namespace: monitoring
-  labels:
-    grafana_dashboard: "1"
 data:
   provider.yaml: |
     apiVersion: 1
@@ -42,7 +40,7 @@ data:
         folder: ''
         type: file
         disableDeletion: false
-        editable: true
+        allowUiUpdates: true
         options:
           path: /var/lib/grafana/dashboards/default
 ```
@@ -183,31 +181,12 @@ Configure Grafana to load dashboards from ConfigMaps:
 grafana:
   enabled: true
 
-  # Mount dashboard provider config
-  dashboardProviders:
-    dashboardproviders.yaml:
-      apiVersion: 1
-      providers:
-        - name: 'default'
-          orgId: 1
-          folder: ''
-          type: file
-          disableDeletion: false
-          editable: true
-          options:
-            path: /var/lib/grafana/dashboards/default
-
-  # Mount dashboards from ConfigMaps
-  dashboards:
-    default:
-      cluster-overview:
-        file: dashboards/cluster-overview.json
-
   # Sidecar to automatically discover dashboards
   sidecar:
     dashboards:
       enabled: true
       label: grafana_dashboard
+      labelValue: "1"
       folder: /tmp/dashboards
       provider:
         foldersFromFilesStructure: true
@@ -218,6 +197,7 @@ Deploy Grafana with kube-prometheus-stack:
 ```bash
 helm install prometheus-stack prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
+  --create-namespace \
   --values grafana-values.yaml
 ```
 
@@ -242,10 +222,9 @@ grafana:
       # Enable folder creation from ConfigMap structure
       provider:
         foldersFromFilesStructure: true
+        disableDelete: false
       # Watch all namespaces or specific ones
       searchNamespace: ALL
-      # Enable to allow dashboard deletion when ConfigMap is removed
-      enableDeletion: true
 ```
 
 Create multiple dashboards:
@@ -257,7 +236,7 @@ kubectl create configmap grafana-dashboard-pods \
   -n monitoring
 
 # Add the required label
-kubectl label configmap grafana-dashboard-pods grafana_dashboard=1 -n monitoring
+kubectl label configmap grafana-dashboard-pods grafana_dashboard=1 -n monitoring --overwrite
 ```
 
 The sidecar automatically discovers and loads any ConfigMap with the `grafana_dashboard=1` label.
@@ -284,7 +263,7 @@ data:
       "title": "Application Metrics",
       "uid": "app-metrics",
       "version": 1,
-      "panels": [...]
+      "panels": []
     }
 ```
 
@@ -653,12 +632,13 @@ Export dashboards from Grafana UI for provisioning:
 ```bash
 # Get dashboard JSON via API
 GRAFANA_URL="http://localhost:3000"
-API_KEY="your-api-key"
+API_TOKEN="your-service-account-token"
+GRAFANA_NAMESPACE="default"
 DASHBOARD_UID="cluster-overview"
 
-curl -H "Authorization: Bearer $API_KEY" \
-  "${GRAFANA_URL}/api/dashboards/uid/${DASHBOARD_UID}" | \
-  jq '.dashboard' > dashboard.json
+curl -H "Authorization: Bearer $API_TOKEN" \
+  "${GRAFANA_URL}/apis/dashboard.grafana.app/v1/namespaces/${GRAFANA_NAMESPACE}/dashboards/${DASHBOARD_UID}" | \
+  jq '.spec' > dashboard.json
 
 # Create ConfigMap from exported dashboard
 kubectl create configmap grafana-dashboard-exported \
@@ -666,7 +646,7 @@ kubectl create configmap grafana-dashboard-exported \
   -n monitoring
 
 # Add label for sidecar discovery
-kubectl label configmap grafana-dashboard-exported grafana_dashboard=1 -n monitoring
+kubectl label configmap grafana-dashboard-exported grafana_dashboard=1 -n monitoring --overwrite
 ```
 
 ## Version Control Strategy
@@ -695,7 +675,7 @@ for file in dashboards/cluster/*.json; do
     --dry-run=client -o yaml | \
     kubectl apply -f -
   kubectl label configmap "grafana-dashboard-${name}" \
-    grafana_dashboard=1 -n monitoring
+    grafana_dashboard=1 -n monitoring --overwrite
 done
 ```
 
@@ -744,7 +724,7 @@ jq '.title, .uid, .version' dashboard.json
 7. Document dashboard purpose in description field
 8. Test dashboards in non-production before promoting
 9. Use consistent naming conventions for ConfigMaps
-10. Enable dashboard versioning in Grafana for rollback capability
+10. Use Git history to roll back provisioned dashboard changes
 
 ## Conclusion
 
