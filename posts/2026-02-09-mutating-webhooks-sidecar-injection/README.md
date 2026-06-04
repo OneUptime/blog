@@ -46,18 +46,14 @@ func injectSidecar(pod *corev1.Pod) []JSONPatch {
         return patches
     }
 
-    // Get current container count for indexing
-    containerCount := len(pod.Spec.Containers)
-
     // Inject logging sidecar
     if injectLogging {
         loggingSidecar := createLoggingSidecar()
         patches = append(patches, JSONPatch{
             Op:    "add",
-            Path:  fmt.Sprintf("/spec/containers/%d", containerCount),
+            Path:  "/spec/containers/-",
             Value: loggingSidecar,
         })
-        containerCount++
     }
 
     // Inject monitoring sidecar
@@ -65,10 +61,9 @@ func injectSidecar(pod *corev1.Pod) []JSONPatch {
         monitoringSidecar := createMonitoringSidecar()
         patches = append(patches, JSONPatch{
             Op:    "add",
-            Path:  fmt.Sprintf("/spec/containers/%d", containerCount),
+            Path:  "/spec/containers/-",
             Value: monitoringSidecar,
         })
-        containerCount++
     }
 
     // Inject proxy sidecar
@@ -76,7 +71,7 @@ func injectSidecar(pod *corev1.Pod) []JSONPatch {
         proxySidecar := createProxySidecar()
         patches = append(patches, JSONPatch{
             Op:    "add",
-            Path:  fmt.Sprintf("/spec/containers/%d", containerCount),
+            Path:  "/spec/containers/-",
             Value: proxySidecar,
         })
     }
@@ -195,34 +190,63 @@ func createProxySidecar() corev1.Container {
 func createVolumePatches(pod *corev1.Pod) []JSONPatch {
     var patches []JSONPatch
 
-    // Add shared volume if it doesn't exist
-    volumeExists := false
+    volumeExists := map[string]bool{}
     for _, vol := range pod.Spec.Volumes {
-        if vol.Name == "varlog" {
-            volumeExists = true
-            break
-        }
+        volumeExists[vol.Name] = true
     }
 
-    if !volumeExists {
-        volumeIndex := len(pod.Spec.Volumes)
-        patches = append(patches, JSONPatch{
-            Op:   "add",
-            Path: fmt.Sprintf("/spec/volumes/%d", volumeIndex),
-            Value: corev1.Volume{
-                Name: "varlog",
-                VolumeSource: corev1.VolumeSource{
-                    EmptyDir: &corev1.EmptyDirVolumeSource{},
+    var volumesToAdd []corev1.Volume
+    if !volumeExists["varlog"] {
+        volumesToAdd = append(volumesToAdd, corev1.Volume{
+            Name: "varlog",
+            VolumeSource: corev1.VolumeSource{
+                EmptyDir: &corev1.EmptyDirVolumeSource{},
+            },
+        })
+    }
+    if !volumeExists["config"] {
+        volumesToAdd = append(volumesToAdd, corev1.Volume{
+            Name: "config",
+            VolumeSource: corev1.VolumeSource{
+                ConfigMap: &corev1.ConfigMapVolumeSource{
+                    LocalObjectReference: corev1.LocalObjectReference{
+                        Name: "fluent-bit-config",
+                    },
                 },
             },
         })
     }
 
+    if len(volumesToAdd) == 0 {
+        return patches
+    }
+
+    if len(pod.Spec.Volumes) == 0 {
+        patches = append(patches, JSONPatch{
+            Op:    "add",
+            Path:  "/spec/volumes",
+            Value: volumesToAdd,
+        })
+    } else {
+        for _, volume := range volumesToAdd {
+            patches = append(patches, JSONPatch{
+                Op:    "add",
+                Path:  "/spec/volumes/-",
+                Value: volume,
+            })
+        }
+    }
+
     return patches
 }
+
+func int64Ptr(i int64) *int64 {
+    return &i
+}
+
 ```
 
-This implementation checks annotations to determine which sidecars to inject and adds them with appropriate configurations.
+This implementation checks annotations to determine which sidecars to inject and adds them with appropriate configurations. The logging sidecar expects a `fluent-bit-config` ConfigMap that provides `fluent-bit.conf`.
 
 ## Configuration Through Annotations
 
@@ -307,12 +331,19 @@ func injectInitContainer(pod *corev1.Pod) []JSONPatch {
         },
     }
 
-    initIndex := len(pod.Spec.InitContainers)
-    patches = append(patches, JSONPatch{
-        Op:    "add",
-        Path:  fmt.Sprintf("/spec/initContainers/%d", initIndex),
-        Value: initContainer,
-    })
+    if len(pod.Spec.InitContainers) == 0 {
+        patches = append(patches, JSONPatch{
+            Op:    "add",
+            Path:  "/spec/initContainers",
+            Value: []corev1.Container{initContainer},
+        })
+    } else {
+        patches = append(patches, JSONPatch{
+            Op:    "add",
+            Path:  "/spec/initContainers/-",
+            Value: initContainer,
+        })
+    }
 
     return patches
 }
@@ -401,28 +432,48 @@ Share volumes between application and sidecar containers:
 func injectSharedVolumes(pod *corev1.Pod) []JSONPatch {
     var patches []JSONPatch
 
-    // Add shared log volume
-    patches = append(patches, JSONPatch{
-        Op:   "add",
-        Path: "/spec/volumes/-",
-        Value: corev1.Volume{
-            Name: "app-logs",
-            VolumeSource: corev1.VolumeSource{
-                EmptyDir: &corev1.EmptyDirVolumeSource{},
-            },
+    volume := corev1.Volume{
+        Name: "app-logs",
+        VolumeSource: corev1.VolumeSource{
+            EmptyDir: &corev1.EmptyDirVolumeSource{},
         },
-    })
+    }
+
+    // Add shared log volume
+    if len(pod.Spec.Volumes) == 0 {
+        patches = append(patches, JSONPatch{
+            Op:    "add",
+            Path:  "/spec/volumes",
+            Value: []corev1.Volume{volume},
+        })
+    } else {
+        patches = append(patches, JSONPatch{
+            Op:    "add",
+            Path:  "/spec/volumes/-",
+            Value: volume,
+        })
+    }
 
     // Mount volume in application containers
-    for i := range pod.Spec.Containers {
-        patches = append(patches, JSONPatch{
-            Op:   "add",
-            Path: fmt.Sprintf("/spec/containers/%d/volumeMounts/-", i),
-            Value: corev1.VolumeMount{
-                Name:      "app-logs",
-                MountPath: "/var/log/app",
-            },
-        })
+    for i, container := range pod.Spec.Containers {
+        volumeMount := corev1.VolumeMount{
+            Name:      "app-logs",
+            MountPath: "/var/log/app",
+        }
+
+        if len(container.VolumeMounts) == 0 {
+            patches = append(patches, JSONPatch{
+                Op:    "add",
+                Path:  fmt.Sprintf("/spec/containers/%d/volumeMounts", i),
+                Value: []corev1.VolumeMount{volumeMount},
+            })
+        } else {
+            patches = append(patches, JSONPatch{
+                Op:    "add",
+                Path:  fmt.Sprintf("/spec/containers/%d/volumeMounts/-", i),
+                Value: volumeMount,
+            })
+        }
     }
 
     return patches
