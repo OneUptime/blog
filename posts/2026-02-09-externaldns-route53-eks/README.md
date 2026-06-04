@@ -57,7 +57,9 @@ Create an IAM policy allowing ExternalDNS to manage Route53 records:
     {
       "Effect": "Allow",
       "Action": [
-        "route53:ChangeResourceRecordSets"
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets",
+        "route53:ListTagsForResources"
       ],
       "Resource": [
         "arn:aws:route53:::hostedzone/*"
@@ -66,8 +68,7 @@ Create an IAM policy allowing ExternalDNS to manage Route53 records:
     {
       "Effect": "Allow",
       "Action": [
-        "route53:ListHostedZones",
-        "route53:ListResourceRecordSets"
+        "route53:ListHostedZones"
       ],
       "Resource": [
         "*"
@@ -90,6 +91,11 @@ aws iam create-policy \
 Create IAM role using IRSA (IAM Roles for Service Accounts):
 
 ```bash
+# Associate the IAM OIDC provider if it is not already configured
+eksctl utils associate-iam-oidc-provider \
+  --cluster=my-cluster \
+  --approve
+
 # Create service account with IAM role
 eksctl create iamserviceaccount \
   --cluster=my-cluster \
@@ -109,7 +115,7 @@ helm install external-dns external-dns/external-dns \
   --namespace kube-system \
   --set serviceAccount.create=false \
   --set serviceAccount.name=external-dns \
-  --set provider=aws \
+  --set provider.name=aws \
   --set policy=sync \
   --set txtOwnerId=my-cluster \
   --set domainFilters[0]=example.com
@@ -119,6 +125,34 @@ Or install with kubectl:
 
 ```yaml
 # externaldns-deployment.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: external-dns
+rules:
+- apiGroups: [""]
+  resources: ["services", "endpoints", "pods"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: external-dns-viewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: external-dns
+subjects:
+- kind: ServiceAccount
+  name: external-dns
+  namespace: kube-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -138,7 +172,7 @@ spec:
       serviceAccountName: external-dns
       containers:
       - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
+        image: registry.k8s.io/external-dns/external-dns:v0.21.0
         args:
         - --source=service
         - --source=ingress
@@ -148,6 +182,9 @@ spec:
         - --domain-filter=example.com
         - --registry=txt
         - --log-level=info
+        env:
+        - name: AWS_DEFAULT_REGION
+          value: us-east-1
 ```
 
 Apply the deployment:
@@ -272,14 +309,14 @@ Or use separate ExternalDNS instances per zone:
 # Install for example.com
 helm install external-dns-com external-dns/external-dns \
   --namespace kube-system \
-  --set provider=aws \
+  --set provider.name=aws \
   --set domainFilters[0]=example.com \
   --set txtOwnerId=my-cluster-com
 
 # Install for example.net
 helm install external-dns-net external-dns/external-dns \
   --namespace kube-system \
-  --set provider=aws \
+  --set provider.name=aws \
   --set domainFilters[0]=example.net \
   --set txtOwnerId=my-cluster-net
 ```
@@ -366,7 +403,7 @@ curl localhost:7979/metrics
 Common metrics:
 - `external_dns_registry_errors_total`
 - `external_dns_source_errors_total`
-- `external_dns_controller_verified_a_records`
+- `external_dns_controller_verified_records`
 
 ## Filtering by Namespace
 
