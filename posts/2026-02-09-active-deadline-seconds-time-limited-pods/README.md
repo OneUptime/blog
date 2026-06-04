@@ -18,7 +18,7 @@ The `activeDeadlineSeconds` field defines the maximum duration a pod is allowed 
 
 Once the deadline is exceeded, Kubernetes sets the pod status to Failed and terminates all containers, regardless of their current state. This makes it an effective safeguard against runaway processes, infinite loops, or deadlocked applications.
 
-The timer starts when the pod is scheduled to a node, not when it enters the Running phase. This means that time spent in ImagePull, ContainerCreating, or other startup phases counts toward the deadline.
+The timer is relative to the pod's start time, which is set when the kubelet acknowledges the pod on a node, not when it enters the Running phase. This means that time spent in ImagePull, ContainerCreating, or other startup phases counts toward the deadline.
 
 ## Basic Configuration
 
@@ -248,7 +248,7 @@ Use job-level and pod-level deadlines together. The job-level deadline should ac
 
 Monitor deadline exceeded events in production. Frequent timeouts might indicate under-resourced pods, inefficient code, or infrastructure issues.
 
-For CronJobs, set the deadline shorter than the schedule interval. If a job runs every hour, the deadline should be less than 60 minutes to prevent overlapping executions.
+For CronJobs, use `concurrencyPolicy: Forbid` or `concurrencyPolicy: Replace` to control overlapping executions. You can also set the deadline shorter than the schedule interval so each run has a bounded execution window.
 
 Consider setting `startingDeadlineSeconds` on CronJobs in combination with `activeDeadlineSeconds` to handle missed schedules:
 
@@ -259,6 +259,8 @@ metadata:
   name: hourly-report
 spec:
   schedule: "0 * * * *"
+  # Don't allow a new run while the previous run is still active
+  concurrencyPolicy: Forbid
   # Don't start if more than 5 minutes late
   startingDeadlineSeconds: 300
   jobTemplate:
