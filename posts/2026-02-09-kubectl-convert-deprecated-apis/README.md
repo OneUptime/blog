@@ -8,16 +8,16 @@ Description: Migrate Kubernetes manifests from deprecated to current API version
 
 ---
 
-kubectl-convert automates migration of Kubernetes manifests between API versions, translating deprecated resources to their current equivalents. Manual conversion is error-prone and time-consuming for large codebases. kubectl-convert handles API version translation, field mapping changes, and structural modifications required for compatibility with newer Kubernetes versions.
+kubectl-convert automates migration of Kubernetes manifests between API versions, translating deprecated resources to their current equivalents. Manual conversion is error-prone and time-consuming for large codebases. kubectl-convert handles many API version translations, field mapping changes, and structural modifications required for compatibility with newer Kubernetes versions, but converted output should still be reviewed because some defaults may be non-ideal.
 
 This guide demonstrates installing kubectl-convert, converting individual manifests and entire directories, handling conversion edge cases, and integrating conversion into CI/CD pipelines.
 
 ## Installing kubectl-convert
 
-kubectl-convert must match your target Kubernetes version.
+Use a kubectl-convert version that supports your target Kubernetes API version.
 
 ```bash
-# Download kubectl-convert matching target cluster version
+# Download kubectl-convert for the target Kubernetes release
 
 KUBE_VERSION=v1.28.4
 curl -LO "https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kubectl-convert"
@@ -75,18 +75,21 @@ metadata:
   name: example-ingress
   annotations:
     kubernetes.io/ingress.class: nginx
+  creationTimestamp: null
 spec:
   rules:
   - host: example.com
     http:
       paths:
       - path: /
-        pathType: Prefix
+        pathType: ImplementationSpecific
         backend:
           service:
             name: web
             port:
               number: 80
+status:
+  loadBalancer: {}
 ```
 
 ## Converting Multiple Resources
@@ -100,12 +103,13 @@ mkdir -p manifests/deprecated manifests/current
 # Convert all YAML files in directory
 for file in manifests/deprecated/*.yaml; do
   echo "Converting $file"
-  kubectl-convert -f "$file" --output-version="" > "manifests/current/$(basename $file)"
+  kubectl-convert -f "$file" > "manifests/current/$(basename "$file")"
 done
 
 # Or use find for nested directories
-find manifests/deprecated -name "*.yaml" -type f | while read file; do
-  output_file="manifests/current/$(basename $file)"
+find manifests/deprecated -name "*.yaml" -type f | while read -r file; do
+  output_file="manifests/current/${file#manifests/deprecated/}"
+  mkdir -p "$(dirname "$output_file")"
   echo "Converting $file -> $output_file"
   kubectl-convert -f "$file" > "$output_file"
 done
@@ -245,9 +249,11 @@ echo "Converting manifests from $SOURCE_DIR to $TARGET_DIR"
 
 FAILED_FILES=()
 
-find "$SOURCE_DIR" -name "*.yaml" -o -name "*.yml" | while read -r file; do
+while IFS= read -r file; do
+  relative_path="${file#$SOURCE_DIR/}"
   filename=$(basename "$file")
-  output_file="$TARGET_DIR/$filename"
+  output_file="$TARGET_DIR/$relative_path"
+  mkdir -p "$(dirname "$output_file")"
 
   echo -n "Converting $filename... "
 
@@ -271,7 +277,7 @@ find "$SOURCE_DIR" -name "*.yaml" -o -name "*.yml" | while read -r file; do
   if ! kubectl apply --dry-run=client -f "$output_file" &>/dev/null; then
     echo "  ⚠️  Validation warning for $filename"
   fi
-done
+done < <(find "$SOURCE_DIR" -type f \( -name "*.yaml" -o -name "*.yml" \))
 
 if [ ${#FAILED_FILES[@]} -gt 0 ]; then
   echo -e "\n❌ Failed to convert:"
@@ -310,12 +316,14 @@ jobs:
   convert:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Install kubectl-convert
       run: |
         KUBE_VERSION=v1.28.4
         curl -LO "https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kubectl-convert"
+        curl -LO "https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kubectl-convert.sha256"
+        echo "$(cat kubectl-convert.sha256) kubectl-convert" | sha256sum --check
         chmod +x kubectl-convert
         sudo mv kubectl-convert /usr/local/bin/
 
@@ -323,7 +331,7 @@ jobs:
       run: |
         mkdir -p k8s/converted
         for file in k8s/*.yaml; do
-          kubectl-convert -f "$file" > "k8s/converted/$(basename $file)"
+          kubectl-convert -f "$file" > "k8s/converted/$(basename "$file")"
         done
 
     - name: Validate converted manifests
@@ -331,7 +339,7 @@ jobs:
         kubectl apply --dry-run=client -f k8s/converted/
 
     - name: Create PR comment with changes
-      uses: actions/github-script@v6
+      uses: actions/github-script@v9
       with:
         script: |
           const fs = require('fs');
@@ -357,8 +365,8 @@ kubectl-convert -f problematic.yaml 2> conversion-errors.log
 
 # Common issues and solutions:
 
-# 1. Custom resources - Convert CRD first
-kubectl-convert -f mycrd-definition.yaml --output-version apiextensions.k8s.io/v1
+# 1. Custom resources - kubectl-convert does not convert arbitrary custom resources.
+# Update CRDs and custom resource manifests using the provider's migration guidance.
 
 # 2. Admission webhooks - Update webhook configuration
 kubectl-convert -f webhook.yaml --output-version admissionregistration.k8s.io/v1
