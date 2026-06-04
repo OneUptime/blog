@@ -38,7 +38,7 @@ Open `http://localhost:7474` in your browser to access the Neo4j Browser. Log in
 
 ## Docker Compose Configuration
 
-A production-friendly setup with memory limits, plugins, and health checks.
+A development-friendly setup with memory limits, plugins, and health checks.
 
 ```yaml
 # docker-compose.yml
@@ -61,7 +61,7 @@ services:
       NEO4J_server_memory_pagecache_size: 512m
       # Enable APOC plugin for advanced procedures
       NEO4J_PLUGINS: '["apoc"]'
-      # Allow file imports from the import directory
+      # Allow APOC procedures that require unrestricted access
       NEO4J_dbms_security_procedures_unrestricted: apoc.*
     volumes:
       - neo4j_data:/data
@@ -161,9 +161,9 @@ Now query for impact analysis - what breaks if Postgres goes down?
 
 ```cypher
 // Find all services that depend on postgres, directly or transitively
-MATCH (target:Service {name: 'postgres'})<-[:DEPENDS_ON*1..5]-(dependent)
+MATCH path = (dependent:Service)-[:DEPENDS_ON*1..5]->(target:Service {name: 'postgres'})
 RETURN dependent.name AS affected_service,
-       length(shortestPath((dependent)-[:DEPENDS_ON*]->(target))) AS hops_away
+       min(length(path)) AS hops_away
 ORDER BY hops_away;
 ```
 
@@ -212,17 +212,27 @@ Neo4j provides a dump utility for backups.
 
 ```bash
 # Stop the database before dumping (community edition requirement)
-docker exec neo4j neo4j-admin database dump neo4j --to-path=/data/backups/
+docker compose stop neo4j
 
-# Copy the backup to the host
-docker cp neo4j:/data/backups/ ./neo4j-backups/
+# Dump the database to a host directory
+mkdir -p neo4j-backups
+docker compose run --rm --no-deps \
+  -v "$PWD/neo4j-backups":/backups \
+  neo4j neo4j-admin database dump neo4j --to-path=/backups
+
+# Start the database again
+docker compose start neo4j
 ```
 
 Restore from a dump.
 
 ```bash
 # Restore a database from a dump file
-docker exec neo4j neo4j-admin database load neo4j --from-path=/data/backups/ --overwrite-destination
+docker compose stop neo4j
+docker compose run --rm --no-deps \
+  -v "$PWD/neo4j-backups":/backups \
+  neo4j neo4j-admin database load neo4j --from-path=/backups --overwrite-destination=true
+docker compose start neo4j
 ```
 
 ## Connecting from Applications
