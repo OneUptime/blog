@@ -8,7 +8,7 @@ Description: Learn how to use the STOPSIGNAL instruction in Dockerfiles to contr
 
 ---
 
-When Docker stops a container, it sends a signal to the main process (PID 1) inside the container. By default, this signal is SIGTERM. If the process does not exit within a grace period (10 seconds by default), Docker sends SIGKILL to force termination. The STOPSIGNAL instruction in a Dockerfile lets you change which signal Docker sends first, giving you control over how your application handles shutdown requests.
+When Docker stops a container, it sends a signal to the main process (PID 1) inside the container. By default, this signal is SIGTERM. If the process does not exit within a grace period (10 seconds by default for Linux containers), Docker sends SIGKILL to force termination. The STOPSIGNAL instruction in a Dockerfile lets you change which signal Docker sends first, giving you control over how your application handles shutdown requests.
 
 This instruction matters for any application that needs to perform cleanup work before exiting, like flushing buffers, closing database connections, finishing in-progress requests, or saving state.
 
@@ -17,7 +17,7 @@ This instruction matters for any application that needs to perform cleanup work 
 Here is what happens when you run `docker stop`:
 
 1. Docker sends SIGTERM (signal 15) to PID 1 in the container
-2. Docker waits for the grace period (default: 10 seconds)
+2. Docker waits for the grace period (default: 10 seconds on Linux)
 3. If the process is still running, Docker sends SIGKILL (signal 9)
 
 ```mermaid
@@ -27,7 +27,7 @@ sequenceDiagram
     participant Container as Container (PID 1)
     User->>Docker: docker stop mycontainer
     Docker->>Container: SIGTERM (signal 15)
-    Note over Docker,Container: Grace period (10s default)
+    Note over Docker,Container: Grace period (10s default on Linux)
     alt Process exits in time
         Container->>Docker: Exit code 0
     else Process still running
@@ -211,11 +211,11 @@ The `stop_grace_period` controls how long Docker waits before sending SIGKILL.
 
 ## Adjusting the Grace Period
 
-The default 10-second grace period may not be enough for applications that need to finish processing long-running requests or flush large buffers.
+The default 10-second grace period for Linux containers may not be enough for applications that need to finish processing long-running requests or flush large buffers.
 
 ```bash
 # Stop with a 30-second grace period
-docker stop --time 30 mycontainer
+docker stop --timeout 30 mycontainer
 
 # Or set it when creating the container
 docker run --stop-timeout 30 myimage
@@ -232,14 +232,14 @@ services:
 
 ## The PID 1 Problem
 
-Docker sends the stop signal to PID 1 inside the container. If your application is not running as PID 1, it will never receive the signal.
+Docker sends the stop signal to PID 1 inside the container. If your application is not running as PID 1, it will not receive that signal directly.
 
 This is a common issue with shell form CMD or ENTRYPOINT:
 
 ```dockerfile
-# Shell form - bash is PID 1, your app is a child process
+# Shell form - /bin/sh -c is PID 1, your app is a child process
 CMD python app.py
-# bash receives SIGTERM, but may not forward it to python
+# the shell receives SIGTERM, but may not forward it to python
 ```
 
 ```dockerfile
