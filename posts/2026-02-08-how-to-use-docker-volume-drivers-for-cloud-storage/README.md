@@ -99,7 +99,7 @@ Create an EBS-backed volume:
 docker volume create \
   --driver rexray/ebs \
   --opt size=50 \
-  --opt volumetype=gp3 \
+  --opt volumeType=gp3 \
   production-db-data
 ```
 
@@ -122,10 +122,11 @@ For object storage, you can mount S3 buckets as Docker volumes using the s3fs dr
 
 ```bash
 # Install the s3fs volume plugin
-docker plugin install elementar/d-s3-volume \
+docker plugin install rexray/s3fs \
   --grant-all-permissions \
-  AWSACCESSKEYID=YOUR_KEY \
-  AWSSECRETACCESSKEY=YOUR_SECRET
+  S3FS_ACCESSKEY=YOUR_KEY \
+  S3FS_SECRETKEY=YOUR_SECRET \
+  S3FS_REGION=us-east-1
 ```
 
 Create an S3-backed volume:
@@ -133,10 +134,8 @@ Create an S3-backed volume:
 ```bash
 # Mount an S3 bucket as a Docker volume
 docker volume create \
-  --driver elementar/d-s3-volume \
-  --opt bucket=my-app-data \
-  --opt prefix=uploads/ \
-  s3-uploads
+  --driver rexray/s3fs \
+  my-app-data
 ```
 
 Use the volume:
@@ -161,7 +160,7 @@ docker volume create \
   --driver local \
   --opt type=cifs \
   --opt device=//windows-server/share \
-  --opt o=username=user,password=pass,vers=3.0 \
+  --opt o=addr=windows-server,username=user,password=pass,vers=3.0 \
   smb-data
 ```
 
@@ -174,7 +173,7 @@ volumes:
     driver_opts:
       type: cifs
       device: "//windows-server/share"
-      o: "username=user,password=pass,vers=3.0"
+      o: "addr=windows-server,username=user,password=pass,vers=3.0"
 ```
 
 ## Portworx for Multi-Cloud Storage
@@ -188,7 +187,7 @@ docker plugin install portworx/px-dev
 # Create a replicated volume
 docker volume create \
   --driver pxd \
-  --opt size=100 \
+  --opt size=100G \
   --opt repl=3 \
   --opt io_priority=high \
   critical-data
@@ -317,7 +316,7 @@ volumes:
     driver: rexray/ebs
     driver_opts:
       size: "100"
-      volumetype: "gp3"
+      volumeType: "gp3"
       encrypted: "true"
 ```
 
