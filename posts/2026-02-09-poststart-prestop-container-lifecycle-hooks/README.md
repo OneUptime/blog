@@ -14,13 +14,13 @@ Understanding lifecycle hooks is essential for building production-ready applica
 
 ## Understanding Lifecycle Hooks
 
-Lifecycle hooks are synchronous callbacks that Kubernetes executes at specific container lifecycle events. The two available hooks are PostStart and PreStop.
+Lifecycle hooks are callbacks that Kubernetes executes at specific container lifecycle events. The two container lifecycle hooks are PostStart and PreStop.
 
-PostStart runs after a container is created but before it enters the running state. Kubernetes does not mark the container as ready until the PostStart hook completes successfully. This makes PostStart perfect for initialization tasks that must complete before the application starts serving traffic.
+PostStart runs immediately after a container is created. It runs concurrently with the container's entrypoint, so there is no guarantee that it runs before the application process starts. Kubernetes blocks other container management until the PostStart hook completes successfully, and the container does not transition to the Running state until the hook completes. This makes PostStart useful for lightweight startup tasks, but readiness probes are still the right mechanism for controlling when the application receives traffic.
 
 PreStop runs before a container is terminated. Kubernetes sends the SIGTERM signal to the container only after the PreStop hook completes. This gives you time to drain connections, flush buffers, save state, and perform other cleanup tasks.
 
-Both hooks support two execution types: exec commands and HTTP requests.
+Both hooks support exec commands, HTTP requests, and sleep handlers. The older tcpSocket handler is deprecated for lifecycle hooks.
 
 ## Implementing PostStart Hooks
 
@@ -44,7 +44,7 @@ spec:
           - echo "Container started at $(date)" > /usr/share/nginx/html/started.txt
 ```
 
-This hook creates a file with the startup timestamp. The container does not become ready until this command completes.
+This hook creates a file with the startup timestamp. Kubernetes does not finish startup management for the container until this command completes.
 
 Using an HTTP request for PostStart:
 
@@ -57,7 +57,7 @@ lifecycle:
       scheme: HTTP
 ```
 
-The hook sends an HTTP GET request to the specified endpoint. The container becomes ready only after receiving a successful response (2xx status code).
+The hook sends an HTTP GET request to the specified endpoint. The hook succeeds after receiving a successful response. Use HTTP PostStart hooks carefully because the container entrypoint may not have finished starting when the hook runs.
 
 ## Implementing PreStop Hooks
 
@@ -97,7 +97,7 @@ This calls a shutdown endpoint on the application, allowing it to clean up resou
 
 ## Practical PostStart Use Cases
 
-PostStart hooks are perfect for initialization tasks that must complete before the application serves traffic.
+PostStart hooks are useful for lightweight initialization tasks that must complete before Kubernetes considers container startup complete. Use readiness or startup probes to control whether the application receives traffic.
 
 Wait for a dependency to be available:
 
@@ -116,7 +116,7 @@ lifecycle:
         echo "Database is ready"
 ```
 
-This prevents the application from starting until the database is reachable.
+This blocks Kubernetes from completing container startup management until the database is reachable. The application process may already be running, so pair this with a readiness probe if traffic must wait for the dependency.
 
 Register the container with an external service:
 
@@ -143,7 +143,7 @@ lifecycle:
       - /app/scripts/warm-cache.sh
 ```
 
-This ensures the cache is populated before the application receives traffic, preventing cold-start latency.
+This helps populate the cache before Kubernetes treats container startup as complete, preventing cold-start latency when combined with a readiness probe.
 
 ## Practical PreStop Use Cases
 
@@ -230,10 +230,11 @@ spec:
 ```
 
 The sequence is:
-1. PreStop hook executes (up to 60 seconds in this example)
-2. SIGTERM is sent to the container
-3. Kubernetes waits for terminationGracePeriodSeconds
-4. If still running, SIGKILL is sent
+1. The termination grace period countdown starts
+2. PreStop hook executes within that grace period
+3. SIGTERM is sent to the container
+4. Kubernetes waits for the remaining grace period
+5. If still running, SIGKILL is sent
 
 Make sure your PreStop hook completes within the grace period, leaving time for SIGTERM handling.
 
@@ -257,7 +258,7 @@ lifecycle:
         fi
 ```
 
-If a PreStop hook fails or times out, Kubernetes proceeds with termination anyway. The SIGTERM signal is sent regardless of hook success.
+If a PreStop hook fails or times out, Kubernetes proceeds with termination anyway. The container will still be terminated within the Pod's termination grace period.
 
 ```yaml
 lifecycle:
@@ -349,7 +350,7 @@ spec:
 ```
 
 This configuration ensures:
-- The application is fully initialized before receiving traffic
+- Kubernetes startup management waits for the PostStart initialization
 - The cache is warmed up at startup
 - The pod is removed from load balancers before shutdown
 - Active requests complete before termination
@@ -371,11 +372,13 @@ Look for events like:
 Warning  FailedPostStartHook  Container postStart hook failed: command '/app/init.sh' exited with 1
 ```
 
-View container logs to see hook output:
+View container logs to see application-side effects of the hook:
 
 ```bash
 kubectl logs my-pod
 ```
+
+For exec hooks, write diagnostic output to a file or to your application's normal logging path if you need to inspect it later.
 
 Test hooks manually by executing commands directly:
 
@@ -396,7 +399,7 @@ kubectl logs -f my-pod
 kubectl delete pod my-pod
 ```
 
-You will see the PreStop hook output in the logs.
+You will see application logs produced by the shutdown path. For exec hook commands, make sure the hook writes diagnostics somewhere you can inspect before the container exits.
 
 ## Performance Considerations
 
@@ -467,7 +470,7 @@ Make hooks idempotent. They might be called multiple times if containers restart
 
 Use absolute paths in hook commands. The working directory might not be what you expect.
 
-Test hooks in development before deploying to production. Hook failures cause container restarts.
+Test hooks in development before deploying to production. PostStart hook failures cause container restarts, and PreStop failures can interrupt graceful shutdown.
 
 Log hook activity to help with debugging:
 
