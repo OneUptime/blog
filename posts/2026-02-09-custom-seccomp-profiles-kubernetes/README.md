@@ -170,12 +170,11 @@ The profile path is relative to the kubelet's seccomp profile directory (typical
 To build an accurate profile, discover which syscalls your application needs:
 
 ```bash
-# Run application with audit mode seccomp profile
-
-strace -c -f -S name nginx 2>&1 | grep -v -e '^SYS' -e '^---' | awk '{print $NF}' | sort -u
+# Run application and summarize syscalls by name
+strace -c -f -S name nginx 2>&1 | awk '/^[[:space:]]*[0-9]/ && $NF != "total" {print $NF}' | sort -u
 ```
 
-Create an audit profile that logs blocked syscalls:
+Create an audit profile that logs syscalls without blocking them:
 
 ```json
 {
@@ -185,11 +184,11 @@ Create an audit profile that logs blocked syscalls:
 }
 ```
 
-This profile allows all syscalls but logs them. Deploy your application with this profile, exercise all functionality, then check audit logs:
+This profile allows all syscalls but logs them. Deploy your application with this profile, exercise all functionality, then check audit logs on the node:
 
 ```bash
-# Check audit logs for syscalls
-kubectl exec -it secured-app -- grep SECCOMP /var/log/audit/audit.log
+# Check audit logs on the node if auditd is enabled
+ssh node01 "grep SECCOMP /var/log/audit/audit.log"
 
 # Or use journalctl on the node
 ssh node01 "journalctl -k | grep SECCOMP"
@@ -217,10 +216,13 @@ def get_syscalls_from_strace(command):
 
         syscalls = set()
         for line in result.stderr.split('\n'):
-            if line and not line.startswith((' ', '-', '%', 'SYS')):
-                parts = line.split()
-                if parts:
-                    syscalls.add(parts[-1])
+            stripped = line.strip()
+            if not stripped or stripped.startswith(('-', '%')):
+                continue
+
+            parts = stripped.split()
+            if parts and parts[0].replace('.', '', 1).isdigit() and parts[-1] != 'total':
+                syscalls.add(parts[-1])
 
         return sorted(syscalls)
     except Exception as e:
@@ -299,12 +301,24 @@ Create profiles with conditional syscall filtering:
       ]
     },
     {
-      "names": ["open", "openat"],
+      "names": ["open"],
       "action": "SCMP_ACT_ALLOW",
       "args": [
         {
           "index": 1,
-          "value": 2,
+          "value": 3,
+          "valueTwo": 0,
+          "op": "SCMP_CMP_MASKED_EQ"
+        }
+      ]
+    },
+    {
+      "names": ["openat"],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 2,
+          "value": 3,
           "valueTwo": 0,
           "op": "SCMP_CMP_MASKED_EQ"
         }
@@ -316,7 +330,7 @@ Create profiles with conditional syscall filtering:
 
 This profile:
 - Allows `socket` only with domain=AF_INET (value 2)
-- Allows `open` and `openat` only in read-only mode
+- Allows `open` and `openat` only when the access mode bits are read-only
 
 ## Testing Seccomp Profiles
 
@@ -343,9 +357,9 @@ spec:
       ls /tmp
       echo "Test 1: PASSED"
 
-      echo "Testing blocked syscall (clock_settime)..."
+      echo "Testing denied operation (clock_settime)..."
       if ! date -s "2025-01-01" 2>&1 | grep -q "Permission denied"; then
-        echo "Test 2: FAILED - syscall should be blocked"
+        echo "Test 2: FAILED - operation should be denied"
         exit 1
       fi
       echo "Test 2: PASSED"
