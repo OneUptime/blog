@@ -14,7 +14,7 @@ Building kubectl plugins in Go offers strong typing, excellent Kubernetes client
 
 ## Understanding Kubectl Plugin Architecture
 
-Kubectl plugins follow a simple convention. Any executable file in your PATH with a name starting with `kubectl-` becomes a kubectl subcommand. For example, an executable named `kubectl-deploy-stack` can be invoked as `kubectl deploy-stack`.
+Kubectl plugins follow a simple convention. Any executable file in your PATH with a name starting with `kubectl-` becomes a kubectl subcommand. For example, an executable named `kubectl-deploy_stack` can be invoked as `kubectl deploy-stack`. In plugin filenames, dashes separate nested subcommands, while underscores allow dashes in the command users type.
 
 The plugin system passes all arguments after the plugin name to your executable. This simplicity makes it easy to create powerful extensions without modifying kubectl itself.
 
@@ -56,6 +56,7 @@ import (
     corev1 "k8s.io/api/core/v1"
     networkingv1 "k8s.io/api/networking/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/util/intstr"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/tools/clientcmd"
 )
@@ -70,7 +71,7 @@ var (
 
 func main() {
     var rootCmd = &cobra.Command{
-        Use:   "kubectl-deploy-stack [name]",
+        Use:   "kubectl deploy-stack [name]",
         Short: "Deploy a complete application stack",
         Args:  cobra.ExactArgs(1),
         RunE:  deployStack,
@@ -251,9 +252,9 @@ func createIngress(ctx context.Context, clientset *kubernetes.Clientset, name st
 Compile your plugin into a binary and place it in your PATH:
 
 ```bash
-go build -o kubectl-deploy-stack main.go
-sudo mv kubectl-deploy-stack /usr/local/bin/
-chmod +x /usr/local/bin/kubectl-deploy-stack
+go build -o kubectl-deploy_stack main.go
+sudo mv kubectl-deploy_stack /usr/local/bin/
+sudo chmod +x /usr/local/bin/kubectl-deploy_stack
 ```
 
 Now you can use your plugin:
@@ -346,14 +347,14 @@ spec:
         arch: amd64
     uri: https://github.com/yourorg/kubectl-deploy-stack/releases/download/v1.0.0/kubectl-deploy-stack-linux-amd64.tar.gz
     sha256: "YOUR_SHA256_HERE"
-    bin: kubectl-deploy-stack
+    bin: kubectl-deploy_stack
   - selector:
       matchLabels:
         os: darwin
         arch: amd64
     uri: https://github.com/yourorg/kubectl-deploy-stack/releases/download/v1.0.0/kubectl-deploy-stack-darwin-amd64.tar.gz
     sha256: "YOUR_SHA256_HERE"
-    bin: kubectl-deploy-stack
+    bin: kubectl-deploy_stack
 ```
 
 Building custom kubectl plugins in Go transforms repetitive Kubernetes operations into simple, shareable commands. Start with the workflows that consume the most time in your day-to-day operations, then expand your plugin library as new patterns emerge.
