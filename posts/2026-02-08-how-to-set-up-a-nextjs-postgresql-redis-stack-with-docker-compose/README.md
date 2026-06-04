@@ -14,7 +14,7 @@ This guide covers everything from the Dockerfile to production-ready compose con
 
 ## Prerequisites
 
-Make sure you have Docker Engine 20.10+ and Docker Compose V2 installed. You will also want Node.js 18+ locally if you plan to run `next dev` outside Docker for hot reloading during development.
+Make sure you have Docker Engine 20.10+ and Docker Compose V2 installed. You will also want Node.js 20.19+ locally if you plan to run `next dev` outside Docker for hot reloading during development.
 
 ## Project Structure
 
@@ -25,10 +25,12 @@ nextjs-postgres-redis/
 ├── .dockerignore
 ├── next.config.js
 ├── package.json
+├── prisma.config.ts
 ├── prisma/
 │   └── schema.prisma
 ├── src/
 │   ├── app/
+│   ├── generated/
 │   ├── lib/
 │   │   ├── db.ts
 │   │   └── redis.ts
@@ -47,7 +49,7 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 # Copy only package files for dependency caching
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Stage 2: Build the Next.js application
 FROM node:20-alpine AS builder
@@ -72,7 +74,6 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 USER nextjs
 EXPOSE 3000
@@ -109,8 +110,6 @@ node_modules
 
 ```yaml
 # Next.js + PostgreSQL + Redis development stack
-version: "3.8"
-
 services:
   # Next.js application
   app:
@@ -183,8 +182,6 @@ For local development, you probably want hot reloading instead of running the pr
 
 ```yaml
 # docker-compose.override.yml - Development overrides with hot reloading
-version: "3.8"
-
 services:
   app:
     build:
@@ -195,6 +192,7 @@ services:
       - ./prisma:/app/prisma
       - ./public:/app/public
       - ./next.config.js:/app/next.config.js
+      - ./prisma.config.ts:/app/prisma.config.ts
     environment:
       NODE_ENV: development
 ```
@@ -208,12 +206,12 @@ Define your database models with Prisma:
 ```prisma
 // prisma/schema.prisma - Database schema definition
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -236,17 +234,41 @@ model Post {
 }
 ```
 
+Configure the Prisma CLI connection separately:
+
+```typescript
+// prisma.config.ts - Prisma CLI configuration
+import "dotenv/config";
+import { defineConfig, env } from "prisma/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  datasource: {
+    url: env("DATABASE_URL"),
+  },
+});
+```
+
 ## Database and Redis Client Setup
 
 ```typescript
 // src/lib/db.ts - Prisma client singleton for Next.js
-import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not set");
+}
+
+const adapter = new PrismaPg({ connectionString });
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 export const prisma =
   globalForPrisma.prisma ||
   new PrismaClient({
+    adapter,
     log: process.env.NODE_ENV === "development" ? ["query"] : [],
   });
 
@@ -257,8 +279,11 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 // src/lib/redis.ts - Redis client with connection reuse
 import { createClient } from "redis";
 
+type RedisClient = ReturnType<typeof createClient>;
+
 const globalForRedis = globalThis as unknown as {
-  redis: ReturnType<typeof createClient>;
+  redis?: RedisClient;
+  redisConnection?: Promise<RedisClient>;
 };
 
 export const redis =
@@ -267,10 +292,15 @@ export const redis =
     url: process.env.REDIS_URL || "redis://localhost:6379",
   });
 
+redis.on("error", (err) => console.error("Redis Client Error", err));
+
 if (!globalForRedis.redis) {
-  redis.connect();
   globalForRedis.redis = redis;
 }
+
+export const redisReady =
+  globalForRedis.redisConnection ||
+  (globalForRedis.redisConnection = redis.connect().then(() => redis));
 ```
 
 ## Using Redis for Caching in API Routes
@@ -279,9 +309,11 @@ if (!globalForRedis.redis) {
 // src/app/api/posts/route.ts - API route with Redis caching
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { redis } from "@/lib/redis";
+import { redis, redisReady } from "@/lib/redis";
 
 export async function GET() {
+  await redisReady;
+
   // Try cache first
   const cached = await redis.get("posts:all");
   if (cached) {
