@@ -44,7 +44,7 @@ Let's understand each field:
 - `name`: Network name (must be unique)
 - `type`: Plugin executable name (must exist in CNI_PATH)
 - `bridge`: Bridge device name on the host
-- `isGateway`: If true, bridge gets an IP and acts as default gateway
+- `isGateway`: If true, bridge gets an IP and can act as a gateway
 - `ipMasq`: Enable IP masquerading (NAT) for external traffic
 - `hairpinMode`: Allow pods to reach their own service via cluster IP
 - `ipam`: IP address management configuration
@@ -56,7 +56,7 @@ Install the CNI plugins including bridge:
 ```bash
 # Download CNI plugins
 
-CNI_VERSION="v1.4.0"
+CNI_VERSION="v1.9.1"
 mkdir -p /opt/cni/bin
 curl -L "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-amd64-${CNI_VERSION}.tgz" | tar -C /opt/cni/bin -xz
 
@@ -180,8 +180,9 @@ nsenter -t <pid> -n ip route
 
 Create multiple isolated networks:
 
+`/etc/cni/net.d/10-frontend-net.conf`:
+
 ```json
-// /etc/cni/net.d/10-frontend-net.conf
 {
   "cniVersion": "1.0.0",
   "name": "frontend-net",
@@ -191,7 +192,6 @@ Create multiple isolated networks:
   "ipMasq": true,
   "ipam": {
     "type": "host-local",
-    "subnet": "10.10.0.0/16",
     "ranges": [
       [{
         "subnet": "10.10.0.0/24",
@@ -202,8 +202,11 @@ Create multiple isolated networks:
     ]
   }
 }
+```
 
-// /etc/cni/net.d/20-backend-net.conf
+`/etc/cni/net.d/20-backend-net.conf`:
+
+```json
 {
   "cniVersion": "1.0.0",
   "name": "backend-net",
@@ -213,7 +216,6 @@ Create multiple isolated networks:
   "ipMasq": true,
   "ipam": {
     "type": "host-local",
-    "subnet": "10.20.0.0/16",
     "ranges": [
       [{
         "subnet": "10.20.0.0/24",
@@ -247,9 +249,7 @@ Configure more sophisticated IP allocation:
           "rangeStart": "10.244.0.20",
           "rangeEnd": "10.244.0.100",
           "gateway": "10.244.0.1"
-        }
-      ],
-      [
+        },
         {
           "subnet": "10.244.1.0/24",
           "rangeStart": "10.244.1.20",
@@ -267,7 +267,7 @@ Configure more sophisticated IP allocation:
 }
 ```
 
-This configuration provides two IP ranges and custom routing.
+This configuration provides one address from either of two IP ranges and custom routing.
 
 ## Plugin Chaining with Bridge
 
@@ -424,9 +424,9 @@ ip -s link show cni0
 bridge link show
 
 # Forwarding database (MAC addresses)
-bridge fdb show dev cni0
+bridge fdb show br cni0
 
-# Monitor new connections
+# Monitor forwarding database changes
 bridge monitor fdb
 
 # Check iptables counters
