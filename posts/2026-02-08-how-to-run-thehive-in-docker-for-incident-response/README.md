@@ -28,8 +28,8 @@ Key features include:
 
 Before starting, make sure you have the following installed on your system:
 
-- Docker Engine 20.10 or newer
-- Docker Compose v2
+- Docker Engine 23.0.15 or newer
+- Docker Compose plugin v2.20.2 or newer
 - At least 4 GB of available RAM
 - 20 GB of free disk space
 
@@ -46,20 +46,21 @@ docker compose version
 
 ## Architecture Overview
 
-TheHive requires two backend services: Elasticsearch for data storage and Cassandra as an alternative database. For this guide, we will use Elasticsearch since it is the simpler option for getting started. MinIO handles file storage for attachments and evidence.
+TheHive requires Cassandra for data storage and Elasticsearch for indexing. MinIO handles file storage for attachments and evidence.
 
 ```mermaid
 graph TD
     A[TheHive Web UI] --> B[TheHive Server]
-    B --> C[Elasticsearch]
-    B --> D[MinIO - File Storage]
-    B --> E[Cortex - Optional]
-    E --> F[Analyzers & Responders]
+    B --> C[Cassandra]
+    B --> D[Elasticsearch]
+    B --> E[MinIO - File Storage]
+    B --> F[Cortex - Optional]
+    F --> G[Analyzers & Responders]
 ```
 
 ## Setting Up the Docker Compose File
 
-Create a project directory and add the following Docker Compose configuration. This sets up TheHive along with Elasticsearch and MinIO.
+Create a project directory and add the following Docker Compose configuration. This sets up TheHive along with Cassandra, Elasticsearch, and MinIO.
 
 ```bash
 # Create the project directory
@@ -69,10 +70,28 @@ mkdir -p ~/thehive-docker && cd ~/thehive-docker
 Now create the main compose file.
 
 ```yaml
-# docker-compose.yml - TheHive with Elasticsearch and MinIO
-version: "3.8"
-
+# docker-compose.yml - TheHive with Cassandra, Elasticsearch, and MinIO
 services:
+  cassandra:
+    image: cassandra:4.1
+    container_name: thehive-cassandra
+    environment:
+      - CASSANDRA_CLUSTER_NAME=TheHive
+      - CASSANDRA_NUM_TOKENS=4
+      - MAX_HEAP_SIZE=1G
+      - HEAP_NEWSIZE=256M
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    networks:
+      - thehive-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'DESCRIBE KEYSPACES' || exit 1"]
+      start_period: 90s
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:7.17.9
     container_name: thehive-elasticsearch
@@ -108,19 +127,34 @@ services:
       - thehive-net
     restart: unless-stopped
 
+  minio-init:
+    image: quay.io/minio/mc
+    container_name: thehive-minio-init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 thehive thehive-secret-key; do sleep 2; done &&
+      mc mb -p local/thehive || true
+      "
+    networks:
+      - thehive-net
+
   thehive:
-    image: strangebee/thehive:5.2
+    image: strangebee/thehive:5.2.16
     container_name: thehive
     depends_on:
+      cassandra:
+        condition: service_healthy
       elasticsearch:
         condition: service_healthy
-      minio:
-        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
     ports:
       # Expose TheHive web interface on port 9000
       - "9000:9000"
     environment:
-      - JVM_OPTS=-Xms1g -Xmx1g
+      - JAVA_OPTS=-Xms1g -Xmx1g
     volumes:
       - ./thehive.conf:/etc/thehive/application.conf
     networks:
@@ -128,6 +162,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  cassandra_data:
   elasticsearch_data:
   minio_data:
 
@@ -138,15 +173,22 @@ networks:
 
 ## Creating the TheHive Configuration
 
-TheHive needs a configuration file that tells it how to connect to Elasticsearch and MinIO. Create this file in your project directory.
+TheHive needs a configuration file that tells it how to connect to Cassandra, Elasticsearch, and MinIO. Create this file in your project directory.
 
 ```hocon
 # thehive.conf - Main configuration for TheHive
-# Database configuration pointing to our Elasticsearch container
+# Secret key used by Play Framework to sign session cookies
+play.http.secret.key = "replace-this-with-a-random-64-character-secret"
+
+# Database configuration pointing to our Cassandra container
 db.janusgraph {
   storage {
     backend = cql
-    hostname = ["elasticsearch"]
+    hostname = ["cassandra"]
+    cql {
+      cluster-name = TheHive
+      keyspace = thehive
+    }
   }
   index.search {
     backend = elasticsearch
@@ -163,15 +205,18 @@ storage {
     readTimeout = 1 minute
     writeTimeout = 1 minute
     chunkSize = 1 MB
-    endpoint = "http://minio:9000"
-    accessKey = "thehive"
-    secretKey = "thehive-secret-key"
-    region = "us-east-1"
+    endpoint-url = "http://minio:9000"
+    aws.credentials.access-key-id = "thehive"
+    aws.credentials.provider = "static"
+    aws.credentials.secret-access-key = "thehive-secret-key"
+    access-style = path
+    aws.region.provider = "static"
+    aws.region.default-region = "us-east-1"
   }
 }
 
 # Cortex integration - uncomment if you run Cortex alongside
-# play.modules.enabled += org.thp.thehive.connector.cortex.CortexModule
+# scalligraph.modules += org.thp.thehive.connector.cortex.CortexModule
 # cortex {
 #   servers = [
 #     {
@@ -230,18 +275,46 @@ curl -X POST http://localhost:9000/api/v1/case \
 Cortex is a companion tool that runs analyzers and responders against observables in your cases. Adding it to the stack is straightforward.
 
 ```yaml
-# Add this service block to your docker-compose.yml
+# Add these service blocks to your docker-compose.yml
+  cortex-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.9
+    container_name: cortex-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+    volumes:
+      - cortex_elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - thehive-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   cortex:
     image: thehiveproject/cortex:3.1.7
     container_name: cortex
+    depends_on:
+      cortex-elasticsearch:
+        condition: service_healthy
     ports:
       - "9001:9001"
+    environment:
+      - es_uri=http://cortex-elasticsearch:9200
+      - job_directory=/tmp/cortex-jobs
+      - docker_job_directory=/tmp/cortex-jobs
     volumes:
-      - cortex_data:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock
+      - cortex_jobs:/tmp/cortex-jobs
     networks:
       - thehive-net
     restart: unless-stopped
 ```
+
+Also add `cortex_elasticsearch_data` and `cortex_jobs` under the top-level `volumes:` section.
 
 After bringing up Cortex, configure the API key in TheHive and enable the Cortex module in your configuration file. This lets analysts run automated enrichment on IP addresses, file hashes, domain names, and other observables directly from within a case.
 
@@ -249,7 +322,7 @@ After bringing up Cortex, configure the API key in TheHive and enable the Cortex
 
 Running TheHive in Docker for production requires a few additional steps beyond the basic setup.
 
-**Use strong credentials.** Replace all default passwords in the configuration. Generate random strings for MinIO keys and TheHive admin passwords.
+**Use strong credentials.** Replace all default passwords in the configuration. Generate random strings for MinIO keys, the TheHive secret key, and TheHive admin passwords.
 
 ```bash
 # Generate a secure random password
@@ -258,9 +331,13 @@ openssl rand -base64 32
 
 **Enable TLS.** Place a reverse proxy like Nginx or Traefik in front of TheHive to handle HTTPS termination.
 
-**Back up your data.** Create regular snapshots of the Docker volumes holding Elasticsearch and MinIO data.
+**Back up your data.** Create regular snapshots of the Docker volumes holding Cassandra, Elasticsearch, and MinIO data.
 
 ```bash
+# Back up Cassandra data volume
+docker run --rm -v thehive-docker_cassandra_data:/data -v $(pwd):/backup \
+  alpine tar czf /backup/cassandra-backup-$(date +%Y%m%d).tar.gz /data
+
 # Back up Elasticsearch data volume
 docker run --rm -v thehive-docker_elasticsearch_data:/data -v $(pwd):/backup \
   alpine tar czf /backup/es-backup-$(date +%Y%m%d).tar.gz /data
@@ -302,7 +379,7 @@ alert = {
     "description": "Rootkit detection on host web-server-01",
     "severity": 3,
     "tags": ["rootkit", "wazuh", "critical"],
-    "artifacts": [
+    "observables": [
         {"dataType": "ip", "data": "10.0.0.15"},
         {"dataType": "hostname", "data": "web-server-01"}
     ]
