@@ -73,6 +73,12 @@ helm repo update
 # Create namespace
 kubectl create namespace longhorn-system
 
+# Create backup credentials before setting a backup target at install time
+kubectl create secret generic longhorn-backup-secret \
+  -n longhorn-system \
+  --from-literal=AWS_ACCESS_KEY_ID=your-access-key \
+  --from-literal=AWS_SECRET_ACCESS_KEY=your-secret-key
+
 # Install Longhorn with custom values
 helm install longhorn longhorn/longhorn \
   --namespace longhorn-system \
@@ -80,8 +86,8 @@ helm install longhorn longhorn/longhorn \
   --set persistence.defaultClassReplicaCount=3 \
   --set defaultSettings.defaultReplicaCount=3 \
   --set defaultSettings.guaranteedInstanceManagerCPU=5 \
-  --set defaultSettings.backupTarget=s3://backups@us-east-1/ \
-  --set defaultSettings.backupTargetCredentialSecret=longhorn-backup-secret
+  --set defaultBackupStore.backupTarget=s3://backups@us-east-1/ \
+  --set defaultBackupStore.backupTargetCredentialSecret=longhorn-backup-secret
 
 # Wait for all pods to be ready
 kubectl wait --for=condition=ready pod \
@@ -150,12 +156,11 @@ Access the UI at http://localhost:8080 or https://longhorn.example.com to see th
 Longhorn supports S3-compatible backup targets for off-cluster disaster recovery. Create a secret with S3 credentials.
 
 ```bash
-# Create AWS credentials secret
+# Create AWS credentials secret if you did not create it during installation
 kubectl create secret generic longhorn-backup-secret \
   -n longhorn-system \
   --from-literal=AWS_ACCESS_KEY_ID=your-access-key \
-  --from-literal=AWS_SECRET_ACCESS_KEY=your-secret-key \
-  --from-literal=AWS_ENDPOINTS=https://s3.amazonaws.com
+  --from-literal=AWS_SECRET_ACCESS_KEY=your-secret-key
 ```
 
 Configure the backup target in Longhorn settings.
@@ -165,11 +170,12 @@ Configure the backup target in Longhorn settings.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: longhorn-default-setting
+  name: longhorn-default-resource
   namespace: longhorn-system
 data:
-  backup-target: s3://your-bucket@us-east-1/
-  backup-target-credential-secret: longhorn-backup-secret
+  default-resource.yaml: |
+    "backup-target": "s3://your-bucket@us-east-1/"
+    "backup-target-credential-secret": "longhorn-backup-secret"
 ```
 
 Apply the configuration and verify in the UI under Settings > General > Backup Target.
@@ -285,6 +291,8 @@ metadata:
   name: longhorn-snapshot
 driver: driver.longhorn.io
 deletionPolicy: Delete
+parameters:
+  type: snap
 ---
 # volumesnapshot.yaml
 apiVersion: snapshot.storage.k8s.io/v1
@@ -300,6 +308,7 @@ spec:
 Create the snapshot and verify.
 
 ```bash
+kubectl apply -f volumesnapshotclass.yaml
 kubectl apply -f volumesnapshot.yaml
 kubectl get volumesnapshot postgres-snapshot
 
@@ -325,17 +334,18 @@ EOF
 
 ## Creating Backups to S3
 
-Longhorn backups are full copies stored in S3, independent of snapshots.
+Longhorn backups are incremental by default and are stored in S3, independent of the in-cluster snapshots.
 
 ```yaml
 # backup.yaml
-apiVersion: longhorn.io/v1beta1
+apiVersion: longhorn.io/v1beta2
 kind: Backup
 metadata:
   name: postgres-backup
   namespace: longhorn-system
 spec:
-  snapshotName: postgres-snapshot
+  backupMode: incremental
+  snapshotName: snapshot-name-from-longhorn
   labels:
     app: postgres
     environment: production
