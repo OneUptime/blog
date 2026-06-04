@@ -10,7 +10,7 @@ Description: Configure Keepalived in Docker to provide virtual IP failover using
 
 Keepalived provides high availability through the Virtual Router Redundancy Protocol (VRRP). It assigns a floating virtual IP address to a group of servers, ensuring that if the active server goes down, another one takes over the IP address seamlessly. Clients never need to know which physical server they are talking to - they just connect to the virtual IP.
 
-Running Keepalived in Docker requires some special networking considerations because VRRP operates at the network layer. This guide covers how to set up Keepalived containers for virtual IP failover, including active-passive and active-active configurations.
+Running Keepalived in Docker requires some special networking considerations because VRRP operates at the network layer. This guide covers how to set up Keepalived containers for virtual IP failover, including active-passive configurations.
 
 ## How VRRP Works
 
@@ -30,7 +30,7 @@ graph TD
 Keepalived in Docker requires elevated network privileges because it manipulates IP addresses and sends multicast VRRP packets. You need:
 
 - Two or more Docker hosts on the same Layer 2 network
-- The `NET_ADMIN` and `NET_BROADCAST` capabilities for the container
+- The `NET_ADMIN`, `NET_RAW`, and `NET_BROADCAST` capabilities for the container
 - Host networking mode (VRRP does not work with Docker bridge networks)
 - A free IP address on the subnet to use as the virtual IP
 
@@ -68,10 +68,10 @@ vrrp_instance VI_1 {
     priority 101                  # Higher priority becomes MASTER
     advert_int 1                  # Send VRRP advertisements every 1 second
 
-    # Authentication between VRRP peers
+    # Simple VRRP PASS authentication between Keepalived peers
     authentication {
         auth_type PASS
-        auth_pass secretkey123
+        auth_pass secret12
     }
 
     # The virtual IP address that floats between nodes
@@ -121,7 +121,7 @@ vrrp_instance VI_1 {
 
     authentication {
         auth_type PASS
-        auth_pass secretkey123    # Must match MASTER's password
+        auth_pass secret12        # Must match MASTER's password
     }
 
     virtual_ipaddress {
@@ -147,8 +147,8 @@ Create a script that verifies your actual service is healthy.
 # check_service.sh - Verify the target service is responding
 # Exit code 0 = healthy, non-zero = unhealthy
 
-# Check if Nginx is responding on port 80
-curl -sf http://localhost:80/health > /dev/null 2>&1
+# Check if Nginx is accepting connections on port 80
+bash -c '</dev/tcp/127.0.0.1/80' > /dev/null 2>&1
 exit $?
 ```
 
@@ -186,19 +186,19 @@ esac
 ### MASTER Node docker-compose.yml
 
 ```yaml
-# docker-compose.yml for the MASTER Keepalived node
+# compose.yaml for the MASTER Keepalived node
 # Host networking is required for VRRP to function properly
-version: "3.8"
 
 services:
   keepalived:
-    image: osixia/keepalived:2.0.20
+    image: osixia/keepalived:2.3.4
     container_name: keepalived-master
     restart: unless-stopped
     # Host network mode is mandatory for VRRP
     network_mode: host
     cap_add:
       - NET_ADMIN       # Required to manage IP addresses
+      - NET_RAW         # Required to send and receive raw VRRP packets
       - NET_BROADCAST    # Required for VRRP multicast
     environment:
       - KEEPALIVED_VIRTUAL_IPS=192.168.1.100
@@ -206,7 +206,7 @@ services:
       - KEEPALIVED_PRIORITY=101
       - KEEPALIVED_INTERFACE=eth0
     volumes:
-      - ./keepalived-master.conf:/container/service/keepalived/assets/keepalived.conf:ro
+      - ./keepalived-master.conf:/etc/keepalived/keepalived.conf:ro
       - ./check_service.sh:/usr/local/bin/check_service.sh:ro
       - ./notify.sh:/usr/local/bin/notify.sh:ro
 
@@ -223,25 +223,25 @@ services:
 ### BACKUP Node docker-compose.yml
 
 ```yaml
-# docker-compose.yml for the BACKUP Keepalived node
+# compose.yaml for the BACKUP Keepalived node
 # Deploy this on a second server on the same network
-version: "3.8"
 
 services:
   keepalived:
-    image: osixia/keepalived:2.0.20
+    image: osixia/keepalived:2.3.4
     container_name: keepalived-backup
     restart: unless-stopped
     network_mode: host
     cap_add:
       - NET_ADMIN
+      - NET_RAW
       - NET_BROADCAST
     environment:
       - KEEPALIVED_VIRTUAL_IPS=192.168.1.100
       - KEEPALIVED_PRIORITY=100
       - KEEPALIVED_INTERFACE=eth0
     volumes:
-      - ./keepalived-backup.conf:/container/service/keepalived/assets/keepalived.conf:ro
+      - ./keepalived-backup.conf:/etc/keepalived/keepalived.conf:ro
       - ./check_service.sh:/usr/local/bin/check_service.sh:ro
       - ./notify.sh:/usr/local/bin/notify.sh:ro
 
@@ -261,7 +261,7 @@ If the pre-built image does not meet your needs, build your own.
 ```dockerfile
 # Dockerfile for a custom Keepalived image
 # Includes additional tools for health checking
-FROM alpine:3.19
+FROM alpine:3.23
 
 RUN apk add --no-cache \
     keepalived \
@@ -288,6 +288,7 @@ docker run -d \
   --name keepalived \
   --network host \
   --cap-add NET_ADMIN \
+  --cap-add NET_RAW \
   --cap-add NET_BROADCAST \
   keepalived-custom
 ```
@@ -298,6 +299,7 @@ Verify that failover works correctly by simulating a failure on the MASTER node.
 
 ```bash
 # On the MASTER node, check the current VRRP state
+docker exec keepalived-master sh -c 'kill -USR1 "$(cat /run/keepalived.pid)"'
 docker exec keepalived-master cat /tmp/keepalived.data
 
 # Verify the VIP is assigned to the MASTER's interface
@@ -342,7 +344,7 @@ vrrp_instance VI_1 {
 
     authentication {
         auth_type PASS
-        auth_pass secretkey123
+        auth_pass secret12
     }
 
     virtual_ipaddress {
@@ -357,18 +359,18 @@ A common production pattern pairs Keepalived with HAProxy. Keepalived manages th
 
 ```yaml
 # Combined Keepalived + HAProxy setup
-version: "3.8"
 
 services:
   keepalived:
-    image: osixia/keepalived:2.0.20
+    image: osixia/keepalived:2.3.4
     container_name: keepalived
     network_mode: host
     cap_add:
       - NET_ADMIN
+      - NET_RAW
       - NET_BROADCAST
     volumes:
-      - ./keepalived.conf:/container/service/keepalived/assets/keepalived.conf:ro
+      - ./keepalived.conf:/etc/keepalived/keepalived.conf:ro
       - ./check_haproxy.sh:/usr/local/bin/check_service.sh:ro
 
   haproxy:
@@ -385,7 +387,7 @@ Where check_haproxy.sh verifies HAProxy is running:
 #!/bin/bash
 # check_haproxy.sh - Verify HAProxy is accepting connections
 # Used by Keepalived to determine if this node should hold the VIP
-killall -0 haproxy 2>/dev/null
+bash -c '</dev/tcp/127.0.0.1/80' > /dev/null 2>&1
 exit $?
 ```
 
@@ -397,7 +399,7 @@ Track Keepalived state transitions to detect flapping or persistent failures.
 # View Keepalived logs from the container
 docker logs -f keepalived-master
 
-# Check the current VRRP state
+# Dump the parsed Keepalived configuration
 docker exec keepalived-master keepalived --dump-conf
 
 # Monitor state changes in real time using the notification log
@@ -408,6 +410,6 @@ Integrate these state changes with your monitoring system. OneUptime can alert y
 
 ## Production Considerations
 
-Set the `advert_int` to 1 second for fast failover detection. Use authentication to prevent rogue VRRP instances from hijacking the VIP. Always test failover in a staging environment before deploying to production. Monitor both nodes to ensure the BACKUP is healthy and ready to take over. Keep the health check script simple and fast - a slow check delays failover detection. Use unicast mode in cloud environments where multicast is not supported.
+Set the `advert_int` to 1 second for fast failover detection. Treat VRRP PASS authentication as a compatibility check between peers, not as strong protection against hostile hosts on the same Layer 2 network. Always test failover in a staging environment before deploying to production. Monitor both nodes to ensure the BACKUP is healthy and ready to take over. Keep the health check script simple and fast - a slow check delays failover detection. Use unicast mode in cloud environments where multicast is not supported.
 
-Keepalived in Docker gives you automatic IP failover with sub-second detection times. Combined with a load balancer like HAProxy, it forms the foundation of a highly available service architecture.
+Keepalived in Docker gives you automatic IP failover with fast detection times. Combined with a load balancer like HAProxy, it forms the foundation of a highly available service architecture.
