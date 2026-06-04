@@ -273,8 +273,8 @@ WORKDIR /usr/src/app
 # Copy package files first for better cache utilization
 COPY package*.json ./
 
-# Install dependencies (ci is faster and more deterministic than install)
-RUN npm ci --only=production
+# Install production dependencies (ci is faster and more deterministic than install)
+RUN npm ci --omit=dev
 
 # Copy the application source code
 COPY . .
@@ -303,7 +303,7 @@ Dockerfile
 .dockerignore
 ```
 
-Always create a `.dockerignore` file. Without it, Docker copies everything in the build context into the image, including things like `.git` directories, `node_modules`, and potentially secrets in `.env` files.
+Always create a `.dockerignore` file. Without it, Docker sends everything in the build context to the builder, and `COPY . .` can copy things like `.git` directories, `node_modules`, and potentially secrets in `.env` files into the image.
 
 ## Common Mistakes to Avoid
 
