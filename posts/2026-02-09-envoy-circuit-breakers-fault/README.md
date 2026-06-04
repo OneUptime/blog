@@ -8,18 +8,19 @@ Description: Learn how to configure Envoy circuit breakers to prevent cascading 
 
 ---
 
-Circuit breakers prevent cascading failures by limiting concurrent connections, pending requests, and retries to upstream services. When a service starts failing, circuit breakers stop sending requests before the entire system becomes overwhelmed. Envoy implements circuit breakers at the cluster level, providing fine-grained control over connection and request limits.
+Circuit breakers prevent cascading failures by limiting concurrent connections, queued requests, in-flight requests, and retries to upstream services. When an upstream reaches configured resource limits, circuit breakers apply back pressure before the entire system becomes overwhelmed. Envoy implements circuit breakers at the cluster level, providing fine-grained control over connection and request limits.
 
 ## Understanding Circuit Breaker Thresholds
 
-Envoy circuit breakers operate on four key thresholds:
+Envoy circuit breakers commonly use these thresholds:
 
 - max_connections: Maximum concurrent connections to upstream hosts
 - max_pending_requests: Maximum requests queued waiting for connections
-- max_requests: Maximum concurrent requests (HTTP/2 and HTTP/3)
+- max_requests: Maximum concurrent HTTP requests
 - max_retries: Maximum concurrent retry requests
+- max_connection_pools: Maximum concurrent connection pools
 
-When any threshold is exceeded, requests are immediately rejected with a 503 response.
+When requests cannot be admitted because a circuit breaker is open, the HTTP router returns a 503 response with the `x-envoy-overloaded` header.
 
 ## Basic Circuit Breaker Configuration
 
@@ -93,10 +94,14 @@ clusters:
       max_pending_requests: 100
       max_requests: 100
       max_retries: 3
-  http2_protocol_options:
-    max_concurrent_streams: 100
-  common_http_protocol_options:
-    max_requests_per_connection: 1000
+  typed_extension_protocol_options:
+    envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+      "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+      common_http_protocol_options:
+        max_requests_per_connection: 1000
+      explicit_http_config:
+        http2_protocol_options:
+          max_concurrent_streams: 100
 ```
 
 ## Outlier Detection with Circuit Breakers
@@ -189,7 +194,7 @@ curl http://localhost:9901/stats | grep circuit_breakers
 
 ## Gradual Traffic Recovery
 
-After circuit breakers trip, traffic should recover gradually. Configure outlier detection to slowly reintroduce ejected hosts:
+Circuit breakers do not use a sleep window; they open and close based on current resource usage. Configure outlier detection to gradually reintroduce ejected hosts:
 
 ```yaml
 outlier_detection:
