@@ -14,9 +14,9 @@ This guide shows you how to enable DNS proxying and configure it for both intern
 
 ## Understanding Istio DNS Proxying
 
-Without DNS proxying, applications query CoreDNS for service IPs and connect directly, bypassing the Envoy proxy for mesh services. External services require ServiceEntry resources but applications must use service names defined in those resources.
+Without DNS proxying, applications query CoreDNS before opening a connection. Kubernetes services resolve normally and the connection can still be captured by Envoy, but custom ServiceEntry hostnames are not known to CoreDNS unless you add separate DNS configuration. External services require ServiceEntry resources, and applications must use service names defined in those resources.
 
-With DNS proxying enabled, Envoy intercepts DNS queries on port 53, resolves them using mesh configuration, and returns IPs that route through the sidecar. This enables transparent mesh integration without changing application code.
+With DNS proxying enabled, Istio redirects application DNS queries to the sidecar, resolves known mesh and ServiceEntry names using mesh configuration, and forwards unknown names to the upstream resolver from `/etc/resolv.conf`. This enables transparent mesh integration without changing application code.
 
 ## Enabling DNS Proxying
 
@@ -33,17 +33,11 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 
   values:
-    global:
-      # Enable DNS proxying
-      proxy:
-        enableCoreDump: false
-        lifecycle:
-          preStop:
-            exec:
-              command: ["/bin/sh", "-c", "sleep 15"]
+    pilot:
+      env:
+        PILOT_ENABLE_IP_AUTOALLOCATE: "true"
 ```
 
 Apply the configuration:
@@ -52,17 +46,31 @@ Apply the configuration:
 istioctl install -f istio-dns-config.yaml
 ```
 
-Enable per-namespace using annotation:
+Enable per-workload using a pod template annotation:
 
 ```yaml
-apiVersion: v1
-kind: Namespace
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: production
-  labels:
-    istio-injection: enabled
-  annotations:
-    proxy.istio.io/config: '{"proxyMetadata":{"ISTIO_META_DNS_CAPTURE":"true"}}'
+  name: api-gateway
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+      annotations:
+        proxy.istio.io/config: |
+          proxyMetadata:
+            ISTIO_META_DNS_CAPTURE: "true"
+    spec:
+      containers:
+      - name: api-gateway
+        image: busybox:1.36
+        command: ["sleep", "365d"]
 ```
 
 ## Configuring ServiceEntry for External Services
@@ -70,7 +78,7 @@ metadata:
 Define external services that the DNS proxy can resolve:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api-stripe
@@ -81,7 +89,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: HTTPS
+    protocol: TLS
   location: MESH_EXTERNAL
   resolution: DNS
 ```
@@ -96,39 +104,37 @@ import requests
 response = requests.get('https://api.stripe.com/v1/charges')
 ```
 
-The DNS proxy intercepts the lookup, returns a routable IP, and traffic flows through Envoy where you can apply retries, timeouts, and circuit breaking.
+The DNS proxy intercepts the lookup, returns an address the application can connect to, and traffic flows through Envoy where you can apply mesh traffic policy supported for that protocol.
 
 ## Auto-Allocating IPs for External Services
 
-Enable automatic IP allocation for wildcards:
+For ServiceEntries without explicit `addresses`, Istio can automatically allocate a unique virtual IP from `240.240.0.0/16`. This is especially useful for TCP services, where sidecars need a stable destination IP to distinguish services that share the same port:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
-  name: googleapis
+  name: partner-database
   namespace: production
 spec:
   hosts:
-  - "*.googleapis.com"
-  addresses:
-  - 240.240.0.0/16  # Non-routable range for auto-allocation
+  - db.partner.example.com
   ports:
-  - number: 443
-    name: https
-    protocol: HTTPS
+  - number: 5432
+    name: tcp-postgres
+    protocol: TCP
   location: MESH_EXTERNAL
   resolution: DNS
 ```
 
-The DNS proxy automatically assigns IPs from the 240.240.0.0/16 range, enabling wildcard matching while maintaining unique routing.
+The DNS proxy returns the automatically allocated virtual IP for `db.partner.example.com`, while the sidecar resolves the real upstream address and forwards the TCP connection to the right ServiceEntry.
 
 ## Configuring DNS Proxy for Internal Services
 
 The DNS proxy works for mesh services too. Define custom DNS names:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: database-alias
@@ -157,7 +163,7 @@ Applications can use `db.internal.company.com` which resolves to the Kubernetes 
 Apply DestinationRule to external services accessed via DNS:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-payment-gateway
@@ -168,11 +174,11 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: HTTPS
+    protocol: TLS
   location: MESH_EXTERNAL
   resolution: DNS
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-gateway-circuit-breaker
@@ -183,38 +189,30 @@ spec:
     connectionPool:
       tcp:
         maxConnections: 100
-      http:
-        http1MaxPendingRequests: 50
-        maxRetries: 3
-    outlierDetection:
-      consecutiveErrors: 5
-      interval: 30s
-      baseEjectionTime: 30s
 ```
 
-The DNS proxy ensures traffic routes through Envoy where the circuit breaker applies.
+The DNS proxy ensures traffic routes through Envoy where the connection pool policy applies.
 
 ## Debugging DNS Resolution
 
 Check if DNS capture is active:
 
 ```bash
-kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
-  curl -s localhost:15000/config_dump | jq '.configs[] | select(."@type" | contains("Listeners")) | .dynamic_listeners[] | select(.active_state.listener.address.socket_address.port_value == 15053)'
+istioctl proxy-config listeners api-gateway-xxxxx.production --port 15053
 ```
 
 Test DNS resolution from within the pod:
 
 ```bash
-kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
-  nslookup api.stripe.com 127.0.0.1:15053
+kubectl exec -n production api-gateway-xxxxx -c api-gateway -- \
+  nslookup api.stripe.com
 ```
 
 Verify the query goes through Envoy:
 
 ```bash
 kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep dns
+  pilot-agent request GET stats | grep dns
 ```
 
 Check iptables rules:
@@ -224,12 +222,12 @@ kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
   iptables-save | grep 15053
 ```
 
-## Handling DNS TTL and Caching
+## Handling DNS Refresh and Caching
 
-Configure DNS TTL for external services:
+Review DNS refresh behavior for external services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: cdn-service
@@ -240,20 +238,20 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: HTTPS
+    protocol: TLS
   location: MESH_EXTERNAL
   resolution: DNS
-  # Envoy will respect upstream TTL
+  # The sidecar periodically resolves DNS ServiceEntries independently of application DNS.
 ```
 
-The Envoy DNS proxy caches responses based on upstream TTL values. For services with short TTLs, Envoy re-resolves frequently.
+The sidecar periodically resolves `resolution: DNS` ServiceEntries on a fixed 30-second interval. DNS proxying affects DNS requests sent by applications; it does not change how the Istio proxy performs its own DNS resolution.
 
 ## Multi-Cluster DNS Configuration
 
 Configure DNS for services across multiple clusters:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: remote-cluster-service
@@ -279,43 +277,57 @@ Applications use `api-service.remote-cluster.global` and traffic routes to the r
 
 ## DNS Proxy Performance Tuning
 
-Configure DNS cache size:
+Limit the scope of DNS ServiceEntries to reduce unnecessary proxy DNS lookups:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
 metadata:
-  name: istio-sidecar-injector
-  namespace: istio-system
-data:
-  values: |
-    global:
-      proxy:
-        dnsRefreshRate: 30s
+  name: scoped-cdn-service
+  namespace: production
+spec:
+  hosts:
+  - cdn.cloudflare.com
+  exportTo:
+  - "."
+  ports:
+  - number: 443
+    name: tls
+    protocol: TLS
+  location: MESH_EXTERNAL
+  resolution: DNS
 ```
 
-The default refresh rate is 5 seconds. Increase for services with stable IPs to reduce DNS query overhead.
+The proxy DNS refresh interval for `resolution: DNS` ServiceEntries is fixed at 30 seconds, so reduce DNS query overhead by limiting ServiceEntry visibility with `exportTo` or a `Sidecar`, or by using `resolution: NONE` when that fits the traffic pattern.
 
-## Excluding Specific Domains
+## Excluding DNS Traffic
 
-Bypass DNS proxy for certain domains:
+Bypass DNS capture for outbound DNS traffic with sidecar traffic annotations:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: istio
-  namespace: istio-system
-data:
-  mesh: |
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_DNS_CAPTURE: "true"
-        # Exclude internal domains
-        ISTIO_META_DNS_CAPTURE_EXCLUDE: "local,localhost,cluster.local"
+  name: api-gateway
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+      annotations:
+        traffic.sidecar.istio.io/excludeOutboundPorts: "53"
+    spec:
+      containers:
+      - name: api-gateway
+        image: busybox:1.36
+        command: ["sleep", "365d"]
 ```
 
-Excluded domains resolve through the pod's normal DNS (CoreDNS).
+Excluded DNS traffic resolves through the pod's normal DNS configuration.
 
 ## Monitoring DNS Proxy Activity
 
@@ -323,7 +335,7 @@ Query DNS statistics:
 
 ```bash
 kubectl exec -n production api-gateway-xxxxx -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "dns_cache"
+  pilot-agent request GET stats | grep "dns_cache"
 
 # Example metrics:
 # dns_cache.cares.dns.freecount
