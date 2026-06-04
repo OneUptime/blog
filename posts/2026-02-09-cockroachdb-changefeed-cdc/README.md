@@ -8,67 +8,70 @@ Description: Learn how to implement CockroachDB changefeeds for real-time change
 
 ---
 
-Change Data Capture (CDC) enables real-time data integration by streaming database changes to downstream systems. CockroachDB's changefeed feature provides enterprise-grade CDC capabilities with exactly-once delivery guarantees, making it ideal for event-driven architectures, cache invalidation, and data synchronization workflows.
+Change Data Capture (CDC) enables real-time data integration by streaming database changes to downstream systems. CockroachDB's changefeed feature provides CDC capabilities with per-key ordering and at-least-once delivery guarantees, making it ideal for event-driven architectures, cache invalidation, and data synchronization workflows.
 
 In this guide, we'll implement CockroachDB changefeeds on Kubernetes for real-time CDC. We'll cover changefeed types, Kafka integration, filtering strategies, and monitoring best practices.
 
 ## Understanding CockroachDB Changefeeds
 
-CockroachDB offers two types of changefeeds:
+CockroachDB offers two ways to run changefeeds:
 
-**Core Changefeeds**: Free tier, outputs to stdout or webhook. Suitable for development and simple integrations.
+**Sinkless Changefeeds**: Stream changes directly to the SQL client. Suitable for development and simple integrations.
 
-**Enterprise Changefeeds**: Supports Kafka, cloud storage sinks, advanced filtering, and guaranteed delivery. Requires enterprise license.
+**Sink-backed Changefeeds**: Run as jobs and support Kafka, cloud storage, webhook, and other sinks. Self-hosted production clusters require a valid CockroachDB license; CockroachDB Cloud clusters are licensed automatically.
 
-Changefeeds emit row-level changes in JSON format with metadata including transaction timestamps and primary keys.
+Changefeeds emit row-level changes in configurable formats such as JSON and Avro, with metadata such as updated timestamps and primary keys in the payload or sink message key depending on the sink and options.
 
 ## Setting Up Prerequisites
 
-Deploy Kafka cluster for changefeed output:
+Deploy a Kafka cluster for changefeed output. In production Kubernetes environments, use a Kafka operator or a managed Kafka service. For example, with Strimzi installed:
 
 ```yaml
 # kafka-deployment.yaml
 
-apiVersion: v1
-kind: Service
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
 metadata:
-  name: kafka
+  name: pool-a
   namespace: data-streaming
+  labels:
+    strimzi.io/cluster: kafka
 spec:
-  ports:
-  - port: 9092
-    name: kafka
-  selector:
-    app: kafka
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: kafka
-  namespace: data-streaming
-spec:
-  serviceName: kafka
   replicas: 3
-  selector:
-    matchLabels:
-      app: kafka
-  template:
-    metadata:
-      labels:
-        app: kafka
-    spec:
-      containers:
-      - name: kafka
-        image: confluentinc/cp-kafka:7.5.0
-        ports:
-        - containerPort: 9092
-        env:
-        - name: KAFKA_ZOOKEEPER_CONNECT
-          value: "zookeeper:2181"
-        - name: KAFKA_ADVERTISED_LISTENERS
-          value: "PLAINTEXT://kafka:9092"
-        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
-          value: "3"
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 100Gi
+        deleteClaim: false
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: kafka
+  namespace: data-streaming
+spec:
+  kafka:
+    version: 4.2.0
+    metadataVersion: 4.2
+    config:
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
 ```
 
 Enable enterprise license in CockroachDB:
@@ -83,6 +86,9 @@ SET CLUSTER SETTING enterprise.license = 'your-license-key';
 
 -- Verify enterprise features enabled
 SHOW CLUSTER SETTING enterprise.license;
+
+-- Enable rangefeeds for self-hosted clusters
+SET CLUSTER SETTING kv.rangefeed.enabled = true;
 ```
 
 ## Creating Basic Changefeeds
@@ -99,46 +105,48 @@ CREATE TABLE users (
     updated_at TIMESTAMP DEFAULT now()
 );
 
--- Create core changefeed (stdout)
+-- Create sinkless changefeed
 CREATE CHANGEFEED FOR TABLE users
-INTO 'experimental-stdout:///'
 WITH updated, resolved='10s';
 
--- Create enterprise changefeed to Kafka
+-- Create sink-backed changefeed to Kafka
 CREATE CHANGEFEED FOR TABLE users
-INTO 'kafka://kafka.data-streaming:9092?topic_prefix=crdb_'
+INTO 'kafka://kafka-kafka-bootstrap.data-streaming:9092?topic_prefix=crdb_'
 WITH updated, resolved='10s', format=json, diff;
 ```
 
-## Implementing Enterprise Changefeeds with Kafka
+## Implementing Sink-Backed Changefeeds with Kafka
 
 Deploy production changefeed with advanced options:
 
 ```sql
 -- Multi-table changefeed
 CREATE CHANGEFEED FOR TABLE users, orders, products
-INTO 'kafka://kafka.data-streaming:9092?topic_prefix=production_'
+INTO 'kafka://kafka-kafka-bootstrap.data-streaming:9092?topic_prefix=production_'
 WITH
     updated,                          -- Include updated timestamp
     resolved='30s',                    -- Emit resolved timestamps
     format=json,                      -- Output format
     diff,                             -- Include before/after values
-    envelope=wrapped,                 -- Wrap messages with metadata
-    confluent_schema_registry='http://schema-registry:8081';
+    envelope=wrapped;                 -- Wrap messages with metadata
 
 -- Changefeed with filtering
-CREATE CHANGEFEED FOR TABLE users
-INTO 'kafka://kafka.data-streaming:9092?topic_name=premium_users'
+CREATE CHANGEFEED
+INTO 'kafka://kafka-kafka-bootstrap.data-streaming:9092?topic_name=premium_users'
 WITH
     updated,
     resolved='10s',
     format=json
+AS SELECT *
+FROM users
 WHERE premium = true;
 
 -- Changefeed for specific columns
-CREATE CHANGEFEED FOR TABLE users (id, email, updated_at)
-INTO 'kafka://kafka.data-streaming:9092?topic_name=user_updates'
-WITH updated, resolved='10s';
+CREATE CHANGEFEED
+INTO 'kafka://kafka-kafka-bootstrap.data-streaming:9092?topic_name=user_updates'
+WITH updated, resolved='10s'
+AS SELECT id, email, updated_at
+FROM users;
 ```
 
 ## Configuring Changefeed with Cloud Storage
@@ -162,6 +170,7 @@ WITH
     updated,
     resolved='5m',
     format=avro,
+    confluent_schema_registry='http://schema-registry.data-streaming:8081',
     schema_change_events=column_changes;
 ```
 
@@ -234,7 +243,7 @@ type ChangeEvent struct {
 func main() {
     // Create Kafka reader
     reader := kafka.NewReader(kafka.ReaderConfig{
-        Brokers: []string{"kafka.data-streaming:9092"},
+        Brokers: []string{"kafka-kafka-bootstrap.data-streaming:9092"},
         Topic:   "production_users",
         GroupID: "changefeed-consumer",
     })
@@ -243,7 +252,8 @@ func main() {
     log.Println("Starting changefeed consumer...")
 
     for {
-        msg, err := reader.ReadMessage(context.Background())
+        ctx := context.Background()
+        msg, err := reader.FetchMessage(ctx)
         if err != nil {
             log.Printf("Error reading message: %v", err)
             continue
@@ -257,6 +267,10 @@ func main() {
 
         // Process the change event
         processChange(event)
+
+        if err := reader.CommitMessages(ctx, msg); err != nil {
+            log.Printf("Error committing message: %v", err)
+        }
     }
 }
 
@@ -281,7 +295,7 @@ Use Avro format with schema registry:
 ```sql
 -- Create changefeed with Avro format
 CREATE CHANGEFEED FOR TABLE users
-INTO 'kafka://kafka.data-streaming:9092?topic_name=users_avro'
+INTO 'kafka://kafka-kafka-bootstrap.data-streaming:9092?topic_name=users_avro'
 WITH
     updated,
     resolved='10s',
@@ -296,14 +310,27 @@ Consumer with Avro deserialization:
 package main
 
 import (
-    "github.com/linkedin/goavro/v2"
+    "log"
+
     "github.com/segmentio/kafka-go"
 )
 
 func consumeAvroChangefeed() {
     // Get schema from registry
     schemaRegistry := "http://schema-registry.data-streaming:8081"
+    reader := kafka.NewReader(kafka.ReaderConfig{
+        Brokers: []string{"kafka-kafka-bootstrap.data-streaming:9092"},
+        Topic:   "users_avro",
+        GroupID: "avro-changefeed-consumer",
+    })
+    defer reader.Close()
+
+    log.Printf("Reading Avro changefeed messages using schemas from %s", schemaRegistry)
     // Implementation for Avro deserialization
+}
+
+func main() {
+    consumeAvroChangefeed()
 }
 ```
 
@@ -316,8 +343,8 @@ Track changefeed health and latency:
 SELECT
     job_id,
     description,
-    high_water_timestamp,
-    now() - high_water_timestamp AS lag
+    readable_high_water_timestamptz,
+    now() - readable_high_water_timestamptz AS lag
 FROM [SHOW CHANGEFEED JOBS]
 WHERE status = 'running';
 
@@ -354,14 +381,14 @@ spec:
         spec:
           containers:
           - name: monitor
-            image: cockroachdb/cockroach:v23.1.0
+            image: cockroachdb/cockroach:v26.2.1
             command:
               - /bin/bash
               - -c
               - |
                 cockroach sql \
                   --url "postgresql://root@cockroachdb-public:26257/defaultdb?sslmode=verify-full" \
-                  --execute="SELECT job_id, status, running_status, now() - high_water_timestamp AS lag FROM [SHOW CHANGEFEED JOBS];"
+                  --execute="SELECT job_id, status, running_status, now() - readable_high_water_timestamptz AS lag FROM [SHOW CHANGEFEED JOBS];"
           restartPolicy: OnFailure
 ```
 
@@ -370,32 +397,32 @@ spec:
 Configure changefeed behavior for schema changes:
 
 ```sql
--- Stop on schema change (default)
+-- Stop on schema change
 CREATE CHANGEFEED FOR TABLE users
-INTO 'kafka://kafka.data-streaming:9092'
+INTO 'kafka://kafka-kafka-bootstrap.data-streaming:9092'
 WITH
     schema_change_policy='stop';
 
 -- Backfill on schema change
 CREATE CHANGEFEED FOR TABLE users
-INTO 'kafka://kafka.data-streaming:9092'
+INTO 'kafka://kafka-kafka-bootstrap.data-streaming:9092'
 WITH
     schema_change_policy='backfill';
 
 -- Emit schema change events
 CREATE CHANGEFEED FOR TABLE users
-INTO 'kafka://kafka.data-streaming:9092'
+INTO 'kafka://kafka-kafka-bootstrap.data-streaming:9092'
 WITH
     schema_change_events='column_changes';
 ```
 
 ## Conclusion
 
-CockroachDB changefeeds provide robust change data capture capabilities for building event-driven architectures on Kubernetes. With support for Kafka, cloud storage, and advanced filtering, changefeeds enable real-time data integration patterns while maintaining exactly-once delivery guarantees.
+CockroachDB changefeeds provide robust change data capture capabilities for building event-driven architectures on Kubernetes. With support for Kafka, cloud storage, and advanced filtering, changefeeds enable real-time data integration patterns while maintaining at-least-once delivery and per-key ordering guarantees.
 
 Key takeaways:
 
-- Use enterprise changefeeds for production workloads
+- Use sink-backed changefeeds for production workloads
 - Configure appropriate resolved timestamps for lag monitoring
 - Implement consumer error handling and retries
 - Monitor changefeed lag and performance
