@@ -276,11 +276,9 @@ services:
     stdin_open: true
     tty: true
 
-  burp-collaborator:
+  kali-shell:
     image: kalilinux/kali-rolling
-    container_name: burp
-    ports:
-      - "8080:8080"
+    container_name: kali-shell
     volumes:
       - ./results:/assessments
     stdin_open: true
