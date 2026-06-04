@@ -12,7 +12,7 @@ Network observability is critical for understanding application behavior, troubl
 
 ## Understanding Cilium Hubble
 
-Hubble is the observability layer built into Cilium, leveraging eBPF to capture network flow data directly in the kernel. Unlike traditional monitoring tools that tap network interfaces, Hubble sees every packet at the socket level with full context about source and destination pods, namespaces, and security identities.
+Hubble is the observability layer built into Cilium, leveraging eBPF to capture network flow data from the Cilium datapath. Unlike traditional monitoring tools that tap network interfaces, Hubble observes flows with full context about source and destination pods, namespaces, and security identities.
 
 Hubble provides visibility into service dependencies, network policies, DNS queries, HTTP requests, and dropped packets - all with minimal performance impact.
 
@@ -27,11 +27,12 @@ helm repo add cilium https://helm.cilium.io/
 helm repo update
 
 # Install Cilium with Hubble enabled
-helm install cilium cilium/cilium --version 1.14.5 \
+helm install cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
+  --set hubble.enabled=true \
   --set hubble.relay.enabled=true \
   --set hubble.ui.enabled=true \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}"
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,httpV2}"
 
 # Verify installation
 kubectl -n kube-system get pods -l k8s-app=cilium
@@ -47,11 +48,13 @@ The Hubble CLI provides command-line access to flow data:
 
 ```bash
 # Download Hubble CLI
-HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
-curl -L --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-amd64.tar.gz{,.sha256sum}
-sha256sum --check hubble-linux-amd64.tar.gz.sha256sum
-sudo tar xzvfC hubble-linux-amd64.tar.gz /usr/local/bin
-rm hubble-linux-amd64.tar.gz{,.sha256sum}
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+HUBBLE_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then HUBBLE_ARCH=arm64; fi
+curl -L --fail --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC hubble-linux-${HUBBLE_ARCH}.tar.gz /usr/local/bin
+rm hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
 
 # Verify installation
 hubble version
@@ -123,8 +126,8 @@ hubble observe --namespace default --protocol tcp --port 80 --verdict FORWARDED
 # Filter by IP address
 hubble observe --ip 10.244.1.5
 
-# Filter by DNS query
-hubble observe --protocol dns --type request
+# Filter by DNS flows
+hubble observe --protocol dns --type l7
 ```
 
 ## Troubleshooting Connectivity Issues
@@ -139,7 +142,7 @@ hubble observe --verdict DROPPED --last 100
 # Dec  9 10:20:15.456: default/app-pod:54321 -> default/db-pod:5432 to-endpoint DROPPED (Policy denied)
 
 # See policy denials in detail
-hubble observe --verdict DROPPED --json | jq '.flow.drop_reason_desc'
+hubble observe --verdict DROPPED -o json | jq '.flow.drop_reason_desc'
 
 # Trace specific connection
 hubble observe --from-pod app-pod --to-pod db-pod -f
@@ -181,12 +184,13 @@ Track DNS queries and responses:
 hubble observe --protocol dns
 
 # Find DNS lookup failures
-hubble observe --protocol dns --json | \
+hubble observe --protocol dns -o json | \
   jq 'select(.flow.l7.dns.rcode != 0) | {pod: .flow.source.pod_name, query: .flow.l7.dns.query, rcode: .flow.l7.dns.rcode}'
 
 # Most queried domains
-hubble observe --protocol dns --type request --last 10000 | \
-  grep -oP 'DNS Query \K[^ ]+' | sort | uniq -c | sort -rn | head -20
+hubble observe --protocol dns --type l7 --last 10000 -o json | \
+  jq -r 'select(.flow.l7.type == "REQUEST") | .flow.l7.dns.query' | \
+  sort | uniq -c | sort -rn | head -20
 ```
 
 ## HTTP Request Visibility
@@ -223,10 +227,10 @@ kubectl apply -f http-visibility.yaml
 hubble observe --protocol http
 
 # Filter by HTTP method
-hubble observe --protocol http --json | jq 'select(.flow.l7.http.method == "POST")'
+hubble observe --protocol http --http-method post
 
 # Find HTTP errors
-hubble observe --protocol http --json | \
+hubble observe --protocol http -o json | \
   jq 'select(.flow.l7.http.code >= 400) | {pod: .flow.source.pod_name, path: .flow.l7.http.url, code: .flow.l7.http.code}'
 
 # Track API endpoint usage
@@ -295,11 +299,12 @@ Configure Hubble metrics for Prometheus:
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set hubble.metrics.enabled="{dns:query;ignoreAAAA,drop,tcp,flow,port-distribution,icmp,http}"
+  --set hubble.enabled=true \
+  --set hubble.metrics.enabled="{dns:query;ignoreAAAA,drop,tcp,flow,port-distribution,icmp,httpV2}"
 
 # Check metrics endpoint
-kubectl port-forward -n kube-system ds/cilium 9090:9090 &
-curl http://localhost:9090/metrics | grep hubble
+kubectl port-forward -n kube-system svc/hubble-metrics 9965:9965 &
+curl http://localhost:9965/metrics | grep hubble
 ```
 
 Create ServiceMonitor for Prometheus Operator:
@@ -314,7 +319,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      k8s-app: cilium
+      k8s-app: hubble
   endpoints:
   - port: hubble-metrics
     interval: 30s
@@ -323,7 +328,7 @@ spec:
 Use these PromQL queries:
 
 ```promql
-# Flow rate by namespace
+# Flow rate
 rate(hubble_flows_processed_total[5m])
 
 # Dropped packet rate
@@ -342,7 +347,7 @@ Export flows to files for analysis:
 
 ```bash
 # Capture flows to JSON file
-hubble observe --last 10000 --json > flows.json
+hubble observe --last 10000 -o json > flows.json
 
 # Analyze with jq
 # Top talkers by source
@@ -360,16 +365,16 @@ cat flows.json | jq 'select(.flow.verdict == "DROPPED")'
 Identify network performance issues:
 
 ```bash
-# Find TCP retransmissions
-hubble observe --protocol tcp --json | \
+# Find TCP resets and connection closes
+hubble observe --protocol tcp -o json | \
   jq 'select(.flow.l4.TCP.flags.RST == true or .flow.l4.TCP.flags.FIN == true)'
 
-# Monitor connection establishment times
-hubble observe --protocol tcp --type trace:to-endpoint --json | \
+# Monitor TCP connection attempts
+hubble observe --protocol tcp --type trace:to-endpoint -o json | \
   jq 'select(.flow.l4.TCP.flags.SYN == true) | {time: .time, src: .flow.source.pod_name, dst: .flow.destination.pod_name}'
 
 # Find slow DNS queries (requires timestamp comparison)
-hubble observe --protocol dns --json > dns-flows.json
+hubble observe --protocol dns -o json > dns-flows.json
 # Analyze in separate script for query/response timing
 ```
 
@@ -378,14 +383,14 @@ hubble observe --protocol dns --json > dns-flows.json
 If Hubble isn't showing flows:
 
 ```bash
-# Check Cilium Hubble configuration
-kubectl -n kube-system exec ds/cilium -- cilium status | grep -A 5 Hubble
+# Check Cilium Hubble status
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep -A 5 Hubble
 
 # Verify Hubble is enabled
-kubectl -n kube-system exec ds/cilium -- cilium config view | grep hubble
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config --all | grep hubble
 
-# Check flow buffer size
-kubectl -n kube-system exec ds/cilium -- hubble stats
+# Check flow buffer status
+kubectl -n kube-system exec ds/cilium -- hubble status
 
 # Restart Cilium if needed
 kubectl -n kube-system rollout restart ds/cilium
