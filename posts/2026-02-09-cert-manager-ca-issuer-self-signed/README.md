@@ -41,7 +41,9 @@ openssl genrsa -out ca.key 4096
 
 # Create self-signed root certificate (valid 10 years)
 openssl req -new -x509 -days 3650 -key ca.key -out ca.crt -subj \
-  "/C=US/ST=California/L=San Francisco/O=Example Org/OU=IT/CN=Example Root CA"
+  "/C=US/ST=California/L=San Francisco/O=Example Org/OU=IT/CN=Example Root CA" \
+  -addext "basicConstraints = critical,CA:TRUE" \
+  -addext "keyUsage = critical,keyCertSign,cRLSign"
 
 # Verify the certificate
 openssl x509 -in ca.crt -text -noout
@@ -50,14 +52,14 @@ openssl x509 -in ca.crt -text -noout
 Create a Kubernetes secret containing the CA certificate and private key:
 
 ```bash
-# Create secret in cert-manager namespace
+# Create secret in the same namespace as the Issuer
 kubectl create secret tls example-ca-key-pair \
   --cert=ca.crt \
   --key=ca.key \
-  -n cert-manager
+  -n default
 
 # Verify secret creation
-kubectl get secret example-ca-key-pair -n cert-manager
+kubectl get secret example-ca-key-pair -n default
 ```
 
 The CA secret must reside in the same namespace as the Issuer (or cert-manager namespace for ClusterIssuer).
@@ -90,6 +92,14 @@ kubectl describe issuer ca-issuer -n default
 ```
 
 For cluster-wide certificate issuance, create a ClusterIssuer:
+
+```bash
+# Create a copy of the CA secret in the cluster resource namespace
+kubectl create secret tls example-ca-key-pair \
+  --cert=ca.crt \
+  --key=ca.key \
+  -n cert-manager
+```
 
 ```yaml
 # ca-clusterissuer.yaml
@@ -221,7 +231,7 @@ spec:
     secretName: intermediate-ca-key-pair
 ```
 
-Now certificates issued by this ClusterIssuer include the full chain (leaf certificate, intermediate CA, root CA).
+Now certificates issued by this ClusterIssuer include the leaf certificate followed by the intermediate chain in `tls.crt`. The corresponding CA certificate is also stored in `ca.crt`.
 
 ## Distributing CA Certificates to Applications
 
@@ -245,7 +255,13 @@ kind: Deployment
 metadata:
   name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       containers:
       - name: app
@@ -266,7 +282,7 @@ spec:
 
 ### Method 2: Include CA in Certificate Secret
 
-Configure cert-manager to include the CA certificate in the secret:
+cert-manager stores the CA certificate in the issued certificate secret when the issuing CA is known:
 
 ```yaml
 # certificate-with-ca.yaml
@@ -284,7 +300,7 @@ spec:
   dnsNames:
   - app.default.svc.cluster.local
 
-  # Certificate secret will include ca.crt
+  # Labels to copy to the generated Secret
   secretTemplate:
     labels:
       app: myapp
@@ -298,7 +314,10 @@ cert-manager trust-manager automates CA certificate distribution across namespac
 
 ```bash
 # Install trust-manager
-kubectl apply -f https://github.com/cert-manager/trust-manager/releases/download/v0.7.0/trust-manager.yaml
+helm upgrade trust-manager oci://quay.io/jetstack/charts/trust-manager \
+  --install \
+  --namespace cert-manager \
+  --wait
 ```
 
 Create a Bundle resource:
@@ -405,7 +424,9 @@ Rotating the CA certificate requires careful planning:
 # Generate new CA
 openssl genrsa -out new-ca.key 4096
 openssl req -new -x509 -days 3650 -key new-ca.key -out new-ca.crt -subj \
-  "/C=US/ST=California/L=San Francisco/O=Example Org/OU=IT/CN=Example Root CA v2"
+  "/C=US/ST=California/L=San Francisco/O=Example Org/OU=IT/CN=Example Root CA v2" \
+  -addext "basicConstraints = critical,CA:TRUE" \
+  -addext "keyUsage = critical,keyCertSign,cRLSign"
 
 # Create secret for new CA
 kubectl create secret tls new-ca-key-pair \
