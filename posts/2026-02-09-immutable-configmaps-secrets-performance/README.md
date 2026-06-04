@@ -16,16 +16,16 @@ In this guide, you'll learn why immutability matters, how to create immutable Co
 
 ## Understanding the Performance Impact
 
-When ConfigMaps and Secrets are mutable (the default), kubelet must continuously watch for updates. For each pod using a ConfigMap or Secret, kubelet:
+When ConfigMaps and Secrets are mutable (the default), kubelet must keep track of updates for objects used by pods on the node. By default, kubelet uses a watch-based cache for mounted ConfigMaps and Secrets; it can also be configured to use a TTL cache or direct polling. For ConfigMaps and Secrets used as volumes, kubelet:
 
-- Maintains a watch connection to the API server
-- Polls for changes periodically
+- Maintains cached values from the API server
+- Checks mounted data during periodic syncs
 - Propagates updates to mounted volumes
 - Keeps track of resource versions
 
-In a cluster with 1000 nodes and 10,000 pods, this creates significant overhead. The API server handles thousands of watch requests, and kubelet consumes CPU checking for changes that rarely happen.
+In a cluster with 1000 nodes and 10,000 pods, this can create significant overhead when there are many unique ConfigMap-to-pod or Secret-to-pod mounts. The API server handles watch traffic, and kubelet consumes CPU checking for changes that rarely happen.
 
-Immutable resources eliminate this overhead. Once marked immutable, Kubernetes knows the data will never change and can skip all watch operations for those resources.
+Immutable resources reduce this overhead. Once marked immutable, Kubernetes knows the data will never change and kubelet does not need to maintain watches for those resources.
 
 ## Creating Immutable ConfigMaps
 
@@ -382,25 +382,29 @@ spec:
 
 ## Performance Comparison
 
-In a test cluster with 500 nodes and 5000 pods:
+In large clusters, the exact numbers depend on workload shape, kubelet configuration, API server capacity, and how many unique ConfigMap-to-pod or Secret-to-pod mounts exist. The typical difference looks like this:
 
 **Mutable ConfigMaps:**
-- API server CPU: 45%
-- Kubelet memory per node: 850MB
-- Watch connections: 15,000
-- API server QPS: 2,500
+- Higher API server watch load
+- More kubelet cache activity
+- Automatic volume updates when mounted ConfigMaps change
 
 **Immutable ConfigMaps:**
-- API server CPU: 18%
-- Kubelet memory per node: 420MB
-- Watch connections: 3,000
-- API server QPS: 800
+- Lower API server watch load for immutable resources
+- Less kubelet cache activity for those resources
+- Updates require creating a new version or deleting and recreating the object
 
 The performance improvement scales with cluster size. Larger clusters see even greater benefits.
 
 ## Converting Existing ConfigMaps to Immutable
 
-You cannot convert a mutable ConfigMap to immutable directly. Create a new immutable version:
+You can convert a mutable ConfigMap to immutable directly if you want to keep the same name:
+
+```bash
+kubectl patch configmap old-config -p '{"immutable":true}'
+```
+
+After a ConfigMap is marked immutable, you cannot revert it to mutable or change its `data` or `binaryData` fields. If you want versioned rollouts instead, create a new immutable version:
 
 ```bash
 # Export existing ConfigMap
@@ -414,8 +418,8 @@ kubectl get configmap old-config -o yaml > config.yaml
 # Create immutable version
 kubectl apply -f config.yaml
 
-# Update deployments to use new name
-kubectl set env deployment/myapp --from=configmap/old-config-v1
+# Update workload manifests to use the new name, then apply them
+kubectl apply -f deployment.yaml
 
 # Delete old ConfigMap after verification
 kubectl delete configmap old-config
@@ -423,7 +427,7 @@ kubectl delete configmap old-config
 
 ## Automated Cleanup of Old Versions
 
-Create a cleanup job to remove old immutable ConfigMap versions:
+Create a cleanup job to remove old immutable ConfigMap versions. This example assumes versioned ConfigMaps have `cleanup=enabled` and `app=<name>` labels:
 
 ```yaml
 apiVersion: batch/v1
@@ -446,8 +450,8 @@ spec:
             - -c
             - |
               # Keep only the 3 most recent versions of each ConfigMap
-              for name in $(kubectl get configmap -l managed-by=kustomize -o name | sed 's/-[^-]*$//' | sort -u); do
-                kubectl get configmap -l "app=${name}" --sort-by=.metadata.creationTimestamp -o name | head -n -3 | xargs -r kubectl delete
+              for app in $(kubectl get configmap -l cleanup=enabled -o jsonpath='{range .items[*]}{.metadata.labels.app}{"\n"}{end}' | sort -u); do
+                kubectl get configmap -l "cleanup=enabled,app=${app}" --sort-by=.metadata.creationTimestamp -o name | head -n -3 | xargs -r kubectl delete
               done
           restartPolicy: OnFailure
 ---
