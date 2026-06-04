@@ -22,7 +22,7 @@ You need:
 - Docker Compose v2
 - A domain name (required for federation)
 - At least 2GB of RAM
-- Ports 80, 443, and 8448 available
+- Ports 80 and 443 available
 
 ```bash
 # Verify Docker
@@ -39,6 +39,7 @@ Matrix uses a special DNS convention. Your server should be reachable at `matrix
 # DNS records needed
 matrix.yourdomain.com    A    YOUR_SERVER_IP
 element.yourdomain.com   A    YOUR_SERVER_IP   (for the web client)
+yourdomain.com           A    YOUR_SERVER_IP   (or serve .well-known on your existing web host)
 ```
 
 You also need a `.well-known` file on your base domain for federation, but we will cover that later.
@@ -67,15 +68,13 @@ Here is a complete Docker Compose file with Synapse, PostgreSQL, and Element.
 
 ```yaml
 # docker-compose.yml - Matrix Synapse with PostgreSQL and Element
-version: "3.8"
-
 services:
   # Synapse - the Matrix homeserver
   synapse:
     image: matrixdotorg/synapse:latest
     container_name: synapse
     volumes:
-      - synapse-data:/data
+      - ./synapse-data:/data
     environment:
       SYNAPSE_CONFIG_DIR: /data
       SYNAPSE_CONFIG_PATH: /data/homeserver.yaml
@@ -86,8 +85,6 @@ services:
     ports:
       # Client-Server API
       - "8008:8008"
-      # Federation API
-      - "8448:8448"
     networks:
       - matrix-network
     restart: unless-stopped
@@ -143,7 +140,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  synapse-data:
   postgres-data:
 
 networks:
@@ -160,6 +156,7 @@ Edit the generated `homeserver.yaml` to use PostgreSQL and configure key setting
 
 # Server name - this appears in user IDs (@user:yourdomain.com)
 server_name: "yourdomain.com"
+public_baseurl: "https://matrix.yourdomain.com"
 
 # Listener configuration
 listeners:
@@ -177,7 +174,7 @@ database:
   args:
     user: synapse
     password: synapse_db_pass
-    database: synapse
+    dbname: synapse
     host: postgres
     port: 5432
     cp_min: 5
@@ -233,8 +230,7 @@ Create the Element configuration file.
 {
   "default_server_config": {
     "m.homeserver": {
-      "base_url": "https://matrix.yourdomain.com",
-      "server_name": "yourdomain.com"
+      "base_url": "https://matrix.yourdomain.com"
     },
     "m.identity_server": {
       "base_url": "https://vector.im"
@@ -244,7 +240,7 @@ Create the Element configuration file.
   "integrations_ui_url": "https://scalar.vector.im/",
   "integrations_rest_url": "https://scalar.vector.im/api",
   "bug_report_endpoint_url": "https://element.io/bugreports/submit",
-  "showLabsSettings": true,
+  "show_labs_settings": true,
   "default_theme": "light",
   "room_directory": {
     "servers": ["yourdomain.com", "matrix.org"]
@@ -261,7 +257,8 @@ Set up the reverse proxy for TLS termination and federation.
 
 # Matrix Synapse server
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name matrix.yourdomain.com;
 
     ssl_certificate /etc/nginx/certs/fullchain.pem;
@@ -272,17 +269,19 @@ server {
         proxy_pass http://synapse:8008;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Host $host;
+        proxy_set_header Host $host:$server_port;
 
         # Increase timeouts for large file uploads
         client_max_body_size 50M;
+        proxy_http_version 1.1;
         proxy_read_timeout 600s;
     }
 }
 
 # Element Web client
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name element.yourdomain.com;
 
     ssl_certificate /etc/nginx/certs/fullchain.pem;
@@ -294,26 +293,26 @@ server {
     }
 }
 
-# Federation port
+# Base domain well-known files for federation and client discovery
 server {
-    listen 8448 ssl http2;
-    server_name matrix.yourdomain.com;
+    listen 443 ssl;
+    http2 on;
+    server_name yourdomain.com;
 
     ssl_certificate /etc/nginx/certs/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/privkey.pem;
 
-    location / {
-        proxy_pass http://synapse:8008;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Host $host;
+    location /.well-known/matrix/ {
+        root /var/www;
+        default_type application/json;
+        add_header Access-Control-Allow-Origin *;
     }
 }
 
 # HTTP to HTTPS redirect
 server {
     listen 80;
-    server_name matrix.yourdomain.com element.yourdomain.com;
+    server_name yourdomain.com matrix.yourdomain.com element.yourdomain.com;
 
     # Serve .well-known files for federation
     location /.well-known/matrix/ {
@@ -468,8 +467,11 @@ curl -s https://matrix.yourdomain.com/_matrix/federation/v1/version
 # Stop all services
 docker compose down
 
-# Remove everything including message history
+# Remove containers and the PostgreSQL volume
 docker compose down -v
+
+# Remove Synapse config, signing keys, and media files
+rm -rf synapse-data
 ```
 
 ## Summary
