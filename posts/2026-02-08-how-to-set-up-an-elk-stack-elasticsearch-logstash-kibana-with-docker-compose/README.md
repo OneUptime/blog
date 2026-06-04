@@ -45,8 +45,6 @@ elk-stack/
 ```yaml
 # ELK Stack - Elasticsearch, Logstash, Kibana
 
-version: "3.8"
-
 services:
   # Elasticsearch - search and analytics engine
   elasticsearch:
@@ -66,6 +64,7 @@ services:
       - "9300:9300"
     volumes:
       - es-data:/usr/share/elasticsearch/data
+      - ./elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 15s
@@ -80,7 +79,6 @@ services:
     ports:
       - "5044:5044"
       - "5000:5000/tcp"
-      - "5000:5000/udp"
       - "9600:9600"
     volumes:
       - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
@@ -99,7 +97,7 @@ services:
     ports:
       - "5601:5601"
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - 'ELASTICSEARCH_HOSTS=["http://elasticsearch:9200"]'
     volumes:
       - ./kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
     depends_on:
@@ -205,6 +203,7 @@ output {
     hosts => ["http://elasticsearch:9200"]
     index => "logs-%{+YYYY.MM.dd}"
     action => "index"
+    ilm_enabled => false
   }
 
   # Also print to stdout for debugging (remove in production)
@@ -288,16 +287,16 @@ echo '{"timestamp":"2026-02-08T10:30:00Z","level":"INFO","service":"auth","messa
 
 # Send multiple log entries
 for i in $(seq 1 10); do
-  echo "{\"timestamp\":\"2026-02-08T10:30:0${i}Z\",\"level\":\"INFO\",\"service\":\"api\",\"message\":\"Request processed\",\"duration_ms\":$((RANDOM % 500))}" | nc localhost 5000
+  printf '{"timestamp":"2026-02-08T10:30:%02dZ","level":"INFO","service":"api","message":"Request processed","duration_ms":%d}\n' "$i" "$((RANDOM % 500))" | nc localhost 5000
 done
 ```
 
 ## Configuring Kibana
 
-After sending some logs, open Kibana at http://localhost:5601 and create an index pattern:
+After sending some logs, open Kibana at http://localhost:5601 and create a data view:
 
-1. Go to Stack Management and then Index Patterns
-2. Create a pattern matching `logs-*`
+1. Go to Stack Management and then Data Views
+2. Create a data view with an index pattern matching `logs-*`
 3. Select `@timestamp` as the time field
 4. Go to Discover to search your logs
 
@@ -310,6 +309,7 @@ Configure your application to ship logs to Logstash. Here is an example using Py
 import logging
 import json
 import socket
+from datetime import datetime, timezone
 
 class LogstashHandler(logging.Handler):
     """Custom handler that sends JSON logs to Logstash over TCP."""
@@ -320,7 +320,7 @@ class LogstashHandler(logging.Handler):
 
     def emit(self, record):
         log_entry = {
-            "timestamp": self.format(record),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "message": record.getMessage(),
             "logger": record.name,
@@ -344,21 +344,22 @@ For long-running deployments, configure index lifecycle management to prevent El
 curl -X PUT "http://localhost:9200/_ilm/policy/logs-policy" -H "Content-Type: application/json" -d '{
   "policy": {
     "phases": {
-      "hot": {
-        "min_age": "0ms",
-        "actions": {
-          "rollover": {
-            "max_size": "5gb",
-            "max_age": "1d"
-          }
-        }
-      },
       "delete": {
         "min_age": "30d",
         "actions": {
           "delete": {}
         }
       }
+    }
+  }
+}'
+
+# Apply the policy to newly created logs-* indices
+curl -X PUT "http://localhost:9200/_index_template/logs-template" -H "Content-Type: application/json" -d '{
+  "index_patterns": ["logs-*"],
+  "template": {
+    "settings": {
+      "index.lifecycle.name": "logs-policy"
     }
   }
 }'
