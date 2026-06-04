@@ -14,7 +14,7 @@ The x509 certificate exporter provides detailed metrics about certificate validi
 
 ## Understanding x509 Certificate Metrics
 
-The x509 certificate exporter exposes several key metrics that help you monitor certificate health:
+The x509 certificate exporter exposes several key metrics that help you monitor certificate health. The deployment example below pins x509-certificate-exporter v3.6.0; in v4, `x509_cert_not_before` is disabled by default and `x509_read_errors` was replaced by per-source error metrics such as `x509_source_errors_total`.
 
 - `x509_cert_not_after` - The Unix timestamp when the certificate expires
 - `x509_cert_not_before` - The Unix timestamp when the certificate becomes valid
@@ -50,7 +50,7 @@ spec:
         - --watch-dir=/var/run/secrets/kubernetes.io/serviceaccount
         - --watch-kubeconf=/home/kubeconf/.kube/config
         - --trim-path-components=3
-        - --port=9793
+        - --listen-address=:9793
         ports:
         - containerPort: 9793
           name: metrics
@@ -96,14 +96,11 @@ data:
     - job_name: 'x509-certificate-exporter'
       static_configs:
       - targets: ['x509-certificate-exporter.monitoring.svc.cluster.local:9793']
-      metric_relabel_configs:
-      # Add cluster label for multi-cluster setups
-      - source_labels: [__address__]
-        target_label: cluster
-        replacement: production
+        labels:
+          cluster: production
 ```
 
-This configuration ensures Prometheus scrapes certificate metrics every 30 seconds (default interval).
+This configuration uses Prometheus' default scrape interval. If you do not set `global.scrape_interval`, Prometheus scrapes targets every 1 minute by default.
 
 ## Creating Certificate Expiration Alerts
 
@@ -130,7 +127,7 @@ spec:
         component: security
       annotations:
         summary: "Certificate {{ $labels.filename }} expiring soon"
-        description: "Certificate {{ $labels.filename }} will expire in {{ $value | humanizeDuration }}. Renew it before it causes service disruption."
+        description: "Certificate {{ $labels.filename }} will expire in {{ $value | humanize }} days. Renew it before it causes service disruption."
 
     # Critical alert for certificates expiring within 7 days
     - alert: CertificateExpiringIn7Days
@@ -142,7 +139,7 @@ spec:
         component: security
       annotations:
         summary: "CRITICAL: Certificate {{ $labels.filename }} expiring very soon"
-        description: "Certificate {{ $labels.filename }} expires in {{ $value | humanizeDuration }}. IMMEDIATE ACTION REQUIRED."
+        description: "Certificate {{ $labels.filename }} expires in {{ $value | humanize }} days. IMMEDIATE ACTION REQUIRED."
 
     # Alert for already expired certificates
     - alert: CertificateExpired
@@ -154,7 +151,7 @@ spec:
         component: security
       annotations:
         summary: "Certificate {{ $labels.filename }} has EXPIRED"
-        description: "Certificate {{ $labels.filename }} expired on {{ $labels.not_after }}. Services may be failing."
+        description: "Certificate {{ $labels.filename }} has expired. Services may be failing."
 
     # Alert for certificate read errors
     - alert: CertificateReadErrors
@@ -215,7 +212,7 @@ For production environments, implement more sophisticated monitoring:
 
 ## Monitoring Ingress and Service Mesh Certificates
 
-Don't forget about certificates outside the control plane. Monitor ingress controller and service mesh certificates:
+Don't forget about certificates outside the control plane. If you configure the exporter to watch TLS Secrets or mounted certificate paths for ingress controllers and service meshes, monitor them with certificate-specific alerts:
 
 ```yaml
 - alert: IngressTLSCertificateExpiring
@@ -253,14 +250,10 @@ Create a Grafana dashboard to visualize certificate expiration timelines. Use th
 sort_desc((x509_cert_not_after - time()) / 86400 < 90)
 
 # Group certificates by expiration window
-count by (le) (
-  label_replace(
-    (x509_cert_not_after - time()) / 86400,
-    "le",
-    "$1",
-    "le",
-    "(.*)"
-  )
+count by (window) (
+  label_replace(((x509_cert_not_after - time()) / 86400 < 7), "window", "0-7 days", "filename", ".*")
+  or label_replace(((x509_cert_not_after - time()) / 86400 >= 7 and (x509_cert_not_after - time()) / 86400 < 30), "window", "7-30 days", "filename", ".*")
+  or label_replace(((x509_cert_not_after - time()) / 86400 >= 30 and (x509_cert_not_after - time()) / 86400 < 90), "window", "30-90 days", "filename", ".*")
 )
 ```
 
@@ -286,7 +279,7 @@ spec:
   - www.example.com
 ```
 
-Cert-manager integrates with the x509 exporter, so your Prometheus alerts work alongside automated renewal.
+Cert-manager stores issued certificates in Kubernetes Secrets, so the x509 exporter can monitor those certificates when it is configured to watch the relevant Secrets or mounted Secret files.
 
 ## Testing Your Alert Rules
 
@@ -298,10 +291,10 @@ kubectl port-forward -n monitoring svc/prometheus 9090:9090
 # Visit http://localhost:9090/targets
 
 # Query certificate metrics directly
-curl http://localhost:9090/api/v1/query?query=x509_cert_not_after
+curl 'http://localhost:9090/api/v1/query?query=x509_cert_not_after'
 
-# Test alert rules
-promtool test rules /path/to/certificate-alerts.yaml
+# Check alert rule syntax
+promtool check rules /path/to/certificate-alerts.yaml
 ```
 
 ## Conclusion
