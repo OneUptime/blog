@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Blue-Green, Upgrade
 
-Description: Learn how to implement blue-green cluster upgrade strategies for Kubernetes control plane changes with zero downtime and instant rollback capabilities.
+Description: Learn how to implement blue-green cluster upgrade strategies for Kubernetes control plane changes with zero downtime goals and fast rollback capabilities.
 
 ---
 
-Upgrading Kubernetes control plane components carries risk of API compatibility issues, etcd problems, and unexpected behavior. Traditional in-place upgrades can leave you in a broken state with difficult recovery. Blue-green cluster upgrades provide a safer alternative by running parallel clusters and switching traffic atomically. This guide shows you how to implement this strategy effectively.
+Upgrading Kubernetes control plane components carries risk of API compatibility issues, etcd problems, and unexpected behavior. Traditional in-place upgrades can leave you in a broken state with difficult recovery. Blue-green cluster upgrades provide a safer alternative by running parallel clusters and switching traffic in a controlled cutover. This guide shows you how to implement this strategy effectively.
 
 ## Understanding Blue-Green Cluster Architecture
 
@@ -23,7 +23,7 @@ metadata:
   name: cluster-blue-config
 data:
   cluster_name: "production-blue"
-  version: "1.28.5"
+  version: "1.35.5"
   control_plane_endpoint: "https://api-blue.k8s.example.com"
   node_pools: |
     - name: system
@@ -40,7 +40,7 @@ metadata:
   name: cluster-green-config
 data:
   cluster_name: "production-green"
-  version: "1.29.2"  # New version being tested
+  version: "1.36.1"  # New version being tested
   control_plane_endpoint: "https://api-green.k8s.example.com"
   node_pools: |
     - name: system
@@ -63,7 +63,7 @@ module "green_cluster" {
   source = "./modules/kubernetes-cluster"
 
   cluster_name    = "production-green"
-  cluster_version = "1.29.2"
+  cluster_version = "1.36.1"
   region          = var.region
 
   control_plane_subnet_ids = var.control_plane_subnets
@@ -136,11 +136,27 @@ Deploy applications to the green cluster using the same manifests and configurat
 
 ```bash
 #!/bin/bash
-# Script to synchronize workloads from blue to green cluster
+# Script to synchronize workloads from blue to green cluster. Requires jq.
 
 BLUE_CONTEXT="production-blue"
 GREEN_CONTEXT="production-green"
 NAMESPACES="default production staging"
+
+# Function to remove cluster-generated fields from exported resources
+clean_export() {
+  local resource=$1
+  local namespace=$2
+
+  kubectl --context=$BLUE_CONTEXT get "$resource" -n "$namespace" -o json | jq '
+    del(
+      .items[].metadata.uid,
+      .items[].metadata.resourceVersion,
+      .items[].metadata.generation,
+      .items[].metadata.creationTimestamp,
+      .items[].metadata.managedFields,
+      .items[].status
+    )'
+}
 
 # Function to deploy resources to green cluster
 deploy_to_green() {
@@ -148,19 +164,24 @@ deploy_to_green() {
 
   echo "Synchronizing namespace: $namespace"
 
-  # Get all deployments from blue cluster
-  kubectl --context=$BLUE_CONTEXT get deployments -n $namespace -o yaml > /tmp/deployments-$namespace.yaml
+  kubectl --context=$GREEN_CONTEXT create namespace "$namespace" --dry-run=client -o yaml | \
+    kubectl --context=$GREEN_CONTEXT apply -f -
 
-  # Remove cluster-specific fields
-  kubectl --context=$GREEN_CONTEXT apply -f /tmp/deployments-$namespace.yaml
+  # Sync deployments
+  clean_export deployments "$namespace" | kubectl --context=$GREEN_CONTEXT apply -f -
 
   # Sync services
-  kubectl --context=$BLUE_CONTEXT get services -n $namespace -o yaml > /tmp/services-$namespace.yaml
-  kubectl --context=$GREEN_CONTEXT apply -f /tmp/services-$namespace.yaml
+  clean_export services "$namespace" | jq '
+    .items |= map(select(.metadata.name != "kubernetes")) |
+    .items[] |= if .spec.clusterIP == "None" then . else
+      del(.spec.clusterIP, .spec.clusterIPs, .spec.ipFamilies, .spec.ipFamilyPolicy)
+    end' | kubectl --context=$GREEN_CONTEXT apply -f -
 
   # Sync configmaps and secrets
-  kubectl --context=$BLUE_CONTEXT get configmaps -n $namespace -o yaml > /tmp/configmaps-$namespace.yaml
-  kubectl --context=$GREEN_CONTEXT apply -f /tmp/configmaps-$namespace.yaml
+  clean_export configmaps "$namespace" | kubectl --context=$GREEN_CONTEXT apply -f -
+  clean_export secrets "$namespace" | jq '
+    .items |= map(select(.type != "kubernetes.io/service-account-token"))' | \
+    kubectl --context=$GREEN_CONTEXT apply -f -
 
   # Wait for deployments to be ready
   kubectl --context=$GREEN_CONTEXT wait --for=condition=available --timeout=600s \
@@ -179,7 +200,7 @@ This ensures the green cluster runs identical workloads for accurate validation.
 
 ## Implementing Traffic Switching with External DNS
 
-Use external load balancers and DNS to switch traffic between clusters atomically.
+Use external load balancers and DNS to switch traffic between clusters in a controlled cutover.
 
 ```yaml
 # Configure external load balancer for blue-green switching
@@ -207,10 +228,10 @@ metadata:
   name: application-ingress-blue
   namespace: production
   annotations:
-    kubernetes.io/ingress.class: "nginx"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - api.example.com
@@ -273,7 +294,7 @@ fi
 # Test 4: Run synthetic traffic tests
 echo "Running synthetic traffic tests..."
 kubectl --context=$GREEN_CONTEXT run test-pod --image=curlimages/curl:latest --rm -i --restart=Never -- \
-  curl -s -o /dev/null -w "%{http_code}" http://application-service.production.svc.cluster.local/health
+  curl -fsS http://application-service.production.svc.cluster.local/health
 
 if [ $? -ne 0 ]; then
   echo "FAIL: Synthetic traffic test failed"
@@ -291,7 +312,7 @@ fi
 # Test 6: Run smoke tests
 echo "Executing smoke test suite..."
 kubectl --context=$GREEN_CONTEXT apply -f smoke-tests.yaml
-kubectl --context=$GREEN_CONTEXT wait --for=condition=complete --timeout=300s job/smoke-tests
+kubectl --context=$GREEN_CONTEXT wait --for=condition=complete --timeout=300s -f smoke-tests.yaml
 
 if [ $? -ne 0 ]; then
   echo "FAIL: Smoke tests did not complete successfully"
@@ -352,14 +373,16 @@ echo "Monitoring traffic migration..."
 for i in {1..10}; do
   sleep 30
 
-  # Check error rates
-  ERROR_RATE=$(kubectl --context=$GREEN_CONTEXT top pods -n production --containers | \
-    awk '{print $4}' | grep -v RESTARTS | awk '{sum+=$1} END {print sum}')
+  # Check the public health endpoint and pod restart counts
+  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://$DOMAIN/health" || true)
+  HTTP_STATUS=${HTTP_STATUS:-000}
+  RESTARTS=$(kubectl --context=$GREEN_CONTEXT get pods -n production -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.restartCount}{"\n"}{end}{end}' | \
+    awk '{sum+=$1} END {print sum+0}')
 
-  echo "Minute $i: Error count = $ERROR_RATE"
+  echo "Minute $i: HTTP status = $HTTP_STATUS, restart count = $RESTARTS"
 
-  if [ $ERROR_RATE -gt 10 ]; then
-    echo "ERROR: High error rate detected on green cluster"
+  if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 400 ] || [ "$RESTARTS" -gt 10 ]; then
+    echo "ERROR: Health check failure or high restart count detected on green cluster"
     echo "Initiating automatic rollback..."
 
     # Rollback DNS to blue cluster
@@ -392,7 +415,7 @@ This script switches traffic and automatically rolls back if issues are detected
 Handle stateful workloads carefully during blue-green cluster upgrades.
 
 ```yaml
-# Use external storage that both clusters can access
+# Use an external storage class that can be attached from either cluster
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -400,7 +423,7 @@ metadata:
   namespace: production
 spec:
   accessModes:
-  - ReadWriteMany  # Both clusters can access
+  - ReadWriteMany  # Supported by the external storage backend
   storageClassName: efs-storage  # External storage service
   resources:
     requests:
@@ -438,7 +461,7 @@ spec:
           claimName: shared-database-storage
 ```
 
-Use external storage services (EFS, Cloud Filestore) that both clusters can access for stateful workloads.
+Use external storage services (EFS, Cloud Filestore) that can be attached from either cluster for stateful workloads. For single-writer databases such as PostgreSQL, ensure only the active cluster mounts the data read-write; use replication, snapshots, or a managed database service when both clusters need to run at the same time.
 
 ## Decommissioning the Blue Cluster
 
@@ -472,6 +495,7 @@ fi
 # Scale down blue cluster workloads
 echo "Scaling down blue cluster workloads..."
 kubectl --context=$BLUE_CONTEXT scale deployment --all --replicas=0 -A
+kubectl --context=$BLUE_CONTEXT scale statefulset --all --replicas=0 -A
 
 # Backup persistent volumes
 echo "Creating final snapshots of persistent volumes..."
@@ -490,4 +514,4 @@ Wait for a soak period (typically 48-72 hours) before decommissioning to ensure 
 
 ## Conclusion
 
-Blue-green cluster upgrades provide the safest approach for Kubernetes control plane changes. Provision a complete green cluster with the new version while keeping the blue cluster running. Synchronize all workloads to the green cluster and run comprehensive validation tests. Switch traffic atomically using DNS or load balancers with short TTLs for quick rollback if needed. Monitor the green cluster intensively after the switch and keep the blue cluster available for immediate rollback. Use external storage for stateful workloads so both clusters can access shared data. After a successful soak period, decommission the blue cluster. This approach eliminates upgrade risk by allowing full validation before committing and instant rollback if issues occur.
+Blue-green cluster upgrades provide the safest approach for Kubernetes control plane changes. Provision a complete green cluster with the new version while keeping the blue cluster running. Synchronize all workloads to the green cluster and run comprehensive validation tests. Switch traffic using DNS or load balancers with short TTLs for quick rollback if needed, while accounting for DNS propagation and client-side caching. Monitor the green cluster intensively after the switch and keep the blue cluster available for rollback. Use external storage or replication for stateful workloads so data can move safely between clusters. After a successful soak period, decommission the blue cluster. This approach reduces upgrade risk by allowing full validation before committing and fast rollback if issues occur.
