@@ -15,9 +15,7 @@ Docker Compose variable interpolation lets you inject values into your `docker-c
 The syntax is `${VARIABLE_NAME}`. Docker Compose replaces these placeholders with actual values before processing the file:
 
 ```yaml
-# docker-compose.yml - basic variable interpolation
-
-version: "3.8"
+# compose.yaml - basic variable interpolation
 
 services:
   web:
@@ -51,7 +49,7 @@ docker compose up -d
 
 ## The .env File
 
-Exporting variables manually is tedious. Docker Compose automatically reads a `.env` file in the same directory as your compose file:
+Exporting variables manually is tedious. Docker Compose automatically reads a `.env` file from the project directory, typically next to your `compose.yaml` file:
 
 ```bash
 # .env - automatically loaded by Docker Compose
@@ -76,11 +74,11 @@ Docker Compose supports both `$VARIABLE` and `${VARIABLE}` syntax:
 services:
   app:
     # Both of these work
-    image: myapp:$APP_VERSION
+    # image: myapp:$APP_VERSION
     image: myapp:${APP_VERSION}
 
     # Use braces when the variable is adjacent to other text
-    image: myapp:${APP_VERSION}-alpine    # Correct
+    # image: myapp:${APP_VERSION}-alpine    # Correct
     # image: myapp:$APP_VERSION-alpine    # Ambiguous - might not work as expected
 ```
 
@@ -91,8 +89,7 @@ Always use braces when the variable is part of a larger string to avoid ambiguit
 You can specify default values that are used when a variable is unset or empty:
 
 ```yaml
-# docker-compose.yml - with default values
-version: "3.8"
+# compose.yaml - with default values
 
 services:
   web:
@@ -133,7 +130,7 @@ export VAR=""     # Result: "" (empty string is preserved)
 
 ## Required Variables with Error Messages
 
-Use the `?` syntax to require a variable and fail with a message if it is missing:
+Use the `?` syntax to require a variable and fail with a message if it is missing or empty:
 
 ```yaml
 services:
@@ -147,7 +144,7 @@ services:
 If `APP_VERSION` is not set, Docker Compose will print the error message and refuse to start:
 
 ```text
-ERROR: Variable "APP_VERSION" is not set. APP_VERSION must be set to deploy
+error while interpolating services.app.image: required variable APP_VERSION is missing a value: APP_VERSION must be set to deploy
 ```
 
 This is extremely useful for catching configuration mistakes before they cause runtime failures.
@@ -167,15 +164,13 @@ services:
       SPECIAL_PASS: "pa$$word"
 ```
 
-Without the double dollar sign, Compose would try to interpolate `$HOME` and `$(date)` as variables.
+Without the double dollar sign, Compose would try to interpolate `$HOME` before the command runs. It would also treat `$word` in the password as a variable reference, so the rendered value would not be the literal `pa$word`.
 
 ## Variable Interpolation in Different Sections
 
 Variables work in most places within a compose file:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     # Image name and tag
@@ -268,27 +263,21 @@ This prints the final YAML after all variables are interpolated. It is the best 
 
 ```bash
 # Docker Compose warns about unset variables
-docker compose config 2>&1 | grep "WARN"
+docker compose config 2>&1 | grep -i "warn"
 ```
 
 ### Print All Variables in Use
 
 ```bash
-# Extract all variable references from a compose file
-grep -oP '\$\{?\w+' docker-compose.yml | sort -u | sed 's/[${}]//g'
+# Print variables referenced by the Compose model
+docker compose config --variables
 ```
 
 Then check which ones are set:
 
 ```bash
-# Check if each referenced variable is defined
-for var in $(grep -oP '\$\{?\w+' docker-compose.yml | sort -u | sed 's/[${}]//g'); do
-  if [ -z "${!var+x}" ]; then
-    echo "UNSET: $var"
-  else
-    echo "SET:   $var=${!var}"
-  fi
-done
+# Print variables and values used for interpolation
+docker compose config --environment
 ```
 
 ## Variable Precedence
@@ -296,8 +285,9 @@ done
 When the same variable is defined in multiple places, Docker Compose follows this precedence (highest to lowest):
 
 1. Shell environment variables (exported in your terminal)
-2. Values from the `.env` file
-3. Default values in the compose file (`${VAR:-default}`)
+2. Values from a `.env` file in your current working directory, when `--env-file` is not set
+3. Values from a file passed with `--env-file`, or from the `.env` file in the project directory
+4. Default values in the compose file (`${VAR:-default}`)
 
 ```bash
 # This takes precedence over .env and defaults
