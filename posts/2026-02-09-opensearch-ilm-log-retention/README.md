@@ -1,35 +1,41 @@
-# How to Use OpenSearch Index Lifecycle Management for Kubernetes Log Retention
+# How to Use OpenSearch Index State Management for Kubernetes Log Retention
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenSearch, Kubernetes, Logging
 
-Description: Configure OpenSearch Index Lifecycle Management (ILM) policies to automatically manage Kubernetes log retention, optimize storage costs, and maintain query performance.
+Description: Configure OpenSearch Index State Management (ISM) policies to automatically manage Kubernetes log retention, optimize storage costs, and maintain query performance.
 
 ---
 
-Kubernetes logs accumulate quickly, and without proper lifecycle management, storage costs skyrocket while query performance degrades. OpenSearch Index Lifecycle Management automates index transitions through hot, warm, cold, and deletion phases based on age, size, or custom criteria. This guide shows you how to implement ILM for Kubernetes logs.
+Kubernetes logs accumulate quickly, and without proper lifecycle management, storage costs skyrocket while query performance degrades. OpenSearch Index State Management automates index transitions through hot, warm, cold, and deletion states based on age, size, or custom criteria. This guide shows you how to implement ISM for Kubernetes logs.
 
-## Understanding OpenSearch ILM
+## Understanding OpenSearch ISM
 
-ILM manages indices through distinct phases:
+ISM policies commonly model log retention through states:
 
 - **Hot**: Recent logs with high query frequency, stored on fast storage
 - **Warm**: Older logs with reduced query needs, moved to standard storage
 - **Cold**: Historical logs for compliance, stored on slow/cheap storage
 - **Delete**: Expired logs automatically removed
 
-Each phase has configurable actions like rollover, shrink, force merge, and allocation.
+Each state has configurable actions like rollover, shrink, force merge, and allocation.
 
-## Creating Basic ILM Policy
+## Creating Basic ISM Policy
 
 Define a simple policy for Kubernetes logs:
 
-```json
+```http
 PUT _plugins/_ism/policies/kubernetes-logs-policy
 {
   "policy": {
     "description": "Kubernetes logs lifecycle management",
+    "ism_template": [
+      {
+        "index_patterns": ["kubernetes-*"],
+        "priority": 100
+      }
+    ],
     "default_state": "hot",
     "states": [
       {
@@ -114,11 +120,11 @@ PUT _plugins/_ism/policies/kubernetes-logs-policy
 }
 ```
 
-## Applying ILM Policy to Index Templates
+## Applying ISM Rollover Alias to Index Templates
 
-Create index template with ILM policy:
+Create index template with the rollover alias and mappings:
 
-```json
+```http
 PUT _index_template/kubernetes-logs
 {
   "index_patterns": ["kubernetes-*"],
@@ -127,7 +133,6 @@ PUT _index_template/kubernetes-logs
       "number_of_shards": 3,
       "number_of_replicas": 1,
       "refresh_interval": "30s",
-      "plugins.index_state_management.policy_id": "kubernetes-logs-policy",
       "plugins.index_state_management.rollover_alias": "kubernetes-logs"
     },
     "mappings": {
@@ -164,7 +169,7 @@ PUT _index_template/kubernetes-logs
 
 Bootstrap the rollover alias:
 
-```json
+```http
 PUT kubernetes-logs-000001
 {
   "aliases": {
@@ -175,11 +180,11 @@ PUT kubernetes-logs-000001
 }
 ```
 
-## Advanced ILM with Shrink and Force Merge
+## Advanced ISM with Shrink and Force Merge
 
 Optimize indices during warm phase:
 
-```json
+```http
 PUT _plugins/_ism/policies/kubernetes-logs-optimized
 {
   "policy": {
@@ -330,7 +335,7 @@ data:
 
 Create different policies per namespace:
 
-```json
+```http
 PUT _plugins/_ism/policies/production-logs-policy
 {
   "policy": {
@@ -380,95 +385,59 @@ PUT _plugins/_ism/policies/development-logs-policy
 }
 ```
 
-## Monitoring ILM Policy Execution
+## Monitoring ISM Policy Execution
 
 Query policy states:
 
-```json
-GET kubernetes-logs-*/_plugins/_ism/explain
+```http
+GET _plugins/_ism/explain/kubernetes-logs-*
 
-GET _plugins/_ism/explain?show_policy=true
+GET _plugins/_ism/explain/kubernetes-logs-*?show_policy=true
 
-GET _plugins/_ism/policies/kubernetes-logs-policy/_explain
+GET _plugins/_ism/policies/kubernetes-logs-policy
 ```
 
-Create alerts for ILM failures:
+Query failed managed indexes for alerting:
 
-```json
-POST _plugins/_alerting/monitors
+```http
+POST _plugins/_ism/explain/kubernetes-logs-*
 {
-  "type": "monitor",
-  "name": "ILM Policy Failures",
-  "enabled": true,
-  "schedule": {
-    "period": {
-      "interval": 5,
-      "unit": "MINUTES"
-    }
-  },
-  "inputs": [{
-    "search": {
-      "indices": [".opendistro-ism-config"],
-      "query": {
-        "bool": {
-          "filter": [{
-            "term": {
-              "policy_id": "kubernetes-logs-policy"
-            }
-          }, {
-            "term": {
-              "state": "failed"
-            }
-          }]
-        }
-      }
-    }
-  }],
-  "triggers": [{
-    "name": "ILM Failure Alert",
-    "severity": "1",
-    "condition": {
-      "script": {
-        "source": "ctx.results[0].hits.total.value > 0"
-      }
-    },
-    "actions": [{
-      "name": "Notify Slack",
-      "destination_id": "slack-destination",
-      "message_template": {
-        "source": "ILM policy failed for indices"
-      }
-    }]
-  }]
+  "filter": {
+    "policy_id": "kubernetes-logs-policy",
+    "failed": true
+  }
 }
 ```
 
 ## Optimizing Storage with Compression
 
-Enable best compression for older indices:
+Enable best compression for new indices:
 
-```json
-PUT kubernetes-logs-*/_settings
+```http
+PUT _index_template/kubernetes-logs
+{
+  "index_patterns": ["kubernetes-*"],
+  "template": {
+    "settings": {
+      "index.codec": "best_compression"
+    }
+  }
+}
+```
+
+To change the codec on an existing index, close it, update the static setting, and reopen it:
+
+```http
+POST kubernetes-logs-000001/_close
+
+PUT kubernetes-logs-000001/_settings
 {
   "index": {
     "codec": "best_compression"
   }
 }
-```
 
-Add to warm phase actions:
-
-```json
-{
-  "name": "warm",
-  "actions": [
-    {
-      "index_codec": {
-        "codec": "best_compression"
-      }
-    }
-  ]
-}
+POST kubernetes-logs-000001/_open
 ```
 
 ## Snapshot and Restore Integration
@@ -494,7 +463,7 @@ Add snapshot action before deletion:
 
 Register S3 snapshot repository:
 
-```json
+```http
 PUT _snapshot/s3-backup
 {
   "type": "s3",
@@ -519,4 +488,4 @@ PUT _snapshot/s3-backup
 
 ## Conclusion
 
-OpenSearch ILM provides automated, cost-effective log retention management for Kubernetes environments. By transitioning indices through hot, warm, and cold phases, you optimize both storage costs and query performance. Start with conservative retention periods, monitor storage consumption, and adjust policies based on your compliance requirements and budget constraints. Proper ILM configuration can reduce storage costs by 70% or more while maintaining accessibility for recent logs.
+OpenSearch ISM provides automated, cost-effective log retention management for Kubernetes environments. By transitioning indices through hot, warm, and cold states, you optimize both storage costs and query performance. Start with conservative retention periods, monitor storage consumption, and adjust policies based on your compliance requirements and budget constraints. Proper ISM configuration can reduce storage costs by 70% or more while maintaining accessibility for recent logs.
