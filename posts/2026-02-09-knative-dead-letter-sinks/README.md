@@ -128,17 +128,19 @@ app.post('/', async (req, res) => {
     const eventType = req.headers['ce-type'];
     const eventSource = req.headers['ce-source'];
 
-    // Knative adds delivery context
-    const attempts = req.headers['ce-knativedeliveryattempts'] || '0';
-    const lastError = req.headers['ce-knativelasterror'] || 'Unknown error';
+    // Some Knative implementations add error context as CloudEvent extensions
+    const errorCode = req.headers['ce-knativeerrorcode'] || 'unknown';
+    const errorData = req.headers['ce-knativeerrordata'] || 'Unknown error';
+    const errorDest = req.headers['ce-knativeerrordest'] || 'unknown';
 
     const eventData = req.body;
 
     console.log(`[DLQ] Received failed event ${eventId}`);
     console.log(`  Type: ${eventType}`);
     console.log(`  Source: ${eventSource}`);
-    console.log(`  Attempts: ${attempts}`);
-    console.log(`  Error: ${lastError}`);
+    console.log(`  Failed destination: ${errorDest}`);
+    console.log(`  Error code: ${errorCode}`);
+    console.log(`  Error data: ${errorData}`);
 
     // Store failed event
     const result = await pool.query(`
@@ -152,8 +154,8 @@ app.post('/', async (req, res) => {
       eventId,
       eventType,
       eventSource,
-      lastError,
-      parseInt(attempts),
+      `${errorCode}: ${errorData}`,
+      0,
       JSON.stringify(eventData),
       JSON.stringify(req.headers)
     ]);
@@ -161,7 +163,7 @@ app.post('/', async (req, res) => {
     const failedEventId = result.rows[0].id;
 
     // Analyze failure pattern
-    const pattern = await analyzeFailurePattern(eventType, lastError);
+    const pattern = await analyzeFailurePattern(eventType, `${errorCode}: ${errorData}`);
 
     // Send alert for critical failures
     if (pattern.critical) {
@@ -175,7 +177,7 @@ app.post('/', async (req, res) => {
     }
 
     // Attempt automatic recovery for transient errors
-    if (isTransientError(lastError)) {
+    if (isTransientError(`${errorCode}: ${errorData}`)) {
       await scheduleRetry(failedEventId, eventData);
     }
 
@@ -306,7 +308,7 @@ async function reprocessEvent(event) {
   // Send event back to the original broker
   const axios = require('axios');
 
-  const brokerUrl = 'http://orders-broker-broker.default.svc.cluster.local';
+  const brokerUrl = process.env.BROKER_URL || 'http://broker-ingress.knative-eventing.svc.cluster.local/default/orders-broker';
 
   await axios.post(brokerUrl, JSON.parse(event.original_data), {
     headers: {
@@ -546,7 +548,7 @@ spec:
               name: db-credentials
               key: url
         - name: BROKER_URL
-          value: "http://orders-broker-broker.default.svc.cluster.local"
+          value: "http://broker-ingress.knative-eventing.svc.cluster.local/default/orders-broker"
 ```
 
 ## Monitoring Dead Letter Queues
