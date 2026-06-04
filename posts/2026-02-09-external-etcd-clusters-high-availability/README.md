@@ -8,7 +8,7 @@ Description: Learn how to deploy external etcd clusters for Kubernetes high avai
 
 ---
 
-External etcd clusters provide the highest level of resilience for Kubernetes control planes by separating the state storage layer from the API servers. This architecture allows you to scale etcd independently, perform maintenance without affecting the control plane, and implement more robust disaster recovery strategies.
+External etcd clusters provide the highest level of resilience for Kubernetes control planes by separating the state storage layer from the API servers. This architecture allows you to scale etcd independently, perform etcd maintenance separately from control plane node maintenance, and implement more robust disaster recovery strategies.
 
 This guide walks through setting up a production-ready external etcd cluster for Kubernetes high availability.
 
@@ -17,12 +17,12 @@ This guide walks through setting up a production-ready external etcd cluster for
 In an external etcd topology, etcd runs on dedicated nodes separate from the Kubernetes control plane. This provides several advantages:
 
 - **Independent scaling**: Scale etcd based on cluster size without affecting API servers
-- **Isolation**: etcd failures don't directly impact control plane nodes
+- **Isolation**: etcd failures are isolated from control plane node failures, although API servers still depend on etcd availability
 - **Simplified maintenance**: Upgrade etcd without touching control plane components
 - **Better resource allocation**: Dedicated resources for state storage
 - **Enhanced security**: Isolate sensitive cluster state on separate infrastructure
 
-Typical setup uses 3 or 5 etcd nodes (always odd numbers for quorum).
+Typical setup uses 3 or 5 etcd nodes (prefer odd numbers for optimal quorum).
 
 ## Planning Your etcd Cluster
 
@@ -46,7 +46,7 @@ Set up three dedicated etcd nodes. On each node:
 ```bash
 # Download etcd
 
-ETCD_VER=v3.5.10
+ETCD_VER=v3.5.30
 wget https://github.com/etcd-io/etcd/releases/download/${ETCD_VER}/etcd-${ETCD_VER}-linux-amd64.tar.gz
 
 # Extract and install
@@ -67,7 +67,7 @@ sudo chown -R etcd:etcd /etc/etcd
 
 ## Generating TLS Certificates
 
-etcd requires TLS for secure communication. Generate certificates using cfssl or kubeadm:
+Production external etcd clusters should use TLS for secure communication. Generate certificates using cfssl or kubeadm:
 
 ```bash
 # Install cfssl tools
@@ -251,9 +251,9 @@ Create kubeadm configuration to use external etcd:
 
 ```yaml
 # kubeadm-external-etcd.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
-kubernetesVersion: v1.28.0
+kubernetesVersion: v1.35.5
 controlPlaneEndpoint: "k8s-api.example.com:6443"
 etcd:
   external:
@@ -304,7 +304,7 @@ Set up automated backups of etcd:
 
 ```bash
 # Create backup script
-cat > /usr/local/bin/etcd-backup.sh <<'EOF'
+sudo tee /usr/local/bin/etcd-backup.sh > /dev/null <<'EOF'
 #!/bin/bash
 BACKUP_DIR="/var/backups/etcd"
 RETENTION_DAYS=7
@@ -323,7 +323,7 @@ SNAPSHOT_FILE="${BACKUP_DIR}/etcd-snapshot-$(date +%Y%m%d-%H%M%S).db"
 etcdctl --endpoints=https://127.0.0.1:2379 snapshot save ${SNAPSHOT_FILE}
 
 # Verify snapshot
-etcdctl --write-out=table snapshot status ${SNAPSHOT_FILE}
+etcdutl --write-out=table snapshot status ${SNAPSHOT_FILE}
 
 # Compress snapshot
 gzip ${SNAPSHOT_FILE}
@@ -334,7 +334,7 @@ find ${BACKUP_DIR} -name "etcd-snapshot-*.db.gz" -mtime +${RETENTION_DAYS} -dele
 echo "Backup completed: ${SNAPSHOT_FILE}.gz"
 EOF
 
-chmod +x /usr/local/bin/etcd-backup.sh
+sudo chmod +x /usr/local/bin/etcd-backup.sh
 ```
 
 Schedule backups with cron:
@@ -412,7 +412,7 @@ Compact old revisions:
 
 ```bash
 # Get current revision
-rev=$(etcdctl endpoint status --write-out="json" | jq -r '.[] | .Status.header.revision')
+rev=$(etcdctl endpoint status --write-out="json" | jq -r '[.[].Status.header.revision] | max')
 
 # Compact all revisions older than current
 etcdctl compact $rev
