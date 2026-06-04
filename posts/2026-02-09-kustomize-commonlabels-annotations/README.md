@@ -74,13 +74,13 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: web
+      app: web-application
       team: platform
       environment: production
   template:
     metadata:
       labels:
-        app: web
+        app: web-application
         team: platform
         environment: production
 ```
@@ -117,7 +117,7 @@ metadata:
     environment: production
 spec:
   selector:
-    app: web
+    app: web-application
     team: platform
     environment: production
   ports:
@@ -425,11 +425,11 @@ commonLabels:
 Validate label and annotation syntax:
 
 ```bash
-# Check for invalid label characters
-kustomize build base/ | yq eval '.metadata.labels | keys[]' - | grep -E '[^a-zA-Z0-9._-]'
+# Check label key name segments for invalid characters
+kustomize build base/ | yq eval '.metadata.labels // {} | keys[] | split("/") | .[-1]' - | grep -E '[^a-zA-Z0-9._-]'
 
-# Verify label length (max 63 chars)
-kustomize build base/ | yq eval '.metadata.labels | keys[]' - | awk 'length > 63'
+# Verify label key name segment length (max 63 chars)
+kustomize build base/ | yq eval '.metadata.labels // {} | keys[] | split("/") | .[-1]' - | awk 'length > 63'
 
 # Check annotation format
 kustomize build base/ | yq eval '.metadata.annotations | keys[]' -
