@@ -14,33 +14,34 @@ The Docker deployment makes Checkmk simple to try and practical to run in produc
 
 ## Checkmk Editions
 
-Checkmk comes in three editions. The Raw Edition is fully open source and based on Nagios Core. The Enterprise Edition adds a custom monitoring core with better performance, advanced dashboards, and reporting. The Cloud Edition adds cloud monitoring integrations. For this guide, we use the Raw Edition, which is free and covers most monitoring needs.
+Checkmk comes in several editions. The Community Edition is fully open source and based on Nagios Core. The commercial editions, including Checkmk Pro and Checkmk Ultimate, add the Checkmk Micro Core, advanced dashboards, reporting, and additional automation and cloud-monitoring features. Checkmk Cloud is also available as software as a service. For this guide, we use the Community Edition, which is free and covers most monitoring needs.
 
 ## Quick Start
 
 Run Checkmk with a single Docker command.
 
 ```bash
-# Run Checkmk Raw Edition with persistent data
+# Run Checkmk Community Edition with persistent data
 
 docker run -d \
   --name checkmk \
   --restart unless-stopped \
+  -e CMK_PASSWORD=admin123 \
   -p 8080:5000 \
   -p 8000:8000 \
   --tmpfs /opt/omd/sites/cmk/tmp:uid=1000,gid=1000 \
   -v checkmk-data:/omd/sites \
-  checkmk/check-mk-raw:2.3.0-latest
+  checkmk/check-mk-community:2.5.0-latest
 ```
 
-After the container starts, retrieve the auto-generated admin password.
+If you omit `CMK_PASSWORD`, retrieve the auto-generated admin password after the container starts.
 
 ```bash
 # Get the admin password
 docker logs checkmk 2>&1 | grep "password"
 ```
 
-Open `http://localhost:8080/cmk/check_mk/` in your browser and log in with user `cmkadmin` and the password from the logs.
+Open `http://localhost:8080/cmk/check_mk/` in your browser and log in with user `cmkadmin` and the password you configured or retrieved from the logs.
 
 ## Docker Compose Setup
 
@@ -52,7 +53,7 @@ version: "3.8"
 
 services:
   checkmk:
-    image: checkmk/check-mk-raw:2.3.0-latest
+    image: checkmk/check-mk-community:2.5.0-latest
     container_name: checkmk
     restart: unless-stopped
     ports:
@@ -120,19 +121,21 @@ Checkmk can monitor hosts using several methods: the Checkmk Agent installed on 
 For Linux hosts you want to monitor, download and install the Checkmk agent from the web interface. You can also get it directly from the API.
 
 ```bash
-# Download the agent package from Checkmk
-curl -o check-mk-agent.deb \
-  "http://localhost:8080/cmk/check_mk/agents/check-mk-agent_2.3.0-1_all.deb"
+# Download the agent package from Checkmk with an automation user
+curl -OJG "http://localhost:8080/cmk/check_mk/api/v1/domain-types/agent/actions/download/invoke" \
+  -H "Accept: application/octet-stream" \
+  -H "Authorization: Bearer automation theautomationsecret" \
+  --data-urlencode "os_type=linux_deb"
 
 # Install on a Debian/Ubuntu host
-sudo dpkg -i check-mk-agent.deb
+sudo dpkg -i check-mk-agent_*.deb
 ```
 
 For monitoring Docker containers from within the Checkmk container itself, use the Checkmk REST API to add hosts.
 
 ```bash
 # Add a host using the Checkmk REST API
-curl -X POST "http://localhost:8080/cmk/check_mk/api/1.0/domain-types/host_config/collections/all" \
+curl -X POST "http://localhost:8080/cmk/check_mk/api/v1/domain-types/host_config/collections/all" \
   -H "Authorization: Bearer cmkadmin admin123" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
@@ -152,7 +155,7 @@ For services you can not install an agent on, use active checks. These are confi
 
 ```bash
 # Add a host with HTTP checks only (no agent)
-curl -X POST "http://localhost:8080/cmk/check_mk/api/1.0/domain-types/host_config/collections/all" \
+curl -X POST "http://localhost:8080/cmk/check_mk/api/v1/domain-types/host_config/collections/all" \
   -H "Authorization: Bearer cmkadmin admin123" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
@@ -174,13 +177,13 @@ You can also trigger discovery via the API.
 
 ```bash
 # Run service discovery on a host
-curl -X POST "http://localhost:8080/cmk/check_mk/api/1.0/domain-types/service_discovery_run/actions/start/invoke" \
+curl -X POST "http://localhost:8080/cmk/check_mk/api/v1/domain-types/service_discovery_run/actions/start/invoke" \
   -H "Authorization: Bearer cmkadmin admin123" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
   -d '{
     "host_name": "web-server",
-    "mode": "fix_all"
+    "mode": "refresh"
   }'
 ```
 
@@ -189,12 +192,23 @@ curl -X POST "http://localhost:8080/cmk/check_mk/api/1.0/domain-types/service_di
 Checkmk uses a two-phase configuration model. Changes you make in the web UI or API are staged first, then activated together. This prevents partial configurations from being applied.
 
 ```bash
-# Activate pending changes
-curl -X POST "http://localhost:8080/cmk/check_mk/api/1.0/domain-types/activation_run/actions/activate-changes/invoke" \
+# Get the ETag for the pending changes
+ETAG=$(curl -i "http://localhost:8080/cmk/check_mk/api/v1/domain-types/activation_run/collections/pending_changes" \
   -H "Authorization: Bearer cmkadmin admin123" \
+  -H "Accept: application/json" \
+  | awk -F': ' '/^ETag:/ {gsub("\r", "", $2); print $2}')
+
+# Activate pending changes
+curl -X POST "http://localhost:8080/cmk/check_mk/api/v1/domain-types/activation_run/actions/activate-changes/invoke" \
+  -H "Authorization: Bearer cmkadmin admin123" \
+  -H "If-Match: $ETAG" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
-  -d '{"force_foreign_changes": true}'
+  -d '{
+    "redirect": false,
+    "sites": ["cmk"],
+    "force_foreign_changes": true
+  }'
 ```
 
 ## Notification Configuration
@@ -215,7 +229,7 @@ curl -o /usr/lib/check_mk_agent/plugins/mk_docker.py \
 chmod +x /usr/lib/check_mk_agent/plugins/mk_docker.py
 ```
 
-After installing the plugin and running discovery, Checkmk will show individual checks for each Docker container, including CPU usage, memory usage, network I/O, and container status.
+After installing the plugin and running discovery, Checkmk will show checks for the Docker node. To monitor each container, create separate hosts for the piggyback data generated by the plugin, usually using the 12-character container ID as the host name, and set those hosts to use no IP address and no Checkmk agent. After discovery, Checkmk will show individual checks for each Docker container, including CPU usage, memory usage, network I/O, and container status.
 
 ## Backup and Restore
 
@@ -223,10 +237,10 @@ Back up your Checkmk site regularly. The entire configuration lives in the omd/s
 
 ```bash
 # Create a backup using Checkmk's built-in backup tool
-docker exec checkmk omd backup /omd/sites/cmk/tmp/backup.tar.gz
+docker exec -u cmk checkmk omd backup /tmp/checkmk-backup.tar.gz
 
 # Copy the backup to your host
-docker cp checkmk:/omd/sites/cmk/tmp/backup.tar.gz ./checkmk-backup.tar.gz
+docker cp checkmk:/tmp/checkmk-backup.tar.gz ./checkmk-backup.tar.gz
 ```
 
 ## Cleanup
