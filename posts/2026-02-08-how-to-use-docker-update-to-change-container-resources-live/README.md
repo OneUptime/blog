@@ -17,14 +17,16 @@ This is particularly useful in production when a container needs more memory to 
 `docker update` modifies resource constraints that map to Linux cgroup settings. Here is the full list of what you can change on a live container:
 
 - CPU shares, quota, and period
+- CPU real-time period and runtime
 - CPU pinning (which cores a container can use)
+- NUMA memory node pinning
 - Memory limit and memory reservation
-- Kernel memory limit
 - Memory swap limit
+- Block I/O weight
 - Restart policy
 - PIDs limit
 
-You cannot change port mappings, volume mounts, network connections, or environment variables with `docker update`. Those require recreating the container.
+You cannot change port mappings, volume mounts, or environment variables with `docker update`. Those require recreating the container. Network attachments are also outside `docker update`, but you can change them with `docker network connect` and `docker network disconnect`.
 
 ## Changing Memory Limits
 
@@ -45,10 +47,10 @@ Check the current memory settings:
 docker inspect my-container --format '{{.HostConfig.Memory}} bytes memory, {{.HostConfig.MemorySwap}} bytes swap'
 ```
 
-A more practical example with human-readable output:
+A more practical example with detailed output:
 
 ```bash
-# Show memory limit in megabytes
+# Show memory limits from Docker's container configuration
 docker inspect my-container --format '
   Memory Limit: {{.HostConfig.Memory}}
   Swap Limit: {{.HostConfig.MemorySwap}}
@@ -64,7 +66,7 @@ Memory reservation is a soft limit. Docker tries to keep the container under thi
 docker update --memory 1g --memory-reservation 512m my-container
 ```
 
-This tells Docker that the container normally needs 512MB but can burst up to 1GB when needed. When the host is under memory pressure, Docker reclaims memory from containers back to their reservation level.
+This tells Docker that the container normally needs 512MB but can burst up to 1GB when needed. When the host is under memory pressure, the kernel can reclaim memory more aggressively from containers above their reservation.
 
 ## Changing CPU Limits
 
@@ -208,7 +210,12 @@ Check CPU settings:
 
 ```bash
 # View the CPU quota at the cgroup level
+# For cgroup v2 systems
 docker exec my-container cat /sys/fs/cgroup/cpu.max
+
+# For cgroup v1 systems
+docker exec my-container sh -c 'cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null || cat /sys/fs/cgroup/cpu,cpuacct/cpu.cfs_quota_us'
+docker exec my-container sh -c 'cat /sys/fs/cgroup/cpu/cpu.cfs_period_us 2>/dev/null || cat /sys/fs/cgroup/cpu,cpuacct/cpu.cfs_period_us'
 ```
 
 Use `docker inspect` for a consolidated view:
@@ -229,13 +236,13 @@ docker inspect my-container --format '
 
 There are important constraints to understand:
 
-1. **Memory can only be increased on running containers on some systems.** Decreasing memory below the container's current usage will fail. The container must free memory first.
+1. **Decreasing memory on running containers can fail or force reclaim/OOM behavior.** If the new limit is below the container's current usage, the result depends on the host's kernel and cgroup version. The container may need to free memory first.
 
 2. **Changes do not persist in Docker Compose.** If you use `docker compose up` to recreate containers, they will use the settings from the Compose file, not the `docker update` values.
 
-3. **Not all runtimes support all flags.** The Windows container runtime has different supported flags than the Linux runtime.
+3. **Not all runtimes support all flags.** `docker update` is not supported for Windows containers.
 
-4. **Kernel memory limits are deprecated** in newer Docker versions and cgroup v2.
+4. **Kernel memory limits are removed** in modern Docker versions. The old `--kernel-memory` option was deprecated in Docker 20.10, removed from the Docker Engine API in Docker 23.0, and removed from the Docker CLI in Docker 29.0.
 
 Handle errors when updating:
 
@@ -267,7 +274,7 @@ CURRENT_MB=$((CURRENT_LIMIT / 1048576))
 if (( $(echo "$USAGE > $THRESHOLD" | bc -l) )); then
   NEW_MB=$((CURRENT_MB + INCREASE_MB))
   echo "Memory usage at ${USAGE}%, increasing from ${CURRENT_MB}MB to ${NEW_MB}MB"
-  docker update --memory "${NEW_MB}m" "$CONTAINER"
+  docker update --memory "${NEW_MB}m" --memory-swap "$((NEW_MB * 2))m" "$CONTAINER"
 else
   echo "Memory usage at ${USAGE}%, no adjustment needed"
 fi
