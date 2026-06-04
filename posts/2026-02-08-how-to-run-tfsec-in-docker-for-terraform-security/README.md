@@ -173,7 +173,7 @@ resource "aws_s3_bucket" "public_assets" {
 
 ## Configuration File
 
-For project-wide settings, create a `.tfsec` configuration directory or a `tfsec.yml` file.
+For project-wide settings, create a `.tfsec` configuration directory with a `config.yml` file.
 
 ```yaml
 # .tfsec/config.yml - Project-wide tfsec configuration
@@ -199,7 +199,7 @@ tfsec automatically picks up the configuration from the `.tfsec` directory.
 
 ## Writing Custom Rules
 
-tfsec supports custom rules written in JSON or Rego. Create rules specific to your organization's policies.
+tfsec supports custom rules written in JSON or Rego. JSON custom checks load automatically from `.tfsec` when the filename ends with `_tfchecks.json` or `_tfchecks.yaml`. Rego policies are loaded with the `--rego-policy-dir` flag. Create rules specific to your organization's policies.
 
 ```json
 {
@@ -223,7 +223,7 @@ tfsec supports custom rules written in JSON or Rego. Create rules specific to yo
 }
 ```
 
-Save this as `.tfsec/custom_checks.json` and tfsec will include it automatically.
+Save this as `.tfsec/company_tfchecks.json` and tfsec will include it automatically.
 
 ```bash
 # Run with custom rules (they load automatically from .tfsec/)
@@ -281,8 +281,9 @@ repos:
     hooks:
       - id: tfsec
         name: tfsec
-        entry: docker run --rm -v "$(pwd):/src" aquasec/tfsec /src --minimum-severity HIGH
-        language: system
+        entry: aquasec/tfsec
+        language: docker_image
+        args: ["/src", "--minimum-severity", "HIGH"]
         files: '\.tf$'
         pass_filenames: false
 ```
