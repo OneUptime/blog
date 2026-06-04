@@ -19,11 +19,13 @@ Install Polaris for local auditing:
 ```bash
 # Install on macOS
 
-brew install fairwindsops/tap/polaris
+brew tap FairwindsOps/tap
+brew install FairwindsOps/tap/polaris
 
 # Install on Linux
-wget https://github.com/FairwindsOps/polaris/releases/download/8.5.0/polaris_linux_amd64.tar.gz
-tar -xzf polaris_linux_amd64.tar.gz
+POLARIS_VERSION=10.2.0
+wget https://github.com/FairwindsOps/polaris/releases/download/v${POLARIS_VERSION}/polaris_${POLARIS_VERSION}_linux_amd64.tar.gz
+tar -xzf polaris_${POLARIS_VERSION}_linux_amd64.tar.gz
 sudo mv polaris /usr/local/bin/
 
 # Verify installation
@@ -67,7 +69,10 @@ deployment/nginx [danger]:
 Deploy Polaris dashboard to cluster:
 
 ```bash
-kubectl apply -f https://github.com/FairwindsOps/polaris/releases/latest/download/dashboard.yaml
+helm repo add fairwinds-stable https://charts.fairwinds.com/stable
+helm upgrade --install polaris fairwinds-stable/polaris \
+  --namespace polaris \
+  --create-namespace
 
 # Access dashboard
 kubectl port-forward --namespace polaris svc/polaris-dashboard 8080:80
@@ -77,7 +82,7 @@ kubectl port-forward --namespace polaris svc/polaris-dashboard 8080:80
 
 The dashboard provides visual reports of cluster compliance with drill-down into specific violations.
 
-## Configuring Custom Checks
+## Configuring Check Settings
 
 Create custom Polaris configuration:
 
@@ -89,7 +94,7 @@ checks:
   hostPIDSet: danger
   hostNetworkSet: warning
   runAsRootAllowed: danger
-  readOnlyRootFilesystem: warning
+  notReadOnlyRootFilesystem: warning
   privilegeEscalationAllowed: danger
 
   # Resource checks
@@ -133,27 +138,29 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Install Polaris
       run: |
-        wget https://github.com/FairwindsOps/polaris/releases/download/8.5.0/polaris_linux_amd64.tar.gz
-        tar -xzf polaris_linux_amd64.tar.gz
+        POLARIS_VERSION=10.2.0
+        wget https://github.com/FairwindsOps/polaris/releases/download/v${POLARIS_VERSION}/polaris_${POLARIS_VERSION}_linux_amd64.tar.gz
+        tar -xzf polaris_${POLARIS_VERSION}_linux_amd64.tar.gz
         sudo mv polaris /usr/local/bin/
 
     - name: Run Polaris audit
       run: |
         polaris audit \
           --audit-path k8s/ \
-          --format pretty \
+          --format json \
+          --output-file polaris-report.json \
           --set-exit-code-on-danger
 
     - name: Upload report
       if: always()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: polaris-report
-        path: polaris-report.html
+        path: polaris-report.json
 ```
 
 ## Webhook Admission Controller
@@ -162,10 +169,15 @@ Deploy Polaris as admission webhook to block non-compliant resources:
 
 ```bash
 # Install webhook
-kubectl apply -f https://github.com/FairwindsOps/polaris/releases/latest/download/webhook.yaml
+helm repo add fairwinds-stable https://charts.fairwinds.com/stable
+helm upgrade --install polaris fairwinds-stable/polaris \
+  --namespace polaris \
+  --create-namespace \
+  --set webhook.enable=true \
+  --set dashboard.enable=false
 
 # Verify webhook is running
-kubectl get validatingwebhookconfigurations polaris-webhook
+kubectl get validatingwebhookconfigurations polaris-validate-webhook
 ```
 
 Test webhook enforcement:
@@ -194,7 +206,7 @@ spec:
 
 ```bash
 kubectl apply -f test-deployment.yaml
-# Error: admission webhook "polaris.fairwinds.com" denied the request
+# Error from server: admission webhook "polaris.fairwinds.com" denied the request
 ```
 
 ## Generating Compliance Reports
@@ -202,17 +214,20 @@ kubectl apply -f test-deployment.yaml
 Create detailed reports:
 
 ```bash
-# HTML report
-polaris audit --audit-path k8s/ --format html > compliance-report.html
+# JSON report
+polaris audit --audit-path k8s/ --format json --output-file compliance-report.json
+
+# YAML report
+polaris audit --audit-path k8s/ --format yaml --output-file compliance-report.yaml
 
 # JSON for programmatic processing
-polaris audit --audit-path k8s/ --format json | jq '.Results[] | select(.Results | length > 0)'
+polaris audit --audit-path k8s/ --format json | jq '.. | objects | select(has("Success") and .Success == false)'
 
 # Summary statistics
 polaris audit --audit-path k8s/ --format json | jq '{
   total: .Results | length,
-  danger: [.Results[].Results[] | select(.Severity == "danger")] | length,
-  warning: [.Results[].Results[] | select(.Severity == "warning")] | length
+  danger: [.. | objects | select(has("Success") and .Success == false and .Severity == "danger")] | length,
+  warning: [.. | objects | select(has("Success") and .Success == false and .Severity == "warning")] | length
 }'
 ```
 
