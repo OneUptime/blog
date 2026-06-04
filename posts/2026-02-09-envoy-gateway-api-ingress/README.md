@@ -19,13 +19,13 @@ Start by installing Envoy Gateway in your Kubernetes cluster:
 ```bash
 # Install Envoy Gateway using Helm
 
-helm repo add envoy-gateway https://gateway.envoyproxy.io
-helm repo update
-
-helm install envoy-gateway envoy-gateway/gateway \
+helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
+  --version v1.8.0 \
   --namespace envoy-gateway-system \
-  --create-namespace \
-  --set config.envoyGateway.gateway.controllerName=gateway.envoyproxy.io/gatewayclass-controller
+  --create-namespace
+
+kubectl wait --timeout=5m -n envoy-gateway-system \
+  deployment/envoy-gateway --for=condition=Available
 
 # Verify installation
 kubectl get pods -n envoy-gateway-system
@@ -340,9 +340,9 @@ spec:
       port: 8080
 ```
 
-## Timeout and Retry Policies
+## Timeout Policies
 
-Configure request timeouts and retry behavior:
+Configure request timeouts:
 
 ```yaml
 # timeout-route.yaml
@@ -351,10 +351,6 @@ kind: HTTPRoute
 metadata:
   name: timeout-route
   namespace: default
-  annotations:
-    # Envoy-specific timeout configuration
-    gateway.envoyproxy.io/timeout: "30s"
-    gateway.envoyproxy.io/idle-timeout: "300s"
 spec:
   parentRefs:
   - name: example-gateway
@@ -366,7 +362,6 @@ spec:
     backendRefs:
     - name: api-service
       port: 8080
-    # Use BackendRef timeout policy when available
     timeouts:
       request: 30s
       backendRequest: 25s
@@ -379,24 +374,21 @@ Apply rate limiting policies:
 ```yaml
 # ratelimit-policy.yaml (using Envoy Gateway extension)
 apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: RateLimitPolicy
+kind: BackendTrafficPolicy
 metadata:
   name: api-ratelimit
   namespace: default
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: example-route
-  rateLimits:
-  - clientSelectors:
-    - headers:
-      - name: X-API-Key
-        type: Distinct
-    limits:
-      global:
-        requests: 100
-        unit: Minute
+  rateLimit:
+    local:
+      rules:
+      - limit:
+          requests: 100
+          unit: Minute
 ```
 
 ## Observability and Metrics
@@ -404,12 +396,25 @@ spec:
 Monitor Envoy Gateway:
 
 ```bash
-# View Gateway metrics
+# View Envoy proxy metrics
+export ENVOY_POD_NAME=$(kubectl get pod -n envoy-gateway-system \
+  --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=example-gateway \
+  -o jsonpath='{.items[0].metadata.name}')
+
 kubectl port-forward -n envoy-gateway-system \
-  deployment/envoy-gateway 19000:19000
+  pod/$ENVOY_POD_NAME 19001:19001
+
+curl http://localhost:19001/stats/prometheus
 
 # Access Envoy admin interface
-curl http://localhost:19000/stats
+export ENVOY_DEPLOYMENT=$(kubectl get deploy -n envoy-gateway-system \
+  --selector=gateway.envoyproxy.io/owning-gateway-namespace=default,gateway.envoyproxy.io/owning-gateway-name=example-gateway \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl port-forward -n envoy-gateway-system \
+  deploy/$ENVOY_DEPLOYMENT 19000:19000
+
+curl http://localhost:19000/config_dump
 
 # View Gateway logs
 kubectl logs -n envoy-gateway-system \
@@ -450,14 +455,6 @@ spec:
         - type: File
           file:
             path: /dev/stdout
-  bootstrap:
-    type: Replace
-    value: |
-      admin:
-        address:
-          socket_address:
-            address: 127.0.0.1
-            port_value: 19000
 ---
 # Reference from GatewayClass
 apiVersion: gateway.networking.k8s.io/v1
