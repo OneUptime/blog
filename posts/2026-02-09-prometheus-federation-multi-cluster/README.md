@@ -84,7 +84,7 @@ kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090
 curl 'http://localhost:9090/federate?match[]={__name__=~"cluster:.*"}' | head -20
 ```
 
-The match parameter filters which metrics are exposed. Use it to limit federation to aggregated metrics only.
+The match parameter filters which metrics are returned for that request. Use it in federation scrape configs to pull aggregated metrics only.
 
 ## Deploying the Federation Prometheus
 
@@ -103,6 +103,11 @@ data:
       evaluation_interval: 60s
       external_labels:
         prometheus: federation
+
+    storage:
+      tsdb:
+        retention:
+          time: 90d
 
     scrape_configs:
     # Federate from cluster-east-1
@@ -156,7 +161,7 @@ metadata:
   name: prometheus-federation
   namespace: monitoring
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: prometheus-federation
@@ -167,11 +172,10 @@ spec:
     spec:
       containers:
       - name: prometheus
-        image: prom/prometheus:v2.45.0
+        image: prom/prometheus:v3.12.0
         args:
           - '--config.file=/etc/prometheus/prometheus.yml'
           - '--storage.tsdb.path=/prometheus'
-          - '--storage.tsdb.retention.time=90d'
           - '--web.enable-lifecycle'
         ports:
         - containerPort: 9090
@@ -261,7 +265,7 @@ spec:
               number: 9090
 ```
 
-This exposes only the /federate endpoint publicly with TLS encryption.
+This routes only the /federate path to Prometheus with TLS encryption. Add authentication or network restrictions before exposing it outside trusted networks.
 
 ### VPN Gateway or Service Mesh
 
@@ -292,10 +296,10 @@ Secure federation endpoints with authentication to prevent unauthorized access.
 
 ### Basic Auth
 
-Add basic authentication to Prometheus:
+After protecting the source Prometheus endpoint with basic authentication, configure the federation Prometheus to send credentials:
 
 ```yaml
-# Create basic auth credentials
+# Store the scrape password
 apiVersion: v1
 kind: Secret
 metadata:
@@ -303,7 +307,6 @@ metadata:
   namespace: monitoring
 type: Opaque
 stringData:
-  username: federation
   password: <strong-password>
 ---
 # Update Prometheus config with basic_auth
@@ -400,6 +403,11 @@ spec:
     - record: global_cluster_namespace:kube_pod_info:count
       expr: |
         sum by (cluster, namespace) (cluster_namespace:kube_pod_info:count)
+
+    # Memory by cluster
+    - record: global_cluster:container_memory_working_set_bytes:sum
+      expr: |
+        sum by (cluster) (cluster:container_memory_working_set_bytes:sum)
 ```
 
 ## Setting Up Alerting
@@ -476,13 +484,13 @@ Track federation scrape success and latency:
 
 ```promql
 # Federation scrape success rate
-rate(prometheus_target_scrapes_total{job=~"federate-.*"}[5m])
+avg_over_time(up{job=~"federate-.*"}[5m])
 
 # Federation scrape duration
-prometheus_target_interval_length_seconds{job=~"federate-.*"}
+scrape_duration_seconds{job=~"federate-.*"}
 
 # Samples ingested per cluster
-rate(prometheus_tsdb_head_samples_appended_total[5m])
+sum by (cluster) (scrape_samples_post_metric_relabeling{job=~"federate-.*"})
 ```
 
 Set up alerts for federation failures:
@@ -490,7 +498,7 @@ Set up alerts for federation failures:
 ```yaml
 - alert: FederationScrapeFailing
   expr: |
-    rate(prometheus_target_scrapes_total{job=~"federate-.*"}[5m]) < 0.5
+    avg_over_time(up{job=~"federate-.*"}[5m]) < 0.5
   for: 10m
   labels:
     severity: warning
