@@ -8,11 +8,11 @@ Description: Build a complete Docker-based web scraping environment with Python,
 
 ---
 
-Web scraping projects have a reputation for being fragile. Browser versions change, dependencies conflict, and what works on your laptop breaks on the server. Docker solves these problems by packaging your scraping tools, browsers, and dependencies into a reproducible environment. This guide builds a complete web scraping setup from scratch.
+Web scraping projects have a reputation for being fragile. Browser versions change, dependencies conflict, and what works on your laptop breaks on the server. Docker solves these problems by packaging your scraping tools, browsers, and dependencies into a consistent environment. This guide builds a complete web scraping setup from scratch.
 
 ## Why Docker for Web Scraping?
 
-Scraping projects depend on specific browser versions, language runtimes, system libraries, and often proxy configurations. A scraper that works today might break tomorrow when Chrome updates. Docker freezes these dependencies, giving you reproducible builds that run identically everywhere.
+Scraping projects depend on specific browser versions, language runtimes, system libraries, and often proxy configurations. A scraper that works today might break tomorrow when Chrome updates. Docker packages these dependencies into images that run consistently everywhere; for fully reproducible rebuilds, pin image tags and package versions.
 
 Beyond consistency, Docker also makes it easy to scale scrapers horizontally. Need to scrape 10,000 pages quickly? Spin up multiple container instances and distribute the workload.
 
@@ -45,8 +45,9 @@ FROM python:3.12-slim
 # Install Chrome dependencies and the browser itself
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
-    gnupg2 \
+    gnupg \
     curl \
+    ca-certificates \
     unzip \
     libnss3 \
     libatk-bridge2.0-0 \
@@ -55,8 +56,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm1 \
     libasound2 \
     libxshmfence1 \
-    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg \
+    && chmod a+r /etc/apt/keyrings/google-chrome.gpg \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
     && apt-get clean \
@@ -85,7 +88,7 @@ The requirements file includes the essential scraping libraries:
 requests==2.31.0
 beautifulsoup4==4.12.3
 lxml==5.1.0
-selenium==4.18.1
+selenium==4.44.0
 webdriver-manager==4.0.1
 aiohttp==3.9.3
 fake-useragent==1.4.0
@@ -97,23 +100,26 @@ For browser-based scraping at scale, Selenium Grid lets you run multiple browser
 
 ```yaml
 # docker-compose.yml - Scraping environment with Selenium Grid
-version: "3.8"
-
 services:
   # Selenium Hub distributes browser sessions across nodes
   selenium-hub:
-    image: selenium/hub:4.18
+    image: selenium/hub:4.44.0-20260505
     container_name: selenium-hub
     ports:
       - "4442:4442"
       - "4443:4443"
       - "4444:4444"
+    healthcheck:
+      test: ["CMD", "/opt/bin/check-grid.sh", "--host", "0.0.0.0", "--port", "4444"]
+      interval: 15s
+      timeout: 30s
+      retries: 5
     networks:
       - scrapenet
 
   # Chrome nodes handle the actual browser rendering
   chrome-node:
-    image: selenium/node-chrome:4.18
+    image: selenium/node-chrome:4.44.0-20260505
     depends_on:
       - selenium-hub
     environment:
@@ -133,8 +139,10 @@ services:
   scraper:
     build: .
     depends_on:
-      - selenium-hub
-      - chrome-node
+      selenium-hub:
+        condition: service_healthy
+      chrome-node:
+        condition: service_started
     environment:
       SELENIUM_HUB_URL: http://selenium-hub:4444/wd/hub
       OUTPUT_DIR: /app/output
