@@ -68,7 +68,18 @@ static __always_inline int parse_tcp(void *data, void *data_end,
     if ((*iph)->protocol != IPPROTO_TCP)
         return -1;
 
-    *tcph = (void *)(*iph) + sizeof(struct iphdr);
+    __u32 ip_header_len = (*iph)->ihl * 4;
+    if (ip_header_len < sizeof(struct iphdr))
+        return -1;
+
+    if ((void *)*iph + ip_header_len > data_end)
+        return -1;
+
+    // Ignore non-initial fragments; they may not contain a TCP header.
+    if ((*iph)->frag_off & bpf_htons(IP_MF | IP_OFFSET))
+        return -1;
+
+    *tcph = (void *)(*iph) + ip_header_len;
     if ((void *)(*tcph + 1) > data_end)
         return -1;
 
@@ -214,7 +225,7 @@ int xdp_udp_flood_protect(struct xdp_md *ctx) {
             __u32 key = 0;
             __u64 *drops = bpf_map_lookup_elem(&drop_stats, &key);
             if (drops)
-                __sync_fetch_and_add(drops, 1);
+                (*drops)++;
 
             return XDP_DROP;
         }
@@ -246,13 +257,14 @@ int xdp_size_filter(struct xdp_md *ctx) {
 
     __u32 pkt_size = data_end - data;
 
-    // Drop jumbo packets (possible amplification attack)
-    if (pkt_size > 1500) {
+    // Drop Ethernet frames larger than a standard 1500-byte MTU frame
+    // (XDP length includes the 14-byte Ethernet header, but not the FCS).
+    if (pkt_size > 1514) {
         return XDP_DROP;
     }
 
-    // Drop packets smaller than minimum Ethernet frame
-    if (pkt_size < 64) {
+    // Drop packets smaller than the minimum Ethernet frame without FCS.
+    if (pkt_size < 60) {
         return XDP_DROP;
     }
 
@@ -265,11 +277,23 @@ int xdp_size_filter(struct xdp_md *ctx) {
 Block traffic from known malicious networks using CIDR-based filtering:
 
 ```c
+#include <linux/bpf.h>
+#include <linux/if_ether.h>
+#include <linux/ip.h>
+#include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
+
+struct lpm_key {
+    __u32 prefixlen;
+    __u32 addr;
+};
+
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(type, BPF_MAP_TYPE_LPM_TRIE);
     __uint(max_entries, 10000);
-    __type(key, __u32);  // Network address
-    __type(value, __u32);  // Netmask
+    __uint(map_flags, BPF_F_NO_PREALLOC);
+    __type(key, struct lpm_key);
+    __type(value, __u8);
 } blacklist SEC(".maps");
 
 SEC("xdp")
@@ -290,14 +314,19 @@ int xdp_blacklist(struct xdp_md *ctx) {
 
     __u32 src_ip = iph->saddr;
 
-    // Check against all blacklisted networks
-    __u32 *mask;
-    __u32 network;
+    struct lpm_key key = {
+        .prefixlen = 32,
+        .addr = src_ip,
+    };
 
-    bpf_for_each_map_elem(&blacklist, check_blacklist, &src_ip, 0);
+    __u8 *blocked = bpf_map_lookup_elem(&blacklist, &key);
+    if (blocked)
+        return XDP_DROP;
 
     return XDP_PASS;
 }
+
+char _license[] SEC("license") = "GPL";
 ```
 
 Manage blacklist from user space:
@@ -308,6 +337,11 @@ Manage blacklist from user space:
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 
+struct lpm_key {
+    __u32 prefixlen;
+    __u32 addr;
+};
+
 void add_to_blacklist(int map_fd, const char *cidr) {
     char ip_str[16];
     int prefix_len;
@@ -317,15 +351,18 @@ void add_to_blacklist(int map_fd, const char *cidr) {
     struct in_addr addr;
     inet_pton(AF_INET, ip_str, &addr);
 
-    __u32 network = ntohl(addr.s_addr);
-    __u32 mask = (~0U) << (32 - prefix_len);
-    network &= mask;
+    struct lpm_key key = {
+        .prefixlen = prefix_len,
+        .addr = addr.s_addr
+    };
+    __u8 blocked = 1;
 
-    bpf_map_update_elem(map_fd, &network, &mask, BPF_ANY);
+    bpf_map_update_elem(map_fd, &key, &blocked, BPF_ANY);
     printf("Added %s to blacklist\n", cidr);
 }
 
 int main() {
+    // Use the pinned blacklist map created when the XDP program was loaded.
     int map_fd = bpf_obj_get("/sys/fs/bpf/xdp/blacklist");
 
     // Add malicious networks
@@ -406,25 +443,32 @@ Export metrics to Prometheus:
 
 ```python
 #!/usr/bin/env python3
-from bcc import BPF
-from prometheus_client import start_http_server, Counter
+import json
+import subprocess
 import time
+from prometheus_client import Gauge, start_http_server
 
-# Prometheus metrics
-xdp_drops = Counter('xdp_packets_dropped_total', 'Total XDP dropped packets')
-xdp_passes = Counter('xdp_packets_passed_total', 'Total XDP passed packets')
+xdp_drops = Gauge('xdp_packets_dropped_total', 'Total XDP dropped packets')
 
-# Load BPF program
-b = BPF(src_file="xdp_syn_flood.c")
-
-# Start Prometheus exporter
 start_http_server(8000)
 
 print("Exporting XDP metrics on :8000")
 
 while True:
     try:
-        # Read and export stats
+        output = subprocess.check_output(
+            ["bpftool", "-j", "map", "dump", "name", "drop_stats"],
+            text=True
+        )
+        entries = json.loads(output)
+        total = 0
+        for entry in entries:
+            values = entry.get("values", entry.get("value", []))
+            if isinstance(values, list):
+                total += sum(cpu.get("value", 0) for cpu in values if isinstance(cpu, dict))
+            elif isinstance(values, dict):
+                total += values.get("value", 0)
+        xdp_drops.set(total)
         time.sleep(10)
     except KeyboardInterrupt:
         break
