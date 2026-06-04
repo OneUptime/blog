@@ -8,7 +8,7 @@ Description: Deploy OpenFaaS serverless platform on Kubernetes with automatic sc
 
 ---
 
-OpenFaaS brings serverless functions to Kubernetes with a simple deployment model and powerful scaling capabilities. It automatically scales functions based on load, supports asynchronous invocation through message queues, and provides a developer-friendly CLI. This guide walks you through deploying OpenFaaS with auto-scaling and async processing for production workloads.
+OpenFaaS brings serverless functions to Kubernetes with a simple deployment model and powerful scaling capabilities. It can scale functions based on load, supports asynchronous invocation through message queues, and provides a developer-friendly CLI. This guide walks you through deploying OpenFaaS with auto-scaling and async processing. For production workloads, use OpenFaaS Standard or OpenFaaS for Enterprises.
 
 ## Installing OpenFaaS
 
@@ -18,7 +18,7 @@ Deploy OpenFaaS using arkade or Helm:
 # Using arkade (recommended)
 
 curl -sLS https://get.arkade.dev | sudo sh
-arkade install openfaas
+arkade install openfaas-ce
 
 # Or using Helm
 kubectl create namespace openfaas
@@ -32,6 +32,9 @@ helm upgrade --install openfaas openfaas/openfaas \
   --set functionNamespace=openfaas-fn \
   --set generateBasicAuth=true
 
+# For OpenFaaS Standard or OpenFaaS for Enterprises, create the openfaas-license secret
+# and install the chart with openfaasPro=true in your custom values file.
+
 # Get the gateway password
 PASSWORD=$(kubectl get secret -n openfaas basic-auth -o jsonpath="{.data.basic-auth-password}" | base64 --decode)
 echo "OpenFaaS password: $PASSWORD"
@@ -43,7 +46,7 @@ kubectl port-forward -n openfaas svc/gateway 8080:8080 &
 Install the OpenFaaS CLI:
 
 ```bash
-curl -sSL https://cli.openfaas.com | sudo sh
+curl -sSL https://cli.openfaas.com | sudo -E sh
 
 # Login to OpenFaaS
 echo -n $PASSWORD | faas-cli login --username admin --password-stdin
@@ -103,8 +106,10 @@ functions:
       # Enable auto-scaling
       com.openfaas.scale.min: "1"
       com.openfaas.scale.max: "10"
-      com.openfaas.scale.factor: "20"
-      # Scale to zero (requires faas-idler)
+      com.openfaas.scale.target: "50"
+      com.openfaas.scale.type: "rps"
+      com.openfaas.scale.target-proportion: "0.90"
+      # Scale to zero (OpenFaaS Standard/Enterprise)
       com.openfaas.scale.zero: "true"
     limits:
       cpu: "100m"
@@ -132,7 +137,7 @@ echo '{"name": "OpenFaaS"}' | faas-cli invoke hello-world
 
 ## Configuring Auto-Scaling
 
-OpenFaaS uses Prometheus metrics for auto-scaling. Configure scaling parameters:
+OpenFaaS Standard and OpenFaaS for Enterprises use Prometheus metrics for auto-scaling. Configure scaling parameters:
 
 ```yaml
 # function-with-autoscaling.yml
@@ -158,13 +163,10 @@ functions:
       # Requests per second target per replica
       com.openfaas.scale.target: "50"
 
-      # Scaling factor (requests per second / target)
-      com.openfaas.scale.factor: "20"
-
       # Type of scaling (rps or cpu)
       com.openfaas.scale.type: "rps"
 
-      # Proportional value (percentage)
+      # Proportional value (0.80 means 80% of target)
       com.openfaas.scale.target-proportion: "0.80"
 
     # Resource limits
@@ -193,7 +195,7 @@ watch kubectl get pods -n openfaas-fn
 
 ## Implementing Asynchronous Functions
 
-Configure functions for async invocation:
+Configure the function normally. Async execution is selected by invoking the function through the async route:
 
 ```yaml
 # async-function.yml
@@ -213,9 +215,8 @@ functions:
       com.openfaas.scale.max: "10"
 
     environment:
-      # Configure async
-      async_invocation: "true"
-      max_inflight: "100"
+      # Optional hard concurrency limit for this function
+      max_inflight: "10"
 
       # SMTP settings
       smtp_host: "smtp.example.com"
@@ -299,29 +300,28 @@ curl -X POST http://localhost:8080/async-function/email-sender \
   -d '{"to": "user@example.com", "subject": "Test", "body": "Hello"}'
 ```
 
-## Configuring NATS Streaming for Async Processing
+## Configuring NATS for Async Processing
 
 OpenFaaS uses NATS for async invocation. Scale the queue worker:
 
 ```bash
-# Scale queue-worker for higher throughput
+# Scale queue-worker for higher throughput until the next Helm upgrade
 kubectl scale -n openfaas deployment/queue-worker --replicas=5
 ```
 
-Configure queue settings:
+Configure persistent queue settings through the OpenFaaS Helm values:
 
 ```yaml
-# queue-worker-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: queue-worker-config
-  namespace: openfaas
-data:
-  max_inflight: "100"
-  ack_wait: "60s"
-  max_retry_attempts: "5"
-  max_retry_wait: "300s"
+# values-custom.yaml
+queueWorker:
+  replicas: 5
+  ackWait: "60s"
+
+# OpenFaaS Standard/Enterprise queue-worker settings
+queueWorkerPro:
+  maxInflight: 50
+  maxRetryAttempts: "5"
+  maxRetryWait: "300s"
 ```
 
 ## Building Long-Running Functions
@@ -475,8 +475,7 @@ Key metrics to monitor:
 
 Create Grafana dashboard:
 
-```yaml
-# grafana-dashboard.json
+```json
 {
   "dashboard": {
     "title": "OpenFaaS Functions",
@@ -493,7 +492,7 @@ Create Grafana dashboard:
         "title": "Function Duration (P99)",
         "targets": [
           {
-            "expr": "histogram_quantile(0.99, rate(gateway_functions_seconds_bucket[5m]))"
+            "expr": "histogram_quantile(0.99, sum(rate(gateway_functions_seconds_bucket[5m])) by (le, function_name))"
           }
         ]
       },
@@ -510,7 +509,7 @@ Create Grafana dashboard:
 }
 ```
 
-## Implementing Circuit Breakers
+## Implementing Retries and Timeouts
 
 Add resilience with timeouts and retries:
 
@@ -519,7 +518,7 @@ Add resilience with timeouts and retries:
 import json
 import requests
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
+from urllib3.util.retry import Retry
 
 def create_session():
     """Create HTTP session with retries"""
@@ -535,7 +534,7 @@ def create_session():
     return session
 
 def handle(req):
-    """Call external API with circuit breaker"""
+    """Call external API with retries and a timeout"""
     session = create_session()
 
     try:
