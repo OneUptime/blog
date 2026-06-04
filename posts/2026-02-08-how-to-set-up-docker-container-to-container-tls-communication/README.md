@@ -145,7 +145,7 @@ server {
 
     # CA certificate for verifying client certificates
     ssl_client_certificate /etc/nginx/certs/ca-cert.pem;
-    ssl_verify_client on;
+    ssl_verify_client optional;
 
     # TLS protocol and cipher settings
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -153,13 +153,15 @@ server {
     ssl_prefer_server_ciphers on;
 
     location / {
-        return 200 '{"status": "ok", "client_cn": "$ssl_client_s_dn_cn"}';
+        if ($ssl_client_verify != SUCCESS) {
+            return 403;
+        }
+
+        return 200 '{"status": "ok", "client_dn": "$ssl_client_s_dn"}';
         add_header Content-Type application/json;
     }
 
     location /health {
-        # Health check endpoint does not require client cert
-        ssl_verify_client off;
         return 200 '{"healthy": true}';
         add_header Content-Type application/json;
     }
@@ -187,6 +189,7 @@ services:
 
   api-client:
     image: curlimages/curl:latest
+    user: root
     volumes:
       - ./client/client-cert.pem:/certs/client-cert.pem:ro
       - ./client/client-key.pem:/certs/client-key.pem:ro
@@ -194,21 +197,6 @@ services:
     networks:
       - secure-network
     entrypoint: ["sleep", "3600"]
-
-  db-service:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: myapp
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: secret
-      POSTGRES_HOST_AUTH_METHOD: cert
-    volumes:
-      - ./server/server-cert.pem:/var/lib/postgresql/server-cert.pem:ro
-      - ./server/server-key.pem:/var/lib/postgresql/server-key.pem:ro
-      - ./ca/ca-cert.pem:/var/lib/postgresql/ca-cert.pem:ro
-      - ./pg-hba.conf:/var/lib/postgresql/pg_hba.conf:ro
-    networks:
-      - secure-network
 
 networks:
   secure-network:
@@ -224,23 +212,23 @@ Start the services and test:
 docker compose up -d
 
 # Test mTLS connection from the client container
-docker exec api-client curl -s \
+docker compose exec api-client curl -s \
   --cert /certs/client-cert.pem \
   --key /certs/client-key.pem \
   --cacert /certs/ca-cert.pem \
   https://web-service:443/
 
-# Expected output: {"status": "ok", "client_cn": "api-client"}
+# Expected output: {"status": "ok", "client_dn": "CN=api-client,O=MyOrg,L=SanFrancisco,ST=California,C=US"}
 ```
 
 Test that connections without valid client certificates are rejected:
 
 ```bash
 # This should fail because no client cert is provided
-docker exec api-client curl -s \
+docker compose exec api-client curl -s \
   --cacert /certs/ca-cert.pem \
   https://web-service:443/
-# Expected: 400 No required SSL certificate was sent
+# Expected: 403 Forbidden
 ```
 
 ## Certificate Rotation
@@ -268,7 +256,7 @@ openssl x509 -req -days 365 \
   -extensions v3_ext
 
 # Reload nginx without restarting the container
-docker exec web-service nginx -s reload
+docker compose exec web-service nginx -s reload
 
 echo "Certificate rotated and nginx reloaded"
 ```
@@ -301,9 +289,12 @@ services:
   web-service:
     image: nginx:alpine
     secrets:
-      - ca-cert
-      - server-cert
-      - server-key
+      - source: ca-cert
+        target: /etc/nginx/certs/ca-cert.pem
+      - source: server-cert
+        target: /etc/nginx/certs/server-cert.pem
+      - source: server-key
+        target: /etc/nginx/certs/server-key.pem
     configs:
       - source: nginx-tls-config
         target: /etc/nginx/conf.d/default.conf
@@ -327,11 +318,13 @@ Confirm that traffic is actually encrypted:
 
 ```bash
 # Capture traffic on the Docker bridge network
-sudo tcpdump -i br-$(docker network inspect secure-network --format '{{.Id}}' | cut -c1-12) \
+NETWORK_ID=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}' \
+  "$(docker compose ps -q web-service)")
+sudo tcpdump -i br-${NETWORK_ID:0:12} \
   -w /tmp/docker-tls-capture.pcap -c 100
 
 # In another terminal, make a request
-docker exec api-client curl -s \
+docker compose exec api-client curl -s \
   --cert /certs/client-cert.pem \
   --key /certs/client-key.pem \
   --cacert /certs/ca-cert.pem \
@@ -355,7 +348,7 @@ openssl x509 -in server/server-cert.pem -noout -dates
 openssl verify -CAfile ca/ca-cert.pem server/server-cert.pem
 
 # Test TLS connection with verbose output
-docker exec api-client curl -v \
+docker compose exec api-client curl -v \
   --cert /certs/client-cert.pem \
   --key /certs/client-key.pem \
   --cacert /certs/ca-cert.pem \
