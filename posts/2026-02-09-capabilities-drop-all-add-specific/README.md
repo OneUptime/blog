@@ -267,12 +267,11 @@ spec:
     runAsNonRoot: true
   containers:
   - name: debug
-    image: ubuntu:20.04
+    image: debug-tools:1.0
     command: ["bash", "-c"]
     args:
     - |
-      # Install capsh if not available
-      apt-get update && apt-get install -y libcap2-bin
+      # Use a debug image that already includes capsh and nc
 
       echo "=== Current Capabilities ==="
       capsh --print
@@ -337,7 +336,7 @@ spec:
     emptyDir: {}
 ```
 
-The restricted standard permits adding specific capabilities after dropping all.
+The restricted standard permits adding NET_BIND_SERVICE after dropping all.
 
 ## Capabilities in Init Containers
 
@@ -410,14 +409,12 @@ spec:
           capabilities:
             drop:
             - ALL
-            add:
-            - SYS_TIME
         ports:
         - containerPort: 9100
           hostPort: 9100
 ```
 
-Even with host namespaces, drop all capabilities and add only required ones.
+Even with host namespaces, drop all capabilities and add none unless required.
 
 ## Documenting Capability Decisions
 
