@@ -27,6 +27,12 @@ istioctl install --set components.egressGateways[0].name=istio-egressgateway \
   --set components.egressGateways[0].enabled=true
 ```
 
+Enable sidecar injection in the namespace where the sample client will run:
+
+```bash
+kubectl label namespace default istio-injection=enabled --overwrite
+```
+
 Verify the egress gateway is running:
 
 ```bash
@@ -69,18 +75,18 @@ Define the external service you want to access through the egress gateway:
 
 ```yaml
 # serviceentry-external.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
   namespace: default
 spec:
   hosts:
-  - api.external-service.com
+  - api.github.com
   ports:
   - number: 443
-    name: https
-    protocol: HTTPS
+    name: tls
+    protocol: TLS
   location: MESH_EXTERNAL
   resolution: DNS
 ```
@@ -89,7 +95,7 @@ spec:
 kubectl apply -f serviceentry-external.yaml
 ```
 
-This tells Istio that api.external-service.com is an external service. Without additional configuration, pods still connect directly.
+This tells Istio that api.github.com is an external service. Without additional configuration, pods still connect directly.
 
 ## Configuring Gateway for Egress Traffic
 
@@ -97,7 +103,7 @@ Create a Gateway resource for the egress gateway:
 
 ```yaml
 # gateway-egress.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: egress-gateway
@@ -108,10 +114,10 @@ spec:
   servers:
   - port:
       number: 443
-      name: https
-      protocol: HTTPS
+      name: tls
+      protocol: TLS
     hosts:
-    - api.external-service.com
+    - api.github.com
     tls:
       mode: PASSTHROUGH
 ```
@@ -128,14 +134,24 @@ Configure routing from pods to the egress gateway and from the gateway to the ex
 
 ```yaml
 # virtualservice-egress.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: egressgateway-for-github
+  namespace: default
+spec:
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  subsets:
+  - name: github
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api-routing
   namespace: default
 spec:
   hosts:
-  - api.external-service.com
+  - api.github.com
   gateways:
   - mesh
   - egress-gateway
@@ -146,10 +162,11 @@ spec:
       - mesh
       port: 443
       sniHosts:
-      - api.external-service.com
+      - api.github.com
     route:
     - destination:
         host: istio-egressgateway.istio-system.svc.cluster.local
+        subset: github
         port:
           number: 443
   # Route from egress gateway to external service
@@ -158,10 +175,10 @@ spec:
       - egress-gateway
       port: 443
       sniHosts:
-      - api.external-service.com
+      - api.github.com
     route:
     - destination:
-        host: api.external-service.com
+        host: api.github.com
         port:
           number: 443
       weight: 100
@@ -178,13 +195,13 @@ This creates a two-hop route: client sidecar -> egress gateway -> external servi
 Test that traffic flows through the egress gateway:
 
 ```bash
-kubectl exec -it deploy/client -- curl -v https://api.external-service.com/endpoint
+kubectl exec -it deploy/client -- curl -v https://api.github.com/
 ```
 
 Check egress gateway logs to verify traffic passed through:
 
 ```bash
-kubectl logs -n istio-system -l istio=egressgateway -c istio-proxy | grep "api.external-service.com"
+kubectl logs -n istio-system -l istio=egressgateway -c istio-proxy | grep "api.github.com"
 ```
 
 You should see access logs for the external service request.
@@ -195,7 +212,7 @@ Configure multiple external services through the same gateway:
 
 ```yaml
 # serviceentry-multiple.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-services
@@ -207,12 +224,12 @@ spec:
   - storage.googleapis.com
   ports:
   - number: 443
-    name: https
-    protocol: HTTPS
+    name: tls
+    protocol: TLS
   location: MESH_EXTERNAL
   resolution: DNS
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: egress-gateway
@@ -223,8 +240,8 @@ spec:
   servers:
   - port:
       number: 443
-      name: https
-      protocol: HTTPS
+      name: tls
+      protocol: TLS
     hosts:
     - "*.github.com"
     - "*.stripe.com"
@@ -232,7 +249,17 @@ spec:
     tls:
       mode: PASSTHROUGH
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: egressgateway-for-external-services
+  namespace: default
+spec:
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  subsets:
+  - name: external-services
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-services-routing
@@ -257,6 +284,7 @@ spec:
     route:
     - destination:
         host: istio-egressgateway.istio-system.svc.cluster.local
+        subset: external-services
         port:
           number: 443
   - match:
@@ -265,27 +293,39 @@ spec:
       port: 443
       sniHosts:
       - api.github.com
-      - api.stripe.com
-      - storage.googleapis.com
     route:
     - destination:
         host: api.github.com
         port:
           number: 443
-      weight: 33
+      weight: 100
+  - match:
+    - gateways:
+      - egress-gateway
+      port: 443
+      sniHosts:
+      - api.stripe.com
+    route:
     - destination:
         host: api.stripe.com
         port:
           number: 443
-      weight: 33
+      weight: 100
+  - match:
+    - gateways:
+      - egress-gateway
+      port: 443
+      sniHosts:
+      - storage.googleapis.com
+    route:
     - destination:
         host: storage.googleapis.com
         port:
           number: 443
-      weight: 34
+      weight: 100
 ```
 
-The VirtualService needs separate destination entries for each host when routing from the gateway.
+The VirtualService needs separate SNI match rules for each host when routing from the gateway. Weighted destinations would load balance one incoming SNI match across different external services, which is not what you want here.
 
 ## Applying Authorization Policies
 
@@ -293,7 +333,7 @@ Control which services can access external APIs:
 
 ```yaml
 # authz-egress.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: egress-gateway-access
@@ -312,33 +352,30 @@ spec:
         - "cluster.local/ns/default/sa/notification-service"
     to:
     - operation:
-        hosts:
-        - "api.stripe.com"
-        - "api.sendgrid.com"
+        ports:
+        - "443"
 ```
 
 ```bash
 kubectl apply -f authz-egress.yaml
 ```
 
-Only payment-service and notification-service can access external APIs through the egress gateway.
+When mutual TLS is enabled and source principals are available, only payment-service and notification-service can use the egress gateway on port 443. The ServiceEntry and VirtualService SNI matches still control which external hosts are routed through the gateway.
 
 ## Monitoring Egress Traffic
 
 Query Prometheus for egress gateway metrics:
 
 ```promql
-# Request rate through egress gateway
-sum(rate(istio_requests_total{
+# TCP connection rate through egress gateway
+sum(rate(istio_tcp_connections_opened_total{
   destination_workload="istio-egressgateway"
 }[5m])) by (destination_service_name)
 
-# Egress gateway response times
-histogram_quantile(0.95,
-  sum(rate(istio_request_duration_milliseconds_bucket{
-    destination_workload="istio-egressgateway"
-  }[5m])) by (le, destination_service_name)
-)
+# Bytes sent by the egress gateway
+sum(rate(istio_tcp_sent_bytes_total{
+  source_workload="istio-egressgateway"
+}[5m])) by (destination_service_name)
 ```
 
 View egress traffic in Kiali dashboard to visualize which services call which external APIs.
@@ -359,27 +396,27 @@ spec:
     labels:
       istio: egressgateway
   configPatches:
-  - applyTo: HTTP_FILTER
+  - applyTo: NETWORK_FILTER
     match:
       context: GATEWAY
       listener:
         filterChain:
           filter:
-            name: "envoy.filters.network.http_connection_manager"
+            name: "envoy.filters.network.tcp_proxy"
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.filters.http.local_ratelimit
+        name: envoy.filters.network.local_ratelimit
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-          stat_prefix: http_local_rate_limiter
+          "@type": type.googleapis.com/envoy.extensions.filters.network.local_ratelimit.v3.LocalRateLimit
+          stat_prefix: egress_connection_limiter
           token_bucket:
             max_tokens: 100
             tokens_per_fill: 100
             fill_interval: 60s
 ```
 
-This limits egress traffic to 100 requests per minute through the gateway.
+This limits passthrough TLS traffic to 100 new connections per minute through each gateway proxy. Request-level HTTP rate limiting requires the gateway to terminate or originate TLS so Envoy can see HTTP requests.
 
 ## Conclusion
 
