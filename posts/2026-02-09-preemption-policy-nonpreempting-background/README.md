@@ -68,7 +68,7 @@ preemptionPolicy: Never
 globalDefault: false
 description: "Low priority batch jobs"
 ---
-# Best effort - can be preempted by anything
+# Best effort - can be preempted by higher-priority pods
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
@@ -256,7 +256,12 @@ data:
     - name: preemption-monitoring
       rules:
       - alert: NonPreemptingPodsPending
-        expr: kube_pod_status_phase{phase="Pending", priority_class="batch-high"} > 10
+        expr: |
+          sum(
+            kube_pod_status_phase{phase="Pending"}
+            * on(namespace, pod, uid) group_left(priority_class)
+              kube_pod_info{priority_class="batch-high"}
+          ) > 10
         for: 30m
         labels:
           severity: warning
@@ -265,8 +270,9 @@ data:
           description: "Batch workloads waiting for resources"
 
       - alert: ClusterCapacityLow
-        expr: sum(kube_node_status_allocatable{resource="cpu"}) -
-              sum(kube_pod_container_resource_requests{resource="cpu"}) < 10
+        expr: |
+          sum(kube_node_status_allocatable{resource="cpu", unit="core"}) -
+          sum(kube_pod_container_resource_requests{resource="cpu", unit="core"}) < 10
         labels:
           severity: warning
         annotations:
@@ -365,7 +371,7 @@ Test preemption scenarios in staging:
 kubectl run prod-app --image=nginx --overrides='{"spec":{"priorityClassName":"production"}}'
 
 # Create batch pod that should wait
-kubectl run batch-job --image=busybox --overrides='{"spec":{"priorityClassName":"batch-high"}}' -- sleep 3600
+kubectl run batch-job --image=busybox --overrides='{"spec":{"priorityClassName":"batch-high"}}' --command -- sleep 3600
 
 # Verify batch pod doesn't evict production pod
 kubectl get pods -w
@@ -385,6 +391,7 @@ spec:
   template:
     spec:
       priorityClassName: batch-low
+      restartPolicy: OnFailure
       containers:
       - name: worker
         image: worker:1.0
