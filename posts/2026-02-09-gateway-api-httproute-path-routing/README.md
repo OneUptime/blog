@@ -8,14 +8,14 @@ Description: Configure HTTPRoute resources in the Kubernetes Gateway API to impl
 
 ---
 
-The Kubernetes Gateway API provides HTTPRoute as a powerful, expressive resource for HTTP traffic routing. Unlike Ingress, which has limited routing capabilities, HTTPRoute supports sophisticated matching rules including path prefixes, regular expressions, headers, query parameters, and weighted traffic distribution. This guide shows you how to leverage HTTPRoute for complex routing scenarios.
+The Kubernetes Gateway API provides HTTPRoute as a powerful, expressive resource for HTTP traffic routing. Unlike Ingress, which has limited routing capabilities, HTTPRoute supports sophisticated matching rules including path prefixes, headers, query parameters, weighted traffic distribution, and implementation-specific regular expressions. This guide shows you how to leverage HTTPRoute for complex routing scenarios.
 
 ## Installing Gateway API
 
 First, install the Gateway API CRDs in your cluster:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+kubectl apply --server-side=true -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 ```
 
 Install a Gateway controller. This example uses Kong as the controller:
@@ -24,8 +24,7 @@ Install a Gateway controller. This example uses Kong as the controller:
 helm repo add kong https://charts.konghq.com
 helm repo update
 
-helm install kong kong/ingress --namespace kong --create-namespace \
-  --set gateway.enabled=true
+helm install kong kong/ingress --namespace kong --create-namespace
 ```
 
 Verify the installation:
@@ -37,11 +36,20 @@ kubectl get gateway -A
 
 ## Creating a Basic Gateway
 
-Define a Gateway that HTTPRoutes will attach to:
+Define a GatewayClass and Gateway that HTTPRoutes will attach to:
 
 ```yaml
 # gateway.yaml
 
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: kong
+  annotations:
+    konghq.com/gatewayclass-unmanaged: "true"
+spec:
+  controllerName: konghq.com/kic-gateway-controller
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -56,17 +64,6 @@ spec:
     allowedRoutes:
       namespaces:
         from: All
-  - name: https
-    protocol: HTTPS
-    port: 443
-    allowedRoutes:
-      namespaces:
-        from: All
-    tls:
-      mode: Terminate
-      certificateRefs:
-      - kind: Secret
-        name: production-tls
 ```
 
 Apply the Gateway:
@@ -98,7 +95,7 @@ spec:
   hostnames:
   - "api.example.com"
   rules:
-  # Route /users/* to user service
+  # Route /users and /users/... to user service
   - matches:
     - path:
         type: PathPrefix
@@ -106,7 +103,7 @@ spec:
     backendRefs:
     - name: user-service
       port: 8080
-  # Route /products/* to product service
+  # Route /products and /products/... to product service
   - matches:
     - path:
         type: PathPrefix
@@ -114,7 +111,7 @@ spec:
     backendRefs:
     - name: product-service
       port: 8080
-  # Route /orders/* to order service
+  # Route /orders and /orders/... to order service
   - matches:
     - path:
         type: PathPrefix
@@ -132,7 +129,7 @@ spec:
       port: 8080
 ```
 
-Deploy the backend services:
+Create Service objects for your existing backend Pods:
 
 ```yaml
 # backend-services.yaml
@@ -187,14 +184,14 @@ kubectl apply -f basic-httproute.yaml
 Test the routing:
 
 ```bash
-# Get gateway IP
-GATEWAY_IP=$(kubectl get gateway production-gateway -o jsonpath='{.status.addresses[0].value}')
+# Get Kong proxy address
+GATEWAY_ADDRESS=$(kubectl get svc --namespace kong kong-gateway-proxy -o jsonpath='{range .status.loadBalancer.ingress[0]}{@.ip}{@.hostname}{end}')
 
 # Test different paths
-curl -H "Host: api.example.com" http://$GATEWAY_IP/users
-curl -H "Host: api.example.com" http://$GATEWAY_IP/products
-curl -H "Host: api.example.com" http://$GATEWAY_IP/orders
-curl -H "Host: api.example.com" http://$GATEWAY_IP/other
+curl -H "Host: api.example.com" http://$GATEWAY_ADDRESS/users
+curl -H "Host: api.example.com" http://$GATEWAY_ADDRESS/products
+curl -H "Host: api.example.com" http://$GATEWAY_ADDRESS/orders
+curl -H "Host: api.example.com" http://$GATEWAY_ADDRESS/other
 ```
 
 ## Exact Path Matching
@@ -297,8 +294,8 @@ spec:
 Test header-based routing:
 
 ```bash
-curl -H "Host: api.example.com" -H "X-API-Version: v2" http://$GATEWAY_IP/
-curl -H "Host: api.example.com" -H "X-API-Version: v1" http://$GATEWAY_IP/
+curl -H "Host: api.example.com" -H "X-API-Version: v2" http://$GATEWAY_ADDRESS/
+curl -H "Host: api.example.com" -H "X-API-Version: v1" http://$GATEWAY_ADDRESS/
 ```
 
 ## Query Parameter Routing
