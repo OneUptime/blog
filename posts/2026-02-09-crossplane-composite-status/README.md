@@ -98,7 +98,7 @@ This XRD defines several status fields that will be populated from managed resou
 
 ## Populating Status from Managed Resources
 
-Use status patches in compositions to copy data from managed resources to composite status.
+Use status patches in a Function Patch and Transform composition to copy data from managed resources to composite status.
 
 ```yaml
 # composition-database-status.yaml
@@ -110,57 +110,79 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: Database
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-            allocatedStorage: 100
-      patches:
-        # Copy endpoint to composite status
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.endpoint
-          toFieldPath: status.endpoint
-          policy:
-            fromFieldPath: Optional
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
+                  allocatedStorage: 100
+            patches:
+              # Copy endpoint to composite status
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.address
+                toFieldPath: status.endpoint
+                policy:
+                  fromFieldPath: Optional
 
-        # Copy port to composite status
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.port
-          toFieldPath: status.port
-          policy:
-            fromFieldPath: Optional
+              # Copy port to composite status
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.port
+                toFieldPath: status.port
+                policy:
+                  fromFieldPath: Optional
 
-        # Map RDS status to our simplified state
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.dbInstanceStatus
-          toFieldPath: status.state
-          transforms:
-            - type: map
-              map:
-                creating: provisioning
-                available: available
-                modifying: modifying
-                backing-up: available
-                deleting: provisioning
-                failed: failed
-                *: provisioning
+              # Map RDS status to our simplified state
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.status
+                toFieldPath: status.state
+                transforms:
+                  - type: match
+                    match:
+                      patterns:
+                        - type: literal
+                          literal: creating
+                          result: provisioning
+                        - type: literal
+                          literal: available
+                          result: available
+                        - type: literal
+                          literal: modifying
+                          result: modifying
+                        - type: literal
+                          literal: backing-up
+                          result: available
+                        - type: literal
+                          literal: deleting
+                          result: provisioning
+                        - type: literal
+                          literal: failed
+                          result: failed
+                      fallbackTo: Value
+                      fallbackValue: provisioning
 
-        # Copy storage metrics
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.allocatedStorage
-          toFieldPath: status.storageUsed
-          transforms:
-            - type: string
-              string:
-                type: Format
-                fmt: "%dGi"
+              # Copy allocated storage
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.allocatedStorage
+                toFieldPath: status.storageUsed
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%vGi"
 ```
 
 When the RDS instance updates, Crossplane copies its status fields to the composite resource.
@@ -179,76 +201,80 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: ApplicationStack
-  resources:
-    # Database
-    - name: database
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-      patches:
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.endpoint
-          toFieldPath: status.database.endpoint
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          # Database
+          - name: database
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
+            patches:
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.address
+                toFieldPath: status.database.endpoint
 
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.dbInstanceStatus
-          toFieldPath: status.database.state
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.status
+                toFieldPath: status.database.state
 
-    # Cache
-    - name: cache
-      base:
-        apiVersion: cache.aws.upbound.io/v1beta1
-        kind: Cluster
-        spec:
-          forProvider:
-            region: us-west-2
-            cacheNodeType: cache.t3.micro
-            engine: redis
-            numCacheNodes: 1
-      patches:
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.cacheNodes[0].address
-          toFieldPath: status.cache.endpoint
+          # Cache
+          - name: cache
+            base:
+              apiVersion: elasticache.aws.upbound.io/v1beta1
+              kind: Cluster
+              spec:
+                forProvider:
+                  region: us-west-2
+                  cacheNodeType: cache.t3.micro
+                  engine: redis
+                  numCacheNodes: 1
+            patches:
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.cacheNodes[0].address
+                toFieldPath: status.cache.endpoint
 
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.cacheClusterStatus
-          toFieldPath: status.cache.state
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.cacheClusterStatus
+                toFieldPath: status.cache.state
 
-    # Load Balancer
-    - name: load-balancer
-      base:
-        apiVersion: elbv2.aws.upbound.io/v1beta1
-        kind: LB
-        spec:
-          forProvider:
-            region: us-west-2
-            loadBalancerType: application
-      patches:
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.dnsName
-          toFieldPath: status.loadBalancer.url
-          transforms:
-            - type: string
-              string:
-                type: Format
-                fmt: "https://%s"
-
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.state.code
-          toFieldPath: status.loadBalancer.state
+          # Load Balancer
+          - name: load-balancer
+            base:
+              apiVersion: elbv2.aws.upbound.io/v1beta1
+              kind: LB
+              spec:
+                forProvider:
+                  region: us-west-2
+                  loadBalancerType: application
+            patches:
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.dnsName
+                toFieldPath: status.loadBalancer.url
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "https://%s"
 ```
 
 The composite status includes sections for each component.
 
 ## Computing Derived Status Fields
 
-Calculate status values based on multiple inputs.
+Calculate status values based on managed-resource fields.
 
 ```yaml
 # composition-computed-status.yaml
@@ -260,50 +286,58 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: Database
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-            allocatedStorage: 100
-      patches:
-        # Calculate storage utilization percentage
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.allocatedStorage
-          toFieldPath: status.storageTotal
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
+                  allocatedStorage: 100
+            patches:
+              # Expose storage limits
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.allocatedStorage
+                toFieldPath: status.storageTotal
 
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.maxAllocatedStorage
-          toFieldPath: status.storageMax
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.maxAllocatedStorage
+                toFieldPath: status.storageMax
 
-        # Compute connection string
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.endpoint
-          toFieldPath: status.connectionString
-          transforms:
-            - type: string
-              string:
-                type: Format
-                fmt: "postgresql://user:password@%s:5432/postgres"
+              # Compute connection string
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.address
+                toFieldPath: status.connectionString
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "postgresql://user:password@%s:5432/postgres"
 
-        # Calculate cost estimate
-        - type: ToCompositeFieldPath
-          fromFieldPath: spec.forProvider.instanceClass
-          toFieldPath: status.estimatedMonthlyCost
-          transforms:
-            - type: map
-              map:
-                db.t3.small: "$50"
-                db.t3.medium: "$100"
-                db.t3.large: "$200"
-                db.r5.large: "$500"
-                db.r5.xlarge: "$1000"
+              # Calculate cost estimate
+              - type: ToCompositeFieldPath
+                fromFieldPath: spec.forProvider.instanceClass
+                toFieldPath: status.estimatedMonthlyCost
+                transforms:
+                  - type: map
+                    map:
+                      db.t3.small: "$50"
+                      db.t3.medium: "$100"
+                      db.t3.large: "$200"
+                      db.r5.large: "$500"
+                      db.r5.xlarge: "$1000"
 ```
 
 Transforms compute derived values like connection strings and cost estimates.
@@ -322,35 +356,40 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: Database
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
-      # Define readiness checks
-      readinessChecks:
-        - type: MatchString
-          fieldPath: status.atProvider.dbInstanceStatus
-          matchString: available
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
+            # Define readiness checks
+            readinessChecks:
+              - type: MatchString
+                fieldPath: status.atProvider.status
+                matchString: available
 
-        - type: NonEmpty
-          fieldPath: status.atProvider.endpoint
-
-        - type: None
-          # Always ready (useful for testing)
+              - type: NonEmpty
+                fieldPath: status.atProvider.address
 ```
 
 The composite resource only reports ready when all checks pass.
 
 ## Using Conditions for Health Reporting
 
-Set custom conditions based on resource state.
+Do not define `status.conditions` in the XRD schema. Crossplane owns `Ready` and `Synced`, and `status.conditions` is a reserved field.
 
 ```yaml
 # xrd-with-conditions.yaml
@@ -374,23 +413,9 @@ spec:
             status:
               type: object
               properties:
-                conditions:
-                  type: array
-                  items:
-                    type: object
-                    required: ["type", "status"]
-                    properties:
-                      type:
-                        type: string
-                      status:
-                        type: string
-                      reason:
-                        type: string
-                      message:
-                        type: string
-                      lastTransitionTime:
-                        type: string
-                        format: date-time
+                backupStatus:
+                  type: string
+                  enum: ["healthy", "degraded", "failed"]
 ```
 
 Use a composition function to set conditions based on resource state.
@@ -409,52 +434,55 @@ spec:
   pipeline:
     - step: provision-resources
       functionRef:
-        name: function-auto-ready
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-west-2
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.t3.medium
 
     - step: set-conditions
       functionRef:
-        name: function-set-conditions
+        name: function-go-templating
       input:
-        apiVersion: conditions.fn.crossplane.io/v1beta1
-        kind: SetConditions
-        spec:
-          conditions:
-            - type: DatabaseReady
-              status: "True"
-              reason: Available
-              message: Database is available and accepting connections
-              condition: .resources[0].resource.status.atProvider.dbInstanceStatus == "available"
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- if and .observed.resources (index .observed.resources "rds-instance") }}
+            {{- $rds := index .observed.resources "rds-instance" }}
+            {{- if eq $rds.resource.status.atProvider.status "available" }}
+            apiVersion: meta.gotemplating.fn.crossplane.io/v1alpha1
+            kind: ClaimConditions
+            conditions:
+              - type: DatabaseAvailable
+                status: "True"
+                reason: Available
+                message: Database is available and accepting connections
+                target: CompositeAndClaim
+            {{- end }}
+            {{- end }}
 
-            - type: BackupsHealthy
-              status: "True"
-              reason: BackupsCompleting
-              message: Automated backups are completing successfully
-              condition: .resources[0].resource.status.atProvider.latestRestorableTime != null
-
-            - type: HighAvailability
-              status: "True"
-              reason: MultiAZEnabled
-              message: Database is deployed across multiple availability zones
-              condition: .resources[0].resource.spec.forProvider.multiAz == true
-
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-west-2
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.t3.medium
+    - step: automatically-detect-ready-composed-resources
+      functionRef:
+        name: function-auto-ready
 ```
 
 Conditions provide detailed health information beyond simple ready status.
 
 ## Status Propagation to Claims
 
-Claims automatically inherit composite resource status.
+For legacy v1 XRDs that define `claimNames`, claims inherit composite resource status.
 
 ```yaml
 # database-claim.yaml
@@ -480,48 +508,91 @@ The claim's status includes all fields from the composite resource status.
 
 ## Monitoring Status Changes
 
-Track status changes over time.
+Track status changes over time. Crossplane does not expose arbitrary custom status fields as Prometheus labels by default; use kube-state-metrics custom resource state metrics or a custom exporter if you want Prometheus metrics from XR status fields.
 
 ```yaml
-# prometheus-status-metrics.yaml
-apiVersion: v1
-kind: ConfigMap
+# kube-state-metrics-database-status.yaml
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: crossplane-status-metrics
+  name: kube-state-metrics
   namespace: monitoring
-data:
-  rules.yaml: |
-    groups:
-      - name: crossplane-status
-        rules:
-          # Track database state distribution
-          - record: crossplane_database_state_total
-            expr: |
-              count by (state) (
-                crossplane_composite_resource_info{kind="Database"}
-              )
+spec:
+  selector:
+    matchLabels:
+      app: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        app: kube-state-metrics
+    spec:
+      containers:
+        - name: kube-state-metrics
+          image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0
+          args:
+            - --custom-resource-state-config
+            - |
+              kind: CustomResourceStateMetrics
+              spec:
+                resources:
+                  - groupVersionKind:
+                      group: platform.example.com
+                      version: "v1alpha1"
+                      kind: Database
+                    labelsFromPath:
+                      name: [metadata, name]
+                    metrics:
+                      - name: "database_state"
+                        help: "Current database state"
+                        each:
+                          type: StateSet
+                          stateSet:
+                            labelName: state
+                            path: [status, state]
+                            list: [provisioning, available, modifying, failed]
+```
 
-          # Alert on failed databases
-          - alert: CrossplaneDatabaseFailed
-            expr: |
-              crossplane_composite_resource_info{kind="Database",state="failed"} > 0
-            for: 10m
-            labels:
-              severity: critical
-            annotations:
-              summary: "Database in failed state"
-              description: "Database {{ $labels.name }} is in failed state"
+Create alerting rules from the exported state metric.
 
-          # Alert on prolonged provisioning
-          - alert: CrossplaneDatabaseProvisioningSlow
-            expr: |
-              (time() - crossplane_composite_resource_created_timestamp{kind="Database"}) > 1800
-              and crossplane_composite_resource_info{kind="Database",state="provisioning"}
-            labels:
-              severity: warning
-            annotations:
-              summary: "Database provisioning taking too long"
-              description: "Database {{ $labels.name }} has been provisioning for over 30 minutes"
+```yaml
+# prometheus-status-rules.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: crossplane-database-status
+  namespace: monitoring
+spec:
+  groups:
+    - name: crossplane-status
+      rules:
+        # Track database state distribution
+        - record: crossplane_database_state_total
+          expr: |
+            count by (state) (
+              kube_customresource_database_state{customresource_kind="Database"} == 1
+            )
+
+        # Alert on failed databases
+        - alert: CrossplaneDatabaseFailed
+          expr: |
+            kube_customresource_database_state{customresource_kind="Database",state="failed"} == 1
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Database in failed state"
+            description: "Database {{ $labels.name }} is in failed state"
+
+        # Alert on prolonged provisioning
+        - alert: CrossplaneDatabaseProvisioningSlow
+          expr: |
+            kube_customresource_database_state{customresource_kind="Database",state="provisioning"} == 1
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Database provisioning taking too long"
+            description: "Database {{ $labels.name }} has been provisioning for over 30 minutes"
 ```
 
 Query status in real time.
