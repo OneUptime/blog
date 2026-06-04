@@ -14,7 +14,7 @@ Unlike traditional static volume mounting, Democratic CSI creates block storage 
 
 ## Understanding Democratic CSI Architecture
 
-Democratic CSI acts as a translator between Kubernetes CSI calls and storage system APIs. When you create a PersistentVolumeClaim, Democratic CSI calls your storage system's API to create a ZFS dataset, configure an iSCSI target, and return connection details to Kubernetes. The kubelet on each node then uses standard iSCSI initiator tools to connect and mount the volume.
+Democratic CSI acts as a translator between Kubernetes CSI calls and storage system APIs. When you create a PersistentVolumeClaim, Democratic CSI calls your storage system's API to create a ZFS zvol, configure an iSCSI target, and return connection details to Kubernetes. The kubelet on each node then uses standard iSCSI initiator tools to connect and mount the volume.
 
 The architecture includes three main components: the controller plugin that handles provisioning and attachment logic, the node plugin that manages mounting on worker nodes, and the storage system API that creates actual volumes. This separation ensures that volume management stays centralized while volume access remains distributed across your cluster.
 
@@ -65,14 +65,21 @@ driver:
       port: 80
       apiKey: 1-your-api-key-here
       allowInsecure: true
+    sshConnection:
+      host: 192.168.1.100
+      port: 22
+      username: root
+      privateKey: |
+        -----BEGIN OPENSSH PRIVATE KEY-----
+        your-private-key-here
+        -----END OPENSSH PRIVATE KEY-----
     zfs:
       datasetParentName: tank/k8s/iscsi/vols
       detachedSnapshotsDatasetParentName: tank/k8s/iscsi/snaps
-      datasetEnableQuotas: true
-      datasetEnableReservation: false
-      datasetPermissionsMode: "0770"
-      datasetPermissionsUser: 0
-      datasetPermissionsGroup: 0
+      zvolEnableReservation: false
+      zvolCompression:
+      zvolDedup:
+      zvolBlocksize:
     iscsi:
       targetPortal: "192.168.1.100:3260"
       targetPortals: []
@@ -91,7 +98,7 @@ driver:
       extentAvailThreshold: 0
 ```
 
-This configuration tells Democratic CSI to create ZFS datasets under `tank/k8s/iscsi/vols`, expose them through iSCSI targets with the `csi-` prefix, and use target portal at port 3260. The API key authenticates with your storage system.
+This configuration tells Democratic CSI to create ZFS zvols under `tank/k8s/iscsi/vols`, expose them through iSCSI targets with the `csi-` prefix, and use target portal at port 3260. The API key authenticates with the storage system API, while the SSH connection lets the `freenas-iscsi` driver run the required ZFS operations.
 
 ## Deploying Democratic CSI to Your Cluster
 
@@ -100,6 +107,7 @@ Install the Helm chart with your custom values file.
 ```bash
 # Create namespace for CSI driver
 kubectl create namespace democratic-csi
+kubectl label --overwrite namespace democratic-csi pod-security.kubernetes.io/enforce=privileged
 
 # Install Democratic CSI
 helm install freenas-iscsi democratic-csi/democratic-csi \
@@ -164,7 +172,7 @@ kubectl get pvc iscsi-test-pvc -w
 kubectl describe pvc iscsi-test-pvc
 ```
 
-If provisioning succeeds, you'll see the PVC bound to a newly created PV. Check your TrueNAS web interface to verify that a new dataset and iSCSI extent were created.
+If provisioning succeeds, you'll see the PVC bound to a newly created PV. Check your TrueNAS web interface to verify that a new zvol and iSCSI extent were created.
 
 ## Deploying StatefulSets with iSCSI Volumes
 
@@ -219,10 +227,10 @@ Democratic CSI logs provide detailed information about provisioning operations.
 
 ```bash
 # Check controller logs
-kubectl logs -n democratic-csi -l app=democratic-csi-controller -f
+kubectl logs -n democratic-csi -l app.kubernetes.io/name=democratic-csi,app.kubernetes.io/csi-role=controller -f
 
 # Check node plugin logs on specific node
-kubectl logs -n democratic-csi -l app=democratic-csi-node --field-selector spec.nodeName=worker01 -f
+kubectl logs -n democratic-csi -l app.kubernetes.io/name=democratic-csi,app.kubernetes.io/csi-role=node --field-selector spec.nodeName=worker01 -f
 
 # Verify iSCSI sessions on worker nodes
 sudo iscsiadm -m session
@@ -235,7 +243,7 @@ Common issues include network connectivity between nodes and storage, incorrect 
 
 ## Implementing Volume Snapshots
 
-Democratic CSI supports CSI snapshot functionality with ZFS snapshots as the backend.
+Democratic CSI supports CSI snapshot functionality with ZFS snapshots as the backend. The Kubernetes VolumeSnapshot CRDs and snapshot controller must be installed in the cluster before creating these resources.
 
 ```yaml
 # volumesnapshotclass.yaml
