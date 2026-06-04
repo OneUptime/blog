@@ -8,7 +8,7 @@ Description: Access the Docker Engine API directly with curl to manage container
 
 ---
 
-Every `docker` CLI command you run translates to an HTTP request against the Docker Engine API. The CLI is convenient, but sometimes you need to hit the API directly. Maybe you are building a lightweight monitoring tool, working in an environment without the Docker CLI installed, debugging Docker behavior, or integrating Docker into a system that only speaks HTTP.
+Most Docker Engine `docker` CLI commands you run translate to HTTP requests against the Docker Engine API. The CLI is convenient, but sometimes you need to hit the API directly. Maybe you are building a lightweight monitoring tool, working in an environment without the Docker CLI installed, debugging Docker behavior, or integrating Docker into a system that only speaks HTTP.
 
 curl gives you raw access to the Docker Engine API. This guide shows you how to use it effectively for common Docker operations.
 
@@ -59,7 +59,9 @@ curl -s --unix-socket /var/run/docker.sock \
 
 # Filter containers by label
 curl -s --unix-socket /var/run/docker.sock \
-  'http://localhost/v1.44/containers/json?filters={"label":["app=web"]}' | jq .
+  --get \
+  --data-urlencode 'filters={"label":["app=web"]}' \
+  "http://localhost/v1.44/containers/json" | jq .
 
 # Get a compact listing with specific fields
 curl -s --unix-socket /var/run/docker.sock \
@@ -139,7 +141,7 @@ curl -s --unix-socket /var/run/docker.sock \
   "http://localhost/v1.44/containers/my_web_server/logs?stdout=true&since=1707350400"
 ```
 
-Note that Docker log output includes a header byte for each line that indicates the stream (stdout or stderr). Use `--output -` and pipe through `sed` to clean it up if needed.
+Note that Docker log output may use Docker's multiplexed stream format when the container was created without a TTY. In that case each frame has an 8-byte header that identifies the stream (stdout or stderr) and payload size. Use a parser that understands Docker's stream format, or create the container with `"Tty": true` if you need raw output.
 
 ## Container Resource Stats
 
@@ -292,7 +294,7 @@ curl -s --unix-socket /var/run/docker.sock \
 
 curl -s --unix-socket /var/run/docker.sock \
   -X POST \
-  "http://localhost/v1.44/images/prune?filters={\"dangling\":[\"true\"]}" | jq .
+  "http://localhost/v1.44/images/prune?filters=%7B%22dangling%22%3A%5B%22true%22%5D%7D" | jq .
 ```
 
 ## Listening to Docker Events
@@ -306,7 +308,9 @@ done
 
 # Filter events by type
 curl -s --unix-socket /var/run/docker.sock -N \
-  'http://localhost/v1.44/events?filters={"type":["container"],"event":["start","stop","die"]}' | \
+  --get \
+  --data-urlencode 'filters={"type":["container"],"event":["start","stop","die"]}' \
+  "http://localhost/v1.44/events" | \
   while read event; do
     echo "$event" | jq .
   done
@@ -344,4 +348,4 @@ done
 
 ## Summary
 
-The Docker Engine API gives you full control over Docker through standard HTTP requests. curl provides the simplest way to interact with this API, making it useful for quick debugging, lightweight scripts, and environments where installing SDKs is not practical. Every Docker CLI command maps to an API endpoint, so anything you can do with `docker` commands, you can do with curl. The API documentation at the Docker docs site lists every endpoint, parameter, and response format you might need.
+The Docker Engine API gives you full control over Docker through standard HTTP requests. curl provides the simplest way to interact with this API, making it useful for quick debugging, lightweight scripts, and environments where installing SDKs is not practical. Most Docker Engine CLI commands map to API endpoints, so most things you can do with `docker` commands, you can do with curl. The API documentation at the Docker docs site lists every endpoint, parameter, and response format you might need.
