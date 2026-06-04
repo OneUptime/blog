@@ -18,7 +18,7 @@ Semantic versioning (SemVer) uses a three-part version number: MAJOR.MINOR.PATCH
 - MINOR: New features or capabilities that maintain backward compatibility
 - PATCH: Bug fixes and minor improvements with no API changes
 
-A version like 2.5.3 indicates the chart has undergone 2 major revisions, added 5 minor features since the last major release, and received 3 patches since the last minor release.
+A version like 2.5.3 indicates the chart is in major version 2, has added 5 minor releases since the last major release, and received 3 patches since the last minor release.
 
 ## Chart Version vs. App Version
 
@@ -94,7 +94,7 @@ spec:
     spec:
       containers:
       - name: chartmuseum
-        image: ghcr.io/helm/chartmuseum:v0.16.0
+        image: ghcr.io/helm/chartmuseum:v0.16.3
         ports:
         - containerPort: 8080
         env:
@@ -107,7 +107,7 @@ spec:
         - name: ALLOW_OVERWRITE
           value: "false"
         - name: DEPTH
-          value: "1"
+          value: "0"
         volumeMounts:
         - name: charts-storage
           mountPath: /charts
@@ -239,17 +239,21 @@ IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
 
 # Check git commits since last tag
 LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-COMMITS=$(git log ${LAST_TAG}..HEAD --oneline)
+if [ -n "$LAST_TAG" ]; then
+    COMMITS=$(git log "$LAST_TAG"..HEAD --format=%B)
+else
+    COMMITS=$(git log --format=%B)
+fi
 
 # Determine version bump
 if echo "$COMMITS" | grep -q "BREAKING CHANGE:" || \
-   echo "$COMMITS" | grep -q "^[^:]*!:"; then
+   echo "$COMMITS" | grep -Eq "^[a-zA-Z]+(\([^)]+\))?!:"; then
     # Major version bump
     MAJOR=$((MAJOR + 1))
     MINOR=0
     PATCH=0
     echo "Detected breaking change, bumping major version"
-elif echo "$COMMITS" | grep -q "^feat:"; then
+elif echo "$COMMITS" | grep -Eq "^feat(\([^)]+\))?:"; then
     # Minor version bump
     MINOR=$((MINOR + 1))
     PATCH=0
@@ -289,7 +293,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
@@ -299,7 +303,7 @@ jobs:
         git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
     - name: Install Helm
-      uses: azure/setup-helm@v3
+      uses: azure/setup-helm@v5.0.0
 
     - name: Auto-version charts
       run: |
@@ -309,6 +313,7 @@ jobs:
 
     - name: Package charts
       run: |
+        mkdir -p .deploy
         for chart in charts/*/; do
           helm package "$chart" -d .deploy
         done
@@ -331,8 +336,8 @@ jobs:
     - name: Create Git tags
       run: |
         for chart in .deploy/*.tgz; do
-          name=$(basename "$chart" | cut -d'-' -f1)
-          version=$(basename "$chart" | sed "s/${name}-//" | sed 's/.tgz//')
+          name=$(helm show chart "$chart" | awk '/^name:/ {print $2}')
+          version=$(helm show chart "$chart" | awk '/^version:/ {print $2}')
           git tag "${name}-v${version}"
         done
         git push --tags
