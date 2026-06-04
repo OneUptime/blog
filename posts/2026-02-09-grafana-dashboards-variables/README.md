@@ -29,7 +29,9 @@ Name: namespace
 Type: Query
 Label: Namespace
 Data source: Prometheus
-Query: label_values(kube_pod_info, namespace)
+Query type: Label values
+Label: namespace
+Metric: kube_pod_info
 Refresh: On Dashboard Load
 Multi-value: true
 Include All option: true
@@ -43,10 +45,10 @@ Once you've defined variables, reference them in your panel queries using the `$
 
 ```promql
 # Query using namespace variable
-sum(rate(container_cpu_usage_seconds_total{namespace="$namespace"}[5m])) by (pod)
+sum(rate(container_cpu_usage_seconds_total{namespace=~"${namespace:regex}"}[5m])) by (pod)
 
 # Query with multiple variables
-rate(http_requests_total{namespace="$namespace", service="$service", method="$method"}[5m])
+rate(http_requests_total{namespace=~"${namespace:regex}", service=~"${service:regex}", method=~"${method:regex}"}[5m])
 ```
 
 When users change the variable selection, Grafana automatically updates all panels that reference that variable.
@@ -59,17 +61,23 @@ Variables can depend on other variables, creating cascading dropdowns that narro
 # First variable - select namespace
 Name: namespace
 Type: Query
-Query: label_values(kube_pod_info, namespace)
+Query type: Label values
+Label: namespace
+Metric: kube_pod_info
 
 # Second variable - select pods in chosen namespace
 Name: pod
 Type: Query
-Query: label_values(kube_pod_info{namespace="$namespace"}, pod)
+Query type: Label values
+Label: pod
+Metric: kube_pod_info{namespace=~"${namespace:regex}"}
 
 # Third variable - select container in chosen pod
 Name: container
 Type: Query
-Query: label_values(kube_pod_container_info{namespace="$namespace", pod="$pod"}, container)
+Query type: Label values
+Label: container
+Metric: kube_pod_container_info{namespace=~"${namespace:regex}", pod=~"${pod:regex}"}
 ```
 
 This creates a three-level hierarchy where selecting a namespace filters the available pods, and selecting a pod filters the available containers.
@@ -116,20 +124,20 @@ Auto option: true
 Variables support multiple formatting options that control how values are substituted into queries.
 
 ```promql
-# Default format - single value with quotes
-container_cpu_usage{pod="$pod"}
+# Default interpolation - for a single selected value
+container_cpu_usage{pod="${pod}"}
 
-# Regex format - for label matching
-container_cpu_usage{pod=~"$pod"}
+# Regex format - for multi-value or "All" label matching
+container_cpu_usage{pod=~"${pod:regex}"}
 
 # Pipe format - for multiple values
-container_cpu_usage{pod=~"$pod:pipe"}
+container_cpu_usage{pod=~"${pod:pipe}"}
 
-# CSV format - for functions requiring lists
-sum by (pod) (container_cpu_usage{pod=~"${pod:csv}"})
+# Raw CSV format - for data sources or query functions that need comma-separated values
+${pod:csv}
 
-# Distributed format - for query optimization
-container_cpu_usage{pod="$pod"} or container_cpu_usage{pod="$pod"}
+# Distributed format - for OpenTSDB queries
+${pod:distributed}
 ```
 
 The regex format `=~` is particularly useful when the "Include All" option is enabled or when multiple values are selected.
@@ -176,10 +184,15 @@ Combine variables with Grafana transformations to create sophisticated data mani
               {
                 "fieldName": "job",
                 "config": {
-                  "value": "$service"
+                  "id": "equal",
+                  "options": {
+                    "value": "$service"
+                  }
                 }
               }
-            ]
+            ],
+            "match": "all",
+            "type": "include"
           }
         }
       ]
@@ -203,7 +216,7 @@ Options: prod,staging,dev
 # Data source variable
 Name: prometheus_ds
 Type: Data source
-Type: Prometheus
+Data source type: Prometheus
 Regex: /prometheus-$env/
 
 # Threshold variable (for alerting)
@@ -215,9 +228,11 @@ Value: 80
 Then use these variables in your panels:
 
 ```promql
-# Query using environment-specific data source
+# Query using the threshold variable
 100 - (avg(irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > $cpu_threshold
 ```
+
+Set the panel data source to `$prometheus_ds` to use the environment-specific data source selected by the data source variable.
 
 ## Variable Options for Better UX
 
@@ -226,7 +241,9 @@ Configure variable options to improve user experience:
 ```yaml
 Name: service
 Type: Query
-Query: label_values(http_requests_total, service)
+Query type: Label values
+Label: service
+Metric: http_requests_total
 Regex: /^(api|web|worker).*/  # Filter values with regex
 Sort: Alphabetical (asc)
 Multi-value: true
@@ -259,7 +276,7 @@ When provisioning dashboards via configuration files, include variables in the d
           "name": "service",
           "type": "query",
           "datasource": "Prometheus",
-          "query": "label_values(kube_service_info{namespace=\"$namespace\"}, service)",
+          "query": "label_values(kube_service_info{namespace=~\"${namespace:regex}\"}, service)",
           "refresh": 1,
           "multi": false
         }
@@ -274,14 +291,14 @@ This approach ensures consistent variable configuration across deployments.
 
 ## Testing Variable Queries
 
-Test your variable queries in the Explore view before adding them to dashboards. This helps identify issues with query syntax or data source configuration.
+Test PromQL selectors in the Explore view and use the variable editor's preview to verify the variable values before adding them to dashboards. This helps identify issues with query syntax or data source configuration.
 
 ```promql
-# Test query in Explore
-label_values(metric_name, label_name)
+# Test selector in Explore
+metric_name
 
-# Verify results include expected values
-label_values(http_requests_total{namespace="production"}, service)
+# Verify the selector returns series with the expected labels
+http_requests_total{namespace="production"}
 ```
 
 If the query returns no results, check your metric names, label names, and ensure data exists in your time range.
