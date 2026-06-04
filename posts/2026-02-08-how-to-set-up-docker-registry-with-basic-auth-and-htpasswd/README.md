@@ -57,7 +57,7 @@ The `-B` flag specifies bcrypt hashing, `-b` takes the password from the command
 Verify the file contents:
 
 ```bash
-# Check the htpasswd file (passwords are hashed, safe to view)
+# Check the htpasswd file (passwords are hashed, but still treat the file as sensitive)
 cat auth/htpasswd
 # admin:$2y$05$...
 # developer:$2y$05$...
@@ -71,12 +71,9 @@ You can configure authentication through environment variables or a config file.
 ### Using Environment Variables
 
 ```yaml
-# docker-compose.yml - Registry with htpasswd authentication
-version: "3.8"
-
 services:
   registry:
-    image: registry:2
+    image: registry:3
     ports:
       - "5000:5000"
     environment:
@@ -131,16 +128,13 @@ health:
 ```
 
 ```yaml
-# docker-compose.yml with config file
-version: "3.8"
-
 services:
   registry:
-    image: registry:2
+    image: registry:3
     ports:
       - "5000:5000"
     volumes:
-      - ./config.yml:/etc/docker/registry/config.yml:ro
+      - ./config.yml:/etc/distribution/config.yml:ro
       - ./auth:/auth:ro
       - registry-data:/var/lib/registry
     restart: unless-stopped
@@ -162,18 +156,16 @@ openssl req -newkey rsa:4096 -nodes -sha256 \
   -keyout certs/registry.key \
   -x509 -days 365 \
   -out certs/registry.crt \
-  -subj "/CN=registry.local"
+  -subj "/CN=registry.local" \
+  -addext "subjectAltName=DNS:registry.local"
 ```
 
 ### Compose with TLS
 
 ```yaml
-# docker-compose.yml - Registry with htpasswd auth and TLS
-version: "3.8"
-
 services:
   registry:
-    image: registry:2
+    image: registry:3
     ports:
       - "5000:5000"
     environment:
@@ -197,6 +189,8 @@ volumes:
 If using self-signed certificates, Docker clients need to trust the CA:
 
 ```bash
+# Make sure registry.local resolves to your registry server
+
 # Copy the certificate to Docker's trusted certificates directory
 sudo mkdir -p /etc/docker/certs.d/registry.local:5000
 sudo cp certs/registry.crt /etc/docker/certs.d/registry.local:5000/ca.crt
@@ -208,6 +202,9 @@ sudo systemctl restart docker
 ## Step 4: Testing Authentication
 
 ```bash
+# If you enabled TLS in the previous step, use https://registry.local:5000
+# for curl and registry.local:5000 for docker login, tag, and push.
+
 # Start the registry
 docker compose up -d
 
@@ -242,7 +239,8 @@ curl -u admin:secretpassword http://localhost:5000/v2/_catalog
 # Append a new user to the htpasswd file
 docker run --rm --entrypoint htpasswd httpd:2 -Bbn newuser newpassword >> auth/htpasswd
 
-# The registry picks up changes without restart
+# Restart the registry so it reloads the htpasswd file
+docker compose restart registry
 ```
 
 ### Removing a User
@@ -254,6 +252,9 @@ cat auth/htpasswd
 
 # Remove the user named "developer"
 grep -v "^developer:" auth/htpasswd > auth/htpasswd.tmp && mv auth/htpasswd.tmp auth/htpasswd
+
+# Restart the registry so it reloads the htpasswd file
+docker compose restart registry
 ```
 
 ### Changing a Password
@@ -266,11 +267,14 @@ NEW_ENTRY=$(docker run --rm --entrypoint htpasswd httpd:2 -Bbn admin newpassword
 grep -v "^admin:" auth/htpasswd > auth/htpasswd.tmp
 echo "$NEW_ENTRY" >> auth/htpasswd.tmp
 mv auth/htpasswd.tmp auth/htpasswd
+
+# Restart the registry so it reloads the htpasswd file
+docker compose restart registry
 ```
 
 ## Docker Login and Credential Storage
 
-When you run `docker login`, Docker stores credentials in `~/.docker/config.json`. On Linux without a credential helper, they are stored as Base64-encoded text, which is not secure.
+When you run `docker login`, Docker stores credentials in the configured credential store. Without a credential helper, they are stored in `~/.docker/config.json` as Base64-encoded text, which is not secure.
 
 Use a credential helper for better security:
 
@@ -312,6 +316,7 @@ server {
     auth_basic_user_file /etc/nginx/auth/htpasswd;
 
     location /v2/ {
+        add_header Docker-Distribution-API-Version "registry/2.0" always;
         proxy_pass http://registry:5000;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
