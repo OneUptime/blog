@@ -14,7 +14,7 @@ Kubernetes provides several tools for capacity analysis, from simple CLI utiliti
 
 ## Using kubectl top for Real-Time Capacity
 
-The simplest capacity tool is built into kubectl. The top command shows current resource usage across nodes and pods:
+The simplest capacity tool is built into kubectl. The top command shows recent resource usage across nodes and pods when Metrics Server is installed:
 
 ```bash
 # View node capacity and usage
@@ -34,12 +34,11 @@ kubectl top pods --all-namespaces --sort-by=memory
 kubectl top pods --all-namespaces --sort-by=cpu | head -20
 ```
 
-Calculate cluster-wide utilization:
+Inspect allocated requests and limits:
 
 ```bash
-# Total allocated vs available resources
-kubectl describe nodes | grep -A 5 "Allocated resources" | \
-  awk '/cpu/ {cpu+=$2} /memory/ {mem+=$2} END {print "Total CPU:", cpu; print "Total Memory:", mem}'
+# Requested and limited resources by node
+kubectl describe nodes | grep -A 5 "Allocated resources"
 ```
 
 This gives you snapshot capacity data but doesn't help with forecasting or what-if scenarios.
@@ -82,7 +81,6 @@ The tool simulates the scheduler algorithm, accounting for:
 - Node affinity and anti-affinity
 - Taints and tolerations
 - Pod topology spread constraints
-- Resource quotas
 
 This reveals your cluster's true capacity for specific workload profiles.
 
@@ -105,7 +103,7 @@ data:
       rules:
       # Cluster-wide CPU capacity
       - record: cluster:cpu_capacity:total
-        expr: sum(kube_node_status_capacity{resource="cpu"})
+        expr: sum(kube_node_status_allocatable{resource="cpu"})
 
       # Cluster-wide CPU requests
       - record: cluster:cpu_requests:total
@@ -118,7 +116,7 @@ data:
 
       # Memory capacity
       - record: cluster:memory_capacity:total
-        expr: sum(kube_node_status_capacity{resource="memory"})
+        expr: sum(kube_node_status_allocatable{resource="memory"})
 
       # Memory requests
       - record: cluster:memory_requests:total
@@ -139,8 +137,8 @@ cluster:cpu_utilization:percent[30d]
 # Predict when capacity will be exhausted (linear regression)
 predict_linear(cluster:cpu_utilization:percent[7d], 86400 * 30)
 
-# Growth rate of resource requests
-rate(cluster:cpu_requests:total[7d]) * 86400 * 7
+# Growth in resource requests over the last 7 days
+delta(cluster:cpu_requests:total[7d])
 ```
 
 ## Building a Capacity Dashboard
@@ -192,11 +190,11 @@ Create a Grafana dashboard for capacity visibility:
         "title": "Days Until Capacity Exhaustion",
         "targets": [
           {
-            "expr": "((100 - cluster:cpu_utilization:percent) / (rate(cluster:cpu_utilization:percent[7d]) * 86400)) / 86400",
+            "expr": "(100 - cluster:cpu_utilization:percent) / (deriv(cluster:cpu_utilization:percent[7d]) * 86400)",
             "legendFormat": "CPU"
           },
           {
-            "expr": "((100 - cluster:memory_utilization:percent) / (rate(cluster:memory_utilization:percent[7d]) * 86400)) / 86400",
+            "expr": "(100 - cluster:memory_utilization:percent) / (deriv(cluster:memory_utilization:percent[7d]) * 86400)",
             "legendFormat": "Memory"
           }
         ],
@@ -244,15 +242,19 @@ spec:
               #!/bin/bash
 
               # Query current capacity
-              CPU_UTIL=$(curl -s "$PROMETHEUS_URL/api/v1/query?query=cluster:cpu_utilization:percent" | \
+              CPU_UTIL=$(curl -sG "$PROMETHEUS_URL/api/v1/query" \
+                --data-urlencode 'query=cluster:cpu_utilization:percent' | \
                 jq -r '.data.result[0].value[1]')
-              MEM_UTIL=$(curl -s "$PROMETHEUS_URL/api/v1/query?query=cluster:memory_utilization:percent" | \
+              MEM_UTIL=$(curl -sG "$PROMETHEUS_URL/api/v1/query" \
+                --data-urlencode 'query=cluster:memory_utilization:percent' | \
                 jq -r '.data.result[0].value[1]')
 
               # Calculate growth rates
-              CPU_GROWTH=$(curl -s "$PROMETHEUS_URL/api/v1/query?query=rate(cluster:cpu_utilization:percent[7d])" | \
+              CPU_GROWTH=$(curl -sG "$PROMETHEUS_URL/api/v1/query" \
+                --data-urlencode 'query=deriv(cluster:cpu_utilization:percent[7d]) * 86400' | \
                 jq -r '.data.result[0].value[1]')
-              MEM_GROWTH=$(curl -s "$PROMETHEUS_URL/api/v1/query?query=rate(cluster:memory_utilization:percent[7d])" | \
+              MEM_GROWTH=$(curl -sG "$PROMETHEUS_URL/api/v1/query" \
+                --data-urlencode 'query=deriv(cluster:memory_utilization:percent[7d]) * 86400' | \
                 jq -r '.data.result[0].value[1]')
 
               # Send Slack notification
@@ -278,11 +280,12 @@ spec:
 KRR analyzes actual resource usage and provides rightsizing recommendations:
 
 ```bash
-# Install KRR
-pip install krr
+# Install KRR on macOS or Linux with Homebrew
+brew tap robusta-dev/homebrew-krr
+brew install krr
 
 # Run analysis
-krr simple --context production-cluster
+krr simple -c production-cluster
 
 # Output shows:
 # | Namespace  | Workload     | Container | CPU Rec | Mem Rec | Current CPU | Current Mem |
@@ -291,13 +294,13 @@ krr simple --context production-cluster
 # | api        | backend      | app       | 800m    | 1Gi     | 2000m       | 4Gi         |
 
 # Export recommendations
-krr simple --format json > capacity-recommendations.json
+krr simple -f json --fileoutput capacity-recommendations.json
 
-# Apply recommendations automatically (use with caution)
-krr simple --strategy prometheus --prometheus-url http://prometheus:9090
+# Run against an explicit Prometheus URL
+krr simple --prometheus-url http://prometheus:9090
 ```
 
-KRR uses Prometheus metrics to calculate P95 usage and recommends appropriate resource requests.
+KRR uses Prometheus metrics to calculate P95 CPU usage and memory usage with a safety buffer, then recommends appropriate resource requests.
 
 ## Goldilocks for VPA Recommendations
 
@@ -339,8 +342,8 @@ kube-capacity
 # Show available capacity
 kube-capacity --available
 
-# Pod-level breakdown
-kube-capacity --pod-count --util
+# Pod-level breakdown with utilization
+kube-capacity --pods --util
 ```
 
 This quickly identifies which nodes are at capacity and which have room for additional workloads.
