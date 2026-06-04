@@ -21,7 +21,7 @@ Microsoft provides official IIS images through the Microsoft Container Registry.
 
 docker pull mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
 
-# Pull the IIS image based on the full Windows image (for apps needing more APIs)
+# Pull the latest IIS image based on Windows Server Core
 docker pull mcr.microsoft.com/windows/servercore/iis:latest
 ```
 
@@ -35,7 +35,7 @@ docker run -d -p 8080:80 --name my-iis mcr.microsoft.com/windows/servercore/iis
 curl http://localhost:8080
 ```
 
-You should see the default IIS welcome page. IIS is fully functional inside the container with the same features you would expect on a Windows Server.
+You should see the default IIS welcome page. IIS is fully functional inside the container for common Windows Server Core web-hosting scenarios.
 
 ## Hosting a Static Website
 
@@ -147,7 +147,7 @@ COPY ./website/ C:/inetpub/wwwroot/
 
 While the container best practice is one application per container, you can run multiple IIS sites when needed.
 
-```powershell
+```dockerfile
 # Dockerfile - Multiple IIS sites
 FROM mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
 
@@ -253,7 +253,7 @@ services:
   db:
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
-      SA_PASSWORD: "YourStrong!Passw0rd"
+      MSSQL_SA_PASSWORD: "YourStrong!Passw0rd"
       ACCEPT_EULA: "Y"
     volumes:
       - sql_data:/var/opt/mssql
@@ -271,20 +271,25 @@ networks:
 
 IIS generates log files that accumulate inside the container. Forward them to stdout for Docker's log driver.
 
-```powershell
+```dockerfile
 # Dockerfile addition - Forward IIS logs to stdout
 # Add this to your Dockerfile
 
 # Configure IIS to log to a known location
 RUN powershell -Command \
     "Import-Module WebAdministration; \
+     New-Item -ItemType Directory -Force -Path C:\iis-logs; \
      Set-ItemProperty 'IIS:\Sites\Default Web Site' -Name logFile.directory -Value 'C:\iis-logs'"
 
 # Add a log tailer to the startup script
 # Append to startup.ps1:
 # Start-Job -ScriptBlock {
 #     while ($true) {
-#         Get-Content C:\iis-logs\W3SVC1\*.log -Tail 0 -Wait | Write-Host
+#         $logFiles = Get-ChildItem C:\iis-logs\W3SVC1\*.log -ErrorAction SilentlyContinue
+#         if ($logFiles) {
+#             Get-Content $logFiles.FullName -Tail 0 -Wait | Write-Host
+#         }
+#         Start-Sleep -Seconds 5
 #     }
 # }
 ```
@@ -310,11 +315,11 @@ RUN powershell -Command \
     "Remove-WindowsFeature Web-DAV-Publishing; \
      Remove-WindowsFeature Web-Ftp-Server"
 
+COPY ./publish/ C:/inetpub/wwwroot/
+
 # Pre-compile ASP.NET for faster cold starts
 RUN powershell -Command \
     "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\aspnet_compiler.exe -v / -p C:\inetpub\wwwroot"
-
-COPY ./publish/ C:/inetpub/wwwroot/
 ```
 
 ## Conclusion
