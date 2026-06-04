@@ -50,7 +50,7 @@ MetalLB is the most popular solution for bare metal LoadBalancer services. It op
 
 ```bash
 # Install MetalLB using manifest
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 
 # Or install with Helm
 helm repo add metallb https://metallb.github.io/metallb
@@ -129,7 +129,7 @@ kubectl get nodes -o wide
 curl http://node-ip:30080
 ```
 
-NodePort doesn't provide load balancing or a single entry point, but it works without additional infrastructure.
+NodePort doesn't provide an external load balancer or a single entry point, but Kubernetes still forwards traffic from the node port to ready service endpoints.
 
 ## Solution 3: Use Ingress Controller
 
@@ -219,6 +219,9 @@ Kube-VIP provides virtual IP addresses for services without external dependencie
 # Install kube-vip as DaemonSet
 kubectl apply -f https://kube-vip.io/manifests/rbac.yaml
 
+# Install the kube-vip cloud provider to assign LoadBalancer IPs
+kubectl apply -f https://raw.githubusercontent.com/kube-vip/kube-vip-cloud-provider/main/manifest/kube-vip-cloud-controller.yaml
+
 # Create kube-vip config
 kubectl create configmap -n kube-system kubevip \
   --from-literal=range-global=192.168.1.200-192.168.1.210
@@ -282,6 +285,8 @@ kubectl logs -n metallb-system -l component=controller
 # For kube-vip
 kubectl get pods -n kube-system -l name=kube-vip
 kubectl logs -n kube-system -l name=kube-vip
+kubectl get pods -n kube-system -l component=kube-vip-cloud-provider
+kubectl logs -n kube-system -l component=kube-vip-cloud-provider
 
 # Check controller logs for errors
 kubectl logs -n metallb-system deploy/controller --tail=100
@@ -377,9 +382,9 @@ data:
       rules:
       - alert: LoadBalancerPending
         expr: |
-          kube_service_status_load_balancer_ingress == 0
-          and
           kube_service_spec_type{type="LoadBalancer"} == 1
+          unless on (namespace, service)
+          kube_service_status_load_balancer_ingress
         for: 5m
         labels:
           severity: warning
