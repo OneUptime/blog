@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, MinIO, Google Cloud Storage, GCS, Cloud Emulation, S3, Docker Compose
 
-Description: Use MinIO in Docker as a local Google Cloud Storage emulator for development and testing workflows
+Description: Use MinIO in Docker as a local S3-compatible stand-in for Google Cloud Storage development and testing workflows
 
 ---
 
-Google Cloud Storage (GCS) is a core service in GCP applications, but developing against it requires a GCP project, credentials, and an internet connection. MinIO can serve as a local stand-in for GCS during development. While MinIO implements the S3 API natively, the Google Cloud Storage client libraries support S3-compatible backends through interoperability mode. This means you can point your GCS code at MinIO with minimal configuration changes. Docker makes the setup trivial.
+Google Cloud Storage (GCS) is a core service in GCP applications, but developing against it requires a GCP project, credentials, and an internet connection. MinIO can serve as a local stand-in for GCS during development when your application code uses an S3-compatible storage layer. While MinIO implements the S3 API natively, Cloud Storage supports S3-compatible tools and libraries through its XML API interoperability mode. This means S3-based storage code can use MinIO locally and GCS in production with minimal configuration changes. Docker makes the setup trivial.
 
-This guide shows you how to deploy MinIO in Docker, configure Google Cloud client libraries to use it, and structure your application for easy switching between local and cloud storage.
+This guide shows you how to deploy MinIO in Docker, configure S3-compatible clients to use it, and structure your application for easy switching between local and cloud storage.
 
 ## Why MinIO for GCS Emulation
 
-Google provides a limited GCS emulator as part of their testing tools, but it has restrictions and does not support all API features. MinIO offers a more complete storage implementation. The trade-off is that you use the S3-compatible API rather than the native GCS JSON API. In practice, for most operations (uploading, downloading, listing, deleting objects), the S3 interoperability layer works well.
+Google Cloud CLI emulators cover services such as Firestore and Spanner, but not Cloud Storage. MinIO offers a mature S3-compatible object storage implementation for local development. The trade-off is that you use the S3-compatible API rather than the native GCS JSON API. In practice, for most operations (uploading, downloading, listing, deleting objects), the S3 interoperability layer works well.
 
-GCS supports S3-compatible access through its XML API, so applications that use the S3 SDK against GCS in production can use MinIO locally without any changes.
+GCS supports S3-compatible access through its XML API, so applications that use the S3 SDK against GCS in production can use MinIO locally with endpoint and credential changes only.
 
 ## Quick Start
 
@@ -40,9 +40,6 @@ docker run -d \
 A more complete configuration for team use:
 
 ```yaml
-# docker-compose.yml - MinIO as GCS emulator
-version: "3.8"
-
 services:
   storage:
     image: minio/minio:latest
@@ -130,14 +127,13 @@ for obj in response.get("Contents", []):
     print(f"  {obj['Key']} - {obj['Size']} bytes")
 ```
 
-## Using the Google Cloud Storage Client Library
+## Using an Adapter with the Google Cloud Storage Client Library
 
 If your application uses the official Google Cloud Storage Python library, you can use an adapter approach:
 
 ```python
 # gcs_adapter.py - abstraction layer that works with both GCS and MinIO
 import os
-from io import BytesIO
 
 class StorageClient:
     """Storage client that switches between GCS and MinIO based on environment."""
@@ -218,7 +214,7 @@ storage.upload_bytes("app-uploads", "data/report.json", b'{"status": "ok"}',
 
 ```javascript
 // storage.js - MinIO as GCS emulator in Node.js
-const { S3Client, PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 
 function getStorageClient() {
   const isLocal = process.env.STORAGE_BACKEND !== "gcs";
@@ -238,7 +234,7 @@ function getStorageClient() {
   // For production GCS, use the S3-compatible XML API endpoint
   return new S3Client({
     endpoint: "https://storage.googleapis.com",
-    region: "us-central1",
+    region: "auto",
     credentials: {
       accessKeyId: process.env.GCS_ACCESS_KEY,
       secretAccessKey: process.env.GCS_SECRET_KEY,
@@ -262,7 +258,7 @@ uploadFile("app-uploads", "test.txt", "Hello from MinIO!");
 
 ## Testing with MinIO
 
-Write integration tests that work against MinIO locally and GCS in production:
+Write integration tests that validate the same S3-compatible operations you use locally and in production:
 
 ```python
 # test_storage.py - integration tests using MinIO
