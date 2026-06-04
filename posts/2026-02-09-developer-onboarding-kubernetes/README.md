@@ -76,7 +76,7 @@ check_command() {
 }
 
 # Main onboarding flow
-main() {
+onboard_developer_main() {
     log_info "Starting onboarding for $DEVELOPER_NAME ($DEVELOPER_EMAIL)"
 
     install_prerequisites
@@ -445,8 +445,10 @@ Happy coding!
 EOF
 }
 
-# Run main function
-main
+# Run main function when executed directly
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    onboard_developer_main "$@"
+fi
 ````
 
 Make it executable:
@@ -471,9 +473,9 @@ install_frontend_tools() {
     # Install Node.js
     if ! check_command node; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
-            brew install node@18
+            brew install node@22
         else
-            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
             sudo apt-get install -y nodejs
         fi
         log_success "Node.js installed"
@@ -482,8 +484,8 @@ install_frontend_tools() {
     # Install global npm packages
     npm install -g \
         typescript \
-        @vue/cli \
-        create-react-app \
+        create-vue \
+        vite \
         eslint
 
     log_success "Frontend tools installed"
@@ -505,7 +507,7 @@ setup_frontend_environment() {
 
 # Override main to add frontend-specific steps
 main() {
-    onboard-developer.sh::main
+    onboard_developer_main
     install_frontend_tools
     setup_frontend_environment
 }
@@ -520,7 +522,7 @@ Create a self-service web interface:
 ```javascript
 // onboarding-server.js
 const express = require('express');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const path = require('path');
 
 const app = express();
@@ -537,9 +539,8 @@ app.post('/api/onboard', async (req, res) => {
 
   // Run onboarding script
   const scriptPath = path.join(__dirname, 'onboard-developer.sh');
-  const command = `${scriptPath} "${email}" "${name}" "${team}"`;
 
-  exec(command, (error, stdout, stderr) => {
+  execFile(scriptPath, [email, name, team], (error, stdout, stderr) => {
     if (error) {
       console.error(`Error: ${error}`);
       return res.status(500).json({ error: 'Onboarding failed', details: stderr });
