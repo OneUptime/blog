@@ -152,8 +152,6 @@ Different services in your stack need different policies. Here is a complete exa
 
 ```yaml
 # Multi-service stack with appropriate restart policies
-version: "3.8"
-
 services:
   # Web server - should always be available
   nginx:
@@ -179,6 +177,8 @@ services:
   postgres:
     image: postgres:16
     restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: example
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -272,7 +272,7 @@ Understanding exit codes helps you choose between `always` and `on-failure`.
 | 139 | Segmentation fault | Memory access violation |
 | 143 | SIGTERM | Graceful shutdown request |
 
-Exit code 143 deserves special attention. When Docker stops a container, it sends SIGTERM first. If your application handles SIGTERM and exits cleanly, the exit code is 143. With `on-failure`, this means the container will not restart after a `docker stop`, which is usually what you want.
+Exit code 143 deserves special attention. When Docker stops a container, it sends SIGTERM first. If the process terminates because of that signal, the reported exit code is commonly 143 (128 + 15). If your application catches SIGTERM and exits cleanly, Docker records exit code 0 instead. In either case, a manual `docker stop` suppresses an immediate restart, which is usually what you want.
 
 ```bash
 # Check why a container exited
