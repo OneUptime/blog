@@ -19,8 +19,8 @@ The etcd plugin stores DNS records in etcd key-value store with these advantages
 - Dynamic record updates without CoreDNS restart
 - Programmatic DNS record management via etcd API
 - High availability through etcd clustering
-- Watch-based automatic reloading
-- Support for all DNS record types
+- Runtime updates through etcd-backed lookups
+- Support for common SkyDNS record types such as A, AAAA, SRV, TXT, and reverse records
 
 Use cases include:
 
@@ -178,19 +178,19 @@ kubectl run etcdctl --image=quay.io/coreos/etcd:v3.5.9 --rm -it -- sh
 export ETCDCTL_API=3
 export ETCDCTL_ENDPOINTS=http://etcd-cluster.kube-system:2379
 
-# Add A record
-etcdctl put /coredns/dynamic.local/test '{"host":"10.0.0.100","ttl":60}'
+# Add A record for test.dynamic.local
+etcdctl put /coredns/local/dynamic/test '{"host":"10.0.0.100","ttl":60}'
 
 # Add multiple A records (round-robin)
-etcdctl put /coredns/dynamic.local/api '{"host":"10.0.0.10","ttl":60}'
-etcdctl put /coredns/dynamic.local/api/001 '{"host":"10.0.0.11","ttl":60}'
-etcdctl put /coredns/dynamic.local/api/002 '{"host":"10.0.0.12","ttl":60}'
+etcdctl put /coredns/local/dynamic/api '{"host":"10.0.0.10","ttl":60}'
+etcdctl put /coredns/local/dynamic/api/001 '{"host":"10.0.0.11","ttl":60}'
+etcdctl put /coredns/local/dynamic/api/002 '{"host":"10.0.0.12","ttl":60}'
 
-# Add SRV record
-etcdctl put /coredns/dynamic.local/service/_http._tcp '{"host":"service.local","port":8080,"priority":10,"weight":100,"ttl":60}'
+# Add SRV record for service._http._tcp.dynamic.local
+etcdctl put /coredns/local/dynamic/_tcp/_http/service '{"host":"service.dynamic.local.","port":8080,"priority":10,"weight":100,"ttl":60}'
 
-# Add TXT record
-etcdctl put /coredns/dynamic.local/txt/verification '{"text":"verification-token-12345","ttl":300}'
+# Add TXT record for verification.dynamic.local
+etcdctl put /coredns/local/dynamic/verification '{"text":"verification-token-12345","ttl":300}'
 ```
 
 Test record resolution:
@@ -211,6 +211,7 @@ import (
     "context"
     "encoding/json"
     "fmt"
+    "strings"
     "time"
 
     clientv3 "go.etcd.io/etcd/client/v3"
@@ -241,6 +242,23 @@ func NewDNSManager(endpoints []string, prefix string) (*DNSManager, error) {
     }, nil
 }
 
+func dnsKey(prefix, zone, name string) string {
+    parts := []string{strings.TrimRight(prefix, "/")}
+    appendReversedLabels := func(value string) {
+        labels := strings.Split(strings.Trim(value, "."), ".")
+        for i := len(labels) - 1; i >= 0; i-- {
+            if labels[i] != "" {
+                parts = append(parts, labels[i])
+            }
+        }
+    }
+
+    appendReversedLabels(zone)
+    appendReversedLabels(name)
+
+    return strings.Join(parts, "/")
+}
+
 func (dm *DNSManager) AddRecord(zone, name, ip string, ttl int) error {
     record := DNSRecord{
         Host: ip,
@@ -252,7 +270,7 @@ func (dm *DNSManager) AddRecord(zone, name, ip string, ttl int) error {
         return err
     }
 
-    key := fmt.Sprintf("%s/%s/%s", dm.prefix, zone, name)
+    key := dnsKey(dm.prefix, zone, name)
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
@@ -261,7 +279,7 @@ func (dm *DNSManager) AddRecord(zone, name, ip string, ttl int) error {
 }
 
 func (dm *DNSManager) DeleteRecord(zone, name string) error {
-    key := fmt.Sprintf("%s/%s/%s", dm.prefix, zone, name)
+    key := dnsKey(dm.prefix, zone, name)
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
@@ -270,7 +288,7 @@ func (dm *DNSManager) DeleteRecord(zone, name string) error {
 }
 
 func (dm *DNSManager) ListRecords(zone string) (map[string]DNSRecord, error) {
-    prefix := fmt.Sprintf("%s/%s/", dm.prefix, zone)
+    prefix := dnsKey(dm.prefix, zone, "") + "/"
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
@@ -330,29 +348,35 @@ metadata:
   name: service-registrar
 data:
   register.sh: |
-    #!/bin/bash
+    #!/bin/sh
 
     ETCD_ENDPOINT="http://etcd-cluster.kube-system:2379"
     ZONE="dynamic.local"
-    PREFIX="/coredns/${ZONE}"
+    PREFIX="/coredns/local/dynamic"
+
+    put_record() {
+        key="$1"
+        value="$2"
+        key_b64=$(printf "%s" "$key" | base64 | tr -d '\n')
+        value_b64=$(printf "%s" "$value" | base64 | tr -d '\n')
+
+        curl -L "${ETCD_ENDPOINT}/v3/kv/put" \
+            -X POST \
+            -d "{\"key\":\"${key_b64}\",\"value\":\"${value_b64}\"}" \
+            --silent --output /dev/null
+    }
 
     # Watch for service changes
-    kubectl get svc --all-namespaces -w --output-watch-events | while read -r event type namespace name rest; do
-        if [[ "$type" == "Service" ]]; then
-            # Get service details
-            CLUSTER_IP=$(kubectl get svc "$name" -n "$namespace" -o jsonpath='{.spec.clusterIP}' 2>/dev/null)
+    kubectl get svc --all-namespaces -w --output-watch-events \
+        -o custom-columns=EVENT:.type,NAMESPACE:.object.metadata.namespace,NAME:.object.metadata.name,CLUSTER_IP:.object.spec.clusterIP \
+        --no-headers | while read -r event namespace name cluster_ip; do
+        if [ -n "$cluster_ip" ] && [ "$cluster_ip" != "None" ] && [ "$cluster_ip" != "<none>" ]; then
+            # Register namespace.name.dynamic.local
+            KEY="${PREFIX}/${name}/${namespace}"
+            VALUE="{\"host\":\"${cluster_ip}\",\"ttl\":60}"
 
-            if [[ -n "$CLUSTER_IP" && "$CLUSTER_IP" != "None" ]]; then
-                # Register service
-                KEY="${PREFIX}/${namespace}.${name}"
-                VALUE="{\"host\":\"${CLUSTER_IP}\",\"ttl\":60}"
-
-                echo "$(date): Registering ${namespace}.${name}.${ZONE} -> ${CLUSTER_IP}"
-
-                curl -X PUT "${ETCD_ENDPOINT}/v2/keys${KEY}" \
-                    -d value="${VALUE}" \
-                    --silent --output /dev/null
-            fi
+            echo "$(date): Registering ${namespace}.${name}.${ZONE} -> ${cluster_ip}"
+            put_record "$KEY" "$VALUE"
         fi
     done
 ---
@@ -426,7 +450,7 @@ metadata:
   name: dynamic-dns-test
 data:
   test.sh: |
-    #!/bin/bash
+    #!/bin/sh
 
     ETCD_ENDPOINT="http://etcd-cluster.kube-system:2379"
     ZONE="dynamic.local"
@@ -436,10 +460,14 @@ data:
 
     # Test 1: Add record via etcd
     echo "Test 1: Adding DNS record"
-    KEY="/coredns/${ZONE}/${TEST_NAME}"
+    KEY="/coredns/local/dynamic/${TEST_NAME}"
     VALUE='{"host":"10.0.0.99","ttl":60}'
+    KEY_B64=$(printf "%s" "$KEY" | base64 | tr -d '\n')
+    VALUE_B64=$(printf "%s" "$VALUE" | base64 | tr -d '\n')
 
-    curl -X PUT "${ETCD_ENDPOINT}/v2/keys${KEY}" -d value="${VALUE}"
+    curl -L "${ETCD_ENDPOINT}/v3/kv/put" \
+        -X POST \
+        -d "{\"key\":\"${KEY_B64}\",\"value\":\"${VALUE_B64}\"}"
 
     # Wait for propagation
     sleep 3
@@ -455,7 +483,10 @@ data:
     # Test 3: Update record
     echo "Test 3: Updating record"
     VALUE='{"host":"10.0.0.100","ttl":60}'
-    curl -X PUT "${ETCD_ENDPOINT}/v2/keys${KEY}" -d value="${VALUE}"
+    VALUE_B64=$(printf "%s" "$VALUE" | base64 | tr -d '\n')
+    curl -L "${ETCD_ENDPOINT}/v3/kv/put" \
+        -X POST \
+        -d "{\"key\":\"${KEY_B64}\",\"value\":\"${VALUE_B64}\"}"
 
     sleep 3
 
@@ -467,7 +498,9 @@ data:
 
     # Test 4: Delete record
     echo "Test 4: Deleting record"
-    curl -X DELETE "${ETCD_ENDPOINT}/v2/keys${KEY}"
+    curl -L "${ETCD_ENDPOINT}/v3/kv/deleterange" \
+        -X POST \
+        -d "{\"key\":\"${KEY_B64}\"}"
 
     sleep 3
 
