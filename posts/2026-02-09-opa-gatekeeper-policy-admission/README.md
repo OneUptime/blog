@@ -15,7 +15,7 @@ OPA Gatekeeper extends Kubernetes with policy-based admission control using Open
 Deploy Gatekeeper using kubectl:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/master/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.2/deploy/gatekeeper.yaml
 ```
 
 Or use Helm:
@@ -165,8 +165,8 @@ metadata:
 spec:
   match:
     kinds:
-      - apiGroups: ["apps"]
-        kinds: ["Deployment"]
+      - apiGroups: [""]
+        kinds: ["Pod"]
   parameters:
     repos:
       - "gcr.io/mycompany/"
@@ -187,6 +187,9 @@ spec:
     spec:
       names:
         kind: K8sContainerLimits
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -291,15 +294,15 @@ Export metrics for monitoring:
 
 ```bash
 # Gatekeeper exposes Prometheus metrics
-kubectl port-forward -n gatekeeper-system svc/gatekeeper-webhook-service 8888:443
+kubectl port-forward -n gatekeeper-system deployment/gatekeeper-controller-manager 8888:8888
 
 # View metrics
-curl -k https://localhost:8888/metrics
+curl http://localhost:8888/metrics
 ```
 
 Key metrics:
 - `gatekeeper_constraints` - Number of constraints
-- `gatekeeper_constraint_template_count` - Number of templates
+- `gatekeeper_constraint_templates` - Number of templates
 - `gatekeeper_violations` - Total violations detected
 
 OPA Gatekeeper provides policy-based admission control for Kubernetes, enforcing organizational standards and security requirements before resources are created. By defining policies as code, you ensure consistent compliance across all clusters and workloads.
