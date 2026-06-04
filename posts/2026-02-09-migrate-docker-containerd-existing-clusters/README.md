@@ -8,7 +8,7 @@ Description: Learn how to migrate Kubernetes clusters from Docker to containerd 
 
 ---
 
-Docker support was deprecated in Kubernetes 1.20 and removed in 1.24. Clusters still using Docker must migrate to a supported container runtime like containerd. While containerd has been the underlying runtime for Docker in Kubernetes, direct containerd integration provides better performance and simpler architecture. This guide demonstrates how to migrate existing clusters from Docker to containerd with minimal disruption.
+Dockershim support was deprecated in Kubernetes 1.20 and removed in 1.24. Clusters still using Docker through dockershim must migrate to a supported Container Runtime Interface (CRI) runtime like containerd before upgrading to Kubernetes 1.24 or later. While containerd has been the underlying runtime for Docker in Kubernetes, direct containerd integration provides better performance and simpler architecture. This guide demonstrates how to migrate existing clusters from Docker to containerd with minimal disruption.
 
 This migration can be performed on running clusters using a rolling node update approach.
 
@@ -35,9 +35,9 @@ Benefits of direct containerd:
 Before migrating, verify cluster readiness:
 
 ```bash
-# 1. Check Kubernetes version (must be 1.24+)
+# 1. Check Kubernetes version
 
-kubectl version --short
+kubectl version
 
 # 2. Check current container runtime
 kubectl get nodes -o wide
@@ -151,16 +151,7 @@ sudo systemctl disable docker
 ### Step 3: Configure kubelet for containerd
 
 ```bash
-# Create kubelet dropin directory
-sudo mkdir -p /etc/systemd/system/kubelet.service.d
-
-# Create containerd configuration
-cat <<EOF | sudo tee /etc/systemd/system/kubelet.service.d/0-containerd.conf
-[Service]
-Environment="KUBELET_EXTRA_ARGS=--container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
-EOF
-
-# Or update kubelet config file
+# Update kubelet config file
 sudo vim /var/lib/kubelet/config.yaml
 
 # Add or update:
@@ -264,6 +255,9 @@ sudo vim /var/lib/kubelet/config.yaml
 # Restart kubelet
 sudo systemctl daemon-reload
 sudo systemctl start kubelet
+
+# Exit SSH back to control plane
+exit
 
 # Uncordon
 kubectl uncordon control-plane-1
@@ -398,11 +392,17 @@ ssh $NODE << 'EOF'
   sudo systemctl stop kubelet docker
 
   # Configure kubelet
-  sudo mkdir -p /etc/systemd/system/kubelet.service.d
-  cat <<EOL | sudo tee /etc/systemd/system/kubelet.service.d/0-containerd.conf
-[Service]
-Environment="KUBELET_EXTRA_ARGS=--container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
-EOL
+  if sudo grep -q '^containerRuntimeEndpoint:' /var/lib/kubelet/config.yaml; then
+    sudo sed -i 's#^containerRuntimeEndpoint:.*#containerRuntimeEndpoint: unix:///run/containerd/containerd.sock#' /var/lib/kubelet/config.yaml
+  else
+    echo 'containerRuntimeEndpoint: unix:///run/containerd/containerd.sock' | sudo tee -a /var/lib/kubelet/config.yaml
+  fi
+
+  if sudo grep -q '^cgroupDriver:' /var/lib/kubelet/config.yaml; then
+    sudo sed -i 's#^cgroupDriver:.*#cgroupDriver: systemd#' /var/lib/kubelet/config.yaml
+  else
+    echo 'cgroupDriver: systemd' | sudo tee -a /var/lib/kubelet/config.yaml
+  fi
 
   # Restart kubelet
   sudo systemctl daemon-reload
@@ -459,11 +459,16 @@ kubectl delete pod test-nginx
 Set up monitoring after migration:
 
 ```bash
-# Check containerd metrics
-curl http://localhost:1338/v1/metrics
+# Enable containerd metrics if they are not already configured
+sudo vim /etc/containerd/config.toml
+# Add or update:
+# [metrics]
+#   address = "127.0.0.1:1338"
 
 # Monitor with Prometheus
-# containerd exposes metrics on :1338/v1/metrics
+# containerd exposes metrics on the configured address under /v1/metrics
+sudo systemctl restart containerd
+curl http://127.0.0.1:1338/v1/metrics
 
 # View containerd tasks
 sudo crictl ps
@@ -478,8 +483,8 @@ After successful migration:
 
 ```bash
 # On each node:
-# 1. Remove Docker packages
-sudo apt-get purge -y docker-ce docker-ce-cli containerd.io
+# 1. Remove Docker packages, but keep the containerd package used by kubelet
+sudo apt-get purge -y docker-ce docker-ce-cli docker-buildx-plugin docker-compose-plugin
 
 # 2. Clean up Docker data
 sudo rm -rf /var/lib/docker
