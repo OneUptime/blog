@@ -23,7 +23,7 @@ terraform {
   required_providers {
     grafana = {
       source  = "grafana/grafana"
-      version = "~> 2.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -33,7 +33,7 @@ provider "grafana" {
   auth = var.grafana_auth
 
   # Or use service account token
-  # service_account_token = var.grafana_sa_token
+  # auth = var.grafana_sa_token
 }
 
 variable "grafana_auth" {
@@ -191,9 +191,14 @@ resource "grafana_rule_group" "infrastructure_alerts" {
       }
       datasource_uid = grafana_data_source.prometheus.uid
       model = jsonencode({
+        datasource = {
+          type = "prometheus"
+          uid  = grafana_data_source.prometheus.uid
+        }
         expr         = "avg(rate(container_cpu_usage_seconds_total[5m])) by (pod) > 0.8"
         intervalMs   = 1000
         maxDataPoints = 43200
+        refId        = "A"
       })
     }
 
@@ -203,8 +208,13 @@ resource "grafana_rule_group" "infrastructure_alerts" {
         from = 600
         to   = 0
       }
-      datasource_uid = "__expr__"
+      datasource_uid = "-100"
       model = jsonencode({
+        datasource = {
+          type = "__expr__"
+          uid  = "-100"
+        }
+        refId      = "C"
         type       = "classic_conditions"
         conditions = [
           {
@@ -213,8 +223,15 @@ resource "grafana_rule_group" "infrastructure_alerts" {
               type   = "gt"
               params = [0]
             }
+            operator = {
+              type = "and"
+            }
             query = {
               params = ["A"]
+            }
+            reducer = {
+              type   = "last"
+              params = []
             }
           }
         ]
@@ -224,7 +241,7 @@ resource "grafana_rule_group" "infrastructure_alerts" {
     no_data_state  = "NoData"
     exec_err_state = "Error"
 
-    for_duration = "5m"
+    for = "5m"
 
     annotations = {
       summary     = "High CPU usage detected"
@@ -305,7 +322,7 @@ resource "grafana_notification_policy" "root" {
 
 ## Managing Users and Teams
 
-Automate user management and team assignments.
+Automate user management and team assignments. The `grafana_user` resource uses Grafana admin APIs, so it requires basic auth on a self-hosted Grafana instance and is not compatible with Grafana Cloud.
 
 ```hcl
 # users.tf
@@ -484,14 +501,14 @@ Import existing Grafana resources into Terraform state.
 # Import a dashboard by UID
 terraform import grafana_dashboard.existing <uid>
 
-# Import a data source by ID
-terraform import grafana_data_source.existing <id>
+# Import a data source by UID
+terraform import grafana_data_source.existing <uid>
 
 # Import a folder by UID
 terraform import grafana_folder.existing <uid>
 
-# Import an alert rule
-terraform import grafana_rule_group.existing <uid>
+# Import an alert rule group by folder UID and title
+terraform import grafana_rule_group.existing <folder_uid>:<title>
 ```
 
 After importing, run `terraform plan` to see what needs to be added to your configuration to match the imported state.
@@ -515,12 +532,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.5.0
+          terraform_version: 1.15.4
 
       - name: Terraform Init
         working-directory: terraform/grafana
@@ -576,7 +593,7 @@ Keep dashboard JSON files in a separate `dashboards/` directory for easier manag
 
 Use Terraform modules to standardize common configurations across environments.
 
-Tag all resources with environment and ownership information for easier identification.
+Use consistent resource names, dashboard UIDs, folder titles, and alert labels to identify environments and owners.
 
 Store Terraform state in remote backends like S3 with state locking to enable team collaboration.
 
