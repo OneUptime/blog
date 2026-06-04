@@ -93,8 +93,7 @@ Available template fields for search results:
 .Name          - Image name
 .Description   - Image description
 .StarCount     - Number of stars
-.IsOfficial    - Whether it's an official image
-.IsAutomated   - Whether it uses automated builds
+.IsOfficial    - "[OK]" if it's an official image
 ```
 
 ## Finding Available Tags
@@ -107,7 +106,7 @@ Query the Docker Hub registry API for tag information:
 
 ```bash
 # List tags for an official image (library namespace)
-curl -s "https://hub.docker.com/v2/repositories/library/nginx/tags?page_size=20" | \
+curl -s "https://hub.docker.com/v2/namespaces/library/repositories/nginx/tags?page_size=20" | \
     python3 -c "
 import json, sys
 data = json.load(sys.stdin)
@@ -116,7 +115,7 @@ for tag in data['results']:
 "
 
 # List tags for a non-official image (has a namespace)
-curl -s "https://hub.docker.com/v2/repositories/bitnami/nginx/tags?page_size=10" | \
+curl -s "https://hub.docker.com/v2/namespaces/bitnami/repositories/nginx/tags?page_size=10" | \
     python3 -c "
 import json, sys
 data = json.load(sys.stdin)
@@ -150,7 +149,7 @@ else
 fi
 
 # Fetch and display tags
-curl -s "https://hub.docker.com/v2/repositories/${REPO}/tags?page_size=${PAGE_SIZE}&ordering=last_updated" | \
+curl -s "https://hub.docker.com/v2/namespaces/${REPO%/*}/repositories/${REPO##*/}/tags?page_size=${PAGE_SIZE}&ordering=-last_updated" | \
     python3 -c "
 import json, sys
 data = json.load(sys.stdin)
@@ -229,12 +228,16 @@ Docker Hub is the default, but you might need to search private registries.
 Search private repositories on Docker Hub:
 
 ```bash
-# Log in to Docker Hub first
-docker login
+# Create a Docker Hub API bearer token from your username and PAT
+HUB_TOKEN=$(curl -s -X POST "https://hub.docker.com/v2/auth/token" \
+    -H "Content-Type: application/json" \
+    -d '{"identifier":"'"$DOCKERHUB_USERNAME"'","secret":"'"$DOCKERHUB_PAT"'"}' | \
+    jq -r '.access_token')
 
 # Search works for public images regardless of login
-# Private repos appear in search results only when authenticated
-docker search mycompany/
+# List repositories in your namespace, including private repositories you can access
+curl -s -H "Authorization: Bearer $HUB_TOKEN" \
+    "https://hub.docker.com/v2/namespaces/mycompany/repositories?page_size=25&name=myapp"
 ```
 
 ### Amazon ECR
@@ -295,7 +298,7 @@ skopeo inspect docker://nginx:alpine | python3 -m json.tool
 # Compare sizes of different tags
 for tag in alpine slim bookworm latest; do
     size=$(skopeo inspect docker://nginx:$tag 2>/dev/null | \
-        python3 -c "import json,sys; print(json.load(sys.stdin).get('LayersData', [{}])[0].get('Size', 'N/A'))" 2>/dev/null)
+        python3 -c "import json,sys; data=json.load(sys.stdin); total=sum(layer.get('Size', 0) for layer in data.get('LayersData', [])); print(total or 'N/A')" 2>/dev/null)
     echo "nginx:$tag - $size bytes"
 done
 ```
@@ -312,7 +315,7 @@ docker scout cves nginx:alpine
 docker scout quickview nginx:alpine
 
 # Compare two images
-docker scout compare nginx:alpine nginx:latest
+docker scout compare nginx:alpine --to nginx:latest
 ```
 
 ## Building a Search Workflow
@@ -324,7 +327,7 @@ A practical workflow for finding the right image:
 docker search --filter is-official=true postgres
 
 # Step 2: Check available tags
-curl -s "https://hub.docker.com/v2/repositories/library/postgres/tags?page_size=10&ordering=last_updated" | \
+curl -s "https://hub.docker.com/v2/namespaces/library/repositories/postgres/tags?page_size=10&ordering=-last_updated" | \
     python3 -c "import json,sys; [print(t['name']) for t in json.load(sys.stdin)['results']]"
 
 # Step 3: Inspect the specific tag you want
