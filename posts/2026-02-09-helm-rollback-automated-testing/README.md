@@ -12,7 +12,7 @@ Helm rollbacks restore previous release versions when upgrades fail or introduce
 
 ## Understanding Helm Rollback Mechanics
 
-Every Helm release creates a revision number that increments with each upgrade. Helm stores these revisions as Kubernetes secrets or configmaps in the release namespace. When you rollback, Helm reinstalls the resources from a previous revision.
+Every Helm release creates a revision number that increments with each upgrade. Helm stores these revisions as Kubernetes secrets by default, or configmaps if Helm is configured to use the configmap storage driver, in the release namespace. When you rollback, Helm reinstalls the resources from a previous revision.
 
 View release history to see available rollback targets.
 
@@ -65,7 +65,7 @@ readinessProbe:
   timeoutSeconds: 3
   failureThreshold: 3
 
-# Rollback configuration
+# Rollback configuration used by your deployment scripts
 rollback:
   enabled: true
   healthCheckTimeout: 300  # seconds
@@ -115,20 +115,34 @@ HEALTH_CHECK_TIMEOUT=${5:-300}
 
 echo "Deploying $RELEASE_NAME in namespace $NAMESPACE..."
 
-# Store current revision before upgrade
-CURRENT_REVISION=$(helm history $RELEASE_NAME -n $NAMESPACE -o json | jq -r 'last | .revision')
-echo "Current revision: $CURRENT_REVISION"
+# Store current revision before upgrade. This is empty on the first install.
+CURRENT_REVISION=$(helm history $RELEASE_NAME -n $NAMESPACE -o json 2>/dev/null | jq -r '.[-1].revision // empty' || true)
+if [ -n "$CURRENT_REVISION" ]; then
+  echo "Current revision: $CURRENT_REVISION"
+else
+  echo "No existing release revision found"
+fi
 
 # Perform upgrade
-helm upgrade --install $RELEASE_NAME $CHART_PATH \
-  --namespace $NAMESPACE \
-  --create-namespace \
-  --values $VALUES_FILE \
-  --wait \
-  --timeout 10m
+if ! helm upgrade --install $RELEASE_NAME $CHART_PATH \
+    --namespace $NAMESPACE \
+    --create-namespace \
+    --values $VALUES_FILE \
+    --wait \
+    --timeout 10m; then
+  echo "Helm upgrade failed."
+  if [ -n "$CURRENT_REVISION" ]; then
+    echo "Rolling back to revision $CURRENT_REVISION..."
+    helm rollback $RELEASE_NAME $CURRENT_REVISION -n $NAMESPACE --wait
+  else
+    echo "No previous revision is available; uninstalling failed release..."
+    helm uninstall $RELEASE_NAME -n $NAMESPACE || true
+  fi
+  exit 1
+fi
 
 # Get new revision
-NEW_REVISION=$(helm history $RELEASE_NAME -n $NAMESPACE -o json | jq -r 'last | .revision')
+NEW_REVISION=$(helm history $RELEASE_NAME -n $NAMESPACE -o json | jq -r '.[-1].revision')
 echo "New revision: $NEW_REVISION"
 
 # Function to check deployment health
@@ -173,7 +187,12 @@ else
   echo "Deployment health check failed. Rolling back to revision $CURRENT_REVISION..."
 
   # Perform rollback
-  helm rollback $RELEASE_NAME $CURRENT_REVISION -n $NAMESPACE --wait
+  if [ -n "$CURRENT_REVISION" ]; then
+    helm rollback $RELEASE_NAME $CURRENT_REVISION -n $NAMESPACE --wait
+  else
+    echo "No previous revision is available; uninstalling failed release..."
+    helm uninstall $RELEASE_NAME -n $NAMESPACE || true
+  fi
 
   echo "Rollback completed"
   exit 1
@@ -201,15 +220,24 @@ NAMESPACE=$2
 echo "Running smoke tests for $RELEASE_NAME..."
 
 # Get service endpoint
-SERVICE_IP=$(kubectl get svc -n $NAMESPACE ${RELEASE_NAME} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+SERVICE_HOST=$(kubectl get svc -n $NAMESPACE ${RELEASE_NAME} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 SERVICE_PORT=$(kubectl get svc -n $NAMESPACE ${RELEASE_NAME} -o jsonpath='{.spec.ports[0].port}')
 
-if [ -z "$SERVICE_IP" ]; then
-  # Try ClusterIP if LoadBalancer not available
-  SERVICE_IP=$(kubectl get svc -n $NAMESPACE ${RELEASE_NAME} -o jsonpath='{.spec.clusterIP}')
+if [ -z "$SERVICE_HOST" ]; then
+  SERVICE_HOST=$(kubectl get svc -n $NAMESPACE ${RELEASE_NAME} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 fi
 
-BASE_URL="http://${SERVICE_IP}:${SERVICE_PORT}"
+if [ -n "$SERVICE_HOST" ]; then
+  BASE_URL="http://${SERVICE_HOST}:${SERVICE_PORT}"
+else
+  # Use port-forward when running from CI or another host that cannot reach ClusterIP services.
+  LOCAL_PORT=18080
+  kubectl port-forward -n $NAMESPACE svc/${RELEASE_NAME} ${LOCAL_PORT}:${SERVICE_PORT} >/tmp/${RELEASE_NAME}-port-forward.log 2>&1 &
+  PORT_FORWARD_PID=$!
+  trap 'kill $PORT_FORWARD_PID 2>/dev/null || true' EXIT
+  sleep 5
+  BASE_URL="http://127.0.0.1:${LOCAL_PORT}"
+fi
 
 # Test 1: Check health endpoint
 echo "Test 1: Health endpoint..."
@@ -267,6 +295,9 @@ set -e
 RELEASE_NAME=$1
 NAMESPACE=$2
 
+# Store the previous revision before deployment for smoke-test rollback.
+PREVIOUS_REVISION=$(helm history $RELEASE_NAME -n $NAMESPACE -o json 2>/dev/null | jq -r '.[-1].revision // empty' || true)
+
 # Deploy with health checks
 ./scripts/deploy-with-health-check.sh $RELEASE_NAME $NAMESPACE ./mychart values.yaml
 
@@ -275,8 +306,12 @@ if ./scripts/smoke-test.sh $RELEASE_NAME $NAMESPACE; then
   echo "Deployment and smoke tests successful!"
 else
   echo "Smoke tests failed, rolling back..."
-  PREVIOUS_REVISION=$(helm history $RELEASE_NAME -n $NAMESPACE -o json | jq -r '.[-2].revision')
-  helm rollback $RELEASE_NAME $PREVIOUS_REVISION -n $NAMESPACE --wait
+  if [ -n "$PREVIOUS_REVISION" ]; then
+    helm rollback $RELEASE_NAME $PREVIOUS_REVISION -n $NAMESPACE --wait
+  else
+    echo "No previous revision is available; uninstalling failed release..."
+    helm uninstall $RELEASE_NAME -n $NAMESPACE || true
+  fi
   exit 1
 fi
 ```
@@ -300,24 +335,27 @@ variables:
 
 deploy:
   stage: deploy
-  image: alpine/helm:latest
+  image: alpine/k8s:1.34.0
   script:
+    - apk add --no-cache jq
+    - PREVIOUS_REVISION=$(helm history $RELEASE_NAME -n $NAMESPACE -o json 2>/dev/null | jq -r '.[-1].revision // empty' || true)
+    - echo "$PREVIOUS_REVISION" > previous_revision.txt
     - helm upgrade --install $RELEASE_NAME $CHART_PATH
         --namespace $NAMESPACE
         --create-namespace
         --values values-prod.yaml
         --wait
         --timeout 10m
-    - echo $CI_PIPELINE_ID > deployment_id.txt
   artifacts:
+    when: always
     paths:
-      - deployment_id.txt
+      - previous_revision.txt
   only:
     - main
 
 smoke_test:
   stage: test
-  image: curlimages/curl:latest
+  image: alpine/k8s:1.34.0
   dependencies:
     - deploy
   script:
@@ -329,12 +367,20 @@ smoke_test:
 
 rollback_on_failure:
   stage: rollback
-  image: alpine/helm:latest
+  image: alpine/k8s:1.34.0
+  dependencies:
+    - deploy
   script:
     - echo "Tests failed, initiating rollback..."
-    - PREVIOUS_REVISION=$(helm history $RELEASE_NAME -n $NAMESPACE -o json | jq -r '.[-2].revision')
-    - helm rollback $RELEASE_NAME $PREVIOUS_REVISION -n $NAMESPACE --wait
-    - echo "Rollback to revision $PREVIOUS_REVISION completed"
+    - PREVIOUS_REVISION=$(cat previous_revision.txt)
+    - |
+      if [ -n "$PREVIOUS_REVISION" ]; then
+        helm rollback $RELEASE_NAME $PREVIOUS_REVISION -n $NAMESPACE --wait
+        echo "Rollback to revision $PREVIOUS_REVISION completed"
+      else
+        echo "No previous revision is available; uninstalling failed release..."
+        helm uninstall $RELEASE_NAME -n $NAMESPACE || true
+      fi
   when: on_failure
   only:
     - main
@@ -361,20 +407,24 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Configure kubectl
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v4
         with:
+          method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
 
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4
+
+      - name: Install test tools
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Get current revision
         id: get_revision
         run: |
-          CURRENT=$(helm history myapp -n production -o json | jq -r 'last | .revision')
+          CURRENT=$(helm history myapp -n production -o json 2>/dev/null | jq -r '.[-1].revision // empty' || true)
           echo "previous=$CURRENT" >> $GITHUB_OUTPUT
 
       - name: Deploy chart
@@ -391,12 +441,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Configure kubectl
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v4
         with:
+          method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Install test tools
+        run: sudo apt-get update && sudo apt-get install -y jq bc
 
       - name: Run smoke tests
         run: |
@@ -405,22 +459,28 @@ jobs:
 
   rollback:
     needs: [deploy, test]
-    if: failure()
+    if: ${{ always() && failure() }}
     runs-on: ubuntu-latest
     steps:
       - name: Configure kubectl
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v4
         with:
+          method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
 
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4
 
       - name: Rollback release
         run: |
           PREVIOUS_REV="${{ needs.deploy.outputs.previous_revision }}"
-          helm rollback myapp $PREVIOUS_REV -n production --wait
-          echo "Rolled back to revision $PREVIOUS_REV"
+          if [ -n "$PREVIOUS_REV" ]; then
+            helm rollback myapp $PREVIOUS_REV -n production --wait
+            echo "Rolled back to revision $PREVIOUS_REV"
+          else
+            echo "No previous revision is available; uninstalling failed release..."
+            helm uninstall myapp -n production || true
+          fi
 ```
 
 ## Monitoring Rollback Events
