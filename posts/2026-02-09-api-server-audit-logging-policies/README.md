@@ -18,8 +18,8 @@ Kubernetes supports four audit levels that control the amount of information log
 
 - **None**: Don't log events matching this rule
 - **Metadata**: Log request metadata (user, timestamp, resource) but not request or response bodies
-- **Request**: Log event metadata and request body but not response body
-- **RequestResponse**: Log event metadata, request body, and response body
+- **Request**: Log event metadata and request body but not response body; this does not apply to non-resource requests
+- **RequestResponse**: Log event metadata, request body, and response body; this does not apply to non-resource requests
 
 Higher levels generate more data, so choose appropriately based on sensitivity and storage constraints.
 
@@ -107,11 +107,11 @@ kind: Policy
 omitStages:
   - RequestReceived
 rules:
-  # Log authentication failures at RequestResponse level
+  # Log token review requests at RequestResponse level
   - level: RequestResponse
     verbs: ["create"]
     resources:
-    - group: ""
+    - group: "authentication.k8s.io"
       resources: ["tokenreviews"]
 
   # Log secret access at Metadata level
@@ -140,7 +140,7 @@ rules:
     - group: ""
       resources: ["pods/exec", "pods/attach", "pods/portforward"]
 
-  # Log admission webhook failures
+  # Log admission webhook configuration changes
   - level: Request
     verbs: ["create", "update"]
     resources:
@@ -155,11 +155,12 @@ rules:
 
   # Don't log system component requests
   - level: None
+    userGroups:
+    - system:serviceaccounts:kube-system
     users:
     - system:kube-proxy
     - system:kube-controller-manager
     - system:kube-scheduler
-    - system:serviceaccount:kube-system:*
 
   # Log everything else at Metadata level
   - level: Metadata
@@ -175,7 +176,7 @@ kind: Policy
 rules:
   # Production namespace: log everything at Request level
   - level: Request
-    namespaces: ["production", "prod-*"]
+    namespaces: ["production", "prod"]
 
   # Kube-system: log only modifications
   - level: Request
@@ -184,7 +185,7 @@ rules:
 
   # Development: only metadata
   - level: Metadata
-    namespaces: ["dev-*", "test-*"]
+    namespaces: ["development", "test"]
 
   # Default for other namespaces
   - level: Metadata
@@ -270,9 +271,9 @@ users:
     client-key-data: <base64-encoded-client-key>
 ```
 
-## Dynamic Audit Configuration
+## Multiple Audit Backends
 
-Use multiple backends for different audit streams:
+Enable both file and webhook audit backends:
 
 ```yaml
 # API server with multiple backends
@@ -282,13 +283,13 @@ Use multiple backends for different audit streams:
 - --audit-webhook-config-file=/etc/kubernetes/audit-webhook-config.yaml
 ```
 
-Create policy with different levels for different backends:
+The same audit policy applies to all enabled backends:
 
 ```yaml
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-  # Send critical events to webhook
+  # Log critical events at a detailed level
   - level: RequestResponse
     verbs: ["create", "delete"]
     resources:
@@ -297,7 +298,7 @@ rules:
     omitStages:
     - RequestReceived
 
-  # Log everything else to file
+  # Log everything else at Metadata level
   - level: Metadata
 ```
 
@@ -307,7 +308,7 @@ Query audit logs for security events:
 
 ```bash
 # Find all failed authentication attempts
-jq 'select(.verb == "create" and .objectRef.resource == "tokenreviews" and .responseStatus.code != 201)' /var/log/kubernetes/audit.log
+jq 'select(.verb == "create" and .objectRef.apiGroup == "authentication.k8s.io" and .objectRef.resource == "tokenreviews" and .responseObject.status.authenticated == false)' /var/log/kubernetes/audit.log
 
 # Find secret access
 jq 'select(.objectRef.resource == "secrets")' /var/log/kubernetes/audit.log
@@ -321,23 +322,14 @@ jq 'select(.objectRef.apiGroup == "rbac.authorization.k8s.io")' /var/log/kuberne
 
 ## Log Rotation and Management
 
-Configure proper log rotation:
+Configure proper log rotation with the API server's built-in audit log flags:
 
-```bash
-# /etc/logrotate.d/kubernetes-audit
-/var/log/kubernetes/audit.log {
-    daily
-    rotate 30
-    compress
-    delaycompress
-    missingok
-    notifempty
-    create 0600 root root
-    postrotate
-        # Signal API server to reopen log file
-        killall -USR1 kube-apiserver
-    endscript
-}
+```yaml
+- --audit-log-path=/var/log/kubernetes/audit.log
+- --audit-log-maxage=30
+- --audit-log-maxbackup=10
+- --audit-log-maxsize=100
+- --audit-log-compress
 ```
 
 ## Performance Optimization
@@ -348,7 +340,7 @@ Reduce audit log volume while maintaining security:
 apiVersion: audit.k8s.io/v1
 kind: Policy
 omitStages:
-  - RequestReceived  # Don't log until request is authorized
+  - RequestReceived  # Skip the initial request receipt event
 rules:
   # High-value events at detailed level
   - level: RequestResponse
@@ -385,7 +377,7 @@ rules:
   - level: RequestResponse
     namespaces: ["pci-scope"]
 
-  # Log all privileged operations
+  # Log pod modifications
   - level: Request
     verbs: ["create", "update", "patch"]
     resources:
@@ -397,11 +389,10 @@ rules:
   # Log all authentication events
   - level: RequestResponse
     resources:
-    - group: ""
-      resources: ["tokenreviews"]
     - group: "authentication.k8s.io"
+      resources: ["tokenreviews"]
 
-  # Log all authorization decisions
+  # Log authorization review requests
   - level: Request
     resources:
     - group: "authorization.k8s.io"
