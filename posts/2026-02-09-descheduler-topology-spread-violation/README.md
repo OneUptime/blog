@@ -44,13 +44,12 @@ data:
         pluginConfig:
         - name: "RemovePodsViolatingTopologySpreadConstraint"
           args:
-            # Namespaces to check for violations
-            namespaces:
-              include: []  # Empty means all namespaces
+            # Omit namespaces to check all namespaces
             # Label selector to filter which pods to check
             labelSelector: {}
-            # Only include soft constraints (whenUnsatisfiable: ScheduleAnyway)
-            includeSoftConstraints: false
+            # Only include hard constraints (whenUnsatisfiable: DoNotSchedule)
+            constraints:
+            - DoNotSchedule
         plugins:
           balance:
             enabled:
@@ -123,12 +122,9 @@ pluginConfig:
 - name: "RemovePodsViolatingTopologySpreadConstraint"
   args:
     # Only check hard constraints by default
-    includeSoftConstraints: false
-    # Enable constraint checking
+    # Enable hard constraint checking
     constraints:
-    - maxSkew: 1
-      topologyKey: topology.kubernetes.io/zone
-      whenUnsatisfiable: DoNotSchedule
+    - DoNotSchedule
 ```
 
 ## Including Soft Constraints
@@ -137,15 +133,19 @@ Soft constraints (whenUnsatisfiable: ScheduleAnyway) allow scheduling even if co
 
 ```yaml
 pluginConfig:
-- name: "RemovePodsViolatingTopologySpreadConstraint"
+- name: "DefaultEvictor"
   args:
-    # Also check and fix soft constraint violations
-    includeSoftConstraints: true
-    namespaces:
-      include: ["production"]
     # Priority threshold - don't evict high-priority pods
     priorityThreshold:
       value: 10000
+- name: "RemovePodsViolatingTopologySpreadConstraint"
+  args:
+    # Also check and fix soft constraint violations
+    constraints:
+    - DoNotSchedule
+    - ScheduleAnyway
+    namespaces:
+      include: ["production"]
 ```
 
 ## Complete Descheduler Deployment
@@ -165,9 +165,12 @@ kind: ClusterRole
 metadata:
   name: descheduler
 rules:
-- apiGroups: [""]
+- apiGroups: ["events.k8s.io"]
   resources: ["events"]
   verbs: ["create", "update"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "watch", "list"]
 - apiGroups: [""]
   resources: ["nodes"]
   verbs: ["get", "watch", "list"]
@@ -177,9 +180,15 @@ rules:
 - apiGroups: [""]
   resources: ["pods/eviction"]
   verbs: ["create"]
-- apiGroups: ["apps"]
-  resources: ["replicasets", "deployments"]
-  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["scheduling.k8s.io"]
+  resources: ["priorityclasses"]
+  verbs: ["get", "watch", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -199,6 +208,8 @@ kind: CronJob
 metadata:
   name: descheduler-topology
   namespace: kube-system
+  labels:
+    app: descheduler
 spec:
   schedule: "*/10 * * * *"  # Every 10 minutes
   concurrencyPolicy: Forbid
@@ -209,12 +220,14 @@ spec:
       template:
         metadata:
           name: descheduler-topology
+          labels:
+            app: descheduler
         spec:
           serviceAccountName: descheduler
           restartPolicy: Never
           containers:
           - name: descheduler
-            image: registry.k8s.io/descheduler/descheduler:v0.28.0
+            image: registry.k8s.io/descheduler/descheduler:v0.36.0
             command:
             - /bin/descheduler
             args:
@@ -241,32 +254,29 @@ spec:
 Create a scenario where violations occur:
 
 ```bash
-# Label nodes with zones
+# Start with all lab nodes in one zone
 kubectl label nodes worker-node-1 topology.kubernetes.io/zone=us-east-1a
-kubectl label nodes worker-node-2 topology.kubernetes.io/zone=us-east-1b
+kubectl label nodes worker-node-2 topology.kubernetes.io/zone=us-east-1a
 kubectl label nodes worker-node-3 topology.kubernetes.io/zone=us-east-1a
+
+kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
 
 # Deploy the application
 kubectl apply -f web-app-with-topology.yaml
 
 # Check pod distribution
-kubectl get pods -l app=web-app -o wide
+kubectl get pods -n production -l app=web-app -o wide
 
-# Simulate violation by manually forcing pods to one zone
-kubectl patch deployment web-app -p '{"spec":{"template":{"spec":{"nodeSelector":{"topology.kubernetes.io/zone":"us-east-1a"}}}}}'
-
-# Wait for pods to be rescheduled
+# Simulate a topology change that makes existing pods imbalanced
+kubectl label nodes worker-node-3 topology.kubernetes.io/zone=us-east-1b --overwrite
 sleep 30
-
-# Remove the node selector to allow proper spreading
-kubectl patch deployment web-app --type json -p='[{"op": "remove", "path": "/spec/template/spec/nodeSelector"}]'
 ```
 
 Now pods are running but violate the topology constraint. Check the distribution:
 
 ```bash
 # Count pods per zone
-kubectl get pods -l app=web-app -o json | \
+kubectl get pods -n production -l app=web-app -o json | \
   jq -r '.items[] | select(.status.phase=="Running") | .spec.nodeName' | \
   xargs -I {} kubectl get node {} -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}' | \
   sort | uniq -c
@@ -386,17 +396,19 @@ Check if pods are properly distributed:
 
 ```bash
 # Show pod distribution across zones
-kubectl get pods -l app=web-app -o json | \
+kubectl get pods -n production -l app=web-app -o json | \
   jq -r '.items[] |
     select(.status.phase=="Running") |
-    .spec.nodeName as $node |
-    .metadata.name as $pod |
-    ($node | split("-") | .[2]) as $zone |
-    "\($pod) -> \($zone)"'
+    "\(.metadata.name) \(.spec.nodeName)"' | \
+  while read -r pod node; do
+    zone=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
+    echo "$pod -> $zone"
+  done
 
 # Count pods per topology domain
-kubectl get pods -l app=web-app -o wide --no-headers | \
-  awk '{print $7}' | \
+kubectl get pods -n production -l app=web-app -o json | \
+  jq -r '.items[] | select(.status.phase=="Running") | .spec.nodeName' | \
+  xargs -I {} kubectl get node {} -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}' | \
   sort | uniq -c
 ```
 
@@ -436,7 +448,7 @@ spec:
             memory: 1Gi
 ```
 
-The descheduler will respect StatefulSet ordering when evicting pods.
+The descheduler can evict StatefulSet-managed pods if they pass the normal eviction checks, so protect stateful workloads with a PodDisruptionBudget and test the replacement behavior carefully.
 
 ## Metrics and Alerting
 
@@ -447,7 +459,7 @@ Monitor topology constraint violations:
 cat << 'EOF' > check-topology-violations.sh
 #!/bin/bash
 violations=$(kubectl get events --all-namespaces --field-selector reason=FailedScheduling | \
-  grep "violates topology spread constraint" | wc -l)
+  grep -i "topology spread" | wc -l)
 
 if [ $violations -gt 0 ]; then
   echo "Found $violations topology constraint violations"
@@ -475,7 +487,7 @@ If topology violations aren't being fixed:
 
 ```bash
 # Check if constraints are defined correctly
-kubectl get deployment web-app -o jsonpath='{.spec.template.spec.topologySpreadConstraints}' | jq
+kubectl get deployment web-app -n production -o jsonpath='{.spec.template.spec.topologySpreadConstraints}' | jq
 
 # Verify node topology labels exist
 kubectl get nodes --show-labels | grep topology
@@ -488,4 +500,3 @@ kubectl logs -n kube-system -l app=descheduler --tail=500 | grep -i topology
 ```
 
 The RemovePodsViolatingTopologySpreadConstraint strategy is crucial for maintaining proper pod distribution across your cluster's topology domains. By automatically correcting violations, it ensures your applications remain highly available and properly distributed across failure domains without manual intervention.
-
