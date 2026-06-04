@@ -8,11 +8,13 @@ Description: Master kube-proxy IPVS mode with masquerading for source NAT in Kub
 
 ---
 
-When you run kube-proxy in IPVS mode, masquerading handles source network address translation (SNAT) for packets leaving the cluster. Getting masquerade configuration right is crucial for proper external connectivity, LoadBalancer services, and NodePort access. This guide walks through implementing IPVS with masquerade and solving common connectivity issues.
+When you run kube-proxy in IPVS mode, masquerading handles source network address translation (SNAT) for Service traffic that requires it. Getting masquerade configuration right is crucial for LoadBalancer services, NodePort access, and Service traffic that crosses nodes. This guide walks through implementing IPVS with masquerade and solving common connectivity issues.
+
+IPVS proxy mode is deprecated as of Kubernetes v1.35, and the Kubernetes documentation recommends nftables mode as its replacement for newer clusters. Use IPVS only when you are operating a cluster that already relies on it or when your Kubernetes version and networking requirements call for it.
 
 ## Understanding Masquerade in IPVS Mode
 
-Masquerading rewrites the source IP address of outbound packets to the node's IP address. Without masquerade, return packets wouldn't know how to reach the original pod, because pod IPs aren't routable outside the cluster.
+Masquerading rewrites the source IP address of selected packets to the node's IP address. For external Service traffic that is forwarded to a pod on another node, this keeps the return path symmetric through the node that received the traffic.
 
 In iptables mode, kube-proxy creates MASQUERADE rules for specific scenarios. In IPVS mode, the same logic applies, but IPVS handles the load balancing while iptables still manages masquerading through specific chains.
 
@@ -46,9 +48,9 @@ data:
     clusterCIDR: "10.244.0.0/16"  # Your pod CIDR
 ```
 
-The `masqueradeAll` setting controls whether all traffic gets masqueraded or only traffic that needs it. Setting it to false is more efficient because it only masquerades:
+The `masqueradeAll` setting controls whether kube-proxy SNATs all traffic sent to Service ClusterIPs or only Service traffic that needs it. Setting it to false is more efficient because kube-proxy only masquerades cases such as:
 
-- Traffic from pods to external IPs (outside cluster and pod CIDRs)
+- Service traffic that crosses nodes and needs a symmetric return path
 - NodePort service traffic from external sources
 - LoadBalancer service traffic
 - Traffic with source IP preservation disabled
@@ -111,7 +113,7 @@ spec:
     app: web
   ports:
   - port: 80
-    targetPort: 8080
+    targetPort: 80
     nodePort: 30080
     protocol: TCP
   externalTrafficPolicy: Cluster  # Uses masquerade
@@ -134,7 +136,7 @@ spec:
       - name: nginx
         image: nginx:1.21
         ports:
-        - containerPort: 8080
+        - containerPort: 80
 ```
 
 With `externalTrafficPolicy: Cluster`, traffic coming in through the NodePort gets masqueraded so the pod sees the source IP as the node's IP. This allows traffic to route back correctly even if the pod is on a different node.
@@ -145,8 +147,8 @@ Test NodePort connectivity:
 # From outside the cluster
 curl http://<NODE_IP>:30080
 
-# From inside a pod on the same node
-kubectl exec -it test-pod -- curl http://127.0.0.1:30080
+# From inside a pod, target a node IP because IPVS mode does not support localhost NodePorts
+kubectl exec test-pod -- curl http://<NODE_IP>:30080
 
 # Check connection tracking
 conntrack -L | grep 30080
@@ -167,16 +169,16 @@ spec:
     app: web
   ports:
   - port: 80
-    targetPort: 8080
+    targetPort: 80
     nodePort: 30081
   externalTrafficPolicy: Local  # No masquerade, preserves source IP
 ```
 
-With Local policy, traffic only goes to pods on the node that receives the traffic. No masquerade happens because routing works without NAT. However, this means:
+With Local policy, traffic only goes to pods on the node that receives the traffic. Kube-proxy does not forward traffic to other nodes, which preserves the original source IP. However, this means:
 
 - Traffic distribution may be uneven if pods aren't evenly distributed across nodes
 - Health checks must pass on each node that receives traffic
-- Nodes without local pods return connection refused
+- Nodes without local pods do not forward the traffic
 
 Check which nodes have pods:
 
@@ -194,7 +196,7 @@ done
 
 ## Configuring Masquerade for Pod-to-External Traffic
 
-Pods accessing external services (internet, on-premise databases, etc.) need masquerading to route return traffic:
+Pods accessing external services (internet, on-premise databases, etc.) often need masquerading to route return traffic, but this is normally handled by your CNI plugin or the Kubernetes `ip-masq-agent`, not kube-proxy's Service masquerade rules:
 
 ```yaml
 apiVersion: v1
@@ -204,7 +206,7 @@ metadata:
 spec:
   containers:
   - name: curl
-    image: curlimages/curl:latest
+    image: nicolaka/netshoot:latest
     command: ["sleep", "3600"]
 ```
 
@@ -217,7 +219,7 @@ kubectl exec curl-test -- curl -I https://google.com
 # Trace the packet flow
 kubectl exec curl-test -- traceroute -n 8.8.8.8
 
-# On the node, check masquerade is applied
+# On the node, check whether your CNI or ip-masq-agent applies masquerade
 tcpdump -i any -n host 8.8.8.8
 
 # You should see:
@@ -229,17 +231,17 @@ tcpdump -i any -n host 8.8.8.8
 Check iptables rules that apply masquerading:
 
 ```bash
-# Rules that mark packets for masquerading
-iptables -t nat -L KUBE-MARK-MASQ -n -v
+# If you use ip-masq-agent, check its rules
+iptables -t nat -L IP-MASQ-AGENT -n -v
 
-# Rules that apply masquerade
+# kube-proxy Service traffic still uses KUBE-POSTROUTING
 iptables -t nat -L KUBE-POSTROUTING -n -v
 
 # Should see rules like:
 # MASQUERADE all -- * * 0.0.0.0/0 0.0.0.0/0 mark match 0x4000/0x4000
 ```
 
-The mark `0x4000` (bit 14 by default) identifies packets that need masquerading.
+For kube-proxy Service traffic, the mark `0x4000` (bit 14 by default) identifies packets that need masquerading.
 
 ## Troubleshooting Masquerade Issues
 
@@ -277,9 +279,6 @@ Common issues and solutions:
 ```bash
 # Check firewall rules on nodes
 iptables -L -n | grep 30080
-
-# Verify kube-proxy is listening
-ss -tlnp | grep 30080
 
 # Check if IPVS has the NodePort entry
 ipvsadm -Ln | grep 30080
@@ -348,7 +347,7 @@ grep "nf_conntrack: table full" /var/log/syslog
 
 ## Using MasqueradeAll for Simplified Configuration
 
-If you're having persistent issues or need guaranteed masquerading, enable `masqueradeAll`:
+If you're having persistent issues or need guaranteed masquerading for Service ClusterIP traffic, enable `masqueradeAll`:
 
 ```yaml
 apiVersion: v1
@@ -364,11 +363,11 @@ data:
     ipvs:
       scheduler: "rr"
     iptables:
-      masqueradeAll: true  # Masquerade all traffic
+      masqueradeAll: true  # Masquerade all Service ClusterIP traffic
       masqueradeBit: 14
     clusterCIDR: "10.244.0.0/16"
 ```
 
-This adds some overhead but guarantees connectivity. All pod traffic gets masqueraded regardless of destination. Use this as a fallback if selective masquerading causes issues.
+This adds some overhead for Service traffic. It makes kube-proxy SNAT all traffic sent to Service ClusterIPs, but it does not replace CNI or `ip-masq-agent` handling for general pod-to-external egress. Use this as a fallback if selective Service masquerading causes issues.
 
 IPVS mode with properly configured masquerading provides the performance of IPVS load balancing while maintaining correct NAT behavior for external connectivity. Understanding how IPVS and iptables work together lets you troubleshoot issues quickly and optimize for your specific networking requirements.
