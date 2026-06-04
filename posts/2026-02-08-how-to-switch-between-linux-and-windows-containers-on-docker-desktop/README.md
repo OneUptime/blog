@@ -51,14 +51,13 @@ You can also switch from PowerShell or Command Prompt.
 
 ```powershell
 # Switch to Windows containers
-
-& "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchDaemon
+docker desktop engine use windows
 
 # Switch to Linux containers
-& "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchLinuxEngine
+docker desktop engine use linux
 
-# Switch to Windows containers explicitly
-& "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchWindowsEngine
+# List available engines and the current selection
+docker desktop engine ls
 ```
 
 ## Checking the Current Mode
@@ -82,7 +81,7 @@ Linux containers are the default choice for most workloads. Use them when:
 
 - Building applications with Node.js, Python, Go, Java, Ruby, or Rust
 - Running databases like PostgreSQL, MySQL, MongoDB, or Redis
-- Deploying modern .NET (6, 7, 8) applications
+- Deploying modern .NET (8, 9, 10) applications
 - Running Kubernetes locally with Docker Desktop's built-in cluster
 - Working with container images from Docker Hub (most are Linux-only)
 - Using Docker Compose for multi-service development environments
@@ -101,14 +100,14 @@ Switch to Windows containers when your workload specifically requires Windows.
 
 - Running .NET Framework 3.5 or 4.x applications
 - Hosting IIS web servers with ASP.NET Web Forms or MVC
-- Running SQL Server in a Windows container
+- Building custom SQL Server Windows container images for development or testing
 - Using WCF services
 - Applications that depend on Windows-specific APIs, COM components, or registry settings
 - Testing Windows Server deployments locally
 
 ```powershell
 # Switch to Windows mode
-& "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchWindowsEngine
+docker desktop engine use windows
 
 # Verify the switch
 docker info --format '{{.OSType}}'
@@ -133,7 +132,7 @@ Containers from the previous mode are not deleted. They are still stored and wil
 docker ps -a
 
 # Switch modes
-& "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchDaemon
+docker desktop engine use windows
 
 # List containers in the new mode - different set of containers
 docker ps -a
@@ -153,7 +152,7 @@ docker volume ls  # Shows Linux volumes
 # docker volume ls  # Shows Windows volumes (completely separate list)
 ```
 
-This means pulling the same image name in both modes gives you different images. For example, `mcr.microsoft.com/mssql/server:2022-latest` pulls a Linux image in Linux mode and is not available in Windows mode (SQL Server uses different image names for Windows containers).
+This means pulling the same image name in both modes may give you different images if the registry publishes manifests for both operating systems. For example, `mcr.microsoft.com/mssql/server:2022-latest` is a SQL Server Linux container image and is not available as a Windows container image.
 
 ## Running Both Modes Simultaneously
 
@@ -165,13 +164,13 @@ Run Docker Desktop in Windows container mode for Windows containers, and use a D
 
 ```powershell
 # Switch Docker Desktop to Windows containers
-& "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchWindowsEngine
+docker desktop engine use windows
 ```
 
 ```bash
 # In a WSL2 terminal (Ubuntu), install Docker Engine directly
 sudo apt update
-sudo apt install docker.io
+# Follow Docker's Ubuntu installation instructions for the current Docker Engine packages
 
 # Start the Docker daemon
 sudo dockerd &
@@ -182,18 +181,14 @@ docker run --rm alpine echo "Linux container running alongside Windows container
 
 ### Option 2: LCOW (Linux Containers on Windows)
 
-Linux Containers on Windows (LCOW) is an experimental feature that runs Linux containers through Hyper-V isolation while in Windows container mode.
+Linux Containers on Windows (LCOW) was an experimental feature for running Linux containers through Hyper-V isolation while in Windows container mode. It is not a current Docker Desktop mixed-workload strategy.
 
 ```powershell
-# Enable LCOW (experimental, requires Hyper-V)
-# Edit Docker daemon.json and add:
-# { "experimental": true }
-
-# Run a Linux container while in Windows mode using the platform flag
-docker run --rm --platform linux alpine echo "Linux on Windows"
+# Do not rely on LCOW for current Docker Desktop workflows.
+# Use Docker Desktop's Linux engine or a separate Linux Docker Engine instead.
 ```
 
-Note that LCOW has been deprecated in favor of the WSL2 backend. It is not recommended for production use.
+Use the WSL2 backend or a separate Linux Docker Engine for Linux containers on Windows.
 
 ## Scripting Mode Switches
 
@@ -209,7 +204,7 @@ Write-Host "Current mode: $currentMode"
 # Build Linux images
 if ($currentMode -ne "linux") {
     Write-Host "Switching to Linux containers..."
-    & "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchLinuxEngine
+    docker desktop engine use linux
     Start-Sleep -Seconds 15  # Wait for the switch to complete
 }
 
@@ -218,7 +213,7 @@ docker build -t myapp-api:latest -f Dockerfile.linux .
 
 # Switch to Windows containers
 Write-Host "Switching to Windows containers..."
-& "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchWindowsEngine
+docker desktop engine use windows
 Start-Sleep -Seconds 15
 
 Write-Host "Building Windows images..."
@@ -227,7 +222,7 @@ docker build -t myapp-legacy:latest -f Dockerfile.windows .
 # Switch back to original mode
 if ($currentMode -eq "linux") {
     Write-Host "Switching back to Linux containers..."
-    & "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchLinuxEngine
+    docker desktop engine use linux
 }
 
 Write-Host "Build complete for both platforms."
@@ -239,7 +234,6 @@ Docker Compose files must target a single container mode. You cannot mix Linux a
 
 ```yaml
 # docker-compose.linux.yml - Linux services
-version: "3.8"
 services:
   api:
     image: node:20-alpine
@@ -251,7 +245,6 @@ services:
 
 ```yaml
 # docker-compose.windows.yml - Windows services
-version: "3.8"
 services:
   legacy-web:
     image: mcr.microsoft.com/dotnet/framework/aspnet:4.8-windowsservercore-ltsc2022
@@ -264,7 +257,7 @@ services:
 docker compose -f docker-compose.linux.yml up -d
 
 # When you need Windows services, switch and run
-& "$Env:ProgramFiles\Docker\Docker\DockerCli.exe" -SwitchWindowsEngine
+docker desktop engine use windows
 docker compose -f docker-compose.windows.yml up -d
 ```
 
