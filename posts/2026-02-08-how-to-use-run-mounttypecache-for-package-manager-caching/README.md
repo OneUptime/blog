@@ -25,7 +25,11 @@ FROM debian:bookworm-slim
 
 # The cache mount persists /var/cache/apt between builds
 
-RUN --mount=type=cache,target=/var/cache/apt \
+RUN rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y curl
 ```
 
@@ -50,7 +54,7 @@ You also need the syntax directive at the top of your Dockerfile:
 
 ## Caching apt (Debian/Ubuntu)
 
-Apt stores downloaded .deb files in `/var/cache/apt/archives` and package lists in `/var/lib/apt/lists`. Caching both directories eliminates redundant downloads.
+Apt stores downloaded .deb files in `/var/cache/apt/archives` and package state, including package lists, under `/var/lib/apt`. Caching both directories eliminates redundant downloads.
 
 Cache apt downloads between builds:
 
@@ -59,9 +63,12 @@ Cache apt downloads between builds:
 
 FROM ubuntu:22.04
 
+RUN rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+
 # Cache both the package lists and downloaded .deb files
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt/lists \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         curl \
@@ -72,7 +79,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
 # the cache mount keeps these files OUT of the final layer
 ```
 
-Notice that we no longer need the `rm -rf /var/lib/apt/lists/*` cleanup step. The cache mount directory is not included in the image layer, so there is nothing to clean up. This simplifies the Dockerfile and the cache persists for the next build.
+Notice that we no longer need the `rm -rf /var/lib/apt/lists/*` cleanup step. The cache mount directory is not included in the image layer, so there is nothing to clean up. The `sharing=locked` option is important because apt needs exclusive access to its cache files. This simplifies the Dockerfile and the cache persists for the next build.
 
 ## Caching pip (Python)
 
@@ -107,14 +114,14 @@ Cache npm downloads:
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Mount npm cache for faster installs
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --production
+    npm ci --omit=dev
 
 COPY . .
 CMD ["node", "index.js"]
@@ -125,7 +132,7 @@ For yarn, the cache directory is different:
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 COPY package.json yarn.lock ./
@@ -147,7 +154,7 @@ Cache Go module downloads and build artifacts:
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -164,7 +171,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -o /server ./cmd/server
 
-FROM alpine:3.19
+FROM alpine:3.23
 COPY --from=builder /server /usr/local/bin/server
 CMD ["server"]
 ```
@@ -232,7 +239,7 @@ Alpine's package manager also benefits from cache mounts:
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM alpine:3.19
+FROM alpine:3.23
 
 # Cache apk package downloads
 RUN --mount=type=cache,target=/var/cache/apk \
@@ -244,7 +251,7 @@ Wait, there is a subtlety here. The `--no-cache` flag in apk tells it not to use
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM alpine:3.19
+FROM alpine:3.23
 
 # Let apk use the cache mount for downloads
 RUN --mount=type=cache,target=/var/cache/apk \
@@ -302,10 +309,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build with cache
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
@@ -313,7 +320,7 @@ jobs:
           cache-to: type=gha,mode=max
 ```
 
-The GitHub Actions cache backend (`type=gha`) persists BuildKit's layer cache, including cache mount contents, between workflow runs.
+The GitHub Actions cache backend (`type=gha`) persists BuildKit's layer cache between workflow runs. BuildKit does not preserve cache mount contents in GitHub Actions cache by default; use a cache-mount workaround such as `reproducible-containers/buildkit-cache-dance` if the package manager cache directories themselves must survive fresh runners.
 
 ## Measuring the Impact
 
