@@ -23,18 +23,19 @@ Problems occur when the sidecar cannot initialize, misroutes traffic, enforces i
 Verify the sidecar container is actually injected:
 
 ```bash
-# Check pod containers
+# Check pod containers and init containers
 
-kubectl get pod my-pod -n my-namespace -o jsonpath='{.spec.containers[*].name}'
+kubectl get pod my-pod -n my-namespace -o jsonpath='{.spec.containers[*].name}{" "}{.spec.initContainers[*].name}'
 
 # For Istio, should show: app istio-proxy
+# On Kubernetes 1.33+, Istio may show istio-proxy under initContainers
 # For Linkerd, should show: app linkerd-proxy
 
 # Check sidecar annotations
 kubectl get pod my-pod -o yaml | grep -A5 sidecar
 
-# Verify injection label
-kubectl get namespace my-namespace -o yaml | grep istio-injection
+# Verify injection labels
+kubectl get namespace my-namespace -o yaml | grep -E 'istio-injection|istio.io/rev'
 ```
 
 If the sidecar is missing, injection is not configured.
@@ -52,10 +53,10 @@ kubectl get pod my-pod -n my-namespace
 # my-pod   2/2     Running   0
 
 # Check individual container status
-kubectl get pod my-pod -o jsonpath='{.status.containerStatuses[*].name}'
-kubectl get pod my-pod -o jsonpath='{.status.containerStatuses[*].ready}'
+kubectl get pod my-pod -o jsonpath='{range .status.containerStatuses[*]}{.name}{" ready="}{.ready}{" state="}{.state}{"\n"}{end}{range .status.initContainerStatuses[*]}{.name}{" ready="}{.ready}{" state="}{.state}{"\n"}{end}'
 
-# Both app and sidecar should be true
+# App and sidecar containers should be running and ready.
+# One-shot init containers should show successful termination.
 ```
 
 Sidecar not ready indicates initialization problems.
@@ -80,16 +81,17 @@ kubectl logs my-pod -c linkerd-proxy -n my-namespace --tail=100
 
 Errors in sidecar logs pinpoint specific failures.
 
-## Testing Direct vs Proxied Connections
+## Testing Application Connectivity
 
-Compare direct application connectivity with proxied:
+Test application connectivity and compare it with a non-injected pod if needed:
 
 ```bash
-# Exec into application container (bypasses proxy for outgoing)
+# Exec into the application container. In a normal sidecar pod, outgoing
+# traffic is still intercepted by the proxy.
 kubectl exec -it my-pod -c app -- curl http://destination:8080
 
-# If this works, application is fine
-# If this fails but should work, proxy might be interfering
+# If this fails but should work, compare it with a pod that has sidecar
+# injection disabled or an Istio traffic capture exclusion.
 
 # Check proxy statistics
 kubectl exec my-pod -c istio-proxy -- curl localhost:15000/stats | grep upstream
@@ -97,7 +99,7 @@ kubectl exec my-pod -c istio-proxy -- curl localhost:15000/stats | grep upstream
 # Shows proxy's view of connections
 ```
 
-Direct connection success with proxied failure points to sidecar issues.
+Connectivity that fails only when the sidecar is present points to sidecar issues.
 
 ## Checking Proxy Configuration
 
@@ -108,7 +110,7 @@ Verify proxy has correct configuration:
 kubectl exec my-pod -c istio-proxy -- curl localhost:15000/config_dump > config.json
 
 # Examine listeners, routes, clusters
-cat config.json | jq '.configs[0].dynamic_active_clusters'
+jq '.configs[] | select(."@type" | test("ClustersConfigDump")) | .dynamic_active_clusters' config.json
 
 # For Linkerd, check proxy metrics
 kubectl exec my-pod -c linkerd-proxy -- curl localhost:4191/metrics
@@ -151,14 +153,13 @@ Sidecars need control plane connectivity:
 ```bash
 # For Istio, check istiod connectivity
 kubectl exec my-pod -c istio-proxy -- \
-  curl -v istiod.istio-system.svc.cluster.local:15012
+  curl -vk https://istiod.istio-system.svc.cluster.local:15012
 
-# Should get TLS handshake
+# Should connect and start a TLS handshake
 # Timeout indicates network policy or connectivity issue
 
 # Check proxy sync status
-kubectl exec my-pod -c istio-proxy -- \
-  pilot-agent request GET stats | grep cluster_manager
+istioctl proxy-status
 
 # For Linkerd, check control plane status
 kubectl exec my-pod -c linkerd-proxy -- \
@@ -222,7 +223,8 @@ External destinations need ServiceEntry in Istio:
 kubectl get serviceentry -n my-namespace
 
 # Create ServiceEntry for external API
-apiVersion: networking.istio.io/v1beta1
+cat > serviceentry.yaml <<'EOF'
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -235,12 +237,13 @@ spec:
     protocol: HTTPS
   location: MESH_EXTERNAL
   resolution: DNS
+EOF
 
 # Apply and test
 kubectl apply -f serviceentry.yaml
 ```
 
-Missing ServiceEntries block external access in strict mode.
+Missing ServiceEntries block external access when Istio outbound traffic policy is set to REGISTRY_ONLY.
 
 ## Analyzing 503 Errors
 
@@ -300,7 +303,7 @@ kubectl get virtualservice my-vs -o yaml
 
 # Verify in proxy config
 kubectl exec my-pod -c istio-proxy -- \
-  curl localhost:15000/config_dump | jq '.configs[2].dynamic_route_configs'
+  curl localhost:15000/config_dump | jq '.configs[] | select(."@type" | test("RoutesConfigDump")) | .dynamic_route_configs'
 ```
 
 Misconfigured timeouts cause premature failures.
@@ -346,7 +349,7 @@ kubectl exec my-pod -c istio-proxy -- \
   curl localhost:15000/stats | grep mirror
 ```
 
-Mirroring to unhealthy services can impact main traffic.
+Mirroring is out of band and mirrored responses are discarded, but excessive mirrored traffic can still consume proxy and network resources.
 
 ## Checking Resource Limits
 
@@ -378,15 +381,16 @@ Proxy CPU throttling causes connection delays.
 Temporarily disable proxy to isolate issues:
 
 ```bash
-# For Istio, annotate pod to disable injection
-kubectl annotate pod my-pod sidecar.istio.io/inject=false --overwrite
+# For Istio, add the injection label to the workload's pod template
+kubectl patch deployment my-deployment -n my-namespace -p \
+  '{"spec":{"template":{"metadata":{"labels":{"sidecar.istio.io/inject":"false"}}}}}'
 
-# Delete and recreate pod
-kubectl delete pod my-pod
+# Restart pods so new pods are created without the sidecar
+kubectl rollout restart deployment my-deployment -n my-namespace
 # Wait for pod to recreate without sidecar
 
 # Test connectivity
-kubectl exec my-pod -- curl http://destination:8080
+kubectl exec deploy/my-deployment -n my-namespace -- curl http://destination:8080
 
 # If this works, proxy was the issue
 # If this still fails, problem is elsewhere
@@ -399,8 +403,8 @@ Bypassing the proxy confirms whether it is the cause.
 Egress gateways route external traffic:
 
 ```bash
-# Check egress gateway deployment
-kubectl get deployment -n istio-system istio-egressgateway
+# Check egress gateway pods
+kubectl get pod -l istio=egressgateway -n istio-system
 
 # Verify Gateway and VirtualService for egress
 kubectl get gateway -A | grep egress
