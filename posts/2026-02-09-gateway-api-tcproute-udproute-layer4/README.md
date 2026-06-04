@@ -8,7 +8,7 @@ Description: Configure TCPRoute and UDPRoute resources in the Kubernetes Gateway
 
 ---
 
-While HTTP and gRPC get most of the attention, many applications use raw TCP or UDP protocols. Databases, caching systems, game servers, VoIP applications, and DNS all operate at Layer 4. The Kubernetes Gateway API provides TCPRoute and UDPRoute for routing this traffic without Layer 7 protocol awareness.
+While HTTP and gRPC get most of the attention, many applications use raw TCP or UDP protocols. Databases, caching systems, game servers, VoIP applications, and DNS all operate at Layer 4. The Kubernetes Gateway API provides TCPRoute and UDPRoute for routing this traffic without Layer 7 protocol awareness. As of Gateway API v1.5, TCPRoute and UDPRoute are in the experimental channel, so install the experimental Gateway API CRDs and use a Gateway implementation that supports them.
 
 ## Understanding Layer-4 Routing
 
@@ -67,6 +67,8 @@ Apply the gateway:
 kubectl apply -f tcp-gateway.yaml
 kubectl wait --for=condition=Programmed gateway/tcp-gateway --timeout=300s
 ```
+
+For Kong Ingress Controller, also enable the Gateway API experimental feature gate and expose matching stream listener ports on the Kong proxy Service for each TCP or UDP listener.
 
 ## Basic TCPRoute Configuration
 
@@ -203,7 +205,7 @@ spec:
       weight: 40
 ```
 
-Note: This is random distribution, not session-aware. For databases requiring session affinity, implement connection pooling at the application level.
+Note: This is weighted connection distribution, not session-aware. For databases requiring session affinity, implement connection pooling at the application level.
 
 ## Setting Up a UDP Gateway
 
@@ -411,7 +413,7 @@ spec:
       namespace: database
       port: 5432
 ---
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-frontend-to-database
@@ -439,7 +441,8 @@ kubectl describe udproute dns-route
 Monitor connection metrics at the gateway level. For Kong:
 
 ```bash
-kubectl port-forward -n kong svc/kong-proxy 8001:8001
+# If the Kong Admin API service is enabled
+kubectl port-forward -n kong svc/kong-gateway-admin 8001:8001
 
 # Query Kong admin API for metrics
 curl http://localhost:8001/status
@@ -474,7 +477,7 @@ spec:
       app: postgres
 ```
 
-This ensures at least one pod remains during updates, preventing connection failures.
+This helps keep at least one pod available during voluntary disruptions, reducing connection failures during updates.
 
 ## Combining TCP and UDP Listeners
 
@@ -511,7 +514,32 @@ Test TCP route performance:
 ```bash
 # Install iperf3
 kubectl run iperf3-server --image=networkstatic/iperf3 -- -s
-kubectl expose pod iperf3-server --port=5201
+
+# Expose both TCP and UDP ports for iperf3
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: iperf3-server
+spec:
+  selector:
+    run: iperf3-server
+  ports:
+  - name: iperf3-tcp
+    protocol: TCP
+    port: 5201
+    targetPort: 5201
+  - name: iperf3-udp
+    protocol: UDP
+    port: 5201
+    targetPort: 5201
+EOF
+
+# Add matching Gateway listeners
+kubectl patch gateway tcp-gateway --type=json -p='[
+  {"op":"add","path":"/spec/listeners/-","value":{"name":"iperf3-tcp","protocol":"TCP","port":5201,"allowedRoutes":{"kinds":[{"kind":"TCPRoute"}]}}},
+  {"op":"add","path":"/spec/listeners/-","value":{"name":"iperf3-udp","protocol":"UDP","port":5201,"allowedRoutes":{"kinds":[{"kind":"UDPRoute"}]}}}
+]'
 
 # Create TCPRoute for iperf3
 kubectl apply -f - <<EOF
@@ -522,6 +550,7 @@ metadata:
 spec:
   parentRefs:
   - name: tcp-gateway
+    sectionName: iperf3-tcp
   rules:
   - backendRefs:
     - name: iperf3-server
@@ -536,6 +565,22 @@ iperf3 -c $GATEWAY_IP -p 5201 -t 30
 Test UDP performance:
 
 ```bash
+# Create UDPRoute for iperf3
+kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: UDPRoute
+metadata:
+  name: iperf3-udp-route
+spec:
+  parentRefs:
+  - name: tcp-gateway
+    sectionName: iperf3-udp
+  rules:
+  - backendRefs:
+    - name: iperf3-server
+      port: 5201
+EOF
+
 # UDP iperf3 test
 iperf3 -c $GATEWAY_IP -p 5201 -u -b 1G -t 30
 ```
@@ -546,7 +591,7 @@ Layer-4 routes don't provide application-level security. Implement security at t
 
 1. **Use authentication**: Require credentials (database passwords, API keys)
 2. **Enable TLS**: Use TLS/SSL for TCP protocols that support it
-3. **Network policies**: Restrict which pods can access the gateway
+3. **Network policies**: Restrict which pods can access the gateway or backends
 4. **Rate limiting**: Implement at the application or use a service mesh
 
 Example network policy:
@@ -583,7 +628,7 @@ kubectl run -it --rm debug --image=busybox --restart=Never -- \
 
 # UDP connectivity test
 kubectl run -it --rm debug --image=busybox --restart=Never -- \
-  nc -u dns-service 53
+  nc -u coredns-service 53
 ```
 
 Check if the gateway is routing correctly:
