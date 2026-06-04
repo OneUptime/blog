@@ -24,7 +24,7 @@ sudo ufw allow 1194/udp
 
 ## Quick Setup with kylemanna/openvpn
 
-The `kylemanna/openvpn` image is the most popular and well-maintained OpenVPN Docker image. It handles certificate generation, server configuration, and client management.
+The `kylemanna/openvpn` image is a widely used OpenVPN Docker image. It handles certificate generation, server configuration, and client management.
 
 ### Step 1: Create a Volume for Persistent Data
 
@@ -45,7 +45,7 @@ docker run -v ovpn-data:/etc/openvpn --rm kylemanna/openvpn \
   ovpn_genconfig -u udp://vpn.example.com
 ```
 
-This creates the server configuration, iptables rules, and sets up the routing.
+This creates the server configuration and the routing settings that the container uses when it starts. The container applies the NAT/iptables rules at runtime.
 
 ### Step 3: Initialize the PKI (Certificate Authority)
 
@@ -191,6 +191,8 @@ docker run -v ovpn-data:/etc/openvpn --rm kylemanna/openvpn \
   ovpn_genconfig -u tcp://vpn.example.com:443
 ```
 
+When you start the container for this TCP setup, publish TCP port 443 to the container's internal OpenVPN port, for example `-p 443:1194/tcp`.
+
 Push custom DNS servers to clients:
 
 ```bash
@@ -206,7 +208,7 @@ Enable client-to-client communication:
 ```bash
 # Allow VPN clients to see each other
 docker run -v ovpn-data:/etc/openvpn --rm kylemanna/openvpn \
-  ovpn_genconfig -u udp://vpn.example.com -C
+  ovpn_genconfig -u udp://vpn.example.com -c
 ```
 
 ## Connecting Clients
