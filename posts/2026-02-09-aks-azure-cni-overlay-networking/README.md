@@ -16,7 +16,7 @@ Traditional Azure CNI assigns IPs from your VNet subnet to both nodes and pods. 
 
 Azure CNI Overlay uses private IP ranges (10.244.0.0/16 by default) for pod networking. Only nodes receive VNet IPs. Pods communicate within the cluster using overlay networking and access external resources through NAT on the nodes.
 
-This architecture maintains Azure networking integration for node-level services while drastically reducing VNet IP consumption. It supports the same features as traditional Azure CNI including network policies, Azure Load Balancer integration, and private endpoints.
+This architecture maintains Azure networking integration for node-level services while drastically reducing VNet IP consumption. It supports common Azure networking features including network policies, Azure Load Balancer integration, and private endpoints, but endpoints outside the cluster still need a Kubernetes Service or ingress path to reach pods.
 
 ## Creating Clusters with Azure CNI Overlay
 
@@ -94,7 +94,7 @@ Ensure these ranges do not overlap with:
 - VNet address space
 - Peered VNet address spaces
 - On-premises network ranges
-- Azure service endpoints
+- Other pod or service CIDR ranges
 
 ## Implementing Network Policies
 
@@ -164,6 +164,8 @@ spec:
   - to:
     - namespaceSelector: {}
     ports:
+    - protocol: UDP
+      port: 53
     - protocol: TCP
       port: 53
 ```
@@ -182,19 +184,12 @@ kubectl run test-pod --image=busybox --rm -it -- wget -O- http://api-service:808
 Pods in overlay networks access Azure services through the node's network interface. Configure service endpoints on the nodes subnet:
 
 ```bash
-# Add service endpoint for Azure Storage
+# Add service endpoints for Azure Storage and Azure SQL
 az network vnet subnet update \
   --resource-group production-rg \
   --vnet-name aks-vnet \
   --name nodes-subnet \
-  --service-endpoints Microsoft.Storage
-
-# Add service endpoint for Azure SQL
-az network vnet subnet update \
-  --resource-group production-rg \
-  --vnet-name aks-vnet \
-  --name nodes-subnet \
-  --service-endpoints Microsoft.Sql
+  --service-endpoints Microsoft.Storage Microsoft.Sql
 ```
 
 Access Azure Storage from pods:
@@ -248,6 +243,14 @@ az network private-dns link vnet create \
   --name sql-dns-link \
   --virtual-network aks-vnet \
   --registration-enabled false
+
+# Associate the private endpoint with the private DNS zone
+az network private-endpoint dns-zone-group create \
+  --resource-group production-rg \
+  --endpoint-name sql-private-endpoint \
+  --name sql-zone-group \
+  --private-dns-zone privatelink.database.windows.net \
+  --zone-name privatelink.database.windows.net
 ```
 
 Pods resolve the private endpoint DNS name and connect through the private IP:
@@ -363,20 +366,13 @@ az aks enable-addons \
   --workspace-resource-id /subscriptions/<subscription-id>/resourceGroups/monitoring-rg/providers/Microsoft.OperationalInsights/workspaces/aks-monitoring
 ```
 
-Query network metrics in Log Analytics:
+If AKS platform metrics are exported to Log Analytics, query node network metrics:
 
 ```kusto
-// Pod network transmit bytes
-Perf
-| where ObjectName == "K8SContainer"
-| where CounterName == "networkTxBytes"
-| summarize avg(CounterValue) by bin(TimeGenerated, 5m), Computer
-
-// Network errors
-Perf
-| where ObjectName == "K8SNode"
-| where CounterName == "networkErrTotal"
-| summarize sum(CounterValue) by Computer
+AzureMetrics
+| where ResourceProvider == "MICROSOFT.CONTAINERSERVICE"
+| where MetricName in ("node_network_in_bytes", "node_network_out_bytes")
+| summarize avg(Total) by bin(TimeGenerated, 5m), MetricName
 ```
 
 Use Azure Network Watcher for traffic analysis:
@@ -388,12 +384,21 @@ az network watcher configure \
   --locations eastus \
   --enabled true
 
+# Get the AKS node resource group that contains the VM scale set
+NODE_RESOURCE_GROUP=$(az aks show \
+  --resource-group production-rg \
+  --name production-cluster \
+  --query nodeResourceGroup \
+  -o tsv)
+
 # Create packet capture
 az network watcher packet-capture create \
-  --resource-group production-rg \
-  --vm aks-nodepool1-12345678-vmss000000 \
+  --resource-group $NODE_RESOURCE_GROUP \
+  --vm aks-nodepool1-12345678-vmss \
   --name node-capture \
-  --storage-account mystorageaccount
+  --storage-account mystorageaccount \
+  --target-type AzureVMSS \
+  --include 0
 ```
 
 ## Troubleshooting Connectivity Issues
@@ -437,12 +442,8 @@ NODE=$(kubectl get pod source-pod -o jsonpath='{.spec.nodeName}')
 # Describe node
 kubectl describe node $NODE
 
-# Check routes (requires node access)
-az vm run-command invoke \
-  --resource-group production-rg \
-  --name $NODE \
-  --command-id RunShellScript \
-  --scripts "ip route show"
+# Check routes from a privileged debug container on the node
+kubectl debug node/$NODE -it --image=mcr.microsoft.com/azurelinux/busybox:1.36 -- chroot /host ip route show
 ```
 
 Azure CNI Overlay provides an excellent balance between Azure networking integration and IP address efficiency. It enables large-scale AKS deployments without the complexity of managing large VNet address spaces while maintaining full Azure service integration.
