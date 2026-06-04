@@ -132,8 +132,9 @@ Cilium automatically detects MTU but you can override it.
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set tunnel=vxlan \
-  --set mtu=1450
+  --set routingMode=tunnel \
+  --set tunnelProtocol=vxlan \
+  --set MTU=1450
 ```
 
 ### Using cilium CLI
@@ -152,7 +153,7 @@ helm upgrade cilium cilium/cilium \
   --reuse-values \
   --set encryption.enabled=true \
   --set encryption.type=wireguard \
-  --set mtu=1420  # Reduced for WireGuard overhead
+  --set MTU=1420  # Reduced for WireGuard overhead
 ```
 
 Verify MTU configuration:
@@ -245,14 +246,15 @@ For automatic MTU detection:
 AWS VPC CNI typically uses MTU 9001 for jumbo frames:
 
 ```bash
-kubectl set env daemonset aws-node -n kube-system AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG=true
-kubectl set env daemonset aws-node -n kube-system ENI_MTU=9001
+kubectl set env daemonset aws-node -n kube-system AWS_VPC_ENI_MTU=9001
+kubectl set env daemonset aws-node -n kube-system POD_MTU=9001
 ```
 
 For standard instances:
 
 ```bash
-kubectl set env daemonset aws-node -n kube-system ENI_MTU=1500
+kubectl set env daemonset aws-node -n kube-system AWS_VPC_ENI_MTU=1500
+kubectl set env daemonset aws-node -n kube-system POD_MTU=1500
 ```
 
 ### Google GKE
@@ -266,30 +268,10 @@ gcloud compute instances describe <instance-name> --format="get(networkInterface
 
 ### Azure AKS
 
-Azure CNI MTU configuration:
+AKS Azure CNI uses Azure's VNet MTU and doesn't expose a supported in-cluster ConfigMap field for changing pod MTU. Verify the effective MTU from a pod or node:
 
 ```bash
-kubectl edit configmap azure-cni-config -n kube-system
-```
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: azure-cni-config
-  namespace: kube-system
-data:
-  cni-config: |
-    {
-      "cniVersion": "0.3.0",
-      "name": "azure",
-      "plugins": [
-        {
-          "type": "azure-vnet",
-          "mtu": 1500
-        }
-      ]
-    }
+kubectl run test-mtu --image=nicolaka/netshoot -it --rm -- ip link show eth0
 ```
 
 ## Testing MTU Configuration
@@ -401,7 +383,8 @@ echo "net.ipv4.ip_no_pmtu_disc=0" | sudo tee -a /etc/sysctl.conf
 For IPv6:
 
 ```bash
-sudo sysctl -w net.ipv6.conf.all.disable_ipv6_pmtud=0
+# IPv6 relies on Packet Too Big ICMPv6 messages for PMTUD.
+# Make sure your firewall allows ICMPv6 type 2 instead of setting an IPv6 PMTUD sysctl.
 ```
 
 ## MTU for Jumbo Frames
@@ -432,7 +415,7 @@ Cilium with jumbo frames:
 
 ```bash
 helm upgrade cilium cilium/cilium \
-  --set mtu=8950
+  --set MTU=8950
 ```
 
 ## Automated MTU Detection
@@ -443,8 +426,7 @@ Some CNIs support automatic MTU detection.
 
 ```bash
 helm upgrade cilium cilium/cilium \
-  --set autoDirectNodeRoutes=true \
-  --set mtu=0  # 0 enables auto-detection
+  --set MTU=0  # 0 enables auto-detection
 ```
 
 ### Calico Auto-Detection
@@ -452,7 +434,7 @@ helm upgrade cilium cilium/cilium \
 Calico automatically detects MTU in most scenarios. To verify:
 
 ```bash
-kubectl exec -n kube-system calico-node-xxxxx -- calicoctl node status
+kubectl get installation.operator.tigera.io default -o jsonpath='{.status.mtu}{"\n"}'
 ```
 
 ## Best Practices
