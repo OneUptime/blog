@@ -12,11 +12,11 @@ Linode Kubernetes Engine (LKE) integrates with NodeBalancers to provide managed 
 
 ## Understanding Linode NodeBalancers
 
-NodeBalancers distribute incoming traffic across multiple backend nodes using round-robin, least connections, or source IP algorithms. They operate at Layer 4 (TCP) and provide basic Layer 7 (HTTP/HTTPS) capabilities through header inspection.
+NodeBalancers distribute incoming traffic across multiple backend nodes using round-robin, least connections, or source IP algorithms. They support TCP, HTTP, and HTTPS configurations, with UDP available for Premium NodeBalancers. HTTPS mode terminates TLS at the NodeBalancer and forwards HTTP traffic to backend nodes.
 
 Each NodeBalancer supports multiple ports with independent configurations. You can expose HTTP on port 80, HTTPS on port 443, and custom protocols on other ports, all through a single NodeBalancer instance.
 
-NodeBalancers provide passive health checks by monitoring backend response times and connection success rates. Failed backends are automatically removed from rotation until they recover.
+NodeBalancers provide active health checks by making TCP connections or HTTP requests to backend nodes. Passive health checks can also be enabled to mark backends down when requests fail or return detectable 5xx responses. Failed backends are automatically removed from rotation until they recover.
 
 ## Creating Basic LoadBalancer Service
 
@@ -34,12 +34,12 @@ linode-cli configure
 linode-cli lke cluster-create \
   --label production-cluster \
   --region us-east \
-  --k8s_version 1.28 \
+  --k8s_version 1.33 \
   --node_pools.type g6-standard-2 \
   --node_pools.count 3
 
 # Get kubeconfig
-linode-cli lke kubeconfig-view <cluster-id> --text | base64 -d > ~/.kube/config
+linode-cli lke kubeconfig-view <cluster-id> --text --no-headers | base64 -d > ~/.kube/config
 ```
 
 Deploy a simple application with LoadBalancer service:
@@ -145,7 +145,8 @@ kind: Service
 metadata:
   name: web-service-ssl
   annotations:
-    service.beta.kubernetes.io/linode-loadbalancer-tls: '[{"tls-secret-name": "web-tls", "port": 443}]'
+    service.beta.kubernetes.io/linode-loadbalancer-default-protocol: "http"
+    service.beta.kubernetes.io/linode-loadbalancer-port-443: '{ "tls-secret-name": "web-tls", "protocol": "https" }'
 spec:
   type: LoadBalancer
   selector:
@@ -177,7 +178,7 @@ For production, use certificates from Let's Encrypt:
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Create ClusterIssuer
 cat <<EOF | kubectl apply -f -
@@ -277,7 +278,7 @@ kind: Service
 metadata:
   name: web-service
   annotations:
-    service.beta.kubernetes.io/linode-loadbalancer-algorithm: "leastconn"
+    service.beta.kubernetes.io/linode-loadbalancer-default-algorithm: "leastconn"
 spec:
   type: LoadBalancer
   selector:
@@ -305,7 +306,7 @@ kind: Service
 metadata:
   name: web-service
   annotations:
-    service.beta.kubernetes.io/linode-loadbalancer-proxy-protocol: "v2"
+    service.beta.kubernetes.io/linode-loadbalancer-default-proxy-protocol: "v2"
 spec:
   type: LoadBalancer
   selector:
@@ -342,11 +343,15 @@ apiVersion: v1
 kind: Service
 metadata:
   name: admin-service
+  annotations:
+    service.beta.kubernetes.io/linode-loadbalancer-firewall-acl: |
+      {
+        "allowList": {
+          "ipv4": ["203.0.113.0/24", "198.51.100.0/24"]
+        }
+      }
 spec:
   type: LoadBalancer
-  loadBalancerSourceRanges:
-  - 203.0.113.0/24
-  - 198.51.100.0/24
   selector:
     app: admin
   ports:
@@ -354,7 +359,7 @@ spec:
     targetPort: 8443
 ```
 
-The NodeBalancer only accepts connections from specified CIDR ranges. Other IPs are rejected at the load balancer level.
+The Linode CCM creates Cloud Firewall rules for the NodeBalancer so only the specified CIDR ranges can connect. Other IPs are rejected by the firewall.
 
 ## Configuring Session Persistence
 
@@ -366,7 +371,7 @@ kind: Service
 metadata:
   name: stateful-app
   annotations:
-    service.beta.kubernetes.io/linode-loadbalancer-algorithm: "source"
+    service.beta.kubernetes.io/linode-loadbalancer-default-algorithm: "source"
 spec:
   type: LoadBalancer
   sessionAffinity: ClientIP
@@ -400,12 +405,12 @@ linode-cli nodebalancers nodes-list <nodebalancer-id> <config-id>
 Monitor via Linode Cloud Manager or API:
 
 ```bash
-# Get metrics for specific time range
+# Get current NodeBalancer stats
 curl -H "Authorization: Bearer $LINODE_TOKEN" \
-  "https://api.linode.com/v4/nodebalancers/<id>/stats?start=2026-02-09T00:00:00&end=2026-02-09T23:59:59"
+  "https://api.linode.com/v4/nodebalancers/<id>/stats"
 ```
 
-Set up Prometheus monitoring:
+Set up Prometheus monitoring for your ingress controller or application metrics separately:
 
 ```yaml
 apiVersion: v1
@@ -416,9 +421,9 @@ metadata:
 data:
   prometheus.yml: |
     scrape_configs:
-    - job_name: 'linode-nodebalancers'
+    - job_name: 'nginx-ingress-controller'
       static_configs:
-      - targets: ['<nodebalancer-ip>:9100']
+      - targets: ['ingress-nginx-controller-metrics.ingress-nginx.svc.cluster.local:10254']
 ```
 
 ## Cost Optimization
@@ -426,7 +431,7 @@ data:
 NodeBalancers cost $10/month per instance. Minimize costs by consolidating services:
 
 ```yaml
-# Single NodeBalancer for multiple services
+# Single NodeBalancer for an ingress controller
 apiVersion: v1
 kind: Service
 metadata:
@@ -450,7 +455,10 @@ Deploy an Ingress controller behind the NodeBalancer:
 # Install Nginx Ingress Controller
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm install ingress-nginx ingress-nginx/ingress-nginx \
-  --set controller.service.type=LoadBalancer
+  --namespace ingress-nginx \
+  --create-namespace \
+  --set controller.service.type=LoadBalancer \
+  --set controller.metrics.enabled=true
 ```
 
 Route traffic to multiple services through Ingress rules:
