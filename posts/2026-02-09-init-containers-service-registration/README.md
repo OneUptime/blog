@@ -35,6 +35,8 @@ data:
     #!/bin/sh
     set -e
 
+    apk add --no-cache curl
+
     # Service registration payload
     cat > /tmp/service.json << EOF
     {
@@ -341,6 +343,8 @@ data:
     #!/bin/sh
     set -e
 
+    apk add --no-cache curl
+
     echo "Preparing service registration..."
 
     # Build registration payload
@@ -558,12 +562,14 @@ data:
     #!/bin/sh
     set -e
 
+    apk add --no-cache curl
+
     MAX_RETRIES=5
     RETRY_DELAY=5
     attempt=0
 
     register_service() {
-      echo "Attempt $((attempt + 1))/$MAX_RETRIES: Registering service..."
+      echo "Attempt $attempt/$MAX_RETRIES: Registering service..."
 
       response=$(curl -s -w "\n%{http_code}" \
         -X POST \
@@ -595,6 +601,7 @@ data:
       if [ $attempt -lt $MAX_RETRIES ]; then
         echo "Retrying in ${RETRY_DELAY} seconds..."
         sleep $RETRY_DELAY
+        RETRY_DELAY=$((RETRY_DELAY * 2))
       fi
     done
 
