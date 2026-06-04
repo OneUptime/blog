@@ -33,7 +33,7 @@ trap "rm -rf $TEMP_DIR" EXIT
 cat > "$TEMP_DIR/resources.yaml"
 
 # Create kustomization.yaml
-cat > "$TEMP_DIR/kustomization.yaml" << 'EOF'
+cat > "$TEMP_DIR/kustomization.yaml" << EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -41,31 +41,39 @@ resources:
   - resources.yaml
 
 # Add common labels to all resources
-commonLabels:
-  managed-by: helm-kustomize
-  environment: production
+labels:
+  - pairs:
+      managed-by: helm-kustomize
+      environment: production
 
 # Add namespace to all resources
 namespace: ${NAMESPACE:-default}
 
-# Strategic merge patches
-patchesStrategicMerge:
-  - patches/add-monitoring.yaml
-  - patches/security-context.yaml
-
-# JSON6902 patches for precise modifications
-patchesJson6902:
+# Strategic merge and JSON6902 patches
+patches:
+  - path: patches/add-monitoring.yaml
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+  - path: patches/security-context.yaml
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
   - target:
       group: apps
       version: v1
       kind: Deployment
-      name: ".*"
     patch: |-
       - op: add
-        path: /spec/template/spec/securityContext
+        path: /spec/template/spec/containers/0/securityContext
         value:
-          runAsNonRoot: true
-          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
 EOF
 
 # Create patches directory
@@ -76,7 +84,7 @@ cat > "$TEMP_DIR/patches/add-monitoring.yaml" << 'EOF'
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: not-important
+  name: ignored
 spec:
   template:
     metadata:
@@ -91,20 +99,12 @@ cat > "$TEMP_DIR/patches/security-context.yaml" << 'EOF'
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: not-important
+  name: ignored
 spec:
   template:
     spec:
       securityContext:
         fsGroup: 2000
-      containers:
-      - name: not-important
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL
 EOF
 
 # Run kustomize and output to stdout
@@ -165,19 +165,26 @@ resources:
 
 namespace: $NAMESPACE
 
-commonLabels:
-  environment: $ENVIRONMENT
-  managed-by: helm
+labels:
+  - pairs:
+      environment: $ENVIRONMENT
+      managed-by: helm
 
 # Include environment-specific patches
-patchesStrategicMerge:
+patches:
 EOF
 
 # Add environment-specific patches if they exist
 for patch in "$KUSTOMIZE_DIR/patches/$ENVIRONMENT"/*.yaml; do
   if [ -f "$patch" ]; then
     cp "$patch" "$TEMP_DIR/"
-    echo "  - $(basename $patch)" >> "$TEMP_DIR/kustomization.yaml"
+    cat >> "$TEMP_DIR/kustomization.yaml" << EOF
+  - path: $(basename "$patch")
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+EOF
   fi
 done
 
@@ -211,13 +218,13 @@ Example production patch that increases resources.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: not-important
+  name: ignored
 spec:
   replicas: 3
   template:
     spec:
       containers:
-      - name: not-important
+      - name: app
         resources:
           requests:
             memory: "512Mi"
@@ -248,43 +255,42 @@ helm upgrade --install myapp ./mychart \
 Apply precise modifications using JSON6902 patches.
 
 ```yaml
-# kustomize/patches/production/precise-patches.yaml
-- target:
-    group: apps
-    version: v1
-    kind: Deployment
-  patch: |-
-    - op: add
-      path: /spec/template/spec/containers/0/env/-
-      value:
-        name: ENVIRONMENT
-        value: production
-    - op: replace
-      path: /spec/strategy/type
-      value: RollingUpdate
-    - op: add
-      path: /spec/strategy/rollingUpdate
-      value:
-        maxSurge: 1
-        maxUnavailable: 0
+# kustomize/patches/production/deployment-json-patch.yaml
+- op: add
+  path: /spec/template/spec/containers/0/env
+  value:
+    - name: ENVIRONMENT
+      value: production
+- op: add
+  path: /spec/strategy
+  value:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
 
-- target:
-    version: v1
-    kind: Service
-  patch: |-
-    - op: add
-      path: /metadata/annotations
-      value:
-        service.beta.kubernetes.io/aws-load-balancer-type: nlb
-        service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+# kustomize/patches/production/service-json-patch.yaml
+- op: add
+  path: /metadata/annotations
+  value:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
 ```
 
 Reference these patches in kustomization.yaml.
 
 ```yaml
 # kustomization.yaml
-patchesJson6902:
-  - path: patches/production/precise-patches.yaml
+patches:
+  - path: patches/production/deployment-json-patch.yaml
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+  - path: patches/production/service-json-patch.yaml
+    target:
+      version: v1
+      kind: Service
 ```
 
 ## Combining Multiple Transformation Layers
@@ -300,16 +306,18 @@ set -e
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
-# Read Helm output
-cat > "$TEMP_DIR/helm-output.yaml"
-
 # Layer 1: Base transformations
-cat > "$TEMP_DIR/layer1/kustomization.yaml" << 'EOF'
+mkdir -p "$TEMP_DIR/layer1"
+
+# Read Helm output
+cat > "$TEMP_DIR/layer1/resources.yaml"
+
+cat > "$TEMP_DIR/layer1/kustomization.yaml" << EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../helm-output.yaml
+  - resources.yaml
 
 # Add common annotations
 commonAnnotations:
@@ -322,22 +330,40 @@ EOF
 
 # Layer 2: Security policies
 mkdir -p "$TEMP_DIR/layer2"
+kustomize build "$TEMP_DIR/layer1" > "$TEMP_DIR/layer2/resources.yaml"
+
 cat > "$TEMP_DIR/layer2/kustomization.yaml" << 'EOF'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../layer1
+  - resources.yaml
 
-patchesStrategicMerge:
-  - security-patch.yaml
+patches:
+  - path: security-patch.yaml
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext
+        value:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
 EOF
 
 cat > "$TEMP_DIR/layer2/security-patch.yaml" << 'EOF'
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: not-important
+  name: ignored
 spec:
   template:
     spec:
@@ -345,33 +371,32 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      containers:
-      - name: not-important
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
 EOF
 
 # Layer 3: Monitoring and observability
 mkdir -p "$TEMP_DIR/layer3"
+kustomize build "$TEMP_DIR/layer2" > "$TEMP_DIR/layer3/resources.yaml"
+
 cat > "$TEMP_DIR/layer3/kustomization.yaml" << 'EOF'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../layer2
+  - resources.yaml
 
-patchesStrategicMerge:
-  - monitoring-patch.yaml
+patches:
+  - path: monitoring-patch.yaml
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
 EOF
 
 cat > "$TEMP_DIR/layer3/monitoring-patch.yaml" << 'EOF'
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: not-important
+  name: ignored
 spec:
   template:
     metadata:
@@ -380,7 +405,7 @@ spec:
         prometheus.io/port: "8080"
     spec:
       containers:
-      - name: not-important
+      - name: app
         env:
         - name: ENABLE_METRICS
           value: "true"
@@ -509,7 +534,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Install Kustomize
         run: |
@@ -517,10 +542,10 @@ jobs:
           sudo mv kustomize /usr/local/bin/
 
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5
 
       - name: Configure kubectl
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v4
         with:
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
 
