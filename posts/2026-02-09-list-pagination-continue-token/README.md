@@ -29,7 +29,7 @@ The continue token is opaque, meaning its internal structure is an implementatio
 
 ## Basic Pagination with kubectl
 
-You can use the `--chunk-size` flag with kubectl to enable pagination:
+You can use the `--chunk-size` flag with kubectl to control pagination:
 
 ```bash
 # List all pods with pagination, fetching 100 at a time
@@ -40,7 +40,7 @@ kubectl get pods --chunk-size=100
 # kubectl handles the continue token automatically
 ```
 
-For most kubectl operations, you do not need to think about pagination because kubectl handles it automatically when you use `--chunk-size`.
+For most kubectl operations, you do not need to think about pagination because kubectl handles it automatically. For `kubectl get`, the default chunk size is 500; pass `--chunk-size=0` to disable chunking.
 
 ## Programmatic Pagination with client-go
 
@@ -89,7 +89,11 @@ func listPodsWithPagination(clientset *kubernetes.Clientset, namespace string) e
             break
         }
 
-        fmt.Printf("Fetching next page (continue: %s...)\n", continueToken[:20])
+        preview := continueToken
+        if len(preview) > 20 {
+            preview = preview[:20]
+        }
+        fmt.Printf("Fetching next page (continue: %s...)\n", preview)
     }
 
     return nil
@@ -127,9 +131,11 @@ curl -k -H "Authorization: Bearer $TOKEN" \
   "https://kubernetes.default.svc/api/v1/pods?limit=100"
 
 # The response includes metadata.continue if there are more results
-# Use it in the next request
-curl -k -H "Authorization: Bearer $TOKEN" \
-  "https://kubernetes.default.svc/api/v1/pods?limit=100&continue=$CONTINUE_TOKEN"
+# Use it in the next request. The token is opaque, so URL-encode it.
+curl -k -G -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "limit=100" \
+  --data-urlencode "continue=$CONTINUE_TOKEN" \
+  "https://kubernetes.default.svc/api/v1/pods"
 ```
 
 The response JSON structure looks like this:
@@ -173,15 +179,31 @@ When you paginate through a list, Kubernetes uses a consistent snapshot of the d
 However, the continue token has an expiration. If too much time passes between requests, the token may become invalid, and you will need to start over from the beginning.
 
 ```go
+// import apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 // Handle continue token expiration
-podList, err := clientset.CoreV1().Pods(namespace).List(context.TODO(), listOptions)
-if err != nil {
-    if errors.IsResourceExpired(err) {
-        // Continue token expired, start over
-        continueToken = ""
-        // Retry the request
+for {
+    listOptions.Continue = continueToken
+
+    podList, err := clientset.CoreV1().Pods(namespace).List(context.TODO(), listOptions)
+    if err != nil {
+        if apierrors.IsResourceExpired(err) {
+            // Continue token expired, start over
+            continueToken = ""
+            // Retry the request
+            continue
+        }
+        return err
     }
-    return err
+
+    for _, pod := range podList.Items {
+        fmt.Printf("Pod: %s\n", pod.Name)
+    }
+
+    continueToken = podList.Continue
+    if continueToken == "" {
+        break
+    }
 }
 ```
 
