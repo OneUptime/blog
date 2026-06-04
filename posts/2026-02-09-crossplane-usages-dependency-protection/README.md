@@ -25,16 +25,23 @@ Protect a database from deletion:
 ```yaml
 # database.yaml
 
-apiVersion: rds.aws.upbound.io/v1beta1
+apiVersion: rds.aws.m.upbound.io/v1beta1
 kind: Instance
 metadata:
   name: app-database
+  namespace: default
 spec:
   forProvider:
     engine: postgres
     engineVersion: "15.4"
     instanceClass: db.t3.medium
     allocatedStorage: 100
+    username: appuser
+    autoGeneratePassword: true
+    passwordSecretRef:
+      name: app-database-password
+      namespace: default
+      key: password
     region: us-west-2
 ```
 
@@ -44,6 +51,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: myapp
+  namespace: default
 spec:
   replicas: 3
   selector:
@@ -64,13 +72,14 @@ spec:
 
 ```yaml
 # usage.yaml
-apiVersion: apiextensions.crossplane.io/v1alpha1
+apiVersion: protection.crossplane.io/v1beta1
 kind: Usage
 metadata:
   name: myapp-uses-database
+  namespace: default
 spec:
   of:
-    apiVersion: rds.aws.upbound.io/v1beta1
+    apiVersion: rds.aws.m.upbound.io/v1beta1
     kind: Instance
     resourceRef:
       name: app-database
@@ -93,8 +102,8 @@ kubectl apply -f usage.yaml
 Now if you try to delete the database:
 
 ```bash
-kubectl delete instance app-database
-# Error: cannot delete resource while usage exists
+kubectl delete instance.rds.aws.m.upbound.io app-database -n default
+# Error from server (Forbidden): admission webhook "usage.crossplane.io" denied the request
 ```
 
 ## Implementing Usage in Compositions
@@ -111,72 +120,88 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XApplication
-
-  resources:
-  # Database
-  - name: database
-    base:
-      apiVersion: rds.aws.upbound.io/v1beta1
-      kind: Instance
-      metadata:
-        name: database
-      spec:
-        forProvider:
-          engine: postgres
-          instanceClass: db.t3.medium
-          allocatedStorage: 50
-
-  # Application deployment
-  - name: deployment
-    base:
-      apiVersion: kubernetes.crossplane.io/v1alpha2
-      kind: Object
-      spec:
-        forProvider:
-          manifest:
-            apiVersion: apps/v1
-            kind: Deployment
-            metadata:
-              name: app
-            spec:
-              replicas: 2
-              selector:
-                matchLabels:
-                  app: myapp
-              template:
-                metadata:
-                  labels:
-                    app: myapp
-                spec:
-                  containers:
-                  - name: app
-                    image: myapp:latest
-
-  # Usage protection
-  - name: database-usage
-    base:
-      apiVersion: apiextensions.crossplane.io/v1alpha1
-      kind: Usage
-      spec:
-        of:
-          apiVersion: rds.aws.upbound.io/v1beta1
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      # Database
+      - name: database
+        base:
+          apiVersion: rds.aws.m.upbound.io/v1beta1
           kind: Instance
-          resourceSelector:
-            matchControllerRef: true
-            matchLabels:
-              crossplane.io/claim-name: ""
-        by:
+          metadata:
+            labels:
+              usage.crossplane.io/role: database
+          spec:
+            forProvider:
+              engine: postgres
+              instanceClass: db.t3.medium
+              allocatedStorage: 50
+              username: appuser
+              autoGeneratePassword: true
+              passwordSecretRef:
+                name: database-password
+                key: password
+              region: us-west-2
+
+      # Application deployment
+      - name: deployment
+        base:
           apiVersion: kubernetes.crossplane.io/v1alpha2
           kind: Object
-          resourceSelector:
-            matchControllerRef: true
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: metadata.name
-      toFieldPath: spec.of.resourceSelector.matchLabels["crossplane.io/claim-name"]
+          metadata:
+            labels:
+              usage.crossplane.io/role: app
+          spec:
+            forProvider:
+              manifest:
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: app
+                spec:
+                  replicas: 2
+                  selector:
+                    matchLabels:
+                      app: myapp
+                  template:
+                    metadata:
+                      labels:
+                        app: myapp
+                    spec:
+                      containers:
+                      - name: app
+                        image: myapp:latest
+
+      # Usage protection
+      - name: database-usage
+        base:
+          apiVersion: protection.crossplane.io/v1beta1
+          kind: Usage
+          spec:
+            replayDeletion: true
+            of:
+              apiVersion: rds.aws.m.upbound.io/v1beta1
+              kind: Instance
+              resourceSelector:
+                matchControllerRef: true
+                matchLabels:
+                  usage.crossplane.io/role: database
+            by:
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              resourceSelector:
+                matchControllerRef: true
+                matchLabels:
+                  usage.crossplane.io/role: app
 ```
 
-This composition automatically creates Usage resources, protecting databases created through claims.
+This composition automatically creates Usage resources, protecting databases created for the same composite resource.
 
 ## Protecting Multiple Dependencies
 
@@ -188,13 +213,14 @@ apiVersion: v1
 kind: List
 items:
 # Application uses database
-- apiVersion: apiextensions.crossplane.io/v1alpha1
+- apiVersion: protection.crossplane.io/v1beta1
   kind: Usage
   metadata:
     name: app-uses-database
+    namespace: default
   spec:
     of:
-      apiVersion: rds.aws.upbound.io/v1beta1
+      apiVersion: rds.aws.m.upbound.io/v1beta1
       kind: Instance
       resourceRef:
         name: app-database
@@ -206,13 +232,14 @@ items:
         namespace: default
 
 # Application uses cache
-- apiVersion: apiextensions.crossplane.io/v1alpha1
+- apiVersion: protection.crossplane.io/v1beta1
   kind: Usage
   metadata:
     name: app-uses-cache
+    namespace: default
   spec:
     of:
-      apiVersion: elasticache.aws.upbound.io/v1beta1
+      apiVersion: elasticache.aws.m.upbound.io/v1beta1
       kind: ReplicationGroup
       resourceRef:
         name: app-cache
@@ -224,13 +251,14 @@ items:
         namespace: default
 
 # Application uses storage
-- apiVersion: apiextensions.crossplane.io/v1alpha1
+- apiVersion: protection.crossplane.io/v1beta1
   kind: Usage
   metadata:
     name: app-uses-storage
+    namespace: default
   spec:
     of:
-      apiVersion: s3.aws.upbound.io/v1beta1
+      apiVersion: s3.aws.m.upbound.io/v1beta1
       kind: Bucket
       resourceRef:
         name: app-bucket
@@ -242,7 +270,7 @@ items:
         namespace: default
 ```
 
-The application cannot be deleted until all infrastructure it uses is removed first, and infrastructure cannot be deleted while the application exists.
+The infrastructure cannot be deleted while the application exists. Deleting the application first removes the using resource and unblocks deletion of the database, cache, or bucket.
 
 ## Implementing Cascading Protection
 
@@ -250,11 +278,15 @@ Create dependency chains:
 
 ```yaml
 # cascading-usage.yaml
+apiVersion: v1
+kind: List
+items:
 # Frontend uses backend
-- apiVersion: apiextensions.crossplane.io/v1alpha1
+- apiVersion: protection.crossplane.io/v1beta1
   kind: Usage
   metadata:
     name: frontend-uses-backend
+    namespace: production
   spec:
     of:
       apiVersion: apps/v1
@@ -270,13 +302,14 @@ Create dependency chains:
         namespace: production
 
 # Backend uses database
-- apiVersion: apiextensions.crossplane.io/v1alpha1
+- apiVersion: protection.crossplane.io/v1beta1
   kind: Usage
   metadata:
     name: backend-uses-database
+    namespace: production
   spec:
     of:
-      apiVersion: rds.aws.upbound.io/v1beta1
+      apiVersion: rds.aws.m.upbound.io/v1beta1
       kind: Instance
       resourceRef:
         name: app-database
@@ -288,13 +321,14 @@ Create dependency chains:
         namespace: production
 
 # Backend uses queue
-- apiVersion: apiextensions.crossplane.io/v1alpha1
+- apiVersion: protection.crossplane.io/v1beta1
   kind: Usage
   metadata:
     name: backend-uses-queue
+    namespace: production
   spec:
     of:
-      apiVersion: sqs.aws.upbound.io/v1beta1
+      apiVersion: sqs.aws.m.upbound.io/v1beta1
       kind: Queue
       resourceRef:
         name: task-queue
@@ -314,13 +348,14 @@ Match resources dynamically:
 
 ```yaml
 # selector-usage.yaml
-apiVersion: apiextensions.crossplane.io/v1alpha1
+apiVersion: protection.crossplane.io/v1beta1
 kind: Usage
 metadata:
   name: app-uses-any-postgres-db
+  namespace: production
 spec:
   of:
-    apiVersion: rds.aws.upbound.io/v1beta1
+    apiVersion: rds.aws.m.upbound.io/v1beta1
     kind: Instance
     resourceSelector:
       matchLabels:
@@ -335,7 +370,7 @@ spec:
       namespace: production
 ```
 
-This protects all PostgreSQL databases labeled for this app.
+The selector resolves once to one matching PostgreSQL database. Use labels that identify a single database, or create one Usage per database you need to protect.
 
 ## Implementing Time-Based Protection
 
@@ -343,15 +378,16 @@ Add temporary protection during deployments:
 
 ```yaml
 # temporary-usage.yaml
-apiVersion: apiextensions.crossplane.io/v1alpha1
+apiVersion: protection.crossplane.io/v1beta1
 kind: Usage
 metadata:
   name: deployment-protection
+  namespace: default
   annotations:
-    crossplane.io/expiration: "2026-02-09T12:00:00Z"
+    cleanup.example.com/delete-after: "2026-02-09T12:00:00Z"
 spec:
   of:
-    apiVersion: rds.aws.upbound.io/v1beta1
+    apiVersion: rds.aws.m.upbound.io/v1beta1
     kind: Instance
     resourceRef:
       name: app-database
@@ -363,7 +399,7 @@ spec:
       namespace: default
 ```
 
-The Usage expires after the specified time, removing protection automatically.
+Crossplane doesn't expire Usage resources automatically. Use your own cleanup controller or scheduled job to delete the Usage after the annotated time.
 
 ## Creating Custom Usage Policies
 
@@ -371,18 +407,16 @@ Build policy around Usage patterns:
 
 ```yaml
 # usage-policy.yaml
-apiVersion: apiextensions.crossplane.io/v1alpha1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
   name: xprotectedapplications.platform.example.com
 spec:
+  scope: Namespaced
   group: platform.example.com
   names:
     kind: XProtectedApplication
     plural: xprotectedapplications
-  claimNames:
-    kind: ProtectedApplication
-    plural: protectedapplications
   versions:
   - name: v1alpha1
     served: true
@@ -396,21 +430,20 @@ spec:
             properties:
               parameters:
                 type: object
+                required:
+                - applicationName
+                - databaseName
+                - cacheName
                 properties:
                   applicationName:
                     type: string
-                  requiresDatabase:
-                    type: boolean
-                    default: true
-                  requiresCache:
-                    type: boolean
-                    default: false
-                  requiresStorage:
-                    type: boolean
-                    default: false
+                  databaseName:
+                    type: string
+                  cacheName:
+                    type: string
 ```
 
-Composition that creates Usages based on parameters:
+Composition that creates Usages from resource names in the custom API:
 
 ```yaml
 # protected-app-composition.yaml
@@ -422,97 +455,98 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XProtectedApplication
-
-  resources:
-  # Application deployment
-  - name: deployment
-    base:
-      apiVersion: kubernetes.crossplane.io/v1alpha2
-      kind: Object
-      spec:
-        forProvider:
-          manifest:
-            apiVersion: apps/v1
-            kind: Deployment
-
-  # Conditional database usage
-  - name: database-usage
-    base:
-      apiVersion: apiextensions.crossplane.io/v1alpha1
-      kind: Usage
-      spec:
-        of:
-          apiVersion: rds.aws.upbound.io/v1beta1
-          kind: Instance
-        by:
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      # Application deployment
+      - name: deployment
+        base:
           apiVersion: kubernetes.crossplane.io/v1alpha2
           kind: Object
-    readinessChecks:
-    - type: None
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.requiresDatabase
-      toFieldPath: metadata.annotations["crossplane.io/external-name"]
-      policy:
-        fromFieldPath: Required
+          metadata:
+            labels:
+              usage.crossplane.io/role: app
+          spec:
+            forProvider:
+              manifest:
+                apiVersion: apps/v1
+                kind: Deployment
 
-  # Conditional cache usage
-  - name: cache-usage
-    base:
-      apiVersion: apiextensions.crossplane.io/v1alpha1
-      kind: Usage
-      spec:
-        of:
-          apiVersion: elasticache.aws.upbound.io/v1beta1
-          kind: ReplicationGroup
-        by:
-          apiVersion: kubernetes.crossplane.io/v1alpha2
-          kind: Object
-    readinessChecks:
-    - type: None
-    patches:
-    - type: FromCompositeFieldPath
-      fromFieldPath: spec.parameters.requiresCache
-      toFieldPath: metadata.annotations["crossplane.io/external-name"]
-      policy:
-        fromFieldPath: Required
+      # Database usage
+      - name: database-usage
+        base:
+          apiVersion: protection.crossplane.io/v1beta1
+          kind: Usage
+          spec:
+            of:
+              apiVersion: rds.aws.m.upbound.io/v1beta1
+              kind: Instance
+              resourceRef:
+                name: ""
+            by:
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              resourceSelector:
+                matchControllerRef: true
+                matchLabels:
+                  usage.crossplane.io/role: app
+        readinessChecks:
+        - type: None
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.databaseName
+          toFieldPath: spec.of.resourceRef.name
+          policy:
+            fromFieldPath: Required
+
+      # Cache usage
+      - name: cache-usage
+        base:
+          apiVersion: protection.crossplane.io/v1beta1
+          kind: Usage
+          spec:
+            of:
+              apiVersion: elasticache.aws.m.upbound.io/v1beta1
+              kind: ReplicationGroup
+              resourceRef:
+                name: ""
+            by:
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              resourceSelector:
+                matchControllerRef: true
+                matchLabels:
+                  usage.crossplane.io/role: app
+        readinessChecks:
+        - type: None
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.cacheName
+          toFieldPath: spec.of.resourceRef.name
+          policy:
+            fromFieldPath: Required
 ```
 
 ## Monitoring Usage Resources
 
-Create alerts for blocked deletions:
+Inspect Usage resources and their conditions:
 
-```yaml
-# usage-monitoring.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: usage-alerts
-  namespace: monitoring
-data:
-  rules.yaml: |
-    groups:
-    - name: crossplane-usage
-      interval: 30s
-      rules:
-      - alert: ResourceDeletionBlocked
-        expr: crossplane_usage_blocking_deletion > 0
-        for: 5m
-        annotations:
-          summary: "Resource deletion blocked by usage"
-          description: "{{ $labels.resource }} cannot be deleted due to active usages"
-
-      - alert: OrphanedUsage
-        expr: crossplane_usage_missing_resource > 0
-        for: 10m
-        annotations:
-          summary: "Usage references missing resource"
-          description: "Usage {{ $labels.usage }} references non-existent resource"
+```bash
+kubectl get usages.protection.crossplane.io -A
+kubectl describe usage.protection.crossplane.io myapp-uses-database -n default
 ```
+
+Crossplane doesn't publish dedicated `crossplane_usage_*` Prometheus metrics. If you need alerts, export Usage custom resource state with a Kubernetes metrics tool such as kube-state-metrics custom resource state metrics, or alert from Kubernetes events and Crossplane logs.
 
 ## Implementing Usage Cleanup
 
-Automatically remove stale Usages:
+Automatically remove temporary Usages after your custom expiration annotation:
 
 ```yaml
 # usage-cleanup-cronjob.yaml
@@ -535,15 +569,19 @@ spec:
             - /bin/sh
             - -c
             - |
-              # Find usages referencing deleted resources
-              kubectl get usages -A -o json | jq -r '
-                .items[] |
-                select(.spec.of.resourceRef != null) |
-                "\(.metadata.namespace)/\(.metadata.name) \(.spec.of.kind) \(.spec.of.resourceRef.name)"
-              ' | while read usage kind name; do
-                if ! kubectl get "$kind" "$name" 2>/dev/null; then
-                  echo "Deleting orphaned usage: $usage"
-                  kubectl delete usage "$usage"
+              # Delete Usage resources after the custom cleanup timestamp.
+              now="$(date -u +%s)"
+              kubectl get usages.protection.crossplane.io -A \
+                -o go-template='{{range .items}}{{.metadata.namespace}} {{.metadata.name}} {{index .metadata.annotations "cleanup.example.com/delete-after"}}{{"\n"}}{{end}}' |
+              while read namespace name delete_after; do
+                if [ -z "$delete_after" ]; then
+                  continue
+                fi
+
+                delete_after_epoch="$(date -u -d "$delete_after" +%s 2>/dev/null || true)"
+                if [ -n "$delete_after_epoch" ] && [ "$delete_after_epoch" -le "$now" ]; then
+                  echo "Deleting expired usage: $namespace/$name"
+                  kubectl delete usage.protection.crossplane.io "$name" -n "$namespace"
                 fi
               done
           restartPolicy: OnFailure
