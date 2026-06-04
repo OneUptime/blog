@@ -209,8 +209,8 @@ spec:
             # Pod-specific DNS names
             csi.cert-manager.io/dns-names: ${POD_NAME}.worker.production.svc.cluster.local,worker.production.svc.cluster.local
 
-            # Include pod UID in certificate metadata
-            csi.cert-manager.io/pod-uid: ${POD_UID}
+            # Include pod UID in a URI SAN
+            csi.cert-manager.io/uri-sans: spiffe://cluster.local/ns/production/pod/${POD_NAME}/${POD_UID}
 
             csi.cert-manager.io/duration: 720h
             csi.cert-manager.io/renew-before: 240h
@@ -374,7 +374,7 @@ This configuration provides both server and client certificates via CSI, enablin
 
 ## CSI with ACME Certificates
 
-Use CSI driver with Let's Encrypt for external certificates:
+Although the CSI driver can request certificates from an ACME-backed issuer such as Let's Encrypt, public CAs are not recommended for typical CSI driver workloads because each pod gets its own certificate and public CAs enforce rate limits:
 
 ```yaml
 # letsencrypt-csi.yaml
@@ -406,7 +406,7 @@ spec:
         csi.cert-manager.io/renew-before: 720h
 ```
 
-Note that ACME challenges still require HTTP-01 or DNS-01 validation, which happens during pod startup.
+Note that ACME challenges still require HTTP-01 or DNS-01 validation by cert-manager before the pod can start, and the required solver configuration must already exist on the Issuer or ClusterIssuer.
 
 ## Monitoring CSI Certificate Status
 
@@ -484,7 +484,7 @@ For stable, long-running deployments, CSI driver overhead is minimal. Certificat
 
 For high pod churn (frequent scaling, rolling updates), CSI driver issues many certificate requests. Consider caching strategies or traditional secret-based distribution.
 
-For large clusters with thousands of pods, monitor CSI driver resource usage and scale DaemonSet if needed.
+For large clusters with thousands of pods, monitor CSI driver resource usage and tune its resource requests, limits, or node placement if latency increases.
 
 ## Security Benefits
 
@@ -506,7 +506,7 @@ Implement certificate watching in applications for zero-downtime rotation. Don't
 
 Set appropriate duration and renewBefore values. Short durations increase certificate request frequency.
 
-Monitor CSI driver resource usage in production. Scale DaemonSet if latency increases.
+Monitor CSI driver resource usage in production. Tune its resource requests, limits, or node placement if latency increases.
 
 Use traditional secret-based distribution for very stable, long-running services where CSI overhead isn't warranted.
 
