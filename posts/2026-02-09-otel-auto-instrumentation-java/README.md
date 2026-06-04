@@ -41,6 +41,7 @@ java -javaagent:opentelemetry-javaagent.jar \
   -Dotel.service.name=my-java-app \
   -Dotel.traces.exporter=otlp \
   -Dotel.metrics.exporter=otlp \
+  -Dotel.exporter.otlp.protocol=grpc \
   -Dotel.exporter.otlp.endpoint=http://localhost:4317 \
   -jar your-application.jar
 ```
@@ -80,7 +81,7 @@ The agent captures HTTP method, path, status code, and timing information automa
 
 ## Database Instrumentation
 
-JDBC connections get instrumented automatically, creating spans for every database query. The agent captures SQL statements, connection pool metrics, and query timing.
+JDBC statements get instrumented automatically, creating spans for database queries. The agent captures sanitized SQL statements and query timing, and it can collect connection pool metrics for supported pools such as HikariCP.
 
 ```java
 @Service
@@ -171,7 +172,8 @@ public class OrderEventConsumer {
     }
 
     private void processOrder(OrderEvent event) {
-        // Processing logic creates child spans automatically
+        // Custom processing runs under the consumer span
+        // Add manual instrumentation if you need child spans here
         System.out.println("Processing order: " + event.getOrderId());
     }
 }
@@ -183,7 +185,7 @@ Message queue instrumentation ensures trace continuity across asynchronous bound
 
 Fine-tune the agent behavior using additional configuration options. You can enable specific instrumentations, adjust sampling rates, and configure resource attributes.
 
-```bash
+```yaml
 # Docker Compose example with full configuration
 version: '3.8'
 services:
@@ -192,13 +194,12 @@ services:
     environment:
       # Service identification
       - OTEL_SERVICE_NAME=payment-service
-      - OTEL_SERVICE_VERSION=1.0.0
-      - OTEL_DEPLOYMENT_ENVIRONMENT=production
 
       # Exporter configuration
       - OTEL_TRACES_EXPORTER=otlp
       - OTEL_METRICS_EXPORTER=otlp
       - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 
       # Sampling configuration
@@ -206,17 +207,16 @@ services:
       - OTEL_TRACES_SAMPLER_ARG=0.1
 
       # Resource attributes
-      - OTEL_RESOURCE_ATTRIBUTES=environment=prod,team=payments
+      - OTEL_RESOURCE_ATTRIBUTES=service.version=1.0.0,deployment.environment.name=production,team=payments
 
       # Instrumentation configuration
-      - OTEL_INSTRUMENTATION_JDBC_STATEMENT_SANITIZER_ENABLED=true
       - OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED=true
     command: >
       java -javaagent:/app/opentelemetry-javaagent.jar
            -jar /app/application.jar
 ```
 
-These environment variables control every aspect of auto-instrumentation. You can enable or disable specific instrumentations using the `OTEL_INSTRUMENTATION_*` pattern.
+These environment variables control common aspects of auto-instrumentation. You can enable or disable specific instrumentations using the `OTEL_INSTRUMENTATION_*` pattern.
 
 ## Excluding Dependencies
 
@@ -256,7 +256,7 @@ spec:
     spec:
       initContainers:
       - name: otel-agent
-        image: ghcr.io/open-telemetry/opentelemetry-java-instrumentation/autoinstrumentation-java:latest
+        image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:latest
         command: ['cp', '/javaagent.jar', '/otel-auto-instrumentation/javaagent.jar']
         volumeMounts:
         - name: otel-auto-instrumentation
@@ -269,6 +269,8 @@ spec:
           value: "-javaagent:/otel-auto-instrumentation/javaagent.jar"
         - name: OTEL_SERVICE_NAME
           value: "java-app"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "grpc"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://otel-collector:4317"
         volumeMounts:
@@ -290,13 +292,10 @@ After deploying your application with the agent, verify that telemetry data flow
 kubectl logs -f deployment/java-app | grep -i "opentelemetry"
 
 # Expected output:
-# [otel.javaagent] OpenTelemetry Javaagent 1.32.0
-# [otel.javaagent] Instrumentation loaded: spring-webmvc-6.0
-# [otel.javaagent] Instrumentation loaded: jdbc
-# [otel.javaagent] Instrumentation loaded: kafka-clients-2.6
+# INFO io.opentelemetry.javaagent.tooling.VersionLogger - opentelemetry-javaagent - version: 2.x.y
 ```
 
-The agent logs show which instrumentations loaded successfully. This helps troubleshoot configuration issues.
+The startup log confirms that the agent attached successfully. If you need detailed instrumentation loading information, enable debug logging with `OTEL_JAVAAGENT_DEBUG=true` while troubleshooting.
 
 ## Troubleshooting Common Issues
 
