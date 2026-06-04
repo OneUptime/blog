@@ -31,13 +31,15 @@ export PATH=$PWD/bin:$PATH
 istioctl install --set profile=default -y
 
 # Enable sidecar injection for specific namespaces
-kubectl create namespace prod
-kubectl create namespace staging
-kubectl create namespace dev
+kubectl create namespace prod --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace staging --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace dev --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace shared-services --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl label namespace prod istio-injection=enabled
-kubectl label namespace staging istio-injection=enabled
-kubectl label namespace dev istio-injection=enabled
+kubectl label namespace prod istio-injection=enabled --overwrite
+kubectl label namespace staging istio-injection=enabled --overwrite
+kubectl label namespace dev istio-injection=enabled --overwrite
+kubectl label namespace shared-services istio-injection=enabled --overwrite
 ```
 
 ## Implementing Cross-Namespace Traffic Policies
@@ -45,7 +47,7 @@ kubectl label namespace dev istio-injection=enabled
 Create a VirtualService that routes traffic differently based on the source namespace:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-routing
@@ -57,6 +59,10 @@ spec:
   # Route from production namespace to stable backend
   - match:
     - sourceNamespace: prod
+    headers:
+      request:
+        set:
+          x-source-namespace: "prod"
     route:
     - destination:
         host: backend.shared-services.svc.cluster.local
@@ -65,6 +71,10 @@ spec:
   # Route from staging to canary backend (90/10 split)
   - match:
     - sourceNamespace: staging
+    headers:
+      request:
+        set:
+          x-source-namespace: "staging"
     route:
     - destination:
         host: backend.shared-services.svc.cluster.local
@@ -77,13 +87,17 @@ spec:
   # Route from dev namespace to experimental version
   - match:
     - sourceNamespace: dev
+    headers:
+      request:
+        set:
+          x-source-namespace: "dev"
     route:
     - destination:
         host: backend.shared-services.svc.cluster.local
         subset: experimental
       weight: 100
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-subsets
@@ -107,10 +121,10 @@ spec:
 
 ## Namespace-Aware Rate Limiting
 
-Implement different rate limits based on the source namespace:
+Implement different rate limits based on a trusted source-namespace header set by the mesh routing rules and enforced by an Envoy-compatible global rate-limit service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
   name: namespace-rate-limit
@@ -132,28 +146,38 @@ spec:
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.filters.http.local_ratelimit
+        name: envoy.filters.http.ratelimit
         typed_config:
-          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
-          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-          value:
-            stat_prefix: http_local_rate_limiter
-            token_bucket:
-              max_tokens: 100
-              tokens_per_fill: 100
-              fill_interval: 60s
-            filter_enabled:
-              runtime_key: local_rate_limit_enabled
-              default_value:
-                numerator: 100
-                denominator: HUNDRED
-            filter_enforced:
-              runtime_key: local_rate_limit_enforced
-              default_value:
-                numerator: 100
-                denominator: HUNDRED
+          "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit
+          domain: backend-ratelimit
+          failure_mode_deny: true
+          timeout: 10s
+          rate_limit_service:
+            grpc_service:
+              envoy_grpc:
+                cluster_name: outbound|8081||ratelimit.istio-system.svc.cluster.local
+                authority: ratelimit.istio-system.svc.cluster.local
+            transport_api_version: V3
+  - applyTo: VIRTUAL_HOST
+    match:
+      context: SIDECAR_INBOUND
+      routeConfiguration:
+        vhost:
+          name: "inbound|http|5678"
+    patch:
+      operation: MERGE
+      value:
+        typed_per_filter_config:
+          envoy.filters.http.ratelimit:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimitPerRoute
+            domain: backend-ratelimit
+        rate_limits:
+        - actions:
+          - request_headers:
+              header_name: x-source-namespace
+              descriptor_key: source_namespace
 ---
-# Rate limit config per namespace
+# Rate limit service config per namespace
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -188,49 +212,37 @@ data:
 Apply different circuit breaker settings per namespace:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: namespace-circuit-breaker
-  namespace: shared-services
+  namespace: prod
 spec:
   host: backend.shared-services.svc.cluster.local
+  exportTo:
+  - "."
   trafficPolicy:
     connectionPool:
       tcp:
-        maxConnections: 100
+        maxConnections: 500
       http:
-        http1MaxPendingRequests: 50
-        http2MaxRequests: 100
+        http1MaxPendingRequests: 200
+        http2MaxRequests: 500
     outlierDetection:
-      consecutiveErrors: 5
+      consecutive5xxErrors: 5
       interval: 30s
       baseEjectionTime: 30s
       maxEjectionPercent: 50
-  # Override for production namespace
-  exportTo:
-  - "prod"
-  subsets:
-  - name: prod-subset
-    labels:
-      app: backend
-    trafficPolicy:
-      connectionPool:
-        tcp:
-          maxConnections: 500
-        http:
-          http1MaxPendingRequests: 200
-          http2MaxRequests: 500
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: namespace-circuit-breaker-dev
-  namespace: shared-services
+  namespace: dev
 spec:
   host: backend.shared-services.svc.cluster.local
   exportTo:
-  - "dev"
+  - "."
   trafficPolicy:
     connectionPool:
       tcp:
@@ -242,10 +254,10 @@ spec:
 
 ## Multi-Tenant Traffic Isolation
 
-Implement strict namespace-based traffic isolation:
+With mTLS enabled, implement strict namespace-based traffic isolation:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: namespace-isolation
@@ -263,10 +275,9 @@ spec:
   # Allow traffic from ingress
   - from:
     - source:
-        namespaces: ["istio-system"]
-        principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+        serviceAccounts: ["istio-system/istio-ingressgateway"]
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-cross-namespace
@@ -284,7 +295,7 @@ spec:
 Configure retry policies based on source namespace:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-retries
@@ -327,14 +338,14 @@ spec:
 
 ## Progressive Delivery Per Namespace
 
-Implement canary deployments that progress differently per namespace:
+Implement canary deployments that progress differently for namespace-scoped workloads:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
   name: api-canary
-  namespace: shared-services
+  namespace: staging
 spec:
   targetRef:
     apiVersion: apps/v1
@@ -356,25 +367,20 @@ spec:
       thresholdRange:
         max: 500
       interval: 1m
-    # Namespace-specific analysis
-    match:
-    - headers:
-        x-source-namespace:
-          exact: "staging"
     webhooks:
     - name: load-test-staging
-      url: http://flagger-loadtester/
+      url: http://flagger-loadtester.staging/
       timeout: 5s
       metadata:
         type: cmd
-        cmd: "hey -z 1m -q 10 -c 2 http://api-canary.shared-services:8080"
+        cmd: "hey -z 1m -q 10 -c 2 http://api-canary.staging:8080"
 ---
 # Production gets slower, safer rollout
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
   name: api-canary-prod
-  namespace: shared-services
+  namespace: prod
 spec:
   targetRef:
     apiVersion: apps/v1
@@ -392,10 +398,6 @@ spec:
       thresholdRange:
         min: 99.9
       interval: 1m
-    match:
-    - headers:
-        x-source-namespace:
-          exact: "prod"
 ```
 
 ## Monitoring Namespace-Based Traffic
@@ -478,6 +480,31 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: backend-experimental
+  namespace: shared-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+      version: experimental
+  template:
+    metadata:
+      labels:
+        app: backend
+        version: experimental
+    spec:
+      containers:
+      - name: backend
+        image: hashicorp/http-echo
+        args:
+        - "-text=experimental version"
+        ports:
+        - containerPort: 5678
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: backend-canary
   namespace: shared-services
 spec:
@@ -499,6 +526,19 @@ spec:
         - "-text=canary version"
         ports:
         - containerPort: 5678
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: shared-services
+spec:
+  selector:
+    app: backend
+  ports:
+  - name: http
+    port: 5678
+    targetPort: 5678
 EOF
 
 # Test from different namespaces
