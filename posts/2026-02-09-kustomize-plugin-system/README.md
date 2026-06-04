@@ -10,7 +10,7 @@ Description: Master the Kustomize plugin system to create custom generators and 
 
 While Kustomize provides powerful built-in generators and transformers, some organizations have unique configuration requirements that standard features don't address. The plugin system extends Kustomize with custom logic, letting you generate resources dynamically or transform them in ways specific to your environment.
 
-Plugins are executables that Kustomize invokes during the build process. They receive resource configurations as input and produce Kubernetes manifests as output. This extensibility makes Kustomize adaptable to virtually any configuration management need while maintaining its declarative approach.
+Plugins are executables that Kustomize invokes during the build process when alpha plugins are enabled. Legacy exec generators receive their plugin configuration as a temporary file path in the first command-line argument and produce Kubernetes manifests on stdout. Legacy exec transformers receive their configuration the same way, read resources from stdin, and write transformed resources to stdout. This extensibility makes Kustomize adaptable to virtually any configuration management need while maintaining its declarative approach.
 
 ## Understanding plugin types
 
@@ -20,7 +20,7 @@ A generator might create multiple Deployment resources from a simple specificati
 
 ## Plugin discovery and execution
 
-Kustomize discovers plugins through the XDG_CONFIG_HOME directory, typically ~/.config/kustomize/plugin. Plugins must follow a specific directory structure:
+Kustomize discovers plugins through `KUSTOMIZE_PLUGIN_HOME` or the Kustomize plugin directory under `XDG_CONFIG_HOME`, typically `~/.config/kustomize/plugin`. Plugins must follow a specific directory structure:
 
 ```text
 ~/.config/kustomize/plugin/
@@ -54,14 +54,15 @@ spec:
   image: myapp:latest
 ```
 
-The plugin executable receives this configuration on stdin and generates Deployment resources:
+The plugin executable receives the configuration file path as its first argument and generates Deployment resources:
 
 ```bash
 #!/bin/bash
 # ~/.config/kustomize/plugin/generators.example.com/v1/multiappgenerator/MultiAppGenerator
 
-# Read input configuration
-INPUT=$(cat)
+# Read input configuration from the file path Kustomize passes as $1
+CONFIG_FILE="${1:?usage: MultiAppGenerator CONFIG_FILE}"
+INPUT=$(cat "$CONFIG_FILE")
 
 # Extract values using yq or similar
 IMAGE=$(echo "$INPUT" | yq eval '.spec.image' -)
@@ -107,6 +108,12 @@ generators:
 - generators/multiapp.yaml
 ```
 
+Run the build with alpha plugins enabled:
+
+```bash
+kustomize build --enable-alpha-plugins .
+```
+
 ## Building a Python transformer plugin
 
 Python provides better structured data handling for complex transformations:
@@ -126,9 +133,9 @@ def add_security_context(resource):
     if kind not in ['Deployment', 'StatefulSet', 'DaemonSet']:
         return resource
 
-    spec = resource.get('spec', {})
-    template = spec.get('template', {})
-    pod_spec = template.get('spec', {})
+    spec = resource.setdefault('spec', {})
+    template = spec.setdefault('template', {})
+    pod_spec = template.setdefault('spec', {})
 
     # Add pod-level security context
     if 'securityContext' not in pod_spec:
@@ -156,14 +163,16 @@ def add_security_context(resource):
     return resource
 
 def main():
-    # Read all input documents
-    input_docs = list(yaml.safe_load_all(sys.stdin))
+    if len(sys.argv) < 2:
+        print("Error: Configuration file path required", file=sys.stderr)
+        sys.exit(1)
 
-    # First document is the transformer configuration
-    config = input_docs[0]
+    # Read transformer configuration from the file path Kustomize passes as $1
+    with open(sys.argv[1], 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
 
-    # Remaining documents are resources to transform
-    resources = input_docs[1:]
+    # Read resources to transform from stdin
+    resources = [r for r in yaml.safe_load_all(sys.stdin) if r]
 
     # Transform each resource
     transformed = [add_security_context(r) for r in resources]
@@ -175,7 +184,7 @@ if __name__ == '__main__':
     main()
 ```
 
-Use the transformer in your kustomization:
+Use the transformer in your kustomization and run the build with alpha plugins enabled:
 
 ```yaml
 # kustomization.yaml
@@ -193,87 +202,117 @@ transformers:
     name: add-security
 ```
 
+```bash
+kustomize build --enable-alpha-plugins .
+```
+
 ## Using Go for production plugins
 
 For production use, Go provides better performance and maintainability:
 
 ```go
-// ~/.config/kustomize/plugin/transformers.example.com/v1/resourcelimiter/ResourceLimiter.go
+// ~/.config/kustomize/plugin/transformers.example.com/v1/resourcelimiter/ResourceLimiter
 package main
 
 import (
-    "fmt"
+    "bytes"
     "io"
     "os"
 
-    "sigs.k8s.io/kustomize/api/resmap"
-    "sigs.k8s.io/kustomize/api/types"
-    "sigs.k8s.io/yaml"
+    "gopkg.in/yaml.v3"
 )
 
-type Plugin struct {
-    CPULimit    string `json:"cpuLimit,omitempty" yaml:"cpuLimit,omitempty"`
-    MemoryLimit string `json:"memoryLimit,omitempty" yaml:"memoryLimit,omitempty"`
+type Config struct {
+    Spec struct {
+        CPULimit    string `yaml:"cpuLimit"`
+        MemoryLimit string `yaml:"memoryLimit"`
+    } `yaml:"spec"`
 }
 
-func (p *Plugin) Config(h *resmap.PluginHelpers, c []byte) error {
-    return yaml.Unmarshal(c, p)
+func ensureMap(obj map[string]interface{}, key string) map[string]interface{} {
+    if existing, ok := obj[key].(map[string]interface{}); ok {
+        return existing
+    }
+    next := map[string]interface{}{}
+    obj[key] = next
+    return next
 }
 
-func (p *Plugin) Transform(m resmap.ResMap) error {
-    for _, r := range m.Resources() {
-        if r.GetKind() != "Deployment" && r.GetKind() != "StatefulSet" {
-            continue
-        }
+func addLimits(resource map[string]interface{}, cfg Config) {
+    kind, _ := resource["kind"].(string)
+    if kind != "Deployment" && kind != "StatefulSet" {
+        return
+    }
 
-        // Add resource limits to containers
-        containers, err := r.GetFieldValue("spec.template.spec.containers")
-        if err != nil {
-            continue
-        }
+    spec := ensureMap(resource, "spec")
+    template := ensureMap(spec, "template")
+    podSpec := ensureMap(template, "spec")
 
-        containerList, ok := containers.([]interface{})
+    containers, ok := podSpec["containers"].([]interface{})
+    if !ok {
+        return
+    }
+
+    for _, item := range containers {
+        container, ok := item.(map[string]interface{})
         if !ok {
             continue
         }
 
-        for i := range containerList {
-            container := containerList[i].(map[string]interface{})
-
-            if _, exists := container["resources"]; !exists {
-                container["resources"] = make(map[string]interface{})
-            }
-
-            resources := container["resources"].(map[string]interface{})
-
-            if _, exists := resources["limits"]; !exists {
-                resources["limits"] = make(map[string]interface{})
-            }
-
-            limits := resources["limits"].(map[string]interface{})
-            limits["cpu"] = p.CPULimit
-            limits["memory"] = p.MemoryLimit
-        }
-
-        if err := r.SetFieldValue("spec.template.spec.containers", containers); err != nil {
-            return err
-        }
+        resources := ensureMap(container, "resources")
+        limits := ensureMap(resources, "limits")
+        limits["cpu"] = cfg.Spec.CPULimit
+        limits["memory"] = cfg.Spec.MemoryLimit
     }
-
-    return nil
 }
 
 func main() {
-    // Read configuration and resources from stdin
-    input, _ := io.ReadAll(os.Stdin)
+    if len(os.Args) < 2 {
+        _, _ = os.Stderr.WriteString("configuration file path required\n")
+        os.Exit(1)
+    }
 
-    // Plugin processing logic here
+    configBytes, err := os.ReadFile(os.Args[1])
+    if err != nil {
+        panic(err)
+    }
 
-    fmt.Println("Transformed resources...")
+    var cfg Config
+    if err := yaml.Unmarshal(configBytes, &cfg); err != nil {
+        panic(err)
+    }
+
+    input, err := io.ReadAll(os.Stdin)
+    if err != nil {
+        panic(err)
+    }
+
+    decoder := yaml.NewDecoder(bytes.NewReader(input))
+    encoder := yaml.NewEncoder(os.Stdout)
+    defer encoder.Close()
+
+    for {
+        var resource map[string]interface{}
+        err := decoder.Decode(&resource)
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            panic(err)
+        }
+        if len(resource) == 0 {
+            continue
+        }
+
+        addLimits(resource, cfg)
+        if err := encoder.Encode(resource); err != nil {
+            panic(err)
+        }
+    }
 }
 ```
 
-Compile the plugin and place the binary in the plugin directory.
+Compile the plugin and place the binary in the plugin directory. For this example, the plugin configuration should include `spec.cpuLimit` and `spec.memoryLimit`.
 
 ## Configuration-driven plugins
 
@@ -321,12 +360,16 @@ def validate_config(config):
 
 def main():
     try:
-        input_docs = list(yaml.safe_load_all(sys.stdin))
-        config = input_docs[0]
+        if len(sys.argv) < 2:
+            print("Error: Configuration file path required", file=sys.stderr)
+            sys.exit(1)
+
+        with open(sys.argv[1], 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
 
         validate_config(config)
 
-        # Process resources...
+        # Process resources from stdin...
 
     except Exception as e:
         print(f"Error: {str(e)}", file=sys.stderr)
@@ -360,7 +403,7 @@ spec:
 EOF
 
 # Run plugin
-cat test-input.yaml | ~/.config/kustomize/plugin/generators.example.com/v1/multiappgenerator/MultiAppGenerator
+~/.config/kustomize/plugin/generators.example.com/v1/multiappgenerator/MultiAppGenerator test-input.yaml
 
 # Validate output
 if [ $? -eq 0 ]; then
@@ -408,18 +451,17 @@ Distribute plugins through Git repositories or container images:
 # Dockerfile
 FROM alpine:latest
 
-RUN apk add --no-cache bash python3 py3-pip
-RUN pip3 install pyyaml
+RUN apk add --no-cache bash python3 py3-yaml
 
 COPY plugins/ /kustomize/plugin/
 
-ENTRYPOINT ["/bin/bash"]
+CMD ["/bin/sh"]
 ```
 
 Teams can mount this container's filesystem when running Kustomize:
 
 ```bash
-docker run -v ~/.config/kustomize/plugin:/kustomize/plugin plugin-container cp -r /kustomize/plugin/* /dest/
+docker run --rm -v "$PWD/plugins:/dest" plugin-container cp -r /kustomize/plugin/. /dest/
 ```
 
 ## Performance optimization
@@ -479,7 +521,7 @@ spec:
   - name: app-name
     replicas: 3
   image: container:tag
-```bash
+```
 
 ## Fields
 - `apps`: List of applications to generate
@@ -489,7 +531,7 @@ spec:
 
 ## Output
 Generates one Deployment per app in the apps list.
-```text
+```
 
 Include examples and common troubleshooting scenarios.
 
@@ -510,6 +552,3 @@ Test plugins with various inputs including edge cases. Automated tests prevent r
 The Kustomize plugin system extends configuration management capabilities beyond built-in features, enabling organizations to implement custom logic specific to their requirements. Whether generating resources from compact specifications or enforcing organization-wide policies through transformers, plugins provide the flexibility needed for complex environments.
 
 By following plugin development best practices and maintaining clear documentation, you can build a library of reusable components that enhance Kustomize for your entire organization. The plugin system's extensibility ensures Kustomize can adapt to virtually any configuration management need while maintaining its declarative, version-controlled approach.
-
-```bash
-```
