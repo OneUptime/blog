@@ -31,10 +31,13 @@ Deploy HNC using kubectl:
 ```bash
 # Install HNC
 
-kubectl apply -f https://github.com/kubernetes-sigs/hierarchical-namespaces/releases/download/v1.1.0/hnc-manager.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/hierarchical-namespaces/releases/download/v1.1.0/default.yaml
 
 # Verify installation
 kubectl get pods -n hnc-system
+
+# Optional: enable beta hierarchical resource quotas
+kubectl apply -f https://github.com/kubernetes-sigs/hierarchical-namespaces/releases/download/v1.1.0/hrq.yaml
 
 # Install kubectl plugin
 kubectl krew install hns
@@ -101,7 +104,21 @@ metadata:
 
 ## Configuring Policy Propagation
 
-Create policies in parent namespaces that propagate to children:
+By default, HNC propagates RBAC Roles and RoleBindings. Configure any additional resource types before creating policies in parent namespaces that propagate to children:
+
+```yaml
+apiVersion: hnc.x-k8s.io/v1alpha2
+kind: HNCConfiguration
+metadata:
+  name: config
+spec:
+  resources:
+  - resource: limitranges
+    mode: Propagate
+  - group: networking.k8s.io
+    resource: networkpolicies
+    mode: Propagate
+```
 
 ```yaml
 apiVersion: v1
@@ -134,7 +151,7 @@ These policies automatically propagate to all child namespaces.
 
 ## Implementing Delegated RBAC
 
-Grant namespace admin rights that include subnamespace creation:
+Grant subnamespace creation rights:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -167,11 +184,11 @@ roleRef:
 
 ## Configuring Hierarchical Resource Quotas
 
-Set resource quotas at different levels:
+Set hierarchical resource quotas at different levels:
 
 ```yaml
-apiVersion: v1
-kind: ResourceQuota
+apiVersion: hnc.x-k8s.io/v1alpha2
+kind: HierarchicalResourceQuota
 metadata:
   name: org-quota
   namespace: org-engineering
@@ -181,8 +198,8 @@ spec:
     requests.memory: 400Gi
     pods: "1000"
 ---
-apiVersion: v1
-kind: ResourceQuota
+apiVersion: hnc.x-k8s.io/v1alpha2
+kind: HierarchicalResourceQuota
 metadata:
   name: team-quota
   namespace: team-backend
@@ -203,21 +220,12 @@ kind: HNCConfiguration
 metadata:
   name: config
 spec:
-  types:
-  - apiVersion: v1
-    kind: Secret
+  resources:
+  - resource: secrets
     mode: Propagate
-  - apiVersion: v1
-    kind: ConfigMap
+  - resource: configmaps
     mode: Propagate
-  - apiVersion: rbac.authorization.k8s.io/v1
-    kind: Role
-    mode: Propagate
-  - apiVersion: rbac.authorization.k8s.io/v1
-    kind: RoleBinding
-    mode: Propagate
-  - apiVersion: v1
-    kind: ResourceQuota
+  - resource: resourcequotas
     mode: Ignore  # Don't propagate quotas
 ```
 
@@ -232,8 +240,8 @@ kubectl hns tree org-engineering
 # View namespace config
 kubectl hns describe org-engineering
 
-# List all children
-kubectl hns list team-backend
+# View the team-backend subtree
+kubectl hns tree team-backend
 ```
 
 ## Implementing Self-Service Workflows
@@ -242,7 +250,6 @@ Allow teams to create their own namespaces:
 
 ```python
 from kubernetes import client, config
-import yaml
 
 def create_subnamespace(parent_namespace, subnamespace_name, requester):
     config.load_kube_config()
@@ -290,13 +297,13 @@ spec:
     interval: 30s
     rules:
     - alert: HNCPropagationFailed
-      expr: hnc_namespace_conditions{condition="ActivitiesHalted"} == 1
+      expr: hnc_namespace_conditions{Condition="ActivitiesHalted"} > 0
       for: 5m
       labels:
         severity: warning
       annotations:
         summary: "HNC propagation failed"
-        description: "Namespace {{ $labels.namespace }} has propagation issues"
+        description: "One or more namespaces have HNC propagation issues"
 ```
 
 ## Best Practices
