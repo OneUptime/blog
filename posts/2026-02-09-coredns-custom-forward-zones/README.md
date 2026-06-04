@@ -8,7 +8,7 @@ Description: Learn how to configure CoreDNS custom forward zones to implement sp
 
 ---
 
-Split-horizon DNS is a critical networking pattern that allows you to return different DNS responses depending on where queries originate. In Kubernetes environments, you often need internal services to resolve to cluster IPs while external clients receive public IPs. CoreDNS forward zones provide the flexibility to implement this pattern effectively.
+Split-horizon DNS is a critical networking pattern that allows you to return different DNS responses depending on where queries originate. In Kubernetes environments, you often need internal services to resolve to cluster IPs while external clients receive public IPs. CoreDNS forward zones provide the flexibility to route cluster DNS queries for selected domains to internal resolvers as part of this pattern.
 
 This guide walks you through configuring custom forward zones in CoreDNS to create sophisticated split-horizon DNS configurations that meet enterprise networking requirements.
 
@@ -81,7 +81,7 @@ This configuration creates three DNS zones with different forwarding behaviors.
 
 ## Implementing Split-Horizon DNS Architecture
 
-For true split-horizon DNS, configure different resolution paths based on query origin. Here is an advanced configuration:
+For Kubernetes-side split-horizon behavior, configure different resolution paths based on the queried domain. Here is an advanced configuration:
 
 ```yaml
 apiVersion: v1
@@ -197,23 +197,23 @@ api.internal.com:53 {
 }
 ```
 
-This configuration attempts the first server, fails over to the second if unavailable, and marks servers as down after two consecutive failures.
+This configuration selects upstreams in sequential order, tries another upstream on network errors or unhealthy upstreams, and marks servers as down after two consecutive failed health checks.
 
-## Implementing Conditional Forwarding with Wildcards
+## Implementing Conditional Forwarding for Subdomains
 
-Use wildcards for flexible zone matching:
+Use parent zones for flexible subdomain matching:
 
 ```yaml
 # Match all subdomains of internal.company.com
-*.internal.company.com:53 {
+internal.company.com:53 {
     errors
     forward . 10.0.1.53
     cache 60
 }
 
-# Match specific service patterns
-*.svc.cluster.local:53 {
-    kubernetes cluster.local {
+# Match Kubernetes service names through the cluster domain
+svc.cluster.local:53 {
+    kubernetes cluster.local in-addr.arpa ip6.arpa {
         pods insecure
     }
     cache 30
@@ -385,7 +385,7 @@ forward . 10.0.1.53 {
 
 **Issue: Zone conflicts**
 
-Ensure more specific zones are defined before general ones in the Corefile. CoreDNS matches zones in order of specificity.
+Ensure overlapping zones are not duplicated on the same port. CoreDNS matches separate server blocks by the most specific zone; when multiple `forward` directives are used inside one server block, put more specific domains before general ones.
 
 ## Best Practices
 
@@ -399,6 +399,6 @@ Follow these guidelines for production deployments:
 6. Use sequential policy for critical zones requiring failover
 7. Enable logging during initial configuration and troubleshooting
 
-Forward zones in CoreDNS provide the foundation for sophisticated DNS architectures in Kubernetes. By carefully configuring zone-specific forwarding rules, you can implement split-horizon DNS that meets complex enterprise networking requirements while maintaining the flexibility to adapt as your infrastructure evolves.
+Forward zones in CoreDNS provide the foundation for sophisticated DNS architectures in Kubernetes. By carefully configuring zone-specific forwarding rules, you can implement the Kubernetes side of split-horizon DNS that meets complex enterprise networking requirements while maintaining the flexibility to adapt as your infrastructure evolves.
 
 For more DNS configuration patterns, see our guides on [CoreDNS cache optimization](https://oneuptime.com/blog/post/2026-02-09-coredns-cache-settings-high-qps/view) and [NodeLocal DNSCache implementation](https://oneuptime.com/blog/post/2026-02-09-nodelocal-dnscache-reduce-coredns-load/view).
