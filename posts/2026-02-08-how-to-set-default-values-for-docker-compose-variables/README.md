@@ -17,8 +17,6 @@ The most common way to set defaults is directly in the compose file using the `:
 ```yaml
 # docker-compose.yml - inline defaults with :- syntax
 
-version: "3.8"
-
 services:
   api:
     image: myapi:${API_VERSION:-latest}
@@ -161,8 +159,6 @@ A useful pattern is to set defaults that change based on a single environment va
 
 ```yaml
 # docker-compose.yml with environment-aware defaults
-version: "3.8"
-
 services:
   app:
     image: myapp:${API_VERSION:-latest}
@@ -201,8 +197,6 @@ Combine defaults with Docker Compose's override mechanism. The base file has pro
 
 ```yaml
 # docker-compose.yml - base configuration with production defaults
-version: "3.8"
-
 services:
   app:
     image: myapp:${API_VERSION:-2.1.0}
@@ -219,8 +213,6 @@ services:
 
 ```yaml
 # docker-compose.override.yml - development overrides (auto-loaded)
-version: "3.8"
-
 services:
   app:
     build:
@@ -305,17 +297,17 @@ services:
         errors=0
 
         # Check required variables have non-default values in production
-        if [ "$NODE_ENV" = "production" ]; then
-          if [ "$DB_PASSWORD" = "localdev123" ]; then
+        if [ "$$NODE_ENV" = "production" ]; then
+          if [ "$$DB_PASSWORD" = "localdev123" ]; then
             echo "ERROR: DB_PASSWORD still has default value"
             errors=$((errors + 1))
           fi
-          if [ "$API_PORT" = "3000" ]; then
+          if [ "$$API_PORT" = "3000" ]; then
             echo "WARNING: API_PORT using development default"
           fi
         fi
 
-        if [ $errors -gt 0 ]; then
+        if [ $$errors -gt 0 ]; then
           echo "Configuration validation failed"
           exit 1
         fi
