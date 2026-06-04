@@ -26,7 +26,7 @@ Each layer provides defense against different attack vectors.
 
 ## Implementing Network Isolation
 
-Create default-deny network policies:
+Create default-deny network policies. Ensure your cluster uses a CNI plugin that enforces NetworkPolicy resources:
 
 ```yaml
 # Deny all ingress traffic by default
@@ -162,13 +162,18 @@ metadata:
     pod-security.kubernetes.io/warn-version: latest
 ```
 
-Create a Pod Security Policy (for clusters still using PSP):
+Create a Pod Security Policy (for legacy Kubernetes v1.24 and earlier clusters still using PSP):
 
 ```yaml
 apiVersion: policy/v1beta1
 kind: PodSecurityPolicy
 metadata:
   name: restricted-namespace-psp
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'runtime/default'
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: 'runtime/default'
+    apparmor.security.beta.kubernetes.io/allowedProfileNames: 'runtime/default'
+    apparmor.security.beta.kubernetes.io/defaultProfileName: 'runtime/default'
 spec:
   # Prevent privileged containers
   privileged: false
@@ -216,14 +221,6 @@ spec:
   # Read-only root filesystem
   readOnlyRootFilesystem: false
 
-  # Seccomp
-  seccompProfile:
-    type: RuntimeDefault
-
-  # AppArmor
-  annotations:
-    apparmor.security.beta.kubernetes.io/allowedProfileNames: 'runtime/default'
-    apparmor.security.beta.kubernetes.io/defaultProfileName: 'runtime/default'
 ```
 
 ## Implementing RBAC Isolation
@@ -238,7 +235,7 @@ metadata:
   name: namespace-admin
   namespace: tenant-a
 rules:
-- apiGroups: ["", "apps", "batch", "extensions", "networking.k8s.io"]
+- apiGroups: ["", "apps", "batch", "networking.k8s.io"]
   resources: ["*"]
   verbs: ["*"]
 ---
@@ -294,7 +291,7 @@ metadata:
   name: namespace-viewer
   namespace: tenant-a
 rules:
-- apiGroups: ["", "apps", "batch", "extensions"]
+- apiGroups: ["", "apps", "batch"]
   resources: ["*"]
   verbs: ["get", "list", "watch"]
 ---
@@ -443,16 +440,17 @@ spec:
     rules:
     - alert: PodSecurityViolation
       expr: |
-        pod_security_policy_error{namespace=~"tenant-.*"} > 0
+        increase(pod_security_evaluations_total{decision="deny",mode="enforce"}[5m]) > 0
       labels:
         severity: critical
       annotations:
-        summary: "Pod security policy violation"
-        description: "Pod in {{ $labels.namespace }} violates security policy"
+        summary: "Pod security admission violation"
+        description: "A pod was denied by Pod Security Admission"
 
     - alert: NetworkPolicyViolation
       expr: |
-        rate(network_policy_drop_count{namespace=~"tenant-.*"}[5m]) > 10
+        # NetworkPolicy drop metrics are CNI-specific; replace this with your provider's metric.
+        rate(cni_network_policy_drop_count{namespace=~"tenant-.*"}[5m]) > 10
       labels:
         severity: warning
       annotations:
@@ -461,12 +459,12 @@ spec:
 
     - alert: UnauthorizedAPIAccess
       expr: |
-        rate(apiserver_audit_event_total{verb=~"create|update|delete",response_code=~"403"}[5m]) > 5
+        rate(apiserver_request_total{verb=~"CREATE|UPDATE|DELETE",code="403"}[5m]) > 5
       labels:
         severity: warning
       annotations:
         summary: "Unauthorized API access attempts"
-        description: "{{ $labels.user }} attempted unauthorized access"
+        description: "The API server is returning 403 responses for write requests"
 ```
 
 ## Testing Isolation
