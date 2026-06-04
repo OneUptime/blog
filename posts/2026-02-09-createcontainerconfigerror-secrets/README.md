@@ -8,15 +8,15 @@ Description: Learn how to diagnose and fix CreateContainerConfigError caused by 
 
 ---
 
-CreateContainerConfigError prevents pods from starting by blocking container creation before the runtime even attempts to pull images. This error typically indicates problems with how containers reference Secrets, ConfigMaps, or volumes. The pod reaches the phase where Kubernetes tries to configure the container runtime, but validation fails due to missing or misconfigured references.
+CreateContainerConfigError prevents pods from starting by blocking container creation before the container can run. This error typically indicates problems with how containers reference Secrets, ConfigMaps, or volumes. The pod reaches the phase where Kubernetes tries to configure the container runtime, but validation fails due to missing or misconfigured references.
 
 Understanding the specific causes and implementing proper validation prevents these configuration errors from reaching production environments.
 
 ## Understanding CreateContainerConfigError
 
-CreateContainerConfigError occurs during the container configuration phase, after scheduling but before image pulling. Kubernetes validates that all referenced configuration objects exist and that references use correct syntax. When validation fails, the container never starts and the pod shows CreateContainerConfigError status.
+CreateContainerConfigError occurs during the container configuration phase, after scheduling and before the container starts. Kubernetes checks that referenced configuration objects can be resolved. When this fails, the container never starts and the pod shows CreateContainerConfigError status.
 
-Common causes include referencing nonexistent Secrets or ConfigMaps, using incorrect keys within those objects, misconfigured volume mounts, and syntax errors in environment variable definitions. Unlike runtime errors that might be transient, CreateContainerConfigError indicates a configuration problem that won't resolve without intervention.
+Common causes include referencing nonexistent Secrets or ConfigMaps, using incorrect keys within those objects, and missing keys in projected volumes. Schema errors in environment variable definitions are usually rejected by the API server before the pod is created. Unlike runtime errors that might be transient, CreateContainerConfigError indicates a configuration problem that won't resolve without intervention.
 
 ## Identifying CreateContainerConfigError Issues
 
@@ -218,7 +218,7 @@ volumes:
 
 ## Fixing Environment Variable Syntax Errors
 
-Malformed environment variable definitions cause CreateContainerConfigError. Verify syntax matches Kubernetes specifications.
+Malformed environment variable definitions are usually rejected by kubectl or the Kubernetes API server before the pod is created. Verify syntax matches Kubernetes specifications so bad references never reach the container configuration phase.
 
 ```yaml
 # Correct syntax examples
@@ -263,7 +263,7 @@ spec:
           resource: limits.cpu
 ```
 
-Common syntax errors include mixing `value` with `valueFrom`, incorrect indentation, and typos in field names.
+Common manifest errors include mixing `value` with `valueFrom`, incorrect indentation, and typos in field names.
 
 ```yaml
 # WRONG - mixing value and valueFrom
@@ -286,7 +286,7 @@ env:
 
 ## Validating Volume Mount Configuration
 
-Volume mount errors prevent container configuration. Verify volume definitions and mount paths.
+Missing Secret or ConfigMap data used by volumes can prevent startup, while mismatched `volumeMount` names are rejected by API validation. Verify volume definitions and mount paths.
 
 ```yaml
 apiVersion: v1
@@ -318,14 +318,14 @@ Check for common mistakes:
 ```bash
 # Verify volume names match between volumeMounts and volumes
 kubectl get pod myapp -o yaml | \
-  yq eval '.spec.containers[0].volumeMounts[].name' - | \
-  sort > /tmp/mounts.txt
+  yq eval '.spec.containers[].volumeMounts[].name' - | \
+  sort -u > /tmp/mounts.txt
 
 kubectl get pod myapp -o yaml | \
   yq eval '.spec.volumes[].name' - | \
-  sort > /tmp/volumes.txt
+  sort -u > /tmp/volumes.txt
 
-diff /tmp/mounts.txt /tmp/volumes.txt
+comm -23 /tmp/mounts.txt /tmp/volumes.txt
 ```
 
 ## Implementing Validation with Admission Webhooks
@@ -360,7 +360,7 @@ The webhook validates that:
 - Referenced ConfigMaps exist
 - All referenced keys exist in Secrets and ConfigMaps
 - Volume mount names match volume definitions
-- Environment variable syntax is correct
+- Environment variable references follow your configuration policy
 
 ## Using Kustomize for Configuration Management
 
@@ -387,17 +387,17 @@ secretGenerator:
   - database-password=secretpass123
   - api-key=key_abc123xyz
 
-# Ensure Secrets and ConfigMaps are created before pods
+# Keep Kustomize's default hash suffix for generated names
 generatorOptions:
   disableNameSuffixHash: false
 ```
 
-Apply with kustomize to ensure configuration objects exist.
+Apply with kustomize to render and apply configuration objects alongside workloads.
 
 ```bash
 kubectl apply -k .
 
-# Kustomize creates ConfigMaps and Secrets before applying deployments
+# Kustomize generates ConfigMaps and Secrets and updates supported references
 ```
 
 ## Monitoring CreateContainerConfigError Events
