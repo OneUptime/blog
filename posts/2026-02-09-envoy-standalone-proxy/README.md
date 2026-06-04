@@ -173,7 +173,7 @@ spec:
     spec:
       containers:
       - name: envoy
-        image: envoyproxy/envoy:v1.28-latest
+        image: envoyproxy/envoy:v1.38.0
         ports:
         - containerPort: 8080
           name: http
@@ -221,6 +221,8 @@ kind: Service
 metadata:
   name: envoy-proxy
   namespace: default
+  labels:
+    app: envoy-proxy
 spec:
   type: LoadBalancer
   selector:
@@ -230,13 +232,26 @@ spec:
     port: 80
     targetPort: 8080
     protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoy-proxy-admin
+  namespace: default
+  labels:
+    app: envoy-proxy-admin
+spec:
+  type: ClusterIP
+  selector:
+    app: envoy-proxy
+  ports:
   - name: admin
     port: 9901
     targetPort: 9901
     protocol: TCP
 ```
 
-This deployment creates 3 replicas of Envoy for high availability and exposes them via a LoadBalancer service.
+This deployment creates 3 replicas of Envoy for high availability, exposes HTTP traffic via a LoadBalancer service, and keeps the admin interface on an internal ClusterIP service.
 
 ## Configuring Multiple Backend Services
 
@@ -352,7 +367,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: envoy-proxy
+      app: envoy-proxy-admin
   endpoints:
   - port: admin
     path: /stats/prometheus
@@ -424,7 +439,7 @@ The admin interface provides powerful debugging and operational capabilities. Ac
 ```bash
 # Get cluster status
 
-kubectl port-forward svc/envoy-proxy 9901:9901
+kubectl port-forward svc/envoy-proxy-admin 9901:9901
 curl http://localhost:9901/clusters
 
 # Get configuration dump
@@ -487,14 +502,14 @@ groups:
 - name: envoy_alerts
   rules:
   - alert: EnvoyHighErrorRate
-    expr: rate(envoy_http_downstream_rq_5xx[5m]) > 0.05
+    expr: rate(envoy_http_downstream_rq_5xx{envoy_http_conn_manager_prefix="ingress_http"}[5m]) > 0.05
     annotations:
       summary: "Envoy proxy error rate is high"
 
   - alert: EnvoyNoHealthyUpstream
     expr: envoy_cluster_membership_healthy == 0
     annotations:
-      summary: "Cluster {{ $labels.cluster_name }} has no healthy backends"
+      summary: "Cluster {{ $labels.envoy_cluster_name }} has no healthy backends"
 ```
 
 ## Conclusion
