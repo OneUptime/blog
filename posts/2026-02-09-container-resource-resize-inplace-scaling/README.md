@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Resource Management, Vertical Scaling
 
-Description: Learn how to configure container resource resize policies in Kubernetes to enable in-place vertical scaling without pod restarts, improving application availability and resource efficiency.
+Description: Learn how to configure container resource resize policies in Kubernetes to enable in-place vertical scaling, improving application availability and resource efficiency.
 
 ---
 
-Traditional vertical scaling in Kubernetes requires recreating pods with new resource requests and limits, causing downtime and disrupting running applications. The container resource resize feature (introduced in Kubernetes 1.27 and stable in 1.29) enables in-place resource adjustments for running containers, allowing you to increase or decrease CPU and memory without pod restarts.
+Traditional vertical scaling in Kubernetes requires recreating pods with new resource requests and limits, causing downtime and disrupting running applications. The container resource resize feature (introduced as alpha in Kubernetes 1.27, promoted to beta in 1.33, and stable in 1.35) enables in-place resource adjustments for running containers, allowing you to increase or decrease CPU and memory while potentially avoiding pod disruption.
 
 This capability is particularly valuable for applications with variable resource needs, long-running stateful workloads, and environments where avoiding disruption is critical.
 
@@ -32,12 +32,12 @@ spec:
       limits:
         memory: "512Mi"
         cpu: "500m"
-      # Define resize policies
-      resizePolicy:
-      - resourceName: cpu
-        restartPolicy: NotRequired
-      - resourceName: memory
-        restartPolicy: RestartContainer
+    # Define resize policies
+    resizePolicy:
+    - resourceName: cpu
+      restartPolicy: NotRequired
+    - resourceName: memory
+      restartPolicy: RestartContainer
 ```
 
 The `restartPolicy` can be:
@@ -66,11 +66,11 @@ spec:
       limits:
         cpu: "200m"
         memory: "256Mi"
-      resizePolicy:
-      - resourceName: cpu
-        restartPolicy: NotRequired
-      - resourceName: memory
-        restartPolicy: NotRequired
+    resizePolicy:
+    - resourceName: cpu
+      restartPolicy: NotRequired
+    - resourceName: memory
+      restartPolicy: NotRequired
     ports:
     - containerPort: 80
 ```
@@ -85,8 +85,8 @@ kubectl apply -f web-server.yaml
 # Wait for it to be running
 kubectl wait --for=condition=ready pod/web-server
 
-# Patch to increase CPU
-kubectl patch pod web-server --type='json' -p='[
+# Patch to increase CPU through the resize subresource
+kubectl patch pod web-server --subresource=resize --type='json' -p='[
   {
     "op": "replace",
     "path": "/spec/containers/0/resources/requests/cpu",
@@ -99,8 +99,8 @@ kubectl patch pod web-server --type='json' -p='[
   }
 ]'
 
-# Check the resize status
-kubectl get pod web-server -o jsonpath='{.status.resize}'
+# Check the actual resources applied to the running container
+kubectl get pod web-server -o jsonpath='{.status.containerStatuses[0].resources}'
 ```
 
 The container continues running with updated CPU allocation, no restart needed.
@@ -134,11 +134,11 @@ spec:
           limits:
             memory: "2Gi"
             cpu: "1000m"
-          resizePolicy:
-          - resourceName: memory
-            restartPolicy: RestartContainer
-          - resourceName: cpu
-            restartPolicy: NotRequired
+        resizePolicy:
+        - resourceName: memory
+          restartPolicy: RestartContainer
+        - resourceName: cpu
+          restartPolicy: NotRequired
         env:
         - name: JAVA_OPTS
           value: "-Xmx1536m"
@@ -147,29 +147,32 @@ spec:
 Scale memory:
 
 ```bash
-# Increase memory allocation
-kubectl patch deployment memory-intensive-app --type='json' -p='[
+# Find a pod managed by the Deployment
+POD=$(kubectl get pod -l app=memory-app -o jsonpath='{.items[0].metadata.name}')
+
+# Increase memory allocation for that running pod
+kubectl patch pod "$POD" --subresource=resize --type='json' -p='[
   {
     "op": "replace",
-    "path": "/spec/template/spec/containers/0/resources/requests/memory",
+    "path": "/spec/containers/0/resources/requests/memory",
     "value": "2Gi"
   },
   {
     "op": "replace",
-    "path": "/spec/template/spec/containers/0/resources/limits/memory",
+    "path": "/spec/containers/0/resources/limits/memory",
     "value": "4Gi"
   }
 ]'
 
-# Watch the pods restart one by one
-kubectl rollout status deployment/memory-intensive-app
+# Watch the container restart to apply the new memory resources
+kubectl get pod "$POD" -w
 ```
 
 Because the restart policy is `RestartContainer`, Kubernetes restarts containers in place without recreating the entire pod, preserving pod IP addresses and mounted volumes.
 
 ## Using with Vertical Pod Autoscaler
 
-The Vertical Pod Autoscaler (VPA) can automatically adjust resources using in-place updates:
+The Vertical Pod Autoscaler (VPA) can automatically adjust resources using in-place updates. In VPA 1.7.0, `InPlace` mode is alpha and requires Kubernetes 1.33 or later with the `InPlacePodVerticalScaling` feature gate enabled, plus the `InPlace` feature gate enabled on the VPA updater and admission controller:
 
 ```yaml
 apiVersion: autoscaling.k8s.io/v1
@@ -218,11 +221,11 @@ spec:
           limits:
             cpu: "1000m"
             memory: "2Gi"
-          resizePolicy:
-          - resourceName: cpu
-            restartPolicy: NotRequired
-          - resourceName: memory
-            restartPolicy: RestartContainer
+        resizePolicy:
+        - resourceName: cpu
+          restartPolicy: NotRequired
+        - resourceName: memory
+          restartPolicy: RestartContainer
 ```
 
 VPA monitors resource usage and automatically adjusts requests/limits without recreating pods.
@@ -257,11 +260,11 @@ spec:
           limits:
             memory: "4Gi"
             cpu: "2000m"
-          resizePolicy:
-          - resourceName: cpu
-            restartPolicy: NotRequired
-          - resourceName: memory
-            restartPolicy: RestartContainer
+        resizePolicy:
+        - resourceName: cpu
+          restartPolicy: NotRequired
+        - resourceName: memory
+          restartPolicy: RestartContainer
         env:
         - name: POSTGRES_PASSWORD
           valueFrom:
@@ -287,7 +290,7 @@ Scale individual pods:
 
 ```bash
 # Scale just the primary pod
-kubectl patch pod postgres-cluster-0 --type='json' -p='[
+kubectl patch pod postgres-cluster-0 --subresource=resize --type='json' -p='[
   {
     "op": "replace",
     "path": "/spec/containers/0/resources/requests/cpu",
@@ -310,20 +313,20 @@ Check resize status in pod conditions:
 
 ```bash
 # View resize status
-kubectl get pod web-server -o jsonpath='{.status.resize}' | jq
+kubectl get pod web-server -o json | jq '.status.conditions[] | select(.type == "PodResizePending" or .type == "PodResizeInProgress")'
 
 # Output example:
 # {
-#   "cpu": "InProgress",
-#   "memory": "Proposed"
+#   "type": "PodResizeInProgress",
+#   "status": "True",
+#   "reason": "InProgress"
 # }
 ```
 
 Possible resize states:
-- `Proposed`: Resize request has been made
-- `InProgress`: Resize is being applied
-- `Deferred`: Resize cannot be applied now, will retry
-- `Infeasible`: Requested resources exceed node capacity
+- `PodResizeInProgress`: Resize is accepted and being applied
+- `PodResizePending` with `reason: Deferred`: Resize cannot be applied now, will retry
+- `PodResizePending` with `reason: Infeasible`: Requested resources exceed node capacity
 
 Watch for resize events:
 
@@ -346,17 +349,18 @@ def monitor_resize(namespace, pod_name):
     while True:
         pod = v1.read_namespaced_pod(pod_name, namespace)
 
-        # Check resize status
-        if hasattr(pod.status, 'resize') and pod.status.resize:
-            print(f"Resize status for {pod_name}:")
-            for resource, status in pod.status.resize.items():
-                print(f"  {resource}: {status}")
+        # Check resize status conditions
+        for condition in pod.status.conditions or []:
+            if condition.type in ("PodResizePending", "PodResizeInProgress"):
+                print(f"Resize status for {pod_name}: {condition.type}")
+                print(f"  reason: {condition.reason}")
+                print(f"  message: {condition.message}")
 
-        # Check allocated resources
+        # Check resources applied to the running containers
         for container in pod.status.container_statuses or []:
-            if hasattr(container, 'allocated_resources'):
-                print(f"Container {container.name} allocated:")
-                print(f"  {container.allocated_resources}")
+            if hasattr(container, 'resources'):
+                print(f"Container {container.name} resources:")
+                print(f"  {container.resources}")
 
         time.sleep(10)
 
@@ -370,7 +374,7 @@ If a resize fails or is deferred, you can check why:
 
 ```bash
 # Get detailed pod status
-kubectl get pod web-server -o yaml | grep -A 10 resize
+kubectl get pod web-server -o yaml | grep -A 10 PodResize
 
 # Check if node has capacity
 kubectl describe node <node-name> | grep -A 10 "Allocated resources"
@@ -394,11 +398,11 @@ spec:
       limits:
         cpu: "500m"   # Don't request more than node capacity
         memory: "1Gi"  # Be realistic about max needs
-      resizePolicy:
-      - resourceName: cpu
-        restartPolicy: NotRequired
-      - resourceName: memory
-        restartPolicy: NotRequired
+    resizePolicy:
+    - resourceName: cpu
+      restartPolicy: NotRequired
+    - resourceName: memory
+      restartPolicy: NotRequired
 ```
 
 ## Advanced Pattern: Progressive Scaling
@@ -421,7 +425,7 @@ PODS=$(kubectl get pods -n $NAMESPACE -l app=$DEPLOYMENT -o name)
 for POD in $PODS; do
     echo "Scaling $POD..."
 
-    kubectl patch -n $NAMESPACE $POD --type='json' -p="[
+    kubectl patch -n $NAMESPACE $POD --subresource=resize --type='json' -p="[
       {
         \"op\": \"replace\",
         \"path\": \"/spec/containers/0/resources/requests/cpu\",
@@ -434,8 +438,10 @@ for POD in $PODS; do
       }
     ]"
 
-    # Wait for resize to complete
-    kubectl wait --for=condition=ready -n $NAMESPACE $POD --timeout=60s
+    # Wait for the running container to report the new CPU resources
+    until kubectl get -n $NAMESPACE $POD -o jsonpath='{.status.containerStatuses[0].resources.requests.cpu}' | grep -q "$NEW_CPU_REQUEST"; do
+        sleep 5
+    done
 
     echo "Scaled $POD successfully"
     sleep 30  # Pause between pods
@@ -464,7 +470,7 @@ metadata:
     resize-policy: "CPU can be resized in-place, memory requires restart"
 ```
 
-Keep requests and limits proportional. Don't set limits too high above requests as it affects scheduling.
+Keep requests and limits proportional. Requests drive scheduling, while limits define enforcement and can still cause throttling or out-of-memory kills.
 
 Plan for node capacity. Resize operations fail if nodes don't have sufficient resources.
 
