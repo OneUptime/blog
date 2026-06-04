@@ -12,11 +12,11 @@ Knative Serving provides sophisticated traffic management capabilities that enab
 
 ## Understanding Knative Revisions and Traffic
 
-Every time you update a Knative Service, the platform creates a new immutable Revision. Each revision represents a specific version of your code and configuration. Knative maintains multiple revisions simultaneously, allowing you to route traffic between them with fine-grained control.
+Every time you update a Knative Service's configuration template, the platform creates a new immutable Revision. Traffic-only updates do not create new Revisions. Each revision represents a specific version of your code and configuration. Knative maintains multiple revisions simultaneously, allowing you to route traffic between them with fine-grained control.
 
 Traffic splitting operates at the Route level. Routes define how incoming requests are distributed across revisions. You can specify percentages for each revision, tag specific revisions for direct access, and dynamically adjust traffic allocation without downtime.
 
-This model enables multiple deployment strategies. Canary deployments gradually shift traffic to new versions. Blue-green deployments switch all traffic at once after validation. A/B testing sends specific user segments to different versions for comparison.
+This model enables multiple deployment strategies. Canary deployments gradually shift traffic to new versions. Blue-green deployments switch all traffic at once after validation. A/B testing can split traffic by percentage, or use application-level logic for specific user segments.
 
 ## Setting Up Your First Canary Deployment
 
@@ -167,9 +167,9 @@ import sys
 
 def get_error_rate(revision):
     """Query Prometheus for error rate"""
-    query = f'rate(http_requests_total{{revision="{revision}",status=~"5.."}}[5m])'
+    query = f'sum(rate(app_http_requests_total{{revision="{revision}",status=~"5.."}}[5m])) / sum(rate(app_http_requests_total{{revision="{revision}"}}[5m]))'
     # Execute Prometheus query and return result
-    # Implementation depends on your monitoring setup
+    # Metric names and labels depend on your application and telemetry setup
     return 0.01  # Example: 1% error rate
 
 def shift_traffic(canary_percent):
@@ -298,9 +298,9 @@ kubectl patch ksvc payment-service --type merge -p '{
 }'
 ```
 
-## A/B Testing with Header-Based Routing
+## A/B Testing with Application-Level Routing
 
-Route specific users to different versions based on headers:
+Split traffic between variants with Knative, then use application-level routing if you need sticky user assignment based on headers:
 
 ```yaml
 # ab-testing-service.yaml
@@ -402,6 +402,8 @@ spec:
     interval: 15s
 ```
 
+This ServiceMonitor assumes your application exposes a metrics endpoint through a Kubernetes Service port named `metrics`. Knative's built-in Serving metrics are exported through OpenTelemetry and their Prometheus metric names depend on your configured exporter.
+
 Create alerts for canary issues:
 
 ```yaml
@@ -418,9 +420,9 @@ spec:
     - alert: CanaryHighErrorRate
       expr: |
         (
-          sum(rate(http_requests_total{revision=~".*-v2",status=~"5.."}[5m]))
+          sum(rate(app_http_requests_total{revision=~".*-v2",status=~"5.."}[5m]))
           /
-          sum(rate(http_requests_total{revision=~".*-v2"}[5m]))
+          sum(rate(app_http_requests_total{revision=~".*-v2"}[5m]))
         ) > 0.05
       for: 2m
       labels:
@@ -432,7 +434,9 @@ spec:
     - alert: CanaryHighLatency
       expr: |
         histogram_quantile(0.95,
-          rate(http_request_duration_seconds_bucket{revision=~".*-v2"}[5m])
+          sum by (revision, le) (
+            rate(app_http_request_duration_seconds_bucket{revision=~".*-v2"}[5m])
+          )
         ) > 1.0
       for: 2m
       labels:
@@ -462,7 +466,7 @@ for i in $(seq 1 $MAX_CHECKS); do
 
   # Query error rate from Prometheus
   ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query" \
-    --data-urlencode "query=sum(rate(http_requests_total{revision=\"${CANARY_REVISION}\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{revision=\"${CANARY_REVISION}\"}[5m]))" \
+    --data-urlencode "query=sum(rate(app_http_requests_total{revision=\"${CANARY_REVISION}\",status=~\"5..\"}[5m])) / sum(rate(app_http_requests_total{revision=\"${CANARY_REVISION}\"}[5m]))" \
     | jq -r '.data.result[0].value[1]')
 
   if (( $(echo "$ERROR_RATE > $ERROR_THRESHOLD" | bc -l) )); then
