@@ -69,15 +69,22 @@ Create an IAM policy for Harbor:
     {
       "Effect": "Allow",
       "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:ListBucket"
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:ListBucketMultipartUploads"
       ],
-      "Resource": [
-        "arn:aws:s3:::my-harbor-registry",
-        "arn:aws:s3:::my-harbor-registry/*"
-      ]
+      "Resource": "arn:aws:s3:::my-harbor-registry"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject",
+        "s3:ListMultipartUploadParts",
+        "s3:AbortMultipartUpload"
+      ],
+      "Resource": "arn:aws:s3:::my-harbor-registry/*"
     }
   ]
 }
@@ -107,31 +114,24 @@ When deploying Harbor via Helm, configure S3 in the values file:
 ```yaml
 # harbor-values.yaml
 persistence:
-  # Disable local persistent volumes for registry
   enabled: true
-  persistentVolumeClaim:
-    registry:
-      storageClass: ""
-      size: 5Gi  # Only needed for cache, not primary storage
-
-# Configure S3 storage
-registry:
-  relativeurls: false
-  storage:
+  imageChartStorage:
+    type: s3
     s3:
       region: us-east-1
       bucket: my-harbor-registry
       accesskey: AKIAIOSFODNN7EXAMPLE
       secretkey: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-      # Optional: use IAM role instead of keys (for EKS)
-      # regionendpoint: ""
       encrypt: true
       secure: true
       v4auth: true
-      chunksize: 5242880  # 5MB chunks
+      chunksize: "5242880"  # 5MB chunks
       rootdirectory: /registry  # Path prefix in bucket
 
-# Enable storage cache for performance
+registry:
+  relativeurls: false
+
+# Enable Harbor metadata cache for performance
 cache:
   enabled: true
   expireHours: 24
@@ -140,7 +140,7 @@ cache:
 Deploy Harbor with S3 backend:
 
 ```bash
-helm repo add harbor https://helm.getharbor.io
+helm repo add harbor https://helm.goharbor.io
 helm repo update
 
 helm install harbor harbor/harbor \
@@ -172,7 +172,11 @@ Update the Helm values to use the service account:
 ```yaml
 registry:
   serviceAccountName: harbor-registry
-  storage:
+  automountServiceAccountToken: true
+
+persistence:
+  imageChartStorage:
+    type: s3
     s3:
       region: us-east-1
       bucket: my-harbor-registry
@@ -217,8 +221,9 @@ Configure Harbor to use Azure Blob:
 
 ```yaml
 # harbor-values-azure.yaml
-registry:
-  storage:
+persistence:
+  imageChartStorage:
+    type: azure
     azure:
       accountname: harborregistry
       accountkey: <storage-account-key>
@@ -236,7 +241,7 @@ helm install harbor harbor/harbor \
 
 ## Using Managed Identity on AKS
 
-For AKS clusters, use managed identities instead of storage keys:
+For AKS clusters, managed identities can replace storage keys when the registry configuration supports the Azure driver `credentials` block:
 
 ```bash
 # Create managed identity
@@ -255,10 +260,16 @@ IDENTITY_ID=$(az identity show \
   --resource-group harbor-rg \
   --query id -o tsv)
 
+PRINCIPAL_ID=$(az identity show \
+  --name harbor-storage-identity \
+  --resource-group harbor-rg \
+  --query principalId -o tsv)
+
 # Assign storage permissions
 az role assignment create \
   --role "Storage Blob Data Contributor" \
-  --assignee $CLIENT_ID \
+  --assignee-object-id $PRINCIPAL_ID \
+  --assignee-principal-type ServicePrincipal \
   --scope /subscriptions/<subscription-id>/resourceGroups/harbor-rg/providers/Microsoft.Storage/storageAccounts/harborregistry
 
 # Enable workload identity on AKS
@@ -267,20 +278,48 @@ az aks update \
   --name my-aks-cluster \
   --enable-workload-identity \
   --enable-oidc-issuer
+
+# Create a federated identity credential for the Harbor registry service account
+AKS_OIDC_ISSUER=$(az aks show \
+  --resource-group harbor-rg \
+  --name my-aks-cluster \
+  --query oidcIssuerProfile.issuerUrl -o tsv)
+
+az identity federated-credential create \
+  --name harbor-registry-federated-credential \
+  --identity-name harbor-storage-identity \
+  --resource-group harbor-rg \
+  --issuer "$AKS_OIDC_ISSUER" \
+  --subject system:serviceaccount:harbor:harbor-registry \
+  --audience api://AzureADTokenExchange
 ```
 
-Update Helm values:
+Create and annotate the Kubernetes service account:
+
+```bash
+kubectl create serviceaccount harbor-registry -n harbor
+kubectl annotate serviceaccount harbor-registry \
+  -n harbor \
+  azure.workload.identity/client-id=$CLIENT_ID
+```
+
+For a registry configuration that renders the Azure driver `credentials` block, use:
 
 ```yaml
 registry:
   serviceAccountName: harbor-registry
-  podAnnotations:
-    azure.workload.identity/client-id: <client-id>
-  storage:
+  automountServiceAccountToken: true
+  podLabels:
+    azure.workload.identity/use: "true"
+
+persistence:
+  imageChartStorage:
+    type: azure
     azure:
       accountname: harborregistry
       container: registry
-      # No accountkey needed with managed identity
+      credentials:
+        type: default_credentials
 ```
 
 ## Storage Performance Optimization
@@ -288,27 +327,22 @@ registry:
 Tune storage settings for better performance:
 
 ```yaml
-registry:
-  storage:
+persistence:
+  imageChartStorage:
+    type: s3
     s3:
       # Increase chunk size for larger images
-      chunksize: 10485760  # 10MB
+      chunksize: "10485760"  # 10MB
 
       # Use multipart uploads
-      multipartcopychunksize: 33554432  # 32MB
+      multipartcopychunksize: "33554432"  # 32MB
       multipartcopymaxconcurrency: 20
-      multipartcopythresholdsize: 33554432
-
-      # Enable S3 acceleration if available
-      accelerate: true
-
-    cache:
-      blobdescriptor: redis
+      multipartcopythresholdsize: "33554432"
 
 # Enable Redis for metadata caching
 redis:
+  type: external
   external:
-    enabled: true
     addr: "redis-cluster:6379"
 ```
 
@@ -317,8 +351,8 @@ redis:
 To migrate an existing Harbor deployment from filesystem to S3:
 
 ```bash
-# Export all images from current Harbor
 #!/bin/bash
+# Export all images from current Harbor
 PROJECTS=$(curl -s -u admin:Harbor12345 \
   https://harbor.example.com/api/v2.0/projects | jq -r '.[].name')
 
@@ -328,9 +362,10 @@ for PROJECT in $PROJECTS; do
     jq -r '.[].name')
 
   for REPO in $REPOS; do
+    ENCODED_REPO=$(jq -rn --arg repo "$REPO" '$repo|@uri')
     TAGS=$(curl -s -u admin:Harbor12345 \
-      "https://harbor.example.com/api/v2.0/projects/${PROJECT}/repositories/${REPO}/artifacts" | \
-      jq -r '.[].tags[].name')
+      "https://harbor.example.com/api/v2.0/projects/${PROJECT}/repositories/${ENCODED_REPO}/artifacts" | \
+      jq -r '.[].tags // [] | .[].name')
 
     for TAG in $TAGS; do
       IMAGE="harbor.example.com/${REPO}:${TAG}"
@@ -370,10 +405,11 @@ Monitor storage metrics to ensure health:
 aws s3 ls s3://my-harbor-registry --recursive --summarize | \
   grep "Total Size"
 
-# Get Azure Blob usage
-az storage account show-usage \
-  --resource-group harbor-rg \
-  --name harborregistry
+# Get Azure Blob capacity metrics
+az monitor metrics list \
+  --resource /subscriptions/<subscription-id>/resourceGroups/harbor-rg/providers/Microsoft.Storage/storageAccounts/harborregistry \
+  --metric BlobCapacity \
+  --interval PT1H
 ```
 
 Set up CloudWatch or Azure Monitor alerts for storage capacity and costs.
