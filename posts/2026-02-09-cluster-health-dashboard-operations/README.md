@@ -40,54 +40,53 @@ Create a Grafana dashboard showing cluster-wide health:
 
 ```json
 {
-  "dashboard": {
-    "title": "Kubernetes Cluster Health Overview",
-    "panels": [
-      {
-        "title": "Cluster Status",
-        "type": "stat",
-        "targets": [{
-          "expr": "count(kube_node_info)"
-        }],
-        "fieldConfig": {
-          "overrides": [{
-            "matcher": {"id": "byName", "options": "Total Nodes"},
-            "properties": [{
-              "id": "thresholds",
-              "value": {
-                "mode": "absolute",
-                "steps": [
-                  {"value": 0, "color": "red"},
-                  {"value": 3, "color": "green"}
-                ]
-              }
-            }]
+  "title": "Kubernetes Cluster Health Overview",
+  "panels": [
+    {
+      "title": "Cluster Status",
+      "type": "stat",
+      "targets": [{
+        "expr": "count(kube_node_info)",
+        "legendFormat": "Total Nodes"
+      }],
+      "fieldConfig": {
+        "overrides": [{
+          "matcher": {"id": "byName", "options": "Total Nodes"},
+          "properties": [{
+            "id": "thresholds",
+            "value": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 3, "color": "green"}
+              ]
+            }
           }]
-        }
-      },
-      {
-        "title": "Pod Status Distribution",
-        "type": "piechart",
-        "targets": [{
-          "expr": "sum by (phase) (kube_pod_status_phase)"
-        }]
-      },
-      {
-        "title": "CPU Usage by Namespace",
-        "type": "timeseries",
-        "targets": [{
-          "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total[5m]))"
-        }]
-      },
-      {
-        "title": "Memory Usage by Namespace",
-        "type": "timeseries",
-        "targets": [{
-          "expr": "sum by (namespace) (container_memory_working_set_bytes)"
         }]
       }
-    ]
-  }
+    },
+    {
+      "title": "Pod Status Distribution",
+      "type": "piechart",
+      "targets": [{
+        "expr": "sum by (phase) (kube_pod_status_phase)"
+      }]
+    },
+    {
+      "title": "CPU Usage by Namespace",
+      "type": "timeseries",
+      "targets": [{
+        "expr": "sum by (namespace) (rate(container_cpu_usage_seconds_total[5m]))"
+      }]
+    },
+    {
+      "title": "Memory Usage by Namespace",
+      "type": "timeseries",
+      "targets": [{
+        "expr": "sum by (namespace) (container_memory_working_set_bytes)"
+      }]
+    }
+  ]
 }
 ```
 
@@ -106,7 +105,7 @@ spec:
   json: |
     {
       "title": "Cluster Health Overview",
-      "panels": [...]
+      "panels": []
     }
 ```
 
@@ -224,14 +223,14 @@ data:
         },
         {
           "title": "Request Rate",
-          "type": "graph",
+          "type": "timeseries",
           "targets": [{
             "expr": "sum(rate(http_requests_total[5m])) by (service)"
           }]
         },
         {
           "title": "Error Rate",
-          "type": "graph",
+          "type": "timeseries",
           "targets": [{
             "expr": "sum(rate(http_requests_total{status=~'5..'}[5m])) by (service)"
           }]
@@ -240,7 +239,7 @@ data:
     }
 ```
 
-Resource Utilization Dashboard
+## Resource Utilization Dashboard
 
 Track cluster resource consumption:
 
@@ -364,9 +363,9 @@ func main() {
 }
 ```
 
-## Deploying the Complete Dashboard Stack
+## Deploying Grafana for the Dashboard Stack
 
-Deploy Prometheus, Grafana, and dashboards together:
+Deploy Grafana alongside your Prometheus and dashboard resources:
 
 ```yaml
 apiVersion: v1
@@ -399,13 +398,6 @@ spec:
           value: "true"
         - name: GF_AUTH_ANONYMOUS_ORG_ROLE
           value: "Viewer"
-        volumeMounts:
-        - name: dashboards
-          mountPath: /etc/grafana/provisioning/dashboards
-      volumes:
-      - name: dashboards
-        configMap:
-          name: grafana-dashboards
 ---
 apiVersion: v1
 kind: Service
