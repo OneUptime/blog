@@ -18,7 +18,7 @@ KServe uses Knative Serving under the hood to manage traffic routing between dif
 
 - Create a new revision without removing the old one
 - Split traffic between revisions based on percentage
-- Route traffic based on headers or other criteria
+- Route traffic to tagged `prev` and `latest` revision URLs
 - Support canary deployments with gradual rollout
 
 This makes it perfect for A/B testing where you want to compare two models side-by-side with real production traffic.
@@ -36,11 +36,13 @@ metadata:
   name: recommendation-model
   namespace: ml-serving
   annotations:
-    # Tag this revision as 'v1' for traffic routing
-    serving.kserve.io/revisionTag: "v1"
+    serving.kserve.io/enable-prometheus-scraping: "true"
+    serving.kserve.io/enable-tag-routing: "true"
 spec:
   predictor:
-    sklearn:
+    model:
+      modelFormat:
+        name: sklearn
       # Using SKLearn predictor as example
       storageUri: "gs://my-bucket/models/recommendation-v1"
       resources:
@@ -94,11 +96,13 @@ metadata:
   name: recommendation-model
   namespace: ml-serving
   annotations:
-    # Tag this revision as 'v2'
-    serving.kserve.io/revisionTag: "v2"
+    serving.kserve.io/enable-prometheus-scraping: "true"
+    serving.kserve.io/enable-tag-routing: "true"
 spec:
   predictor:
-    sklearn:
+    model:
+      modelFormat:
+        name: sklearn
       # New model with improved algorithm
       storageUri: "gs://my-bucket/models/recommendation-v2"
       resources:
@@ -122,7 +126,7 @@ kubectl apply -f model-v2.yaml
 # Check both revisions exist
 kubectl get revisions -n ml-serving -l serving.kserve.io/inferenceservice=recommendation-model
 
-# By default, all traffic goes to the latest revision
+# By default, all traffic goes to the latest ready revision
 # Next step is to configure traffic splitting
 ```
 
@@ -137,9 +141,14 @@ kind: InferenceService
 metadata:
   name: recommendation-model
   namespace: ml-serving
+  annotations:
+    serving.kserve.io/enable-prometheus-scraping: "true"
+    serving.kserve.io/enable-tag-routing: "true"
 spec:
   predictor:
-    sklearn:
+    model:
+      modelFormat:
+        name: sklearn
       storageUri: "gs://my-bucket/models/recommendation-v2"
       resources:
         requests:
@@ -151,23 +160,9 @@ spec:
     logger:
       mode: all
       url: http://message-dumper.default.svc.cluster.local
-
-  # Traffic configuration for A/B testing
-  traffic:
-    # 80% traffic to v1 (current production model)
-    - revisionName: recommendation-model-v1
-      percent: 80
-      tag: v1
-
-    # 20% traffic to v2 (new model being tested)
-    - revisionName: recommendation-model-v2
-      percent: 20
-      tag: v2
-
-    # Latest revision tag (for testing latest without affecting production)
-    - latestRevision: true
-      percent: 0
-      tag: latest
+    # Send 20% of traffic to the latest ready revision (v2) and
+    # keep 80% on the previously rolled-out revision (v1).
+    canaryTrafficPercent: 20
 ```
 
 Apply the traffic split:
@@ -177,11 +172,13 @@ Apply the traffic split:
 kubectl apply -f ab-traffic-split.yaml
 
 # Verify the traffic split
-kubectl get inferenceservice recommendation-model -n ml-serving -o jsonpath='{.status.traffic[*]}'
+kubectl get inferenceservice recommendation-model -n ml-serving -o jsonpath='{.status.components.predictor.traffic}' | jq
 
 # You should see output like:
-# {"percent":80,"revisionName":"recommendation-model-v1","tag":"v1"}
-# {"percent":20,"revisionName":"recommendation-model-v2","tag":"v2"}
+# [
+#   {"latestRevision":false,"percent":80,"revisionName":"recommendation-model-predictor-default-00001","tag":"prev",...},
+#   {"latestRevision":true,"percent":20,"revisionName":"recommendation-model-predictor-default-00002","tag":"latest",...}
+# ]
 ```
 
 ## Testing Traffic Routing
@@ -198,27 +195,29 @@ for i in {1..10}; do
       "instances": [
         {"user_id": '$i', "context": "homepage"}
       ]
-    }' | jq '.model_version'
+    }'
   sleep 1
 done
 
-# You should see roughly 80% v1 responses and 20% v2 responses
+# Confirm the observed split from your application logs or model-specific metrics.
 ```
 
 Access specific versions directly using tags:
 
 ```bash
-# Get tagged URLs
-V1_URL=$(kubectl get inferenceservice recommendation-model -n ml-serving -o jsonpath='{.status.address.url}' | sed 's/https:\/\//https:\/\/v1./')
-V2_URL=$(kubectl get inferenceservice recommendation-model -n ml-serving -o jsonpath='{.status.address.url}' | sed 's/https:\/\//https:\/\/v2./')
+# Get tagged URLs from the predictor traffic status
+PREV_URL=$(kubectl get inferenceservice recommendation-model -n ml-serving \
+  -o jsonpath='{.status.components.predictor.traffic[?(@.tag=="prev")].url}')
+LATEST_URL=$(kubectl get inferenceservice recommendation-model -n ml-serving \
+  -o jsonpath='{.status.components.predictor.traffic[?(@.tag=="latest")].url}')
 
-# Test v1 specifically
-curl -X POST $V1_URL/v1/models/recommendation-model:predict \
+# Test the previous rolled-out revision specifically
+curl -X POST $PREV_URL/v1/models/recommendation-model:predict \
   -H "Content-Type: application/json" \
   -d '{"instances": [{"user_id": 123, "context": "homepage"}]}'
 
-# Test v2 specifically
-curl -X POST $V2_URL/v1/models/recommendation-model:predict \
+# Test the latest ready revision specifically
+curl -X POST $LATEST_URL/v1/models/recommendation-model:predict \
   -H "Content-Type: application/json" \
   -d '{"instances": [{"user_id": 123, "context": "homepage"}]}'
 ```
@@ -280,11 +279,19 @@ CTR_RATE = Gauge(
     ['model_version']
 )
 
-def record_prediction(model_version: str, latency: float, confidence: float, clicked: bool):
+def record_prediction(
+    model_version: str,
+    latency: float,
+    confidence: float,
+    clicked: bool,
+    status: str = 'success'
+):
     """Record metrics for a single prediction"""
-    PREDICTION_COUNT.labels(model_version=model_version, status='success').inc()
-    PREDICTION_LATENCY.labels(model_version=model_version).observe(latency)
-    PREDICTION_CONFIDENCE.labels(model_version=model_version).observe(confidence)
+    PREDICTION_COUNT.labels(model_version=model_version, status=status).inc()
+
+    if status == 'success':
+        PREDICTION_LATENCY.labels(model_version=model_version).observe(latency)
+        PREDICTION_CONFIDENCE.labels(model_version=model_version).observe(confidence)
 
     # Update CTR (this would be calculated from a sliding window in production)
     if clicked:
@@ -308,10 +315,15 @@ Query Prometheus to compare model versions:
 sum(rate(model_predictions_total[5m])) by (model_version)
 
 # Compare average latency
-avg(model_prediction_latency_seconds) by (model_version)
+sum(rate(model_prediction_latency_seconds_sum[5m])) by (model_version)
+/
+sum(rate(model_prediction_latency_seconds_count[5m])) by (model_version)
 
 # Compare confidence distributions
-histogram_quantile(0.95, rate(model_prediction_confidence_bucket[5m])) by (model_version)
+histogram_quantile(
+  0.95,
+  sum(rate(model_prediction_confidence_bucket[5m])) by (model_version, le)
+)
 
 # Compare error rates
 sum(rate(model_predictions_total{status="error"}[5m])) by (model_version)
@@ -337,14 +349,14 @@ Deploy a Grafana dashboard to visualize the comparison:
       {
         "title": "P95 Latency by Version",
         "targets": [{
-          "expr": "histogram_quantile(0.95, rate(model_prediction_latency_seconds_bucket[5m])) by (model_version)"
+          "expr": "histogram_quantile(0.95, sum(rate(model_prediction_latency_seconds_bucket[5m])) by (model_version, le))"
         }],
         "type": "graph"
       },
       {
         "title": "Average Confidence Score",
         "targets": [{
-          "expr": "avg(model_prediction_confidence) by (model_version)"
+          "expr": "sum(rate(model_prediction_confidence_sum[5m])) by (model_version) / sum(rate(model_prediction_confidence_count[5m])) by (model_version)"
         }],
         "type": "graph"
       },
@@ -372,9 +384,14 @@ kind: InferenceService
 metadata:
   name: recommendation-model
   namespace: ml-serving
+  annotations:
+    serving.kserve.io/enable-prometheus-scraping: "true"
+    serving.kserve.io/enable-tag-routing: "true"
 spec:
   predictor:
-    sklearn:
+    model:
+      modelFormat:
+        name: sklearn
       storageUri: "gs://my-bucket/models/recommendation-v2"
       resources:
         requests:
@@ -383,13 +400,10 @@ spec:
         limits:
           cpu: "2"
           memory: "4Gi"
-  traffic:
-    - revisionName: recommendation-model-v1
-      percent: 50
-      tag: v1
-    - revisionName: recommendation-model-v2
-      percent: 50
-      tag: v2
+    logger:
+      mode: all
+      url: http://message-dumper.default.svc.cluster.local
+    canaryTrafficPercent: 50
 EOF
 
 # Monitor for issues, then continue increasing v2 traffic
@@ -415,15 +429,8 @@ for v2_percent in "${STAGES[@]}"; do
     echo "Rolling out to v2: ${v2_percent}%, v1: ${v1_percent}%"
 
     # Update traffic split
-    kubectl patch inferenceservice $MODEL_NAME -n $NAMESPACE --type='json' \
-      -p="[{
-        'op': 'replace',
-        'path': '/spec/traffic',
-        'value': [
-          {'revisionName': '${MODEL_NAME}-v1', 'percent': ${v1_percent}, 'tag': 'v1'},
-          {'revisionName': '${MODEL_NAME}-v2', 'percent': ${v2_percent}, 'tag': 'v2'}
-        ]
-      }]"
+    kubectl patch inferenceservice "$MODEL_NAME" -n "$NAMESPACE" --type='merge' \
+      -p "{\"spec\":{\"predictor\":{\"canaryTrafficPercent\":${v2_percent}}}}"
 
     # Wait and monitor
     echo "Waiting ${WAIT_TIME} seconds before next stage..."
@@ -442,18 +449,11 @@ If the new model performs poorly, quickly rollback to v1:
 
 ```bash
 # Immediately route all traffic back to v1
-kubectl patch inferenceservice recommendation-model -n ml-serving --type='json' \
-  -p='[{
-    "op": "replace",
-    "path": "/spec/traffic",
-    "value": [
-      {"revisionName": "recommendation-model-v1", "percent": 100, "tag": "v1"},
-      {"revisionName": "recommendation-model-v2", "percent": 0, "tag": "v2"}
-    ]
-  }]'
+kubectl patch inferenceservice recommendation-model -n ml-serving --type='merge' \
+  -p '{"spec":{"predictor":{"canaryTrafficPercent":0}}}'
 
 # Verify rollback
-kubectl get inferenceservice recommendation-model -n ml-serving -o jsonpath='{.status.traffic[*]}'
+kubectl get inferenceservice recommendation-model -n ml-serving -o jsonpath='{.status.components.predictor.traffic}' | jq
 ```
 
 ## Conclusion
