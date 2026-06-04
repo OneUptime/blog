@@ -16,15 +16,15 @@ FFmpeg depends on numerous codec libraries: libx264, libx265, libvpx, libopus, a
 
 Docker also makes it easy to process videos at scale. Spin up multiple containers to transcode files in parallel, then tear them down when the work is done.
 
-## Using the Official FFmpeg Image
+## Using a Prebuilt FFmpeg Image
 
-The simplest approach uses the linuxserver or jrottenberg FFmpeg images:
+The simplest approach uses a prebuilt image such as linuxserver or jrottenberg FFmpeg images:
 
 ```bash
 # Transcode a video from MKV to MP4 using the jrottenberg/ffmpeg image
 
 docker run --rm \
-  -v $(pwd)/media:/media \
+  -v "$(pwd)/media:/media" \
   jrottenberg/ffmpeg:4.4-ubuntu \
   -i /media/input.mkv \
   -c:v libx264 \
@@ -62,10 +62,10 @@ ENTRYPOINT ["ffmpeg"]
 For a more feature-rich build with the latest version:
 
 ```dockerfile
-# Dockerfile - FFmpeg from static build with all codecs included
+# Dockerfile - FFmpeg from static build with many common codecs included
 FROM alpine:3.19 AS base
 
-# Download the static FFmpeg build that includes all common codecs
+# Download a static FFmpeg release build
 RUN apk add --no-cache wget && \
     wget -O /tmp/ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz && \
     tar -xf /tmp/ffmpeg.tar.xz -C /tmp && \
@@ -86,7 +86,7 @@ Compress a video for web delivery:
 
 ```bash
 # Compress video with H.264 encoding optimized for web streaming
-docker run --rm -v $(pwd)/media:/media jrottenberg/ffmpeg:4.4-ubuntu \
+docker run --rm -v "$(pwd)/media:/media" jrottenberg/ffmpeg:4.4-ubuntu \
   -i /media/raw-video.mp4 \
   -c:v libx264 \
   -preset slow \
@@ -103,7 +103,7 @@ Extract audio from a video:
 
 ```bash
 # Extract the audio track as a standalone MP3 file
-docker run --rm -v $(pwd)/media:/media jrottenberg/ffmpeg:4.4-ubuntu \
+docker run --rm -v "$(pwd)/media:/media" jrottenberg/ffmpeg:4.4-ubuntu \
   -i /media/video.mp4 \
   -vn \
   -acodec libmp3lame \
@@ -115,7 +115,7 @@ Generate a thumbnail from a specific timestamp:
 
 ```bash
 # Capture a single frame at the 30-second mark as a JPEG thumbnail
-docker run --rm -v $(pwd)/media:/media jrottenberg/ffmpeg:4.4-ubuntu \
+docker run --rm -v "$(pwd)/media:/media" jrottenberg/ffmpeg:4.4-ubuntu \
   -i /media/video.mp4 \
   -ss 00:00:30 \
   -vframes 1 \
@@ -126,8 +126,8 @@ docker run --rm -v $(pwd)/media:/media jrottenberg/ffmpeg:4.4-ubuntu \
 Create a thumbnail grid (contact sheet):
 
 ```bash
-# Generate a 4x4 grid of thumbnails sampled evenly across the video
-docker run --rm -v $(pwd)/media:/media jrottenberg/ffmpeg:4.4-ubuntu \
+# Generate a 4x4 grid of thumbnails by sampling every 300th frame
+docker run --rm -v "$(pwd)/media:/media" jrottenberg/ffmpeg:4.4-ubuntu \
   -i /media/video.mp4 \
   -vf "select='not(mod(n,300))',scale=320:180,tile=4x4" \
   -frames:v 1 \
@@ -175,9 +175,6 @@ echo "Batch transcoding complete."
 For automated processing, set up a pipeline with Docker Compose:
 
 ```yaml
-# docker-compose.yml - Video processing pipeline with watch directory
-version: "3.8"
-
 services:
   transcoder:
     image: jrottenberg/ffmpeg:4.4-ubuntu
@@ -243,11 +240,13 @@ done
 
 ## HLS Streaming Output
 
-Generate HLS (HTTP Live Streaming) segments for adaptive bitrate streaming:
+Generate HLS (HTTP Live Streaming) segments for streaming:
 
 ```bash
-# Convert a video to HLS format with multiple quality levels
-docker run --rm -v $(pwd)/media:/media jrottenberg/ffmpeg:4.4-ubuntu \
+# Convert a video to HLS format with a single quality level
+mkdir -p media/hls
+
+docker run --rm -v "$(pwd)/media:/media" jrottenberg/ffmpeg:4.4-ubuntu \
   -i /media/source.mp4 \
   -c:v libx264 -preset fast -crf 22 \
   -c:a aac -b:a 128k \
@@ -263,7 +262,7 @@ Use ffprobe to inspect video files:
 
 ```bash
 # Display video file metadata in JSON format
-docker run --rm -v $(pwd)/media:/media --entrypoint ffprobe \
+docker run --rm -v "$(pwd)/media:/media" --entrypoint ffprobe \
   jrottenberg/ffmpeg:4.4-ubuntu \
   -v quiet \
   -print_format json \
