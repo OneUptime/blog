@@ -18,7 +18,7 @@ CEL is a Google-developed expression language designed for fast, safe evaluation
 
 ## Enabling ValidatingAdmissionPolicy
 
-For Kubernetes 1.30+, ValidatingAdmissionPolicy is enabled by default. For earlier versions, enable the feature gate:
+For Kubernetes 1.30+, ValidatingAdmissionPolicy is enabled by default and uses the `admissionregistration.k8s.io/v1` API shown in this guide. For Kubernetes 1.28 and 1.29, the feature is beta, uses `admissionregistration.k8s.io/v1beta1`, and requires the feature gate and beta API to be enabled:
 
 ```bash
 # Check if the API is available
@@ -28,6 +28,7 @@ kubectl api-resources | grep validatingadmissionpolicies
 # If using kubeadm, add to the API server configuration
 # /etc/kubernetes/manifests/kube-apiserver.yaml
 --feature-gates=ValidatingAdmissionPolicy=true
+--runtime-config=admissionregistration.k8s.io/v1beta1=true
 ```
 
 Verify the feature is available before creating policies.
@@ -50,13 +51,13 @@ spec:
         operations: ["CREATE", "UPDATE"]
         resources: ["pods"]
   validations:
-    - expression: "has(object.metadata.labels.team)"
+    - expression: "has(object.metadata.labels) && 'team' in object.metadata.labels"
       message: "Pod must have a 'team' label"
-    - expression: "has(object.metadata.labels.environment)"
+    - expression: "has(object.metadata.labels) && 'environment' in object.metadata.labels"
       message: "Pod must have an 'environment' label"
 ```
 
-The policy uses two validation expressions. The `has()` function checks if a field exists. The `object` variable refers to the resource being created or updated.
+The policy uses two validation expressions. The `has()` function checks if a field exists, and the `in` operator checks whether a map contains a label key. The `object` variable refers to the resource being created or updated.
 
 Now create a binding to activate the policy:
 
@@ -97,12 +98,13 @@ spec:
         resources: ["pods"]
   validations:
     - expression: |
-        has(object.metadata.labels.environment) &&
-        object.metadata.labels.environment in ['dev', 'staging', 'production']
+        has(object.metadata.labels) &&
+        'environment' in object.metadata.labels &&
+        object.metadata.labels['environment'] in ['dev', 'staging', 'production']
       message: "environment label must be 'dev', 'staging', or 'production'"
 ```
 
-The `in` operator checks if a value exists in a list. Multiple conditions combine with `&&` for logical AND operations.
+The `in` operator checks if a value exists in a list or if a key exists in a map. Multiple conditions combine with `&&` for logical AND operations.
 
 ## Enforcing Container Security
 
@@ -163,16 +165,16 @@ spec:
         object.spec.containers.all(c,
           has(c.resources) &&
           has(c.resources.limits) &&
-          has(c.resources.limits.memory) &&
-          has(c.resources.limits.cpu)
+          'memory' in c.resources.limits &&
+          'cpu' in c.resources.limits
         )
       message: "All containers must define CPU and memory limits"
     - expression: |
         object.spec.containers.all(c,
           has(c.resources) &&
           has(c.resources.requests) &&
-          has(c.resources.requests.memory) &&
-          has(c.resources.requests.cpu)
+          'memory' in c.resources.requests &&
+          'cpu' in c.resources.requests
         )
       message: "All containers must define CPU and memory requests"
 ```
@@ -229,8 +231,9 @@ spec:
     kind: ConfigMap
   validations:
     - expression: |
-        !has(params.data.maxReplicas) ||
-        object.spec.replicas <= int(params.data.maxReplicas)
+        !has(params.data) ||
+        !('maxReplicas' in params.data) ||
+        object.spec.replicas <= int(params.data['maxReplicas'])
       message: "Replica count exceeds maximum allowed"
 ---
 apiVersion: v1
@@ -251,6 +254,7 @@ spec:
   paramRef:
     name: replica-limits
     namespace: default
+    parameterNotFoundAction: Deny
 ```
 
 The policy references parameters from a ConfigMap. The binding specifies which ConfigMap to use, enabling different limits for different environments without rewriting the policy.
@@ -274,21 +278,21 @@ spec:
         resources: ["pods"]
   validations:
     - expression: |
-        !has(object.metadata.labels.environment) ||
-        object.metadata.labels.environment != 'production' ||
+        !has(object.metadata.labels) ||
+        !('environment' in object.metadata.labels) ||
+        object.metadata.labels['environment'] != 'production' ||
         (
           object.spec.containers.all(c,
             has(c.resources) &&
             has(c.resources.limits) &&
             has(c.securityContext) &&
+            has(c.securityContext.runAsNonRoot) &&
             c.securityContext.runAsNonRoot == true
           ) &&
           has(object.spec.securityContext) &&
           has(object.spec.securityContext.seccompProfile)
         )
-      message: |
-        Production pods must have resource limits, run as non-root,
-        and define seccomp profiles
+      message: "Production pods must have resource limits, run as non-root, and define seccomp profiles"
 ```
 
 This policy only enforces strict requirements when the environment label is production, allowing more flexibility in development.
@@ -333,8 +337,10 @@ spec:
   validations:
     - expression: |
         has(object.metadata.labels) &&
-        has(object.metadata.labels.app) &&
-        object.spec.selector.app == object.metadata.labels.app
+        'app' in object.metadata.labels &&
+        has(object.spec.selector) &&
+        'app' in object.spec.selector &&
+        object.spec.selector['app'] == object.metadata.labels['app']
       message: "Service app label must match selector"
 ```
 
