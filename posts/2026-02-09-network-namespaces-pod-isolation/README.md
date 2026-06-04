@@ -170,27 +170,28 @@ tcpdump -i eth0
 
 ## Finding Orphaned Namespaces
 
-Kubernetes sometimes leaves orphaned namespaces:
+Container runtimes or failed cleanup can leave named or persistent network namespaces behind:
 
 ```bash
-# List all network namespaces
+# List named network namespaces
 ip netns list
 
-# List namespaces in /var/run/netns
+# List persistent namespace mountpoints
 ls -l /var/run/netns/
 
-# Find namespaces from running containers
-for pid in $(ps aux | grep containerd | awk '{print $2}'); do
-  ls -l /proc/$pid/ns/net 2>/dev/null
-done
+# List network namespaces system-wide
+lsns -t net
 
-# Clean up orphaned namespace
+# Show persistent namespaces without processes
+lsns -t net -P
+
+# Clean up a named orphaned namespace
 ip netns delete orphaned-ns
 ```
 
 ## Namespace Resource Limits
 
-Set namespace-specific resource limits:
+Apply a bandwidth limit to an interface in a namespace:
 
 ```bash
 # Create namespace with traffic control
@@ -209,7 +210,7 @@ ip addr add 10.0.3.1/24 dev veth-limited-host
 ip link set veth-limited-host up
 
 # Apply bandwidth limit (10 Mbps)
-ip netns exec limited tc qdisc add dev veth-limited root tbf rate 10mbit burst 32kbit latency 400ms
+ip netns exec limited tc qdisc add dev veth-limited root tbf rate 10mbit burst 32kb latency 400ms
 
 # Test bandwidth
 # From limited namespace
@@ -347,7 +348,7 @@ ip netns exec container1 nc -vz <dns-server-ip> 53
 2. **Use nsenter for debugging**: Easier than kubectl exec for low-level issues
 3. **Monitor namespace count**: High counts indicate leaks
 4. **Set proper MTU**: Match physical network MTU minus encapsulation
-5. **Enable IP forwarding**: Required for routing between namespaces
+5. **Enable IP forwarding**: Required when a host or namespace routes traffic between networks
 6. **Use unique namespace names**: Avoid conflicts
 7. **Document namespace purpose**: Track what each namespace is for
 
