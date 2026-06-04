@@ -21,7 +21,7 @@ Pods receive DNS configuration from two sources:
 
 Available DNS policies:
 
-- `ClusterFirst` (default): Use cluster DNS, fallback to upstream
+- `ClusterFirst` (default): Use cluster DNS; the cluster DNS server forwards external queries upstream
 - `ClusterFirstWithHostNet`: For pods using hostNetwork
 - `Default`: Use node's DNS configuration
 - `None`: Requires dnsConfig to specify all settings
@@ -100,14 +100,14 @@ spec:
 ```
 
 This configuration:
-- Uses CoreDNS (ClusterFirst) as primary
-- Adds 1.1.1.1 as additional nameserver
+- Uses CoreDNS (ClusterFirst) as the first nameserver
+- Appends 1.1.1.1 as an additional nameserver
 - Adds company.internal to search domains
 - Customizes resolver timeout and attempts
 
 ## Environment-Specific DNS Configuration
 
-Configure different DNS per environment using ConfigMaps:
+Configure different DNS per environment in manifests. ConfigMaps can document the values, but `dnsConfig` itself is static in the Pod spec:
 
 ```yaml
 apiVersion: v1
@@ -167,7 +167,7 @@ spec:
 
 ## External DNS Server Integration
 
-Configure pods to use external DNS servers for specific zones:
+Configure pods to use an external DNS server that can resolve the required external zones:
 
 ```yaml
 apiVersion: v1
@@ -183,15 +183,11 @@ spec:
       value: db.company.internal  # Resolved via external DNS
   dnsPolicy: None
   dnsConfig:
-    # External DNS server that knows about company.internal
+    # External DNS server that knows about company.internal and forwards other zones
     nameservers:
     - 10.0.1.53  # Corporate DNS
-    - 8.8.8.8    # Fallback to public DNS
     searches:
     - company.internal
-    - default.svc.cluster.local
-    - svc.cluster.local
-    - cluster.local
     options:
     - name: ndots
       value: "2"
@@ -223,14 +219,15 @@ spec:
     - svc.cluster.local
     options:
     - name: ndots
-      value: "3"  # Fewer dots = try search domains sooner
+      value: "3"  # Names with 3 or more dots are tried as absolute names first
 ```
 
-With `ndots:3`, querying "api-service" tries:
-1. api-service.partner.external.com
-2. api-service.internal.company.com
-3. api-service.default.svc.cluster.local
-4. api-service.svc.cluster.local
+With `ClusterFirst`, Kubernetes starts with the base cluster search domains and appends custom search domains. With `ndots:3`, querying "api-service" tries search domains before the absolute name, including:
+1. api-service.default.svc.cluster.local
+2. api-service.svc.cluster.local
+3. api-service.cluster.local
+4. api-service.partner.external.com
+5. api-service.internal.company.com
 
 ## Resolver Options Configuration
 
@@ -259,8 +256,6 @@ spec:
       value: "2"
     # Rotate through nameservers
     - name: rotate
-    # Try AAAA queries
-    - name: inet6
     # Use TCP for queries
     - name: use-vc
 ```
@@ -272,7 +267,6 @@ Common resolver options:
 - `attempts`: Retry count
 - `rotate`: Round-robin nameserver selection
 - `single-request-reopen`: Avoid port reuse issues
-- `inet6`: Enable IPv6 queries
 
 ## StatefulSet with Per-Pod DNS
 
@@ -396,7 +390,7 @@ spec:
   - name: scripts
     configMap:
       name: dns-test
-  dnsPolicy: None
+  dnsPolicy: ClusterFirst
   dnsConfig:
     nameservers:
     - 8.8.8.8
@@ -482,19 +476,21 @@ done
 
 **Issue: Custom nameservers not appearing**
 
-Verify dnsPolicy is set correctly:
+Verify that the pod was recreated after changing `dnsConfig`:
 
 ```yaml
-# If dnsPolicy is Default, dnsConfig is ignored
-dnsPolicy: None  # Required for full custom DNS
+dnsPolicy: None  # Use this only when replacing the base DNS configuration
 ```
 
 **Issue: Cluster services not resolving**
 
-Ensure cluster search domains are included:
+Ensure the cluster DNS nameserver and cluster search domains are included when using `dnsPolicy: None`:
 
 ```yaml
+dnsPolicy: None
 dnsConfig:
+  nameservers:
+  - 10.96.0.10  # Replace with your cluster DNS service IP
   searches:
   - default.svc.cluster.local  # Don't forget these
   - svc.cluster.local
@@ -509,7 +505,7 @@ Optimize ndots value:
 dnsConfig:
   options:
   - name: ndots
-    value: "2"  # Lower value = fewer search attempts
+    value: "2"  # Lower values make dotted names try absolute resolution sooner
 ```
 
 ## Best Practices
@@ -518,14 +514,14 @@ Follow these guidelines:
 
 1. Use ClusterFirst + dnsConfig for most cases (augments cluster DNS)
 2. Use None + dnsConfig only when completely replacing DNS
-3. Always include cluster search domains when using None policy
+3. Include the cluster DNS service IP and cluster search domains when using None policy and still resolving cluster services
 4. Test DNS configuration before production deployment
 5. Document why custom DNS is needed
 6. Monitor DNS resolution performance
 7. Keep ndots as low as practical
-8. Include fallback nameservers
+8. Include additional nameservers only when they can handle the queries they receive; resolvers usually try the next nameserver after timeouts, not after NXDOMAIN responses
 9. Version control DNS configurations
-10. Consider using ConfigMaps for environment-specific settings
+10. Consider using templates or ConfigMaps to document environment-specific settings
 
 Custom DNS configuration per pod provides flexibility for special networking requirements while maintaining Kubernetes' DNS infrastructure. By understanding dnsPolicy and dnsConfig options, you can integrate external DNS servers, customize resolver behavior, and handle complex routing scenarios without compromising cluster DNS functionality.
 
