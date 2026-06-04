@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Window, PowerShell
+Tags: Kubernetes, Windows, PowerShell
 
 Description: Implement liveness, readiness, and startup probes for Windows containers using PowerShell scripts and HTTP endpoints with best practices for reliable health checking.
 
@@ -28,10 +28,16 @@ Create an HTTP health check endpoint in your application:
 // HealthCheckController.cs
 using System;
 using System.Net;
+using System.Net.Http;
 using System.Web.Http;
 
 public class HealthController : ApiController
 {
+    private static readonly HttpClient HttpClient = new HttpClient
+    {
+        Timeout = TimeSpan.FromSeconds(3)
+    };
+
     [HttpGet]
     [Route("health/live")]
     public IHttpActionResult Liveness()
@@ -74,10 +80,11 @@ public class HealthController : ApiController
     {
         try
         {
-            using (var client = new WebClient())
+            using (var response = HttpClient.GetAsync("https://api.example.com/health")
+                .GetAwaiter()
+                .GetResult())
             {
-                client.DownloadString("https://api.example.com/health");
-                return true;
+                return response.IsSuccessStatusCode;
             }
         }
         catch
@@ -235,6 +242,7 @@ spec:
       Write-Host "Starting application..."
 
       # Create healthy status file
+      New-Item -ItemType Directory -Path C:\health -Force | Out-Null
       Set-Content -Path C:\health\ready -Value "ok"
 
       # Main application loop
@@ -275,7 +283,13 @@ kind: Deployment
 metadata:
   name: database-client
 spec:
+  selector:
+    matchLabels:
+      app: database-client
   template:
+    metadata:
+      labels:
+        app: database-client
     spec:
       nodeSelector:
         kubernetes.io/os: windows
@@ -440,7 +454,13 @@ kind: Deployment
 metadata:
   name: optimized-probes
 spec:
+  selector:
+    matchLabels:
+      app: optimized-probes
   template:
+    metadata:
+      labels:
+        app: optimized-probes
     spec:
       nodeSelector:
         kubernetes.io/os: windows
