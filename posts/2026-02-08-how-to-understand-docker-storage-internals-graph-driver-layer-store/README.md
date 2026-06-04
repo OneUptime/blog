@@ -32,6 +32,8 @@ graph TD
 
 Docker stores all image data using content-addressable storage. Every piece of data is identified by its SHA256 hash. This approach provides deduplication, integrity verification, and immutability.
 
+The `/var/lib/docker/image/overlay2/` paths below apply to Docker Engine installations using the legacy `overlay2` graph driver image store. Docker Engine 29.0 and later uses the containerd image store by default, where `docker info` may report the `overlayfs` snapshotter and the exact on-disk metadata paths can differ.
+
 ```bash
 # View where Docker stores its data
 
@@ -69,7 +71,7 @@ sudo cat /var/lib/docker/image/overlay2/layerdb/sha256/$LAYER_CHAIN_ID/size
 The graph driver is responsible for assembling layers into a coherent filesystem. On modern Linux, overlay2 is the default.
 
 ```bash
-# Confirm the active storage driver
+# Confirm the active storage driver or snapshotter
 docker info --format '{{.Driver}}'
 
 # List all layer directories managed by overlay2
@@ -119,10 +121,11 @@ You can verify the mount:
 
 ```bash
 # Check the actual OverlayFS mount
-mount | grep overlay | grep $(docker inspect storage-demo --format '{{.Id}}' | cut -c1-12)
+MERGED_DIR=$(docker inspect storage-demo --format '{{.GraphDriver.Data.MergedDir}}')
+mount | grep overlay | grep "$MERGED_DIR"
 
 # Or use findmnt for a cleaner view
-findmnt -t overlay
+findmnt "$MERGED_DIR"
 ```
 
 ## Container Writable Layer
@@ -131,13 +134,13 @@ Every running container gets a thin writable layer on top of the image layers. A
 
 ```bash
 # Check the size of the container's writable layer
-docker inspect storage-demo --format '{{.SizeRw}}'
+docker inspect --size storage-demo --format '{{.SizeRw}}'
 
 # Write some data inside the container
 docker exec storage-demo bash -c "dd if=/dev/zero of=/tmp/testfile bs=1M count=50"
 
 # Check the writable layer size again
-docker inspect storage-demo --format '{{.SizeRw}}'
+docker inspect --size storage-demo --format '{{.SizeRw}}'
 
 # View what changed in the container's filesystem
 docker diff storage-demo
@@ -171,7 +174,7 @@ docker volume inspect my-data --format '{{.Mountpoint}}'
 docker volume ls
 
 # Check disk usage of volumes
-docker system df -v | grep -A 100 "VOLUME NAME"
+docker system df -v | grep -A 100 "Local Volumes space usage"
 ```
 
 ### Volume Types
@@ -240,10 +243,10 @@ Docker provides several pruning commands to reclaim disk space.
 # Remove all stopped containers
 docker container prune -f
 
-# Remove unused images (images not referenced by any container)
+# Remove dangling images
 docker image prune -f
 
-# Remove all images not used by running containers
+# Remove all images not referenced by any container
 docker image prune -a -f
 
 # Remove unused volumes (careful - this deletes data)
@@ -252,7 +255,7 @@ docker volume prune -f
 # Remove build cache
 docker builder prune -f
 
-# Nuclear option - remove everything unused
+# Nuclear option - remove unused containers, networks, images, build cache, and anonymous volumes
 docker system prune -a --volumes -f
 ```
 
