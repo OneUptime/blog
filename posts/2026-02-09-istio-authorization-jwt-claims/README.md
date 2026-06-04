@@ -78,7 +78,7 @@ Create a RequestAuthentication resource that validates JWTs from your identity p
 
 ```yaml
 # requestauthentication-jwt.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -98,6 +98,9 @@ spec:
     # JWT audience validation
     audiences:
     - "your-api-audience"
+    # Treat space-delimited scope strings as individual values
+    spaceDelimitedClaims:
+    - "scope"
 ```
 
 ```bash
@@ -112,7 +115,7 @@ Require valid JWTs for all requests to httpbin:
 
 ```yaml
 # authorizationpolicy-require-jwt.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-jwt
@@ -149,7 +152,7 @@ OAuth 2.0 scopes define what actions a token can perform. Check for specific sco
 
 ```yaml
 # authorizationpolicy-scopes.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-read-scope
@@ -166,21 +169,21 @@ spec:
         methods: ["GET"]
     when:
     - key: request.auth.claims[scope]
-      values: ["*read*"]
+      values: ["read", "read:all", "api.read"]
   # Allow POST requests with write scope
   - to:
     - operation:
         methods: ["POST", "PUT", "DELETE"]
     when:
     - key: request.auth.claims[scope]
-      values: ["*write*"]
+      values: ["write", "write:all", "api.write"]
 ```
 
 ```bash
 kubectl apply -f authorizationpolicy-scopes.yaml
 ```
 
-This allows GET requests with tokens containing the read scope and POST/PUT/DELETE with the write scope. The wildcard pattern `*read*` matches "read", "read:all", or "api.read".
+This allows GET requests with tokens containing the read scope and POST/PUT/DELETE with the write scope. Istio supports exact, prefix, suffix, and presence matches, so list the exact scope values you want to allow or use prefix patterns such as `read:*`.
 
 ## Implementing Role-Based Access Control with JWT Claims
 
@@ -188,7 +191,7 @@ Map JWT roles to access permissions. Allow admins full access, readers GET only:
 
 ```yaml
 # authorizationpolicy-rbac.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: rbac-policy
@@ -231,7 +234,7 @@ Use custom claims for business logic authorization. Allow premium users to acces
 
 ```yaml
 # authorizationpolicy-custom-claims.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: premium-access
@@ -270,7 +273,7 @@ Create complex authorization rules combining multiple claims with AND/OR logic:
 
 ```yaml
 # authorizationpolicy-complex.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: complex-authorization
@@ -289,7 +292,7 @@ spec:
     - key: request.auth.claims[department]
       values: ["engineering"]
     - key: request.auth.claims[scope]
-      values: ["*write*"]
+      values: ["write", "write:all", "api.write"]
 ```
 
 Multiple `when` conditions within a rule use AND logic. Multiple rules use OR logic. This policy allows admins or engineering users with write scope.
@@ -300,7 +303,7 @@ JWTs often include group memberships as arrays. Check if a user belongs to speci
 
 ```yaml
 # authorizationpolicy-groups.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: group-authorization
@@ -333,7 +336,7 @@ Use DENY actions for explicit denials that override ALLOW rules:
 
 ```yaml
 # authorizationpolicy-deny.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-delete
@@ -365,7 +368,7 @@ The audience claim specifies which API the token is intended for. Validate audie
 
 ```yaml
 # requestauthentication-audience.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-audience
@@ -384,36 +387,27 @@ spec:
 
 Only JWTs with audience "httpbin-api" or "internal-services" pass authentication. This prevents tokens for other APIs from being used.
 
-## Implementing Time-Based Access Control
+## Implementing Token-Lifetime-Based Access Control
 
-Combine JWT validation with time-based restrictions:
+Use JWT validation with token lifetime restrictions:
 
 ```yaml
-# authorizationpolicy-time-based.yaml
-apiVersion: security.istio.io/v1beta1
-kind: AuthorizationPolicy
+# requestauthentication-token-lifetime.yaml
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
 metadata:
-  name: time-based-access
+  name: jwt-token-lifetime
   namespace: default
 spec:
   selector:
     matchLabels:
       app: httpbin
-  action: ALLOW
-  rules:
-  # Regular users - business hours only (checked via JWT exp/iat claims)
-  - when:
-    - key: request.auth.claims[role]
-      values: ["user"]
-    - key: request.auth.claims[exp]
-      values: ["*"]
-  # Admins - anytime
-  - when:
-    - key: request.auth.claims[role]
-      values: ["admin"]
+  jwtRules:
+  - issuer: "https://your-auth-provider.com"
+    jwksUri: "https://your-auth-provider.com/.well-known/jwks.json"
 ```
 
-The JWT exp (expiration) claim automatically enforces time limits. Issue shorter-lived tokens to non-admin users to restrict access windows.
+The JWT `exp` (expiration) and `nbf` (not before) claims are validated during JWT authentication. Issue shorter-lived tokens to non-admin users, or issue tokens only during allowed windows, to restrict access by time. AuthorizationPolicy conditions support string and list-of-string JWT claims, so they are not the right place to compare numeric `exp` or `iat` values.
 
 ## Debugging JWT Authorization
 
@@ -450,21 +444,25 @@ Generate test JWTs with specific claims to verify your policies. Use a JWT gener
 # generate_test_jwt.py
 import jwt
 import datetime
+from pathlib import Path
+
+PRIVATE_KEY = Path("key.pem").read_text()
 
 def generate_jwt(role, scopes):
+    now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         'iss': 'https://your-auth-provider.com',
         'sub': 'test-user',
         'aud': 'httpbin-api',
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1),
-        'iat': datetime.datetime.utcnow(),
+        'exp': now + datetime.timedelta(hours=1),
+        'iat': now,
         'role': role,
         'scope': scopes,
         'department': 'engineering'
     }
 
-    # Use your private key
-    token = jwt.encode(payload, 'your-private-key', algorithm='RS256')
+    # Use the private key whose public key is published by your JWKS endpoint
+    token = jwt.encode(payload, PRIVATE_KEY, algorithm='RS256')
     return token
 
 # Generate tokens for testing
@@ -478,7 +476,7 @@ print(f"Reader token: {reader_token}")
 Test each token against your policies:
 
 ```bash
-curl -H "Authorization: Bearer $ADMIN_TOKEN" http://httpbin:8000/delete
+curl -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" http://httpbin:8000/delete
 curl -H "Authorization: Bearer $READER_TOKEN" http://httpbin:8000/get
 ```
 
