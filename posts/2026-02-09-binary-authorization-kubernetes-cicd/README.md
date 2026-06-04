@@ -27,7 +27,10 @@ helm repo update
 kubectl create namespace kyverno
 helm install kyverno kyverno/kyverno \
   --namespace kyverno \
-  --set replicaCount=3
+  --set admissionController.replicas=3 \
+  --set backgroundController.replicas=2 \
+  --set cleanupController.replicas=2 \
+  --set reportsController.replicas=2
 ```
 
 Create a policy requiring signed images:
@@ -38,7 +41,6 @@ kind: ClusterPolicy
 metadata:
   name: require-image-signature
 spec:
-  validationFailureAction: Enforce
   background: false
   rules:
     - name: verify-signature
@@ -52,6 +54,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
@@ -79,13 +82,13 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
       - name: Login to Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v4
         with:
           registry: registry.example.com
           username: ${{ secrets.REGISTRY_USERNAME }}
@@ -100,13 +103,16 @@ jobs:
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: |
-          cosign sign --key cosign.key \
+          cosign sign --yes --key cosign.key \
             registry.example.com/myapp:${{ github.sha }}
 
       - name: Generate Attestation
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: |
-          cosign attest --key cosign.key \
-            --predicate attestation.json \
+          cosign attest --yes --key cosign.key \
+            --predicate predicate.json \
+            --type slsaprovenance \
             registry.example.com/myapp:${{ github.sha }}
 ```
 
@@ -152,17 +158,9 @@ Generate build attestations with metadata:
 Create and attach attestation:
 
 ```bash
-# Create attestation JSON
-cat > attestation.json <<EOF
-{
-  "predicateType": "https://slsa.dev/provenance/v0.2",
-  "predicate": $(cat predicate.json)
-}
-EOF
-
-# Attach attestation
-cosign attest --key cosign.key \
-  --predicate attestation.json \
+# Attach predicate.json as an in-toto attestation
+cosign attest --yes --key cosign.key \
+  --predicate predicate.json \
   --type slsaprovenance \
   registry.example.com/myapp:latest
 ```
@@ -177,10 +175,9 @@ kind: ClusterPolicy
 metadata:
   name: binary-authorization-policy
 spec:
-  validationFailureAction: Enforce
   background: false
   rules:
-    - name: require-signature-and-attestation
+    - name: require-signature
       match:
         any:
           - resources:
@@ -191,6 +188,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           required: true
           attestors:
             - count: 1
@@ -200,33 +198,56 @@ spec:
                       -----BEGIN PUBLIC KEY-----
                       MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
                       -----END PUBLIC KEY-----
+
+    - name: require-attestation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - production
+      verifyImages:
+        - imageReferences:
+            - "registry.example.com/*"
+          failureAction: Enforce
           attestations:
             - predicateType: "https://slsa.dev/provenance/v0.2"
+              attestors:
+                - count: 1
+                  entries:
+                    - keys:
+                        publicKeys: |-
+                          -----BEGIN PUBLIC KEY-----
+                          MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
+                          -----END PUBLIC KEY-----
               conditions:
                 - all:
                     - key: "{{ builder.id }}"
-                      operator: In
-                      value:
-                        - "https://github.com/*"
+                      operator: Equals
+                      value: "https://github.com/myorg/myrepo/actions/runs/123456"
                     - key: "{{ invocation.configSource.uri }}"
                       operator: Equals
-                      value: "git+https://github.com/myorg/myrepo*"
+                      value: "git+https://github.com/myorg/myrepo@refs/heads/main"
 
-    - name: block-unsigned-images
+    - name: restrict-image-registry
       match:
         any:
           - resources:
               kinds:
                 - Pod
       validate:
-        message: "All images must be signed"
-        deny:
-          conditions:
-            any:
-              - key: "{{ request.object.spec.containers[].image }}"
-                operator: NotIn
-                value:
-                  - "registry.example.com/*"
+        failureAction: Enforce
+        message: "All images must come from registry.example.com"
+        foreach:
+          - list: "request.object.spec.[initContainers, ephemeralContainers, containers][]"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.image }}"
+                    operator: NotIn
+                    value:
+                      - "registry.example.com/*"
 ```
 
 ## Using OPA Gatekeeper for Binary Authorization
@@ -234,10 +255,15 @@ spec:
 Install OPA Gatekeeper:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/master/deploy/gatekeeper.yaml
+helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
+helm repo update
+helm install gatekeeper gatekeeper/gatekeeper \
+  --namespace gatekeeper-system \
+  --create-namespace \
+  --set enableExternalData=true
 ```
 
-Create constraint template:
+After deploying a Cosign external data provider named `cosign-provider`, create constraint template:
 
 ```yaml
 apiVersion: templates.gatekeeper.sh/v1
@@ -252,26 +278,27 @@ spec:
       validation:
         openAPIV3Schema:
           type: object
-          properties:
-            allowedRegistries:
-              type: array
-              items:
-                type: string
+          properties: {}
 
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
         package requireimagesignature
 
+        images := [img | img := input.review.object.spec.containers[_].image]
+        responses := external_data({"provider": "cosign-provider", "keys": images})
+
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
-          not is_signed(container.image)
-          msg := sprintf("Image %v is not signed", [container.image])
+          response := responses[_]
+          response[2] != ""
+          msg := sprintf("Image %v could not be verified: %v", [response[0], response[2]])
         }
 
-        is_signed(image) {
-          # Check signature via external data provider
-          data.inventory.cluster.images[image].signed == true
+        violation[{"msg": msg}] {
+          response := responses[_]
+          response[2] == ""
+          response[1] != true
+          msg := sprintf("Image %v is not signed by a trusted key", [response[0]])
         }
 ```
 
@@ -289,9 +316,6 @@ spec:
         kinds: ["Pod"]
     namespaces:
       - production
-  parameters:
-    allowedRegistries:
-      - "registry.example.com"
 ```
 
 ## Integrating with GitLab CI
@@ -321,9 +345,9 @@ sign-image:
   stage: sign
   image: gcr.io/projectsigstore/cosign:latest
   script:
-    - cosign sign --key $COSIGN_KEY $IMAGE
+    - cosign sign --yes --key env://COSIGN_KEY $IMAGE
     - |
-      cat > attestation.json <<EOF
+      cat > predicate.json <<EOF
       {
         "buildType": "gitlab-ci",
         "pipeline": "$CI_PIPELINE_ID",
@@ -331,14 +355,14 @@ sign-image:
         "ref": "$CI_COMMIT_REF_NAME"
       }
       EOF
-    - cosign attest --key $COSIGN_KEY --predicate attestation.json $IMAGE
+    - cosign attest --yes --key env://COSIGN_KEY --predicate predicate.json --type custom $IMAGE
 
 verify-signature:
   stage: verify
   image: gcr.io/projectsigstore/cosign:latest
   script:
-    - cosign verify --key $COSIGN_PUBLIC_KEY $IMAGE
-    - cosign verify-attestation --key $COSIGN_PUBLIC_KEY $IMAGE
+    - cosign verify --key env://COSIGN_PUBLIC_KEY $IMAGE
+    - cosign verify-attestation --key env://COSIGN_PUBLIC_KEY --type custom $IMAGE
 
 deploy-production:
   stage: deploy
@@ -349,20 +373,40 @@ deploy-production:
   when: on_success
 ```
 
-## Implementing Notary v2 Signatures
+## Implementing Notary Project Signatures
 
-Use Notary v2 for OCI-native signatures:
+Use Notation from the Notary Project for OCI-native signatures:
 
 ```bash
 # Install notation CLI
-curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v1.0.0/notation_1.0.0_linux_amd64.tar.gz
+curl -Lo notation.tar.gz https://github.com/notaryproject/notation/releases/download/v1.3.2/notation_1.3.2_linux_amd64.tar.gz
 tar xvzf notation.tar.gz
+sudo install -m 0755 notation /usr/local/bin/notation
 
 # Generate signing key
 notation cert generate-test --default "myapp-signer"
 
 # Sign image
 notation sign registry.example.com/myapp:latest
+
+# Configure trust policy before verification
+cat > trustpolicy.json <<EOF
+{
+  "version": "1.0",
+  "trustPolicies": [
+    {
+      "name": "myapp-policy",
+      "registryScopes": ["registry.example.com/myapp"],
+      "signatureVerification": {
+        "level": "strict"
+      },
+      "trustStores": ["ca:myapp-signer"],
+      "trustedIdentities": ["*"]
+    }
+  ]
+}
+EOF
+notation policy import trustpolicy.json
 
 # Verify signature
 notation verify registry.example.com/myapp:latest
@@ -374,19 +418,26 @@ Configure Ratify for verification:
 apiVersion: config.ratify.deislabs.io/v1beta1
 kind: Verifier
 metadata:
-  name: verifier-notaryv2
+  name: verifier-notation
 spec:
-  name: notaryv2
+  name: notation
   artifactTypes: application/vnd.cncf.notary.signature
   parameters:
-    trustStores:
-      - type: ca
-        name: myapp-ca
-    trustPolicy:
-      type: signerInfo
-      scope: "*"
-      trustedIdentities:
-        - "x509.subject: CN=myapp-signer"
+    verificationCertStores:
+      certs:
+        - myapp-ca
+    trustPolicyDoc:
+      version: "1.0"
+      trustPolicies:
+        - name: default
+          registryScopes:
+            - "*"
+          signatureVerification:
+            level: strict
+          trustStores:
+            - ca:certs
+          trustedIdentities:
+            - "x509.subject: CN=myapp-signer"
 ```
 
 ## Creating Multi-Signer Policies
@@ -399,7 +450,6 @@ kind: ClusterPolicy
 metadata:
   name: multi-signer-policy
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-multiple-signatures
       match:
@@ -412,6 +462,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             # Require signatures from both CI and security team
             - count: 2
@@ -472,7 +523,6 @@ kind: ClusterPolicy
 metadata:
   name: binary-authorization-with-override
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: verify-signature
       match:
@@ -492,6 +542,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
