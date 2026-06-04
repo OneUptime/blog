@@ -8,13 +8,15 @@ Description: Leverage Goldilocks and Vertical Pod Autoscaler to generate accurat
 
 ---
 
-Setting accurate resource requests and limits is challenging, often resulting in overprovisioned pods that waste money or underprovisioned pods that throttle applications. Goldilocks uses the Vertical Pod Autoscaler to generate recommendations for optimal resource sizing. This guide shows you how to deploy Goldilocks and use its recommendations to right-size your workloads.
+Setting accurate resource requests and limits is challenging, often resulting in overprovisioned pods that waste money or underprovisioned pods that get throttled by CPU limits or evicted when memory runs out. Goldilocks uses the Vertical Pod Autoscaler to generate recommendations for optimal resource sizing. This guide shows you how to deploy Goldilocks and use its recommendations to right-size your workloads.
 
 ## Installing VPA and Goldilocks
 
 First, install the Vertical Pod Autoscaler:
 
 ```bash
+# Make sure metrics-server is installed before installing VPA
+
 # Clone VPA repository
 
 git clone https://github.com/kubernetes/autoscaler.git
@@ -76,9 +78,9 @@ The dashboard shows current resource settings vs VPA recommendations for CPU and
 
 VPA provides three types of recommendations:
 
-**Lower Bound**: Minimum resources needed to avoid throttling
+**Lower Bound**: Minimum recommended resources; running below this is likely to affect performance or availability
 **Target**: Recommended resource requests
-**Upper Bound**: Maximum resources the pod should need
+**Upper Bound**: Maximum recommended resources; allocations above this are likely wasted
 
 Example VPA recommendation output:
 
@@ -107,7 +109,8 @@ Extract and apply recommendations:
 
 ```bash
 # Get VPA recommendations for a deployment
-kubectl get vpa -n production myapp -o jsonpath='{.status.recommendation.containerRecommendations[0].target}' | jq .
+kubectl get vpa -n production myapp -o json \
+  | jq '.status.recommendation.containerRecommendations[0].target'
 
 # Output:
 # {
@@ -126,7 +129,13 @@ metadata:
   name: myapp
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
       - name: app
@@ -162,13 +171,16 @@ for deploy in $DEPLOYMENTS; do
     -o jsonpath='{.status.recommendation.containerRecommendations[0].target.cpu}' 2>/dev/null)
   MEM_TARGET=$(kubectl get vpa $VPA_NAME -n $NAMESPACE \
     -o jsonpath='{.status.recommendation.containerRecommendations[0].target.memory}' 2>/dev/null)
+  CONTAINER_NAME=$(kubectl get vpa $VPA_NAME -n $NAMESPACE \
+    -o jsonpath='{.status.recommendation.containerRecommendations[0].containerName}' 2>/dev/null)
 
-  if [ -n "$CPU_TARGET" ] && [ -n "$MEM_TARGET" ]; then
+  if [ -n "$CPU_TARGET" ] && [ -n "$MEM_TARGET" ] && [ -n "$CONTAINER_NAME" ]; then
     echo "  Recommended CPU: $CPU_TARGET"
     echo "  Recommended Memory: $MEM_TARGET"
 
     # Update deployment
     kubectl set resources deployment $deploy -n $NAMESPACE \
+      --containers="$CONTAINER_NAME" \
       --requests=cpu=$CPU_TARGET,memory=$MEM_TARGET
 
     echo "  ✓ Updated $deploy"
@@ -188,7 +200,6 @@ Calculate potential savings from rightsizing:
 
 import subprocess
 import json
-import re
 
 def parse_cpu(cpu_str):
     """Convert CPU string to cores"""
@@ -213,11 +224,12 @@ def get_deployment_resources(namespace):
     resources = []
     for item in data['items']:
         name = item['metadata']['name']
-        replicas = item['spec']['replicas']
+        replicas = item['spec'].get('replicas', 1)
         container = item['spec']['template']['spec']['containers'][0]
 
-        current_cpu = parse_cpu(container['resources']['requests'].get('cpu', '0'))
-        current_mem = parse_memory(container['resources']['requests'].get('memory', '0'))
+        requests = container.get('resources', {}).get('requests', {})
+        current_cpu = parse_cpu(requests.get('cpu', '0'))
+        current_mem = parse_memory(requests.get('memory', '0'))
 
         resources.append({
             'name': name,
@@ -277,11 +289,14 @@ def calculate_savings(namespace, cpu_cost_per_core=30, mem_cost_per_gb=4):
             savings_pct = (savings / current_cost * 100) if current_cost > 0 else 0
 
             print(f"{name:<30} ${current_cost:>8.2f} ${rec_cost:>16.2f} ${savings:>8.2f} ({savings_pct:>5.1f}%)")
+        else:
+            total_recommended_cost += current_cost
+            print(f"{name:<30} ${current_cost:>8.2f} {'No recommendation':>16} ${0:>8.2f} ({0:>5.1f}%)")
 
     print("=" * 80)
     print(f"{'Total':<30} ${total_current_cost:>8.2f} ${total_recommended_cost:>16.2f} ${total_current_cost - total_recommended_cost:>8.2f}")
-    print(f"\nMonthly Savings: ${(total_current_cost - total_recommended_cost) * 30:.2f}")
-    print(f"Annual Savings: ${(total_current_cost - total_recommended_cost) * 365:.2f}")
+    print(f"\nMonthly Savings: ${total_current_cost - total_recommended_cost:.2f}")
+    print(f"Annual Savings: ${(total_current_cost - total_recommended_cost) * 12:.2f}")
 
 if __name__ == '__main__':
     calculate_savings('production')
@@ -295,18 +310,24 @@ Apply recommendations gradually to minimize risk:
 # Phase 1: Non-production environments
 # Apply to dev/staging first
 
-# Phase 2: Production canary
-# Update 10% of pods
+# Phase 2: Production rollout
+# Roll pods one at a time
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   strategy:
     rollingUpdate:
       maxUnavailable: 0
       maxSurge: 1
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
       - name: app
@@ -391,4 +412,4 @@ spec:
 
 ## Conclusion
 
-Goldilocks with VPA provides data-driven recommendations for right-sizing Kubernetes workloads. By implementing these recommendations, organizations typically achieve 30-50% cost reduction on overprovisioned resources while maintaining application performance. Regular review of Goldilocks recommendations should be part of ongoing cost optimization practices.
+Goldilocks with VPA provides data-driven recommendations for right-sizing Kubernetes workloads. By implementing these recommendations, organizations can reduce waste on overprovisioned resources while maintaining application performance. Regular review of Goldilocks recommendations should be part of ongoing cost optimization practices.
