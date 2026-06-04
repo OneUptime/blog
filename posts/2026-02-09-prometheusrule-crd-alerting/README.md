@@ -39,9 +39,12 @@ spec:
       rules:
         - alert: HighPodMemoryUsage
           expr: |
-            container_memory_usage_bytes{container!=""}
-            / container_spec_memory_limit_bytes{container!=""}
-            > 0.8
+            (
+              sum by (namespace, pod, container) (container_memory_usage_bytes{container!="", pod!=""})
+              / sum by (namespace, pod, container) (container_spec_memory_limit_bytes{container!="", pod!=""})
+            ) > 0.8
+            and on (namespace, pod, container)
+            sum by (namespace, pod, container) (container_spec_memory_limit_bytes{container!="", pod!=""}) > 0
           for: 5m  # Alert must be active for 5 minutes
           labels:
             severity: warning
@@ -61,7 +64,7 @@ kubectl apply -f basic-alert-rule.yaml
 
 Each alerting rule has several key components:
 
-- **alert**: The name of the alert (must be unique within the group)
+- **alert**: The name of the alert (should be distinctive within the group)
 - **expr**: PromQL expression that defines when to fire the alert
 - **for**: Optional duration the condition must be true before firing
 - **labels**: Additional labels attached to the alert
@@ -86,26 +89,26 @@ spec:
       rules:
         - alert: HighCPUUsage
           expr: |
-            rate(container_cpu_usage_seconds_total{container!=""}[5m]) > 0.8
+            sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!="", pod!=""}[5m])) > 0.8
           for: 10m
           labels:
             severity: warning
             component: compute
           annotations:
             summary: "High CPU usage detected"
-            description: "Container {{ $labels.container }} in pod {{ $labels.pod }} has CPU usage above 80% for 10 minutes."
+            description: "Container {{ $labels.container }} in pod {{ $labels.pod }} has CPU usage above 0.8 CPU cores for 10 minutes."
             dashboard: "https://grafana.example.com/d/cpu-dashboard"
 
         - alert: CriticalCPUUsage
           expr: |
-            rate(container_cpu_usage_seconds_total{container!=""}[5m]) > 0.95
+            sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!="", pod!=""}[5m])) > 0.95
           for: 5m
           labels:
             severity: critical
             component: compute
           annotations:
             summary: "Critical CPU usage detected"
-            description: "Container {{ $labels.container }} in pod {{ $labels.pod }} has CPU usage above 95%."
+            description: "Container {{ $labels.container }} in pod {{ $labels.pod }} has CPU usage above 0.95 CPU cores."
             runbook: "https://runbooks.example.com/high-cpu"
 ```
 
@@ -136,7 +139,7 @@ spec:
 
         - alert: PodRestartingFrequently
           expr: |
-            rate(kube_pod_container_status_restarts_total[1h]) > 0.1
+            increase(kube_pod_container_status_restarts_total[1h]) > 5
           for: 5m
           labels:
             severity: warning
@@ -146,13 +149,13 @@ spec:
 
         - alert: DeploymentReplicasMismatch
           expr: |
-            kube_deployment_spec_replicas != kube_deployment_status_replicas_available
+            kube_deployment_spec_replicas - kube_deployment_status_replicas_available > 0
           for: 15m
           labels:
             severity: critical
           annotations:
             summary: "Deployment {{ $labels.deployment }} has mismatched replicas"
-            description: "Deployment {{ $labels.deployment }} in namespace {{ $labels.namespace }} has {{ $value }} replicas available but expects more."
+            description: "Deployment {{ $labels.deployment }} in namespace {{ $labels.namespace }} is missing {{ $value }} available replicas."
 ```
 
 ### Application Performance
@@ -318,7 +321,7 @@ spec:
             summary: "Fast SLO burn rate detected"
             description: "Error rate is consuming error budget at 14.4x rate."
 
-        # Slow burn rate (10% error budget in 6 hours)
+        # Slow burn rate (5% error budget in 6 hours)
         - alert: SLOSlowBurn
           expr: |
             (
@@ -385,7 +388,7 @@ Before deploying rules, validate them using promtool:
 
 ```bash
 # Extract the rule groups to a file
-kubectl get prometheusrule pod-memory-alerts -n monitoring -o jsonpath='{.spec}' > rules.yaml
+kubectl get prometheusrule pod-memory-alerts -n monitoring -o json | jq '.spec' > rules.yaml
 
 # Validate with promtool (requires Prometheus installed locally)
 promtool check rules rules.yaml
