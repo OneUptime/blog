@@ -14,11 +14,11 @@ Docker images are not monolithic blobs of data. They are built from layers, and 
 
 A Union Filesystem (UnionFS) merges the contents of multiple directories into a single, unified view. Think of it as stacking transparent sheets on top of each other. Each sheet has some content on it, and when you look through the entire stack from the top, you see a composite picture. The key benefit: each individual sheet (layer) stays separate on disk.
 
-Docker leverages this concept to build images from layers. Each instruction in a Dockerfile creates a new layer. When you run a container, Docker stacks those layers together and presents a single merged filesystem to the container process.
+Docker leverages this concept to build images from layers. Dockerfile instructions that change the filesystem, such as `RUN`, `COPY`, and `ADD`, create new filesystem layers. When you run a container, Docker stacks those layers together and presents a single merged filesystem to the container process.
 
 ## How Overlay2 Works
 
-Overlay2 is the default and recommended storage driver for Docker on modern Linux systems. It replaced the older AUFS and Overlay drivers. Overlay2 uses the Linux kernel's OverlayFS implementation, which was merged into the kernel starting at version 3.18.
+Overlay2 is the recommended classic storage driver for Docker on modern Linux systems. Docker Engine 29.0 and later uses the containerd image store by default on fresh installations, where the `overlayfs` containerd snapshotter supersedes the legacy `overlay2` storage driver. Overlay2 replaced the older AUFS and Overlay drivers for classic Docker storage. It uses the Linux kernel's OverlayFS implementation, which was merged into the kernel starting at version 3.18, and Docker's `overlay2` driver requires Linux kernel 4.0 or higher, or RHEL/CentOS with kernel 3.10.0-514 or higher.
 
 OverlayFS operates with four key directories:
 
@@ -58,7 +58,7 @@ You can verify which storage driver Docker is using with the following command.
 docker info | grep "Storage Driver"
 ```
 
-The output should show:
+For a Docker Engine installation using the classic `overlay2` storage driver, the output should show:
 
 ```text
  Storage Driver: overlay2
@@ -94,7 +94,7 @@ On a Linux host, Overlay2 stores its data under `/var/lib/docker/overlay2/`. Let
 sudo ls /var/lib/docker/overlay2/
 ```
 
-Each directory corresponds to a layer. Inside each layer directory you will find:
+Each directory corresponds to a layer or container data directory. Inside these directories you may find:
 
 ```bash
 # Look at the contents of a specific layer directory
@@ -106,7 +106,7 @@ Typical contents include:
 - `link` - a shortened identifier used for the mount options
 - `lower` - references to the layers below this one
 - `work/` - the OverlayFS work directory
-- `merged/` - only present for running containers
+- `merged/` - the unified view for mounted image or container layers
 
 ## Copy-on-Write Explained
 
@@ -118,13 +118,13 @@ This has real performance implications. Large files that get modified inside a c
 # Start a container and modify a file to observe copy-on-write
 docker run -d --name cow-test nginx:latest
 
-# Check the size of the container's writable layer before changes
+# Check the path of the container's writable layer before changes
 docker inspect cow-test --format '{{.GraphDriver.Data.UpperDir}}'
 
 # Execute a command inside the container that modifies a file
 docker exec cow-test bash -c "echo 'modified' >> /etc/nginx/nginx.conf"
 
-# Now check the upperdir to see the copied file
+# Now check the upperdir to see the copied directory
 sudo ls $(docker inspect cow-test --format '{{.GraphDriver.Data.UpperDir}}')
 ```
 
@@ -136,11 +136,11 @@ When you delete a file inside a container, the original file still exists in the
 # Delete a file inside a running container
 docker exec cow-test rm /etc/nginx/mime.types
 
-# Check the upperdir for whiteout files (character device with 0/0 major/minor)
+# Check the upperdir for whiteout entries
 sudo ls -la $(docker inspect cow-test --format '{{.GraphDriver.Data.UpperDir}}')/etc/nginx/
 ```
 
-Whiteout files appear as character devices with 0/0 major/minor numbers. For directory deletions, OverlayFS uses "opaque whiteout" files named `.wh..wh..opq`.
+Whiteout files appear as character devices with 0/0 major/minor numbers, or on newer kernels as zero-size regular files with the `trusted.overlay.whiteout` extended attribute. For directory deletions, OverlayFS marks the upper directory as opaque with the `trusted.overlay.opaque` extended attribute.
 
 ## Optimizing Dockerfiles for Overlay2
 
@@ -184,7 +184,7 @@ Docker has supported several storage drivers over the years. Here is a compariso
 
 | Driver | Status | Performance | Stability |
 |--------|--------|------------|-----------|
-| overlay2 | Recommended | Excellent | Stable |
+| overlay2 | Recommended classic driver | Excellent | Stable |
 | overlay | Deprecated | Good | Stable |
 | aufs | Deprecated | Good | Stable |
 | devicemapper | Deprecated | Moderate | Complex |
@@ -198,13 +198,8 @@ Overlay2 wins on most fronts because it uses native kernel support, requires no 
 If you need to explicitly configure Docker to use Overlay2, edit the daemon configuration file.
 
 ```json
-// /etc/docker/daemon.json
-// Set the storage driver and optional configuration
 {
-  "storage-driver": "overlay2",
-  "storage-opts": [
-    "overlay2.override_kernel_check=true"
-  ]
+  "storage-driver": "overlay2"
 }
 ```
 
