@@ -18,7 +18,7 @@ Sync enables powerful policies like checking naming conflicts, validating cross-
 
 ## Configuring Basic Sync
 
-Enable sync for ConfigMaps and Namespaces:
+Enable sync for Namespaces, ConfigMaps, Services, and Deployments:
 
 ```yaml
 apiVersion: config.gatekeeper.sh/v1alpha1
@@ -77,14 +77,14 @@ spec:
           service_namespace := input.review.object.metadata.namespace
 
           # Check all synced services
-          existing_service := data.inventory.namespace[ns][_]["Service"][service_name]
+          existing_service := data.inventory.namespace[ns]["v1"]["Service"][service_name]
           ns != service_namespace
 
           msg := sprintf("Service name '%v' already exists in namespace '%v'", [service_name, ns])
         }
 ```
 
-The `data.inventory` structure contains all synced resources organized by namespace, group/version, kind, and name.
+The `data.inventory` structure contains all synced resources organized by namespace, groupVersion, kind, and name.
 
 ## Validating Cross-Resource References
 
@@ -118,7 +118,7 @@ spec:
         }
 
         deployment_matches_selector(namespace, selector) {
-          deployment := data.inventory.namespace[namespace][_]["apps/v1"]["Deployment"][_]
+          deployment := data.inventory.namespace[namespace]["apps/v1"]["Deployment"][_]
           labels := deployment.spec.template.metadata.labels
 
           # Check if all selector keys match deployment labels
@@ -130,7 +130,7 @@ This constraint ensures services have matching deployments before creation.
 
 ## Checking Resource Quotas
 
-Validate pod resource requests against namespace quotas:
+Validate pod resource requests against namespace quotas. Sync both Pods and ResourceQuotas before using this template:
 
 ```yaml
 apiVersion: templates.gatekeeper.sh/v1
@@ -153,7 +153,7 @@ spec:
           namespace := pod.metadata.namespace
 
           # Get namespace resource quota
-          quota := data.inventory.namespace[namespace][_]["v1"]["ResourceQuota"]["resource-quota"]
+          quota := data.inventory.namespace[namespace]["v1"]["ResourceQuota"]["resource-quota"]
 
           # Calculate total CPU requests across all pods
           existing_cpu := sum_cpu_requests(namespace)
@@ -161,14 +161,14 @@ spec:
           total_cpu := existing_cpu + new_cpu
 
           # Check against quota limit
-          quota_cpu := parse_quantity(quota.spec.hard.cpu)
+          quota_cpu := parse_quantity(quota.spec.hard["requests.cpu"])
           total_cpu > quota_cpu
 
           msg := sprintf("Total CPU requests (%v) would exceed quota (%v)", [total_cpu, quota_cpu])
         }
 
         sum_cpu_requests(namespace) = total {
-          pods := data.inventory.namespace[namespace][_]["v1"]["Pod"]
+          pods := data.inventory.namespace[namespace]["v1"]["Pod"]
           requests := [r |
             pod := pods[_]
             container := pod.spec.containers[_]
@@ -197,7 +197,7 @@ This performs cluster-state validation that requires knowledge of all existing r
 
 ## Syncing with Namespace Filtering
 
-Limit sync to specific namespaces for performance:
+Exclude namespaces from sync for performance:
 
 ```yaml
 apiVersion: config.gatekeeper.sh/v1alpha1
@@ -211,14 +211,15 @@ spec:
       - group: ""
         version: "v1"
         kind: "Pod"
-        namespaces: ["production", "staging"]  # Only sync these namespaces
       - group: "apps"
         version: "v1"
         kind: "Deployment"
-        namespaces: ["production"]
+  match:
+    - excludedNamespaces: ["dev-*", "test-*"]
+      processes: ["sync"]
 ```
 
-This reduces memory usage when only certain namespaces need policy enforcement.
+This reduces memory usage by keeping matching namespaces out of Gatekeeper's synced inventory.
 
 ## Validating Naming Conventions
 
@@ -245,7 +246,7 @@ spec:
           host := ingress.spec.rules[_].host
 
           # Check all existing ingresses
-          existing_ingress := data.inventory.cluster[_]["networking.k8s.io/v1"]["Ingress"][_]
+          existing_ingress := data.inventory.namespace[_]["networking.k8s.io/v1"]["Ingress"][_]
           existing_ingress.metadata.uid != ingress.metadata.uid
           existing_host := existing_ingress.spec.rules[_].host
           host == existing_host
@@ -267,15 +268,10 @@ Check sync health and status:
 ```bash
 # View sync status
 
-kubectl get config config -n gatekeeper-system -o yaml
+kubectl get configs.config.gatekeeper.sh config -n gatekeeper-system -o yaml
 
-# Check synced resource counts
-kubectl get -n gatekeeper-system \
-  $(kubectl get crd -o name | grep constraints.gatekeeper.sh) \
-  -o json | jq '.status'
-
-# View audit results including synced data
-kubectl get constraints -A
+# View constraint status and audit results
+kubectl get constraints -o yaml
 ```
 
 Monitor metrics:
@@ -283,10 +279,10 @@ Monitor metrics:
 ```bash
 # Port forward to Gatekeeper metrics
 kubectl port-forward -n gatekeeper-system \
-  svc/gatekeeper-webhook-service 8888:443
+  deployment/gatekeeper-controller-manager 8888:8888
 
 # Check sync metrics
-curl -k https://localhost:8888/metrics | grep gatekeeper_sync
+curl http://localhost:8888/metrics | grep gatekeeper_sync
 ```
 
 Key metrics include `gatekeeper_sync_duration_seconds` and `gatekeeper_sync_last_run_time`.
@@ -307,16 +303,15 @@ spec:
       - group: ""
         version: "v1"
         kind: "ConfigMap"
-        # Use label selector to limit synced resources
   match:
     - excludedNamespaces:
       # list of namespaces to exclude
       - default
-      # list of processes: https://github.com/open-policy-agent/gatekeeper/blob/master/pkg/controller/config/process/excluder.go#L17-L21
-      processes: ["*"]
+      # only exclude these namespaces from the sync process
+      processes: ["sync"]
 ```
 
-This reduces memory usage by only syncing tagged resources.
+This reduces memory usage by excluding namespaces from the sync process.
 
 ## Testing Synced Policies
 
@@ -359,7 +354,7 @@ kubectl logs -n gatekeeper-system -l control-plane=controller-manager
 kubectl get -n gatekeeper-system pods
 
 # Check if resources appear in audit results
-kubectl get constraints -A -o yaml | grep -A10 violations
+kubectl get constraints -o yaml | grep -A10 violations
 
 # Restart Gatekeeper to reset sync
 kubectl rollout restart deployment -n gatekeeper-system gatekeeper-controller-manager
@@ -367,6 +362,6 @@ kubectl rollout restart deployment -n gatekeeper-system gatekeeper-controller-ma
 
 ## Conclusion
 
-OPA Gatekeeper sync enables policies that reference multiple resources, check cluster-wide constraints, and validate cross-resource relationships. Configure sync for the resource types your policies need, use label selectors to limit synced resources, and access synced data through `data.inventory` in Rego. Write constraints that check naming conflicts, validate cross-references, and enforce resource quotas. Monitor sync status and performance, and optimize by limiting sync scope to necessary namespaces and resources.
+OPA Gatekeeper sync enables policies that reference multiple resources, check cluster-wide constraints, and validate cross-resource relationships. Configure sync for the resource types your policies need, use namespace exclusions to limit synced resources, and access synced data through `data.inventory` in Rego. Write constraints that check naming conflicts, validate cross-references, and enforce resource quotas. Monitor sync status and performance, and optimize by limiting sync scope to necessary namespaces and resources.
 
 Sync transforms Gatekeeper from validating individual resources to enforcing cluster-wide consistency and relationships.
