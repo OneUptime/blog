@@ -33,24 +33,23 @@ Create a transformer implementation:
 
 import kserve
 import logging
-from typing import Dict
 import re
-import json
+from typing import Dict, Optional
 
 logging.basicConfig(level=logging.INFO)
 
 class CustomTransformer(kserve.Model):
-    def __init__(self, name: str, predictor_host: str):
+    def __init__(self, name: str):
         super().__init__(name)
-        self.predictor_host = predictor_host
         self.ready = False
 
-    def load(self):
+    def load(self) -> bool:
         """Initialize transformer resources"""
         self.ready = True
         logging.info("Custom transformer loaded successfully")
+        return self.ready
 
-    def preprocess(self, inputs: Dict) -> Dict:
+    def preprocess(self, inputs: Dict, headers: Optional[Dict[str, str]] = None) -> Dict:
         """
         Preprocess incoming request data.
         Apply text cleaning and normalization.
@@ -77,7 +76,12 @@ class CustomTransformer(kserve.Model):
 
         return {"instances": processed_instances}
 
-    def postprocess(self, outputs: Dict) -> Dict:
+    def postprocess(
+        self,
+        outputs: Dict,
+        headers: Optional[Dict[str, str]] = None,
+        response_headers: Optional[Dict[str, str]] = None
+    ) -> Dict:
         """
         Postprocess prediction results.
         Add confidence thresholds and labels.
@@ -110,18 +114,10 @@ class CustomTransformer(kserve.Model):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(parents=[kserve.model_server.parser])
-    parser.add_argument(
-        "--predictor_host",
-        required=True,
-        help="The host URL for the predictor service"
-    )
     args, _ = parser.parse_known_args()
 
-    transformer = CustomTransformer(
-        name=args.model_name,
-        predictor_host=args.predictor_host
-    )
-
+    transformer = CustomTransformer(name=args.model_name)
+    transformer.load()
     kserve.ModelServer().start([transformer])
 ```
 
@@ -129,18 +125,15 @@ Create a Dockerfile for the transformer:
 
 ```dockerfile
 # Dockerfile.transformer
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
 # Install KServe SDK
-RUN pip install --no-cache-dir kserve==0.11.0
+RUN pip install --no-cache-dir kserve==0.18.0
 
 # Copy transformer code
 COPY transformer.py /app/
-
-# Set environment variables
-ENV MODEL_NAME=sentiment-transformer
 
 # Run transformer
 ENTRYPOINT ["python", "transformer.py"]
@@ -166,8 +159,8 @@ import kserve
 import torch
 import torch.nn as nn
 import logging
-from typing import Dict
-import json
+import argparse
+from typing import Dict, Optional
 
 logging.basicConfig(level=logging.INFO)
 
@@ -196,7 +189,7 @@ class CustomPredictor(kserve.Model):
         self.ready = False
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def load(self):
+    def load(self) -> bool:
         """Load the PyTorch model"""
         try:
             # Initialize model
@@ -210,11 +203,12 @@ class CustomPredictor(kserve.Model):
 
             self.ready = True
             logging.info(f"Model loaded successfully on {self.device}")
+            return self.ready
         except Exception as e:
             logging.error(f"Failed to load model: {str(e)}")
             raise
 
-    def predict(self, request: Dict) -> Dict:
+    def predict(self, request: Dict, headers: Optional[Dict[str, str]] = None) -> Dict:
         """
         Perform inference on preprocessed data.
         """
@@ -252,7 +246,10 @@ class CustomPredictor(kserve.Model):
         return tokens
 
 if __name__ == "__main__":
-    predictor = CustomPredictor("sentiment-predictor")
+    parser = argparse.ArgumentParser(parents=[kserve.model_server.parser])
+    args, _ = parser.parse_known_args()
+
+    predictor = CustomPredictor(args.model_name)
     predictor.load()
     kserve.ModelServer().start([predictor])
 ```
@@ -261,21 +258,16 @@ Create the predictor Dockerfile:
 
 ```dockerfile
 # Dockerfile.predictor
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
 # Install dependencies
-RUN pip install --no-cache-dir \
-    kserve==0.11.0 \
-    torch==2.0.0 \
-    --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir kserve==0.18.0 && \
+    pip install --no-cache-dir torch==2.3.1+cpu --index-url https://download.pytorch.org/whl/cpu
 
 # Copy predictor code
 COPY predictor.py /app/
-
-# Set environment variables
-ENV MODEL_NAME=sentiment-predictor
 
 # Run predictor
 ENTRYPOINT ["python", "predictor.py"]
@@ -302,9 +294,17 @@ metadata:
 spec:
   # Transformer component for preprocessing
   transformer:
+    # Autoscaling configuration for the transformer component
+    scaleTarget: 1
+    scaleMetric: concurrency
+    minReplicas: 1
+    maxReplicas: 5
     containers:
     - name: kserve-container
       image: your-registry/sentiment-transformer:v1
+      args:
+      - --model_name
+      - sentiment-analysis
       env:
       - name: STORAGE_URI
         value: "pvc://model-store"
@@ -318,22 +318,30 @@ spec:
       # Health checks
       livenessProbe:
         httpGet:
-          path: /v1/models/sentiment-transformer
+          path: /v1/models/sentiment-analysis
           port: 8080
         initialDelaySeconds: 30
         periodSeconds: 10
       readinessProbe:
         httpGet:
-          path: /v1/models/sentiment-transformer
+          path: /v1/models/sentiment-analysis
           port: 8080
         initialDelaySeconds: 30
         periodSeconds: 10
 
   # Predictor component for inference
   predictor:
+    # Autoscaling configuration for the predictor component
+    scaleTarget: 1
+    scaleMetric: concurrency
+    minReplicas: 1
+    maxReplicas: 5
     containers:
     - name: kserve-container
       image: your-registry/sentiment-predictor:v1
+      args:
+      - --model_name
+      - sentiment-analysis
       env:
       - name: STORAGE_URI
         value: "pvc://model-store"
@@ -346,22 +354,17 @@ spec:
           memory: "4Gi"
       livenessProbe:
         httpGet:
-          path: /v1/models/sentiment-predictor
+          path: /v1/models/sentiment-analysis
           port: 8080
         initialDelaySeconds: 30
         periodSeconds: 10
       readinessProbe:
         httpGet:
-          path: /v1/models/sentiment-predictor
+          path: /v1/models/sentiment-analysis
           port: 8080
         initialDelaySeconds: 30
         periodSeconds: 10
 
-  # Autoscaling configuration
-  scaleTarget: 1
-  scaleMetric: concurrency
-  minReplicas: 1
-  maxReplicas: 5
 ```
 
 Deploy the InferenceService:
@@ -425,19 +428,20 @@ Add observability to your custom containers:
 ```python
 # Add to transformer.py and predictor.py
 import time
+from typing import Dict, Optional
 from prometheus_client import Counter, Histogram
 
 # Metrics
 REQUEST_COUNT = Counter('transformer_requests_total', 'Total requests processed')
 REQUEST_LATENCY = Histogram('transformer_request_latency_seconds', 'Request latency')
 
-def preprocess(self, inputs: Dict) -> Dict:
+def preprocess(self, inputs: Dict, headers: Optional[Dict[str, str]] = None) -> Dict:
     REQUEST_COUNT.inc()
     start_time = time.time()
 
     try:
-        # Processing logic here
-        result = self._do_preprocessing(inputs)
+        # Run the existing preprocessing logic here.
+        result = inputs
         return result
     finally:
         REQUEST_LATENCY.observe(time.time() - start_time)
@@ -452,8 +456,8 @@ kubectl logs -n kserve-inference -l serving.kserve.io/inferenceservice=sentiment
 # Get predictor logs
 kubectl logs -n kserve-inference -l serving.kserve.io/inferenceservice=sentiment-analysis,component=predictor
 
-# Follow logs in real-time
-kubectl logs -f -n kserve-inference deployment/sentiment-analysis-transformer-default
+# Follow transformer logs in real-time
+kubectl logs -f -n kserve-inference -l serving.kserve.io/inferenceservice=sentiment-analysis,component=transformer
 ```
 
 ## Conclusion
