@@ -23,9 +23,11 @@ helm repo add nfd https://kubernetes-sigs.github.io/node-feature-discovery/chart
 helm repo update
 
 # Install NFD
-helm install nfd nfd/node-feature-discovery \
+helm install nfd \
   --namespace node-feature-discovery \
-  --create-namespace
+  --create-namespace \
+  oci://registry.k8s.io/nfd/charts/node-feature-discovery \
+  --version 0.18.3
 
 # Verify installation
 kubectl get pods -n node-feature-discovery
@@ -36,7 +38,7 @@ Or install using manifests:
 
 ```bash
 # Install using kubectl
-kubectl apply -k https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.15.0
+kubectl apply -k https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.18.3
 
 # Check the DaemonSet is running
 kubectl get daemonset -n node-feature-discovery nfd-worker
@@ -148,7 +150,7 @@ metadata:
 spec:
   nodeSelector:
     # Schedule on nodes with RDMA capability
-    feature.node.kubernetes.io/network-rdma.available: "true"
+    feature.node.kubernetes.io/custom-rdma.capable: "true"
   containers:
   - name: rdma-app
     image: rdma-application:v2.0
@@ -200,16 +202,25 @@ data:
       # Custom feature detection
       custom:
         - name: "hardware-vendor"
-          matchOn:
-          - pciId:
-              vendor: ["8086"]  # Intel
-          - pciId:
-              vendor: ["10de"]  # NVIDIA
+          labels:
+            hardware-vendor: "true"
+          matchAny:
+          - matchFeatures:
+            - feature: pci.device
+              matchExpressions:
+                vendor: {op: In, value: ["8086"]}  # Intel
+          - matchFeatures:
+            - feature: pci.device
+              matchExpressions:
+                vendor: {op: In, value: ["10de"]}  # NVIDIA
         - name: "special-nic"
-          matchOn:
-          - pciId:
-              vendor: ["15b3"]  # Mellanox
-              device: ["1017"]  # ConnectX-5
+          labels:
+            special-nic: "true"
+          matchFeatures:
+          - feature: pci.device
+            matchExpressions:
+              vendor: {op: In, value: ["15b3"]}  # Mellanox
+              device: {op: In, value: ["1017"]}  # ConnectX-5
 ```
 
 Apply the configuration:
@@ -296,7 +307,7 @@ spec:
         app: network-monitor
     spec:
       nodeSelector:
-        # Require specific kernel modules
+        # Require specific kernel configuration and kernel major version
         feature.node.kubernetes.io/kernel-config.NO_HZ: "true"
         feature.node.kubernetes.io/kernel-version.major: "5"
       containers:
@@ -353,42 +364,41 @@ Define custom rules to detect specific hardware configurations:
 
 ```yaml
 # custom-feature-rules.yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: nfd.k8s-sigs.io/v1alpha1
+kind: NodeFeatureRule
 metadata:
   name: nfd-worker-custom-rules
-  namespace: node-feature-discovery
-data:
-  custom-rules: |
-    - name: "high-mem-node"
-      labels:
-        "node-role/memory-intensive": "true"
-      matchFeatures:
-        - feature: memory.numa
-          matchExpressions:
-            is_numa: {op: Exists}
-        - feature: memory.nv
-          matchExpressions:
-            present: {op: Gt, value: ["100000000000"]}  # >100GB
+spec:
+  rules:
+  - name: "high-mem-node"
+    labels:
+      "node-role/memory-intensive": "true"
+    matchFeatures:
+    - feature: memory.numa
+      matchExpressions:
+        is_numa: {op: IsTrue}
+    - feature: memory.hugepages
+      matchExpressions:
+        enabled: {op: IsTrue}
 
-    - name: "fast-network-node"
-      labels:
-        "node-role/network-intensive": "true"
-      matchFeatures:
-        - feature: network.device
-          matchExpressions:
-            speed: {op: Gt, value: ["10000"]}  # >10Gbps
+  - name: "fast-network-node"
+    labels:
+      "node-role/network-intensive": "true"
+    matchFeatures:
+    - feature: network.device
+      matchExpressions:
+        speed: {op: Gt, value: ["10000"]}  # >10Gbps
 
-    - name: "compute-optimized"
-      labels:
-        "node-role/compute-optimized": "true"
-      matchFeatures:
-        - feature: cpu.cpuid
-          matchExpressions:
-            AVX512F: {op: Exists}
-        - feature: cpu.model
-          matchExpressions:
-            vendor_id: {op: In, value: ["GenuineIntel"]}
+  - name: "compute-optimized"
+    labels:
+      "node-role/compute-optimized": "true"
+    matchFeatures:
+    - feature: cpu.cpuid
+      matchExpressions:
+        AVX512F: {op: Exists}
+    - feature: cpu.model
+      matchExpressions:
+        vendor_id: {op: In, value: ["GenuineIntel"]}
 ```
 
 ## Monitoring NFD Operations
@@ -413,40 +423,17 @@ watch kubectl get nodes -L feature.node.kubernetes.io/cpu-cpuid.AVX512F
 
 Enable topology-aware scheduling with NFD:
 
-```yaml
-# nfd-topology-updater.yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: nfd-topology-updater
-  namespace: node-feature-discovery
-spec:
-  selector:
-    matchLabels:
-      app: nfd-topology-updater
-  template:
-    metadata:
-      labels:
-        app: nfd-topology-updater
-    spec:
-      serviceAccountName: nfd-topology-updater
-      containers:
-      - name: nfd-topology-updater
-        image: k8s.gcr.io/nfd/node-feature-discovery:v0.15.0
-        command:
-        - nfd-topology-updater
-        env:
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        volumeMounts:
-        - name: host-sys
-          mountPath: /host-sys
-      volumes:
-      - name: host-sys
-        hostPath:
-          path: /sys
+```bash
+# Enable with Helm
+helm upgrade nfd \
+  --namespace node-feature-discovery \
+  --set topologyUpdater.enable=true \
+  --set topologyUpdater.createCRDs=true \
+  oci://registry.k8s.io/nfd/charts/node-feature-discovery \
+  --version 0.18.3
+
+# Or install the topology updater overlay with kubectl
+kubectl apply -k https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/topologyupdater?ref=v0.18.3
 ```
 
 ## Best Practices
@@ -495,4 +482,3 @@ kubectl get nodes -o json | jq '.items[].metadata.labels'
 ```
 
 Node Feature Discovery transforms hardware capabilities into Kubernetes labels, enabling intelligent scheduling decisions based on actual node capabilities rather than manual configuration. This ensures your workloads run on the most appropriate hardware available in your cluster.
-
