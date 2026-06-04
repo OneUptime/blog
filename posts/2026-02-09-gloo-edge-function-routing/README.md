@@ -8,7 +8,7 @@ Description: Learn how to deploy Gloo Edge with function-level routing that enab
 
 ---
 
-Gloo Edge differentiates itself from traditional API Gateways through function-level routing, where the gateway understands and routes to specific functions within services rather than just endpoints. Built on Envoy Proxy, Gloo discovers service functions automatically and enables direct routing to AWS Lambda, Google Cloud Functions, Azure Functions, or methods in REST and gRPC services.
+Gloo Edge differentiates itself from traditional API Gateways through function-level routing, where the gateway understands and routes to specific functions within services rather than just endpoints. Built on Envoy Proxy, Gloo discovers service functions automatically and enables direct routing to AWS Lambda functions or methods in REST and gRPC services.
 
 ## Understanding Function Routing
 
@@ -16,14 +16,13 @@ Traditional gateways route to service endpoints like `/api/users`. Gloo Edge rou
 
 - Reduces boilerplate routing code in services
 - Enables intelligent request transformation at the gateway
-- Supports multi-cloud function invocation
+- Supports serverless and service function invocation
 - Provides unified API for heterogeneous backends
 
 Gloo discovers functions through:
 - OpenAPI/Swagger specifications
 - gRPC reflection
 - AWS Lambda introspection
-- Cloud function metadata
 
 ## Installing Gloo Edge
 
@@ -36,7 +35,7 @@ curl -sL https://run.solo.io/gloo/install | sh
 export PATH=$HOME/.gloo/bin:$PATH
 
 # Install Gloo Edge to Kubernetes
-glooctl install gateway --version 1.16.0
+glooctl install gateway --version 1.21.0
 ```
 
 Or use Helm:
@@ -70,9 +69,7 @@ metadata:
   name: user-service
   namespace: default
   annotations:
-    gloo.solo.io/scrape-openapi-source: https://user-service.default.svc.cluster.local:8080/swagger.json
-    gloo.solo.io/scrape-openapi-pull-attempts: "3"
-    gloo.solo.io/scrape-openapi-retry-delay: 5s
+    gloo.solo.io/upstream_config: '{"kube":{"serviceSpec":{"rest":{"swaggerInfo":{"url":"http://user-service.default.svc.cluster.local:8080/swagger.json"}}}}}'
 spec:
   selector:
     app: user-service
@@ -114,19 +111,23 @@ kubectl get upstream default-user-service-8080 -n gloo-system -o yaml
 #     serviceName: user-service
 #     serviceNamespace: default
 #     servicePort: 8080
-#   rest:
-#     swaggerInfo:
-#       url: https://user-service.default.svc.cluster.local:8080/swagger.json
-#     transformations:
-#       getUser:
-#         path: /users/{id}
-#         method: GET
-#       createUser:
-#         path: /users
-#         method: POST
-#       updateUser:
-#         path: /users/{id}
-#         method: PUT
+#     serviceSpec:
+#       rest:
+#         swaggerInfo:
+#           url: http://user-service.default.svc.cluster.local:8080/swagger.json
+#         transformations:
+#           getUser:
+#             headers:
+#               :method:
+#                 text: GET
+#               :path:
+#                 text: /users/{{ default(id, "") }}
+#           createUser:
+#             headers:
+#               :method:
+#                 text: POST
+#               :path:
+#                 text: /users
 ```
 
 ## Creating Function-Level Routes
@@ -147,7 +148,7 @@ spec:
     routes:
     # Route to getUser function
     - matchers:
-      - prefix: /api/user
+      - prefix: /api/users/
         methods:
         - GET
       routeAction:
@@ -160,11 +161,11 @@ spec:
               functionName: getUser
               parameters:
                 headers:
-                  :path: /users/123
+                  :path: /api/users/{id}
 
     # Route to createUser function
     - matchers:
-      - prefix: /api/user
+      - prefix: /api/users
         methods:
         - POST
       routeAction:
@@ -185,8 +186,8 @@ Configure AWS credentials:
 glooctl create secret aws \
   --name aws-creds \
   --namespace gloo-system \
-  --access-key-id $AWS_ACCESS_KEY_ID \
-  --secret-access-key $AWS_SECRET_ACCESS_KEY
+  --access-key $AWS_ACCESS_KEY_ID \
+  --secret-key $AWS_SECRET_ACCESS_KEY
 ```
 
 Create upstream for Lambda:
@@ -276,9 +277,15 @@ Gloo discovers gRPC methods via reflection:
 kubectl get upstream default-grpc-service-9000 -n gloo-system -o yaml
 
 # spec:
-#   grpc:
-#     serviceName: orders.OrderService
-#     descriptors: <base64-encoded-proto>
+#   kube:
+#     serviceSpec:
+#       grpc:
+#         descriptors: <base64-encoded-proto>
+#         grpcServices:
+#         - packageName: orders
+#           serviceName: OrderService
+#           functionNames:
+#           - CreateOrder
 ```
 
 Route to gRPC methods:
@@ -335,7 +342,7 @@ spec:
               functionName: getUser
               parameters:
                 headers:
-                  :path: /users/{{ request_header("user-id") }}
+                  :path: /api/users/{id}
 ```
 
 Advanced transformations with templates:
@@ -359,24 +366,24 @@ routes:
             transformationTemplate:
               headers:
                 x-custom-header:
-                  text: "{{ request_header(\"user-agent\") }}"
+                  text: "{{ header(\"user-agent\") }}"
               body:
                 text: |
                   {
-                    "query": "{{ request_body.q }}",
-                    "filters": {{ request_body.filters | json }}
+                    "query": "{{ q }}",
+                    "filters": {{ filters }}
                   }
 ```
 
-## Aggregating Multiple Functions
+## Routing Across Multiple Functions
 
-Call multiple backend functions in a single request:
+Split requests across multiple backend functions with weighted routing:
 
 ```yaml
 apiVersion: gateway.solo.io/v1
 kind: VirtualService
 metadata:
-  name: aggregation-api
+  name: weighted-function-api
   namespace: gloo-system
 spec:
   virtualHost:
@@ -388,7 +395,7 @@ spec:
       routeAction:
         multi:
           destinations:
-          - weight: 1
+          - weight: 8
             destination:
               upstream:
                 name: user-service
@@ -396,7 +403,7 @@ spec:
               destinationSpec:
                 rest:
                   functionName: getUser
-          - weight: 1
+          - weight: 2
             destination:
               upstream:
                 name: order-service
@@ -404,19 +411,11 @@ spec:
               destinationSpec:
                 rest:
                   functionName: getOrders
-          - weight: 1
-            destination:
-              upstream:
-                name: analytics-service
-                namespace: gloo-system
-              destinationSpec:
-                rest:
-                  functionName: getStats
 ```
 
 ## Rate Limiting per Function
 
-Apply rate limits to specific functions:
+Apply rate limits to specific functions with Gloo Gateway Enterprise by matching descriptor actions on routes:
 
 ```yaml
 apiVersion: ratelimit.solo.io/v1alpha1
@@ -427,16 +426,43 @@ metadata:
 spec:
   raw:
     descriptors:
-    - key: function
+    - key: generic_key
       value: getUser
       rateLimit:
         requestsPerUnit: 100
         unit: MINUTE
-    - key: function
-      value: createUser
-      rateLimit:
-        requestsPerUnit: 10
-        unit: MINUTE
+    rateLimits:
+    - actions:
+      - genericKey:
+          descriptorValue: getUser
+---
+apiVersion: gateway.solo.io/v1
+kind: VirtualService
+metadata:
+  name: user-api
+  namespace: gloo-system
+spec:
+  virtualHost:
+    domains:
+    - '*'
+    routes:
+    - matchers:
+      - prefix: /api/users/
+        methods:
+        - GET
+      options:
+        rateLimitConfigs:
+          refs:
+          - name: function-rate-limits
+            namespace: gloo-system
+      routeAction:
+        single:
+          upstream:
+            name: default-user-service-8080
+            namespace: gloo-system
+          destinationSpec:
+            rest:
+              functionName: getUser
 ```
 
 ## Testing Function Routing
@@ -448,15 +474,14 @@ Test the configured routes:
 GLOO_PROXY=$(kubectl get svc gateway-proxy -n gloo-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 # Call getUser function
-curl http://${GLOO_PROXY}/api/user \
-  -H "user-id: 123"
+curl http://${GLOO_PROXY}/api/users/123
 
 # Call AWS Lambda function
 curl -X POST http://${GLOO_PROXY}/payment \
   -H "Content-Type: application/json" \
   -d '{"amount": 99.99, "currency": "USD"}'
 
-# Call gRPC function via REST
+# Call the gRPC function through the configured route
 curl -X POST http://${GLOO_PROXY}/orders/create \
   -H "Content-Type: application/json" \
   -d '{"items": [{"id": "item-1", "quantity": 2}]}'
@@ -464,7 +489,7 @@ curl -X POST http://${GLOO_PROXY}/orders/create \
 
 ## Monitoring Function Metrics
 
-Enable Prometheus metrics:
+Gloo Gateway exposes Envoy metrics from the gateway proxy. For Open Source installations, scrape the Envoy metrics endpoint with your Prometheus deployment; Enterprise installations can also generate Grafana dashboards for upstreams.
 
 ```yaml
 apiVersion: gloo.solo.io/v1
@@ -475,18 +500,18 @@ metadata:
 spec:
   observabilityOptions:
     grafanaIntegration:
-      enabled: true
+      dashboardPrefix: functions
 ```
 
-Query function-level metrics:
+Query upstream-level metrics:
 
 ```promql
-# Request rate per function
-rate(envoy_cluster_upstream_rq_total{envoy_cluster_name=~".*function.*"}[5m])
+# Request rate per upstream
+rate(envoy_cluster_upstream_rq_total{envoy_cluster_name=~".*user-service.*"}[5m])
 
-# Function latency
+# Upstream latency
 histogram_quantile(0.99,
-  rate(envoy_cluster_upstream_rq_time_bucket{envoy_cluster_name=~".*function.*"}[5m])
+  rate(envoy_cluster_upstream_rq_time_bucket{envoy_cluster_name=~".*user-service.*"}[5m])
 )
 ```
 
@@ -494,18 +519,18 @@ histogram_quantile(0.99,
 
 **Enable function discovery** - Use OpenAPI specs and gRPC reflection for automatic discovery.
 
-**Version functions explicitly** - Include version qualifiers when routing to Lambda or cloud functions.
+**Version functions explicitly** - Include version qualifiers when routing to Lambda functions.
 
-**Cache function metadata** - Configure appropriate TTLs for function discovery to reduce overhead.
+**Cache function metadata** - Keep discovered service specs stable and review changes before production rollout.
 
-**Monitor per-function metrics** - Track latency and error rates at the function level for granular observability.
+**Monitor upstream metrics** - Track latency and error rates for upstreams that represent your routed functions.
 
 **Use transformation templates** - Leverage Gloo's transformation capabilities to adapt requests to function signatures.
 
 **Test function routing** - Verify that discovered functions match expected service APIs.
 
-**Implement circuit breakers** - Protect functions from overload with per-function circuit breakers.
+**Implement circuit breakers** - Protect function upstreams from overload with circuit breakers.
 
 ## Conclusion
 
-Gloo Edge's function routing capability transforms API Gateway architecture from endpoint-based to function-based routing. By understanding service internals through OpenAPI specs, gRPC reflection, and cloud function metadata, Gloo enables intelligent request routing that reduces boilerplate code and enables sophisticated API compositions. This approach is particularly powerful for microservices architectures mixing REST, gRPC, and serverless functions, providing a unified API layer that abstracts backend implementation details while maintaining high performance through Envoy's proven proxy capabilities.
+Gloo Edge's function routing capability transforms API Gateway architecture from endpoint-based to function-based routing. By understanding service internals through OpenAPI specs, gRPC reflection, and Lambda function metadata, Gloo enables intelligent request routing that reduces boilerplate code and enables sophisticated API compositions. This approach is particularly powerful for microservices architectures mixing REST, gRPC, and serverless functions, providing a unified API layer that abstracts backend implementation details while maintaining high performance through Envoy's proven proxy capabilities.
