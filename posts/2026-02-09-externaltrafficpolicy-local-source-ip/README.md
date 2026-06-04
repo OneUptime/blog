@@ -18,7 +18,7 @@ Kubernetes services support two ExternalTrafficPolicy modes:
 
 **Cluster (default)**: Traffic can route to any node, then to any pod. Source IP is lost due to SNAT.
 
-**Local**: Traffic only routes to pods on the receiving node. Source IP is preserved but load balancing is uneven.
+**Local**: Traffic only routes to pods on the receiving node. Traffic sent to a node without local endpoints is dropped, so the external load balancer should use health checks to send traffic only to nodes with endpoints. Source IP is preserved but load balancing can be uneven.
 
 The choice impacts:
 - Client IP visibility
@@ -39,7 +39,7 @@ With ExternalTrafficPolicy: Cluster:
 With ExternalTrafficPolicy: Local:
 
 1. Client sends request to LoadBalancer IP
-2. LoadBalancer routes only to nodes with pods
+2. LoadBalancer routes to nodes that pass the service health check
 3. Node forwards directly to local pod without SNAT
 4. Pod sees original client IP
 
@@ -54,11 +54,14 @@ apiVersion: v1
 kind: Service
 metadata:
   name: web-service
+  labels:
+    app: web
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
     protocol: TCP
   selector:
@@ -79,7 +82,7 @@ kubectl get svc web-service -o jsonpath='{.spec.externalTrafficPolicy}'
 
 ## Understanding Health Check Implications
 
-With ExternalTrafficPolicy: Local, Kubernetes creates node-level health checks:
+With ExternalTrafficPolicy: Local on a LoadBalancer Service, Kubernetes allocates a health check node port that external load balancers can use:
 
 ```yaml
 # The service automatically gets health check node ports
@@ -87,27 +90,30 @@ apiVersion: v1
 kind: Service
 metadata:
   name: web-service
+  labels:
+    app: web
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
   healthCheckNodePort: 32000  # Automatically assigned if not specified
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
   selector:
     app: web
 ```
 
-The health check endpoint reports healthy only if pods exist on that node.
+The health check endpoint reports healthy only if kube-proxy is healthy and the node has local endpoints for the service.
 
 Check the health check port:
 
 ```bash
 # Get the health check port
-kubectl get svc web-service -o jsonpath='{.spec.healthCheckNodePort}'
+HEALTH_CHECK_PORT=$(kubectl get svc web-service -o jsonpath='{.spec.healthCheckNodePort}')
 
 # Test health check endpoint
-curl http://<node-ip>:32000/healthz
+curl http://<node-ip>:${HEALTH_CHECK_PORT}/healthz
 ```
 
 ## Handling Uneven Load Distribution
@@ -115,10 +121,11 @@ curl http://<node-ip>:32000/healthz
 ExternalTrafficPolicy: Local causes uneven load distribution:
 
 ```yaml
-# Example: 3 nodes with different pod counts
-# Node 1: 5 pods - receives ~50% of traffic
-# Node 2: 3 pods - receives ~30% of traffic
-# Node 3: 2 pods - receives ~20% of traffic
+# Example: 3 healthy nodes with different pod counts
+# Each node may receive ~33% of traffic from the external load balancer
+# Node 1: 5 pods - each pod receives ~6.7% of total traffic
+# Node 2: 3 pods - each pod receives ~11.1% of total traffic
+# Node 3: 2 pods - each pod receives ~16.7% of total traffic
 ```
 
 Mitigate with pod anti-affinity:
@@ -157,7 +164,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
       - name: web
-        image: nginx:latest
+        image: your-web-app:latest
         ports:
         - containerPort: 8080
 ```
@@ -176,7 +183,13 @@ http {
         192.168.0.0/16 1;
     }
 
+    map $is_trusted_ip $external_limit_key {
+        1 "";
+        0 $binary_remote_addr;
+    }
+
     limit_req_zone $binary_remote_addr zone=client_limit:10m rate=10r/s;
+    limit_req_zone $external_limit_key zone=external_client_limit:10m rate=5r/s;
 
     server {
         listen 8080;
@@ -184,11 +197,8 @@ http {
         # Real client IP is in the connection, not X-Forwarded-For
         location / {
             limit_req zone=client_limit burst=20 nodelay;
-
-            if ($is_trusted_ip = 0) {
-                # Apply stricter limits for external clients
-                limit_req zone=client_limit burst=5;
-            }
+            # Apply stricter limits for external clients
+            limit_req zone=external_client_limit burst=5 nodelay;
 
             proxy_pass http://backend;
         }
@@ -287,11 +297,14 @@ apiVersion: v1
 kind: Service
 metadata:
   name: web-cluster-policy
+  labels:
+    app: web
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Cluster
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
   selector:
     app: web
@@ -301,11 +314,14 @@ apiVersion: v1
 kind: Service
 metadata:
   name: web-local-policy
+  labels:
+    app: web
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
   selector:
     app: web
@@ -356,14 +372,14 @@ for node in $(kubectl get nodes -o name | cut -d/ -f2); do
 done
 ```
 
-Create Prometheus metrics:
+Create a ServiceMonitor for a Service with a matching label and a named metrics port:
 
 ```yaml
 # servicemonitor.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: web-service
+  name: web-service-monitor
 spec:
   selector:
     matchLabels:
@@ -410,7 +426,8 @@ sleep 5
 
 # Delete a pod
 echo "Deleting a pod..."
-kubectl delete pod -l app=web --field-selector=status.phase=Running | head -1
+POD=$(kubectl get pod -l app=web --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+kubectl delete pod "$POD"
 
 # Wait for recovery
 sleep 30
