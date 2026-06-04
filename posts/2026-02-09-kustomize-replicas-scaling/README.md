@@ -14,7 +14,7 @@ Rather than maintaining separate deployment manifests for each environment or us
 
 ## Understanding the replicas field
 
-The replicas field in Kustomize overrides the replica count in Deployments, StatefulSets, and ReplicaSets. It's a simple key-value mapping between resource names and desired replica counts:
+The replicas field in Kustomize overrides the replica count in Deployments, StatefulSets, ReplicaSets, and ReplicationControllers. It's a simple key-value mapping between resource names and desired replica counts:
 
 ```yaml
 # kustomization.yaml
@@ -70,7 +70,7 @@ Create overlays for each environment with appropriate replica counts:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 replicas:
@@ -86,7 +86,7 @@ replicas:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 replicas:
@@ -102,7 +102,7 @@ replicas:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 replicas:
@@ -124,11 +124,11 @@ Production environments often require replica counts that ensure availability du
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 replicas:
-# Frontend services - spread across availability zones
+# Frontend services - sized for multi-zone availability
 - name: web-frontend
   count: 6
 
@@ -148,7 +148,7 @@ replicas:
   count: 3
 ```
 
-The replica counts reflect each service's role and importance. Critical path services like the API gateway run more replicas than supporting services.
+The replica counts reflect each service's role and importance. Critical path services like the API gateway run more replicas than supporting services. Use topology spread constraints or pod anti-affinity when you need to enforce placement across zones.
 
 ## Combining replicas with resource requests
 
@@ -159,7 +159,7 @@ Replica configuration works well alongside resource specifications. Calculate to
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 replicas:
@@ -182,7 +182,7 @@ patches:
           memory: "2Gi"
 ```
 
-With 20 replicas requesting 1GB each, this deployment needs at least 20GB of memory capacity in your cluster. Document these calculations to help with capacity planning.
+With 20 replicas requesting 1Gi each, this deployment needs at least 20Gi of memory capacity in your cluster. Document these calculations to help with capacity planning.
 
 ## Regional deployment variations
 
@@ -193,7 +193,7 @@ Different regions might need different replica counts based on user distribution
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 namespace: us-east
@@ -211,7 +211,7 @@ replicas:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 namespace: eu-west
@@ -235,7 +235,7 @@ StatefulSets require more care when adjusting replicas because they maintain sta
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 replicas:
@@ -260,7 +260,7 @@ Create temporary overlays for load testing with elevated replica counts:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 namespace: loadtest
@@ -275,23 +275,17 @@ replicas:
 
 Deploy this configuration to a test cluster to validate behavior under load. The isolated namespace prevents interference with other environments.
 
-## Using replicas with HPA
+## Using HPA with Kustomize
 
-If you use Horizontal Pod Autoscaling, you can still use the replicas field to set the initial replica count:
+If you use Horizontal Pod Autoscaling, let the HPA manage the live replica count and set the lower bound with minReplicas:
 
 ```yaml
 # overlays/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
-- ../../base
-
-replicas:
-- name: web-service
-  count: 5  # Starting point for HPA
-
 resources:
+- ../../base
 - hpa.yaml
 ```
 
@@ -317,7 +311,7 @@ spec:
         averageUtilization: 70
 ```
 
-The replicas field sets the initial count, and HPA takes over from there. Ensure the replica count matches or exceeds the HPA minReplicas to avoid conflicts.
+The HPA manages the target workload's replicas field after it is active. Avoid reapplying a Deployment or StatefulSet manifest with spec.replicas set while HPA is managing it, because that can cause the workload to be scaled back to the manifest value.
 
 ## Zero-replica deployments for cost savings
 
@@ -328,16 +322,16 @@ Development or feature branch environments might not need services running const
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 namePrefix: feature-auth-
 
 replicas:
-- name: feature-auth-api-service
+- name: api-service
   count: 0
 
-- name: feature-auth-worker-service
+- name: worker-service
   count: 0
 ```
 
@@ -352,7 +346,7 @@ Include comments in your kustomization files explaining replica counts:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 replicas:
