@@ -14,7 +14,7 @@ This guide demonstrates using multiple tools to scan for deprecated APIs, analyz
 
 ## Understanding API Deprecation Policy
 
-Kubernetes follows a formal deprecation policy: API versions must be announced as deprecated for at least 12 months or three releases (whichever is longer) before removal. Beta APIs must exist for at least 9 months before deprecation.
+Kubernetes follows a formal deprecation policy: beta API versions are no longer served until at least 9 months or three minor releases after deprecation (whichever is longer). GA API versions can be marked as deprecated, but are not removed within a major Kubernetes version.
 
 When an API version is removed, resources using that version fail to be created or updated. Existing resources stored in etcd continue working until you attempt modifications, at which point you must migrate to the supported API version.
 
@@ -30,7 +30,7 @@ Pluto scans Kubernetes manifests and Helm releases for deprecated APIs.
 wget https://github.com/FairwindsOps/pluto/releases/download/v5.19.0/pluto_5.19.0_linux_amd64.tar.gz
 tar -xvf pluto_5.19.0_linux_amd64.tar.gz
 sudo mv pluto /usr/local/bin/
-chmod +x /usr/local/bin/pluto
+sudo chmod +x /usr/local/bin/pluto
 
 # Scan cluster for deprecated APIs
 pluto detect-all-in-cluster --target-versions k8s=v1.28.0
@@ -45,7 +45,7 @@ pluto detect-files -d ./kubernetes-manifests/ --target-versions k8s=v1.28.0
 pluto detect-helm --target-versions k8s=v1.28.0
 
 # Output as JSON for processing
-pluto detect-all-in-cluster --target-versions k8s=v1.28.0 -o json > deprecated-apis.json
+pluto detect-all-in-cluster --target-versions k8s=v1.28.0 -o json --no-footer > deprecated-apis.json
 ```
 
 Example output:
@@ -96,13 +96,11 @@ rules:
     resources: ["ingresses", "deployments", "daemonsets", "replicasets"]
   - group: "apps"
     resources: ["deployments", "daemonsets", "replicasets", "statefulsets"]
-    resourceNames: []
-    namespaces: []
-    verbs: ["create", "update", "patch"]
   - group: "batch"
     resources: ["cronjobs"]
   - group: "policy"
     resources: ["poddisruptionbudgets"]
+  verbs: ["create", "update", "patch"]
 ```
 
 For managed Kubernetes, enable audit logging through cloud provider tools.
@@ -131,10 +129,10 @@ helm template my-release my-chart/ | pluto detect - --target-versions k8s=v1.28.
 
 # Check all deployed Helm releases
 helm list -A -o json | \
-  jq -r '.[] | "\(.name) -n \(.namespace)"' | \
-  while read -r name ns; do
+  jq -r '.[] | "\(.name)\t\(.namespace)"' | \
+  while IFS=$'\t' read -r name ns; do
     echo "Checking $name in $ns"
-    helm get manifest $name $ns | pluto detect -
+    helm get manifest "$name" -n "$ns" | pluto detect -
   done
 ```
 
@@ -157,10 +155,11 @@ jobs:
         wget -q https://github.com/FairwindsOps/pluto/releases/download/v5.19.0/pluto_5.19.0_linux_amd64.tar.gz
         tar -xzf pluto_5.19.0_linux_amd64.tar.gz
         sudo mv pluto /usr/local/bin/
+        sudo chmod +x /usr/local/bin/pluto
 
     - name: Scan manifests
       run: |
-        pluto detect-files -d ./k8s/ --target-versions k8s=v1.28.0 --output markdown > pluto-report.md
+        pluto detect-files -d ./k8s/ --target-versions k8s=v1.28.0 --output markdown --no-footer --ignore-deprecations --ignore-removals --ignore-unavailable-replacements > pluto-report.md
 
     - name: Comment PR with results
       if: always()
@@ -178,7 +177,7 @@ jobs:
 
     - name: Fail if deprecated APIs found
       run: |
-        if pluto detect-files -d ./k8s/ --target-versions k8s=v1.28.0 | grep -q "DEPRECATED"; then
+        if pluto detect-files -d ./k8s/ --target-versions k8s=v1.28.0 --no-footer --ignore-deprecations --ignore-removals --ignore-unavailable-replacements | grep -q "DEPRECATED\\|REMOVED"; then
           echo "Deprecated APIs found!"
           exit 1
         fi
@@ -203,7 +202,7 @@ Target Kubernetes Version: 1.28
 EOF
 
 # Count deprecated resources
-DEPRECATED_COUNT=$(pluto detect-all-in-cluster --target-versions k8s=v1.28.0 -o json | jq '. | length')
+DEPRECATED_COUNT=$(pluto detect-all-in-cluster --target-versions k8s=v1.28.0 -o json --no-footer --ignore-deprecations --ignore-removals --ignore-unavailable-replacements | jq '.items | length')
 
 echo "Total deprecated resources found: **$DEPRECATED_COUNT**" >> $OUTPUT_FILE
 echo "" >> $OUTPUT_FILE
@@ -212,8 +211,8 @@ echo "" >> $OUTPUT_FILE
 echo "## Deprecated Resources by Namespace" >> $OUTPUT_FILE
 echo "" >> $OUTPUT_FILE
 
-pluto detect-all-in-cluster --target-versions k8s=v1.28.0 -o json | \
-  jq -r 'group_by(.namespace) | .[] | "### Namespace: \(.[0].namespace)\n\n| Name | Kind | Current API | Replacement | Removed In |\n|------|------|------------|-------------|------------|\n\(map("| \(.name) | \(.kind) | \(.api.version) | \(.api.replacement // "N/A") | \(.api.removedIn) |") | join("\n"))\n"' >> $OUTPUT_FILE
+pluto detect-all-in-cluster --target-versions k8s=v1.28.0 -o json --no-footer --ignore-deprecations --ignore-removals --ignore-unavailable-replacements | \
+  jq -r '.items | group_by(.namespace // "cluster") | .[] | "### Namespace: \(.[0].namespace // "cluster")\n\n| Name | Kind | Current API | Replacement | Removed In |\n|------|------|------------|-------------|------------|\n\(map("| \(.name) | \(.api.kind) | \(.api.version) | \(.api["replacement-api"] // "N/A") | \(.api["removed-in"]) |") | join("\n"))\n"' >> $OUTPUT_FILE
 
 # Add remediation steps
 cat >> $OUTPUT_FILE <<EOF
@@ -280,11 +279,13 @@ spec:
 Query deprecated API metrics:
 
 ```promql
-# Count of deprecated API requests
+# Deprecated APIs that have been requested
 sum by (group, version, resource) (apiserver_requested_deprecated_apis)
 
 # Rate of deprecated API calls
-rate(apiserver_request_total{deprecated="true"}[5m])
+apiserver_requested_deprecated_apis
+  * on(group, version, resource, subresource) group_right()
+    rate(apiserver_request_total[5m])
 ```
 
 ## Creating Deprecation Dashboard
@@ -299,7 +300,7 @@ Track deprecation metrics over time.
       {
         "title": "Deprecated API Request Rate",
         "targets": [{
-          "expr": "rate(apiserver_request_total{deprecated=\"true\"}[5m])"
+          "expr": "apiserver_requested_deprecated_apis * on(group, version, resource, subresource) group_right() rate(apiserver_request_total[5m])"
         }]
       },
       {
@@ -309,9 +310,9 @@ Track deprecation metrics over time.
         }]
       },
       {
-        "title": "Top Clients Using Deprecated APIs",
+        "title": "Deprecated API Requests by Verb",
         "targets": [{
-          "expr": "topk(10, sum by (client) (rate(apiserver_request_total{deprecated=\"true\"}[5m])))"
+          "expr": "topk(10, sum by (verb) (apiserver_requested_deprecated_apis * on(group, version, resource, subresource) group_right() rate(apiserver_request_total[5m])))"
         }]
       }
     ]
