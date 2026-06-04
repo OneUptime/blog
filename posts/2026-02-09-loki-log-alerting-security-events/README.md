@@ -38,6 +38,13 @@ data:
     server:
       http_listen_port: 3100
 
+    common:
+      ring:
+        kvstore:
+          store: inmemory
+      replication_factor: 1
+      path_prefix: /loki
+
     ruler:
       enable_api: true
       enable_alertmanager_v2: true
@@ -48,25 +55,18 @@ data:
         local:
           directory: /etc/loki/rules
 
-    ingester:
-      lifecycler:
-        ring:
-          kvstore:
-            store: inmemory
-          replication_factor: 1
-
     schema_config:
       configs:
       - from: 2024-01-01
-        store: boltdb-shipper
+        store: tsdb
         object_store: filesystem
-        schema: v11
+        schema: v13
         index:
           prefix: index_
           period: 24h
 
     storage_config:
-      boltdb_shipper:
+      tsdb_shipper:
         active_index_directory: /loki/index
         cache_location: /loki/cache
       filesystem:
@@ -265,7 +265,7 @@ data:
       # Detect kernel module loading
       - alert: KernelModuleLoaded
         expr: |
-          sum by (namespace, pod, module) (
+          sum by (namespace, pod) (
             count_over_time(
               {namespace=~".*"}
               |~ "(?i)(insmod|modprobe|kernel.*module)"
@@ -278,7 +278,7 @@ data:
           category: security
         annotations:
           summary: "Kernel module loading detected"
-          description: "Module {{ $labels.module }} loaded in {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Kernel module loading command detected in {{ $labels.namespace }}/{{ $labels.pod }}"
 ```
 
 ## Kubernetes Audit Log Security Alerts
@@ -293,7 +293,7 @@ Monitor Kubernetes audit logs for security events:
   # Detect secret access
   - alert: SecretAccessed
     expr: |
-      sum by (user, namespace, secret_name) (
+      sum by (user_username, objectRef_namespace, objectRef_name) (
         count_over_time(
           {job="kubernetes-audit"}
           | json
@@ -308,13 +308,13 @@ Monitor Kubernetes audit logs for security events:
       severity: warning
       category: audit
     annotations:
-      summary: "Secret accessed by {{ $labels.user }}"
-      description: "User {{ $labels.user }} accessed secret {{ $labels.secret_name }} in {{ $labels.namespace }}"
+      summary: "Secret accessed by {{ $labels.user_username }}"
+      description: "User {{ $labels.user_username }} accessed secret {{ $labels.objectRef_name }} in {{ $labels.objectRef_namespace }}"
 
   # Detect role binding changes
   - alert: RoleBindingModified
     expr: |
-      sum by (user, namespace, role_name) (
+      sum by (user_username, objectRef_namespace, objectRef_name) (
         count_over_time(
           {job="kubernetes-audit"}
           | json
@@ -329,12 +329,12 @@ Monitor Kubernetes audit logs for security events:
       category: audit
     annotations:
       summary: "Role binding modified"
-      description: "User {{ $labels.user }} modified {{ $labels.role_name }} in {{ $labels.namespace }}"
+      description: "User {{ $labels.user_username }} modified {{ $labels.objectRef_name }} in {{ $labels.objectRef_namespace }}"
 
   # Detect exec into pods
   - alert: PodExecDetected
     expr: |
-      sum by (user, namespace, pod) (
+      sum by (user_username, objectRef_namespace, objectRef_name) (
         count_over_time(
           {job="kubernetes-audit"}
           | json
@@ -349,20 +349,20 @@ Monitor Kubernetes audit logs for security events:
       severity: info
       category: audit
     annotations:
-      summary: "Frequent pod exec by {{ $labels.user }}"
-      description: "User {{ $labels.user }} exec'd into {{ $labels.pod }} {{ $value }} times"
+      summary: "Frequent pod exec by {{ $labels.user_username }}"
+      description: "User {{ $labels.user_username }} exec'd into {{ $labels.objectRef_name }} {{ $value }} times"
 
   # Detect privilege escalation via RBAC
   - alert: PrivilegedRoleCreated
     expr: |
-      sum by (user, role_name) (
+      sum by (user_username, objectRef_name) (
         count_over_time(
           {job="kubernetes-audit"}
+          |~ "\"pods/exec\""
           | json
           | objectRef_resource =~ "roles|clusterroles"
           | verb = "create"
           | responseStatus_code < 300
-          | requestObject =~ ".*\"create\".*\"pods/exec\".*"
           [5m]
         )
       ) > 0
@@ -372,7 +372,7 @@ Monitor Kubernetes audit logs for security events:
       category: audit
     annotations:
       summary: "Privileged role created"
-      description: "User {{ $labels.user }} created role {{ $labels.role_name }} with exec privileges"
+      description: "User {{ $labels.user_username }} created role {{ $labels.objectRef_name }} with exec privileges"
 ```
 
 ## Application Security Alerts
@@ -489,6 +489,9 @@ volumes:
 - name: rules
   configMap:
     name: loki-security-rules
+    items:
+    - key: security-rules.yaml
+      path: fake/security-rules.yaml
 ```
 
 ## Testing Security Alerts
@@ -497,10 +500,10 @@ Verify alerts fire correctly:
 
 ```bash
 # Generate unauthorized access
-kubectl run test-pod --image=nginx --rm -it -- curl -H "Authorization: invalid" http://api-service
+kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never --command -- curl -H "Authorization: invalid" http://api-service
 
-# Generate privilege escalation attempt
-kubectl exec -it test-pod -- sudo su
+# Generate privilege escalation test log
+kubectl run test-pod --image=busybox --restart=Never --command -- sh -c 'echo "privilege escalation sudo su root attempt"; sleep 300'
 
 # Check Loki rules status
 curl http://loki:3100/loki/api/v1/rules
@@ -522,9 +525,10 @@ receivers:
     send_resolved: true
 
 route:
+  receiver: 'security-siem'
   routes:
-  - match:
-      category: security
+  - matchers:
+    - category="security"
     receiver: 'security-siem'
     group_wait: 10s
     group_interval: 30s
