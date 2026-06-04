@@ -14,7 +14,7 @@ Running Mattermost in Docker simplifies deployment and maintenance. The official
 
 ## Why Self-Host Team Chat
 
-Slack is convenient until you need to keep messages on-premises, audit communication logs, or stop paying per-user fees that add up fast with growing teams. Mattermost's free tier (Team Edition) supports unlimited users and message history. The Enterprise Edition adds compliance features, LDAP/SAML authentication, and advanced permissions, but the free version covers most teams' needs.
+Slack is convenient until you need to keep messages on-premises, audit communication logs, or stop paying per-user fees that add up fast with growing teams. Mattermost Team Edition is free to use, self-hosted, and intended for small teams, hobbyists, or personal use under 250 activated users. The Enterprise Edition adds compliance features, LDAP/SAML authentication, and advanced permissions, but the free version covers many small teams' needs.
 
 ## Prerequisites
 
@@ -33,11 +33,9 @@ Mattermost requires a PostgreSQL database and optionally uses Nginx or another r
 
 ```yaml
 # docker-compose.yml - Mattermost Team Chat
-version: "3.8"
-
 services:
   mattermost:
-    image: mattermost/mattermost-team-edition:latest
+    image: mattermost/mattermost-team-edition:11.7.1
     container_name: mattermost
     restart: unless-stopped
     ports:
@@ -55,7 +53,7 @@ services:
       # Persist plugins
       - mattermost-plugins:/mattermost/plugins
       - mattermost-client-plugins:/mattermost/client/plugins
-      # Persist bleve indexes for search
+      # Persist Bleve indexes for older Mattermost versions that use Bleve
       - mattermost-bleve:/mattermost/bleve-indexes
     environment:
       # Timezone
@@ -65,19 +63,18 @@ services:
       MM_SQLSETTINGS_DATASOURCE: postgres://mattermost:${POSTGRES_PASSWORD}@mattermost-postgres:5432/mattermost?sslmode=disable&connect_timeout=10
       # Site URL - must match your public access URL
       MM_SERVICESETTINGS_SITEURL: https://chat.yourdomain.com
+      # Enable local mmctl access from inside the container
+      MM_SERVICESETTINGS_ENABLELOCALMODE: "true"
       # Disable diagnostics
       MM_LOGSETTINGS_ENABLEDIAGNOSTICS: "false"
-      # Enable Bleve for full-text search (no Elasticsearch needed)
+      # Store Bleve indexes if you enable Bleve on Mattermost versions before v11
       MM_BLEVESETTINGS_INDEXDIR: /mattermost/bleve-indexes
-      MM_BLEVESETTINGS_ENABLEINDEXING: "true"
-      MM_BLEVESETTINGS_ENABLESEARCHING: "true"
-      MM_BLEVESETTINGS_ENABLEAUTOCOMPLETE: "true"
     depends_on:
       mattermost-postgres:
         condition: service_healthy
     security_opt:
       - no-new-privileges:true
-    pids_limit: 200
+    mem_limit: 4G
     tmpfs:
       - /tmp
 
@@ -98,7 +95,7 @@ services:
       retries: 5
     security_opt:
       - no-new-privileges:true
-    pids_limit: 100
+    mem_limit: 1G
     tmpfs:
       - /tmp
       - /var/run/postgresql
@@ -148,6 +145,7 @@ MM_EMAILSETTINGS_REQUIREEMAILVERIFICATION=true
 MM_EMAILSETTINGS_SMTPSERVER=smtp.gmail.com
 MM_EMAILSETTINGS_SMTPPORT=587
 MM_EMAILSETTINGS_CONNECTIONSECURITY=STARTTLS
+MM_EMAILSETTINGS_ENABLESMTPAUTH=true
 MM_EMAILSETTINGS_SMTPUSERNAME=your-email@gmail.com
 MM_EMAILSETTINGS_SMTPPASSWORD=your-app-password
 MM_EMAILSETTINGS_SENDEMAILNOTIFICATIONS=true
@@ -156,7 +154,7 @@ MM_EMAILSETTINGS_SENDEMAILNOTIFICATIONS=true
 MM_FILESETTINGS_MAXFILESIZE=52428800
 
 # Rate limiting
-MM_RATELIMITSETTINGS_ENABLE=true
+MM_RATELIMITSETTINGS_ENABLERATELIMITER=true
 MM_RATELIMITSETTINGS_PERSEC=10
 MM_RATELIMITSETTINGS_MAXBURST=100
 ```
@@ -167,19 +165,20 @@ Mattermost organizes communication into teams (which contain channels) and direc
 
 ```bash
 # Use the mmctl CLI tool to manage Mattermost from the command line
-# Install mmctl or use it from inside the container
+# Install mmctl or use it from inside the container. The compose file above
+# enables local mode, so these commands can use the container's local socket.
 
 # Create a new team
-docker exec mattermost mmctl team create --name engineering --display-name "Engineering" --email admin@yourdomain.com
+docker exec mattermost mmctl --local team create --name engineering --display-name "Engineering" --email admin@yourdomain.com
 
 # Create a channel
-docker exec mattermost mmctl channel create --team engineering --name deployments --display-name "Deployments"
+docker exec mattermost mmctl --local channel create --team engineering --name deployments --display-name "Deployments"
 
 # Add a user to a team
-docker exec mattermost mmctl team users add engineering user@yourdomain.com
+docker exec mattermost mmctl --local team users add engineering user@yourdomain.com
 
 # Add a user to a channel
-docker exec mattermost mmctl channel users add engineering:deployments user@yourdomain.com
+docker exec mattermost mmctl --local channel users add engineering:deployments user@yourdomain.com
 ```
 
 ## Incoming Webhooks for Alerts
