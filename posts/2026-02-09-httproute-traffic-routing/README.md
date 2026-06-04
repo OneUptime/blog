@@ -91,7 +91,7 @@ spec:
           port: 80
 ```
 
-Rules are evaluated in order, so more specific paths should come first.
+Gateway API prioritizes the most specific matching rule. Exact path matches win first, then the longest path prefix, followed by method, header, and query parameter specificity. If there is still a tie within one HTTPRoute, the first matching rule wins, so keeping more specific paths first still makes the tie-breaking behavior clear.
 
 ## Using Exact and Regex Path Matching
 
@@ -138,7 +138,7 @@ spec:
           port: 8080
 ```
 
-Use Exact for specific endpoints and RegularExpression for pattern-based matching.
+Use Exact for specific endpoints and RegularExpression for pattern-based matching. RegularExpression path matching is implementation-specific, so check your Gateway controller's documentation for supported regex syntax.
 
 ## Implementing Header-Based Routing
 
@@ -187,7 +187,7 @@ spec:
           port: 8080
 ```
 
-Header matching enables A/B testing and canary deployments.
+Header matching enables A/B testing and canary deployments. RegularExpression header matching is implementation-specific, so check your Gateway controller's documentation before relying on a specific regex dialect.
 
 ## Implementing Query Parameter Routing
 
@@ -205,6 +205,7 @@ spec:
     - name: http-gateway
   hostnames:
     - "example.com"
+    - "old.example.com"
   rules:
     # Route debug requests to debug backend
     - matches:
@@ -372,7 +373,7 @@ Redirect requests to different URLs or hostnames.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: redirects
+  name: https-redirect
   namespace: default
 spec:
   parentRefs:
@@ -391,18 +392,28 @@ spec:
             scheme: "https"
             statusCode: 301
 
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: old-domain-redirect
+  namespace: default
+spec:
+  parentRefs:
+    - name: http-gateway
+  hostnames:
+    - "old.example.com"
+  rules:
     # Redirect old domain to new domain
     - matches:
         - path:
             type: PathPrefix
             value: "/"
-          headers:
-            - name: Host
-              value: "old.example.com"
       filters:
         - type: RequestRedirect
           requestRedirect:
             hostname: "new.example.com"
+            scheme: "https"
             statusCode: 301
 ```
 
@@ -474,7 +485,7 @@ spec:
 
 ---
 # ReferenceGrant allowing cross-namespace reference
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-frontend-to-backend
@@ -534,7 +545,7 @@ spec:
 
 ## Best Practices for HTTPRoute Configuration
 
-Order rules from most specific to least specific. More specific matches should come first to prevent generic rules from catching traffic.
+Order rules from most specific to least specific for readability and deterministic tie-breaking. Gateway API match precedence already favors more specific matches over generic matches.
 
 Use path prefixes rather than exact matches when possible for flexibility in API design.
 
