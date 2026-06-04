@@ -19,8 +19,6 @@ A production compose file uses only `image:` directives with no `build:` section
 ```yaml
 # docker-compose.prod.yml - production, pre-built images only
 
-version: "3.8"
-
 services:
   web:
     image: registry.example.com/myapp/web:${VERSION}
@@ -29,12 +27,6 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://${DB_USER}:${DB_PASS}@db:5432/${DB_NAME}
-    deploy:
-      replicas: 2
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 512M
     restart: unless-stopped
 
   api:
@@ -75,7 +67,7 @@ volumes:
   redisdata:
 ```
 
-Every image is pinned to a specific version through the `${VERSION}` variable. No Dockerfiles are referenced. No source code is needed on the production server.
+Application images are pinned through the `${VERSION}` variable, and infrastructure images use explicit tags. No Dockerfiles are referenced. No source code is needed on the production server.
 
 ## Development vs Production Compose Files
 
@@ -83,8 +75,6 @@ Keep separate files for development and production. The development file include
 
 ```yaml
 # docker-compose.yml - development with local builds
-version: "3.8"
-
 services:
   web:
     build:
@@ -154,7 +144,7 @@ fi
 echo "Pulling images for version ${VERSION}..."
 docker compose -f "$COMPOSE_FILE" pull
 
-# Deploy with zero-downtime rolling update
+# Deploy the updated containers
 echo "Deploying version ${VERSION}..."
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 
@@ -170,22 +160,23 @@ Never use `latest` in production. Always pin to specific versions or digests:
 ```yaml
 services:
   # Pin to a specific semantic version tag
-  app:
+  app_semver:
     image: registry.example.com/myapp:2.1.0
 
   # Pin to a git SHA for exact reproducibility
-  app:
+  app_git_sha:
     image: registry.example.com/myapp:abc123f
 
   # Pin to a digest for maximum security (immutable reference)
-  app:
-    image: registry.example.com/myapp@sha256:a1b2c3d4e5f6...
+  app_digest:
+    image: registry.example.com/myapp@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
 Digest pinning is the most secure because tags can be overwritten, but digests are immutable. Get the digest of an image:
 
 ```bash
 # Get the digest of a specific image tag
+docker pull registry.example.com/myapp:2.1.0
 docker inspect --format='{{index .RepoDigests 0}}' registry.example.com/myapp:2.1.0
 ```
 
@@ -246,11 +237,11 @@ services:
     pull_policy: missing   # Only pull if not available locally
 
   monitoring:
-    image: prom/prometheus:latest
-    pull_policy: always    # Always pull latest to get updates
+    image: registry.example.com/monitoring/prometheus:${PROM_VERSION}
+    pull_policy: always    # Always check the registry for this pinned tag
 ```
 
-For production, use `pull_policy: always` on your application images to ensure you get the exact version from the registry. Use `missing` for stable infrastructure images like databases.
+For production, use `pull_policy: always` on your application images to ensure Compose checks the registry for the configured tag. Use digests when you need an immutable image reference. Use `missing` for stable infrastructure images like databases.
 
 You can also pull all images explicitly before starting:
 
@@ -268,19 +259,20 @@ If your images are in a private registry, authenticate before pulling:
 
 ```bash
 # Log in to a private registry
-docker login registry.example.com -u deploy -p "${REGISTRY_TOKEN}"
+echo "${REGISTRY_TOKEN}" | docker login registry.example.com -u deploy --password-stdin
 
 # Now docker compose pull will work with private images
 docker compose -f docker-compose.prod.yml pull
 ```
 
-For automated deployments, use credential helpers or store the auth in Docker's config:
+For automated deployments, use credential helpers or a configured credential store:
 
 ```bash
-# Store credentials persistently (encrypted on disk)
+# Store credentials persistently with the configured Docker credential store
 docker login registry.example.com
 
-# Credentials are saved in ~/.docker/config.json
+# Docker stores credentials in the configured credential store.
+# Without one, credentials may be saved in ~/.docker/config.json in base64-encoded form.
 # The compose pull command will use them automatically
 ```
 
