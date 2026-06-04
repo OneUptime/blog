@@ -225,9 +225,9 @@ spec:
               print(f"Report complete for {report_hour}")
 ```
 
-With Forbid, if the 1 PM report generation runs until 2:45 PM, the 2 PM scheduled run will be skipped. The 3 PM run will start normally and generate the 2 PM report.
+With Forbid, if the 1 PM report generation runs until 2:45 PM, the 2 PM scheduled run will be skipped. The 3 PM run will start normally and generate the report for the previous hour.
 
-This ensures every hour's report eventually gets generated, even if skips occur. You can monitor skipped runs and adjust your schedule or resources if skips are frequent.
+This prevents overlapping report generation, but it does not automatically backfill skipped hours. You can monitor skipped runs and adjust your schedule or resources if skips are frequent.
 
 ## Monitoring Concurrent Runs
 
@@ -236,15 +236,16 @@ Track active jobs from a CronJob:
 ```bash
 # Get all jobs created by a CronJob
 
-kubectl get jobs -l cronjob-name=database-backup
+kubectl get jobs \
+  -o jsonpath='{range .items[?(@.metadata.ownerReferences[0].name=="database-backup")]}{.metadata.name}{"\n"}{end}'
 
 # Count currently running jobs
-kubectl get jobs -l cronjob-name=database-backup \
-  --field-selector=status.active=1 | wc -l
+kubectl get cronjob database-backup \
+  -o jsonpath='{range .status.active[*]}{.name}{"\n"}{end}' | wc -l
 
 # See job start times
-kubectl get jobs -l cronjob-name=database-backup \
-  -o custom-columns=NAME:.metadata.name,START:.status.startTime,ACTIVE:.status.active
+kubectl get jobs \
+  -o jsonpath='{range .items[?(@.metadata.ownerReferences[0].name=="database-backup")]}{.metadata.name}{"\t"}{.status.startTime}{"\t"}{.status.active}{"\n"}{end}'
 
 # Check for skipped runs with Forbid policy
 kubectl describe cronjob database-backup | grep -A5 "Events:"
@@ -269,13 +270,8 @@ def check_concurrent_violations(cronjob_name, namespace='default'):
     if cronjob.spec.concurrency_policy != 'Forbid':
         return
 
-    # Count active jobs
-    jobs = batch_v1.list_namespaced_job(
-        namespace=namespace,
-        label_selector=f'cronjob-name={cronjob_name}'
-    )
-
-    active_count = sum(1 for job in jobs.items if job.status.active and job.status.active > 0)
+    # Count active jobs from CronJob status
+    active_count = len(cronjob.status.active or []) if cronjob.status else 0
 
     if active_count > 1:
         print(f"WARNING: CronJob {cronjob_name} has {active_count} concurrent runs")
@@ -311,7 +307,7 @@ spec:
             image: time-sensitive:latest
 ```
 
-If the 6 AM run is still active at noon, the noon run is skipped due to Forbid. If the 6 AM run completes at 12:30 PM, the noon run won't start because it's more than 1 hour past its scheduled time.
+If the 6 AM run is still active at noon, the noon run is skipped due to Forbid. If the 6 AM run completes at 1:30 PM, the noon run won't start because it's more than 1 hour past its scheduled time.
 
 This prevents a backlog of jobs from all starting at once when a long blockage clears.
 
