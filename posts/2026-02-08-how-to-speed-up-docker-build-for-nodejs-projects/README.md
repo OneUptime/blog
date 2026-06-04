@@ -17,7 +17,7 @@ A typical naive Dockerfile copies everything, then installs dependencies:
 ```dockerfile
 # BAD: This reinstalls ALL dependencies on every code change
 
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY . .
 RUN npm install
@@ -34,7 +34,7 @@ The most impactful optimization is separating dependency installation from code 
 
 ```dockerfile
 # GOOD: Dependencies are cached unless package.json changes
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 # Copy only dependency manifests first
@@ -83,7 +83,7 @@ A multi-stage build separates the build environment from the production image. T
 
 ```dockerfile
 # Stage 1: Install ALL dependencies and build the project
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -91,7 +91,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production image with only runtime dependencies
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 
 # Copy package files and install production dependencies only
@@ -115,7 +115,7 @@ Docker BuildKit supports cache mounts that persist the npm cache between builds.
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package.json package-lock.json ./
 
@@ -127,32 +127,33 @@ COPY . .
 RUN npm run build
 ```
 
-Enable BuildKit if it is not already your default:
+BuildKit is the default builder for current Docker Desktop and Docker Engine releases. If you are on an older setup where it is not enabled, turn it on for the build:
 
 ```bash
 # Enable BuildKit for the current build
 DOCKER_BUILDKIT=1 docker build -t myapp .
 
-# Or set it as the default in Docker daemon config
-# Add to /etc/docker/daemon.json: {"features": {"buildkit": true}}
+# Current Docker releases use BuildKit by default for Linux container builds
 ```
 
 The cache mount is especially helpful when you add a single new dependency. Without it, npm downloads every package again. With it, npm reuses the cached tarballs and only downloads the new one.
 
 ## Technique 5: Use pnpm or yarn for Faster Installs
 
-pnpm's content-addressable storage and hard linking make it significantly faster than npm for Docker builds:
+pnpm's content-addressable store and efficient linking make it significantly faster than npm for many Docker builds:
 
 ```dockerfile
 # Using pnpm with Docker cache mount
-FROM node:20-alpine
-RUN corepack enable pnpm
+FROM node:24-alpine
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME/bin:$PATH"
+RUN corepack enable
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 
 # pnpm's store is mounted as a persistent cache
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
 COPY . .
@@ -163,7 +164,7 @@ Yarn with its offline cache is another fast alternative:
 
 ```dockerfile
 # Using Yarn with persistent cache
-FROM node:20-alpine
+FROM node:24-alpine
 RUN corepack enable yarn
 
 WORKDIR /app
@@ -178,13 +179,13 @@ COPY . .
 RUN yarn build
 ```
 
-## Technique 6: Parallel Dependency Installation
+## Technique 6: Workspace Dependency Installation
 
-If your project has a monorepo structure, you can install dependencies for multiple packages in parallel:
+If your project has a monorepo structure, you can cache the workspace dependency install by copying package manifests first:
 
 ```dockerfile
 # Monorepo optimization: copy all package.json files first
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 
 # Copy root package files
@@ -207,18 +208,18 @@ BuildKit can execute independent stages in parallel. Structure your Dockerfile t
 # syntax=docker/dockerfile:1
 
 # These two stages run IN PARALLEL because they don't depend on each other
-FROM node:20-alpine AS backend-deps
+FROM node:24-alpine AS backend-deps
 WORKDIR /app
 COPY packages/api/package.json packages/api/package-lock.json ./
 RUN npm ci
 
-FROM node:20-alpine AS frontend-deps
+FROM node:24-alpine AS frontend-deps
 WORKDIR /app
 COPY packages/web/package.json packages/web/package-lock.json ./
 RUN npm ci
 
 # This stage depends on both, so it waits for them to complete
-FROM node:20-alpine AS final
+FROM node:24-alpine AS final
 WORKDIR /app
 COPY --from=backend-deps /app/node_modules ./packages/api/node_modules
 COPY --from=frontend-deps /app/node_modules ./packages/web/node_modules
@@ -228,19 +229,19 @@ RUN npm run build
 
 ## Technique 8: Use Smaller Base Images
 
-The Node.js Alpine image is about 50MB compared to 350MB for the Debian-based image. Smaller base images download faster and leave more room for your application:
+The Node.js Alpine image is smaller than the default Debian-based image. Smaller base images download faster and leave more room for your application:
 
 ```bash
 # Compare base image sizes
 docker images --format "{{.Repository}}:{{.Tag}}\t{{.Size}}" | grep node
-# node:20          ~350MB
-# node:20-slim     ~200MB
-# node:20-alpine   ~50MB
+# node:24          larger Debian-based image
+# node:24-slim     smaller Debian-based image
+# node:24-alpine   smallest common Node.js image variant
 ```
 
 ```dockerfile
 # Use Alpine for the smallest base
-FROM node:20-alpine
+FROM node:24-alpine
 # If you need native compilation tools (node-gyp)
 RUN apk add --no-cache python3 make g++
 ```
