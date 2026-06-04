@@ -26,12 +26,13 @@ Plex's built-in dashboard shows current streams but does not keep historical dat
 Tautulli needs your Plex authentication token to connect. Find it through any of these methods:
 
 ```bash
-# Method 1: Check the Plex server's XML page
+# Method 1: View XML for a library item in Plex Web
 
-# Visit this URL in your browser while signed into Plex:
-# https://app.plex.tv/desktop#!/settings/server
+# Sign in to Plex Web, open any library item,
+# choose Get Info > View XML, and copy the
+# X-Plex-Token value from the URL.
 
-# Method 2: Extract from the Plex preferences file
+# Method 2: Extract the server token from the Plex preferences file
 # On Linux:
 grep -oP 'PlexOnlineToken="\K[^"]+' \
   "/var/lib/plexmediaserver/Library/Application Support/Plex Media Server/Preferences.xml"
@@ -53,8 +54,6 @@ cd ~/tautulli
 
 ```yaml
 # docker-compose.yml - Tautulli Plex Monitoring
-version: "3.8"
-
 services:
   tautulli:
     image: lscr.io/linuxserver/tautulli:latest
@@ -242,7 +241,7 @@ curl -s "http://localhost:8181/api/v2?apikey=YOUR_API_KEY&cmd=get_activity" | py
 # Get watch history for a specific user
 curl -s "http://localhost:8181/api/v2?apikey=YOUR_API_KEY&cmd=get_history&user=username&length=25" | python3 -m json.tool
 
-# Get server statistics
+# Get libraries
 curl -s "http://localhost:8181/api/v2?apikey=YOUR_API_KEY&cmd=get_libraries" | python3 -m json.tool
 
 # Get the most popular movies in the last 30 days
