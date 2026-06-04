@@ -8,7 +8,7 @@ Description: Learn how to configure cert-manager with AWS Route53 DNS-01 challen
 
 ---
 
-Wildcard certificates secure all subdomains under a domain with a single certificate. Instead of managing separate certificates for api.example.com, app.example.com, and dashboard.example.com, you issue one certificate for *.example.com that covers all subdomains. This simplifies certificate management significantly in microservices architectures.
+Wildcard certificates secure one level of subdomains under a domain with a single certificate. Instead of managing separate certificates for api.example.com, app.example.com, and dashboard.example.com, you issue one certificate for *.example.com that covers those first-level subdomains. This simplifies certificate management significantly in microservices architectures.
 
 However, wildcard certificates require DNS-01 challenge validation. Unlike HTTP-01 challenges that verify domain ownership through HTTP endpoints, DNS-01 challenges verify ownership by creating specific DNS TXT records. This guide shows how to configure cert-manager with AWS Route53 to automate DNS-01 challenges for wildcard certificate issuance.
 
@@ -104,7 +104,8 @@ spec:
     solvers:
     - dns01:
         route53:
-          # AWS region where your Route53 hosted zone resides
+          # Route53 is global; region is used as an AWS credential-scope/STS hint.
+          # With IRSA or EKS Pod Identity, this field is usually injected and ignored here.
           region: us-east-1
 
           # Optionally specify hosted zone ID for faster lookups
@@ -330,7 +331,9 @@ spec:
         route53:
           region: us-east-1
           # Reference to the secret containing AWS credentials
-          accessKeyID: AKIAIOSFODNN7EXAMPLE
+          accessKeyIDSecretRef:
+            name: route53-credentials
+            key: access-key-id
           secretAccessKeySecretRef:
             name: route53-credentials
             key: secret-access-key
@@ -368,14 +371,16 @@ kubectl get pod -n cert-manager -o yaml | grep serviceAccountName
 kubectl get serviceaccount cert-manager -n cert-manager -o yaml
 ```
 
-Test AWS API access from a cert-manager pod:
+Test AWS API access using a temporary AWS CLI pod with the cert-manager service account:
 
 ```bash
-# Exec into cert-manager pod
-kubectl exec -it -n cert-manager deployment/cert-manager -- /bin/sh
-
-# Try listing hosted zones
-aws route53 list-hosted-zones
+kubectl run aws-cli-test \
+  --rm -it \
+  --restart=Never \
+  --namespace cert-manager \
+  --overrides='{"spec":{"serviceAccountName":"cert-manager"}}' \
+  --image=amazon/aws-cli:latest \
+  -- route53 list-hosted-zones
 ```
 
 ### Wrong Hosted Zone
@@ -392,8 +397,8 @@ dns01:
 ## Cost Optimization
 
 DNS-01 challenges incur minimal AWS costs:
-- Route53 queries: $0.40 per million queries
-- Hosted zone: $0.50 per zone per month
+- Route53 standard queries: $0.40 per million queries for the first 1 billion queries per month
+- Hosted zones: $0.50 per hosted zone per month for the first 25 hosted zones
 
 For wildcard certificates, this is far more economical than individual certificates for each subdomain. One wildcard certificate replaces dozens of individual certificates.
 
@@ -407,7 +412,7 @@ Monitor certificate expiration separately from DNS health. While cert-manager ha
 
 Use IRSA instead of long-lived access keys when running on EKS. Temporary credentials reduce security risk.
 
-Set appropriate DNS TTLs for your zones. Lower TTLs (60 seconds) speed up DNS-01 validation but increase query costs. Higher TTLs reduce costs but slow validation.
+Use low TTLs for any manually managed validation records. Lower TTLs (60 seconds) can reduce resolver caching delays during DNS-01 validation, while higher TTLs can slow validation when cached records need to change.
 
 ## Conclusion
 
