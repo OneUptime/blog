@@ -18,12 +18,12 @@ The gateway processes requests without maintaining any state, which means you ca
 
 ## Installing KrakenD
 
-You can run KrakenD as a Docker container, which is the simplest approach for both development and production deployments.
+You can run KrakenD as a Docker container, which is a straightforward approach for both development and production deployments.
 
 ```bash
 # Pull the official KrakenD image
 
-docker pull devopsfaith/krakend:2.5
+docker pull krakend:2.5
 
 # Create a basic configuration directory
 mkdir -p krakend-config
@@ -50,7 +50,7 @@ spec:
     spec:
       containers:
       - name: krakend
-        image: devopsfaith/krakend:2.5
+        image: krakend:2.5
         ports:
         - containerPort: 8080
         volumeMounts:
@@ -175,36 +175,34 @@ KrakenD supports rate limiting at both the endpoint and backend levels. You can 
 
 This configuration allows a maximum of 100 requests per second across all clients, with each individual IP address limited to 10 requests per second. The rate limiter uses an in-memory token bucket algorithm, which is both fast and memory-efficient.
 
-## Backend Timeout and Retry Configuration
+## Endpoint Timeout Configuration
 
-Network failures happen. KrakenD provides fine-grained control over timeouts and retries to help your API remain responsive even when backend services experience issues.
+Network failures happen. KrakenD provides endpoint-level timeout control to help your API remain responsive even when backend services experience issues.
 
 ```json
 {
-  "endpoint": "/api/checkout",
-  "method": "POST",
+  "endpoint": "/api/checkout-summary",
+  "method": "GET",
   "timeout": "3000ms",
   "backend": [
     {
-      "url_pattern": "/payment/process",
+      "url_pattern": "/payment/status",
       "host": ["http://payment-service:8000"],
-      "timeout": "2000ms",
       "extra_config": {
-        "github.com/devopsfaith/krakend-httpcache": {
+        "qos/http-cache": {
           "shared": false
         }
       }
     },
     {
-      "url_pattern": "/inventory/reserve",
-      "host": ["http://inventory-service:8000"],
-      "timeout": "1500ms"
+      "url_pattern": "/inventory/availability",
+      "host": ["http://inventory-service:8000"]
     }
   ]
 }
 ```
 
-Each backend can have its own timeout value. If any backend exceeds its timeout, KrakenD can either return a partial response (with data from successful backends) or fail the entire request, depending on your configuration.
+The endpoint timeout applies to the whole request pipeline, including backend calls and response manipulation. If some backends fail or the timeout is reached, KrakenD returns the data it retrieved successfully as a partial response; if none of the backends return content, the gateway returns an error.
 
 ## Circuit Breaker Pattern
 
@@ -220,8 +218,8 @@ Protect your services from cascading failures by implementing circuit breakers. 
         "qos/circuit-breaker": {
           "interval": 60,
           "timeout": 10,
-          "maxErrors": 5,
-          "logStatusChange": true
+          "max_errors": 5,
+          "log_status_change": true
         }
       }
     }
@@ -229,7 +227,7 @@ Protect your services from cascading failures by implementing circuit breakers. 
 }
 ```
 
-This circuit breaker opens after 5 errors within a 60-second window. Once open, it blocks requests to the backend for 10 seconds before entering a half-open state to test if the service has recovered.
+This circuit breaker opens when consecutive errors exceed the configured threshold within a 60-second window. Once open, it blocks requests to the backend for 10 seconds before entering a half-open state to test if the service has recovered.
 
 ## Deploying with ConfigMap
 
@@ -253,7 +251,7 @@ kubectl rollout restart deployment/krakend -n api-gateway
 
 ## Monitoring and Observability
 
-KrakenD exposes Prometheus metrics at the `/__stats` endpoint by default. You can also enable detailed telemetry with OpenTelemetry integration.
+KrakenD can expose extended metrics at the `/__stats` endpoint when the `telemetry/metrics` component is enabled. In KrakenD 2.5, Prometheus scraping is configured through the OpenCensus Prometheus exporter.
 
 ```json
 {
@@ -263,6 +261,8 @@ KrakenD exposes Prometheus metrics at the `/__stats` endpoint by default. You ca
       "listen_address": ":8090"
     },
     "telemetry/opencensus": {
+      "sample_rate": 100,
+      "reporting_period": 0,
       "exporters": {
         "prometheus": {
           "port": 9091,
@@ -274,7 +274,7 @@ KrakenD exposes Prometheus metrics at the `/__stats` endpoint by default. You ca
 }
 ```
 
-This configuration exposes metrics on port 9091 that Prometheus can scrape. You'll get detailed metrics about request rates, response times, error rates, and backend health.
+This configuration exposes extended metrics on port 8090 and Prometheus metrics on port 9091. You'll get detailed metrics about request rates, response times, error rates, and backend health.
 
 ## Performance Considerations
 
@@ -284,7 +284,7 @@ KrakenD is built in Go and designed for high throughput. In benchmarks, a single
 - Memory: 256-512Mi per replica
 - Replicas: Start with 3 for high availability
 
-KrakenD's stateless design means adding more replicas scales linearly. If you're handling 10,000 requests per second with 3 replicas, adding 3 more will roughly double your capacity.
+KrakenD's stateless design makes horizontal scaling straightforward. If the gateway is your bottleneck and your backend services and network can handle the extra load, adding more replicas can roughly increase gateway capacity in proportion to the number of instances.
 
 The gateway's real strength is parallel backend aggregation. When you configure an endpoint that calls five backends, those five calls happen concurrently. Total response time is limited by the slowest backend, not the sum of all backend response times.
 
