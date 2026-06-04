@@ -26,12 +26,12 @@ Kong provides a powerful request-transformer plugin that modifies requests befor
 curl -X POST http://kong-admin:8001/services/user-service/plugins \
   --data "name=request-transformer" \
   --data "config.add.headers=X-Internal-Request:true" \
-  --data "config.add.headers=X-Request-ID:$(uuidgen)" \
+  --data 'config.add.headers=X-Request-ID:$(headers.x-request-id)' \
   --data "config.rename.headers=Authorization:X-Auth-Token" \
   --data "config.remove.querystring=debug,trace"
 ```
 
-This configuration adds internal headers, renames the authorization header to match your backend's expectations, and strips debugging parameters that shouldn't reach production services.
+This configuration adds internal headers, forwards the incoming request ID header under a consistent name, renames the authorization header to match your backend's expectations, and strips debugging parameters that shouldn't reach production services.
 
 For body transformations, Kong supports modifying JSON payloads:
 
@@ -43,7 +43,7 @@ plugins:
   config:
     add:
       body:
-        - "timestamp:$(date +%s)"
+        - "request_id:$(headers.x-request-id)"
         - "gateway_version:1.2.0"
     remove:
       body:
@@ -55,7 +55,7 @@ plugins:
         - "product_id:itemId"
 ```
 
-This removes sensitive fields that clients might accidentally include, adds metadata fields your backend expects, and renames fields to match your internal naming conventions.
+This removes sensitive fields that clients might accidentally include, adds metadata fields your backend expects, and renames fields to match your internal naming conventions. Kong transformer templates can read request values such as headers and query parameters; they do not run shell commands for each request.
 
 ## Response Transformation with Kong
 
@@ -90,15 +90,20 @@ This configuration strips internal headers and sensitive fields from responses, 
 
 ## Advanced Transformations with Lua
 
-For complex transformation logic that goes beyond simple field mapping, Kong allows custom Lua scripts. This gives you complete control over request and response processing.
+For complex transformation logic that goes beyond simple field mapping, Kong allows custom plugins written in Lua. This gives you complete control over request and response processing.
 
 ```lua
--- custom-transformer.lua
+-- handler.lua
 local cjson = require "cjson"
 
-function transform_request(conf)
+local CustomTransformer = {
+  VERSION = "1.0.0",
+  PRIORITY = 10,
+}
+
+function CustomTransformer:access(conf)
   -- Read the request body
-  local body = kong.request.get_body()
+  local body, err, mimetype = kong.request.get_body()
 
   if body and body.user then
     -- Transform nested user object to flat structure
@@ -109,13 +114,14 @@ function transform_request(conf)
     body.user = nil  -- Remove original nested object
 
     -- Set the transformed body
-    kong.service.request.set_body(cjson.encode(body))
+    kong.service.request.set_body(body, mimetype or "application/json")
   end
 end
 
-function transform_response(conf)
+function CustomTransformer:response(conf)
   -- Read the response body
-  local body = kong.service.response.get_body()
+  local raw_body = kong.response.get_raw_body()
+  local body = raw_body and cjson.decode(raw_body)
 
   if body and body.items then
     -- Add computed fields to each item
@@ -125,22 +131,19 @@ function transform_response(conf)
     end
 
     -- Set the transformed body
-    kong.service.response.set_body(cjson.encode(body))
+    kong.response.set_raw_body(cjson.encode(body))
   end
 end
 
-return {
-  transform_request = transform_request,
-  transform_response = transform_response
-}
+return CustomTransformer
 ```
 
-Deploy this custom plugin to Kong and configure it for your service:
+Deploy this custom plugin to Kong and configure it for your service. In a real deployment, mount this file under `kong/plugins/custom-transformer/handler.lua` and include `custom-transformer` in Kong's loaded `plugins` setting before enabling it through the Admin API:
 
 ```bash
-# Package and deploy the custom plugin
+# Package and deploy the custom plugin directory
 kubectl create configmap kong-plugin-custom-transformer \
-  --from-file=custom-transformer.lua \
+  --from-file=handler.lua \
   -n kong
 
 # Enable the plugin via Kong Admin API
@@ -150,15 +153,17 @@ curl -X POST http://kong-admin:8001/services/product-service/plugins \
 
 ## NGINX Gateway Fabric Transformations
 
-NGINX uses snippets and configuration blocks to transform requests. You can leverage NGINX variables and modules for powerful transformations.
+NGINX Gateway Fabric supports standard Gateway API filters for request transformations. You can also use the NGINX Gateway Fabric SnippetsFilter extension for advanced NGINX directives, but snippets must be explicitly enabled and should be limited to cases where Gateway API resources or NGINX policies do not apply.
 
-```nginx
+```yaml
 # HTTPRoute with transformation
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: user-api
 spec:
+  parentRefs:
+  - name: public-gateway
   rules:
   - matches:
     - path:
@@ -179,42 +184,59 @@ spec:
         path:
           type: ReplacePrefixMatch
           replacePrefixMatch: /internal/users
+    backendRefs:
+    - name: user-service
+      port: 8080
 ```
 
-For more complex transformations, use NGINX configuration snippets:
+For more complex transformations, use an NGINX Gateway Fabric `SnippetsFilter`:
 
 ```yaml
-apiVersion: k8s.nginx.org/v1
-kind: VirtualServer
+apiVersion: gateway.nginx.org/v1alpha1
+kind: SnippetsFilter
 metadata:
   name: api-transformer
 spec:
-  host: api.example.com
-  upstreams:
-  - name: backend
-    service: backend-service
-    port: 8080
-  routes:
-  - path: /api
-    action:
-      pass: backend
-    snippets:
-      - |
-        # Transform query parameters to headers
-        if ($arg_user_id) {
-          set $user_header $arg_user_id;
-        }
-        proxy_set_header X-User-ID $user_header;
+  snippets:
+  - context: http.server.location
+    value: |
+      # Transform query parameters to headers
+      if ($arg_user_id) {
+        set $user_header $arg_user_id;
+      }
+      proxy_set_header X-User-ID $user_header;
 
-        # Remove sensitive query parameters
-        set $args '';
+      # Remove sensitive query parameters
+      set $args '';
 
-        # Add correlation ID if not present
-        set $correlation_id $http_x_correlation_id;
-        if ($correlation_id = '') {
-          set $correlation_id $request_id;
-        }
-        proxy_set_header X-Correlation-ID $correlation_id;
+      # Add correlation ID if not present
+      set $correlation_id $http_x_correlation_id;
+      if ($correlation_id = '') {
+        set $correlation_id $request_id;
+      }
+      proxy_set_header X-Correlation-ID $correlation_id;
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: api-transformer
+spec:
+  parentRefs:
+  - name: public-gateway
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /api
+    filters:
+    - type: ExtensionRef
+      extensionRef:
+        group: gateway.nginx.org
+        kind: SnippetsFilter
+        name: api-transformer
+    backendRefs:
+    - name: backend-service
+      port: 8080
 ```
 
 ## Envoy Proxy Transformations
@@ -242,7 +264,7 @@ static_resources:
               inline_code: |
                 function envoy_on_request(request_handle)
                   -- Add timestamp to request
-                  request_handle:headers():add("x-request-timestamp", os.time())
+                  request_handle:headers():add("x-request-timestamp", tostring(os.time()))
 
                   -- Transform path
                   local path = request_handle:headers():get(":path")
@@ -328,10 +350,10 @@ curl http://gateway:8080/api/users/123 -v | jq '.'
 
 Transformations add processing overhead. Simple header manipulations have minimal impact, but complex body transformations can increase latency significantly. Profile your transformations under load to understand their impact:
 
-- Header transformations: ~1ms overhead
-- Simple JSON field mapping: ~5-10ms overhead
-- Complex Lua/script transformations: ~50-100ms overhead
-- Protocol conversions: ~20-50ms overhead
+- Header transformations usually have the lowest overhead
+- Simple JSON field mapping requires request or response body parsing and serialization
+- Complex Lua or external processor transformations can add latency proportional to body size and script complexity
+- Protocol conversions add parsing, serialization, and routing overhead
 
 For high-throughput APIs, consider whether transformations are necessary or if you can handle them in backend services where you have more control over optimization.
 
