@@ -14,7 +14,7 @@ Webhooks intercept create and update operations on composite resources. Your val
 
 ## Understanding Crossplane Webhooks
 
-Kubernetes admission webhooks run before objects are persisted to etcd. Crossplane supports two types:
+Kubernetes admission webhooks run before objects are persisted to etcd. You can use two types with Crossplane composite resource APIs:
 
 **Validating webhooks** check if a resource meets your requirements. They accept or reject the operation with an error message.
 
@@ -27,7 +27,7 @@ Webhooks enforce policies at the platform API level. Users never see infrastruct
 Install cert-manager to manage webhook TLS certificates.
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 Create a webhook service.
@@ -145,13 +145,13 @@ Implement the validation handler.
 package main
 
 import (
-    "context"
     "encoding/json"
     "fmt"
     "net/http"
 
     admissionv1 "k8s.io/api/admission/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/types"
 )
 
 type PostgreSQLInstance struct {
@@ -169,6 +169,7 @@ type Parameters struct {
     Encrypted    bool     `json:"encrypted,omitempty"`
     BackupDays   int      `json:"backupDays,omitempty"`
     AllowedCIDRs []string `json:"allowedCidrs,omitempty"`
+    Region       string   `json:"region,omitempty"`
 }
 
 func validateDatabase(w http.ResponseWriter, r *http.Request) {
@@ -176,6 +177,11 @@ func validateDatabase(w http.ResponseWriter, r *http.Request) {
     
     if err := json.NewDecoder(r.Body).Decode(&admissionReview); err != nil {
         http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+
+    if admissionReview.Request == nil {
+        http.Error(w, "admission review request is required", http.StatusBadRequest)
         return
     }
 
@@ -234,7 +240,7 @@ func validateDatabase(w http.ResponseWriter, r *http.Request) {
     respondWithSuccess(w, admissionReview.Request.UID)
 }
 
-func respondWithError(w http.ResponseWriter, uid string, message string) {
+func respondWithError(w http.ResponseWriter, uid types.UID, message string) {
     response := admissionv1.AdmissionReview{
         TypeMeta: metav1.TypeMeta{
             APIVersion: "admission.k8s.io/v1",
@@ -248,10 +254,11 @@ func respondWithError(w http.ResponseWriter, uid string, message string) {
             },
         },
     }
+    w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(response)
 }
 
-func respondWithSuccess(w http.ResponseWriter, uid string) {
+func respondWithSuccess(w http.ResponseWriter, uid types.UID) {
     response := admissionv1.AdmissionReview{
         TypeMeta: metav1.TypeMeta{
             APIVersion: "admission.k8s.io/v1",
@@ -262,6 +269,7 @@ func respondWithSuccess(w http.ResponseWriter, uid string) {
             Allowed: true,
         },
     }
+    w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(response)
 }
 
@@ -407,13 +415,15 @@ data:
         rules:
           - record: webhook_validation_requests_total
             expr: |
-              sum by (webhook, result) (
+              sum by (name, type, operation) (
                 rate(apiserver_admission_webhook_admission_duration_seconds_count[5m])
               )
 
           - alert: WebhookHighRejectionRate
             expr: |
-              rate(webhook_rejections_total[5m]) > 0.1
+              sum by (name, type, operation) (
+                rate(apiserver_admission_webhook_rejection_count[5m])
+              ) > 0.1
             for: 10m
             labels:
               severity: warning
@@ -423,7 +433,9 @@ data:
           - alert: WebhookHighLatency
             expr: |
               histogram_quantile(0.99, 
-                rate(apiserver_admission_webhook_admission_duration_seconds_bucket[5m])
+                sum by (le, name, type, operation) (
+                  rate(apiserver_admission_webhook_admission_duration_seconds_bucket[5m])
+                )
               ) > 1
             for: 5m
             labels:
@@ -438,4 +450,4 @@ Validation webhooks enforce policies before infrastructure reaches cloud provide
 
 Implement webhooks as HTTP servers that validate admission requests. Deploy them with TLS certificates and configure ValidatingWebhookConfiguration resources. Test thoroughly to ensure legitimate requests pass while invalid ones are rejected.
 
-Webhooks shift policy enforcement left, catching problems at claim creation time rather than during provisioning. This saves time, prevents misconfigurations, and ensures infrastructure meets your standards automatically.
+Webhooks shift policy enforcement left, catching problems at resource creation time rather than during provisioning. This saves time, prevents misconfigurations, and ensures infrastructure meets your standards automatically.
