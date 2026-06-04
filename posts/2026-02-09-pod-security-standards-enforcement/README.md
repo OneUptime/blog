@@ -20,7 +20,7 @@ Each profile defines specific controls around security contexts, volume types, h
 
 ## Enabling Pod Security Admission
 
-Pod Security Admission is enabled by default in Kubernetes 1.25+. For older versions, enable it explicitly:
+Pod Security Admission became available by default in Kubernetes 1.23 as a beta feature and is generally available in Kubernetes 1.25+. If your API server does not enable it by default, enable it explicitly:
 
 ```yaml
 # /etc/kubernetes/manifests/kube-apiserver.yaml
@@ -43,6 +43,8 @@ Create admission configuration:
 
 ```yaml
 # admission-config.yaml
+# pod-security.admission.config.k8s.io/v1 requires Kubernetes 1.25+.
+# Use v1beta1 on Kubernetes 1.23-1.24 and v1alpha1 on Kubernetes 1.22.
 apiVersion: apiserver.config.k8s.io/v1
 kind: AdmissionConfiguration
 plugins:
@@ -176,7 +178,8 @@ spec:
   containers:
   - name: nginx
     image: nginx:latest
-    # Running as root violates restricted profile
+    securityContext:
+      runAsUser: 0  # Explicit root user violates restricted
 ```
 
 Test the policies:
@@ -185,8 +188,7 @@ Test the policies:
 # These should fail
 kubectl apply -f test-baseline-violations.yaml
 
-# Check for expected rejection messages
-kubectl get events -n staging | grep -i "forbidden"
+# Check the kubectl output for Forbidden errors that mention PodSecurity violations
 ```
 
 ## Creating Compliant Pod Specifications
@@ -346,9 +348,9 @@ spec:
     rules:
     - alert: PSSViolationDetected
       expr: |
-        increase(apiserver_admission_webhook_admission_duration_seconds_count{
-          name="PodSecurity",
-          rejected="true"
+        increase(pod_security_evaluations_total{
+          mode="enforce",
+          decision="deny"
         }[5m]) > 0
       for: 2m
       labels:
@@ -359,9 +361,9 @@ spec:
 
     - alert: HighPSSViolationRate
       expr: |
-        rate(apiserver_admission_webhook_admission_duration_seconds_count{
-          name="PodSecurity",
-          rejected="true"
+        rate(pod_security_evaluations_total{
+          mode="enforce",
+          decision="deny"
         }[10m]) > 0.1
       for: 5m
       labels:
