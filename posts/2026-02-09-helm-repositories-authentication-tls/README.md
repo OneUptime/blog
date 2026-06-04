@@ -12,9 +12,9 @@ Securing your Helm chart repositories protects proprietary charts and ensures on
 
 ## Understanding Helm Repository Security
 
-Public chart repositories like Artifact Hub require no authentication, but enterprise environments need private repositories with access controls. Helm supports several authentication methods including basic auth, bearer tokens, and TLS client certificates. The choice depends on your repository backend and security requirements.
+Public chart repositories listed in Artifact Hub often require no authentication, but enterprise environments need private repositories with access controls. Helm supports repository authentication with basic auth and TLS client certificates, while OCI registries support registry login with passwords or identity tokens. The choice depends on your repository backend and security requirements.
 
-Helm stores repository configuration in your kubeconfig context and in repository cache files. When you add a repository, Helm saves the URL and credentials for future use.
+Helm stores repository configuration in `repositories.yaml` and keeps downloaded repository indexes in its repository cache. When you add a repository, Helm saves the URL and credentials for future use.
 
 ## Setting Up Basic Authentication
 
@@ -36,7 +36,7 @@ echo "mypassword" | helm repo add private-charts https://charts.company.com \
 helm repo update private-charts
 ```
 
-Helm encodes credentials and stores them in the repository configuration file at ~/.config/helm/repositories.yaml.
+Helm stores credentials in the repository configuration file at `~/.config/helm/repositories.yaml`.
 
 ```yaml
 # ~/.config/helm/repositories.yaml
@@ -54,7 +54,7 @@ repositories:
   pass_credentials_all: false
 ```
 
-Store credentials more securely by using environment variables or credential helpers instead of plain text.
+Avoid hard-coding credentials in scripts by reading them from environment variables or a secrets manager before running Helm.
 
 ```bash
 # Use environment variables for credentials
@@ -105,45 +105,33 @@ The certificate files must remain accessible at the specified paths. Helm reads 
 
 ## Setting Up ChartMuseum with Authentication
 
-ChartMuseum is a popular open-source Helm chart repository server. Configure it with multiple authentication backends.
+ChartMuseum is a popular open-source Helm chart repository server. Configure it with authentication and TLS options.
 
 ```yaml
 # chartmuseum-config.yaml
-server:
-  port: 8080
-  tls:
-    enabled: true
-    cert: /certs/tls.crt
-    key: /certs/tls.key
+port: 8080
+tls.cert: /certs/tls.crt
+tls.key: /certs/tls.key
 
-storage:
-  type: local
-  local:
-    path: /charts
+storage.backend: local
+storage.local.rootdir: /charts
 
-auth:
-  type: basic
-  basic:
-    users:
-      - username: developer
-        password: $2a$10$XYZ...  # bcrypt hashed password
-      - username: cicd
-        password: $2a$10$ABC...
+basicauth.user: developer
+basicauth.pass: mypassword
 
-# Allow anonymous GET requests for public charts
-anonymous_get: false
+# Require authentication for GET requests
+authanonymousget: false
 
-# Enable bearer token authentication
-bearer_auth: true
-bearer_auth_realm: "ChartMuseum"
+# For bearer token authentication, remove the basic auth settings above and configure:
+bearerauth: true
+authrealm: "https://auth.company.com/oauth2/token"
+authservice: "chartmuseum"
+authcertpath: /certs/auth-public-key.pem
 ```
 
 Deploy ChartMuseum with this configuration.
 
 ```bash
-# Generate bcrypt password hash
-htpasswd -bnBC 10 "" mypassword | tr -d ':\n'
-
 # Run ChartMuseum with Docker
 docker run -d \
   --name chartmuseum \
@@ -157,7 +145,7 @@ docker run -d \
 
 ## Configuring Harbor Registry
 
-Harbor provides enterprise-grade chart repository features with RBAC, vulnerability scanning, and replication.
+Harbor provides enterprise-grade OCI registry features with RBAC, vulnerability scanning, and replication. Harbor 2.8 and later no longer includes ChartMuseum, so use Harbor's OCI registry support for Helm charts.
 
 ```yaml
 # harbor-values.yaml
@@ -179,24 +167,9 @@ persistence:
   persistentVolumeClaim:
     registry:
       size: 100Gi
-    chartmuseum:
-      size: 10Gi
 
-# Enable chart repository
-chartmuseum:
-  enabled: true
-  absoluteUrl: true
-
-# Configure authentication
-authMode: ldap_auth
-ldap:
-  url: ldap://ldap.company.com:389
-  searchDn: cn=admin,dc=company,dc=com
-  searchPassword: adminpassword
-  baseDn: ou=users,dc=company,dc=com
-  filter: (objectClass=person)
-  uid: uid
-  scope: 2
+# Initial admin password
+harborAdminPassword: "change-me-before-production"
 ```
 
 Install Harbor with Helm.
@@ -212,7 +185,7 @@ helm install harbor harbor/harbor \
   --values harbor-values.yaml
 ```
 
-Add Harbor as a chart repository with authentication.
+Use Harbor as an OCI registry for Helm charts.
 
 ```bash
 # Login to Harbor
@@ -220,24 +193,22 @@ helm registry login harbor.company.com \
   --username admin \
   --password Harbor12345
 
-# Add Harbor project as Helm repository
-helm repo add harbor-private https://harbor.company.com/chartrepo/private \
-  --username admin \
-  --password Harbor12345
-
 # Push chart to Harbor
 helm push mychart-1.0.0.tgz oci://harbor.company.com/library
+
+# Pull chart from Harbor
+helm pull oci://harbor.company.com/library/mychart --version 1.0.0
 ```
 
 ## Using Bearer Token Authentication
 
-Bearer tokens work well with CI/CD systems and service accounts.
+Access tokens work well with CI/CD systems and service accounts. For classic chart repositories, `helm repo add` sends the configured username and password using HTTP Basic authentication, so use a token as the password only when your repository server supports that pattern.
 
 ```bash
-# Add repository with bearer token
+# Add repository with an access token accepted as the password
 helm repo add private-charts https://charts.company.com \
   --username token \
-  --password "Bearer eyJhbGciOiJSUzI1NiIs..."
+  --password "eyJhbGciOiJSUzI1NiIs..."
 
 # Or set token in environment variable
 export HELM_REGISTRY_TOKEN="eyJhbGciOiJSUzI1NiIs..."
@@ -248,7 +219,7 @@ helm repo add private-charts https://charts.company.com \
   --password "${HELM_REGISTRY_TOKEN}"
 ```
 
-For OCI registries, use the registry login command with tokens.
+For OCI registries, use the registry login command with tokens or identity tokens.
 
 ```bash
 # Login to OCI registry with token
@@ -266,23 +237,20 @@ JFrog Artifactory supports Helm repositories with advanced security features.
 
 ```bash
 # Add Artifactory Helm repository with API key
-helm repo add artifactory https://artifactory.company.com/artifactory/helm \
+helm repo add artifactory https://artifactory.company.com/artifactory/api/helm/helm \
   --username myuser \
   --password "AKC...api-key..."
 
 # Or use access token
-helm repo add artifactory https://artifactory.company.com/artifactory/helm \
-  --username token \
+helm repo add artifactory https://artifactory.company.com/artifactory/api/helm/helm \
+  --username myuser \
   --password "eyJ0eXAiOi...access-token..."
 
-# Set up credentials helper for automatic authentication
-cat > ~/.config/helm/artifactory-creds.sh << 'EOF'
-#!/bin/bash
-echo "username=myuser"
-echo "password=${ARTIFACTORY_API_KEY}"
-EOF
-
-chmod +x ~/.config/helm/artifactory-creds.sh
+# Or read an access token from stdin
+echo "$ARTIFACTORY_ACCESS_TOKEN" | helm repo add artifactory \
+  https://artifactory.company.com/artifactory/api/helm/helm \
+  --username myuser \
+  --password-stdin
 ```
 
 ## Managing Repository Credentials in Kubernetes
@@ -331,9 +299,9 @@ deploy:
     - kubectl get secret helm-repo-credentials -n default -o jsonpath='{.data.client\.key}' | base64 -d > /tmp/helm-certs/client.key
 
     # Add repository with TLS authentication
-    - helm repo add private-charts https://charts.company.com
-        --ca-file /tmp/helm-certs/ca.crt
-        --cert-file /tmp/helm-certs/client.crt
+    - helm repo add private-charts https://charts.company.com \
+        --ca-file /tmp/helm-certs/ca.crt \
+        --cert-file /tmp/helm-certs/client.crt \
         --key-file /tmp/helm-certs/client.key
 
     # Install chart
@@ -377,32 +345,24 @@ sudo security add-trusted-cert -d -r trustRoot \
 
 ## Auditing Repository Access
 
-Monitor who accesses your chart repository by enabling audit logging on the server.
+Monitor who accesses your chart repository by enabling structured access logging on the server.
 
 ```yaml
-# chartmuseum-config.yaml with audit logging
-server:
-  port: 8080
-
-logging:
-  level: info
-  json: true
-
-audit:
-  enabled: true
-  path: /var/log/chartmuseum/audit.log
+# chartmuseum-config.yaml with structured logging
+port: 8080
+logjson: true
 
 # Log all access attempts
-log_health: true
-log_latency_integer: true
+loghealth: true
+loglatencyinteger: true
 ```
 
-Parse audit logs to track chart downloads.
+Parse structured logs to track chart downloads.
 
 ```bash
-# Extract download events from audit logs
-jq -r 'select(.event=="chart.download") | [.timestamp, .user, .chart, .version, .ip] | @csv' \
-  /var/log/chartmuseum/audit.log
+# Extract chart package download requests from access logs
+jq -r 'select(.reqPath | test("^/charts/.+\\.tgz$")) | [.time, .reqMethod, .reqPath, .status, .remoteAddr] | @csv' \
+  /var/log/chartmuseum/access.log
 ```
 
-Securing Helm repositories with authentication and TLS protects your intellectual property and ensures compliance with security policies. Use basic auth for simple setups, TLS client certificates for stronger security, and bearer tokens for automated systems. Store credentials securely using secrets management tools and enable audit logging to track access patterns.
+Securing Helm repositories with authentication and TLS protects your intellectual property and ensures compliance with security policies. Use basic auth for simple setups, TLS client certificates for stronger security, and access tokens for automated systems when your repository or registry supports them. Store credentials securely using secrets management tools and enable access logging to track access patterns.
