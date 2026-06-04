@@ -14,7 +14,7 @@ Before upgrading any Kubernetes cluster, backing up etcd is non-negotiable. etcd
 
 etcd is the brain of your Kubernetes cluster. Every resource you create, every configuration you apply, and every piece of cluster state lives in etcd. When you upgrade Kubernetes, you're potentially modifying how this data is stored and accessed. If something goes wrong, an etcd backup is your only path to recovery.
 
-Managed Kubernetes services like EKS, GKE, and AKS automatically backup etcd for you. However, understanding how to backup and restore etcd is still valuable for self-managed clusters, disaster recovery planning, and migrating between clusters.
+Managed Kubernetes services like EKS, GKE, and AKS operate the control plane for you and generally do not expose direct etcd access. However, understanding how to backup and restore etcd is still valuable for self-managed clusters, disaster recovery planning, and migrating between clusters.
 
 ## Locating etcd in Your Cluster
 
@@ -46,9 +46,9 @@ kubectl get endpoints -n kube-system etcd -o yaml
 kubectl get cm -n kube-system kubeadm-config -o yaml | grep -A 10 etcd
 ```
 
-## Installing etcdctl
+## Installing etcdctl and etcdutl
 
-The etcdctl command-line tool is required for etcd backups.
+The etcdctl command-line tool is required for live etcd snapshots, and etcdutl is used for snapshot status and restore operations.
 
 ```bash
 #!/bin/bash
@@ -56,7 +56,7 @@ The etcdctl command-line tool is required for etcd backups.
 
 ETCD_VERSION="v3.5.11"
 
-echo "Installing etcdctl $ETCD_VERSION..."
+echo "Installing etcdctl and etcdutl $ETCD_VERSION..."
 
 # Download etcd release
 wget https://github.com/etcd-io/etcd/releases/download/$ETCD_VERSION/etcd-$ETCD_VERSION-linux-amd64.tar.gz
@@ -64,15 +64,18 @@ wget https://github.com/etcd-io/etcd/releases/download/$ETCD_VERSION/etcd-$ETCD_
 # Extract and install
 tar xzf etcd-$ETCD_VERSION-linux-amd64.tar.gz
 sudo cp etcd-$ETCD_VERSION-linux-amd64/etcdctl /usr/local/bin/
+sudo cp etcd-$ETCD_VERSION-linux-amd64/etcdutl /usr/local/bin/
 sudo chmod +x /usr/local/bin/etcdctl
+sudo chmod +x /usr/local/bin/etcdutl
 
 # Verify installation
 etcdctl version
+etcdutl version
 
 # Clean up
 rm -rf etcd-$ETCD_VERSION-linux-amd64*
 
-echo "etcdctl installed successfully"
+echo "etcdctl and etcdutl installed successfully"
 ```
 
 ## Creating etcd Snapshots
@@ -112,7 +115,7 @@ if [ $? -eq 0 ]; then
   echo "Snapshot created successfully: $BACKUP_FILE"
 
   # Verify snapshot
-  etcdctl snapshot status $BACKUP_FILE \
+  etcdutl snapshot status $BACKUP_FILE \
     --write-out=table
 
   # Get snapshot size
@@ -133,6 +136,8 @@ ETCD_POD=$(kubectl get pods -n kube-system -l component=etcd -o jsonpath='{.item
 BACKUP_FILE="/var/backups/etcd-snapshot-$(date +%Y%m%d-%H%M%S).db"
 
 echo "Creating etcd snapshot from pod $ETCD_POD..."
+
+mkdir -p "$(dirname "$BACKUP_FILE")"
 
 kubectl exec -n kube-system $ETCD_POD -- sh -c \
   "ETCDCTL_API=3 etcdctl snapshot save /tmp/snapshot.db \
@@ -171,13 +176,13 @@ if [ ! -f "$BACKUP_FILE" ]; then
 fi
 
 # Verify snapshot integrity
-etcdctl snapshot status $BACKUP_FILE --write-out=table
+etcdutl snapshot status $BACKUP_FILE --write-out=table
 
 if [ $? -eq 0 ]; then
   echo "Snapshot verification successful"
 
   # Get detailed status
-  etcdctl snapshot status $BACKUP_FILE --write-out=json | jq '.'
+  etcdutl snapshot status $BACKUP_FILE --write-out=json | jq '.'
 
   # Check snapshot size
   size=$(stat -f%z "$BACKUP_FILE" 2>/dev/null || stat -c%s "$BACKUP_FILE")
@@ -207,6 +212,9 @@ BACKUP_DIR="/var/backups/etcd"
 RETENTION_DAYS=30
 BACKUP_FILE="$BACKUP_DIR/etcd-snapshot-$(date +%Y%m%d-%H%M%S).db"
 
+# Create backup directory
+mkdir -p $BACKUP_DIR
+
 # Logging
 LOG_FILE="$BACKUP_DIR/backup.log"
 exec 1> >(tee -a $LOG_FILE)
@@ -218,9 +226,6 @@ log() {
 
 log "Starting automated etcd backup"
 
-# Create backup directory
-mkdir -p $BACKUP_DIR
-
 # Set etcd variables
 export ETCDCTL_API=3
 ETCD_ENDPOINTS="https://127.0.0.1:2379"
@@ -230,13 +235,11 @@ ETCD_KEY="/etc/kubernetes/pki/etcd/server.key"
 
 # Create snapshot
 log "Creating snapshot..."
-etcdctl snapshot save $BACKUP_FILE \
+if ! etcdctl snapshot save $BACKUP_FILE \
   --endpoints=$ETCD_ENDPOINTS \
   --cacert=$ETCD_CACERT \
   --cert=$ETCD_CERT \
-  --key=$ETCD_KEY
-
-if [ $? -ne 0 ]; then
+  --key=$ETCD_KEY; then
   log "ERROR: Snapshot creation failed"
   exit 1
 fi
@@ -245,9 +248,7 @@ log "Snapshot created: $BACKUP_FILE"
 
 # Verify snapshot
 log "Verifying snapshot..."
-etcdctl snapshot status $BACKUP_FILE --write-out=table
-
-if [ $? -ne 0 ]; then
+if ! etcdutl snapshot status $BACKUP_FILE --write-out=table; then
   log "ERROR: Snapshot verification failed"
   exit 1
 fi
@@ -279,7 +280,6 @@ Description=Automated etcd backup timer
 Requires=etcd-backup.service
 
 [Timer]
-OnCalendar=daily
 OnCalendar=*-*-* 02:00:00
 Persistent=true
 
@@ -372,7 +372,7 @@ etcdctl snapshot save $BACKUP_ROOT/etcd-snapshot.db \
 
 # 2. Verify etcd backup
 log "Verifying etcd backup..."
-etcdctl snapshot status $BACKUP_ROOT/etcd-snapshot.db --write-out=table
+etcdutl snapshot status $BACKUP_ROOT/etcd-snapshot.db --write-out=table
 
 # 3. Backup certificates
 log "Backing up certificates..."
@@ -382,8 +382,8 @@ tar czf $BACKUP_ROOT/pki-backup.tar.gz /etc/kubernetes/pki/
 log "Backing up kubeconfig..."
 cp /etc/kubernetes/admin.conf $BACKUP_ROOT/admin.conf
 
-# 5. Export all resources
-log "Exporting cluster resources..."
+# 5. Export common resources
+log "Exporting common cluster resources..."
 kubectl get all --all-namespaces -o yaml > $BACKUP_ROOT/all-resources.yaml
 kubectl get cm --all-namespaces -o yaml > $BACKUP_ROOT/configmaps.yaml
 kubectl get secrets --all-namespaces -o yaml > $BACKUP_ROOT/secrets.yaml
@@ -398,7 +398,7 @@ kubectl get nodes -o yaml > $BACKUP_ROOT/nodes.yaml
 log "Creating cluster state snapshot..."
 cat > $BACKUP_ROOT/cluster-info.txt << EOF
 Backup Date: $(date)
-Kubernetes Version: $(kubectl version --short)
+Kubernetes Version: $(kubectl version)
 Node Count: $(kubectl get nodes --no-headers | wc -l)
 Pod Count: $(kubectl get pods --all-namespaces --no-headers | wc -l)
 Service Count: $(kubectl get svc --all-namespaces --no-headers | wc -l)
@@ -436,8 +436,7 @@ rm -rf $TEST_DATA_DIR
 mkdir -p $TEST_DATA_DIR
 
 # Restore snapshot to test location
-export ETCDCTL_API=3
-etcdctl snapshot restore $BACKUP_FILE \
+etcdutl snapshot restore $BACKUP_FILE \
   --data-dir=$TEST_DATA_DIR \
   --name=test-restore \
   --initial-cluster=test-restore=http://127.0.0.1:2380 \
