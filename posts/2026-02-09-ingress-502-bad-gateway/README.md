@@ -136,18 +136,18 @@ kubectl logs -n ingress-nginx deploy/ingress-nginx-controller --tail=100 | \
 # connect() failed (111: Connection refused) while connecting to upstream
 ```
 
-Check Ingress controller metrics for upstream health.
+Check Ingress controller metrics for missing backend endpoints and 502 rates.
 
 ```bash
 # Port-forward to Ingress controller metrics
 kubectl port-forward -n ingress-nginx deploy/ingress-nginx-controller 10254:10254
 
-# Query upstream status
-curl http://localhost:10254/metrics | grep nginx_ingress_controller_upstream
+# Query no-endpoint and request metrics
+curl http://localhost:10254/metrics | grep "nginx_ingress_controller_orphan_ingress\|nginx_ingress_controller_requests"
 
 # Look for:
-# nginx_ingress_controller_upstream_servers{namespace="default",service="myapp",upstream="default-myapp-80"} 0
-# This shows 0 healthy upstreams
+# nginx_ingress_controller_orphan_ingress{namespace="default",ingress="myapp-ingress",type="no-endpoint"} 1
+# This shows an Ingress whose backend Service has no endpoints
 ```
 
 ## Testing Backend Connectivity Directly
@@ -270,11 +270,6 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
-
-    # Keep-alive settings
-    nginx.ingress.kubernetes.io/upstream-keepalive-connections: "64"
-    nginx.ingress.kubernetes.io/upstream-keepalive-timeout: "60"
-
     # Retry configuration
     nginx.ingress.kubernetes.io/proxy-next-upstream: "error timeout http_502 http_503 http_504"
     nginx.ingress.kubernetes.io/proxy-next-upstream-tries: "3"
@@ -339,8 +334,6 @@ spec:
               - |
                 # Sleep to allow Ingress to detect pod as not ready
                 sleep 15
-                # Graceful shutdown
-                kill -TERM 1
       terminationGracePeriodSeconds: 30
 ```
 
@@ -390,7 +383,7 @@ data:
       - alert: High502ErrorRate
         expr: |
           (sum(rate(nginx_ingress_controller_requests{status="502"}[5m]))
-          / sum(rate(nginx_ingress_controller_requests[5m]))) > 0.05
+          / sum(rate(nginx_ingress_controller_requests[5m])) * 100) > 5
         for: 5m
         labels:
           severity: warning
@@ -398,14 +391,14 @@ data:
           summary: "High 502 error rate on Ingress"
           description: "502 error rate is {{ $value }}%"
 
-      - alert: NoHealthyUpstreams
+      - alert: IngressBackendNoEndpoints
         expr: |
-          nginx_ingress_controller_upstream_servers == 0
+          nginx_ingress_controller_orphan_ingress{type="no-endpoint"} == 1
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "No healthy upstreams for {{ $labels.service }}"
+          summary: "Ingress {{ $labels.namespace }}/{{ $labels.ingress }} has no backend endpoints"
 ```
 
 Create dashboards tracking upstream health and error rates to identify patterns and diagnose issues proactively.
