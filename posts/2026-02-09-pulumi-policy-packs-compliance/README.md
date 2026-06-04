@@ -8,13 +8,13 @@ Description: Learn how to use Pulumi Policy Packs to enforce compliance rules an
 
 ---
 
-Infrastructure as code tools deploy resources fast, but speed without guardrails leads to security vulnerabilities and compliance violations. Pulumi Policy Packs solve this by validating resource configurations before deployment, blocking non-compliant changes automatically. This guide shows you how to implement policy enforcement for Kubernetes resources.
+Infrastructure as code tools deploy resources fast, but speed without guardrails leads to security vulnerabilities and compliance violations. Pulumi Policy Packs solve this by validating resource configurations and stack relationships during Pulumi operations, blocking non-compliant changes automatically. This guide shows you how to implement policy enforcement for Kubernetes resources.
 
 ## Understanding Pulumi Policy as Code
 
-Pulumi Policy Packs enable policy as code using familiar programming languages. Policies run during `pulumi preview` and `pulumi up`, analyzing resource configurations before any cloud API calls occur. This shift-left approach catches violations early, preventing security issues before they reach production.
+Pulumi Policy Packs enable policy as code using familiar programming languages. Resource validation policies run during `pulumi preview` and `pulumi up`, analyzing resource configurations before individual resources are created or updated. This shift-left approach catches violations early, preventing security issues before they reach production.
 
-Policy Packs consist of individual policies written in TypeScript, Python, or Go. Each policy validates specific aspects of resource configuration and can either warn users or block deployment based on severity. Policies have access to the complete resource configuration, enabling complex validation logic.
+Policy Packs consist of individual policies written in TypeScript/JavaScript, Python, or OPA/Rego. Each policy validates specific aspects of resource configuration and can either warn users or block deployment based on severity. Policies have access to the complete resource configuration, enabling complex validation logic.
 
 ## Creating Your First Policy Pack
 
@@ -26,11 +26,12 @@ Start by initializing a Policy Pack project. This creates the scaffolding needed
 mkdir kubernetes-compliance-pack
 cd kubernetes-compliance-pack
 pulumi policy new aws-typescript
+npm install @pulumi/kubernetes
 
 # This creates:
 # - PulumiPolicy.yaml (pack metadata)
 # - index.ts (policy definitions)
-# - package.json (dependencies)
+# - package.json (dependencies; add @pulumi/kubernetes for Kubernetes resource types)
 ```
 
 Define basic policies that enforce Kubernetes best practices:
@@ -48,21 +49,7 @@ const policies = new policy.PolicyPack("kubernetes-compliance", {
             enforcementLevel: "mandatory",
             validateResource: policy.validateResourceOfType(
                 k8s.core.v1.Pod,
-                (pod, args, reportViolation) => {
-                    const containers = pod.spec.containers || [];
-                    const initContainers = pod.spec.initContainers || [];
-
-                    const allContainers = [...containers, ...initContainers];
-
-                    allContainers.forEach((container, idx) => {
-                        if (container.securityContext?.privileged === true) {
-                            reportViolation(
-                                `Container '${container.name}' at index ${idx} is running in privileged mode. ` +
-                                `This violates security policy. Set securityContext.privileged to false.`
-                            );
-                        }
-                    });
-                }
+                validatePrivilegedContainers
             ),
         },
         {
@@ -77,6 +64,22 @@ const policies = new policy.PolicyPack("kubernetes-compliance", {
         },
     ],
 });
+
+export function validatePrivilegedContainers(pod: any, args: policy.ResourceValidationArgs, reportViolation: policy.ReportViolation) {
+    const containers = pod.spec?.containers || [];
+    const initContainers = pod.spec?.initContainers || [];
+
+    const allContainers = [...containers, ...initContainers];
+
+    allContainers.forEach((container, idx) => {
+        if (container.securityContext?.privileged === true) {
+            reportViolation(
+                `Container '${container.name}' at index ${idx} is running in privileged mode. ` +
+                `This violates security policy. Set securityContext.privileged to false.`
+            );
+        }
+    });
+}
 
 function validateLabels(resource: any, args: policy.ResourceValidationArgs, reportViolation: policy.ReportViolation) {
     const requiredLabels = ["app", "team", "environment"];
@@ -97,7 +100,7 @@ These policies run automatically whenever Pulumi evaluates Kubernetes resources,
 
 ## Implementing Resource Limits Enforcement
 
-Prevent resource exhaustion by enforcing CPU and memory limits on all containers.
+Prevent resource exhaustion by enforcing CPU and memory limits on all Pod containers.
 
 ```typescript
 {
@@ -135,7 +138,7 @@ Prevent resource exhaustion by enforcing CPU and memory limits on all containers
                 }
 
                 // Validate reasonable limits
-                if (limits.cpu && parseInt(limits.cpu) > 4000) {
+                if (limits.cpu && parseCpu(limits.cpu) > 4) {
                     reportViolation(
                         `Container '${container.name}' CPU limit exceeds 4 cores. ` +
                         `Contact platform team if higher limits are required.`
@@ -156,23 +159,37 @@ Prevent resource exhaustion by enforcing CPU and memory limits on all containers
     ),
 }
 
+function parseCpu(cpu: string): number {
+    if (cpu.endsWith("m")) {
+        return parseFloat(cpu.slice(0, -1)) / 1000;
+    }
+
+    return parseFloat(cpu);
+}
+
 function parseMemory(memory: string): number {
     const units: { [key: string]: number } = {
         Ki: 1024,
         Mi: 1024 * 1024,
         Gi: 1024 * 1024 * 1024,
-        K: 1000,
+        Ti: 1024 ** 4,
+        Pi: 1024 ** 5,
+        Ei: 1024 ** 6,
+        k: 1000,
         M: 1000 * 1000,
         G: 1000 * 1000 * 1000,
+        T: 1000 ** 4,
+        P: 1000 ** 5,
+        E: 1000 ** 6,
     };
 
-    const match = memory.match(/^(\d+)([A-Za-z]+)?$/);
+    const match = memory.match(/^(\d+(?:\.\d+)?)([A-Za-z]+)?$/);
     if (!match) return 0;
 
-    const value = parseInt(match[1]);
+    const value = parseFloat(match[1]);
     const unit = match[2] || "";
 
-    return unit in units ? value * units[unit] / (1024 * 1024) : value;
+    return unit in units ? value * units[unit] / (1024 * 1024) : value / (1024 * 1024);
 }
 ```
 
@@ -200,7 +217,6 @@ Enforce security best practices by requiring specific security context settings 
                 );
             }
 
-            // Require read-only root filesystem where possible
             const containers = pod.spec.containers || [];
             containers.forEach((container) => {
                 const containerSecContext = container.securityContext;
@@ -278,27 +294,26 @@ Ensure network isolation by requiring Network Policies for all namespaces with s
 }
 ```
 
-Stack-level validation examines relationships between resources, enabling policies that span multiple resource types.
+Stack-level validation examines relationships between resources, enabling policies that span multiple resource types. Unlike resource validation, stack validation runs after resource registration completes and runs during `pulumi up`, not `pulumi preview`.
 
 ## Creating Environment-Specific Policies
 
-Apply different policy strictness based on environment using policy configuration.
+Apply different policy settings based on environment using policy configuration.
+
+```json
+// config.json
+{
+    "all": "mandatory",
+    "container-registry-whitelist": {
+        "allowedRegistries": [
+            "gcr.io/mycompany",
+            "docker.io/library"
+        ]
+    }
+}
+```
 
 ```typescript
-// PulumiPolicy.yaml
-policies:
-    - name: kubernetes-compliance
-      version: 1.0.0
-      config:
-        enforcementLevel:
-          type: string
-          default: mandatory
-        allowedRegistries:
-          type: array
-          default:
-            - "gcr.io/mycompany"
-            - "docker.io/library"
-
 // index.ts
 {
     name: "container-registry-whitelist",
@@ -315,7 +330,8 @@ policies:
     validateResource: policy.validateResourceOfType(
         k8s.core.v1.Pod,
         (pod, args, reportViolation) => {
-            const allowedRegistries = args.getConfig<string[]>("allowedRegistries") || [];
+            const config = args.getConfig<{ allowedRegistries?: string[] }>();
+            const allowedRegistries = config.allowedRegistries || [];
             const containers = pod.spec.containers || [];
 
             containers.forEach((container) => {
@@ -338,7 +354,7 @@ policies:
 }
 ```
 
-Configuration enables reusing policy packs across environments with different requirements.
+Configuration enables reusing policy packs across environments with different requirements. For local runs, pass the file with `pulumi preview --policy-pack . --policy-pack-config config.json`; after publishing, pass it with `pulumi policy enable <org-name>/kubernetes-compliance latest --config config.json`.
 
 ## Testing Policies Locally
 
@@ -347,10 +363,11 @@ Create test cases to verify policy logic before deploying to production.
 ```typescript
 // __tests__/policies.test.ts
 import * as policy from "@pulumi/policy";
+import { validatePrivilegedContainers } from "../index";
 
 describe("Container Policies", () => {
     test("blocks privileged containers", () => {
-        const args: policy.ResourceValidationArgs = {
+        const args = {
             type: "kubernetes:core/v1:Pod",
             props: {
                 spec: {
@@ -365,7 +382,7 @@ describe("Container Policies", () => {
             },
             urn: "urn:pulumi:dev::myproject::kubernetes:core/v1:Pod::test-pod",
             name: "test-pod",
-        };
+        } as policy.ResourceValidationArgs;
 
         const violations: string[] = [];
         const reportViolation = (message: string) => violations.push(message);
@@ -387,16 +404,16 @@ Publish policies to the Pulumi Service for organization-wide enforcement.
 
 ```bash
 # Publish the policy pack
-pulumi policy publish
+pulumi policy publish my-org
 
-# Apply to a specific stack
-pulumi policy enable kubernetes-compliance latest --stack production
+# Enable the latest version for your organization
+pulumi policy enable my-org/kubernetes-compliance latest
 
 # Disable a policy pack
-pulumi policy disable kubernetes-compliance --stack development
+pulumi policy disable my-org/kubernetes-compliance
 
-# List enabled policies
-pulumi policy ls
+# List policy packs
+pulumi policy ls my-org
 ```
 
 Centralized policy management ensures consistent enforcement across all teams and projects.
@@ -450,20 +467,24 @@ Implement complex business logic using helper functions and external data source
 }
 
 function parseStorageSize(storage: string): number {
-    const match = storage.match(/^(\d+)([A-Za-z]+)?$/);
+    const match = storage.match(/^(\d+(?:\.\d+)?)([A-Za-z]+)?$/);
     if (!match) return 0;
 
-    const value = parseInt(match[1]);
-    const unit = match[2]?.toUpperCase() || "";
+    const value = parseFloat(match[1]);
+    const unit = match[2] || "";
 
     const multipliers: { [key: string]: number } = {
-        GI: 1,
-        TI: 1024,
+        Gi: 1,
+        Ti: 1024,
+        Pi: 1024 * 1024,
+        Ei: 1024 * 1024 * 1024,
         G: 1,
         T: 1000,
+        P: 1000 * 1000,
+        E: 1000 * 1000 * 1000,
     };
 
-    return unit in multipliers ? value * multipliers[unit] : value;
+    return unit in multipliers ? value * multipliers[unit] : value / (1024 * 1024 * 1024);
 }
 ```
 
