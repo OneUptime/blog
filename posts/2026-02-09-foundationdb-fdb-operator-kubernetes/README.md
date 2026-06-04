@@ -21,10 +21,6 @@ The FDB Operator handles cluster formation, membership changes, and upgrades aut
 Start by installing the operator and its custom resource definitions:
 
 ```bash
-# Create namespace for FDB operator
-
-kubectl create namespace fdb-system
-
 # Install CRDs
 kubectl apply -f https://raw.githubusercontent.com/FoundationDB/fdb-kubernetes-operator/main/config/crd/bases/apps.foundationdb.org_foundationdbclusters.yaml
 kubectl apply -f https://raw.githubusercontent.com/FoundationDB/fdb-kubernetes-operator/main/config/crd/bases/apps.foundationdb.org_foundationdbbackups.yaml
@@ -34,14 +30,16 @@ kubectl apply -f https://raw.githubusercontent.com/FoundationDB/fdb-kubernetes-o
 kubectl apply -f https://raw.githubusercontent.com/FoundationDB/fdb-kubernetes-operator/main/config/samples/deployment.yaml
 
 # Verify operator is running
-kubectl get pods -n fdb-system
+kubectl get pods -l app=fdb-kubernetes-operator-controller-manager
 ```
+
+These URLs install the current manifests from the main branch. For production, pin the URLs to a tested operator release tag instead of tracking main.
 
 The operator watches for FoundationDBCluster resources and manages the underlying pods and services. It uses the FDB CLI internally to configure clusters and monitor status.
 
 ## Creating a Basic FDB Cluster
 
-Create a simple three-node cluster to get started:
+Create a simple cluster with dedicated storage, log, and stateless processes to get started:
 
 ```yaml
 # fdb-cluster.yaml
@@ -166,7 +164,7 @@ spec:
               requiredDuringSchedulingIgnoredDuringExecution:
                 - labelSelector:
                     matchExpressions:
-                      - key: fdb-process-class
+                      - key: foundationdb.org/fdb-process-class
                         operator: In
                         values:
                           - storage
@@ -222,7 +220,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd
-provisioner: kubernetes.io/aws-ebs  # Or your cloud provider
+provisioner: ebs.csi.aws.com  # Or your cloud provider's CSI driver
 parameters:
   type: io2
   iopsPerGB: "50"
@@ -239,7 +237,7 @@ kubectl apply -f storage-class.yaml
 
 ## Accessing the Cluster
 
-The operator creates a service for client connections. Use the connection string from the cluster status:
+The operator publishes the cluster file in a ConfigMap. You can also inspect the connection string from the cluster status:
 
 ```bash
 # Get connection string
@@ -261,7 +259,7 @@ spec:
     command: ["/bin/bash", "-c", "sleep infinity"]
     env:
     - name: FDB_CLUSTER_FILE
-      value: /etc/foundationdb/fdb.cluster
+      value: /etc/foundationdb/cluster-file
     volumeMounts:
     - name: config
       mountPath: /etc/foundationdb
@@ -296,12 +294,16 @@ metadata:
 type: Opaque
 stringData:
   credentials: |
-    [default]
-    aws_access_key_id = YOUR_ACCESS_KEY
-    aws_secret_access_key = YOUR_SECRET_KEY
+    {
+        "accounts": {
+            "account@s3.us-east-1.amazonaws.com": {
+                "secret": "YOUR_SECRET_KEY"
+            }
+        }
+    }
 ```
 
-Create a backup resource:
+Create a backup resource. The operator also runs `fdbbackup` commands, so mount the same blob-store credentials into the operator deployment as well as the backup agent pods.
 
 ```yaml
 # fdb-backup.yaml
@@ -310,16 +312,18 @@ kind: FoundationDBBackup
 metadata:
   name: fdb-backup
 spec:
+  version: 7.1.27
   clusterName: fdb-cluster
   backupState: Running
 
   # Backup destination
-  backupDeploymentName: backup-agents
   agentCount: 3
 
   # Storage configuration
-  customParameters:
-    - "blob_credentials=/etc/backup-credentials/credentials"
+  blobStoreConfiguration:
+    accountName: account@s3.us-east-1.amazonaws.com
+    bucket: fdb-backups
+    backupName: fdb-backup
 
   podTemplateSpec:
     spec:
@@ -357,10 +361,11 @@ kind: FoundationDBRestore
 metadata:
   name: fdb-restore
 spec:
-  clusterName: fdb-cluster
-  backupURL: "blobstore://backup-bucket/fdb-backup?bucket=backups"
-  customParameters:
-    - "blob_credentials=/etc/backup-credentials/credentials"
+  destinationClusterName: fdb-cluster
+  blobStoreConfiguration:
+    accountName: account@s3.us-east-1.amazonaws.com
+    bucket: fdb-backups
+    backupName: fdb-backup
 ```
 
 ## Upgrading FDB Versions
@@ -379,32 +384,10 @@ The operator upgrades processes one at a time, ensuring the cluster remains avai
 
 ## Monitoring Cluster Health
 
-Deploy a monitoring sidecar to export metrics:
+FoundationDB exposes detailed cluster health through `fdbcli`. You can query status as JSON and feed it into your monitoring pipeline or a Prometheus exporter of your choice:
 
-```yaml
-apiVersion: apps.foundationdb.org/v1beta2
-kind: FoundationDBCluster
-metadata:
-  name: fdb-cluster
-spec:
-  # ... other configuration ...
-
-  sidecarContainer:
-    enableTls: false
-
-  processes:
-    general:
-      podTemplate:
-        spec:
-          containers:
-            - name: metrics-exporter
-              image: foundationdb/fdb-prometheus-exporter:latest
-              ports:
-                - containerPort: 8080
-                  name: metrics
-              env:
-                - name: FDB_CLUSTER_FILE
-                  value: /etc/foundationdb/fdb.cluster
+```bash
+kubectl exec -it fdb-client -- fdbcli --exec "status json"
 ```
 
 Key metrics to monitor:
