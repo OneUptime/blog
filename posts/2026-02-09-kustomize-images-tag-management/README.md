@@ -64,7 +64,7 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 images:
@@ -83,7 +83,7 @@ You can change both the registry and tag simultaneously. This is useful when mov
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 images:
@@ -103,13 +103,13 @@ For production deployments, using image digests ensures you deploy exactly the i
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 images:
 - name: myapp
   newName: prod-registry.example.com/myapp
-  digest: sha256:a1b2c3d4e5f6...
+  digest: sha256:45b23dee08af5e43a7fea6c4cf9c25ccf269ee113168c19722f87876677c5cb2
 ```
 
 Digests provide immutability that tags cannot. Even if someone overwrites a tag in the registry, the digest ensures Kubernetes pulls the exact image you specified. This prevents the "works in staging but not in production" problems caused by tag mutations.
@@ -123,7 +123,7 @@ Applications often use multiple container images. Configure them all in one plac
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 images:
@@ -154,7 +154,7 @@ Different environments often use different tagging strategies:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 images:
@@ -168,7 +168,7 @@ images:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 images:
@@ -182,13 +182,13 @@ images:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 images:
 - name: myapp
   newName: prod-registry.example.com/myapp
-  digest: sha256:abc123...  # Production uses immutable digests
+  digest: sha256:45b23dee08af5e43a7fea6c4cf9c25ccf269ee113168c19722f87876677c5cb2  # Production uses immutable digests
 ```
 
 This progression from mutable (latest) to semi-stable (commit hash) to immutable (digest) reflects increasing stability requirements.
@@ -203,7 +203,7 @@ The images field integrates perfectly with CI/CD workflows. Use kustomize edit t
 
 # Build and push image
 IMAGE_TAG="v${VERSION}-${GIT_COMMIT}"
-docker build -t myapp:${IMAGE_TAG} .
+docker build -t registry.example.com/myapp:${IMAGE_TAG} .
 docker push registry.example.com/myapp:${IMAGE_TAG}
 
 # Update kustomization with new tag
@@ -232,7 +232,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v5
 
     - name: Build and push image
       env:
@@ -254,7 +254,7 @@ jobs:
         kustomize build | kubectl apply -f -
 ```
 
-The Git SHA provides a unique, immutable identifier for each deployment. Anyone can trace the running code back to the exact commit.
+The Git SHA provides a unique identifier for each deployment. Anyone can trace the running code back to the exact commit, and you can enforce tag immutability in your registry or use digests when you need the image reference itself to be immutable.
 
 ## Handling sidecar containers
 
@@ -267,7 +267,13 @@ kind: Deployment
 metadata:
   name: web-app
 spec:
+  selector:
+    matchLabels:
+      app: web
   template:
+    metadata:
+      labels:
+        app: web
     spec:
       containers:
       - name: app
@@ -281,7 +287,7 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 images:
@@ -303,7 +309,7 @@ Pin third-party image versions to avoid unexpected changes:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 images:
@@ -331,14 +337,14 @@ When deploying to clusters with mixed architectures, ensure your image reference
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 images:
 - name: myapp
   newName: registry.example.com/myapp
   # Multi-arch manifest digest
-  digest: sha256:abc123...
+  digest: sha256:45b23dee08af5e43a7fea6c4cf9c25ccf269ee113168c19722f87876677c5cb2
 ```
 
 Use multi-architecture manifests (created with docker buildx) and reference them by digest. The runtime automatically pulls the correct architecture variant.
@@ -352,7 +358,7 @@ Keep previous image configurations in version control for easy rollbacks:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 images:
@@ -405,13 +411,13 @@ Maintain documentation about your image update process:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 images:
 - name: myapp
   newName: registry.example.com/myapp
-  digest: sha256:abc123...
+  digest: sha256:45b23dee08af5e43a7fea6c4cf9c25ccf269ee113168c19722f87876677c5cb2
   # Updated: 2026-02-09 by ops-team
   # Jira: DEPLOY-1234
 ```
