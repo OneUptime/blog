@@ -8,7 +8,7 @@ Description: Learn how to use Crossplane Claims to enable self-service infrastru
 
 ---
 
-Claims bring self-service infrastructure to Kubernetes. Instead of filing tickets with the platform team for a database, application teams create a Kubernetes manifest in their namespace and get infrastructure automatically provisioned. Claims are namespace-scoped resources that create cluster-scoped composite resources, which Compositions then implement as actual cloud infrastructure.
+Claims bring self-service infrastructure to Kubernetes in Crossplane v1-style APIs. Instead of filing tickets with the platform team for a database, application teams create a Kubernetes manifest in their namespace and get infrastructure automatically provisioned. Claims are namespace-scoped resources that create cluster-scoped composite resources, which Compositions then implement as actual cloud infrastructure. In Crossplane v2, new namespaced composite resources replace the need for claims; claims remain available only for legacy v1-style XRDs.
 
 The claim model separates concerns perfectly - application teams work in their namespaces with simple APIs, while platform teams control implementation through Compositions and enforce governance through RBAC and policies.
 
@@ -86,7 +86,13 @@ metadata:
   name: api-server
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
       - name: api
@@ -152,11 +158,11 @@ kubectl describe postgresqlinstance myapp-db -n team-a
 # Update claim
 kubectl edit postgresqlinstance myapp-db -n team-a
 
-# Delete claim (also deletes infrastructure)
+# Delete claim
 kubectl delete postgresqlinstance myapp-db -n team-a
 ```
 
-Deletion policies control whether cloud resources are deleted or orphaned when claims are deleted.
+Deleting a claim deletes its associated composite resource. Whether external cloud resources are deleted or orphaned depends on the deletion policies configured on the composed managed resources.
 
 ## Creating Claims with GitOps
 
@@ -181,7 +187,7 @@ spec:
     name: production-db-conn
 ```
 
-ArgoCD or Flux deploy claims alongside applications, ensuring infrastructure exists before apps start.
+ArgoCD or Flux can deploy claims alongside applications. Use sync ordering and health checks so infrastructure is applied and ready before apps start.
 
 ## Using Claims with Namespaced Resource Quotas
 
@@ -327,47 +333,52 @@ webhooks:
       name: claim-validator
       namespace: crossplane-system
       path: /validate
+  admissionReviewVersions: ["v1"]
+  sideEffects: None
 ```
 
 Validate claim parameters against organizational policies before creation.
 
 ## Using Claims with External Secrets Operator
 
-Sync claim connection secrets to external secret stores:
+Push claim connection secrets to external secret stores:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
 metadata:
-  name: myapp-db-secret
+  name: myapp-db-secret-push
   namespace: myapp
 spec:
   refreshInterval: 1h
-  secretStoreRef:
-    name: vault
+  updatePolicy: Replace
+  secretStoreRefs:
+  - name: vault
     kind: SecretStore
-  target:
-    name: myapp-db-external
-  dataFrom:
-  - extract:
-      key: secret/data/myapp-db-conn
+  selector:
+    secret:
+      name: myapp-db-conn
+  data:
+  - match:
+      remoteRef:
+        remoteKey: secret/data/myapp-db-conn
 ```
 
 This synchronizes Crossplane-generated secrets to Vault or other secret managers.
 
-## Creating Custom Status Conditions
+## Reading Status Conditions
 
-Surface resource status through claim conditions:
+Read Crossplane status through claim conditions:
 
 ```bash
 # Check all conditions
 kubectl get postgresqlinstance myapp-db -n myapp -o jsonpath='{.status.conditions[*].type}'
 
-# Check specific condition
-kubectl get postgresqlinstance myapp-db -n myapp -o jsonpath='{.status.conditions[?(@.type=="DatabaseReady")].status}'
+# Check readiness condition
+kubectl get postgresqlinstance myapp-db -n myapp -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
 ```
 
-Compositions populate status conditions based on managed resource state.
+Crossplane publishes standard `Synced` and `Ready` conditions based on reconciliation and composed resource readiness.
 
 ## Implementing Claim Cleanup Policies
 
@@ -380,14 +391,14 @@ metadata:
   name: temporary-db
   namespace: testing
 spec:
-  deletionPolicy: Delete  # Options: Delete, Orphan
+  compositeDeletePolicy: Foreground  # Options: Background, Foreground
   parameters:
     storageGB: 20
   writeConnectionSecretToRef:
     name: temporary-db-conn
 ```
 
-`Delete` removes cloud resources when claim is deleted. `Orphan` keeps them.
+`Foreground` waits for the associated composite resource and its children to be deleted. `Background` deletes the composite resource in the background. To keep or remove external cloud resources, set `deletionPolicy: Orphan` or `deletionPolicy: Delete` on the composed managed resources.
 
 ## Conclusion
 
