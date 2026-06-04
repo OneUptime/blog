@@ -19,6 +19,7 @@ The Viz extension provides the dashboard and metrics components:
 ```bash
 # Install Linkerd core first
 
+linkerd install --crds | kubectl apply -f -
 linkerd install | kubectl apply -f -
 
 # Verify core installation
@@ -28,7 +29,7 @@ linkerd check
 linkerd viz install | kubectl apply -f -
 
 # Verify Viz installation
-linkerd check --proxy
+linkerd viz check
 ```
 
 Verify the Viz components are running:
@@ -36,12 +37,8 @@ Verify the Viz components are running:
 ```bash
 kubectl get pods -n linkerd-viz
 
-# Expected output:
-# metrics-api
-# prometheus
-# tap
-# tap-injector
-# web
+# Expected components include:
+# metrics-api, prometheus, tap, tap-injector, and web
 ```
 
 ## Accessing the Viz Dashboard
@@ -85,24 +82,26 @@ linkerd viz tap deploy/api-gateway --method GET
 linkerd viz tap deploy/payment-service --method POST
 ```
 
-Filter by path pattern:
+Filter by path prefix:
 
 ```bash
 # Requests to /api/users endpoints
 linkerd viz tap deploy/api-gateway --path /api/users
 
-# Requests matching regex
-linkerd viz tap deploy/api-gateway --path "^/api/v[0-9]+"
+# Requests to versioned API endpoints
+linkerd viz tap deploy/api-gateway --path /api/v1
 ```
 
-Filter by response status:
+Filter by response status with JSON output:
 
 ```bash
 # Only errors
-linkerd viz tap deploy/api-gateway --to deploy/backend --status 5xx
+linkerd viz tap deploy/api-gateway --to deploy/backend -o json | \
+  jq 'select(.responseInit.httpStatus >= 500 and .responseInit.httpStatus < 600)'
 
 # Specific status code
-linkerd viz tap deploy/api-gateway --status 404
+linkerd viz tap deploy/api-gateway -o json | \
+  jq 'select(.responseInit.httpStatus == 404)'
 ```
 
 ## Inspecting Request and Response Bodies
@@ -115,10 +114,10 @@ linkerd viz tap deploy/api-gateway -o json | jq '.requestInit.headers'
 
 # Filter specific header
 linkerd viz tap deploy/api-gateway -o json | \
-  jq 'select(.requestInit.headers.authorization != null)'
+  jq 'select(any(.requestInit.headers[]?; .name == "authorization"))'
 ```
 
-Linkerd Tap does not expose request/response bodies by default for security and performance. To inspect bodies, use the debug sidecar or enable verbose logging temporarily.
+Linkerd Tap exposes request and response metadata such as headers, but not request or response bodies. To inspect bodies, use application-level logging or a dedicated debugging proxy temporarily.
 
 ## Tapping Traffic Between Services
 
@@ -129,7 +128,7 @@ Monitor traffic from one service to another:
 linkerd viz tap deploy/frontend --to deploy/backend -n production
 
 # Tap all traffic to a specific service
-linkerd viz tap --to svc/database-proxy -n data-layer
+linkerd viz tap ns/data-layer --to svc/database-proxy -n data-layer
 ```
 
 Find which services are calling your deployment:
@@ -146,19 +145,20 @@ Find all failed requests:
 
 ```bash
 # Show only 5xx errors
-linkerd viz tap deploy/api-gateway --status 5xx
+linkerd viz tap deploy/api-gateway -o json | \
+  jq 'select(.responseInit.httpStatus >= 500 and .responseInit.httpStatus < 600)'
 
 # Show 4xx client errors
-linkerd viz tap deploy/api-gateway --status 4xx
+linkerd viz tap deploy/api-gateway -o json | \
+  jq 'select(.responseInit.httpStatus >= 400 and .responseInit.httpStatus < 500)'
 ```
 
 Identify slow requests:
 
 ```bash
 # Tap with custom max requests
-linkerd viz tap deploy/api-gateway --max-rps 100 | \
-  awk '$NF ~ /latency/ { print $0 }' | \
-  awk '{ gsub(/latency=/, ""); gsub(/ms/, ""); if ($NF > 1000) print $0 }'
+linkerd viz tap deploy/api-gateway --max-rps 100 -o json | \
+  jq 'select(((.responseEnd.sinceRequestInit.seconds // 0) * 1000 + ((.responseEnd.sinceRequestInit.nanos // 0) / 1000000)) > 1000)'
 ```
 
 ## Using Tap in CI/CD Pipelines
@@ -175,7 +175,8 @@ ERROR_THRESHOLD=5
 
 # Tap for 30 seconds
 echo "Monitoring $DEPLOYMENT for errors..."
-ERRORS=$(timeout 30s linkerd viz tap deploy/$DEPLOYMENT -n $NAMESPACE --status 5xx | wc -l)
+ERRORS=$(timeout 30s linkerd viz tap deploy/$DEPLOYMENT -n $NAMESPACE -o json | \
+  jq -c 'select(.responseInit.httpStatus >= 500 and .responseInit.httpStatus < 600)' | wc -l)
 
 if [ "$ERRORS" -gt "$ERROR_THRESHOLD" ]; then
   echo "ERROR: Found $ERRORS server errors, threshold is $ERROR_THRESHOLD"
@@ -197,15 +198,16 @@ metadata:
 spec:
   template:
     spec:
-      serviceAccountName: linkerd-tap
+      serviceAccountName: tap-viewer
       containers:
       - name: validator
-        image: linkerd/cli-bin:stable-2.14.0
+        image: cr.l5d.io/linkerd/cli-bin:edge-26.5.5
         command:
         - /bin/sh
         - -c
         - |
-          linkerd viz tap deploy/api-gateway --status 5xx --max-rps 10 &
+          linkerd viz tap deploy/api-gateway --max-rps 10 -o json | \
+            jq -c 'select(.responseInit.httpStatus >= 500 and .responseInit.httpStatus < 600)' &
           TAP_PID=$!
           sleep 30
           kill $TAP_PID
@@ -224,39 +226,28 @@ metadata:
   namespace: production
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRoleBinding
 metadata:
   name: tap-viewer
-  namespace: production
-rules:
-- apiGroups: ["tap.linkerd.io"]
-  resources: ["*"]
-  verbs: ["watch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: tap-viewer
-  namespace: production
 subjects:
 - kind: ServiceAccount
   name: tap-viewer
   namespace: production
 roleRef:
-  kind: Role
-  name: tap-viewer
+  kind: ClusterRole
+  name: linkerd-linkerd-viz-tap-admin
   apiGroup: rbac.authorization.k8s.io
 ```
 
 Use the ServiceAccount for tap operations:
 
 ```bash
-# Generate kubeconfig for tap-viewer
-kubectl create token tap-viewer -n production --duration=24h > /tmp/tap-token
+# Verify tap access for the ServiceAccount
+kubectl auth can-i watch deployments.tap.linkerd.io -n production \
+  --as=system:serviceaccount:production:tap-viewer
 
-# Use with linkerd
-linkerd viz tap deploy/api-gateway -n production \
-  --context tap-viewer
+# Use a kubeconfig context authenticated as tap-viewer, or run the CLI
+# from a Kubernetes Job that uses serviceAccountName: tap-viewer.
 ```
 
 ## Exploring the Viz Dashboard
@@ -278,22 +269,11 @@ linkerd viz dashboard &
 
 ## Integrating Tap with Monitoring
 
-Stream tap data to Prometheus:
+Use Linkerd's Prometheus metrics alongside tap data:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: tap-exporter
-  namespace: linkerd-viz
-data:
-  config.yaml: |
-    deployments:
-    - namespace: production
-      name: api-gateway
-      metrics:
-      - request_total
-      - response_latency_ms
+```bash
+# Query request and latency metrics from the Viz Prometheus instance
+kubectl -n linkerd-viz port-forward svc/prometheus 9090:9090
 ```
 
 Create custom metrics from tap data:
@@ -333,7 +313,7 @@ spec:
 
 ## Performance Impact and Best Practices
 
-Tap adds minimal overhead because it samples at the proxy level without serializing full requests. However, be mindful when tapping high-traffic services:
+Tap adds minimal overhead because it observes metadata at the proxy and does not serialize full request or response bodies. However, be mindful when tapping high-traffic services:
 
 ```bash
 # Limit tap output
@@ -352,11 +332,12 @@ Grant tap permissions carefully. Tap exposes all request metadata including head
 If tap fails to connect:
 
 ```bash
-# Check tap injector
+# Check tap service
 kubectl get pods -n linkerd-viz -l linkerd.io/control-plane-component=tap
 
 # Verify RBAC permissions
-kubectl auth can-i watch tap --as=system:serviceaccount:production:default
+kubectl auth can-i watch deployments.tap.linkerd.io -n production \
+  --as=system:serviceaccount:production:default
 
 # Check pod annotation
 kubectl get pod -n production api-gateway-xxxxx -o jsonpath='{.metadata.annotations}'
