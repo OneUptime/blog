@@ -71,7 +71,6 @@ services:
 
   worker-1:
     image: ghcr.io/dask/dask:latest
-    container_name: dask-worker-1
     command: >
       dask worker tcp://scheduler:8786
       --nworkers 1
@@ -83,7 +82,6 @@ services:
 
   worker-2:
     image: ghcr.io/dask/dask:latest
-    container_name: dask-worker-2
     command: >
       dask worker tcp://scheduler:8786
       --nworkers 1
@@ -95,7 +93,6 @@ services:
 
   worker-3:
     image: ghcr.io/dask/dask:latest
-    container_name: dask-worker-3
     command: >
       dask worker tcp://scheduler:8786
       --nworkers 1
@@ -163,11 +160,11 @@ print(summary)
 One of Docker Compose's strengths is the ability to scale services. You can add workers without modifying the compose file:
 
 ```bash
-# Scale workers up to 6 instances
-docker compose up -d --scale worker-1=6
+# Scale to 6 total worker containers in this example
+docker compose up -d --scale worker-1=4
 
 # Check worker count on the dashboard
-curl -s http://localhost:8787/info/main/workers.html | grep "Worker"
+curl -s http://localhost:8787/workers | grep "Worker"
 ```
 
 For more granular control, use separate named workers with different resource allocations.
