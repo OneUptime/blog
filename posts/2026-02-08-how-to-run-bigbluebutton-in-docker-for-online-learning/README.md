@@ -23,40 +23,41 @@ BigBlueButton consists of several interconnected components. Understanding this 
 ```mermaid
 graph TD
     A[Web Browser] --> B[Nginx Reverse Proxy]
-    B --> C[HTML5 Client - Meteor.js]
+    B --> C[HTML5 Client - React/TypeScript]
     B --> D[BigBlueButton Web API]
     D --> E[FreeSWITCH - Audio]
-    D --> F[Kurento/mediasoup - Video/Screen Share]
+    D --> F[WebRTC-SFU/mediasoup - Video/Screen Share]
     D --> G[Redis - Message Queue]
-    D --> H[MongoDB - Client State]
+    D --> H[GraphQL/Hasura - Client State]
     E --> I[TURN/STUN Server]
     F --> I
 ```
 
-The system uses FreeSWITCH for audio processing, Kurento or mediasoup for WebRTC video, Redis for pub/sub messaging, and MongoDB for maintaining client state. Nginx sits in front as a reverse proxy handling SSL termination.
+The system uses FreeSWITCH for audio processing, mediasoup through BigBlueButton's WebRTC-SFU for WebRTC video, Redis for pub/sub messaging, and GraphQL/Hasura services for client state. Nginx sits in front as a reverse proxy handling SSL termination.
 
 ## Prerequisites
 
 BigBlueButton is resource-intensive. Plan for the following:
 
-- A dedicated server with at least 4 CPU cores and 8 GB RAM (16 GB recommended)
+- A dedicated server with at least 4 CPU cores and 8 GB RAM (8 CPU cores and 16 GB RAM recommended for production)
 - Docker and Docker Compose installed
 - A public domain name with DNS configured
 - Ports 80, 443, and 16384-32768 (UDP, for WebRTC media) open
 - A valid SSL certificate (BigBlueButton requires HTTPS)
+- A public IPv4 address without NAT; the Docker setup does not currently support NAT deployments
 
 ## Setting Up with Docker
 
-The community-maintained [bigbluebutton/docker](https://github.com/bigbluebutton/docker) repository provides the official Docker deployment method for BigBlueButton 3.0. It builds all necessary images locally and generates a complete Docker Compose configuration through an automated setup script.
+The community-maintained [bigbluebutton/docker](https://github.com/bigbluebutton/docker) repository provides a Docker deployment method for BigBlueButton 3.0. The official BigBlueButton production installation path is still the native `bbb-install.sh` package-based install, but the Docker repository generates a complete Docker Compose configuration through an automated setup script.
 
-> **Note:** BigBlueButton does not publish pre-built images to Docker Hub. The Docker setup builds images from source using the official repository. Do not attempt to pull images like `bigbluebutton/bbb-web` directly - they do not exist.
+> **Note:** The Docker repository uses its generated `docker-compose.yml` and image names from that project. Do not attempt to pull images like `bigbluebutton/bbb-web` directly - they are not the images used by this setup.
 
 ### Step 1: Install Docker
 
 Make sure you have Docker CE (v23.0+) and the Docker Compose plugin installed on a native Linux host. BigBlueButton's Docker setup does not work on Windows, WSL, or macOS.
 
 ```bash
-# Install Docker CE (Ubuntu/Debian)
+# Quick Docker CE install (for production, prefer Docker's OS-specific repository instructions)
 curl -fsSL https://get.docker.com | sh
 
 # Verify Docker Compose plugin is available
@@ -66,7 +67,7 @@ docker compose version
 ### Step 2: Clone the Repository
 
 ```bash
-# Clone the official BigBlueButton Docker repository
+# Clone the community-maintained BigBlueButton Docker repository
 git clone https://github.com/bigbluebutton/docker.git bbb-docker
 cd bbb-docker
 ```
@@ -105,8 +106,8 @@ The setup generates a `docker-compose.yml` with services including `bbb-web`, `f
 ### Step 5: Start BigBlueButton
 
 ```bash
-# Build and launch all BigBlueButton services
-docker compose up -d
+# Launch all BigBlueButton services using the generated compose file
+docker compose up -d --no-build
 
 # Watch the logs to verify everything starts correctly
 docker compose logs -f
@@ -115,7 +116,7 @@ docker compose logs -f
 docker compose ps
 ```
 
-The first launch takes longer as Docker builds the images from source. Subsequent starts use cached images.
+The first launch takes longer while Docker downloads images and initializes persistent data. If you intentionally want to rebuild images from the local Docker contexts, use `docker compose up -d --build`.
 
 ## Key Services in the Stack
 
@@ -124,11 +125,11 @@ The generated `docker-compose.yml` includes these core services:
 | Service | Description |
 |---|---|
 | `bbb-web` | Core BigBlueButton application server (API, meeting management) |
-| `html5` | Meteor.js-based HTML5 client served to browsers |
+| `nginx` | Serves the React/TypeScript HTML5 client and proxies API/WebSocket traffic |
 | `freeswitch` | Audio processing engine for WebRTC voice |
-| `mediasoup` | WebRTC video and screen sharing |
-| `nginx` | Reverse proxy with SSL termination |
+| `webrtc-sfu` | WebRTC video and screen sharing using mediasoup |
 | `redis` | Pub/sub message broker |
+| `bbb-graphql-server` | GraphQL state service backed by PostgreSQL/Hasura |
 | `etherpad` | Shared notes editor |
 | `bbb-pads` | Integration layer between BigBlueButton and Etherpad |
 | `greenlight` | (Optional) Web front-end for room management |
@@ -167,7 +168,7 @@ After changing `.env`, regenerate and restart:
 ./scripts/generate-compose
 
 # Restart with the new configuration
-docker compose up -d
+docker compose up -d --no-build
 ```
 
 ## API Integration
@@ -180,26 +181,26 @@ BBB_SECRET=$(grep SHARED_SECRET .env | cut -d'=' -f2)
 BBB_URL="https://bbb.example.com/bigbluebutton/api"
 
 # Calculate the checksum for the create call
-CALL="createname=Test+Meeting&meetingID=test001&attendeePW=ap&moderatorPW=mp"
-CHECKSUM=$(echo -n "${CALL}${BBB_SECRET}" | sha1sum | awk '{print $1}')
+QUERY="name=Test+Meeting&meetingID=test001&record=true"
+CHECKSUM=$(printf "create%s%s" "${QUERY}" "${BBB_SECRET}" | sha1sum | awk '{print $1}')
 
 # Create the meeting
-curl "${BBB_URL}/create?name=Test+Meeting&meetingID=test001&attendeePW=ap&moderatorPW=mp&checksum=${CHECKSUM}"
+curl "${BBB_URL}/create?${QUERY}&checksum=${CHECKSUM}"
 ```
 
 ## Managing Recordings
 
-BigBlueButton records sessions automatically when `ENABLE_RECORDING=true` is set in your `.env` file. Recordings are stored in the `data/bigbluebutton` directory on the host.
+Setting `ENABLE_RECORDING=true` in your `.env` file enables the recording services. A meeting still needs to be created with `record=true`, and a moderator must start recording during the session for a playback file to be produced. Recordings are stored in the `data/bigbluebutton` directory on the host.
 
 ```bash
 # List all recordings on the host
 ls -la data/bigbluebutton/published/
 
-# Check recording processing status inside the container
-docker compose exec bbb-web bbb-record --list
+# Check recording processing status through the Docker wrapper
+./scripts/bbb-record --list
 
-# Delete old recordings to free disk space (older than 30 days)
-find data/bigbluebutton/published -maxdepth 1 -mtime +30 -exec rm -rf {} \;
+# Or call bbb-record directly in the recordings container
+docker compose exec recordings bbb-record --list
 ```
 
 ## Performance Tuning
@@ -238,15 +239,14 @@ Before going live, run through these items. Verify the shared secret in `.env` i
 
 ## Upgrading BigBlueButton
 
-To upgrade to a newer version, pull the latest changes from the repository and rebuild:
+To upgrade to a newer version, use the repository's upgrade helper:
 
 ```bash
-# Pull the latest version
-git pull
+# Run the repository's upgrade helper
+./scripts/upgrade
 
-# Rebuild and restart all services
-docker compose down
-docker compose up -d --build
+# Restart updated services
+docker compose up -d --no-build
 ```
 
 BigBlueButton in Docker gives you a fully featured online learning platform that you control. The containerized setup makes upgrades manageable, and the modular architecture lets you scale individual components as your user base grows.
