@@ -28,7 +28,7 @@ set -e
 
 # Configuration
 
-ETCD_ENDPOINTS="https://etcd-0:2379,https://etcd-1:2379,https://etcd-2:2379"
+ETCD_ENDPOINT="https://etcd-0:2379"
 BACKUP_DIR="/backups/etcd"
 RETENTION_DAYS=30
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -39,13 +39,13 @@ mkdir -p ${BACKUP_DIR}
 
 # Create snapshot
 ETCDCTL_API=3 etcdctl snapshot save ${BACKUP_FILE} \
-  --endpoints=${ETCD_ENDPOINTS} \
+  --endpoints=${ETCD_ENDPOINT} \
   --cacert=/etc/etcd/ca.crt \
   --cert=/etc/etcd/etcd-client.crt \
   --key=/etc/etcd/etcd-client.key
 
 # Verify snapshot
-ETCDCTL_API=3 etcdctl snapshot status ${BACKUP_FILE} \
+etcdutl snapshot status ${BACKUP_FILE} \
   --write-out=table
 
 # Compress backup
@@ -67,7 +67,7 @@ curl -X POST http://prometheus-pushgateway:9091/metrics/job/etcd_backup \
 # TYPE etcd_backup_timestamp gauge
 etcd_backup_timestamp $(date +%s)
 # TYPE etcd_backup_size_bytes gauge
-etcd_backup_size_bytes $(stat -f%z "${BACKUP_FILE}.gz")
+etcd_backup_size_bytes $(stat -c%s "${BACKUP_FILE}.gz")
 EOF
 ```
 
@@ -136,7 +136,7 @@ aws s3 cp ${BACKUP_FILE} s3://disaster-recovery-backups/etcd/ \
 # Replicate to different cloud provider (Google Cloud)
 gsutil cp ${BACKUP_FILE} gs://backup-bucket/etcd/
 
-# Store copy on tape/cold storage
+# Store copy in cold storage
 aws s3 cp ${BACKUP_FILE} s3://glacier-backups/etcd/ \
   --storage-class GLACIER
 ```
@@ -152,7 +152,7 @@ Document and script the restore process:
 set -e
 
 BACKUP_FILE=$1
-RESTORE_DIR="/var/lib/etcd-restore"
+KUBE_CONTROL_PLANES="control-plane-0 control-plane-1 control-plane-2"
 
 if [ -z "${BACKUP_FILE}" ]; then
     echo "Usage: $0 <backup-file>"
@@ -161,11 +161,22 @@ fi
 
 # Download backup if it's a remote path
 if [[ ${BACKUP_FILE} == s3://* ]]; then
-    LOCAL_BACKUP="/tmp/etcd-backup.db.gz"
+    LOCAL_BACKUP="/tmp/$(basename "${BACKUP_FILE}")"
     aws s3 cp ${BACKUP_FILE} ${LOCAL_BACKUP}
-    gunzip ${LOCAL_BACKUP}
-    BACKUP_FILE="${LOCAL_BACKUP%.gz}"
+    BACKUP_FILE="${LOCAL_BACKUP}"
 fi
+
+# Decompress gzip snapshots without modifying the original file
+if [[ ${BACKUP_FILE} == *.gz ]]; then
+    LOCAL_BACKUP="/tmp/$(basename "${BACKUP_FILE%.gz}")"
+    gunzip -c ${BACKUP_FILE} > ${LOCAL_BACKUP}
+    BACKUP_FILE="${LOCAL_BACKUP}"
+fi
+
+# Stop Kubernetes API servers so they do not write to etcd during restore
+for host in ${KUBE_CONTROL_PLANES}; do
+    ssh ${host} "sudo systemctl stop kube-apiserver"
+done
 
 # Stop etcd on all nodes
 ssh etcd-0 "sudo systemctl stop etcd"
@@ -173,9 +184,9 @@ ssh etcd-1 "sudo systemctl stop etcd"
 ssh etcd-2 "sudo systemctl stop etcd"
 
 # Remove old data on all nodes
-ssh etcd-0 "sudo rm -rf /var/lib/etcd/*"
-ssh etcd-1 "sudo rm -rf /var/lib/etcd/*"
-ssh etcd-2 "sudo rm -rf /var/lib/etcd/*"
+ssh etcd-0 "sudo rm -rf /var/lib/etcd"
+ssh etcd-1 "sudo rm -rf /var/lib/etcd"
+ssh etcd-2 "sudo rm -rf /var/lib/etcd"
 
 # Restore snapshot on each node
 for i in 0 1 2; do
@@ -185,11 +196,13 @@ for i in 0 1 2; do
     scp ${BACKUP_FILE} etcd-${i}:/tmp/restore.db
 
     # Restore with unique member name
-    ssh etcd-${i} "ETCDCTL_API=3 etcdctl snapshot restore /tmp/restore.db \
+    ssh etcd-${i} "etcdutl snapshot restore /tmp/restore.db \
       --name etcd-${i} \
       --initial-cluster etcd-0=https://etcd-0:2380,etcd-1=https://etcd-1:2380,etcd-2=https://etcd-2:2380 \
       --initial-cluster-token etcd-cluster-1 \
       --initial-advertise-peer-urls https://etcd-${i}:2380 \
+      --bump-revision 1000000000 \
+      --mark-compacted \
       --data-dir /var/lib/etcd"
 
     # Fix permissions
@@ -200,6 +213,11 @@ done
 ssh etcd-0 "sudo systemctl start etcd"
 ssh etcd-1 "sudo systemctl start etcd"
 ssh etcd-2 "sudo systemctl start etcd"
+
+# Restart Kubernetes API servers and control plane components
+for host in ${KUBE_CONTROL_PLANES}; do
+    ssh ${host} "sudo systemctl start kube-apiserver kube-scheduler kube-controller-manager kubelet"
+done
 
 # Verify cluster health
 sleep 10
@@ -223,7 +241,7 @@ chmod +x /usr/local/bin/etcd-restore.sh
 
 ## Testing Disaster Recovery Procedures
 
-Regular testing ensures recovery procedures work when needed:
+Regular testing in an isolated non-production cluster ensures recovery procedures work when needed:
 
 ```bash
 #!/bin/bash
@@ -297,7 +315,7 @@ spec:
     interval: 60s
     rules:
     - alert: EtcdBackupFailed
-      expr: time() - etcd_backup_timestamp > 86400
+      expr: absent(etcd_backup_timestamp) or time() - etcd_backup_timestamp > 86400
       for: 1h
       annotations:
         summary: "etcd backup hasn't run in 24 hours"
@@ -368,7 +386,7 @@ SNAPSHOT=$(ls /backups/etcd/pitr/snapshot-${DESIRED_TIME}*.db | head -1)
 
 ## Handling Split-Brain Scenarios
 
-If etcd clusters split due to network partitions:
+If network partitions or failures leave unhealthy members while a healthy quorum remains:
 
 ```bash
 # Check cluster member list on each node
@@ -395,6 +413,9 @@ ETCDCTL_API=3 etcdctl member add etcd-2 \
   --cacert=/etc/etcd/ca.crt \
   --cert=/etc/etcd/etcd-client.crt \
   --key=/etc/etcd/etcd-client.key
+
+# Start the replacement member with the ETCD_INITIAL_CLUSTER
+# and ETCD_INITIAL_CLUSTER_STATE=existing values printed by member add.
 ```
 
 ## Documenting Recovery Procedures
@@ -463,4 +484,4 @@ kubectl get pods --all-namespaces | head -20
 
 ## Conclusion
 
-Disaster recovery for external etcd clusters requires automated backups, tested restore procedures, and comprehensive monitoring. By implementing hourly snapshots to multiple locations, documenting recovery procedures, and testing them regularly, you ensure your Kubernetes control plane data remains recoverable. The combination of automated backups, point-in-time recovery capabilities through frequent snapshots, and well-tested restore scripts provides confidence that you can recover from any disaster scenario. Regular DR testing validates your procedures work correctly and helps identify gaps before real disasters occur.
+Disaster recovery for external etcd clusters requires automated backups, tested restore procedures, and comprehensive monitoring. By implementing regular snapshots to multiple locations, documenting recovery procedures, and testing them regularly, you ensure your Kubernetes control plane data remains recoverable. The combination of automated backups, point-in-time recovery capabilities through frequent snapshots, and well-tested restore scripts provides confidence that you can recover from any disaster scenario. Regular DR testing validates your procedures work correctly and helps identify gaps before real disasters occur.
