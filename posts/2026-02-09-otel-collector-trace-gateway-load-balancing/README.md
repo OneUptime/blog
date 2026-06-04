@@ -71,7 +71,7 @@ data:
         resolver:
           dns:
             hostname: otel-gateway.observability.svc.cluster.local
-            port: 4317
+            port: "4317"
 
     service:
       pipelines:
@@ -97,7 +97,7 @@ spec:
       serviceAccountName: otel-agent
       containers:
       - name: otel-agent
-        image: otel/opentelemetry-collector-contrib:0.92.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - "--config=/conf/config.yaml"
         ports:
@@ -207,23 +207,27 @@ data:
         check_interval: 1s
         limit_mib: 2048
 
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
     exporters:
       # Export to Tempo with load balancing
       loadbalancing/tempo:
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+        sending_queue:
+          enabled: true
+          num_consumers: 10
+          queue_size: 5000
         routing_key: "traceID"
         protocol:
           otlp:
-            endpoint: tempo-distributor.observability.svc.cluster.local:4317
             tls:
               insecure: true
-            sending_queue:
-              num_consumers: 10
-              queue_size: 5000
-            retry_on_failure:
-              enabled: true
-              initial_interval: 5s
-              max_interval: 30s
-              max_elapsed_time: 300s
         resolver:
           static:
             hostnames:
@@ -236,22 +240,23 @@ data:
         routing_key: "traceID"
         protocol:
           otlp:
-            endpoint: jaeger-collector.observability.svc.cluster.local:4317
             tls:
               insecure: true
         resolver:
           dns:
             hostname: jaeger-collector.observability.svc.cluster.local
-            port: 4317
-
-      # Metrics for monitoring
-      prometheus:
-        endpoint: "0.0.0.0:8889"
+            port: "4317"
 
     service:
+      extensions: [health_check]
       telemetry:
         metrics:
-          address: ":8888"
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
 
       pipelines:
         traces:
@@ -280,7 +285,7 @@ spec:
     spec:
       containers:
       - name: otel-gateway
-        image: otel/opentelemetry-collector-contrib:0.92.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - "--config=/conf/config.yaml"
         ports:
@@ -290,8 +295,8 @@ spec:
           name: otlp-http
         - containerPort: 8888
           name: metrics
-        - containerPort: 8889
-          name: prom-exporter
+        - containerPort: 13133
+          name: health
         volumeMounts:
         - name: config
           mountPath: /conf
@@ -320,7 +325,10 @@ kind: Service
 metadata:
   name: otel-gateway
   namespace: observability
+  labels:
+    app: otel-gateway
 spec:
+  clusterIP: None
   selector:
     app: otel-gateway
   ports:
@@ -334,7 +342,6 @@ spec:
     port: 8888
     targetPort: 8888
   type: ClusterIP
-  sessionAffinity: None  # Don't pin connections
 ```
 
 ## Configuring Horizontal Pod Autoscaling
@@ -368,13 +375,6 @@ spec:
       target:
         type: Utilization
         averageUtilization: 80
-  - type: Pods
-    pods:
-      metric:
-        name: otelcol_receiver_accepted_spans
-      target:
-        type: AverageValue
-        averageValue: "10000"
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 60
