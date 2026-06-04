@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Cilium, Security
 
-Description: Implement Layer 7 HTTP filtering in Cilium network policies to control traffic based on HTTP methods, paths, headers, and response codes.
+Description: Implement Layer 7 HTTP filtering in Cilium network policies to control traffic based on HTTP methods, paths, headers, and observed response codes.
 
 ---
 
@@ -12,9 +12,9 @@ Standard Kubernetes network policies operate at Layer 3 and 4, filtering based o
 
 ## Understanding Cilium Layer 7 Policies
 
-Cilium uses eBPF to inspect HTTP traffic in the kernel without proxying through userspace. This provides:
+Cilium uses eBPF to redirect matching HTTP traffic to a node-local Envoy proxy for Layer 7 enforcement. This provides:
 
-- Low-latency filtering (microseconds overhead)
+- Low-latency filtering with an additional proxy hop
 - Visibility into HTTP request details
 - Method-based access control (GET, POST, DELETE, etc.)
 - Path-based restrictions
@@ -30,7 +30,7 @@ Enable L7 policy support when installing Cilium:
 ```bash
 helm install cilium cilium/cilium --version 1.15.0 \
   --namespace kube-system \
-  --set l7Proxy.enabled=true \
+  --set l7Proxy=true \
   --set operator.replicas=1
 ```
 
@@ -93,6 +93,7 @@ spec:
       - name: api
         image: hashicorp/http-echo
         args:
+        - -listen=:8080
         - -text=API Server
         ports:
         - containerPort: 8080
@@ -327,36 +328,15 @@ spec:
 
 ## Monitoring L7 Policy Violations
 
-Enable policy audit mode to log violations without blocking:
+Use Hubble or Cilium monitor to observe L7 verdicts. Policy audit mode is configured on the Cilium agent or endpoint, not as an annotation on an individual `CiliumNetworkPolicy`; it is primarily used for L3/L4 policy discovery.
 
-```yaml
-# audit-policy.yaml
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: api-audit
-  annotations:
-    policy.cilium.io/audit-mode: "true"
-spec:
-  endpointSelector:
-    matchLabels:
-      app: api-server
-  ingress:
-  - fromEndpoints:
-    - matchLabels:
-        app: frontend
-    toPorts:
-    - ports:
-      - port: "8080"
-      rules:
-        http:
-        - method: "GET"
-```
-
-Check Cilium logs for violations:
+Enable policy audit mode for all endpoints managed by the agent:
 
 ```bash
-kubectl -n kube-system logs -l k8s-app=cilium | grep "Policy verdict"
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --reuse-values \
+  --set policyAuditMode=true
 ```
 
 Use Hubble for detailed visibility:
@@ -369,19 +349,19 @@ cilium hubble enable --ui
 kubectl port-forward -n kube-system svc/hubble-ui 12000:80
 
 # Query L7 traffic
-hubble observe --type l7 --from-pod frontend
+hubble observe --protocol http --from-pod frontend
 ```
 
 ## Limiting Request Rate by Method
 
-Combine with Cilium's rate limiting (if supported by your version):
+CiliumNetworkPolicy does not provide a native `rateLimit` field for HTTP rules. Enforce request rate limits at the application, API gateway, ingress, or service mesh layer, and keep Cilium policies focused on which methods and paths are allowed:
 
 ```yaml
-# rate-limit-policy.yaml
+# write-method-policy.yaml
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: api-rate-limit
+  name: api-write-methods
 spec:
   endpointSelector:
     matchLabels:
@@ -395,19 +375,8 @@ spec:
       - port: "8080"
       rules:
         http:
-        # Stricter limits on write operations
         - method: "POST|PUT|DELETE"
           path: "/api/.*"
-          # Custom annotation for rate limiting
-          rateLimit:
-            requests: 100
-            per: "1m"
-        # More relaxed limits on reads
-        - method: "GET"
-          path: "/api/.*"
-          rateLimit:
-            requests: 1000
-            per: "1m"
 ```
 
 ## Egress HTTP Filtering
@@ -425,12 +394,12 @@ spec:
     matchLabels:
       app: frontend
   egress:
-  # Allow HTTPS to external APIs
+  # Allow HTTP to external APIs
   - toFQDNs:
     - matchPattern: "api.external-service.com"
     toPorts:
     - ports:
-      - port: "443"
+      - port: "80"
         protocol: TCP
       rules:
         http:
@@ -453,7 +422,7 @@ spec:
   - toEndpoints:
     - matchLabels:
         k8s:io.kubernetes.pod.namespace: kube-system
-        k8s-app: kube-dns
+        k8s:k8s-app: kube-dns
     toPorts:
     - ports:
       - port: "53"
@@ -466,13 +435,13 @@ Check if L7 proxy is processing traffic:
 
 ```bash
 # Verify L7 proxy is enabled on endpoints
-kubectl -n kube-system exec -it ds/cilium -- cilium endpoint list
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg endpoint list
 
 # Check policy verdict
-kubectl -n kube-system exec -it ds/cilium -- cilium monitor --type policy-verdict
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg monitor --type policy-verdict
 
 # View L7 access logs
-kubectl -n kube-system exec -it ds/cilium -- cilium monitor --type l7
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg monitor --type l7
 ```
 
 Common issues:
@@ -486,20 +455,20 @@ kubectl get pod -l app=api-server --show-labels
 **L7 proxy not intercepting**: Check if ports are in policy enforcement mode:
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium endpoint get <endpoint-id>
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint get <endpoint-id>
 ```
 
 **High latency**: L7 inspection adds overhead. Monitor:
 
 ```bash
-kubectl -n kube-system exec ds/cilium -- cilium metrics list | grep proxy
+kubectl -n kube-system exec ds/cilium -- cilium-dbg metrics list | grep proxy
 ```
 
 ## Performance Considerations
 
 L7 policies have performance impact:
 
-- ~50-200μs latency overhead per request
+- Additional latency from proxying through Envoy
 - CPU usage increases with policy complexity
 - Memory usage grows with connection count
 
@@ -514,4 +483,4 @@ Optimize performance:
 kubectl top pods -n kube-system -l k8s-app=cilium
 ```
 
-Cilium's Layer 7 HTTP filtering provides application-level security that standard Kubernetes network policies cannot match. Use method-based filtering for read/write separation, path-based rules for endpoint protection, and header inspection for authentication enforcement. The eBPF-based implementation provides these capabilities with minimal performance overhead, making it practical for production workloads requiring fine-grained HTTP security controls.
+Cilium's Layer 7 HTTP filtering provides application-level security that standard Kubernetes network policies cannot match. Use method-based filtering for read/write separation, path-based rules for endpoint protection, and header inspection for authentication enforcement. The eBPF datapath redirects matching traffic to Envoy for policy enforcement, making these controls practical for production workloads requiring fine-grained HTTP security.
