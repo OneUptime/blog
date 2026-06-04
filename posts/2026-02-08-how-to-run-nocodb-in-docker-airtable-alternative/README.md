@@ -18,8 +18,8 @@ Airtable is great until you hit the row limits, need to keep data on your own se
 
 - No row limits beyond what your database can handle
 - Data lives in a standard SQL database you fully control
-- Open-source with no licensing fees
-- REST and GraphQL APIs generated automatically for every table
+- Self-hostable with no licensing fees for internal use
+- REST APIs generated automatically for every table
 - Works on top of existing databases without migrating data
 
 ## Prerequisites
@@ -54,8 +54,6 @@ For production, use PostgreSQL as the metadata store and connect NocoDB to your 
 
 ```yaml
 # docker-compose.yml - NocoDB with PostgreSQL backend
-version: "3.8"
-
 services:
   nocodb:
     image: nocodb/nocodb:latest
@@ -72,11 +70,9 @@ services:
       # Secret for JWT token signing
       NC_AUTH_JWT_SECRET: ${JWT_SECRET}
       # Public URL for generating share links
-      NC_PUBLIC_URL: https://nocodb.yourdomain.com
+      NC_SITE_URL: https://nocodb.yourdomain.com
       # Disable telemetry
       NC_DISABLE_TELE: "true"
-      # Timezone
-      NC_TIMEZONE: America/New_York
     depends_on:
       nocodb-postgres:
         condition: service_healthy
@@ -131,8 +127,8 @@ docker compose logs -f nocodb
 
 NocoDB's real power shows when you connect it to an existing database. After logging into the web interface:
 
-1. Click "New Project"
-2. Select "Connect to an External Database"
+1. Open your base from the left sidebar
+2. Click "Connect External Data"
 3. Enter your database connection details
 
 NocoDB supports these connection strings:
@@ -177,55 +173,59 @@ Create views through the web interface by clicking the "+" icon next to the tabl
 
 ## API Access
 
-Every table in NocoDB automatically gets REST and GraphQL APIs. This makes NocoDB useful as a quick backend for prototypes or internal tools.
+Every table in NocoDB automatically gets REST APIs. This makes NocoDB useful as a quick backend for prototypes or internal tools.
 
 ```bash
 # List all rows in a table via the REST API
 curl -X GET \
-  -H "xc-auth: your-api-token" \
-  "http://localhost:8080/api/v1/db/data/noco/project_id/table_name"
+  -H "xc-token: your-api-token" \
+  "http://localhost:8080/api/v2/tables/table_id/records"
 
 # Create a new row
 curl -X POST \
-  -H "xc-auth: your-api-token" \
+  -H "xc-token: your-api-token" \
   -H "Content-Type: application/json" \
   -d '{"Name": "New Item", "Status": "Active", "Priority": "High"}' \
-  "http://localhost:8080/api/v1/db/data/noco/project_id/table_name"
+  "http://localhost:8080/api/v2/tables/table_id/records"
 
 # Update a row
 curl -X PATCH \
-  -H "xc-auth: your-api-token" \
+  -H "xc-token: your-api-token" \
   -H "Content-Type: application/json" \
-  -d '{"Status": "Completed"}' \
-  "http://localhost:8080/api/v1/db/data/noco/project_id/table_name/row_id"
+  -d '{"Id": 1, "Status": "Completed"}' \
+  "http://localhost:8080/api/v2/tables/table_id/records"
 
 # Delete a row
 curl -X DELETE \
-  -H "xc-auth: your-api-token" \
-  "http://localhost:8080/api/v1/db/data/noco/project_id/table_name/row_id"
+  -H "xc-token: your-api-token" \
+  -H "Content-Type: application/json" \
+  -d '{"Id": 1}' \
+  "http://localhost:8080/api/v2/tables/table_id/records"
 ```
 
-Generate API tokens from the NocoDB web interface under Team & Settings > API Tokens.
+Generate API tokens from the NocoDB web interface under Account Settings > API Tokens.
 
 ## Webhooks for Automation
 
-NocoDB can fire webhooks when records are created, updated, or deleted. Configure them through the table settings.
+NocoDB can fire webhooks when records are created, updated, or deleted. Configure them from the table's Details > Webhooks tab.
+
+A record insert event looks like this:
 
 ```json
 {
-  "hook_name": "On New Record",
-  "event": "after",
-  "operation": "insert",
-  "notification": {
-    "type": "URL",
-    "payload": {
-      "method": "POST",
-      "body": "{{ json data }}",
-      "headers": {
-        "Content-Type": "application/json"
-      },
-      "path": "https://n8n.yourdomain.com/webhook/nocodb-new-record"
-    }
+  "type": "records.after.insert",
+  "id": "c245c528-8759-4e10-b7d5-e2626dd7c321",
+  "version": "v3",
+  "data": {
+    "table_id": "mbmppjnstflsqq1",
+    "table_name": "Tasks",
+    "rows": [
+      {
+        "Id": 1,
+        "Name": "New Item",
+        "Status": "Active"
+      }
+    ]
   }
 }
 ```
