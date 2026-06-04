@@ -125,7 +125,14 @@ metadata:
   name: webapp
   namespace: production
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: webapp
   template:
+    metadata:
+      labels:
+        app: webapp
     spec:
       serviceAccountName: app-sa
       containers:
@@ -155,7 +162,7 @@ kubectl create secret docker-registry acr-secret \
 
 # Docker Hub
 kubectl create secret docker-registry dockerhub-secret \
-  --docker-server=docker.io \
+  --docker-server=https://index.docker.io/v1/ \
   --docker-username=$DOCKER_USERNAME \
   --docker-password=$DOCKER_PASSWORD \
   --namespace=production
@@ -280,7 +287,7 @@ echo "Registry secrets created successfully"
 Sync registry credentials from external secret managers:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: azure-keyvault
@@ -288,6 +295,7 @@ metadata:
 spec:
   provider:
     azurekv:
+      tenantId: "00000000-0000-0000-0000-000000000000"
       vaultUrl: "https://myvault.vault.azure.net"
       authSecretRef:
         clientId:
@@ -297,7 +305,7 @@ spec:
           name: azure-creds
           key: client-secret
 ---
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: registry-credentials
@@ -350,26 +358,17 @@ for ns in $NAMESPACES; do
   if kubectl get secret regcred -n $ns &>/dev/null; then
     echo "Rotating credentials in namespace: $ns"
     
-    # Create new secret
-    kubectl create secret docker-registry regcred-new \
+    # Update the existing secret in place
+    kubectl create secret docker-registry regcred \
       --docker-server=myregistry.azurecr.io \
       --docker-username=myusername \
       --docker-password=$NEW_PASSWORD \
-      --namespace=$ns
+      --namespace=$ns \
+      --dry-run=client -o yaml | kubectl apply -f -
     
-    # Update service account
+    # Ensure the service account still references the secret
     kubectl patch serviceaccount default -n $ns \
-      -p '{"imagePullSecrets": [{"name": "regcred-new"}]}'
-    
-    # Delete old secret
-    kubectl delete secret regcred -n $ns
-    
-    # Rename new secret
-    kubectl get secret regcred-new -n $ns -o yaml | \
-      sed 's/regcred-new/regcred/' | \
-      kubectl apply -f -
-    
-    kubectl delete secret regcred-new -n $ns
+      -p '{"imagePullSecrets": [{"name": "regcred"}]}'
   fi
 done
 ```
@@ -392,7 +391,7 @@ kubectl describe pod <pod-name> -n production
 # Solution: Verify credentials and registry URL
 
 # Test credentials manually
-docker login myregistry.azurecr.io -u myusername -p mypassword
+echo "mypassword" | docker login myregistry.azurecr.io -u myusername --password-stdin
 ```
 
 Check service account configuration:
@@ -430,13 +429,15 @@ metadata:
 data:
   queries.promql: |
     # Failed image pulls
-    rate(kubelet_image_pull_errors_total[5m])
+    rate(kubelet_runtime_operations_errors_total{operation_type="pull_image"}[5m])
     
     # Image pull latency
     histogram_quantile(0.95, rate(kubelet_image_pull_duration_seconds_bucket[5m]))
     
-    # Authentication failures
-    increase(kubelet_image_pull_errors_total{reason="ImagePullBackOff"}[1h])
+    # Pods waiting on image pull errors (requires kube-state-metrics)
+    sum by (namespace, pod, container, reason) (
+      kube_pod_container_status_waiting_reason{reason=~"ErrImagePull|ImagePullBackOff"}
+    )
 ```
 
 ## Conclusion
