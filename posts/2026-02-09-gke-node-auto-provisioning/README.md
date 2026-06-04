@@ -27,10 +27,10 @@ Enable NAP on cluster creation or update existing clusters:
 
 gcloud container clusters update production-cluster \
   --enable-autoprovisioning \
-  --autoprovisioning-max-cpu 100 \
-  --autoprovisioning-max-memory 1000 \
-  --autoprovisioning-min-cpu 1 \
-  --autoprovisioning-min-memory 4 \
+  --max-cpu 100 \
+  --max-memory 1000 \
+  --min-cpu 1 \
+  --min-memory 4 \
   --region us-central1
 
 # Verify NAP is enabled
@@ -46,10 +46,10 @@ For new clusters, enable during creation:
 ```bash
 gcloud container clusters create production-cluster \
   --enable-autoprovisioning \
-  --autoprovisioning-max-cpu 200 \
-  --autoprovisioning-max-memory 2000 \
-  --autoprovisioning-min-cpu 2 \
-  --autoprovisioning-min-memory 8 \
+  --max-cpu 200 \
+  --max-memory 2000 \
+  --min-cpu 2 \
+  --min-memory 8 \
   --region us-central1 \
   --num-nodes 3
 ```
@@ -62,20 +62,21 @@ Set detailed resource limits to control costs and prevent runaway provisioning:
 # Set comprehensive resource limits
 gcloud container clusters update production-cluster \
   --enable-autoprovisioning \
-  --autoprovisioning-max-cpu 200 \
-  --autoprovisioning-max-memory 2000 \
-  --autoprovisioning-max-accelerator type=nvidia-tesla-t4,count=4 \
-  --autoprovisioning-min-cpu 4 \
-  --autoprovisioning-min-memory 16 \
+  --max-cpu 200 \
+  --max-memory 2000 \
+  --max-accelerator type=nvidia-tesla-t4,count=4 \
+  --min-cpu 4 \
+  --min-memory 16 \
   --region us-central1
 ```
 
-These limits apply across all auto-provisioned node pools combined. If your cluster already uses 150 CPUs across auto-provisioned pools, NAP can only add 50 more CPUs before hitting the max limit.
+These limits apply across all node pools in the cluster, including manually created node pools. If your cluster already uses 150 CPUs across all pools, NAP can only add 50 more CPUs before hitting the max limit.
 
 Configure disk size and type for auto-provisioned nodes:
 
 ```bash
 gcloud container clusters update production-cluster \
+  --enable-autoprovisioning \
   --autoprovisioning-config-file autoprovisioning-config.yaml \
   --region us-central1
 ```
@@ -91,26 +92,24 @@ resourceLimits:
 - resourceType: memory
   maximum: 2000
   minimum: 16
-autoProvisioningDefaults:
-  bootDiskKmsKey: projects/my-project/locations/us-central1/keyRings/gke-ring/cryptoKeys/gke-key
-  diskSizeGb: 100
-  diskType: pd-standard
-  serviceAccount: gke-node-sa@my-project.iam.gserviceaccount.com
-  scopes:
-  - https://www.googleapis.com/auth/cloud-platform
-  shieldedInstanceConfig:
-    enableSecureBoot: true
-    enableIntegrityMonitoring: true
-  management:
-    autoUpgrade: true
-    autoRepair: true
+bootDiskKmsKey: projects/my-project/locations/us-central1/keyRings/gke-ring/cryptoKeys/gke-key
+diskSizeGb: 100
+diskType: pd-standard
+serviceAccount: gke-node-sa@my-project.iam.gserviceaccount.com
+scopes: https://www.googleapis.com/auth/cloud-platform
+shieldedInstanceConfig:
+  enableSecureBoot: true
+  enableIntegrityMonitoring: true
+management:
+  autoUpgrade: true
+  autoRepair: true
 ```
 
 This configuration applies default settings to all auto-provisioned node pools.
 
 ## Understanding Machine Type Selection
 
-NAP selects machine types based on pod resource requests. When multiple machine types could satisfy requirements, NAP chooses the most cost-effective option.
+NAP selects machine types based on pod resource requests, node selectors, and ComputeClass settings. If you do not explicitly select a machine series or type, GKE uses the applicable cluster default or a compatible machine type for the requested hardware.
 
 Deploy a pod with specific resource needs:
 
@@ -143,41 +142,28 @@ gcloud container node-pools list \
   --region us-central1
 ```
 
-NAP creates a node pool with machines that can accommodate 32Gi of memory and 4 CPUs. It might choose n1-highmem-4 or n2-highmem-4 depending on availability and cost.
+NAP creates a node pool with machines that can accommodate 32Gi of memory and 4 CPUs. To require a specific machine series or predefined machine type, add the supported GKE node labels to the Pod specification.
 
 ## Restricting Machine Types
 
-Limit which machine types NAP can provision to control costs and maintain consistency:
-
-```bash
-# Allow only cost-optimized machine types
-gcloud container clusters update production-cluster \
-  --autoprovisioning-config-file restricted-config.yaml \
-  --region us-central1
-```
-
-Configure allowed machine types:
+Select which machine series or machine type NAP can provision for a workload to control costs and maintain consistency:
 
 ```yaml
-# restricted-config.yaml
-resourceLimits:
-- resourceType: cpu
-  maximum: 200
-  minimum: 4
-- resourceType: memory
-  maximum: 2000
-  minimum: 16
-autoProvisioningDefaults:
-  management:
-    autoUpgrade: true
-    autoRepair: true
-autoprovisioningLocations:
-- us-central1-a
-- us-central1-b
-- us-central1-c
+# machine-type-pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: n2-workload
+spec:
+  nodeSelector:
+    cloud.google.com/machine-family: n2
+    node.kubernetes.io/instance-type: n2-standard-4
+  containers:
+  - name: app
+    image: gcr.io/my-project/app:latest
 ```
 
-Unfortunately, GKE does not provide direct API support for restricting specific machine families. Use resource limits and pod resource requests to indirectly control machine type selection.
+To set the default zones where GKE can create auto-provisioned nodes, use `autoprovisioningLocations` in the NAP configuration file or the `--autoprovisioning-locations` flag.
 
 ## Handling GPU Workloads
 
@@ -203,23 +189,20 @@ spec:
         cpu: "8"
   nodeSelector:
     cloud.google.com/gke-accelerator: nvidia-tesla-t4
+    cloud.google.com/gke-accelerator-count: "1"
+    cloud.google.com/gke-gpu-driver-version: default
 ```
 
 NAP creates a node pool with T4 GPUs. Ensure you have GPU quota in your project:
 
 ```bash
-# Check GPU quota
-gcloud compute project-info describe \
+# Check regional GPU quota
+gcloud compute regions describe us-central1 \
   --project my-project \
-  --format="value(quotas.filter(metric:NVIDIA_T4_GPUS))"
-
-# Request quota increase if needed
-gcloud compute quotas update \
-  --project my-project \
-  --region us-central1 \
-  --resource NVIDIA_T4_GPUS \
-  --value 4
+  --format="table(quotas.metric,quotas.limit,quotas.usage)"
 ```
+
+Request a quota adjustment in the Google Cloud console if you need more GPU quota.
 
 ## Combining NAP with Standard Node Pools
 
@@ -239,8 +222,8 @@ gcloud container node-pools create baseline-pool \
 # Enable NAP for overflow and specialized workloads
 gcloud container clusters update production-cluster \
   --enable-autoprovisioning \
-  --autoprovisioning-max-cpu 100 \
-  --autoprovisioning-max-memory 500 \
+  --max-cpu 100 \
+  --max-memory 500 \
   --region us-central1
 ```
 
@@ -262,11 +245,11 @@ Pods without the matching toleration use NAP-created pools instead.
 
 NAP manages the lifecycle of auto-provisioned pools. Pools scale to zero when pods are deleted and remain empty for a grace period before being removed.
 
-Configure scale-down settings:
+Configure upgrade settings for auto-provisioned pools:
 
 ```bash
-# Set scale-down delay to 20 minutes
 gcloud container clusters update production-cluster \
+  --enable-autoprovisioning \
   --autoprovisioning-config-file lifecycle-config.yaml \
   --region us-central1
 ```
@@ -276,15 +259,14 @@ gcloud container clusters update production-cluster \
 resourceLimits:
 - resourceType: cpu
   maximum: 200
-autoProvisioningDefaults:
-  management:
-    autoUpgrade: true
-    autoRepair: true
-  upgradeSettings:
-    maxSurge: 1
-    maxUnavailable: 0
-  scaleDownConfig:
-    enabled: true
+- resourceType: memory
+  maximum: 2000
+management:
+  autoUpgrade: true
+  autoRepair: true
+upgradeSettings:
+  maxSurgeUpgrade: 1
+  maxUnavailableUpgrade: 0
 ```
 
 View auto-provisioned pools:
@@ -312,7 +294,11 @@ kubectl get events --all-namespaces \
 
 # Check for pods triggering NAP
 kubectl get events --all-namespaces \
-  --field-selector reason=NotTriggerScaleUp,reason=TriggeredScaleUp \
+  --field-selector reason=NotTriggerScaleUp \
+  --sort-by='.lastTimestamp'
+
+kubectl get events --all-namespaces \
+  --field-selector reason=TriggeredScaleUp \
   --sort-by='.lastTimestamp'
 ```
 
@@ -376,7 +362,7 @@ gcloud projects get-iam-policy my-project \
   --filter="bindings.members:gke-node-sa@my-project.iam.gserviceaccount.com"
 ```
 
-The service account needs compute.instanceAdmin.v1 and iam.serviceAccountUser roles for NAP to function.
+For a custom node service account, grant the required node permissions for logging and monitoring. If the node service account is in a different project, grant the GKE service agent `roles/iam.serviceAccountUser` on that service account and grant the Compute Engine service agent `roles/iam.serviceAccountTokenCreator`.
 
 ## Cost Optimization with NAP
 
@@ -385,6 +371,7 @@ NAP optimizes costs by selecting appropriate machine types, but you can improve 
 ```bash
 # Enable auto-provisioning with Spot VMs
 gcloud container clusters update production-cluster \
+  --enable-autoprovisioning \
   --autoprovisioning-config-file spot-config.yaml \
   --region us-central1
 ```
@@ -394,18 +381,19 @@ gcloud container clusters update production-cluster \
 resourceLimits:
 - resourceType: cpu
   maximum: 200
-autoProvisioningDefaults:
-  management:
-    autoUpgrade: true
-    autoRepair: true
-  upgradeSettings:
-    maxSurge: 1
-    maxUnavailable: 0
-  shieldedInstanceConfig:
-    enableSecureBoot: true
+- resourceType: memory
+  maximum: 2000
+management:
+  autoUpgrade: true
+  autoRepair: true
+upgradeSettings:
+  maxSurgeUpgrade: 1
+  maxUnavailableUpgrade: 0
+shieldedInstanceConfig:
+  enableSecureBoot: true
 ```
 
-Use pod annotations to prefer Spot instances:
+Use a node selector and toleration to require Spot instances:
 
 ```yaml
 apiVersion: v1
@@ -414,7 +402,12 @@ metadata:
   name: batch-job
 spec:
   nodeSelector:
-    cloud.google.com/gke-preemptible: "true"
+    cloud.google.com/gke-spot: "true"
+  tolerations:
+  - key: cloud.google.com/gke-spot
+    operator: Equal
+    value: "true"
+    effect: NoSchedule
   containers:
   - name: batch
     image: gcr.io/my-project/batch-processor:latest
