@@ -31,8 +31,6 @@ The `logging` directive sits under a service definition. The most common configu
 ```yaml
 # Configure logging for a service with json-file driver
 
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -116,8 +114,6 @@ Fluentd is a popular log aggregator that can route logs to many destinations. Th
 
 ```yaml
 # Ship logs to Fluentd for centralized logging
-version: "3.8"
-
 services:
   fluentd:
     image: fluent/fluentd:v1.16-1
@@ -152,7 +148,7 @@ services:
       - fluentd
 ```
 
-The `fluentd-async` option is important. Without it, if Fluentd is unavailable, your container will block on every log write and eventually hang.
+The `fluentd-async` option is important. Without it, if Fluentd is unavailable when the container starts, Docker stops the container immediately.
 
 ## Shipping Logs to Syslog
 
@@ -166,7 +162,7 @@ services:
     logging:
       driver: syslog
       options:
-        syslog-address: "tcp://logs.mycompany.com:514"
+        syslog-address: "tcp+tls://logs.mycompany.com:514"
         syslog-facility: "daemon"
         syslog-tls-cert: "/certs/client.pem"
         syslog-tls-key: "/certs/client-key.pem"
@@ -190,8 +186,8 @@ Logs sent to journald can be queried with `journalctl`:
 
 ```bash
 # Query container logs through journalctl
-journalctl CONTAINER_NAME=myapp -f
-journalctl CONTAINER_NAME=myapp --since "1 hour ago"
+journalctl CONTAINER_TAG=myapp -f
+journalctl CONTAINER_TAG=myapp --since "1 hour ago"
 ```
 
 ## GELF for Graylog
@@ -226,7 +222,7 @@ services:
       options:
         awslogs-region: "us-east-1"
         awslogs-group: "my-application"
-        awslogs-stream: "app-{{.Name}}"
+        tag: "app-{{.Name}}"
         awslogs-create-group: "true"
 ```
 
@@ -253,8 +249,6 @@ To avoid repeating logging configuration for every service, use YAML anchors or 
 
 ```yaml
 # Use extension fields for shared logging config
-version: "3.8"
-
 x-logging: &default-logging
   driver: json-file
   options:
@@ -344,10 +338,10 @@ docker inspect --format='{{.HostConfig.LogConfig.Type}}' my-container
 # Check logging driver options
 docker inspect --format='{{json .HostConfig.LogConfig}}' my-container | jq .
 
-# Test that docker logs works (only works with json-file, local, and journald)
+# Test that docker logs works
 docker logs --tail 20 my-container
 ```
 
-Note that `docker logs` only works with the `json-file`, `local`, and `journald` drivers. If you switch to `fluentd`, `gelf`, `syslog`, or `awslogs`, the `docker logs` command will not return any output. Plan accordingly, since losing `docker logs` access can complicate debugging.
+Note that `docker logs` works directly with the `json-file`, `local`, and `journald` drivers. For remote drivers such as `fluentd`, `gelf`, `syslog`, or `awslogs`, Docker Engine can also make recent logs available through its dual logging cache unless that cache is disabled. Plan accordingly, since losing `docker logs` access can complicate debugging.
 
 Proper logging configuration is something you set up once and benefit from forever. Start with size limits on the json-file driver to prevent disk issues, then graduate to centralized logging with Fluentd, syslog, or a cloud provider as your infrastructure grows.
