@@ -51,7 +51,7 @@ spec:
       containers:
       # Application container
       - name: app
-        image: node:18-alpine
+        image: node:22-alpine
         workingDir: /app
         command: ["npx", "nodemon", "--watch", "/app", "--exec", "node", "server.js"]
         ports:
@@ -102,9 +102,16 @@ spec:
   - name: syncthing-sync
     port: 22000
     targetPort: 22000
+    protocol: TCP
+  - name: syncthing-sync-quic
+    port: 22000
+    targetPort: 22000
+    protocol: UDP
 ```
 
-## Using Telepresence for Transparent File Sync
+After deploying, pair the local Syncthing instance with the sidecar and configure `/app` as the shared folder. Expose the Syncthing UI with port forwarding or secure it with authentication before making it reachable outside the cluster.
+
+## Using Telepresence for Local-to-Cluster Development
 
 Telepresence provides seamless local-to-cluster integration:
 
@@ -112,10 +119,10 @@ Install Telepresence:
 
 ```bash
 # macOS
-brew install datawire/blackbird/telepresence
+brew install datawire/blackbird/telepresence-oss
 
 # Linux
-sudo curl -fL https://app.getambassador.io/download/tel2/linux/amd64/latest/telepresence -o /usr/local/bin/telepresence
+sudo curl -fL https://github.com/telepresenceio/telepresence/releases/latest/download/telepresence-linux-amd64 -o /usr/local/bin/telepresence
 sudo chmod a+x /usr/local/bin/telepresence
 ```
 
@@ -128,7 +135,13 @@ kind: Deployment
 metadata:
   name: nodejs-app
 spec:
+  selector:
+    matchLabels:
+      app: nodejs-app
   template:
+    metadata:
+      labels:
+        app: nodejs-app
     spec:
       containers:
       - name: app
@@ -147,7 +160,7 @@ spec:
         emptyDir: {}
 ```
 
-Intercept the deployment and mount local code:
+Intercept the deployment and mount pod volumes:
 
 ```bash
 # Connect to cluster
@@ -160,7 +173,7 @@ telepresence intercept nodejs-app \
   --mount /app
 ```
 
-Now your local code changes instantly reflect in the cluster.
+Telepresence redirects traffic for the intercepted service to a local process and can mount pod volumes on your workstation. Run the Node.js process locally from your working tree while it uses cluster networking and mounted volumes, then your local code changes take effect immediately without rebuilding the container.
 
 ## Implementing with DevSpace
 
@@ -169,8 +182,8 @@ DevSpace provides built-in HMR support:
 Install DevSpace:
 
 ```bash
-curl -s -L "https://github.com/loft-sh/devspace/releases/latest" | sed -nE 's!.*"([^"]*devspace-linux-amd64)".*!https://github.com\1!p' | xargs -n 1 curl -L -o devspace && chmod +x devspace
-sudo mv devspace /usr/local/bin
+curl -L -o devspace "https://github.com/loft-sh/devspace/releases/latest/download/devspace-linux-amd64"
+sudo install -c -m 0755 devspace /usr/local/bin
 ```
 
 Create devspace.yaml configuration:
@@ -228,14 +241,6 @@ dev:
     restartHelper:
       inject: true
 
-    # Auto reload on changes
-    autoReload:
-      paths:
-        - ./src/**/*.js
-        - ./package.json
-      deployments:
-        - app
-
 images:
   app:
     image: myregistry/nodejs-app
@@ -249,14 +254,13 @@ Start development mode:
 devspace dev
 ```
 
-DevSpace automatically syncs files, forwards ports, and restarts the process on changes.
+DevSpace automatically syncs files, forwards ports, and lets the `npm run dev` process reload on changes.
 
 ## Configuring Nodemon for Optimal Hot Reload
 
 Create a comprehensive nodemon configuration:
 
 ```json
-// nodemon.json
 {
   "watch": [
     "src",
@@ -422,20 +426,23 @@ class FileSyncClient {
   }
 }
 
-// Connect to local sync server through port-forward
-new FileSyncClient('ws://localhost:8765');
+const syncServerUrl = process.env.SYNC_SERVER_URL;
+if (!syncServerUrl) {
+  throw new Error('SYNC_SERVER_URL is required');
+}
+
+// Connect to a local sync server exposed through a secure tunnel or Telepresence
+new FileSyncClient(syncServerUrl);
 ```
 
-Deploy with port forwarding:
+Deploy with a reachable sync endpoint:
 
 ```bash
 # Start sync server locally
 node sync-server.js &
 
-# Forward port to pod
-kubectl port-forward nodejs-app-xxx 8765:8765 &
-
-# Sync client runs in the pod
+# Make the local port reachable from the pod with Telepresence or a secure tunnel
+kubectl set env deployment/nodejs-app SYNC_SERVER_URL=ws://<reachable-workstation-host>:8765
 ```
 
 ## Implementing Module-Level HMR
@@ -452,8 +459,10 @@ class HotReloadableServer {
     this.app = express();
     this.port = process.env.PORT || 3000;
     this.routesPath = path.join(__dirname, 'routes');
+    this.apiRouter = express.Router();
 
     this.setupMiddleware();
+    this.app.use('/api', (req, res, next) => this.apiRouter(req, res, next));
     this.loadRoutes();
 
     if (process.env.NODE_ENV === 'development') {
@@ -474,8 +483,7 @@ class HotReloadableServer {
     });
 
     // Reload routes
-    const routes = require('./routes');
-    this.app.use('/api', routes);
+    this.apiRouter = require('./routes');
   }
 
   setupHotReload() {
@@ -492,11 +500,6 @@ class HotReloadableServer {
   }
 
   reloadRoutes() {
-    // Remove old routes
-    this.app._router.stack = this.app._router.stack.filter(
-      layer => !layer.route || !layer.route.path.startsWith('/api')
-    );
-
     // Load new routes
     this.loadRoutes();
 
