@@ -40,9 +40,8 @@ metadata:
 data:
   Corefile: |
     # Kubernetes cluster domain
-    cluster.local:53 {
+    cluster.local:53 in-addr.arpa:53 ip6.arpa:53 {
         errors
-        health
         ready
         kubernetes cluster.local in-addr.arpa ip6.arpa {
             pods insecure
@@ -51,7 +50,6 @@ data:
         }
         prometheus :9153
         cache 30
-        loop
         reload
         loadbalance
     }
@@ -99,11 +97,11 @@ Apply this configuration:
 kubectl apply -f coredns-configmap.yaml
 ```
 
-CoreDNS automatically reloads within a few seconds.
+CoreDNS automatically reloads after the mounted ConfigMap is updated and the `reload` plugin sees the Corefile change. With the default `reload` settings, that check runs about every 30 seconds with jitter.
 
-## Conditional Forwarding Based on Query Type
+## Combining Forwarding with Host Overrides
 
-You can forward queries based on more than just domain names. Forward specific record types to different servers:
+CoreDNS selects the most specific matching server block for a query, so overrides for a forwarded zone need to live in that zone's server block. You can serve known A and AAAA records from a hosts file first, then fall through to the internal DNS servers for the rest of the zone:
 
 ```yaml
 # Advanced forwarding rules
@@ -112,7 +110,11 @@ company.internal:53 {
     errors
     cache 30
 
-    # Forward A and AAAA records to internal DNS
+    # Serve local host overrides first, then forward unknown names
+    hosts /etc/coredns/company-overrides.hosts company.internal {
+        fallthrough
+    }
+
     forward . 10.0.1.53 10.0.2.53 {
         max_concurrent 1000
         policy sequential  # Try servers in order
@@ -121,20 +123,15 @@ company.internal:53 {
     reload
 }
 
-# External view of company.internal goes to DMZ DNS
 .:53 {
     errors
-
-    # Use file plugin for overrides
-    file /etc/coredns/company-external.db company.internal
-
     forward . 8.8.8.8 8.8.4.4
     cache 30
     reload
 }
 ```
 
-This setup serves internal company.internal queries from your corporate DNS, but you can override specific records using a zone file for external clients.
+This setup serves specific `company.internal` host records from `/etc/coredns/company-overrides.hosts`, but forwards other `company.internal` names to your corporate DNS.
 
 ## Creating Custom Zone Files
 
@@ -215,42 +212,47 @@ company.internal:53 {
 In hybrid cloud scenarios, you often need queries to resolve differently based on whether they originate from Kubernetes or from on-premises systems. Here's a pattern that works well:
 
 ```yaml
-# Corefile for hybrid cloud
-.:53 {
+# Kubernetes services
+cluster.local:53 in-addr.arpa:53 ip6.arpa:53 {
     errors
-    health
     ready
-
-    # Kubernetes services
     kubernetes cluster.local in-addr.arpa ip6.arpa {
         pods insecure
         fallthrough in-addr.arpa ip6.arpa
         ttl 30
     }
+    cache 30
+    reload
+}
 
-    # On-premises datacenter domain
-    datacenter.corp:53 {
-        errors
-        cache 60
-        forward . 192.168.1.53 192.168.2.53 {
-            max_concurrent 500
-            expire 10s
-            policy round_robin
-        }
+# On-premises datacenter domain
+datacenter.corp:53 {
+    errors
+    cache 60
+    forward . 192.168.1.53 192.168.2.53 {
+        max_concurrent 500
+        expire 10s
+        policy round_robin
     }
+    reload
+}
 
-    # Cloud provider private DNS
-    cloud.internal:53 {
-        errors
-        cache 60
-        forward . 169.254.169.253 {
-            max_concurrent 500
-            prefer_udp
-        }
+# Cloud provider private DNS
+cloud.internal:53 {
+    errors
+    cache 60
+    forward . 169.254.169.253 {
+        max_concurrent 500
+        prefer_udp
     }
+    reload
+}
 
-    # Rewrite rules for service discovery
-    rewrite name regex (.+)\.datacenter\.corp {1}.dc.svc.cluster.local
+# Everything else
+.:53 {
+    errors
+    health
+    ready
 
     prometheus :9153
     forward . /etc/resolv.conf
@@ -261,7 +263,7 @@ In hybrid cloud scenarios, you often need queries to resolve differently based o
 }
 ```
 
-The rewrite plugin transforms datacenter queries into cluster-local service names, creating a seamless hybrid experience.
+The separate `datacenter.corp` and `cloud.internal` server blocks forward those domains to their own upstream resolvers while the root block handles everything else.
 
 ## Forward with Health Checks
 
@@ -293,7 +295,7 @@ company.internal:53 {
 }
 ```
 
-The health_check directive makes CoreDNS probe upstream servers every 5 seconds. If a server fails 3 times, CoreDNS marks it unhealthy and stops sending queries until it recovers.
+The `health_check` directive sets the interval CoreDNS uses for upstream health checks after it detects an upstream error. If a server fails 3 health checks, CoreDNS marks it unhealthy and avoids it while other healthy upstreams are available; if all upstreams are unhealthy, CoreDNS may still try a random upstream.
 
 ## Testing Split-Horizon Configuration
 
@@ -301,16 +303,17 @@ After configuring split-horizon DNS, test it thoroughly:
 
 ```bash
 # Create a test pod
-kubectl run dns-test --image=nicolaka/netshoot -it --rm -- bash
+kubectl run dns-test --image=nicolaka/netshoot -it --rm --command -- bash
 
 # Inside the pod, test different domains
 nslookup www.company.internal
 nslookup api.aws.internal
 nslookup google.com
 
-# Check which server answered
-dig @10.96.0.10 www.company.internal +short
-dig @10.96.0.10 api.aws.internal +short
+# Query CoreDNS directly
+COREDNS_IP=$(kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}')
+dig @"$COREDNS_IP" www.company.internal +short
+dig @"$COREDNS_IP" api.aws.internal +short
 ```
 
 Verify that each domain resolves through the correct path:
@@ -324,7 +327,7 @@ kubectl edit configmap coredns -n kube-system
 kubectl logs -n kube-system -l k8s-app=kube-dns -f | grep -E 'company.internal|aws.internal'
 ```
 
-You should see log entries showing which upstream server handled each query.
+You should see log entries for the matching queries. Use the forward metrics shown below to confirm which upstream server handled forwarded traffic.
 
 ## Dynamic Updates with External DNS
 
@@ -349,7 +352,7 @@ spec:
       serviceAccountName: external-dns
       containers:
       - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
+        image: registry.k8s.io/external-dns/external-dns:v0.19.0
         args:
         - --source=service
         - --source=ingress
@@ -392,14 +395,13 @@ Track the performance of your forward zones with Prometheus metrics:
 kubectl port-forward -n kube-system svc/kube-dns 9153:9153
 
 # Query forward-specific metrics
-curl -s http://localhost:9153/metrics | grep coredns_forward
+curl -s http://localhost:9153/metrics | grep -E 'coredns_(forward|proxy)'
 ```
 
 Key metrics to monitor:
 
-- `coredns_forward_requests_total`: Total forwarded requests per upstream
-- `coredns_forward_responses_total`: Responses by rcode
-- `coredns_forward_healthcheck_failures_total`: Failed health checks
+- `coredns_proxy_request_duration_seconds{proxy_name="forward"}`: Forwarded request duration, with upstream and response code labels
+- `coredns_proxy_healthcheck_failures_total{proxy_name="forward"}`: Failed health checks
 - `coredns_forward_max_concurrent_rejects_total`: Rejected due to max_concurrent limit
 
 Set up alerts for health check failures:
@@ -410,7 +412,7 @@ groups:
 - name: coredns
   rules:
   - alert: CoreDNSForwardHealthCheckFailing
-    expr: rate(coredns_forward_healthcheck_failures_total[5m]) > 0
+    expr: rate(coredns_proxy_healthcheck_failures_total{proxy_name="forward"}[5m]) > 0
     for: 5m
     labels:
       severity: warning
@@ -423,7 +425,7 @@ groups:
 
 When implementing split-horizon DNS with CoreDNS:
 
-- Order zones from most specific to least specific in your Corefile
+- Define each forwarded zone as its own server block and let CoreDNS route queries to the most specific matching zone
 - Use multiple upstream servers for redundancy
 - Enable health checks for all forward zones
 - Cache aggressively for internal zones to reduce load
