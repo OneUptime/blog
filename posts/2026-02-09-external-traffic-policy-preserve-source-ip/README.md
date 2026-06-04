@@ -164,6 +164,9 @@ data:
         2.16.0.0/13 yes;
       }
 
+      # Rate limiting by source IP
+      limit_req_zone $binary_remote_addr zone=one:10m rate=10r/s;
+
       server {
         listen 8080;
 
@@ -172,8 +175,6 @@ data:
           return 403 "Access denied from your location";
         }
 
-        # Rate limiting by source IP
-        limit_req_zone $remote_addr zone=one:10m rate=10r/s;
         limit_req zone=one burst=20;
 
         location / {
@@ -230,7 +231,7 @@ The application now sees real client IPs and can enforce geo-blocking or rate li
 
 ## Understanding Load Distribution Impact
 
-Local policy changes how external load balancers distribute traffic. The load balancer still distributes evenly across nodes, but each node only routes to its local pods.
+Local policy changes how external load balancers distribute traffic. The load balancer distributes across healthy nodes, but each node only routes to its local pods.
 
 Consider a 3-node cluster with 6 pods:
 - Node A: 3 pods
@@ -274,7 +275,7 @@ spec:
         image: myapp:latest
 ```
 
-This ensures each node has exactly 2 pods, giving each pod equal traffic.
+In a 3-node cluster where all nodes are eligible to run these pods, this keeps the deployment at 2 pods per node, giving each pod equal traffic.
 
 ## Handling Node Failures
 
@@ -315,8 +316,9 @@ kind: Service
 metadata:
   name: app-service
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
+    service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -336,8 +338,7 @@ kind: Service
 metadata:
   name: app-service
   annotations:
-    cloud.google.com/load-balancer-type: "External"
-    networking.gke.io/load-balancer-type: "External"
+    cloud.google.com/l4-rbs: "enabled"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -355,7 +356,7 @@ kind: Service
 metadata:
   name: app-service
   annotations:
-    service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: "/health"
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: "/healthz"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -385,7 +386,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
     // Log with real client IP
     log.Printf("Request from %s to %s", clientIP, r.URL.Path)
 
-    // Check X-Forwarded-For (should match RemoteAddr with Local policy)
+    // Check X-Forwarded-For if an upstream proxy adds it
     xff := r.Header.Get("X-Forwarded-For")
     if xff != "" {
         log.Printf("X-Forwarded-For: %s", xff)
@@ -437,7 +438,7 @@ This gives you source IP preservation for external clients while maintaining eff
 
 Avoid Local policy when:
 
-1. **Pod distribution is uneven**: Nodes with more pods will be overloaded
+1. **Pod distribution is uneven**: Pods on nodes with fewer replicas can receive a larger share of traffic
 2. **Scaling is aggressive**: Rapid scaling creates temporary imbalances
 3. **Source IP doesn't matter**: Most applications don't need it
 4. **High availability is critical**: Local policy can reduce available endpoints
