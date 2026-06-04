@@ -57,6 +57,7 @@ package customplugin
 import (
     "context"
     "fmt"
+    "net"
 
     "github.com/coredns/coredns/plugin"
     "github.com/miekg/dns"
@@ -64,11 +65,16 @@ import (
 
 // CustomPlugin implements the plugin.Handler interface
 type CustomPlugin struct {
-    Next plugin.Handler
+    Next   plugin.Handler
+    Config *Config
 }
 
 // ServeDNS implements the plugin.Handler interface
 func (cp *CustomPlugin) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
+    if len(r.Question) == 0 {
+        return plugin.NextOrFailure(cp.Name(), cp.Next, ctx, w, r)
+    }
+
     // Log the query
     fmt.Printf("Received query for: %s\n", r.Question[0].Name)
 
@@ -86,11 +92,13 @@ func (cp *CustomPlugin) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *d
                 Class:  dns.ClassINET,
                 Ttl:    300,
             },
-            A: net.ParseIP("192.168.1.100"),
+            A: net.ParseIP("192.168.1.100").To4(),
         }
         msg.Answer = append(msg.Answer, rr)
 
-        w.WriteMsg(msg)
+        if err := w.WriteMsg(msg); err != nil {
+            return dns.RcodeServerFailure, err
+        }
         return dns.RcodeSuccess, nil
     }
 
@@ -186,16 +194,19 @@ import (
     "fmt"
     "net"
     "net/http"
+    "net/url"
     "time"
 
+    "github.com/coredns/caddy"
+    "github.com/coredns/coredns/core/dnsserver"
     "github.com/coredns/coredns/plugin"
     "github.com/miekg/dns"
 )
 
 type APILookup struct {
-    Next      plugin.Handler
+    Next        plugin.Handler
     APIEndpoint string
-    Client    *http.Client
+    Client      *http.Client
 }
 
 type APIResponse struct {
@@ -212,7 +223,7 @@ func (al *APILookup) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.
     qname := r.Question[0].Name
 
     // Query external API
-    apiResp, err := al.queryAPI(qname)
+    apiResp, err := al.queryAPI(ctx, qname)
     if err != nil {
         // On error, pass to next plugin
         return plugin.NextOrFailure(al.Name(), al.Next, ctx, w, r)
@@ -223,9 +234,9 @@ func (al *APILookup) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.
     msg.SetReply(r)
     msg.Authoritative = true
 
-    ip := net.ParseIP(apiResp.IP)
+    ip := net.ParseIP(apiResp.IP).To4()
     if ip == nil {
-        return dns.RcodeServerFailure, fmt.Errorf("invalid IP from API")
+        return dns.RcodeServerFailure, fmt.Errorf("invalid IPv4 address from API")
     }
 
     rr := &dns.A{
@@ -239,17 +250,19 @@ func (al *APILookup) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.
     }
     msg.Answer = append(msg.Answer, rr)
 
-    w.WriteMsg(msg)
+    if err := w.WriteMsg(msg); err != nil {
+        return dns.RcodeServerFailure, err
+    }
     return dns.RcodeSuccess, nil
 }
 
-func (al *APILookup) queryAPI(name string) (*APIResponse, error) {
-    url := fmt.Sprintf("%s?name=%s", al.APIEndpoint, name)
+func (al *APILookup) queryAPI(ctx context.Context, name string) (*APIResponse, error) {
+    endpoint := fmt.Sprintf("%s?name=%s", al.APIEndpoint, url.QueryEscape(name))
 
-    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+    ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
     defer cancel()
 
-    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
     if err != nil {
         return nil, err
     }
@@ -275,6 +288,41 @@ func (al *APILookup) queryAPI(name string) (*APIResponse, error) {
 func (al *APILookup) Name() string {
     return "apilookup"
 }
+
+func init() {
+    plugin.Register("apilookup", setup)
+}
+
+func setup(c *caddy.Controller) error {
+    c.Next()
+
+    al := &APILookup{
+        Client: http.DefaultClient,
+    }
+
+    for c.NextBlock() {
+        switch c.Val() {
+        case "endpoint":
+            if !c.NextArg() {
+                return plugin.Error("apilookup", c.ArgErr())
+            }
+            al.APIEndpoint = c.Val()
+        default:
+            return plugin.Error("apilookup", c.Errf("unknown property '%s'", c.Val()))
+        }
+    }
+
+    if al.APIEndpoint == "" {
+        return plugin.Error("apilookup", c.Err("endpoint is required"))
+    }
+
+    dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
+        al.Next = next
+        return al
+    })
+
+    return nil
+}
 ```
 
 ## Building Custom CoreDNS with Plugin
@@ -290,6 +338,7 @@ apilookup:github.com/yourname/coredns-custom-plugin/apilookup
 kubernetes:kubernetes
 prometheus:metrics
 errors:errors
+log:log
 cache:cache
 forward:forward
 ```
@@ -307,7 +356,8 @@ cp ../plugin.cfg .
 # Add your module to go.mod
 go get github.com/yourname/coredns-custom-plugin@latest
 
-# Build
+# Regenerate CoreDNS plugin imports and build
+go generate coredns.go
 make
 ```
 
@@ -350,7 +400,7 @@ dig @localhost -p 5353 api-lookup.example.com
 Build and push Docker image:
 
 ```dockerfile
-FROM golang:1.21 as builder
+FROM golang:1.26 AS builder
 
 WORKDIR /app
 
@@ -428,7 +478,10 @@ Implement Prometheus metrics:
 package customplugin
 
 import (
-    "github.com/coredns/coredns/plugin"
+    "context"
+    "time"
+
+    "github.com/miekg/dns"
     "github.com/prometheus/client_golang/prometheus"
 )
 
