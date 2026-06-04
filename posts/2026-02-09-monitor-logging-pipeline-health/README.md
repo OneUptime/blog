@@ -57,6 +57,8 @@ data:
         HTTP_Server     On
         HTTP_Listen     0.0.0.0
         HTTP_Port       2020
+        storage.path    /var/log/flb-storage
+        storage.max_chunks_up 128
         storage.metrics On
 
     [INPUT]
@@ -75,6 +77,11 @@ data:
         Port                3100
         Retry_Limit         5
         storage.total_limit_size 1G
+
+    [INPUT]
+        Name                fluentbit_metrics
+        Tag                 internal_metrics
+        scrape_interval     2
 
     [OUTPUT]
         Name                prometheus_exporter
@@ -116,7 +123,7 @@ spec:
   endpoints:
   - port: metrics
     interval: 30s
-    path: /api/v1/metrics/prometheus
+    path: /api/v2/metrics/prometheus
 ```
 
 ## Essential Prometheus Queries
@@ -129,7 +136,7 @@ Monitor pipeline health with these queries:
 rate(fluentbit_input_records_total[5m])
 
 # Buffer utilization
-(fluentbit_input_storage_chunks / fluentbit_input_storage_max_chunks_up) * 100
+(fluentbit_storage_mem_chunks / 128) * 100
 
 # Failed outputs
 rate(fluentbit_output_errors_total[5m])
@@ -137,14 +144,14 @@ rate(fluentbit_output_errors_total[5m])
 # Retry attempts
 rate(fluentbit_output_retries_total[5m])
 
-# Parse failures
-rate(fluentbit_filter_parser_errors_total[5m])
+# Dropped filter records
+rate(fluentbit_filter_drop_records_total[5m])
 
 # End-to-end latency (seconds)
-time() - fluentbit_input_storage_oldest_chunk_timestamp
+histogram_quantile(0.95, sum by (le) (rate(fluentbit_output_latency_seconds_bucket[5m])))
 
-# Memory usage percentage
-(fluentbit_input_storage_memory_bytes / fluentbit_input_storage_memory_limit_bytes) * 100
+# Memory-buffer chunk usage percentage
+(fluentbit_storage_mem_chunks / 128) * 100
 ```
 
 ## Detecting Backpressure
@@ -165,8 +172,7 @@ spec:
     # High buffer utilization
     - alert: LoggingBufferNearFull
       expr: |
-        (fluentbit_input_storage_chunks /
-         fluentbit_input_storage_max_chunks_up) > 0.8
+        (fluentbit_storage_mem_chunks / 128) > 0.8
       for: 5m
       labels:
         severity: warning
@@ -174,21 +180,22 @@ spec:
         summary: "Logging buffer is {{ $value | humanizePercentage }} full"
         description: "Pod {{ $labels.pod }} buffer utilization high"
 
-    # Buffer overflow detected
-    - alert: LoggingBufferOverflow
+    # Buffer limit reached
+    - alert: LoggingBufferLimitReached
       expr: |
-        rate(fluentbit_input_storage_chunks_overlimit[5m]) > 0
+        fluentbit_input_storage_overlimit > 0
       labels:
         severity: critical
       annotations:
-        summary: "Logging buffer overflow detected"
-        description: "Logs are being dropped due to buffer overflow"
+        summary: "Logging input buffer limit reached"
+        description: "Input {{ $labels.name }} exceeded its configured buffer limit"
 
     # High delivery failure rate
     - alert: LogDeliveryFailureHigh
       expr: |
-        (rate(fluentbit_output_errors_total[5m]) /
-         rate(fluentbit_output_records_total[5m])) > 0.05
+        (rate(fluentbit_output_dropped_records_total[5m]) /
+         (rate(fluentbit_output_proc_records_total[5m]) +
+          rate(fluentbit_output_dropped_records_total[5m]))) > 0.05
       for: 10m
       labels:
         severity: warning
@@ -198,23 +205,23 @@ spec:
     # Backpressure detected
     - alert: LoggingBackpressureDetected
       expr: |
-        increase(fluentbit_input_storage_oldest_chunk_timestamp[5m]) > 300
+        histogram_quantile(0.95, sum by (le) (rate(fluentbit_output_latency_seconds_bucket[5m]))) > 30
       for: 10m
       labels:
         severity: warning
       annotations:
         summary: "Backpressure in logging pipeline"
-        description: "Oldest buffered log is {{ $value }}s old"
+        description: "95th percentile chunk delivery latency is {{ $value }}s"
 
-    # Parse errors increasing
-    - alert: LogParseErrorsHigh
+    # Filter drops increasing
+    - alert: LogFilterDropsHigh
       expr: |
-        rate(fluentbit_filter_parser_errors_total[5m]) > 10
+        rate(fluentbit_filter_drop_records_total[5m]) > 10
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "High log parse error rate"
+        summary: "High log filter drop rate"
 
     # Fluent Bit pod restarting
     - alert: FluentBitRestartingFrequently
@@ -247,16 +254,16 @@ Key Vector metrics:
 rate(vector_component_sent_events_total[5m])
 
 # Buffer usage
-vector_buffer_byte_size / vector_buffer_max_size
+vector_source_buffer_utilization_level
 
 # Error rate
 rate(vector_component_errors_total[5m])
 
 # Processing lag
-vector_lag_time_seconds
+histogram_quantile(0.95, sum by (le) (rate(vector_source_lag_time_seconds_bucket[5m])))
 
-# Resource utilization
-vector_memory_used_bytes
+# Component utilization
+vector_utilization
 ```
 
 ## Building Health Check Dashboard
@@ -277,7 +284,7 @@ Create a comprehensive dashboard:
       {
         "title": "Buffer Utilization",
         "targets": [{
-          "expr": "(fluentbit_input_storage_chunks / fluentbit_input_storage_max_chunks_up) * 100"
+          "expr": "(fluentbit_storage_mem_chunks / 128) * 100"
         }],
         "thresholds": [
           {"value": 80, "color": "yellow"},
@@ -287,13 +294,13 @@ Create a comprehensive dashboard:
       {
         "title": "Delivery Success Rate",
         "targets": [{
-          "expr": "100 - (rate(fluentbit_output_errors_total[5m]) / rate(fluentbit_output_records_total[5m]) * 100)"
+          "expr": "(rate(fluentbit_output_proc_records_total[5m]) / (rate(fluentbit_output_proc_records_total[5m]) + rate(fluentbit_output_dropped_records_total[5m]))) * 100"
         }]
       },
       {
         "title": "End-to-End Latency",
         "targets": [{
-          "expr": "time() - fluentbit_input_storage_oldest_chunk_timestamp"
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(fluentbit_output_latency_seconds_bucket[5m])))"
         }]
       },
       {
@@ -328,10 +335,10 @@ rate(loki_ingester_append_failures_total[5m])
 loki_ingester_memory_streams
 
 # Query performance
-histogram_quantile(0.99, rate(loki_logql_querystats_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, sum by (le) (rate(loki_logql_querystats_duration_seconds_bucket[5m])))
 
 # Distributor latency
-histogram_quantile(0.95, rate(loki_request_duration_seconds_bucket{route="loki_api_v1_push"}[5m]))
+histogram_quantile(0.95, sum by (le) (rate(loki_request_duration_seconds_bucket{route=~".*push.*"}[5m])))
 ```
 
 ## Synthetic Monitoring
@@ -357,15 +364,16 @@ spec:
             - /bin/sh
             - -c
             - |
-              timestamp=$(date -Iseconds)
-              echo "{\"timestamp\":\"$timestamp\",\"level\":\"info\",\"message\":\"synthetic_check\",\"check_id\":\"$(uuidgen)\"}"
+              timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+              check_id=$(cat /proc/sys/kernel/random/uuid)
+              echo "{\"timestamp\":\"$timestamp\",\"level\":\"info\",\"message\":\"synthetic_check\",\"check_id\":\"$check_id\"}"
           restartPolicy: Never
 ```
 
 Query for synthetic checks:
 
 ```logql
-count_over_time({message="synthetic_check"}[5m])
+count_over_time({namespace="logging"} |= "synthetic_check" [5m])
 ```
 
 Alert if synthetic checks are missing:
@@ -373,7 +381,7 @@ Alert if synthetic checks are missing:
 ```yaml
 - alert: SyntheticLogsMissing
   expr: |
-    count_over_time({message="synthetic_check"}[10m]) < 1
+    count_over_time({namespace="logging"} |= "synthetic_check" [10m]) < 1
   labels:
     severity: critical
   annotations:
