@@ -64,7 +64,7 @@ The renewBefore value should provide sufficient buffer for multiple retry attemp
 
 ## Private Key Rotation Policies
 
-Private keys should rotate periodically to limit exposure. cert-manager supports three rotation policies:
+Private keys should rotate periodically to limit exposure. cert-manager supports two rotation policies:
 
 ```yaml
 # private-key-rotation-policies.yaml
@@ -105,6 +105,8 @@ The Always policy generates a new private key on every renewal. Use this when:
 - Applications handle certificate reloading properly
 - Following security best practices
 
+In cert-manager v1.18.0 and later, Always is the default. In earlier versions, Never is the default, so set rotationPolicy explicitly if you need consistent behavior across versions.
+
 ## Renewal Grace Period Strategy
 
 The grace period (time between renewBefore and expiration) determines how much time cert-manager has for retry attempts:
@@ -143,7 +145,7 @@ spec:
   - long-lived.example.com
 ```
 
-Shorter grace periods work for internal CAs with instant issuance. Longer grace periods are essential for ACME certificates that might hit rate limits or have validation delays.
+Shorter grace periods work for internal CAs with instant issuance. Longer grace periods are useful for ACME certificates that might hit rate limits or have validation delays.
 
 ## Default Values and Calculation
 
@@ -160,7 +162,8 @@ spec:
 
   # Only duration specified
   duration: 2160h # 90 days
-  # renewBefore automatically calculated as 2/3 * duration = 1440h (60 days)
+  # Renewal is scheduled 2/3 of the way through the certificate duration
+  # (about 60 days after issuance for a 90-day certificate).
 
   issuerRef:
     name: ca-issuer
@@ -170,7 +173,7 @@ spec:
   - defaults.example.com
 ```
 
-The default renewBefore is 2/3 of duration, providing a 30-day grace period for a 90-day certificate. This is generally appropriate for most scenarios.
+By default, cert-manager schedules renewal 2/3 of the way through the issued certificate's duration, providing about a 30-day grace period for a 90-day certificate. This is generally appropriate for most scenarios.
 
 ## Multiple Renewal Attempts
 
@@ -285,10 +288,11 @@ Applications can watch for secret changes and reload without restarting:
 
 ```python
 # Example Python code for certificate reloading
-import time
-import os
+import ssl
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+
+ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 
 class CertificateReloadHandler(FileSystemEventHandler):
     def on_modified(self, event):
@@ -299,9 +303,12 @@ class CertificateReloadHandler(FileSystemEventHandler):
 def reload_tls_context():
     # Reload TLS certificates without restarting
     global ssl_context
-    ssl_context.load_cert_chain('/etc/tls/tls.crt', '/etc/tls/tls.key')
+    new_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    new_context.load_cert_chain('/etc/tls/tls.crt', '/etc/tls/tls.key')
+    ssl_context = new_context
 
 # Watch certificate directory
+reload_tls_context()
 observer = Observer()
 observer.schedule(CertificateReloadHandler(), '/etc/tls', recursive=False)
 observer.start()
@@ -370,8 +377,8 @@ spec:
     # Alert when certificate in grace period
     - alert: CertificateInGracePeriod
       expr: |
-        (certmanager_certificate_expiration_timestamp_seconds - time()) <
-        (certmanager_certificate_renewal_timestamp_seconds - certmanager_certificate_expiration_timestamp_seconds)
+        time() > certmanager_certificate_renewal_timestamp_seconds
+        and time() < certmanager_certificate_expiration_timestamp_seconds
       labels:
         severity: info
       annotations:
@@ -380,8 +387,8 @@ spec:
     # Alert when renewal attempts fail
     - alert: CertificateRenewalFailed
       expr: |
-        increase(certmanager_certificate_renewal_timestamp_seconds[1h]) == 0
-        and (certmanager_certificate_expiration_timestamp_seconds - time()) / 3600 < 168
+        (certmanager_certificate_expiration_timestamp_seconds - time()) / 3600 < 168
+        and time() > certmanager_certificate_renewal_timestamp_seconds
       for: 6h
       labels:
         severity: warning
@@ -427,14 +434,8 @@ Common rotation failures:
 Manual renewal trigger:
 
 ```bash
-# Force renewal by deleting the secret
-# cert-manager will recreate it immediately
-kubectl delete secret <secret-name> -n <namespace>
-
-# Or annotate certificate to trigger renewal
-kubectl annotate certificate <cert-name> \
-  cert-manager.io/issue-temporary-certificate="true" \
-  --overwrite
+# Trigger renewal with cmctl
+cmctl renew <cert-name> -n <namespace>
 ```
 
 ## Best Practices
