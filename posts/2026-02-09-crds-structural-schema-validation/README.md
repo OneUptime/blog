@@ -14,7 +14,7 @@ Structural schema validation ensures that your custom resources maintain data in
 
 ## Understanding Structural Schemas
 
-Kubernetes introduced structural schemas as a requirement for CRDs in version 1.16. A structural schema is an OpenAPI v3 schema that follows specific rules to ensure the API server can efficiently process and validate your custom resources.
+With `apiextensions.k8s.io/v1`, introduced in Kubernetes 1.16, Kubernetes requires CRDs to define structural schemas. A structural schema is an OpenAPI v3 schema that follows specific rules to ensure the API server can efficiently process and validate your custom resources.
 
 The key requirement is that every field in your schema must have a defined type. No wildcards, no loose definitions. This strictness pays dividends when you're debugging issues at 2 AM.
 
@@ -111,7 +111,7 @@ properties:
     pattern: '^https?://[^\s]+$'
   semver:
     type: string
-    pattern: '^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'
+    pattern: '^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
   cronSchedule:
     type: string
     pattern: '^(\*|([0-9]|[1-5][0-9])|\*/[0-9]+) (\*|([0-9]|1[0-9]|2[0-3])|\*/[0-9]+) (\*|([1-9]|[12][0-9]|3[01])|\*/[0-9]+) (\*|([1-9]|1[0-2])|\*/[0-9]+) (\*|[0-6]|\*/[0-9]+)$'
@@ -181,6 +181,7 @@ Default values reduce configuration burden and ensure consistent behavior.
 properties:
   retryPolicy:
     type: object
+    default: {}
     properties:
       attempts:
         type: integer
@@ -209,6 +210,9 @@ Arrays need careful validation to prevent malformed data.
 properties:
   volumes:
     type: array
+    x-kubernetes-list-type: map
+    x-kubernetes-list-map-keys:
+    - name
     minItems: 1
     maxItems: 50
     items:
@@ -216,10 +220,12 @@ properties:
       required:
       - name
       - mountPath
+      - volumeSource
       properties:
         name:
           type: string
           pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          maxLength: 63
         mountPath:
           type: string
           pattern: '^/[a-z0-9/._-]*$'
@@ -285,11 +291,11 @@ memorySize:
   type: string
   pattern: '^[0-9]+[MG]i$'
 
-# Kubernetes resource name
+# Kubernetes DNS label name
 resourceName:
   type: string
   pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
-  maxLength: 253
+  maxLength: 63
 
 # Percentage (0-100)
 percentage:
@@ -337,6 +343,7 @@ properties:
   # New field added in v2
   autoscaling:
     type: object
+    default: {}
     properties:
       enabled:
         type: boolean
