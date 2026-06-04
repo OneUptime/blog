@@ -58,8 +58,6 @@ A Docker Compose file makes the process repeatable and self-documenting.
 
 ```yaml
 # docker-compose.migration-test.yml - Migration testing environment
-version: "3.8"
-
 services:
   # Database with production-matching version
   db:
@@ -156,8 +154,6 @@ CREATE TABLE user_preferences (
 
 ```yaml
 # docker-compose.flyway-test.yml - Test Flyway migrations
-version: "3.8"
-
 services:
   db:
     image: postgres:16-alpine
@@ -172,7 +168,7 @@ services:
       retries: 10
 
   flyway:
-    image: flyway/flyway:10
+    image: redgate/flyway:10
     volumes:
       - ./flyway/sql:/flyway/sql
       - ./flyway/conf:/flyway/conf
@@ -183,7 +179,7 @@ services:
 
   # Validate migration status after running
   flyway-info:
-    image: flyway/flyway:10
+    image: redgate/flyway:10
     volumes:
       - ./flyway/sql:/flyway/sql
       - ./flyway/conf:/flyway/conf
@@ -205,8 +201,6 @@ Prisma is popular in the Node.js ecosystem. Test its migrations in Docker.
 
 ```yaml
 # docker-compose.prisma-test.yml - Test Prisma migrations
-version: "3.8"
-
 services:
   db:
     image: postgres:16-alpine
@@ -297,17 +291,16 @@ def test_foreign_key_constraint(db_conn):
         """)
     db_conn.rollback()
 
-def test_migration_is_idempotent(db_conn):
-    """Verify running the migration again does not cause errors."""
+def test_user_preferences_table_exists(db_conn):
+    """Verify the migration created the expected table."""
     cursor = db_conn.cursor()
-    # This should not raise an error (IF NOT EXISTS patterns)
     cursor.execute("SELECT 1 FROM pg_tables WHERE tablename = 'user_preferences'")
     assert cursor.fetchone() is not None
 ```
 
 ## Testing Rollback Migrations
 
-Every migration should have a corresponding rollback. Test both directions.
+For reversible migrations, keep a corresponding rollback and test both directions.
 
 ```sql
 -- migrations/003_add_user_preferences_up.sql
@@ -331,22 +324,25 @@ set -e
 echo "=== Testing migration rollback ==="
 
 # Start fresh database
-docker compose -f docker-compose.migration-test.yml up -d db
-sleep 5
+docker compose -f docker-compose.migration-test.yml up -d --wait db
 
 # Apply migration
-docker exec -i migration-test-db psql -U app -d myapp < migrations/003_add_user_preferences_up.sql
+docker compose -f docker-compose.migration-test.yml exec -T db \
+  psql -U app -d myapp < migrations/003_add_user_preferences_up.sql
 echo "Migration applied successfully"
 
 # Verify the table exists
-docker exec migration-test-db psql -U app -d myapp -c "\dt user_preferences"
+docker compose -f docker-compose.migration-test.yml exec -T db \
+  psql -U app -d myapp -c "\dt user_preferences"
 
 # Rollback
-docker exec -i migration-test-db psql -U app -d myapp < migrations/003_add_user_preferences_down.sql
+docker compose -f docker-compose.migration-test.yml exec -T db \
+  psql -U app -d myapp < migrations/003_add_user_preferences_down.sql
 echo "Rollback applied successfully"
 
 # Verify the table is gone
-RESULT=$(docker exec migration-test-db psql -U app -d myapp -t -c \
+RESULT=$(docker compose -f docker-compose.migration-test.yml exec -T db \
+  psql -U app -d myapp -t -c \
   "SELECT COUNT(*) FROM pg_tables WHERE tablename = 'user_preferences'")
 
 if [ "$(echo $RESULT | tr -d ' ')" = "0" ]; then
