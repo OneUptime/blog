@@ -30,7 +30,7 @@ NSM consists of several components:
 
 **NSM Manager (nsmgr)**: Runs on each node, coordinates network service connections
 **Registry**: Stores network service metadata and endpoint information
-**Forwarder**: Provides the data plane (vpp, kernel, or other implementations)
+**Forwarder**: Provides the data plane (VPP, OVS, or another forwarder implementation)
 **Network Service Endpoint (NSE)**: Provides a network service
 **Network Service Client (NSC)**: Consumes a network service
 
@@ -40,20 +40,18 @@ When a pod requests a network service, NSM creates a new network interface, esta
 
 Start by deploying NSM core components to your cluster.
 
-### Deploy NSM Using Helm
+### Deploy NSM Using Kustomize
 
 ```bash
-# Add the NSM Helm repository
+# Install SPIRE first if your cluster does not already have it
+kubectl apply -k https://github.com/networkservicemesh/deployments-k8s/examples/spire/single_cluster?ref=v1.14.0
 
-helm repo add nsm https://helm.nsm.dev/
-helm repo update
+# Install NSM core components for the basic single-cluster examples
+kubectl apply -k https://github.com/networkservicemesh/deployments-k8s/examples/basic?ref=v1.14.0
 
-# Install NSM with default settings
-helm install nsm nsm/nsm \
-  --namespace nsm-system \
-  --create-namespace \
-  --set forwarder.vpp.enabled=true \
-  --set forwarder.kernel.enabled=false
+# Wait for the admission webhook
+WH=$(kubectl get pods -l app=admission-webhook-k8s -n nsm-system --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}')
+kubectl wait --for=condition=ready --timeout=1m pod ${WH} -n nsm-system
 
 # Verify installation
 kubectl get pods -n nsm-system
@@ -66,18 +64,36 @@ You should see pods for the registry, admission webhook, and nsmgr DaemonSet.
 NSM supports different data plane implementations:
 
 **VPP (Vector Packet Processing)**: High-performance userspace forwarding, best for throughput
-**Kernel**: Uses standard Linux networking, easier to debug
 **OVS**: Integration with Open vSwitch
+**Kernel, memif, VLAN, and other mechanisms**: Connection mechanisms that clients, endpoints, and forwarders can negotiate for specific use cases
 
-For most production use cases, VPP provides the best performance:
+For most production use cases, VPP provides the best performance. In the upstream basic deployment, the VPP forwarder runs as a DaemonSet:
 
 ```yaml
-forwarder:
-  vpp:
-    enabled: true
-    image:
-      repository: ghcr.io/networkservicemesh/cmd-forwarder-vpp
-      tag: v1.11.0
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: forwarder-vpp
+spec:
+  selector:
+    matchLabels:
+      app: forwarder-vpp
+  template:
+    metadata:
+      labels:
+        app: forwarder-vpp
+        spiffe.io/spiffe-id: "true"
+    spec:
+      hostPID: true
+      hostNetwork: true
+      containers:
+      - name: forwarder-vpp
+        image: ghcr.io/networkservicemesh/cmd-forwarder-vpp:v1.14.0
+        securityContext:
+          privileged: true
+        env:
+        - name: NSM_CONNECT_TO
+          value: unix:///var/lib/networkservicemesh/nsm.io.sock
 ```
 
 ## Creating a Simple Layer 3 Network Service
@@ -96,16 +112,9 @@ metadata:
   namespace: default
 spec:
   payload: IP
-  matches:
-    - sourceSelector:
-        app: client
-      destinationSelector:
-        app: server
-      route:
-        - destination: 10.100.1.0/24
 ```
 
-This defines a network service that provides IP connectivity on the 10.100.1.0/24 subnet.
+This defines a network service that provides IP connectivity. The endpoint assigns addresses from the CIDR it advertises.
 
 ### Deploy a Network Service Endpoint
 
@@ -128,14 +137,25 @@ spec:
     spec:
       containers:
       - name: nse
-        image: ghcr.io/networkservicemesh/cmd-nse-icmp-responder:v1.11.0
+        image: ghcr.io/networkservicemesh/cmd-nse-icmp-responder:v1.14.0
         env:
-        - name: NSM_NETWORK_SERVICES
+        - name: NSM_SERVICE_NAMES
           value: "isolated-network"
         - name: NSM_CIDR_PREFIX
-          value: "10.100.1.0/24"
-        - name: NSM_REGISTER_SERVICE
-          value: "true"
+          value: "10.100.1.0/31"
+        - name: NSM_PAYLOAD
+          value: "IP"
+        - name: NSM_CONNECT_TO
+          value: unix:///var/lib/networkservicemesh/nsm.io.sock
+        volumeMounts:
+        - name: nsm-socket
+          mountPath: /var/lib/networkservicemesh
+          readOnly: true
+      volumes:
+      - name: nsm-socket
+        hostPath:
+          path: /var/lib/networkservicemesh
+          type: DirectoryOrCreate
 ```
 
 ### Deploy a Client Pod
@@ -148,7 +168,7 @@ kind: Pod
 metadata:
   name: client
   annotations:
-    networkservicemesh.io: isolated-network
+    networkservicemesh.io: kernel://isolated-network/nsm-1
   labels:
     app: client
 spec:
@@ -158,7 +178,7 @@ spec:
     command: ["/bin/sh", "-c", "sleep 3600"]
 ```
 
-The annotation `networkservicemesh.io: isolated-network` tells NSM to connect this pod to the network service.
+The annotation `networkservicemesh.io: kernel://isolated-network/nsm-1` tells NSM to connect this pod to the network service and request a kernel interface named `nsm-1`.
 
 ### Verify Connectivity
 
@@ -171,8 +191,7 @@ kubectl exec -it client -- sh
 # List network interfaces
 ip addr show
 
-# You should see nsm-1 or similar with IP from 10.100.1.0/24
-# Example: nsm-1: 10.100.1.2/24
+# You should see nsm-1 or similar with IP from 10.100.1.0/31
 
 # Test connectivity to the network service endpoint
 ping 10.100.1.1
@@ -192,10 +211,6 @@ metadata:
   namespace: default
 spec:
   payload: ETHERNET
-  matches:
-    - sourceSelector:
-        layer: "2"
-      route: []
 ```
 
 ### Deploy L2 Network Service Endpoint
@@ -218,12 +233,14 @@ spec:
     spec:
       containers:
       - name: nse
-        image: ghcr.io/networkservicemesh/cmd-nse-vlan-vpp:v1.11.0
+        image: ghcr.io/networkservicemesh/cmd-nse-vlan-vpp:v1.14.0
+        securityContext:
+          privileged: true
         env:
-        - name: NSM_NETWORK_SERVICES
+        - name: NSM_SERVICE_NAMES
           value: "l2-bridge"
-        - name: NSM_VLAN_ID
-          value: "100"
+        - name: NSM_CONNECT_TO
+          value: unix:///var/lib/networkservicemesh/nsm.io.sock
 ```
 
 ### Connect Multiple Clients to L2 Service
@@ -234,7 +251,7 @@ kind: Pod
 metadata:
   name: l2-client-1
   annotations:
-    networkservicemesh.io: l2-bridge
+    networkservicemesh.io: kernel://l2-bridge/nsm-1
   labels:
     layer: "2"
 spec:
@@ -248,7 +265,7 @@ kind: Pod
 metadata:
   name: l2-client-2
   annotations:
-    networkservicemesh.io: l2-bridge
+    networkservicemesh.io: kernel://l2-bridge/nsm-1
   labels:
     layer: "2"
 spec:
@@ -283,43 +300,19 @@ NSM can connect pods to networks outside the cluster, such as physical networks 
 
 ### External Network Service Endpoint
 
-Deploy an NSE on a specific node with access to the external network:
-
-```yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: nse-external-bridge
-spec:
-  selector:
-    matchLabels:
-      app: nse-external
-  template:
-    metadata:
-      labels:
-        app: nse-external
-    spec:
-      nodeSelector:
-        external-network: "true"  # Only nodes with this label
-      hostNetwork: true
-      containers:
-      - name: nse
-        image: ghcr.io/networkservicemesh/cmd-nse-kernel:v1.11.0
-        env:
-        - name: NSM_NETWORK_SERVICES
-          value: "external-net"
-        - name: NSM_CIDR_PREFIX
-          value: "10.200.0.0/24"
-        - name: NSM_DEVICE_NAME
-          value: "eth1"  # Physical interface connected to external network
-        securityContext:
-          privileged: true
-```
-
-Label the appropriate nodes:
+For VLAN breakout use cases, deploy the upstream remote VLAN setup and the breakout example. The example connects NSCs to an external VLAN-backed entity through the NSM remote VLAN mechanism:
 
 ```bash
-kubectl label node worker-1 external-network=true
+kubectl apply -k https://github.com/networkservicemesh/deployments-k8s/examples/remotevlan_vpp?ref=v1.14.0
+kubectl apply -k https://github.com/networkservicemesh/deployments-k8s/examples/use-cases/Kernel2RVlanBreakout?ref=v1.14.0
+kubectl -n ns-kernel2rvlan-breakout wait --for=condition=ready --timeout=1m pod -l app=iperf1-s
+```
+
+To test against an external VLAN peer, create a host or container on the same VLAN and use the addresses from the NSM interface:
+
+```bash
+NSCS=($(kubectl get pods -l app=iperf1-s -n ns-kernel2rvlan-breakout --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}'))
+kubectl exec ${NSCS[0]} -c cmd-nsc -n ns-kernel2rvlan-breakout -- ip -4 addr show nsm-1
 ```
 
 ### Client Connecting to External Network
@@ -330,7 +323,7 @@ kind: Pod
 metadata:
   name: external-client
   annotations:
-    networkservicemesh.io: external-net
+    networkservicemesh.io: kernel://kernel2rvlan-breakout/nsm-1
 spec:
   containers:
   - name: alpine
@@ -338,50 +331,34 @@ spec:
     command: ["/bin/sh", "-c", "apk add --no-cache curl && sleep 3600"]
 ```
 
-This pod receives an interface connected to the external network and can reach external resources directly.
+This pod receives an NSM interface. The external reachability depends on the remote VLAN setup and the external peer attached to that VLAN.
 
 ## Multi-Cluster Networking with NSM
 
-Connect services across Kubernetes clusters using NSM's floating interdomain feature.
+Connect services across Kubernetes clusters using NSM's interdomain examples.
 
 ### Register Remote Network Service
 
-In cluster A, export a network service:
+In cluster A, define the network service that clients will request:
 
 ```yaml
 apiVersion: networkservicemesh.io/v1
 kind: NetworkService
 metadata:
-  name: cross-cluster-service
+  name: floating-kernel2ethernet2kernel
 spec:
-  payload: IP
-  matches:
-    - sourceSelector: {}
-      destinationSelector:
-        cluster: "cluster-b"
-      route:
-        - destination: 10.150.0.0/24
+  payload: ETHERNET
 ```
 
 ### Configure NSM for Inter-Cluster Communication
 
-Set up a secure tunnel between clusters using WireGuard or IPSec:
+Set up the NSM interdomain components from the upstream two-cluster examples rather than a custom ConfigMap. The registry proxy DNS and NSMgr proxy components are the parts that proxy requests across NSM domains:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nsm-config
-  namespace: nsm-system
-data:
-  nsm.yaml: |
-    registry:
-      url: "tcp://registry.cluster-b.example.com:5001"
-    tunnel:
-      type: wireguard
-      privateKey: <base64-encoded-key>
-      peerPublicKey: <peer-public-key>
-      peerEndpoint: "203.0.113.50:51820"
+```bash
+kubectl --kubeconfig=$KUBECONFIG1 apply -k https://github.com/networkservicemesh/deployments-k8s/examples/interdomain/two_cluster_configuration/basic/cluster1?ref=v1.14.0
+kubectl --kubeconfig=$KUBECONFIG2 apply -k https://github.com/networkservicemesh/deployments-k8s/examples/interdomain/two_cluster_configuration/basic/cluster2?ref=v1.14.0
+kubectl --kubeconfig=$KUBECONFIG1 wait --for=condition=ready --timeout=1m pod -n nsm-system -l app=admission-webhook-k8s
+kubectl --kubeconfig=$KUBECONFIG2 wait --for=condition=ready --timeout=1m pod -n nsm-system -l app=admission-webhook-k8s
 ```
 
 ### Consume Cross-Cluster Service
@@ -394,7 +371,7 @@ kind: Pod
 metadata:
   name: cross-cluster-client
   annotations:
-    networkservicemesh.io: cross-cluster-service
+    networkservicemesh.io: kernel://floating-kernel2ethernet2kernel@my.cluster3/nsm-1
 spec:
   containers:
   - name: alpine
@@ -425,15 +402,12 @@ spec:
     spec:
       containers:
       - name: firewall
-        image: ghcr.io/networkservicemesh/cmd-nse-firewall-vpp:v1.11.0
+        image: ghcr.io/networkservicemesh/cmd-nse-firewall-vpp:v1.14.0
         env:
-        - name: NSM_NETWORK_SERVICES
+        - name: NSM_SERVICE_NAMES
           value: "firewall-service"
-        - name: NSM_FIREWALL_RULES
-          value: |
-            permit tcp any any port 80
-            permit tcp any any port 443
-            deny ip any any
+        - name: NSM_CONNECT_TO
+          value: unix:///var/lib/networkservicemesh/nsm.io.sock
 ```
 
 ### Chain Network Services
@@ -448,15 +422,18 @@ metadata:
 spec:
   payload: IP
   matches:
-    - sourceSelector:
-        security: "high"
-      route:
-        - via: firewall-service
-        - via: ids-service
-        - destination: application-network
+  - source_selector:
+      security: "high"
+    routes:
+    - destination_selector:
+        app: firewall
+    - destination_selector:
+        app: ids
+    - destination_selector:
+        app: application
 ```
 
-Pods annotated with `security: high` will have their traffic routed through both the firewall and intrusion detection system before reaching the application network.
+Pods requesting `secure-path` with the `security=high` label in the NSM annotation will be matched to this route chain.
 
 ## Monitoring and Troubleshooting
 
@@ -470,7 +447,7 @@ kubectl get pods -n nsm-system
 kubectl logs -n nsm-system -l app=nsmgr
 
 # View registry contents
-kubectl logs -n nsm-system -l app=nsm-registry
+kubectl logs -n nsm-system -l app=registry
 ```
 
 ### Debug Network Service Connections
@@ -524,34 +501,30 @@ ip route show table all
 ### Configure VPP for High Throughput
 
 ```yaml
-forwarder:
-  vpp:
-    enabled: true
-    resources:
-      requests:
-        cpu: "2"
-        memory: "2Gi"
-      limits:
-        cpu: "4"
-        memory: "4Gi"
-    hugepages:
-      enabled: true
-      size: 2Mi
-      count: 512
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: forwarder-vpp
+  namespace: nsm-system
+spec:
+  template:
+    spec:
+      containers:
+      - name: forwarder-vpp
+        resources:
+          requests:
+            cpu: "2"
+            memory: "2Gi"
+          limits:
+            cpu: "4"
+            memory: "4Gi"
 ```
+
+In current upstream manifests, tune the `forwarder-vpp` DaemonSet resources directly or through a Kustomize patch.
 
 ### Enable Jumbo Frames
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nsm-forwarder-config
-  namespace: nsm-system
-data:
-  forwarder.yaml: |
-    mtu: 9000
-```
+Set MTU through the forwarder or endpoint configuration used by your selected NSM deployment, then verify the negotiated MTU on the injected NSM interface with `ip link show nsm-1`.
 
 ## Conclusion
 
