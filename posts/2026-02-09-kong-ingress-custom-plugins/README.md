@@ -12,9 +12,9 @@ This guide covers advanced ingress controller configuration for Kubernetes envir
 
 ## Understanding the Architecture
 
-Modern ingress controllers act as the entry point for external traffic into Kubernetes clusters. They provide Layer 7 load balancing, SSL termination, and advanced routing based on hostnames, paths, headers, and other request attributes.
+Modern ingress controllers act as the entry point for external traffic into Kubernetes clusters. Kong Ingress Controller provides Layer 7 load balancing, SSL termination, and advanced routing based on hostnames, paths, headers, and other request attributes supported by Kong Gateway.
 
-The ingress controller watches Ingress resources and translates them into native configuration for the underlying proxy. This abstraction allows teams to use Kubernetes-native resources while leveraging battle-tested load balancing technologies.
+The ingress controller watches Kubernetes resources such as Ingress and translates them into Kong Gateway configuration. This abstraction allows teams to use Kubernetes-native resources while leveraging battle-tested load balancing technologies.
 
 ## Basic Configuration
 
@@ -27,7 +27,7 @@ metadata:
   name: example-ingress
   namespace: production
 spec:
-  ingressClassName: nginx
+  ingressClassName: kong
   rules:
     - host: app.example.com
       http:
@@ -43,15 +43,15 @@ spec:
 
 ## Advanced Features
 
-The ingress controller supports sophisticated traffic management patterns including weighted routing, header-based routing, rate limiting, authentication, and custom middleware chains.
+Kong Ingress Controller supports sophisticated traffic management patterns including weighted routing, header-based routing, rate limiting, authentication, and custom plugin configuration.
 
-Configure these features using annotations or custom resource definitions depending on your ingress controller choice. Each controller provides unique capabilities tailored to specific use cases.
+Configure these features using Kong annotations such as `konghq.com/plugins` and custom resource definitions such as `KongPlugin` and `KongClusterPlugin`. Each controller provides unique capabilities tailored to specific use cases.
 
 ## Security Considerations
 
 Always enable TLS encryption for production traffic. Use cert-manager to automate certificate management. Implement rate limiting and authentication to protect backend services from abuse.
 
-Configure security headers, enable CORS policies, and implement Web Application Firewall rules to protect against common attacks. Regular security audits ensure configurations remain secure as threats evolve.
+Configure security headers, enable CORS policies, and implement Web Application Firewall rules where your Kong deployment supports them to protect against common attacks. Regular security audits ensure configurations remain secure as threats evolve.
 
 ## Performance Optimization
 
