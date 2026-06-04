@@ -12,13 +12,13 @@ The Kubernetes API server is the heart of your cluster. Every kubectl command, c
 
 ## Understanding API Server Latency Metrics
 
-The API server exposes several histogram metrics for request latency:
+The API server exposes several metrics for request latency and request volume:
 
 - `apiserver_request_duration_seconds` - Complete request duration including response body streaming
 - `apiserver_response_sizes` - Response size distribution
 - `apiserver_request_total` - Request counter with labels for verb, resource, and status code
 
-These metrics include labels for resource type, verb (GET, LIST, CREATE, etc.), and response code, enabling detailed analysis.
+These metrics include labels for resource type and verb (GET, LIST, CREATE, etc.); `apiserver_request_total` also includes the HTTP response code, enabling detailed analysis.
 
 ## Basic Percentile Queries
 
@@ -148,14 +148,20 @@ topk(5,
   )
 )
 
-# Identify resources with highest latency variance
-stddev(
+# Identify resources with the widest p99-to-p50 latency spread
+topk(10,
   histogram_quantile(
-    0.95,
+    0.99,
     sum(rate(apiserver_request_duration_seconds_bucket[5m]))
       by (le, resource, verb)
   )
-) by (resource, verb)
+  -
+  histogram_quantile(
+    0.50,
+    sum(rate(apiserver_request_duration_seconds_bucket[5m]))
+      by (le, resource, verb)
+  )
+)
 ```
 
 ## Multi-Percentile Analysis
@@ -226,19 +232,19 @@ deriv(
   histogram_quantile(
     0.95,
     sum(rate(apiserver_request_duration_seconds_bucket[5m])) by (le)
-  )[5m]
+  )[5m:1m]
 ) > 0.1
 ```
 
-## Correlating Latency with Request Rate
+## Comparing Latency with Request Rate
 
-High latency often correlates with high request volume:
+High latency often coincides with high request volume:
 
 ```promql
 # Request rate by resource
 sum(rate(apiserver_request_total[5m])) by (resource)
 
-# Latency vs rate correlation
+# Latency normalized by request rate
 (
   histogram_quantile(
     0.95,
@@ -352,33 +358,33 @@ spec:
         description: "API server p95 latency is {{ $value }}s, 50% higher than normal"
 ```
 
-## Analyzing Latency by Client
+## Analyzing Latency by API Group
 
-Identify which clients are generating slow requests:
+Identify which API groups are associated with slow requests:
 
 ```promql
-# Latency by user agent
+# Latency by API group
 histogram_quantile(
   0.95,
   sum(rate(apiserver_request_duration_seconds_bucket[5m]))
-    by (le, client)
+    by (le, group)
 )
 
-# Top clients by request volume
+# Top API groups by request volume
 topk(10,
-  sum(rate(apiserver_request_total[5m])) by (client)
+  sum(rate(apiserver_request_total[5m])) by (group)
 )
 
-# Latency for controller requests
+# Latency for custom API groups
 histogram_quantile(
   0.95,
   sum(
     rate(
       apiserver_request_duration_seconds_bucket{
-        client=~".*controller.*"
+        group!=""
       }[5m]
     )
-  ) by (le, client)
+  ) by (le, group)
 )
 ```
 
@@ -388,7 +394,7 @@ Monitor WATCH operations and other long-running requests separately:
 
 ```promql
 # Active WATCH requests
-sum(apiserver_longrunning_gauge) by (resource)
+sum(apiserver_longrunning_requests{verb="WATCH"}) by (resource)
 
 # WATCH request latency (startup time)
 histogram_quantile(
@@ -407,13 +413,11 @@ Build a Grafana dashboard query that combines multiple dimensions:
 
 ```promql
 # Comprehensive API server latency view
-sum(
-  histogram_quantile(
-    0.95,
-    sum(rate(apiserver_request_duration_seconds_bucket[5m]))
-      by (le, verb, resource, code)
-  )
-) by (verb, resource)
+histogram_quantile(
+  0.95,
+  sum(rate(apiserver_request_duration_seconds_bucket[5m]))
+    by (le, verb, resource)
+)
 > 0.1  # Filter out very fast operations
 ```
 
@@ -422,11 +426,11 @@ sum(
 Use these queries to guide optimization efforts:
 
 ```promql
-# Calculate average bucket size for LIST operations
+# Calculate average response size for LIST operations
 avg(
-  apiserver_response_sizes_sum{verb="LIST"}
+  rate(apiserver_response_sizes_sum{verb="LIST"}[5m])
   /
-  apiserver_response_sizes_count{verb="LIST"}
+  rate(apiserver_response_sizes_count{verb="LIST"}[5m])
 ) by (resource)
 
 # Identify resources with large response sizes
@@ -482,6 +486,6 @@ spec:
 
 ## Conclusion
 
-Monitoring Kubernetes API server latency percentiles is essential for maintaining cluster health. By tracking p95 and p99 latency across different resources, verbs, and clients, you gain deep visibility into control plane performance. Use these PromQL queries to build dashboards that surface performance issues, create alerts that catch degradation early, and identify optimization opportunities.
+Monitoring Kubernetes API server latency percentiles is essential for maintaining cluster health. By tracking p95 and p99 latency across different resources, verbs, and API groups, you gain deep visibility into control plane performance. Use these PromQL queries to build dashboards that surface performance issues, create alerts that catch degradation early, and identify optimization opportunities.
 
-Start with basic percentile tracking, then layer in resource-specific analysis, multi-percentile comparisons, and correlation with request rates. The result is comprehensive API server observability that helps you maintain responsive cluster operations even as your workloads scale.
+Start with basic percentile tracking, then layer in resource-specific analysis, multi-percentile comparisons, and request-rate comparisons. The result is comprehensive API server observability that helps you maintain responsive cluster operations even as your workloads scale.
