@@ -14,7 +14,7 @@ Act solves this by running your GitHub Actions workflows locally in Docker conta
 
 ## How Act Works
 
-Act parses your GitHub Actions workflow YAML files and maps each job to a Docker container. It downloads or builds runner images that mimic the GitHub-hosted runner environment, mounts your repository into the container, and executes the steps sequentially. Act supports most GitHub Actions features including matrix builds, services, secrets, and artifacts.
+Act parses your GitHub Actions workflow YAML files and maps each job to a Docker container. It downloads or builds runner images that mimic the GitHub-hosted runner environment, mounts your repository into the container, and executes the steps sequentially. Act supports most GitHub Actions features including matrix builds, services, secrets, and artifacts when the local artifact server is enabled.
 
 ```mermaid
 graph LR
@@ -122,7 +122,7 @@ jobs:
 
       - name: Run container tests
         run: |
-          docker run -d --name test-app myapp:test
+          docker run -d -p 3000:3000 --name test-app myapp:test
           sleep 5
           curl -f http://localhost:3000/health || exit 1
           docker stop test-app
@@ -260,14 +260,17 @@ Act provides several debugging techniques.
 # Enable step-by-step debug output
 act -v
 
-# Drop into a shell inside the runner container when a step fails
+# Keep successful containers around so you can inspect state between runs
 act --reuse
 
 # Set the ACTIONS_STEP_DEBUG variable for GitHub Actions debug logging
 act -s ACTIONS_STEP_DEBUG=true
 
-# Bind a port for debugging a running step
+# Bind the working directory into the container instead of copying it
 act --bind
+
+# Store upload-artifact/download-artifact files locally
+act --artifact-server-path "$PWD/.artifacts"
 ```
 
 ## Event Payloads
