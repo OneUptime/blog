@@ -52,8 +52,8 @@ Document your upgrade plan comprehensively before starting.
 #!/bin/bash
 # create-upgrade-plan.sh
 
-CURRENT_VERSION="1.28.5"
-TARGET_VERSION="1.29.0"
+CURRENT_VERSION="1.32.5"
+TARGET_VERSION="1.33.0"
 UPGRADE_DATE="2026-02-15"
 
 cat > kubernetes-upgrade-plan.md << EOF
@@ -71,38 +71,38 @@ Upgrade production Kubernetes cluster from version $CURRENT_VERSION to $TARGET_V
 - **Cluster**: production-eks
 
 ## Business Justification
-- Security patches for CVE-2024-XXXX
+- Security patches and platform fixes included in the target Kubernetes release
 - Performance improvements (15% reduction in API latency)
-- Access to new features (ReadWriteOncePod, improved autoscaling)
-- Vendor support (1.28 reaches end-of-life in March 2026)
+- Access to newer Kubernetes APIs and platform improvements
+- Vendor support (Amazon EKS standard support for 1.32 ends on March 23, 2026)
 
 ## Risk Assessment
 - **Overall Risk**: Medium
 - **Service Impact**: Minimal (tested in staging)
-- **Rollback Capability**: Yes (full etcd backup available)
+- **Recovery Capability**: Yes (cluster state and persistent workload backups available, with a blue/green recovery plan)
 - **Dependencies**: None (no dependent system upgrades)
 
 ## Pre-Upgrade Requirements
-- [ ] Backup etcd
+- [ ] Back up cluster state and persistent workloads
 - [ ] Test upgrade in staging
 - [ ] Verify PodDisruptionBudgets
 - [ ] Update monitoring dashboards
-- [ ] Prepare rollback procedures
+- [ ] Prepare recovery procedures
 - [ ] Notify stakeholders
 
 ## Upgrade Procedure
-1. Backup etcd and cluster state
+1. Back up cluster state and persistent workloads
 2. Upgrade control plane (30 minutes)
 3. Upgrade worker nodes using rolling update (90 minutes)
 4. Upgrade cluster addons (30 minutes)
 5. Validate cluster health
 6. Monitor for 24 hours
 
-## Rollback Plan
+## Recovery Plan
 If critical issues arise:
 1. Stop node upgrades
-2. Restore etcd from backup
-3. Roll back control plane
+2. Redirect traffic to the previous cluster or stable node group
+3. Restore cluster state and persistent workloads from backups if needed
 4. Communicate status to stakeholders
 
 ## Communication Plan
@@ -153,7 +153,7 @@ Hello Team,
 
 We have scheduled a Kubernetes cluster upgrade for our production environment.
 
-**What**: Upgrade from version 1.28.5 to 1.29.0
+**What**: Upgrade from version 1.32.5 to 1.33.0
 **When**: February 15, 2026, 02:00-06:00 UTC
 **Impact**: Minimal - tested successfully in staging
 **Action Required**: Review attached upgrade plan and report any concerns
@@ -165,7 +165,7 @@ We have scheduled a Kubernetes cluster upgrade for our production environment.
 - Feb 15: Upgrade execution
 
 **Expected Impact**:
-- Brief API server restarts (< 1 minute)
+- Highly available API server rolling updates
 - Rolling node updates with zero downtime
 - No application changes required
 
@@ -205,7 +205,7 @@ The Kubernetes cluster upgrade has completed successfully.
 **Result**: All success criteria met
 
 **Post-Upgrade Status**:
-- All nodes upgraded to version 1.29.0
+- All nodes upgraded to version 1.33.0
 - All pods healthy and running
 - Performance metrics within normal range
 - Zero customer-impacting issues
@@ -314,12 +314,12 @@ cat > $REPORT_FILE << EOF
 # Kubernetes Upgrade Progress Report
 
 **Generated**: $(date)
-**Upgrade Target**: 1.29.0
+**Upgrade Target**: 1.33.0
 
 ## Current Status
 
 ### Control Plane
-$(kubectl get pods -n kube-system -l component=kube-apiserver -o custom-columns=NAME:.metadata.name,VERSION:.spec.containers[0].image,STATUS:.status.phase --no-headers)
+$(kubectl version)
 
 ### Node Status
 $(kubectl get nodes -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[?(@.type==\"Ready\")].status,VERSION:.status.nodeInfo.kubeletVersion --no-headers)
@@ -331,7 +331,7 @@ $(kubectl get nodes -o custom-columns=NAME:.metadata.name,STATUS:.status.conditi
 - Failed: $(kubectl get pods -A --field-selector status.phase=Failed --no-headers | wc -l)
 
 ### Recent Events
-$(kubectl get events -A --sort-by='.lastTimestamp' | tail -10)
+$(kubectl get events -A --sort-by='.metadata.creationTimestamp' | tail -10)
 
 ## Issues Encountered
 $([ -f /tmp/upgrade-issues.txt ] && cat /tmp/upgrade-issues.txt || echo "None")
@@ -359,7 +359,7 @@ cat > post-upgrade-report.md << 'EOF'
 # Kubernetes Upgrade Post-Mortem Report
 
 ## Executive Summary
-Successfully upgraded production Kubernetes cluster from version 1.28.5 to 1.29.0 with zero customer impact and minimal issues.
+Successfully upgraded production Kubernetes cluster from version 1.32.5 to 1.33.0 with zero customer impact and minimal issues.
 
 ## Upgrade Timeline
 - **Start Time**: 2026-02-15 02:00 UTC
@@ -373,7 +373,7 @@ Successfully upgraded production Kubernetes cluster from version 1.28.5 to 1.29.
 - PodDisruptionBudgets prevented service interruption
 - Automated monitoring caught issues before impact
 - Communication plan kept stakeholders informed
-- Rollback procedures were ready but not needed
+- Recovery procedures were ready but not needed
 
 ## Issues Encountered
 1. **Minor**: CoreDNS took 5 minutes longer than expected to stabilize
@@ -386,13 +386,13 @@ Successfully upgraded production Kubernetes cluster from version 1.28.5 to 1.29.
 
 ## Metrics Comparison
 
-### Before Upgrade (1.28.5)
+### Before Upgrade (1.32.5)
 - API Server P99 Latency: 450ms
 - Pod Startup Time: 8.2s
 - Node Count: 15
 - Pod Count: 247
 
-### After Upgrade (1.29.0)
+### After Upgrade (1.33.0)
 - API Server P99 Latency: 385ms (15% improvement)
 - Pod Startup Time: 7.8s (5% improvement)
 - Node Count: 15
@@ -408,7 +408,7 @@ Successfully upgraded production Kubernetes cluster from version 1.28.5 to 1.29.
 - [ ] Add PDB validation to CI/CD pipeline
 - [ ] Update upgrade runbook with new insights
 - [ ] Schedule quarterly upgrade planning meetings
-- [ ] Improve automated rollback procedures
+- [ ] Improve automated recovery procedures
 
 ## Cost Analysis
 - Engineer time: 16 hours (planning and execution)
