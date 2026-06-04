@@ -54,7 +54,7 @@ processors:
         latency:
           threshold_ms: 1000
       
-      # Sample 10% of successful traces
+      # Sample 10% of other traces
       - name: probabilistic-policy
         type: probabilistic
         probabilistic:
@@ -68,15 +68,15 @@ exporters:
     endpoint: tempo:4317
     tls:
       insecure: true
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [tail_sampling, batch]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 ```
 
 This configuration keeps all errors and slow traces while sampling only 10% of normal traffic.
@@ -218,7 +218,7 @@ processors:
 
 ## Composite Policies
 
-Combine multiple conditions using AND and OR policies for complex sampling logic.
+Combine multiple conditions using AND policies and separate top-level policies for complex sampling logic.
 
 ```yaml
 processors:
@@ -253,20 +253,16 @@ processors:
                 status_codes:
                   - ERROR
       
-      # Sample if slow OR error
-      - name: slow-or-error
-        type: or
-        or:
-          or_sub_policy:
-            - name: slow
-              type: latency
-              latency:
-                threshold_ms: 2000
-            - name: error
-              type: status_code
-              status_code:
-                status_codes:
-                  - ERROR
+      # Sample if slow OR error by using separate top-level policies
+      - name: slow-traces
+        type: latency
+        latency:
+          threshold_ms: 2000
+      - name: error-traces
+        type: status_code
+        status_code:
+          status_codes:
+            - ERROR
 ```
 
 ## Rate-Limited Policies
@@ -288,13 +284,13 @@ processors:
           status_codes:
             - ERROR
       
-      # Rate-limited sampling for normal traffic
-      - name: rate-limited-success
+      # Rate-limited sampling for remaining traffic
+      - name: rate-limited-traffic
         type: rate_limiting
         rate_limiting:
           spans_per_second: 100
       
-      # Sample successful health checks at low rate
+      # Sample health checks at low rate
       - name: health-checks
         type: and
         and:
@@ -399,15 +395,15 @@ service:
 Monitor tail sampling processor metrics to ensure proper operation.
 
 ```yaml
-# Add Prometheus exporter to sampling collector
-exporters:
-  prometheus:
-    endpoint: 0.0.0.0:8888
-
 service:
   telemetry:
     metrics:
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   
   pipelines:
     traces:
@@ -416,12 +412,12 @@ service:
       exporters: [otlp]
 
 # Key metrics to monitor:
-# - otelcol_processor_tail_sampling_policy_decision
-# - otelcol_processor_tail_sampling_trace_late_arriving_spans
-# - otelcol_processor_tail_sampling_trace_id_not_found
+# - otelcol_processor_tail_sampling_sampling_trace_dropped_too_early
+# - otelcol_processor_tail_sampling_sampling_late_span_age
+# - otelcol_processor_tail_sampling_count_traces_sampled
 ```
 
-Monitor these metrics to identify issues with trace completion timeouts or memory pressure.
+Monitor these metrics to identify issues with traces dropped before a decision, late-arriving spans, or memory pressure.
 
 ## Tuning Decision Wait Time
 
@@ -450,7 +446,7 @@ Follow these best practices when implementing tail sampling.
 
 First, deploy tail sampling in dedicated collector instances. Tail sampling requires significant memory and CPU resources.
 
-Second, set decision_wait based on your maximum expected trace duration. Traces taking longer than decision_wait may be dropped.
+Second, set decision_wait based on your expected trace duration and span arrival patterns. Spans that arrive after the decision has been made are late-arriving spans, and traces can be dropped before a decision if the in-memory trace buffer fills.
 
 Third, monitor memory usage carefully. The num_traces setting controls memory consumption.
 
