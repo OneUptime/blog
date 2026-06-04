@@ -31,9 +31,9 @@ If the second command fails, install the NVIDIA Container Toolkit:
 
 ```bash
 # Add the NVIDIA container toolkit repository
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
   sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
   sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
@@ -53,7 +53,7 @@ Create the project structure:
 
 ```bash
 # Create directories for models and outputs
-mkdir -p stable-diffusion-docker/{models,outputs,extensions}
+mkdir -p stable-diffusion-docker/{data,output}
 cd stable-diffusion-docker
 ```
 
@@ -68,12 +68,10 @@ services:
     ports:
       - "7860:7860"
     volumes:
-      # Persist models so they don't re-download on restart
-      - ./models:/app/models
+      # Persist models and WebUI configuration
+      - ./data:/data
       # Persist generated images
-      - ./outputs:/app/outputs
-      # Persist extensions
-      - ./extensions:/app/extensions
+      - ./output:/output
     deploy:
       resources:
         reservations:
@@ -92,11 +90,11 @@ Start the service:
 # Pull and start the container
 docker compose up -d
 
-# Watch the logs (first run downloads the model, which takes a while)
+# Watch the logs (first run initializes WebUI files and caches)
 docker compose logs -f stable-diffusion
 ```
 
-The first startup downloads the Stable Diffusion model weights (several gigabytes). Once it finishes, access the web UI at `http://localhost:7860`.
+The first startup initializes the WebUI files and caches. Model weights are several gigabytes, so add them to the shared model volume before generating images. Once startup finishes, access the web UI at `http://localhost:7860`.
 
 ## Option 2: Build a Custom Image
 
@@ -174,7 +172,7 @@ FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip \
+    python3 python3-pip curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir \
@@ -218,7 +216,7 @@ pipe = StableDiffusionPipeline.from_pretrained(
     variant="fp16",
 )
 pipe = pipe.to("cuda")
-# Enable memory-efficient attention
+# Enable attention slicing to lower peak memory usage
 pipe.enable_attention_slicing()
 print("Model loaded successfully")
 
@@ -320,8 +318,8 @@ Store models in a shared volume to avoid re-downloading:
 
 ```bash
 # Download a specific model checkpoint
-mkdir -p models/Stable-diffusion
-wget -O models/Stable-diffusion/v2-1_768-ema-pruned.safetensors \
+mkdir -p data/StableDiffusion
+wget -O data/StableDiffusion/v2-1_768-ema-pruned.safetensors \
   "https://huggingface.co/stabilityai/stable-diffusion-2-1/resolve/main/v2-1_768-ema-pruned.safetensors"
 ```
 
@@ -331,13 +329,13 @@ Mount additional model types:
 # docker-compose.yml with full model directory structure
 services:
   stable-diffusion:
-    image: sd-webui:latest
+    image: ghcr.io/neggles/sd-webui-docker:latest
     volumes:
-      - ./models/Stable-diffusion:/app/models/Stable-diffusion
-      - ./models/Lora:/app/models/Lora
-      - ./models/VAE:/app/models/VAE
-      - ./models/ControlNet:/app/models/ControlNet
-      - ./outputs:/app/outputs
+      - ./data/StableDiffusion:/data/StableDiffusion
+      - ./data/Lora:/data/Lora
+      - ./data/VAE:/data/VAE
+      - ./data/ControlNet:/data/ControlNet
+      - ./output:/output
     deploy:
       resources:
         reservations:
@@ -355,7 +353,7 @@ For GPUs with limited VRAM (4-6GB), enable memory optimizations:
 # docker-compose.yml with memory optimization flags
 services:
   stable-diffusion:
-    image: sd-webui:latest
+    image: ghcr.io/neggles/sd-webui-docker:latest
     environment:
       # Enable memory optimizations for lower VRAM GPUs
       - CLI_ARGS=--xformers --medvram --api --listen
@@ -383,14 +381,14 @@ If you do not have a GPU, you can still run Stable Diffusion on CPU, but image g
 # docker-compose.cpu.yml - CPU-only Stable Diffusion
 services:
   stable-diffusion:
-    image: sd-webui:latest
+    image: ghcr.io/neggles/sd-webui-docker:latest
     ports:
       - "7860:7860"
     environment:
       - CLI_ARGS=--use-cpu all --no-half --listen --api
     volumes:
-      - ./models:/app/models
-      - ./outputs:/app/outputs
+      - ./data:/data
+      - ./output:/output
     restart: unless-stopped
 ```
 
@@ -414,7 +412,7 @@ services:
     restart: unless-stopped
 
   stable-diffusion:
-    image: sd-webui:latest
+    image: ghcr.io/neggles/sd-webui-docker:latest
     # No ports exposed - only accessible through Nginx
     environment:
       - CLI_ARGS=--xformers --api --listen
