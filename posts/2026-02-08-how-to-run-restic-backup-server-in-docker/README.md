@@ -85,7 +85,7 @@ services:
       - ./htpasswd:/htpasswd:ro
 ```
 
-The `--append-only` flag is important for security. It prevents clients from deleting or modifying existing backup data. Even if a client machine is compromised, the attacker cannot destroy your backups.
+The `--append-only` flag is important for security. It prevents clients from deleting or modifying existing backup data through the REST API. Even if a client machine is compromised, the attacker cannot delete existing backups using that client's REST server credentials.
 
 ## Starting the Server
 
@@ -237,13 +237,13 @@ ls /tmp/restic-mount/snapshots/latest/
 
 ## Retention Policies
 
-Since the server runs in append-only mode, clients cannot delete old snapshots directly. Run the `forget` and `prune` commands on the server itself:
+Since the server runs in append-only mode, clients cannot delete old snapshots directly. Run the `forget` and `prune` commands on the server host against the mounted repository data:
 
 ```bash
 # On the server, run retention policy for a user's repository
-docker exec restic-server restic \
-  -r /data/webserver \
-  forget \
+export RESTIC_PASSWORD="webserver_repository_password"
+
+restic -r /path/to/restic-server/data/webserver forget \
   --keep-daily 7 \
   --keep-weekly 4 \
   --keep-monthly 12 \
@@ -262,10 +262,9 @@ Create a server-side script for regular cleanup:
 # Apply retention to each user's repository
 for repo in /path/to/restic-server/data/*/; do
     username=$(basename "$repo")
+    export RESTIC_PASSWORD_FILE="/etc/restic-passwords/$username"
     echo "Pruning repository: $username"
-    docker exec restic-server restic \
-      -r "/data/$username" \
-      forget \
+    restic -r "$repo" forget \
       --keep-daily 7 \
       --keep-weekly 4 \
       --keep-monthly 12 \
@@ -280,7 +279,8 @@ For backing up over the internet, wrap the REST server with TLS. Use an Nginx re
 ```nginx
 # /etc/nginx/sites-available/restic
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name backup.your-domain.com;
 
     ssl_certificate /etc/letsencrypt/live/backup.your-domain.com/fullchain.pem;
@@ -305,7 +305,7 @@ export RESTIC_REPOSITORY="rest:https://webserver:your_password@backup.your-domai
 
 ## Monitoring with OneUptime
 
-Monitor the REST server with OneUptime using an HTTP monitor on port 8000. Backup infrastructure is invisible until something goes wrong, and by then it is too late. Proactive monitoring ensures your backup target is always available when clients need to send data.
+Monitor the REST server with OneUptime using an HTTP monitor on port 8000, or port 443 if you use the reverse proxy. Configure basic authentication for the monitor, or treat a `401 Unauthorized` response as proof that the server is reachable. Backup infrastructure is invisible until something goes wrong, and by then it is too late. Proactive monitoring ensures your backup target is always available when clients need to send data.
 
 ## Wrapping Up
 
