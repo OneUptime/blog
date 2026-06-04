@@ -40,6 +40,9 @@ metadata:
     team: ${TEAM_NAME}
     managed-by: platform-team
     template-version: v1.0.0
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
   annotations:
     contact-email: ${CONTACT_EMAIL}
     created-by: ${CREATED_BY}
@@ -118,9 +121,11 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
+      port: 53
+    - protocol: TCP
       port: 53
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -129,7 +134,7 @@ metadata:
   name: namespace-admin
   namespace: ${NAMESPACE_NAME}
 rules:
-- apiGroups: ["", "apps", "batch", "extensions"]
+- apiGroups: ["", "apps", "batch"]
   resources: ["*"]
   verbs: ["*"]
 - apiGroups: ["networking.k8s.io"]
@@ -201,7 +206,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: monitoring
+          kubernetes.io/metadata.name: monitoring
     ports:
     - protocol: TCP
       port: 9090
@@ -278,7 +283,6 @@ def create_namespace_from_template(template_name, params):
 
     for doc in documents:
         kind = doc['kind']
-        api_version = doc['apiVersion']
 
         if kind == 'Namespace':
             v1 = client.CoreV1Api()
@@ -289,13 +293,42 @@ def create_namespace_from_template(template_name, params):
                 namespace=values['NAMESPACE_NAME'],
                 body=doc
             )
+        elif kind == 'LimitRange':
+            v1 = client.CoreV1Api()
+            v1.create_namespaced_limit_range(
+                namespace=values['NAMESPACE_NAME'],
+                body=doc
+            )
+        elif kind == 'ConfigMap':
+            v1 = client.CoreV1Api()
+            v1.create_namespaced_config_map(
+                namespace=values['NAMESPACE_NAME'],
+                body=doc
+            )
+        elif kind == 'ServiceAccount':
+            v1 = client.CoreV1Api()
+            v1.create_namespaced_service_account(
+                namespace=values['NAMESPACE_NAME'],
+                body=doc
+            )
         elif kind == 'NetworkPolicy':
             net_v1 = client.NetworkingV1Api()
             net_v1.create_namespaced_network_policy(
                 namespace=values['NAMESPACE_NAME'],
                 body=doc
             )
-        # Add handlers for other resource types
+        elif kind == 'Role':
+            rbac_v1 = client.RbacAuthorizationV1Api()
+            rbac_v1.create_namespaced_role(
+                namespace=values['NAMESPACE_NAME'],
+                body=doc
+            )
+        elif kind == 'RoleBinding':
+            rbac_v1 = client.RbacAuthorizationV1Api()
+            rbac_v1.create_namespaced_role_binding(
+                namespace=values['NAMESPACE_NAME'],
+                body=doc
+            )
 
     print(f"Namespace {values['NAMESPACE_NAME']} created from template {template_name}")
 
@@ -309,7 +342,7 @@ if __name__ == "__main__":
         'memory_quota': '200Gi'
     }
 
-    create_namespace_from_template('production-namespace', params)
+    create_namespace_from_template('base-namespace', params)
 ```
 
 ## Using Helm for Templates
@@ -353,15 +386,11 @@ rbac:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: {{ .Values.namespace.name }}
+  name: {{ .Values.namespace.name | quote }}
   labels:
-    {{- range $key, $val := .Values.namespace.labels }}
-    {{ $key }}: {{ $val }}
-    {{- end }}
+{{- toYaml .Values.namespace.labels | nindent 4 }}
   annotations:
-    {{- range $key, $val := .Values.namespace.annotations }}
-    {{ $key }}: {{ $val }}
-    {{- end }}
+{{- toYaml .Values.namespace.annotations | nindent 4 }}
 ```
 
 Deploy using Helm:
