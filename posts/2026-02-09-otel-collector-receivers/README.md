@@ -37,8 +37,20 @@ receivers:
             max_connection_age_grace: 5m
             time: 2h
             timeout: 20s
+        # TLS configuration for secure gRPC communication
+        # tls:
+        #   cert_file: /certs/server.crt
+        #   key_file: /certs/server.key
+        #   client_ca_file: /certs/ca.crt
+        #   min_version: "1.2"
       http:
         endpoint: 0.0.0.0:4318
+        # TLS configuration for secure HTTP communication
+        # tls:
+        #   cert_file: /certs/server.crt
+        #   key_file: /certs/server.key
+        #   client_ca_file: /certs/ca.crt
+        #   min_version: "1.2"
         cors:
           allowed_origins:
           - https://frontend.example.com
@@ -48,50 +60,47 @@ receivers:
           - Authorization
           max_age: 7200
 
-    # TLS configuration for secure communication
-    # tls:
-    #   cert_file: /certs/server.crt
-    #   key_file: /certs/server.key
-    #   client_ca_file: /certs/ca.crt
-    #   min_version: "1.2"
-
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [logging]
+      exporters: [debug]
     metrics:
       receivers: [otlp]
-      exporters: [logging]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      exporters: [debug]
 ```
 
 Test the OTLP receiver:
 
 ```bash
-# Send test trace via grpc
+# Send test trace via HTTP/JSON
 
-grpcurl -plaintext -d @ localhost:4317 \
-  opentelemetry.proto.collector.trace.v1.TraceService/Export <<EOF
+curl -X POST http://localhost:4318/v1/traces \
+  -H "Content-Type: application/json" \
+  -d @- <<EOF
 {
-  "resource_spans": [{
+  "resourceSpans": [{
     "resource": {
       "attributes": [{
         "key": "service.name",
-        "value": {"string_value": "test-service"}
+        "value": {"stringValue": "test-service"}
       }]
     },
-    "scope_spans": [{
+    "scopeSpans": [{
       "spans": [{
-        "trace_id": "0123456789abcdef0123456789abcdef",
-        "span_id": "0123456789abcdef",
+        "traceId": "0123456789abcdef0123456789abcdef",
+        "spanId": "0123456789abcdef",
         "name": "test-span",
         "kind": 1,
-        "start_time_unix_nano": 1234567890000000000,
-        "end_time_unix_nano": 1234567891000000000
+        "startTimeUnixNano": "1234567890000000000",
+        "endTimeUnixNano": "1234567891000000000"
       }]
     }]
   }]
@@ -120,11 +129,11 @@ receivers:
           action: keep
           regex: true
         # Use custom port if specified
-        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
           action: replace
           target_label: __address__
-          regex: (.+)
-          replacement: $1:${1}
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $$1:$$2
         # Use custom path if specified
         - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
           action: replace
@@ -144,7 +153,7 @@ receivers:
         relabel_configs:
         - source_labels: [__address__]
           regex: '(.*):10250'
-          replacement: '${1}:9100'
+          replacement: '$$1:9100'
           target_label: __address__
         - source_labels: [__meta_kubernetes_node_name]
           target_label: node
@@ -164,17 +173,19 @@ receivers:
           action: replace
           target_label: __address__
           regex: ([^:]+)(?::\d+)?;(\d+)
-          replacement: $1:$2
+          replacement: $$1:$$2
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: http://prometheus:9090/api/v1/write
+    tls:
+      insecure: true
 
 service:
   pipelines:
     metrics:
       receivers: [prometheus]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 Annotate pods to enable scraping:
@@ -202,7 +213,7 @@ Collect system-level metrics from the host:
 
 ```yaml
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       cpu:
@@ -292,19 +303,21 @@ receivers:
             enabled: true
 
 processors:
-  resourcedetection:
-    detectors: [env, system, docker, k8s]
+  resource_detection:
+    detectors: [env, system, docker]
     timeout: 5s
 
 exporters:
   otlp:
     endpoint: otel-gateway:4317
+    tls:
+      insecure: true
 
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics]
-      processors: [resourcedetection]
+      receivers: [host_metrics]
+      processors: [resource_detection]
       exporters: [otlp]
 ```
 
@@ -328,6 +341,8 @@ receivers:
 exporters:
   otlp:
     endpoint: otel-gateway:4317
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -336,10 +351,10 @@ service:
       exporters: [otlp]
 ```
 
-Migrate Jaeger clients to send to collector:
+Point existing Jaeger clients to the collector:
 
 ```python
-# Python example using Jaeger client
+# Legacy Python example using jaeger-client
 from jaeger_client import Config
 
 config = Config(
@@ -370,6 +385,8 @@ receivers:
 exporters:
   otlp:
     endpoint: otel-gateway:4317
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -393,20 +410,22 @@ receivers:
     topic: otlp_spans
     encoding: otlp_proto
     group_id: otel-collector
+    tls:
+      insecure_skip_verify: false
+      cert_file: /certs/client.crt
+      key_file: /certs/client.key
+      ca_file: /certs/ca.crt
     auth:
       sasl:
         username: otel-collector
         password: ${env:KAFKA_PASSWORD}
         mechanism: SCRAM-SHA-512
-      tls:
-        insecure_skip_verify: false
-        cert_file: /certs/client.crt
-        key_file: /certs/client.key
-        ca_file: /certs/ca.crt
 
 exporters:
   otlp:
     endpoint: otel-gateway:4317
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -421,7 +440,7 @@ Collect Kubernetes container and pod metrics:
 
 ```yaml
 receivers:
-  kubeletstats:
+  kubelet_stats:
     collection_interval: 30s
     auth_type: "serviceAccount"
     endpoint: "https://${env:K8S_NODE_NAME}:10250"
@@ -436,7 +455,7 @@ receivers:
     - k8s.volume.type
 
 processors:
-  k8sattributes:
+  k8s_attributes:
     auth_type: "serviceAccount"
     passthrough: false
     extract:
@@ -454,12 +473,14 @@ processors:
 exporters:
   otlp:
     endpoint: otel-gateway:4317
+    tls:
+      insecure: true
 
 service:
   pipelines:
     metrics:
-      receivers: [kubeletstats]
-      processors: [k8sattributes]
+      receivers: [kubelet_stats]
+      processors: [k8s_attributes]
       exporters: [otlp]
 ```
 
