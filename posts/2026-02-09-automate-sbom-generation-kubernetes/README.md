@@ -25,11 +25,11 @@ Start by deploying Syft in your cluster for on-demand SBOM generation:
 ```bash
 # Install Syft CLI locally for testing
 
-curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin
 
 # Generate SBOM for a test image
-syft packages nginx:latest -o cyclonedx-json > nginx-sbom.json
-syft packages nginx:latest -o spdx-json > nginx-sbom-spdx.json
+syft nginx:latest -o cyclonedx-json=nginx-sbom.json
+syft nginx:latest -o spdx-json=nginx-sbom-spdx.json
 
 # View the SBOM
 cat nginx-sbom.json | jq '.components[] | {name: .name, version: .version, type: .type}'
@@ -39,10 +39,12 @@ Create a container image that includes Syft for cluster deployments:
 
 ```dockerfile
 # Dockerfile.sbom-generator
-FROM anchore/syft:latest
+FROM alpine:3.20
 
-# Add kubectl for Kubernetes integration
-RUN apk add --no-cache curl && \
+# Add Syft, Grype, jq, and kubectl for Kubernetes integration
+RUN apk add --no-cache bash ca-certificates curl jq && \
+    curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin && \
+    curl -sSfL https://get.anchore.io/grype | sh -s -- -b /usr/local/bin && \
     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
     chmod +x kubectl && \
     mv kubectl /usr/local/bin/
@@ -63,7 +65,7 @@ Create the generation script:
 set -euo pipefail
 
 SBOM_FORMAT="${SBOM_FORMAT:-cyclonedx-json}"
-OUTPUT_DIR="${OUTPUT_DIR:-/sboms}"
+OUTPUT_DIR="${OUTPUT_DIR:-/sboms/$(date +%Y-%m-%d)}"
 NAMESPACE="${NAMESPACE:-all}"
 
 mkdir -p "$OUTPUT_DIR"
@@ -72,21 +74,23 @@ echo "Generating SBOMs for all images in namespace: $NAMESPACE"
 
 # Get all unique images running in the cluster
 if [ "$NAMESPACE" = "all" ]; then
-  IMAGES=$(kubectl get pods --all-namespaces -o jsonpath='{.items[*].spec.containers[*].image}' | tr ' ' '\n' | sort -u)
+  IMAGES=$(kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{range .spec.initContainers[*]}{.image}{"\n"}{end}{range .spec.containers[*]}{.image}{"\n"}{end}{range .spec.ephemeralContainers[*]}{.image}{"\n"}{end}{end}' | sort -u)
 else
-  IMAGES=$(kubectl get pods -n "$NAMESPACE" -o jsonpath='{.items[*].spec.containers[*].image}' | tr ' ' '\n' | sort -u)
+  IMAGES=$(kubectl get pods -n "$NAMESPACE" -o jsonpath='{range .items[*]}{range .spec.initContainers[*]}{.image}{"\n"}{end}{range .spec.containers[*]}{.image}{"\n"}{end}{range .spec.ephemeralContainers[*]}{.image}{"\n"}{end}{end}' | sort -u)
 fi
 
-echo "Found $(echo "$IMAGES" | wc -l) unique images"
+echo "Found $(printf '%s\n' "$IMAGES" | sed '/^$/d' | wc -l) unique images"
 
-for IMAGE in $IMAGES; do
+while IFS= read -r IMAGE; do
+  [ -z "$IMAGE" ] && continue
+
   # Sanitize image name for filename
   FILENAME=$(echo "$IMAGE" | tr '/:' '_')
   SBOM_FILE="$OUTPUT_DIR/${FILENAME}.${SBOM_FORMAT}"
 
   echo "Generating SBOM for $IMAGE..."
 
-  if syft packages "$IMAGE" -o "$SBOM_FORMAT" > "$SBOM_FILE" 2>/dev/null; then
+  if syft "$IMAGE" -o "$SBOM_FORMAT=$SBOM_FILE" 2>/dev/null; then
     echo "  ✓ Generated: $SBOM_FILE"
 
     # Also generate vulnerability scan
@@ -96,7 +100,7 @@ for IMAGE in $IMAGES; do
   else
     echo "  ✗ Failed to generate SBOM for $IMAGE"
   fi
-done
+done <<< "$IMAGES"
 
 echo "SBOM generation complete. Files saved to $OUTPUT_DIR"
 ```
@@ -182,16 +186,11 @@ spec:
             env:
             - name: SBOM_FORMAT
               value: "cyclonedx-json"
-            - name: OUTPUT_DIR
-              value: "/sboms/$(date +%Y-%m-%d)"
             - name: NAMESPACE
               value: "all"
             volumeMounts:
             - name: sbom-storage
               mountPath: /sboms
-            - name: docker-socket
-              mountPath: /var/run/docker.sock
-              readOnly: true
             resources:
               requests:
                 cpu: 500m
@@ -203,10 +202,6 @@ spec:
           - name: sbom-storage
             persistentVolumeClaim:
               claimName: sbom-storage
-          - name: docker-socket
-            hostPath:
-              path: /var/run/docker.sock
-              type: Socket
           restartPolicy: OnFailure
 ```
 
@@ -237,60 +232,55 @@ on:
     branches: [main]
 
 env:
-  IMAGE_NAME: myapp
-  REGISTRY: ghcr.io
+  IMAGE_REF: ghcr.io/${{ github.repository }}:${{ github.sha }}
 
 jobs:
   build-and-sbom:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
       packages: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Login to registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Build image
         run: |
-          docker build -t $IMAGE_NAME:${{ github.sha }} .
+          docker build -t $IMAGE_REF .
 
       - name: Install Syft
         run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSfL https://get.anchore.io/syft | sh -s -- -b /usr/local/bin
 
       - name: Generate SBOM
         run: |
-          syft packages $IMAGE_NAME:${{ github.sha }} \
-            -o cyclonedx-json \
-            --file sbom-cyclonedx.json
+          syft $IMAGE_REF \
+            -o cyclonedx-json=sbom-cyclonedx.json
 
-          syft packages $IMAGE_NAME:${{ github.sha }} \
-            -o spdx-json \
-            --file sbom-spdx.json
+          syft $IMAGE_REF \
+            -o spdx-json=sbom-spdx.json
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
-      - name: Attach SBOM to image
-        run: |
-          docker tag $IMAGE_NAME:${{ github.sha }} $REGISTRY/$IMAGE_NAME:${{ github.sha }}
-
-          # Attach CycloneDX SBOM
-          cosign attach sbom --sbom sbom-cyclonedx.json \
-            $REGISTRY/$IMAGE_NAME:${{ github.sha }}
-
-          # Also attach as attestation
-          cosign attest --predicate sbom-cyclonedx.json \
-            --type cyclonedx \
-            $REGISTRY/$IMAGE_NAME:${{ github.sha }}
-
       - name: Push image
         run: |
-          docker push $REGISTRY/$IMAGE_NAME:${{ github.sha }}
+          docker push $IMAGE_REF
+
+      - name: Attach SBOM attestation to image
+        run: |
+          cosign attest --yes --predicate sbom-cyclonedx.json \
+            --type cyclonedx \
+            $IMAGE_REF
 
       - name: Upload SBOM artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: sboms
           path: |
@@ -300,7 +290,7 @@ jobs:
 
 ## Creating an Admission Webhook for SBOM Validation
 
-Implement an admission webhook that requires all images to have attached SBOMs:
+Implement an admission webhook that requires all images to have SBOM attestations:
 
 ```python
 # sbom-admission-webhook.py
@@ -308,27 +298,32 @@ Implement an admission webhook that requires all images to have attached SBOMs:
 
 from flask import Flask, request, jsonify
 import subprocess
-import json
+import os
 
 app = Flask(__name__)
 
+COSIGN_CERTIFICATE_IDENTITY_REGEXP = os.getenv("COSIGN_CERTIFICATE_IDENTITY_REGEXP", ".*")
+COSIGN_CERTIFICATE_OIDC_ISSUER_REGEXP = os.getenv("COSIGN_CERTIFICATE_OIDC_ISSUER_REGEXP", ".*")
+
 def has_sbom(image):
-    """Check if image has an attached SBOM"""
+    """Check if image has a verified SBOM attestation"""
     try:
-        # Try to download SBOM using cosign
-        cmd = f"cosign download sbom {image}"
+        # Verify a CycloneDX SBOM attestation using cosign
+        cmd = [
+            "cosign", "verify-attestation",
+            "--type", "cyclonedx",
+            "--certificate-identity-regexp", COSIGN_CERTIFICATE_IDENTITY_REGEXP,
+            "--certificate-oidc-issuer-regexp", COSIGN_CERTIFICATE_OIDC_ISSUER_REGEXP,
+            image
+        ]
         result = subprocess.run(
-            cmd.split(),
+            cmd,
             capture_output=True,
             text=True,
             timeout=10
         )
 
-        if result.returncode == 0 and result.stdout:
-            # Validate SBOM structure
-            sbom = json.loads(result.stdout)
-            return 'components' in sbom or 'packages' in sbom
-        return False
+        return result.returncode == 0
 
     except Exception as e:
         print(f"Error checking SBOM: {e}")
@@ -345,11 +340,16 @@ def validate():
     allowed = True
     messages = []
 
-    for container in pod['spec'].get('containers', []):
+    containers = []
+    containers.extend(pod['spec'].get('initContainers', []))
+    containers.extend(pod['spec'].get('containers', []))
+    containers.extend(pod['spec'].get('ephemeralContainers', []))
+
+    for container in containers:
         image = container['image']
 
         # Skip images from exempted registries
-        if any(registry in image for registry in ['k8s.gcr.io', 'docker.io/library']):
+        if any(registry in image for registry in ['registry.k8s.io', 'docker.io/library']):
             continue
 
         if not has_sbom(image):
@@ -371,7 +371,11 @@ def validate():
     return jsonify(response)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8443)
+    app.run(
+        host='0.0.0.0',
+        port=8443,
+        ssl_context=('/tls/tls.crt', '/tls/tls.key')
+    )
 ```
 
 Deploy the webhook:
@@ -398,6 +402,14 @@ spec:
         image: sbom-webhook:latest
         ports:
         - containerPort: 8443
+        volumeMounts:
+        - name: webhook-tls
+          mountPath: /tls
+          readOnly: true
+      volumes:
+      - name: webhook-tls
+        secret:
+          secretName: sbom-webhook-tls
 
 ---
 apiVersion: v1
@@ -445,6 +457,9 @@ Use Grype to scan SBOMs for known vulnerabilities:
 ```bash
 # scan-sboms-for-vulns.sh
 #!/bin/bash
+
+set -euo pipefail
+shopt -s nullglob
 
 SBOM_DIR="/sboms/$(date +%Y-%m-%d)"
 REPORT_DIR="/reports/$(date +%Y-%m-%d)"
@@ -495,7 +510,7 @@ spec:
         spec:
           containers:
           - name: scanner
-            image: anchore/grype:latest
+            image: your-registry.com/sbom-generator:latest
             command: ["/bin/bash", "/scripts/scan-sboms-for-vulns.sh"]
             volumeMounts:
             - name: sbom-storage
@@ -526,17 +541,23 @@ Generate compliance reports showing SBOM coverage and vulnerability status:
 # sbom-compliance-report.sh
 #!/bin/bash
 
+set -euo pipefail
+
 echo "SBOM Compliance Report - $(date)"
 echo "================================"
 
 SBOM_DIR="/sboms/$(date +%Y-%m-%d)"
-TOTAL_IMAGES=$(kubectl get pods --all-namespaces -o jsonpath='{.items[*].spec.containers[*].image}' | tr ' ' '\n' | sort -u | wc -l)
+TOTAL_IMAGES=$(kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{range .spec.initContainers[*]}{.image}{"\n"}{end}{range .spec.containers[*]}{.image}{"\n"}{end}{range .spec.ephemeralContainers[*]}{.image}{"\n"}{end}{end}' | sort -u | sed '/^$/d' | wc -l)
 SBOM_COUNT=$(find "$SBOM_DIR" -name "*.cyclonedx-json" | wc -l)
 
 echo -e "\nCoverage:"
 echo "  Total images: $TOTAL_IMAGES"
 echo "  SBOMs generated: $SBOM_COUNT"
-echo "  Coverage: $(awk "BEGIN {printf \"%.1f%%\", ($SBOM_COUNT/$TOTAL_IMAGES)*100}")"
+if [ "$TOTAL_IMAGES" -gt 0 ]; then
+  echo "  Coverage: $(awk "BEGIN {printf \"%.1f%%\", ($SBOM_COUNT/$TOTAL_IMAGES)*100}")"
+else
+  echo "  Coverage: 0.0%"
+fi
 
 echo -e "\nVulnerability Summary:"
 find /reports/$(date +%Y-%m-%d) -name "*.critical.txt" -exec sh -c '
@@ -547,6 +568,7 @@ find /reports/$(date +%Y-%m-%d) -name "*.critical.txt" -exec sh -c '
 ' sh {} \;
 
 echo -e "\nLicense Summary:"
+shopt -s nullglob
 for SBOM in "$SBOM_DIR"/*.cyclonedx-json; do
   echo "  $(basename "$SBOM"):"
   jq -r '.components[].licenses[]?.license.id' "$SBOM" | sort | uniq -c | head -5
