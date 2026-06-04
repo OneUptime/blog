@@ -40,7 +40,7 @@ kubectl describe pod myapp-pod | grep -A 20 Events:
 kubectl get events --field-selector involvedObject.name=myapp-pod
 ```
 
-Common event types and their meanings:
+Common event reasons and their meanings:
 
 ```bash
 # Successful events
@@ -52,7 +52,7 @@ Started        # Container started
 
 # Problem indicators
 Failed         # Operation failed
-BackOff        # CrashLoopBackOff state
+BackOff        # Back-off retry delay, such as after failed container restarts or image pulls
 Unhealthy      # Liveness/readiness probe failed
 FailedScheduling  # Cannot find suitable node
 FailedMount    # Volume mount failed
@@ -104,7 +104,7 @@ Check if resource constraints are causing issues:
 # Check for OOMKilled
 kubectl describe pod myapp-pod | grep -i "OOMKilled"
 
-# View resource pressure
+# View pod conditions
 kubectl describe pod myapp-pod | grep -A 5 "Conditions:"
 
 # Example output:
@@ -130,8 +130,8 @@ Key fields to examine:
 State:          Waiting
   Reason:       CrashLoopBackOff
 Last State:     Terminated
-  Reason:       Error
-  Exit Code:    137    # 137 = OOMKilled
+  Reason:       OOMKilled
+  Exit Code:    137    # 137 = SIGKILL, commonly from an out-of-memory kill
   Started:      Mon, 09 Feb 2026 10:30:00 +0000
   Finished:     Mon, 09 Feb 2026 10:30:45 +0000
 Restart Count:  5
@@ -341,7 +341,7 @@ pod-health() {
   kubectl describe pod $POD | grep "^Status:" | awk '{print $2}'
 
   echo -n "Ready: "
-  kubectl describe pod $POD | grep "^Ready:" | awk '{print $2}'
+  kubectl describe pod $POD | awk '/^Conditions:/{in_conditions=1; next} in_conditions && $1=="Ready" {print $2; exit}'
 
   echo -n "Restart Count: "
   kubectl describe pod $POD | grep "Restart Count:" | awk '{sum+=$3} END {print sum}'
