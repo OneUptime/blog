@@ -8,7 +8,7 @@ Description: Deploy Strapi headless CMS in Docker to build customizable content 
 
 ---
 
-Strapi is the leading open-source headless CMS built on Node.js. It provides an admin panel for content editors, a flexible content-type builder for defining your data models, and automatically generated REST and GraphQL APIs for your frontend applications. Unlike traditional CMS platforms that couple content management with presentation, Strapi focuses exclusively on the backend. Your frontend, whether React, Next.js, Vue, or a mobile app, consumes the API and handles rendering.
+Strapi is the leading open-source headless CMS built on Node.js. It provides an admin panel for content editors, a flexible content-type builder for defining your data models, automatically generated REST APIs, and GraphQL APIs when the GraphQL plugin is installed. Unlike traditional CMS platforms that couple content management with presentation, Strapi focuses exclusively on the backend. Your frontend, whether React, Next.js, Vue, or a mobile app, consumes the API and handles rendering.
 
 Running Strapi in Docker makes the development-to-production workflow consistent and eliminates environment-specific issues. This guide covers building a Docker image for Strapi, deploying it with Docker Compose, connecting it to PostgreSQL, and configuring it for production use.
 
@@ -19,7 +19,7 @@ Strapi fits well when you need:
 - A content API for a JavaScript frontend (Next.js, Nuxt, Gatsby, etc.)
 - Non-technical content editors who need a visual admin panel
 - Custom content types defined through a UI, not code
-- Both REST and GraphQL endpoints from the same data
+- REST endpoints, with GraphQL available through Strapi's GraphQL plugin
 - Fine-grained role-based access control for your API
 - Webhooks that trigger builds when content changes
 
@@ -40,17 +40,17 @@ First, create a new Strapi project locally that you will then Dockerize.
 
 ```bash
 # Create a new Strapi project with PostgreSQL as the database
-npx create-strapi-app@latest my-strapi-project --quickstart --no-run
-
-# Or with specific database configuration
-npx create-strapi-app@latest my-strapi-project \
+npx create-strapi@latest my-strapi-project \
   --dbclient=postgres \
   --dbhost=127.0.0.1 \
   --dbport=5432 \
   --dbname=strapi \
   --dbusername=strapi \
   --dbpassword=strapi \
-  --no-run
+  --no-run \
+  --js \
+  --use-npm \
+  --skip-cloud
 ```
 
 ## Dockerfile for Strapi
@@ -61,7 +61,9 @@ Create a Dockerfile in your Strapi project root.
 # Dockerfile - Multi-stage build for Strapi CMS
 
 # Build stage: install dependencies and build the admin panel
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
+
+RUN apk update && apk add --no-cache build-base gcc autoconf automake zlib-dev libpng-dev bash vips-dev git
 
 WORKDIR /app
 
@@ -69,31 +71,33 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm config set fetch-retry-maxtimeout 600000 -g && npm ci
 
 # Copy the rest of the application
 COPY . .
 
 # Build the Strapi admin panel
+ENV NODE_ENV=production
 RUN npm run build
+RUN rm -rf node_modules
 
 # Production stage: smaller final image
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
+
+RUN apk add --no-cache vips-dev
+
+ENV NODE_ENV=production
 
 WORKDIR /app
 
 # Install only production dependencies
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy built application from the builder stage
-COPY --from=builder /app/build ./build
-COPY --from=builder /app/config ./config
-COPY --from=builder /app/database ./database
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/src ./src
-COPY --from=builder /app/.env.example ./.env.example
-COPY --from=builder /app/favicon.png ./favicon.png
+COPY --from=builder /app ./
+RUN chown -R node:node /app
+USER node
 
 # Expose the Strapi port
 EXPOSE 1337
@@ -120,8 +124,6 @@ build
 
 ```yaml
 # docker-compose.yml - Strapi CMS with PostgreSQL
-version: "3.8"
-
 services:
   strapi:
     build:
@@ -136,6 +138,8 @@ services:
       - strapi-uploads:/app/public/uploads
     environment:
       NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 1337
       # Database configuration
       DATABASE_CLIENT: postgres
       DATABASE_HOST: strapi-postgres
@@ -150,6 +154,7 @@ services:
       ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET}
       TRANSFER_TOKEN_SALT: ${TRANSFER_TOKEN_SALT}
       JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       # Public URL
       PUBLIC_URL: https://cms.yourdomain.com
     depends_on:
@@ -167,7 +172,7 @@ services:
       POSTGRES_USER: strapi
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U strapi"]
+      test: ["CMD-SHELL", "pg_isready -U strapi -d strapi"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -189,6 +194,7 @@ API_TOKEN_SALT=your-api-token-salt
 ADMIN_JWT_SECRET=your-admin-jwt-secret
 TRANSFER_TOKEN_SALT=your-transfer-token-salt
 JWT_SECRET=your-jwt-secret
+ENCRYPTION_KEY=your-encryption-key
 ```
 
 Generate all the secrets.
@@ -200,6 +206,7 @@ echo "API_TOKEN_SALT=$(openssl rand -base64 32)"
 echo "ADMIN_JWT_SECRET=$(openssl rand -base64 32)"
 echo "TRANSFER_TOKEN_SALT=$(openssl rand -base64 32)"
 echo "JWT_SECRET=$(openssl rand -base64 32)"
+echo "ENCRYPTION_KEY=$(openssl rand -base64 32)"
 ```
 
 ## Database Configuration
@@ -220,9 +227,23 @@ module.exports = ({ env }) => ({
       ssl: env.bool('DATABASE_SSL', false),
     },
     pool: {
-      min: 2,
+      min: 0,
       max: 10,
     },
+  },
+});
+```
+
+If you set `PUBLIC_URL` in Docker Compose, update the server configuration to read it.
+
+```javascript
+// config/server.js - Server configuration using environment variables
+module.exports = ({ env }) => ({
+  host: env('HOST', '0.0.0.0'),
+  port: env.int('PORT', 1337),
+  url: env('PUBLIC_URL', ''),
+  app: {
+    keys: env.array('APP_KEYS'),
   },
 });
 ```
@@ -240,29 +261,29 @@ docker compose up -d
 docker compose logs -f strapi
 ```
 
-The first startup takes a minute while Strapi runs database migrations. Navigate to `https://cms.yourdomain.com/admin` to create your admin account.
+The first startup takes a minute while Strapi runs database migrations. Navigate to `http://localhost:1337/admin`, or `https://cms.yourdomain.com/admin` after configuring the reverse proxy, to create your admin account.
 
 ## Defining Content Types
 
-Strapi's Content-Type Builder lets you define your data models visually through the admin panel. For example, to create a blog:
+In a development environment, Strapi's Content-Type Builder lets you define your data models visually through the admin panel. For example, to create a blog:
 
 1. Go to Content-Type Builder
 2. Click "Create new collection type"
 3. Name it "Article"
 4. Add fields: Title (Text), Slug (UID), Content (Rich Text), Cover Image (Media), Published Date (Date), Author (Relation to Users)
-5. Save and restart
+5. Save and let Strapi restart
 
-Strapi generates REST and GraphQL endpoints automatically.
+Strapi generates REST endpoints automatically. If you install `@strapi/plugin-graphql`, it also generates GraphQL queries and mutations for your content types.
 
 ```bash
 # REST API - List all articles
 curl http://localhost:1337/api/articles
 
 # REST API - Get a specific article with related data
-curl "http://localhost:1337/api/articles/1?populate=*"
+curl "http://localhost:1337/api/articles/{documentId}?populate=*"
 
-# REST API - Filter articles
-curl "http://localhost:1337/api/articles?filters[published][\$eq]=true&sort=publishedDate:desc"
+# REST API - List published articles
+curl "http://localhost:1337/api/articles?status=published&sort=publishedDate:desc"
 ```
 
 ## API Authentication
@@ -329,4 +350,4 @@ labels:
 
 ## Summary
 
-Strapi in Docker provides a powerful, customizable headless CMS that generates APIs automatically from your content models. The Docker deployment ensures consistency between development and production, and the PostgreSQL backend handles production workloads reliably. The combination of a visual admin panel for content editors and auto-generated REST/GraphQL APIs for developers makes Strapi a versatile choice for modern web applications. Monitor your Strapi API response times and database health with OneUptime to keep the content delivery pipeline running smoothly.
+Strapi in Docker provides a powerful, customizable headless CMS that generates APIs automatically from your content models. The Docker deployment ensures consistency between development and production, and the PostgreSQL backend handles production workloads reliably. The combination of a visual admin panel for content editors and auto-generated REST APIs, plus GraphQL when the GraphQL plugin is installed, makes Strapi a versatile choice for modern web applications. Monitor your Strapi API response times and database health with OneUptime to keep the content delivery pipeline running smoothly.
