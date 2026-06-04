@@ -10,11 +10,11 @@ Description: Learn how to use the Descheduler RemoveDuplicates strategy to elimi
 
 When you deploy applications in Kubernetes, the scheduler places pods on nodes based on available resources and constraints. However, over time, you might end up with multiple replicas of the same deployment running on the same node. This creates a single point of failure and defeats the purpose of running multiple replicas for high availability.
 
-The Descheduler RemoveDuplicates strategy solves this problem by identifying and evicting duplicate pods from nodes, forcing them to be rescheduled across different nodes for better distribution.
+The Descheduler RemoveDuplicates strategy solves this problem by identifying and evicting duplicate pods from nodes, giving the scheduler a chance to place replacement pods on different nodes when cluster constraints allow it.
 
 ## Understanding the RemoveDuplicates Strategy
 
-The RemoveDuplicates strategy identifies pods that belong to the same controller (Deployment, ReplicaSet, StatefulSet, or Job) running on the same node. When it finds duplicates, it evicts the excess pods, keeping only one pod per controller per node when possible.
+The RemoveDuplicates strategy identifies pods that belong to the same controller (ReplicaSet, ReplicationController, StatefulSet, or Job) running on the same node and have at least one matching container image. Pods created by Deployments are included because they are owned by ReplicaSets. When it finds duplicates, it evicts the excess pods, keeping only one pod per controller per node when possible.
 
 This strategy is particularly useful when:
 - Nodes have been added or removed from the cluster
@@ -32,19 +32,22 @@ First, you need to install the Descheduler in your cluster. You can deploy it us
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: descheduler
+  name: descheduler-sa
   namespace: kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: descheduler
+  name: descheduler-cluster-role
 rules:
-- apiGroups: [""]
+- apiGroups: ["events.k8s.io"]
   resources: ["events"]
   verbs: ["create", "update"]
 - apiGroups: [""]
   resources: ["nodes"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: [""]
+  resources: ["namespaces"]
   verbs: ["get", "watch", "list"]
 - apiGroups: [""]
   resources: ["pods"]
@@ -52,18 +55,28 @@ rules:
 - apiGroups: [""]
   resources: ["pods/eviction"]
   verbs: ["create"]
+- apiGroups: ["scheduling.k8s.io"]
+  resources: ["priorityclasses"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["create"]
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  resourceNames: ["descheduler"]
+  verbs: ["get", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: descheduler
+  name: descheduler-cluster-role-binding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: descheduler
+  name: descheduler-cluster-role
 subjects:
 - kind: ServiceAccount
-  name: descheduler
+  name: descheduler-sa
   namespace: kube-system
 ```
 
@@ -85,6 +98,10 @@ data:
     profiles:
       - name: default
         pluginConfig:
+        - name: "DefaultEvictor"
+          args:
+            # Check that pods can fit on another node before eviction
+            nodeFit: true
         - name: "RemoveDuplicates"
           args:
             # Namespaces to include (empty means all)
@@ -93,8 +110,6 @@ data:
             # Optional: exclude specific namespaces
             # namespaces:
             #   exclude: ["kube-system"]
-            # Exclude nodes with specific taints
-            excludeNodeTaints: ["node-role.kubernetes.io/master"]
         plugins:
           balance:
             enabled:
@@ -123,12 +138,14 @@ spec:
       template:
         metadata:
           name: descheduler
+          labels:
+            app: descheduler
         spec:
-          serviceAccountName: descheduler
+          serviceAccountName: descheduler-sa
           restartPolicy: Never
           containers:
           - name: descheduler
-            image: registry.k8s.io/descheduler/descheduler:v0.28.0
+            image: registry.k8s.io/descheduler/descheduler:v0.28.1
             command:
             - /bin/descheduler
             args:
@@ -145,7 +162,7 @@ spec:
 
 ## Advanced Configuration Options
 
-You can fine-tune the RemoveDuplicates strategy with additional parameters:
+You can fine-tune RemoveDuplicates with namespace filtering and combine it with DefaultEvictor filters:
 
 ```yaml
 apiVersion: v1
@@ -160,10 +177,8 @@ data:
     profiles:
       - name: production
         pluginConfig:
-        - name: "RemoveDuplicates"
+        - name: "DefaultEvictor"
           args:
-            namespaces:
-              include: ["production", "staging"]
             # Label selector to filter pods
             labelSelector:
               matchLabels:
@@ -172,9 +187,12 @@ data:
             priorityThreshold:
               value: 10000
               # Only evict pods with priority less than 10000
-            # Nodes to exclude from descheduling
             nodeFit: true
             # Ensure pods can be rescheduled before evicting
+        - name: "RemoveDuplicates"
+          args:
+            namespaces:
+              include: ["production", "staging"]
         plugins:
           balance:
             enabled:
@@ -223,7 +241,7 @@ After deploying this, you'll see all 6 pods on one node:
 kubectl get pods -o wide | grep nginx-test
 ```
 
-Now remove the nodeSelector and apply:
+If you remove the nodeSelector from this Deployment and apply the updated manifest, Kubernetes creates a new ReplicaSet because the Deployment's pod template changed:
 
 ```yaml
 # test-deployment-updated.yaml
@@ -255,7 +273,7 @@ spec:
             memory: 256Mi
 ```
 
-The pods will remain on the same node because Kubernetes doesn't automatically move running pods. This is where the Descheduler comes in.
+For this specific manifest change, the Deployment rollout replaces the old pods. In a real descheduler test, start from an existing ReplicaSet that already has duplicate pods on a node after a node failure, cluster scale event, or previous scheduling constraint; the Descheduler can then evict the duplicates without changing the workload template.
 
 ## Monitoring Descheduler Activity
 
@@ -332,10 +350,10 @@ spec:
       labels:
         app: descheduler
     spec:
-      serviceAccountName: descheduler
+      serviceAccountName: descheduler-sa
       containers:
       - name: descheduler
-        image: registry.k8s.io/descheduler/descheduler:v0.28.0
+        image: registry.k8s.io/descheduler/descheduler:v0.28.1
         command:
         - /bin/descheduler
         args:
@@ -362,5 +380,4 @@ When using the RemoveDuplicates strategy, follow these guidelines:
 5. Combine with other descheduler strategies for comprehensive cluster optimization
 6. Test in non-production environments first to understand the impact
 
-The RemoveDuplicates strategy is a powerful tool for maintaining high availability and even resource distribution in your Kubernetes cluster. By automatically identifying and evicting duplicate pods, it ensures your applications remain resilient to node failures while making the best use of your cluster resources.
-
+The RemoveDuplicates strategy is a powerful tool for maintaining high availability and even resource distribution in your Kubernetes cluster. By automatically identifying and evicting duplicate pods, it helps your applications remain resilient to node failures while making better use of your cluster resources.
