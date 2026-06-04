@@ -25,7 +25,7 @@ Create OPA Gatekeeper policies that restrict images to approved registries:
 ```yaml
 # registry-allowlist-template.yaml
 
-apiVersion: templates.gatekeeper.sh/v1beta1
+apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: allowedregistries
@@ -38,6 +38,7 @@ spec:
         kind: AllowedRegistries
       validation:
         openAPIV3Schema:
+          type: object
           properties:
             registries:
               type: array
@@ -76,6 +77,18 @@ spec:
         not registry_allowed(image)
 
         msg := sprintf("Init container image '%v' is not from an allowed registry. Allowed registries: %v", [image, input.parameters.registries])
+      }
+
+      # Check ephemeral containers too
+      violation[{"msg": msg}] {
+        container := input.review.object.spec.ephemeralContainers[_]
+        image := container.image
+        namespace := input.review.object.metadata.namespace
+
+        not exempt_namespace(namespace)
+        not registry_allowed(image)
+
+        msg := sprintf("Ephemeral container image '%v' is not from an allowed registry. Allowed registries: %v", [image, input.parameters.registries])
       }
 
       registry_allowed(image) {
@@ -130,7 +143,7 @@ Require all images to be referenced by immutable SHA256 digests instead of mutab
 
 ```yaml
 # require-digest-template.yaml
-apiVersion: templates.gatekeeper.sh/v1beta1
+apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: requireimagedigest
@@ -141,6 +154,9 @@ spec:
     spec:
       names:
         kind: RequireImageDigest
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
   - target: admission.k8s.gatekeeper.sh
     rego: |
@@ -163,6 +179,15 @@ spec:
         not has_digest(image)
 
         msg := sprintf("Init container image '%v' must be referenced by digest", [image])
+      }
+
+      violation[{"msg": msg}] {
+        container := input.review.object.spec.ephemeralContainers[_]
+        image := container.image
+
+        not has_digest(image)
+
+        msg := sprintf("Ephemeral container image '%v' must be referenced by digest", [image])
       }
 
       has_digest(image) {
@@ -197,64 +222,24 @@ kubectl run test --image=nginx@sha256:67f9a4f10d147a6e04629340e6493c9703300ca23a
 
 ## Implementing Signature Verification with Cosign
 
-Verify image signatures using Cosign before allowing deployment:
-
-```yaml
-# cosign-verification-policy.yaml
-apiVersion: templates.gatekeeper.sh/v1beta1
-kind: ConstraintTemplate
-metadata:
-  name: requireimagesignature
-  annotations:
-    description: "Require container images to have valid signatures"
-spec:
-  crd:
-    spec:
-      names:
-        kind: RequireImageSignature
-      validation:
-        openAPIV3Schema:
-          properties:
-            publicKey:
-              type: string
-  targets:
-  - target: admission.k8s.gatekeeper.sh
-    rego: |
-      package imagesignature
-
-      import future.keywords.if
-
-      violation[{"msg": msg}] {
-        container := input.review.object.spec.containers[_]
-        image := container.image
-
-        # Call external service to verify signature
-        not signature_verified(image)
-
-        msg := sprintf("Container image '%v' does not have a valid signature", [image])
-      }
-
-      signature_verified(image) if {
-        # This would call an external admission webhook
-        # that runs: cosign verify --key cosign.pub <image>
-        # For now, this is a placeholder
-        false
-      }
-```
-
-For actual signature verification, deploy a validation webhook:
+Verify image signatures using Cosign before allowing deployment. Gatekeeper Rego does not execute `cosign` directly; for runtime signature verification, deploy a validation webhook:
 
 ```python
 # cosign-validation-webhook.py
 #!/usr/bin/env python3
 
-from flask import Flask, request, jsonify
+from flask import Flask, Response, request, jsonify
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 import subprocess
 import os
 
 app = Flask(__name__)
 
 COSIGN_PUBLIC_KEY = os.getenv('COSIGN_PUBLIC_KEY', '/etc/cosign/cosign.pub')
+SIGNATURE_FAILURES = Counter(
+    'cosign_verification_failures_total',
+    'Number of image signature verification failures',
+)
 
 def verify_image_signature(image):
     """Verify image signature using cosign"""
@@ -295,6 +280,7 @@ def validate():
 
         if not verify_image_signature(image):
             allowed = False
+            SIGNATURE_FAILURES.inc()
             messages.append(f"Image {image} signature verification failed")
 
     # Check init containers
@@ -303,7 +289,17 @@ def validate():
 
         if not verify_image_signature(image):
             allowed = False
+            SIGNATURE_FAILURES.inc()
             messages.append(f"Init container image {image} signature verification failed")
+
+    # Check ephemeral containers
+    for container in pod['spec'].get('ephemeralContainers', []):
+        image = container['image']
+
+        if not verify_image_signature(image):
+            allowed = False
+            SIGNATURE_FAILURES.inc()
+            messages.append(f"Ephemeral container image {image} signature verification failed")
 
     response = {
         "apiVersion": "admission.k8s.io/v1",
@@ -318,6 +314,10 @@ def validate():
     }
 
     return jsonify(response)
+
+@app.route('/metrics', methods=['GET'])
+def metrics():
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8443, ssl_context='adhoc')
@@ -389,7 +389,7 @@ webhooks:
   - operations: ["CREATE", "UPDATE"]
     apiGroups: [""]
     apiVersions: ["v1"]
-    resources: ["pods"]
+    resources: ["pods", "pods/ephemeralcontainers"]
   admissionReviewVersions: ["v1"]
   sideEffects: None
   failurePolicy: Fail
@@ -517,15 +517,13 @@ spec:
     rules:
     - alert: UnauthorizedImageAttempt
       expr: |
-        rate(gatekeeper_violations_total{
-          constraint_name=~".*allowlist.*"
-        }[5m]) > 0.1
+        sum(gatekeeper_violations{enforcement_action=~"deny|warn"}) > 0
       for: 2m
       labels:
         severity: warning
       annotations:
-        summary: "Unauthorized image deployment attempts"
-        description: "{{ $value }} attempts/sec to deploy unauthorized images"
+        summary: "Gatekeeper policy violations detected"
+        description: "{{ $value }} audited Gatekeeper policy violations"
 
     - alert: SignatureVerificationFailure
       expr: |
@@ -561,7 +559,7 @@ cosign verify --key cosign.pub "$IMAGE" || {
 }
 
 # Scan image for vulnerabilities
-trivy image --severity HIGH,CRITICAL "$IMAGE" || {
+trivy image --exit-code 1 --severity HIGH,CRITICAL "$IMAGE" || {
   echo "Error: Image has high/critical vulnerabilities"
   exit 1
 }
