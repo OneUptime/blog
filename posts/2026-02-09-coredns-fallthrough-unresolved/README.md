@@ -8,7 +8,7 @@ Description: Learn how to configure CoreDNS fallthrough behavior to handle unres
 
 ---
 
-The fallthrough directive in CoreDNS determines what happens when a plugin cannot answer a DNS query. Proper fallthrough configuration ensures queries flow through the plugin chain correctly, preventing resolution failures and enabling flexible DNS architectures. Misconfigured fallthrough is a common cause of DNS issues in Kubernetes clusters.
+The fallthrough directive in CoreDNS determines what happens when a fallthrough-capable plugin is authoritative for a query's zone but cannot answer it. Proper fallthrough configuration ensures queries flow through the plugin chain correctly, preventing resolution failures and enabling flexible DNS architectures. Misconfigured fallthrough is a common cause of DNS issues in Kubernetes clusters.
 
 This guide explains how to configure fallthrough behavior for robust and reliable DNS resolution.
 
@@ -20,12 +20,12 @@ When a CoreDNS plugin receives a query, it can:
 2. **Return NXDOMAIN** - Indicate the name doesn't exist
 3. **Fall through** - Pass the query to the next plugin in the chain
 
-Without fallthrough, plugins that can't answer a query return NXDOMAIN, stopping further resolution attempts.
+Without fallthrough, a plugin that is authoritative for a zone but cannot find a record normally returns NXDOMAIN, stopping further resolution attempts for that query.
 
 Default behavior without fallthrough:
 
 ```text
-Query: external.com
+Query: 8.8.8.8 reverse lookup
 → kubernetes plugin (can't answer, returns NXDOMAIN)
 → NXDOMAIN returned to client
 → forward plugin never consulted
@@ -34,7 +34,7 @@ Query: external.com
 With fallthrough:
 
 ```text
-Query: external.com
+Query: 8.8.8.8 reverse lookup
 → kubernetes plugin (can't answer, falls through)
 → forward plugin (resolves via upstream DNS)
 → Answer returned to client
@@ -42,7 +42,7 @@ Query: external.com
 
 ## Basic Fallthrough Configuration
 
-The kubernetes plugin requires fallthrough for external queries:
+The kubernetes plugin commonly uses fallthrough for reverse DNS zones so PTR queries for non-cluster IPs can continue to upstream DNS:
 
 ```yaml
 apiVersion: v1
@@ -117,11 +117,11 @@ This configuration:
 - Answers queries for cluster.local domains
 - Returns NXDOMAIN for unknown cluster.local subdomains
 - Falls through for reverse DNS (in-addr.arpa, ip6.arpa)
-- All other queries go to forward plugin
+- Queries outside the kubernetes plugin's zones go to the forward plugin
 
 ## Multiple Plugin Fallthrough
 
-Configure fallthrough across multiple plugins:
+Combine fallthrough-capable plugins with rewrite rules:
 
 ```yaml
 .:53 {
@@ -134,7 +134,7 @@ Configure fallthrough across multiple plugins:
         fallthrough  # If not in hosts file, try next plugin
     }
 
-    # Rewrite plugin with fallthrough
+    # Rewrite matching names before later plugins handle them
     rewrite stop {
         name regex ^api\.company\.com$ api-service.production.svc.cluster.local
         answer auto
@@ -158,10 +158,10 @@ Configure fallthrough across multiple plugins:
 
 Query flow:
 
-1. Check hosts plugin
-2. Apply rewrite rules if matched
-3. Try kubernetes plugin
-4. Forward to upstream DNS
+1. Apply rewrite rules if matched
+2. Check hosts plugin
+3. Try kubernetes plugin for its authoritative zones
+4. Forward remaining queries to upstream DNS
 
 ## Zone-Specific Fallthrough Configuration
 
@@ -270,11 +270,11 @@ data:
     fi
 
     # Test 2: External domain resolution
-    echo "Test 2: External domain (should fallthrough to forward)"
+    echo "Test 2: External domain (should pass to forward)"
     if nslookup google.com | grep -q "Address:"; then
         echo "PASS: External domain resolves"
     else
-        echo "FAIL: External domain doesn't resolve (fallthrough issue?)"
+        echo "FAIL: External domain doesn't resolve"
     fi
 
     # Test 3: Non-existent cluster service
@@ -370,13 +370,13 @@ kubectl logs -n kube-system -l k8s-app=kube-dns -f
 kubectl run test --image=nicolaka/netshoot --rm -it -- nslookup google.com
 ```
 
-Look for log entries showing query progression through plugins.
+Look for log entries showing query names and response codes, then compare them with targeted test queries.
 
 ## Common Fallthrough Issues and Solutions
 
-**Issue: External domains returning NXDOMAIN**
+**Issue: Reverse DNS queries returning NXDOMAIN**
 
-Problem: Missing fallthrough in kubernetes plugin
+Problem: Missing fallthrough for reverse zones in the kubernetes plugin
 
 ```yaml
 # BAD - no fallthrough
@@ -432,22 +432,22 @@ Fallthrough affects query performance:
     errors
     health
 
-    # Order plugins from most to least likely to answer
+    # Keep fallthrough limited to the zones that need another lookup path
 
-    # 1. Cluster services (most common)
+    # Cluster services
     kubernetes cluster.local in-addr.arpa ip6.arpa {
        pods insecure
        fallthrough in-addr.arpa ip6.arpa
        ttl 30
     }
 
-    # 2. Cache recent queries
+    # Cache recent queries
     cache 300 {
         success 8192
         denial 2048
     }
 
-    # 3. Forward to upstream (last resort)
+    # Forward to upstream
     forward . /etc/resolv.conf
 
     loop
@@ -460,11 +460,11 @@ Fallthrough affects query performance:
 Track query patterns with Prometheus:
 
 ```promql
-# Queries handled by kubernetes plugin
-sum(rate(coredns_kubernetes_dns_programming_duration_seconds_count[5m]))
+# Responses generated by the kubernetes plugin
+sum(rate(coredns_dns_responses_total{plugin="kubernetes"}[5m]))
 
-# Queries forwarded upstream (fell through kubernetes plugin)
-sum(rate(coredns_forward_requests_total[5m]))
+# Queries forwarded upstream
+sum(rate(coredns_proxy_request_duration_seconds_count{proxy_name="forward"}[5m]))
 
 # NXDOMAIN responses
 sum(rate(coredns_dns_responses_total{rcode="NXDOMAIN"}[5m]))
@@ -484,9 +484,9 @@ data:
       rules:
       - alert: HighNXDOMAINRate
         expr: |
-          rate(coredns_dns_responses_total{rcode="NXDOMAIN"}[5m])
+          sum(rate(coredns_dns_responses_total{rcode="NXDOMAIN"}[5m]))
           /
-          rate(coredns_dns_requests_total[5m])
+          sum(rate(coredns_dns_requests_total[5m]))
           > 0.1
         for: 10m
         labels:
@@ -506,24 +506,24 @@ Implement multi-tier DNS resolution:
     health
     ready
 
-    # Tier 1: Local overrides
+    # Local overrides
     hosts /etc/coredns/overrides {
         fallthrough
     }
 
-    # Tier 2: Cluster services
+    # Cluster services
     kubernetes cluster.local in-addr.arpa ip6.arpa {
        pods insecure
        fallthrough in-addr.arpa ip6.arpa
        ttl 30
     }
 
-    # Tier 3: Internal DNS
+    # Internal DNS
     forward internal.company.com 10.0.1.53 {
         policy sequential
     }
 
-    # Tier 4: Public DNS
+    # Public DNS
     forward . 8.8.8.8 8.8.4.4 {
         prefer_udp
     }
@@ -540,7 +540,7 @@ Implement multi-tier DNS resolution:
 Follow these guidelines for fallthrough configuration:
 
 1. Always use fallthrough for PTR record zones
-2. Order plugins from most to least specific
+2. Keep fallthrough scoped to the zones that need it
 3. Test fallthrough behavior thoroughly
 4. Monitor NXDOMAIN rates after changes
 5. Document why fallthrough is or isn't used per plugin
@@ -548,6 +548,6 @@ Follow these guidelines for fallthrough configuration:
 7. Enable logging when debugging fallthrough issues
 8. Review fallthrough configuration during DNS troubleshooting
 
-Proper fallthrough configuration is critical for reliable DNS resolution in Kubernetes. By understanding how queries flow through the CoreDNS plugin chain and configuring fallthrough appropriately, you ensure external domains resolve correctly while maintaining cluster DNS functionality. Testing and monitoring fallthrough behavior helps prevent common DNS issues.
+Proper fallthrough configuration is critical for reliable DNS resolution in Kubernetes. By understanding how queries flow through the CoreDNS plugin chain and configuring fallthrough appropriately, you ensure reverse DNS and custom fallback paths work correctly while maintaining cluster DNS functionality. Testing and monitoring fallthrough behavior helps prevent common DNS issues.
 
 For more CoreDNS configuration patterns, explore our guides on [debugging DNS resolution](https://oneuptime.com/blog/post/2026-02-09-debug-dns-resolution-dnsutils/view) and [CoreDNS plugin chain debugging](https://oneuptime.com/blog/post/2026-02-09-debug-coredns-plugin-chain/view).
