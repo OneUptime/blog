@@ -8,7 +8,7 @@ Description: Learn how to use docker init with Rust projects for optimized multi
 
 ---
 
-Rust produces statically linked binaries, which makes it ideal for containerization. Your final Docker image can contain nothing but the compiled binary and a minimal base, sometimes as small as 5-10 MB. The `docker init` command detects Rust projects and generates a multi-stage Dockerfile that compiles your application in one stage and copies just the binary to a minimal runtime image.
+Rust can produce statically linked binaries, which makes it ideal for containerization. Your final Docker image can contain nothing but the compiled binary and a minimal base, sometimes as small as 5-10 MB. The `docker init` command detects Rust projects and generates a multi-stage Dockerfile that compiles your application in one stage and copies just the binary to a minimal runtime image.
 
 This guide covers using docker init with Rust projects and optimizing the build for both development speed and production image size.
 
@@ -88,6 +88,12 @@ async fn main() -> std::io::Result<()> {
 }
 ```
 
+Generate the lockfile before building with Docker:
+
+```bash
+cargo generate-lockfile
+```
+
 ## Running docker init
 
 With the project in place, run docker init:
@@ -111,8 +117,10 @@ The Dockerfile docker init generates for Rust uses a multi-stage build that sepa
 # syntax=docker/dockerfile:1
 
 # Build stage - compile the Rust binary
-ARG RUST_VERSION=1.75
+ARG RUST_VERSION=1.96
+ARG APP_NAME=rust-docker-demo
 FROM rust:${RUST_VERSION}-slim-bookworm as build
+ARG APP_NAME
 WORKDIR /app
 
 # Build the application with cargo
@@ -121,9 +129,10 @@ RUN --mount=type=bind,source=src,target=src \
     --mount=type=bind,source=Cargo.toml,target=Cargo.toml \
     --mount=type=bind,source=Cargo.lock,target=Cargo.lock \
     --mount=type=cache,target=/app/target/ \
+    --mount=type=cache,target=/usr/local/cargo/git/db \
     --mount=type=cache,target=/usr/local/cargo/registry/ \
-    cargo build --release && \
-    cp ./target/release/rust-docker-demo /bin/server
+    cargo build --locked --release && \
+    cp ./target/release/$APP_NAME /bin/server
 
 # Runtime stage - minimal image with just the binary
 FROM debian:bookworm-slim as final
@@ -162,18 +171,20 @@ Rust can produce fully static binaries, which means your final image does not ne
 # syntax=docker/dockerfile:1
 
 # Build stage with musl for static linking
-FROM rust:1.75-alpine as build
+FROM rust:1.96-alpine as build
 WORKDIR /app
 
 # Install musl-dev for static compilation
-RUN apk add --no-cache musl-dev
+RUN apk add --no-cache clang lld musl-dev git ca-certificates && \
+    rustup target add x86_64-unknown-linux-musl
 
 RUN --mount=type=bind,source=src,target=src \
     --mount=type=bind,source=Cargo.toml,target=Cargo.toml \
     --mount=type=bind,source=Cargo.lock,target=Cargo.lock \
     --mount=type=cache,target=/app/target/ \
+    --mount=type=cache,target=/usr/local/cargo/git/db \
     --mount=type=cache,target=/usr/local/cargo/registry/ \
-    cargo build --release --target x86_64-unknown-linux-musl && \
+    cargo build --locked --release --target x86_64-unknown-linux-musl && \
     cp ./target/x86_64-unknown-linux-musl/release/rust-docker-demo /bin/server
 
 # Use scratch for the smallest possible image
@@ -208,8 +219,8 @@ Rust compilation speed is the biggest pain point when working with Docker. The c
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM rust:1.75-slim-bookworm as chef
-RUN cargo install cargo-chef
+FROM rust:1.96-slim-bookworm as chef
+RUN cargo install --locked cargo-chef
 WORKDIR /app
 
 # Plan stage - figure out which dependencies need compiling
@@ -226,7 +237,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 
 # Now copy source and compile the application
 COPY . .
-RUN cargo build --release && \
+RUN cargo build --locked --release && \
     cp ./target/release/rust-docker-demo /bin/server
 
 # Runtime stage
@@ -269,6 +280,8 @@ services:
       - "8080:8080"
     volumes:
       - ./src:/app/src  # Mount source for hot recompilation
+      - ./Cargo.toml:/app/Cargo.toml:ro
+      - ./Cargo.lock:/app/Cargo.lock:ro
     command: cargo watch -x run
     environment:
       - RUST_LOG=debug
@@ -339,11 +352,12 @@ docker buildx build \
   .
 ```
 
-For cross-compilation to work, add the ARM target in your build stage:
+If you hard-code a Rust compilation target, do not leave it set to `x86_64-unknown-linux-musl` for every platform. For an ARM64 musl build, add the ARM target and compile with that target:
 
 ```dockerfile
 # Add ARM target support
 RUN rustup target add aarch64-unknown-linux-musl
+RUN cargo build --release --target aarch64-unknown-linux-musl
 ```
 
 Docker init provides a solid starting point for Rust containerization. The generated multi-stage build with cache mounts handles the most common case well. From there, consider cargo-chef for faster builds, musl for static linking, and scratch base images for minimal production containers. Rust's compilation model pairs naturally with Docker's layer caching, and once your build pipeline is tuned, iterating on containerized Rust applications becomes fast and predictable.
