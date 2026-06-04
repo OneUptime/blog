@@ -58,7 +58,13 @@ metadata:
   name: grafana
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: grafana
   template:
+    metadata:
+      labels:
+        app: grafana
     spec:
       containers:
       - name: grafana
@@ -121,7 +127,13 @@ metadata:
   name: grafana
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: grafana
   template:
+    metadata:
+      labels:
+        app: grafana
     spec:
       containers:
       - name: grafana
@@ -223,7 +235,7 @@ Use variables in dashboards to switch between data sources dynamically.
 
 ## Optimizing Query Performance
 
-Configure query timeouts and caching:
+Configure query timeouts and caching-related settings:
 
 ```yaml
 apiVersion: v1
@@ -244,12 +256,12 @@ data:
         httpMethod: POST
         timeInterval: 30s
         queryTimeout: 60s
-        # Cache responses for better performance
+        # Cache editor queries for better performance
         cacheLevel: High
         incrementalQuerying: true
         incrementalQueryOverlapWindow: 10m
         # Disable metrics lookup for faster load times
-        disableMetricsLookup: false
+        disableMetricsLookup: true
         # Custom query parameters
         customQueryParameters: "timeout=30s"
 ```
@@ -277,8 +289,6 @@ data:
         httpMethod: POST
         # Match your Prometheus scrape interval
         timeInterval: 15s  # If Prometheus scrapes every 15s
-        # Min step for range queries
-        minInterval: 15s
 ```
 
 This prevents Grafana from requesting data at intervals finer than what Prometheus collects.
@@ -307,7 +317,7 @@ data:
                 "legendFormat": "{{instance}}"
               }
             ],
-            "type": "graph"
+            "type": "timeseries"
           },
           {
             "title": "Memory Usage",
@@ -317,7 +327,7 @@ data:
                 "legendFormat": "{{instance}}"
               }
             ],
-            "type": "graph"
+            "type": "timeseries"
           },
           {
             "title": "Pod Count",
@@ -327,7 +337,7 @@ data:
                 "legendFormat": "{{namespace}}"
               }
             ],
-            "type": "graph"
+            "type": "timeseries"
           }
         ]
       }
@@ -366,7 +376,13 @@ metadata:
   name: grafana
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: grafana
   template:
+    metadata:
+      labels:
+        app: grafana
     spec:
       containers:
       - name: grafana
@@ -391,7 +407,7 @@ spec:
 
 ## Using Exemplars
 
-Exemplars link metrics to traces. Configure Prometheus to provide exemplars:
+Exemplars link metrics to traces. Configure the Prometheus data source to link exemplar labels to traces:
 
 ```yaml
 apiVersion: v1
@@ -458,7 +474,7 @@ data:
       interval: 30s
       rules:
       - record: node:node_cpu_utilization:avg1m
-        expr: avg by (instance) (rate(node_cpu_seconds_total{mode!="idle"}[1m]))
+        expr: 1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m]))
 
       - record: node:node_memory_utilization:ratio
         expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes
@@ -524,7 +540,7 @@ data:
                 "legendFormat": "{{datasource}}"
               }
             ],
-            "type": "graph"
+            "type": "timeseries"
           }
         ]
       }
@@ -539,8 +555,8 @@ Follow these guidelines for optimal Prometheus data source configuration:
 2. **Enable authentication**: Don't leave Prometheus unsecured.
 3. **Set appropriate timeouts**: Match query complexity to timeout values.
 4. **Use recording rules**: Pre-calculate complex queries.
-5. **Configure caching**: Enable response caching for better performance.
-6. **Match scrape intervals**: Set minInterval to match Prometheus scrape interval.
+5. **Configure caching-related settings**: Use cacheLevel and incremental querying where appropriate.
+6. **Match scrape intervals**: Set timeInterval to match Prometheus scrape interval.
 7. **Monitor health**: Track data source connectivity and query performance.
 8. **Use POST method**: Better for complex queries with long label lists.
 
