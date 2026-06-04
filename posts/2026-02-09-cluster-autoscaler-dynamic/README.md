@@ -14,7 +14,7 @@ Cluster Autoscaler automatically adjusts the number of nodes in your cluster bas
 
 The autoscaler runs as a deployment in your cluster, continuously monitoring pending pods and node utilization. Every 10 seconds by default, it checks for unschedulable pods. If found, it determines which node group can accommodate them and triggers node additions.
 
-For scale-down, the autoscaler evaluates nodes every 10 minutes. Nodes below the utilization threshold (default 50%) with all pods safely reschedulable to other nodes become removal candidates. After a configurable delay, the autoscaler cordons, drains, and terminates these nodes.
+For scale-down, the autoscaler evaluates nodes every 10 seconds by default when no scale-up is needed. Nodes below the utilization threshold (default 50%) with all pods safely reschedulable to other nodes become removal candidates. After they remain unneeded for the configured time, the autoscaler cordons, drains, and terminates these nodes.
 
 The autoscaler respects pod disruption budgets, node affinity, and other scheduling constraints. It will not remove a node if doing so would violate these policies.
 
@@ -75,7 +75,7 @@ spec:
         - --skip-nodes-with-local-storage=false
         - --expander=least-waste
         - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled
-        - --scale-up-unneeded-time=1m
+        - --new-pod-scale-up-delay=1m
         - --max-node-provision-time=15m
 ```
 
@@ -84,13 +84,13 @@ Key parameters:
 **expander**: Determines which node group to scale when multiple groups could satisfy requirements. Options include:
 - `least-waste`: Minimizes unused resources
 - `most-pods`: Maximizes pods per node
-- `price`: Prefers cheaper instance types
+- `price`: Prefers cheaper instance types on supported providers such as GCE, GKE, and Equinix Metal
 - `priority`: Uses configured priorities
 - `random`: Random selection
 
-**max-node-provision-time**: Maximum time to wait for a node to become ready. If exceeded, the autoscaler considers the scale-up failed.
+**max-node-provision-time**: Maximum time to wait for a node to be provisioned and registered. If exceeded, the autoscaler considers the scale-up failed.
 
-**scale-up-unneeded-time**: How long a node can be unnecessary before removal.
+**new-pod-scale-up-delay**: How old an unschedulable pod must be before the autoscaler considers it for scale-up.
 
 ## Configuring Scale-Down Behavior
 
@@ -99,7 +99,6 @@ Fine-tune node removal:
 ```yaml
 command:
 - ./cluster-autoscaler
-- --scale-down-enabled=true
 - --scale-down-delay-after-add=10m
 - --scale-down-delay-after-delete=10s
 - --scale-down-delay-after-failure=3m
@@ -168,6 +167,8 @@ data:
     - .*-on-demand-large-.*
 ```
 
+Run the autoscaler with `--expander=priority` to use this ConfigMap.
+
 The autoscaler tries spot instance node groups first (priority 10), then standard on-demand (priority 5), and finally large on-demand instances (priority 1) as a last resort.
 
 This minimizes costs while maintaining availability.
@@ -213,7 +214,7 @@ Monitor metrics:
 
 ```promql
 # Cluster size over time
-cluster_autoscaler_cluster_size
+sum(cluster_autoscaler_nodes_count{state="ready"})
 
 # Unschedulable pods
 cluster_autoscaler_unschedulable_pods_count
@@ -235,7 +236,7 @@ When you have multiple node groups with identical instance types in different av
 command:
 - ./cluster-autoscaler
 - --balance-similar-node-groups=true
-- --balancing-ignore-labels=topology.kubernetes.io/zone
+- --balancing-ignore-label=topology.kubernetes.io/zone
 ```
 
 This keeps node counts balanced across zones for better fault tolerance. Without this, the autoscaler might scale only one zone, creating availability risk.
@@ -277,21 +278,21 @@ Configure the autoscaler for maximum cost efficiency:
 ```yaml
 command:
 - ./cluster-autoscaler
-- --expander=price
+- --expander=priority
 - --scale-down-utilization-threshold=0.3
 - --scale-down-unneeded-time=5m
 ```
 
-The price expander selects the cheapest node group. Lower utilization threshold (30%) and shorter unneeded time (5 minutes) trigger faster scale-down.
+The priority expander lets you prefer lower-cost node groups such as Spot or preemptible pools. Lower utilization threshold (30%) and shorter unneeded time (5 minutes) trigger faster scale-down.
 
 Monitor cost impact:
 
 ```promql
 # Average cluster size
-avg_over_time(cluster_autoscaler_cluster_size[24h])
+sum(avg_over_time(cluster_autoscaler_nodes_count{state="ready"}[24h]))
 
-# Calculate daily cost
-avg_over_time(cluster_autoscaler_cluster_size[24h]) * $instance_hourly_cost * 24
+# Calculate daily cost with an example $0.10 hourly node cost
+sum(avg_over_time(cluster_autoscaler_nodes_count{state="ready"}[24h])) * 0.10 * 24
 ```
 
 Compare to previous static cluster costs to quantify autoscaling savings.
@@ -338,7 +339,7 @@ Slow scale-up:
 kubectl logs -n kube-system deployment/cluster-autoscaler | grep "node-provision-time"
 ```
 
-Reduce `max-node-provision-time` or investigate cloud provider delays.
+Review `max-node-provision-time` and investigate cloud provider delays. Lowering this timeout only makes the autoscaler give up on a node group sooner; it does not make nodes provision faster.
 
 ## Advanced Configuration
 
