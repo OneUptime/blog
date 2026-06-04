@@ -8,7 +8,7 @@ Description: Learn how to configure Docker user namespace remapping so that root
 
 ---
 
-Containers that run as root inside the container are also root on the host by default. If an attacker escapes the container, they have full root access to the host system. User namespace remapping fixes this by mapping the container's root user to an unprivileged user on the host. Even if something breaks out, it lands as a nobody with limited permissions.
+Containers that run as root inside the container are also root on the host by default. If an attacker escapes the container as that process, they can end up with root-level access to the host system. User namespace remapping reduces this risk by mapping the container's root user to an unprivileged user on the host. Even if something breaks out as the container process, it lands as a high-numbered UID with limited permissions.
 
 ## The Problem with Root in Containers
 
@@ -170,8 +170,9 @@ sudo chown -R 100000:100000 /path/to/host/data
 docker volume create mydata
 docker run --rm -v mydata:/data alpine sh -c "echo hello > /data/test.txt"
 
-# Option 3: Use init containers to fix permissions
-docker run --rm -v /path/to/data:/data alpine sh -c "chown -R 1000:1000 /data"
+# Option 3: Set ownership for an app that runs as UID 1000 in the container
+# Container UID 1000 maps to host UID 101000 when the base UID is 100000
+sudo chown -R 101000:101000 /path/to/data
 ```
 
 ## Running Specific Containers Without Remapping
@@ -235,4 +236,4 @@ Without remapping, that container could read the file because it runs as actual 
 
 ## Wrapping Up
 
-User namespace remapping is one of the strongest security features available in Docker. It eliminates the risk of container escapes granting host root access, and it requires minimal application changes. The main friction point is volume permissions, which are manageable with proper ownership configuration. Enable it on all hosts where containers do not need real root access, and use `--userns=host` selectively for the exceptions.
+User namespace remapping is one of the strongest security features available in Docker. It reduces the risk of container escapes granting host root access, and it requires minimal application changes. The main friction point is volume permissions, which are manageable with proper ownership configuration. Enable it on all hosts where containers do not need real root access, and use `--userns=host` selectively for the exceptions.
