@@ -48,7 +48,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 Verify the complete chain is present:
@@ -69,7 +69,15 @@ You should see multiple certificates: your end-entity certificate and intermedia
 When using a CA issuer backed by your own PKI, you must configure the certificate chain explicitly:
 
 ```yaml
-# First, create a root CA
+# First, create a self-signed issuer for bootstrapping the root CA
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+# Create a root CA
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -86,6 +94,15 @@ spec:
   issuerRef:
     name: selfsigned-issuer
     kind: ClusterIssuer
+---
+# Create an issuer using the root CA
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: root-ca-issuer
+spec:
+  ca:
+    secretName: root-ca-secret
 ---
 # Create an intermediate CA
 apiVersion: cert-manager.io/v1
@@ -149,9 +166,6 @@ spec:
     # Distribute as ConfigMap to all namespaces
     configMap:
       key: ca-bundle.crt
-    # Also distribute as Secret
-    secret:
-      key: ca-bundle.crt
     # Inject into namespaces with specific labels
     namespaceSelector:
       matchLabels:
@@ -211,7 +225,7 @@ spec:
             path: ca-bundle.crt
 ```
 
-Applications using standard TLS libraries will automatically trust certificates signed by CAs in the bundle.
+Applications that honor `SSL_CERT_FILE` or are explicitly configured to use this path will trust certificates signed by CAs in the bundle.
 
 ## Validating Certificate Chains in Applications
 
@@ -225,13 +239,14 @@ package main
 import (
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
+    "fmt"
     "net/http"
+    "os"
 )
 
 func createTLSClient(caBundlePath string) (*http.Client, error) {
     // Load CA bundle
-    caCert, err := ioutil.ReadFile(caBundlePath)
+    caCert, err := os.ReadFile(caBundlePath)
     if err != nil {
         return nil, err
     }
@@ -245,8 +260,6 @@ func createTLSClient(caBundlePath string) (*http.Client, error) {
     // Configure TLS
     tlsConfig := &tls.Config{
         RootCAs: caCertPool,
-        // Require and verify client certificates
-        ClientAuth: tls.RequireAndVerifyClientCert,
         // Ensure certificate chain is validated
         InsecureSkipVerify: false,
     }
@@ -293,11 +306,7 @@ const caBundle = fs.readFileSync('/etc/ssl/certs/ca-bundle.crt');
 // Configure HTTPS agent
 const agent = new https.Agent({
   ca: caBundle,
-  rejectUnauthorized: true,  // Enforce certificate validation
-  checkServerIdentity: (hostname, cert) => {
-    // Custom hostname validation if needed
-    return undefined;  // No error
-  }
+  rejectUnauthorized: true  // Enforce certificate and hostname validation
 });
 
 // Make request with validation
@@ -345,6 +354,8 @@ metadata:
     cert-manager.io/inject-ca-from: webhook-system/webhook-cert
 webhooks:
 - name: validate.example.com
+  admissionReviewVersions: ["v1"]
+  sideEffects: None
   clientConfig:
     service:
       name: webhook-service
@@ -359,7 +370,7 @@ webhooks:
     resources: ["pods"]
 ```
 
-cert-manager's CA injector will automatically populate the `caBundle` field with the certificate chain.
+cert-manager's CA injector will automatically populate the `caBundle` field with CA data from the referenced `Certificate`.
 
 ## Validating Certificate Chains Manually
 
@@ -369,15 +380,16 @@ Test certificate chain validation:
 # Extract certificate and CA bundle
 kubectl get secret example-tls -o jsonpath='{.data.tls\.crt}' | base64 -d > cert.pem
 kubectl get configmap internal-ca-bundle -o jsonpath='{.data.ca-bundle\.crt}' > ca-bundle.pem
+awk 'BEGIN { n=0 } /BEGIN CERTIFICATE/ { n++ } { print > ("cert-" n ".pem") }' cert.pem
 
 # Verify the chain
-openssl verify -CAfile ca-bundle.pem cert.pem
+openssl verify -CAfile ca-bundle.pem -untrusted cert.pem cert-1.pem
 
 # If successful, output will be:
-# cert.pem: OK
+# cert-1.pem: OK
 
 # View the full chain
-openssl s_client -connect service.example.com:443 -CAfile ca-bundle.pem -showcerts
+openssl s_client -connect service.example.com:443 -servername service.example.com -CAfile ca-bundle.pem -showcerts
 ```
 
 Test certificate validation from a pod:
@@ -385,7 +397,7 @@ Test certificate validation from a pod:
 ```bash
 kubectl run test-cert --image=alpine/openssl --rm -it -- sh
 / # wget -O ca-bundle.crt https://example.com/ca-bundle.crt
-/ # echo | openssl s_client -connect internal-service:443 -CAfile ca-bundle.crt
+/ # echo | openssl s_client -connect internal-service:443 -servername internal-service -CAfile ca-bundle.crt
 # Should show "Verify return code: 0 (ok)"
 ```
 
@@ -403,25 +415,25 @@ spec:
   groups:
   - name: certificate-chains
     rules:
-    - alert: CertificateChainInvalid
+    - alert: CertificateProbeFailed
       expr: |
-        probe_ssl_last_chain_info{chain_valid="false"} == 1
+        probe_success{job="blackbox-tls"} == 0
       for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "Invalid certificate chain detected"
-        description: "Service {{ $labels.instance }} has an invalid certificate chain"
+        summary: "TLS certificate probe failed"
+        description: "Service {{ $labels.instance }} failed TLS probing; check certificate chain validation and connectivity"
 
-    - alert: CertificateChainIncomplete
+    - alert: CertificateExpiresSoon
       expr: |
-        probe_ssl_last_chain_info{chain_depth="1"} == 1
+        probe_ssl_earliest_cert_expiry - time() < 86400 * 7
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "Incomplete certificate chain"
-        description: "Service {{ $labels.instance }} is not serving intermediate certificates"
+        summary: "Certificate expires soon"
+        description: "Service {{ $labels.instance }} has a certificate expiring in less than 7 days"
 ```
 
 ## Troubleshooting Chain Validation Issues
