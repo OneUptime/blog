@@ -48,27 +48,20 @@ cd ~/syncthing
 
 ```yaml
 # docker-compose.yml - Syncthing File Synchronization
-version: "3.8"
-
 services:
   syncthing:
     image: syncthing/syncthing:latest
     container_name: syncthing
     restart: unless-stopped
-    ports:
-      # Web UI
-      - "8384:8384"
-      # Syncthing protocol (TCP and UDP for file transfers)
-      - "22000:22000/tcp"
-      - "22000:22000/udp"
-      # Local discovery
-      - "21027:21027/udp"
+    network_mode: host
     environment:
       # Run as your user to match file permissions
       - PUID=1000
       - PGID=1000
       # Set timezone
       - TZ=America/New_York
+      # Listen on all interfaces so the Web UI is reachable from your LAN
+      - STGUIADDRESS=0.0.0.0:8384
     volumes:
       # Syncthing configuration and database
       - ./config:/var/syncthing/config
@@ -158,11 +151,13 @@ Syncthing can keep old versions of modified or deleted files. Configure versioni
 - **Staggered** - Keeps versions with decreasing frequency over time (hourly for the past day, daily for the past month, weekly for the past year).
 - **External** - Calls an external command for custom versioning.
 
-```yaml
-# Example: staggered versioning configuration in the Syncthing XML config
-# Files versioned: hourly for 1 day, daily for 30 days, weekly for 1 year
+```xml
+<!-- Example: staggered versioning configuration in the Syncthing XML config -->
+<!-- Files versioned: hourly for 1 day, daily for 30 days, weekly for 1 year -->
 <versioning type="staggered">
-    <param key="cleanInterval" val="3600"></param>
+    <cleanupIntervalS>3600</cleanupIntervalS>
+    <fsPath></fsPath>
+    <fsType>basic</fsType>
     <param key="maxAge" val="31536000"></param>
 </versioning>
 ```
