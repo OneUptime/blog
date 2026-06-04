@@ -28,20 +28,17 @@ Snapshots are stored in repositories on shared storage like S3, GCS, Azure Blob,
 Set up AWS S3 for snapshots:
 
 ```bash
-# Install repository-s3 plugin (usually pre-installed)
-
-kubectl exec -it elasticsearch-master-0 -n logging -- \
-  bin/elasticsearch-plugin install repository-s3
-
-# Restart nodes after plugin installation
-kubectl rollout restart statefulset elasticsearch-master -n logging
-
-# Add S3 credentials
+# S3 repository support is bundled in current Elasticsearch versions.
+# If you use explicit S3 credentials, add them to the keystore on every Elasticsearch node:
 kubectl exec -it elasticsearch-master-0 -n logging -- \
   bin/elasticsearch-keystore add s3.client.default.access_key
 
 kubectl exec -it elasticsearch-master-0 -n logging -- \
   bin/elasticsearch-keystore add s3.client.default.secret_key
+
+# Repeat for each Elasticsearch pod, then reload secure settings
+curl -X POST "https://elasticsearch.logging.svc:9200/_nodes/reload_secure_settings?pretty" \
+  -u elastic:$ELASTIC_PASSWORD
 
 # Register S3 repository
 curl -X PUT "https://elasticsearch.logging.svc:9200/_snapshot/s3_backup?pretty" \
@@ -51,7 +48,6 @@ curl -X PUT "https://elasticsearch.logging.svc:9200/_snapshot/s3_backup?pretty" 
     "type": "s3",
     "settings": {
       "bucket": "elasticsearch-snapshots",
-      "region": "us-east-1",
       "base_path": "kubernetes-logs",
       "compress": true,
       "max_snapshot_bytes_per_sec": "40mb",
@@ -89,7 +85,7 @@ curl -X PUT "https://elasticsearch.logging.svc:9200/_slm/policy/daily-snapshots?
   -u elastic:$ELASTIC_PASSWORD \
   -H 'Content-Type: application/json' \
   -d '{
-    "schedule": "0 2 * * *",
+    "schedule": "0 0 2 * * ?",
     "name": "<daily-snap-{now/d}>",
     "repository": "s3_backup",
     "config": {
