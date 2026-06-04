@@ -23,10 +23,10 @@ mkdir docker-automation && cd docker-automation
 go mod init docker-automation
 
 # Install the Docker SDK packages
-go get github.com/docker/docker/client
-go get github.com/docker/docker/api/types
-go get github.com/docker/docker/api/types/container
-go get github.com/docker/docker/api/types/filters
+go get github.com/moby/moby/client
+go get github.com/moby/moby/api/types/container
+go get github.com/moby/moby/api/types/events
+go get github.com/moby/moby/api/types/network
 ```
 
 ## Connecting to the Docker Daemon
@@ -42,29 +42,29 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 func main() {
 	ctx := context.Background()
 
 	// Create a Docker client using environment variables (same as docker CLI)
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		log.Fatalf("Failed to create Docker client: %v", err)
 	}
 	defer cli.Close()
 
 	// Get Docker system information
-	info, err := cli.Info(ctx)
+	info, err := cli.Info(ctx, client.InfoOptions{})
 	if err != nil {
 		log.Fatalf("Failed to get Docker info: %v", err)
 	}
 
-	fmt.Printf("Docker version: %s\n", info.ServerVersion)
-	fmt.Printf("Containers running: %d\n", info.ContainersRunning)
-	fmt.Printf("Images: %d\n", info.Images)
-	fmt.Printf("Storage driver: %s\n", info.Driver)
+	fmt.Printf("Docker version: %s\n", info.Info.ServerVersion)
+	fmt.Printf("Containers running: %d\n", info.Info.ContainersRunning)
+	fmt.Printf("Images: %d\n", info.Info.Images)
+	fmt.Printf("Storage driver: %s\n", info.Info.Driver)
 }
 ```
 
@@ -86,21 +86,19 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/docker/docker/api/types"
-	containertypes "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 func listContainers() {
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer cli.Close()
 
 	// List all containers including stopped ones
-	containers, err := cli.ContainerList(ctx, containertypes.ListOptions{All: true})
+	result, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,7 +106,7 @@ func listContainers() {
 	fmt.Printf("%-20s %-30s %-15s %-12s\n", "NAME", "IMAGE", "STATUS", "ID")
 	fmt.Println("------------------------------------------------------------------------------------")
 
-	for _, c := range containers {
+	for _, c := range result.Items {
 		name := ""
 		if len(c.Names) > 0 {
 			name = c.Names[0][1:] // Remove leading slash
@@ -135,16 +133,15 @@ import (
 	"os"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 )
 
 func createAndRunContainer() {
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -154,7 +151,7 @@ func createAndRunContainer() {
 
 	// Pull the image first
 	fmt.Printf("Pulling image %s...\n", imageName)
-	reader, err := cli.ImagePull(ctx, imageName, image.PullOptions{})
+	reader, err := cli.ImagePull(ctx, imageName, client.ImagePullOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -193,15 +190,19 @@ func createAndRunContainer() {
 	}
 
 	// Create the container
-	resp, err := cli.ContainerCreate(ctx, containerConfig, hostConfig,
-		&network.NetworkingConfig{}, nil, "web_server")
+	resp, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:           containerConfig,
+		HostConfig:       hostConfig,
+		NetworkingConfig: &network.NetworkingConfig{},
+		Name:             "web_server",
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Created container: %s\n", resp.ID[:12])
 
 	// Start the container
-	err = cli.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	_, err = cli.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -211,16 +212,16 @@ func createAndRunContainer() {
 	time.Sleep(2 * time.Second)
 
 	// Inspect the running container
-	inspect, err := cli.ContainerInspect(ctx, resp.ID)
+	inspect, err := cli.ContainerInspect(ctx, resp.ID, client.ContainerInspectOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Status: %s\n", inspect.State.Status)
-	fmt.Printf("IP Address: %s\n", inspect.NetworkSettings.IPAddress)
-	fmt.Printf("Started at: %s\n", inspect.State.StartedAt)
+	fmt.Printf("Status: %s\n", inspect.Container.State.Status)
+	fmt.Printf("IP Address: %s\n", inspect.Container.NetworkSettings.IPAddress)
+	fmt.Printf("Started at: %s\n", inspect.Container.State.StartedAt)
 
 	// Get container logs
-	logReader, err := cli.ContainerLogs(ctx, resp.ID, container.LogsOptions{
+	logReader, err := cli.ContainerLogs(ctx, resp.ID, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Tail:       "10",
@@ -234,9 +235,9 @@ func createAndRunContainer() {
 
 	// Stop and remove the container
 	timeout := 10
-	stopOptions := container.StopOptions{Timeout: &timeout}
+	stopOptions := client.ContainerStopOptions{Timeout: &timeout}
 	cli.ContainerStop(ctx, resp.ID, stopOptions)
-	cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{})
+	cli.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{})
 	fmt.Println("\nContainer stopped and removed")
 }
 ```
@@ -256,21 +257,20 @@ import (
 	"log"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	containertypes "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 func monitorStats() {
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer cli.Close()
 
 	for {
-		containers, err := cli.ContainerList(ctx, containertypes.ListOptions{})
+		result, err := cli.ContainerList(ctx, client.ContainerListOptions{})
 		if err != nil {
 			log.Printf("Error listing containers: %v", err)
 			time.Sleep(10 * time.Second)
@@ -280,14 +280,17 @@ func monitorStats() {
 		fmt.Printf("\n--- %s ---\n", time.Now().Format("2006-01-02 15:04:05"))
 		fmt.Printf("%-25s %8s %8s %12s\n", "CONTAINER", "CPU%", "MEM%", "MEM USAGE")
 
-		for _, c := range containers {
+		for _, c := range result.Items {
 			// Get a single stats snapshot (stream=false)
-			statsResp, err := cli.ContainerStatsOneShot(ctx, c.ID)
+			statsResp, err := cli.ContainerStats(ctx, c.ID, client.ContainerStatsOptions{
+				Stream:                false,
+				IncludePreviousSample: true,
+			})
 			if err != nil {
 				continue
 			}
 
-			var stats types.StatsJSON
+			var stats container.StatsResponse
 			json.NewDecoder(statsResp.Body).Decode(&stats)
 			statsResp.Body.Close()
 
@@ -307,7 +310,10 @@ func monitorStats() {
 				memPercent = float64(memUsage) / float64(memLimit) * 100.0
 			}
 
-			name := c.Names[0][1:]
+			name := ""
+			if len(c.Names) > 0 {
+				name = c.Names[0][1:]
+			}
 			fmt.Printf("%-25s %7.1f%% %7.1f%% %8.1f MB\n",
 				name, cpuPercent, memPercent,
 				float64(memUsage)/1024/1024)
@@ -333,26 +339,25 @@ import (
 	"log"
 	"os"
 
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 func manageImages() {
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer cli.Close()
 
 	// List all images
-	images, err := cli.ImageList(ctx, image.ListOptions{})
+	result, err := cli.ImageList(ctx, client.ImageListOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	fmt.Println("Local images:")
-	for _, img := range images {
+	for _, img := range result.Items {
 		tags := "untagged"
 		if len(img.RepoTags) > 0 {
 			tags = img.RepoTags[0]
@@ -363,7 +368,7 @@ func manageImages() {
 
 	// Pull a new image
 	fmt.Println("\nPulling alpine:latest...")
-	reader, err := cli.ImagePull(ctx, "alpine:latest", image.PullOptions{})
+	reader, err := cli.ImagePull(ctx, "alpine:latest", client.ImagePullOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -371,20 +376,23 @@ func manageImages() {
 	reader.Close()
 
 	// Tag the image for a private registry
-	err = cli.ImageTag(ctx, "alpine:latest", "registry.example.com/base/alpine:latest")
+	_, err = cli.ImageTag(ctx, client.ImageTagOptions{
+		Source: "alpine:latest",
+		Target: "registry.example.com/base/alpine:latest",
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("Image tagged for private registry")
 
 	// Remove dangling images to free space
-	pruneReport, err := cli.ImagesPrune(ctx, nil)
+	pruneResult, err := cli.ImagePrune(ctx, client.ImagePruneOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Pruned %d images, reclaimed %d bytes\n",
-		len(pruneReport.ImagesDeleted),
-		pruneReport.SpaceReclaimed)
+		len(pruneResult.Report.ImagesDeleted),
+		pruneResult.Report.SpaceReclaimed)
 }
 ```
 
@@ -404,24 +412,22 @@ import (
 	"log"
 	"time"
 
-	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/events"
+	"github.com/moby/moby/client"
 )
 
 func listenEvents() {
 	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer cli.Close()
 
 	// Filter for container events only
-	filterArgs := filters.NewArgs()
-	filterArgs.Add("type", "container")
+	filterArgs := make(client.Filters).Add("type", "container")
 
-	eventChan, errChan := cli.Events(ctx, events.ListOptions{
+	eventResult := cli.Events(ctx, client.EventsListOptions{
 		Filters: filterArgs,
 	})
 
@@ -429,15 +435,15 @@ func listenEvents() {
 
 	for {
 		select {
-		case event := <-eventChan:
+		case event := <-eventResult.Messages:
 			// Process each event in a goroutine for non-blocking handling
 			go handleEvent(event)
 
-		case err := <-errChan:
+		case err := <-eventResult.Err:
 			log.Printf("Event stream error: %v", err)
 			// Reconnect after a brief pause
 			time.Sleep(5 * time.Second)
-			eventChan, errChan = cli.Events(ctx, events.ListOptions{
+			eventResult = cli.Events(ctx, client.EventsListOptions{
 				Filters: filterArgs,
 			})
 		}
@@ -471,7 +477,7 @@ Compile your automation into a single binary:
 # Build a statically linked binary (no external dependencies needed)
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o docker-tool main.go
 
-# The resulting binary can be copied to any Linux machine and run directly
+# The resulting binary can be copied to a compatible Linux amd64 machine with Docker daemon access
 ./docker-tool
 ```
 
