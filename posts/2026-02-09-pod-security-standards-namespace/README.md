@@ -8,7 +8,7 @@ Description: Learn how to implement Pod Security Standards at the namespace leve
 
 ---
 
-Pod Security Standards (PSS) replaced Pod Security Policies in Kubernetes 1.25, providing a simpler way to enforce security baselines. Rather than creating complex policy objects, you apply labels to namespaces that automatically enforce one of three security profiles: Privileged, Baseline, or Restricted. This namespace-level enforcement makes it easy to apply different security postures to different parts of your cluster.
+Pod Security Admission replaced Pod Security Policies in Kubernetes 1.25, providing a simpler way to enforce Pod Security Standards (PSS). Rather than creating complex policy objects, you apply labels to namespaces that automatically enforce one of three security profiles: Privileged, Baseline, or Restricted. This namespace-level enforcement makes it easy to apply different security postures to different parts of your cluster.
 
 Understanding how to configure PSS at the namespace level is essential for maintaining secure Kubernetes clusters. The right profile depends on your workload requirements, balancing security with operational needs.
 
@@ -55,11 +55,11 @@ metadata:
 ```
 
 This blocks pods that:
-- Run as root with privilege escalation enabled
+- Run Windows HostProcess containers
 - Use privileged containers
 - Mount host paths
 - Use host networking, PID, or IPC namespaces
-- Add dangerous capabilities
+- Add capabilities outside the baseline allowlist
 
 Most applications work fine under baseline restrictions. Here's a pod that passes baseline checks:
 
@@ -99,12 +99,12 @@ metadata:
 Restricted profile requires:
 - Running as non-root user
 - Dropping all capabilities
-- Read-only root filesystem
 - No privilege escalation
 - Seccomp profile must be RuntimeDefault or Localhost
-- SELinux context must be set
+- Only supported volume types, such as configMap, secret, persistentVolumeClaim, projected, and emptyDir
+- SELinux options, if set, must use allowed values
 
-Pods must explicitly configure all these settings:
+Pods typically configure these settings explicitly:
 
 ```yaml
 apiVersion: v1
@@ -127,7 +127,6 @@ spec:
       capabilities:
         drop:
         - ALL
-      readOnlyRootFilesystem: true
     volumeMounts:
     - name: tmp
       mountPath: /tmp
@@ -136,7 +135,7 @@ spec:
     emptyDir: {}
 ```
 
-The emptyDir volume provides writable space since the root filesystem is read-only.
+The emptyDir volume provides writable space using one of the volume types allowed by the restricted profile.
 
 ## Using Privileged profile for system workloads
 
@@ -228,7 +227,7 @@ When a pod violates the enforced profile, Kubernetes rejects it:
 
 ```text
 Error from server (Forbidden): error when creating "pod.yaml": pods "app" is forbidden:
-violates PodSecurity "baseline:latest": allowPrivilegeEscalation != false
+violates PodSecurity "restricted:latest": allowPrivilegeEscalation != false
 (container "app" must set securityContext.allowPrivilegeEscalation=false)
 ```
 
@@ -263,14 +262,14 @@ This cluster-level configuration exempts kube-system and monitoring namespaces f
 Track violations through audit logs:
 
 ```bash
-# View PSS audit events
-kubectl get events -A --field-selector reason=PodSecurityViolation
-
 # Check namespace labels
 kubectl get namespaces -L pod-security.kubernetes.io/enforce
 
-# View detailed pod security info
-kubectl describe pod problematic-pod -n namespace
+# Test a manifest and review any Pod Security warnings
+kubectl apply --dry-run=server -f pod.yaml
+
+# View Pod Security admission metrics if API server metrics are exposed
+kubectl get --raw /metrics | grep '^pod_security_'
 ```
 
 Set up monitoring alerts for PSS violations:
@@ -287,8 +286,9 @@ spec:
     rules:
     - alert: PodSecurityViolation
       expr: |
-        rate(apiserver_admission_webhook_rejection_count{
-          name="pod-security.kubernetes.io"
+        rate(pod_security_evaluations_total{
+          decision="deny",
+          mode="enforce"
         }[5m]) > 0
       annotations:
         summary: "Pod Security Standard violations detected"
@@ -361,7 +361,6 @@ spec:
           capabilities:
             drop:
             - ALL
-          readOnlyRootFilesystem: true
         volumeMounts:
         - name: tmp
           mountPath: /tmp
