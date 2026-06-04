@@ -12,14 +12,14 @@ ArgoCD Notifications provides a flexible system for sending alerts about applica
 
 ## Installing ArgoCD Notifications
 
-ArgoCD Notifications comes as a separate component that integrates with your ArgoCD installation. Install it using kubectl:
+ArgoCD Notifications is included with current ArgoCD installations. Install the built-in notifications catalog of triggers and templates using kubectl:
 
 ```bash
-# Install ArgoCD Notifications
+# Install the ArgoCD Notifications catalog
 
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-notifications/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/notifications_catalog/install.yaml
 
-# Verify installation
+# Verify the notifications controller
 kubectl get deployment -n argocd argocd-notifications-controller
 
 # Check the controller logs
@@ -30,7 +30,7 @@ The notifications controller watches ArgoCD applications and triggers notificati
 
 ## Configuring Slack Notifications
 
-Start by creating a Slack app and obtaining a webhook URL or bot token. For webhook integration, create an incoming webhook in your Slack workspace.
+Start by creating a Slack app and obtaining a bot token. For incoming webhook integration, use ArgoCD's webhook notification service instead of the Slack service shown here.
 
 Configure Slack in the ArgoCD notifications ConfigMap:
 
@@ -42,13 +42,9 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  # Slack service configuration using webhook
+  # Slack service configuration using a bot token
   service.slack: |
     token: $slack-token
-
-  # Alternative: use webhook URL directly
-  # service.slack: |
-  #   webhookUrl: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 
   # Define notification templates
   template.app-deployed: |
@@ -110,10 +106,11 @@ data:
   # Define triggers
   trigger.on-deployed: |
     - when: app.status.sync.status == 'Synced' and app.status.health.status == 'Healthy'
+      oncePer: app.status.sync.revision
       send: [app-deployed]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [app-sync-failed]
 ```
 
@@ -186,6 +183,7 @@ data:
   # Email triggers
   trigger.on-deployed-email: |
     - when: app.status.sync.status == 'Synced' and app.status.health.status == 'Healthy'
+      oncePer: app.status.sync.revision
       send: [app-deployed-email]
 
   trigger.on-health-degraded-email: |
@@ -251,7 +249,7 @@ metadata:
 data:
   # Trigger when sync takes longer than expected
   trigger.on-slow-sync: |
-    - when: app.status.operationState != nil and app.status.operationState.phase in ['Running'] and app.status.operationState.startedAt != nil
+    - when: app.status?.operationState.phase in ['Running'] and app.status.operationState.startedAt != nil and time.Now().Sub(time.Parse(app.status.operationState.startedAt)).Minutes() >= 10
       oncePer: app.status.operationState.startedAt
       send: [slow-sync-alert]
 
@@ -312,9 +310,8 @@ metadata:
     notifications.argoproj.io/subscribe.on-sync-failed.slack: urgent-alerts
     notifications.argoproj.io/subscribe.on-sync-failed.email: oncall@example.com;engineering@example.com
 
-    # Send health issues to both channels
-    notifications.argoproj.io/subscribe.on-health-degraded.slack: health-alerts
-    notifications.argoproj.io/subscribe.on-health-degraded.email: sre-team@example.com
+    # Send health issues to email
+    notifications.argoproj.io/subscribe.on-health-degraded-email.email: sre-team@example.com
 spec:
   project: production
   source:
@@ -407,7 +404,7 @@ kubectl logs -n argocd deployment/argocd-notifications-controller -f
 # Manually trigger a notification for testing
 kubectl patch app test-app -n argocd \
   --type json \
-  -p='[{"op": "replace", "path": "/metadata/annotations/notifications.argoproj.io~1subscribe.on-deployed.slack", "value":"test-channel"}]'
+  -p='[{"op": "add", "path": "/metadata/annotations/notifications.argoproj.io~1subscribe.on-deployed.slack", "value":"test-channel"}]'
 
 # Force a sync to trigger notifications
 argocd app sync test-app
@@ -415,32 +412,30 @@ argocd app sync test-app
 
 Monitor the logs for any errors in template rendering or delivery failures.
 
-## Notification Throttling
+## Notification Deduplication
 
-Prevent notification spam with throttling:
+Prevent notification spam with `oncePer`:
 
 ```yaml
-# throttled-triggers.yaml
+# deduplicated-triggers.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  trigger.on-health-degraded-throttled: |
+  trigger.on-health-degraded-deduplicated: |
     - when: app.status.health.status == 'Degraded'
       oncePer: app.metadata.name
       send: [app-health-degraded]
-      # Only send notification once per hour
-      throttle: 1h
 
   trigger.on-sync-running-periodic: |
-    - when: app.status.operationState.phase in ['Running']
+    - when: app.status?.operationState.phase in ['Running']
+      oncePer: app.status.operationState.startedAt
       send: [sync-running]
-      throttle: 5m
 ```
 
-Throttling limits notification frequency, useful for long-running operations or flapping health status.
+The `oncePer` field limits notification frequency by sending only once for each distinct field value, useful for long-running operations or flapping health status.
 
 ## Monitoring Notification Delivery
 
