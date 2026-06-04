@@ -8,7 +8,7 @@ Description: Learn how to set up a highly available K3s cluster using embedded e
 
 ---
 
-K3s is designed for edge deployments, but achieving high availability in edge environments presents unique challenges. Traditional HA Kubernetes requires external etcd clusters or databases, adding complexity and resource overhead that edge locations often can't afford.
+K3s is designed for edge deployments, but achieving high availability in edge environments presents unique challenges. Traditional HA Kubernetes often requires more control-plane and datastore planning, adding complexity and resource overhead that edge locations often can't afford.
 
 K3s solves this with embedded etcd, allowing you to build HA clusters without external dependencies. In this guide, you'll learn how to deploy a multi-master K3s cluster using embedded etcd, perfect for edge locations that need resilience without operational overhead.
 
@@ -109,21 +109,27 @@ Now you have a 3-node HA cluster. All three servers can schedule workloads and h
 
 ## Verifying etcd Cluster Health
 
-K3s includes etcdctl for managing the embedded etcd cluster. Check etcd member status:
+K3s does not bundle etcdctl, but you can install it and use the certificates that K3s manages for embedded etcd. Check etcd member status:
 
 ```bash
-# List etcd members
+# Install etcdctl
+ETCD_VERSION="v3.5.5"
+ETCD_URL="https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-amd64.tar.gz"
+curl -sL ${ETCD_URL} | sudo tar -zxv --strip-components=1 -C /usr/local/bin
+
+# List local snapshots
 sudo k3s etcd-snapshot list
 
-# Check etcd endpoint health
-sudo k3s etcd-snapshot save --etcd-s3=false
+# Take an on-demand snapshot
+sudo k3s etcd-snapshot save
 
 # View etcd cluster status
-sudo crictl exec $(sudo crictl ps --name etcd -q) \
-  etcdctl endpoint health --cluster \
+sudo ETCDCTL_API=3 etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
   --cacert=/var/lib/rancher/k3s/server/tls/etcd/server-ca.crt \
-  --cert=/var/lib/rancher/k3s/server/tls/etcd/server-client.crt \
-  --key=/var/lib/rancher/k3s/server/tls/etcd/server-client.key
+  --cert=/var/lib/rancher/k3s/server/tls/etcd/client.crt \
+  --key=/var/lib/rancher/k3s/server/tls/etcd/client.key \
+  endpoint health --cluster
 ```
 
 You should see all three endpoints reporting healthy.
@@ -174,19 +180,6 @@ backend k3s_servers
     server server1 192.168.1.10:6443 check fall 3 rise 2
     server server2 192.168.1.11:6443 check fall 3 rise 2
     server server3 192.168.1.12:6443 check fall 3 rise 2
-
-frontend k3s_supervisor
-    bind *:9345
-    mode tcp
-    default_backend k3s_supervisor_backend
-
-backend k3s_supervisor_backend
-    mode tcp
-    balance roundrobin
-    option tcp-check
-    server server1 192.168.1.10:9345 check
-    server server2 192.168.1.11:9345 check
-    server server3 192.168.1.12:9345 check
 EOF
 
 # Restart HAProxy
@@ -217,18 +210,14 @@ Agent nodes connect to the API through HAProxy, which automatically handles serv
 Configure automatic etcd snapshots to protect against data loss:
 
 ```bash
-# On each server node, update K3s configuration
-sudo tee -a /etc/systemd/system/k3s.service.d/override.conf > /dev/null <<EOF
-[Service]
-ExecStart=
-ExecStart=/usr/local/bin/k3s server \
-  --cluster-init \
-  --etcd-snapshot-schedule-cron="0 */6 * * *" \
-  --etcd-snapshot-retention=10 \
-  --etcd-snapshot-dir=/var/lib/rancher/k3s/server/db/snapshots
+# On each server node, add a K3s configuration drop-in
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+sudo tee /etc/rancher/k3s/config.yaml.d/90-etcd-snapshots.yaml > /dev/null <<EOF
+etcd-snapshot-schedule-cron: "0 */6 * * *"
+etcd-snapshot-retention: 10
+etcd-snapshot-dir: /var/lib/rancher/k3s/server/db/snapshots
 EOF
 
-sudo systemctl daemon-reload
 sudo systemctl restart k3s
 ```
 
@@ -238,22 +227,15 @@ For remote backups, configure S3 storage:
 
 ```bash
 # Add S3 configuration
-sudo tee -a /etc/systemd/system/k3s.service.d/override.conf > /dev/null <<EOF
-[Service]
-Environment="AWS_ACCESS_KEY_ID=your-access-key"
-Environment="AWS_SECRET_ACCESS_KEY=your-secret-key"
-ExecStart=
-ExecStart=/usr/local/bin/k3s server \
-  --cluster-init \
-  --etcd-snapshot-schedule-cron="0 */6 * * *" \
-  --etcd-snapshot-retention=10 \
-  --etcd-s3 \
-  --etcd-s3-bucket=k3s-edge-backups \
-  --etcd-s3-region=us-east-1 \
-  --etcd-s3-folder=edge-site-01
+sudo tee /etc/rancher/k3s/config.yaml.d/91-etcd-s3.yaml > /dev/null <<EOF
+etcd-s3: true
+etcd-s3-access-key: your-access-key
+etcd-s3-secret-key: your-secret-key
+etcd-s3-bucket: k3s-edge-backups
+etcd-s3-region: us-east-1
+etcd-s3-folder: edge-site-01
 EOF
 
-sudo systemctl daemon-reload
 sudo systemctl restart k3s
 ```
 
@@ -284,8 +266,8 @@ Test API availability:
 # If using the load balancer, your kubectl commands should continue working
 
 # Test 3: Stop two servers (losing quorum)
-# The cluster will become read-only but won't lose data
-# Workloads continue running but you can't make changes
+# The API will generally become unavailable until quorum is restored
+# Existing workloads may continue running on healthy nodes, but you can't make changes
 ```
 
 ## Restoring from etcd Backup
@@ -307,7 +289,7 @@ sudo k3s server \
 sudo systemctl start k3s
 
 # On other servers, delete old data and rejoin
-sudo rm -rf /var/lib/rancher/k3s/server/db/etcd
+sudo rm -rf /var/lib/rancher/k3s/server/db/
 sudo systemctl start k3s
 ```
 
@@ -317,52 +299,20 @@ The cluster rebuilds with the restored data.
 
 Set up monitoring for your embedded etcd cluster:
 
-```yaml
-# etcd-monitor.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: etcd-monitor-script
-  namespace: kube-system
-data:
-  monitor.sh: |
-    #!/bin/bash
-    # Check etcd health and alert if unhealthy
-    ETCD_ENDPOINTS=$(kubectl get endpoints -n kube-system etcd -o jsonpath='{.subsets[*].addresses[*].ip}' | tr ' ' ',')
-
-    for endpoint in $(echo $ETCD_ENDPOINTS | tr ',' ' '); do
-      if ! curl -sf https://$endpoint:2379/health >/dev/null 2>&1; then
-        echo "ALERT: etcd endpoint $endpoint is unhealthy"
-      fi
-    done
----
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: etcd-health-check
-  namespace: kube-system
-spec:
-  schedule: "*/5 * * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: monitor
-              image: rancher/k3s:v1.28.5-k3s1
-              command: ["/bin/sh", "-c"]
-              args:
-                - |
-                  k3s etcd-snapshot save --etcd-s3=false >/dev/null 2>&1
-                  echo "etcd health check completed"
-          restartPolicy: OnFailure
-```
-
-Apply the monitoring:
-
 ```bash
-kubectl apply -f etcd-monitor.yaml
+# Check the API server readiness endpoint, including its etcd check
+kubectl get --raw='/readyz?verbose'
+
+# Check etcd directly from a server node
+sudo ETCDCTL_API=3 etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/var/lib/rancher/k3s/server/tls/etcd/server-ca.crt \
+  --cert=/var/lib/rancher/k3s/server/tls/etcd/client.crt \
+  --key=/var/lib/rancher/k3s/server/tls/etcd/client.key \
+  endpoint status --cluster --write-out=table
 ```
+
+You can run these checks from your monitoring system and alert if the readiness endpoint fails or etcd endpoints report unhealthy status.
 
 ## Handling Server Node Failures
 
@@ -375,12 +325,20 @@ Remove a failed node:
 
 ```bash
 # From a healthy server, get the etcd member ID
-sudo crictl exec $(sudo crictl ps --name etcd -q) \
-  etcdctl member list
+sudo ETCDCTL_API=3 etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/var/lib/rancher/k3s/server/tls/etcd/server-ca.crt \
+  --cert=/var/lib/rancher/k3s/server/tls/etcd/client.crt \
+  --key=/var/lib/rancher/k3s/server/tls/etcd/client.key \
+  member list
 
 # Remove the failed member
-sudo crictl exec $(sudo crictl ps --name etcd -q) \
-  etcdctl member remove <member-id>
+sudo ETCDCTL_API=3 etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/var/lib/rancher/k3s/server/tls/etcd/server-ca.crt \
+  --cert=/var/lib/rancher/k3s/server/tls/etcd/client.crt \
+  --key=/var/lib/rancher/k3s/server/tls/etcd/client.key \
+  member remove <member-id>
 
 # Delete the Kubernetes node
 kubectl delete node <failed-node-name>
