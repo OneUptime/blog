@@ -19,8 +19,6 @@ The `dns` key in a service definition sets the DNS servers for that container:
 ```yaml
 # docker-compose.yml - basic custom DNS setup
 
-version: "3.8"
-
 services:
   app:
     image: myapp:latest
@@ -50,8 +48,6 @@ nameserver 8.8.8.8
 The `dns_search` key sets the search domains. These get appended to unqualified hostnames:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: myapp:latest
@@ -74,8 +70,6 @@ This is useful in corporate environments where short hostnames resolve through i
 Fine-tune DNS resolver behavior with the `dns_opt` key:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: myapp:latest
@@ -97,8 +91,6 @@ You can run your own DNS server as part of the compose stack. Here is an example
 
 ```yaml
 # docker-compose.yml - with embedded CoreDNS
-version: "3.8"
-
 services:
   dns:
     image: coredns/coredns:latest
@@ -129,7 +121,8 @@ services:
     depends_on:
       - dns
     networks:
-      - app_net
+      app_net:
+        ipv4_address: 172.25.0.10
 
 networks:
   app_net:
@@ -185,18 +178,16 @@ cache   IN A    172.25.0.30
 Run Pi-hole as your DNS server to filter ads and trackers from containers:
 
 ```yaml
-version: "3.8"
-
 services:
   pihole:
     image: pihole/pihole:latest
     environment:
       TZ: "America/New_York"
-      WEBPASSWORD: ${PIHOLE_PASSWORD:-admin}
-      PIHOLE_DNS_: "8.8.8.8;8.8.4.4"
+      FTLCONF_webserver_api_password: ${PIHOLE_PASSWORD:-admin}
+      FTLCONF_dns_upstreams: "8.8.8.8;8.8.4.4"
+      FTLCONF_dns_listeningMode: "all"
     volumes:
       - pihole_config:/etc/pihole
-      - pihole_dnsmasq:/etc/dnsmasq.d
     ports:
       - "8053:80"     # Web admin interface
     networks:
@@ -221,7 +212,6 @@ networks:
 
 volumes:
   pihole_config:
-  pihole_dnsmasq:
 ```
 
 ## Split DNS for Hybrid Environments
@@ -229,8 +219,6 @@ volumes:
 When you need some domains resolved by internal DNS and others by public DNS, configure split DNS using dnsmasq:
 
 ```yaml
-version: "3.8"
-
 services:
   dnsmasq:
     image: jpillora/dnsmasq
@@ -288,8 +276,6 @@ log-queries
 If you use Consul for service discovery, configure containers to resolve `.consul` domains:
 
 ```yaml
-version: "3.8"
-
 services:
   consul:
     image: hashicorp/consul:latest
@@ -363,19 +349,20 @@ docker compose exec app sh -c "apk add bind-tools && dig @10.0.0.53 myservice.in
 docker compose logs -f dns
 ```
 
-A common issue is that the custom DNS container is not ready when other containers start. Always use `depends_on` with health checks for DNS services:
+A common issue is that the custom DNS container is not ready when other containers start. Use `depends_on` with health checks for DNS services when the DNS image includes a DNS client, or when you build a custom image that adds one:
 
 ```yaml
 services:
   dns:
-    image: coredns/coredns
+    image: your-coredns-with-dig
     healthcheck:
-      test: ["CMD", "dig", "@127.0.0.1", "health.check.local"]
+      test: ["CMD", "dig", "@127.0.0.1", "internal.local", "SOA"]
       interval: 5s
       timeout: 3s
       retries: 5
 
   app:
+    image: myapp:latest
     dns:
       - 172.25.0.53
     depends_on:
