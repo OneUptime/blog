@@ -24,16 +24,13 @@ Install tools for encrypting and managing encrypted images.
 # Install skopeo with encryption support
 
 sudo apt-get update
-sudo apt-get install -y skopeo
+sudo apt-get install -y skopeo git make
 
-# Install ctr with encryption plugin
-wget https://github.com/containerd/containerd/releases/download/v1.7.0/containerd-1.7.0-linux-amd64.tar.gz
-tar xzf containerd-1.7.0-linux-amd64.tar.gz
-sudo cp bin/ctr /usr/local/bin/
-
-# Install imgcrypt for image encryption
-go install github.com/containerd/imgcrypt/cmd/ctd-decoder@latest
-sudo cp $(go env GOPATH)/bin/ctd-decoder /usr/local/bin/
+# Install imgcrypt tools: ctd-decoder and ctr-enc
+git clone https://github.com/containerd/imgcrypt.git
+cd imgcrypt
+make
+sudo make install
 ```
 
 Generate encryption keys:
@@ -60,32 +57,31 @@ version = 2
 [plugins."io.containerd.grpc.v1.cri"]
   # Enable image decryption
   [plugins."io.containerd.grpc.v1.cri".image_decryption]
-    # Path to private keys for decryption
+    # Select the node key model for CRI image decryption
     key_model = "node"
 
 [stream_processors]
   # Configure decryption stream processor
+  [stream_processors."io.containerd.ocicrypt.decoder.v1.tar.gzip"]
+    accepts = ["application/vnd.oci.image.layer.v1.tar+gzip+encrypted"]
+    returns = "application/vnd.oci.image.layer.v1.tar+gzip"
+    path = "/usr/local/bin/ctd-decoder"
+    args = ["--decryption-keys-path", "/etc/containerd/keys"]
+
+  [stream_processors."io.containerd.ocicrypt.decoder.v1.tar.zstd"]
+    accepts = ["application/vnd.oci.image.layer.v1.tar+zstd+encrypted"]
+    returns = "application/vnd.oci.image.layer.v1.tar+zstd"
+    path = "/usr/local/bin/ctd-decoder"
+    args = ["--decryption-keys-path", "/etc/containerd/keys"]
+
   [stream_processors."io.containerd.ocicrypt.decoder.v1.tar"]
     accepts = ["application/vnd.oci.image.layer.v1.tar+encrypted"]
     returns = "application/vnd.oci.image.layer.v1.tar"
     path = "/usr/local/bin/ctd-decoder"
     args = ["--decryption-keys-path", "/etc/containerd/keys"]
-
-[plugins."io.containerd.grpc.v1.cri".containerd]
-  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
-    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-      # Enable decryption for runc
-      enable_cdi = true
 ```
 
-Create key configuration:
-
-```yaml
-# /etc/containerd/keys/config.yaml
-keys:
-  - path: /etc/containerd/keys/mykey.pem
-    protocol: pgp
-```
+The decoder reads private key files from the directory passed to `--decryption-keys-path`. No separate key configuration file is required for local JWE keys.
 
 Restart containerd:
 
@@ -95,7 +91,7 @@ sudo systemctl restart containerd
 
 ## Encrypting Container Images
 
-Encrypt images using skopeo or buildkit.
+Encrypt images using skopeo or ctr-enc.
 
 ```bash
 # Encrypt an existing image
@@ -104,19 +100,24 @@ skopeo copy \
   docker://mycompany/app:v1.0.0 \
   docker://mycompany/app:v1.0.0-encrypted
 
-# Encrypt during build with buildkit
+# Build and push with Buildx, then encrypt the pushed image
 docker buildx build \
-  --output type=image,name=mycompany/app:encrypted,encryption=jwe,encryption-key=mykey.pub,push=true \
+  --push \
+  -t mycompany/app:v1.0.0 \
   .
+skopeo copy \
+  --encryption-key jwe:/etc/containerd/keys/mykey.pub \
+  docker://mycompany/app:v1.0.0 \
+  docker://mycompany/app:v1.0.0-encrypted
 
-# Encrypt with ctr
-ctr images pull mycompany/app:v1.0.0
-ctr images encrypt \
+# Encrypt with ctr-enc
+ctr-enc images pull mycompany/app:v1.0.0
+ctr-enc images encrypt \
   --recipient jwe:mykey.pub \
   --platform linux/amd64 \
   mycompany/app:v1.0.0 \
   mycompany/app:v1.0.0-encrypted
-ctr images push mycompany/app:v1.0.0-encrypted
+ctr-enc images push mycompany/app:v1.0.0-encrypted
 ```
 
 ## Deploying Encrypted Images
@@ -231,31 +232,32 @@ openssl genrsa -out $NEW_KEY 4096
 openssl rsa -in $NEW_KEY -pubout -out $NEW_PUB
 
 # Re-encrypt all images with new key
-for image in $(ctr images list -q | grep encrypted); do
+for image in $(ctr-enc images list -q | grep encrypted); do
   echo "Re-encrypting $image"
 
   # Pull with old key
-  ctr images pull $image
+  ctr-enc images pull $image
 
   # Decrypt
   decrypted="${image%-encrypted}"
-  ctr images decrypt --key $OLD_KEY $image $decrypted
+  ctr-enc images decrypt --key $OLD_KEY $image $decrypted
 
   # Re-encrypt with new key
-  ctr images encrypt --recipient jwe:$NEW_PUB $decrypted "${image}-new"
+  ctr-enc images encrypt --recipient jwe:$NEW_PUB $decrypted "${image}-new"
 
   # Push re-encrypted image
-  ctr images push "${image}-new"
+  ctr-enc images push "${image}-new"
 
   # Tag as current
-  ctr images tag "${image}-new" $image
-  ctr images push $image
+  ctr-enc images tag "${image}-new" $image
+  ctr-enc images push $image
 
   # Cleanup
-  ctr images rm $decrypted "${image}-new"
+  ctr-enc images rm $decrypted "${image}-new"
 done
 
 # Archive old key
+mkdir -p /etc/containerd/keys/archive
 mv $OLD_KEY "/etc/containerd/keys/archive/mykey-$(date +%Y%m%d).pem"
 
 echo "Key rotation complete"
@@ -269,11 +271,11 @@ Track image decryption performance and failures.
 # Check containerd logs for decryption activity
 sudo journalctl -u containerd | grep -i decrypt
 
-# Monitor decryption metrics
-curl http://localhost:1338/metrics | grep image_decrypt
+# Monitor containerd metrics if the metrics endpoint is enabled
+curl http://localhost:1338/v1/metrics | grep containerd
 
 # Verify encrypted image layers
-ctr images check mycompany/app:v1.0.0-encrypted
+ctr-enc images layerinfo mycompany/app:v1.0.0-encrypted
 ```
 
 Encrypted container images provide an additional security layer for protecting sensitive application code and data. By encrypting layers during build and automatically decrypting during pull operations, you ensure that image contents remain protected at rest in registries. This is essential for compliance requirements, protecting intellectual property, and preventing unauthorized access to containerized applications. Implement key management procedures and monitor decryption operations to maintain security without impacting deployment workflows.
