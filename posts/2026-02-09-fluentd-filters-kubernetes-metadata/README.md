@@ -8,7 +8,7 @@ Description: Enrich container logs with Kubernetes metadata using Fluentd filter
 
 ---
 
-Container logs contain little context about which pod, namespace, or application generated them. Fluentd's kubernetes_metadata filter plugin enriches logs with pod information, labels, annotations, and resource details, making logs searchable by Kubernetes constructs and enabling powerful filtering and visualization in Kibana.
+Container logs contain little context about which pod, namespace, or application generated them. Fluentd's kubernetes_metadata filter plugin enriches logs with pod information, labels, annotations, and container details, making logs searchable by Kubernetes constructs and enabling powerful filtering and visualization in Kibana.
 
 This guide shows how to configure Fluentd filters to enrich logs with Kubernetes metadata and implement custom filtering logic for log processing.
 
@@ -18,7 +18,7 @@ Fluentd filters process records after input and before output:
 - Transform record structure
 - Add or remove fields
 - Enrich data with external information
-- Route records based on conditions
+- Filter records based on conditions
 - Parse nested structures
 
 The kubernetes_metadata filter is specifically designed to query the Kubernetes API and add pod metadata to log records.
@@ -31,7 +31,7 @@ Basic metadata enrichment:
 <filter kubernetes.**>
   @type kubernetes_metadata
   @id filter_kube_metadata
-  kubernetes_url "#{ENV['KUBERNETES_SERVICE_HOST']}:#{ENV['KUBERNETES_SERVICE_PORT']}"
+  kubernetes_url "https://#{ENV['KUBERNETES_SERVICE_HOST']}:#{ENV['KUBERNETES_SERVICE_PORT']}"
   verify_ssl true
   ca_file /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
   skip_labels false
@@ -62,7 +62,7 @@ Extract pod labels for filtering:
   # Watch for label changes
   watch true
 
-  # Add specific label fields
+  # Include matching annotations
   annotation_match [".*"]
   stats_interval 60
 </filter>
@@ -95,7 +95,7 @@ Enrich logs with cluster and environment information:
     cluster_region "#{ENV['AWS_REGION'] || 'us-east-1'}"
     
     # Add environment tier
-    environment ${record.dig("kubernetes", "namespace_name") =~ /prod/ ? "production" : "non-production"}
+    environment ${record.dig("kubernetes", "namespace_name").to_s =~ /prod/ ? "production" : "non-production"}
     
     # Extract application name from pod
     application ${record.dig("kubernetes", "pod_name").to_s.split('-')[0]}
@@ -111,7 +111,7 @@ Enrich logs with cluster and environment information:
 
 ## Filtering logs by namespace
 
-Route logs based on namespace:
+Filter logs based on namespace:
 
 ```yaml
 # Only process logs from production namespaces
@@ -151,11 +151,11 @@ Sample logs for high-volume applications:
 <filter kubernetes.var.log.containers.high-volume-app-**.log>
   @type sampling
   @id sampling_high_volume
-  sampling_rate 10
+  interval 10
   sample_unit all
 </filter>
 
-# Always keep error logs
+# Keep only error logs in this stream
 <filter kubernetes.**>
   @type grep
   <regexp>
@@ -176,7 +176,8 @@ Extract structured data from application logs:
   key_name log
   reserve_data true
   reserve_time true
-  remove_key_name_field false
+  remove_key_name_field true
+  emit_invalid_record_to_error false
   <parse>
     @type json
     time_key timestamp
@@ -230,7 +231,7 @@ Tag logs for cost tracking:
     cost_center ${record.dig("kubernetes", "labels", "cost-center") || "unallocated"}
     team ${record.dig("kubernetes", "labels", "team") || "unknown"}
     project ${record.dig("kubernetes", "labels", "project") || record.dig("kubernetes", "namespace_name")}
-    billing_tag ${record.dig("kubernetes", "namespace_name") + "-" + record.dig("kubernetes", "labels", "app")}
+    billing_tag ${(record.dig("kubernetes", "namespace_name") || "unknown").to_s + "-" + (record.dig("kubernetes", "labels", "app") || "unknown").to_s}
   </record>
 </filter>
 ```
@@ -238,7 +239,7 @@ Tag logs for cost tracking:
 ## Best practices
 
 1. **Use caching:** Configure cache_size and cache_ttl for performance
-2. **Filter early:** Apply exclusion filters before enrichment
+2. **Filter early:** Apply cheap exclusion filters as early as possible, and apply Kubernetes-field filters after enrichment
 3. **Limit metadata:** Skip unnecessary metadata with skip_* options
 4. **Handle parse errors:** Use reserve_data to keep original logs
 5. **Monitor filter performance:** Track processing time
