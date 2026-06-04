@@ -8,13 +8,13 @@ Description: Set up AWS Fargate profiles for EKS to run serverless Kubernetes po
 
 ---
 
-AWS Fargate enables running Kubernetes pods without managing EC2 instances. Each pod runs in its own isolated compute environment with dedicated resources. Fargate eliminates node management, automatically scales, and charges only for pod resource usage. This guide covers creating and using Fargate profiles with EKS for serverless container workloads.
+AWS Fargate enables running Kubernetes pods without managing EC2 instances. Each pod runs in its own isolated compute environment with dedicated resources. Fargate eliminates node management, automatically scales, and charges for the provisioned pod CPU and memory configuration. This guide covers creating and using Fargate profiles with EKS for serverless container workloads.
 
 ## Understanding EKS on Fargate
 
-EKS on Fargate runs each pod in an isolated, right-sized VM. Unlike traditional node-based deployments, Fargate handles infrastructure provisioning, patching, and scaling automatically. You define pod specifications, and Fargate provisions the exact compute resources needed.
+EKS on Fargate runs each pod in an isolated, right-sized VM. Unlike traditional node-based deployments, Fargate handles infrastructure provisioning, patching, and scaling automatically. You define pod specifications, and Fargate rounds up to the closest supported CPU and memory configuration.
 
-Fargate is ideal for batch jobs, microservices, and workloads with variable load patterns. It reduces operational overhead but has limitations including no DaemonSets, HostNetwork, or persistent volumes with ReadWriteMany access modes.
+Fargate is ideal for batch jobs, microservices, and workloads with variable load patterns. It reduces operational overhead but has limitations including no DaemonSets, HostNetwork, HostPort, Amazon EBS volumes, or dynamic persistent volume provisioning.
 
 ## Creating a Fargate Profile
 
@@ -130,14 +130,17 @@ spec:
             cpu: 250m
             memory: 512Mi
           limits:
-            cpu: 500m
-            memory: 1Gi
+            cpu: 250m
+            memory: 512Mi
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: fargate-service
   namespace: default
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
 spec:
   type: LoadBalancer
   selector:
@@ -161,7 +164,7 @@ kubectl describe pod <pod-name> | grep "Node:"
 
 ## Configuring Resource Specifications
 
-Fargate requires explicit resource requests:
+For predictable sizing and cost, specify resource requests. Fargate pods run with Guaranteed QoS, so requests and limits must be equal for all containers:
 
 ```yaml
 # resource-config.yaml
@@ -180,8 +183,8 @@ spec:
         cpu: 500m
         memory: 1Gi
       limits:
-        cpu: 1000m
-        memory: 2Gi
+        cpu: 500m
+        memory: 1Gi
 ```
 
 Supported Fargate configurations:
@@ -192,10 +195,16 @@ resources:
   requests:
     cpu: 250m
     memory: 512Mi
+  limits:
+    cpu: 250m
+    memory: 512Mi
 
 # Medium pod - 0.5 vCPU, 1 GB to 4 GB
 resources:
   requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
     cpu: 500m
     memory: 2Gi
 
@@ -204,18 +213,36 @@ resources:
   requests:
     cpu: 1000m
     memory: 4Gi
+  limits:
+    cpu: 1000m
+    memory: 4Gi
 
 # Extra large pod - 2 vCPU, 4 GB to 16 GB
 resources:
   requests:
     cpu: 2000m
     memory: 8Gi
+  limits:
+    cpu: 2000m
+    memory: 8Gi
 
-# Maximum - 4 vCPU, 30 GB
+# Larger pod - 4 vCPU, 8 GB to 30 GB
 resources:
   requests:
     cpu: 4000m
     memory: 30Gi
+  limits:
+    cpu: 4000m
+    memory: 30Gi
+
+# Maximum - 16 vCPU, 32 GB to 120 GB
+resources:
+  requests:
+    cpu: 16000m
+    memory: 120Gi
+  limits:
+    cpu: 16000m
+    memory: 120Gi
 ```
 
 ## Namespace-Specific Fargate Profiles
@@ -310,8 +337,8 @@ spec:
             cpu: 1000m
             memory: 2Gi
           limits:
-            cpu: 2000m
-            memory: 4Gi
+            cpu: 1000m
+            memory: 2Gi
 ```
 
 CronJob example:
@@ -339,6 +366,9 @@ spec:
               requests:
                 cpu: 500m
                 memory: 1Gi
+              limits:
+                cpu: 500m
+                memory: 1Gi
 ```
 
 ## Configuring CoreDNS for Fargate
@@ -346,7 +376,7 @@ spec:
 CoreDNS must run on Fargate for Fargate-only clusters:
 
 ```bash
-# Patch CoreDNS to remove EC2 node affinity
+# Patch CoreDNS to remove the EC2 compute-type annotation
 kubectl patch deployment coredns \
   -n kube-system \
   --type json \
@@ -485,6 +515,9 @@ spec:
       requests:
         cpu: 250m
         memory: 512Mi
+      limits:
+        cpu: 250m
+        memory: 512Mi
   volumes:
   - name: persistent-storage
     persistentVolumeClaim:
@@ -505,9 +538,9 @@ kubectl describe pod <pod-name>
 # Check Fargate node capacity
 kubectl describe node fargate-<node-name>
 
-# CloudWatch metrics
+# CloudWatch Container Insights metrics
 aws cloudwatch get-metric-statistics \
-  --namespace AWS/EKS \
+  --namespace ContainerInsights \
   --metric-name pod_cpu_utilization \
   --dimensions Name=ClusterName,Value=my-cluster \
   --start-time 2024-01-01T00:00:00Z \
@@ -565,6 +598,9 @@ spec:
         image: myapp:latest
         resources:
           requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
             cpu: 500m
             memory: 1Gi
 ```
@@ -632,7 +668,7 @@ aws ec2 describe-subnets --subnet-ids subnet-abc123
 6. Right-size pods to avoid wasted resources
 7. Monitor costs per namespace/profile
 8. Use Fargate for variable workloads, EC2 for steady state
-9. Implement proper IAM roles for pod access
+9. Use IAM roles for service accounts (IRSA) for application AWS API access
 10. Test disaster recovery procedures
 
 ## Conclusion
