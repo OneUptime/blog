@@ -25,7 +25,7 @@ FROM ubuntu
 But the instruction supports several optional components:
 
 ```dockerfile
-# Full syntax: FROM [--platform=<platform>] <image>[:<tag>] [AS <name>]
+# Full syntax: FROM [--platform=<platform>] <image>[:<tag>][@<digest>] [AS <name>]
 FROM --platform=linux/amd64 python:3.11-slim AS builder
 ```
 
@@ -33,7 +33,7 @@ Let's break down each part:
 
 - `--platform` specifies the target platform (useful for cross-platform builds)
 - The image name can include a registry path (`registry.example.com/myimage`)
-- The tag (after the colon) identifies a specific version
+- The tag (after the colon) identifies a version or variant, and a digest pins the exact image
 - The `AS` keyword names the build stage for multi-stage builds
 
 ## Choosing the Right Base Image
@@ -101,7 +101,7 @@ Google's distroless images take minimalism further by removing the shell, packag
 FROM gcr.io/distroless/python3-debian12
 ```
 
-Distroless images are excellent for production security since there is nothing for an attacker to exploit if they gain container access. However, they are difficult to debug because you cannot shell into the container.
+Distroless images are excellent for production security because they reduce the number of OS packages and tools available in the image. However, they are difficult to debug because you cannot shell into the container.
 
 ## Pinning Image Versions
 
@@ -193,7 +193,7 @@ COPY --from=nginx:alpine /etc/nginx/nginx.conf /etc/nginx/nginx.conf
 
 ## Platform-Specific Builds
 
-The `--platform` flag lets you build images for different CPU architectures:
+The `--platform` flag on `FROM` lets you select a base image for a specific CPU architecture:
 
 ```dockerfile
 # Build specifically for AMD64
@@ -205,7 +205,7 @@ FROM --platform=linux/arm64 python:3.11-slim
 
 This is particularly useful when building on Apple Silicon Macs but deploying to x86 servers, or vice versa.
 
-For multi-platform builds, use Docker Buildx:
+For multi-platform build output, use Docker Buildx:
 
 ```bash
 # Build for both AMD64 and ARM64 platforms simultaneously
@@ -238,7 +238,7 @@ docker build --build-arg PYTHON_VERSION=3.12 -t myapp .
 
 ## FROM scratch - Building from Nothing
 
-The `scratch` image is an empty image with no filesystem at all. It is used for statically compiled binaries that do not need an operating system.
+The `scratch` image is an empty image with no filesystem at all. It is used for statically compiled binaries that do not need an operating system userland in the image.
 
 ```dockerfile
 # Build a static Go binary
