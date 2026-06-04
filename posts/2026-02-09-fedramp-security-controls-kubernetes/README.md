@@ -8,13 +8,13 @@ Description: Implement FedRAMP security controls for Kubernetes clusters serving
 
 ---
 
-Federal Risk and Authorization Management Program (FedRAMP) compliance is mandatory for cloud services used by U.S. federal agencies. FedRAMP defines security controls based on NIST SP 800-53, categorized by impact levels: Low, Moderate, and High. Most government Kubernetes deployments target Moderate or High impact levels.
+Federal Risk and Authorization Management Program (FedRAMP) compliance is mandatory for cloud services used by U.S. federal agencies. FedRAMP Rev. 5 defines security controls based on NIST SP 800-53 Rev. 5 and SP 800-53B, categorized by impact levels: Low, Moderate, and High. Most government Kubernetes deployments target Moderate or High impact levels.
 
-FedRAMP requires implementing hundreds of security controls across 17 control families. For Kubernetes infrastructure, the most critical controls involve access control, audit and accountability, identification and authentication, system and communications protection, and continuous monitoring. Meeting these requirements demands careful architectural planning and rigorous implementation.
+FedRAMP requires implementing hundreds of security controls across multiple control families. For Kubernetes infrastructure, the most critical controls involve access control, audit and accountability, identification and authentication, system and communications protection, and continuous monitoring. Meeting these requirements demands careful architectural planning and rigorous implementation.
 
 ## Understanding FedRAMP Control Baseline for Kubernetes
 
-FedRAMP Moderate baseline includes 325 controls across families like AC (Access Control), AU (Audit and Accountability), IA (Identification and Authentication), SC (System and Communications Protection), and SI (System and Information Integrity). Each control requires specific implementation and evidence.
+FedRAMP Rev. 5 Moderate baseline includes 323 controls across families like AC (Access Control), AU (Audit and Accountability), IA (Identification and Authentication), SC (System and Communications Protection), and SI (System and Information Integrity). Each control requires specific implementation and evidence.
 
 For Kubernetes, key controls include AC-2 (Account Management), AC-6 (Least Privilege), AU-2 (Audit Events), AU-9 (Protection of Audit Information), IA-2 (Identification and Authentication), SC-7 (Boundary Protection), SC-8 (Transmission Confidentiality), and SI-4 (Information System Monitoring).
 
@@ -33,20 +33,19 @@ metadata:
   name: oidc-config
   namespace: kube-system
 data:
-  oidc-issuer-url: "https://login.gov/openid-connect"
+  oidc-issuer-url: "https://secure.login.gov/"
   oidc-client-id: "kubernetes-cluster-prod"
-  oidc-username-claim: "email"
-  oidc-groups-claim: "groups"
-  oidc-ca-file: "/etc/kubernetes/pki/ca.crt"
+  oidc-username-claim: "sub"
+  oidc-required-claim: "x509_presented=true"
 
 ---
 # Configure API server for OIDC authentication
 # Add to kube-apiserver flags:
-# --oidc-issuer-url=https://login.gov/openid-connect
+# --oidc-issuer-url=https://secure.login.gov/
 # --oidc-client-id=kubernetes-cluster-prod
-# --oidc-username-claim=email
-# --oidc-groups-claim=groups
-# --oidc-ca-file=/etc/kubernetes/pki/oidc-ca.crt
+# --oidc-username-claim=sub
+# --oidc-required-claim=x509_presented=true
+# Use a separate agency IdP or authorization webhook for RBAC group mapping.
 
 ---
 # ServiceAccount lifecycle automation
@@ -69,20 +68,16 @@ spec:
             - /bin/bash
             - -c
             - |
-              # Remove ServiceAccounts unused for 90 days per FedRAMP AC-2(3)
+              # Remove managed ServiceAccounts past their approved expiration date.
               kubectl get serviceaccounts --all-namespaces -o json | \
                 jq -r '.items[] |
-                  select(.metadata.creationTimestamp | fromdateiso8601 < (now - 7776000)) |
+                  select(.metadata.labels["fedramp.oneuptime.com/managed"] == "true") |
+                  select(.metadata.annotations["fedramp.oneuptime.com/expires-at"] != null) |
+                  select(.metadata.annotations["fedramp.oneuptime.com/expires-at"] | fromdateiso8601 < now) |
                   "\(.metadata.namespace) \(.metadata.name)"' | \
                 while read ns sa; do
-                  # Check last token usage
-                  LAST_USED=$(kubectl get secret -n $ns -l "kubernetes.io/service-account.name=$sa" \
-                    -o jsonpath='{.items[0].metadata.annotations.last-used}' 2>/dev/null)
-
-                  if [ -z "$LAST_USED" ]; then
-                    echo "Removing inactive ServiceAccount: $ns/$sa"
-                    kubectl delete serviceaccount -n $ns $sa
-                  fi
+                  echo "Removing expired managed ServiceAccount: $ns/$sa"
+                  kubectl delete serviceaccount -n "$ns" "$sa"
                 done
           restartPolicy: OnFailure
 ```
@@ -106,7 +101,7 @@ rules:
         resources: ["tokenreviews"]
 
   # AU-2(d): Audit successful and unsuccessful accesses to security objects
-  - level: RequestResponse
+  - level: Metadata
     verbs: ["get", "list", "create", "update", "patch", "delete"]
     resources:
       - group: ""
@@ -125,14 +120,14 @@ rules:
   - level: RequestResponse
     verbs: ["create", "update", "patch", "delete"]
     resources:
-      - group: "policy"
-        resources: ["podsecuritypolicies"]
       - group: "networking.k8s.io"
         resources: ["networkpolicies"]
+      - group: "admissionregistration.k8s.io"
+        resources: ["validatingadmissionpolicies", "validatingadmissionpolicybindings"]
 
   # Audit all namespace creation/deletion (SC-7 boundary changes)
   - level: RequestResponse
-    verbs: ["create", "delete"]
+    verbs: ["create", "update", "patch", "delete"]
     resources:
       - group: ""
         resources: ["namespaces"]
@@ -181,7 +176,12 @@ aws s3api create-bucket \
   --create-bucket-configuration LocationConstraint=us-gov-west-1 \
   --object-lock-enabled-for-bucket
 
-# Configure Object Lock retention (7 years for FedRAMP)
+# Enable versioning (required for Object Lock retention)
+aws s3api put-bucket-versioning \
+  --bucket fedramp-audit-logs-immutable \
+  --versioning-configuration Status=Enabled
+
+# Configure Object Lock retention for the organization-defined audit retention period
 aws s3api put-object-lock-configuration \
   --bucket fedramp-audit-logs-immutable \
   --object-lock-configuration '{
@@ -193,11 +193,6 @@ aws s3api put-object-lock-configuration \
       }
     }
   }'
-
-# Enable versioning (required for Object Lock)
-aws s3api put-bucket-versioning \
-  --bucket fedramp-audit-logs-immutable \
-  --versioning-configuration Status=Enabled
 ```
 
 ## Implementing SC-7 Boundary Protection
@@ -233,11 +228,10 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # Allow only to approved external endpoints
+    # Allow only to approved external endpoint CIDRs
     - to:
-        - podSelector:
-            matchLabels:
-              component: api-gateway
+        - ipBlock:
+            cidr: 203.0.113.0/24
       ports:
         - protocol: TCP
           port: 443
@@ -273,7 +267,7 @@ spec:
             - port: "8080"
               protocol: TCP
 
-    # Block all other egress
+    # Allow approved .gov egress; all other egress is denied by policy enforcement
     - toFQDNs:
         - matchPattern: "*.gov"
       toPorts:
@@ -399,6 +393,12 @@ data:
          -d @-"
 
   fedramp_rules.yaml: |
+    - list: approved_processes
+      items: [nginx, envoy, node, python, java]
+
+    - list: approved_admin_users
+      items: [root]
+
     # SI-4(2): Automated tools for real-time analysis
     - rule: Unauthorized Process Launched
       desc: Detect processes not in approved baseline
@@ -426,7 +426,9 @@ data:
       desc: Monitor access to sensitive configuration files
       condition: >
         open_read and
-        fd.name in (/etc/shadow, /etc/passwd, /etc/kubernetes/pki/*)
+        (fd.name = /etc/shadow or
+         fd.name = /etc/passwd or
+         fd.name startswith /etc/kubernetes/pki/)
       output: >
         Sensitive file accessed (user=%user.name
         file=%fd.name process=%proc.name)
@@ -485,7 +487,7 @@ echo "- Monitoring: $(kubectl get pods -n falco -l app=falco --field-selector=st
 
 ## Continuous Compliance Monitoring
 
-Implement automated compliance scanning using OSCAP:
+Implement automated node compliance scanning using an approved OpenSCAP scanner image:
 
 ```yaml
 # fedramp-compliance-scan.yaml
@@ -502,14 +504,14 @@ spec:
         spec:
           containers:
           - name: oscap-scan
-            image: openshift/oscap:latest
+            image: registry.redhat.io/compliance/openshift-compliance-openscap-rhel8:latest
             command:
             - /bin/bash
             - -c
             - |
-              # Run SCAP scan against FedRAMP baseline
+              # Run SCAP scan against an approved RHEL 8 profile selected for this environment
               oscap xccdf eval \
-                --profile xccdf_gov.nist_profile_NIST-800-53-moderate \
+                --profile "${PROFILE_ID:-xccdf_org.ssgproject.content_profile_ospp}" \
                 --results /reports/scan-results-$(date +%Y%m%d).xml \
                 --report /reports/scan-report-$(date +%Y%m%d).html \
                 /usr/share/xml/scap/ssg/content/ssg-rhel8-ds.xml
