@@ -8,7 +8,7 @@ Description: Learn how to implement rate limiting in CoreDNS to protect your Kub
 
 ---
 
-DNS query floods can overwhelm your Kubernetes cluster's DNS infrastructure, leading to service degradation or complete DNS resolution failure. CoreDNS, the default DNS server in Kubernetes, provides built-in rate limiting capabilities through the ratelimit plugin. Implementing proper rate limiting protects your infrastructure from both accidental query storms and malicious DNS abuse.
+DNS query floods can overwhelm your Kubernetes cluster's DNS infrastructure, leading to service degradation or complete DNS resolution failure. CoreDNS, the default DNS server in Kubernetes, can provide rate limiting through the external rrl plugin when you build a CoreDNS image that includes it. Implementing proper rate limiting protects your infrastructure from both accidental query storms and malicious DNS abuse.
 
 ## Understanding DNS Query Floods
 
@@ -16,9 +16,9 @@ DNS query floods occur when a single client or group of clients sends an excessi
 
 In Kubernetes environments, DNS query floods become particularly problematic because CoreDNS runs as a pod with limited resources. When CoreDNS pods become overwhelmed, they can't serve legitimate DNS requests, causing application failures across the cluster.
 
-## Installing the CoreDNS Ratelimit Plugin
+## Installing the CoreDNS RRL Plugin
 
-The ratelimit plugin is included in standard CoreDNS builds used in Kubernetes. You can verify its availability by checking your CoreDNS configuration.
+The rrl plugin is not included in standard CoreDNS releases or the default CoreDNS images used in Kubernetes. To use it, build a CoreDNS image with `rrl:github.com/coredns/rrl` added near the top of `plugin.cfg`, then deploy that image for your CoreDNS pods.
 
 First, check your current CoreDNS configuration:
 
@@ -26,11 +26,11 @@ First, check your current CoreDNS configuration:
 kubectl get configmap coredns -n kube-system -o yaml
 ```
 
-The output shows your current Corefile configuration. To add rate limiting, you'll edit this ConfigMap.
+The output shows your current Corefile configuration. After deploying a CoreDNS image that includes the rrl plugin, you'll edit this ConfigMap to enable rate limiting.
 
 ## Basic Rate Limiting Configuration
 
-The ratelimit plugin uses a token bucket algorithm to control query rates. Each client receives a certain number of tokens, and each query consumes one token. Tokens refill at a specified rate.
+The rrl plugin tracks request and response rates by client IP prefix. For request limiting, each client prefix receives a per-second allowance, and queries beyond that allowance are dropped.
 
 Here's a basic rate limiting configuration:
 
@@ -53,8 +53,10 @@ data:
             fallthrough in-addr.arpa ip6.arpa
             ttl 30
         }
-        # Rate limiting: 100 queries per second per IP
-        ratelimit 100
+        # Request rate limiting: 100 queries per second per client prefix
+        rrl . {
+            requests-per-second 100
+        }
         prometheus :9153
         forward . /etc/resolv.conf {
             max_concurrent 1000
@@ -66,11 +68,11 @@ data:
     }
 ```
 
-This configuration limits each client IP to 100 queries per second. Queries beyond this limit receive a REFUSED response.
+This configuration limits each client IP prefix to 100 queries per second. Queries beyond this limit are dropped without a DNS response.
 
 ## Advanced Rate Limiting Strategies
 
-For production environments, you need more sophisticated rate limiting that accounts for different query types and client behaviors.
+For production environments, you need more sophisticated rate limiting that accounts for different zones and client behaviors.
 
 ### Per-Zone Rate Limiting
 
@@ -90,7 +92,9 @@ data:
         health
         ready
         # Limit external queries to 50 per second
-        ratelimit 50
+        rrl . {
+            requests-per-second 50
+        }
         forward . 8.8.8.8 8.8.4.4
         cache 300
     }
@@ -99,7 +103,9 @@ data:
     cluster.local:53 {
         errors
         # Allow 200 queries per second for cluster internal
-        ratelimit 200
+        rrl cluster.local {
+            requests-per-second 200
+        }
         kubernetes cluster.local in-addr.arpa ip6.arpa {
             pods insecure
             fallthrough in-addr.arpa ip6.arpa
@@ -111,31 +117,33 @@ data:
 
 This configuration applies stricter limits to external DNS queries while allowing higher rates for internal cluster DNS resolution.
 
-## Configuring Sliding Window Rate Limiting
+## Configuring Rolling Window Rate Limiting
 
-The ratelimit plugin supports sliding window rate limiting, which provides smoother rate control:
+The rrl plugin supports a rolling window for rate tracking:
 
 ```yaml
-ratelimit 100 {
-    window 10s
+rrl . {
+    window 10
+    requests-per-second 100
 }
 ```
 
-This configuration allows 100 queries per 10-second sliding window, preventing burst traffic patterns from bypassing rate limits.
+This configuration allows 100 queries per second and tracks rate-limit balances over a 10-second rolling window, limiting how long a client remains blocked after exceeding the rate.
 
-## Implementing Whitelist and Blacklist
+## Configuring Client Prefixes and Report-Only Mode
 
-You can exempt trusted clients from rate limiting or apply stricter limits to known problematic clients:
+You can tune how clients are grouped for rate limiting and test the configuration before dropping traffic:
 
 ```yaml
-ratelimit 100 {
-    # Exempt monitoring systems from rate limiting
-    whitelist 10.0.0.0/8
-    whitelist 172.16.0.0/12
+rrl . {
+    requests-per-second 100
+    ipv4-prefix-length 32
+    ipv6-prefix-length 128
+    report-only
 }
 ```
 
-This configuration exempts RFC1918 private networks from rate limiting, which is useful for trusted internal services.
+This configuration tracks individual IPv4 and IPv6 addresses instead of the default `/24` IPv4 and `/56` IPv6 prefixes. `report-only` records metrics without dropping queries, which is useful for validating limits before enforcement.
 
 ## Monitoring Rate Limiting Effectiveness
 
@@ -145,7 +153,7 @@ CoreDNS exposes Prometheus metrics that help you monitor rate limiting behavior.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: coredns-ratelimit
+  name: coredns-rrl
   namespace: kube-system
 spec:
   selector:
@@ -158,14 +166,15 @@ spec:
 
 Key metrics to monitor include:
 
-- `coredns_ratelimit_dropped_total`: Total number of queries dropped due to rate limiting
+- `coredns_rrl_requests_exceeded_total`: Total number of requests exceeding the configured request rate limit
+- `coredns_rrl_responses_exceeded_total`: Total number of responses exceeding configured response rate limits
 - `coredns_dns_requests_total`: Total DNS requests received
 - `coredns_dns_responses_total`: Total DNS responses sent
 
 You can query these metrics to identify clients triggering rate limits:
 
 ```promql
-rate(coredns_ratelimit_dropped_total[5m]) > 0
+rate(coredns_rrl_requests_exceeded_total[5m]) > 0
 ```
 
 ## Creating Alerts for Rate Limit Events
@@ -176,24 +185,24 @@ Set up Prometheus alerts to notify you when rate limiting activates frequently:
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: coredns-ratelimit-alerts
+  name: coredns-rrl-alerts
   namespace: kube-system
 spec:
   groups:
-  - name: coredns-ratelimit
+  - name: coredns-rrl
     interval: 30s
     rules:
     - alert: CoreDNSRateLimitHigh
-      expr: rate(coredns_ratelimit_dropped_total[5m]) > 10
+      expr: rate(coredns_rrl_requests_exceeded_total[5m]) > 10
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "CoreDNS is dropping queries due to rate limiting"
-        description: "CoreDNS has dropped {{ $value }} queries per second in the last 5 minutes"
+        summary: "CoreDNS requests are exceeding the configured RRL limit"
+        description: "CoreDNS has seen {{ $value }} requests per second exceed the configured RRL limit in the last 5 minutes"
 ```
 
-This alert fires when CoreDNS drops more than 10 queries per second for 5 minutes, indicating a potential query flood.
+This alert fires when more than 10 queries per second exceed the configured request rate limit for 5 minutes, indicating a potential query flood.
 
 ## Testing Rate Limiting Configuration
 
@@ -202,7 +211,7 @@ Before deploying rate limiting to production, test your configuration to ensure 
 Create a test pod that generates DNS queries:
 
 ```bash
-kubectl run dns-test --image=busybox --restart=Never -- sh -c '
+kubectl run dns-test --image=busybox --restart=Never --command -- sh -c '
   while true; do
     nslookup kubernetes.default.svc.cluster.local
     sleep 0.01
@@ -214,27 +223,24 @@ Monitor CoreDNS metrics to verify that rate limiting activates:
 
 ```bash
 kubectl port-forward -n kube-system svc/kube-dns 9153:9153
-curl http://localhost:9153/metrics | grep ratelimit
+curl http://localhost:9153/metrics | grep coredns_rrl
 ```
 
-You should see the `coredns_ratelimit_dropped_total` counter incrementing when the test pod exceeds your configured rate limit.
+You should see the `coredns_rrl_requests_exceeded_total` counter incrementing when the test pod exceeds your configured rate limit.
 
 ## Optimizing Rate Limit Values
 
 Choosing appropriate rate limit values requires understanding your cluster's normal DNS query patterns. Start by monitoring DNS query rates without rate limiting enabled:
 
-```bash
-# Get average queries per second
-
-kubectl logs -n kube-system -l k8s-app=kube-dns --tail=10000 | \
-  grep -o 'NOERROR\|NXDOMAIN\|SERVFAIL' | wc -l
+```promql
+sum(rate(coredns_dns_requests_total[5m]))
 ```
 
-Set your initial rate limit to 2-3 times the observed peak traffic, then gradually reduce it while monitoring for false positives.
+Set your initial rate limit to 2-3 times the observed peak traffic per client or client prefix, then gradually reduce it while monitoring for false positives.
 
 ## Handling Rate Limit Responses
 
-Applications should handle DNS rate limiting gracefully. When CoreDNS returns a REFUSED response, applications should implement exponential backoff:
+Applications should handle DNS rate limiting gracefully. When CoreDNS drops a query and the lookup times out or fails temporarily, applications should implement exponential backoff:
 
 ```go
 package main
