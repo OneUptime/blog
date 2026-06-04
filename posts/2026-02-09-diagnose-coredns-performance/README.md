@@ -53,7 +53,7 @@ curl http://localhost:9153/metrics | grep coredns
 # coredns_dns_request_duration_seconds - query latency
 # coredns_dns_requests_total - total requests
 # coredns_dns_responses_total - responses by status
-# coredns_cache_hits_total - cache effectiveness
+# coredns_cache_hits_total and coredns_cache_requests_total - cache effectiveness
 ```
 
 High request latency (p95 or p99) indicates performance problems. Low cache hit rates mean CoreDNS must forward most queries upstream, increasing load.
@@ -160,7 +160,7 @@ kubectl edit configmap coredns -n kube-system
 #       pods insecure
 #       fallthrough in-addr.arpa ip6.arpa
 #     }
-#     cache 30  # Cache for 30 seconds
+#     cache 30  # Cache records for up to 30 seconds
 #     forward . /etc/resolv.conf
 #     reload
 # }
@@ -175,7 +175,7 @@ Check cache effectiveness:
 kubectl exec -n kube-system coredns-xxx -- wget -qO- localhost:9153/metrics | \
   grep coredns_cache
 
-# Calculate hit rate: hits / (hits + misses)
+# Calculate hit rate: coredns_cache_hits_total / coredns_cache_requests_total
 ```
 
 A cache hit rate above 80% indicates effective caching. Below 50% suggests cache configuration problems or query patterns that bypass the cache.
@@ -196,8 +196,8 @@ kubectl edit configmap coredns -n kube-system
 # }
 
 # max_concurrent: maximum parallel upstream queries
-# expire: how long to cache upstream responses
-# policy: sequential or random (sequential tries servers in order)
+# expire: how long to keep cached upstream connections
+# policy: random, round_robin, or sequential (sequential tries servers in order)
 ```
 
 If your upstream DNS servers are slow, consider adding more servers or using faster alternatives like 8.8.8.8 or 1.1.1.1:
@@ -237,17 +237,26 @@ Common causes of excessive queries include applications without DNS caching, mis
 NodeLocal DNSCache runs a DNS cache on each node, reducing CoreDNS load:
 
 ```bash
-# Deploy NodeLocal DNSCache
-kubectl apply -f https://k8s.io/examples/admin/dns/nodelocaldns.yaml
+# Download the sample manifest, then substitute the placeholder values
+curl -o nodelocaldns.yaml https://k8s.io/examples/admin/dns/nodelocaldns.yaml
+
+kubedns=$(kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}')
+domain=cluster.local
+localdns=169.254.20.10
+
+# For kube-proxy in iptables mode
+sed -i "s/__PILLAR__LOCAL__DNS__/$localdns/g; s/__PILLAR__DNS__DOMAIN__/$domain/g; s/__PILLAR__DNS__SERVER__/$kubedns/g" nodelocaldns.yaml
+
+kubectl create -f nodelocaldns.yaml
 
 # Verify DaemonSet is running
 kubectl get daemonset node-local-dns -n kube-system
 
-# Check if pods are using local cache
+# Check local cache pods are running
 kubectl get pods -n kube-system -l k8s-app=node-local-dns
 ```
 
-NodeLocal DNSCache intercepts DNS queries on each node and serves them from a local cache. Only cache misses go to CoreDNS, dramatically reducing CoreDNS load.
+NodeLocal DNSCache handles DNS queries on each node and serves them from a local cache. For cluster DNS names, cache misses go to CoreDNS, dramatically reducing CoreDNS load.
 
 After deploying NodeLocal DNSCache, monitor CoreDNS metrics. You should see query rates drop significantly.
 
@@ -263,20 +272,22 @@ kubectl exec -n kube-system coredns-xxx -- wget -qO- localhost:9153/metrics > co
 grep coredns_dns_requests_total coredns-metrics.txt
 
 # Look for:
-# - Most queried domains
 # - Query types (A, AAAA, SRV)
+# - Protocol and address family
 # - Success vs error rates
 ```
 
-If you see many queries for external domains, ensure the forward plugin is configured efficiently. If you see many failed queries for non-existent names, investigate why applications are looking up invalid names.
+Use query logs when you need per-domain detail. If you see many queries for external domains, ensure the forward plugin is configured efficiently. If you see many failed queries for non-existent names, investigate why applications are looking up invalid names.
 
 ## Detecting DNS Amplification
 
 DNS amplification attacks or bugs can overwhelm CoreDNS:
 
 ```bash
-# Look for unusually large responses
-kubectl logs -n kube-system -l k8s-app=kube-dns | grep -i "response.*large"
+# Enable query logging with response sizes, then look for unusually large responses
+# log . "{remote} {name} {type} {rcode} {rsize} {duration}"
+kubectl logs -n kube-system -l k8s-app=kube-dns | \
+  awk '{ for (i = 1; i <= NF; i++) if ($i + 0 > 4096) print }'
 
 # Check response sizes in metrics
 kubectl exec -n kube-system coredns-xxx -- wget -qO- localhost:9153/metrics | \
@@ -293,8 +304,8 @@ Benchmark DNS performance to measure improvements:
 # Create a test pod
 kubectl run dns-test --rm -it --image=nicolaka/netshoot -- bash
 
-# Inside the pod, install dnsperf
-apk add bind-tools
+# Inside the pod, verify DNS tools are available
+which nslookup
 
 # Create a query file
 cat > queries.txt << EOF
@@ -317,12 +328,12 @@ Set up continuous monitoring to detect issues early:
 
 ```bash
 # Check CoreDNS health endpoint
-kubectl port-forward -n kube-system svc/kube-dns 8080:8080
+kubectl port-forward -n kube-system deployment/coredns 8080:8080
 
 curl http://localhost:8080/health
 
 # Set up readiness and liveness probes (should be default)
-kubectl get deployment coredns -n kube-system -o yaml | grep -A10 probes
+kubectl get deployment coredns -n kube-system -o yaml | grep -A10 -E 'livenessProbe|readinessProbe'
 ```
 
 Integrate CoreDNS metrics into your monitoring system (Prometheus, Grafana) with alerts for:
