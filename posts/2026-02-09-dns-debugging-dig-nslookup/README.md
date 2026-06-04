@@ -14,7 +14,7 @@ DNS issues are common in Kubernetes environments, affecting service discovery an
 
 Kubernetes uses CoreDNS (or kube-dns in older versions) to provide DNS services. Every service gets a DNS name following the pattern: `service-name.namespace.svc.cluster.local`
 
-Pods also get DNS names: `pod-ip-address.namespace.pod.cluster.local` (with dashes instead of dots in the IP).
+Some cluster DNS setups also provide pod DNS names: `pod-ip-address.namespace.pod.cluster.local` (with dashes instead of dots in the IP).
 
 ## Setting Up DNS Debugging Tools
 
@@ -113,7 +113,7 @@ Verify Kubernetes service DNS:
 
 ```bash
 # Test service in same namespace
-dig +short myservice
+dig +short +search myservice
 
 # Test service in different namespace
 dig +short myservice.production.svc.cluster.local
@@ -121,7 +121,7 @@ dig +short myservice.production.svc.cluster.local
 # Test headless service (returns pod IPs)
 dig +short myservice-headless.default.svc.cluster.local
 
-# Query SRV records for port information
+# Query SRV records for named ports
 dig SRV _http._tcp.myservice.default.svc.cluster.local
 ```
 
@@ -154,12 +154,12 @@ kubectl exec dnstools -- cat /etc/resolv.conf
 Understand search domains:
 
 ```bash
-# With search domains, these are equivalent:
-dig myservice
+# With search domains enabled, these are equivalent:
+dig +search myservice
 dig myservice.default.svc.cluster.local
 
-# Test each search domain explicitly
-dig myservice.default.svc.cluster.local +search
+# Test search domain expansion explicitly
+dig +search myservice
 ```
 
 ## Querying Specific DNS Servers
@@ -174,7 +174,7 @@ dig @10.96.0.10 myservice.default.svc.cluster.local
 dig @8.8.8.8 google.com
 
 # Compare responses
-dig @10.96.0.10 +short myservice
+dig @10.96.0.10 +short myservice.default.svc.cluster.local
 dig @8.8.4.4 +short myservice  # Should fail for internal services
 ```
 
@@ -209,11 +209,11 @@ dig kubernetes.default.svc.cluster.local
 
 ```bash
 # Measure query time
-dig myservice | grep "Query time"
+dig +search myservice | grep "Query time"
 
 # Test multiple times
 for i in {1..10}; do
-  dig myservice | grep "Query time"
+  dig +search myservice | grep "Query time"
 done
 
 # Check CoreDNS performance
@@ -237,23 +237,23 @@ kubectl exec -n kube-system -it <coredns-pod> -- cat /etc/resolv.conf
 
 ### Trace DNS Resolution
 
-Use dig trace to see full resolution path:
+Use dig trace to see the public DNS resolution path:
 
 ```bash
 # Trace resolution
-dig +trace myservice.default.svc.cluster.local
+dig +trace google.com
 
-# This shows each step in the DNS hierarchy
+# This shows each step in the public DNS hierarchy
 ```
 
 ### Check DNS Cache
 
 ```bash
-# Query with no cache
-dig +noall +answer myservice
+# Show answer records and TTLs
+dig +noall +answer myservice.default.svc.cluster.local
 
-# Disable cache and query again
-dig +nocache myservice
+# Query again and compare TTLs to understand caching behavior
+dig +noall +answer myservice.default.svc.cluster.local
 ```
 
 ### Inspect DNSSEC
@@ -287,14 +287,11 @@ kubectl get configmap coredns -n kube-system -o yaml
 Test CoreDNS directly:
 
 ```bash
-# Get CoreDNS pod name
-COREDNS_POD=$(kubectl get pods -n kube-system -l k8s-app=kube-dns -o name | head -1)
+# Get CoreDNS service IP
+COREDNS_IP=$(kubectl get svc -n kube-system kube-dns -o jsonpath='{.spec.clusterIP}')
 
-# Exec into CoreDNS pod
-kubectl exec -it -n kube-system $COREDNS_POD -- /bin/sh
-
-# Test resolution from CoreDNS pod
-nslookup kubernetes.default.svc.cluster.local localhost
+# Test resolution against CoreDNS from the debug pod
+kubectl exec dnstools -- nslookup kubernetes.default.svc.cluster.local $COREDNS_IP
 ```
 
 ## Testing Pod DNS
@@ -308,7 +305,7 @@ POD_IP=$(kubectl get pod myapp-pod -o jsonpath='{.status.podIP}')
 # Convert to DNS format (replace . with -)
 POD_DNS=$(echo $POD_IP | tr '.' '-')
 
-# Query pod DNS
+# Query pod DNS if your cluster DNS supports pod records
 dig $POD_DNS.default.pod.cluster.local
 
 # From another pod
@@ -320,7 +317,7 @@ kubectl exec dnstools -- dig $POD_DNS.default.pod.cluster.local
 Test different DNS policies:
 
 ```yaml
-# Default - uses cluster DNS
+# Default - inherits DNS settings from the node
 apiVersion: v1
 kind: Pod
 metadata:
@@ -416,9 +413,11 @@ Automated DNS testing:
 
 echo "=== Kubernetes DNS Test ==="
 
+DNS_SERVER=$(kubectl get svc -n kube-system kube-dns -o jsonpath='{.spec.clusterIP}')
+
 # Test cluster DNS
 echo -n "Cluster DNS (kubernetes.default): "
-if dig +short kubernetes.default.svc.cluster.local @10.96.0.10 > /dev/null; then
+if [ -n "$(dig +short kubernetes.default.svc.cluster.local @$DNS_SERVER)" ]; then
   echo "OK"
 else
   echo "FAILED"
@@ -434,7 +433,7 @@ echo "$SERVICES" | head -5 | while read svc; do
   NS=$(echo $svc | cut -d'.' -f2)
   echo -n "  $NAME.$NS: "
 
-  if dig +short $NAME.$NS.svc.cluster.local @10.96.0.10 > /dev/null; then
+  if [ -n "$(dig +short $NAME.$NS.svc.cluster.local @$DNS_SERVER)" ]; then
     echo "OK"
   else
     echo "FAILED"
@@ -444,7 +443,7 @@ done
 # Test external DNS
 echo ""
 echo -n "External DNS (google.com): "
-if dig +short google.com @10.96.0.10 > /dev/null; then
+if [ -n "$(dig +short google.com @$DNS_SERVER)" ]; then
   echo "OK"
 else
   echo "FAILED"
@@ -464,11 +463,11 @@ dig +time=2 +tries=1 myservice.default.svc.cluster.local
 dig +search myservice  # Uses search domains
 dig +nosearch myservice  # Doesn't use search domains
 
-# Monitor DNS traffic
-kubectl exec dnstools -- tcpdump -i any -n port 53 -w /tmp/dns.pcap
+# Monitor DNS traffic from a netshoot pod
+kubectl exec netdebug -- tcpdump -i any -n port 53 -w /tmp/dns.pcap
 
 # Analyze queries
-kubectl exec dnstools -- tcpdump -i any -n port 53 -A
+kubectl exec netdebug -- tcpdump -i any -n port 53 -A
 ```
 
 ## Common DNS Issues and Solutions
