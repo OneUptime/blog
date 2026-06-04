@@ -10,7 +10,7 @@ Description: A complete guide to Docker image commands for building, tagging, pu
 
 Docker images are the foundation of containers. Every container you run starts from an image. Managing these images well keeps your builds fast, your registries organized, and your disk space under control.
 
-The `docker image` command family replaces the older top-level commands like `docker rmi` and `docker images` with a more organized subcommand structure. This guide covers every subcommand with real examples.
+The `docker image` command family provides a more organized subcommand structure alongside older top-level commands like `docker rmi` and `docker images`. This guide covers the most common subcommands with real examples.
 
 ## Listing Images
 
@@ -28,7 +28,7 @@ Filter images by repository name:
 docker image ls nginx
 ```
 
-Show only dangling images (layers not referenced by any tagged image):
+Show only dangling images (untagged images not referenced by another tagged image):
 
 ```bash
 docker image ls --filter dangling=true
@@ -120,7 +120,7 @@ docker image inspect --format '{{json .RootFS.Layers}}' nginx:latest | jq .
 
 ## Viewing Image History
 
-See the layers that compose an image. This reveals every Dockerfile instruction that created each layer.
+See the history entries for an image. This reveals the commands used to create the image layers.
 
 Show the build history of an image:
 
@@ -270,7 +270,7 @@ Force removal even if containers reference the image:
 docker image rm --force my-app:old
 ```
 
-Remove all dangling images (untagged layers left over from builds):
+Remove all dangling images (untagged images left over from builds):
 
 ```bash
 docker image prune
