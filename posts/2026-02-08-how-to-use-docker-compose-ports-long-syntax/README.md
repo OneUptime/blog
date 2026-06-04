@@ -8,7 +8,7 @@ Description: Master Docker Compose ports long syntax for precise control over po
 
 ---
 
-Docker Compose supports two formats for publishing container ports: short syntax and long syntax. Most tutorials use the short syntax (`"8080:80"`), but it has limitations. The long syntax gives you explicit control over every aspect of port publishing: the host IP to bind to, the protocol, the port range, and the network mode. When you need anything beyond simple port mapping, long syntax is the way to go.
+Docker Compose supports two formats for publishing container ports: short syntax and long syntax. Most tutorials use the short syntax (`"8080:80"`), but it has limitations. The long syntax gives you explicit control over every aspect of port publishing: the host IP to bind to, the protocol, the host port range, and the Swarm publishing mode. When you need anything beyond simple port mapping, long syntax is the way to go.
 
 This guide covers the long syntax format in detail with practical examples for every common and advanced use case.
 
@@ -171,26 +171,26 @@ docker compose ps
 
 This is useful when running multiple instances of the same service and you do not care about specific host ports.
 
-## Port Ranges
+## Host Port Ranges
 
-Publish a range of ports:
+Publish a container port using an available host port from a range:
 
 ```yaml
-# docker-compose.yml - Port range publishing
+# docker-compose.yml - Host port range publishing
 services:
   media-server:
     image: media-server:latest
     ports:
-      # RTP media ports range
-      - target: 10000-10100
-        published: 10000-10100
+      # RTP media port published on an available host port in the range
+      - target: 10000
+        published: "10000-10100"
         protocol: udp
       # HTTP control port
       - target: 8080
         published: 8080
 ```
 
-The range must be the same size on both host and container sides.
+In long syntax, `target` is a single container port. The `published` range tells Compose to assign an available host port from that range.
 
 ## Swarm Mode: Host vs Ingress
 
@@ -400,8 +400,8 @@ After starting your services, verify the port bindings:
 # Show all port mappings for running services
 docker compose ps --format "table {{.Name}}\t{{.Ports}}"
 
-# Check specific port bindings with ss
-ss -tlnp | grep docker
+# Check specific TCP and UDP port bindings with ss
+ss -tulnp | grep docker
 
 # Verify binding to specific interfaces
 ss -tlnp | grep 127.0.0.1
