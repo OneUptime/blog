@@ -21,7 +21,7 @@ The Confluent Platform deployment includes:
 - Schema Registry (schema management and validation)
 - ksqlDB (stream processing with SQL)
 - Confluent Control Center (monitoring and management)
-- Kafka Connect (data integration)
+- Kafka Connect (optional data integration)
 
 Each component runs as a separate StatefulSet or Deployment, communicating over internal Kubernetes services.
 
@@ -70,11 +70,18 @@ spec:
         - containerPort: 2181
         - containerPort: 2888
         - containerPort: 3888
+        command:
+        - sh
+        - -c
+        - |
+          export ZOOKEEPER_SERVER_ID="${POD_NAME##*-}"
+          export ZOOKEEPER_SERVER_ID="$((ZOOKEEPER_SERVER_ID + 1))"
+          exec /etc/confluent/docker/run
         env:
-        - name: ZOOKEEPER_SERVER_ID
+        - name: POD_NAME
           valueFrom:
             fieldRef:
-              fieldPath: metadata.annotations['zookeeper.server.id']
+              fieldPath: metadata.name
         - name: ZOOKEEPER_CLIENT_PORT
           value: "2181"
         - name: ZOOKEEPER_TICK_TIME
@@ -117,8 +124,6 @@ spec:
   ports:
   - port: 9092
     name: internal
-  - port: 9093
-    name: external
   selector:
     app: kafka
 ---
@@ -143,18 +148,24 @@ spec:
         image: confluentinc/cp-kafka:7.5.0
         ports:
         - containerPort: 9092
-        - containerPort: 9093
+        command:
+        - sh
+        - -c
+        - |
+          export KAFKA_BROKER_ID="${POD_NAME##*-}"
+          export KAFKA_ADVERTISED_LISTENERS="INTERNAL://${POD_NAME}.kafka:9092"
+          exec /etc/confluent/docker/run
         env:
-        - name: KAFKA_BROKER_ID
+        - name: POD_NAME
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
         - name: KAFKA_ZOOKEEPER_CONNECT
           value: "zookeeper-0.zookeeper:2181,zookeeper-1.zookeeper:2181,zookeeper-2.zookeeper:2181"
-        - name: KAFKA_ADVERTISED_LISTENERS
-          value: "INTERNAL://:9092,EXTERNAL://:9093"
+        - name: KAFKA_LISTENERS
+          value: "INTERNAL://0.0.0.0:9092"
         - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
-          value: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
+          value: "INTERNAL:PLAINTEXT"
         - name: KAFKA_INTER_BROKER_LISTENER_NAME
           value: "INTERNAL"
         - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
@@ -233,12 +244,14 @@ spec:
         ports:
         - containerPort: 8081
         env:
-        - name: SCHEMA_REGISTRY_HOST_NAME
+        - name: POD_IP
           valueFrom:
             fieldRef:
-              fieldPath: metadata.name
+              fieldPath: status.podIP
+        - name: SCHEMA_REGISTRY_HOST_NAME
+          value: "$(POD_IP)"
         - name: SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS
-          value: "kafka-0.kafka:9092,kafka-1.kafka:9092,kafka-2.kafka:9092"
+          value: "PLAINTEXT://kafka-0.kafka:9092,PLAINTEXT://kafka-1.kafka:9092,PLAINTEXT://kafka-2.kafka:9092"
         - name: SCHEMA_REGISTRY_LISTENERS
           value: "http://0.0.0.0:8081"
         - name: SCHEMA_REGISTRY_KAFKASTORE_TOPIC
@@ -357,7 +370,7 @@ Register an Avro schema:
 ```python
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer
-from confluent_kafka import Producer
+from confluent_kafka import SerializingProducer
 
 # Schema Registry client
 
@@ -389,7 +402,7 @@ producer_conf = {
     'value.serializer': avro_serializer
 }
 
-producer = Producer(producer_conf)
+producer = SerializingProducer(producer_conf)
 
 # Produce message with schema validation
 user = {
@@ -551,7 +564,7 @@ spec:
 
 ## Monitoring the Stack
 
-Create comprehensive monitoring:
+After deploying JMX exporters and adding matching `monitoring: confluent` labels to the metrics Services, create comprehensive monitoring:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -564,7 +577,7 @@ spec:
     matchLabels:
       monitoring: confluent
   endpoints:
-  - port: jmx
+  - port: metrics
     interval: 30s
 ```
 
