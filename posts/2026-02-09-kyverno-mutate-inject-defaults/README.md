@@ -12,9 +12,9 @@ Kyverno mutate policies let you automatically modify resources during creation o
 
 ## Understanding Mutation Strategies
 
-Kyverno supports three mutation strategies. Strategic merge patches work like kubectl patch, merging values into existing structures. JSON patches use RFC 6902 operations for precise modifications. JSON Patch 6902 provides ordered operations for complex transformations.
+Kyverno `ClusterPolicy` mutate rules support two patch formats. Strategic merge patches work like kubectl patch, merging values into existing structures. JSON Patch 6902 uses RFC 6902 operations for precise, ordered modifications.
 
-Most use cases work well with strategic merge, which is the simplest approach. Use JSON patches when you need precise control over array elements or conditional logic based on existing values.
+Most use cases work well with strategic merge, which is the simplest approach. Use JSON patches when you need precise control over array elements, and use preconditions when JSON patch mutations need conditional logic based on existing values.
 
 ## Setting Up Your First Mutation Policy
 
@@ -31,7 +31,7 @@ metadata:
     policies.kyverno.io/description: >-
       Automatically add environment and team labels to all pods.
 spec:
-  background: false  # Mutations only work on new/updated resources
+  background: false
   rules:
     - name: add-labels
       match:
@@ -81,8 +81,8 @@ spec:
                       +(runAsNonRoot): true
                       +(allowPrivilegeEscalation): false
                       +(runAsUser): 1000
-                      +(capabilities):
-                        drop:
+                      capabilities:
+                        +(drop):
                           - ALL
 ```
 
@@ -117,10 +117,10 @@ spec:
                 containers:
                   - (name): "{{ element.name }}"
                     resources:
-                      +(limits):
+                      limits:
                         +(memory): "512Mi"
                         +(cpu): "500m"
-                      +(requests):
+                      requests:
                         +(memory): "256Mi"
                         +(cpu): "250m"
 ```
@@ -351,22 +351,21 @@ spec:
           - resources:
               kinds:
                 - Pod
-      preconditions:
-        all:
-          - key: "{{ request.object.spec.containers[].image }}"
-            operator: NotIn
-            value:
-              - "*registry.company.com*"
       mutate:
         foreach:
           - list: "request.object.spec.containers"
+            preconditions:
+              all:
+                - key: "{{ element.image }}"
+                  operator: NotEquals
+                  value: "registry.company.com/*"
             patchesJson6902: |-
               - path: "/spec/containers/{{elementIndex}}/image"
                 op: replace
                 value: "registry.company.com/{{ element.image }}"
 ```
 
-The precondition ensures the policy only runs when images don't already have the registry prefix. The JSON patch replaces the image with the prefixed version.
+The precondition ensures each loop iteration only runs when that container image does not already have the registry prefix. The JSON patch replaces the image with the prefixed version.
 
 ## Testing Mutation Policies
 
@@ -394,17 +393,17 @@ Look for the labels, security context, resource limits, or other values your pol
 
 ## Monitoring Mutation Activity
 
-Check Kyverno metrics to see how many resources are being mutated:
+Check Kyverno policy reports to see mutation rule results:
 
 ```bash
-# Get mutation counts
+# Get policy report summaries
 kubectl get policyreport -A
 
 # View detailed policy reports
 kubectl describe policyreport -n default
 ```
 
-High mutation counts might indicate policies that are too broad or developers who need better documentation about defaults.
+Policy reports show current rule results for matched resources. For historical execution counts and latency, use Kyverno's Prometheus metrics such as `kyverno_policy_results` and `kyverno_policy_execution_duration_seconds`.
 
 ## Conclusion
 
