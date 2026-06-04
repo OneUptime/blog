@@ -10,7 +10,7 @@ Description: Learn how to use init containers to decrypt secrets from external v
 
 While Kubernetes provides native secret management, many organizations require additional encryption layers for compliance or security policies. Init containers offer a secure pattern for decrypting secrets from external vaults like HashiCorp Vault, AWS Secrets Manager, or encrypted ConfigMaps before your application starts.
 
-This approach ensures that your application receives decrypted secrets only at runtime, never stores them in plain text in your cluster, and can rotate secrets without rebuilding container images. Init containers handle the complex authentication, decryption, and secret injection workflow before your main application starts.
+This approach ensures that your application receives decrypted secrets only at runtime, avoids storing them in plain text in the Kubernetes API or etcd, and can pick up rotated secrets when pods are restarted without rebuilding container images. Init containers handle the complex authentication, decryption, and secret injection workflow before your main application starts.
 
 ## Why Use Init Containers for Secret Decryption
 
@@ -18,7 +18,7 @@ Kubernetes secrets are base64-encoded by default, which provides no real encrypt
 
 Init containers separate secret management from application logic. Your application doesn't need to know how to authenticate with Vault or AWS. It simply reads decrypted secrets from a file or environment variable that the init container prepares.
 
-This pattern also enables dynamic secret rotation. Init containers can fetch short-lived credentials or dynamically generated passwords, improving security posture without requiring application changes.
+This pattern also enables rotation at pod startup. Init containers can fetch short-lived credentials or dynamically generated passwords, improving security posture without requiring application changes. For rotation while a pod is already running, use a sidecar or another refresh mechanism.
 
 ## Basic Vault Secret Decryption
 
@@ -314,9 +314,9 @@ spec:
 
 This deployment uses IRSA (IAM Roles for Service Accounts) to authenticate with AWS. The init container fetches secrets and writes them to an in-memory volume.
 
-## Decrypting Encrypted ConfigMaps with Mozilla SOPS
+## Decrypting Encrypted ConfigMaps with SOPS
 
-Mozilla SOPS allows encrypting configuration files that can be checked into version control. Init containers can decrypt them at runtime.
+SOPS allows encrypting configuration files that can be checked into version control. Init containers can decrypt them at runtime.
 
 ```yaml
 apiVersion: v1
@@ -326,6 +326,7 @@ metadata:
   namespace: default
 data:
   config.enc.yaml: |
+    # Replace this abbreviated example with real output from sops.
     apiVersion: ENC[AES256_GCM,data:Cl8=,iv:xxx,tag:xxx,type:str]
     kind: ENC[AES256_GCM,data:U2VjcmV0,iv:yyy,tag:yyy,type:str]
     metadata:
@@ -357,7 +358,7 @@ spec:
 
       initContainers:
       - name: sops-decrypt
-        image: mozilla/sops:v3.8.1
+        image: getsops/sops:v3.8.1
         command:
         - sh
         - -c
@@ -479,11 +480,6 @@ spec:
             --secret="api-keys" \
             --project="${PROJECT_ID}" > /secrets/api-keys.json
 
-          # Fetch service account key
-          gcloud secrets versions access latest \
-            --secret="service-account-key" \
-            --project="${PROJECT_ID}" > /secrets/service-account.json
-
           chmod 600 /secrets/*
 
           echo "Successfully fetched all secrets"
@@ -501,8 +497,6 @@ spec:
           value: "/secrets/database.json"
         - name: API_KEYS_FILE
           value: "/secrets/api-keys.json"
-        - name: GOOGLE_APPLICATION_CREDENTIALS
-          value: "/secrets/service-account.json"
         volumeMounts:
         - name: secrets
           mountPath: /secrets
@@ -521,7 +515,7 @@ spec:
           medium: Memory
 ```
 
-Workload Identity binds the Kubernetes service account to a GCP service account, enabling secure authentication to Secret Manager.
+Workload Identity binds the Kubernetes service account to a GCP service account, enabling secure authentication to Secret Manager without storing a service account key in the pod. On GKE Standard clusters, schedule this workload onto node pools that use the GKE metadata server.
 
 ## Custom Encryption with Age or GPG
 
@@ -534,8 +528,8 @@ metadata:
   name: decryption-key
   namespace: default
 type: Opaque
-data:
-  age-key: AGE-SECRET-KEY-1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ...
+stringData:
+  age-key: AGE-SECRET-KEY-1EXAMPLE1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ...
 ---
 apiVersion: v1
 kind: ConfigMap
