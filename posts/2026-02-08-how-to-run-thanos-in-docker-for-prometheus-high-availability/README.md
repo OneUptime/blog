@@ -115,8 +115,6 @@ Now create the `docker-compose.yml` that ties everything together.
 
 ```yaml
 # docker-compose.yml - Complete Thanos + Prometheus HA stack
-version: "3.8"
-
 services:
   # First Prometheus instance with Thanos sidecar
   prometheus-1:
@@ -130,6 +128,7 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.min-block-duration=2h"
       - "--storage.tsdb.max-block-duration=2h"
+      - "--web.enable-admin-api"
       - "--web.enable-lifecycle"
     ports:
       - "9091:9090"
@@ -166,6 +165,7 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.min-block-duration=2h"
       - "--storage.tsdb.max-block-duration=2h"
+      - "--web.enable-admin-api"
       - "--web.enable-lifecycle"
     ports:
       - "9092:9090"
@@ -198,9 +198,9 @@ services:
       - "query"
       - "--http-address=0.0.0.0:9090"
       - "--grpc-address=0.0.0.0:10901"
-      - "--store=thanos-sidecar-1:10901"
-      - "--store=thanos-sidecar-2:10901"
-      - "--store=thanos-store:10901"
+      - "--endpoint=thanos-sidecar-1:10901"
+      - "--endpoint=thanos-sidecar-2:10901"
+      - "--endpoint=thanos-store:10901"
       - "--query.replica-label=replica"
     ports:
       - "9090:9090"
