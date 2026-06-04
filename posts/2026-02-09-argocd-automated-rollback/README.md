@@ -8,17 +8,17 @@ Description: Learn how to configure automated rollback mechanisms in ArgoCD to a
 
 ---
 
-Automated rollbacks protect production systems from bad deployments. When a new version fails health checks or encounters errors during sync, ArgoCD can automatically revert to the previous working state. This guide shows you how to implement automated rollback strategies that keep your applications reliable while maintaining GitOps principles.
+Automated rollbacks protect production systems from bad deployments. When a new version fails health checks or encounters errors during sync, ArgoCD can revert to the previous working state with additional automation around its rollback and sync hooks. This guide shows you how to implement automated rollback strategies that keep your applications reliable while maintaining GitOps principles.
 
 ## Understanding ArgoCD Rollback Mechanisms
 
 ArgoCD tracks application history and can revert to previous versions. However, true GitOps requires Git as the single source of truth. Automated rollbacks must balance immediate recovery with maintaining Git integrity.
 
-ArgoCD provides several rollback approaches: manual rollbacks through the UI or CLI, automated rollbacks using sync hooks and health checks, and Git-based rollbacks that update the repository automatically.
+ArgoCD provides several rollback approaches: manual rollbacks through the UI or CLI, custom automation using sync hooks and health checks, and Git-based rollbacks that update the repository automatically.
 
 ## Rollback with Sync Failure Detection
 
-Configure applications to detect sync failures and trigger rollbacks:
+Configure applications to retry sync failures before invoking rollback automation:
 
 ```yaml
 # application-with-rollback.yaml
@@ -64,9 +64,11 @@ kind: Job
 metadata:
   name: health-check-rollback
   namespace: demo
+  labels:
+    rollback: "true"
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
 spec:
   backoffLimit: 0  # Don't retry, fail fast
   activeDeadlineSeconds: 300  # 5 minute timeout
@@ -124,9 +126,11 @@ kind: Job
 metadata:
   name: auto-rollback
   namespace: demo
+  labels:
+    rollback: "true"
   annotations:
     argocd.argoproj.io/hook: SyncFail
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
 spec:
   template:
     spec:
@@ -139,30 +143,25 @@ spec:
             - sh
             - -c
             - |
-              # Get previous successful revision
-              PREV_REVISION=$(argocd app history demo-app -o json | \
-                jq -r '.[] | select(.status=="Synced") | .revision' | \
-                head -n 1)
+              # ArgoCD does not allow rollback while automated sync is enabled.
+              argocd app patch demo-app \
+                --type merge \
+                --patch '{"spec":{"syncPolicy":{"automated":{"enabled":false}}}}'
 
-              if [ -z "$PREV_REVISION" ]; then
-                echo "No previous successful revision found"
-                exit 1
-              fi
+              # Omit the history ID to roll back to the previous deployed version.
+              argocd app rollback demo-app --prune
 
-              echo "Rolling back to revision: $PREV_REVISION"
-
-              # Perform rollback
-              argocd app rollback demo-app "$PREV_REVISION" --prune
-
-              echo "Rollback initiated to revision $PREV_REVISION"
+              echo "Rollback initiated to previous deployed version"
           env:
             - name: ARGOCD_SERVER
-              value: argocd-server:443
+              value: argocd-server.argocd.svc:443
             - name: ARGOCD_AUTH_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: argocd-token
                   key: token
+            - name: ARGOCD_OPTS
+              value: --insecure
 ```
 
 Create the service account with necessary permissions:
@@ -217,6 +216,8 @@ kind: Job
 metadata:
   name: git-rollback
   namespace: demo
+  labels:
+    rollback: "true"
   annotations:
     argocd.argoproj.io/hook: SyncFail
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
@@ -231,8 +232,10 @@ spec:
             - sh
             - -c
             - |
+              apk add --no-cache curl
+
               # Clone repository
-              git clone https://github.com/your-org/manifests /repo
+              git clone https://x-access-token:${GIT_TOKEN}@github.com/your-org/manifests /repo
               cd /repo
 
               # Configure git
@@ -257,16 +260,11 @@ spec:
                 -H 'Content-Type: application/json' \
                 -d "{\"text\":\"Automated rollback: reverted commit $FAILED_COMMIT due to deployment failure\"}"
           env:
-            - name: GIT_USERNAME
+            - name: GIT_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: git-credentials
-                  key: username
-            - name: GIT_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: git-credentials
-                  key: password
+                  key: token
 ```
 
 This approach maintains Git as the source of truth while providing automated recovery.
@@ -300,6 +298,8 @@ spec:
             - containerPort: 8080
   strategy:
     canary:
+      canaryService: demo-app-canary
+      stableService: demo-app-stable
       steps:
         - setWeight: 20
         - pause: {duration: 1m}
@@ -314,6 +314,8 @@ spec:
         istio:
           virtualService:
             name: demo-app
+            routes:
+              - primary
       analysis:
         templates:
           - templateName: success-rate
@@ -334,7 +336,7 @@ spec:
   metrics:
     - name: success-rate
       interval: 1m
-      successCondition: result >= 0.95
+      successCondition: result[0] >= 0.95
       failureLimit: 2
       provider:
         prometheus:
@@ -344,7 +346,7 @@ spec:
             sum(rate(http_requests_total{service="{{args.service-name}}"}[1m]))
     - name: error-rate
       interval: 1m
-      successCondition: result <= 0.05
+      successCondition: result[0] <= 0.05
       failureLimit: 2
       provider:
         prometheus:
@@ -369,7 +371,7 @@ metadata:
   namespace: argocd
 data:
   trigger.on-sync-failed-rollback: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [rollback-alert]
 
   template.rollback-alert: |
@@ -504,7 +506,7 @@ spec:
         maxDuration: 5m
 ```
 
-Different retry strategies provide environment-appropriate rollback behavior.
+Different retry strategies provide environment-appropriate failure handling before rollback automation runs.
 
 ## Rollback Metrics and Monitoring
 
@@ -514,12 +516,12 @@ Track rollback frequency and success:
 # Monitor rollback jobs
 kubectl get jobs -n demo -l rollback=true
 
-# Count rollback events
-kubectl get events -n demo --field-selector reason=RollbackTriggered
+# Inspect events for rollback jobs
+kubectl get events -n demo --field-selector involvedObject.kind=Job
 
-# Check ArgoCD application sync history
-argocd app history demo-app --output json | \
-  jq '.[] | select(.status=="Failed")'
+# Check failed ArgoCD sync operations through metrics
+kubectl port-forward svc/argocd-metrics -n argocd 8082:8082
+curl -s http://localhost:8082/metrics | grep 'argocd_app_sync_total{.*phase="Failed"'
 ```
 
 Set up alerts for high rollback frequency:
