@@ -12,7 +12,7 @@ Shared platform services like ingress controllers, monitoring stacks, and servic
 
 ## Understanding Shared Cost Allocation
 
-Shared services include ingress controllers handling traffic for all applications, monitoring stacks scraping metrics from all namespaces, service mesh data planes running sidecars in all pods, and centralized logging infrastructure. These costs must be allocated proportionally to users.
+Shared services include ingress controllers handling traffic for all applications, monitoring stacks scraping metrics from all namespaces, service mesh data planes running sidecars in injected pods, and centralized logging infrastructure. These costs must be allocated proportionally to users.
 
 ## Ingress Controller Cost Allocation
 
@@ -23,7 +23,6 @@ Allocate ingress costs based on request volume:
 # ingress-cost-allocation.py
 
 import requests
-from datetime import datetime, timedelta
 
 PROMETHEUS_URL = "http://prometheus.monitoring.svc:9090"
 INGRESS_MONTHLY_COST = 500  # Total monthly cost of ingress controller
@@ -55,21 +54,20 @@ def allocate_ingress_costs():
     print(f"Total monthly cost: ${INGRESS_MONTHLY_COST:.2f}")
     print(f"Total requests: {total_requests:,.0f}\n")
 
-    allocations = []
+    if total_requests == 0:
+        print("No ingress request metrics found")
+        return {}
+
+    allocated_costs = {}
     for namespace, requests in sorted(requests_by_ns.items(), key=lambda x: x[1], reverse=True):
         percentage = (requests / total_requests) * 100
         cost = (requests / total_requests) * INGRESS_MONTHLY_COST
 
-        allocations.append({
-            'namespace': namespace,
-            'requests': requests,
-            'percentage': percentage,
-            'allocated_cost': cost
-        })
+        allocated_costs[namespace] = cost
 
         print(f"{namespace:30} {requests:>12,.0f} {percentage:>6.2f}% ${cost:>8.2f}")
 
-    return allocations
+    return allocated_costs
 
 if __name__ == '__main__':
     allocate_ingress_costs()
@@ -89,8 +87,8 @@ PROMETHEUS_URL = "http://prometheus.monitoring.svc:9090"
 MONITORING_MONTHLY_COST = 1000
 
 def get_metrics_by_namespace():
-    """Get active metrics count per namespace"""
-    query = 'count({__name__=~".+"}) by (namespace)'
+    """Get active time series count per namespace"""
+    query = 'count by (namespace) ({namespace!=""})'
 
     response = requests.get(f'{PROMETHEUS_URL}/api/v1/query', params={'query': query})
     data = response.json()['data']['result']
@@ -106,37 +104,45 @@ def get_metrics_by_namespace():
 
     return metrics_by_ns, total_metrics
 
-def get_storage_by_namespace():
-    """Get time series storage per namespace"""
-    query = 'sum(prometheus_tsdb_symbol_table_size_bytes) by (namespace)'
+def get_samples_by_namespace():
+    """Get scraped sample count per namespace over the last 30 days"""
+    query = 'sum by (namespace) (count_over_time({namespace!=""}[30d]))'
 
     response = requests.get(f'{PROMETHEUS_URL}/api/v1/query', params={'query': query})
     data = response.json()['data']['result']
 
-    storage_by_ns = {}
+    samples_by_ns = {}
     for item in data:
         namespace = item['metric'].get('namespace', 'unknown')
-        bytes_used = float(item['value'][1])
-        storage_by_ns[namespace] = bytes_used
+        samples = float(item['value'][1])
+        samples_by_ns[namespace] = samples
 
-    return storage_by_ns
+    return samples_by_ns
 
 def allocate_monitoring_costs():
-    """Allocate monitoring costs based on metrics and storage"""
+    """Allocate monitoring costs based on time series volume"""
     metrics_by_ns, total_metrics = get_metrics_by_namespace()
-    storage_by_ns = get_storage_by_namespace()
+    samples_by_ns = get_samples_by_namespace()
 
     print("Monitoring Stack Cost Allocation")
     print("=" * 80)
 
+    if total_metrics == 0:
+        print("No namespace metrics found")
+        return {}
+
+    allocated_costs = {}
     for namespace in metrics_by_ns.keys():
         metrics_pct = (metrics_by_ns[namespace] / total_metrics) * 100
         cost = (metrics_by_ns[namespace] / total_metrics) * MONITORING_MONTHLY_COST
+        allocated_costs[namespace] = cost
 
-        storage_gb = storage_by_ns.get(namespace, 0) / (1024**3)
+        samples = samples_by_ns.get(namespace, 0)
 
         print(f"{namespace:25} Metrics: {metrics_by_ns[namespace]:>8.0f} ({metrics_pct:>5.2f}%) "
-              f"Storage: {storage_gb:>6.2f}GB Cost: ${cost:>8.2f}")
+              f"Samples: {samples:>12.0f} Cost: ${cost:>8.2f}")
+
+    return allocated_costs
 
 if __name__ == '__main__':
     allocate_monitoring_costs()
@@ -144,7 +150,7 @@ if __name__ == '__main__':
 
 ## Service Mesh Cost Allocation
 
-Allocate Istio/Linkerd costs based on sidecar count and traffic:
+Allocate Istio/Linkerd costs based on sidecar count:
 
 ```python
 #!/usr/bin/env python3
@@ -186,11 +192,19 @@ def allocate_service_mesh_costs():
     print("Service Mesh Cost Allocation")
     print("=" * 60)
 
+    if total_sidecars == 0:
+        print("No service mesh sidecars found")
+        return {}
+
+    allocated_costs = {}
     for namespace, count in sorted(sidecar_count.items(), key=lambda x: x[1], reverse=True):
         percentage = (count / total_sidecars) * 100
         cost = (count / total_sidecars) * SERVICE_MESH_MONTHLY_COST
+        allocated_costs[namespace] = cost
 
         print(f"{namespace:30} Sidecars: {count:>4} ({percentage:>5.2f}%) ${cost:>8.2f}")
+
+    return allocated_costs
 
 if __name__ == '__main__':
     allocate_service_mesh_costs()
@@ -210,8 +224,8 @@ LOKI_URL = "http://loki.logging.svc:3100"
 LOGGING_MONTHLY_COST = 600
 
 def get_log_volume_by_namespace():
-    """Query Loki for log volume per namespace"""
-    query = 'sum(rate({job=~".+"}[30d])) by (namespace)'
+    """Query Loki for log volume in bytes per namespace"""
+    query = 'sum by (namespace) (bytes_over_time({namespace=~".+"}[30d]))'
 
     response = requests.get(
         f'{LOKI_URL}/loki/api/v1/query',
@@ -225,9 +239,9 @@ def get_log_volume_by_namespace():
 
     for item in data:
         namespace = item['metric']['namespace']
-        rate = float(item['value'][1])
-        log_volume[namespace] = rate
-        total_volume += rate
+        bytes_used = float(item['value'][1])
+        log_volume[namespace] = bytes_used
+        total_volume += bytes_used
 
     return log_volume, total_volume
 
@@ -238,11 +252,20 @@ def allocate_logging_costs():
     print("Logging Infrastructure Cost Allocation")
     print("=" * 60)
 
+    if total_volume == 0:
+        print("No namespace log volume found")
+        return {}
+
+    allocated_costs = {}
     for namespace, volume in sorted(log_volume.items(), key=lambda x: x[1], reverse=True):
         percentage = (volume / total_volume) * 100
         cost = (volume / total_volume) * LOGGING_MONTHLY_COST
+        allocated_costs[namespace] = cost
 
-        print(f"{namespace:30} Volume: {volume:>10.2f} ({percentage:>5.2f}%) ${cost:>8.2f}")
+        volume_gb = volume / (1024**3)
+        print(f"{namespace:30} Volume: {volume_gb:>10.2f}GB ({percentage:>5.2f}%) ${cost:>8.2f}")
+
+    return allocated_costs
 
 if __name__ == '__main__':
     allocate_logging_costs()
@@ -341,9 +364,11 @@ spec:
           containers:
           - name: reporter
             image: cost-allocation-reporter:v1.0
-            env:
-            - name: REPORT_MONTH
-              value: "$(date -d 'last month' +%Y-%m)"
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              export REPORT_MONTH="$(date -u -d 'last month' +%Y-%m)"
+              /app/generate-report
           restartPolicy: OnFailure
 ```
 
