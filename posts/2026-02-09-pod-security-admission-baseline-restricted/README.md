@@ -18,21 +18,21 @@ Pod Security Standards define three levels of security restrictions:
 
 **Baseline**: Minimally restrictive policy preventing known privilege escalations. Prohibits hostNetwork, hostPID, hostIPC, and privileged containers but allows most common configurations.
 
-**Restricted**: Heavily restricted policy following security hardening best practices. Enforces runAsNonRoot, drops all capabilities, and requires read-only root filesystems.
+**Restricted**: Heavily restricted policy following security hardening best practices. Enforces runAsNonRoot, disables privilege escalation, requires a seccomp profile, and requires containers to drop all capabilities.
 
 Each profile represents a different balance between security and compatibility.
 
 ## Enabling Pod Security Admission
 
-PSA is enabled by default in Kubernetes 1.23+. Verify it's active:
+PSA was available by default in Kubernetes 1.23 as a beta feature and is generally available in Kubernetes 1.25+. Verify your cluster version and test admission behavior:
 
 ```bash
-# Check API server configuration
+# Check cluster version
+kubectl version
 
-kubectl api-resources | grep podsecurity
-
-# Verify admission controller is enabled
-kubectl get --raw /api/v1/namespaces/default | jq '.metadata.labels'
+# Dry-run a stricter label change to see how existing pods would be evaluated
+kubectl label --dry-run=server --overwrite ns default \
+  pod-security.kubernetes.io/enforce=baseline
 ```
 
 ## Applying Baseline Profile
@@ -99,7 +99,7 @@ spec:
       type: RuntimeDefault
   containers:
   - name: app
-    image: nginx:1.21
+    image: nginxinc/nginx-unprivileged:1.27
     securityContext:
       allowPrivilegeEscalation: false
       runAsNonRoot: true
@@ -114,19 +114,23 @@ spec:
       mountPath: /var/cache/nginx
     - name: run
       mountPath: /var/run
+    - name: tmp
+      mountPath: /tmp
   volumes:
   - name: cache
     emptyDir: {}
   - name: run
     emptyDir: {}
+  - name: tmp
+    emptyDir: {}
 ```
 
-This pod meets all restricted requirements:
+This pod meets restricted requirements and also uses a read-only root filesystem as an additional hardening setting:
 - Runs as non-root user
 - Drops all capabilities
 - Uses seccomp profile
 - Disables privilege escalation
-- Read-only root filesystem
+- Uses read-only root filesystem
 
 ## Mixed Enforcement Levels
 
@@ -296,18 +300,22 @@ The warn label encourages teams to work toward restricted compliance while not b
 
 ## Monitoring Pod Security Violations
 
-Check audit logs for violations:
+Check warnings, audit logs, and PSA metrics for violations:
 
 ```bash
-# View warnings from kubectl
-kubectl run test --image=nginx --privileged=true -n production
-# Warning: would violate PodSecurity "restricted:latest"
+# View warnings from kubectl in a namespace that warns on restricted violations
+kubectl run test --image=nginx -n staging
+# Warning: would violate PodSecurity "restricted:latest": allowPrivilegeEscalation != false, unrestricted capabilities, runAsNonRoot != true, seccompProfile
 
-# Check audit logs
-kubectl get events -n production | grep PodSecurity
+# Rejected when enforce is restricted
+kubectl run privileged-pod --image=nginx --privileged -n production
+# Error: pods "privileged-pod" is forbidden: violates PodSecurity "restricted:latest"
 
-# Query API server audit logs
-kubectl logs -n kube-system kube-apiserver-xxx | grep pod-security
+# Check Pod Security metrics exposed by kube-apiserver
+kubectl get --raw /metrics | grep '^pod_security_'
+
+# Query configured API server audit logs for PSA audit annotations
+grep pod-security.kubernetes.io /path/to/audit.log
 ```
 
 ## Automating Compliance Checks
