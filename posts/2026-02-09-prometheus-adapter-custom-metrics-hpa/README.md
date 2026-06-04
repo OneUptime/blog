@@ -37,6 +37,7 @@ helm repo update
 # Install Prometheus Adapter
 helm install prometheus-adapter prometheus-community/prometheus-adapter \
   --namespace monitoring \
+  --create-namespace \
   --set prometheus.url=http://prometheus-operated.monitoring.svc.cluster.local \
   --set prometheus.port=9090
 ```
@@ -75,7 +76,7 @@ rules:
           namespace: {resource: "namespace"}
           pod: {resource: "pod"}
       name:
-        matches: "^(.*)_total"
+        matches: "^(.*)_total$"
         as: "${1}_per_second"
       metricsQuery: |
         sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)
@@ -332,13 +333,13 @@ Use external metrics for scaling based on non-pod metrics:
 rules:
   external:
     # Scale based on total queue length (not per pod)
-    - seriesQuery: 'rabbitmq_queue_messages_ready'
+    - seriesQuery: 'rabbitmq_queue_messages_ready{queue!=""}'
       resources:
-        template: <<.Resource>>
+        namespaced: false
       name:
         as: "queue_messages_ready"
       metricsQuery: |
-        sum(<<.Series>>{queue="orders"})
+        sum(<<.Series>>{<<.LabelMatchers>>})
 ```
 
 HPA with external metric:
@@ -386,9 +387,13 @@ rules:
   resource:
     cpu:
       containerQuery: |
-        sum(rate(container_cpu_usage_seconds_total{<<.LabelMatchers>>,container!="",pod!=""}[3m])) by (<<.GroupBy>>)
+        sum by (<<.GroupBy>>) (
+          rate(container_cpu_usage_seconds_total{container!="",<<.LabelMatchers>>}[3m])
+        )
       nodeQuery: |
-        sum(rate(container_cpu_usage_seconds_total{<<.LabelMatchers>>,id='/'}[3m])) by (<<.GroupBy>>)
+        sum by (<<.GroupBy>>) (
+          rate(node_cpu_seconds_total{mode!="idle",mode!="iowait",mode!="steal",<<.LabelMatchers>>}[3m])
+        )
       resources:
         overrides:
           node: {resource: "node"}
@@ -398,15 +403,22 @@ rules:
 
     memory:
       containerQuery: |
-        sum(container_memory_working_set_bytes{<<.LabelMatchers>>,container!="",pod!=""}) by (<<.GroupBy>>)
+        sum by (<<.GroupBy>>) (
+          avg_over_time(container_memory_working_set_bytes{container!="",<<.LabelMatchers>>}[3m])
+        )
       nodeQuery: |
-        sum(container_memory_working_set_bytes{<<.LabelMatchers>>,id='/'}) by (<<.GroupBy>>)
+        sum by (<<.GroupBy>>) (
+          avg_over_time(node_memory_MemTotal_bytes{<<.LabelMatchers>>}[3m])
+          -
+          avg_over_time(node_memory_MemAvailable_bytes{<<.LabelMatchers>>}[3m])
+        )
       resources:
         overrides:
           node: {resource: "node"}
           namespace: {resource: "namespace"}
           pod: {resource: "pod"}
       containerLabel: container
+    window: 3m
 
   # Custom pod metrics
   custom:
@@ -417,7 +429,7 @@ rules:
           namespace: {resource: "namespace"}
           pod: {resource: "pod"}
       name:
-        matches: "^(.*)_total"
+        matches: "^(.*)_total$"
         as: "${1}_per_second"
       metricsQuery: |
         sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)
@@ -450,9 +462,9 @@ rules:
   # External metrics
   external:
     # Queue depth
-    - seriesQuery: 'rabbitmq_queue_messages_ready'
+    - seriesQuery: 'rabbitmq_queue_messages_ready{queue!=""}'
       resources:
-        template: <<.Resource>>
+        namespaced: false
       name:
         as: "queue_messages_ready"
       metricsQuery: |
@@ -461,7 +473,7 @@ rules:
     # Database connection pool
     - seriesQuery: 'pg_stat_database_connections'
       resources:
-        template: <<.Resource>>
+        namespaced: false
       name:
         as: "database_connections"
       metricsQuery: |
