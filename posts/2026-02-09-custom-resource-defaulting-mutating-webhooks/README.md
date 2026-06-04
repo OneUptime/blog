@@ -27,7 +27,6 @@ package main
 
 import (
     "encoding/json"
-    "fmt"
     "io"
     "net/http"
 
@@ -35,13 +34,16 @@ import (
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
     "k8s.io/apimachinery/pkg/runtime/serializer"
-    "k8s.io/klog/v2"
 )
 
 var (
     scheme = runtime.NewScheme()
     codecs = serializer.NewCodecFactory(scheme)
 )
+
+func init() {
+    _ = admissionv1.AddToScheme(scheme)
+}
 
 type DefaultingWebhook struct{}
 
@@ -118,13 +120,18 @@ func errorResponse(err error) *admissionv1.AdmissionResponse {
 Here's a complete example for an Application custom resource:
 
 ```go
+type ResourceRequirements struct {
+    Requests map[string]string `json:"requests,omitempty"`
+    Limits   map[string]string `json:"limits,omitempty"`
+}
+
 type ApplicationSpec struct {
-    Image    string            `json:"image"`
-    Replicas *int32            `json:"replicas,omitempty"`
-    Port     *int32            `json:"port,omitempty"`
-    Protocol string            `json:"protocol,omitempty"`
+    Image     string                `json:"image"`
+    Replicas  *int32                `json:"replicas,omitempty"`
+    Port      *int32                `json:"port,omitempty"`
+    Protocol  string                `json:"protocol,omitempty"`
     Resources *ResourceRequirements `json:"resources,omitempty"`
-    Labels   map[string]string `json:"labels,omitempty"`
+    Labels    map[string]string     `json:"labels,omitempty"`
 }
 
 func (w *DefaultingWebhook) applyDefaults(obj map[string]interface{}, kind string) []map[string]interface{} {
@@ -254,8 +261,11 @@ If you're using Kubebuilder, implement the Defaulter interface:
 package v1
 
 import (
-    "k8s.io/apimachinery/pkg/runtime"
+    "context"
+
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     ctrl "sigs.k8s.io/controller-runtime"
+    "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // +kubebuilder:object:root=true
@@ -270,15 +280,19 @@ type Application struct {
 }
 
 type ApplicationSpec struct {
-    Image     string            `json:"image"`
-    Replicas  *int32            `json:"replicas,omitempty"`
-    Port      *int32            `json:"port,omitempty"`
-    Protocol  string            `json:"protocol,omitempty"`
+    Image     string                `json:"image"`
+    Replicas  *int32                `json:"replicas,omitempty"`
+    Port      *int32                `json:"port,omitempty"`
+    Protocol  string                `json:"protocol,omitempty"`
     Resources *ResourceRequirements `json:"resources,omitempty"`
 }
 
+type ApplicationDefaulter struct{}
+
+var _ admission.Defaulter[*Application] = &ApplicationDefaulter{}
+
 // Implement the Defaulter interface
-func (a *Application) Default() {
+func (d *ApplicationDefaulter) Default(ctx context.Context, a *Application) error {
     // Set default replicas
     if a.Spec.Replicas == nil {
         replicas := int32(1)
@@ -309,11 +323,13 @@ func (a *Application) Default() {
             },
         }
     }
+
+    return nil
 }
 
 func (a *Application) SetupWebhookWithManager(mgr ctrl.Manager) error {
-    return ctrl.NewWebhookManagedBy(mgr).
-        For(a).
+    return ctrl.NewWebhookManagedBy(mgr, a).
+        WithDefaulter(&ApplicationDefaulter{}).
         Complete()
 }
 ```
@@ -470,7 +486,8 @@ func (w *DefaultingWebhook) applyDefaults(obj map[string]interface{}, kind strin
     patches := w.generatePatches(obj, kind)
 
     if len(patches) > 0 {
-        name, _ := obj["metadata"].(map[string]interface{})["name"].(string)
+        metadata, _ := obj["metadata"].(map[string]interface{})
+        name, _ := metadata["name"].(string)
         klog.Infof("Applied %d defaults to %s/%s", len(patches), kind, name)
 
         for _, patch := range patches {
