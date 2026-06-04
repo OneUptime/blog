@@ -27,20 +27,20 @@ For a topology visualization, we'll build a frontend-only plugin that queries Pr
 Initialize your plugin development environment:
 
 ```bash
-# Install Grafana plugin tools
-
-npm install -g @grafana/toolkit
-
 # Create plugin scaffold
-npx @grafana/create-plugin
+npx @grafana/create-plugin@latest
 
 # Follow prompts:
 # - Plugin name: kubernetes-topology
 # - Plugin type: panel
 # - Description: Kubernetes cluster topology visualization
+
+# Install dependencies in the generated plugin directory
+cd <your-plugin-directory>
+npm install
 ```
 
-This generates the basic plugin structure:
+After scaffolding the plugin and adding the topology files below, the plugin structure looks like this:
 
 ```text
 kubernetes-topology/
@@ -65,6 +65,11 @@ export interface KubernetesNode {
   type: 'node' | 'pod' | 'service' | 'deployment';
   namespace?: string;
   status: 'healthy' | 'warning' | 'error';
+  metadata?: {
+    nodeName?: string;
+    ownerName?: string;
+    labels?: Record<string, string>;
+  };
   metrics?: {
     cpu?: number;
     memory?: number;
@@ -103,7 +108,7 @@ Build the main React component for the topology panel:
 // src/TopologyPanel.tsx
 import React, { useEffect, useRef } from 'react';
 import { PanelProps } from '@grafana/data';
-import { TopologyOptions, TopologyData } from './types';
+import { TopologyOptions } from './types';
 import { renderTopologyGraph } from './topology/GraphRenderer';
 import { transformMetricsToTopology } from './topology/DataTransformer';
 
@@ -160,23 +165,44 @@ export function transformMetricsToTopology(
   series: DataFrame[],
   options: TopologyOptions
 ): TopologyData {
-  const nodes: KubernetesNode[] = [];
   const edges: KubernetesEdge[] = [];
   const nodeMap = new Map<string, KubernetesNode>();
+  const podStatuses = new Map<string, 'healthy' | 'warning' | 'error'>();
+  const podOwners = new Map<string, string>();
 
   // Process each metric series
   series.forEach(frame => {
-    const metric = frame.name || '';
+    const metric = getMetricName(frame);
 
     // Extract kube-state-metrics data
     if (metric.includes('kube_node_info')) {
       extractNodes(frame, nodeMap, options);
     } else if (metric.includes('kube_pod_info')) {
       extractPods(frame, nodeMap, options);
-    } else if (metric.includes('kube_service_info')) {
+    } else if (metric.includes('kube_pod_status_phase')) {
+      extractPodStatuses(frame, podStatuses);
+    } else if (metric.includes('kube_pod_owner')) {
+      extractPodOwners(frame, podOwners);
+    } else if (metric.includes('kube_pod_labels')) {
+      extractPodLabels(frame, nodeMap);
+    } else if (metric.includes('kube_service_labels')) {
       extractServices(frame, nodeMap, options);
     } else if (metric.includes('kube_deployment_labels')) {
       extractDeployments(frame, nodeMap, options);
+    }
+  });
+
+  podStatuses.forEach((status, podId) => {
+    const pod = nodeMap.get(podId);
+    if (pod) {
+      pod.status = status;
+    }
+  });
+
+  podOwners.forEach((ownerId, podId) => {
+    const pod = nodeMap.get(podId);
+    if (pod) {
+      pod.metadata = { ...pod.metadata, ownerName: ownerId };
     }
   });
 
@@ -190,7 +216,7 @@ export function transformMetricsToTopology(
       });
     }
 
-    if (node.type === 'pod' && node.metadata?.ownerName) {
+    if (node.type === 'pod' && node.metadata?.ownerName && nodeMap.has(node.metadata.ownerName)) {
       edges.push({
         source: node.metadata.ownerName,
         target: node.id,
@@ -198,10 +224,10 @@ export function transformMetricsToTopology(
       });
     }
 
-    if (node.type === 'service' && node.metadata?.podSelector) {
-      // Find matching pods and create edges
+    if (node.type === 'service' && node.metadata?.labels) {
+      // kube-state-metrics does not expose Service selectors; this uses common app labels as a convention.
       nodeMap.forEach(pod => {
-        if (pod.type === 'pod' && matchesSelector(pod, node.metadata.podSelector)) {
+        if (pod.type === 'pod' && matchesServiceLabels(pod, node)) {
           edges.push({
             source: node.id,
             target: pod.id,
@@ -218,6 +244,14 @@ export function transformMetricsToTopology(
   };
 }
 
+function getMetricName(frame: DataFrame): string {
+  return [frame.name, ...frame.fields.map(field => field.name)].filter(Boolean).join(' ');
+}
+
+function getResourceId(namespace: string | undefined, name: string): string {
+  return namespace ? `${namespace}/${name}` : name;
+}
+
 function extractPods(
   frame: DataFrame,
   nodeMap: Map<string, KubernetesNode>,
@@ -225,7 +259,7 @@ function extractPods(
 ): void {
   if (!options.showPods) return;
 
-  frame.fields.forEach((field, index) => {
+  frame.fields.forEach(field => {
     const labels = field.labels || {};
     const namespace = labels.namespace;
 
@@ -236,21 +270,78 @@ function extractPods(
 
     const podName = labels.pod;
     const nodeName = labels.node;
-    const phase = labels.phase || 'Unknown';
+    const podId = podName ? getResourceId(namespace, podName) : undefined;
 
-    if (podName && !nodeMap.has(podName)) {
-      nodeMap.set(podName, {
-        id: podName,
+    if (podName && podId && !nodeMap.has(podId)) {
+      nodeMap.set(podId, {
+        id: podId,
         name: podName,
         type: 'pod',
         namespace,
-        status: mapPodPhaseToStatus(phase),
+        status: 'warning',
         metadata: {
           nodeName,
-          ownerName: labels.created_by_name
         }
       });
     }
+  });
+}
+
+function extractPodStatuses(
+  frame: DataFrame,
+  podStatuses: Map<string, 'healthy' | 'warning' | 'error'>
+): void {
+  frame.fields.forEach(field => {
+    const labels = field.labels || {};
+    const podName = labels.pod;
+    const namespace = labels.namespace;
+    const phase = labels.phase;
+    const values = field.values as number[];
+    const value = values[values.length - 1];
+
+    if (podName && phase && value === 1) {
+      podStatuses.set(getResourceId(namespace, podName), mapPodPhaseToStatus(phase));
+    }
+  });
+}
+
+function extractPodOwners(
+  frame: DataFrame,
+  podOwners: Map<string, string>
+): void {
+  frame.fields.forEach(field => {
+    const labels = field.labels || {};
+    const podName = labels.pod;
+    const namespace = labels.namespace;
+    const ownerName = labels.owner_name;
+    const ownerKind = labels.owner_kind;
+    const isController = labels.owner_is_controller;
+
+    if (podName && ownerName && ownerKind === 'ReplicaSet' && isController !== 'false') {
+      const deploymentName = ownerName.replace(/-[a-f0-9]{8,10}$/, '');
+      podOwners.set(getResourceId(namespace, podName), getResourceId(namespace, deploymentName));
+    }
+  });
+}
+
+function extractPodLabels(
+  frame: DataFrame,
+  nodeMap: Map<string, KubernetesNode>
+): void {
+  frame.fields.forEach(field => {
+    const labels = field.labels || {};
+    const podName = labels.pod;
+    const namespace = labels.namespace;
+    const pod = podName ? nodeMap.get(getResourceId(namespace, podName)) : undefined;
+
+    if (!pod) {
+      return;
+    }
+
+    pod.metadata = {
+      ...pod.metadata,
+      labels: extractKubernetesLabels(labels, 'label_')
+    };
   });
 }
 
@@ -276,6 +367,72 @@ function extractNodes(
   });
 }
 
+function extractServices(
+  frame: DataFrame,
+  nodeMap: Map<string, KubernetesNode>,
+  options: TopologyOptions
+): void {
+  if (!options.showServices) return;
+
+  frame.fields.forEach(field => {
+    const labels = field.labels || {};
+    const namespace = labels.namespace;
+
+    if (options.namespaceFilter && namespace !== options.namespaceFilter) {
+      return;
+    }
+
+    const serviceName = labels.service;
+    const serviceId = serviceName ? getResourceId(namespace, serviceName) : undefined;
+
+    if (serviceName && serviceId && !nodeMap.has(serviceId)) {
+      nodeMap.set(serviceId, {
+        id: serviceId,
+        name: serviceName,
+        type: 'service',
+        namespace,
+        status: 'healthy',
+        metadata: {
+          labels: extractKubernetesLabels(labels, 'label_')
+        }
+      });
+    }
+  });
+}
+
+function extractDeployments(
+  frame: DataFrame,
+  nodeMap: Map<string, KubernetesNode>,
+  options: TopologyOptions
+): void {
+  if (!options.showDeployments) return;
+
+  frame.fields.forEach(field => {
+    const labels = field.labels || {};
+    const namespace = labels.namespace;
+
+    if (options.namespaceFilter && namespace !== options.namespaceFilter) {
+      return;
+    }
+
+    const deploymentName = labels.deployment;
+    const deploymentId = deploymentName ? getResourceId(namespace, deploymentName) : undefined;
+
+    if (deploymentName && deploymentId && !nodeMap.has(deploymentId)) {
+      nodeMap.set(deploymentId, {
+        id: deploymentId,
+        name: deploymentName,
+        type: 'deployment',
+        namespace,
+        status: 'healthy',
+        metadata: {
+          labels: extractKubernetesLabels(labels, 'label_')
+        }
+      });
+    }
+  });
+}
+
 function mapPodPhaseToStatus(phase: string): 'healthy' | 'warning' | 'error' {
   switch (phase.toLowerCase()) {
     case 'running':
@@ -290,9 +447,23 @@ function mapPodPhaseToStatus(phase: string): 'healthy' | 'warning' | 'error' {
   }
 }
 
-function matchesSelector(pod: KubernetesNode, selector: any): boolean {
-  // Implement label selector matching logic
-  return true; // Simplified
+function extractKubernetesLabels(labels: Record<string, string>, prefix: string): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(labels)
+      .filter(([key]) => key.startsWith(prefix))
+      .map(([key, value]) => [key.slice(prefix.length), value])
+  );
+}
+
+function matchesServiceLabels(pod: KubernetesNode, service: KubernetesNode): boolean {
+  const podLabels = pod.metadata?.labels || {};
+  const serviceLabels = service.metadata?.labels || {};
+  const appLabel = serviceLabels.app || serviceLabels['app_kubernetes_io_name'];
+
+  return Boolean(appLabel && (
+    podLabels.app === appLabel ||
+    podLabels['app_kubernetes_io_name'] === appLabel
+  ));
 }
 ```
 
@@ -327,7 +498,7 @@ export function renderTopologyGraph(
       g.attr('transform', event.transform);
     });
 
-  svg.call(zoom);
+  svg.call(zoom as any);
 
   const g = svg.append('g');
 
@@ -366,7 +537,7 @@ export function renderTopologyGraph(
     .selectAll('g')
     .data(data.nodes)
     .join('g')
-    .call(drag(simulation));
+    .call(drag(simulation) as any);
 
   // Add circles for nodes
   node.append('circle')
@@ -504,7 +675,7 @@ function getNamespaceColor(namespace: string | undefined): string {
     hash = namespace.charCodeAt(i) + ((hash << 5) - hash);
   }
 
-  const hue = hash % 360;
+  const hue = ((hash % 360) + 360) % 360;
   return `hsl(${hue}, 70%, 50%)`;
 }
 ```
@@ -587,13 +758,18 @@ npm run build
 npm run dev
 
 # Sign the plugin (required for production)
-npx @grafana/toolkit plugin:sign
+export GRAFANA_ACCESS_POLICY_TOKEN=<YOUR_ACCESS_POLICY_TOKEN>
+npm run sign
+
+# For a private plugin, include the Grafana root URL
+npm run sign -- --rootUrls https://example.com/grafana
 
 # Copy to Grafana plugins directory
-cp -r dist/ /var/lib/grafana/plugins/kubernetes-topology
+sudo rm -rf /var/lib/grafana/plugins/<your-plugin-id>
+sudo cp -r dist /var/lib/grafana/plugins/<your-plugin-id>
 
 # Restart Grafana
-systemctl restart grafana-server
+sudo systemctl restart grafana-server
 ```
 
 ## Creating a Dashboard with the Topology Plugin
@@ -606,9 +782,12 @@ kube_node_info
 
 # Query for pods
 kube_pod_info
+kube_pod_status_phase
+kube_pod_owner
+kube_pod_labels
 
 # Query for services
-kube_service_info
+kube_service_labels
 
 # Query for deployments
 kube_deployment_labels
