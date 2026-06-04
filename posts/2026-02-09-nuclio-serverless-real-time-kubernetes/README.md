@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Nuclio, Kubernetes, Serverless, Real-Time, Data-Processing
 
-Description: Deploy Nuclio on Kubernetes for high-performance serverless functions optimized for real-time data processing with sub-millisecond latency and GPU support.
+Description: Deploy Nuclio on Kubernetes for high-performance serverless functions optimized for real-time data processing with low latency and GPU support.
 
 ---
 
@@ -16,7 +16,7 @@ Nuclio achieves exceptional performance through several design choices. It keeps
 
 The platform supports multiple programming languages including Python, Go, Node.js, Java, and .NET. Functions can be deployed from source code, container images, or Jupyter notebooks. This flexibility enables data scientists and developers to use their preferred tools.
 
-Nuclio integrates deeply with data processing ecosystems. It includes built-in triggers for Kafka, Kinesis, MQTT, RabbitMQ, and HTTP. It supports GPU acceleration for TensorFlow and PyTorch models. It provides automatic parallelization for batch processing.
+Nuclio integrates deeply with data processing ecosystems. It includes built-in triggers for Kafka, Kinesis, MQTT, RabbitMQ, and HTTP. It supports GPU acceleration for TensorFlow and PyTorch models. It provides configurable worker concurrency and event batching for data processing.
 
 ## Installing Nuclio on Kubernetes
 
@@ -31,10 +31,20 @@ helm repo update
 # Create namespace
 kubectl create namespace nuclio
 
+# Create a registry secret that Nuclio can use to push and pull function images
+kubectl --namespace nuclio create secret docker-registry registry-credentials \
+  --docker-username <username> \
+  --docker-password <password> \
+  --docker-server <registry-url> \
+  --docker-email <email>
+
 # Install Nuclio
 helm install nuclio nuclio/nuclio \
   --namespace nuclio \
-  --set controller.image.tag=latest-amd64 \
+  --set registry.secretName=registry-credentials \
+  --set registry.pushPullUrl=<registry-url>/<repository> \
+  --set controller.image.tag=1.15.26-amd64 \
+  --set dashboard.image.tag=1.15.26-amd64 \
   --set dashboard.enabled=true \
   --set dashboard.baseImagePullPolicy=IfNotPresent
 
@@ -46,10 +56,17 @@ Install the Nuclio CLI:
 
 ```bash
 # Download nuctl
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+case "$ARCH" in
+  x86_64) ARCH=amd64 ;;
+  aarch64|arm64) ARCH=arm64 ;;
+esac
+
 curl -s https://api.github.com/repos/nuclio/nuclio/releases/latest \
-  | grep -i "browser_download_url.*nuctl.*$(uname -s).*$(uname -m)" \
+  | grep -i "browser_download_url.*nuctl.*${OS}-${ARCH}" \
   | cut -d : -f 2,3 \
-  | tr -d \" \
+  | tr -d ' "' \
   | wget -qi -
 
 # Make executable and move to PATH
@@ -68,7 +85,7 @@ Build a Python function for real-time log processing:
 # log-processor.py
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 def handler(context, event):
     """Process log entries in real-time"""
@@ -78,7 +95,7 @@ def handler(context, event):
 
     try:
         # Extract components using regex
-        pattern = r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+Z) (\w+) \[(\w+)\] (.*)'
+        pattern = r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z) (\w+) \[(\w+)\] (.*)'
         match = re.match(pattern, log_line)
 
         if not match:
@@ -110,7 +127,7 @@ def handler(context, event):
             'component': component,
             'message': message,
             'metrics': metrics,
-            'processed_at': datetime.utcnow().isoformat()
+            'processed_at': datetime.now(timezone.utc).isoformat()
         }
 
         # Log processing stats
@@ -165,7 +182,7 @@ metadata:
   name: log-processor
   namespace: nuclio
 spec:
-  runtime: python:3.9
+  runtime: python:3.11
   handler: log-processor:handler
 
   # Resource limits
@@ -185,7 +202,7 @@ spec:
   triggers:
     http:
       kind: http
-      maxWorkers: 8
+      numWorkers: 8
       workerAvailabilityTimeoutMilliseconds: 10000
 
   # Environment variables
@@ -201,6 +218,7 @@ Deploy the function:
 nuctl deploy log-processor \
   --namespace nuclio \
   --path log-processor.py \
+  --registry <registry-url>/<repository> \
   --file log-processor-config.yaml
 
 # Get function info
@@ -241,6 +259,12 @@ def handler(context, event):
 
         # Calculate statistics
         values = [r['value'] for r in readings]
+        if not values:
+            return context.Response(
+                status_code=400,
+                body="No readings provided"
+            )
+
         stats = {
             'sensor_id': sensor_id,
             'count': len(values),
@@ -302,7 +326,7 @@ metadata:
   name: stream-processor
   namespace: nuclio
 spec:
-  runtime: python:3.9
+  runtime: python:3.11
   handler: stream-processor:handler
 
   resources:
@@ -319,7 +343,7 @@ spec:
   # Kafka trigger configuration
   triggers:
     kafka:
-      kind: kafka
+      kind: kafka-cluster
       attributes:
         brokers:
           - kafka-broker-1:9092
@@ -329,14 +353,14 @@ spec:
         consumerGroup: nuclio-stream-processor
         initialOffset: latest
         sasl:
-          enabled: false
+          enable: false
         sessionTimeout: 10s
         heartbeatInterval: 3s
 
   # Dependencies
   build:
     commands:
-      - pip install numpy==1.24.0
+      - pip install numpy==1.26.4
 ```
 
 Deploy the Kafka function:
@@ -345,6 +369,7 @@ Deploy the Kafka function:
 nuctl deploy stream-processor \
   --namespace nuclio \
   --path stream-processor.py \
+  --registry <registry-url>/<repository> \
   --file stream-processor-config.yaml
 
 # Monitor function logs
@@ -360,7 +385,6 @@ Deploy a machine learning model for real-time inference:
 ```python
 # ml-inference.py
 import json
-import numpy as np
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
@@ -377,6 +401,7 @@ def init_context(context):
     model_name = "distilbert-base-uncased-finetuned-sst-2-english"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    model.eval()
 
     # Move model to GPU if available
     if torch.cuda.is_available():
@@ -454,7 +479,7 @@ metadata:
   name: ml-inference
   namespace: nuclio
 spec:
-  runtime: python:3.9
+  runtime: python:3.11
   handler: ml-inference:handler
 
   # GPU resources
@@ -475,7 +500,7 @@ spec:
   triggers:
     http:
       kind: http
-      maxWorkers: 4
+      numWorkers: 4
 
   # Build configuration
   build:
@@ -484,10 +509,8 @@ spec:
       - pip install transformers==4.30.0
 
   # Node selector for GPU nodes
-  platform:
-    attributes:
-      nodeSelector:
-        accelerator: nvidia-gpu
+  nodeSelector:
+    accelerator: nvidia-gpu
 ```
 
 ## Monitoring and Performance Tuning
@@ -510,18 +533,18 @@ Create performance dashboards:
 
 ```promql
 # Request rate
-rate(nuclio_function_invocations_total{function="ml-inference"}[5m])
+sum(rate(nuclio_processor_handled_events_total{function="ml-inference"}[5m]))
 
-# Latency percentiles
-histogram_quantile(0.95,
-  rate(nuclio_function_duration_seconds_bucket{function="ml-inference"}[5m])
-)
+# Average latency in milliseconds
+sum(rate(nuclio_processor_handled_events_duration_milliseconds_sum{function="ml-inference"}[5m]))
+/
+sum(rate(nuclio_processor_handled_events_duration_milliseconds_count{function="ml-inference"}[5m]))
 
 # Error rate
-rate(nuclio_function_errors_total{function="ml-inference"}[5m])
+sum(rate(nuclio_processor_handled_events_total{function="ml-inference",result="failure"}[5m]))
 
-# GPU utilization (if using GPU functions)
-nvidia_gpu_duty_cycle{kubernetes_pod_name=~"ml-inference.*"}
+# GPU utilization if NVIDIA DCGM Exporter is installed
+DCGM_FI_DEV_GPU_UTIL{pod=~"ml-inference.*"}
 ```
 
 ## Best Practices
@@ -536,7 +559,7 @@ Use the right trigger type. HTTP triggers for synchronous requests, message queu
 
 Monitor cold start times. Nuclio minimizes cold starts, but tracking them helps optimize initialization code and resource allocation.
 
-Scale based on actual load. Configure minReplicas to handle baseline load and maxReplicas based on peak capacity. Use Kubernetes HPA for automatic scaling.
+Scale based on actual load. Configure minReplicas to handle baseline load and maxReplicas based on peak capacity. Nuclio creates Kubernetes HPA resources for function autoscaling when you configure autoscaling parameters.
 
 ## Conclusion
 
