@@ -8,9 +8,9 @@ Description: Learn how to deploy and configure Cilium with eBPF for high-perform
 
 ---
 
-Cilium represents a paradigm shift in Kubernetes networking by leveraging eBPF (extended Berkeley Packet Filter) to implement networking, security, and observability directly in the Linux kernel. Unlike traditional CNI plugins that rely on iptables chains and network namespaces, Cilium's eBPF programs process packets at the earliest possible point with near-zero overhead, delivering dramatically better performance especially at scale.
+Cilium represents a paradigm shift in Kubernetes networking by leveraging eBPF (extended Berkeley Packet Filter) to implement networking, security, and observability directly in the Linux kernel. Unlike traditional CNI plugins that rely heavily on iptables chains for service and policy handling, Cilium's eBPF programs process packets at efficient kernel hook points with low overhead, delivering dramatically better performance especially at scale.
 
-eBPF allows you to run sandboxed programs in the kernel without changing kernel code or loading kernel modules. Cilium uses eBPF to implement services, network policies, load balancing, and observability, bypassing the traditional networking stack's inefficiencies. This approach enables features like socket-level load balancing, transparent encryption, and deep network visibility while maintaining line-rate performance.
+eBPF allows you to run sandboxed programs in the kernel without changing kernel code or loading kernel modules. Cilium uses eBPF to implement services, network policies, load balancing, and observability, reducing reliance on traditional iptables-based packet processing. This approach enables features like socket-level load balancing, transparent encryption, and deep network visibility while maintaining high throughput.
 
 ## Installing Cilium
 
@@ -20,12 +20,15 @@ Install Cilium using the Cilium CLI:
 # Install Cilium CLI
 
 CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
-curl -L --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz
-tar xzvfC cilium-linux-amd64.tar.gz /usr/local/bin
-rm cilium-linux-amd64.tar.gz
+CLI_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
+curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 
 # Install Cilium in Kubernetes cluster
-cilium install --version 1.15.0
+cilium install --version 1.19.4
 
 # Verify installation
 cilium status --wait
@@ -42,14 +45,11 @@ helm repo update
 
 helm install cilium cilium/cilium \
   --namespace kube-system \
+  --version 1.19.4 \
   --set ipam.mode=kubernetes \
-  --set kubeProxyReplacement=strict \
-  --set hostServices.enabled=true \
-  --set externalIPs.enabled=true \
-  --set nodePort.enabled=true \
-  --set hostPort.enabled=true \
+  --set kubeProxyReplacement=true \
   --set bpf.masquerade=true \
-  --set bpf.hostRouting=true \
+  --set bpf.hostLegacyRouting=false \
   --set image.pullPolicy=IfNotPresent \
   --set ipv4.enabled=true \
   --set ipv6.enabled=false
@@ -74,7 +74,8 @@ kubectl exec -n kube-system ds/cilium -- bpftool prog show
 kubectl exec -n kube-system ds/cilium -- bpftool map show
 
 # Dump specific map
-kubectl exec -n kube-system ds/cilium -- bpftool map dump name cilium_lb4_services
+kubectl exec -n kube-system ds/cilium -- \
+  cilium-dbg map get cilium_lb4_services
 ```
 
 ## Kube-Proxy Replacement
@@ -84,8 +85,8 @@ Cilium can completely replace kube-proxy using eBPF:
 ```bash
 # Install Cilium with kube-proxy replacement
 cilium install \
-  --version 1.15.0 \
-  --set kubeProxyReplacement=strict \
+  --version 1.19.4 \
+  --set kubeProxyReplacement=true \
   --set k8sServiceHost=<API_SERVER_IP> \
   --set k8sServicePort=<API_SERVER_PORT>
 
@@ -100,16 +101,16 @@ Benefits over kube-proxy:
 
 - No iptables rules, avoiding linear rule scanning
 - Socket-level load balancing for better performance
-- Maglev consistent hashing for better session affinity
+- Maglev consistent hashing for consistent backend selection
 - Native support for DSR (Direct Server Return)
-- Per-packet load balancing instead of per-connection
+- eBPF service load balancing in the socket path or datapath instead of kube-proxy rules
 
 Check service load balancing:
 
 ```bash
 # View BPF service map
 kubectl exec -n kube-system ds/cilium -- \
-  cilium service list
+  cilium-dbg service list
 
 # Example output:
 # ID   Frontend            Service Type   Backend
@@ -127,10 +128,11 @@ Use direct routing for best performance:
 ```bash
 helm install cilium cilium/cilium \
   --namespace kube-system \
-  --set tunnel=disabled \
+  --version 1.19.4 \
+  --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR=10.0.0.0/8 \
-  --set bpf.hostRouting=true
+  --set bpf.hostLegacyRouting=false
 ```
 
 This mode has Cilium install routes directly in the host routing table, avoiding encapsulation overhead.
@@ -152,7 +154,6 @@ data:
   bpf-lb-algorithm: "maglev"
   bpf-lb-mode: "dsr"
   bpf-lb-dsr-dispatch: "ipip"
-  bpf-lb-dsr-l4-xlate: "true"
 ```
 
 ### DSR (Direct Server Return)
@@ -162,6 +163,9 @@ Configure DSR for improved load balancer performance:
 ```bash
 helm install cilium cilium/cilium \
   --namespace kube-system \
+  --version 1.19.4 \
+  --set routingMode=native \
+  --set kubeProxyReplacement=true \
   --set loadBalancer.mode=dsr \
   --set loadBalancer.dsrDispatch=opt \
   --set loadBalancer.algorithm=maglev
@@ -209,15 +213,15 @@ Check policy enforcement:
 ```bash
 # View endpoint policy status
 kubectl exec -n kube-system ds/cilium -- \
-  cilium endpoint list
+  cilium-dbg endpoint list
 
-# Get policy verdict for specific endpoint
+# Get policy details for specific endpoint
 kubectl exec -n kube-system ds/cilium -- \
-  cilium policy get <endpoint-id>
+  cilium-dbg endpoint get <endpoint-id>
 
-# Trace policy decision
+# Inspect endpoint policy map entries
 kubectl exec -n kube-system ds/cilium -- \
-  cilium policy trace <source-endpoint> <dest-endpoint>
+  cilium-dbg bpf policy get --all
 ```
 
 ## Hubble for Observability
@@ -227,7 +231,7 @@ Enable Hubble for deep network visibility:
 ```bash
 # Install Cilium with Hubble
 cilium install \
-  --version 1.15.0 \
+  --version 1.19.4 \
   --set hubble.enabled=true \
   --set hubble.relay.enabled=true \
   --set hubble.ui.enabled=true
@@ -235,6 +239,7 @@ cilium install \
 # Enable Hubble metrics
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
+  --version 1.19.4 \
   --reuse-values \
   --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}"
 
@@ -267,7 +272,7 @@ metadata:
   namespace: kube-system
 data:
   # Disable tunnel overhead
-  tunnel: "disabled"
+  routing-mode: "native"
   enable-ipv4: "true"
   enable-ipv6: "false"
 
@@ -280,31 +285,24 @@ data:
   bpf-policy-map-max: "65536"
 
   # Host routing for best performance
-  enable-host-routing: "true"
+  enable-host-legacy-routing: "false"
   enable-bpf-masquerade: "true"
 
   # Service load balancing
-  kube-proxy-replacement: "strict"
-  enable-host-port: "true"
-  enable-external-ips: "true"
-  enable-node-port: "true"
-  node-port-mode: "dsr"
-  node-port-algorithm: "maglev"
+  kube-proxy-replacement: "true"
+  bpf-lb-mode: "dsr"
+  bpf-lb-algorithm: "maglev"
 
   # MTU settings
   mtu: "1500"
-  enable-auto-mtu: "true"
 
   # Bandwidth optimization
   enable-bandwidth-manager: "true"
-
-  # Connection tracking
-  ct-gc-interval: "0"
 ```
 
 ## Bandwidth Management
 
-Cilium's eBPF-based bandwidth manager replaces traditional tc:
+Cilium's eBPF-based bandwidth manager replaces the traditional bandwidth CNI/TBF approach:
 
 ```yaml
 apiVersion: v1
@@ -325,6 +323,7 @@ Enable bandwidth manager:
 ```bash
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
+  --version 1.19.4 \
   --reuse-values \
   --set bandwidthManager.enabled=true
 ```
@@ -334,11 +333,17 @@ helm upgrade cilium cilium/cilium \
 View Cilium metrics:
 
 ```bash
-# Port-forward to Cilium agent metrics
-kubectl port-forward -n kube-system ds/cilium 9090:9090
+# Enable and port-forward to Cilium agent metrics
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --version 1.19.4 \
+  --reuse-values \
+  --set prometheus.enabled=true
+
+kubectl port-forward -n kube-system ds/cilium 9962:9962
 
 # Query metrics
-curl http://localhost:9090/metrics | grep cilium
+curl http://localhost:9962/metrics | grep cilium
 
 # Key metrics to monitor:
 # - cilium_bpf_map_ops_total: BPF map operations
@@ -374,27 +379,27 @@ Diagnose performance problems:
 ```bash
 # Check BPF program statistics
 kubectl exec -n kube-system ds/cilium -- \
-  cilium bpf stats
+  cilium-dbg bpf metrics list
 
 # View dropped packets
 kubectl exec -n kube-system ds/cilium -- \
-  cilium monitor --type drop
+  cilium-dbg monitor --type drop
 
 # Check endpoint health
 kubectl exec -n kube-system ds/cilium -- \
-  cilium endpoint health
+  cilium-dbg endpoint health
 
 # View BPF map usage
 kubectl exec -n kube-system ds/cilium -- \
-  cilium bpf map list
+  cilium-dbg map list
 
 # Dump connection tracking
 kubectl exec -n kube-system ds/cilium -- \
-  cilium bpf ct list global
+  cilium-dbg bpf ct list
 
 # Check datapath mode
 kubectl exec -n kube-system ds/cilium -- \
-  cilium status --verbose | grep Datapath
+  cilium-dbg status --verbose | grep Datapath
 ```
 
 ## Best Practices
@@ -404,7 +409,7 @@ kubectl exec -n kube-system ds/cilium -- \
 3. **Tune BPF map sizes**: Adjust based on cluster size and workload
 4. **Monitor with Hubble**: Get deep visibility without performance impact
 5. **Use DSR mode**: For external load balancer performance
-6. **Enable bandwidth manager**: Replace tc with eBPF for traffic shaping
+6. **Enable bandwidth manager**: Use Cilium's eBPF-based bandwidth manager for traffic shaping
 7. **Keep Cilium updated**: Benefit from continuous eBPF optimizations
 
 Cilium with eBPF delivers revolutionary Kubernetes networking performance by executing packet processing logic directly in the kernel. Combined with rich observability through Hubble, Cilium provides both speed and visibility without compromise.
