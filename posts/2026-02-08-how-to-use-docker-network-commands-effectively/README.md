@@ -16,11 +16,11 @@ This guide covers every `docker network` subcommand with real examples that you 
 
 Before diving into commands, it helps to understand the network drivers Docker provides.
 
-- **bridge** - The default driver. Containers on the same bridge network can talk to each other by name. Best for single-host deployments.
+- **bridge** - The default driver. Containers on the same user-defined bridge network can talk to each other by name. Best for single-host deployments.
 - **host** - Removes network isolation. The container shares the host's network stack. Useful when you need raw performance and do not need isolation.
 - **overlay** - Spans multiple Docker hosts. Required for Docker Swarm services that need cross-host communication.
 - **macvlan** - Assigns a MAC address to each container, making it appear as a physical device on your network. Useful for legacy applications.
-- **none** - Disables networking entirely. Useful for batch processing containers that need no network access.
+- **none** - Isolates the container from the host and other containers, leaving only the loopback interface. Useful for batch processing containers that need no network access.
 
 ## Listing Networks
 
@@ -74,7 +74,7 @@ docker network create \
   my-custom-network
 ```
 
-Create an overlay network for Swarm services that spans multiple hosts:
+After enabling Swarm mode, create an overlay network for Swarm services that spans multiple hosts:
 
 ```bash
 docker network create \
