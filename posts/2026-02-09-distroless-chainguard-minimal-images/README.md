@@ -23,17 +23,17 @@ Create multi-stage builds using Distroless for the runtime stage.
 ```dockerfile
 # Dockerfile for Go application
 
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o server .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o server .
 
 # Distroless runtime stage
-FROM gcr.io/distroless/static-debian11
+FROM gcr.io/distroless/static-debian13
 
 # Copy binary from builder
 COPY --from=builder /app/server /server
@@ -45,7 +45,7 @@ CMD ["/server"]
 For applications requiring libc:
 
 ```dockerfile
-FROM gcr.io/distroless/base-debian11
+FROM gcr.io/distroless/base-debian13
 
 COPY --from=builder /app/server /server
 CMD ["/server"]
@@ -55,7 +55,7 @@ For debugging, use debug variants:
 
 ```dockerfile
 # Use debug image for troubleshooting
-FROM gcr.io/distroless/base-debian11:debug
+FROM gcr.io/distroless/base-debian13:debug
 
 COPY --from=builder /app/server /server
 CMD ["/server"]
@@ -67,11 +67,11 @@ Build with Chainguard's minimal, secure base images.
 
 ```dockerfile
 # Node.js application with Chainguard
-FROM node:18-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY . .
 RUN npm run build
@@ -92,11 +92,13 @@ CMD ["dist/main.js"]
 Python application:
 
 ```dockerfile
-FROM python:3.11-slim AS builder
+FROM cgr.dev/chainguard/python:latest-dev AS builder
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+RUN python -m venv /app/venv
+ENV PATH=/app/venv/bin:$PATH
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
@@ -104,13 +106,14 @@ COPY . .
 FROM cgr.dev/chainguard/python:latest
 
 WORKDIR /app
-COPY --from=builder /root/.local /home/nonroot/.local
+COPY --from=builder /app/venv /app/venv
 COPY --from=builder /app /app
 
-ENV PATH=/home/nonroot/.local/bin:$PATH
+ENV PATH=/app/venv/bin:$PATH
+ENTRYPOINT ["/app/venv/bin/python"]
 
 USER 65532:65532
-CMD ["python", "app.py"]
+CMD ["app.py"]
 ```
 
 ## Configuring Kubernetes for Minimal Images
@@ -173,24 +176,7 @@ spec:
 
 Debug applications in distroless containers without shells.
 
-```yaml
-# ephemeral-debug-container.yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app-debug
-spec:
-  containers:
-  - name: app
-    image: mycompany/app:distroless
-  # Add ephemeral debug container
-  ephemeralContainers:
-  - name: debugger
-    image: busybox:latest
-    command: ["sh"]
-    stdin: true
-    tty: true
-```
+Ephemeral containers are added to existing pods through the Kubernetes API or `kubectl debug`; they cannot be specified when creating a new Pod manifest.
 
 Use kubectl debug:
 
@@ -198,14 +184,14 @@ Use kubectl debug:
 # Attach debug container to running pod
 kubectl debug -it minimal-app-pod --image=busybox:latest --target=app
 
-# Copy files from distroless container
+# Copy files only if the target image includes tar; most distroless images do not
 kubectl cp minimal-app-pod:/app/config.yaml ./config.yaml
 
 # View logs
 kubectl logs minimal-app-pod
 
-# Check process list with ephemeral container
-kubectl debug minimal-app-pod --image=nicolaka/netshoot -- ps aux
+# Check process list with an ephemeral container that targets the app container
+kubectl debug -it minimal-app-pod --image=nicolaka/netshoot --target=app -- ps aux
 ```
 
-Chainguard Images provide SBOM (Software Bill of Materials) for supply chain security and vulnerability tracking. Distroless and Chainguard images eliminate attack surface by removing unnecessary components while maintaining full application functionality. For production Kubernetes deployments, minimal images improve security posture, reduce image sizes, and simplify compliance. Combine minimal images with appropriate security contexts and ephemeral debug containers for secure, maintainable applications.
+Chainguard Images provide SBOM (Software Bill of Materials) for supply chain security and vulnerability tracking. Distroless and Chainguard images reduce attack surface by removing unnecessary components while maintaining full application functionality. For production Kubernetes deployments, minimal images improve security posture, reduce image sizes, and simplify compliance. Combine minimal images with appropriate security contexts and ephemeral debug containers for secure, maintainable applications.
