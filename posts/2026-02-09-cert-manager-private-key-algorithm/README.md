@@ -50,11 +50,11 @@ spec:
   privateKey:
     algorithm: RSA
     # Key size in bits
-    # Options: 2048, 3072, 4096
+    # Options: 2048, 4096, 8192
     size: 2048
 
     # Encoding format
-    # Options: PKCS1, PKCS8 (default)
+    # Options: PKCS1 (default), PKCS8
     encoding: PKCS8
 
     # Rotation policy
@@ -64,8 +64,8 @@ spec:
 
 RSA key size recommendations:
 - 2048 bits: Standard security level, widely accepted, good performance
-- 3072 bits: Enhanced security, moderate performance impact
 - 4096 bits: High security, significant performance overhead
+- 8192 bits: Very high overhead, only for strict requirements
 
 Most environments use 2048-bit RSA keys as they provide adequate security with good performance.
 
@@ -106,7 +106,7 @@ spec:
 ECDSA key size recommendations:
 - 256 bits (P-256): Equivalent to 3072-bit RSA, excellent performance
 - 384 bits (P-384): Equivalent to 7680-bit RSA, enhanced security
-- 521 bits (P-521): Highest security level, minimal performance impact
+- 521 bits (P-521): Equivalent to 15360-bit RSA, highest cert-manager ECDSA option with higher performance cost
 
 P-256 (256-bit ECDSA) provides security equivalent to 3072-bit RSA while being significantly faster.
 
@@ -144,7 +144,7 @@ spec:
 
 Ed25519 benefits:
 - Fixed 256-bit key size
-- Excellent performance (faster than ECDSA and RSA)
+- Excellent signing performance in many implementations
 - Strong security properties
 - Smaller signatures than ECDSA or RSA
 
@@ -226,9 +226,9 @@ spec:
 
 Performance characteristics (approximate):
 - RSA 2048: 1x baseline
-- RSA 4096: 7x slower than RSA 2048
-- ECDSA P-256: 10x faster than RSA 2048
-- Ed25519: 20x faster than RSA 2048
+- RSA 4096: Significantly slower than RSA 2048 for private-key operations
+- ECDSA P-256: Usually faster signing and smaller certificates than RSA
+- Ed25519: Usually fast signing and small signatures where supported
 
 ## Encoding Format Selection
 
@@ -237,7 +237,7 @@ Private keys can be encoded in different formats:
 ```yaml
 # encoding-formats.yaml
 ---
-# PKCS8 encoding (default, recommended)
+# PKCS8 encoding (recommended for new deployments)
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -254,7 +254,7 @@ spec:
     size: 2048
     encoding: PKCS8 # Standard format, broad compatibility
 ---
-# PKCS1 encoding (legacy, RSA only)
+# PKCS1 encoding (default in cert-manager)
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -269,10 +269,10 @@ spec:
   privateKey:
     algorithm: RSA
     size: 2048
-    encoding: PKCS1 # Legacy format, RSA only
+    encoding: PKCS1 # Default in cert-manager; PKCS#1 output for RSA keys
 ```
 
-PKCS8 is recommended for new deployments. PKCS1 may be required for compatibility with very old systems that don't support PKCS8.
+PKCS8 is recommended for new deployments. PKCS1 may be required for compatibility with very old systems that don't support PKCS8. For ECDSA keys, cert-manager's PKCS1 setting produces SEC 1 encoded EC private keys. For Ed25519 keys, cert-manager always uses PKCS8 encoding.
 
 ## Environment-Specific Configurations
 
@@ -413,17 +413,17 @@ spec:
 ```
 
 Ed25519 works with:
-- Latest browsers (Chrome 90+, Firefox 92+)
+- Controlled private PKI environments where clients support Ed25519 certificate keys
 - Recent OpenSSL versions (1.1.1+)
-- Modern programming language TLS libraries
-- Limited certificate authority support
+- Modern programming language TLS libraries that advertise Ed25519 signature support
+- Limited certificate authority support; publicly trusted TLS server certificates are generally limited to RSA and ECDSA key pairs
 
 ## Security Recommendations
 
 ### Minimum Key Sizes
 
 Current security best practices (2026):
-- RSA: 2048 bits minimum, 3072 bits for high security
+- RSA: 2048 bits minimum; cert-manager supports 2048, 4096, and 8192 bits
 - ECDSA: 256 bits minimum, 384 bits for high security
 - Ed25519: 256 bits (fixed)
 
@@ -443,6 +443,11 @@ metadata:
   name: internet-facing
 spec:
   secretName: internet-facing-tls
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+  dnsNames:
+  - app.example.com
   privateKey:
     algorithm: RSA
     size: 2048
@@ -454,6 +459,11 @@ metadata:
   name: api-service
 spec:
   secretName: api-service-tls
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+  dnsNames:
+  - api.example.com
   privateKey:
     algorithm: ECDSA
     size: 256
@@ -465,6 +475,11 @@ metadata:
   name: internal-service
 spec:
   secretName: internal-service-tls
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+  dnsNames:
+  - internal.example.com
   privateKey:
     algorithm: Ed25519
 ---
@@ -475,6 +490,11 @@ metadata:
   name: high-security
 spec:
   secretName: high-security-tls
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+  dnsNames:
+  - secure.example.com
   privateKey:
     algorithm: ECDSA
     size: 384
@@ -517,6 +537,11 @@ metadata:
     migration-phase: "current"
 spec:
   secretName: app-tls
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+  dnsNames:
+  - app.example.com
   privateKey:
     algorithm: RSA
     size: 2048
@@ -530,6 +555,11 @@ metadata:
     migration-phase: "new"
 spec:
   secretName: app-tls-new
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+  dnsNames:
+  - app.example.com
   privateKey:
     algorithm: ECDSA
     size: 256
