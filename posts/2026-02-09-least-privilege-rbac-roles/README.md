@@ -116,7 +116,7 @@ rules:
 - apiGroups: [""]
   resources: ["configmaps"]
   resourceNames: ["myapp-leader-election"]
-  verbs: ["get", "create", "update"]
+  verbs: ["get", "update", "patch"]
 
 # Create events for logging
 - apiGroups: [""]
@@ -124,7 +124,7 @@ rules:
   verbs: ["create", "patch"]
 ```
 
-The resourceNames field restricts access to specific resources, preventing access to other configmaps or secrets in the namespace.
+The resourceNames field restricts access to specific resources, preventing access to other configmaps or secrets in the namespace. It does not restrict top-level create requests, so resources like leader-election config maps should be created ahead of time if you want name-scoped runtime permissions. For list or watch requests with resourceNames, clients must include a matching metadata.name field selector.
 
 ## Creating Service Account and Bindings
 
@@ -164,7 +164,13 @@ metadata:
   name: myapp
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       serviceAccountName: myapp-sa
       containers:
@@ -244,7 +250,7 @@ rules:
 
 ## Restricting Access to Specific Resources
 
-Use field selectors and label selectors for fine-grained control.
+Use resource names for fine-grained control over named objects. RBAC does not restrict access by label selector; label-based restrictions require admission control or a separate policy layer.
 
 ```yaml
 # rbac-labeled-resources.yaml
@@ -254,10 +260,11 @@ metadata:
   name: monitoring-reader
   namespace: production
 rules:
-# Read deployments with specific label
+# Read a specific deployment by name
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  verbs: ["get", "list"]
+  resourceNames: ["myapp"]
+  verbs: ["get"]
 
 # Read pods for monitoring
 - apiGroups: [""]
@@ -280,12 +287,12 @@ Test your RBAC policies to ensure they provide needed access without excess.
 
 ```bash
 # Test if service account can perform action
-kubectl auth can-i create deployment \
+kubectl auth can-i create deployments \
   --as=system:serviceaccount:production:myapp-sa \
   -n production
 
 # Test specific resource
-kubectl auth can-i get configmap/myapp-config \
+kubectl auth can-i get configmaps/myapp-config \
   --as=system:serviceaccount:production:myapp-sa \
   -n production
 
@@ -340,7 +347,7 @@ rules:
 
 ## Implementing Time-Bound Access
 
-Use token requests for temporary elevated permissions.
+Use temporary role bindings for elevated permissions.
 
 ```yaml
 # rbac-temporary-access.yaml
