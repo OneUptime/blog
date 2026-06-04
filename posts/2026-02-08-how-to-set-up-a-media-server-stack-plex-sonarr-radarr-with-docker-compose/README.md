@@ -42,15 +42,14 @@ Plan your media directories carefully. The key is giving all services access to 
     ├── plex/
     ├── sonarr/
     ├── radarr/
-    └── prowlarr/
+    ├── prowlarr/
+    └── sabnzbd/
 ```
 
 ## Docker Compose Configuration
 
 ```yaml
 # Media server stack - Plex, Sonarr, Radarr, Prowlarr
-
-version: "3.8"
 
 services:
   # Plex Media Server - streaming and playback
@@ -65,8 +64,7 @@ services:
       - VERSION=docker
     volumes:
       - ./docker/plex:/config
-      - /path/to/media/tv:/tv
-      - /path/to/media/movies:/movies
+      - /path/to/media:/data
     restart: unless-stopped
 
   # Sonarr - TV show management and automation
@@ -81,8 +79,7 @@ services:
       - "8989:8989"
     volumes:
       - ./docker/sonarr:/config
-      - /path/to/media/tv:/tv
-      - /path/to/media/downloads:/downloads
+      - /path/to/media:/data
     restart: unless-stopped
     networks:
       - media-network
@@ -99,8 +96,7 @@ services:
       - "7878:7878"
     volumes:
       - ./docker/radarr:/config
-      - /path/to/media/movies:/movies
-      - /path/to/media/downloads:/downloads
+      - /path/to/media:/data
     restart: unless-stopped
     networks:
       - media-network
@@ -133,7 +129,7 @@ services:
       - "8080:8080"
     volumes:
       - ./docker/sabnzbd:/config
-      - /path/to/media/downloads:/downloads
+      - /path/to/media:/data
     restart: unless-stopped
     networks:
       - media-network
@@ -179,19 +175,23 @@ Each service needs initial setup through its web interface.
 
 **Plex** (http://your-ip:32400/web):
 1. Sign in with your Plex account
-2. Add libraries pointing to `/tv` and `/movies`
+2. Add libraries pointing to `/data/tv` and `/data/movies`
 3. Configure remote access if you want to stream outside your home
 
 **Sonarr** (http://localhost:8989):
 1. Go to Settings, then Media Management
-2. Add a root folder: `/tv`
+2. Add a root folder: `/data/tv`
 3. Go to Settings, then Download Clients
 4. Add your download client (e.g., SABnzbd at `http://sabnzbd:8080`)
 
 **Radarr** (http://localhost:7878):
 1. Go to Settings, then Media Management
-2. Add a root folder: `/movies`
+2. Add a root folder: `/data/movies`
 3. Add the same download client as Sonarr
+
+**SABnzbd** (http://localhost:8080):
+1. Set the completed download folder to `/data/downloads/complete`
+2. Set the temporary download folder to `/data/downloads/incomplete`
 
 **Prowlarr** (http://localhost:9696):
 1. Add your indexers
@@ -214,13 +214,13 @@ In Prowlarr's app settings, use `http://sonarr:8989` and `http://radarr:7878` as
 
 ## Volume Mapping Strategy
 
-The volume configuration above deserves explanation. Both Sonarr and Radarr can see the `/downloads` directory and their respective media directories. When a download finishes, Sonarr or Radarr moves (or hard-links) the file from `/downloads` to `/tv` or `/movies`. Because both paths are on the same Docker volume, this operation is instant.
+The volume configuration above deserves explanation. Sonarr, Radarr, SABnzbd, and Plex all see the same `/data` directory. When a download finishes, Sonarr or Radarr moves (or hard-links) the file from `/data/downloads/complete` to `/data/tv` or `/data/movies`. Because these paths are under the same mount inside the containers, this operation can be instant.
 
 If you map downloads and media to different volumes, files will be copied instead of moved, doubling disk usage temporarily and slowing down the process.
 
 ## Hardware Transcoding for Plex
 
-If your server has an Intel CPU with Quick Sync, you can enable hardware transcoding:
+If your server has an Intel CPU with Quick Sync and your Plex account has Plex Pass, you can enable hardware transcoding:
 
 ```yaml
 # Add to the Plex service for hardware transcoding
@@ -258,7 +258,7 @@ docker compose pull
 docker compose up -d
 
 # Check running versions
-docker compose exec sonarr cat /config/logs/sonarr.txt | head -5
+docker inspect -f '{{ index .Config.Labels "build_version" }}' sonarr
 ```
 
 ## Troubleshooting
@@ -270,8 +270,8 @@ docker compose logs sonarr
 docker compose logs radarr
 
 # Verify volume permissions
-docker compose exec sonarr ls -la /tv
-docker compose exec radarr ls -la /movies
+docker compose exec sonarr ls -la /data/tv
+docker compose exec radarr ls -la /data/movies
 
 # Test connectivity between services
 docker compose exec sonarr curl -s http://radarr:7878/api/v3/system/status -H "X-Api-Key: YOUR_KEY"
