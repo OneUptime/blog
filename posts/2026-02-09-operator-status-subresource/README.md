@@ -210,7 +210,7 @@ Without the second marker, status updates will fail with a 403 Forbidden error. 
 
 ## Conflict Handling with Status Updates
 
-Since the status subresource has its own resource version tracking, conflicts between spec updates and status updates are eliminated. However, two concurrent status updates can still conflict. Handle this with a retry loop:
+The status subresource prevents spec updates from overwriting status and status updates from overwriting spec, but Kubernetes still uses `metadata.resourceVersion` for update conflict detection. A spec update, metadata update, or another status update can make your copy stale. Handle this with a retry loop:
 
 ```go
 import "k8s.io/client-go/util/retry"
@@ -283,7 +283,7 @@ Use kubebuilder markers to add useful columns to the default `kubectl get` outpu
 
 **Keep reason values stable.** Reasons are meant for programmatic consumption. Use PascalCase strings like `AllReplicasReady`, `StorageNotBound`, or `BackupFailed`. Messages are for human consumption and can be more descriptive.
 
-**Use Patch instead of Update when possible.** The `r.Status().Patch()` method applies a partial update and is less likely to conflict than a full update. Use server-side apply for the most robust approach:
+**Use Patch instead of Update when possible.** The `r.Status().Patch()` method applies a partial update and is less likely to conflict than a full update. For CRDs, use a merge patch rather than strategic merge patch:
 
 ```go
 patch := client.MergeFrom(db.DeepCopy())
