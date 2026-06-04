@@ -8,13 +8,13 @@ Description: Learn how to write comprehensive integration tests for Kubernetes c
 
 ---
 
-Unit tests verify individual functions work correctly. But controllers interact with the Kubernetes API server, watch resources, update status, and handle complex state transitions. You can mock the API, but mocks don't catch real integration issues like incorrect RBAC, wrong API versions, or missing owner references.
+Unit tests verify individual functions work correctly. But controllers interact with the Kubernetes API server, watch resources, update status, and handle complex state transitions. You can mock the API, but mocks don't catch real integration issues like invalid CRD schemas, wrong API versions, or missing owner references.
 
 envtest provides a real Kubernetes API server and etcd for testing. Your controller talks to actual Kubernetes components without needing a full cluster. Tests run fast, reliably, and in CI. This guide shows you how to write integration tests with envtest.
 
 ## Understanding envtest
 
-envtest is part of controller-runtime. It downloads API server and etcd binaries, starts them on random ports, and provides a kubeconfig. Your tests create a real client, run your controller, and interact with actual Kubernetes resources.
+envtest is part of controller-runtime. It starts API server and etcd binaries on random ports and provides a kubeconfig. Your tests create a real client, run your controller, and interact with actual Kubernetes resources.
 
 The environment is ephemeral. Each test suite gets a fresh API server and etcd. This ensures test isolation and prevents flaky tests from shared state.
 
@@ -25,9 +25,9 @@ Kubebuilder projects include envtest by default. For existing projects, install 
 ```bash
 go get sigs.k8s.io/controller-runtime/pkg/envtest
 
-# Download test binaries
+# Download test binaries. Pick the release branch that matches your controller-runtime version.
 
-go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+go install sigs.k8s.io/controller-runtime/tools/setup-envtest@release-0.22
 setup-envtest use
 ```
 
@@ -43,7 +43,6 @@ import (
     "context"
     "path/filepath"
     "testing"
-    "time"
 
     . "github.com/onsi/ginkgo/v2"
     . "github.com/onsi/gomega"
@@ -131,6 +130,7 @@ Test the full reconciliation cycle.
 package controllers
 
 import (
+    "context"
     "time"
 
     . "github.com/onsi/ginkgo/v2"
@@ -138,6 +138,7 @@ import (
 
     appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
+    apierrors "k8s.io/apimachinery/pkg/api/errors"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/types"
 
@@ -149,24 +150,29 @@ var _ = Describe("Application Controller", func() {
         timeout  = time.Second * 10
         interval = time.Millisecond * 250
     )
+    var namespaceName string
+
+    BeforeEach(func() {
+        ctx := context.Background()
+
+        namespace := &corev1.Namespace{
+            ObjectMeta: metav1.ObjectMeta{
+                GenerateName: "application-test-",
+            },
+        }
+        Expect(k8sClient.Create(ctx, namespace)).Should(Succeed())
+        namespaceName = namespace.Name
+    })
 
     Context("When creating an Application", func() {
         It("Should create a Deployment", func() {
             ctx := context.Background()
 
-            // Create namespace
-            namespace := &corev1.Namespace{
-                ObjectMeta: metav1.ObjectMeta{
-                    Name: "test-namespace",
-                },
-            }
-            Expect(k8sClient.Create(ctx, namespace)).Should(Succeed())
-
             // Create Application
             app := &appsexamplev1.Application{
                 ObjectMeta: metav1.ObjectMeta{
                     Name:      "test-app",
-                    Namespace: "test-namespace",
+                    Namespace: namespaceName,
                 },
                 Spec: appsexamplev1.ApplicationSpec{
                     Image:    "nginx:latest",
@@ -181,7 +187,7 @@ var _ = Describe("Application Controller", func() {
             Eventually(func() error {
                 return k8sClient.Get(ctx, types.NamespacedName{
                     Name:      "test-app",
-                    Namespace: "test-namespace",
+                    Namespace: namespaceName,
                 }, deployment)
             }, timeout, interval).Should(Succeed())
 
@@ -204,7 +210,7 @@ var _ = Describe("Application Controller", func() {
             app := &appsexamplev1.Application{
                 ObjectMeta: metav1.ObjectMeta{
                     Name:      "update-test-app",
-                    Namespace: "test-namespace",
+                    Namespace: namespaceName,
                 },
                 Spec: appsexamplev1.ApplicationSpec{
                     Image:    "nginx:1.19",
@@ -219,7 +225,7 @@ var _ = Describe("Application Controller", func() {
             Eventually(func() error {
                 return k8sClient.Get(ctx, types.NamespacedName{
                     Name:      "update-test-app",
-                    Namespace: "test-namespace",
+                    Namespace: namespaceName,
                 }, deployment)
             }, timeout, interval).Should(Succeed())
 
@@ -227,7 +233,7 @@ var _ = Describe("Application Controller", func() {
             updatedApp := &appsexamplev1.Application{}
             Expect(k8sClient.Get(ctx, types.NamespacedName{
                 Name:      "update-test-app",
-                Namespace: "test-namespace",
+                Namespace: namespaceName,
             }, updatedApp)).Should(Succeed())
 
             updatedApp.Spec.Replicas = 5
@@ -238,7 +244,7 @@ var _ = Describe("Application Controller", func() {
             Eventually(func() int32 {
                 err := k8sClient.Get(ctx, types.NamespacedName{
                     Name:      "update-test-app",
-                    Namespace: "test-namespace",
+                    Namespace: namespaceName,
                 }, deployment)
                 if err != nil {
                     return 0
@@ -251,14 +257,14 @@ var _ = Describe("Application Controller", func() {
     })
 
     Context("When deleting an Application", func() {
-        It("Should delete the Deployment", func() {
+        It("Should set ownership for garbage collection", func() {
             ctx := context.Background()
 
             // Create Application
             app := &appsexamplev1.Application{
                 ObjectMeta: metav1.ObjectMeta{
                     Name:      "delete-test-app",
-                    Namespace: "test-namespace",
+                    Namespace: namespaceName,
                 },
                 Spec: appsexamplev1.ApplicationSpec{
                     Image:    "nginx:latest",
@@ -273,20 +279,24 @@ var _ = Describe("Application Controller", func() {
             Eventually(func() error {
                 return k8sClient.Get(ctx, types.NamespacedName{
                     Name:      "delete-test-app",
-                    Namespace: "test-namespace",
+                    Namespace: namespaceName,
                 }, deployment)
             }, timeout, interval).Should(Succeed())
+
+            Expect(deployment.OwnerReferences).Should(HaveLen(1))
+            Expect(deployment.OwnerReferences[0].Name).Should(Equal("delete-test-app"))
 
             // Delete Application
             Expect(k8sClient.Delete(ctx, app)).Should(Succeed())
 
-            // Verify Deployment was deleted (garbage collected)
+            // envtest does not run the Kubernetes garbage collector, so verify the owner
+            // reference above and only assert that the Application itself was deleted.
             Eventually(func() bool {
                 err := k8sClient.Get(ctx, types.NamespacedName{
                     Name:      "delete-test-app",
-                    Namespace: "test-namespace",
-                }, deployment)
-                return errors.IsNotFound(err)
+                    Namespace: namespaceName,
+                }, &appsexamplev1.Application{})
+                return apierrors.IsNotFound(err)
             }, timeout, interval).Should(BeTrue())
         })
     })
@@ -295,17 +305,29 @@ var _ = Describe("Application Controller", func() {
 
 ## Testing Status Updates
 
-Verify that controllers update resource status correctly.
+Verify that controllers update resource status correctly. envtest does not run kubelet, the deployment controller, or other built-in controllers, so only assert status values your controller can compute from API server state in the test environment.
 
 ```go
 var _ = Describe("Application Status", func() {
+    const (
+        timeout  = time.Second * 10
+        interval = time.Millisecond * 250
+    )
+
     It("Should update status fields", func() {
         ctx := context.Background()
+
+        namespace := &corev1.Namespace{
+            ObjectMeta: metav1.ObjectMeta{
+                GenerateName: "application-status-",
+            },
+        }
+        Expect(k8sClient.Create(ctx, namespace)).Should(Succeed())
 
         app := &appsexamplev1.Application{
             ObjectMeta: metav1.ObjectMeta{
                 Name:      "status-test-app",
-                Namespace: "test-namespace",
+                Namespace: namespace.Name,
             },
             Spec: appsexamplev1.ApplicationSpec{
                 Image:    "nginx:latest",
@@ -320,7 +342,7 @@ var _ = Describe("Application Status", func() {
             updatedApp := &appsexamplev1.Application{}
             err := k8sClient.Get(ctx, types.NamespacedName{
                 Name:      "status-test-app",
-                Namespace: "test-namespace",
+                Namespace: namespace.Name,
             }, updatedApp)
             if err != nil {
                 return ""
@@ -332,7 +354,7 @@ var _ = Describe("Application Status", func() {
         finalApp := &appsexamplev1.Application{}
         Expect(k8sClient.Get(ctx, types.NamespacedName{
             Name:      "status-test-app",
-            Namespace: "test-namespace",
+            Namespace: namespace.Name,
         }, finalApp)).Should(Succeed())
         Expect(finalApp.Status.Ready).Should(BeTrue())
     })
@@ -348,10 +370,17 @@ var _ = Describe("Application Error Handling", func() {
     It("Should handle invalid image names", func() {
         ctx := context.Background()
 
+        namespace := &corev1.Namespace{
+            ObjectMeta: metav1.ObjectMeta{
+                GenerateName: "application-errors-",
+            },
+        }
+        Expect(k8sClient.Create(ctx, namespace)).Should(Succeed())
+
         app := &appsexamplev1.Application{
             ObjectMeta: metav1.ObjectMeta{
                 Name:      "invalid-app",
-                Namespace: "test-namespace",
+                Namespace: namespace.Name,
             },
             Spec: appsexamplev1.ApplicationSpec{
                 Image:    "", // Invalid empty image
@@ -360,7 +389,7 @@ var _ = Describe("Application Error Handling", func() {
             },
         }
 
-        // This should fail due to validation webhook
+        // This should fail if the CRD schema or a configured validation webhook rejects empty images.
         err := k8sClient.Create(ctx, app)
         Expect(err).Should(HaveOccurred())
     })
@@ -373,14 +402,26 @@ Verify cleanup logic runs correctly.
 
 ```go
 var _ = Describe("Application Finalizers", func() {
+    const (
+        timeout  = time.Second * 10
+        interval = time.Millisecond * 250
+    )
+
     It("Should run cleanup before deletion", func() {
         ctx := context.Background()
+
+        namespace := &corev1.Namespace{
+            ObjectMeta: metav1.ObjectMeta{
+                GenerateName: "application-finalizers-",
+            },
+        }
+        Expect(k8sClient.Create(ctx, namespace)).Should(Succeed())
 
         // Create resource that uses finalizers
         app := &appsexamplev1.Application{
             ObjectMeta: metav1.ObjectMeta{
                 Name:      "finalizer-test-app",
-                Namespace: "test-namespace",
+                Namespace: namespace.Name,
             },
             Spec: appsexamplev1.ApplicationSpec{
                 Image:    "nginx:latest",
@@ -395,7 +436,7 @@ var _ = Describe("Application Finalizers", func() {
             updatedApp := &appsexamplev1.Application{}
             k8sClient.Get(ctx, types.NamespacedName{
                 Name:      "finalizer-test-app",
-                Namespace: "test-namespace",
+                Namespace: namespace.Name,
             }, updatedApp)
             return updatedApp.Finalizers
         }, timeout, interval).Should(ContainElement("application.example.com/finalizer"))
@@ -407,9 +448,9 @@ var _ = Describe("Application Finalizers", func() {
         Eventually(func() bool {
             err := k8sClient.Get(ctx, types.NamespacedName{
                 Name:      "finalizer-test-app",
-                Namespace: "test-namespace",
+                Namespace: namespace.Name,
             }, &appsexamplev1.Application{})
-            return errors.IsNotFound(err)
+            return apierrors.IsNotFound(err)
         }, timeout, interval).Should(BeTrue())
     })
 })
@@ -456,4 +497,4 @@ envtest enables comprehensive integration testing for Kubernetes controllers wit
 
 Set up envtest in your test suite, start your controller, and write tests that create resources and verify reconciliation results. Test status updates, error conditions, and finalizers. Use Eventually() for asynchronous assertions.
 
-Integration tests catch bugs that unit tests miss such as incorrect RBAC, wrong API usage, and reconciliation logic errors. They're essential for building reliable controllers.
+Integration tests catch bugs that unit tests miss such as invalid CRD schemas, wrong API usage, and reconciliation logic errors. They're essential for building reliable controllers.
