@@ -8,7 +8,7 @@ Description: Deploy OpenAI's Whisper speech-to-text model in Docker for accurate
 
 ---
 
-OpenAI's Whisper is an automatic speech recognition model that handles transcription and translation across 97 languages. It achieves near-human accuracy on many benchmarks and works well even with background noise, accents, and domain-specific vocabulary. Running Whisper in Docker gives you a self-hosted transcription service that keeps your audio data private and avoids per-minute API charges.
+OpenAI's Whisper is an automatic speech recognition model that handles transcription and translation across many languages. It achieves strong accuracy on many benchmarks and works well even with background noise, accents, and domain-specific vocabulary. Running Whisper in Docker gives you a self-hosted transcription service that keeps your audio data private and avoids per-minute API charges.
 
 ## Model Sizes and Requirements
 
@@ -16,11 +16,12 @@ Whisper comes in several sizes. Larger models are more accurate but require more
 
 | Model | Parameters | VRAM Required | Relative Speed | English Accuracy |
 |-------|-----------|---------------|----------------|-----------------|
-| tiny | 39M | ~1 GB | 32x | Good |
-| base | 74M | ~1 GB | 16x | Better |
-| small | 244M | ~2 GB | 6x | Good+ |
+| tiny | 39M | ~1 GB | 10x | Good |
+| base | 74M | ~1 GB | 7x | Better |
+| small | 244M | ~2 GB | 4x | Good+ |
 | medium | 769M | ~5 GB | 2x | Very Good |
-| large-v3 | 1550M | ~10 GB | 1x | Best |
+| large | 1550M | ~10 GB | 1x | Best |
+| turbo | 809M | ~6 GB | 8x | Very Good |
 
 ## Quick Start with Docker
 
@@ -31,9 +32,10 @@ The simplest way to run Whisper is using a pre-built container.
 
 docker run --rm \
   -v $(pwd)/audio:/audio \
-  onerahmet/openai-whisper-asr-webservice:latest \
-  --model base \
-  --port 9000
+  -p 9000:9000 \
+  -e ASR_MODEL=base \
+  -e ASR_ENGINE=openai_whisper \
+  onerahmet/openai-whisper-asr-webservice:latest
 ```
 
 For a more practical setup, use Docker Compose.
@@ -57,8 +59,9 @@ services:
     environment:
       # Select the model size (tiny, base, small, medium, large-v3)
       - ASR_MODEL=medium
-      # Set the compute device
+      # Select the ASR engine and compute device
       - ASR_ENGINE=openai_whisper
+      - ASR_DEVICE=cuda
     deploy:
       resources:
         reservations:
@@ -380,4 +383,4 @@ docker stats whisper
 
 ## Summary
 
-Running Whisper in Docker gives you a private, cost-effective speech-to-text service. The model handles multiple languages, background noise, and varying audio quality with impressive accuracy. Docker containers make deployment simple and reproducible, while GPU acceleration keeps transcription fast enough for real-time use cases. Whether you are transcribing meetings, generating subtitles, or building voice-powered applications, a self-hosted Whisper instance in Docker is a practical and reliable solution.
+Running Whisper in Docker gives you a private, cost-effective speech-to-text service. The model handles multiple languages, background noise, and varying audio quality with impressive accuracy. Docker containers make deployment simple and reproducible, while GPU acceleration keeps transcription fast enough for many use cases. Whether you are transcribing meetings, generating subtitles, or building voice-powered applications, a self-hosted Whisper instance in Docker is a practical and reliable solution.
