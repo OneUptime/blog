@@ -14,7 +14,7 @@ Elasticsearch clusters that handle time-series data like logs, metrics, and trac
 
 The hot-warm-cold architecture divides Elasticsearch nodes into three tiers based on data age and access patterns:
 
-**Hot tier**: Handles all indexing (writes) and serves the most recent, frequently queried data. These nodes use fast NVMe SSDs, high CPU counts, and generous memory. Data typically stays on hot nodes for hours to a few days.
+**Hot tier**: Handles all indexing (writes) and serves the most recent, frequently queried data. These nodes use fast SSD or provisioned IOPS storage, high CPU counts, and generous memory. Data typically stays on hot nodes for hours to a few days.
 
 **Warm tier**: Stores data that is still occasionally queried but no longer being written to. These nodes use slower but cheaper SSD storage with moderate CPU and memory. Data resides on warm nodes for days to weeks.
 
@@ -67,6 +67,7 @@ The Elastic Cloud on Kubernetes (ECK) operator simplifies Elasticsearch deployme
 ```bash
 kubectl create -f https://download.elastic.co/downloads/eck/2.12.0/crds.yaml
 kubectl apply -f https://download.elastic.co/downloads/eck/2.12.0/operator.yaml
+kubectl create namespace elasticsearch
 ```
 
 Now deploy an Elasticsearch cluster with tiered node sets:
@@ -155,7 +156,7 @@ spec:
             name: elasticsearch-data
           spec:
             accessModes: ["ReadWriteOnce"]
-            storageClassName: io2-nvme
+            storageClassName: io2-provisioned
             resources:
               requests:
                 storage: 1000Gi
@@ -251,7 +252,7 @@ Index Lifecycle Management (ILM) policies automate data movement between tiers. 
 
 ```bash
 # Create ILM policy via Elasticsearch API
-curl -X PUT "https://elasticsearch-es-http:9200/_ilm/policy/logs-policy" \
+curl -X PUT "https://production-es-http:9200/_ilm/policy/logs-policy" \
   -H "Content-Type: application/json" \
   -u "elastic:${ES_PASSWORD}" \
   -d '{
@@ -294,8 +295,7 @@ curl -X PUT "https://elasticsearch-es-http:9200/_ilm/policy/logs-policy" \
           },
           "allocate": {
             "number_of_replicas": 0
-          },
-          "freeze": {}
+          }
         }
       },
       "delete": {
@@ -314,7 +314,7 @@ curl -X PUT "https://elasticsearch-es-http:9200/_ilm/policy/logs-policy" \
 Apply the ILM policy to new indices through an index template:
 
 ```bash
-curl -X PUT "https://elasticsearch-es-http:9200/_index_template/logs-template" \
+curl -X PUT "https://production-es-http:9200/_index_template/logs-template" \
   -H "Content-Type: application/json" \
   -u "elastic:${ES_PASSWORD}" \
   -d '{
@@ -335,7 +335,7 @@ curl -X PUT "https://elasticsearch-es-http:9200/_index_template/logs-template" \
 Bootstrap the first index:
 
 ```bash
-curl -X PUT "https://elasticsearch-es-http:9200/logs-000001" \
+curl -X PUT "https://production-es-http:9200/logs-000001" \
   -H "Content-Type: application/json" \
   -u "elastic:${ES_PASSWORD}" \
   -d '{
@@ -356,7 +356,7 @@ Define Kubernetes storage classes that match each tier's performance requirement
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: io2-nvme
+  name: io2-provisioned
 provisioner: ebs.csi.aws.com
 parameters:
   type: io2
@@ -398,19 +398,19 @@ Monitor the distribution of data across tiers:
 
 ```bash
 # Check data tier allocation
-curl -s "https://elasticsearch-es-http:9200/_cat/allocation?v&h=node,shards,disk.used,disk.avail,disk.percent" \
+curl -s "https://production-es-http:9200/_cat/allocation?v&h=node,shards,disk.used,disk.avail,disk.percent" \
   -u "elastic:${ES_PASSWORD}"
 
 # View indices by tier
-curl -s "https://elasticsearch-es-http:9200/_cat/indices?v&h=index,pri,rep,store.size,status&s=index" \
+curl -s "https://production-es-http:9200/_cat/indices?v&h=index,pri,rep,store.size,status&s=index" \
   -u "elastic:${ES_PASSWORD}"
 
 # Check ILM status for all indices
-curl -s "https://elasticsearch-es-http:9200/logs-*/_ilm/explain" \
+curl -s "https://production-es-http:9200/logs-*/_ilm/explain" \
   -u "elastic:${ES_PASSWORD}" | jq '.indices | to_entries[] | {index: .key, phase: .value.phase, age: .value.age}'
 ```
 
-Set up Prometheus monitoring for tier-level metrics:
+Set up Prometheus monitoring for tier-level metrics with the Prometheus community Elasticsearch exporter:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -422,7 +422,7 @@ spec:
     - name: elasticsearch-tiers
       rules:
         - alert: HotTierDiskHigh
-          expr: elasticsearch_filesystem_data_available_bytes{node_roles=~".*data_hot.*"} / elasticsearch_filesystem_data_size_bytes{node_roles=~".*data_hot.*"} < 0.2
+          expr: elasticsearch_filesystem_data_available_bytes{name=~"production-es-hot-.*"} / elasticsearch_filesystem_data_size_bytes{name=~"production-es-hot-.*"} < 0.2
           for: 15m
           labels:
             severity: warning
@@ -443,12 +443,12 @@ The primary benefit of hot-warm-cold is cost reduction. Here is a typical cost c
 
 | Tier | Storage Type | Cost/GB/Month | Data Volume | Monthly Cost |
 |------|-------------|--------------|-------------|-------------|
-| Hot | io2 NVMe | $0.125 | 1 TB | $128 |
+| Hot | io2 | $0.125 | 1 TB | $128 |
 | Warm | gp3 | $0.08 | 3 TB | $245 |
 | Cold | sc1 | $0.015 | 6 TB | $92 |
 | **Total** | | | **10 TB** | **$465** |
 
-Compare this to storing all 10TB on io2 NVMe at $1,280/month. The tiered approach saves over 60% on storage costs alone, with additional savings from using smaller instance types for warm and cold nodes.
+Compare this to storing all 10TB on io2 at $1,280/month. The tiered approach saves over 60% on storage costs alone, with additional savings from using smaller instance types for warm and cold nodes.
 
 ## Conclusion
 
