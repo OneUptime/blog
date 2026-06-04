@@ -8,7 +8,7 @@ Description: Deploy Overseerr in Docker to let users request movies and TV shows
 
 ---
 
-Overseerr is a request management tool for media servers like Plex and Jellyfin. It provides a beautiful interface where your users (family, friends, roommates) can browse, discover, and request movies and TV shows. Those requests then flow automatically to download managers like Radarr and Sonarr, which handle fetching the media. Think of it as a self-service portal for your media library.
+Overseerr is a request management tool for Plex media servers. It provides a beautiful interface where your users (family, friends, roommates) can browse, discover, and request movies and TV shows. Those requests then flow automatically to download managers like Radarr and Sonarr, which handle fetching the media. Think of it as a self-service portal for your media library.
 
 ## Why Overseerr?
 
@@ -19,7 +19,7 @@ Without Overseerr, managing media requests usually means getting text messages f
 ```mermaid
 graph LR
     A[User] --> B[Overseerr]
-    B --> C[Plex / Jellyfin]
+    B --> C[Plex]
     B --> D[Radarr - Movies]
     B --> E[Sonarr - TV Shows]
     D --> F[Download Client]
@@ -28,12 +28,12 @@ graph LR
     G --> C
 ```
 
-Overseerr integrates with your existing media stack. It checks Plex or Jellyfin to see what you already have, connects to Radarr and Sonarr to fulfill requests, and provides users with status updates on their requests.
+Overseerr integrates with your existing media stack. It checks Plex to see what you already have, connects to Radarr and Sonarr to fulfill requests, and provides users with status updates on their requests.
 
 ## Prerequisites
 
 - A Linux server with Docker and Docker Compose installed
-- A working Plex or Jellyfin media server
+- A working Plex media server
 - Radarr installed and configured for movies
 - Sonarr installed and configured for TV shows
 - At least 512 MB of RAM
@@ -139,7 +139,7 @@ SSL: No
 4. Test the connection
 5. Select the default quality profile
 6. Select the root folder for TV shows
-7. Choose language profile and series type (Standard for most shows)
+7. Choose the series type (Standard for most shows)
 8. Enable "Default Server" and save
 
 ## User Management
@@ -148,7 +148,7 @@ Overseerr supports multiple authentication methods:
 
 - **Plex authentication** - Users sign in with their Plex account. Anyone you have shared your Plex server with can sign in.
 - **Local accounts** - Create accounts directly in Overseerr for users without Plex.
-- **Jellyfin authentication** - If using Jellyfin instead of Plex.
+If you use Jellyfin instead of Plex, use Seerr or Jellyseerr rather than Overseerr.
 
 Configure user defaults in Settings > Users:
 
@@ -253,7 +253,8 @@ If users need to access Overseerr outside your local network:
 ```nginx
 # /etc/nginx/sites-available/overseerr
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name requests.your-domain.com;
 
     ssl_certificate /etc/letsencrypt/live/requests.your-domain.com/fullchain.pem;
