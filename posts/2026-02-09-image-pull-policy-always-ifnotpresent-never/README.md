@@ -16,17 +16,17 @@ Understanding imagePullPolicy helps you balance freshness, startup speed, and re
 
 Kubernetes offers three image pull policies:
 
-Always pulls the image every time the container starts, even if the image exists locally. Use Always when you need the latest version.
+Always checks the registry every time the container starts and pulls the resolved image if that exact digest is not already cached locally. Use Always when you need the latest version.
 
 IfNotPresent only pulls the image if it does not exist on the node. Use IfNotPresent for stable tagged images to save bandwidth.
 
 Never never pulls images. The image must already exist on the node or the container fails to start. Use Never for pre-loaded images or air-gapped environments.
 
-The default policy depends on the image tag. Images tagged :latest default to Always. Images with specific version tags default to IfNotPresent.
+The default policy depends on the image tag. Images tagged :latest or images with no tag default to Always. Images with specific version tags default to IfNotPresent.
 
 ## Always Pull Policy
 
-Always pulls the image on every container start:
+Always checks the registry on every container start:
 
 ```yaml
 apiVersion: v1
@@ -71,7 +71,7 @@ spec:
         imagePullPolicy: Always
 ```
 
-Every pod restart pulls the latest image, ensuring you run the newest code.
+Every pod restart checks the registry for the latest image digest, ensuring you run the newest code while reusing cached layers when possible.
 
 ## IfNotPresent Pull Policy
 
@@ -138,7 +138,7 @@ spec:
     imagePullPolicy: Never
 ```
 
-The image must exist on the node or the pod fails with ImagePullBackOff.
+The image must exist on the node or the pod fails to start, typically with ErrImageNeverPull.
 
 Use cases for Never:
 - Air-gapped environments
@@ -170,7 +170,7 @@ image: myapp:latest
 # Uses IfNotPresent (specific tag)
 image: myapp:v1.2.3
 
-# Uses IfNotPresent (no tag defaults to latest but policy is IfNotPresent)
+# Uses Always (no tag defaults to latest)
 image: myapp
 ```
 
@@ -209,7 +209,7 @@ kubectl apply -f always-test.yaml
 kubectl get pod always-test -w
 ```
 
-Each start includes pull time. For a 500MB image over slow network, this adds 30+ seconds.
+Each start includes a registry check and may include pull time if the resolved image digest is not cached. For a 500MB image over a slow network, pulling new layers can add 30+ seconds.
 
 With IfNotPresent policy:
 
@@ -433,7 +433,7 @@ kubectl describe node worker-node-1 | grep -A 5 "Capacity:"
 
 ## Optimizing Registry Bandwidth
 
-For clusters with many nodes, Always policy creates excessive registry load.
+For clusters with many nodes, Always policy can create excessive registry lookup and pull load.
 
 Use IfNotPresent with immutable tags:
 
@@ -448,7 +448,7 @@ Include commit hash or build timestamp in tags to ensure uniqueness while enabli
 
 Pre-pull images on nodes:
 
-```bash
+```yaml
 # DaemonSet to pre-pull images
 apiVersion: apps/v1
 kind: DaemonSet
@@ -470,7 +470,7 @@ spec:
         command: ['sh', '-c', 'echo Image pulled']
       containers:
       - name: pause
-        image: gcr.io/google_containers/pause:3.1
+        image: registry.k8s.io/pause:3.10
 ```
 
 This pulls the image to all nodes, then actual workloads use IfNotPresent to use the cached image.
@@ -536,15 +536,20 @@ Alert on failed pulls:
 
 ```yaml
 # PrometheusRule
-groups:
-- name: image-pull-alerts
-  rules:
-  - alert: ImagePullFailed
-    expr: |
-      kube_pod_container_status_waiting_reason{reason="ImagePullBackOff"} > 0
-    for: 5m
-    annotations:
-      summary: "Pod {{ $labels.pod }} cannot pull image"
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: image-pull-alerts
+spec:
+  groups:
+  - name: image-pull-alerts
+    rules:
+    - alert: ImagePullFailed
+      expr: |
+        kube_pod_container_status_waiting_reason{reason="ImagePullBackOff"} > 0
+      for: 5m
+      annotations:
+        summary: "Pod {{ $labels.pod }} cannot pull image"
 ```
 
 Monitor registry bandwidth:
