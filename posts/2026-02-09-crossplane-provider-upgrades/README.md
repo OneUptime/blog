@@ -18,7 +18,7 @@ Before diving into upgrade strategies, it is important to understand how provide
 - **Controller**: A Kubernetes controller that watches for changes to managed resources and reconciles them against the cloud API
 - **Provider package**: An OCI image containing the CRDs and controller image reference
 
-When you upgrade a provider, Crossplane installs the new CRDs and starts the new controller while deactivating the old one. During this transition, there is a brief period where no controller is reconciling your managed resources.
+When you upgrade a provider, Crossplane creates a new ProviderRevision, updates the installed APIs, and switches the active revision that runs the provider controller. During this transition, reconciliation can be briefly interrupted while the new active revision becomes healthy.
 
 ## Pre-Upgrade Checklist
 
@@ -102,34 +102,30 @@ kubectl patch providerrevision provider-aws-ec2-def456 \
   --type=merge -p '{"spec":{"desiredState":"Active"}}'
 ```
 
-## Staged Rollout with Multiple ProviderConfigs
+## Staged Rollout with Canary Clusters
 
-For organizations managing many cloud resources, a staged rollout reduces blast radius. Create separate ProviderConfigs and migrate resources gradually:
+For organizations managing many cloud resources, a staged rollout reduces blast radius. A ProviderConfig controls provider authentication and account settings; it does not select which provider revision reconciles a resource. Because only one revision of a Provider is active at a time, test a new provider version in a staging or canary Crossplane cluster before activating it in production:
 
 ```yaml
-# ProviderConfig for canary resources
-apiVersion: aws.upbound.io/v1beta1
-kind: ProviderConfig
+# Canary cluster provider
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
 metadata:
-  name: aws-canary
+  name: provider-aws
 spec:
-  credentials:
-    source: Secret
-    secretRef:
-      namespace: crossplane-system
-      name: aws-creds
-      key: credentials
+  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.3.0
+  revisionActivationPolicy: Automatic
+  revisionHistoryLimit: 5
 ```
 
-Migrate a small set of managed resources to the canary ProviderConfig:
+Apply a small set of non-critical managed resources to the canary cluster:
 
 ```bash
-# Update a non-critical resource to use the canary config
-kubectl patch instance.rds test-database \
-  --type=merge -p '{"spec":{"providerConfigRef":{"name":"aws-canary"}}}'
+# Point kubectl at the canary cluster before applying test resources
+kubectl --context=crossplane-canary apply -f canary-resources/
 ```
 
-Monitor these canary resources closely for 24-48 hours before migrating production resources.
+Monitor these canary resources closely for 24-48 hours before activating the new revision in production.
 
 ## Handling CRD Schema Changes
 
@@ -174,20 +170,20 @@ spec:
       rules:
         - alert: ManagedResourceNotSynced
           expr: |
-            count(crossplane_managed_resource_ready{status!="True"}) > 0
+            (sum(crossplane_managed_resource_exists) - sum(crossplane_managed_resource_synced)) > 0
           for: 10m
           labels:
             severity: warning
           annotations:
             summary: "Managed resources not synced after provider upgrade"
-        - alert: ProviderRevisionUnhealthy
+        - alert: ManagedResourceNotReady
           expr: |
-            crossplane_provider_revision_healthy{status!="True"} > 0
+            (sum(crossplane_managed_resource_exists) - sum(crossplane_managed_resource_ready)) > 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Provider revision is unhealthy"
+            summary: "Managed resources are not ready after provider upgrade"
         - alert: ReconciliationErrors
           expr: |
             rate(controller_runtime_reconcile_errors_total{controller=~"managed/.*"}[5m]) > 0.1
@@ -236,7 +232,7 @@ For non-critical environments, automate provider version tracking with Renovate 
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["crossplane/.*\\.yaml$"],
+      "managerFilePatterns": ["/^crossplane/.*\\.ya?ml$/"],
       "matchStrings": [
         "package:\\s*(?<depName>[^:]+):(?<currentValue>v[^\\s]+)"
       ],
