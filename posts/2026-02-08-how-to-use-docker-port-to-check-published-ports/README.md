@@ -65,7 +65,7 @@ This is useful when a container exposes both TCP and UDP on the same port number
 
 The address before the colon indicates where the port is bound:
 
-- `0.0.0.0:8080` means the port is accessible from any IPv4 interface (all network-connected machines can reach it)
+- `0.0.0.0:8080` means the port is bound to any IPv4 interface (traffic that reaches the Docker host on that port can access it)
 - `127.0.0.1:8080` means the port is only accessible from the host itself (localhost only)
 - `[::]:8080` is the IPv6 equivalent of binding to all interfaces
 - `10.0.1.5:8080` means the port is bound to a specific network interface
@@ -128,7 +128,7 @@ Extract just the host port number:
 
 ```bash
 # Get the host port mapped to container port 80
-HOST_PORT=$(docker port my-container 80 | head -1 | cut -d: -f2)
+HOST_PORT=$(docker port my-container 80 | head -1 | awk -F: '{print $NF}')
 echo "Service is available on port $HOST_PORT"
 ```
 
@@ -149,7 +149,7 @@ until docker port "$CONTAINER_NAME" 3000 > /dev/null 2>&1; do
 done
 
 # Get the mapped port
-API_URL="http://localhost:$(docker port "$CONTAINER_NAME" 3000 | head -1 | cut -d: -f2)"
+API_URL="http://localhost:$(docker port "$CONTAINER_NAME" 3000 | head -1 | awk -F: '{print $NF}')"
 echo "API is available at $API_URL"
 
 # Run health check
@@ -187,7 +187,7 @@ done
 
 # List all assigned ports
 for i in 1 2 3 4 5; do
-  PORT=$(docker port "web-$i" 80 | head -1 | cut -d: -f2)
+  PORT=$(docker port "web-$i" 80 | head -1 | awk -F: '{print $NF}')
   echo "web-$i -> http://localhost:$PORT"
 done
 ```
@@ -329,4 +329,4 @@ The `docker compose port` subcommand is purpose-built for this. It takes the ser
 
 ## Summary
 
-`docker port` provides a clean, scriptable way to check how container ports map to host ports. Use it to verify port bindings after starting containers, find dynamically assigned ports, and debug connectivity issues. Remember that port mappings only exist when you use `-p` or `-P`; `EXPOSE` alone does not create them. For scripting, combine `docker port` with `cut` or `awk` to extract just the host port number. When troubleshooting unreachable services, check that the application inside the container binds to `0.0.0.0` rather than `127.0.0.1`.
+`docker port` provides a clean, scriptable way to check how container ports map to host ports. Use it to verify port bindings after starting containers, find dynamically assigned ports, and debug connectivity issues. Remember that port mappings only exist when you use `-p` or `-P`; `EXPOSE` alone does not create them. For scripting, combine `docker port` with tools such as `awk` to extract just the host port number. When troubleshooting unreachable services, check that the application inside the container binds to `0.0.0.0` rather than `127.0.0.1`.
