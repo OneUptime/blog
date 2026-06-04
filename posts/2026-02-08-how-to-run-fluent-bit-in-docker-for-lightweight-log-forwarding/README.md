@@ -29,7 +29,7 @@ docker compose version
 
 ## Fluent Bit Configuration
 
-Create a `fluent-bit.conf` file. This configuration reads Docker container logs from the file system, parses JSON fields, and sends the results to both Elasticsearch and stdout.
+Create a `fluent-bit.conf` file. This configuration receives Docker container logs through the Docker `fluentd` logging driver, parses JSON fields, and sends the results to both Elasticsearch and stdout.
 
 ```ini
 # fluent-bit.conf - Main Fluent Bit configuration
@@ -47,7 +47,7 @@ Create a `fluent-bit.conf` file. This configuration reads Docker container logs 
     Parsers_File /fluent-bit/etc/parsers.conf
 
 [INPUT]
-    # Read logs from the Docker container log files on the host
+    # Receive logs sent by Docker's fluentd logging driver
     Name         forward
     Listen       0.0.0.0
     Port         24224
@@ -58,7 +58,7 @@ Create a `fluent-bit.conf` file. This configuration reads Docker container logs 
     Name         parser
     Match        docker.*
     Key_Name     log
-    Parser       docker_json
+    Parser       app_json
     Reserve_Data On
 
 [FILTER]
@@ -87,14 +87,14 @@ Create a `fluent-bit.conf` file. This configuration reads Docker container logs 
     Format       json_lines
 ```
 
-Create a custom parsers file called `parsers.conf` to handle JSON-formatted Docker logs.
+Create a custom parsers file called `parsers.conf` to handle JSON-formatted application log messages.
 
 ```ini
 # parsers.conf - Custom parsers for Fluent Bit
 
 [PARSER]
-    # Parse Docker JSON log format
-    Name         docker_json
+    # Parse JSON stored in the Docker fluentd driver's log field
+    Name         app_json
     Format       json
     Time_Key     time
     Time_Format  %Y-%m-%dT%H:%M:%S.%L
@@ -115,8 +115,6 @@ Create the full stack with Fluent Bit, Elasticsearch, Kibana, and a sample nginx
 
 ```yaml
 # docker-compose.yml - Fluent Bit log forwarding stack
-version: "3.8"
-
 services:
   # Fluent Bit - the log forwarder
   fluent-bit:
@@ -168,6 +166,7 @@ services:
       driver: fluentd
       options:
         fluentd-address: "localhost:24224"
+        fluentd-async: "true"
         tag: "docker.nginx"
     depends_on:
       - fluent-bit
@@ -178,14 +177,17 @@ services:
   log-generator:
     image: alpine:3.19
     command: >
-      sh -c "while true; do
-        echo '{\"level\":\"info\",\"msg\":\"processing request\",\"request_id\":\"'$$(cat /dev/urandom | tr -dc 'a-f0-9' | head -c 8)'\",\"duration_ms\":'$$(shuf -i 10-500 -n 1)'}';
+      sh -c "i=0; while true; do
+        i=$$((i + 1));
+        duration=$$((10 + (i % 491)));
+        printf '{\"level\":\"info\",\"msg\":\"processing request\",\"request_id\":\"%08x\",\"duration_ms\":%s}\n' \"$$i\" \"$$duration\";
         sleep 2;
       done"
     logging:
       driver: fluentd
       options:
         fluentd-address: "localhost:24224"
+        fluentd-async: "true"
         tag: "docker.app"
     depends_on:
       - fluent-bit
@@ -209,7 +211,7 @@ Launch the stack and generate some traffic.
 docker compose up -d
 
 # Wait for Elasticsearch to become ready (takes about 30 seconds)
-until curl -s http://localhost:9200/_cluster/health | grep -q '"status":"green\|yellow"'; do
+until curl -s http://localhost:9200/_cluster/health | grep -Eq '"status":"(green|yellow)"'; do
   echo "Waiting for Elasticsearch..."
   sleep 5
 done
@@ -247,7 +249,7 @@ When the destination is slow or temporarily unavailable, Fluent Bit can buffer l
     storage.path              /fluent-bit/buffer/
     storage.sync              normal
     storage.checksum          off
-    # Maximum buffer size on disk
+    # Maximum number of chunks to keep up in memory
     storage.max_chunks_up     128
 
 [INPUT]
@@ -282,7 +284,7 @@ Fluent Bit can send the same log stream to multiple destinations simultaneously.
     bucket       my-log-archive
     total_file_size 50M
     upload_timeout 10m
-    s3_key_format /logs/%Y/%m/%d/$TAG/%H_%M_%S.gz
+    s3_key_format /logs/%Y/%m/%d/$TAG/%H_%M_%S/$UUID.gz
     compression  gzip
 ```
 
