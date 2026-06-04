@@ -28,8 +28,8 @@ kubectl get node node-1
 # Shows SchedulingDisabled status
 
 # Check node details
-kubectl describe node node-1 | grep Taints
-# Shows node.kubernetes.io/unschedulable:NoSchedule
+kubectl get node node-1 -o jsonpath='{.spec.unschedulable}{"\n"}'
+# Shows true
 ```
 
 Cordoning is useful when you need to investigate issues or prepare for maintenance without immediately disrupting workloads.
@@ -194,7 +194,7 @@ fi
 
 # Step 4: Verify node is empty
 POD_COUNT=$(kubectl get pods --all-namespaces --field-selector spec.nodeName=$NODE \
-  --no-headers | grep -v DaemonSet | wc -l)
+  -o json | jq '[.items[] | select([.metadata.ownerReferences[]?.kind] | index("DaemonSet") | not)] | length')
 
 if [ $POD_COUNT -eq 0 ]; then
   echo "Node successfully drained"
