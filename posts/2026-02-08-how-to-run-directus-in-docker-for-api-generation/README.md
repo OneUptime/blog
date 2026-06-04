@@ -43,7 +43,7 @@ docker run -d \
   -e DB_FILENAME="/directus/database/data.db" \
   -v directus-data:/directus/database \
   -v directus-uploads:/directus/uploads \
-  directus/directus:10
+  directus/directus:11
 ```
 
 Open `http://localhost:8055` and log in with the admin credentials.
@@ -54,12 +54,10 @@ For anything beyond testing, use PostgreSQL as the database backend. Here is a c
 
 ```yaml
 # docker-compose.yml - Directus with PostgreSQL and Redis
-version: "3.8"
-
 services:
   # Directus - the main application
   directus:
-    image: directus/directus:10
+    image: directus/directus:11
     ports:
       - "8055:8055"
     volumes:
@@ -83,6 +81,7 @@ services:
 
       # Redis for caching and real-time messaging
       CACHE_ENABLED: "true"
+      CACHE_AUTO_PURGE: "true"
       CACHE_STORE: "redis"
       REDIS: "redis://redis:6379"
 
@@ -268,26 +267,27 @@ curl -X POST http://localhost:8055/files \
 # http://localhost:8055/assets/FILE_ID?width=300&height=200&fit=cover
 ```
 
-## Setting Up Roles and Permissions
+## Setting Up Policies and Permissions
 
-Directus has a granular permissions system. Create roles with specific access levels.
+Directus has a granular permissions system. Create policies with specific access levels.
 
 ```bash
-# Create a read-only "viewer" role
-curl -X POST http://localhost:8055/roles \
+# Create a read-only "viewer" policy
+curl -X POST http://localhost:8055/policies \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
     "name": "Viewer",
-    "icon": "visibility"
+    "icon": "visibility",
+    "app_access": true
   }'
 
-# Set permissions for the role on the articles collection
+# Set permissions for the policy on the articles collection
 curl -X POST http://localhost:8055/permissions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
-    "role": "ROLE_ID_HERE",
+    "policy": "POLICY_ID_HERE",
     "collection": "articles",
     "action": "read",
     "fields": ["*"]
