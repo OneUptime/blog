@@ -273,7 +273,6 @@ Understand service account configuration:
 
 ```bash
 # Service accounts
-kubectl explain pod.spec.serviceAccount
 kubectl explain pod.spec.serviceAccountName
 kubectl explain pod.spec.automountServiceAccountToken
 
@@ -328,7 +327,7 @@ kubectl explain pod.spec.containers.lifecycle.preStop
 # Hook handlers
 kubectl explain pod.spec.containers.lifecycle.postStart.exec
 kubectl explain pod.spec.containers.lifecycle.postStart.httpGet
-kubectl explain pod.spec.containers.lifecycle.postStart.tcpSocket
+kubectl explain pod.spec.containers.lifecycle.postStart.sleep
 ```
 
 ## Creating Helper Functions
@@ -381,15 +380,15 @@ Check differences between API versions:
 
 ```bash
 # Default version
-kubectl explain deployment
+kubectl explain horizontalpodautoscaler
 
 # Specific version
-kubectl explain deployment --api-version=apps/v1
-kubectl explain deployment --api-version=extensions/v1beta1
+kubectl explain horizontalpodautoscaler --api-version=autoscaling/v1
+kubectl explain horizontalpodautoscaler --api-version=autoscaling/v2
 
 # Compare fields between versions
-diff <(kubectl explain deployment --api-version=apps/v1 --recursive) \
-     <(kubectl explain deployment --api-version=apps/v1beta1 --recursive)
+diff <(kubectl explain horizontalpodautoscaler --api-version=autoscaling/v1 --recursive) \
+     <(kubectl explain horizontalpodautoscaler --api-version=autoscaling/v2 --recursive)
 ```
 
 ## Practical Debugging Scenarios
