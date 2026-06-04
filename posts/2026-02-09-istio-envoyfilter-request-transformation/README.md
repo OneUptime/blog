@@ -16,7 +16,7 @@ EnvoyFilter resources let you inject custom logic directly into the Envoy data p
 
 EnvoyFilter is the most powerful but also most complex Istio resource. It directly patches Envoy's configuration, giving you access to the full capabilities of Envoy's filter chain. The trade-off is that misconfigured filters can break traffic, and filters aren't portable across Envoy versions.
 
-Use EnvoyFilter only when VirtualService and DestinationRule can't solve your problem. For request body transformation, EnvoyFilter with Lua scripting is often your only option.
+Use EnvoyFilter only when VirtualService and DestinationRule can't solve your problem. For request body transformation, EnvoyFilter with Lua scripting is one way to add custom logic at the proxy layer.
 
 ## Basic EnvoyFilter for Header Transformation
 
@@ -45,14 +45,18 @@ spec:
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.lua
+        name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              request_handle:headers():add("x-custom-header", "value")
-              request_handle:headers():add("x-request-id", request_handle:headers():get("x-request-id"))
-            end
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                request_handle:headers():add("x-custom-header", "value")
+                local request_id = request_handle:headers():get("x-request-id")
+                if request_id then
+                  request_handle:headers():add("x-original-request-id", request_id)
+                end
+              end
 ```
 
 This filter injects Lua code that runs on every request, adding custom headers before routing.
@@ -83,46 +87,47 @@ spec:
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.lua
+        name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              -- Only process POST requests
-              local method = request_handle:headers():get(":method")
-              if method ~= "POST" then
-                return
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                -- Only process POST requests
+                local method = request_handle:headers():get(":method")
+                if method ~= "POST" then
+                  return
+                end
+
+                -- Get request body
+                local body = request_handle:body()
+                if not body then
+                  return
+                end
+
+                local body_string = body:getBytes(0, body:length())
+
+                -- Parse JSON (provide a JSON module in the proxy image or via a mounted Lua file)
+                -- Transform legacy format to new format
+                local json = require("json")
+                local data = json.decode(body_string)
+
+                -- Add required fields for legacy system
+                if data.payment then
+                  data.payment.version = "2.0"
+                  data.payment.timestamp = os.time()
+                  data.payment.source = "istio-mesh"
+                end
+
+                -- Serialize back to JSON
+                local new_body = json.encode(data)
+
+                -- Replace body
+                request_handle:body():setBytes(new_body)
+
+                -- Update content-length header
+                request_handle:headers():replace("content-length", tostring(#new_body))
               end
-
-              -- Get request body
-              local body = request_handle:body()
-              if not body then
-                return
-              end
-
-              local body_string = body:getBytes(0, body:length())
-
-              -- Parse JSON (simplified, use JSON library in production)
-              -- Transform legacy format to new format
-              local json = require("json")
-              local data = json.decode(body_string)
-
-              -- Add required fields for legacy system
-              if data.payment then
-                data.payment.version = "2.0"
-                data.payment.timestamp = os.time()
-                data.payment.source = "istio-mesh"
-              end
-
-              -- Serialize back to JSON
-              local new_body = json.encode(data)
-
-              -- Replace body
-              request_handle:body():setBytes(new_body)
-
-              -- Update content-length header
-              request_handle:headers():replace("content-length", tostring(#new_body))
-            end
 ```
 
 ## Protocol Adaptation with EnvoyFilter
@@ -133,12 +138,12 @@ Transform REST requests into a different format:
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
-  name: rest-to-grpc-adapter
+  name: rest-to-json-rpc-adapter
   namespace: api-gateway
 spec:
   workloadSelector:
     labels:
-      adapter: rest-to-grpc
+      adapter: rest-to-json-rpc
   configPatches:
   - applyTo: HTTP_FILTER
     match:
@@ -150,30 +155,33 @@ spec:
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.lua
+        name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              local path = request_handle:headers():get(":path")
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                local path = request_handle:headers():get(":path")
 
-              -- Convert REST endpoint to gRPC method
-              if string.match(path, "^/api/users/") then
-                local user_id = string.match(path, "/api/users/(%d+)")
+                -- Convert REST endpoint to an internal JSON-RPC endpoint
+                if string.match(path, "^/api/users/") then
+                  local user_id = string.match(path, "/api/users/(%d+)")
 
-                -- Build gRPC request body
-                local grpc_request = string.format('{"user_id": "%s"}', user_id)
+                  -- Build JSON-RPC request body
+                  local rpc_request = string.format('{"jsonrpc":"2.0","method":"GetUser","params":{"user_id":"%s"},"id":"%s"}', user_id, request_handle:headers():get("x-request-id") or "1")
 
-                -- Update path to gRPC service
-                request_handle:headers():replace(":path", "/user.UserService/GetUser")
+                  -- Update path to JSON-RPC service
+                  request_handle:headers():replace(":method", "POST")
+                  request_handle:headers():replace(":path", "/rpc")
 
-                -- Set gRPC content type
-                request_handle:headers():replace("content-type", "application/grpc")
+                  -- Set JSON content type
+                  request_handle:headers():replace("content-type", "application/json")
 
-                -- Replace body
-                request_handle:body():setBytes(grpc_request)
+                  -- Replace body
+                  request_handle:body(true):setBytes(rpc_request)
+                  request_handle:headers():replace("content-length", tostring(#rpc_request))
+                end
               end
-            end
 ```
 
 ## Conditional Transformation Based on Headers
@@ -197,36 +205,37 @@ spec:
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.lua
+        name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              -- Check for transformation flag
-              local transform = request_handle:headers():get("x-transform")
-              if transform ~= "legacy-format" then
-                return  -- Skip transformation
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                -- Check for transformation flag
+                local transform = request_handle:headers():get("x-transform")
+                if transform ~= "legacy-format" then
+                  return  -- Skip transformation
+                end
+
+                local body = request_handle:body()
+                if not body then
+                  return
+                end
+
+                local body_string = body:getBytes(0, body:length())
+
+                -- Apply legacy transformation
+                -- Convert snake_case to camelCase
+                local transformed = body_string:gsub("user_id", "userId")
+                transformed = transformed:gsub("created_at", "createdAt")
+                transformed = transformed:gsub("updated_at", "updatedAt")
+
+                request_handle:body():setBytes(transformed)
+                request_handle:headers():replace("content-length", tostring(#transformed))
+
+                -- Remove transformation header
+                request_handle:headers():remove("x-transform")
               end
-
-              local body = request_handle:body()
-              if not body then
-                return
-              end
-
-              local body_string = body:getBytes(0, body:length())
-
-              -- Apply legacy transformation
-              -- Convert snake_case to camelCase
-              local transformed = body_string:gsub("user_id", "userId")
-              transformed = transformed:gsub("created_at", "createdAt")
-              transformed = transformed:gsub("updated_at", "updatedAt")
-
-              request_handle:body():setBytes(transformed)
-              request_handle:headers():replace("content-length", tostring(#transformed))
-
-              -- Remove transformation header
-              request_handle:headers():remove("x-transform")
-            end
 ```
 
 ## Adding Authentication Fields to Requests
@@ -250,70 +259,51 @@ spec:
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.lua
+        name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              local body = request_handle:body()
-              if not body then
-                return
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                local body = request_handle:body()
+                if not body then
+                  return
+                end
+
+                local body_string = body:getBytes(0, body:length())
+                -- Provide a JSON module in the proxy image or via a mounted Lua file.
+                local json = require("json")
+                local data = json.decode(body_string)
+
+                -- Get credentials from dynamic metadata set by an earlier filter
+                local metadata = request_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua") or {}
+                local auth = metadata["auth"] or {}
+                local api_key = auth["api_key"] or "default-key"
+                local api_secret = auth["api_secret"] or "default-secret"
+
+                -- Add authentication fields
+                data.credentials = {
+                  api_key = api_key,
+                  api_secret = api_secret,
+                  timestamp = os.time(),
+                  nonce = request_handle:headers():get("x-request-id")
+                }
+
+                local new_body = json.encode(data)
+                request_handle:body():setBytes(new_body)
+                request_handle:headers():replace("content-length", tostring(#new_body))
               end
-
-              local body_string = body:getBytes(0, body:length())
-              local json = require("json")
-              local data = json.decode(body_string)
-
-              -- Get credentials from dynamic metadata
-              local metadata = request_handle:metadata()
-              local api_key = metadata:get("auth.api_key") or "default-key"
-              local api_secret = metadata:get("auth.api_secret") or "default-secret"
-
-              -- Add authentication fields
-              data.credentials = {
-                api_key = api_key,
-                api_secret = api_secret,
-                timestamp = os.time(),
-                nonce = request_handle:headers():get("x-request-id")
-              }
-
-              local new_body = json.encode(data)
-              request_handle:body():setBytes(new_body)
-              request_handle:headers():replace("content-length", tostring(#new_body))
-            end
 ```
 
-## Using External Lua Modules
+## Using Named Lua Sources
 
-Reference external Lua libraries for complex transformations:
+Reference reusable Lua scripts by defining named source code and selecting it with LuaPerRoute:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: lua-scripts
-  namespace: istio-system
-data:
-  json.lua: |
-    -- Lua JSON library
-    local json = {}
-    -- Implementation here...
-    return json
-
-  transform.lua: |
-    local transform = {}
-
-    function transform.legacy_format(data)
-      -- Complex transformation logic
-      return transformed_data
-    end
-
-    return transform
----
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
-  name: external-lua-modules
+  name: named-lua-sources
   namespace: istio-system
 spec:
   configPatches:
@@ -321,26 +311,41 @@ spec:
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.lua
+        name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                request_handle:logInfo("Default Lua transformation")
+              end
           source_codes:
-            json.lua:
+            legacy-transform.lua:
               inline_string: |
-                -- Load from ConfigMap or inline
-            transform.lua:
-              inline_string: |
-                -- Transformation utilities
-          inline_code: |
-            local json = require("json")
-            local transform = require("transform")
-
-            function envoy_on_request(request_handle)
-              local body = request_handle:body()
-              local data = json.decode(body:getBytes(0, body:length()))
-              local transformed = transform.legacy_format(data)
-              request_handle:body():setBytes(json.encode(transformed))
-            end
+                function envoy_on_request(request_handle)
+                  local body = request_handle:body()
+                  if not body then
+                    return
+                  end
+                  local body_string = body:getBytes(0, body:length())
+                  local transformed = body_string:gsub("legacy_id", "legacyId")
+                  request_handle:body():setBytes(transformed)
+                  request_handle:headers():replace("content-length", tostring(#transformed))
+                end
+  - applyTo: HTTP_ROUTE
+    match:
+      context: SIDECAR_INBOUND
+      routeConfiguration:
+        vhost:
+          route:
+            action: ANY
+    patch:
+      operation: MERGE
+      value:
+        typed_per_filter_config:
+          envoy.filters.http.lua:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.LuaPerRoute
+            name: legacy-transform.lua
 ```
 
 ## Error Handling and Logging
@@ -362,42 +367,43 @@ spec:
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.lua
+        name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              -- Wrap in pcall for error handling
-              local success, error = pcall(function()
-                local body = request_handle:body()
-                if not body then
-                  request_handle:logInfo("No body to transform")
-                  return
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                -- Wrap in pcall for error handling
+                local success, error = pcall(function()
+                  local body = request_handle:body()
+                  if not body then
+                    request_handle:logInfo("No body to transform")
+                    return
+                  end
+
+                  local body_string = body:getBytes(0, body:length())
+
+                  -- Log original body for debugging
+                  request_handle:logDebug("Original body: " .. body_string)
+
+                  -- Perform transformation
+                  local transformed = transform_body(body_string)
+
+                  request_handle:body():setBytes(transformed)
+                  request_handle:logInfo("Transformation successful")
+                end)
+
+                if not success then
+                  -- Log error and continue without transformation
+                  request_handle:logErr("Transformation failed: " .. tostring(error))
+                  request_handle:headers():add("x-transform-error", "true")
                 end
-
-                local body_string = body:getBytes(0, body:length())
-
-                -- Log original body for debugging
-                request_handle:logDebug("Original body: " .. body_string)
-
-                -- Perform transformation
-                local transformed = transform_body(body_string)
-
-                request_handle:body():setBytes(transformed)
-                request_handle:logInfo("Transformation successful")
-              end)
-
-              if not success then
-                -- Log error and continue without transformation
-                request_handle:logErr("Transformation failed: " .. tostring(error))
-                request_handle:headers():add("x-transform-error", "true")
               end
-            end
 
-            function transform_body(body)
-              -- Transformation logic
-              return body
-            end
+              function transform_body(body)
+                -- Transformation logic
+                return body
+              end
 ```
 
 ## Performance Considerations
@@ -406,6 +412,7 @@ Minimize transformation overhead:
 
 ```lua
 -- Cache expensive operations
+-- Provide this module in the proxy image or via a mounted Lua file.
 local json_decoder = require("json").new()
 
 -- Reuse buffers
