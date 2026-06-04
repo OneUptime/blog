@@ -72,6 +72,9 @@ spec:
   duration: 2160h  # 90 days
   renewBefore: 720h  # Renew 30 days before expiry
   isCA: false
+  subject:
+    organizations:
+      - Development
   privateKey:
     algorithm: RSA
     encoding: PKCS1
@@ -115,6 +118,7 @@ metadata:
   namespace: default
   annotations:
     cert-manager.io/cluster-issuer: selfsigned-issuer
+    cert-manager.io/subject-organizations: Development
 spec:
   ingressClassName: nginx
   tls:
@@ -252,6 +256,9 @@ metadata:
   namespace: team-a
 spec:
   secretName: team-a-tls
+  subject:
+    organizations:
+      - Team A
   dnsNames:
     - team-a.example.local
   issuerRef:
@@ -345,7 +352,8 @@ sudo cp dev-ca.crt /usr/local/share/ca-certificates/
 sudo update-ca-certificates
 
 # Windows (PowerShell as Admin)
-kubectl get secret root-ca-secret -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > dev-ca.crt
+$ca = kubectl get secret root-ca-secret -n cert-manager -o jsonpath="{.data.tls\.crt}"
+[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($ca)) | Set-Content -Encoding ascii dev-ca.crt
 Import-Certificate -FilePath dev-ca.crt -CertStoreLocation Cert:\LocalMachine\Root
 ```
 
@@ -380,7 +388,7 @@ kubectl describe certificaterequest <name>
 kubectl get clusterissuer selfsigned-issuer -o yaml
 
 # Manually trigger renewal
-kubectl annotate certificate dev-tls cert-manager.io/issue-temporary-certificate="true"
+cmctl renew dev-tls
 ```
 
 ## Conclusion
