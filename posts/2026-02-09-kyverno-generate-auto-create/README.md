@@ -14,7 +14,7 @@ Kyverno generate policies create new resources automatically in response to trig
 
 Generate policies watch for trigger resources and create target resources when matches occur. The most common pattern creates resources when new namespaces are created, but you can trigger on any resource type. Unlike mutate policies that modify existing resources, generate policies create entirely new ones.
 
-Generated resources are owned by the source resource, so deleting the trigger resource also deletes generated resources. Kyverno tracks ownership through labels and ensures generated resources stay synchronized with policy changes.
+With `synchronize: true`, deleting the trigger resource or changing it so it no longer matches the rule also deletes the generated resources. Kyverno tracks generated resources and ensures they stay synchronized with policy changes.
 
 ## Creating Default NetworkPolicies for New Namespaces
 
@@ -305,7 +305,7 @@ spec:
                   ha: required
       preconditions:
         all:
-          - key: "{{request.object.spec.replicas}}"
+          - key: "{{request.object.spec.replicas || `1`}}"
             operator: GreaterThanOrEquals
             value: 3
       generate:
@@ -318,8 +318,7 @@ spec:
           spec:
             minAvailable: 1
             selector:
-              matchLabels:
-                app: "{{request.object.metadata.labels.app}}"
+              matchLabels: "{{request.object.spec.selector.matchLabels}}"
 ```
 
 This policy creates PDBs for Deployments labeled with `ha: required` that have at least 3 replicas, ensuring some pods remain available during disruptions.
@@ -383,12 +382,12 @@ spec:
                 - Namespace
       preconditions:
         all:
-          - key: "{{request.object.metadata.labels.monitoring}}"
+          - key: "{{request.object.metadata.labels.monitoring || ''}}"
             operator: Equals
             value: enabled
       generate:
         synchronize: true
-        apiVersion: v1
+        apiVersion: monitoring.coreos.com/v1
         kind: ServiceMonitor
         name: namespace-monitor
         namespace: "{{request.object.metadata.name}}"
@@ -402,7 +401,7 @@ spec:
                 interval: 30s
 ```
 
-Resources are only generated when the namespace has the `monitoring: enabled` label, giving teams control over monitoring setup.
+Resources are only generated when the namespace has the `monitoring: enabled` label, giving teams control over monitoring setup. This example assumes the Prometheus Operator ServiceMonitor CRD is installed and Kyverno has permission to generate ServiceMonitor resources.
 
 ## Generating Multiple Resources with One Policy
 
@@ -485,14 +484,14 @@ Check which resources Kyverno has generated:
 
 kubectl get clusterpolicy -o yaml | grep -A 10 generate
 
-# Check for generate rules in policy reports
-kubectl get policyreport -A
+# Check generated resource requests
+kubectl get updaterequests -A
 
 # View generated resources in a namespace
 kubectl get all,networkpolicy,limitrange,resourcequota -n test-app
 ```
 
-Generated resources have the label `generate.kyverno.io/policy-name` that identifies their source policy.
+Generated resources have the label `generate.kyverno.io/policy-name` that identifies their source policy. Kyverno also creates UpdateRequest resources to queue and report generate-rule work.
 
 ## Conclusion
 
