@@ -118,12 +118,12 @@ spec:
               memory: 256Mi
           livenessProbe:
             httpGet:
-              path: /health
+              path: /-/healthy
               port: 9115
             initialDelaySeconds: 30
           readinessProbe:
             httpGet:
-              path: /health
+              path: /-/healthy
               port: 9115
             initialDelaySeconds: 10
       volumes:
@@ -137,6 +137,8 @@ kind: Service
 metadata:
   name: blackbox-exporter
   namespace: monitoring
+  labels:
+    app: blackbox-exporter
 spec:
   selector:
     app: blackbox-exporter
@@ -300,6 +302,9 @@ spec:
         - https://example.com
         - https://api.example.com
         - https://app.example.com
+      labels:
+        environment: production
+        team: platform
 
   prober:
     url: blackbox-exporter:9115
@@ -309,11 +314,6 @@ spec:
   module: http_2xx
   interval: 30s
   scrapeTimeout: 10s
-
-  # Add labels to metrics
-  labels:
-    environment: production
-    team: platform
 ```
 
 Multiple probes with different modules:
@@ -351,12 +351,13 @@ spec:
   prober:
     url: blackbox-exporter:9115
   module: dns_a
+  jobName: dns-probe
   interval: 300s
 ```
 
 ## ServiceMonitor for Dynamic Targets
 
-Probe all services with a specific annotation:
+Probe all services with a specific label:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -374,11 +375,11 @@ spec:
       path: /probe
       params:
         module: [http_2xx]
-        target:
-          - http://$(SERVICE_NAME).$(NAMESPACE).svc.cluster.local
       relabelings:
-        - sourceLabels: [__address__]
+        - sourceLabels: [__meta_kubernetes_service_name, __meta_kubernetes_namespace]
+          separator: .
           targetLabel: __param_target
+          replacement: http://${1}.${2}.svc.cluster.local
         - sourceLabels: [__param_target]
           targetLabel: instance
         - targetLabel: __address__
@@ -416,7 +417,8 @@ spec:
       rules:
         - alert: SSLCertificateExpiringSoon
           expr: |
-            probe_ssl_earliest_cert_expiry - time() < 86400 * 30
+            probe_ssl_earliest_cert_expiry - time() > 0
+            and probe_ssl_earliest_cert_expiry - time() < 86400 * 30
           for: 1h
           labels:
             severity: warning
@@ -462,7 +464,7 @@ spec:
 
         - alert: SlowResponse
           expr: |
-            probe_http_duration_seconds > 5
+            probe_duration_seconds > 5
           for: 10m
           labels:
             severity: warning
@@ -482,7 +484,7 @@ spec:
 
         - alert: DNSLookupFailed
           expr: |
-            probe_dns_lookup_time_seconds == 0
+            probe_success{job="dns-probe"} == 0
           for: 5m
           labels:
             severity: critical
@@ -492,11 +494,11 @@ spec:
 
 ## Advanced Configuration
 
-### Multi-Step HTTP Probe
+### HTTP Content Validation
 
 ```yaml
 modules:
-  http_multi_step:
+  http_content_check:
     prober: http
     http:
       method: GET
@@ -552,7 +554,7 @@ Create a dashboard for BlackBox metrics:
       "title": "HTTP Response Time",
       "targets": [
         {
-          "expr": "probe_http_duration_seconds",
+          "expr": "probe_duration_seconds",
           "legendFormat": "{{ instance }}"
         }
       ],
