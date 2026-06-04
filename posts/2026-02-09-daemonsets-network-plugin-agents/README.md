@@ -4,21 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, DaemonSet, Networking, CNI, Calico, Cilium
 
-Description: Learn how to deploy Container Network Interface (CNI) plugins using Kubernetes DaemonSets to provide pod networking, network policies, and service mesh capabilities across your cluster.
+Description: Learn how to deploy Container Network Interface (CNI) plugins using Kubernetes DaemonSets to provide pod networking, network policies, and advanced networking capabilities across your cluster.
 
 ---
 
-Container networking in Kubernetes relies on CNI plugins that must run on every node to configure pod networking interfaces. DaemonSets ensure network plugins deploy consistently across all nodes, enabling pod-to-pod communication and network policy enforcement. This guide demonstrates deploying popular CNI solutions using DaemonSets.
+Container networking in Kubernetes relies on CNI plugins that must be available on every node that runs pods to configure pod networking interfaces. DaemonSets ensure network plugin agents deploy consistently across nodes, enabling pod-to-pod communication and network policy enforcement. This guide demonstrates deploying popular CNI solutions using DaemonSets.
 
 ## Understanding CNI Plugin Architecture
 
-CNI plugins run as privileged DaemonSets with access to host networking and filesystems. They configure network interfaces for pods, implement network policies, and provide service load balancing. Each node needs a CNI agent to handle networking for pods scheduled on that node.
+CNI plugin agents commonly run as DaemonSets with host networking, host filesystem mounts, and either privileged access or the Linux capabilities required by the plugin. They configure network interfaces for pods, implement network policies, and, in some plugins, provide service load balancing or other advanced datapath features. Each node that runs pods needs CNI binaries and configuration available to the container runtime, and many CNI implementations also run a node-local agent.
 
 The agents typically install CNI binaries to /opt/cni/bin and configuration to /etc/cni/net.d. They interact with the container runtime through the CNI specification to set up networking when pods start or stop.
 
 ## Deploying Calico CNI
 
 Calico provides networking and network policy using BGP or overlay networks:
+
+The following DaemonSet excerpt assumes the rest of the official Calico installation resources are present, including CRDs, `calico-config`, service accounts, RBAC, and supporting controllers.
 
 ```yaml
 apiVersion: v1
@@ -126,7 +128,7 @@ spec:
       priorityClassName: system-node-critical
       initContainers:
       - name: upgrade-ipam
-        image: calico/cni:v3.27.0
+        image: quay.io/calico/cni:v3.32.0
         command: ["/opt/cni/bin/calico-ipam", "-upgrade"]
         env:
         - name: KUBERNETES_NODE_NAME
@@ -142,7 +144,7 @@ spec:
         - name: cni-net-dir
           mountPath: /host/etc/cni/net.d
       - name: install-cni
-        image: calico/cni:v3.27.0
+        image: quay.io/calico/cni:v3.32.0
         command: ["/opt/cni/bin/install"]
         env:
         - name: CNI_CONF_NAME
@@ -163,7 +165,7 @@ spec:
           mountPath: /host/etc/cni/net.d
       containers:
       - name: calico-node
-        image: calico/node:v3.27.0
+        image: quay.io/calico/node:v3.32.0
         env:
         - name: DATASTORE_TYPE
           value: "kubernetes"
@@ -269,6 +271,8 @@ spec:
 
 Cilium provides eBPF-based networking with advanced observability:
 
+The following DaemonSet excerpt assumes Cilium was rendered with its official Helm chart or CLI installation flow, including the required `cilium-config` ConfigMap, service account, RBAC, CRDs, and operator resources.
+
 ```yaml
 apiVersion: apps/v1
 kind: DaemonSet
@@ -302,7 +306,7 @@ spec:
             topologyKey: kubernetes.io/hostname
       initContainers:
       - name: mount-cgroup
-        image: quay.io/cilium/cilium:v1.14.0
+        image: quay.io/cilium/cilium:v1.19.4
         imagePullPolicy: IfNotPresent
         command: ["sh", "-c"]
         args:
@@ -321,7 +325,7 @@ spec:
         securityContext:
           privileged: true
       - name: install-cni-binaries
-        image: quay.io/cilium/cilium:v1.14.0
+        image: quay.io/cilium/cilium:v1.19.4
         command:
         - "/install-plugin.sh"
         volumeMounts:
@@ -329,7 +333,7 @@ spec:
           mountPath: /host/opt/cni/bin
       containers:
       - name: cilium-agent
-        image: quay.io/cilium/cilium:v1.14.0
+        image: quay.io/cilium/cilium:v1.19.4
         command:
         - cilium-agent
         args:
@@ -488,6 +492,8 @@ spec:
 
 Flannel provides simple overlay networking:
 
+The following DaemonSet excerpt assumes the official Flannel namespace, service account, RBAC, and `kube-flannel-cfg` ConfigMap have already been applied.
+
 ```yaml
 apiVersion: apps/v1
 kind: DaemonSet
@@ -513,7 +519,7 @@ spec:
       serviceAccountName: flannel
       initContainers:
       - name: install-cni-plugin
-        image: docker.io/rancher/mirrored-flannelcni-flannel-cni-plugin:v1.2.0
+        image: ghcr.io/flannel-io/flannel-cni-plugin:v1.8.0-flannel1
         command:
         - cp
         args:
@@ -524,7 +530,7 @@ spec:
         - name: cni-plugin
           mountPath: /opt/cni/bin
       - name: install-cni
-        image: docker.io/rancher/mirrored-flannelcni-flannel:v0.22.0
+        image: ghcr.io/flannel-io/flannel:v0.27.4
         command:
         - cp
         args:
@@ -538,7 +544,7 @@ spec:
           mountPath: /etc/kube-flannel/
       containers:
       - name: kube-flannel
-        image: docker.io/rancher/mirrored-flannelcni-flannel:v0.22.0
+        image: ghcr.io/flannel-io/flannel:v0.27.4
         command:
         - /opt/bin/flanneld
         args:
@@ -548,9 +554,6 @@ spec:
           requests:
             cpu: "100m"
             memory: "50Mi"
-          limits:
-            cpu: "200m"
-            memory: "100Mi"
         securityContext:
           privileged: false
           capabilities:
@@ -594,7 +597,7 @@ spec:
 
 ## Monitoring CNI Plugin Health
 
-Track CNI plugin status with Prometheus:
+Track CNI plugin status with Prometheus. Metric names vary by plugin and scrape configuration; these example rules use documented Calico Felix and kube-controllers metrics:
 
 ```yaml
 apiVersion: v1
@@ -615,19 +618,19 @@ data:
         annotations:
           summary: "CNI plugin down on {{ $labels.instance }}"
 
-      - alert: NetworkPolicyErrors
-        expr: rate(calico_policy_error_count[5m]) > 0
+      - alert: CalicoDataplaneFailures
+        expr: rate(felix_int_dataplane_failures[5m]) > 0
         labels:
           severity: warning
         annotations:
-          summary: "Network policy errors detected"
+          summary: "Calico dataplane failures detected"
 
-      - alert: HighIPAMAllocationFailures
-        expr: rate(calico_ipam_allocations_failed[5m]) > 1
+      - alert: CalicoBorrowedIPAMAllocations
+        expr: ipam_allocations_borrowed > 0
         labels:
-          severity: critical
+          severity: warning
         annotations:
-          summary: "IPAM failing to allocate IPs"
+          summary: "Calico IPAM borrowed allocations detected"
 ```
 
 ## Best Practices
@@ -636,7 +639,7 @@ Deploy CNI plugins with `priorityClassName: system-node-critical` to ensure they
 
 Use RollingUpdate strategy with maxUnavailable: 1 for safer updates. Network disruptions during updates can cascade across workloads.
 
-Implement comprehensive health checks. CNI failures prevent pod scheduling and break cluster networking.
+Implement comprehensive health checks. CNI failures can prevent pod sandboxes from starting and break cluster networking.
 
 Monitor CNI metrics for allocation failures, policy errors, and performance issues.
 
