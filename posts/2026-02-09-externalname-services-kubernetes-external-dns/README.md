@@ -173,12 +173,12 @@ spec:
 
 Deploy the appropriate manifest based on cluster location. Applications use the same service name (`redis-cache`) regardless of region.
 
-## Combining ExternalName with Headless Services
+## Documenting ExternalName Ports
 
-You can create sophisticated DNS patterns by combining ExternalName services with custom endpoint objects. This gives you fine-grained control over DNS resolution:
+You can include ports on an ExternalName service to document how clients should connect. Kubernetes still returns a CNAME record for the service name and does not create endpoints or proxy traffic:
 
 ```yaml
-# external-api-endpoints.yaml
+# external-api-service.yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -190,7 +190,6 @@ spec:
   ports:
   - protocol: TCP
     port: 443
-    targetPort: 443
 ```
 
 ## Migrating from ExternalName to ClusterIP
@@ -280,11 +279,11 @@ Applications must connect to the correct port on the external service. The port 
 
 ## Security Considerations
 
-ExternalName services bypass Kubernetes network policies. Traffic goes directly from the pod to the external DNS name without going through kube-proxy or service endpoints. This means:
+ExternalName services do not create service endpoints or use kube-proxy, so policies and tooling that target a Kubernetes Service backend do not apply. NetworkPolicy can still control pod egress by destination IP block or port, depending on your CNI plugin, but it cannot target the ExternalName service itself. This means:
 
 1. Network policies targeting the service name won't work
-2. Service mesh features (mutual TLS, traffic policies) don't apply
-3. You can't use service-level authentication
+2. Service mesh behavior depends on your mesh and DNS/proxy configuration
+3. Kubernetes service-level authentication or routing features don't apply
 
 If you need policy enforcement for external services, use a different approach:
 
@@ -342,11 +341,13 @@ Check if the issue is network connectivity rather than DNS:
 kubectl run curl-test --image=curlimages/curl --rm -it -- curl -v https://payment-api.default.svc.cluster.local
 ```
 
+For HTTPS services, this can also expose hostname-related issues: the external server may present a certificate for the external DNS name, not for `payment-api.default.svc.cluster.local`.
+
 ## Alternatives to ExternalName
 
 ExternalName isn't always the best solution. Consider these alternatives:
 
-**Use Endpoints objects for IP-based external services:**
+**Use EndpointSlice objects for IP-based external services:**
 
 ```yaml
 apiVersion: v1
@@ -357,18 +358,23 @@ spec:
   ports:
   - port: 5432
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: external-db
-subsets:
+  name: external-db-1
+  labels:
+    kubernetes.io/service-name: external-db
+addressType: IPv4
+ports:
+- name: postgres
+  protocol: TCP
+  port: 5432
+endpoints:
 - addresses:
-  - ip: 203.0.113.42
-  ports:
-  - port: 5432
+  - "203.0.113.42"
 ```
 
-**Use Ingress for HTTP/HTTPS external services:**
+**Use Ingress for HTTP/HTTPS routing to Kubernetes Services:**
 
 ```yaml
 apiVersion: networking.k8s.io/v1
