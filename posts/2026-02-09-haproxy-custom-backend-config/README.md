@@ -33,7 +33,7 @@ metadata:
   namespace: default
   annotations:
     # Enable health checks
-    haproxy.org/check: "enabled"
+    haproxy.org/check: "true"
     haproxy.org/check-http: "/health"
     haproxy.org/check-interval: "5s"
 spec:
@@ -61,11 +61,10 @@ metadata:
   name: advanced-health
   namespace: default
   annotations:
+    haproxy.org/check: "true"
     haproxy.org/backend-config-snippet: |
-      option httpchk GET /health HTTP/1.1\r\nHost:\ app.example.com
-      http-check expect status 200
-      http-check connect
       http-check send meth GET uri /health ver HTTP/1.1 hdr Host app.example.com
+      http-check expect status 200
 spec:
   ingressClassName: haproxy
   rules:
@@ -95,8 +94,8 @@ metadata:
   name: limited-connections
   namespace: default
   annotations:
+    haproxy.org/pod-maxconn: "500"
     haproxy.org/backend-config-snippet: |
-      maxconn 500
       fullconn 400
 spec:
   ingressClassName: haproxy
@@ -123,10 +122,8 @@ metadata:
   name: custom-timeouts
   namespace: default
   annotations:
-    haproxy.org/timeout-connect: "5s"
     haproxy.org/timeout-server: "30s"
-    haproxy.org/timeout-tunnel: "1h"
-    haproxy.org/timeout-client: "30s"
+    haproxy.org/timeout-check: "5s"
 spec:
   ingressClassName: haproxy
   rules:
@@ -238,8 +235,7 @@ metadata:
   name: tls-backend
   namespace: default
   annotations:
-    haproxy.org/backend-config-snippet: |
-      server-template srv 3 _http._tcp.app-service.default.svc.cluster.local:443 check ssl verify none
+    haproxy.org/server-ssl: "true"
 spec:
   ingressClassName: haproxy
   rules:
@@ -269,9 +265,7 @@ metadata:
   name: sticky-sessions
   namespace: default
   annotations:
-    haproxy.org/cookie-persistence: "session"
-    haproxy.org/backend-config-snippet: |
-      cookie SERVERID insert indirect nocache
+    haproxy.org/cookie-persistence: "SERVERID"
 spec:
   ingressClassName: haproxy
   rules:
@@ -301,30 +295,30 @@ metadata:
     haproxy.org/load-balance: "leastconn"
 
     # Health checks
-    haproxy.org/check: "enabled"
+    haproxy.org/check: "true"
     haproxy.org/check-http: "/health"
     haproxy.org/check-interval: "10s"
 
     # Timeouts
-    haproxy.org/timeout-connect: "5s"
     haproxy.org/timeout-server: "30s"
-    haproxy.org/timeout-client: "30s"
+    haproxy.org/timeout-check: "5s"
+
+    # Cookie persistence
+    haproxy.org/cookie-persistence: "SERVERID"
+
+    # Connection limits
+    haproxy.org/pod-maxconn: "1000"
 
     # Connection limits
     haproxy.org/backend-config-snippet: |
       # Connection limits
-      maxconn 1000
       fullconn 800
 
       # Advanced health check
-      option httpchk GET /health HTTP/1.1\r\nHost:\ app.example.com
+      http-check send meth GET uri /health ver HTTP/1.1 hdr Host app.example.com
       http-check expect status 200
 
-      # Cookie persistence
-      cookie SERVERID insert indirect nocache
-
       # Connection reuse
-      option http-keep-alive
       option http-server-close
 
       # Retry configuration
