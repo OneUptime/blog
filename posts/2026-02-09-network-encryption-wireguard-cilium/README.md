@@ -23,11 +23,11 @@ Cilium integrates WireGuard to create encrypted tunnels between nodes automatica
 Before enabling WireGuard encryption, ensure your cluster meets these requirements:
 
 ```bash
-# Check Linux kernel version (must be 5.6 or newer)
+# Check Linux kernel version (WireGuard is in-tree on Linux 5.6 and newer)
 
 kubectl get nodes -o wide
 # SSH to a node and check
-uname -r  # Should be >= 5.6
+uname -r  # 5.6+ includes WireGuard in-tree; older kernels need a supported WireGuard module
 
 # Verify WireGuard kernel module is available
 lsmod | grep wireguard
@@ -39,7 +39,7 @@ sudo modprobe wireguard
 echo "wireguard" | sudo tee -a /etc/modules-load.d/wireguard.conf
 ```
 
-You need Cilium 1.10 or newer installed as your CNI. If you're using an older version or different CNI, you'll need to migrate first.
+Cilium added WireGuard transparent encryption in 1.10, but you should use a currently supported Cilium release. If you're using an older version or different CNI, you'll need to migrate first.
 
 ## Installing Cilium with WireGuard Support
 
@@ -54,11 +54,10 @@ helm repo update
 helm install cilium cilium/cilium \
   --namespace kube-system \
   --set encryption.enabled=true \
-  --set encryption.type=wireguard \
-  --set l7Proxy=false
+  --set encryption.type=wireguard
 ```
 
-Note that L7 proxy features are incompatible with WireGuard encryption and must be disabled. If you need L7 visibility, consider using IPsec encryption instead or accepting unencrypted traffic.
+If you use CNI chaining, such as AWS VPC CNI chaining, also set `cni.enableRouteMTUForCNIChaining=true` so Cilium adjusts pod MTU for encrypted traffic.
 
 ## Enabling WireGuard on Existing Cilium Installation
 
@@ -110,7 +109,7 @@ sudo wg show
 #
 # peer: <peer-public-key>
 #   endpoint: <peer-ip>:51871
-#   allowed ips: 10.0.0.0/24
+#   allowed ips: 10.0.1.42/32, 10.0.1.43/32
 #   latest handshake: 30 seconds ago
 #   transfer: 1.23 GiB received, 2.45 GiB sent
 ```
@@ -165,7 +164,7 @@ kubectl exec -it encryption-test-xxxx -- ping <other-pod-ip>
 # On the node, capture traffic on the WireGuard interface
 sudo tcpdump -i cilium_wg0 -n
 
-# You'll see encrypted WireGuard packets, not plain ICMP
+# You'll see the inner pod traffic on the WireGuard interface
 ```
 
 Try capturing on the physical interface and you'll see encrypted UDP traffic on port 51871 instead of plain pod traffic.
@@ -178,26 +177,25 @@ WireGuard is designed for high performance, but encryption does add some overhea
 # Check CPU usage of Cilium agents
 kubectl top pods -n kube-system -l k8s-app=cilium
 
-# View WireGuard transfer statistics
-kubectl exec -n kube-system ds/cilium -- cilium encrypt status
+# View Cilium encryption status from an agent pod
+kubectl exec -n kube-system ds/cilium -- cilium-dbg encrypt status
 
 # On nodes, check detailed WireGuard stats
 sudo wg show all transfer
 ```
 
-In most cases, WireGuard adds less than 5% CPU overhead and minimal latency. Modern CPUs with AES-NI support handle encryption very efficiently.
+WireGuard is efficient, but the exact CPU and latency impact depends on node hardware, kernel, routing mode, and workload traffic patterns. Measure it in your own environment before and after enabling encryption.
 
-## Configuring WireGuard Port
+## Configuring WireGuard Persistent Keepalive
 
-By default, Cilium uses UDP port 51871 for WireGuard tunnels. If this conflicts with existing services or firewall rules, customize it:
+By default, Cilium uses UDP port 51871 for WireGuard tunnels. If your nodes are behind NAT or stateful firewalls, configure WireGuard persistent keepalive:
 
 ```bash
-# Set custom WireGuard port
+# Set WireGuard persistent keepalive
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set encryption.wireguard.userspaceFallback=false \
-  --set wireguard.persistentKeepalive=25s
+  --set encryption.wireguard.persistentKeepalive=25s
 ```
 
 The persistent keepalive setting sends periodic packets to maintain NAT mappings and firewall state for connections that might otherwise timeout.
@@ -257,11 +255,11 @@ done
 # Check Cilium agent logs for errors
 kubectl logs -n kube-system -l k8s-app=cilium --tail=100 | grep -i wireguard
 
-# Verify firewall allows UDP 51871
-kubectl exec -n kube-system ds/cilium -- cilium status --verbose
+# Verify Cilium encryption status
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status | grep Encryption
 
-# Test WireGuard handshake manually
-kubectl exec -n kube-system ds/cilium -- wg show
+# Inspect WireGuard peers and handshakes from the Cilium agent
+kubectl exec -n kube-system ds/cilium -- cilium-dbg debuginfo --output json | jq .encryption
 ```
 
 Most issues stem from missing kernel modules or blocked firewall ports. Ensure all nodes run compatible kernel versions and have the WireGuard module available.
@@ -296,10 +294,10 @@ This policy allows only frontend pods to reach backend pods on port 8080, and al
 WireGuard encryption in Cilium performs well, but consider these factors:
 
 - Encryption happens in the kernel, avoiding userspace overhead
-- Modern CPUs with crypto acceleration handle WireGuard efficiently
-- Expect 1-5% CPU increase and sub-millisecond latency impact
+- WireGuard uses ChaCha20-Poly1305, which is designed to be fast in software on general-purpose CPUs
+- CPU and latency impact vary by workload, node hardware, kernel, MTU, and routing mode
 - High-throughput workloads may see more noticeable overhead
-- WireGuard is more efficient than IPsec for most workloads
+- Cilium benchmarks show WireGuard and IPsec trade off differently depending on throughput, request/response rate, MTU, and hardware acceleration
 
 Benchmark your specific workloads before and after enabling encryption to quantify the impact.
 
