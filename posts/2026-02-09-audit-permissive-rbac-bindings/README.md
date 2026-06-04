@@ -38,8 +38,9 @@ Or download the binary directly:
 
 ```bash
 # Download latest release
-wget https://github.com/FairwindsOps/rbac-lookup/releases/latest/download/rbac-lookup_linux_amd64.tar.gz
-tar -xzf rbac-lookup_linux_amd64.tar.gz
+VERSION=$(curl -s https://api.github.com/repos/FairwindsOps/rbac-lookup/releases/latest | jq -r .tag_name)
+wget "https://github.com/FairwindsOps/rbac-lookup/releases/download/${VERSION}/rbac-lookup_${VERSION#v}_Linux_x86_64.tar.gz"
+tar -xzf "rbac-lookup_${VERSION#v}_Linux_x86_64.tar.gz"
 sudo mv rbac-lookup /usr/local/bin/
 chmod +x /usr/local/bin/rbac-lookup
 ```
@@ -47,7 +48,7 @@ chmod +x /usr/local/bin/rbac-lookup
 Verify the installation:
 
 ```bash
-kubectl rbac-lookup --version
+kubectl rbac-lookup --help
 ```
 
 ## Finding Users with Cluster-Admin Access
@@ -55,14 +56,18 @@ kubectl rbac-lookup --version
 Start by identifying all principals with cluster-admin privileges. These users have unrestricted access to your entire cluster:
 
 ```bash
-# Find all cluster-admin bindings
-kubectl rbac-lookup cluster-admin
+# Find all cluster-wide cluster-admin bindings
+kubectl get clusterrolebindings -o json | \
+  jq -r '.items[] |
+  select(.roleRef.kind=="ClusterRole" and .roleRef.name=="cluster-admin") |
+  .subjects[]? |
+  "\(.kind)/\(.name)\tcluster-wide\tClusterRole/cluster-admin"'
 
 # Example output:
 # SUBJECT                   SCOPE             ROLE
-# system:masters            cluster-wide      ClusterRole/cluster-admin
-# admin-user@company.com    cluster-wide      ClusterRole/cluster-admin
-# jenkins-sa                cluster-wide      ClusterRole/cluster-admin
+# Group/system:masters      cluster-wide      ClusterRole/cluster-admin
+# User/admin-user@company.com cluster-wide    ClusterRole/cluster-admin
+# ServiceAccount/jenkins-sa cluster-wide      ClusterRole/cluster-admin
 ```
 
 Review each result. The `system:masters` group is expected (it maps to client certificates with O=system:masters). But user accounts and service accounts with cluster-admin warrant investigation.
@@ -71,11 +76,17 @@ Service accounts with cluster-admin are particularly dangerous:
 
 ```bash
 # Find service accounts with cluster-admin
-kubectl rbac-lookup cluster-admin --kind serviceaccount
+kubectl get clusterrolebindings -o json | \
+  jq -r '.items[] |
+  select(.roleRef.kind=="ClusterRole" and .roleRef.name=="cluster-admin") |
+  .subjects[]? |
+  select(.kind=="ServiceAccount") |
+  "\(.namespace)/\(.name)"'
 
 # Check where these service accounts are used
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.serviceAccountName=="jenkins-sa") |
+  jq -r '.items[] |
+  select(.metadata.namespace=="default" and .spec.serviceAccountName=="jenkins-sa") |
   "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
@@ -125,13 +136,13 @@ rules:
 Secrets contain sensitive data like database passwords and API keys. Audit who can read secrets cluster-wide:
 
 ```bash
-# Who can get secrets in all namespaces?
-kubectl rbac-lookup secrets --verbs get,list
+# Who can get or list secrets?
+rbac-tool who-can get secrets
+rbac-tool who-can list secrets
 
 # Output shows users with secret access:
 # SUBJECT                   SCOPE             ROLE
 # system:admin              cluster-wide      ClusterRole/cluster-admin
-# monitoring-sa             namespace/default ClusterRole/view
 # jenkins-sa                cluster-wide      ClusterRole/developer-role
 ```
 
@@ -154,7 +165,7 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["secrets"]
-  verbs: ["get", "list"]
+  verbs: ["get"]
   resourceNames: ["app-db-password", "app-api-key"]  # Specific secrets only
 ```
 
@@ -164,7 +175,7 @@ The ability to execute commands in pods (`pods/exec`) is powerful. It allows dir
 
 ```bash
 # Who can exec into pods?
-kubectl rbac-lookup pods/exec --verbs create
+rbac-tool who-can create pods/exec
 
 # Test if a user can exec
 kubectl auth can-i create pods/exec --namespace=production --as=developer@company.com
@@ -185,8 +196,11 @@ metadata:
   namespace: production
 rules:
 - apiGroups: [""]
-  resources: ["pods/exec", "pods/log"]
-  verbs: ["create", "get"]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
 ```
 
 ## Using RBAC-Tool for Comprehensive Analysis
@@ -194,32 +208,34 @@ rules:
 RBAC-Tool provides additional analysis capabilities. Install it:
 
 ```bash
-go install github.com/alcideio/rbac-tool@latest
+kubectl krew install rbac-tool
 ```
 
-Generate a visual policy report:
+Generate a policy report:
 
 ```bash
 # Generate full RBAC analysis
-rbac-tool policy-rules
+rbac-tool policy-rules -e '.*'
 
 # Find who can perform specific actions
 rbac-tool who-can create pod
 
 # Analyze a specific service account
-rbac-tool lookup -e serviceaccount:default:jenkins-sa
+rbac-tool lookup -e '^jenkins-sa$'
 ```
 
 Generate a compliance report:
 
 ```bash
-# Export RBAC analysis to JSON
-rbac-tool viz --outformat json > rbac-analysis.json
+# Export RBAC policy rules to JSON
+rbac-tool policy-rules -e '.*' -o json > rbac-analysis.json
 
 # Parse for dangerous patterns
-cat rbac-analysis.json | jq '.nodes[] |
-  select(.kind=="ServiceAccount" and .clusterRoles[] |
-  contains("cluster-admin"))'
+jq '.[] |
+  select(.kind=="ServiceAccount") |
+  select(.allowedTo[]? |
+  (.verb=="*" and .resource=="*" and (.apiGroup=="*" or .apiGroup=="core")))' \
+  rbac-analysis.json
 ```
 
 ## Detecting Privilege Escalation Paths
@@ -228,23 +244,19 @@ Some permission combinations allow privilege escalation. A user who can create r
 
 ```bash
 # Find who can create rolebindings
-kubectl rbac-lookup rolebindings --verbs create
+rbac-tool who-can create rolebindings
 
-# Check if they can also bind cluster roles
-kubectl get clusterrolebindings -o json | \
-  jq -r '.items[] |
-  select(.subjects[]?.name=="suspicious-user") |
-  .metadata.name'
+# Check who can bind roles or cluster roles
+rbac-tool who-can bind roles
+rbac-tool who-can bind clusterroles
 ```
 
 Kubernetes prevents automatic privilege escalation, but check for the `escalate` verb:
 
 ```bash
 # Find roles with escalate permission
-kubectl get clusterroles -o json | \
-  jq -r '.items[] |
-  select(.rules[]?.verbs[]? == "escalate") |
-  .metadata.name'
+rbac-tool who-can escalate roles
+rbac-tool who-can escalate clusterroles
 ```
 
 ## Creating an Audit Automation Script
@@ -260,11 +272,20 @@ echo "Generated: $(date)"
 echo ""
 
 echo "### Cluster-Admin Bindings ###"
-kubectl rbac-lookup cluster-admin
+kubectl get clusterrolebindings -o json | \
+  jq -r '.items[] |
+  select(.roleRef.kind=="ClusterRole" and .roleRef.name=="cluster-admin") |
+  .subjects[]? |
+  "\(.kind)/\(.name)\tcluster-wide\tClusterRole/cluster-admin"'
 
 echo ""
 echo "### Service Accounts with Cluster-Admin ###"
-kubectl rbac-lookup cluster-admin --kind serviceaccount
+kubectl get clusterrolebindings -o json | \
+  jq -r '.items[] |
+  select(.roleRef.kind=="ClusterRole" and .roleRef.name=="cluster-admin") |
+  .subjects[]? |
+  select(.kind=="ServiceAccount") |
+  "\(.namespace)/\(.name)"'
 
 echo ""
 echo "### Custom Roles with Wildcard Verbs ###"
@@ -276,11 +297,12 @@ kubectl get clusterroles -o json | \
 
 echo ""
 echo "### Users with Secret Access ###"
-kubectl rbac-lookup secrets --verbs get,list
+rbac-tool who-can get secrets
+rbac-tool who-can list secrets
 
 echo ""
 echo "### Users with Pod Exec Access ###"
-kubectl rbac-lookup pods/exec --verbs create
+rbac-tool who-can create pods/exec
 
 echo ""
 echo "### Cross-Namespace Access ###"
@@ -302,26 +324,30 @@ chmod +x rbac-audit.sh
 
 ## Implementing Continuous RBAC Monitoring
 
-Deploy Polaris or Fairwinds Insights for continuous monitoring:
+Deploy Fairwinds Insights for continuous RBAC monitoring, and Polaris for workload policy checks:
 
 ```bash
 # Install Polaris
-kubectl apply -f https://github.com/FairwindsOps/polaris/releases/latest/download/dashboard.yaml
+helm repo add fairwinds-stable https://charts.fairwinds.com/stable
+helm upgrade --install polaris fairwinds-stable/polaris --namespace polaris --create-namespace
 
 # Port-forward to access the dashboard
 kubectl port-forward -n polaris svc/polaris-dashboard 8080:80
 ```
 
-Polaris identifies security issues including RBAC misconfigurations and provides remediation guidance.
+Polaris identifies workload security configuration issues and provides remediation guidance. Fairwinds Insights includes RBAC reporting for roles and bindings.
 
-For CI/CD integration, use rbac-lookup in pipelines:
+For CI/CD integration, use machine-readable RBAC queries in pipelines:
 
 ```yaml
 # .gitlab-ci.yml example
 rbac-audit:
   stage: security
   script:
-    - kubectl rbac-lookup cluster-admin --output json > cluster-admins.json
+    - |
+      kubectl get clusterrolebindings -o json | jq '[.items[] |
+        select(.roleRef.kind=="ClusterRole" and .roleRef.name=="cluster-admin") |
+        .subjects[]?]' > cluster-admins.json
     - |
       if [ $(cat cluster-admins.json | jq length) -gt 5 ]; then
         echo "Too many cluster-admin bindings detected"
