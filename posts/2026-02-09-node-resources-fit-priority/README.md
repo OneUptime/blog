@@ -260,7 +260,7 @@ spec:
       restartPolicy: Never
 ```
 
-The scheduler will prefer nodes with available GPUs and avoid fragmenting GPU resources.
+The scheduler will consider GPU allocation in the node score along with CPU and memory. If your goal is to reduce GPU fragmentation, use a bin-packing shape with `RequestedToCapacityRatio` or a `MostAllocated` strategy for the GPU resource.
 
 ## Combining with Other Plugins
 
@@ -292,7 +292,7 @@ profiles:
           weight: 1
 ```
 
-Here, NodeResourcesFit contributes 50% of the total score (5 out of 10 total weight), making it the dominant factor but not the only one.
+Here, NodeResourcesFit has the largest weight among the three configured score plugins. Other default score plugins still run unless you disable them, so the final score also depends on the rest of the scheduler profile.
 
 ## Real-World Strategy Examples
 
@@ -370,11 +370,16 @@ profiles:
 Track how NodeResourcesFit affects scheduling:
 
 ```bash
-# Check scheduler metrics
-kubectl get --raw /metrics | grep node_resources_fit
+# Forward the scheduler metrics endpoint locally
+kubectl -n kube-system port-forward pod/<kube-scheduler-pod> 10259:10259
+
+# Check nodes rejected by NodeResourcesFit
+curl -k https://127.0.0.1:10259/metrics | \
+  grep scheduler_unschedulable_pods | grep NodeResourcesFit
 
 # View plugin execution time
-kubectl get --raw /metrics | grep scheduler_framework_extension_point_duration_seconds | \
+curl -k https://127.0.0.1:10259/metrics | \
+  grep scheduler_plugin_execution_duration_seconds | \
   grep NodeResourcesFit
 
 # Check node resource allocation
@@ -393,25 +398,28 @@ Create a script to analyze placement effectiveness:
 echo "Node Resource Utilization:"
 echo ""
 
-kubectl get nodes -o json | jq -r '.items[] |
-  {
-    name: .metadata.name,
-    cpu_capacity: .status.capacity.cpu,
-    mem_capacity: .status.capacity.memory,
-    cpu_allocatable: .status.allocatable.cpu,
-    mem_allocatable: .status.allocatable.memory
-  }' | while read node; do
-
-  name=$(echo $node | jq -r .name)
+kubectl get nodes -o json | jq -r '.items[].metadata.name' | while read -r name; do
 
   # Get pod resource requests on this node
   pod_cpu=$(kubectl get pods --field-selector spec.nodeName=$name -A -o json | \
-    jq -r '.items[].spec.containers[].resources.requests.cpu // "0"' | \
-    sed 's/m//' | awk '{s+=$1} END {print s}')
+    jq -r '
+      def cpu_m:
+        if endswith("m") then sub("m$"; "") | tonumber
+        else tonumber * 1000
+        end;
+      ([ .items[].spec.containers[].resources.requests.cpu // "0" | cpu_m ] | add) // 0
+    ')
 
   pod_mem=$(kubectl get pods --field-selector spec.nodeName=$name -A -o json | \
-    jq -r '.items[].spec.containers[].resources.requests.memory // "0"' | \
-    sed 's/Mi//' | awk '{s+=$1} END {print s}')
+    jq -r '
+      def mem_mi:
+        if endswith("Ki") then (sub("Ki$"; "") | tonumber) / 1024
+        elif endswith("Mi") then sub("Mi$"; "") | tonumber
+        elif endswith("Gi") then (sub("Gi$"; "") | tonumber) * 1024
+        else tonumber / 1048576
+        end;
+      ([ .items[].spec.containers[].resources.requests.memory // "0" | mem_mi ] | add) // 0
+    ')
 
   echo "Node: $name"
   echo "  CPU: ${pod_cpu}m requested"
