@@ -203,6 +203,9 @@ on:
 jobs:
   trivy-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -210,16 +213,16 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: myapp:${{ github.sha }}
-          format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL,HIGH
-          exit-code: 1
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
 
       - name: Upload scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-results.sarif
@@ -231,30 +234,33 @@ jobs:
 # .gitlab-ci.yml
 container_scan:
   stage: security
-  image: docker:latest
+  image: docker:stable
   services:
-    - docker:dind
+    - name: docker:dind
+      entrypoint: ["env", "-u", "DOCKER_HOST"]
+      command: ["dockerd-entrypoint.sh"]
   variables:
+    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_DRIVER: overlay2
     DOCKER_TLS_CERTDIR: ""
+    IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    TRIVY_NO_PROGRESS: "true"
     TRIVY_CACHE_DIR: ".trivycache/"
   cache:
     paths:
       - .trivycache/
+  before_script:
+    - export TRIVY_VERSION=$(wget -qO - "https://api.github.com/repos/aquasecurity/trivy/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+    - wget --no-verbose https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz -O - | tar -zxvf -
   script:
     # Build the application image
-    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
-    # Run Trivy scan
-    - |
-      docker run --rm \
-        -v /var/run/docker.sock:/var/run/docker.sock \
-        -v $TRIVY_CACHE_DIR:/root/.cache/trivy \
-        aquasec/trivy:latest image \
-        --exit-code 1 \
-        --severity CRITICAL,HIGH \
-        --format template \
-        --template "@/contrib/gitlab.tpl" \
-        $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA > gl-container-scanning-report.json
+    - docker build -t $IMAGE .
+    # Build the GitLab container scanning report
+    - ./trivy image --exit-code 0 --format template --template "@/contrib/gitlab.tpl" --output gl-container-scanning-report.json $IMAGE
+    # Fail on high and critical vulnerabilities
+    - ./trivy image --exit-code 1 --severity CRITICAL,HIGH $IMAGE
   artifacts:
+    when: always
     reports:
       container_scanning: gl-container-scanning-report.json
 ```
@@ -314,8 +320,6 @@ For teams that scan frequently, run Trivy as a persistent server to avoid downlo
 
 ```yaml
 # docker-compose.yml - Trivy server mode
-version: "3.8"
-
 services:
   trivy-server:
     image: aquasec/trivy:latest
@@ -326,9 +330,15 @@ services:
       - trivy_cache:/root/.cache/trivy
     command: server --listen 0.0.0.0:4954
     restart: unless-stopped
+    networks:
+      - trivy-net
 
 volumes:
   trivy_cache:
+
+networks:
+  trivy-net:
+    name: trivy-net
 ```
 
 Then scan using the server from any client.
@@ -336,6 +346,7 @@ Then scan using the server from any client.
 ```bash
 # Scan using the Trivy server (no local database needed)
 docker run --rm \
+  --network trivy-net \
   -v /var/run/docker.sock:/var/run/docker.sock \
   aquasec/trivy:latest image \
   --server http://trivy-server:4954 \
@@ -365,7 +376,9 @@ CVE-2024-11111
 docker run --rm \
   -v $(pwd)/.trivyignore:/root/.trivyignore \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  aquasec/trivy:latest image myapp:latest
+  aquasec/trivy:latest image \
+  --ignorefile /root/.trivyignore \
+  myapp:latest
 ```
 
 ## Conclusion
