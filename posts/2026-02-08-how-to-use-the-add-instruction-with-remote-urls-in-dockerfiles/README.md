@@ -79,9 +79,9 @@ CMD ["cat", "/home/appuser/data.csv"]
 
 ## Downloading and Extracting Archives
 
-One of ADD's unique features is automatic extraction of compressed archives. When you ADD a local tar file, Docker extracts it automatically. However, this behavior does not apply to remote URLs.
+One of ADD's unique features is automatic extraction of compressed archives. When you ADD a local tar file, Docker extracts it automatically. For remote URLs, Docker downloads the archive without extracting it by default.
 
-This is an important distinction. ADD will not extract a tar file downloaded from a URL:
+This is an important distinction. ADD will not extract a tar file downloaded from a URL unless you use the `--unpack` flag:
 
 ```dockerfile
 # ADD does NOT extract remote archives automatically
@@ -95,7 +95,18 @@ RUN tar xzf /tmp/app.tar.gz -C /opt/ && \
     rm /tmp/app.tar.gz
 ```
 
-If you need to download and extract in one step, use RUN with curl or wget instead:
+If you want ADD to download and extract in one step, use `--unpack=true` with a Dockerfile syntax version that supports it:
+
+```dockerfile
+# syntax=docker/dockerfile:1
+
+FROM debian:bookworm-slim
+
+# Download and extract the archive into /opt/
+ADD --unpack=true https://example.com/app-v1.0.tar.gz /opt/
+```
+
+You can also use RUN with curl or wget:
 
 ```bash
 # Download and extract in a single RUN instruction
@@ -145,20 +156,19 @@ The ADD version is shorter, but the curl version gives you more control and does
 
 When downloading files from the internet, verifying the checksum ensures you got the expected file.
 
-ADD does not support built-in checksum verification. You need a separate RUN instruction:
+ADD supports built-in checksum verification for HTTP sources using the `--checksum` flag:
 
 ```dockerfile
-# Download with ADD and verify checksum separately
+# Download with ADD and verify the SHA256 checksum
 FROM debian:bookworm-slim
 
-ADD https://example.com/tool-v2.0 /usr/local/bin/tool
+ADD --checksum=sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2 \
+    https://example.com/tool-v2.0 /usr/local/bin/tool
 
-# Verify the SHA256 checksum
-RUN echo "a1b2c3d4e5f6... /usr/local/bin/tool" | sha256sum -c - && \
-    chmod +x /usr/local/bin/tool
+RUN chmod +x /usr/local/bin/tool
 ```
 
-With curl, you can download and verify in the same instruction:
+With curl, you can download and verify in the same instruction, which is useful if you need a different hash format or more control over the download:
 
 ```dockerfile
 # Download and verify checksum in a single RUN
@@ -167,7 +177,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl && \
     curl -fsSL https://example.com/tool-v2.0 -o /usr/local/bin/tool && \
-    echo "a1b2c3d4e5f6...  /usr/local/bin/tool" | sha256sum -c - && \
+    echo "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2  /usr/local/bin/tool" | sha256sum -c - && \
     chmod +x /usr/local/bin/tool && \
     apt-get purge -y curl && \
     rm -rf /var/lib/apt/lists/*
@@ -177,7 +187,7 @@ RUN apt-get update && \
 
 ADD with remote URLs has specific caching behavior that you need to understand.
 
-Docker caches the downloaded file based on the URL. If you rebuild the image and the URL has not changed, Docker uses the cached layer. However, Docker does not check if the content at the URL has changed. If the remote file is updated but the URL stays the same, Docker will keep using the old cached version.
+Docker caches the downloaded file based on the ADD instruction and the remote source. If you rebuild the image and the instruction has not changed, Docker may use the cached layer. The HTTP `Last-Modified` header can set the destination file's modification time, but that modification time is not used to decide whether the cache should be updated. If you need reproducible cache behavior for a remote artifact, use a versioned URL and `--checksum`.
 
 To force a fresh download, you can bust the cache:
 
@@ -196,16 +206,16 @@ FROM debian:bookworm-slim
 
 # Changing this arg value invalidates the cache for subsequent instructions
 ARG CACHE_BUST=1
-ADD https://example.com/config.json /app/config.json
+ADD "https://example.com/config.json?cache=${CACHE_BUST}" /app/config.json
 ```
 
 ## When to Use ADD vs Alternatives
 
 ADD with remote URLs is appropriate in specific situations:
 
-Use ADD when you need a simple, single-file download and you do not need to verify checksums, handle authentication, or follow complex redirect chains. It works well for downloading static configuration files or small binaries from trusted sources.
+Use ADD when you need a simple, single-file download and you do not need to handle authentication or custom HTTP behavior. It works well for downloading static configuration files or small binaries from trusted sources, especially when you can pin them with `--checksum`.
 
-Use curl/wget in a RUN instruction when you need checksum verification, HTTP headers or authentication, conditional downloads, or when you want to download and process the file in one step.
+Use curl/wget in a RUN instruction when you need custom checksum logic, HTTP headers or authentication, conditional downloads, or when you want to download and process the file in one step.
 
 Use COPY with a multi-stage build when you want to download files in a builder stage and copy only what you need to the final image.
 
@@ -221,7 +231,7 @@ RUN apt-get update && \
 
 # Download and verify tools
 RUN curl -fsSL https://example.com/tool-v2.0 -o /tmp/tool && \
-    echo "expected_sha256  /tmp/tool" | sha256sum -c - && \
+    echo "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2  /tmp/tool" | sha256sum -c - && \
     chmod +x /tmp/tool
 
 # Stage 2: Clean final image
@@ -246,11 +256,10 @@ Verify downloads by their content hash whenever possible:
 # Pin to a specific version and verify the hash
 FROM debian:bookworm-slim
 
-ADD https://github.com/example/tool/releases/download/v1.2.3/tool-linux-amd64 /usr/local/bin/tool
+ADD --checksum=sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2 \
+    https://github.com/example/tool/releases/download/v1.2.3/tool-linux-amd64 /usr/local/bin/tool
 
-# Fail the build if the checksum doesn't match
-RUN echo "sha256_hash_here  /usr/local/bin/tool" | sha256sum -c - && \
-    chmod +x /usr/local/bin/tool
+RUN chmod +x /usr/local/bin/tool
 ```
 
 ## ADD with --link Flag
@@ -279,4 +288,4 @@ With `--link`, the ADD layer can be cached and reused even if previous layers ch
 
 ## Summary
 
-ADD with remote URLs provides a concise way to download files during Docker builds. It works best for simple, trusted downloads where checksums are verified separately. For anything more complex, involving authentication, extraction, or conditional logic, use curl or wget in a RUN instruction. Always verify checksums for security-critical files, pin URLs to specific versions, and consider hosting important dependencies on infrastructure you control to avoid build failures from external server outages.
+ADD with remote URLs provides a concise way to download files during Docker builds. It works best for simple, trusted downloads where checksums can be pinned with `--checksum`. For anything more complex, involving authentication, custom extraction logic, or conditional logic, use curl or wget in a RUN instruction. Always verify checksums for security-critical files, pin URLs to specific versions, and consider hosting important dependencies on infrastructure you control to avoid build failures from external server outages.
