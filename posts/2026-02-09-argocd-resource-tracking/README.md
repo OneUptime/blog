@@ -23,15 +23,15 @@ Resource tracking is how ArgoCD identifies which resources in the cluster belong
 
 ArgoCD supports three main tracking methods:
 
-1. Label-based tracking (default)
-2. Annotation-based tracking
+1. Annotation-based tracking (default in current Argo CD releases)
+2. Label-based tracking
 3. Annotation and label tracking (hybrid)
 
 Each method has different performance implications and compatibility considerations.
 
 ## Label-based resource tracking
 
-Label-based tracking is the default method in ArgoCD. It adds tracking labels to every resource:
+Label-based tracking uses the application instance label to identify resources. Older Argo CD versions used this as the default tracking method:
 
 ```yaml
 # Example resource with ArgoCD tracking labels
@@ -60,16 +60,15 @@ spec:
           image: nginx:1.21
 ```
 
-The tracking labels include:
+The tracking label is:
 - `app.kubernetes.io/instance`: The Application name
-- `app.kubernetes.io/name`: Optional resource name
 
 **Advantages:**
-- Fast resource discovery using label selectors
 - Compatible with most Kubernetes tools
-- Good for large applications with many resources
+- Simple metadata with a standardized Kubernetes label
 
 **Disadvantages:**
+- Label values are limited to 63 characters
 - Modifies resource labels, which may conflict with immutable label selectors
 - Can cause issues with pod label selectors in Deployments
 - May interfere with tools that depend on specific labels
@@ -121,16 +120,15 @@ The tracking annotation format is: `{app-name}:{group}/{kind}:{namespace}/{name}
 - Does not modify resource labels
 - Avoids conflicts with immutable label selectors
 - Works well with external tools that manage labels
-- Recommended for new installations
+- Current default when you do not need the instance label for external tooling
 
 **Disadvantages:**
-- Slower resource discovery (cannot use label selectors)
-- ArgoCD must list and filter all resources in the namespace
-- Higher API server load for large applications
+- Tools that expect the `app.kubernetes.io/instance` label will not see it unless you add labels separately
+- Slightly more metadata than label-only tracking
 
 ## Hybrid tracking with annotation and label
 
-The hybrid method uses both annotations and a lightweight label:
+The hybrid method uses the tracking annotation and also adds a lightweight label:
 
 ```yaml
 # argocd-cm configmap configuration
@@ -143,7 +141,7 @@ data:
   application.resourceTrackingMethod: annotation+label
 ```
 
-Resources get both the tracking annotation and a single label:
+Resources get both the tracking annotation and a single informational label:
 
 ```yaml
 # Example resource with hybrid tracking
@@ -172,9 +170,9 @@ spec:
 ```
 
 **Advantages:**
-- Fast resource discovery using the label
 - Accurate tracking using the annotation
-- Best performance for most scenarios
+- Maintains compatibility with tools that expect the `app.kubernetes.io/instance` label
+- Avoids the 63-character label limit for the actual tracking identifier
 
 **Disadvantages:**
 - Still adds a label (though only one)
@@ -199,22 +197,16 @@ metadata:
   namespace: argocd
 data:
   # Choose one of these options:
-  # application.resourceTrackingMethod: label  # Default
-  # application.resourceTrackingMethod: annotation
-  application.resourceTrackingMethod: annotation+label  # Recommended
+  # application.resourceTrackingMethod: label
+  # application.resourceTrackingMethod: annotation  # Default in current Argo CD releases
+  application.resourceTrackingMethod: annotation+label  # Use when external tools need the instance label
 ```
 
-After changing the tracking method, restart ArgoCD components:
+After changing the tracking method, sync your applications again (or wait for reconciliation) so Argo CD can apply the new metadata. If the controller does not pick up the ConfigMap change immediately, restart the application controller:
 
 ```bash
 # Restart application controller
-kubectl rollout restart deployment argocd-application-controller -n argocd
-
-# Restart server
-kubectl rollout restart deployment argocd-server -n argocd
-
-# Restart repo server
-kubectl rollout restart deployment argocd-repo-server -n argocd
+kubectl rollout restart statefulset argocd-application-controller -n argocd
 ```
 
 ## Migrating between tracking methods
@@ -226,20 +218,17 @@ When migrating from one tracking method to another, ArgoCD needs to re-track all
 kubectl patch configmap argocd-cm -n argocd \
   --patch '{"data": {"application.resourceTrackingMethod": "annotation+label"}}'
 
-# Step 2: Restart ArgoCD components
-kubectl rollout restart -n argocd \
-  deployment/argocd-application-controller \
-  deployment/argocd-server \
-  deployment/argocd-repo-server
+# Step 2: Restart the application controller if the ConfigMap change is not picked up immediately
+kubectl rollout restart -n argocd statefulset/argocd-application-controller
 
 # Step 3: Force a hard refresh of all applications
 argocd app list -o name | xargs -n 1 argocd app get --hard-refresh
 
 # Step 4: Trigger a sync to apply new tracking metadata
-argocd app list -o name | xargs -n 1 argocd app sync --force
+argocd app list -o name | xargs -n 1 argocd app sync
 ```
 
-The `--force` flag ensures resources are updated even if they appear in sync, which is necessary to apply the new tracking metadata.
+The sync applies the new tracking metadata. You can also wait for the normal reconciliation loop to apply the change.
 
 ## Performance optimization with resource tracking
 
@@ -250,12 +239,12 @@ Different tracking methods have different performance characteristics:
 - Choose based on compatibility requirements
 
 **For large applications (100-1000 resources):**
-- Annotation-only tracking may cause slow syncs
-- Use annotation+label or label-based tracking
+- Use annotation tracking unless external tooling requires the instance label
+- Use annotation+label when you need both accurate annotation tracking and label compatibility
 - Consider splitting into multiple Applications
 
 **For very large applications (> 1000 resources):**
-- Use label-based or annotation+label tracking
+- Keep resource ownership metadata unambiguous with annotation or annotation+label tracking
 - Implement resource filtering to reduce tracked resources
 - Use Application of Applications pattern
 
@@ -272,17 +261,28 @@ data:
   application.resourceTrackingMethod: annotation+label
   resource.exclusions: |
     - apiGroups:
-      - "*"
+      - ""
       kinds:
-      - Event
-      - ConfigMap
+      - Endpoints
+      clusters:
+      - "*"
+    - apiGroups:
+      - discovery.k8s.io
+      kinds:
+      - EndpointSlice
+      clusters:
+      - "*"
+    - apiGroups:
+      - coordination.k8s.io
+      kinds:
+      - Lease
       clusters:
       - "*"
   resource.compareoptions: |
     ignoreAggregatedRoles: true
 ```
 
-This configuration excludes Events and ConfigMaps from tracking, reducing the number of resources ArgoCD monitors.
+This configuration excludes high-churn resources that are normally created by controllers rather than managed directly in Git, reducing the number of resources ArgoCD monitors.
 
 ## Tracking method selection guide
 
@@ -292,19 +292,18 @@ Choose your tracking method based on these criteria:
 - You have strict immutable label requirements
 - Other tools heavily manage resource labels
 - You have small to medium-sized applications
-- You prioritize compatibility over performance
+- You do not need Argo CD to add the `app.kubernetes.io/instance` label
 
 **Use label-based tracking when:**
-- You have very large applications
-- Performance is critical
 - You control all label management
-- You're upgrading from older ArgoCD versions
+- You're preserving behavior from older ArgoCD versions
+- You do not need annotation tracking metadata
 
 **Use annotation+label tracking when:**
-- You want the best balance of performance and compatibility
+- You need annotation tracking while preserving label compatibility
 - You have mixed application sizes
-- You're setting up a new ArgoCD installation
-- You want future-proof configuration
+- External tools expect the `app.kubernetes.io/instance` label
+- You want to avoid using the label value as the source of truth for ownership
 
 ## Monitoring tracking performance
 
@@ -338,8 +337,8 @@ Common issues and solutions:
 # Force application refresh
 argocd app get myapp --hard-refresh
 
-# Manually sync with force
-argocd app sync myapp --force
+# Manually sync
+argocd app sync myapp
 ```
 
 **Orphaned resources with old tracking metadata:**
@@ -352,15 +351,15 @@ argocd app resources myapp
 kubectl delete <resource-type> <resource-name> -n <namespace>
 ```
 
-**Performance degradation after switching to annotation tracking:**
+**External tools no longer see the instance label after switching to annotation tracking:**
 
-Switch to hybrid tracking for better performance:
+Switch to hybrid tracking to keep annotation tracking while adding the compatibility label:
 
 ```bash
 kubectl patch configmap argocd-cm -n argocd \
   --patch '{"data": {"application.resourceTrackingMethod": "annotation+label"}}'
 
-kubectl rollout restart -n argocd deployment/argocd-application-controller
+kubectl rollout restart -n argocd statefulset/argocd-application-controller
 ```
 
 ## Advanced tracking configurations
@@ -377,7 +376,7 @@ metadata:
 data:
   application.resourceTrackingMethod: annotation+label
 
-  # Ignore differences in tracking metadata
+  # Ignore status fields during comparison
   resource.compareoptions: |
     ignoreResourceStatusField: all
 
@@ -396,4 +395,4 @@ data:
 
 ## Conclusion
 
-Choosing the right resource tracking method in ArgoCD is essential for optimal performance and compatibility. For most modern deployments, the hybrid annotation+label method provides the best balance of speed and flexibility. Understanding the trade-offs between tracking methods allows you to make informed decisions based on your application size, performance requirements, and integration needs. Regular monitoring and performance testing help ensure your chosen tracking method continues to meet your needs as your deployment scales.
+Choosing the right resource tracking method in ArgoCD is essential for accurate ownership and compatibility. For most modern deployments, annotation tracking is the default choice, while annotation+label is useful when other tools still need the instance label. Understanding the trade-offs between tracking methods allows you to make informed decisions based on your application size, performance requirements, and integration needs. Regular monitoring and performance testing help ensure your chosen tracking method continues to meet your needs as your deployment scales.
