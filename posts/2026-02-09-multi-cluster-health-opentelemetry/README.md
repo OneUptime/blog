@@ -23,20 +23,20 @@ For multi-cluster deployments, each cluster runs collectors in agent mode (deplo
 Install the OpenTelemetry Operator:
 
 ```bash
-kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/download/v0.92.0/opentelemetry-operator.yaml
+kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/latest/download/opentelemetry-operator.yaml
 ```
 
 Deploy collectors in agent mode as DaemonSet:
 
 ```yaml
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: otel-agent
   namespace: observability
 spec:
   mode: daemonset
-  image: otel/opentelemetry-collector-contrib:0.92.0
+  image: otel/opentelemetry-collector-contrib:0.153.0
   env:
   - name: K8S_NODE_NAME
     valueFrom:
@@ -53,7 +53,7 @@ spec:
   - name: CLUSTER_NAME
     value: "cluster-1"  # Change per cluster
 
-  config: |
+  config:
     receivers:
       otlp:
         protocols:
@@ -82,16 +82,16 @@ spec:
       resource:
         attributes:
         - key: cluster.name
-          value: ${CLUSTER_NAME}
+          value: ${env:CLUSTER_NAME}
           action: upsert
         - key: k8s.node.name
-          value: ${K8S_NODE_NAME}
+          value: ${env:K8S_NODE_NAME}
           action: upsert
         - key: k8s.pod.name
-          value: ${K8S_POD_NAME}
+          value: ${env:K8S_POD_NAME}
           action: upsert
         - key: k8s.namespace.name
-          value: ${K8S_NAMESPACE}
+          value: ${env:K8S_NAMESPACE}
           action: upsert
 
       # Batch telemetry for efficiency
@@ -116,8 +116,8 @@ spec:
           insecure: true
 
       # For debugging
-      logging:
-        loglevel: info
+      debug:
+        verbosity: basic
 
     service:
       pipelines:
@@ -140,7 +140,7 @@ spec:
 Deploy gateway collectors:
 
 ```yaml
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: otel-gateway
@@ -148,12 +148,12 @@ metadata:
 spec:
   mode: deployment
   replicas: 3
-  image: otel/opentelemetry-collector-contrib:0.92.0
+  image: otel/opentelemetry-collector-contrib:0.153.0
   env:
   - name: CLUSTER_NAME
     value: "cluster-1"
 
-  config: |
+  config:
     receivers:
       otlp:
         protocols:
@@ -207,15 +207,10 @@ spec:
         endpoint: "0.0.0.0:8889"
         namespace: otel
         const_labels:
-          cluster: ${CLUSTER_NAME}
+          cluster: ${env:CLUSTER_NAME}
 
-      loki:
-        endpoint: http://loki-gateway.logging.svc.cluster.local/loki/api/v1/push
-        labels:
-          resource:
-            cluster.name: "cluster"
-            k8s.namespace.name: "namespace"
-            k8s.pod.name: "pod"
+      otlphttp/loki:
+        endpoint: http://loki-gateway.logging.svc.cluster.local/otlp
 
     service:
       pipelines:
@@ -232,7 +227,7 @@ spec:
         logs:
           receivers: [otlp]
           processors: [resource, batch]
-          exporters: [loki]
+          exporters: [otlphttp/loki]
 ```
 
 ## Instrumenting Applications
@@ -250,11 +245,9 @@ import (
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-    "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
-    "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initTracer() (*trace.TracerProvider, error) {
@@ -305,8 +298,8 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 
     // Add span attributes
     span.SetAttributes(
-        semconv.HTTPMethod(r.Method),
-        semconv.HTTPURL(r.URL.String()),
+        semconv.HTTPRequestMethodKey.String(r.Method),
+        semconv.URLFullKey.String(r.URL.String()),
     )
 
     // Your business logic here
@@ -314,6 +307,10 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 
     w.WriteHeader(http.StatusOK)
     w.Write([]byte(users))
+}
+
+func fetchUsers(ctx context.Context) string {
+    return `[{"id":1,"name":"Alice"}]`
 }
 ```
 
@@ -369,11 +366,14 @@ request_counter = meter.create_counter(
 @app.route('/api/users')
 def get_users():
     with tracer.start_as_current_span("get_users") as span:
-        span.set_attribute("http.method", "GET")
+        span.set_attribute("http.request.method", "GET")
         request_counter.add(1, {"endpoint": "/api/users"})
 
         users = fetch_users()
         return users
+
+def fetch_users():
+    return '[{"id":1,"name":"Alice"}]'
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
@@ -467,9 +467,9 @@ data:
             }]
           },
           {
-            "title": "Active Spans by Cluster",
+            "title": "Accepted Spans by Cluster",
             "targets": [{
-              "expr": "sum(otel_traces_active_spans) by (cluster)"
+              "expr": "sum(rate(otelcol_receiver_accepted_spans_total[5m])) by (cluster)"
             }]
           }
         ]
@@ -510,7 +510,7 @@ spec:
         summary: "High latency detected in {{ $labels.cluster }}"
 
     - alert: TelemetryCollectionFailure
-      expr: rate(otelcol_receiver_refused_spans[5m]) > 0
+      expr: rate(otelcol_receiver_refused_spans_total[5m]) > 0
       for: 5m
       annotations:
         summary: "OpenTelemetry collector refusing spans in {{ $labels.cluster }}"
