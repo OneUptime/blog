@@ -8,15 +8,15 @@ Description: Implement GlusterFS distributed storage with Heketi for dynamic Kub
 
 ---
 
-GlusterFS provides distributed file system capabilities that scale horizontally across commodity hardware while maintaining strong consistency guarantees. When combined with Heketi, a RESTful volume management interface, GlusterFS becomes a dynamic storage backend for Kubernetes that automatically provisions and manages volumes without manual intervention.
+GlusterFS provides distributed file system capabilities that scale horizontally across commodity hardware while providing shared file storage across nodes. When combined with Heketi, a RESTful volume management interface, GlusterFS becomes a dynamic storage backend for legacy Kubernetes clusters that automatically provisions and manages volumes without manual intervention.
 
-This guide demonstrates deploying a production-ready GlusterFS cluster managed by Heketi, configuring Kubernetes integration, and using it for stateful application storage. You'll learn topology setup, volume replication configuration, and troubleshooting techniques for common scenarios.
+This guide demonstrates deploying a GlusterFS cluster managed by Heketi, configuring Kubernetes integration, and using it for stateful application storage on Kubernetes versions that still include the in-tree GlusterFS provisioner. The `kubernetes.io/glusterfs` volume plugin was deprecated in Kubernetes 1.25 and removed in Kubernetes 1.26, so use this only for legacy clusters rather than new Kubernetes deployments. You'll learn topology setup, volume replication configuration, and troubleshooting techniques for common scenarios.
 
 ## Understanding GlusterFS and Heketi Architecture
 
 GlusterFS creates a unified namespace across multiple storage servers by aggregating raw block devices into bricks. These bricks form volumes that are distributed and optionally replicated across the cluster. When a client writes data, GlusterFS's distributed hash algorithm determines which bricks store the data based on the file path, ensuring even distribution.
 
-Heketi sits between Kubernetes and GlusterFS, translating CSI or provisioner API calls into GlusterFS administrative commands. When you create a PVC, Heketi selects appropriate nodes, creates bricks from available storage, assembles them into a GlusterFS volume, and returns mount information to Kubernetes. This automation eliminates manual volume management while respecting replica and placement constraints.
+Heketi sits between Kubernetes and GlusterFS, translating legacy GlusterFS provisioner API calls into GlusterFS administrative commands. When you create a PVC, Heketi selects appropriate nodes, creates bricks from available storage, assembles them into a GlusterFS volume, and returns mount information to Kubernetes. This automation eliminates manual volume management while respecting replica and placement constraints.
 
 ## Preparing Storage Nodes
 
@@ -56,9 +56,9 @@ gluster --version
 
 ## Deploying Heketi on Kubernetes
 
-Heketi runs as a pod within your Kubernetes cluster and manages the external GlusterFS nodes through SSH. Create a ConfigMap with the cluster topology.
+Heketi runs as a pod within your Kubernetes cluster and manages the external GlusterFS nodes through SSH. Create a topology file that describes the GlusterFS nodes and devices.
 
-```yaml
+```json
 # heketi-topology.json
 {
   "clusters": [
@@ -245,6 +245,7 @@ spec:
       - name: ssh-key
         secret:
           secretName: heketi-ssh-key
+          defaultMode: 0600
 ---
 apiVersion: v1
 kind: Service
@@ -298,11 +299,11 @@ metadata:
 provisioner: kubernetes.io/glusterfs
 parameters:
   resturl: "http://heketi.gluster-system.svc.cluster.local:8080"
+  restauthenabled: "true"
   restuser: "admin"
   restuserkey: "adminkey"
   volumetype: "replicate:3"
-  # Optional: Set snapshot limit
-  snapshot: "enabled"
+  # Optional: Set the Heketi thin-pool snapshot factor
   snapfactor: "10"
 allowVolumeExpansion: true
 reclaimPolicy: Delete
