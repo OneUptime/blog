@@ -29,7 +29,7 @@ kind: Provider
 metadata:
   name: provider-terraform
 spec:
-  package: xpkg.upbound.io/upbound/provider-terraform:v0.16.0
+  package: xpkg.upbound.io/upbound/provider-terraform:v1.1.4
 ```
 
 Wait for the provider to become healthy:
@@ -38,7 +38,7 @@ Wait for the provider to become healthy:
 kubectl get provider provider-terraform
 # NAME                  INSTALLED   HEALTHY   PACKAGE                                                   AGE
 
-# provider-terraform    True        True      xpkg.upbound.io/upbound/provider-terraform:v0.16.0       1m
+# provider-terraform    True        True      xpkg.upbound.io/upbound/provider-terraform:v1.1.4       1m
 ```
 
 ## Configuring the Terraform Provider
@@ -67,7 +67,8 @@ spec:
     }
 
     provider "aws" {
-      region = "us-east-1"
+      region                   = "us-east-1"
+      shared_credentials_files = ["aws-credentials.ini"]
     }
   credentials:
     - filename: aws-credentials.ini
@@ -145,7 +146,7 @@ spec:
 
 ## Using Remote Terraform Modules
 
-Instead of inline HCL, reference existing modules from registries or Git repositories:
+Within inline HCL, reference existing modules from registries or Git repositories:
 
 ```yaml
 apiVersion: tf.upbound.io/v1beta1
@@ -154,7 +155,7 @@ metadata:
   name: vpc-from-module
 spec:
   forProvider:
-    source: Remote
+    source: Inline
     module: |
       module "vpc" {
         source  = "terraform-aws-modules/vpc/aws"
@@ -239,10 +240,10 @@ metadata:
   name: infra-from-git
 spec:
   forProvider:
-    source: Remote
+    source: Inline
     module: |
       module "infrastructure" {
-        source = "git::https://github.com/my-org/terraform-modules.git//networking/vpc?ref=v2.1.0"
+        source = "git::ssh://git@github.com/my-org/terraform-modules.git//networking/vpc?ref=v2.1.0"
 
         vpc_name    = var.vpc_name
         environment = var.environment
@@ -259,6 +260,9 @@ spec:
       output "vpc_id" {
         value = module.infrastructure.vpc_id
       }
+    env:
+      - name: GIT_SSH_COMMAND
+        value: "ssh -i id_rsa -o UserKnownHostsFile=known_hosts"
     vars:
       - key: vpc_name
         value: production-vpc
@@ -266,19 +270,42 @@ spec:
         value: production
 ```
 
-For private repositories, configure Git credentials:
+For private repositories, configure Git credentials through the provider config and use an SSH module source:
 
 ```yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: git-credentials
+  name: git-ssh-key
   namespace: crossplane-system
 type: Opaque
 stringData:
-  GIT_ASKPASS: "/bin/echo"
-  GIT_USERNAME: "git-token"
-  GIT_PASSWORD: "ghp_your_github_token_here"
+  id_rsa: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
+  known_hosts: |
+    github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...
+---
+apiVersion: tf.upbound.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: default
+spec:
+  # Keep any existing Terraform and provider configuration here.
+  credentials:
+    - filename: id_rsa
+      source: Secret
+      secretRef:
+        namespace: crossplane-system
+        name: git-ssh-key
+        key: id_rsa
+    - filename: known_hosts
+      source: Secret
+      secretRef:
+        namespace: crossplane-system
+        name: git-ssh-key
+        key: known_hosts
 ```
 
 ## Integrating with Crossplane Compositions
@@ -294,48 +321,62 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XFullStack
-  resources:
-    # Native Crossplane resource for the database
-    - name: database
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            engine: postgres
-            engineVersion: "15.4"
-            instanceClass: db.r6g.large
-            allocatedStorage: 100
-    # Terraform workspace for custom networking
-    - name: custom-networking
-      base:
-        apiVersion: tf.upbound.io/v1beta1
-        kind: Workspace
-        spec:
-          forProvider:
-            source: Remote
-            module: |
-              module "custom_networking" {
-                source  = "git::https://github.com/my-org/terraform-modules.git//networking/custom?ref=v1.0.0"
-                vpc_id  = var.vpc_id
-                db_port = var.db_port
-              }
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          # Native Crossplane resource for the database
+          - name: database
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-east-1
+                  engine: postgres
+                  engineVersion: "15.4"
+                  instanceClass: db.r6g.large
+                  allocatedStorage: 100
+          # Terraform workspace for custom networking
+          - name: custom-networking
+            base:
+              apiVersion: tf.upbound.io/v1beta1
+              kind: Workspace
+              spec:
+                forProvider:
+                  source: Inline
+                  module: |
+                    module "custom_networking" {
+                      source  = "git::https://github.com/my-org/terraform-modules.git//networking/custom?ref=v1.0.0"
+                      vpc_id  = var.vpc_id
+                      db_port = var.db_port
+                    }
 
-              variable "vpc_id" {
-                type = string
-              }
+                    variable "vpc_id" {
+                      type = string
+                    }
 
-              variable "db_port" {
-                type = number
-              }
+                    variable "db_port" {
+                      type = number
+                    }
 
-              output "security_group_id" {
-                value = module.custom_networking.security_group_id
-              }
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: status.vpcId
-          toFieldPath: spec.forProvider.vars[0].value
+                    output "security_group_id" {
+                      value = module.custom_networking.security_group_id
+                    }
+                  vars:
+                    - key: vpc_id
+                      value: ""
+                    - key: db_port
+                      value: "5432"
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.vpcId
+                toFieldPath: spec.forProvider.vars[0].value
 ```
 
 ## Managing Terraform State
@@ -347,7 +388,7 @@ The Kubernetes backend stores state as secrets, which makes it easy to inspect a
 kubectl get secrets -n crossplane-system -l tfstate=true
 
 # Back up state
-kubectl get secret terraform-state-s3-bucket-example \
+kubectl get secret tfstate-s3-bucket-example-terraform-state \
   -n crossplane-system -o yaml > state-backup.yaml
 ```
 
@@ -361,7 +402,7 @@ spec:
         bucket         = "terraform-state-bucket"
         key            = "crossplane/terraform.tfstate"
         region         = "us-east-1"
-        dynamodb_table = "terraform-state-lock"
+        use_lockfile   = true
         encrypt        = true
       }
     }
@@ -369,12 +410,11 @@ spec:
 
 ## Reconciliation Behavior
 
-Unlike native Crossplane providers that continuously reconcile, the Terraform provider runs `terraform plan` periodically to detect drift and `terraform apply` when changes are needed:
+Unlike native Crossplane providers that continuously reconcile individual resources, the Terraform provider runs `terraform plan` periodically to detect drift and `terraform apply` when changes are needed. You can customize the Terraform CLI arguments used by the workspace:
 
 ```yaml
 spec:
   forProvider:
-    # Run plan every 10 minutes to detect drift
     planArgs:
       - "-refresh=true"
     applyArgs:
