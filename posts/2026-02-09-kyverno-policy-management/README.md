@@ -15,7 +15,7 @@ Kyverno is a Kubernetes-native policy engine that uses standard YAML for policy 
 Install using kubectl:
 
 ```bash
-kubectl create -f https://github.com/kyverno/kyverno/releases/download/v1.11.0/install.yaml
+kubectl create -f https://github.com/kyverno/kyverno/releases/download/v1.18.1/install.yaml
 ```
 
 Or use Helm:
@@ -50,7 +50,6 @@ kind: ClusterPolicy
 metadata:
   name: require-labels
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-for-labels
       match:
@@ -59,6 +58,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Pods must have 'app' and 'team' labels"
         pattern:
           metadata:
@@ -88,7 +88,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-image-registries
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: validate-registries
       match:
@@ -97,6 +96,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Images must come from approved registries"
         foreach:
           - list: "request.object.spec.containers[]"
@@ -183,7 +183,6 @@ kind: ClusterPolicy
 metadata:
   name: audit-required-labels
 spec:
-  validationFailureAction: Audit  # or Enforce
   rules:
     - name: check-labels
       match:
@@ -192,6 +191,7 @@ spec:
               kinds:
                 - Deployment
       validate:
+        failureAction: Audit  # or Enforce
         message: "Deployments should have owner label"
         pattern:
           metadata:
@@ -206,7 +206,7 @@ Audit mode logs violations without blocking.
 Exempt specific resources:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: allow-privileged-monitoring
@@ -268,7 +268,7 @@ Kyverno scans existing resources automatically. View background scan results:
 ```bash
 kubectl get clusterpolicyreport
 
-kubectl describe clusterpolicyreport clusterpolicyreport
+kubectl describe clusterpolicyreport
 ```
 
 ## Monitoring Policies
