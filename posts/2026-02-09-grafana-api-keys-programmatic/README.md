@@ -4,78 +4,87 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, API, Automation
 
-Description: Master Grafana API keys to enable programmatic access for automation, CI/CD pipelines, and integrations by creating, managing, and securing keys with proper scopes and permissions.
+Description: Master Grafana service account tokens to enable programmatic access for automation, CI/CD pipelines, and integrations by creating, managing, and securing tokens with proper roles and permissions.
 
 ---
 
 The Grafana UI is great for humans, but automation needs APIs. Whether you're exporting dashboards, creating alerts, or integrating with CI/CD pipelines, you need programmatic access to Grafana.
 
-API keys provide this access. They let scripts, tools, and services interact with Grafana without requiring username and password authentication. Understanding how to create and manage these keys is essential for automating your monitoring infrastructure.
+Service account tokens provide this access in current Grafana versions. They let scripts, tools, and services interact with Grafana without requiring username and password authentication. Understanding how to create and manage these tokens is essential for automating your monitoring infrastructure.
 
 ## Understanding Grafana Authentication Methods
 
 Grafana supports several authentication methods:
 
 - **Basic Auth**: Username and password
-- **API Keys**: Long-lived tokens for service accounts
-- **Service Accounts**: Modern alternative with token management (Grafana 9+)
+- **Service Account Tokens**: Tokens for automated workloads and API access
+- **API Keys**: Deprecated legacy tokens that service accounts now replace
 
-API keys are simpler for most use cases, though service accounts offer more flexibility in newer Grafana versions.
+Service accounts are the recommended method for API automation. API keys are deprecated, and Grafana recommends migrating them to service account tokens.
 
-## Creating API Keys via UI
+## Creating Service Account Tokens via UI
 
-The simplest way to create an API key:
+The simplest way to create a service account token:
 
-1. Navigate to Configuration > API Keys
-2. Click "New API Key"
-3. Set name, role, and expiration
-4. Click "Add"
-5. Copy the key immediately
+1. Navigate to Administration > Users and access > Service accounts
+2. Click "Add service account"
+3. Set the service account name and role
+4. Open the service account and click "Add service account token"
+5. Set the token name and expiration
+6. Copy the token immediately
 
-The key is only shown once. Store it securely.
+The token is only shown once. Store it securely.
 
-## Creating API Keys via API
+## Creating Service Account Tokens via API
 
-For automation, create keys programmatically:
+For automation, create a service account and token programmatically:
 
 ```bash
-# Create an API key with Admin role
+# Create a service account with Admin role
 
-curl -X POST http://grafana.example.com/api/auth/keys \
+curl -X POST http://grafana.example.com/api/serviceaccounts \
   -H "Content-Type: application/json" \
   -u admin:admin \
   -d '{
-    "name": "automation-key",
-    "role": "Admin",
+    "name": "automation-service-account",
+    "role": "Admin"
+  }'
+
+# Create a token for the service account ID returned above
+curl -X POST http://grafana.example.com/api/serviceaccounts/1/tokens \
+  -H "Content-Type: application/json" \
+  -u admin:admin \
+  -d '{
+    "name": "automation-token",
     "secondsToLive": 86400
   }'
 ```
 
-Response includes the key:
+The token creation response includes the key:
 
 ```json
 {
-  "id": 1,
-  "name": "automation-key",
+  "id": 7,
+  "name": "automation-token",
   "key": "eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk"
 }
 ```
 
-Store this key in a secure location like Kubernetes secrets.
+Store this token in a secure location like Kubernetes secrets.
 
-## Managing API Keys in Kubernetes
+## Managing Service Account Tokens in Kubernetes
 
-Store API keys as Kubernetes secrets:
+Store service account tokens as Kubernetes secrets:
 
 ```yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: grafana-api-key
+  name: grafana-service-account-token
   namespace: monitoring
 type: Opaque
 stringData:
-  api-key: "eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk"
+  token: "eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk"
 ```
 
 Use in pods:
@@ -94,24 +103,26 @@ spec:
         spec:
           containers:
           - name: backup
-            image: curlimages/curl:latest
+            image: alpine:3.20
             env:
-            - name: GRAFANA_API_KEY
+            - name: GRAFANA_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: grafana-api-key
-                  key: api-key
+                  name: grafana-service-account-token
+                  key: token
             - name: GRAFANA_URL
               value: "http://grafana:3000"
             command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache curl jq >/dev/null
+
               # Export all dashboards
-              curl -H "Authorization: Bearer $GRAFANA_API_KEY" \
+              curl -H "Authorization: Bearer $GRAFANA_TOKEN" \
                 "$GRAFANA_URL/api/search?type=dash-db" | \
                 jq -r '.[] | .uid' | while read uid; do
-                  curl -H "Authorization: Bearer $GRAFANA_API_KEY" \
+                  curl -H "Authorization: Bearer $GRAFANA_TOKEN" \
                     "$GRAFANA_URL/api/dashboards/uid/$uid" > "/backup/$uid.json"
                 done
             volumeMounts:
@@ -119,55 +130,53 @@ spec:
               mountPath: /backup
           volumes:
           - name: backup
-            emptyDir: {}
+            persistentVolumeClaim:
+              claimName: grafana-backup
           restartPolicy: OnFailure
 ```
 
-## Understanding API Key Roles
+## Understanding Service Account Roles
 
-Grafana API keys have three role levels:
+Grafana service accounts use role levels:
 
 - **Viewer**: Read-only access to dashboards and data
 - **Editor**: Can create and modify dashboards
-- **Admin**: Full access including user management
+- **Admin**: Organization-level administration for allowed APIs
 
 Choose the minimal role needed:
 
 ```bash
-# Create Viewer key for monitoring tools
-curl -X POST http://grafana.example.com/api/auth/keys \
+# Create Viewer service account for monitoring tools
+curl -X POST http://grafana.example.com/api/serviceaccounts \
   -H "Content-Type: application/json" \
   -u admin:admin \
   -d '{
     "name": "readonly-monitoring",
-    "role": "Viewer",
-    "secondsToLive": 0
+    "role": "Viewer"
   }'
 
-# Create Editor key for dashboard automation
-curl -X POST http://grafana.example.com/api/auth/keys \
+# Create Editor service account for dashboard automation
+curl -X POST http://grafana.example.com/api/serviceaccounts \
   -H "Content-Type: application/json" \
   -u admin:admin \
   -d '{
     "name": "dashboard-manager",
-    "role": "Editor",
-    "secondsToLive": 2592000
+    "role": "Editor"
   }'
 
-# Create Admin key for full automation (use sparingly)
-curl -X POST http://grafana.example.com/api/auth/keys \
+# Create Admin service account for full automation (use sparingly)
+curl -X POST http://grafana.example.com/api/serviceaccounts \
   -H "Content-Type: application/json" \
   -u admin:admin \
   -d '{
     "name": "admin-automation",
-    "role": "Admin",
-    "secondsToLive": 604800
+    "role": "Admin"
   }'
 ```
 
 ## Common API Operations
 
-Here are practical examples using API keys:
+Here are practical examples using service account tokens:
 
 ### Exporting Dashboards
 
@@ -176,18 +185,18 @@ Here are practical examples using API keys:
 # export-dashboards.sh
 
 GRAFANA_URL="http://grafana.example.com"
-API_KEY="eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk"
+GRAFANA_TOKEN="eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk"
 OUTPUT_DIR="./dashboards"
 
 mkdir -p $OUTPUT_DIR
 
 # Get all dashboards
-curl -s -H "Authorization: Bearer $API_KEY" \
+curl -s -H "Authorization: Bearer $GRAFANA_TOKEN" \
   "$GRAFANA_URL/api/search?type=dash-db" | \
   jq -r '.[] | "\(.uid) \(.title)"' | while read uid title; do
 
   echo "Exporting: $title"
-  curl -s -H "Authorization: Bearer $API_KEY" \
+  curl -s -H "Authorization: Bearer $GRAFANA_TOKEN" \
     "$GRAFANA_URL/api/dashboards/uid/$uid" | \
     jq '.dashboard' > "$OUTPUT_DIR/${uid}.json"
 done
@@ -202,11 +211,11 @@ echo "Export complete: $OUTPUT_DIR"
 # create-dashboard.sh
 
 GRAFANA_URL="http://grafana.example.com"
-API_KEY="eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk"
+GRAFANA_TOKEN="eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk"
 
 # Create new dashboard
 curl -X POST "$GRAFANA_URL/api/dashboards/db" \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "Authorization: Bearer $GRAFANA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "dashboard": {
@@ -218,7 +227,7 @@ curl -X POST "$GRAFANA_URL/api/dashboards/db" \
         {
           "id": 1,
           "title": "Sample Panel",
-          "type": "graph",
+          "type": "timeseries",
           "targets": [
             {
               "expr": "up",
@@ -240,11 +249,11 @@ curl -X POST "$GRAFANA_URL/api/dashboards/db" \
 # create-datasource.sh
 
 GRAFANA_URL="http://grafana.example.com"
-API_KEY="eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk"
+GRAFANA_TOKEN="eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk"
 
 # Create Prometheus data source
 curl -X POST "$GRAFANA_URL/api/datasources" \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "Authorization: Bearer $GRAFANA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Prometheus-Production",
@@ -266,16 +275,19 @@ curl -X POST "$GRAFANA_URL/api/datasources" \
 # create-alert.sh
 
 GRAFANA_URL="http://grafana.example.com"
-API_KEY="eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk"
+GRAFANA_TOKEN="eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk"
 
 # Create alert rule
 curl -X POST "$GRAFANA_URL/api/v1/provisioning/alert-rules" \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "Authorization: Bearer $GRAFANA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "uid": "high-cpu-alert",
     "title": "High CPU Usage",
-    "condition": "A",
+    "ruleGroup": "node-alerts",
+    "folderUID": "alerts-folder",
+    "orgId": 1,
+    "condition": "B",
     "data": [
       {
         "refId": "A",
@@ -287,7 +299,47 @@ curl -X POST "$GRAFANA_URL/api/v1/provisioning/alert-rules" \
         "datasourceUid": "prometheus-uid",
         "model": {
           "expr": "avg(rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) > 0.8",
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
           "refId": "A"
+        }
+      },
+      {
+        "refId": "B",
+        "queryType": "",
+        "relativeTimeRange": {
+          "from": 0,
+          "to": 0
+        },
+        "datasourceUid": "-100",
+        "model": {
+          "conditions": [
+            {
+              "evaluator": {
+                "params": [0],
+                "type": "gt"
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": ["A"]
+              },
+              "reducer": {
+                "params": [],
+                "type": "last"
+              },
+              "type": "query"
+            }
+          ],
+          "datasource": {
+            "type": "__expr__",
+            "uid": "-100"
+          },
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "refId": "B",
+          "type": "classic_conditions"
         }
       }
     ],
@@ -303,56 +355,61 @@ curl -X POST "$GRAFANA_URL/api/v1/provisioning/alert-rules" \
   }'
 ```
 
-## Rotating API Keys
+## Rotating Service Account Tokens
 
-Implement key rotation for security:
+Implement token rotation for security:
 
 ```bash
 #!/bin/bash
-# rotate-api-key.sh
+# rotate-service-account-token.sh
 
 GRAFANA_URL="http://grafana.example.com"
 ADMIN_USER="admin"
 ADMIN_PASS="admin"
-KEY_NAME="automation-key"
+SA_NAME="automation-service-account"
+TOKEN_NAME="automation-token"
 
-# List existing keys
-EXISTING_KEY_ID=$(curl -s -u $ADMIN_USER:$ADMIN_PASS \
-  "$GRAFANA_URL/api/auth/keys" | \
-  jq -r ".[] | select(.name==\"$KEY_NAME\") | .id")
+# Find the service account
+SA_ID=$(curl -s -u $ADMIN_USER:$ADMIN_PASS \
+  "$GRAFANA_URL/api/serviceaccounts/search?query=$SA_NAME" | \
+  jq -r ".serviceAccounts[] | select(.name==\"$SA_NAME\") | .id")
 
-# Create new key
-NEW_KEY=$(curl -s -X POST "$GRAFANA_URL/api/auth/keys" \
+# List existing tokens for this service account
+EXISTING_TOKEN_ID=$(curl -s -u $ADMIN_USER:$ADMIN_PASS \
+  "$GRAFANA_URL/api/serviceaccounts/$SA_ID/tokens" | \
+  jq -r ".[] | select(.name==\"$TOKEN_NAME\") | .id")
+
+# Create new token
+NEW_TOKEN=$(curl -s -X POST "$GRAFANA_URL/api/serviceaccounts/$SA_ID/tokens" \
   -H "Content-Type: application/json" \
   -u $ADMIN_USER:$ADMIN_PASS \
   -d "{
-    \"name\": \"$KEY_NAME\",
-    \"role\": \"Admin\",
+    \"name\": \"$TOKEN_NAME\",
     \"secondsToLive\": 2592000
   }" | jq -r '.key')
 
-echo "New API key: $NEW_KEY"
+echo "New service account token: $NEW_TOKEN"
 
 # Update secret in Kubernetes
-kubectl create secret generic grafana-api-key \
+kubectl create secret generic grafana-service-account-token \
   -n monitoring \
-  --from-literal=api-key="$NEW_KEY" \
+  --from-literal=token="$NEW_TOKEN" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Wait for pods to pick up new secret
 sleep 30
 
-# Delete old key
-if [ ! -z "$EXISTING_KEY_ID" ]; then
-  curl -X DELETE "$GRAFANA_URL/api/auth/keys/$EXISTING_KEY_ID" \
+# Delete old token
+if [ -n "$EXISTING_TOKEN_ID" ]; then
+  curl -X DELETE "$GRAFANA_URL/api/serviceaccounts/$SA_ID/tokens/$EXISTING_TOKEN_ID" \
     -u $ADMIN_USER:$ADMIN_PASS
-  echo "Deleted old key ID: $EXISTING_KEY_ID"
+  echo "Deleted old token ID: $EXISTING_TOKEN_ID"
 fi
 ```
 
-## Automating Key Creation on Grafana Startup
+## Automating Token Creation on Grafana Startup
 
-Create API keys automatically when Grafana starts:
+Create service account tokens automatically when Grafana starts:
 
 ```yaml
 apiVersion: batch/v1
@@ -365,7 +422,7 @@ spec:
     spec:
       containers:
       - name: setup
-        image: curlimages/curl:latest
+        image: alpine:3.20
         env:
         - name: GRAFANA_URL
           value: "http://grafana:3000"
@@ -380,106 +437,100 @@ spec:
         - /bin/sh
         - -c
         - |
+          apk add --no-cache curl jq kubectl >/dev/null
+
           # Wait for Grafana to be ready
           until curl -sf $GRAFANA_URL/api/health; do
             echo "Waiting for Grafana..."
             sleep 5
           done
 
-          # Create API keys for different purposes
-          echo "Creating API keys..."
+          # Create service account tokens for different purposes
+          echo "Creating service account tokens..."
 
-          # Viewer key for monitoring
-          curl -X POST "$GRAFANA_URL/api/auth/keys" \
+          # Viewer service account and token for monitoring
+          VIEWER_SA_ID=$(curl -s -X POST "$GRAFANA_URL/api/serviceaccounts" \
             -H "Content-Type: application/json" \
             -u $ADMIN_USER:$ADMIN_PASS \
             -d '{
               "name": "monitoring-viewer",
-              "role": "Viewer",
-              "secondsToLive": 0
-            }' | jq -r '.key' > /secrets/viewer-key
+              "role": "Viewer"
+            }' | jq -r '.id')
 
-          # Editor key for automation
-          curl -X POST "$GRAFANA_URL/api/auth/keys" \
+          VIEWER_TOKEN=$(curl -s -X POST "$GRAFANA_URL/api/serviceaccounts/$VIEWER_SA_ID/tokens" \
+            -H "Content-Type: application/json" \
+            -u $ADMIN_USER:$ADMIN_PASS \
+            -d '{
+              "name": "monitoring-viewer-token",
+              "secondsToLive": 0
+            }' | jq -r '.key')
+
+          kubectl create secret generic monitoring-viewer-token \
+            -n monitoring \
+            --from-literal=token="$VIEWER_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # Editor service account and token for automation
+          EDITOR_SA_ID=$(curl -s -X POST "$GRAFANA_URL/api/serviceaccounts" \
             -H "Content-Type: application/json" \
             -u $ADMIN_USER:$ADMIN_PASS \
             -d '{
               "name": "automation-editor",
-              "role": "Editor",
-              "secondsToLive": 2592000
-            }' | jq -r '.key' > /secrets/editor-key
+              "role": "Editor"
+            }' | jq -r '.id')
 
-          echo "API keys created"
-        volumeMounts:
-        - name: secrets
-          mountPath: /secrets
-      volumes:
-      - name: secrets
-        emptyDir: {}
+          EDITOR_TOKEN=$(curl -s -X POST "$GRAFANA_URL/api/serviceaccounts/$EDITOR_SA_ID/tokens" \
+            -H "Content-Type: application/json" \
+            -u $ADMIN_USER:$ADMIN_PASS \
+            -d '{
+              "name": "automation-editor-token",
+              "secondsToLive": 2592000
+            }' | jq -r '.key')
+
+          kubectl create secret generic automation-editor-token \
+            -n monitoring \
+            --from-literal=token="$EDITOR_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          echo "Service account tokens created"
       restartPolicy: Never
 ```
 
-## Monitoring API Key Usage
+## Monitoring API Usage
 
-Track API key usage with Grafana metrics:
+Track API traffic with Grafana metrics and keep an inventory of service account tokens:
 
 ```bash
-# View API key usage metrics
-curl -H "Authorization: Bearer $API_KEY" \
-  http://grafana.example.com/metrics | grep api_key
+# View Grafana HTTP request metrics when metrics are enabled
+curl http://grafana.example.com/metrics | grep grafana_http
 
-# List all API keys and their last usage
-curl -H "Authorization: Bearer $API_KEY" \
-  http://grafana.example.com/api/auth/keys | \
-  jq -r '.[] | "\(.name) - Last used: \(.lastSeenAt // "never")"'
-```
-
-Create alerts for suspicious activity:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-api-alerts
-  namespace: monitoring
-data:
-  alerts.yaml: |
-    groups:
-    - name: grafana-api
-      rules:
-      - alert: UnusedAPIKeys
-        expr: time() - grafana_api_keys_last_used_at > 2592000
-        annotations:
-          summary: "API key unused for 30 days"
-
-      - alert: ExcessiveAPIUsage
-        expr: rate(grafana_api_request_total[5m]) > 100
-        for: 5m
-        annotations:
-          summary: "High API request rate detected"
+# List service accounts
+curl -H "Authorization: Bearer $GRAFANA_TOKEN" \
+  http://grafana.example.com/api/serviceaccounts/search | \
+  jq -r '.serviceAccounts[] | "\(.id) \(.name) \(.role)"'
 ```
 
 ## Security Best Practices
 
-Follow these guidelines for secure API key management:
+Follow these guidelines for secure service account token management:
 
-1. **Use minimal permissions**: Assign the lowest role needed for each key.
-2. **Set expiration**: Don't create keys that never expire for automation.
-3. **Rotate regularly**: Implement automated key rotation every 30-90 days.
+1. **Use minimal permissions**: Assign the lowest role needed for each service account.
+2. **Set expiration**: Don't create tokens that never expire for automation.
+3. **Rotate regularly**: Implement automated token rotation every 30-90 days.
 4. **Store securely**: Use Kubernetes secrets or secret management systems.
-5. **Monitor usage**: Track which keys are used and when.
-6. **Delete unused keys**: Remove keys that haven't been used in 30+ days.
-7. **One key per service**: Don't share keys across multiple services.
-8. **Audit access**: Log all API key creation and deletion.
+5. **Monitor usage**: Track API traffic and service account inventory.
+6. **Delete unused tokens**: Remove tokens that are no longer needed.
+7. **One token per service**: Don't share tokens across multiple services.
+8. **Audit access**: Log all service account and token creation and deletion.
 
 ## Migrating to Service Accounts
 
-For Grafana 9+, consider migrating to service accounts:
+If you still have legacy API keys, migrate them to service accounts:
 
 ```bash
 # Create service account (Grafana 9+)
 curl -X POST "$GRAFANA_URL/api/serviceaccounts" \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "Authorization: Bearer $GRAFANA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "automation-sa",
@@ -487,12 +538,12 @@ curl -X POST "$GRAFANA_URL/api/serviceaccounts" \
   }'
 
 # Create token for service account
-SA_ID=$(curl -s -H "Authorization: Bearer $API_KEY" \
+SA_ID=$(curl -s -H "Authorization: Bearer $GRAFANA_TOKEN" \
   "$GRAFANA_URL/api/serviceaccounts/search" | \
   jq -r '.serviceAccounts[] | select(.name=="automation-sa") | .id')
 
 curl -X POST "$GRAFANA_URL/api/serviceaccounts/$SA_ID/tokens" \
-  -H "Authorization: Bearer $API_KEY" \
+  -H "Authorization: Bearer $GRAFANA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "automation-token",
@@ -502,26 +553,26 @@ curl -X POST "$GRAFANA_URL/api/serviceaccounts/$SA_ID/tokens" \
 
 Service accounts provide better token management and permissions, making them preferable for new deployments.
 
-## Troubleshooting API Key Issues
+## Troubleshooting Service Account Token Issues
 
 Common problems and solutions:
 
 ```bash
-# Test if API key works
-curl -H "Authorization: Bearer $API_KEY" \
+# Test if service account token works
+curl -H "Authorization: Bearer $GRAFANA_TOKEN" \
   http://grafana.example.com/api/user
 
 # If 401 Unauthorized:
-# - Check key hasn't expired
-# - Verify key is correct (no extra spaces)
-# - Ensure API keys are enabled in Grafana config
+# - Check the token hasn't expired
+# - Verify the token is correct (no extra spaces)
+# - Ensure the service account is enabled and has the required role or RBAC permissions
 
 # Check Grafana configuration
 kubectl exec -n monitoring -it $(kubectl get pod -n monitoring -l app=grafana -o jsonpath='{.items[0].metadata.name}') -- \
-  cat /etc/grafana/grafana.ini | grep -A 5 "auth"
+  cat /etc/grafana/grafana.ini | grep -A 5 "service_accounts"
 
 # View recent API requests
-kubectl logs -n monitoring -l app=grafana | grep "api_key"
+kubectl logs -n monitoring -l app=grafana | grep "api"
 ```
 
-API keys are the foundation of Grafana automation. By understanding how to create, manage, and secure them, you can build robust automation that integrates Grafana into your broader infrastructure and CI/CD workflows.
+Service account tokens are the foundation of Grafana automation. By understanding how to create, manage, and secure them, you can build robust automation that integrates Grafana into your broader infrastructure and CI/CD workflows.
