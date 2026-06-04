@@ -29,9 +29,9 @@ Install the Operator SDK CLI:
 brew install operator-sdk
 
 # Linux
-export ARCH=$(case $(uname -m) in x86_64) echo amd64 ;; aarch64) echo arm64 ;; esac)
+export ARCH=$(case $(uname -m) in x86_64) echo -n amd64 ;; aarch64) echo -n arm64 ;; *) echo -n $(uname -m) ;; esac)
 export OS=$(uname | awk '{print tolower($0)}')
-export OPERATOR_SDK_DL_URL=https://github.com/operator-framework/operator-sdk/releases/download/v1.34.0
+export OPERATOR_SDK_DL_URL=https://github.com/operator-framework/operator-sdk/releases/download/v1.42.2
 curl -LO ${OPERATOR_SDK_DL_URL}/operator-sdk_${OS}_${ARCH}
 chmod +x operator-sdk_${OS}_${ARCH}
 sudo mv operator-sdk_${OS}_${ARCH} /usr/local/bin/operator-sdk
@@ -146,6 +146,19 @@ type Memcached struct {
     Spec   MemcachedSpec   `json:"spec,omitempty"`
     Status MemcachedStatus `json:"status,omitempty"`
 }
+
+//+kubebuilder:object:root=true
+
+// MemcachedList contains a list of Memcached
+type MemcachedList struct {
+    metav1.TypeMeta `json:",inline"`
+    metav1.ListMeta `json:"metadata,omitempty"`
+    Items           []Memcached `json:"items"`
+}
+
+func init() {
+    SchemeBuilder.Register(&Memcached{}, &MemcachedList{})
+}
 ```
 
 The kubebuilder markers above the `Memcached` struct define the CRD behavior: `+kubebuilder:subresource:status` enables the status subresource, and `+kubebuilder:printcolumn` adds columns to `kubectl get` output.
@@ -166,6 +179,7 @@ package controller
 
 import (
     "context"
+    "fmt"
     "reflect"
 
     appsv1 "k8s.io/api/apps/v1"
@@ -176,6 +190,7 @@ import (
     "k8s.io/apimachinery/pkg/types"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
+    "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
     "sigs.k8s.io/controller-runtime/pkg/log"
 
     cachev1alpha1 "github.com/example/memcached-operator/api/v1alpha1"
@@ -214,7 +229,10 @@ func (r *MemcachedReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
     }, found)
 
     if err != nil && errors.IsNotFound(err) {
-        dep := r.deploymentForMemcached(memcached)
+        dep, err := r.deploymentForMemcached(memcached)
+        if err != nil {
+            return ctrl.Result{}, err
+        }
         logger.Info("Creating a new Deployment",
             "Deployment.Namespace", dep.Namespace,
             "Deployment.Name", dep.Name)
@@ -248,10 +266,11 @@ func (r *MemcachedReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
         return ctrl.Result{}, err
     }
     podNames := getPodNames(podList.Items)
+    readyReplicas := countReadyPods(podList.Items)
 
-    if !reflect.DeepEqual(podNames, memcached.Status.Nodes) {
+    if !reflect.DeepEqual(podNames, memcached.Status.Nodes) || memcached.Status.ReadyReplicas != readyReplicas {
         memcached.Status.Nodes = podNames
-        memcached.Status.ReadyReplicas = int32(len(podNames))
+        memcached.Status.ReadyReplicas = readyReplicas
         err := r.Status().Update(ctx, memcached)
         if err != nil {
             return ctrl.Result{}, err
@@ -261,7 +280,14 @@ func (r *MemcachedReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
     return ctrl.Result{}, nil
 }
 
-func (r *MemcachedReconciler) deploymentForMemcached(m *cachev1alpha1.Memcached) *appsv1.Deployment {
+func (r *MemcachedReconciler) SetupWithManager(mgr ctrl.Manager) error {
+    return ctrl.NewControllerManagedBy(mgr).
+        For(&cachev1alpha1.Memcached{}).
+        Owns(&appsv1.Deployment{}).
+        Complete(r)
+}
+
+func (r *MemcachedReconciler) deploymentForMemcached(m *cachev1alpha1.Memcached) (*appsv1.Deployment, error) {
     labels := labelsForMemcached(m.Name)
     replicas := m.Spec.Size
 
@@ -293,8 +319,10 @@ func (r *MemcachedReconciler) deploymentForMemcached(m *cachev1alpha1.Memcached)
             },
         },
     }
-    ctrl.SetControllerReference(m, dep, r.Scheme)
-    return dep
+    if err := controllerutil.SetControllerReference(m, dep, r.Scheme); err != nil {
+        return nil, err
+    }
+    return dep, nil
 }
 
 func labelsForMemcached(name string) map[string]string {
@@ -312,6 +340,19 @@ func getPodNames(pods []corev1.Pod) []string {
         podNames = append(podNames, pod.Name)
     }
     return podNames
+}
+
+func countReadyPods(pods []corev1.Pod) int32 {
+    var ready int32
+    for _, pod := range pods {
+        for _, condition := range pod.Status.Conditions {
+            if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
+                ready++
+                break
+            }
+        }
+    }
+    return ready
 }
 ```
 
