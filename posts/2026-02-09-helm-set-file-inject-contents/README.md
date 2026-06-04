@@ -8,7 +8,7 @@ Description: Learn how to use Helm's --set-file flag to inject file contents dir
 
 ---
 
-Helm's `--set-file` flag provides a powerful way to inject file contents directly into chart values during installation or upgrade. This capability is particularly valuable when working with certificates, configuration files, license keys, and other data that you don't want to store in values files or commit to version control. The file contents get read and passed as values to your templates, enabling dynamic configuration without exposing sensitive data.
+Helm's `--set-file` flag provides a powerful way to inject file contents directly into chart values during installation or upgrade. This capability is particularly valuable when working with certificates, configuration files, license keys, and other data that you don't want to store in values files or commit to version control. The file contents get read and passed as values to your templates, enabling dynamic configuration while keeping local files out of your chart repository.
 
 ## Understanding --set-file Basics
 
@@ -18,7 +18,7 @@ The `--set-file` flag reads a file from your local filesystem and assigns its co
 helm install myapp ./mychart --set-file key.path=./file.txt
 ```
 
-This reads the contents of `file.txt` and makes it available in your templates as `.Values.key.path`. The file contents are base64-encoded when stored in the release, ensuring binary data remains intact.
+This reads the contents of `file.txt` and makes it available in your templates as `.Values.key.path`. The value is passed to the chart as a string, so apply encoding in the template when the target Kubernetes field requires it.
 
 ## Injecting TLS Certificates
 
@@ -101,7 +101,7 @@ helm install myapp ./mychart \
 
 ## Handling Binary Files
 
-The `--set-file` flag works with binary files, which is useful for license keys, keystores, or other binary data:
+For binary files such as keystores, base64-encode the file first and pass the encoded text with `--set-file`. Since the value is already base64-encoded, render it directly under the Secret's `data` field instead of applying `b64enc` again:
 
 ```yaml
 # templates/license-secret.yaml
@@ -114,17 +114,19 @@ data:
   {{- if .Values.license.key }}
   license.key: {{ .Values.license.key | b64enc }}
   {{- end }}
-  {{- if .Values.license.keystore }}
-  keystore.jks: {{ .Values.license.keystore | b64enc }}
+  {{- if .Values.license.keystoreBase64 }}
+  keystore.jks: {{ .Values.license.keystoreBase64 | quote }}
   {{- end }}
 ```
 
 Install with binary files:
 
 ```bash
+base64 ./keystore.jks | tr -d '\n' > ./keystore.jks.b64
+
 helm install myapp ./mychart \
   --set-file license.key=./license.key \
-  --set-file license.keystore=./keystore.jks
+  --set-file license.keystoreBase64=./keystore.jks.b64
 ```
 
 ## Injecting Multiple Files with a Script
@@ -379,4 +381,4 @@ spec:
       mountPath: /config
 ```
 
-The `--set-file` flag provides a secure and convenient way to inject external files into your Helm deployments. By keeping sensitive files out of version control and values files, you maintain better security while still enabling flexible configuration management.
+The `--set-file` flag provides a convenient way to inject external files into your Helm deployments. By keeping sensitive files out of version control and values files, you reduce accidental exposure while still enabling flexible configuration management. Protect Helm release metadata carefully, because it can include chart values supplied at install or upgrade time.
