@@ -1,20 +1,22 @@
-# How to Set Up AWS PrivateLink for EKS API Server Access from On-Premises
+# How to Set Up Private EKS API Server Access from On-Premises
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Kubernetes, EKS, Networking
 
-Description: Configure AWS PrivateLink to enable secure private connectivity between on-premises networks and EKS API servers without exposing endpoints to the internet.
+Description: Configure private connectivity between on-premises networks and EKS API servers without exposing endpoints to the internet.
 
 ---
 
-Accessing private EKS clusters from on-premises networks traditionally requires VPN or Direct Connect. AWS PrivateLink provides an alternative that creates a private endpoint in your VPC, enabling on-premises systems to reach the EKS API server through private connectivity without internet exposure.
+Accessing private EKS clusters from on-premises networks requires a connected network such as AWS Site-to-Site VPN, Direct Connect, Transit Gateway, or another private connectivity option. The EKS Kubernetes API server uses the cluster private endpoint, enabling on-premises systems to reach the API server through private connectivity without internet exposure.
 
-This guide shows you how to configure PrivateLink for secure EKS access from on-premises environments.
+This guide shows you how to configure secure EKS access from on-premises environments.
 
-## Understanding PrivateLink for EKS
+## Understanding Private EKS Access
 
-AWS PrivateLink creates a VPC endpoint that allows private access to the EKS API server. When combined with Direct Connect or VPN, on-premises clients can reach the Kubernetes API without public endpoints.
+Amazon EKS supports a private Kubernetes API server endpoint for each cluster. This endpoint is not a traditional AWS PrivateLink interface endpoint and doesn't appear as a VPC endpoint in the Amazon VPC console. AWS PrivateLink for Amazon EKS is used for Amazon EKS management API actions, not for Kubernetes API requests from `kubectl`.
+
+When the cluster private endpoint is enabled and your on-premises network is connected to the VPC with Direct Connect, VPN, Transit Gateway, or another connectivity option, on-premises clients can reach the Kubernetes API without public endpoints.
 
 Benefits include:
 
@@ -24,9 +26,9 @@ Benefits include:
 
 **Simplified security** with no public IP whitelisting.
 
-**Cost savings** on data transfer compared to internet egress.
+**Potential cost savings** when using private connectivity options such as Direct Connect instead of internet routing.
 
-The architecture uses an interface VPC endpoint that provides a private IP address in your VPC.
+The architecture uses the EKS cluster private endpoint and private network routing to the cluster VPC.
 
 ## Prerequisites
 
@@ -54,7 +56,7 @@ aws eks update-cluster-config \
   --resources-vpc-config endpointPrivateAccess=true,endpointPublicAccess=false
 ```
 
-## Creating VPC Endpoint for EKS
+## Finding the EKS VPC
 
 The EKS API server already has a private endpoint. To access from on-premises:
 
@@ -77,10 +79,10 @@ echo "VPC: $VPC_ID"
 echo "Subnets: $SUBNET_IDS"
 ```
 
-The EKS private endpoint is already configured. For additional services, create VPC endpoints:
+The EKS Kubernetes API private endpoint is already configured. For additional AWS service APIs used by workloads or automation, create interface VPC endpoints as needed:
 
 ```bash
-# Create endpoint for ECR API
+# Create endpoint for the ECR API
 aws ec2 create-vpc-endpoint \
   --vpc-id $VPC_ID \
   --vpc-endpoint-type Interface \
@@ -196,6 +198,7 @@ PRIVATE_ENDPOINT=$(aws eks describe-cluster \
   --region $REGION \
   --query 'cluster.endpoint' \
   --output text)
+ENDPOINT_HOST=${PRIVATE_ENDPOINT#https://}
 
 echo "Private Endpoint: $PRIVATE_ENDPOINT"
 ```
@@ -204,7 +207,7 @@ Test from on-premises server:
 
 ```bash
 # Test DNS resolution
-dig $PRIVATE_ENDPOINT
+dig $ENDPOINT_HOST
 
 # Test HTTPS connectivity
 curl -k $PRIVATE_ENDPOINT/version
@@ -218,48 +221,30 @@ aws eks update-kubeconfig \
 kubectl get nodes
 ```
 
-## Using Route 53 Private Hosted Zone
+## Configuring DNS Resolution
 
-Create private hosted zone for easier access:
+When private endpoint access is enabled, Amazon EKS creates and manages a Route 53 private hosted zone for the cluster endpoint and associates it with the cluster VPC. It doesn't appear in your Route 53 hosted zones. Configure on-premises DNS to resolve the original EKS cluster endpoint name through the VPC resolver, typically with a Route 53 Resolver inbound endpoint and a conditional forwarder for the cluster endpoint domain.
 
 ```bash
-# Create private hosted zone
-aws route53 create-hosted-zone \
-  --name k8s.internal \
-  --vpc VPCRegion=$REGION,VPCId=$VPC_ID \
-  --caller-reference $(date +%s) \
-  --hosted-zone-config PrivateZone=true
-
-# Get zone ID
-ZONE_ID=$(aws route53 list-hosted-zones-by-name \
-  --dns-name k8s.internal \
-  --query "HostedZones[0].Id" \
+# Get the cluster endpoint hostname to use in DNS forwarding rules
+PRIVATE_ENDPOINT=$(aws eks describe-cluster \
+  --name $CLUSTER_NAME \
+  --region $REGION \
+  --query 'cluster.endpoint' \
   --output text)
+ENDPOINT_HOST=${PRIVATE_ENDPOINT#https://}
 
-# Create CNAME record
-aws route53 change-resource-record-sets \
-  --hosted-zone-id $ZONE_ID \
-  --change-batch '{
-    "Changes": [{
-      "Action": "CREATE",
-      "ResourceRecordSet": {
-        "Name": "eks.k8s.internal",
-        "Type": "CNAME",
-        "TTL": 300,
-        "ResourceRecords": [{"Value": "'$PRIVATE_ENDPOINT'"}]
-      }
-    }]
-  }'
+echo "Forward DNS for: $ENDPOINT_HOST"
 ```
 
-Configure on-premises DNS to forward k8s.internal queries to VPC.
+Do not replace the kubeconfig server URL with a custom CNAME unless you also handle the Kubernetes API server certificate name validation. Keep clients using the original EKS endpoint hostname.
 
 ## Configuring with Terraform
 
-Define PrivateLink setup:
+Define private connectivity setup:
 
 ```hcl
-# privatelink-eks.tf
+# private-eks-access.tf
 data "aws_eks_cluster" "main" {
   name = var.cluster_name
 }
@@ -308,7 +293,7 @@ resource "aws_security_group_rule" "eks_from_onprem" {
 }
 ```
 
-## Monitoring PrivateLink Connectivity
+## Monitoring Private Connectivity
 
 Check VPN tunnel status:
 
@@ -337,7 +322,7 @@ If unable to connect:
 
 ```bash
 # Verify routing
-traceroute $PRIVATE_ENDPOINT
+traceroute $ENDPOINT_HOST
 
 # Check security group rules
 aws ec2 describe-security-groups \
@@ -345,7 +330,7 @@ aws ec2 describe-security-groups \
   --query 'SecurityGroups[0].IpPermissions'
 
 # Test DNS resolution
-nslookup $PRIVATE_ENDPOINT
+nslookup $ENDPOINT_HOST
 
 # Verify VPN status
 aws ec2 describe-vpn-connections \
@@ -363,6 +348,6 @@ aws eks describe-cluster \
 
 ## Conclusion
 
-AWS PrivateLink combined with Direct Connect or VPN enables secure private access to EKS API servers from on-premises networks. This architecture eliminates internet exposure, reduces latency, and simplifies security by keeping all traffic on private networks.
+The EKS private endpoint combined with Direct Connect, VPN, Transit Gateway, or another connected network enables secure private access to EKS API servers from on-premises networks. This architecture eliminates internet exposure, reduces latency, and simplifies security by keeping all traffic on private networks.
 
 The solution works well for hybrid cloud deployments where on-premises systems need to manage Kubernetes workloads without exposing the control plane to the internet. Proper configuration of routing, security groups, and DNS ensures reliable connectivity for kubectl and automation tools.
