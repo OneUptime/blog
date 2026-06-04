@@ -10,7 +10,7 @@ Description: Learn effective strategies for handling memory pressure in Kubernet
 
 Memory pressure crashes applications and destabilizes clusters. Unlike CPU, which can be throttled, memory overcommitment leads to OOMKills (Out Of Memory kills) where the kernel terminates processes to free memory. A single memory leak can cascade into cluster-wide issues. Proper memory pressure handling keeps your cluster stable when memory runs tight.
 
-Memory pressure occurs when node memory usage exceeds thresholds configured in the kubelet. The kubelet begins evicting pods to reclaim memory, starting with BestEffort pods, then Burstable pods exceeding requests, and finally Guaranteed pods. Understanding this eviction order and implementing protective strategies prevents critical workloads from being killed.
+Memory pressure occurs when node memory usage exceeds thresholds configured in the kubelet. The kubelet begins evicting pods to reclaim memory, starting with pods whose usage exceeds their requests and then ranking candidates by priority and usage relative to requests. QoS classes are still a useful way to estimate eviction risk: BestEffort pods are usually evicted first, Burstable pods next, and Guaranteed pods last. Understanding this eviction behavior and implementing protective strategies reduces the chance that critical workloads are killed.
 
 ## Understanding Kubelet Eviction Thresholds
 
@@ -35,12 +35,14 @@ evictionMaxPodGracePeriod: 90
 evictionPressureTransitionPeriod: "30s"
 ```
 
-Hard eviction thresholds trigger immediate eviction when crossed. Soft eviction thresholds allow a grace period before evicting pods. This gives applications time to shut down cleanly.
+Hard eviction thresholds trigger immediate eviction when crossed. Soft eviction thresholds allow a grace period before evicting pods and use `evictionMaxPodGracePeriod` as the maximum termination grace period. During node-pressure eviction, the kubelet does not use the pod's configured `terminationGracePeriodSeconds`; hard evictions use a `0s` grace period.
 
 The `memory.available` threshold accounts for:
 - Available memory from the kernel's perspective
 - Memory that can be reclaimed from caches
-- Active and inactive file-backed pages
+- Inactive file-backed pages that the kubelet treats as reclaimable
+
+Active file-backed pages are not counted as available memory by the kubelet, so I/O-heavy workloads can still trigger memory pressure if they build up a large active page cache.
 
 ## Detecting Memory Pressure Before It Hits
 
@@ -80,7 +82,8 @@ spec:
       expr: |
         (container_memory_working_set_bytes{container!=""}
         /
-        kube_pod_container_resource_limits{resource="memory"}) > 0.9
+        on(namespace, pod, container)
+        kube_pod_container_resource_limits{resource="memory",unit="byte"}) > 0.9
       for: 5m
       labels:
         severity: warning
@@ -100,7 +103,13 @@ kind: Deployment
 metadata:
   name: web-app
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
       - name: app
@@ -127,7 +136,13 @@ kind: Deployment
 metadata:
   name: java-app
 spec:
+  selector:
+    matchLabels:
+      app: java-app
   template:
+    metadata:
+      labels:
+        app: java-app
     spec:
       containers:
       - name: app
@@ -142,7 +157,7 @@ spec:
             memory: "2Gi"
 ```
 
-This prevents the JVM from allocating more memory than the container limit, avoiding OOMKills.
+This keeps the JVM heap below the container limit and leaves room for non-heap memory, helping avoid OOMKills.
 
 ## Implementing Quality of Service Classes
 
@@ -200,12 +215,10 @@ spec:
 ```
 
 During memory pressure, the kubelet evicts in this order:
-1. BestEffort pods first
-2. Burstable pods exceeding their requests
-3. Burstable pods within requests
-4. Guaranteed pods (last resort)
+1. BestEffort or Burstable pods whose usage exceeds requests, ordered by priority and then by usage relative to requests
+2. Guaranteed pods and Burstable pods whose usage is less than requests, as a last resort and ordered by priority
 
-Use Guaranteed QoS for critical workloads that must not be evicted during memory pressure.
+Use Guaranteed QoS for critical workloads that should be least likely to be evicted during memory pressure.
 
 ## Using Priority Classes for Eviction Protection
 
@@ -218,7 +231,7 @@ metadata:
   name: critical-priority
 value: 1000000
 globalDefault: false
-description: "Critical workloads that should never be evicted"
+description: "Critical workloads that should be evicted last when possible"
 ---
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
@@ -245,7 +258,13 @@ kind: Deployment
 metadata:
   name: payment-service
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       priorityClassName: critical-priority
       containers:
@@ -258,7 +277,7 @@ spec:
             memory: "2Gi"
 ```
 
-The kubelet considers priority when choosing which pods to evict. Lower priority pods are evicted before higher priority ones with the same QoS class.
+The kubelet considers priority when choosing which pods to evict. Among pods that exceed requests for the starved resource, lower priority pods are evicted before higher priority pods; pods below their requests are generally considered only after pods above their requests.
 
 ## Implementing Graceful Shutdown
 
@@ -270,7 +289,13 @@ kind: Deployment
 metadata:
   name: stateful-app
 spec:
+  selector:
+    matchLabels:
+      app: stateful-app
   template:
+    metadata:
+      labels:
+        app: stateful-app
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -291,8 +316,8 @@ The preStop hook runs before the container receives SIGTERM, allowing you to:
 Monitor termination reasons to identify memory-related evictions:
 
 ```promql
-# Rate of pods terminated due to eviction
-rate(kube_pod_container_status_terminated_reason{reason="Evicted"}[5m])
+# Pods terminated due to eviction
+kube_pod_status_reason{reason="Evicted"} == 1
 
 # Pods terminated due to OOMKill
 kube_pod_container_status_terminated_reason{reason="OOMKilled"}
@@ -334,11 +359,12 @@ spec:
     - alert: SuspectedMemoryLeak
       expr: |
         (
-          rate(container_memory_working_set_bytes{container!=""}[1h]) > 0
+          deriv(container_memory_working_set_bytes{container!=""}[1h]) > 0
         ) and (
           predict_linear(container_memory_working_set_bytes{container!=""}[6h], 3600 * 24)
           >
-          kube_pod_container_resource_limits{resource="memory"}
+          on(namespace, pod, container)
+          kube_pod_container_resource_limits{resource="memory",unit="byte"}
         )
       for: 30m
       labels:
@@ -356,35 +382,41 @@ kind: Deployment
 metadata:
   name: leaky-app
 spec:
+  selector:
+    matchLabels:
+      app: leaky-app
   template:
+    metadata:
+      labels:
+        app: leaky-app
     spec:
       containers:
       - name: app
         image: app-with-known-leak:latest
         livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          failureThreshold: 3
-        # Memory-based health check
-        startupProbe:
           exec:
             command:
             - /bin/sh
             - -c
             - |
-              MEMORY_USAGE=$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes)
-              MEMORY_LIMIT=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+              if [ -f /sys/fs/cgroup/memory.current ]; then
+                MEMORY_USAGE=$(cat /sys/fs/cgroup/memory.current)
+                MEMORY_LIMIT=$(cat /sys/fs/cgroup/memory.max)
+              else
+                MEMORY_USAGE=$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes)
+                MEMORY_LIMIT=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+              fi
+              [ "$MEMORY_LIMIT" = "max" ] && exit 0
               USAGE_PERCENT=$((MEMORY_USAGE * 100 / MEMORY_LIMIT))
               [ $USAGE_PERCENT -lt 95 ]
+          initialDelaySeconds: 30
           periodSeconds: 60
+          failureThreshold: 3
 ```
 
 ## Implementing Pod Disruption Budgets
 
-PDBs prevent too many pods from being evicted simultaneously:
+PDBs prevent too many pods from being voluntarily evicted simultaneously:
 
 ```yaml
 apiVersion: policy/v1
@@ -408,20 +440,20 @@ spec:
       app: database
 ```
 
-PDBs ensure minimum availability even during memory pressure evictions. The kubelet will respect PDBs when choosing pods to evict, though critical pressure can override them.
+PDBs ensure minimum availability for voluntary disruptions and API-initiated evictions, such as node drains. They do not protect pods from kubelet node-pressure evictions, so they should be paired with requests, limits, QoS, priority, and capacity planning for memory pressure scenarios.
 
 ## Monitoring Memory Pressure Impact
 
 Track the impact of memory pressure on your workloads:
 
 ```promql
-# Eviction rate by node
-rate(kube_pod_status_reason{reason="Evicted"}[5m]) by (node)
+# Recently evicted pods
+sum by (namespace, pod) (kube_pod_status_reason{reason="Evicted"} == 1)
 
 # OOMKill rate
-rate(container_oom_events_total[5m]) by (namespace, pod)
+sum by (namespace, pod) (increase(container_oom_events_total[5m]))
 
-# Memory pressure duration
+# Memory pressure transitions
 changes(kube_node_status_condition{condition="MemoryPressure"}[1h])
 
 # Pod restart rate (may indicate OOMKills)
