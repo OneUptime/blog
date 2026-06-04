@@ -32,30 +32,32 @@ resources:
 - ingress.yaml
 ```
 
-Every resource that has a namespace field will be set to "production". This is simpler than patching each resource individually and ensures consistency across your entire stack.
+Every namespaced resource will be set to "production". This is simpler than patching each resource individually and ensures consistency across your entire stack.
 
 ## Adding common labels and annotations
 
-The commonLabels and commonAnnotations transformers add metadata to all resources and their selectors. This is crucial for tracking and organizing resources:
+The labels and commonAnnotations transformers add metadata to all resources. Labels can also be added to selectors when you ask Kustomize to do so, which is useful for tracking and organizing resources:
 
 ```yaml
 # kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-commonLabels:
-  app.kubernetes.io/name: myapp
-  app.kubernetes.io/managed-by: kustomize
-  environment: staging
+labels:
+- pairs:
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/managed-by: kustomize
+    environment: staging
+  includeSelectors: true
 
 commonAnnotations:
   contact: devops@example.com
   documentation: https://docs.example.com/myapp
 ```
 
-These labels get added to resource metadata and automatically injected into label selectors for Deployments, Services, and other resources that use them. Kustomize is smart enough to maintain selector consistency.
+These labels get added to resource metadata and, with `includeSelectors: true`, injected into label selectors for Deployments, Services, and other resources that use them. Kustomize is smart enough to maintain selector consistency.
 
-Be careful with commonLabels on existing resources. Changing labels that are part of selectors can cause Kubernetes to create new resources instead of updating existing ones.
+Be careful with selector labels on existing resources. Changing labels that are part of selectors can cause Kubernetes to reject the update or require resources to be recreated.
 
 ## Using the namePrefix and nameSuffix transformers
 
@@ -115,7 +117,7 @@ images:
 - name: myapp
   newName: registry.example.com/myapp
   newTag: v2.3.1
-  digest: sha256:abc123...
+  digest: sha256:24a0c4b4a4c0eb97a1aabb8e29f18e917d05abfe1b7a7c07857230879ce7d3d3
 
 resources:
 - deployment.yaml
@@ -137,19 +139,23 @@ kind: Kustomization
 transformers:
 - |-
   apiVersion: transformers.example.com/v1
-  kind: ResourceQuotaAdder
+  kind: ResourceLimitAdder
   metadata:
-    name: add-quotas
+    name: add-limits
+    annotations:
+      config.kubernetes.io/function: |
+        exec:
+          path: ./resource-limit-adder.py
   spec:
     limits:
       cpu: "4"
       memory: 8Gi
 
 resources:
-- namespace.yaml
+- deployment.yaml
 ```
 
-The transformer plugin must be installed in the Kustomize plugin directory. When Kustomize encounters this configuration, it passes all resources to the plugin and uses the modified output.
+The executable must exist at the path declared in the function annotation. When Kustomize encounters this configuration, it passes the resources to the function and uses the modified output.
 
 ## Building a Python transformer plugin
 
@@ -161,48 +167,48 @@ import sys
 import yaml
 
 def add_resource_limits(resources, cpu_limit, memory_limit):
-    """Add resource limits to all containers in all resources."""
+    """Add resource limits to all app and init containers in workload resources."""
     for resource in resources:
         if resource.get('kind') in ['Deployment', 'StatefulSet', 'DaemonSet']:
             spec = resource.get('spec', {})
             template = spec.get('template', {})
             pod_spec = template.get('spec', {})
 
-            for container in pod_spec.get('containers', []):
-                if 'resources' not in container:
-                    container['resources'] = {}
-                if 'limits' not in container['resources']:
-                    container['resources']['limits'] = {}
+            for field in ('initContainers', 'containers'):
+                for container in pod_spec.get(field, []):
+                    if 'resources' not in container:
+                        container['resources'] = {}
+                    if 'limits' not in container['resources']:
+                        container['resources']['limits'] = {}
 
-                container['resources']['limits']['cpu'] = cpu_limit
-                container['resources']['limits']['memory'] = memory_limit
+                    container['resources']['limits']['cpu'] = cpu_limit
+                    container['resources']['limits']['memory'] = memory_limit
 
     return resources
 
 def main():
-    # Read input configuration and resources
-    input_data = yaml.safe_load_all(sys.stdin)
-    docs = list(input_data)
+    # KRM exec functions receive a ResourceList on stdin.
+    resource_list = yaml.safe_load(sys.stdin)
 
-    # First document is the transformer configuration
-    config = docs[0]
+    config = resource_list['functionConfig']
     cpu_limit = config['spec']['limits']['cpu']
     memory_limit = config['spec']['limits']['memory']
 
-    # Remaining documents are resources to transform
-    resources = docs[1:]
-
     # Apply transformation
-    modified_resources = add_resource_limits(resources, cpu_limit, memory_limit)
+    resource_list['items'] = add_resource_limits(
+        resource_list.get('items', []),
+        cpu_limit,
+        memory_limit
+    )
 
-    # Output modified resources
-    yaml.dump_all(modified_resources, sys.stdout, default_flow_style=False)
+    # Output the modified ResourceList
+    yaml.safe_dump(resource_list, sys.stdout, default_flow_style=False)
 
 if __name__ == '__main__':
     main()
 ```
 
-Save this as an executable in your plugin path. The plugin receives all resources via stdin and must output the modified resources to stdout.
+Save this as the executable referenced by the transformer annotation. The function receives a KRM `ResourceList` via stdin and must output the modified `ResourceList` to stdout.
 
 ## Using transformer configurations
 
@@ -212,9 +218,16 @@ Kustomize transformer behavior can be customized through configuration files. Th
 # kustomizeconfig.yaml
 nameReference:
 - kind: Service
+  version: v1
   fieldSpecs:
-  - path: spec/serviceName
+  - path: spec/rules/http/paths/backend/service/name
     kind: Ingress
+    group: networking.k8s.io
+    version: v1
+  - path: spec/defaultBackend/service/name
+    kind: Ingress
+    group: networking.k8s.io
+    version: v1
 
 commonLabels:
 - path: spec/template/spec/affinity/podAffinity/requiredDuringSchedulingIgnoredDuringExecution/labelSelector/matchLabels
@@ -248,23 +261,25 @@ kind: Kustomization
 namePrefix: prod-
 namespace: production
 
-commonLabels:
-  env: prod
-  team: platform
+labels:
+- pairs:
+    env: prod
+    team: platform
+  includeSelectors: true
 
 images:
 - name: app
   newTag: v2.0.0
 
 replicas:
-- name: prod-app-deployment
+- name: app-deployment
   count: 10
 
 resources:
 - app.yaml
 ```
 
-The namePrefix applies first, so the replicas transformer must reference "prod-app-deployment" not "app-deployment". Order matters when transformers affect resource names or selectors.
+Name transformations and replicas both apply during the build. Kustomize can match the replicas entry by the original resource name or the transformed name, but using the original manifest name is usually clearer in overlays. Order matters when transformers affect resource names or selectors.
 
 ## Environment-specific transformers
 
@@ -285,14 +300,14 @@ resources:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 namespace: production
 namePrefix: prod-
 
 replicas:
-- name: prod-app-deployment
+- name: app-deployment
   count: 20
 
 images:
@@ -304,10 +319,10 @@ Each overlay applies its own transformers without modifying the base. This keeps
 
 ## Debugging transformer behavior
 
-Use `kustomize build` with the `--enable-alpha-plugins` flag to see how transformers modify your resources:
+Use `kustomize build` to see how transformers modify your resources. For raw exec functions, include both `--enable-alpha-plugins` and `--enable-exec`:
 
 ```bash
-kustomize build --enable-alpha-plugins overlays/production > output.yaml
+kustomize build --enable-alpha-plugins --enable-exec overlays/production > output.yaml
 ```
 
 Review the output to verify that transformers applied as expected. Common issues include selector mismatches or transformers not applying to custom resources.
@@ -318,7 +333,7 @@ For custom transformers, add debug output to stderr. Kustomize passes this throu
 import sys
 
 # Debug output goes to stderr
-print(f"Transforming {len(resources)} resources", file=sys.stderr)
+print(f"Transforming {len(resource_list.get('items', []))} resources", file=sys.stderr)
 ```
 
 ## Best practices for transformers
