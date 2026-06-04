@@ -8,15 +8,15 @@ Description: Learn how to configure hairpin mode in Kubernetes to enable pods to
 
 ---
 
-Hairpin mode solves a specific networking challenge in Kubernetes: allowing a pod to reach itself through a Service IP. Without hairpin mode, when a pod tries to connect to its own Service's ClusterIP, the traffic fails because the network bridge won't send packets back out the same interface they arrived on. This guide shows you how to enable and configure hairpin mode across different CNI plugins.
+Hairpin mode solves a specific networking challenge in Kubernetes: allowing a pod to reach itself through a Service IP. Without hairpin support, when a pod tries to connect to its own Service's ClusterIP and kube-proxy selects that same pod as the backend, the traffic can fail because a Linux bridge won't send packets back out the same port they arrived on. This guide shows you how to enable and configure hairpin mode across different CNI plugins.
 
 ## Understanding the Hairpin Problem
 
 Consider this scenario. You have a Service with three pods behind it. One of those pods tries to connect to the Service's ClusterIP. The connection goes to the local bridge, gets load-balanced (possibly back to itself), and should return through the same interface. Standard bridge behavior blocks this, dropping the packet.
 
-This matters for applications that use Service discovery to find other instances. If an application queries DNS for a Service name, gets the ClusterIP, and connects to it, the connection will fail when it routes back to itself. This breaks horizontal scaling patterns where instances need to communicate without knowing which specific pod they're talking to.
+This matters for applications that use Service discovery to find other instances. If an application queries DNS for a Service name, gets the ClusterIP, and connects to it, the connection can fail when kube-proxy routes the request back to the same pod. This breaks horizontal scaling patterns where instances need to communicate without knowing which specific pod they're talking to.
 
-Hairpin mode (also called hairpin NAT or NAT loopback) tells the bridge to allow packets to be sent back out the interface they came in on. The kernel performs the necessary NAT translations so the pod sees the traffic as coming from the Service IP rather than itself.
+Hairpin mode tells the bridge to allow packets to be sent back out the interface they came in on. kube-proxy still handles the Service DNAT, and in hairpin cases it also marks the connection for SNAT so the return traffic follows the expected NAT path instead of being treated as a direct pod-to-pod reply.
 
 ## Enabling Hairpin Mode with Bridge CNI
 
@@ -24,7 +24,7 @@ The bridge CNI plugin supports hairpin mode through the `hairpinMode` setting. H
 
 ```json
 {
-  "cniVersion": "0.4.0",
+  "cniVersion": "1.0.0",
   "name": "mynet",
   "type": "bridge",
   "bridge": "cni0",
@@ -46,7 +46,7 @@ The bridge CNI plugin supports hairpin mode through the `hairpinMode` setting. H
 }
 ```
 
-Save this to `/etc/cni/net.d/10-bridge.conflist` and restart your container runtime:
+Save this to `/etc/cni/net.d/10-bridge.conf` and restart your container runtime:
 
 ```bash
 systemctl restart containerd
@@ -59,10 +59,10 @@ Verify hairpin mode is enabled on the bridge:
 
 ```bash
 # Check bridge hairpin setting
-bridge link show | grep cni0
+bridge link show master cni0
 
 # Check per-interface hairpin mode
-for iface in $(bridge link show | grep cni0 | awk '{print $2}' | cut -d@ -f1); do
+for iface in $(bridge link show master cni0 | awk '{print $2}' | cut -d@ -f1); do
   echo -n "$iface: "
   cat /sys/class/net/$iface/brport/hairpin_mode
 done
@@ -123,41 +123,29 @@ kubectl rollout restart daemonset/kube-flannel-ds -n kube-system
 
 ## Enabling Hairpin Mode in Calico
 
-Calico doesn't use a Linux bridge by default. It uses point-to-point veth pairs with routing. For hairpin behavior, you need to enable a specific Felix configuration:
-
-```yaml
-apiVersion: projectcalico.org/v3
-kind: FelixConfiguration
-metadata:
-  name: default
-spec:
-  # Enable container hairpin mode
-  # This adds iptables rules to handle pod-to-self via service
-  ipipEnabled: true
-  logSeverityScreen: Info
-  reportingInterval: 0s
-  # The key setting for hairpin
-  chainInsertMode: Insert
-```
-
-Apply the configuration:
+Calico doesn't use a Linux bridge by default. It uses point-to-point veth pairs with routing, so the bridge-level `hairpinMode` setting does not apply to a typical Calico deployment. For pod-to-self through a Kubernetes Service, the key checks are that kube-proxy is programming Service NAT correctly and that the kubelet hairpin mode is not disabled:
 
 ```bash
-kubectl apply -f felix-config.yaml
+# Confirm kubelet is configured for Kubernetes hairpin traffic
+ps auxw | grep '[k]ubelet' | grep -- '--hairpin-mode'
 
-# Or use calicoctl
-calicoctl apply -f felix-config.yaml
+# Or check the kubelet config file on kubeadm-style nodes
+grep hairpinMode /var/lib/kubelet/config.yaml
 ```
 
-Calico implements hairpin behavior differently than bridge-based CNIs. Instead of bridge-level hairpin, it uses iptables rules to SNAT and DNAT traffic appropriately:
+The kubelet value should be `hairpin-veth` or `promiscuous-bridge`, not `none`. On clusters that use Calico's standard Linux dataplane, kube-proxy still owns Kubernetes Service NAT:
 
 ```bash
-# View Calico's iptables rules that enable hairpin
-iptables -t nat -L cali-nat-outgoing -n -v
+# Check kube-proxy mode and configuration
+kubectl -n kube-system get configmap kube-proxy -o yaml | grep -E 'mode:|masquerade'
 
-# Look for rules that handle local service access
+# Look for Kubernetes Service NAT rules
 iptables -t nat -L KUBE-SERVICES -n -v | grep KUBE-SVC
 ```
+
+Do not use Calico Felix settings such as `ipipEnabled` or `chainInsertMode` to enable hairpin behavior. `ipipEnabled` controls IP-in-IP support, and `chainInsertMode` controls where Felix hooks Calico policy chains into top-level iptables chains; neither setting enables pod-to-self Service hairpin NAT.
+
+If you run Calico in eBPF mode with kube-proxy replacement, Service handling is implemented by Calico's eBPF dataplane instead of kube-proxy, so verify Service connectivity using Calico's eBPF troubleshooting guidance for your Calico version.
 
 ## Testing Hairpin Mode
 
@@ -180,7 +168,7 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: nginx:1.21
+        image: nginx:stable
         ports:
         - containerPort: 80
 ---
@@ -227,7 +215,7 @@ When hairpin mode doesn't work, check these areas:
 
 ```bash
 # 1. Verify bridge hairpin is enabled
-bridge link show | grep hairpin
+bridge -d link show | grep hairpin
 # Should show "hairpin on" for veth interfaces
 
 # Manually enable hairpin on an interface if needed
@@ -241,8 +229,7 @@ conntrack -L | grep $SVC_IP
 # Watch for established connections that should hairpin
 
 # 4. Use tcpdump to see packet flow
-POD_VETH=$(ip a | grep -B 2 $POD_IP | head -1 | awk '{print $2}' | tr -d ':')
-tcpdump -i $POD_VETH -n "host $SVC_IP"
+tcpdump -i cni0 -n "host $SVC_IP or host $POD_IP"
 
 # 5. Check for promiscuous mode (sometimes required)
 ip link show cni0 | grep PROMISC
@@ -267,7 +254,7 @@ This happens when only some veth interfaces have hairpin enabled:
 
 ```bash
 # Enable hairpin on all interfaces attached to the bridge
-for iface in $(bridge link show | grep cni0 | awk '{print $2}' | cut -d@ -f1); do
+for iface in $(bridge link show master cni0 | awk '{print $2}' | cut -d@ -f1); do
   ip link set dev $iface type bridge_slave hairpin on
   echo "Enabled hairpin on $iface"
 done
@@ -291,11 +278,11 @@ For high-throughput applications that frequently access themselves via Service I
 
 1. **Use Pod IP directly**: If possible, have pods discover and use Pod IPs instead of Service IPs for self-communication
 2. **Implement client-side load balancing**: Tools like gRPC can do load balancing without going through the Service IP
-3. **Enable IPVS mode**: IPVS handles hairpin more efficiently than iptables
+3. **Evaluate kube-proxy mode**: `nftables` is the current scalable Linux kube-proxy backend where your nodes and CNI support it. IPVS can reduce rule-scaling overhead compared with older iptables setups, but Kubernetes marks IPVS mode as deprecated as of v1.35.
 
 ## Hairpin Mode with IPVS
 
-When using kube-proxy in IPVS mode, hairpin behavior is built-in:
+When using kube-proxy in IPVS mode, Service load balancing is implemented with the kernel IPVS and iptables APIs instead of only iptables chains. IPVS mode is deprecated as of Kubernetes v1.35, so treat this as guidance for existing IPVS clusters rather than a recommendation for new clusters:
 
 ```yaml
 apiVersion: v1
@@ -310,10 +297,10 @@ data:
     mode: "ipvs"
     ipvs:
       scheduler: "rr"
-      # IPVS handles hairpin automatically through kernel routing
+      # IPVS uses the kernel IPVS APIs for Service load balancing
 ```
 
-IPVS doesn't require bridge-level hairpin mode because it operates at Layer 4. The kernel's IPVS module handles the NAT translation efficiently without involving the bridge at all.
+IPVS operates at Layer 4 and can be more efficient for large Service tables than older iptables-mode clusters. However, bridge-backed pod networks may still need the kubelet/CNI hairpin settings described earlier when a Service selects the calling pod as the backend.
 
 Verify IPVS handles hairpin:
 
@@ -322,7 +309,7 @@ Verify IPVS handles hairpin:
 ipvsadm -Ln
 
 # Test pod-to-self through service
-# With IPVS, this should always work without additional configuration
+# Confirm this works with your CNI and kubelet hairpin mode
 ```
 
 ## Alternative: Using Headless Services
@@ -355,4 +342,4 @@ kubectl run -it --rm debug --image=busybox --restart=Never -- \
 
 This approach eliminates hairpin issues but requires application-level awareness of service discovery.
 
-Hairpin mode is a crucial feature for Kubernetes networking, enabling pods to access themselves through Service IPs. Whether you're using bridge-based CNIs with explicit hairpin configuration or IPVS with built-in support, understanding how hairpin works helps you troubleshoot connectivity issues and design more robust applications.
+Hairpin mode is a crucial feature for Kubernetes networking, enabling pods to access themselves through Service IPs. Whether you're using bridge-based CNIs with explicit hairpin configuration or kube-proxy modes such as IPVS, understanding how hairpin works helps you troubleshoot connectivity issues and design more robust applications.
