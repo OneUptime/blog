@@ -14,7 +14,7 @@ This guide walks through running Caddy in Docker, configuring automatic HTTPS, a
 
 ## Why Caddy for HTTPS?
 
-Most web servers require you to set up certbot, write renewal cron jobs, and configure certificate paths manually. Caddy does all of this out of the box. It integrates directly with Let's Encrypt (and ZeroSSL) to obtain certificates the moment a domain is requested.
+Most web servers require you to set up certbot, write renewal cron jobs, and configure certificate paths manually. Caddy does all of this out of the box. It integrates directly with Let's Encrypt (and ZeroSSL) to obtain certificates for configured domains when Caddy loads its configuration.
 
 Wildcard certificates cover all subdomains under a domain (e.g., `*.example.com`). These require DNS-01 challenges rather than HTTP-01 challenges, which means Caddy needs to create DNS records to prove domain ownership. Caddy supports this through DNS provider plugins.
 
@@ -46,8 +46,6 @@ Now set up the Docker Compose file to run Caddy:
 
 ```yaml
 # docker-compose.yml - Basic Caddy setup with persistent certificate storage
-version: "3.8"
-
 services:
   caddy:
     image: caddy:2-alpine
@@ -74,7 +72,7 @@ Start the container:
 docker compose up -d
 ```
 
-Caddy will automatically obtain a TLS certificate for `example.com` when the first request arrives. The certificates persist in the `./data` volume, so restarts do not trigger re-issuance.
+Caddy will automatically obtain a TLS certificate for `example.com` when the configuration is loaded. The certificates persist in the `./data` volume, so restarts do not trigger re-issuance.
 
 ## Building a Custom Caddy Image with DNS Provider Plugins
 
@@ -149,8 +147,6 @@ Update the Docker Compose file to use the custom image and pass the API token:
 
 ```yaml
 # docker-compose.yml - Caddy with wildcard certificates via Cloudflare DNS
-version: "3.8"
-
 services:
   caddy:
     build: .
@@ -160,7 +156,7 @@ services:
       - "443:443"
       - "443:443/udp"
     environment:
-      # Cloudflare API token with Zone:DNS:Edit permissions
+      # Cloudflare API token with Zone:Zone:Read and Zone:DNS:Edit permissions
       CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
@@ -180,6 +176,13 @@ services:
     command: node api.js
     volumes:
       - ./api:/app
+    working_dir: /app
+
+  web-service:
+    image: node:20-alpine
+    command: node server.js
+    volumes:
+      - ./web:/app
     working_dir: /app
 
 volumes:
@@ -236,8 +239,6 @@ One of the most common use cases for Caddy in Docker is as a reverse proxy for m
 
 ```yaml
 # docker-compose.yml - Full reverse proxy setup with multiple backend services
-version: "3.8"
-
 services:
   caddy:
     build: .
@@ -347,7 +348,7 @@ If certificates fail to provision, check these common problems:
 
 1. **DNS propagation delays** - DNS changes can take minutes to propagate. Caddy retries automatically, but check your DNS provider dashboard to confirm records are created.
 
-2. **API token permissions** - For Cloudflare, your token needs `Zone:DNS:Edit` permissions on the target zone.
+2. **API token permissions** - For Cloudflare, your token needs `Zone:Zone:Read` and `Zone:DNS:Edit` permissions on the target zone.
 
 3. **Port conflicts** - Ports 80 and 443 must be available. Check with `docker ps` or `ss -tlnp`.
 
