@@ -23,8 +23,8 @@ export AWS_REGION=us-west-2
 export AWS_ACCESS_KEY_ID=<your-access-key-id>
 export AWS_SECRET_ACCESS_KEY=<your-secret-access-key>
 
-# Base64 encode credentials for CAPA
-export AWS_B64ENCODED_CREDENTIALS=$(echo -n "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" | base64 -w0)
+# Encode credentials for CAPA
+export AWS_B64ENCODED_CREDENTIALS=$(clusterawsadm bootstrap credentials encode-as-profile)
 
 # Set SSH key for node access
 export AWS_SSH_KEY_NAME=cluster-api-key
@@ -38,7 +38,7 @@ clusterctl init --infrastructure aws
 
 # Verify CAPA controllers are running
 kubectl get pods -n capa-system
-kubectl get pods -n capa-eks-control-plane-system  # If using EKS
+kubectl get pods -n capa-eks-control-plane-system  # If you also initialized EKS support
 ```
 
 Create an AWS cluster:
@@ -46,7 +46,7 @@ Create an AWS cluster:
 ```bash
 # Set cluster configuration
 export CLUSTER_NAME=production-aws
-export KUBERNETES_VERSION=v1.28.0
+export KUBERNETES_VERSION=v1.36.0
 export AWS_CONTROL_PLANE_MACHINE_TYPE=t3.large
 export AWS_NODE_MACHINE_TYPE=t3.medium
 export AWS_REGION=us-west-2
@@ -114,21 +114,18 @@ metadata:
 spec:
   kubeadmConfigSpec:
     clusterConfiguration:
-      apiServer:
-        extraArgs:
-          cloud-provider: aws
       controllerManager:
         extraArgs:
-          cloud-provider: aws
+          cloud-provider: external
     initConfiguration:
       nodeRegistration:
         kubeletExtraArgs:
-          cloud-provider: aws
+          cloud-provider: external
         name: '{{ ds.meta_data.local_hostname }}'
     joinConfiguration:
       nodeRegistration:
         kubeletExtraArgs:
-          cloud-provider: aws
+          cloud-provider: external
         name: '{{ ds.meta_data.local_hostname }}'
   machineTemplate:
     infrastructureRef:
@@ -136,7 +133,7 @@ spec:
       kind: AWSMachineTemplate
       name: production-aws-control-plane
   replicas: 3
-  version: v1.28.0
+  version: v1.36.0
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: AWSMachineTemplate
@@ -172,7 +169,7 @@ spec:
         apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
         kind: AWSMachineTemplate
         name: production-aws-md-0
-      version: v1.28.0
+      version: v1.36.0
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: AWSMachineTemplate
@@ -197,7 +194,7 @@ spec:
       joinConfiguration:
         nodeRegistration:
           kubeletExtraArgs:
-            cloud-provider: aws
+            cloud-provider: external
           name: '{{ ds.meta_data.local_hostname }}'
 ```
 
@@ -215,6 +212,8 @@ kubectl get awsclusters,awsmachines
 clusterctl get kubeconfig ${CLUSTER_NAME} > ${CLUSTER_NAME}.kubeconfig
 ```
 
+For Kubernetes versions that use `cloud-provider: external`, deploy the AWS cloud controller manager and CSI driver separately after the workload cluster is reachable.
+
 ## Setting Up the Azure Provider (CAPZ)
 
 The Cluster API Provider Azure (CAPZ) provisions clusters on Microsoft Azure. Configure Azure credentials:
@@ -231,12 +230,20 @@ export AZURE_SUBSCRIPTION_ID=<subscription-id>
 export AZURE_TENANT_ID=<tenant-id>
 export AZURE_CLIENT_ID=<client-id>
 export AZURE_CLIENT_SECRET=<client-secret>
+export AZURE_CLUSTER_IDENTITY_SECRET_NAME=cluster-identity-secret
+export AZURE_CLUSTER_IDENTITY_SECRET_NAMESPACE=default
+export CLUSTER_IDENTITY_NAME=cluster-identity
 
 # Set Azure location
 export AZURE_LOCATION=eastus
 
 # Set SSH public key
 export AZURE_SSH_PUBLIC_KEY_B64=$(cat ~/.ssh/id_rsa.pub | base64 -w0)
+
+# Store the service principal secret for CAPZ
+kubectl create secret generic "${AZURE_CLUSTER_IDENTITY_SECRET_NAME}" \
+  --from-literal=clientSecret="${AZURE_CLIENT_SECRET}" \
+  --namespace "${AZURE_CLUSTER_IDENTITY_SECRET_NAMESPACE}"
 ```
 
 Initialize CAPZ:
@@ -256,7 +263,7 @@ Generate an Azure cluster:
 export CLUSTER_NAME=production-azure
 export AZURE_CONTROL_PLANE_MACHINE_TYPE=Standard_D2s_v3
 export AZURE_NODE_MACHINE_TYPE=Standard_D2s_v3
-export KUBERNETES_VERSION=v1.28.0
+export KUBERNETES_VERSION=v1.36.0
 
 # Generate manifest
 clusterctl generate cluster ${CLUSTER_NAME} \
@@ -279,6 +286,10 @@ metadata:
   name: production-azure
   namespace: default
 spec:
+  identityRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: AzureClusterIdentity
+    name: cluster-identity
   location: eastus
   networkSpec:
     vnet:
@@ -310,7 +321,7 @@ spec:
         osType: Linux
         managedDisk:
           storageAccountType: Premium_LRS
-      sshPublicKey: <ssh-public-key>
+      sshPublicKey: <base64-encoded-ssh-public-key>
       vmSize: Standard_D2s_v3
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
@@ -326,12 +337,12 @@ spec:
         osType: Linux
         managedDisk:
           storageAccountType: Premium_LRS
-      sshPublicKey: <ssh-public-key>
+      sshPublicKey: <base64-encoded-ssh-public-key>
       vmSize: Standard_D2s_v3
       dataDisks:
       - diskSizeGB: 256
         lun: 0
-        nameSuffix: etcd
+        nameSuffix: data
 ```
 
 ## Setting Up the vSphere Provider (CAPV)
@@ -348,15 +359,15 @@ export VSPHERE_DATASTORE=datastore1
 export VSPHERE_NETWORK="VM Network"
 export VSPHERE_RESOURCE_POOL=Resources
 export VSPHERE_FOLDER=vm
-export VSPHERE_TEMPLATE=ubuntu-2004-kube-v1.28.0
+export VSPHERE_TEMPLATE=ubuntu-2204-kube-v1.36.0
 
 # SSH key for nodes
 export VSPHERE_SSH_AUTHORIZED_KEY=$(cat ~/.ssh/id_rsa.pub)
 
 # TLS thumbprint
 export VSPHERE_TLS_THUMBPRINT=$(openssl s_client -connect ${VSPHERE_SERVER}:443 < /dev/null 2>/dev/null | \
-  openssl x509 -fingerprint -sha256 -noout -in /dev/stdin | \
-  awk -F '=' '{print $2}' | tr -d ':')
+  openssl x509 -fingerprint -sha1 -noout -in /dev/stdin | \
+  awk -F '=' '{print $2}')
 ```
 
 Initialize CAPV:
@@ -375,7 +386,7 @@ Create vSphere cluster:
 # Set cluster configuration
 export CLUSTER_NAME=production-vsphere
 export CONTROL_PLANE_ENDPOINT_IP=192.168.1.100
-export KUBERNETES_VERSION=v1.28.0
+export KUBERNETES_VERSION=v1.36.0
 
 # Generate cluster manifest
 clusterctl generate cluster ${CLUSTER_NAME} \
@@ -399,6 +410,7 @@ spec:
     host: 192.168.1.100
     port: 6443
   identityRef:
+    apiVersion: v1
     kind: Secret
     name: production-vsphere
   server: vcenter.example.com
@@ -412,7 +424,7 @@ metadata:
 spec:
   template:
     spec:
-      cloneMode: linkedClone
+      cloneMode: fullClone
       datacenter: Datacenter
       datastore: datastore1
       diskGiB: 50
@@ -427,7 +439,7 @@ spec:
       powerOffMode: soft
       resourcePool: Resources
       server: vcenter.example.com
-      template: ubuntu-2004-kube-v1.28.0
+      template: ubuntu-2204-kube-v1.36.0
       thumbprint: <tls-thumbprint>
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
@@ -438,7 +450,7 @@ metadata:
 spec:
   template:
     spec:
-      cloneMode: linkedClone
+      cloneMode: fullClone
       datacenter: Datacenter
       datastore: datastore1
       diskGiB: 100
@@ -453,7 +465,7 @@ spec:
       powerOffMode: soft
       resourcePool: Resources
       server: vcenter.example.com
-      template: ubuntu-2004-kube-v1.28.0
+      template: ubuntu-2204-kube-v1.36.0
       thumbprint: <tls-thumbprint>
 ```
 
@@ -506,23 +518,29 @@ kind: AzureManagedControlPlane
 metadata:
   name: production-aks
 spec:
+  identityRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: AzureClusterIdentity
+    name: cluster-identity
   location: eastus
   resourceGroupName: production-aks-rg
   subscriptionID: <subscription-id>
-  version: v1.28.0
+  version: v1.36.0
 ```
 
 vSphere supports workload-specific VM configurations:
 
 ```yaml
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: VSphereVM
+kind: VSphereMachineTemplate
 metadata:
   name: high-memory-worker
 spec:
-  memoryMiB: 65536
-  numCPUs: 16
-  diskGiB: 500
+  template:
+    spec:
+      memoryMiB: 65536
+      numCPUs: 16
+      diskGiB: 500
 ```
 
 ## Troubleshooting Provider Issues
@@ -544,7 +562,7 @@ kubectl describe vspheremachine <machine-name>
 kubectl get secrets -A | grep cloud-provider
 
 # Verify infrastructure readiness
-kubectl get conditions cluster/${CLUSTER_NAME}
+kubectl describe cluster ${CLUSTER_NAME}
 ```
 
 Cluster API providers enable consistent Kubernetes cluster management across clouds while leveraging platform-specific features. With the same declarative workflow, you can provision, scale, and upgrade clusters on AWS, Azure, vSphere, or any combination of providers your organization uses.
