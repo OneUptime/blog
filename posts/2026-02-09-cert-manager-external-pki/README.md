@@ -19,7 +19,7 @@ cert-manager provides several integration points for external PKI:
 1. **Venafi issuer** - Integrates with Venafi Trust Protection Platform and Venafi Cloud
 2. **Vault issuer** - Connects to HashiCorp Vault PKI secrets engine
 3. **External issuer pattern** - Custom issuers for proprietary PKI systems
-4. **CA issuer with external signing** - Import certificates from external CAs
+4. **CA issuer with imported key pairs** - Use a CA certificate and private key from an external CA
 
 Each approach has different trade-offs in terms of security, automation capabilities, and complexity.
 
@@ -52,9 +52,22 @@ vault write pki/roles/kubernetes-certs \
     max_ttl="2160h"
 ```
 
-Create a Kubernetes service account for cert-manager to authenticate with Vault:
+Create a Kubernetes service account token for cert-manager to authenticate with Vault:
 
 ```bash
+kubectl create serviceaccount cert-manager-vault -n cert-manager
+
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cert-manager-vault-token
+  namespace: cert-manager
+  annotations:
+    kubernetes.io/service-account.name: cert-manager-vault
+type: kubernetes.io/service-account-token
+EOF
+
 # Enable Kubernetes auth in Vault
 vault auth enable kubernetes
 
@@ -76,7 +89,7 @@ EOF
 
 # Bind policy to service account
 vault write auth/kubernetes/role/cert-manager \
-    bound_service_account_names=cert-manager \
+    bound_service_account_names=cert-manager-vault \
     bound_service_account_namespaces=cert-manager \
     policies=cert-manager \
     ttl=1h
@@ -98,7 +111,7 @@ spec:
         role: cert-manager
         mountPath: /v1/auth/kubernetes
         secretRef:
-          name: cert-manager-token
+          name: cert-manager-vault-token
           key: token
 ```
 
@@ -125,16 +138,16 @@ spec:
 
 ## Integrating with Venafi Enterprise PKI
 
-Venafi Trust Protection Platform is widely used in enterprises for certificate lifecycle management. Install the Venafi issuer:
+Venafi Trust Protection Platform is widely used in enterprises for certificate lifecycle management. The Venafi issuer is built into cert-manager. If cert-manager is not already installed, install it first:
 
 ```bash
-# Install Venafi enhanced issuer
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 
-helm install venafi-enhanced-issuer jetstack/venafi-enhanced-issuer \
-  --namespace venafi \
-  --create-namespace
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true
 ```
 
 Create a secret with Venafi credentials:
@@ -195,7 +208,7 @@ Venafi TPP will validate the request against configured policies and issue certi
 
 ## Integrating with Microsoft AD Certificate Services
 
-Microsoft Active Directory Certificate Services (AD CS) is common in Windows-based enterprises. Use the CA issuer with certificates exported from AD CS:
+Microsoft Active Directory Certificate Services (AD CS) is common in Windows-based enterprises. Use the CA issuer with certificates exported from AD CS only if your CA private key is exportable and your security policy permits storing that signing key in Kubernetes:
 
 ```bash
 # Export the CA certificate from AD CS
@@ -212,19 +225,32 @@ kubectl create secret generic adcs-ca-cert \
   -n cert-manager
 ```
 
-For automated certificate requests, use an external issuer that communicates with AD CS:
+Configure the cert-manager CA issuer to use that signing key pair:
 
 ```yaml
-# Using a hypothetical AD CS external issuer
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
+  name: adcs-ca-issuer
+spec:
+  ca:
+    secretName: adcs-ca-cert
+```
+
+For automated certificate requests, use an external issuer that communicates with AD CS:
+
+```yaml
+# Using an AD CS external issuer after installing its CRDs and controller
+apiVersion: adcs.certmanager.csf.nokia.com/v1
+kind: ClusterAdcsIssuer
+metadata:
   name: adcs-issuer
 spec:
-  externalIssuer:
-    group: adcs.certmanager.io
-    kind: ADCSIssuer
-    name: windows-ca
+  url: https://adcs.example.com/certsrv/
+  templateName: WebServer
+  caBundle: <base64-encoded-ca-bundle>
+  credentialsRef:
+    name: adcs-credentials
 ```
 
 ## Creating Custom External Issuers
@@ -340,10 +366,10 @@ def sign_certificate():
 
     # Submit CSR to EJBCA
     response = requests.post(
-        'https://ejbca.example.com/ejbca/ejbca-rest-api/v1/certificate/pkcs10',
+        'https://ejbca.example.com/ejbca/ejbca-rest-api/v1/certificate/pkcs10enroll',
         cert=('/path/to/client.crt', '/path/to/client.key'),
         json={
-            'certificate_request': base64.b64encode(csr).decode(),
+            'certificate_request': csr.decode(),
             'certificate_profile_name': 'KUBERNETES_PROFILE',
             'end_entity_profile_name': 'KUBERNETES_EE_PROFILE',
             'certificate_authority_name': 'InternalCA',
@@ -394,10 +420,7 @@ Implement an approval controller or manually approve:
 
 ```bash
 # Manual approval
-kubectl certificate approve requires-approval-1
-
-# Or use cmctl
-cmctl approve certificaterequest requires-approval-1
+cmctl approve requires-approval-1
 ```
 
 For automated approval with policies:
@@ -425,20 +448,13 @@ func (c *ApprovalController) Reconcile(ctx context.Context, req reconcile.Reques
 
 ## Using Hardware Security Modules (HSM)
 
-For high-security environments, integrate with HSMs for key generation and storage. Configure Vault with HSM backend:
+For high-security environments, integrate with HSMs for key generation and storage. After configuring a Vault managed key backed by your HSM or KMS, generate a root CA with that key:
 
 ```bash
-# Configure Vault to use HSM
-vault write pki/config/keys \
-    key_type=rsa \
-    key_bits=2048 \
-    hsm=true \
-    key_label="vault-pki-key"
-
 # Generate root CA with HSM-backed key
 vault write pki/root/generate/kms \
     common_name="HSM-backed Root CA" \
-    key_ref="vault-pki-key"
+    managed_key_name="vault-pki-key"
 ```
 
 cert-manager will transparently use HSM-backed keys when issuing certificates through Vault.
@@ -466,14 +482,14 @@ spec:
       annotations:
         summary: "External PKI system unreachable"
 
-    - alert: CertificateRequestFailureRate
+    - alert: CertManagerMetricsDown
       expr: |
-        rate(certmanager_certificaterequest_failed_total[5m]) > 0.1
+        up{job="cert-manager"} == 0
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "High certificate request failure rate"
+        summary: "cert-manager metrics target is down"
 ```
 
 ## Best Practices
