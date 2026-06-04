@@ -14,7 +14,7 @@ Setting up a Redis Cluster on bare metal requires provisioning multiple servers 
 
 ## Redis Cluster Architecture
 
-A minimum Redis Cluster requires 6 nodes: 3 masters and 3 replicas. Each master handles a portion of the hash slot range, and each replica copies data from its assigned master. If a master fails, its replica takes over.
+A Redis Cluster needs at least 3 master nodes to work as expected. For high availability, use 6 nodes: 3 masters and 3 replicas. Each master handles a portion of the hash slot range, and each replica copies data from its assigned master. If a master fails, its replica takes over.
 
 ```mermaid
 graph TB
@@ -66,8 +66,6 @@ Define six Redis nodes in Docker Compose.
 
 ```yaml
 # docker-compose.yml - Redis Cluster with 6 nodes
-version: "3.8"
-
 services:
   redis-node-1:
     image: redis:7-alpine
@@ -272,14 +270,14 @@ Use a Redis client library that supports cluster mode. Here is a Python example.
 
 ```python
 # app.py - Connect to Redis Cluster from Python
-from redis.cluster import RedisCluster
+from redis.cluster import ClusterNode, RedisCluster
 
 # Connect to the cluster (provide at least one node)
 rc = RedisCluster(
     startup_nodes=[
-        {"host": "172.30.0.11", "port": 6379},
-        {"host": "172.30.0.12", "port": 6379},
-        {"host": "172.30.0.13", "port": 6379},
+        ClusterNode("172.30.0.11", 6379),
+        ClusterNode("172.30.0.12", 6379),
+        ClusterNode("172.30.0.13", 6379),
     ],
     decode_responses=True
 )
