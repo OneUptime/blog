@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, kubectl, Resource Management
 
-Description: Learn how to sort kubectl output by age, restart counts, resource usage, and custom fields using JSONPath expressions to quickly identify problem resources and trends.
+Description: Learn how to sort kubectl output by age, restart counts, resource capacity, and custom fields using JSONPath expressions to quickly identify problem resources and trends.
 
 ---
 
-Default kubectl get output shows resources in arbitrary order. Sorting reveals patterns like oldest pods, most-restarted containers, or highest resource consumers. The `--sort-by` flag uses JSONPath expressions to order output by any field.
+Default kubectl get output shows resources in arbitrary order. Sorting reveals patterns like oldest pods, most-restarted containers, or resource capacity differences. The `--sort-by` flag uses JSONPath expressions to order output by a string or integer field.
 
 ## Basic Sorting Syntax
 
@@ -37,7 +37,7 @@ Find oldest or newest pods:
 kubectl get pods --sort-by=.metadata.creationTimestamp
 
 # Newest first (requires reverse sort, use tac or tail)
-kubectl get pods --sort-by=.metadata.creationTimestamp | tac
+kubectl get pods --no-headers --sort-by=.metadata.creationTimestamp | tac
 
 # Oldest pod in cluster
 kubectl get pods --all-namespaces --sort-by=.metadata.creationTimestamp | head -2
@@ -50,13 +50,13 @@ This identifies long-running pods that might need updates or cleanup.
 
 ## Sorting by Restart Count
 
-Identify pods with frequent restarts:
+Identify pods whose first listed container has frequent restarts:
 
 ```bash
-# Sort by container restart count
+# Sort by the first container restart count
 kubectl get pods --sort-by=.status.containerStatuses[0].restartCount
 
-# Show pods with most restarts
+# Show pods whose first container has the most restarts
 kubectl get pods --sort-by=.status.containerStatuses[0].restartCount | tail -10
 
 # Across all namespaces
@@ -67,11 +67,11 @@ kubectl get pods --sort-by=.status.containerStatuses[0].restartCount \
   -o custom-columns=NAME:.metadata.name,RESTARTS:.status.containerStatuses[0].restartCount,STATUS:.status.phase
 ```
 
-High restart counts indicate stability issues.
+High restart counts indicate stability issues. For multi-container pods, aggregate all container statuses with JSON output and jq if you need total pod restarts.
 
 ## Sorting Nodes by CPU Capacity
 
-Order nodes by resource capacity:
+Order nodes by resource capacity fields:
 
 ```bash
 # Sort nodes by CPU capacity
@@ -87,7 +87,7 @@ kubectl get nodes --sort-by=.status.capacity.pods
 kubectl get nodes --sort-by=.status.capacity.cpu -o wide
 ```
 
-This reveals infrastructure sizing differences.
+This reveals infrastructure sizing differences. CPU, memory, and storage quantities are represented as strings in the API, so `--sort-by` orders those values lexicographically rather than converting units.
 
 ## Sorting Deployments by Replicas
 
@@ -107,7 +107,7 @@ kubectl get deployments --sort-by=.status.availableReplicas
 kubectl get deployments --sort-by=.spec.replicas | tail -10
 ```
 
-This identifies which deployments consume the most resources.
+This identifies which deployments run the most replicas.
 
 ## Sorting by Name
 
@@ -181,13 +181,13 @@ This reveals service type distribution.
 
 ## Sorting PVCs by Storage Size
 
-Find largest storage claims:
+Sort storage claims by the requested storage field:
 
 ```bash
 # Sort by requested storage
 kubectl get pvc --all-namespaces --sort-by=.spec.resources.requests.storage
 
-# Show largest PVCs
+# Show the last PVCs in lexicographic storage order
 kubectl get pvc --all-namespaces --sort-by=.spec.resources.requests.storage | tail -10
 
 # With custom columns
@@ -195,7 +195,7 @@ kubectl get pvc --all-namespaces --sort-by=.spec.resources.requests.storage \
   -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,SIZE:.spec.resources.requests.storage,STATUS:.status.phase
 ```
 
-This identifies storage consumption patterns.
+This identifies storage request patterns. Because storage quantities are strings such as `500Mi`, `1Gi`, and `10Gi`, this is not a reliable numeric size sort when units or digit counts differ.
 
 ## Sorting by Node Name
 
@@ -254,7 +254,7 @@ Filtering before sorting focuses on relevant subsets.
 Find recent cluster events:
 
 ```bash
-# Sort events by last occurrence
+# Sort legacy core/v1 events by last occurrence
 kubectl get events --all-namespaces --sort-by=.lastTimestamp
 
 # Recent events
@@ -267,27 +267,27 @@ kubectl get events --field-selector involvedObject.name=webapp --sort-by=.lastTi
 kubectl get events --all-namespaces --sort-by=.lastTimestamp | grep Warning
 ```
 
-This creates timeline views of cluster activity.
+This creates timeline views of cluster activity. For `events.k8s.io/v1` Event objects, use fields such as `.eventTime` or `.series.lastObservedTime` instead of the legacy `.lastTimestamp` field.
 
 ## Reverse Sorting
 
 Kubernetes doesn't have native reverse sort, but use shell tools:
 
 ```bash
-# Newest pods first (reverse chronological)
-kubectl get pods --sort-by=.metadata.creationTimestamp | tac
+# Newest pods first (reverse chronological, without the header row)
+kubectl get pods --no-headers --sort-by=.metadata.creationTimestamp | tac
 
-# Pods with fewest restarts first
-kubectl get pods --sort-by=.status.containerStatuses[0].restartCount | tac
+# Pods with most first-container restarts first
+kubectl get pods --no-headers --sort-by=.status.containerStatuses[0].restartCount | tac
 
-# Smallest deployments first
-kubectl get deployments --sort-by=.spec.replicas | tac
+# Largest deployments first
+kubectl get deployments --no-headers --sort-by=.spec.replicas | tac
 
 # Alternative: use tail and head
-kubectl get pods --sort-by=.metadata.creationTimestamp | tail -r  # BSD systems
+kubectl get pods --no-headers --sort-by=.metadata.creationTimestamp | tail -r  # BSD systems
 ```
 
-Reversing output changes sort order without re-sorting.
+Reversing output changes sort order without re-sorting. Use `--no-headers` when piping to `tac` or `tail -r` so the header row does not move to the bottom.
 
 ## Sorting with Wide Output
 
@@ -317,7 +317,7 @@ Generate sorted resource reports:
 echo "=== Pods by Age ==="
 kubectl get pods --all-namespaces --sort-by=.metadata.creationTimestamp
 
-echo -e "\n=== Pods by Restart Count ==="
+echo -e "\n=== Pods by First-Container Restart Count ==="
 kubectl get pods --all-namespaces --sort-by=.status.containerStatuses[0].restartCount | tail -20
 
 echo -e "\n=== Nodes by CPU Capacity ==="
@@ -342,14 +342,14 @@ Use sorting in monitoring automation:
 
 THRESHOLD=5
 
-# Get pods sorted by restart count
+# Get pods sorted by first-container restart count
 PODS=$(kubectl get pods --all-namespaces --sort-by=.status.containerStatuses[0].restartCount -o json)
 
-# Check for high restart counts
+# Check for high first-container restart counts
 echo "$PODS" | jq -r '.items[] | select(.status.containerStatuses[0].restartCount > '$THRESHOLD') | "\(.metadata.namespace)/\(.metadata.name): \(.status.containerStatuses[0].restartCount) restarts"'
 ```
 
-This alerts on pods exceeding restart thresholds.
+This alerts on pods whose first container exceeds restart thresholds.
 
 ## Sorting Custom Resources
 
@@ -391,12 +391,12 @@ JSONPath doesn't support multi-field sorts. Use external tools:
 
 ```bash
 # Sort by namespace then name
-kubectl get pods --all-namespaces --sort-by=.metadata.namespace | sort -k2
+kubectl get pods --all-namespaces --no-headers | sort -k1,1 -k2,2
 
 # Sort by status then restarts
-kubectl get pods -o custom-columns=STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount,NAME:.metadata.name | sort -k1,2
+kubectl get pods --no-headers -o custom-columns=STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount,NAME:.metadata.name | sort -k1,1 -k2,2n
 
-# Complex multi-field sorting with awk
+# Complex multi-field sorting with jq
 kubectl get pods -o json | jq -r '.items | sort_by(.status.phase, .metadata.creationTimestamp) | .[] | "\(.metadata.name) \(.status.phase)"'
 ```
 
@@ -418,7 +418,7 @@ kubectl get pods -o jsonpath='{.items[*].status.containerStatuses[0].restartCoun
 
 # Handle missing fields gracefully
 # Some pods might not have containerStatuses yet
-kubectl get pods --sort-by=.status.containerStatuses[0].restartCount 2>&1 | grep -v "not found"
+kubectl get pods -o json | jq -r '.items[] | select(.status.containerStatuses) | [.metadata.name, (.status.containerStatuses[0].restartCount // 0)] | @tsv' | sort -k2,2n
 ```
 
 Fields must exist on all resources to sort correctly.
