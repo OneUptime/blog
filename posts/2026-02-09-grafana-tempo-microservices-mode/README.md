@@ -8,22 +8,23 @@ Description: Deploy Grafana Tempo in microservices mode on Kubernetes for horizo
 
 ---
 
-Grafana Tempo's monolithic mode works well for small deployments, but production environments require the scalability and resilience of microservices mode. In this architecture, each Tempo component (distributor, ingester, querier, compactor) runs independently, enabling horizontal scaling, targeted resource allocation, and high availability. This guide demonstrates deploying production-ready Tempo in microservices mode.
+Grafana Tempo's monolithic mode works well for small deployments, but production environments require the scalability and resilience of microservices mode. In this architecture, each Tempo component (distributor, block-builder, live-store, querier, backend scheduler, and backend worker) runs independently, enabling horizontal scaling, targeted resource allocation, and high availability. This guide demonstrates deploying production-ready Tempo in microservices mode.
 
 ## Understanding Tempo Microservices Architecture
 
 Tempo microservices mode splits functionality across components:
 
-**Distributor**: Receives traces and distributes to ingesters
-**Ingester**: Buffers and writes traces to storage
-**Querier**: Queries traces from storage and ingesters
+**Distributor**: Receives traces and writes them to Kafka
+**Block Builder**: Consumes traces from Kafka and writes Parquet blocks to storage
+**Live Store**: Consumes recent traces from Kafka and serves recent-data queries
+**Querier**: Queries traces from object storage and live-stores
 **Query Frontend**: Caches and splits queries for performance
-**Compactor**: Compacts and optimizes trace blocks
+**Backend Scheduler and Worker**: Compacts and optimizes trace blocks
 **Metrics Generator**: Generates metrics from spans (optional)
 
 ## Configuring Storage Backend
 
-Set up object storage (S3 example):
+Set up object storage and Kafka-compatible ingest (S3 example):
 
 ```yaml
 apiVersion: v1
@@ -54,21 +55,35 @@ data:
             thrift_http:
               endpoint: 0.0.0.0:14268
 
-    ingester:
-      lifecycler:
-        ring:
-          replication_factor: 3
-          kvstore:
-            store: memberlist
-      max_block_duration: 30m
-      max_block_bytes: 524288000  # 500MB
-      complete_block_timeout: 1m
+    ingest:
+      kafka:
+        address: kafka.tracing.svc.cluster.local:9092
+        topic: tempo-ingest
+
+    block_builder:
+      consume_cycle_duration: 5m
+      block:
+        max_block_bytes: 524288000  # 500MB
+
+    live_store:
+      max_trace_idle: 10s
+      complete_block_timeout: 20m
 
     memberlist:
       join_members:
         - tempo-gossip-ring.tracing.svc.cluster.local:7946
 
-    compactor:
+    backend_scheduler:
+      provider:
+        compaction:
+          compaction:
+            block_retention: 168h  # 7 days
+
+    backend_worker:
+      backend_scheduler_addr: tempo-backend-scheduler.tracing.svc.cluster.local:9095
+      ring:
+        kvstore:
+          store: memberlist
       compaction:
         block_retention: 168h  # 7 days
         compacted_block_retention: 1h
@@ -100,8 +115,11 @@ data:
           queue_depth: 10000
 
     overrides:
-      max_traces_per_user: 100000
-      max_bytes_per_trace: 5000000  # 5MB
+      defaults:
+        ingestion:
+          max_traces_per_user: 100000
+        global:
+          max_bytes_per_trace: 5000000  # 5MB
 ```
 
 ## Deploying Distributor
@@ -130,6 +148,7 @@ spec:
         image: grafana/tempo:latest
         args:
         - -config.file=/etc/tempo/tempo.yaml
+        - -config.expand-env=true
         - -target=distributor
         ports:
         - containerPort: 3200
@@ -140,6 +159,8 @@ spec:
           name: otlp-http
         - containerPort: 14250
           name: jaeger-grpc
+        - containerPort: 14268
+          name: jaeger-http
         - containerPort: 7946
           name: gossip
         volumeMounts:
@@ -152,6 +173,9 @@ spec:
           limits:
             cpu: 2000m
             memory: 4Gi
+        envFrom:
+        - secretRef:
+            name: tempo-s3-credentials
       volumes:
       - name: config
         configMap:
@@ -174,28 +198,30 @@ spec:
     port: 4318
   - name: jaeger-grpc
     port: 14250
+  - name: jaeger-http
+    port: 14268
 ```
 
-## Deploying Ingester
+## Deploying Block Builder and Live Store
 
-Store and index traces:
+Write trace blocks and serve recent traces:
 
 ```yaml
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: tempo-ingester
+  name: tempo-block-builder
   namespace: tracing
 spec:
-  serviceName: tempo-ingester
+  serviceName: tempo-block-builder
   replicas: 3
   selector:
     matchLabels:
-      app: tempo-ingester
+      app: tempo-block-builder
   template:
     metadata:
       labels:
-        app: tempo-ingester
+        app: tempo-block-builder
         tempo-gossip-member: "true"
     spec:
       containers:
@@ -203,7 +229,83 @@ spec:
         image: grafana/tempo:latest
         args:
         - -config.file=/etc/tempo/tempo.yaml
-        - -target=ingester
+        - -config.expand-env=true
+        - -target=block-builder
+        ports:
+        - containerPort: 3200
+          name: http
+        - containerPort: 9095
+          name: grpc
+        - containerPort: 7946
+          name: gossip
+        volumeMounts:
+        - name: config
+          mountPath: /etc/tempo
+        - name: block-builder-data
+          mountPath: /var/tempo/block-builder/traces
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 4000m
+            memory: 8Gi
+        envFrom:
+        - secretRef:
+            name: tempo-s3-credentials
+      volumes:
+      - name: config
+        configMap:
+          name: tempo-config
+  volumeClaimTemplates:
+  - metadata:
+      name: block-builder-data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo-block-builder
+  namespace: tracing
+spec:
+  clusterIP: None
+  selector:
+    app: tempo-block-builder
+  ports:
+  - name: http
+    port: 3200
+  - name: grpc
+    port: 9095
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tempo-live-store
+  namespace: tracing
+spec:
+  serviceName: tempo-live-store
+  replicas: 3
+  selector:
+    matchLabels:
+      app: tempo-live-store
+  template:
+    metadata:
+      labels:
+        app: tempo-live-store
+        tempo-gossip-member: "true"
+    spec:
+      containers:
+      - name: tempo
+        image: grafana/tempo:latest
+        args:
+        - -config.file=/etc/tempo/tempo.yaml
+        - -config.expand-env=true
+        - -target=live-store
         ports:
         - containerPort: 3200
           name: http
@@ -223,6 +325,9 @@ spec:
           limits:
             cpu: 4000m
             memory: 8Gi
+        envFrom:
+        - secretRef:
+            name: tempo-s3-credentials
       volumes:
       - name: config
         configMap:
@@ -240,12 +345,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: tempo-ingester
+  name: tempo-live-store
   namespace: tracing
 spec:
   clusterIP: None
   selector:
-    app: tempo-ingester
+    app: tempo-live-store
   ports:
   - name: http
     port: 3200
@@ -276,6 +381,7 @@ spec:
         image: grafana/tempo:latest
         args:
         - -config.file=/etc/tempo/tempo.yaml
+        - -config.expand-env=true
         - -target=query-frontend
         ports:
         - containerPort: 3200
@@ -292,6 +398,9 @@ spec:
           limits:
             cpu: 2000m
             memory: 2Gi
+        envFrom:
+        - secretRef:
+            name: tempo-s3-credentials
       volumes:
       - name: config
         configMap:
@@ -332,6 +441,7 @@ spec:
         image: grafana/tempo:latest
         args:
         - -config.file=/etc/tempo/tempo.yaml
+        - -config.expand-env=true
         - -target=querier
         ports:
         - containerPort: 3200
@@ -350,29 +460,32 @@ spec:
           limits:
             cpu: 4000m
             memory: 4Gi
+        envFrom:
+        - secretRef:
+            name: tempo-s3-credentials
       volumes:
       - name: config
         configMap:
           name: tempo-config
 ```
 
-## Deploying Compactor
+## Deploying Backend Scheduler and Worker
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tempo-compactor
+  name: tempo-backend-scheduler
   namespace: tracing
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: tempo-compactor
+      app: tempo-backend-scheduler
   template:
     metadata:
       labels:
-        app: tempo-compactor
+        app: tempo-backend-scheduler
         tempo-gossip-member: "true"
     spec:
       containers:
@@ -380,10 +493,13 @@ spec:
         image: grafana/tempo:latest
         args:
         - -config.file=/etc/tempo/tempo.yaml
-        - -target=compactor
+        - -config.expand-env=true
+        - -target=backend-scheduler
         ports:
         - containerPort: 3200
           name: http
+        - containerPort: 9095
+          name: grpc
         - containerPort: 7946
           name: gossip
         volumeMounts:
@@ -396,6 +512,71 @@ spec:
           limits:
             cpu: 4000m
             memory: 8Gi
+        envFrom:
+        - secretRef:
+            name: tempo-s3-credentials
+      volumes:
+      - name: config
+        configMap:
+          name: tempo-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo-backend-scheduler
+  namespace: tracing
+spec:
+  selector:
+    app: tempo-backend-scheduler
+  ports:
+  - name: http
+    port: 3200
+  - name: grpc
+    port: 9095
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo-backend-worker
+  namespace: tracing
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tempo-backend-worker
+  template:
+    metadata:
+      labels:
+        app: tempo-backend-worker
+        tempo-gossip-member: "true"
+    spec:
+      containers:
+      - name: tempo
+        image: grafana/tempo:latest
+        args:
+        - -config.file=/etc/tempo/tempo.yaml
+        - -config.expand-env=true
+        - -target=backend-worker
+        ports:
+        - containerPort: 3200
+          name: http
+        - containerPort: 9095
+          name: grpc
+        - containerPort: 7946
+          name: gossip
+        volumeMounts:
+        - name: config
+          mountPath: /etc/tempo
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 4000m
+            memory: 8Gi
+        envFrom:
+        - secretRef:
+            name: tempo-s3-credentials
       volumes:
       - name: config
         configMap:
@@ -449,17 +630,22 @@ data:
 # Distributor metrics
 
 rate(tempo_distributor_spans_received_total[5m])
-rate(tempo_distributor_ingester_append_failures_total[5m])
+rate(tempo_discarded_spans_total[5m])
 
-# Ingester metrics
-tempo_ingester_blocks_flushed_total
-tempo_ingester_live_traces
+# Block-builder and live-store metrics
+tempo_block_builder_flushed_blocks
+tempo_live_store_traces_created_total
+tempo_ingest_group_partition_lag{group="block-builder"}
+tempo_ingest_group_partition_lag{group="live-store"}
 
-# Querier metrics
-histogram_quantile(0.99, rate(tempo_querier_query_duration_seconds_bucket[5m]))
+# Query frontend metrics
+tempo_query_frontend_queue_length
+rate(tempo_query_frontend_queries_total[5m])
 
-# Compactor metrics
-tempo_compactor_blocks_compacted_total
+# Backend worker metrics
+tempodb_compaction_blocks_total
+tempo_backend_scheduler_jobs_failed_total
+tempodb_compaction_outstanding_blocks
 ```
 
 ## Scaling Strategy
@@ -473,15 +659,16 @@ kubectl scale deployment tempo-distributor -n tracing --replicas=5
 # Scale queriers for query load
 kubectl scale deployment tempo-querier -n tracing --replicas=5
 
-# Scale ingesters (requires careful planning)
-kubectl scale statefulset tempo-ingester -n tracing --replicas=5
+# Scale block builders and live stores (requires careful planning)
+kubectl scale statefulset tempo-block-builder -n tracing --replicas=5
+kubectl scale statefulset tempo-live-store -n tracing --replicas=5
 ```
 
 ## Best Practices
 
 1. **Use object storage**: S3, GCS, or Azure Blob for production
 2. **Monitor ring health**: Ensure proper gossip membership
-3. **Tune ingester settings**: Balance block size with flush frequency
+3. **Tune block-builder and live-store settings**: Balance block size with flush frequency
 4. **Cache query results**: Use query frontend for performance
 5. **Set appropriate retention**: Balance cost with compliance needs
 6. **Scale based on metrics**: Monitor and adjust replicas
