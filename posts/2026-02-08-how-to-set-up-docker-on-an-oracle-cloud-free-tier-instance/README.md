@@ -26,7 +26,7 @@ Log into the OCI Console and navigate to Compute > Instances > Create Instance. 
 
 **ARM (Ampere A1):** Up to 4 OCPUs and 24 GB RAM. Choose the "VM.Standard.A1.Flex" shape with Oracle Linux 8 or Ubuntu 22.04 as the image.
 
-**AMD Micro:** Always free "VM.Standard.E2.1.Micro" shape with 1 OCPU and 1 GB RAM.
+**AMD Micro:** Always free "VM.Standard.E2.1.Micro" shape with 1/8 OCPU and 1 GB RAM, with the ability to burst.
 
 The ARM instance is the better pick for Docker workloads because of the extra memory. Select your VCN, assign a public IP, paste your SSH public key, and launch the instance.
 
@@ -66,13 +66,13 @@ Oracle Linux ships with a `podman-docker` package that can conflict. Remove it f
 sudo dnf remove -y podman-docker
 
 # Install required utilities
-sudo dnf install -y dnf-utils
+sudo dnf install -y dnf-plugins-core
 
 # Add the official Docker CE repository
-sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
 
 # Install Docker Engine, CLI, and containerd
-sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 ### Ubuntu 22.04
@@ -82,15 +82,23 @@ sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 sudo apt install -y ca-certificates curl gnupg lsb-release
 
 # Add Docker's official GPG key
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
 # Set up the Docker repository
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 # Install Docker Engine
 sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 ## Step 4: Start Docker and Enable It on Boot
@@ -151,12 +159,13 @@ On Ubuntu, replace `firewall-cmd` with `iptables`. OCI Ubuntu images come with r
 sudo iptables -L -n --line-numbers
 
 # Allow incoming HTTP traffic
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
+sudo iptables -I INPUT -m state --state NEW -p tcp --dport 80 -j ACCEPT
 
 # Allow incoming HTTPS traffic
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+sudo iptables -I INPUT -m state --state NEW -p tcp --dport 443 -j ACCEPT
 
 # Save iptables rules so they persist across reboots
+sudo apt install -y iptables-persistent
 sudo netfilter-persistent save
 ```
 
@@ -167,7 +176,6 @@ For a cloud instance, a few daemon tweaks improve log management and storage eff
 Create or edit the Docker daemon configuration file:
 
 ```json
-// /etc/docker/daemon.json
 {
   "log-driver": "json-file",
   "log-opts": {
@@ -225,7 +233,6 @@ Create a sample compose file for a WordPress stack:
 
 ```yaml
 # docker-compose.yml - WordPress with MySQL backend
-version: "3.8"
 services:
   db:
     image: mysql:8.0
@@ -312,7 +319,10 @@ docker run -d \
   --volume /var/run:/var/run:ro \
   --volume /sys:/sys:ro \
   --volume /var/lib/docker/:/var/lib/docker:ro \
-  gcr.io/cadvisor/cadvisor:latest
+  --volume /dev/disk/:/dev/disk:ro \
+  --privileged \
+  --device /dev/kmsg \
+  ghcr.io/google/cadvisor:0.57.0
 ```
 
 ## Conclusion
