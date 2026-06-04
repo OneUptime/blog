@@ -40,6 +40,7 @@ kubectl label node edge-node-01 \
 # Network capabilities
 kubectl label node edge-node-01 \
   network-bandwidth=1gbps \
+  network-latency-ms=10 \
   connectivity=cellular \
   has-wifi=true
 
@@ -110,6 +111,9 @@ spec:
     matchLabels:
       app: video-processor
   template:
+    metadata:
+      labels:
+        app: video-processor
     spec:
       affinity:
         nodeAffinity:
@@ -120,9 +124,15 @@ spec:
               - key: has-usb-camera
                 operator: In
                 values: ["true"]
-              # Must have either GPU or high-core CPU
+              # Must have GPU
               - key: gpu
                 operator: Exists
+            - matchExpressions:
+              # Must have USB camera
+              - key: has-usb-camera
+                operator: In
+                values: ["true"]
+              # Or must have high-core CPU
               - key: cpu-cores
                 operator: Gt
                 values: ["8"]
@@ -187,6 +197,18 @@ metadata:
   name: capability-scheduler
   namespace: kube-system
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: capability-scheduler-config
+  namespace: kube-system
+data:
+  scheduler-config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1
+    kind: KubeSchedulerConfiguration
+    profiles:
+    - schedulerName: capability-scheduler
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -209,7 +231,17 @@ spec:
         command:
         - /scheduler
         - --config=/etc/kubernetes/scheduler-config.yaml
+        volumeMounts:
+        - name: config
+          mountPath: /etc/kubernetes
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: capability-scheduler-config
 ```
+
+Pods that use this scheduler set `spec.schedulerName: capability-scheduler`.
 
 ## Scheduling Based on Storage Capabilities
 
@@ -228,6 +260,9 @@ spec:
     matchLabels:
       app: timeseries-db
   template:
+    metadata:
+      labels:
+        app: timeseries-db
     spec:
       affinity:
         nodeAffinity:
@@ -276,6 +311,9 @@ spec:
     matchLabels:
       app: streaming
   template:
+    metadata:
+      labels:
+        app: streaming
     spec:
       affinity:
         nodeAffinity:
@@ -285,9 +323,9 @@ spec:
               - key: network-bandwidth
                 operator: In
                 values: ["10gbps", "1gbps"]
-              - key: network-latency
+              - key: network-latency-ms
                 operator: Lt
-                values: ["10ms"]
+                values: ["10"]
           preferredDuringSchedulingIgnoredDuringExecution:
           - weight: 100
             preference:
@@ -315,6 +353,9 @@ spec:
     matchLabels:
       app: sensor-collector
   template:
+    metadata:
+      labels:
+        app: sensor-collector
     spec:
       nodeSelector:
         has-thermal-sensor: "true"
@@ -339,6 +380,34 @@ Automatically discover and label node capabilities:
 
 ```yaml
 # capability-discovery-daemonset.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: capability-discovery
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: capability-discovery
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: capability-discovery
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: capability-discovery
+subjects:
+- kind: ServiceAccount
+  name: capability-discovery
+  namespace: kube-system
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -349,12 +418,16 @@ spec:
     matchLabels:
       app: capability-discovery
   template:
+    metadata:
+      labels:
+        app: capability-discovery
     spec:
+      serviceAccountName: capability-discovery
       hostNetwork: true
       hostPID: true
       containers:
       - name: discovery
-        image: alpine:latest
+        image: your-registry/capability-discovery:v1
         command:
         - sh
         - -c
@@ -365,7 +438,11 @@ spec:
           fi
 
           # Discover storage
-          STORAGE_TYPE=$(lsblk -d -o NAME,ROTA | grep '0$' && echo nvme || echo hdd)
+          if lsblk -d -n -o NAME,ROTA | awk '$2 == 0 { found = 1 } END { exit !found }'; then
+            STORAGE_TYPE=ssd
+          else
+            STORAGE_TYPE=hdd
+          fi
           kubectl label node $NODE_NAME storage-type=$STORAGE_TYPE --overwrite
 
           # Discover USB devices
