@@ -53,7 +53,7 @@ spec:
     spec:
       containers:
       - name: nfs-server
-        image: k8s.gcr.io/volume-nfs:0.8
+        image: registry.k8s.io/volume-nfs:0.8
         ports:
         - name: nfs
           containerPort: 2049
@@ -115,9 +115,8 @@ helm install nfs-provisioner nfs-subdir-external-provisioner/nfs-subdir-external
   --namespace nfs-system \
   --set nfs.server=nfs-server.nfs-system.svc.cluster.local \
   --set nfs.path=/exports \
-  --set storageClass.name=nfs-dynamic \
-  --set storageClass.defaultClass=false \
-  --set storageClass.accessModes=ReadWriteMany
+  --set storageClass.create=false \
+  --set storageClass.provisionerName=nfs-provisioner
 ```
 
 For manual deployment without Helm:
@@ -135,6 +134,9 @@ kind: ClusterRole
 metadata:
   name: nfs-provisioner-runner
 rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources: ["persistentvolumes"]
   verbs: ["get", "list", "watch", "create", "delete"]
@@ -161,6 +163,30 @@ roleRef:
   name: nfs-provisioner-runner
   apiGroup: rbac.authorization.k8s.io
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: leader-locking-nfs-provisioner
+  namespace: nfs-system
+rules:
+- apiGroups: [""]
+  resources: ["endpoints"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: leader-locking-nfs-provisioner
+  namespace: nfs-system
+subjects:
+- kind: ServiceAccount
+  name: nfs-provisioner
+  namespace: nfs-system
+roleRef:
+  kind: Role
+  name: leader-locking-nfs-provisioner
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -181,7 +207,7 @@ spec:
       serviceAccountName: nfs-provisioner
       containers:
       - name: nfs-provisioner
-        image: k8s.gcr.io/sig-storage/nfs-subdir-external-provisioner:v4.0.2
+        image: registry.k8s.io/sig-storage/nfs-subdir-external-provisioner:v4.0.2
         volumeMounts:
         - name: nfs-client-root
           mountPath: /persistentvolumes
@@ -215,7 +241,7 @@ parameters:
   pathPattern: "${.PVC.namespace}/${.PVC.name}"
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
-allowVolumeExpansion: true
+allowVolumeExpansion: false
 mountOptions:
 - hard
 - nfsvers=4.1
@@ -300,6 +326,7 @@ kubectl describe pvc shared-data
 ```
 
 The provisioner automatically creates a PersistentVolume and binds it to the PVC. All three nginx replicas share the same storage volume.
+The requested size is recorded on the PersistentVolume, but the NFS Subdir External Provisioner does not enforce per-volume quotas on the backing NFS share.
 
 ## Multiple Storage Classes
 
@@ -460,9 +487,9 @@ kubectl logs -n nfs-system deployment/nfs-provisioner
 kubectl run -it --rm debug --image=busybox --restart=Never -- \
   nc -zv nfs-server.nfs-system.svc.cluster.local 2049
 
-# Test NFS mount manually
-kubectl run -it --rm nfs-test --image=busybox --restart=Never -- \
-  mount -t nfs nfs-server.nfs-system.svc.cluster.local:/exports /mnt
+# Verify the provisioner can see the mounted NFS export
+kubectl exec -n nfs-system deployment/nfs-provisioner -- \
+  test -d /persistentvolumes
 
 # Check PVC events
 kubectl describe pvc <pvc-name>
