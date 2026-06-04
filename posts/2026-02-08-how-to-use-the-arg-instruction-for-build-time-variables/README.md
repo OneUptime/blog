@@ -19,7 +19,7 @@ ARG is essential for creating flexible Dockerfiles that can produce different im
 
 ARG VERSION=3.11
 
-# Define a build argument without a default (must be provided at build time)
+# Define a build argument without a default
 ARG API_KEY
 ```
 
@@ -29,7 +29,7 @@ Pass values when building:
 # Override the default value
 docker build --build-arg VERSION=3.12 -t myapp .
 
-# Provide a required argument
+# Provide an argument value
 docker build --build-arg API_KEY=abc123 -t myapp .
 ```
 
@@ -41,7 +41,7 @@ This is the most common point of confusion. Here is the difference:
 |---------|-----|-----|
 | Available during build | Yes | Yes |
 | Available at runtime | No | Yes |
-| Can be set from CLI | Yes (--build-arg) | No (only in Dockerfile) |
+| Can be set from CLI during build | Yes (--build-arg) | No (only in Dockerfile) |
 | Visible in image history | Yes | Yes |
 | Persists in running container | No | Yes |
 
@@ -272,16 +272,16 @@ docker build --build-arg TARGET_OS=linux --build-arg TARGET_ARCH=arm64 -t myapp:
 
 ## ARG and Build Cache
 
-ARG values affect Docker's build cache. If a build argument changes, all instructions after the ARG declaration that reference it (directly or indirectly) have their cache invalidated.
+ARG values affect Docker's build cache. If a build argument changes, the cache miss occurs at the first instruction that uses it. `RUN` instructions after an ARG declaration can also be affected because ARG values are passed to them as build-time environment variables.
 
 ```dockerfile
 FROM python:3.11-slim
 
-# Changing this ARG invalidates the cache for all subsequent layers
+# Changing this ARG invalidates the cache starting at the first affected instruction
 ARG APP_VERSION=1.0
 RUN echo "Version: $APP_VERSION"
 
-# These layers also get rebuilt because they come after the ARG
+# These layers may also get rebuilt because they follow the changed RUN layer
 COPY . .
 RUN pip install -r requirements.txt
 ```
