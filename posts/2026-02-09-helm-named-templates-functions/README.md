@@ -58,6 +58,13 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
 {{/*
+Application name
+*/}}
+{{- define "myapp.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
 Selector labels
 */}}
 {{- define "myapp.selectorLabels" -}}
@@ -141,10 +148,9 @@ Generate volume mounts for the application
 {{- define "myapp.volumeMounts" -}}
 {{- if .Values.persistence.enabled }}
 - name: data
-  mountPath: {{ .Values.persistence.mountPath }}
-  {{- if .Values.persistence.subPath }}
+  mountPath: {{ .Values.persistence.mountPath }}{{ if .Values.persistence.subPath }}
   subPath: {{ .Values.persistence.subPath }}
-  {{- end }}
+{{- end }}
 {{- end }}
 {{- if .Values.configMap.enabled }}
 - name: config
@@ -264,7 +270,11 @@ allowPrivilegeEscalation: false
 capabilities:
   drop:
   - ALL
-readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem | default true }}
+{{- if hasKey .Values.securityContext "readOnlyRootFilesystem" }}
+readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem }}
+{{- else }}
+readOnlyRootFilesystem: true
+{{- end }}
 {{- end }}
 {{- end -}}
 ```
