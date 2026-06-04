@@ -29,60 +29,9 @@ apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
 profiles:
 - schedulerName: default-scheduler
-  plugins:
-    queueSort:
-      enabled:
-      - name: PrioritySort
-    preFilter:
-      enabled:
-      - name: NodeResourcesFit
-      - name: NodePorts
-      - name: PodTopologySpread
-      - name: InterPodAffinity
-      - name: VolumeBinding
-    filter:
-      enabled:
-      - name: NodeUnschedulable
-      - name: NodeName
-      - name: TaintToleration
-      - name: NodeAffinity
-      - name: NodePorts
-      - name: NodeResourcesFit
-      - name: VolumeBinding
-      - name: PodTopologySpread
-      - name: InterPodAffinity
-    postFilter:
-      enabled:
-      - name: DefaultPreemption
-    preScore:
-      enabled:
-      - name: InterPodAffinity
-      - name: PodTopologySpread
-      - name: TaintToleration
-    score:
-      enabled:
-      - name: NodeResourcesBalancedAllocation
-        weight: 1
-      - name: ImageLocality
-        weight: 1
-      - name: InterPodAffinity
-        weight: 1
-      - name: NodeAffinity
-        weight: 1
-      - name: PodTopologySpread
-        weight: 2
-    reserve:
-      enabled:
-      - name: VolumeBinding
-    preBind:
-      enabled:
-      - name: VolumeBinding
-    bind:
-      enabled:
-      - name: DefaultBinder
 ```
 
-This represents the standard scheduling behavior that works for most workloads.
+This uses the default scheduling behavior that works for most workloads. When you add more profiles, all profiles must use the same `queueSort` plugin and configuration because kube-scheduler has a single pending Pods queue.
 
 ## Creating a High-Performance Profile
 
@@ -110,8 +59,8 @@ profiles:
       - name: NodeResourcesFit
     score:
       enabled:
-      # Prioritize nodes with most available resources
-      - name: NodeResourcesBalancedAllocation
+      # Prioritize nodes with more available requested resources
+      - name: NodeResourcesFit
         weight: 5
       # Prefer nodes with images already present
       - name: ImageLocality
@@ -126,7 +75,7 @@ profiles:
   - name: NodeResourcesFit
     args:
       scoringStrategy:
-        type: MostAllocated  # Pack pods tightly for performance
+        type: LeastAllocated  # Prefer nodes with more free requested resources
         resources:
         - name: cpu
           weight: 1
@@ -173,6 +122,7 @@ Configure a profile that packs pods densely to minimize infrastructure costs:
           weight: 1
   - name: PodTopologySpread
     args:
+      defaultingType: List
       defaultConstraints:
       - maxSkew: 5  # Allow more skew for better packing
         topologyKey: kubernetes.io/hostname
@@ -267,6 +217,7 @@ Configure a profile for batch workloads that can tolerate longer scheduling time
   pluginConfig:
   - name: PodTopologySpread
     args:
+      defaultingType: List
       defaultConstraints:
       - maxSkew: 2
         topologyKey: topology.kubernetes.io/zone
@@ -315,7 +266,8 @@ spec:
         - --leader-elect=true
         volumeMounts:
         - name: config
-          mountPath: /etc/kubernetes
+          mountPath: /etc/kubernetes/scheduler-config.yaml
+          subPath: scheduler-config.yaml
           readOnly: true
       volumes:
       - name: config
@@ -385,7 +337,7 @@ kubectl get events --all-namespaces --field-selector reason=Scheduled
 kubectl describe pod POD_NAME | grep -A5 Events
 
 # View scheduler logs for specific profile
-kubectl logs -n kube-system kube-scheduler-xxx | grep "high-performance-scheduler"
+kubectl logs -n kube-system -l component=kube-scheduler | grep "high-performance-scheduler"
 ```
 
 Export metrics to track profile usage:
@@ -408,13 +360,16 @@ spec:
 Query scheduler metrics:
 
 ```bash
+# Forward the scheduler's HTTPS metrics endpoint
+kubectl -n kube-system port-forward pod/<kube-scheduler-pod> 10259:10259
+
 # Get scheduling attempts by profile
-curl -s http://kube-scheduler-metrics:10259/metrics | \
-  grep scheduler_scheduling_attempts_total
+curl -ks https://127.0.0.1:10259/metrics | \
+  grep scheduler_schedule_attempts_total
 
 # Check scheduling latency by profile
-curl -s http://kube-scheduler-metrics:10259/metrics | \
-  grep scheduler_scheduling_duration_seconds
+curl -ks https://127.0.0.1:10259/metrics | \
+  grep scheduler_scheduling_attempt_duration_seconds
 ```
 
 ## Best Practices
