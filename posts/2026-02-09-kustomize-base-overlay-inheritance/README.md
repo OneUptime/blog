@@ -45,8 +45,10 @@ resources:
 - service.yaml
 - configmap.yaml
 
-commonLabels:
-  app: myapp
+labels:
+- includeSelectors: true
+  pairs:
+    app: myapp
 ```
 
 Each overlay references the base and applies environment-specific changes:
@@ -56,7 +58,7 @@ Each overlay references the base and applies environment-specific changes:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 namespace: production
@@ -113,7 +115,7 @@ Production includes monitoring while development might not:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 - ../../shared/monitoring
 - ../../shared/security
@@ -126,7 +128,7 @@ namespace: production
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 namespace: dev
@@ -186,7 +188,7 @@ Overlays selectively include components:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
 components:
@@ -222,11 +224,13 @@ Shared production configurations apply to all regions:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../../base
 
-commonLabels:
-  environment: production
+labels:
+- includeSelectors: true
+  pairs:
+    environment: production
 
 replicas:
 - name: myapp-deployment
@@ -251,13 +255,15 @@ Regional overlays add region-specific settings:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../shared
 
 namespace: prod-us-east
 
-commonLabels:
-  region: us-east
+labels:
+- includeSelectors: true
+  pairs:
+    region: us-east
 
 replicas:
 - name: myapp-deployment
@@ -297,9 +303,11 @@ resources:
 - deployment.yaml
 - service.yaml
 
-commonLabels:
-  company: example-corp
-  managed-by: platform-team
+labels:
+- includeSelectors: true
+  pairs:
+    company: example-corp
+    managed-by: platform-team
 
 patches:
 - target:
@@ -319,14 +327,14 @@ Individual applications extend the app-base:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
-- ../../app-base
-
-commonLabels:
-  app: api-service
-
 resources:
+- ../../app-base
 - api-specific-resources.yaml
+
+labels:
+- includeSelectors: true
+  pairs:
+    app: api-service
 ```
 
 Changes to app-base propagate to all applications automatically.
@@ -351,7 +359,7 @@ patches:
 
 ```yaml
 # overlays/production/kustomization.yaml
-bases:
+resources:
 - ../../base
 
 patches:
@@ -383,7 +391,7 @@ configMapGenerator:
 
 ```yaml
 # overlays/production/kustomization.yaml
-bases:
+resources:
 - ../../base
 
 configMapGenerator:
@@ -464,7 +472,7 @@ Document inheritance relationships:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
 - ../shared
 ```
 
@@ -481,7 +489,7 @@ cp overlays/production/*.yaml base/
 
 # Step 2: Create new production overlay referencing base
 cat > overlays/production/kustomization.yaml <<EOF
-bases:
+resources:
 - ../../base
 # Production-specific overrides here
 EOF
