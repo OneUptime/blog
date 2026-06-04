@@ -192,13 +192,18 @@ spec:
       - name: api
         image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
         env:
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Values.api.dbSecret }}
-              key: url
+        - name: DATABASE_URL_FILE
+          value: /run/secrets/db_url
+        volumeMounts:
+        - name: db-url
+          mountPath: /run/secrets/db_url
+          subPath: url
         resources:
           {{- toYaml .Values.api.resources | nindent 10 }}
+      volumes:
+      - name: db-url
+        secret:
+          secretName: {{ .Values.api.dbSecret }}
 ```
 
 Helm templates use Go templating syntax with values from `values.yaml`.
@@ -227,7 +232,7 @@ stringData:
   url: {{ .Values.api.databaseUrl | quote }}
 ---
 # For external secrets (better practice)
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: {{ .Values.web.name }}-ssl
@@ -432,12 +437,18 @@ helm upgrade --install $SWARM_STACK $HELM_CHART \
   --timeout 10m
 
 # Step 4: Verify Kubernetes deployment
-kubectl rollout status deployment -l "app.kubernetes.io/instance=$SWARM_STACK" -n $NAMESPACE
+kubectl rollout status deployment/web -n $NAMESPACE
+kubectl rollout status deployment/api -n $NAMESPACE
 
 # Step 5: Run smoke tests
 echo "Running smoke tests..."
-POD=$(kubectl get pods -n $NAMESPACE -l app=web -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n $NAMESPACE $POD -- curl -s http://localhost/health
+kubectl run curl-smoke-test \
+  --rm \
+  -i \
+  --restart=Never \
+  --image=curlimages/curl:8.8.0 \
+  -n $NAMESPACE \
+  -- curl -fsS http://web/
 
 if [ $? -ne 0 ]; then
   echo "ERROR: Smoke tests failed. Rolling back..."
@@ -511,7 +522,13 @@ kind: Deployment
 metadata:
   name: api
 spec:
+  selector:
+    matchLabels:
+      app: api
   template:
+    metadata:
+      labels:
+        app: api
     spec:
       affinity:
         nodeAffinity:
@@ -565,7 +582,9 @@ kubectl apply --dry-run=client -f rendered-manifests.yaml
 
 # Check for deprecated APIs
 echo "Checking for deprecated APIs..."
-pluto detect-files -f rendered-manifests.yaml
+mkdir -p rendered
+mv rendered-manifests.yaml rendered/rendered-manifests.yaml
+pluto detect-files -d rendered
 
 echo "Validation complete"
 ```
