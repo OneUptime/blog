@@ -85,29 +85,23 @@ Generate TLS certificates:
 # Create certificate directory
 sudo mkdir -p /data/cert
 
-# Generate private key
-openssl genrsa -out /data/cert/registry.key 4096
-
-# Generate certificate signing request
-openssl req -new -key /data/cert/registry.key \
-  -out /data/cert/registry.csr \
-  -subj "/C=US/ST=State/L=City/O=Organization/CN=registry.internal.example.com"
-
-# Generate self-signed certificate (or use your CA)
-openssl x509 -req -days 3650 \
-  -in /data/cert/registry.csr \
-  -signkey /data/cert/registry.key \
-  -out /data/cert/registry.crt
+# Generate a self-signed certificate with a subjectAltName (or use your CA)
+openssl req -x509 -newkey rsa:4096 -nodes \
+  -keyout /data/cert/registry.key \
+  -out /data/cert/registry.crt \
+  -days 3650 \
+  -subj "/C=US/ST=State/L=City/O=Organization/CN=registry.internal.example.com" \
+  -addext "subjectAltName=DNS:registry.internal.example.com"
 ```
 
 Install Harbor:
 
 ```bash
 # Run the installer
-sudo ./install.sh --with-trivy --with-chartmuseum
+sudo ./install.sh --with-trivy
 
 # Verify Harbor is running
-docker-compose ps
+docker compose ps
 
 # Access Harbor web UI at https://registry.internal.example.com
 # Default credentials: admin / ChangeThisPassword
@@ -121,17 +115,19 @@ For a lighter-weight option, use the official Docker registry:
 # Create directories
 sudo mkdir -p /opt/registry/{data,certs,auth}
 
+# Copy the registry certificate and key
+sudo cp /data/cert/registry.crt /opt/registry/certs/registry.crt
+sudo cp /data/cert/registry.key /opt/registry/certs/registry.key
+
 # Generate htpasswd authentication
 docker run --rm --entrypoint htpasswd httpd:2 -Bbn admin password123 \
   | sudo tee /opt/registry/auth/htpasswd
 
-# Deploy registry with docker-compose
+# Deploy registry with Docker Compose
 cat <<EOF | sudo tee /opt/registry/docker-compose.yml
-version: '3'
-
 services:
   registry:
-    image: registry:2
+    image: registry:3
     container_name: internal-registry
     restart: always
     ports:
@@ -151,10 +147,10 @@ EOF
 
 # Start the registry
 cd /opt/registry
-docker-compose up -d
+docker compose up -d
 
 # Verify it's running
-docker-compose logs
+docker compose logs
 curl -u admin:password123 https://registry.internal.example.com:5000/v2/_catalog
 ```
 
@@ -167,8 +163,8 @@ Create a script to pull images from public registries and push them to your inte
 # sync-images.sh
 
 # Configuration
-EXTERNAL_REGISTRY="docker.io"
 INTERNAL_REGISTRY="registry.internal.example.com"
+# Use registry.internal.example.com:5000 if you deployed the Docker Registry alternative.
 REGISTRY_USER="admin"
 REGISTRY_PASS="password123"
 
@@ -223,7 +219,7 @@ For continuous synchronization, use Harbor's replication feature or create a cro
 
 ## Configuring Kubernetes to Use the Internal Registry
 
-Configure containerd to use your internal registry:
+Configure containerd to trust your internal registry:
 
 ```bash
 # Create containerd configuration directory
@@ -246,26 +242,16 @@ sudo cp /data/cert/registry.crt /etc/containerd/certs.d/registry.internal.exampl
 sudo nano /etc/containerd/config.toml
 ```
 
-Add registry configuration:
+Add the registry configuration that matches your containerd major version:
 
 ```toml
+# For containerd 1.x:
 [plugins."io.containerd.grpc.v1.cri".registry]
   config_path = "/etc/containerd/certs.d"
 
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-      endpoint = ["https://registry.internal.example.com"]
-
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.k8s.io"]
-      endpoint = ["https://registry.internal.example.com"]
-
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."quay.io"]
-      endpoint = ["https://registry.internal.example.com"]
-
-  [plugins."io.containerd.grpc.v1.cri".registry.configs]
-    [plugins."io.containerd.grpc.v1.cri".registry.configs."registry.internal.example.com".auth]
-      username = "admin"
-      password = "password123"
+# For containerd 2.x:
+[plugins."io.containerd.cri.v1.images".registry]
+  config_path = "/etc/containerd/certs.d"
 ```
 
 Restart containerd:
@@ -339,34 +325,26 @@ nodeRegistration:
 EOF
 
 # Pre-pull all required images
-kubeadm config images list --config kubeadm-config.yaml
+sudo kubeadm config images pull --config kubeadm-config.yaml
 
 # Initialize cluster
 sudo kubeadm init --config kubeadm-config.yaml
 ```
 
-## Setting Up Registry Mirrors for System Components
+## Setting Up Image Pull Settings for System Components
 
-Configure registry mirrors for critical system images:
+Configure kubelet image pull settings for critical system images:
 
-```bash
-# Create ConfigMap for kubelet image configuration
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubelet-config
-  namespace: kube-system
-data:
-  kubelet: |
-    apiVersion: kubelet.config.k8s.io/v1beta1
-    kind: KubeletConfiguration
-    imageGCHighThresholdPercent: 85
-    imageGCLowThresholdPercent: 80
-    imageMinimumGCAge: 2m
-    registryPullQPS: 5
-    registryBurst: 10
-EOF
+```yaml
+# Add this to your kubeadm configuration, or update each node's
+# /var/lib/kubelet/config.yaml and restart kubelet.
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+imageGCHighThresholdPercent: 85
+imageGCLowThresholdPercent: 80
+imageMinimumGCAge: 2m
+registryPullQPS: 5
+registryBurst: 10
 ```
 
 ## Implementing Image Policy and Admission Control
@@ -406,7 +384,7 @@ Monitor your internal registry:
 du -sh /opt/registry/data
 
 # View registry logs
-docker-compose logs -f registry
+docker compose logs -f registry
 
 # Query Harbor API for statistics
 curl -u admin:password123 \
@@ -422,21 +400,12 @@ kubectl get events --all-namespaces | grep -i pull
 
 Set up alerts:
 
-```bash
-# Create Prometheus monitoring for registry
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Service
-metadata:
-  name: harbor-metrics
-  namespace: default
-spec:
-  ports:
-  - port: 8001
-    name: metrics
-  selector:
-    app: harbor
-EOF
+```yaml
+# Enable Harbor metrics in harbor.yml before installing or reconfiguring Harbor
+metric:
+  enabled: true
+  port: 9090
+  path: /metrics
 ```
 
 ## Troubleshooting Common Issues
