@@ -8,7 +8,7 @@ Description: Set up and configure the Amazon EBS CSI driver on EKS for dynamic p
 
 ---
 
-Amazon EKS no longer includes the in-tree EBS volume plugin as of Kubernetes 1.23. The Amazon EBS Container Storage Interface (CSI) driver is now the recommended way to provision and manage EBS volumes for persistent storage in EKS clusters.
+Amazon EKS enables CSI migration for Amazon EBS volumes by default on Kubernetes 1.23 and later. The Amazon EBS Container Storage Interface (CSI) driver is now the recommended way to provision and manage EBS volumes for persistent storage in EKS clusters.
 
 This guide shows you how to install and configure the EBS CSI driver, create storage classes for different workload requirements, and manage volume snapshots.
 
@@ -31,94 +31,28 @@ The driver runs as a DaemonSet on cluster nodes and a Deployment for the control
 Create an IAM role for the CSI driver using IRSA (IAM Roles for Service Accounts):
 
 ```bash
-# Get your cluster OIDC provider
+# Make sure the cluster has an IAM OIDC provider
 
 CLUSTER_NAME="my-eks-cluster"
-OIDC_ID=$(aws eks describe-cluster \
-  --name $CLUSTER_NAME \
-  --query "cluster.identity.oidc.issuer" \
-  --output text | cut -d '/' -f 5)
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+eksctl utils associate-iam-oidc-provider \
+  --cluster=$CLUSTER_NAME \
+  --approve
 
-# Create IAM policy
-cat > ebs-csi-policy.json <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateSnapshot",
-        "ec2:AttachVolume",
-        "ec2:DetachVolume",
-        "ec2:ModifyVolume",
-        "ec2:DescribeAvailabilityZones",
-        "ec2:DescribeInstances",
-        "ec2:DescribeSnapshots",
-        "ec2:DescribeTags",
-        "ec2:DescribeVolumes",
-        "ec2:DescribeVolumesModifications"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateTags"
-      ],
-      "Resource": [
-        "arn:aws:ec2:*:*:volume/*",
-        "arn:aws:ec2:*:*:snapshot/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DeleteTags"
-      ],
-      "Resource": [
-        "arn:aws:ec2:*:*:volume/*",
-        "arn:aws:ec2:*:*:snapshot/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateVolume"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DeleteVolume"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DeleteSnapshot"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-EOF
-
-aws iam create-policy \
-  --policy-name AmazonEBSCSIDriverPolicy \
-  --policy-document file://ebs-csi-policy.json
+# Use the AWS managed policy for the driver
+EBS_CSI_POLICY_ARN="arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicyV2"
 ```
 
-Create the IAM role and service account:
+Create the IAM role for the EKS add-on:
 
 ```bash
 eksctl create iamserviceaccount \
   --cluster=$CLUSTER_NAME \
   --namespace=kube-system \
   --name=ebs-csi-controller-sa \
-  --attach-policy-arn=arn:aws:iam::ACCOUNT_ID:policy/AmazonEBSCSIDriverPolicy \
+  --attach-policy-arn=$EBS_CSI_POLICY_ARN \
   --approve \
+  --role-only \
   --role-name AmazonEKS_EBS_CSI_DriverRole
 ```
 
@@ -128,7 +62,7 @@ Install the EBS CSI driver using the EKS addon:
 aws eks create-addon \
   --cluster-name $CLUSTER_NAME \
   --addon-name aws-ebs-csi-driver \
-  --service-account-role-arn arn:aws:iam::ACCOUNT_ID:role/AmazonEKS_EBS_CSI_DriverRole
+  --service-account-role-arn arn:aws:iam::$ACCOUNT_ID:role/AmazonEKS_EBS_CSI_DriverRole
 ```
 
 Alternatively, install using Helm:
@@ -140,8 +74,9 @@ helm repo update
 helm install aws-ebs-csi-driver \
   --namespace kube-system \
   aws-ebs-csi-driver/aws-ebs-csi-driver \
-  --set controller.serviceAccount.create=false \
-  --set controller.serviceAccount.name=ebs-csi-controller-sa
+  --set controller.serviceAccount.create=true \
+  --set controller.serviceAccount.name=ebs-csi-controller-sa \
+  --set-string controller.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn=arn:aws:iam::$ACCOUNT_ID:role/AmazonEKS_EBS_CSI_DriverRole
 ```
 
 ## Creating Storage Classes
@@ -163,7 +98,7 @@ parameters:
   type: gp3
   iops: "3000"
   throughput: "125"
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
   encrypted: "true"
 ```
 
@@ -181,7 +116,7 @@ allowVolumeExpansion: true
 parameters:
   type: io2
   iops: "10000"
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
   encrypted: "true"
 ```
 
@@ -215,6 +150,18 @@ Deploy PostgreSQL using the PVC:
 
 ```yaml
 # postgres-deployment.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -243,20 +190,16 @@ spec:
         volumeMounts:
         - name: postgres-data
           mountPath: /var/lib/postgresql/data
-  volumeClaimTemplates:
-  - metadata:
-      name: postgres-data
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      storageClassName: gp3
-      resources:
-        requests:
-          storage: 50Gi
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: postgres-data
 ```
 
 Apply the configurations:
 
 ```bash
+kubectl apply -f postgres-pvc.yaml
 kubectl apply -f postgres-deployment.yaml
 ```
 
@@ -289,26 +232,22 @@ The EBS CSI driver automatically:
 1. Modifies the EBS volume size
 2. Expands the filesystem inside the pod
 
-For manual filesystem expansion:
+If filesystem expansion does not complete, inspect the PVC and pod events:
 
 ```bash
-# If automatic expansion fails, resize manually
-kubectl exec postgres-0 -- resize2fs /dev/xvda
+kubectl describe pvc postgres-data
+kubectl describe pod postgres-0
 ```
 
 ## Creating Volume Snapshots
 
-Install snapshot CRDs and controller:
+Install the snapshot controller:
 
 ```bash
-# Install snapshot CRDs
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
-
-# Install snapshot controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
+# Install the Amazon EKS managed snapshot controller add-on
+aws eks create-addon \
+  --cluster-name $CLUSTER_NAME \
+  --addon-name snapshot-controller
 ```
 
 Create a VolumeSnapshotClass:
@@ -387,6 +326,16 @@ kubectl run postgres-restored \
       "containers": [{
         "name": "postgres",
         "image": "postgres:15",
+        "env": [
+          {
+            "name": "POSTGRES_PASSWORD",
+            "value": "changeme"
+          },
+          {
+            "name": "PGDATA",
+            "value": "/var/lib/postgresql/data/pgdata"
+          }
+        ],
         "volumeMounts": [{
           "name": "data",
           "mountPath": "/var/lib/postgresql/data"
@@ -497,10 +446,11 @@ allowVolumeExpansion: true
 parameters:
   type: gp3
   encrypted: "true"
-  kmsKeyId: "arn:aws:kms:us-east-1:ACCOUNT_ID:key/KEY_ID"
+  kmsKeyId: "arn:aws:kms:us-east-1:123456789012:key/KEY_ID"
+  csi.storage.k8s.io/fstype: ext4
 ```
 
-All volumes created with this storage class use KMS encryption.
+All volumes created with this storage class use KMS encryption. If you use a customer managed KMS key, make sure the EBS CSI driver IAM role also has the required KMS permissions.
 
 ## Conclusion
 
