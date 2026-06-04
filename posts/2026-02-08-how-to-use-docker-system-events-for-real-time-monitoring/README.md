@@ -73,7 +73,7 @@ These are the most common events you will monitor.
 - `untag` - Image untagged
 - `delete` - Image deleted
 - `import` - Image imported
-- `build` - Image build step
+- `load` / `save` - Image loaded from or saved to an archive
 
 ### Volume Events
 
@@ -156,7 +156,7 @@ docker events --filter event=die --filter label=environment=production
 
 ## Historical Events
 
-By default, `docker events` shows only new events from the moment you start watching. You can also retrieve historical events with the `--since` and `--until` flags.
+By default, `docker events` shows only new events from the moment you start watching. You can also retrieve recent historical events with the `--since` and `--until` flags. Docker only returns the last 256 logged events, so very busy environments may not retain all events from the requested time range.
 
 ```bash
 # Show events from the last hour
@@ -310,14 +310,31 @@ done
 
 ### Prometheus Integration
 
-Use events to generate metrics for Prometheus.
+Use events to generate metrics in Prometheus text format.
 
 ```bash
-# Count events by type and pipe to a metrics endpoint
+#!/bin/bash
+# Count events by type and write a textfile collector metric
+
+METRICS_FILE="/tmp/docker_metrics.prom"
+declare -A COUNTS
+
 docker events --format '{{json .}}' | while read event; do
   TYPE=$(echo "$event" | jq -r '.Type')
   ACTION=$(echo "$event" | jq -r '.Action')
-  echo "docker_event_total{type=\"$TYPE\",action=\"$ACTION\"} 1" >> /tmp/docker_metrics.prom
+  KEY="${TYPE}|${ACTION}"
+  COUNTS["$KEY"]=$(( ${COUNTS["$KEY"]:-0} + 1 ))
+
+  {
+    echo '# HELP docker_event_total Total Docker events observed by type and action.'
+    echo '# TYPE docker_event_total counter'
+    for key in "${!COUNTS[@]}"; do
+      IFS='|' read -r METRIC_TYPE METRIC_ACTION <<< "$key"
+      printf 'docker_event_total{type="%s",action="%s"} %d\n' \
+        "$METRIC_TYPE" "$METRIC_ACTION" "${COUNTS[$key]}"
+    done
+  } > "${METRICS_FILE}.tmp"
+  mv "${METRICS_FILE}.tmp" "$METRICS_FILE"
 done
 ```
 
