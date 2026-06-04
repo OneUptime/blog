@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Window, GMSA, Active Directory, Credential Spec, Security
+Tags: Kubernetes, Windows, GMSA, Active Directory, Credential Spec, Security
 
 Description: Learn how to create and configure gMSA credential specifications for seamless Active Directory integration with Windows containers running on Kubernetes.
 
@@ -43,10 +43,10 @@ New-ADServiceAccount -Name app-gmsa `
   -PrincipalsAllowedToRetrieveManagedPassword "K8s-Nodes"
 
 # Generate credential spec (on Windows node or domain-joined machine)
-New-CredentialSpec -Name app-gmsa -AccountName app-gmsa
+$generatedCredSpec = New-CredentialSpec -Name app-gmsa -AccountName app-gmsa -Domain $(Get-ADDomain -Current LocalComputer)
 
 # View the generated file
-$credSpecPath = "C:\ProgramData\Docker\CredentialSpecs\app-gmsa.json"
+$credSpecPath = $generatedCredSpec.Path
 Get-Content $credSpecPath | ConvertFrom-Json | ConvertTo-Json -Depth 10
 ```
 
@@ -75,38 +75,33 @@ The generated credential spec contains:
         "Name": "app-gmsa",
         "Scope": "CONTOSO"
       }
-    ],
-    "HostAccountConfig": {
-      "PortableCcgVersion": "1",
-      "PluginGUID": "{859E1386-BDB4-49E8-85C7-3070B13920E1}",
-      "PluginInput": {
-        "CredentialArn": ""
-      }
-    }
+    ]
   }
 }
 ```
 
-## Creating Credential Specs for Multiple Domains
+For non-domain-joined Windows container hosts, the credential spec also needs a `HostAccountConfig` section with the `ccg.exe` plug-in GUID and plug-in-specific input.
 
-For environments with multiple AD domains or forests:
+## Creating Credential Specs for Additional gMSA Accounts
+
+For environments where a container needs to use additional gMSA accounts in the same domain:
 
 ```powershell
-# Create gMSA in domain contoso.com
+# Create primary gMSA in domain contoso.com
 New-ADServiceAccount -Name webapp-gmsa `
   -DNSHostName webapp-gmsa.contoso.com `
   -Server dc1.contoso.com
 
-# Create gMSA in domain fabrikam.com
-New-ADServiceAccount -Name webapp-gmsa `
-  -DNSHostName webapp-gmsa.fabrikam.com `
-  -Server dc1.fabrikam.com
+# Create additional gMSA in the same domain
+New-ADServiceAccount -Name logagent-gmsa `
+  -DNSHostName logagent-gmsa.contoso.com `
+  -Server dc1.contoso.com
 
-# Generate credential spec for multi-domain access
-$credSpec = New-CredentialSpec -Name webapp-multi -AccountName webapp-gmsa
+# Generate credential spec with an additional gMSA account
+$credSpec = New-CredentialSpec -Name webapp-with-logagent -AccountName webapp-gmsa -AdditionalAccounts logagent-gmsa
 ```
 
-Manually create a multi-domain credential spec:
+Manually create a credential spec with additional accounts:
 
 ```json
 {
@@ -127,7 +122,15 @@ Manually create a multi-domain credential spec:
       },
       {
         "Name": "webapp-gmsa",
-        "Scope": "fabrikam.com"
+        "Scope": "CONTOSO"
+      },
+      {
+        "Name": "logagent-gmsa",
+        "Scope": "contoso.com"
+      },
+      {
+        "Name": "logagent-gmsa",
+        "Scope": "CONTOSO"
       }
     ]
   }
@@ -151,8 +154,8 @@ if [ -z "$CREDSPEC_FILE" ] || [ -z "$GMSA_NAME" ]; then
   exit 1
 fi
 
-# Read and encode the credential spec
-CREDSPEC_JSON=$(cat $CREDSPEC_FILE)
+# Read the credential spec
+CREDSPEC_JSON=$(cat "$CREDSPEC_FILE")
 
 # Create Kubernetes YAML
 cat <<YAML
@@ -188,11 +191,6 @@ credspec:
       Scope: contoso.com
     - Name: sql-app-gmsa
       Scope: CONTOSO
-    HostAccountConfig:
-      PluginGUID: "{859E1386-BDB4-49E8-85C7-3070B13920E1}"
-      PluginInput:
-        CredentialArn: ""
-      PortableCcgVersion: "1"
   CmsPlugins:
   - ActiveDirectory
   DomainJoinConfig:
@@ -210,8 +208,8 @@ Apply the credential spec:
 kubectl apply -f app-gmsa-credspec.yaml
 
 # Verify creation
-kubectl get gmsacredentialspec
-kubectl describe gmsacredentialspec app-gmsa
+kubectl get gmsacredentialspecs
+kubectl describe gmsacredentialspecs app-gmsa
 ```
 
 ## Managing Multiple Credential Specs
@@ -224,7 +222,6 @@ apiVersion: windows.k8s.io/v1
 kind: GMSACredentialSpec
 metadata:
   name: prod-db-gmsa
-  namespace: production
   labels:
     app: database
     environment: production
@@ -233,9 +230,16 @@ credspec:
     GroupManagedServiceAccounts:
     - Name: prod-db-gmsa
       Scope: contoso.com
+    - Name: prod-db-gmsa
+      Scope: CONTOSO
+  CmsPlugins:
+  - ActiveDirectory
   DomainJoinConfig:
     DnsName: contoso.com
+    DnsTreeName: contoso.com
+    Guid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
     MachineAccountName: prod-db-gmsa
+    NetBiosName: CONTOSO
     Sid: S-1-5-21-1111111111-2222222222-3333333333
 
 ---
@@ -244,7 +248,6 @@ apiVersion: windows.k8s.io/v1
 kind: GMSACredentialSpec
 metadata:
   name: staging-db-gmsa
-  namespace: staging
   labels:
     app: database
     environment: staging
@@ -253,9 +256,16 @@ credspec:
     GroupManagedServiceAccounts:
     - Name: staging-db-gmsa
       Scope: contoso.com
+    - Name: staging-db-gmsa
+      Scope: CONTOSO
+  CmsPlugins:
+  - ActiveDirectory
   DomainJoinConfig:
     DnsName: contoso.com
+    DnsTreeName: contoso.com
+    Guid: "b1c2d3e4-f5a6-7890-bcde-fa1234567890"
     MachineAccountName: staging-db-gmsa
+    NetBiosName: CONTOSO
     Sid: S-1-5-21-4444444444-5555555555-6666666666
 ```
 
@@ -280,7 +290,7 @@ setspn -L webapp-gmsa
 #   HTTP/webapp
 ```
 
-Update the credential spec if SPNs change:
+You do not need to update the credential spec when SPNs change in Active Directory. If you track SPNs in Kubernetes manifests, use annotations only as documentation:
 
 ```yaml
 apiVersion: windows.k8s.io/v1
@@ -294,9 +304,16 @@ credspec:
     GroupManagedServiceAccounts:
     - Name: webapp-gmsa
       Scope: contoso.com
+    - Name: webapp-gmsa
+      Scope: CONTOSO
+  CmsPlugins:
+  - ActiveDirectory
   DomainJoinConfig:
     DnsName: contoso.com
+    DnsTreeName: contoso.com
+    Guid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
     MachineAccountName: webapp-gmsa
+    NetBiosName: CONTOSO
     Sid: S-1-5-21-...
 ```
 
@@ -335,8 +352,9 @@ try {
     exit 1
 }
 
-# Verify SID matches
-$adSid = $gmsa.SID.Value
+# Verify domain SID matches
+$domain = Get-ADDomain -Current LocalComputer
+$adSid = $domain.DomainSID.Value
 $credSpecSid = $credSpec.DomainJoinConfig.Sid
 
 if ($adSid -ne $credSpecSid) {
@@ -348,18 +366,16 @@ if ($adSid -ne $credSpecSid) {
 }
 
 # Verify DNS names
-$domain = $gmsa.DNSHostName.Split('.')[1..99] -join '.'
-if ($credSpec.DomainJoinConfig.DnsName -ne $domain) {
+if ($credSpec.DomainJoinConfig.DnsName -ne $domain.DNSRoot) {
     Write-Warning "DNS name mismatch"
 } else {
     Write-Host "✓ DNS name matches"
 }
 
 # Test if current machine can retrieve gMSA
-try {
-    Test-ADServiceAccount -Identity $gMSAName
+if (Test-ADServiceAccount -Identity $gMSAName) {
     Write-Host "✓ Can retrieve gMSA credentials"
-} catch {
+} else {
     Write-Warning "Cannot retrieve gMSA credentials from this machine"
 }
 
@@ -369,7 +385,8 @@ Write-Host "`nCredential spec validation complete"
 Run validation:
 
 ```powershell
-.\validate-credspec.ps1 -CredSpecPath "C:\ProgramData\Docker\CredentialSpecs\app-gmsa.json" -gMSAName "app-gmsa"
+$credSpecPath = (Get-CredentialSpec | Where-Object Name -eq "app-gmsa.json").Path
+.\validate-credspec.ps1 -CredSpecPath $credSpecPath -gMSAName "app-gmsa"
 ```
 
 ## Automating Credential Spec Management
@@ -382,18 +399,16 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$gMSAName,
 
-    [Parameter(Mandatory=$true)]
-    [string]$Domain,
-
-    [string]$Namespace = "default"
+    [Parameter(Mandatory=$false)]
+    [string]$Domain = (Get-ADDomain -Current LocalComputer).DNSRoot
 )
 
 # Generate credential spec
 Write-Host "Generating credential spec for $gMSAName..."
-New-CredentialSpec -Name $gMSAName -AccountName $gMSAName
+$generatedCredSpec = New-CredentialSpec -Name $gMSAName -AccountName $gMSAName -Domain $Domain
 
 # Read generated spec
-$credSpecPath = "C:\ProgramData\Docker\CredentialSpecs\$gMSAName.json"
+$credSpecPath = $generatedCredSpec.Path
 $credSpec = Get-Content $credSpecPath | ConvertFrom-Json
 
 # Create Kubernetes YAML
@@ -402,7 +417,6 @@ apiVersion: windows.k8s.io/v1
 kind: GMSACredentialSpec
 metadata:
   name: $gMSAName
-  namespace: $Namespace
   labels:
     gmsa-account: $gMSAName
 credspec:
@@ -429,8 +443,9 @@ Common issues and solutions:
 ```powershell
 # Issue: Invalid SID in credential spec
 # Solution: Regenerate credential spec
-Remove-Item "C:\ProgramData\Docker\CredentialSpecs\$gMSAName.json"
-New-CredentialSpec -Name $gMSAName -AccountName $gMSAName
+$credSpecPath = (Get-CredentialSpec | Where-Object Name -eq "${gMSAName}.json").Path
+Remove-Item $credSpecPath
+New-CredentialSpec -Name $gMSAName -AccountName $gMSAName -Domain $(Get-ADDomain -Current LocalComputer)
 
 # Issue: Domain join configuration incorrect
 # Solution: Verify AD domain information
@@ -442,7 +457,7 @@ Get-ADServiceAccount $gMSAName -Properties PrincipalsAllowedToRetrieveManagedPas
 
 # Issue: Credential spec not found by webhook
 # Solution: Verify CRD exists
-kubectl get gmsacredentialspec -A
+kubectl get gmsacredentialspecs
 
 # Check webhook logs
 kubectl logs -n kube-system -l app=gmsa-webhook
@@ -468,4 +483,4 @@ Test credential specs in development environments before production deployment.
 
 Proper credential spec configuration is essential for reliable gMSA integration with Kubernetes. By understanding the credential spec structure and using automated generation tools, you can deploy Windows containers that seamlessly authenticate to Active Directory resources.
 
-Start with simple single-domain scenarios and expand to complex multi-domain configurations as your understanding grows. Always validate credential specs thoroughly before production deployment to avoid authentication failures.
+Start with simple single-domain scenarios and expand to additional gMSA account configurations as your understanding grows. Always validate credential specs thoroughly before production deployment to avoid authentication failures.
