@@ -31,19 +31,12 @@ docker scout quickview myregistry.example.com/myapp:v2.3.1
 Typical output looks something like this:
 
 ```text
-  Target     myapp:latest
-  Digest     sha256:abc123...
-  Base image node:20-alpine
-
-    Vulnerabilities
-      Critical    2
-      High        8
-      Medium     24
-      Low        15
-
-    Base image update available
-      node:20-alpine (current)  ->  node:20-alpine (updated)
-      Fixes: 1C 3H 5M
+  Your image           myapp:latest        |    2C     8H    24M    15L
+  Base image           node:22-alpine      |    1C     3H     8M     7L
+  Refreshed base image node:22-alpine      |    0C     1H     5M     7L
+                                            |    -1     -2     -3      0
+  Updated base image   node:24-alpine      |    0C     0H     4M     6L
+                                            |    -1     -3     -4     -1
 ```
 
 The output tells you several things at once: total vulnerability count by severity, what base image you are using, and whether updating the base image would fix some of those vulnerabilities.
@@ -149,7 +142,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -179,10 +172,10 @@ Let's break down each section of quickview output so you know what to look for.
 
 The vulnerability counts are grouped into four severity levels:
 
-- **Critical** - Actively exploited or easily exploitable vulnerabilities. Fix these immediately.
-- **High** - Significant risk. Plan to fix these within your current sprint.
-- **Medium** - Moderate risk. Track these and fix when convenient.
-- **Low** - Minimal risk. Informational.
+- **Critical** - Highest-severity vulnerabilities. Prioritize investigation and remediation.
+- **High** - Significant risk. Plan to fix these soon, especially when a fix is available.
+- **Medium** - Moderate risk. Track these and fix based on your risk policy.
+- **Low** - Lower risk. Track these over time.
 
 ### Base Image Information
 
@@ -198,7 +191,7 @@ FROM node:20-alpine3.19
 
 ### Policy Status
 
-If your organization has configured Docker Scout policies, quickview shows whether the image passes or fails each policy. Policies might include rules like "no critical CVEs" or "base image must be less than 30 days old."
+If your organization has configured Docker Scout policies, quickview can show whether the image passes or fails each policy. Policies might include rules like "no fixable critical or high vulnerabilities" or "base image must be up to date."
 
 ## Quickview for Base Image Selection
 
