@@ -57,9 +57,11 @@ The format is `container-name=image:tag`. Container names come from the deployme
 Track why changes were made:
 
 ```bash
-# Update with change-cause annotation
-kubectl set image deployment/webapp webapp=webapp:v2.0 \
-  --record
+# Add a change-cause annotation, then update the image
+kubectl annotate deployment/webapp \
+  kubernetes.io/change-cause="updated webapp image to v2.0" \
+  --overwrite
+kubectl set image deployment/webapp webapp=webapp:v2.0
 
 # Check rollout history to see recorded changes
 kubectl rollout history deployment/webapp
@@ -68,7 +70,7 @@ kubectl rollout history deployment/webapp
 kubectl rollout history deployment/webapp --revision=2
 ```
 
-The `--record` flag adds change information to rollout history.
+The `kubernetes.io/change-cause` annotation adds change information to rollout history. In older Kubernetes versions, `--record` could populate this field automatically, but that flag is deprecated.
 
 ## Updating Environment Variables
 
@@ -201,15 +203,15 @@ Selector changes take effect immediately and can disrupt traffic.
 Modify role bindings:
 
 ```bash
-# Add user to role binding
+# Update role binding subjects with a user
 kubectl set subject rolebinding/developers \
   --user=newuser@example.com
 
-# Add service account to cluster role binding
+# Update cluster role binding subjects with a service account
 kubectl set subject clusterrolebinding/admin \
   --serviceaccount=kube-system:admin-sa
 
-# Add group
+# Update role binding subjects with a group
 kubectl set subject rolebinding/viewers \
   --group=engineering
 ```
@@ -247,7 +249,7 @@ kubectl rollout status deployment/$DEPLOYMENT -n $NAMESPACE
 echo "Deployment updated successfully"
 ```
 
-Scripts combine multiple updates into atomic operations.
+Scripts combine multiple updates into repeatable operations. Use a single patch if the changes must be applied atomically.
 
 ## Setting Environment from ConfigMaps
 
@@ -285,13 +287,13 @@ kubectl create secret generic db-creds \
 # Set all Secret keys as env vars
 kubectl set env deployment/webapp --from=secret/db-creds
 
-# Set specific keys from Secret
+# Import specific keys from Secret
 kubectl set env deployment/webapp \
-  DB_USER --from=secret/db-creds:username \
-  DB_PASS --from=secret/db-creds:password
+  --from=secret/db-creds \
+  --keys=username,password
 ```
 
-This injects secret data without exposing it in command history.
+This injects secret references without putting the secret values in command history.
 
 ## Removing Environment Variables
 
@@ -323,10 +325,10 @@ kubectl set resources deployment/webapp \
   -c=nginx \
   --limits=cpu=100m,memory=128Mi
 
-# Set resources for multiple containers
+# Set the same resources for multiple containers
 kubectl set resources deployment/webapp \
-  -c=webapp --limits=cpu=500m,memory=512Mi \
-  -c=nginx --limits=cpu=100m,memory=128Mi
+  -c=webapp,nginx \
+  --limits=cpu=500m,memory=512Mi
 ```
 
 This provides granular control in multi-container scenarios.
@@ -366,7 +368,7 @@ kubectl rollout undo deployment/webapp --to-revision=3
 kubectl rollout status deployment/webapp
 ```
 
-Rollback works for all changes including those made with set.
+Rollback works for Deployment revisions created by Pod template changes, including image, environment, resource, and service account updates made with set.
 
 ## Validating Changes
 
@@ -443,10 +445,21 @@ kubectl set image deployment/webapp webapp=webapp:v2.0
 kubectl set env deployment/webapp DEBUG=true
 
 # Or use patch for atomic updates
-kubectl patch deployment webapp --type='json' -p='[
-  {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"webapp:v2.0"},
-  {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"DEBUG","value":"true"}}
-]'
+kubectl patch deployment webapp -p '{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "webapp",
+            "image": "webapp:v2.0",
+            "env": [{"name": "DEBUG", "value": "true"}]
+          }
+        ]
+      }
+    }
+  }
+}'
 ```
 
 Minimize separate set commands to reduce rollout overhead.
