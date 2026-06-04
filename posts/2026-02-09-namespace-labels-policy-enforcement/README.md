@@ -142,7 +142,7 @@ spec:
 Deploy Kyverno for Kubernetes-native policies:
 
 ```bash
-kubectl create -f https://github.com/kyverno/kyverno/releases/download/v1.10.0/install.yaml
+kubectl create -f https://github.com/kyverno/kyverno/releases/download/v1.16.2/install.yaml
 ```
 
 Create Kyverno policies:
@@ -153,7 +153,6 @@ kind: ClusterPolicy
 metadata:
   name: require-namespace-labels
 spec:
-  validationFailureAction: enforce
   background: true
   rules:
   - name: check-required-labels
@@ -163,6 +162,7 @@ spec:
           kinds:
           - Namespace
     validate:
+      failureAction: Enforce
       message: "Namespaces must have required labels: environment, team, cost-center"
       pattern:
         metadata:
@@ -186,6 +186,7 @@ spec:
           - Namespace
     generate:
       kind: NetworkPolicy
+      apiVersion: networking.k8s.io/v1
       name: default-deny-ingress
       namespace: "{{request.object.metadata.name}}"
       synchronize: true
@@ -203,6 +204,7 @@ spec:
           - Namespace
     generate:
       kind: LimitRange
+      apiVersion: v1
       name: default-limits
       namespace: "{{request.object.metadata.name}}"
       synchronize: true
@@ -241,6 +243,7 @@ spec:
               environment: development
     generate:
       kind: ResourceQuota
+      apiVersion: v1
       name: dev-quota
       namespace: "{{request.object.metadata.name}}"
       data:
@@ -261,6 +264,7 @@ spec:
               environment: production
     generate:
       kind: ResourceQuota
+      apiVersion: v1
       name: prod-quota
       namespace: "{{request.object.metadata.name}}"
       data:
@@ -281,7 +285,6 @@ kind: ClusterPolicy
 metadata:
   name: pci-compliance-enforcement
 spec:
-  validationFailureAction: enforce
   rules:
   - name: require-pod-security-standard
     match:
@@ -293,6 +296,7 @@ spec:
             matchLabels:
               compliance: pci-dss
     validate:
+      failureAction: Enforce
       message: "Pods in PCI-DSS namespaces must be non-privileged"
       pattern:
         spec:
@@ -301,7 +305,7 @@ spec:
               privileged: false
               allowPrivilegeEscalation: false
 
-  - name: require-network-policies
+  - name: add-pci-default-network-policy
     match:
       any:
       - resources:
@@ -310,14 +314,18 @@ spec:
           selector:
             matchLabels:
               compliance: pci-dss
-    validate:
-      message: "PCI-DSS namespaces must have NetworkPolicies"
-      deny:
-        conditions:
-          any:
-          - key: "{{request.operation}}"
-            operator: Equals
-            value: CREATE
+    generate:
+      kind: NetworkPolicy
+      apiVersion: networking.k8s.io/v1
+      name: pci-default-deny
+      namespace: "{{request.object.metadata.name}}"
+      synchronize: true
+      data:
+        spec:
+          podSelector: {}
+          policyTypes:
+          - Ingress
+          - Egress
 ```
 
 ## Cost Allocation by Labels
@@ -368,16 +376,23 @@ package main
 
 import (
     "context"
-    "fmt"
-    corev1 "k8s.io/api/core/v1"
+    "time"
+
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
 )
 
 func ensureNamespaceLabels(namespace string) error {
-    config, _ := rest.InClusterConfig()
-    clientset, _ := kubernetes.NewForConfig(config)
+    config, err := rest.InClusterConfig()
+    if err != nil {
+        return err
+    }
+
+    clientset, err := kubernetes.NewForConfig(config)
+    if err != nil {
+        return err
+    }
 
     ns, err := clientset.CoreV1().Namespaces().Get(
         context.TODO(),
