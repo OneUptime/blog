@@ -31,6 +31,7 @@ kubectl auth can-i list pods \
 
 # Check permissions for a group
 kubectl auth can-i create deployments \
+  --as=rbac-audit \
   --as-group=system:authenticated
 ```
 
@@ -106,37 +107,37 @@ chmod +x scripts/audit-serviceaccounts.sh
 
 ## Installing rbac-lookup Tool
 
-The rbac-lookup tool provides reverse lookups to see who has access to resources.
+The rbac-lookup tool provides reverse lookups to see which roles are bound to users, service accounts, and groups.
 
 ```bash
-# Install rbac-lookup
-brew install reactiveops/tap/rbac-lookup
+# Install rbac-lookup with Homebrew
+brew install FairwindsOps/tap/rbac-lookup
 
-# Or download binary
-curl -LO https://github.com/FairwindsOps/rbac-lookup/releases/latest/download/rbac-lookup_linux_amd64
-chmod +x rbac-lookup_linux_amd64
-sudo mv rbac-lookup_linux_amd64 /usr/local/bin/rbac-lookup
+# Or install with asdf
+asdf plugin add rbac-lookup
+asdf install rbac-lookup latest
+asdf global rbac-lookup latest
 ```
 
 ## Using rbac-lookup for Audits
 
-Find who has specific permissions.
+Find the roles and cluster roles bound to specific subjects.
 
 ```bash
-# Find who can create deployments
-rbac-lookup create deployments
+# Find bindings for a user
+rbac-lookup john@company.com --kind user
 
-# Find who can delete pods in a namespace
-rbac-lookup delete pods -n production
+# Find bindings for a service account
+rbac-lookup deployer --kind serviceaccount
 
-# Find all permissions for a subject
-rbac-lookup --kind user --name john@company.com
+# Find bindings for a group
+rbac-lookup developers@company.com --kind group
 
-# Find all service account permissions
+# Find all service account bindings
 rbac-lookup --kind serviceaccount
 
-# Output to JSON for processing
-rbac-lookup --output json > rbac-audit.json
+# Include the binding source in the output
+rbac-lookup john@company.com --kind user --output wide
 ```
 
 Output shows subjects and their bindings.
@@ -166,15 +167,16 @@ kubectl get rolebindings -n production -o wide
 
 # Find service accounts with admin access
 kubectl get rolebindings,clusterrolebindings --all-namespaces -o json | \
-  jq -r '.items[] | select(.subjects[]?.kind=="ServiceAccount" and
-    .roleRef.name | contains("admin")) |
-    {namespace: .metadata.namespace, binding: .metadata.name,
-     subject: .subjects[0].name, role: .roleRef.name}'
+  jq -r '.items[] | select(.roleRef.name | contains("admin")) as $binding |
+    $binding.subjects[]? | select(.kind=="ServiceAccount") |
+    {namespace: ($binding.metadata.namespace // "cluster"),
+     binding: $binding.metadata.name, subject: .name,
+     subjectNamespace: .namespace, role: $binding.roleRef.name}'
 ```
 
 ## Creating Comprehensive Audit Reports
 
-Build a script that generates a full RBAC audit report.
+Build a script that generates a full RBAC audit report. This example uses kubectl-who-can for reverse permission checks.
 
 ```bash
 #!/bin/bash
@@ -192,7 +194,7 @@ kubectl get roles --all-namespaces -o yaml > $OUTPUT_DIR/roles.yaml
 kubectl get rolebindings --all-namespaces -o yaml > $OUTPUT_DIR/rolebindings.yaml
 
 # Generate summary report
-cat > $OUTPUT_DIR/summary.md << 'EOF'
+cat > $OUTPUT_DIR/summary.md << EOF
 # Kubernetes RBAC Audit Report
 Generated: $(date)
 
@@ -204,7 +206,7 @@ EOF
 # Find cluster admins
 kubectl get clusterrolebindings -o json | \
   jq -r '.items[] | select(.roleRef.name=="cluster-admin") |
-    "- \(.subjects[]?.name) (\(.subjects[]?.kind))"' >> $OUTPUT_DIR/summary.md
+    .subjects[]? | "- \(.name) (\(.kind))"' >> $OUTPUT_DIR/summary.md
 
 cat >> $OUTPUT_DIR/summary.md << 'EOF'
 
@@ -214,14 +216,14 @@ cat >> $OUTPUT_DIR/summary.md << 'EOF'
 EOF
 
 # Find who can delete secrets
-rbac-lookup delete secrets 2>/dev/null | tail -n +2 >> $OUTPUT_DIR/summary.md
+kubectl who-can delete secrets 2>/dev/null | tail -n +2 >> $OUTPUT_DIR/summary.md
 
 cat >> $OUTPUT_DIR/summary.md << 'EOF'
 
 ### Subjects with exec permissions on pods
 EOF
 
-rbac-lookup create pods/exec 2>/dev/null | tail -n +2 >> $OUTPUT_DIR/summary.md
+kubectl who-can create pods/exec 2>/dev/null | tail -n +2 >> $OUTPUT_DIR/summary.md
 
 # Create CSV of all bindings
 echo "Namespace,Binding,Type,Subject,Role" > $OUTPUT_DIR/all-bindings.csv
@@ -260,28 +262,28 @@ echo ""
 # Check for wildcard permissions
 echo "=== Checking for wildcard (*) permissions ==="
 kubectl get roles,clusterroles --all-namespaces -o json | \
-  jq -r '.items[] | select(.rules[]?.verbs[] | contains("*")) |
+  jq -r '.items[] | select(.rules[]?.verbs[]? == "*") |
     "\(.kind)/\(.metadata.name) in \(.metadata.namespace // "cluster")"'
 
 echo ""
 echo "=== Checking for overly broad resource access ==="
 kubectl get roles,clusterroles --all-namespaces -o json | \
-  jq -r '.items[] | select(.rules[]?.resources[] | contains("*")) |
+  jq -r '.items[] | select(.rules[]?.resources[]? == "*") |
     "\(.kind)/\(.metadata.name) in \(.metadata.namespace // "cluster")"'
 
 echo ""
 echo "=== Checking for escalate/bind/impersonate permissions ==="
 kubectl get roles,clusterroles --all-namespaces -o json | \
-  jq -r '.items[] | select(.rules[]?.verbs[] |
+  jq -r '.items[] | select(.rules[]?.verbs[]? |
     (. == "escalate" or . == "bind" or . == "impersonate")) |
     "\(.kind)/\(.metadata.name): \(.rules[]?.verbs)"'
 
 echo ""
 echo "=== Checking service accounts with cluster-admin ==="
 kubectl get clusterrolebindings -o json | \
-  jq -r '.items[] | select(.roleRef.name=="cluster-admin" and
-    .subjects[]?.kind=="ServiceAccount") |
-    "Binding: \(.metadata.name), SA: \(.subjects[]?.name) in \(.subjects[]?.namespace)"'
+  jq -r '.items[] | select(.roleRef.name=="cluster-admin") as $binding |
+    $binding.subjects[]? | select(.kind=="ServiceAccount") |
+    "Binding: \($binding.metadata.name), SA: \(.name) in \(.namespace)"'
 ```
 
 ## Monitoring RBAC Changes
@@ -316,7 +318,7 @@ Query audit logs for RBAC changes.
 
 ```bash
 # Find recent RBAC changes (location varies)
-jq -r 'select(.objectRef.resource | contains("role") or contains("rolebinding")) |
+jq -r 'select((.objectRef.resource // "") | contains("role") or contains("rolebinding")) |
   "\(.requestReceivedTimestamp) \(.verb) \(.objectRef.resource)/\(.objectRef.name) by \(.user.username)"' \
   /var/log/kubernetes/audit.log | tail -20
 ```
@@ -339,27 +341,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Configure kubectl
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v4
         with:
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
 
       - name: Install audit tools
         run: |
-          curl -LO https://github.com/FairwindsOps/rbac-lookup/releases/latest/download/rbac-lookup_linux_amd64
-          chmod +x rbac-lookup_linux_amd64
-          sudo mv rbac-lookup_linux_amd64 /usr/local/bin/rbac-lookup
+          curl -fsSLO https://github.com/aquasecurity/kubectl-who-can/releases/download/v0.4.0/kubectl-who-can_linux_x86_64.tar.gz
+          tar -xzf kubectl-who-can_linux_x86_64.tar.gz
+          sudo mv kubectl-who-can /usr/local/bin/
 
       - name: Check for cluster-admin bindings
         run: |
           echo "Checking for inappropriate cluster-admin access..."
           ADMINS=$(kubectl get clusterrolebindings -o json | \
             jq -r '.items[] | select(.roleRef.name=="cluster-admin") | .subjects[]?.name')
+          UNEXPECTED_ADMINS=$(printf '%s\n' "$ADMINS" | grep -Ev '^(admin@|platform-)' || true)
 
-          if echo "$ADMINS" | grep -v "^(admin@|platform-)" ; then
+          if [ -n "$UNEXPECTED_ADMINS" ]; then
             echo "❌ Found unexpected cluster-admin bindings"
+            echo "$UNEXPECTED_ADMINS"
             exit 1
           fi
 
@@ -378,7 +382,7 @@ jobs:
           ./scripts/generate-rbac-report.sh
 
       - name: Upload report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: rbac-audit-report
           path: rbac-audit-*/
