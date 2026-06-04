@@ -8,13 +8,13 @@ Description: Learn how to configure per-node pod CIDR allocation in Kubernetes f
 
 ---
 
-Pod network CIDR allocation determines how IP addresses are distributed across nodes in your Kubernetes cluster. By default, each node receives a subnet from the cluster's pod CIDR range, and pods on that node get IPs from the node's subnet. Understanding and configuring per-node CIDR allocation lets you optimize IP address usage and avoid exhaustion in large clusters.
+Pod network CIDR allocation determines how IP addresses are distributed across nodes in your Kubernetes cluster. In clusters that enable Kubernetes node CIDR allocation, each node receives a subnet from the cluster's pod CIDR range, and pods on that node get IPs from the node's subnet when the CNI plugin uses that allocation. Understanding and configuring per-node CIDR allocation lets you optimize IP address usage and avoid exhaustion in large clusters.
 
 ## Understanding Node CIDR Allocation
 
-When you initialize a Kubernetes cluster, you specify a pod network CIDR (like 10.244.0.0/16). The controller manager's node IPAM (IP Address Management) controller divides this range into smaller subnets and assigns one subnet to each node.
+When you initialize a Kubernetes cluster that uses node CIDR allocation, you specify a pod network CIDR (like 10.244.0.0/16). The controller manager's node IPAM (IP Address Management) controller divides this range into smaller subnets and assigns one subnet to each node.
 
-The size of each node's subnet is determined by the node CIDR mask size. For example, if your cluster CIDR is 10.244.0.0/16 and the node mask is /24, each node gets a /24 subnet (256 addresses), allowing for about 254 pods per node after accounting for network and broadcast addresses.
+The size of each node's subnet is determined by the node CIDR mask size. For example, if your cluster CIDR is 10.244.0.0/16 and the node mask is /24, each node gets a /24 subnet (256 addresses). The number of pods that can actually run on the node also depends on CNI reservations and the kubelet's `maxPods` setting.
 
 The node IPAM controller runs as part of kube-controller-manager. It watches for new nodes and allocates CIDRs from the available pool. When a node is deleted, its CIDR is eventually released back to the pool for reuse.
 
@@ -40,7 +40,7 @@ spec:
     - --authentication-kubeconfig=/etc/kubernetes/controller-manager.conf
     - --authorization-kubeconfig=/etc/kubernetes/controller-manager.conf
     - --leader-elect=true
-    image: k8s.gcr.io/kube-controller-manager:v1.28.0
+    image: registry.k8s.io/kube-controller-manager:v1.28.0
     name: kube-controller-manager
 ```
 
@@ -61,20 +61,20 @@ For dual-stack IPv4/IPv6 clusters, you can specify multiple CIDRs:
 
 ## Setting Node CIDR Mask Size
 
-The node CIDR mask size determines how many pods each node can support. Here's how different mask sizes affect capacity:
+The node CIDR mask size determines how many pod IP addresses can be allocated per node. Here's how different mask sizes affect capacity:
 
 ```bash
-# /24 subnet: 256 addresses, ~254 pods per node
+# /24 subnet: 256 addresses
 
 --node-cidr-mask-size=24
 
-# /25 subnet: 128 addresses, ~126 pods per node
+# /25 subnet: 128 addresses
 --node-cidr-mask-size=25
 
-# /23 subnet: 512 addresses, ~510 pods per node
+# /23 subnet: 512 addresses
 --node-cidr-mask-size=23
 
-# /26 subnet: 64 addresses, ~62 pods per node
+# /26 subnet: 64 addresses
 --node-cidr-mask-size=26
 ```
 
@@ -94,24 +94,26 @@ Choose your mask size based on your cluster requirements:
 
 ```yaml
 # Small cluster, many pods per node
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 networking:
   podSubnet: "10.244.0.0/16"
   serviceSubnet: "10.96.0.0/12"
 controllerManager:
   extraArgs:
-    node-cidr-mask-size: "23"  # 510 pods per node, 128 max nodes
+    - name: node-cidr-mask-size
+      value: "23"  # 512 addresses per node, 128 max node CIDRs
 ---
 # Large cluster, fewer pods per node
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 networking:
   podSubnet: "10.244.0.0/16"
   serviceSubnet: "10.96.0.0/12"
 controllerManager:
   extraArgs:
-    node-cidr-mask-size: "25"  # 126 pods per node, 512 max nodes
+    - name: node-cidr-mask-size
+      value: "25"  # 128 addresses per node, 512 max node CIDRs
 ```
 
 ## Viewing Node CIDR Allocations
@@ -150,7 +152,7 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.pod
 
 ## Configuring CNI to Use Node CIDRs
 
-Your CNI plugin must read and use the node's allocated CIDR. Most CNIs do this automatically, but here's how it works with common plugins:
+Your CNI plugin must be configured consistently with the node CIDR allocation model. Some CNIs use the node's allocated CIDR directly, while others have their own IPAM and only need a compatible cluster-wide pod CIDR.
 
 **Calico configuration:**
 
@@ -167,7 +169,7 @@ spec:
   nodeSelector: all()
 ```
 
-Calico reads the node's podCIDR and creates IP blocks within that CIDR. The blockSize is typically smaller than the node CIDR mask for more granular allocation.
+With Calico IPAM, Calico does not use the Kubernetes `Node.spec.podCIDR` allocation by default. It allocates blocks from Calico IPPools instead. The blockSize is typically smaller than the overall IPPool for more granular allocation.
 
 **Flannel configuration:**
 
@@ -183,7 +185,7 @@ Calico reads the node's podCIDR and creates IP blocks within that CIDR. The bloc
 }
 ```
 
-Flannel's SubnetLen should match your node CIDR mask size. Flannel allocates subnets to nodes and stores the mapping in etcd or the Kubernetes API.
+Flannel's SubnetLen should match the per-node subnet size you want to use. In Kubernetes mode, flannel uses the Kubernetes API as its subnet manager and expects the configured network to match the cluster's pod CIDR.
 
 **Host-local IPAM (for custom CNIs):**
 
@@ -197,7 +199,7 @@ Flannel's SubnetLen should match your node CIDR mask size. Flannel allocates sub
     "type": "host-local",
     "ranges": [
       [{
-        "subnet": "usePodCIDR"
+        "subnet": "10.244.1.0/24"
       }]
     ],
     "routes": [
@@ -207,11 +209,11 @@ Flannel's SubnetLen should match your node CIDR mask size. Flannel allocates sub
 }
 ```
 
-The special value `"usePodCIDR"` tells the host-local IPAM plugin to read the node's podCIDR field from the Kubernetes API.
+The host-local IPAM plugin expects a concrete CIDR in the `subnet` field. If you build a custom CNI around node CIDR allocation, your CNI or installer needs to read the node's `podCIDR` from the Kubernetes API and render the node-specific subnet into this configuration.
 
 ## Handling CIDR Exhaustion
 
-When you run out of available CIDRs, new nodes can't join the cluster. Monitor CIDR usage to prevent this:
+When you run out of available CIDRs, new nodes can register but cannot be assigned pod CIDRs. Monitor CIDR usage to prevent this:
 
 ```bash
 # Count allocated nodes vs available CIDRs
@@ -244,18 +246,24 @@ Smaller per-node subnets allow more nodes:
 # Original: /24 = 256 nodes
 --node-cidr-mask-size=24
 
-# New: /26 = 1024 nodes (but only 62 pods per node)
+# New: /26 = 1024 nodes (but only 64 addresses per node)
 --node-cidr-mask-size=26
 ```
 
-**Option 3: Use pod CIDR per node annotation**
+**Option 3: Use CNI-specific IP pools for node groups**
 
-Manually specify CIDRs for specific nodes:
+For CNIs with their own IPAM, configure node-specific pools using the CNI's supported mechanisms. For example, Calico IPPools can be limited to selected nodes:
 
-```bash
-kubectl annotate node special-node \
-  projectcalico.org/IPv4IPIPTunnelAddr=10.250.0.1 \
-  projectcalico.org/IPv4Address=10.250.0.1/24
+```yaml
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: special-node-pool
+spec:
+  cidr: 10.250.0.0/24
+  blockSize: 26
+  natOutgoing: true
+  nodeSelector: 'node-pool == "special"'
 ```
 
 ## Troubleshooting CIDR Allocation
@@ -294,8 +302,8 @@ For CNI plugins that don't automatically use node CIDRs:
 # Check CNI config on the node
 cat /etc/cni/net.d/*
 
-# Verify the IPAM section references the node CIDR
-# Should see "usePodCIDR" or similar mechanism
+# Verify the IPAM section uses a node-specific CIDR
+# For host-local IPAM, this should be a concrete subnet for that node
 ```
 
 ## Implementing Custom CIDR Allocation
@@ -310,7 +318,6 @@ import (
     "fmt"
     "net"
 
-    corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
