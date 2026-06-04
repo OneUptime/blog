@@ -1,16 +1,16 @@
-# Use cert-manager ACME External Account Binding for Enterprise Let's Encrypt
+# Use cert-manager ACME External Account Binding for Enterprise ACME Providers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, TLS, Security
 
-Description: Learn how to configure cert-manager with ACME External Account Binding (EAB) for enterprise Let's Encrypt accounts and other ACME providers requiring account registration.
+Description: Learn how to configure cert-manager with ACME External Account Binding (EAB) for ACME providers requiring external account registration.
 
 ---
 
-External Account Binding (EAB) is an ACME protocol feature that links ACME accounts with external account systems. Enterprise Let's Encrypt deployments, ZeroSSL, and other commercial ACME providers require EAB for account validation. This ensures only authorized organizations can request certificates from their ACME endpoints.
+External Account Binding (EAB) is an ACME protocol feature that links ACME accounts with external account systems. ZeroSSL, Google Trust Services Public CA, and other ACME providers can require EAB for account validation. This ensures only authorized organizations can request certificates from their ACME endpoints.
 
-cert-manager supports EAB, enabling integration with enterprise ACME services while maintaining automated certificate management. This guide shows how to configure EAB for various ACME providers and manage enterprise certificate issuance.
+cert-manager supports EAB, enabling integration with ACME services that require external account registration while maintaining automated certificate management. This guide shows how to configure EAB for various ACME providers and manage enterprise certificate issuance.
 
 ## Understanding External Account Binding
 
@@ -35,12 +35,18 @@ Different ACME providers have different processes for obtaining EAB credentials:
 # Generate EAB credentials
 # You'll receive:
 # - Key ID: unique identifier for your account
-# - HMAC Key: base64-encoded secret key
+# - HMAC Key: base64url-encoded secret key
 ```
 
-### Enterprise Let's Encrypt
+### Google Trust Services Public CA
 
-Enterprise customers receive EAB credentials through their Let's Encrypt enterprise account manager or portal.
+Google Cloud customers can create EAB credentials for Google Trust Services Public CA with the Google Cloud CLI:
+
+```bash
+gcloud publicca external-account-keys create
+```
+
+The response includes a `keyId` value and a `b64MacKey` value. Use `keyId` as the cert-manager `keyID` and store `b64MacKey` in the Kubernetes secret referenced by `keySecretRef`.
 
 ### Other ACME Providers
 
@@ -53,8 +59,7 @@ Create a secret with EAB credentials:
 ```bash
 # Create secret with EAB credentials
 kubectl create secret generic zerossl-eab \
-  --from-literal=key-id='YOUR_KEY_ID' \
-  --from-literal=hmac-key='YOUR_BASE64_HMAC_KEY' \
+  --from-literal=hmac-key='YOUR_BASE64URL_HMAC_KEY' \
   -n cert-manager
 ```
 
@@ -86,14 +91,11 @@ spec:
         name: zerossl-eab
         key: hmac-key
 
-      # Key algorithm (default: HS256)
-      keyAlgorithm: HS256
-
     # Solvers for ACME challenges
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 Apply the ClusterIssuer:
@@ -190,28 +192,28 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ---
-# Enterprise Let's Encrypt Issuer
+# Google Trust Services Public CA Issuer
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: letsencrypt-enterprise
+  name: google-public-ca
 spec:
   acme:
-    server: https://acme-enterprise.letsencrypt.org/directory
+    server: https://dv.acme-v02.api.pki.goog/directory
     email: certificates@example.com
     privateKeySecretRef:
-      name: letsencrypt-enterprise-account-key
+      name: google-public-ca-account-key
     externalAccountBinding:
-      keyID: LETSENCRYPT_KEY_ID
+      keyID: GOOGLE_PUBLIC_CA_KEY_ID
       keySecretRef:
-        name: letsencrypt-eab
+        name: google-public-ca-eab
         key: hmac-key
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ---
 # Standard Let's Encrypt (no EAB required)
 apiVersion: cert-manager.io/v1
@@ -228,7 +230,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 Applications choose the appropriate issuer based on requirements.
@@ -240,16 +242,15 @@ When EAB credentials rotate, update the secret:
 ```bash
 # Update EAB secret with new credentials
 kubectl create secret generic zerossl-eab \
-  --from-literal=key-id='NEW_KEY_ID' \
-  --from-literal=hmac-key='NEW_BASE64_HMAC_KEY' \
+  --from-literal=hmac-key='NEW_BASE64URL_HMAC_KEY' \
   -n cert-manager \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Restart cert-manager to pick up new credentials
-kubectl rollout restart deployment cert-manager -n cert-manager
+# If the Key ID changed, update the ClusterIssuer externalAccountBinding.keyID too
+kubectl edit clusterissuer zerossl-prod
 ```
 
-Note: Rotating EAB credentials may require creating a new ACME account. Check provider documentation for credential rotation procedures.
+Note: EAB is used when registering an ACME account. Rotating EAB credentials may require creating a new ACME account with a new `privateKeySecretRef`. Check provider documentation for credential rotation procedures.
 
 ## Testing EAB Configuration
 
@@ -324,7 +325,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 This prevents production EAB credentials from being used in testing, maintaining proper separation.
@@ -375,16 +376,15 @@ kubectl logs -n cert-manager deployment/cert-manager | grep -i "external account
 ### Invalid HMAC Key Format
 
 ```bash
-# Verify HMAC key is properly base64 encoded
-echo "YOUR_HMAC_KEY" | base64 -d
+# Verify HMAC key is in the base64url format provided by your ACME provider
+echo "YOUR_BASE64URL_HMAC_KEY"
 
-# If key needs encoding:
-echo "YOUR_RAW_KEY" | base64
+# If your provider gives you a raw key instead, encode it as base64url:
+echo -n "YOUR_RAW_KEY" | base64 -w0 | sed -e 's/+/-/g' -e 's/\//_/g' -e 's/=//g'
 
 # Update secret with correctly encoded key
 kubectl create secret generic zerossl-eab \
-  --from-literal=key-id='YOUR_KEY_ID' \
-  --from-literal=hmac-key='CORRECTLY_ENCODED_KEY' \
+  --from-literal=hmac-key='CORRECTLY_ENCODED_BASE64URL_KEY' \
   -n cert-manager \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
@@ -435,7 +435,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 This enables integration with internal PKI systems exposing ACME endpoints with EAB.
@@ -449,10 +449,10 @@ ZeroSSL free tier:
 - Multiple certificates per domain
 - Subject to fair use policies
 
-Enterprise Let's Encrypt:
-- Customizable rate limits based on agreement
-- Higher limits than public Let's Encrypt
-- Dedicated support
+Google Trust Services Public CA:
+- EAB secrets must be used within 7 days
+- Each EAB secret can register one ACME account
+- Uses separate production and staging ACME directory URLs
 
 Check provider documentation for specific rate limits and configure issuers accordingly.
 
