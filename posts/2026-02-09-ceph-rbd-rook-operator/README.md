@@ -45,7 +45,7 @@ kubectl logs -n rook-ceph deployment/rook-ceph-operator
 
 ## Preparing Storage Nodes
 
-Ceph requires raw block devices or directories on cluster nodes. Identify nodes with available storage.
+Ceph requires raw block devices, raw partitions, LVM logical volumes, encrypted devices, multipath devices, or block-mode PersistentVolumes. Identify nodes with available storage.
 
 ```bash
 # List nodes and their storage
@@ -126,7 +126,7 @@ watch kubectl get pods -n rook-ceph
 kubectl get cephcluster -n rook-ceph
 ```
 
-Expected pods include mon (monitors), mgr (managers), osd (storage daemons), and mds (metadata servers).
+Expected pods include mon (monitors), mgr (managers), and osd (storage daemons). MDS pods are created only when you configure CephFS.
 
 ## Creating RBD Storage Pool
 
@@ -144,7 +144,6 @@ spec:
   replicated:
     size: 3
     requireSafeReplicaSize: true
-  deviceClass: ssd
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -198,6 +197,19 @@ spec:
       storage: 10Gi
   storageClassName: rook-ceph-block
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -242,6 +254,9 @@ kubectl get pvc mysql-pvc
 # Verify pod is running
 kubectl get pods -l app=mysql
 
+# Deploy the toolbox before running Ceph CLI commands
+kubectl apply -f toolbox.yaml
+
 # Check RBD image was created
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- rbd ls replicapool
 ```
@@ -257,7 +272,7 @@ kubectl get secret -n rook-ceph rook-ceph-dashboard-password -o jsonpath="{['dat
 # Port forward to access dashboard
 kubectl port-forward -n rook-ceph svc/rook-ceph-mgr-dashboard 8443:8443
 
-# Open https://localhost:8443 in browser
+# Open http://localhost:8443 in browser
 # Username: admin
 # Password: (from above command)
 ```
@@ -293,7 +308,15 @@ parameters:
   pool: fast-pool
   imageFormat: "2"
   imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
   csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Delete
+allowVolumeExpansion: true
 mountOptions:
 - discard
 - noatime
@@ -302,38 +325,29 @@ mountOptions:
 
 ## Monitoring Ceph Cluster
 
-Deploy Prometheus monitoring for Ceph metrics.
+Create a ServiceMonitor for Prometheus to scrape Ceph metrics.
 
 ```yaml
 # servicemonitor.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: rook-ceph-mgr
-  namespace: rook-ceph
-  labels:
-    app: rook-ceph-mgr
-spec:
-  ports:
-  - name: http-metrics
-    port: 9283
-    protocol: TCP
-    targetPort: 9283
-  selector:
-    app: rook-ceph-mgr
----
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: rook-ceph-mgr
   namespace: rook-ceph
+  labels:
+    team: rook
 spec:
+  namespaceSelector:
+    matchNames:
+    - rook-ceph
   selector:
     matchLabels:
       app: rook-ceph-mgr
+      rook_cluster: rook-ceph
   endpoints:
   - port: http-metrics
-    interval: 30s
+    path: /metrics
+    interval: 5s
 ```
 
 Key metrics to monitor:
