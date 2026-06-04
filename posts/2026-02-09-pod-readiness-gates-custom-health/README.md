@@ -51,7 +51,7 @@ Check pod status:
 kubectl get pod readiness-gate-pod -o yaml
 ```
 
-You will see the condition in status:
+If no controller has set the custom condition yet, Kubernetes treats the missing condition as `False`. After a controller sets it to `False`, you will see it in status:
 
 ```yaml
 status:
@@ -70,17 +70,10 @@ status:
 An external controller sets the condition. Here is a simple example using kubectl:
 
 ```bash
-kubectl patch pod readiness-gate-pod --type=json -p='[
-  {
-    "op": "add",
-    "path": "/status/conditions/-",
-    "value": {
-      "type": "example.com/feature-enabled",
-      "status": "True",
-      "lastTransitionTime": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
-    }
-  }
-]' --subresource=status
+NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+kubectl patch pod readiness-gate-pod --subresource=status --type='strategic' -p \
+  "{\"status\":{\"conditions\":[{\"type\":\"example.com/feature-enabled\",\"status\":\"True\",\"lastTransitionTime\":\"${NOW}\"}]}}"
 ```
 
 After setting the condition to True, the pod becomes ready (assuming readiness probes also pass).
@@ -93,6 +86,7 @@ Here is a simple controller in Python that sets readiness conditions:
 
 ```python
 from kubernetes import client, config, watch
+from datetime import datetime, timezone
 import time
 
 # Load kubeconfig
@@ -107,28 +101,30 @@ def set_readiness_condition(pod_name, namespace, condition_type, status):
 
     # Check if condition already exists
     conditions = pod.status.conditions or []
-    condition_exists = False
+    transition_time = datetime.now(timezone.utc)
+    condition = client.V1PodCondition(
+        type=condition_type,
+        status=status,
+        last_transition_time=transition_time
+    )
 
-    for i, cond in enumerate(conditions):
+    for cond in conditions:
         if cond.type == condition_type:
-            conditions[i].status = status
-            conditions[i].last_transition_time = time.time()
-            condition_exists = True
+            condition.last_transition_time = (
+                cond.last_transition_time if cond.status == status else transition_time
+            )
             break
 
-    if not condition_exists:
-        new_condition = client.V1PodCondition(
-            type=condition_type,
-            status=status,
-            last_transition_time=time.time()
-        )
-        conditions.append(new_condition)
-
     # Update pod status
-    pod.status.conditions = conditions
+    body = {"status": {"conditions": [condition]}}
 
     try:
-        v1.patch_namespaced_pod_status(pod_name, namespace, pod)
+        v1.patch_namespaced_pod_status(
+            pod_name,
+            namespace,
+            body,
+            _content_type="application/strategic-merge-patch+json"
+        )
         print(f"Set {condition_type}={status} for pod {pod_name}")
     except Exception as e:
         print(f"Error updating pod: {e}")
@@ -425,7 +421,7 @@ readiness_gate_status = Gauge(
 )
 
 def update_metrics(pod):
-    for condition in pod.status.conditions:
+    for condition in pod.status.conditions or []:
         if condition.type.startswith("example.com/"):
             status_value = 1 if condition.status == "True" else 0
             readiness_gate_status.labels(
@@ -493,7 +489,7 @@ Test readiness gate logic thoroughly before deploying to production.
 
 Ensure controllers are highly available. If the controller fails, pods cannot become ready.
 
-Clean up condition status when pods are deleted to avoid stale state.
+Clean up any external state associated with pods when they are deleted.
 
 ## Security Considerations
 
