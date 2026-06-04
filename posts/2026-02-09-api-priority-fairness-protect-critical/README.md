@@ -8,17 +8,17 @@ Description: Master Kubernetes API Priority and Fairness to prevent API server o
 
 ---
 
-Have you ever experienced a situation where your Kubernetes cluster becomes unresponsive because the API server is overwhelmed with requests? This is where API Priority and Fairness (APF) comes to the rescue. APF is a sophisticated request management system that protects the Kubernetes API server from overload while ensuring critical operations always get through.
+Have you ever experienced a situation where your Kubernetes cluster becomes unresponsive because the API server is overwhelmed with requests? This is where API Priority and Fairness (APF) comes to the rescue. APF is a sophisticated request management system that protects the Kubernetes API server from overload while helping critical operations continue to make progress.
 
 ## Understanding API Priority and Fairness
 
-API Priority and Fairness replaced the old max-inflight request limits in Kubernetes 1.20. Instead of simply rejecting requests when limits are reached, APF uses a fair queuing system that categorizes, prioritizes, and queues requests to prevent API server overload while maintaining fairness across different types of clients.
+API Priority and Fairness became enabled by default in Kubernetes 1.20 and reached stable status in Kubernetes 1.29. With APF enabled, the API server still uses the `--max-requests-inflight` and `--max-mutating-requests-inflight` settings to define the total concurrency limit, but APF divides that capacity across priority levels and adds fair queuing instead of relying only on broad max-inflight limits.
 
 The system works by assigning incoming requests to priority levels and flow schemas, then managing them through a sophisticated queuing mechanism.
 
 ## Core Concepts
 
-APF introduces two main custom resources:
+APF introduces two main API resources:
 
 **PriorityLevelConfiguration**: Defines priority levels with concurrency limits and queuing parameters.
 
@@ -36,10 +36,12 @@ Kubernetes ships with default APF configurations. You can view them:
 kubectl get prioritylevelconfiguration
 
 # Output shows default levels:
+# node-high - for health updates from nodes
 # system - for system-critical components
 # leader-election - for leader election operations
 # workload-high, workload-low - for regular workloads
-# global-default - catch-all for unmatched requests
+# global-default - suggested default handling for general requests
+# catch-all - mandatory fallback for requests that do not match anything else
 # exempt - for requests that bypass APF
 
 # View a specific priority level
@@ -49,14 +51,14 @@ kubectl get prioritylevelconfiguration system -o yaml
 The output shows important fields:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: system
 spec:
   type: Limited
   limited:
-    # Number of concurrent requests allowed
+    # Shares used to calculate this level's nominal concurrency limit
     nominalConcurrencyShares: 30
     # Queue configuration
     lendablePercent: 50
@@ -70,10 +72,10 @@ spec:
 
 ## Creating a Custom Priority Level for Critical Workloads
 
-Suppose you have a critical monitoring application that must never be throttled. You can create a dedicated priority level:
+Suppose you have a critical monitoring application that should have protected API server capacity. You can create a dedicated priority level:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: critical-monitoring
@@ -82,7 +84,7 @@ spec:
   limited:
     # Higher concurrency than default workloads
     nominalConcurrencyShares: 20
-    lendablePercent: 0  # Do not lend unused capacity to other levels
+    lendablePercent: 0  # Do not allow other levels to borrow this level's nominal capacity
     limitResponse:
       type: Queue
       queuing:
@@ -102,7 +104,7 @@ kubectl apply -f critical-monitoring-pl.yaml
 Now create a FlowSchema that routes requests from your monitoring service account to this priority level:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: FlowSchema
 metadata:
   name: monitoring-service-flow
@@ -132,14 +134,14 @@ Apply the FlowSchema:
 kubectl apply -f monitoring-flow-schema.yaml
 ```
 
-Now all API requests from the `monitoring-agent` service account will use the `critical-monitoring` priority level, ensuring they receive preferential treatment.
+Now matching API requests from the `monitoring-agent` service account will use the `critical-monitoring` priority level, giving them dedicated concurrency shares and queue settings.
 
 ## Protecting Critical System Operations
 
 You can create priority levels for different categories of operations. Here is an example for protecting deployments during critical maintenance windows:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: PriorityLevelConfiguration
 metadata:
   name: deployment-operations
@@ -153,7 +155,7 @@ spec:
         queues: 16
         queueLengthLimit: 50
 ---
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: FlowSchema
 metadata:
   name: deployment-flow
@@ -172,6 +174,7 @@ spec:
     - verbs: ["create", "update", "patch"]
       apiGroups: ["apps"]
       resources: ["deployments"]
+      namespaces: ["production"]
 ```
 
 ## Understanding Concurrency Shares
@@ -179,7 +182,7 @@ spec:
 The `nominalConcurrencyShares` field does not directly specify the number of concurrent requests. Instead, it represents shares in a pool. The actual concurrency limit is calculated based on:
 
 ```text
-actual_concurrency = (nominalConcurrencyShares / total_shares) * server_concurrency_limit
+nominal_concurrency_limit = ceil((nominalConcurrencyShares / total_shares) * server_concurrency_limit)
 ```
 
 For example, if the server concurrency limit is 600 and you have:
@@ -188,7 +191,7 @@ For example, if the server concurrency limit is 600 and you have:
 - workload-low: 100 shares
 - Total: 170 shares
 
-Then system gets: (30/170) * 600 = ~106 concurrent requests.
+Then system gets: ceil((30/170) * 600) = 106 seats as its nominal concurrency limit.
 
 ## Monitoring APF Performance
 
@@ -200,8 +203,8 @@ kubectl get --raw /metrics | grep apiserver_flowcontrol
 
 # Key metrics:
 # apiserver_flowcontrol_request_concurrency_limit - current concurrency limit per priority level
-# apiserver_flowcontrol_rejected_requests_total - rejected requests by priority level
-# apiserver_flowcontrol_dispatched_requests_total - successfully dispatched requests
+# apiserver_flowcontrol_rejected_requests_total - rejected requests by priority level and flow schema
+# apiserver_flowcontrol_dispatched_requests_total - dispatched requests
 # apiserver_flowcontrol_current_inqueue_requests - requests waiting in queue
 ```
 
@@ -216,8 +219,8 @@ status:
   - lastTransitionTime: "2026-02-09T10:00:00Z"
     message: ""
     reason: ""
-    status: "False"
-    type: Exempt
+    status: "True"
+    type: ConcurrencyShared
 ```
 
 ## Debugging Request Rejections
@@ -236,7 +239,7 @@ kubectl logs -n kube-system kube-apiserver-control-plane-1
 To temporarily bypass APF for debugging, you can use the exempt priority level, but this should only be done with extreme caution:
 
 ```yaml
-apiVersion: flowcontrol.apiserver.k8s.io/v1beta3
+apiVersion: flowcontrol.apiserver.k8s.io/v1
 kind: FlowSchema
 metadata:
   name: debug-exempt-flow
