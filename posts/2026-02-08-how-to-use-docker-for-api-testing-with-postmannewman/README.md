@@ -163,8 +163,6 @@ The real power comes from running your API and Newman together in Docker Compose
 
 ```yaml
 # docker-compose.yml - API + Newman test runner
-version: "3.8"
-
 services:
   # Your API application
   api:
@@ -238,19 +236,7 @@ The `--abort-on-container-exit` flag stops all containers when Newman finishes. 
 
 ## Generating HTML Reports
 
-Newman supports multiple reporters. The HTML reporter produces a detailed, shareable test report.
-
-```bash
-# Generate an HTML report
-docker run --rm \
-  -v "$(pwd):/etc/newman" \
-  postman/newman:6-alpine \
-  run collection.json \
-  --reporters cli,htmlextra \
-  --reporter-htmlextra-export /etc/newman/report.html
-```
-
-If the `htmlextra` reporter is not included in the base image, build a custom Newman image.
+Newman supports multiple reporters. The HTML Extra reporter produces a detailed, shareable test report. Because `htmlextra` is an external reporter and is not included in the base Newman image, build a custom Newman image first.
 
 ```dockerfile
 # Dockerfile.newman - Newman with additional reporters
@@ -278,8 +264,6 @@ Speed up large test suites by splitting collections and running them in parallel
 
 ```yaml
 # docker-compose-parallel.yml - Parallel Newman execution
-version: "3.8"
-
 services:
   test-users:
     image: postman/newman:6-alpine
