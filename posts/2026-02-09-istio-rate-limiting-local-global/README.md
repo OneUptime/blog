@@ -68,7 +68,7 @@ spec:
                 numerator: 100
                 denominator: HUNDRED
             response_headers_to_add:
-            - append: false
+            - append_action: OVERWRITE_IF_EXISTS_OR_ADD
               header:
                 key: x-local-rate-limit
                 value: 'true'
@@ -91,6 +91,25 @@ spec:
     labels:
       app: api-service
   configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+            subFilter:
+              name: "envoy.filters.http.router"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          value:
+            stat_prefix: http_local_rate_limiter
+
   - applyTo: HTTP_ROUTE
     match:
       context: SIDECAR_INBOUND
@@ -103,12 +122,32 @@ spec:
       value:
         typed_per_filter_config:
           envoy.filters.http.local_ratelimit:
-            "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-            stat_prefix: http_local_rate_limiter
-            token_bucket:
-              max_tokens: 10
-              tokens_per_fill: 10
-              fill_interval: 1s
+            "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+            type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+            value:
+              stat_prefix: http_local_rate_limiter
+              token_bucket:
+                max_tokens: 10
+                tokens_per_fill: 10
+                fill_interval: 1s
+              filter_enabled:
+                runtime_key: local_rate_limit_enabled
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              filter_enforced:
+                runtime_key: local_rate_limit_enforced
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              descriptors:
+              - entries:
+                - key: header_match
+                  value: high-priority
+                token_bucket:
+                  max_tokens: 100
+                  tokens_per_fill: 100
+                  fill_interval: 1s
 
   - applyTo: HTTP_ROUTE
     match:
@@ -125,6 +164,7 @@ spec:
           - actions:
             - header_value_match:
                 descriptor_value: "high-priority"
+                descriptor_key: "header_match"
                 expect_match: true
                 headers:
                 - name: "x-priority"
@@ -201,6 +241,12 @@ data:
           unit: minute
           requests_per_unit: 1000
 
+      - key: header_match
+        value: path_match
+        rate_limit:
+          unit: minute
+          requests_per_unit: 200
+
       - key: generic_key
         value: global
         rate_limit:
@@ -241,6 +287,8 @@ spec:
           value: "/data"
         - name: RUNTIME_SUBDIRECTORY
           value: "ratelimit"
+        - name: RUNTIME_APPDIRECTORY
+          value: "config"
         - name: RUNTIME_IGNOREDOTFILES
           value: "true"
         volumeMounts:
@@ -340,7 +388,7 @@ spec:
 Configure descriptors for request matching:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
   name: rate-limit-actions
@@ -369,6 +417,7 @@ spec:
         - actions:
           - header_value_match:
               descriptor_value: "path_match"
+              descriptor_key: "header_match"
               expect_match: true
               headers:
               - name: ":path"
@@ -423,6 +472,15 @@ spec:
           - request_headers:
               header_name: "x-user-id"
               descriptor_key: "user_id"
+
+        - actions:
+          - header_value_match:
+              descriptor_key: "generic_key"
+              descriptor_value: "anonymous"
+              expect_match: false
+              headers:
+              - name: "x-user-id"
+                present_match: true
 ```
 
 ## Combining Local and Global Rate Limiting
@@ -448,6 +506,8 @@ spec:
         filterChain:
           filter:
             name: "envoy.filters.network.http_connection_manager"
+            subFilter:
+              name: "envoy.filters.http.router"
     patch:
       operation: INSERT_BEFORE
       value:
@@ -461,11 +521,27 @@ spec:
               max_tokens: 1000
               tokens_per_fill: 1000
               fill_interval: 1s
+            filter_enabled:
+              runtime_key: local_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: local_rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
 
   # Global rate limit (precise enforcement)
   - applyTo: HTTP_FILTER
     match:
       context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+            subFilter:
+              name: "envoy.filters.http.router"
     patch:
       operation: INSERT_BEFORE
       value:
@@ -477,6 +553,28 @@ spec:
             grpc_service:
               envoy_grpc:
                 cluster_name: rate_limit_cluster
+            transport_api_version: V3
+
+  - applyTo: CLUSTER
+    match:
+      context: ANY
+    patch:
+      operation: ADD
+      value:
+        name: rate_limit_cluster
+        type: STRICT_DNS
+        connect_timeout: 1s
+        lb_policy: ROUND_ROBIN
+        http2_protocol_options: {}
+        load_assignment:
+          cluster_name: rate_limit_cluster
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: ratelimit.rate-limit.svc.cluster.local
+                    port_value: 8081
 ```
 
 ## Monitoring Rate Limit Behavior
@@ -486,7 +584,7 @@ Query rate limit metrics:
 ```promql
 # Local rate limit rejections
 
-rate(envoy_http_local_rate_limit_rate_limited[5m])
+rate(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited[5m])
 
 # Global rate limit calls
 rate(envoy_cluster_ratelimit_ok[5m])
@@ -511,7 +609,7 @@ spec:
     rules:
     - alert: HighRateLimitRejection
       expr: |
-        rate(envoy_http_local_rate_limit_rate_limited[5m]) > 10
+        rate(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited[5m]) > 10
       for: 2m
       annotations:
         summary: "High rate limit rejection rate"
