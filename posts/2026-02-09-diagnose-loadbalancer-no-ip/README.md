@@ -10,7 +10,7 @@ Description: Troubleshoot and fix LoadBalancer services stuck in pending state w
 
 LoadBalancer services provide external access to applications by requesting a cloud provider load balancer. When everything works correctly, the cloud provider provisions the load balancer and assigns an external IP address within minutes. However, when the service gets stuck with `<pending>` in the EXTERNAL-IP column, applications remain inaccessible from outside the cluster.
 
-This issue is frustrating because Kubernetes shows no errors, yet the service never becomes ready. The root cause varies depending on your infrastructure, from cloud provider configuration issues to cluster setup problems.
+This issue is frustrating because `kubectl get svc` often shows no errors, yet the service never becomes ready. The root cause varies depending on your infrastructure, from cloud provider configuration issues to cluster setup problems.
 
 ## Understanding LoadBalancer Service Provisioning
 
@@ -49,9 +49,11 @@ kubectl get pods -n kube-system | grep cloud-controller
 
 # For AWS
 kubectl get pods -n kube-system | grep aws-cloud-controller
+kubectl get pods -A | grep aws-load-balancer-controller
 
 # For GCP
-kubectl get pods -n kube-system | grep gcp-cloud-controller
+# GKE manages the load balancer controller as part of the managed control plane.
+# In self-managed clusters, check the cloud controller manager for your GCP integration.
 
 # For Azure
 kubectl get pods -n kube-system | grep azure-cloud-controller
@@ -60,7 +62,7 @@ kubectl get pods -n kube-system | grep azure-cloud-controller
 kubectl logs -n kube-system cloud-controller-manager-xxx
 ```
 
-If the cloud controller manager is not running or shows errors, it cannot provision load balancers.
+If the responsible cloud controller or load balancer controller is not running or shows errors, it cannot provision load balancers.
 
 ## Checking Cluster Configuration
 
@@ -70,15 +72,14 @@ Verify your cluster was configured with cloud provider support:
 # Check kube-controller-manager configuration
 kubectl get pod -n kube-system kube-controller-manager-xxx -o yaml | grep cloud-provider
 
-# Should show something like:
-# - --cloud-provider=aws
-# or
+# For an external cloud controller manager, kubelet and kube-controller-manager
+# should show:
 # - --cloud-provider=external
 
 # For managed Kubernetes (EKS, GKE, AKS), this is configured automatically
 ```
 
-If cloud-provider is not set or set to empty, the cluster cannot create load balancers.
+For self-managed clusters that use an external cloud controller manager, missing `--cloud-provider=external` configuration can prevent the controller from initializing nodes and provisioning load balancers.
 
 ## Verifying Cloud Provider Credentials
 
@@ -95,6 +96,12 @@ curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
 # - elasticloadbalancing:DescribeLoadBalancers
 # - elasticloadbalancing:ConfigureHealthCheck
 # - elasticloadbalancing:RegisterInstancesWithLoadBalancer
+# - elasticloadbalancing:CreateTargetGroup
+# - elasticloadbalancing:RegisterTargets
+# - elasticloadbalancing:DescribeTargetGroups
+# - elasticloadbalancing:DescribeTargetHealth
+# - ec2:DescribeSubnets
+# - ec2:DescribeSecurityGroups
 
 # For GCP, check service account permissions
 # For Azure, check managed identity or service principal
@@ -107,8 +114,10 @@ Missing permissions prevent load balancer creation even if everything else is co
 Cloud providers limit how many load balancers you can create:
 
 ```bash
-# For AWS
+# For AWS Classic Load Balancers
 aws elb describe-account-limits
+# For AWS Network and Application Load Balancer quotas
+aws service-quotas list-service-quotas --service-code elasticloadbalancing
 
 # For GCP
 gcloud compute project-info describe --project=PROJECT_ID
@@ -132,7 +141,7 @@ metadata:
   name: my-loadbalancer
   namespace: my-namespace
   # annotations:  # Cloud-specific annotations may be required
-  #   service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+  #   service.beta.kubernetes.io/aws-load-balancer-type: "external"
 spec:
   type: LoadBalancer
   selector:
@@ -163,7 +172,7 @@ curl http://NODE_IP:30123
 # If NodePort fails, fix the service/pod issues first
 ```
 
-LoadBalancer builds on top of NodePort, so NodePort must work for LoadBalancer to succeed.
+LoadBalancer usually builds on top of NodePort, so NodePort should work for the default instance-target path. Some providers can route directly to pods and set `spec.allocateLoadBalancerNodePorts: false`, so validate the path your implementation actually uses.
 
 ## Checking Security Groups and Firewall Rules
 
@@ -171,7 +180,8 @@ Cloud firewalls might prevent load balancer communication with nodes:
 
 ```bash
 # For AWS, verify security group allows traffic
-# Check node security group allows traffic on NodePorts (30000-32767)
+# For instance targets, check node security group allows traffic on NodePorts (30000-32767)
+# For IP targets, check pod or worker-node security group rules for the target ports
 
 # For GCP, verify firewall rules
 gcloud compute firewall-rules list --filter="name~k8s"
@@ -180,7 +190,7 @@ gcloud compute firewall-rules list --filter="name~k8s"
 az network nsg rule list --nsg-name CLUSTER-NSG --resource-group RG
 ```
 
-Load balancers need to reach the NodePort on each node for health checks to pass.
+For instance-target load balancers, the load balancer needs to reach the NodePort on each node for health checks to pass. For pod/IP-target load balancers, it needs to reach the selected pod or endpoint ports.
 
 ## Examining Cloud Provider Events
 
@@ -189,7 +199,7 @@ Check cloud provider logs and events:
 ```bash
 # For AWS CloudTrail
 aws cloudtrail lookup-events --lookup-attributes \
-  AttributeKey=ResourceType,AttributeValue=AWS::ElasticLoadBalancing::LoadBalancer \
+  AttributeKey=EventSource,AttributeValue=elasticloadbalancing.amazonaws.com \
   --max-results 50
 
 # Look for CreateLoadBalancer events and any errors
@@ -217,6 +227,7 @@ kubectl get nodes -o wide
 # For AWS, verify subnets are tagged properly
 # kubernetes.io/cluster/CLUSTER-NAME: owned or shared
 # kubernetes.io/role/elb: 1 (for public subnets)
+# kubernetes.io/role/internal-elb: 1 (for private/internal subnets)
 
 # Verify internet gateway exists for public load balancers
 ```
@@ -230,6 +241,7 @@ Name conflicts or leftover resources cause issues:
 ```bash
 # For AWS, check for existing load balancers
 aws elb describe-load-balancers | grep my-loadbalancer
+aws elbv2 describe-load-balancers | grep my-loadbalancer
 
 # For GCP
 gcloud compute forwarding-rules list
@@ -240,7 +252,7 @@ az network lb list
 # Delete any stale resources matching your service
 ```
 
-If a load balancer with the same name exists, Kubernetes cannot create a new one.
+If a conflicting load balancer or leftover cloud resource with the same generated name exists, Kubernetes may fail to create or reconcile a new one.
 
 ## Testing on Bare Metal or Unsupported Platforms
 
@@ -253,7 +265,7 @@ kubectl get pods -n metallb-system
 # If no load balancer implementation exists, service stays pending forever
 
 # Install MetalLB for bare metal
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.7/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 
 # Configure IP address pool
 # See MetalLB documentation for details
@@ -275,8 +287,10 @@ kubectl logs -n kube-system kube-controller-manager-xxx | grep -i loadbalancer
 # - Cloud provider error
 
 # Enable verbose logging if needed
-kubectl edit pod -n kube-system kube-controller-manager-xxx
-# Add --v=5 to increase verbosity
+# For static-pod control planes, edit the kube-controller-manager manifest
+# on the control-plane node, usually:
+# /etc/kubernetes/manifests/kube-controller-manager.yaml
+# Add or adjust --v=5 to increase verbosity, then let the kubelet restart it
 ```
 
 Service controller logs reveal Kubernetes-level issues.
@@ -288,13 +302,14 @@ Cloud providers use annotations for load balancer configuration:
 ```bash
 # For AWS
 annotations:
-  service.beta.kubernetes.io/aws-load-balancer-type: "nlb"  # Use NLB instead of CLB
-  service.beta.kubernetes.io/aws-load-balancer-internal: "true"  # For internal LB
+  service.beta.kubernetes.io/aws-load-balancer-type: "external"  # Let AWS Load Balancer Controller manage the service
+  service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"  # Use NLB instance targets
+  service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"  # For internal LB
   service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:..."
 
 # For GCP
 annotations:
-  cloud.google.com/load-balancer-type: "Internal"
+  networking.gke.io/load-balancer-type: "Internal"
 
 # For Azure
 annotations:
