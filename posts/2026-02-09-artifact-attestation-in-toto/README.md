@@ -25,9 +25,6 @@ pip install in-toto
 
 # Verify installation
 in-toto-run --version
-
-# Or use container image
-docker pull in-toto/in-toto:latest
 ```
 
 ## Creating Signing Keys
@@ -36,18 +33,22 @@ Generate keys for functionaries:
 
 ```bash
 # Create keys for build system
-in-toto-keygen build-system
+openssl genpkey -algorithm Ed25519 -out build-system
 
-# Creates: build-system (private), build-system.pub (public)
+# Create public key
+openssl pkey -in build-system -pubout -out build-system.pub
 
 # Create keys for test system
-in-toto-keygen test-runner
+openssl genpkey -algorithm Ed25519 -out test-runner
+openssl pkey -in test-runner -pubout -out test-runner.pub
 
 # Create keys for security scan
-in-toto-keygen security-scanner
+openssl genpkey -algorithm Ed25519 -out security-scanner
+openssl pkey -in security-scanner -pubout -out security-scanner.pub
 
 # Create project owner key for layout
-in-toto-keygen project-owner
+openssl genpkey -algorithm Ed25519 -out project-owner
+openssl pkey -in project-owner -pubout -out project-owner.pub
 ```
 
 ## Defining the Supply Chain Layout
@@ -58,30 +59,55 @@ Create a layout defining your supply chain:
 # create_layout.py
 from in_toto.models.layout import Layout, Step
 from in_toto.models.metadata import Metablock
-import json
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
+from securesystemslib.signer import CryptoSigner, SSlibKey
+
+def load_public_key(public_key_path):
+    with open(public_key_path, "rb") as f:
+        crypto_public_key = load_pem_public_key(f.read())
+    key = SSlibKey.from_crypto(crypto_public_key)
+    key_dict = key.to_dict()
+    key_dict["keyid"] = key.keyid
+    return key, key_dict
+
+def load_signer(private_key_path, public_key_path):
+    public_key, _ = load_public_key(public_key_path)
+    return CryptoSigner.from_priv_key_uri(f"file2:{private_key_path}", public_key)
+
+def add_functionary_key(layout, public_key_path):
+    key, key_dict = load_public_key(public_key_path)
+    layout.add_functionary_key(key_dict)
+    return key.keyid
 
 # Create layout
 layout = Layout()
+layout.set_relative_expiration(months=6)
+
+build_keyid = add_functionary_key(layout, "build-system.pub")
+test_keyid = add_functionary_key(layout, "test-runner.pub")
+scan_keyid = add_functionary_key(layout, "security-scanner.pub")
 
 # Define build step
 build_step = Step(name="build")
-build_step.set_expected_command_from_string("docker build -t myapp:latest .")
-build_step.pubkeys = ["<build-system-key-id>"]
-build_step.expected_materials = [["MATCH", "src/*", "WITH", "PRODUCTS", "FROM", "clone"]]
-build_step.expected_products = [["CREATE", "Dockerfile"], ["CREATE", "*.tar"]]
+build_step.set_expected_command_from_string("sh -c 'docker build -t myapp:latest . && docker save myapp:latest -o myapp.tar'")
+build_step.pubkeys = [build_keyid]
+build_step.add_material_rule_from_string("ALLOW src/*")
+build_step.add_material_rule_from_string("ALLOW Dockerfile")
+build_step.add_product_rule_from_string("CREATE myapp.tar")
 
 # Define test step
 test_step = Step(name="test")
-test_step.pubkeys = ["<test-runner-key-id>"]
-test_step.expected_command_from_string("npm test")
-test_step.expected_materials = [["MATCH", "*", "WITH", "PRODUCTS", "FROM", "build"]]
+test_step.pubkeys = [test_keyid]
+test_step.set_expected_command_from_string("npm test")
+test_step.add_material_rule_from_string("ALLOW src/*")
+test_step.add_material_rule_from_string("ALLOW package.json")
 test_step.expected_products = [["CREATE", "test-results.xml"]]
 
 # Define scan step
 scan_step = Step(name="security-scan")
-scan_step.pubkeys = ["<security-scanner-key-id>"]
-scan_step.expected_command_from_string("trivy image myapp:latest")
-scan_step.expected_materials = [["MATCH", "*", "WITH", "PRODUCTS", "FROM", "build"]]
+scan_step.pubkeys = [scan_keyid]
+scan_step.set_expected_command_from_string("trivy image --input myapp.tar")
+scan_step.add_material_rule_from_string("ALLOW myapp.tar")
 scan_step.expected_products = [["CREATE", "scan-report.json"]]
 
 # Add steps to layout
@@ -89,7 +115,7 @@ layout.steps = [build_step, test_step, scan_step]
 
 # Sign and save layout
 metablock = Metablock(signed=layout)
-metablock.sign("project-owner")
+metablock.create_signature(load_signer("project-owner", "project-owner.pub"))
 metablock.dump("root.layout")
 ```
 
@@ -101,10 +127,10 @@ Create attestations during CI/CD:
 # In build step
 in-toto-run \
   --step-name build \
-  --key build-system \
+  --signing-key build-system \
   --materials src/ Dockerfile \
   --products myapp.tar \
-  -- docker build -t myapp:latest .
+  -- sh -c 'docker build -t myapp:latest . && docker save myapp:latest -o myapp.tar'
 
 # This creates: build.<keyid>.link
 ```
@@ -119,7 +145,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Install In-Toto
         run: pip install in-toto
@@ -131,13 +157,13 @@ jobs:
         run: |
           in-toto-run \
             --step-name build \
-            --key build-system \
+            --signing-key build-system \
             --materials src/ Dockerfile \
             --products myapp.tar \
-            -- docker build -t registry.example.com/myapp:${{ github.sha }} .
+            -- sh -c 'docker build -t registry.example.com/myapp:${{ github.sha }} . && docker save registry.example.com/myapp:${{ github.sha }} -o myapp.tar'
 
       - name: Upload attestation
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: build-attestation
           path: build.*.link
@@ -146,24 +172,27 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Download build attestation
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v7
         with:
           name: build-attestation
+
+      - name: Load signing key
+        run: echo "${{ secrets.IN_TOTO_TEST_KEY }}" > test-runner
 
       - name: Run tests with attestation
         run: |
           in-toto-run \
             --step-name test \
-            --key test-runner \
+            --signing-key test-runner \
             --materials src/ package.json \
             --products test-results.xml \
             -- npm test
 
       - name: Upload test attestation
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: test-attestation
           path: test.*.link
@@ -196,6 +225,7 @@ spec:
         set -e
 
         # Install in-toto
+        apt-get update && apt-get install -y docker.io
         pip install in-toto
 
         # Load signing key from secret
@@ -205,7 +235,7 @@ spec:
         cd $(workspaces.source.path)
         in-toto-run \
           --step-name $(params.step-name) \
-          --key build-key \
+          --signing-key build-key \
           --materials src/ Dockerfile \
           --products image.tar \
           -- docker build -t $(params.image-name) -o type=tar,dest=image.tar .
@@ -216,11 +246,16 @@ spec:
       volumeMounts:
         - name: in-toto-keys
           mountPath: /secrets
+        - name: docker-socket
+          mountPath: /var/run/docker.sock
 
   volumes:
     - name: in-toto-keys
       secret:
         secretName: in-toto-signing-keys
+    - name: docker-socket
+      hostPath:
+        path: /var/run/docker.sock
 ```
 
 ## Creating Attestations for Multiple Steps
@@ -242,7 +277,7 @@ build:
     - |
       in-toto-run \
         --step-name build \
-        --key $IN_TOTO_BUILD_KEY \
+        --signing-key $IN_TOTO_BUILD_KEY_PATH \
         --materials src/ \
         --products dist/ \
         -- npm run build
@@ -257,7 +292,7 @@ test:
     - |
       in-toto-run \
         --step-name test \
-        --key $IN_TOTO_TEST_KEY \
+        --signing-key $IN_TOTO_TEST_KEY_PATH \
         --materials dist/ test/ \
         --products coverage/ \
         -- npm test
@@ -272,7 +307,7 @@ security-scan:
     - |
       in-toto-run \
         --step-name security-scan \
-        --key $IN_TOTO_SCAN_KEY \
+        --signing-key $IN_TOTO_SCAN_KEY_PATH \
         --materials dist/ \
         --products scan-report.json \
         -- trivy fs dist/
@@ -291,7 +326,7 @@ Verify attestations at deployment:
 # Verify the complete supply chain
 in-toto-verify \
   --layout root.layout \
-  --layout-key project-owner.pub \
+  --verification-keys project-owner.pub \
   --link-dir .
 
 # If verification passes, proceed with deployment
@@ -306,8 +341,8 @@ metadata:
   name: verify-supply-chain
 spec:
   params:
-    - name: layout-url
-      description: URL to root.layout file
+    - name: layout-base-url
+      description: Base URL containing root.layout and project-owner.pub
 
   workspaces:
     - name: attestations
@@ -322,16 +357,16 @@ spec:
         pip install in-toto
 
         # Download layout
-        curl -o root.layout $(params.layout-url)
+        curl -o /tmp/root.layout $(params.layout-base-url)/root.layout
 
         # Download public keys
-        curl -o project-owner.pub $(params.layout-url)/project-owner.pub
+        curl -o /tmp/project-owner.pub $(params.layout-base-url)/project-owner.pub
 
         # Verify
         cd $(workspaces.attestations.path)
         in-toto-verify \
-          --layout root.layout \
-          --layout-key project-owner.pub \
+          --layout /tmp/root.layout \
+          --verification-keys /tmp/project-owner.pub \
           --link-dir .
 
         echo "✓ Supply chain verification passed"
@@ -342,7 +377,8 @@ spec:
 Store attestations with images:
 
 ```bash
-# Using cosign to attach attestations
+# If you generated DSSE-formatted link metadata with --use-dsse,
+# use cosign to attach those attestation envelopes
 cosign attach attestation \
   --attestation build.*.link \
   registry.example.com/myapp:v1.0.0
@@ -356,8 +392,8 @@ Store in artifact repository:
 
 ```bash
 # Upload to registry
-curl -X PUT https://attestations.example.com/myapp/v1.0.0/build.link \
-  --data-binary @build.*.link
+curl -X PUT https://attestations.example.com/myapp/v1.0.0/build.abcdef12.link \
+  --data-binary @build.abcdef12.link
 
 # Upload all attestations
 for link in *.link; do
@@ -373,26 +409,61 @@ Verify attestations before deployment:
 ```python
 # admission_webhook.py
 from in_toto.verifylib import in_toto_verify
+from in_toto.models.metadata import Metadata
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
+from securesystemslib.signer import SSlibKey
 import requests
+import tempfile
+import os
+
+def load_public_key(path):
+    with open(path, "rb") as f:
+        crypto_public_key = load_pem_public_key(f.read())
+    key = SSlibKey.from_crypto(crypto_public_key)
+    key_dict = key.to_dict()
+    key_dict["keyid"] = key.keyid
+    return key_dict
 
 def verify_image_attestations(image):
-    # Download layout
-    layout = requests.get(f"https://layouts.example.com/{image}/root.layout")
+    with tempfile.TemporaryDirectory() as attestations_dir:
+        # Download layout and project owner public key
+        layout_response = requests.get(f"https://layouts.example.com/{image}/root.layout")
+        layout_response.raise_for_status()
+        layout_path = os.path.join(attestations_dir, "root.layout")
+        with open(layout_path, "wb") as f:
+            f.write(layout_response.content)
 
-    # Download attestations
-    attestations = requests.get(f"https://attestations.example.com/{image}/")
+        key_response = requests.get(f"https://layouts.example.com/{image}/project-owner.pub")
+        key_response.raise_for_status()
+        key_path = os.path.join(attestations_dir, "project-owner.pub")
+        with open(key_path, "wb") as f:
+            f.write(key_response.content)
 
-    # Verify
-    try:
-        in_toto_verify(
-            layout.content,
-            layout_keys=["project-owner.pub"],
-            link_dir_path=attestations_dir
-        )
-        return True
-    except Exception as e:
-        print(f"Verification failed: {e}")
-        return False
+        # Download attestations
+        link_names = {
+            "build": "build.abcdef12.link",
+            "test": "test.12345678.link",
+            "security-scan": "security-scan.90abcdef.link",
+        }
+        for link_name in link_names.values():
+            link_response = requests.get(
+                f"https://attestations.example.com/{image}/{link_name}"
+            )
+            link_response.raise_for_status()
+            with open(os.path.join(attestations_dir, link_name), "wb") as f:
+                f.write(link_response.content)
+
+        # Verify
+        try:
+            in_toto_verify(
+                Metadata.load(layout_path),
+                {load_public_key(key_path)["keyid"]: load_public_key(key_path)},
+                link_dir_path=attestations_dir
+            )
+            return True
+        except Exception as e:
+            print(f"Verification failed: {e}")
+            return False
 
 # Use in admission webhook to block unverified images
 ```
@@ -421,13 +492,17 @@ def generate_supply_chain_report(link_files):
             "command": link.command,
             "materials": len(link.materials),
             "products": len(link.products),
-            "signed_by": list(metablock.signatures.keys())
+            "signed_by": [signature.keyid for signature in metablock.signatures]
         })
 
     return report
 
 # Generate and save report
-report = generate_supply_chain_report(["build.link", "test.link", "scan.link"])
+report = generate_supply_chain_report([
+    "build.abcdef12.link",
+    "test.12345678.link",
+    "security-scan.90abcdef.link"
+])
 with open("supply-chain-report.json", "w") as f:
     json.dump(report, f, indent=2)
 ```
