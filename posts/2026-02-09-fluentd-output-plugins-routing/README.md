@@ -12,47 +12,60 @@ Fluentd's flexible output system lets you send logs to multiple destinations sim
 
 ## Understanding Fluentd Output Routing
 
-Fluentd matches log events against output plugin configurations using tag patterns. When an event flows through the pipeline, Fluentd evaluates all match directives in order and sends the event to outputs where the tag matches. The match pattern supports wildcards, making it easy to route subsets of logs to specific destinations.
+Fluentd matches log events against output plugin configurations using tag patterns. When an event flows through the pipeline, Fluentd evaluates match directives in order and uses the first matching output. The match pattern supports wildcards, making it easy to route subsets of logs to specific destinations.
 
 Tags typically follow a hierarchical structure like app.production.web or system.auth.syslog. This hierarchy enables flexible routing patterns. You can match all app logs with app.**, production logs with **.production.**, or specific services with app.production.api.
 
-Multiple output plugins can match the same event. If you configure outputs for both app.** and **.production.**, an event tagged app.production.web matches both and gets sent to both destinations. This fan-out pattern lets you implement redundant storage or specialized processing pipelines.
+Because match order matters, define tighter match patterns before broader ones. If you configure outputs for both app.** and **.production.**, an event tagged app.production.web is handled by whichever matching directive appears first. To send the same event to multiple destinations, use the copy plugin. This fan-out pattern lets you implement redundant storage or specialized processing pipelines.
 
 ## Basic Multi-Destination Configuration
 
 Start with a simple configuration that sends logs to multiple outputs:
 
 ```ruby
-# Send all logs to Elasticsearch
+# Send error logs to Elasticsearch and Slack
+<match **.error>
+  @type copy
 
+  <store>
+    @type elasticsearch
+    host elasticsearch.example.com
+    port 9200
+    index_name fluentd
+
+    <buffer>
+      flush_interval 10s
+    </buffer>
+  </store>
+
+  <store ignore_error>
+    @type slack
+    webhook_url https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    channel alerts
+    username "Fluentd"
+    message "Error detected: %s"
+    message_keys message
+
+    <buffer>
+      flush_interval 5s
+    </buffer>
+  </store>
+</match>
+
+# Send all other logs to Elasticsearch
 <match **>
   @type elasticsearch
   host elasticsearch.example.com
   port 9200
   index_name fluentd
-  type_name _doc
 
   <buffer>
     flush_interval 10s
   </buffer>
 </match>
-
-# Send error logs to Slack
-<match **.error>
-  @type slack
-  webhook_url https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-  channel "#alerts"
-  username "Fluentd"
-  message "Error detected: %s"
-  message_keys message
-
-  <buffer>
-    flush_interval 5s
-  </buffer>
-</match>
 ```
 
-This configuration sends all logs to Elasticsearch and additionally sends error-tagged logs to Slack. Events tagged app.production.error match both patterns and go to both destinations.
+This configuration sends error-tagged logs to both Elasticsearch and Slack, then sends all other logs to Elasticsearch. Events tagged app.production.error match the first directive and are explicitly duplicated with the copy plugin.
 
 ## Tag-Based Routing Strategies
 
@@ -98,7 +111,7 @@ Design a tagging scheme that enables clean routing logic:
 </match>
 ```
 
-Tag hierarchies let you route at different levels of granularity. The pattern **.critical matches app.production.critical, system.staging.critical, and any other critical-tagged event.
+Tag hierarchies let you route at different levels of granularity. The pattern **.critical matches app.production.critical, system.staging.critical, and any other critical-tagged event. Treat these as separate strategies or order them by priority, because Fluentd uses the first matching directive.
 
 ## Using Copy Plugin for Fan-Out
 
@@ -146,14 +159,14 @@ The copy plugin duplicates events to multiple outputs without reprocessing:
     </format>
   </store>
 
-  # Keep copy plugin efficient with ignore_error
+  # Keep less critical outputs from blocking the rest
   <store ignore_error>
     @type stdout
   </store>
 </match>
 ```
 
-The copy plugin sends the same event to all three destinations. If one destination fails, the others continue processing.
+The copy plugin sends the same event to all configured stores. If a less critical destination may fail without stopping later stores, mark that store with `ignore_error`.
 
 ## Conditional Routing with Rewrite Tag Filter
 
@@ -166,22 +179,22 @@ Use rewrite_tag_filter to add routing tags based on log content:
   <rule>
     key level
     pattern /^ERROR$/
-    tag ${tag}.error
+    tag routed.${tag}.error
   </rule>
   <rule>
     key level
     pattern /^WARN$/
-    tag ${tag}.warning
+    tag routed.${tag}.warning
   </rule>
   <rule>
     key level
     pattern /^INFO$/
-    tag ${tag}.info
+    tag routed.${tag}.info
   </rule>
 </match>
 
 # Route retagged logs
-<match application.**.error>
+<match routed.application.**.error>
   @type copy
   <store>
     @type elasticsearch
@@ -189,25 +202,29 @@ Use rewrite_tag_filter to add routing tags based on log content:
     index_name error-logs
   </store>
   <store>
-    @type pagerduty
-    service_key YOUR_PAGERDUTY_KEY
+    @type http
+    endpoint https://alerting-service.example.com/errors
+    http_method post
+    <format>
+      @type json
+    </format>
   </store>
 </match>
 
-<match application.**.warning>
+<match routed.application.**.warning>
   @type elasticsearch
   host elasticsearch.example.com
   index_name warning-logs
 </match>
 
-<match application.**.info>
+<match routed.application.**.info>
   @type elasticsearch
   host elasticsearch.example.com
   index_name info-logs
 </match>
 ```
 
-Events get retagged based on their level field, then routed to appropriate destinations. Errors trigger PagerDuty alerts while info logs go only to Elasticsearch.
+Events get retagged based on their level field, then routed to appropriate destinations. Errors trigger an alerting webhook while info logs go only to Elasticsearch.
 
 ## Output Plugin Configuration Patterns
 
@@ -324,8 +341,8 @@ HTTP output for webhooks and APIs:
   # Retry configuration
   retryable_response_codes [503]
   <secondary>
-    @type file
-    path /var/log/fluentd/failed/http
+    @type secondary_file
+    directory /var/log/fluentd/failed/http
   </secondary>
 
   # Serialization
@@ -359,12 +376,12 @@ Use record_transformer and routing to filter by content:
   <rule>
     key high_value
     pattern /^true$/
-    tag ${tag}.high_value
+    tag routed.${tag}.high_value
   </rule>
 </match>
 
 # Route high-value transactions to special processing
-<match transactions.**.high_value>
+<match routed.transactions.**.high_value>
   @type copy
   <store>
     @type elasticsearch
@@ -405,36 +422,38 @@ Configure secondary outputs for fault tolerance:
 </match>
 ```
 
-If the primary Elasticsearch cluster becomes unavailable, Fluentd automatically routes to the secondary cluster.
+If the primary Elasticsearch cluster remains unavailable until the retry threshold is exceeded, Fluentd delegates the failed buffer chunk to the secondary output.
 
-Multiple fallback levels:
+Multiple fallback stores with copy:
 
 ```ruby
 <match important.**>
-  @type elasticsearch
-  host elasticsearch.example.com
+  @type copy
 
-  <buffer>
-    retry_timeout 30m
-  </buffer>
+  # Primary output
+  <store ignore_error>
+    @type elasticsearch
+    host elasticsearch.example.com
+
+    <buffer>
+      retry_timeout 30m
+    </buffer>
+  </store>
 
   # First fallback: write to file
-  <secondary>
+  <store ignore_if_prev_success ignore_error>
     @type file
     path /var/log/fluentd/failed/important
-    <buffer>
-      flush_interval 60s
-    </buffer>
+  </store>
 
-    # Second fallback: stdout
-    <secondary>
-      @type stdout
-    </secondary>
-  </secondary>
+  # Second fallback: stdout
+  <store ignore_if_prev_success>
+    @type stdout
+  </store>
 </match>
 ```
 
-This creates a three-tier fallback chain ensuring logs never get lost.
+This creates a three-tier fallback chain. Fluentd uses each later store only if the preceding store fails, though durable local buffering is still important for minimizing data loss.
 
 ## Performance Considerations
 
