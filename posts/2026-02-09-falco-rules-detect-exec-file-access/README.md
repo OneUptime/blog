@@ -73,7 +73,6 @@ Track when operators execute commands in containers:
     spawned_process and
     container and
     k8s.ns.name in (production, prod, critical) and
-    proc.pname in (bash, sh, zsh) and
     not k8s.pod.name startswith "maintenance-"
   output: >
     Command executed in production namespace
@@ -92,7 +91,7 @@ Monitor sensitive file access:
   condition: >
     open_read and
     container and
-    fd.name in (
+    (fd.name in (
       /etc/shadow,
       /etc/sudoers,
       /etc/pam.d/common-password,
@@ -101,10 +100,10 @@ Monitor sensitive file access:
       /root/.ssh/id_dsa,
       /root/.ssh/id_ecdsa,
       /root/.ssh/id_ed25519,
-      /root/.bash_history,
-      /home/*/.bash_history,
-      /home/*/.ssh/id_rsa
-    )
+      /root/.bash_history
+    ) or
+    fd.name glob /home/*/.bash_history or
+    fd.name glob /home/*/.ssh/id_rsa)
   output: >
     Sensitive file read detected
     (user=%user.name file=%fd.name process=%proc.name container=%container.name pod=%k8s.pod.name)
@@ -152,7 +151,7 @@ Detect unauthorized secret access:
   condition: >
     open_read and
     container and
-    fd.name glob /secrets/* and
+    fd.name startswith /secrets/ and
     not proc.name in (app, service, worker)
   output: >
     Secret volume accessed by unexpected process
@@ -188,10 +187,10 @@ Monitor changes to application configuration:
   condition: >
     open_read and
     container and
-    (fd.name glob *.pem or
-    fd.name glob *.key or
-    fd.name glob *.crt or
-    fd.name glob /etc/ssl/*)
+    (fd.name endswith ".pem" or
+    fd.name endswith ".key" or
+    fd.name endswith ".crt" or
+    fd.name startswith /etc/ssl/)
   output: >
     SSL certificate or key accessed
     (user=%user.name file=%fd.name process=%proc.name container=%container.name)
@@ -383,14 +382,24 @@ Optimize rules for performance:
 ```yaml
 # Bad: Too broad, high overhead
 - rule: All File Access
-  condition: open and container
+  desc: Detect every file open event in containers
+  condition: evt.type in (open, openat, openat2) and container
+  output: >
+    File opened in container
+    (user=%user.name file=%fd.name process=%proc.name container=%container.name)
+  priority: INFO
 
 # Good: Specific, lower overhead
 - rule: Sensitive File Access
+  desc: Detect reads of specific sensitive files in containers
   condition: >
     open_read and
     container and
     fd.name in (/etc/shadow, /etc/sudoers)
+  output: >
+    Sensitive file opened in container
+    (user=%user.name file=%fd.name process=%proc.name container=%container.name)
+  priority: WARNING
 ```
 
 ## Best Practices
