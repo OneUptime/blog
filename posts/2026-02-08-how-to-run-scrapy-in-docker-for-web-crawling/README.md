@@ -186,6 +186,8 @@ Process and clean scraped data before it gets saved:
 
 ```python
 # crawler/pipelines.py - Data cleaning and deduplication pipelines
+from scrapy.exceptions import DropItem
+
 
 class CleanTextPipeline:
     """Remove extra whitespace and normalize text fields."""
@@ -208,7 +210,7 @@ class DuplicateFilterPipeline:
     def process_item(self, item, spider):
         text = item.get("text", "")
         if text in self.seen:
-            raise scrapy.exceptions.DropItem(f"Duplicate quote: {text[:50]}...")
+            raise DropItem(f"Duplicate quote: {text[:50]}...")
         self.seen.add(text)
         return item
 ```
@@ -219,8 +221,6 @@ For production crawling, store results in MongoDB instead of flat files:
 
 ```yaml
 # docker-compose.yml - Scrapy crawler with MongoDB for persistent storage
-version: "3.8"
-
 services:
   mongodb:
     image: mongo:7
@@ -264,6 +264,15 @@ networks:
 ```
 
 Add a MongoDB pipeline to your settings and pipelines:
+
+```python
+# crawler/settings.py - Add the MongoDB pipeline for Mongo-backed runs
+ITEM_PIPELINES = {
+    "crawler.pipelines.CleanTextPipeline": 100,
+    "crawler.pipelines.DuplicateFilterPipeline": 200,
+    "crawler.pipelines.MongoPipeline": 300,
+}
+```
 
 ```python
 # crawler/pipelines.py - MongoDB storage pipeline (add to existing file)
@@ -316,9 +325,7 @@ Run an ad-hoc spider with custom arguments:
 
 ```bash
 # Run a spider with custom settings passed as arguments
-docker run --rm \
-  -v $(pwd)/output:/app/output \
-  scrapy-crawler \
+docker compose run --rm --build spider-quotes \
   scrapy crawl quotes -a category=humor -s CLOSESPIDER_ITEMCOUNT=50
 ```
 
