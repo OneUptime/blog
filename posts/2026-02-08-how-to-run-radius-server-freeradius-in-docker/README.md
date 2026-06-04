@@ -40,7 +40,7 @@ The client device authenticates through a Network Access Server (NAS), such as a
 
 ## Quick Start
 
-Run FreeRADIUS with the default file-based user authentication.
+Run FreeRADIUS in debug mode with the default configuration. Add your local clients and users before testing from outside the container.
 
 ```bash
 # Start FreeRADIUS in debug mode to see authentication requests in real time
@@ -50,7 +50,6 @@ docker run -d \
   --name freeradius \
   -p 1812:1812/udp \
   -p 1813:1813/udp \
-  -v freeradius-config:/etc/freeradius \
   freeradius/freeradius-server:latest \
   -X
 ```
@@ -64,8 +63,6 @@ A production setup uses Docker Compose with persistent configuration and optiona
 ```yaml
 # docker-compose.yml for FreeRADIUS with MariaDB backend
 # Includes persistent configuration and database storage
-version: "3.8"
-
 services:
   freeradius:
     image: freeradius/freeradius-server:latest
@@ -74,7 +71,7 @@ services:
     ports:
       - "1812:1812/udp"   # Authentication
       - "1813:1813/udp"   # Accounting
-      - "18120:18120/tcp"  # Status (optional)
+      - "18121:18121/udp"  # Status server (optional, enable sites-available/status)
     volumes:
       - ./raddb:/etc/raddb
       - freeradius-logs:/var/log/freeradius
@@ -117,7 +114,7 @@ networks:
 
 Every device that sends authentication requests to FreeRADIUS must be registered as a client. Edit the clients.conf file.
 
-```bash
+```text
 # clients.conf - Define which devices can send RADIUS requests
 # Each client needs an IP address and shared secret
 
@@ -153,9 +150,9 @@ client vpn_gateway {
 
 ## File-Based User Authentication
 
-The simplest authentication method uses a flat file. Edit the users file in the raddb directory.
+The simplest authentication method uses a flat file. Edit the `mods-config/files/authorize` file in the raddb directory.
 
-```bash
+```text
 # users - File-based user authentication
 # Format: username Auth-Type := method, attributes
 
@@ -193,10 +190,10 @@ CREATE TABLE IF NOT EXISTS radcheck (
     id INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
     username VARCHAR(64) NOT NULL DEFAULT '',
     attribute VARCHAR(64) NOT NULL DEFAULT '',
-    op CHAR(2) NOT NULL DEFAULT ':=',
+    op CHAR(2) NOT NULL DEFAULT '==',
     value VARCHAR(253) NOT NULL DEFAULT '',
     PRIMARY KEY (id),
-    KEY username (username)
+    KEY username (username(32))
 );
 
 CREATE TABLE IF NOT EXISTS radreply (
@@ -206,17 +203,27 @@ CREATE TABLE IF NOT EXISTS radreply (
     op CHAR(2) NOT NULL DEFAULT '=',
     value VARCHAR(253) NOT NULL DEFAULT '',
     PRIMARY KEY (id),
-    KEY username (username)
+    KEY username (username(32))
 );
 
 CREATE TABLE IF NOT EXISTS radgroupcheck (
     id INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
     groupname VARCHAR(64) NOT NULL DEFAULT '',
     attribute VARCHAR(64) NOT NULL DEFAULT '',
-    op CHAR(2) NOT NULL DEFAULT ':=',
+    op CHAR(2) NOT NULL DEFAULT '==',
     value VARCHAR(253) NOT NULL DEFAULT '',
     PRIMARY KEY (id),
-    KEY groupname (groupname)
+    KEY groupname (groupname(32))
+);
+
+CREATE TABLE IF NOT EXISTS radgroupreply (
+    id INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+    groupname VARCHAR(64) NOT NULL DEFAULT '',
+    attribute VARCHAR(64) NOT NULL DEFAULT '',
+    op CHAR(2) NOT NULL DEFAULT '=',
+    value VARCHAR(253) NOT NULL DEFAULT '',
+    PRIMARY KEY (id),
+    KEY groupname (groupname(32))
 );
 
 CREATE TABLE IF NOT EXISTS radusergroup (
@@ -225,7 +232,7 @@ CREATE TABLE IF NOT EXISTS radusergroup (
     groupname VARCHAR(64) NOT NULL DEFAULT '',
     priority INT(11) NOT NULL DEFAULT 1,
     PRIMARY KEY (id),
-    KEY username (username)
+    KEY username (username(32))
 );
 
 CREATE TABLE IF NOT EXISTS radacct (
@@ -233,21 +240,72 @@ CREATE TABLE IF NOT EXISTS radacct (
     acctsessionid VARCHAR(64) NOT NULL DEFAULT '',
     acctuniqueid VARCHAR(32) NOT NULL DEFAULT '',
     username VARCHAR(64) NOT NULL DEFAULT '',
+    realm VARCHAR(64) DEFAULT '',
     nasipaddress VARCHAR(15) NOT NULL DEFAULT '',
+    nasportid VARCHAR(32) DEFAULT NULL,
+    nasporttype VARCHAR(32) DEFAULT NULL,
     acctstarttime DATETIME NULL DEFAULT NULL,
     acctupdatetime DATETIME NULL DEFAULT NULL,
     acctstoptime DATETIME NULL DEFAULT NULL,
+    acctinterval INT(12) DEFAULT NULL,
     acctsessiontime INT(12) UNSIGNED DEFAULT NULL,
+    acctauthentic VARCHAR(32) DEFAULT NULL,
+    connectinfo_start VARCHAR(128) DEFAULT NULL,
+    connectinfo_stop VARCHAR(128) DEFAULT NULL,
     acctinputoctets BIGINT(20) DEFAULT NULL,
     acctoutputoctets BIGINT(20) DEFAULT NULL,
     calledstationid VARCHAR(50) NOT NULL DEFAULT '',
     callingstationid VARCHAR(50) NOT NULL DEFAULT '',
     acctterminatecause VARCHAR(32) NOT NULL DEFAULT '',
+    servicetype VARCHAR(32) DEFAULT NULL,
+    framedprotocol VARCHAR(32) DEFAULT NULL,
     framedipaddress VARCHAR(15) NOT NULL DEFAULT '',
+    framedipv6address VARCHAR(45) NOT NULL DEFAULT '',
+    framedipv6prefix VARCHAR(45) NOT NULL DEFAULT '',
+    framedinterfaceid VARCHAR(44) NOT NULL DEFAULT '',
+    delegatedipv6prefix VARCHAR(45) NOT NULL DEFAULT '',
+    class VARCHAR(64) DEFAULT NULL,
     PRIMARY KEY (radacctid),
     UNIQUE KEY acctuniqueid (acctuniqueid),
     KEY username (username),
-    KEY acctstarttime (acctstarttime)
+    KEY framedipaddress (framedipaddress),
+    KEY framedipv6address (framedipv6address),
+    KEY framedipv6prefix (framedipv6prefix),
+    KEY framedinterfaceid (framedinterfaceid),
+    KEY delegatedipv6prefix (delegatedipv6prefix),
+    KEY acctsessionid (acctsessionid),
+    KEY acctsessiontime (acctsessiontime),
+    KEY acctstarttime (acctstarttime),
+    KEY acctinterval (acctinterval),
+    KEY acctstoptime (acctstoptime),
+    KEY nasipaddress (nasipaddress),
+    KEY class (class)
+);
+
+CREATE TABLE IF NOT EXISTS radpostauth (
+    id INT(11) NOT NULL AUTO_INCREMENT,
+    username VARCHAR(64) NOT NULL DEFAULT '',
+    pass VARCHAR(64) NOT NULL DEFAULT '',
+    reply VARCHAR(32) NOT NULL DEFAULT '',
+    authdate TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    class VARCHAR(64) DEFAULT NULL,
+    PRIMARY KEY (id),
+    KEY username (username),
+    KEY class (class)
+);
+
+CREATE TABLE IF NOT EXISTS nas (
+    id INT(10) NOT NULL AUTO_INCREMENT,
+    nasname VARCHAR(128) NOT NULL,
+    shortname VARCHAR(32),
+    type VARCHAR(30) DEFAULT 'other',
+    ports INT(5),
+    secret VARCHAR(60) DEFAULT 'secret' NOT NULL,
+    server VARCHAR(64),
+    community VARCHAR(50),
+    description VARCHAR(200) DEFAULT 'RADIUS Client',
+    PRIMARY KEY (id),
+    KEY nasname (nasname)
 );
 
 -- Insert a test user
@@ -255,9 +313,9 @@ INSERT INTO radcheck (username, attribute, op, value) VALUES ('testuser', 'Clear
 INSERT INTO radreply (username, attribute, op, value) VALUES ('testuser', 'Reply-Message', '=', 'Welcome, test user!');
 ```
 
-Configure FreeRADIUS to use the SQL module by editing the site configuration.
+Configure FreeRADIUS to use the SQL module by editing the module configuration, enabling the module, and calling `sql` from the relevant virtual server sections.
 
-```bash
+```text
 # mods-available/sql - SQL module configuration
 sql {
     driver = "rlm_sql_mysql"
@@ -285,12 +343,17 @@ sql {
 }
 ```
 
+```bash
+# Enable the module, then uncomment or add sql in authorize, accounting, and post-auth
+ln -s ../mods-available/sql /etc/raddb/mods-enabled/sql
+```
+
 ## Testing Authentication
 
 Use the radtest utility to verify your configuration.
 
 ```bash
-# Test authentication from outside the container
+# Test authentication from inside the container
 # radtest username password radius-server port shared-secret
 docker exec freeradius radtest testuser testpass localhost 0 testing123
 
@@ -309,7 +372,7 @@ eapol_test -c eapol_test.conf -s testing123 -a 192.168.1.5
 
 Connect FreeRADIUS to an LDAP server or Active Directory for centralized user management.
 
-```bash
+```text
 # mods-available/ldap - LDAP module configuration
 ldap {
     server = "ldap://ldap-server:389"
@@ -325,7 +388,7 @@ ldap {
     group {
         base_dn = "ou=groups,${..base_dn}"
         filter = "(objectClass=groupOfNames)"
-        membership_attribute = "member"
+        membership_filter = "(member=%{control:${..user_dn}})"
     }
 
     options {
@@ -341,6 +404,11 @@ ldap {
 }
 ```
 
+```bash
+# Enable the module, then call ldap from the relevant virtual server sections
+ln -s ../mods-available/ldap /etc/raddb/mods-enabled/ldap
+```
+
 ## Monitoring and Logging
 
 Enable detailed logging for troubleshooting and compliance.
@@ -349,8 +417,14 @@ Enable detailed logging for troubleshooting and compliance.
 # View real-time authentication logs
 docker logs -f freeradius
 
-# Run FreeRADIUS in debug mode to see full request processing
-docker exec -it freeradius freeradius -X
+# Run a one-off FreeRADIUS container in debug mode to see full request processing
+docker stop freeradius
+docker run --rm -it --name freeradius-debug \
+  -p 1812:1812/udp \
+  -p 1813:1813/udp \
+  -v "$PWD/raddb:/etc/raddb:ro" \
+  freeradius/freeradius-server:latest \
+  -X
 
 # Check accounting records in the database
 docker exec radius-db mysql -u radius -pradiusdbpassword radius \
