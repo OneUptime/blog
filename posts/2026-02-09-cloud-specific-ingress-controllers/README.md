@@ -14,18 +14,18 @@ This guide shows you how to set up and configure cloud-native ingress controller
 
 ## AWS Load Balancer Controller for EKS
 
-The AWS Load Balancer Controller provisions Application Load Balancers (ALB) and Network Load Balancers (NLB) for Kubernetes ingress resources.
+The AWS Load Balancer Controller provisions Application Load Balancers (ALB) for Kubernetes Ingress resources and Network Load Balancers (NLB) for Kubernetes Service resources.
 
 Install using Helm:
 
 ```bash
 # Create IAM policy
 
-curl -o iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
+curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.14.1/docs/install/iam_policy.json
 
 aws iam create-policy \
   --policy-name AWSLoadBalancerControllerIAMPolicy \
-  --policy-document file://iam-policy.json
+  --policy-document file://iam_policy.json
 
 # Create service account
 eksctl create iamserviceaccount \
@@ -33,17 +33,20 @@ eksctl create iamserviceaccount \
   --namespace=kube-system \
   --name=aws-load-balancer-controller \
   --attach-policy-arn=arn:aws:iam::ACCOUNT_ID:policy/AWSLoadBalancerControllerIAMPolicy \
+  --override-existing-serviceaccounts \
+  --region us-east-1 \
   --approve
 
 # Install controller
 helm repo add eks https://aws.github.io/eks-charts
-helm repo update
+helm repo update eks
 
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n kube-system \
   --set clusterName=my-cluster \
   --set serviceAccount.create=false \
-  --set serviceAccount.name=aws-load-balancer-controller
+  --set serviceAccount.name=aws-load-balancer-controller \
+  --version 1.14.0
 ```
 
 Create an ingress with ALB:
@@ -181,16 +184,15 @@ az network application-gateway create \
   --public-ip-address myAGPublicIPAddress
 
 # Install AGIC
-helm repo add application-gateway-kubernetes-ingress https://appgwingress.blob.core.windows.net/ingress-azure-helm-package/
-helm repo update
-
-helm install agic application-gateway-kubernetes-ingress/ingress-azure \
+helm install agic oci://mcr.microsoft.com/azure-application-gateway/charts/ingress-azure \
+  --version 1.8.1 \
   --namespace kube-system \
   --set appgw.name=myAppGateway \
   --set appgw.resourceGroup=myResourceGroup \
   --set appgw.subscriptionId=SUBSCRIPTION_ID \
   --set appgw.shared=false \
   --set kubernetes.watchNamespace=default \
+  --set rbac.enabled=true \
   --set armAuth.type=servicePrincipal \
   --set armAuth.secretJSON=$(cat sp.json | base64 -w0)
 ```
@@ -239,14 +241,14 @@ spec:
   - host: app.example.com
     http:
       paths:
-      - path: /api/*
+      - path: /api
         pathType: Prefix
         backend:
           service:
             name: api-service
             port:
               number: 8080
-      - path: /*
+      - path: /
         pathType: Prefix
         backend:
           service:
@@ -272,7 +274,7 @@ annotations:
   networking.gke.io/managed-certificates: "app-cert,api-cert"
 ```
 
-Azure AGIC with Key Vault:
+Azure AGIC with an Application Gateway SSL certificate:
 
 ```yaml
 annotations:
@@ -295,6 +297,20 @@ annotations:
 GKE backend config:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-service
+  annotations:
+    cloud.google.com/backend-config: '{"ports": {"80":"app-backendconfig"}}'
+spec:
+  type: NodePort
+  selector:
+    app: app
+  ports:
+  - port: 80
+    targetPort: 8080
+---
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata:
