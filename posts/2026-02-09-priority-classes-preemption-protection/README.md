@@ -8,20 +8,20 @@ Description: Learn how to configure Kubernetes Priority Classes to protect criti
 
 ---
 
-Kubernetes Priority Classes determine which pods get scheduled first and which pods can be evicted when cluster resources are scarce. Without proper priority configuration, critical production services can be preempted by lower-priority batch jobs, causing outages. This guide shows you how to configure priority classes to protect production workloads while maintaining cluster efficiency.
+Kubernetes Priority Classes determine which pods get scheduled first and which lower-priority pods can be preempted when cluster resources are scarce. Without proper priority configuration, critical production services can compete with or be preempted by mis-prioritized batch jobs, causing outages. This guide shows you how to configure priority classes to protect production workloads while maintaining cluster efficiency.
 
 ## Understanding Priority and Preemption
 
-Priority classes assign numeric values to pods. When the scheduler cannot find resources for a high-priority pod, it may preempt (evict) lower-priority pods to make room. The default priority is zero.
+Priority classes assign numeric values to pods. When the scheduler cannot find resources for a high-priority pod, it may preempt (evict) lower-priority pods to make room. The default priority is zero unless a PriorityClass with `globalDefault: true` exists.
 
 ```yaml
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
-  name: system-critical
-value: 1000000000  # Very high priority for system components
+  name: platform-critical
+value: 900000000  # Very high priority for platform components
 globalDefault: false
-description: "Reserved for critical system components"
+description: "Reserved for critical platform components"
 ---
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
@@ -56,7 +56,7 @@ globalDefault: true  # Default for workloads without explicit priority
 description: "Batch processing and non-critical workloads"
 ```
 
-This hierarchy ensures critical services always get resources first while batch jobs fill unused capacity.
+This hierarchy helps critical services get resources first while batch jobs fill unused capacity.
 
 ## Protecting Critical Services from Preemption
 
@@ -123,7 +123,7 @@ spec:
             memory: 1Gi
 ```
 
-Pods with `production-high` priority will never be preempted by lower-priority workloads, ensuring service availability.
+Pods with `production-high` priority cannot be preempted by lower-priority workloads, reducing the risk of avoidable service disruption.
 
 ## Implementing Non-Preempting Priority Classes
 
@@ -163,8 +163,9 @@ spec:
             cpu: 4
             memory: 8Gi
         command:
-        - /app/generate-reports
-        - --date=$(date +%Y-%m-%d)
+        - /bin/sh
+        - -c
+        - /app/generate-reports --date=$(date +%Y-%m-%d)
 ```
 
 This job gets preferential scheduling over low-priority workloads but will not evict running pods, preventing disruption.
@@ -219,7 +220,7 @@ When this job is preempted, it can resume from the last checkpoint rather than s
 
 ## Setting Up Priority-Based Resource Quotas
 
-Prevent abuse of high-priority classes by limiting which namespaces can use them.
+Prevent abuse of high-priority classes by limiting resource consumption for pods that use them.
 
 ```yaml
 apiVersion: v1
@@ -253,34 +254,9 @@ spec:
     - operator: In
       scopeName: PriorityClass
       values: ["batch-jobs"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: production-high-priority-user
-  namespace: production
-rules:
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["create"]
-  resourceNames: ["production-high"]  # Only specific service accounts can use this
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: payment-service-priority
-  namespace: production
-subjects:
-- kind: ServiceAccount
-  name: payment-service-sa
-  namespace: production
-roleRef:
-  kind: Role
-  name: production-high-priority-user
-  apiGroup: rbac.authorization.k8s.io
 ```
 
-These quotas ensure high-priority classes are only used by authorized workloads in appropriate namespaces.
+These quotas limit the resource consumption of pods using each priority class in the appropriate namespaces. Use an admission controller or policy engine to authorize which workloads may set high-priority `priorityClassName` values.
 
 ## Monitoring Preemption Events
 
@@ -301,29 +277,29 @@ data:
       # Alert on production pod preemption
       - alert: ProductionPodPreempted
         expr: |
-          increase(kube_pod_status_reason{reason="Preempted",namespace="production"}[5m]) > 0
+          increase(kube_pod_status_reason{reason="PreemptionByScheduler",namespace="production"}[5m]) > 0
         labels:
           severity: critical
         annotations:
           summary: "Production pod was preempted"
           description: "Pod {{ $labels.pod }} in production namespace was preempted"
 
-      # Track preemption rate
-      - alert: HighPreemptionRate
+      # Track preempted pod count
+      - alert: ManyPreemptedPods
         expr: |
-          rate(kube_pod_status_reason{reason="Preempted"}[10m]) > 0.1
+          sum(kube_pod_status_reason{reason="PreemptionByScheduler"}) > 10
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High pod preemption rate detected"
-          description: "Cluster experiencing {{ $value }} preemptions per second"
+          summary: "Many preempted pods detected"
+          description: "Cluster has {{ $value }} pods reporting scheduler preemption"
 
       # Monitor priority class usage
       - alert: UnauthorizedHighPriority
         expr: |
           count by (namespace) (
-            kube_pod_spec_priority_class_name{priority_class="production-high"}
+            kube_pod_info{priority_class="production-high"}
           ) and on(namespace)
           kube_namespace_labels{label_environment!="production"}
         labels:
@@ -436,8 +412,8 @@ data:
     # - production-low and batch-jobs are self-service
 ```
 
-Document and enforce these policies through RBAC and admission controllers.
+Document and enforce these policies through admission controllers.
 
 ## Conclusion
 
-Kubernetes Priority Classes are essential for protecting critical production workloads from resource contention and preemption. Create a clear priority hierarchy with system-critical at the top, multiple production tiers in the middle, and batch jobs at the bottom. Use the preemptionPolicy field to prevent important workloads from evicting others while still giving them scheduling priority. Implement resource quotas and RBAC to control priority class usage and prevent abuse. Monitor preemption events to validate your priority configuration. Design batch workloads to handle preemption gracefully through checkpointing. Migrate existing workloads gradually to priority classes to avoid disruption. With proper priority configuration, you can maximize cluster utilization while ensuring critical services always have the resources they need.
+Kubernetes Priority Classes are essential for protecting critical production workloads from resource contention and preemption. Create a clear priority hierarchy with platform-critical workloads at the top, multiple production tiers in the middle, and batch jobs at the bottom. Use the preemptionPolicy field to prevent important workloads from evicting others while still giving them scheduling priority. Implement resource quotas and admission controls to control priority class usage and prevent abuse. Monitor preemption events to validate your priority configuration. Design batch workloads to handle preemption gracefully through checkpointing. Migrate existing workloads gradually to priority classes to avoid disruption. With proper priority configuration, you can maximize cluster utilization while ensuring critical services have a better chance of getting the resources they need.
