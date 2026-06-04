@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Nginx, OAuth2
 
-Description: Learn how to configure NGINX Ingress Controller with OAuth2 Proxy for external authentication, enabling secure access control with popular identity providers like Google, GitHub, and Azure AD.
+Description: Learn how to configure NGINX Ingress Controller with OAuth2 Proxy for external authentication, enabling secure access control with popular identity providers like Google, GitHub, and Microsoft Entra ID.
 
 ---
 
-OAuth2 Proxy provides external authentication for applications that don't have built-in OAuth2 support. When integrated with NGINX Ingress Controller, it enables you to protect any application with OAuth2 authentication from providers like Google, GitHub, Azure AD, and more. This guide shows you how to implement this powerful authentication pattern.
+OAuth2 Proxy provides external authentication for applications that don't have built-in OAuth2 support. When integrated with NGINX Ingress Controller, it enables you to protect any application with OAuth2 authentication from providers like Google, GitHub, Microsoft Entra ID, and more. This guide shows you how to implement this powerful authentication pattern.
 
 ## Understanding External Authentication
 
@@ -30,6 +30,11 @@ Deploy OAuth2 Proxy in your cluster.
 ```yaml
 # oauth2-proxy.yaml
 
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: auth
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -190,18 +195,46 @@ metadata:
   name: oauth2-proxy
   namespace: auth
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: oauth2-proxy
   template:
+    metadata:
+      labels:
+        app: oauth2-proxy
     spec:
       containers:
       - name: oauth2-proxy
+        image: quay.io/oauth2-proxy/oauth2-proxy:latest
         args:
         - --provider=google
         - --email-domain=example.com
         - --scope=openid email profile
+        - --upstream=file:///dev/null
         - --http-address=0.0.0.0:4180
         - --cookie-secure=true
         - --set-xauthrequest=true
         - --pass-user-headers=true
+        env:
+        - name: OAUTH2_PROXY_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: oauth2-proxy-secret
+              key: client-id
+        - name: OAUTH2_PROXY_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth2-proxy-secret
+              key: client-secret
+        - name: OAUTH2_PROXY_COOKIE_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth2-proxy-secret
+              key: cookie-secret
+        ports:
+        - containerPort: 4180
+          protocol: TCP
 ```
 
 ### GitHub OAuth2
@@ -214,36 +247,24 @@ metadata:
   name: oauth2-proxy
   namespace: auth
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: oauth2-proxy
   template:
+    metadata:
+      labels:
+        app: oauth2-proxy
     spec:
       containers:
       - name: oauth2-proxy
+        image: quay.io/oauth2-proxy/oauth2-proxy:latest
         args:
         - --provider=github
+        - --email-domain=*
         - --github-org=your-org
         - --github-team=your-team
-        - --http-address=0.0.0.0:4180
-        - --cookie-secure=true
-        - --set-xauthrequest=true
-```
-
-### Azure AD OAuth2
-
-```yaml
-# oauth2-proxy-azure.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: oauth2-proxy
-  namespace: auth
-spec:
-  template:
-    spec:
-      containers:
-      - name: oauth2-proxy
-        args:
-        - --provider=azure
-        - --azure-tenant=YOUR_TENANT_ID
+        - --upstream=file:///dev/null
         - --http-address=0.0.0.0:4180
         - --cookie-secure=true
         - --set-xauthrequest=true
@@ -263,6 +284,61 @@ spec:
             secretKeyRef:
               name: oauth2-proxy-secret
               key: cookie-secret
+        ports:
+        - containerPort: 4180
+          protocol: TCP
+```
+
+### Microsoft Entra ID OAuth2
+
+```yaml
+# oauth2-proxy-azure.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy
+  namespace: auth
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app: oauth2-proxy
+    spec:
+      containers:
+      - name: oauth2-proxy
+        image: quay.io/oauth2-proxy/oauth2-proxy:latest
+        args:
+        - --provider=entra-id
+        - --oidc-issuer-url=https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0
+        - --scope=openid
+        - --email-domain=example.com
+        - --upstream=file:///dev/null
+        - --http-address=0.0.0.0:4180
+        - --cookie-secure=true
+        - --set-xauthrequest=true
+        env:
+        - name: OAUTH2_PROXY_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: oauth2-proxy-secret
+              key: client-id
+        - name: OAUTH2_PROXY_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth2-proxy-secret
+              key: client-secret
+        - name: OAUTH2_PROXY_COOKIE_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth2-proxy-secret
+              key: cookie-secret
+        ports:
+        - containerPort: 4180
+          protocol: TCP
 ```
 
 ## Advanced Configuration
@@ -291,17 +367,48 @@ metadata:
   name: oauth2-proxy
   namespace: auth
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: oauth2-proxy
   template:
+    metadata:
+      labels:
+        app: oauth2-proxy
     spec:
       containers:
       - name: oauth2-proxy
+        image: quay.io/oauth2-proxy/oauth2-proxy:latest
         args:
         - --provider=google
         - --authenticated-emails-file=/etc/oauth2-proxy/authenticated-emails.txt
         - --email-domain=example.com
+        - --upstream=file:///dev/null
+        - --http-address=0.0.0.0:4180
+        - --cookie-secure=true
+        - --set-xauthrequest=true
+        env:
+        - name: OAUTH2_PROXY_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: oauth2-proxy-secret
+              key: client-id
+        - name: OAUTH2_PROXY_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth2-proxy-secret
+              key: client-secret
+        - name: OAUTH2_PROXY_COOKIE_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth2-proxy-secret
+              key: cookie-secret
         volumeMounts:
         - name: config
           mountPath: /etc/oauth2-proxy
+        ports:
+        - containerPort: 4180
+          protocol: TCP
       volumes:
       - name: config
         configMap:
@@ -370,11 +477,23 @@ metadata:
   name: oauth2-proxy
   namespace: auth
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: oauth2-proxy
   template:
+    metadata:
+      labels:
+        app: oauth2-proxy
     spec:
       containers:
       - name: oauth2-proxy
+        image: quay.io/oauth2-proxy/oauth2-proxy:latest
         args:
+        - --provider=google
+        - --email-domain=example.com
+        - --upstream=file:///dev/null
+        - --http-address=0.0.0.0:4180
         - --cookie-name=_oauth2_proxy
         - --cookie-expire=4h
         - --cookie-refresh=1h
@@ -384,6 +503,26 @@ spec:
         - --cookie-domain=.example.com
         - --session-store-type=redis
         - --redis-connection-url=redis://redis:6379
+        - --set-xauthrequest=true
+        env:
+        - name: OAUTH2_PROXY_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: oauth2-proxy-secret
+              key: client-id
+        - name: OAUTH2_PROXY_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth2-proxy-secret
+              key: client-secret
+        - name: OAUTH2_PROXY_COOKIE_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth2-proxy-secret
+              key: cookie-secret
+        ports:
+        - containerPort: 4180
+          protocol: TCP
 ```
 
 ## Testing OAuth2 Integration
