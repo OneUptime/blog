@@ -24,10 +24,6 @@ Common symptoms of architecture problems:
 The `platform` directive specifies the target operating system and architecture for a service.
 
 ```yaml
-# Specify the target platform for a service
-
-version: "3.8"
-
 services:
   app:
     image: my-app:latest
@@ -107,7 +103,7 @@ To build and push multi-arch images, use the `docker compose build` with buildx.
 
 ```bash
 # Enable buildx for multi-platform builds
-docker buildx create --use --name multiarch-builder
+docker buildx create --use --name multiarch-builder --driver docker-container --bootstrap
 
 # Build for multiple platforms and push to registry
 docker buildx bake --push
@@ -169,9 +165,6 @@ CMD ["mytool"]
 In a development environment, you might need some services on specific architectures while others run natively.
 
 ```yaml
-# Mixed architecture stack
-version: "3.8"
-
 services:
   # This legacy database only has AMD64 images
   legacy-db:
@@ -201,9 +194,6 @@ volumes:
 When your team has mixed hardware, create a Compose configuration that works everywhere.
 
 ```yaml
-# docker-compose.yml that works on both AMD64 and ARM64 development machines
-version: "3.8"
-
 services:
   app:
     build:
@@ -244,11 +234,11 @@ docker manifest inspect --verbose nginx:alpine | jq '.[].Descriptor.platform'
 # Shorter version
 docker manifest inspect nginx:alpine | jq '.manifests[].platform'
 
-# Check what platform a running container is using
-docker inspect --format='{{.Platform}}' my-container
+# Check the CPU architecture a running container is using
+docker exec my-container uname -m
 
 # Check the architecture of a local image
-docker inspect --format='{{.Architecture}}' nginx:alpine
+docker image inspect --format='{{.Architecture}}' nginx:alpine
 ```
 
 ## Performance Considerations
@@ -266,8 +256,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.cross
-      args:
-        - TARGETPLATFORM=linux/arm64
     platform: linux/arm64
 ```
 
@@ -279,8 +267,6 @@ Set up your CI pipeline to build for multiple architectures and push a single ma
 
 ```yaml
 # docker-compose.ci.yml for CI/CD multi-arch builds
-version: "3.8"
-
 services:
   app:
     build:
@@ -295,7 +281,7 @@ services:
 ```bash
 # CI/CD build script
 # Set up buildx builder with multi-platform support
-docker buildx create --use --driver docker-container
+docker buildx create --use --driver docker-container --bootstrap
 
 # Build and push for both platforms
 docker compose -f docker-compose.ci.yml build --push
@@ -309,8 +295,8 @@ docker manifest inspect ${REGISTRY}/my-app:latest
 When things go wrong with multi-architecture setups, start with these checks.
 
 ```bash
-# Check if QEMU is installed and registered
-docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+# Install and register QEMU for non-Docker Desktop builders
+docker run --privileged --rm tonistiigi/binfmt --install all
 
 # Verify buildx is available
 docker buildx version
