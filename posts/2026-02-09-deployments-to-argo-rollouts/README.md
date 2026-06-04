@@ -131,6 +131,9 @@ spec:
     matchLabels:
       app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
       - name: app
@@ -158,6 +161,24 @@ spec:
   ports:
   - port: 80
     targetPort: 8080
+---
+# Istio VirtualService referenced by the Rollout
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: myapp-vsvc
+spec:
+  hosts:
+  - myapp.example.com
+  http:
+  - name: primary
+    route:
+    - destination:
+        host: myapp-stable
+      weight: 100
+    - destination:
+        host: myapp-canary
+      weight: 0
 ```
 
 Canary deployments gradually shift traffic to new versions.
@@ -196,6 +217,9 @@ spec:
     matchLabels:
       app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
       - name: app
@@ -212,7 +236,7 @@ spec:
   metrics:
   - name: success-rate
     interval: 1m
-    successCondition: result >= 0.95
+    successCondition: result[0] >= 0.95
     failureLimit: 3
     provider:
       prometheus:
@@ -231,7 +255,7 @@ spec:
   metrics:
   - name: p95-latency
     interval: 1m
-    successCondition: result < 0.5
+    successCondition: result[0] < 0.5
     failureLimit: 3
     provider:
       prometheus:
@@ -261,6 +285,9 @@ spec:
     matchLabels:
       app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
       - name: app
@@ -319,20 +346,42 @@ DEPLOYMENT="myapp"
 kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o yaml > deployment-backup.yaml
 
 # Create Rollout from Deployment
-cat deployment-backup.yaml | \
-  sed 's/kind: Deployment/kind: Rollout/' | \
-  sed 's/apiVersion: apps\/v1/apiVersion: argoproj.io\/v1alpha1/' | \
-  yq eval '.spec.strategy = {"canary": {"steps": [{"setWeight": 20}, {"pause": {"duration": "5m"}}, {"setWeight": 50}, {"pause": {"duration": "5m"}}, {"setWeight": 100}]}}' - \
+yq eval '{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Rollout",
+  "metadata": {
+    "name": .metadata.name,
+    "namespace": .metadata.namespace
+  },
+  "spec": {
+    "replicas": .spec.replicas,
+    "selector": .spec.selector,
+    "workloadRef": {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "name": .metadata.name,
+      "scaleDown": "onsuccess"
+    },
+    "strategy": {
+      "canary": {
+        "steps": [
+          {"setWeight": 20},
+          {"pause": {"duration": "5m"}},
+          {"setWeight": 50},
+          {"pause": {"duration": "5m"}},
+          {"setWeight": 100}
+        ]
+      }
+    }
+  }
+}' deployment-backup.yaml \
   > rollout.yaml
 
 # Apply Rollout
 kubectl apply -f rollout.yaml -n $NAMESPACE
 
-# Delete old Deployment (Rollout controller takes over)
-kubectl delete deployment $DEPLOYMENT -n $NAMESPACE
-
 # Monitor rollout
-kubectl argo rollouts get rollout $DEPLOYMENT -n $NAMESPACE --watch
+kubectl argo rollouts status $DEPLOYMENT -n $NAMESPACE --timeout 30m
 ```
 
 This script converts and deploys the Rollout.
@@ -390,10 +439,8 @@ verify:
   stage: verify
   script:
     - |
-      STATUS=$(kubectl argo rollouts status myapp -n production -w --timeout 30m)
-      if echo "$STATUS" | grep -q "Healthy"; then
+      if kubectl argo rollouts status myapp -n production --timeout 30m; then
         echo "Rollout successful"
-        exit 0
       else
         echo "Rollout failed, aborting"
         kubectl argo rollouts abort myapp -n production
