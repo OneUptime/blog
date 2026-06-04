@@ -278,13 +278,13 @@ rate(ifInErrors{instance="192.168.1.1"}[5m])
 sysUpTime{instance="192.168.1.1"} / 8640000
 
 # Interfaces that are operationally down but administratively up (potential problems)
-ifOperStatus{ifAdminStatus="1"} == 2
+ifOperStatus == 2 and on(instance, ifIndex) ifAdminStatus == 1
 
 # Top 10 busiest interfaces by inbound traffic
 topk(10, rate(ifHCInOctets[5m]) * 8)
 
 # Total bandwidth utilization percentage per interface
-(rate(ifHCInOctets[5m]) * 8) / (ifSpeed * 1000000) * 100
+(rate(ifHCInOctets[5m]) * 8) / ifSpeed * 100
 ```
 
 ## Setting Up Alerting Rules
@@ -317,7 +317,7 @@ groups:
 
       # Alert when an interface goes down
       - alert: InterfaceDown
-        expr: ifOperStatus{ifAdminStatus="1"} == 2
+        expr: ifOperStatus == 2 and on(instance, ifIndex) ifAdminStatus == 1
         for: 2m
         labels:
           severity: critical
@@ -326,7 +326,7 @@ groups:
 
       # Alert on high bandwidth utilization (over 80%)
       - alert: HighBandwidthUtilization
-        expr: (rate(ifHCInOctets[5m]) * 8) / (ifSpeed * 1000000) * 100 > 80
+        expr: (rate(ifHCInOctets[5m]) * 8) / ifSpeed * 100 > 80
         for: 15m
         labels:
           severity: warning
@@ -340,7 +340,7 @@ When the exporter returns no data or errors, diagnose the issue step by step.
 
 ```bash
 # Test SNMP connectivity to a device directly
-docker exec snmp-exporter snmpwalk -v2c -c public 192.168.1.1 system
+snmpwalk -v2c -c public 192.168.1.1 system
 
 # Check the exporter logs for errors
 docker logs snmp-exporter
