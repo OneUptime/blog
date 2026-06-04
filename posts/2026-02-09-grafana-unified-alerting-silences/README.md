@@ -20,7 +20,7 @@ Inhibitions automatically suppress alerts based on the presence of other alerts.
 
 Silences match alerts using label matchers, similar to PromQL selectors.
 
-Navigate to Alerting > Silences in Grafana and click New Silence.
+Navigate to Alerts & IRM > Alerting > Silences in Grafana and click Create silence.
 
 ```yaml
 # Silence configuration
@@ -93,7 +93,7 @@ This silences alerts for all instances whose names start with `prod-api-`.
 
 ## Configuring Alert Inhibition Rules
 
-Inhibition rules live in the Alertmanager configuration, not in individual alert rules.
+For Prometheus and Mimir Alertmanager configurations, inhibition rules live in the Alertmanager configuration, not in individual alert rules. In Grafana 13 and later, Grafana-managed inhibition rules are managed through the Grafana App Platform API and are assigned to a specific Alertmanager.
 
 ```yaml
 # alertmanager.yaml
@@ -162,7 +162,7 @@ Without the `equal: [node]` constraint, a memory issue on one node would inhibit
 
 ## Creating Time-Based Silences
 
-Schedule recurring silences for known maintenance windows.
+Create repeated one-time silences for known maintenance windows. For schedules that repeat by design, use mute timings on notification policies instead of manually maintaining silences.
 
 ```bash
 #!/bin/bash
@@ -283,23 +283,23 @@ This approach maintains visibility into critical issues while suppressing noise 
 
 ## Monitoring Silence and Inhibition Usage
 
-Track how often silences and inhibitions activate to identify patterns.
+Track active silences and suppressed alerts to identify patterns.
 
 ```promql
 # Number of active silences
-grafana_alerting_silences
+alertmanager_silences{state="active"}
 
-# Silences by creator
-sum by (createdBy) (grafana_alerting_silences)
+# Alerts suppressed by silences or inhibition rules
+alertmanager_alerts{state="suppressed"}
 
-# Inhibited notifications
-rate(grafana_alerting_notifications_inhibited_total[5m])
+# Notifications sent by Alertmanager
+rate(alertmanager_notifications_total[5m])
 
-# Silenced notifications
-rate(grafana_alerting_notifications_silenced_total[5m])
+# Failed notifications
+rate(alertmanager_notifications_failed_total[5m])
 ```
 
-High inhibition rates during incidents confirm your inhibition rules are working correctly.
+High suppressed-alert counts during incidents can confirm your silences or inhibition rules are reducing notification noise.
 
 ## Creating Silence Templates
 
