@@ -10,13 +10,13 @@ Description: Configure Kubernetes LimitRange policies to prevent accidental cost
 
 A single misconfigured pod requesting 100 CPU cores and 500 GB of memory can trigger expensive autoscaling events that drain your budget in hours. Without guardrails, developers can accidentally deploy resource-intensive workloads that consume far more capacity than intended. LimitRange policies provide those guardrails.
 
-LimitRange is a Kubernetes admission controller that enforces minimum and maximum resource constraints at the namespace level. It validates resource requests and limits in pod specifications before they're admitted to the cluster. More importantly, it can inject default values for pods that don't specify resources, preventing the unbounded requests that lead to cost disasters.
+LimitRange is a Kubernetes policy enforced by the `LimitRanger` admission controller that sets minimum and maximum resource constraints at the namespace level. It validates resource requests and limits in pod specifications before they're admitted to the cluster. More importantly, it can inject default request and limit values for containers that don't specify resources, preventing unbounded limits or missing requests that lead to cost disasters.
 
 ## Understanding LimitRange Scope and Impact
 
-LimitRange operates at the namespace level and applies to newly created pods. Existing pods are not affected when you create or modify a LimitRange. The policy validates containers, pods, and persistent volume claims against configured constraints.
+LimitRange operates at the namespace level and applies to newly created or updated pods and persistent volume claims. Existing pods are not affected when you create or modify a LimitRange. The policy validates container resource specifications, pod resource requirements, and persistent volume claims against configured constraints.
 
-Each LimitRange can specify multiple limit types: Container, Pod, and PersistentVolumeClaim. Container limits apply to individual containers. Pod limits apply to the sum of all container requests in a pod. PersistentVolumeClaim limits control storage resource requests.
+Each LimitRange can specify multiple limit types: Container, Pod, and PersistentVolumeClaim. Container limits apply to individual containers. Pod limits apply to the pod's effective resource requests and limits. PersistentVolumeClaim limits control storage resource requests.
 
 When a pod creation request violates LimitRange constraints, the API server rejects it with a clear error message explaining which constraint was violated. This immediate feedback helps developers correct issues before deployment.
 
@@ -36,7 +36,7 @@ spec:
   limits:
   # Container-level limits
   - type: Container
-    # Maximum resources any single container can request
+    # Maximum resources any single container can request or limit
     max:
       cpu: "4"
       memory: "16Gi"
@@ -50,14 +50,14 @@ spec:
 
     # Default limits applied if not specified
     default:
-      cpu: "500m"
+      cpu: "400m"
       memory: "512Mi"
       ephemeral-storage: "2Gi"
 
     # Default requests applied if not specified
     defaultRequest:
       cpu: "100m"
-      memory: "128Mi"
+      memory: "256Mi"
       ephemeral-storage: "1Gi"
 
     # Maximum ratio between limit and request (prevents excessive overcommit)
@@ -65,7 +65,7 @@ spec:
       cpu: "4"
       memory: "2"
 
-  # Pod-level limits (sum of all containers)
+  # Pod-level limits (effective pod resources)
   - type: Pod
     max:
       cpu: "16"
@@ -107,8 +107,8 @@ spec:
         cpu: "200m"
         memory: "256Mi"
       limits:
-        cpu: "1000m"
-        memory: "1Gi"
+        cpu: "800m"
+        memory: "512Mi"
 ```
 
 This pod should be accepted:
@@ -220,7 +220,7 @@ spec:
 
     defaultRequest:
       cpu: "150m"
-      memory: "256Mi"
+      memory: "512Mi"
       ephemeral-storage: "1Gi"
 
     maxLimitRequestRatio:
@@ -277,7 +277,7 @@ spec:
       memory: "8Gi"
       ephemeral-storage: "10Gi"
 
-    # Prevent accidental tiny requests that cause OOM
+    # Prevent accidental tiny requests that can overpack nodes
     min:
       cpu: "50m"
       memory: "64Mi"
@@ -317,7 +317,7 @@ kubectl get pod test-defaults -n web-services -o yaml | grep -A 6 resources:
 
 ## Handling Multi-Container Pods
 
-Multi-container pods require special consideration. The pod-level limits should account for the sum of all containers, including init containers and sidecars.
+Multi-container pods require special consideration. The pod-level limits should account for the sum of app and sidecar containers; regular init containers are evaluated by their highest per-resource request or limit rather than being added together.
 
 ```yaml
 # limitrange-multi-container.yaml
@@ -511,19 +511,18 @@ kubectl describe limitrange -n team-datascience
 
 ## Monitoring LimitRange Violations
 
-Track how often LimitRanges reject pods to identify if your limits are too restrictive or if teams need education on proper resource specification.
+Track how often LimitRanges reject resources to identify if your limits are too restrictive or if teams need education on proper resource specification.
 
 ```bash
-# Check API server audit logs for LimitRange rejections
+# Check API server logs for LimitRange rejections on self-managed clusters
 kubectl logs -n kube-system -l component=kube-apiserver | \
   grep -i "limitrange" | \
   grep -i "forbidden"
 
-# Count rejections by namespace
+# Count matching rejection log lines
 kubectl logs -n kube-system -l component=kube-apiserver | \
   grep -i "limitrange.*forbidden" | \
-  awk '{print $NF}' | \
-  sort | uniq -c | sort -rn
+  wc -l
 ```
 
 Create alerts for excessive rejections:
@@ -544,6 +543,8 @@ spec:
       expr: |
         rate(apiserver_admission_controller_admission_duration_seconds_count{
           name="LimitRanger",
+          operation="CREATE",
+          type="admit",
           rejected="true"
         }[5m]) > 0.1
       for: 15m
@@ -551,7 +552,7 @@ spec:
         severity: warning
       annotations:
         summary: "High rate of LimitRange rejections"
-        description: "{{ $value }} pod creations per second are being rejected by LimitRange"
+        description: "{{ $value }} admission requests per second are being rejected by LimitRange"
 ```
 
 ## Updating LimitRanges Without Disruption
