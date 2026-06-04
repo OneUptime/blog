@@ -22,7 +22,7 @@ When a sync operation fails, ArgoCD can automatically retry the operation based 
 - Backoff multiplier to control delay growth
 - Maximum backoff duration cap
 
-Without retry configuration, failed syncs require manual intervention. With proper retry policies, many transient failures resolve automatically.
+Automated sync retries failed attempts by default, and explicit retry configuration lets you tune the retry limit and backoff timing for your application. With proper retry policies, many transient failures resolve automatically.
 
 ## Basic automated sync with retry
 
@@ -56,18 +56,18 @@ spec:
 ```
 
 This configuration:
-- Attempts sync up to 5 times
+- Retries failed syncs up to 5 times
 - Starts with a 5-second delay
 - Doubles the delay after each failure (exponential backoff)
 - Caps maximum delay at 3 minutes
 
 Retry timeline with these settings:
-- Attempt 1: Immediate
-- Attempt 2: After 5 seconds
-- Attempt 3: After 10 seconds (5s × 2)
-- Attempt 4: After 20 seconds (10s × 2)
-- Attempt 5: After 40 seconds (20s × 2)
-- Attempt 6: After 80 seconds (40s × 2), capped at 3 minutes
+- Initial attempt: Immediate
+- Retry 1: After 5 seconds
+- Retry 2: After 10 seconds (5s × 2)
+- Retry 3: After 20 seconds (10s × 2)
+- Retry 4: After 40 seconds (20s × 2)
+- Retry 5: After 80 seconds (40s × 2), below the 3-minute cap
 
 ## Configuring exponential backoff parameters
 
@@ -80,13 +80,13 @@ The backoff configuration controls retry timing:
 
 **factor:** Multiplier applied to delay after each failure
 - Factor of 2 doubles the delay (exponential growth)
-- Factor of 1 keeps delay constant (linear)
+- Factor of 1 keeps delay constant
 - Higher factors reduce retry frequency
-- Typical range: 1.5 to 3
+- Typical range: 1 to 3
 
 **maxDuration:** Maximum delay between retries
 - Prevents extremely long delays
-- Ensures retries don't stop entirely
+- Caps the delay while the retry limit controls when retries stop
 - Typical range: 1m to 10m
 
 Example configurations for different scenarios:
@@ -99,7 +99,7 @@ syncPolicy:
     limit: 10
     backoff:
       duration: 2s
-      factor: 1.5
+      factor: 2
       maxDuration: 1m
 
 ---
@@ -123,9 +123,9 @@ syncPolicy:
       maxDuration: 10m
 ```
 
-## Implementing selective retry for specific resources
+## Using sync options with retry
 
-Use sync options to control retry behavior per resource:
+ArgoCD retry policies are configured on the Application, not per resource. Use supported sync options on individual resources to avoid known transient sync failures, while the Application-level retry policy controls retry timing:
 
 ```yaml
 # deployment.yaml in your Git repository
@@ -134,7 +134,7 @@ kind: Deployment
 metadata:
   name: critical-service
   annotations:
-    argocd.argoproj.io/sync-options: Retry=true
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   replicas: 3
   selector:
@@ -149,18 +149,18 @@ spec:
         - name: app
           image: myorg/critical-service:v1.0.0
 ---
-# Non-critical resource without retry
+# Resource protected from accidental pruning
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: feature-flags
   annotations:
-    argocd.argoproj.io/sync-options: Retry=false
+    argocd.argoproj.io/sync-options: Prune=false
 data:
   enableBeta: "false"
 ```
 
-This allows critical resources to retry while non-critical ones fail fast.
+This does not create per-resource retry limits. Instead, it combines supported resource-level sync behavior with the Application's retry policy.
 
 ## Handling resource ordering with retry
 
@@ -174,7 +174,6 @@ metadata:
   name: database
   annotations:
     argocd.argoproj.io/sync-wave: "0"
-    argocd.argoproj.io/sync-options: Retry=true
 spec:
   serviceName: database
   replicas: 3
@@ -197,7 +196,6 @@ metadata:
   name: api-server
   annotations:
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/sync-options: Retry=true
 spec:
   replicas: 3
   selector:
@@ -216,11 +214,11 @@ spec:
               value: database.production.svc.cluster.local
 ```
 
-Wave 0 resources (database) sync first, then wave 1 resources (application) sync after. Both have retry enabled to handle transient failures.
+Wave 0 resources (database) sync first, then wave 1 resources (application) sync after. If the sync operation fails, the Application-level retry policy retries the operation.
 
-## Implementing retry with health checks
+## Implementing retry with diff customization
 
-Combine retry policies with custom health checks:
+Combine retry policies with diff customization when expected live-state changes should not keep the Application out of sync:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -254,7 +252,7 @@ spec:
         - /spec/replicas
 ```
 
-ArgoCD retries the sync until health checks pass or the retry limit is reached.
+ArgoCD retries failed sync operations according to the retry policy. The `ignoreDifferences` block affects diffing; to make ArgoCD also respect ignored fields during sync, add the `RespectIgnoreDifferences=true` sync option.
 
 ## Using hooks with retry logic
 
@@ -269,7 +267,6 @@ metadata:
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
-    argocd.argoproj.io/sync-options: Retry=true
 spec:
   backoffLimit: 3  # Kubernetes job retry
   template:
@@ -291,7 +288,7 @@ spec:
               echo "Migration successful"
 ```
 
-This PreSync hook runs before the main sync, and ArgoCD retries it if it fails, respecting the Application's retry policy.
+This PreSync hook runs before the main sync. The Kubernetes Job controller retries the pod according to `backoffLimit`, and if the sync operation fails, ArgoCD retries the operation according to the Application's retry policy.
 
 ## Monitoring retry behavior
 
@@ -320,7 +317,7 @@ groups:
     rules:
       - alert: ArgoCDSyncRetrying
         expr: |
-          argocd_app_sync_total{phase="Failed"} > 0
+          increase(argocd_app_sync_total{phase="Failed"}[5m]) > 0
         for: 5m
         labels:
           severity: warning
@@ -330,7 +327,7 @@ groups:
 
       - alert: ArgoCDSyncRetryLimitReached
         expr: |
-          argocd_app_sync_total{phase="Failed"} > 5
+          increase(argocd_app_sync_total{phase="Failed"}[15m]) > 5
         for: 1m
         labels:
           severity: critical
@@ -352,11 +349,11 @@ metadata:
   namespace: argocd
 data:
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [sync-failed]
 
   trigger.on-sync-retrying: |
-    - when: app.status.operationState.retryCount > 0
+    - when: app.status?.operationState.retryCount > 0
       send: [sync-retrying]
 
   template.sync-failed: |
@@ -404,7 +401,7 @@ spec:
 
 ## Advanced retry patterns
 
-**Conditional retry based on failure type:**
+**Avoiding retries from ignored differences:**
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -431,7 +428,7 @@ spec:
         duration: 5s
         factor: 2
         maxDuration: 5m
-  # Ignore transient differences that don't require retry
+  # Ignore expected differences that should not keep the application out of sync
   ignoreDifferences:
     - group: "*"
       kind: "*"
@@ -440,36 +437,33 @@ spec:
         - .metadata.resourceVersion
 ```
 
-**Progressive sync with retry:**
+**Ordered sync with retry:**
 
 ```yaml
-# Use sync waves with different retry policies
-# Critical infrastructure with aggressive retry
+# Use sync waves with one Application-level retry policy
+# Critical infrastructure first
 apiVersion: v1
 kind: Service
 metadata:
   name: database
   annotations:
     argocd.argoproj.io/sync-wave: "0"
-    argocd.argoproj.io/sync-options: Retry=true,RetryLimit=10
 ---
-# Application with standard retry
+# Application second
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api
   annotations:
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/sync-options: Retry=true,RetryLimit=5
 ---
-# Optional features with minimal retry
+# Optional features last
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: feature-flags
   annotations:
     argocd.argoproj.io/sync-wave: "2"
-    argocd.argoproj.io/sync-options: Retry=true,RetryLimit=2
 ```
 
 ## Troubleshooting retry issues
@@ -509,7 +503,7 @@ argocd app set my-app --sync-policy automated
 2. **Use exponential backoff:** Factor of 2 works well for most scenarios
 3. **Set reasonable max duration:** Cap backoff to prevent indefinite delays
 4. **Monitor retry patterns:** Alert on excessive retries
-5. **Combine with health checks:** Ensure retries wait for readiness
+5. **Combine with health checks and diff customization:** Ensure ArgoCD can correctly assess readiness and expected drift
 6. **Use sync waves:** Order dependencies to reduce retry needs
 7. **Test retry behavior:** Simulate failures to verify retry configuration
 8. **Document retry rationale:** Explain why specific retry settings were chosen
