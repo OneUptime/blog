@@ -8,11 +8,11 @@ Description: Learn how to configure API server encryption providers to encrypt K
 
 ---
 
-By default, Kubernetes stores Secrets in etcd as base64-encoded data, not encrypted. Anyone with etcd access can read all Secrets. Encryption at rest solves this problem by encrypting Secret data before it reaches etcd. The API server handles encryption and decryption transparently using configured encryption providers.
+By default, Kubernetes stores Secrets in etcd unencrypted; the Kubernetes API represents Secret data as base64-encoded values, but base64 is not encryption. Anyone with etcd access can read all Secrets. Encryption at rest solves this problem by encrypting Secret data before it reaches etcd. The API server handles encryption and decryption transparently using configured encryption providers.
 
 ## Understanding Encryption Provider Types
 
-Kubernetes supports several encryption provider types. The identity provider performs no encryption and serves as a fallback. The aescbc and aesgcm providers use AES encryption with keys you manage. The secretbox provider uses XSalsa20 and Poly1305. The kms provider delegates encryption to external KMS systems like AWS KMS, Azure Key Vault, or HashiCorp Vault.
+Kubernetes supports several encryption provider types. The identity provider performs no encryption and serves as a fallback. The aescbc and aesgcm providers use AES encryption with keys you manage. The secretbox provider uses XSalsa20 and Poly1305. The kms provider delegates encryption to external KMS plugins backed by systems like AWS KMS, Azure Key Vault, or HashiCorp Vault.
 
 Providers are tried in order during decryption, but only the first provider encrypts new data. This allows for key rotation by adding a new provider first while keeping old providers for reading existing data.
 
@@ -129,7 +129,7 @@ kubectl get nodes
 
 ## Using AES-GCM Encryption
 
-AES-GCM provides authenticated encryption and is more secure than AES-CBC:
+AES-GCM provides authenticated encryption, but Kubernetes recommends using it only when you have automated key rotation because AES-GCM keys must be rotated before 200,000 writes:
 
 ```yaml
 apiVersion: apiserver.config.k8s.io/v1
@@ -165,13 +165,13 @@ resources:
       - identity: {}
 ```
 
-Secretbox is faster than AES-GCM on systems without AES hardware acceleration.
+Secretbox is a strong local encryption provider, but Kubernetes notes that it uses relatively new encryption technologies that may not be acceptable in environments requiring high levels of cryptographic review.
 
 ## Configuring KMS Encryption Provider
 
 KMS providers delegate encryption to external key management systems. This provides better key management, audit trails, and compliance features.
 
-Example KMS configuration for AWS KMS:
+Example KMS v2 configuration for an external KMS plugin:
 
 ```yaml
 apiVersion: apiserver.config.k8s.io/v1
@@ -181,53 +181,46 @@ resources:
       - secrets
     providers:
       - kms:
+          apiVersion: v2
           name: aws-kms
           endpoint: unix:///var/run/kmsplugin/socket.sock
-          cachesize: 1000
           timeout: 3s
       - identity: {}
 ```
 
-Deploy the AWS KMS plugin:
+Deploy a KMS v2-compatible plugin on each control plane node. For self-managed clusters, this is commonly done as a static pod so the plugin runs on the same host as the API server before the API server tries to use it:
 
 ```bash
 # Create KMS plugin directory
 sudo mkdir -p /var/run/kmsplugin
 
-# Deploy KMS plugin as a DaemonSet
-cat <<EOF | kubectl apply -f -
-apiVersion: apps/v1
-kind: DaemonSet
+# Create a static pod manifest on each control plane node
+sudo nano /etc/kubernetes/manifests/kms-plugin.yaml
+```
+
+```yaml
+apiVersion: v1
+kind: Pod
 metadata:
-  name: aws-kms-plugin
+  name: kms-plugin
   namespace: kube-system
 spec:
-  selector:
-    matchLabels:
-      app: aws-kms-plugin
-  template:
-    metadata:
-      labels:
-        app: aws-kms-plugin
-    spec:
-      hostNetwork: true
-      containers:
-      - name: aws-kms-plugin
-        image: amazon/aws-encryption-provider:latest
-        env:
-        - name: AWS_REGION
-          value: us-west-2
-        - name: KEY_ID
-          value: arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012
-        volumeMounts:
-        - name: kmsplugin
-          mountPath: /var/run/kmsplugin
-      volumes:
-      - name: kmsplugin
-        hostPath:
-          path: /var/run/kmsplugin
-          type: DirectoryOrCreate
-EOF
+  hostNetwork: true
+  containers:
+  - name: kms-plugin
+    image: <kms-v2-compatible-plugin-image>
+    command:
+    - <kms-plugin-binary>
+    - --listen=/var/run/kmsplugin/socket.sock
+    # Add provider-specific flags for AWS KMS, Azure Key Vault, Vault, or another KMS.
+    volumeMounts:
+    - name: kmsplugin
+      mountPath: /var/run/kmsplugin
+  volumes:
+  - name: kmsplugin
+    hostPath:
+      path: /var/run/kmsplugin
+      type: DirectoryOrCreate
 ```
 
 For HashiCorp Vault KMS:
@@ -240,9 +233,9 @@ resources:
       - secrets
     providers:
       - kms:
+          apiVersion: v2
           name: vault-kms
           endpoint: unix:///var/run/kmsplugin/vault.sock
-          cachesize: 1000
           timeout: 3s
       - identity: {}
 ```
@@ -328,7 +321,7 @@ resources:
 
   # Encrypt Custom Resources
   - resources:
-      - customresource.example.com
+      - widgets.example.com
     providers:
       - aesgcm:
           keys:
@@ -350,9 +343,9 @@ resources:
     providers:
       # Try KMS first
       - kms:
+          apiVersion: v2
           name: vault-kms
           endpoint: unix:///var/run/kmsplugin/vault.sock
-          cachesize: 1000
           timeout: 3s
       # Fall back to AES-GCM
       - aesgcm:
@@ -407,8 +400,8 @@ Track encryption operations:
 kubectl logs -n kube-system kube-apiserver-<node-name> | grep -i encrypt
 
 # Monitor KMS plugin health
-kubectl get pods -n kube-system -l app=aws-kms-plugin
-kubectl logs -n kube-system -l app=aws-kms-plugin
+kubectl get pods -n kube-system | grep kms-plugin
+kubectl logs -n kube-system kms-plugin-<node-name>
 
 # Verify all secrets are encrypted
 for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
@@ -430,8 +423,8 @@ cat /etc/kubernetes/enc/encryption-config.yaml
 sudo journalctl -u kubelet -f | grep apiserver
 
 # KMS plugin not responding
-kubectl logs -n kube-system -l app=aws-kms-plugin
-kubectl describe pod -n kube-system -l app=aws-kms-plugin
+kubectl logs -n kube-system kms-plugin-<node-name>
+kubectl describe pod -n kube-system kms-plugin-<node-name>
 
 # Decrypt a secret manually (for debugging)
 sudo ETCDCTL_API=3 etcdctl \
