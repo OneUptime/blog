@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Upgrade, Zero-Downtime
 
-Description: Master blue-green cluster upgrade strategies for Kubernetes with complete implementation guide including traffic shifting, DNS updates, and automated rollback procedures for zero-downtime upgrades.
+Description: Master blue-green cluster upgrade strategies for Kubernetes with complete implementation guide including traffic shifting, DNS updates, and fast rollback procedures for zero-downtime upgrades.
 
 ---
 
-Blue-green cluster upgrades provide the ultimate safety net for Kubernetes version upgrades. Instead of upgrading nodes in place, you create an entirely new cluster running the target version and shift traffic once validation is complete. This approach eliminates upgrade-related downtime and provides instant rollback capabilities.
+Blue-green cluster upgrades provide the ultimate safety net for Kubernetes version upgrades. Instead of upgrading nodes in place, you create an entirely new cluster running the target version and shift traffic once validation is complete. This approach eliminates upgrade-related downtime and provides fast rollback capabilities.
 
 ## Understanding Blue-Green Cluster Upgrades
 
 Traditional in-place upgrades modify your existing cluster, introducing risk at every step. Blue-green upgrades eliminate this risk by maintaining two complete clusters: the blue cluster running your current version and the green cluster running the new version. Traffic shifts from blue to green only after thorough validation.
 
-This strategy requires more resources temporarily but provides unmatched safety and confidence. It's particularly valuable for production environments where downtime is unacceptable and rollback needs to be instantaneous.
+This strategy requires more resources temporarily but provides unmatched safety and confidence. It's particularly valuable for production environments where downtime is unacceptable and rollback needs to be fast.
 
 ## Planning Your Blue-Green Upgrade
 
@@ -31,9 +31,11 @@ Start by creating a new cluster with the target Kubernetes version. The green cl
 
 aws eks create-cluster \
   --name production-green \
-  --version 1.29 \
+  --kubernetes-version 1.34 \
   --role-arn arn:aws:iam::123456789012:role/eks-cluster-role \
   --resources-vpc-config subnetIds=subnet-abc123,subnet-def456,securityGroupIds=sg-123456
+
+aws eks wait cluster-active --name production-green
 
 # Create node group
 aws eks create-nodegroup \
@@ -44,12 +46,16 @@ aws eks create-nodegroup \
   --instance-types t3.large \
   --scaling-config minSize=3,maxSize=10,desiredSize=5
 
+aws eks wait nodegroup-active \
+  --cluster-name production-green \
+  --nodegroup-name standard-workers
+
 # For GKE example
 gcloud container clusters create production-green \
-  --cluster-version=1.29 \
-  --zone=us-central1-a \
+  --cluster-version=1.34 \
+  --location=us-central1-a \
   --num-nodes=5 \
-  --machine-type=n1-standard-4 \
+  --machine-type=e2-standard-4 \
   --enable-autoscaling \
   --min-nodes=3 \
   --max-nodes=10
@@ -58,7 +64,7 @@ gcloud container clusters create production-green \
 az aks create \
   --resource-group production-rg \
   --name production-green \
-  --kubernetes-version 1.29.0 \
+  --kubernetes-version 1.34 \
   --node-count 5 \
   --enable-cluster-autoscaler \
   --min-count 3 \
@@ -79,10 +85,10 @@ variable "active_cluster" {
 
 module "eks_blue" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 19.0"
+  version = "~> 21.0"
 
   cluster_name    = "production-blue"
-  cluster_version = "1.28"
+  cluster_version = "1.33"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -99,10 +105,10 @@ module "eks_blue" {
 
 module "eks_green" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 19.0"
+  version = "~> 21.0"
 
   cluster_name    = "production-green"
-  cluster_version = "1.29"
+  cluster_version = "1.34"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -118,6 +124,8 @@ module "eks_green" {
 }
 
 # Route53 weighted routing for gradual traffic shift
+# Point DNS at application load balancers or ingress endpoints, not at the
+# Kubernetes API server endpoints.
 resource "aws_route53_record" "api" {
   zone_id = aws_route53_zone.main.zone_id
   name    = "api.example.com"
@@ -129,8 +137,8 @@ resource "aws_route53_record" "api" {
 
   set_identifier = "blue"
   alias {
-    name                   = module.eks_blue.cluster_endpoint
-    zone_id                = module.eks_blue.cluster_zone_id
+    name                   = aws_lb.api_blue.dns_name
+    zone_id                = aws_lb.api_blue.zone_id
     evaluate_target_health = true
   }
 }
@@ -146,8 +154,8 @@ resource "aws_route53_record" "api_green" {
 
   set_identifier = "green"
   alias {
-    name                   = module.eks_green.cluster_endpoint
-    zone_id                = module.eks_green.cluster_zone_id
+    name                   = aws_lb.api_green.dns_name
+    zone_id                = aws_lb.api_green.zone_id
     evaluate_target_health = true
   }
 }
@@ -257,17 +265,20 @@ For databases, set up replication from blue to green:
 
 ```bash
 # PostgreSQL replication setup
-kubectl exec -it postgres-0 -n blue -- psql -U postgres << 'EOF'
+kubectl config use-context production-blue
+kubectl exec -i postgres-0 -n production -- psql -U postgres << 'EOF'
 CREATE ROLE replicator WITH REPLICATION PASSWORD 'secure-password' LOGIN;
 SELECT pg_create_physical_replication_slot('green_slot');
 EOF
 
 # On green cluster, configure as replica
+kubectl config use-context production-green
 kubectl create secret generic postgres-replication \
+  -n production \
   --from-literal=primary_conninfo="host=blue-postgres.example.com port=5432 user=replicator password=secure-password"
 
 # Deploy PostgreSQL in standby mode
-kubectl apply -f postgres-standby.yaml -n green
+kubectl apply -f postgres-standby.yaml -n production
 ```
 
 ## Implementing Gradual Traffic Shift
@@ -389,13 +400,16 @@ else
 fi
 ```
 
-## Implementing Instant Rollback
+## Implementing Fast Rollback
 
-If issues arise after switching to green, you need instant rollback capability.
+If issues arise after switching to green, you need fast rollback capability.
 
 ```bash
 #!/bin/bash
 # rollback-to-blue.sh
+
+ZONE_ID="Z1234567890ABC"
+RECORD_NAME="api.example.com"
 
 echo "Rolling back to blue cluster..."
 
@@ -407,7 +421,7 @@ aws route53 change-resource-record-sets \
       {
         "Action": "UPSERT",
         "ResourceRecordSet": {
-          "Name": "api.example.com",
+          "Name": "'$RECORD_NAME'",
           "Type": "A",
           "SetIdentifier": "blue",
           "Weight": 100,
@@ -421,7 +435,7 @@ aws route53 change-resource-record-sets \
       {
         "Action": "UPSERT",
         "ResourceRecordSet": {
-          "Name": "api.example.com",
+          "Name": "'$RECORD_NAME'",
           "Type": "A",
           "SetIdentifier": "green",
           "Weight": 0,
@@ -457,14 +471,23 @@ if [ "$confirm" != "yes" ]; then
   exit 0
 fi
 
-# Backup blue cluster configuration
+# Export common blue cluster resources for reference
 kubectl config use-context production-blue
 kubectl get all --all-namespaces -o yaml > blue-cluster-backup.yaml
 
-# Delete blue cluster
+# Delete managed node groups before deleting the EKS control plane
+aws eks delete-nodegroup \
+  --cluster-name production-blue \
+  --nodegroup-name standard-workers
+
+aws eks wait nodegroup-deleted \
+  --cluster-name production-blue \
+  --nodegroup-name standard-workers
+
+# Delete blue cluster control plane
 aws eks delete-cluster --name production-blue
 
 echo "Blue cluster cleanup initiated"
 ```
 
-Blue-green cluster upgrades provide the safest path for Kubernetes version upgrades. While they require additional resources and planning, the ability to validate thoroughly and rollback instantly makes them ideal for mission-critical production environments where downtime is simply not an option.
+Blue-green cluster upgrades provide the safest path for Kubernetes version upgrades. While they require additional resources and planning, the ability to validate thoroughly and rollback quickly makes them ideal for mission-critical production environments where downtime is simply not an option.
