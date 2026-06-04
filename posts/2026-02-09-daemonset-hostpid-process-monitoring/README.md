@@ -130,9 +130,6 @@ metadata:
 data:
   config.yml: |
     process_names:
-    - name: "{{.Comm}}"
-      cmdline:
-      - '.+'
     # Track specific processes
     - name: "kubelet"
       cmdline:
@@ -143,13 +140,16 @@ data:
     - name: "dockerd"
       cmdline:
       - 'dockerd'
+    - name: "{{.Comm}}"
+      cmdline:
+      - '.+'
 ```
 
 This configuration exports detailed metrics about all processes, with special tracking for critical Kubernetes components.
 
 ## Security monitoring with Falco
 
-Falco is a runtime security tool that uses hostPID to detect anomalous process behavior:
+Falco is a runtime security tool that can be deployed with hostPID while detecting anomalous process behavior:
 
 ```yaml
 apiVersion: apps/v1
@@ -168,7 +168,6 @@ spec:
     spec:
       hostPID: true
       hostNetwork: true
-      serviceAccountName: falco
       tolerations:
       - effect: NoSchedule
         key: node-role.kubernetes.io/master
@@ -176,20 +175,13 @@ spec:
         key: node-role.kubernetes.io/control-plane
       containers:
       - name: falco
-        image: falcosecurity/falco-no-driver:0.36.2
+        image: falcosecurity/falco:0.44.0
         args:
         - /usr/bin/falco
-        - --cri=/run/containerd/containerd.sock
-        - --cri=/run/crio/crio.sock
-        - -K=/var/run/secrets/kubernetes.io/serviceaccount/token
-        - -k=https://$(KUBERNETES_SERVICE_HOST)
-        - --k8s-node=$(NODE_NAME)
-        - -pk
-        env:
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
+        - -o
+        - container_engines.cri.enabled=true
+        - -o
+        - container_engines.cri.sockets[]=/run/containerd/containerd.sock
         securityContext:
           privileged: true
         volumeMounts:
@@ -212,6 +204,9 @@ spec:
           mountPath: /host/dev
         - name: containerd-socket
           mountPath: /run/containerd/containerd.sock
+        - name: tracefs
+          mountPath: /sys/kernel/tracing
+          readOnly: true
         resources:
           limits:
             memory: 512Mi
@@ -241,6 +236,11 @@ spec:
       - name: containerd-socket
         hostPath:
           path: /run/containerd/containerd.sock
+          type: Socket
+      - name: tracefs
+        hostPath:
+          path: /sys/kernel/tracing
+          type: Directory
 ```
 
 Falco monitors system calls and process execution to detect security threats in real-time.
@@ -269,12 +269,16 @@ spec:
       - name: monitor
         image: python:3.12-slim
         command:
-        - python3
+        - /bin/sh
         - -c
         - |
+          pip install --no-cache-dir psutil
+          python3 - <<'PY'
           import psutil
           import time
           import json
+
+          psutil.PROCFS_PATH = "/host/proc"
 
           while True:
               # Get all processes
@@ -296,9 +300,10 @@ spec:
 
               print(json.dumps(processes, indent=2))
               time.sleep(10)
+          PY
         volumeMounts:
         - name: proc
-          mountPath: /proc
+          mountPath: /host/proc
           readOnly: true
         securityContext:
           capabilities:
