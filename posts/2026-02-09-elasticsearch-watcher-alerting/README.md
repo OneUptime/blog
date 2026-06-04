@@ -18,15 +18,11 @@ Each watch runs independently and can monitor different log patterns. You can cr
 
 ## Installing and Enabling Watcher
 
-Watcher comes bundled with Elasticsearch but requires proper licensing. For production use, you need either a trial license or a paid subscription. Development environments can use the basic license with limited features.
+Watcher comes bundled with Elasticsearch but requires proper licensing. You need either a trial license or a paid subscription that includes Watcher.
 
 Check if Watcher is available:
 
 ```bash
-# Verify Watcher is installed
-
-curl -X GET "localhost:9200/_xpack?pretty"
-
 # Check license status
 curl -X GET "localhost:9200/_license?pretty"
 ```
@@ -51,7 +47,7 @@ The response should show Watcher as running with execution statistics.
 
 Let's create a watch that alerts when error logs exceed a threshold. This watch checks every minute for elevated error rates in application logs.
 
-```json
+```console
 PUT _watcher/watch/error_rate_alert
 {
   "trigger": {
@@ -118,7 +114,7 @@ This watch runs every minute, searches for ERROR level logs from the past 5 minu
 
 Real-world alerts often need more complex logic. Here's a watch that monitors for failed authentication attempts from the same IP address:
 
-```json
+```console
 PUT _watcher/watch/failed_login_alert
 {
   "trigger": {
@@ -209,7 +205,7 @@ bin/elasticsearch-keystore add xpack.notification.email.account.work.smtp.secure
 
 Create a watch with email action:
 
-```json
+```console
 PUT _watcher/watch/critical_error_email
 {
   "trigger": {
@@ -280,7 +276,7 @@ This watch sends an email with the first 5 critical errors when any are detected
 
 Webhooks enable integration with external systems like Slack, PagerDuty, or custom applications:
 
-```json
+```console
 PUT _watcher/watch/slack_notification
 {
   "trigger": {
@@ -355,7 +351,7 @@ Replace the webhook path with your actual Slack webhook URL.
 
 Prevent alert fatigue by throttling repeated notifications:
 
-```json
+```console
 PUT _watcher/watch/throttled_alert
 {
   "trigger": {
@@ -411,7 +407,13 @@ curl -X POST "localhost:9200/_watcher/watch/error_rate_alert/_execute?pretty"
 curl -X GET "localhost:9200/_watcher/watch/error_rate_alert?pretty"
 
 # List all watches
-curl -X GET "localhost:9200/_watcher/_query/watches?pretty"
+curl -X POST "localhost:9200/_watcher/_query/watches?pretty" -H 'Content-Type: application/json' -d'
+{
+  "query": {
+    "match_all": {}
+  }
+}
+'
 
 # Delete a watch
 curl -X DELETE "localhost:9200/_watcher/watch/error_rate_alert?pretty"
