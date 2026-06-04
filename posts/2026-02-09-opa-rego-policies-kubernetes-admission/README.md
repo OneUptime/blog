@@ -106,7 +106,16 @@ Test the policy:
 kubectl create namespace test-ns
 
 # This should succeed
-kubectl create namespace test-ns --labels=owner=team-a,environment=dev,cost-center=eng
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-ns
+  labels:
+    owner: team-a
+    environment: dev
+    cost-center: eng
+EOF
 ```
 
 ## Blocking Privileged Containers
@@ -204,6 +213,15 @@ spec:
           msg := sprintf("Container %v missing required limits: %v", [container.name, missing_limits])
         }
 
+        violation[{"msg": msg}] {
+          container := input_containers[_]
+          provided_requests := {resource | container.resources.requests[resource]}
+          required_requests := {resource | resource := input.parameters.requests[_]}
+          missing_requests := required_requests - provided_requests
+          count(missing_requests) > 0
+          msg := sprintf("Container %v missing required requests: %v", [container.name, missing_requests])
+        }
+
         input_containers[c] {
           c := input.review.object.spec.containers[_]
         }
@@ -291,6 +309,8 @@ spec:
 
 Use helper functions for complex validation:
 
+This example requires NetworkPolicy objects to be synced into Gatekeeper's `data.inventory`.
+
 ```yaml
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
@@ -317,10 +337,11 @@ spec:
         }
 
         has_network_policy {
-          netpol := data.inventory.cluster["networking.k8s.io/v1"]["NetworkPolicy"][_]
-          netpol.metadata.namespace == input.review.object.metadata.namespace
-          podSelector := object.get(netpol.spec, "podSelector", {})
-          matches_labels(podSelector.matchLabels, input.review.object.metadata.labels)
+          namespace := input.review.object.metadata.namespace
+          netpol := data.inventory.namespace[namespace]["networking.k8s.io/v1"]["NetworkPolicy"][_]
+          pod_selector := object.get(netpol.spec, "podSelector", {})
+          match_labels := object.get(pod_selector, "matchLabels", {})
+          matches_labels(match_labels, input.review.object.metadata.labels)
         }
 
         matches_labels(selector, labels) {
@@ -364,7 +385,7 @@ cat > input.json <<EOF
 EOF
 
 # Test policy
-opa eval --data policy.rego --input input.json "data.k8srequiredlabels.violation"
+opa eval --v0-compatible --data policy.rego --input input.json "data.k8srequiredlabels.violation"
 ```
 
 ## Debugging Policies
@@ -383,7 +404,7 @@ violation[{"msg": msg}] {
 }
 ```
 
-View traces in Gatekeeper logs:
+After enabling traces in Gatekeeper's Config resource, view traces in Gatekeeper logs:
 
 ```bash
 kubectl logs -n gatekeeper-system -l control-plane=controller-manager --tail=100
