@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, kubectl, Troubleshooting
 
-Description: Master kubectl events to view, filter, and sort Kubernetes cluster events for faster troubleshooting of pod failures, scheduling issues, and system problems.
+Description: Master kubectl events and kubectl get events to view, filter, and sort Kubernetes cluster events for faster troubleshooting of pod failures, scheduling issues, and system problems.
 
 ---
 
-Kubernetes events track cluster activities: pod starts, failures, scheduling decisions, and configuration changes. The kubectl events command provides powerful filtering and sorting to find relevant events quickly without parsing verbose describe output.
+Kubernetes events track cluster activities: pod starts, failures, scheduling decisions, and controller actions. The kubectl events command provides quick event viewing, while kubectl get events adds field selectors and sorting to find relevant events quickly without parsing verbose describe output.
 
 ## Understanding Kubernetes Events
 
@@ -19,11 +19,10 @@ Events are time-limited records of cluster activities:
 
 kubectl events
 
-# Events expire after 1 hour by default
-# Newer Kubernetes versions support longer retention
+# Events expire after 1 hour by default unless the API server --event-ttl is changed
 ```
 
-Events contain type, reason, message, and involved object information.
+Events contain type, reason, a message or note, and object reference information.
 
 ## Basic Event Viewing
 
@@ -50,14 +49,14 @@ This shows recent cluster activity.
 Order events chronologically:
 
 ```bash
-# Sort by event timestamp (newest first by default)
-kubectl events --sort-by='.lastTimestamp'
+# Sort by event timestamp
+kubectl get events --sort-by='.lastTimestamp'
 
-# Oldest events first
-kubectl events --sort-by='.firstTimestamp'
+# Sort by first recorded timestamp
+kubectl get events --sort-by='.firstTimestamp'
 
 # View most recent events
-kubectl events --sort-by='.lastTimestamp' | tail -20
+kubectl get events --sort-by='.lastTimestamp' | tail -20
 
 # Watch events as they occur
 kubectl events --watch
@@ -67,7 +66,7 @@ Sorting reveals event sequences and timing.
 
 ## Filtering by Event Type
 
-Focus on warnings or errors:
+Focus on warning events:
 
 ```bash
 # Show only Warning events
@@ -91,19 +90,19 @@ View events for specific resources:
 
 ```bash
 # Events for a specific pod
-kubectl events --field-selector involvedObject.name=webapp-pod
+kubectl events --for pod/webapp-pod
 
 # Events for a deployment
-kubectl events --field-selector involvedObject.name=webapp-deployment
+kubectl events --for deployment/webapp-deployment
 
 # Events for a node
-kubectl events --field-selector involvedObject.name=worker-1
+kubectl events --for node/worker-1
 
 # Events for a specific kind
-kubectl events --field-selector involvedObject.kind=Pod
+kubectl get events --field-selector involvedObject.kind=Pod
 
 # Combine filters
-kubectl events --field-selector involvedObject.name=webapp,involvedObject.kind=Pod
+kubectl get events --field-selector involvedObject.name=webapp,involvedObject.kind=Pod
 ```
 
 This isolates events related to specific resources.
@@ -114,16 +113,16 @@ Find events with specific reasons:
 
 ```bash
 # Failed scheduling events
-kubectl events --field-selector reason=FailedScheduling
+kubectl get events --field-selector reason=FailedScheduling
 
 # Image pull errors
-kubectl events --field-selector reason=Failed
+kubectl get events --field-selector reason=Failed
 
 # Pod killed events
-kubectl events --field-selector reason=Killing
+kubectl get events --field-selector reason=Killing
 
 # Successful scheduling
-kubectl events --field-selector reason=Scheduled
+kubectl get events --field-selector reason=Scheduled
 ```
 
 Reason filtering identifies common failure patterns.
@@ -140,7 +139,7 @@ kubectl events -n production
 kubectl events -n kube-system
 
 # All namespaces sorted by namespace
-kubectl events -A --sort-by='.metadata.namespace'
+kubectl get events -A --sort-by='.metadata.namespace'
 ```
 
 Namespace filtering scopes troubleshooting.
@@ -152,11 +151,11 @@ Use multiple field selectors:
 ```bash
 # Warning events for specific pod
 kubectl events \
-  --field-selector involvedObject.name=webapp \
+  --for pod/webapp \
   --types=Warning
 
 # Events for pods that failed scheduling
-kubectl events \
+kubectl get events \
   --field-selector involvedObject.kind=Pod,reason=FailedScheduling
 
 # Warning events in specific namespace
@@ -177,7 +176,7 @@ kubectl events --watch
 kubectl events --watch --types=Warning
 
 # Watch for specific object
-kubectl events --watch --field-selector involvedObject.name=webapp
+kubectl events --watch --for pod/webapp
 
 # Watch across all namespaces
 kubectl events --watch --all-namespaces
@@ -194,7 +193,7 @@ Change output format for different uses:
 kubectl events
 
 # Wide output with more columns
-kubectl events -o wide
+kubectl get events -o wide
 
 # YAML output
 kubectl events -o yaml
@@ -203,7 +202,7 @@ kubectl events -o yaml
 kubectl events -o json
 
 # Custom columns
-kubectl events -o custom-columns=LAST-SEEN:.lastTimestamp,TYPE:.type,REASON:.reason,MESSAGE:.message
+kubectl get events -o custom-columns=LAST-SEEN:.lastTimestamp,TYPE:.type,REASON:.reason,MESSAGE:.message
 ```
 
 Different formats suit different analysis needs.
@@ -216,11 +215,8 @@ Control result count:
 # Show first 10 events
 kubectl events | head -10
 
-# Show last 20 events by time
-kubectl events --sort-by='.lastTimestamp' | tail -20
-
-# Use --limit flag (if supported)
-kubectl events --limit=50
+# Show most recent 20 events by time
+kubectl get events --sort-by='.lastTimestamp' | tail -20
 ```
 
 Limits prevent overwhelming output.
@@ -231,13 +227,13 @@ Debug container image issues:
 
 ```bash
 # Image pull errors
-kubectl events --field-selector reason=Failed --types=Warning
+kubectl get events --field-selector reason=Failed,type=Warning
 
 # Back-off pulling image events
-kubectl events --field-selector reason=BackOff
+kubectl get events --field-selector reason=BackOff
 
 # Specific pod image issues
-kubectl events --field-selector involvedObject.name=webapp,reason=Failed
+kubectl get events --field-selector involvedObject.name=webapp,reason=Failed
 ```
 
 Image events reveal registry or credential problems.
@@ -248,16 +244,16 @@ Find nodes under resource pressure:
 
 ```bash
 # Memory pressure events
-kubectl events --field-selector reason=NodeHasMemoryPressure
+kubectl get events --field-selector reason=NodeHasMemoryPressure
 
 # Disk pressure events
-kubectl events --field-selector reason=NodeHasDiskPressure
+kubectl get events --field-selector reason=NodeHasDiskPressure
 
 # PID pressure events
-kubectl events --field-selector reason=NodeHasPIDPressure
+kubectl get events --field-selector reason=NodeHasPIDPressure
 
 # All pressure events
-kubectl events --all-namespaces | grep Pressure
+kubectl get events --all-namespaces | grep Pressure
 ```
 
 Pressure events indicate resource exhaustion.
@@ -268,13 +264,13 @@ Find why pods were evicted:
 
 ```bash
 # Eviction events
-kubectl events --field-selector reason=Evicted
+kubectl get events --field-selector reason=Evicted
 
 # With message details
-kubectl events --field-selector reason=Evicted -o wide
+kubectl get events --field-selector reason=Evicted -o wide
 
 # Recent evictions
-kubectl events --sort-by='.lastTimestamp' --field-selector reason=Evicted | tail -10
+kubectl get events --sort-by='.lastTimestamp' --field-selector reason=Evicted | tail -10
 ```
 
 Evictions indicate resource or policy issues.
@@ -285,13 +281,13 @@ Identify pods that can't schedule:
 
 ```bash
 # Failed scheduling events
-kubectl events --field-selector reason=FailedScheduling
+kubectl get events --field-selector reason=FailedScheduling
 
 # Show which pods and why
-kubectl events --field-selector reason=FailedScheduling -o wide
+kubectl get events --field-selector reason=FailedScheduling -o wide
 
 # Recent scheduling failures
-kubectl events --sort-by='.lastTimestamp' --field-selector reason=FailedScheduling
+kubectl get events --sort-by='.lastTimestamp' --field-selector reason=FailedScheduling
 ```
 
 Scheduling failures reveal resource or taint issues.
@@ -305,30 +301,30 @@ Debug health check issues:
 kubectl events | grep -i "liveness probe failed"
 
 # Unhealthy events
-kubectl events --field-selector reason=Unhealthy
+kubectl get events --field-selector reason=Unhealthy
 
 # For specific pod
-kubectl events --field-selector involvedObject.name=webapp | grep -i liveness
+kubectl events --for pod/webapp | grep -i liveness
 ```
 
 Probe failures indicate application health problems.
 
 ## Tracking Configuration Updates
 
-See when resources changed:
+See events involving configuration resources:
 
 ```bash
 # ConfigMap update events
-kubectl events --field-selector involvedObject.kind=ConfigMap
+kubectl get events --field-selector involvedObject.kind=ConfigMap
 
 # Secret update events
-kubectl events --field-selector involvedObject.kind=Secret
+kubectl get events --field-selector involvedObject.kind=Secret
 
 # Deployment scaling events
-kubectl events --field-selector involvedObject.kind=Deployment,reason=ScalingReplicaSet
+kubectl get events --field-selector involvedObject.kind=Deployment,reason=ScalingReplicaSet
 ```
 
-Update events track configuration changes.
+These filters show events related to configuration resources when controllers emit them.
 
 ## Analyzing Event Patterns
 
@@ -339,17 +335,17 @@ Identify recurring issues:
 # analyze-events.sh
 
 echo "Most common event reasons:"
-kubectl events --all-namespaces -o json | \
+kubectl get events --all-namespaces -o json | \
   jq -r '.items[].reason' | \
   sort | uniq -c | sort -rn | head -10
 
 echo -e "\nMost affected resources:"
-kubectl events --all-namespaces -o json | \
+kubectl get events --all-namespaces -o json | \
   jq -r '.items[].involvedObject.name' | \
   sort | uniq -c | sort -rn | head -10
 
 echo -e "\nEvent type distribution:"
-kubectl events --all-namespaces -o json | \
+kubectl get events --all-namespaces -o json | \
   jq -r '.items[].type' | \
   sort | uniq -c
 ```
@@ -365,13 +361,13 @@ Monitor events for alerting:
 # event-monitor.sh
 
 # Check for critical events
-CRITICAL_EVENTS=$(kubectl events --types=Warning --all-namespaces -o json | \
+CRITICAL_EVENTS=$(kubectl get events --field-selector type=Warning --all-namespaces -o json | \
   jq -r '.items[] | select(.reason == "FailedScheduling" or .reason == "Evicted" or .reason == "Failed") | .message' | \
   wc -l)
 
 if [ $CRITICAL_EVENTS -gt 0 ]; then
     echo "ALERT: $CRITICAL_EVENTS critical events detected"
-    kubectl events --types=Warning --all-namespaces --sort-by='.lastTimestamp' | tail -20
+    kubectl get events --field-selector type=Warning --all-namespaces --sort-by='.lastTimestamp' | tail -20
     # Send to monitoring system
 fi
 ```
@@ -383,7 +379,7 @@ Automated monitoring catches problems early.
 Events have limited retention:
 
 ```bash
-# Events typically expire after 1 hour
+# Events typically expire after 1 hour unless the API server --event-ttl is changed
 # To preserve events, export periodically
 
 # Export events to file
@@ -409,10 +405,10 @@ NAMESPACES="production staging development"
 
 for ns in $NAMESPACES; do
     echo "=== $ns ==="
-    WARNING_COUNT=$(kubectl events -n $ns --types=Warning -o json | jq '.items | length')
+    WARNING_COUNT=$(kubectl get events -n $ns --field-selector type=Warning -o json | jq '.items | length')
     echo "Warning events: $WARNING_COUNT"
 
-    FAILED_SCHEDULING=$(kubectl events -n $ns --field-selector reason=FailedScheduling -o json | jq '.items | length')
+    FAILED_SCHEDULING=$(kubectl get events -n $ns --field-selector reason=FailedScheduling -o json | jq '.items | length')
     echo "Failed scheduling: $FAILED_SCHEDULING"
 
     echo ""
@@ -435,13 +431,13 @@ echo "Events for pod: $POD_NAME"
 echo "=================="
 
 # Get all events for pod
-kubectl events --field-selector involvedObject.name=$POD_NAME --sort-by='.lastTimestamp'
+kubectl get events --field-selector involvedObject.name=$POD_NAME --sort-by='.lastTimestamp'
 
 echo -e "\n=== Warning Events ==="
-kubectl events --field-selector involvedObject.name=$POD_NAME --types=Warning
+kubectl get events --field-selector involvedObject.name=$POD_NAME,type=Warning
 
 echo -e "\n=== Recent Events (last 5) ==="
-kubectl events --field-selector involvedObject.name=$POD_NAME --sort-by='.lastTimestamp' | tail -5
+kubectl get events --field-selector involvedObject.name=$POD_NAME --sort-by='.lastTimestamp' | tail -5
 
 # Check if pod still exists
 if kubectl get pod $POD_NAME &>/dev/null; then
@@ -461,7 +457,7 @@ Exclude common benign events:
 kubectl events --types=Warning
 
 # Filter out specific reasons
-kubectl events --all-namespaces -o json | \
+kubectl get events --all-namespaces -o json | \
   jq -r '.items[] | select(.reason != "Scheduled" and .reason != "Started") | "\(.lastTimestamp) \(.involvedObject.namespace)/\(.involvedObject.name) \(.reason): \(.message)"'
 
 # Focus on errors only
@@ -479,7 +475,7 @@ Send events to monitoring systems:
 # export-events-to-monitoring.sh
 
 # Get critical events
-EVENTS=$(kubectl events --types=Warning --all-namespaces -o json)
+EVENTS=$(kubectl get events --field-selector type=Warning --all-namespaces -o json)
 
 # Send to monitoring endpoint
 curl -X POST https://monitoring.example.com/events \
@@ -487,10 +483,10 @@ curl -X POST https://monitoring.example.com/events \
   -d "$EVENTS"
 
 # Or parse and send individual events
-echo "$EVENTS" | jq -c '.items[]' | while read event; do
+echo "$EVENTS" | jq -c '.items[]' | while IFS= read -r event; do
     # Process each event
-    SEVERITY=$(echo $event | jq -r '.type')
-    MESSAGE=$(echo $event | jq -r '.message')
+    SEVERITY=$(echo "$event" | jq -r '.type')
+    MESSAGE=$(echo "$event" | jq -r '.message')
     # Send to monitoring...
 done
 ```
@@ -509,4 +505,4 @@ Effective event analysis:
 6. Create alerts for critical event patterns
 7. Combine with describe and logs for complete picture
 
-kubectl events transforms cluster troubleshooting from reactive to proactive. Filter events by resource, type, and reason to find problems quickly. Sort by time to understand failure sequences, and watch in real-time during deployments. Master events alongside logs and describe for comprehensive debugging. For more debugging techniques, see https://oneuptime.com/blog/post/2026-01-22-kubectl-logs-debug-containers/view.
+kubectl events transforms cluster troubleshooting from reactive to proactive. Filter events by resource with kubectl events, and use kubectl get events to filter by fields such as type and reason. Sort by time to understand failure sequences, and watch in real-time during deployments. Master events alongside logs and describe for comprehensive debugging. For more debugging techniques, see https://oneuptime.com/blog/post/2026-01-22-kubectl-logs-debug-containers/view.
