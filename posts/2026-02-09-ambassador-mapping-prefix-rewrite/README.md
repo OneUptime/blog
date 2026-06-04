@@ -19,7 +19,7 @@ The Mapping resource is Ambassador's fundamental routing primitive. Unlike stand
 - How to transform the request (path rewriting, header manipulation)
 - What policies to apply (rate limiting, authentication, etc.)
 
-Mappings are processed in priority order, allowing you to build sophisticated routing logic.
+Emissary sorts Mappings so that more constrained routes are evaluated before less constrained routes, and you can use explicit precedence when you need to control ordering.
 
 ## Basic Mapping Configuration
 
@@ -144,16 +144,13 @@ spec:
   service: api-backend:80
 
   # Rewrite using captured groups
-  rewrite: /\2?version=\1
-
-  # Enable regex matching
   regex_rewrite:
     pattern: /api/(v[0-9]+)/(.*)
-    substitution: /\2?version=\1
+    substitution: /\1/\2
 ```
 
 Request: `https://api.example.com/api/v3/users/profile`
-Backend receives: `http://api-backend/users/profile?version=v3`
+Backend receives: `http://api-backend/v3/users/profile`
 
 ## Host-Based Routing
 
@@ -218,8 +215,7 @@ spec:
   prefix: /
   service: tenant-router:80
 
-  # Pass original host to backend
-  host_rewrite: ""
+  # host_rewrite is omitted so the original Host header is preserved
 
   # Add hostname as header for backend processing
   add_request_headers:
@@ -239,7 +235,7 @@ metadata:
   name: region-router
   namespace: default
 spec:
-  hostname: "^(us|eu|asia)-api\\.example\\.com$"
+  host: "^(us|eu|asia)-api\\.example\\.com$"
   host_regex: true
   prefix: /
   service: regional-backend:80
@@ -270,11 +266,10 @@ spec:
 
   # Match requests with beta header
   headers:
-    x-beta-user:
-      value: "true"
+    x-beta-user: "true"
 
-  # Higher priority than standard mapping
-  priority: 10
+  # Higher precedence than standard mapping
+  precedence: 10
 
 # Standard mapping for non-beta users
 ---
@@ -287,7 +282,7 @@ spec:
   hostname: api.example.com
   prefix: /api/
   service: production-backend:80
-  priority: 1
+  precedence: 1
 ```
 
 ### Method-Based Routing
@@ -308,7 +303,7 @@ spec:
   prefix: /data/
   service: read-replica:80
   method: GET
-  priority: 10
+  precedence: 10
 
 # Write operations to primary service
 ---
@@ -323,7 +318,7 @@ spec:
   service: primary-db-service:80
   method_regex: true
   method: "POST|PUT|PATCH|DELETE"
-  priority: 10
+  precedence: 10
 ```
 
 ### Query Parameter Routing
@@ -344,10 +339,9 @@ spec:
 
   # Match specific query parameter
   query_parameters:
-    experimental:
-      value: "enabled"
+    experimental: "enabled"
 
-  priority: 10
+  precedence: 10
 ```
 
 ## Complex Multi-Service Routing
@@ -371,11 +365,9 @@ spec:
 
   # Header matching
   headers:
-    x-subscription-tier:
-      value: premium
-    authorization:
-      value: "Bearer .*"
-      regex: true
+    x-subscription-tier: premium
+  regex_headers:
+    authorization: "Bearer .*"
 
   # Service routing
   service: premium-backend:80
@@ -390,14 +382,21 @@ spec:
     x-tier:
       value: "premium"
 
-  # High priority
-  priority: 100
+  # High precedence
+  precedence: 100
 
   # Enable CORS
   cors:
-    origins: "*"
-    methods: "GET, POST, PUT, DELETE"
-    headers: "Content-Type, Authorization"
+    origins:
+      - https://app.example.com
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    headers:
+      - Content-Type
+      - Authorization
     credentials: true
     max_age: "86400"
 ```
@@ -427,10 +426,10 @@ spec:
 
   # Circuit breaking
   circuit_breakers:
-    max_connections: 2048
-    max_pending_requests: 2048
-    max_requests: 2048
-    max_retries: 3
+    - max_connections: 2048
+      max_pending_requests: 2048
+      max_requests: 2048
+      max_retries: 3
 ```
 
 ## Canary Deployments with Weighted Routing
@@ -507,20 +506,20 @@ kubectl port-forward -n ambassador service/edge-stack 8877:8877
 
 Common issues and solutions:
 
-**Mapping not matching**: Check priority and specificity:
+**Mapping not matching**: Check precedence and specificity:
 ```bash
 # View Mapping order
-kubectl get mappings --sort-by=.spec.priority
+kubectl get mappings --sort-by=.spec.precedence
 ```
 
-**Path not rewriting correctly**: Test the rewrite pattern:
+**Path not rewriting correctly**: Check the diagnostic service and add supported debug headers:
 ```yaml
 # Add debug headers
 add_response_headers:
-  x-original-path:
-    value: "%REQ(:path)%"
-  x-rewritten-path:
-    value: "%UPSTREAM_REQ_PATH%"
+  x-debug-protocol:
+    value: "%PROTOCOL%"
+  x-debug-client-ip:
+    value: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
 ```
 
 **Host routing not working**: Verify hostname configuration:
