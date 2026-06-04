@@ -12,13 +12,12 @@ Ruby on Rails applications in production typically depend on PostgreSQL for data
 
 ## Stack Overview
 
-The stack includes five services:
+The stack includes four services:
 
 - **Rails** - the web application (Puma server)
 - **PostgreSQL** - the primary database
 - **Redis** - session store, cache, and Sidekiq broker
 - **Sidekiq** - background job processor
-- **Webpacker/esbuild** - asset compilation (for development)
 
 ## Project Structure
 
@@ -44,7 +43,7 @@ myapp/
 
 ## The Dockerfile
 
-Here is a multi-stage Dockerfile for Rails:
+Here is a Dockerfile for Rails:
 
 ```dockerfile
 # Dockerfile - Rails application with all dependencies
@@ -98,7 +97,7 @@ gem "sidekiq", "~> 7.2"
 gem "bootsnap", require: false
 
 # Caching
-gem "hiredis"
+gem "hiredis-client"
 gem "connection_pool"
 
 group :development, :test do
@@ -243,8 +242,10 @@ Configure Rails caching with Redis:
 config.cache_store = :redis_cache_store, {
   url: ENV.fetch("REDIS_URL", "redis://redis:6379/0"),
   expires_in: 1.hour,
-  pool_size: ENV.fetch("RAILS_MAX_THREADS", 5).to_i,
-  pool_timeout: 5
+  pool: {
+    size: ENV.fetch("RAILS_MAX_THREADS", 5).to_i,
+    timeout: 5
+  }
 }
 
 config.session_store :cache_store, key: "_myapp_session"
@@ -348,7 +349,7 @@ end
 ```
 
 ```ruby
-# app/jobs/scheduled_report_job.rb - Periodic job triggered by Sidekiq scheduler
+# app/jobs/scheduled_report_job.rb - Example report job you can enqueue from a scheduler
 class ScheduledReportJob < ApplicationJob
   queue_as :low
 
