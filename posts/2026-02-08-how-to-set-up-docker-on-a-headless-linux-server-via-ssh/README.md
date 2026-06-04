@@ -52,18 +52,18 @@ sudo apt-get update && sudo apt-get upgrade -y
 
 ## Step 3: Install Docker
 
-Use Docker's official convenience script for a quick installation.
+Docker provides a convenience script for testing and development environments.
 
 ```bash
 # Download and run the official install script
 curl -fsSL https://get.docker.com | sudo sh
 ```
 
-For a more controlled installation, follow the manual repository setup.
+For a production server, follow the manual repository setup.
 
 ```bash
 # Install prerequisites
-sudo apt-get install -y ca-certificates curl gnupg
+sudo apt-get install -y ca-certificates curl
 
 # Add Docker's GPG key
 sudo install -m 0755 -d /etc/apt/keyrings
@@ -71,7 +71,14 @@ sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyring
 sudo chmod a+r /etc/apt/keyrings/docker.asc
 
 # Add the repository
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 # Install Docker
 sudo apt-get update
@@ -83,6 +90,8 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plug
 On a headless server, several configuration choices matter more than on a development machine.
 
 ### Non-Root Access
+
+Only add trusted users to the `docker` group because it grants root-level control over the host.
 
 ```bash
 # Add your user to the docker group
@@ -221,26 +230,32 @@ chmod 0400 ca-key.pem key.pem server-key.pem
 chmod 0444 ca.pem server-cert.pem cert.pem
 ```
 
-Configure Docker to use TLS.
+Configure Docker to use TLS. On Ubuntu and other systemd-based systems, add the TCP listener with a systemd override instead of the `hosts` key in `daemon.json`.
 
 ```bash
-# Update daemon.json with TLS settings
-sudo tee /etc/docker/daemon.json <<'EOF'
-{
-  "tlsverify": true,
-  "tlscacert": "/root/.docker/tls/ca.pem",
-  "tlscert": "/root/.docker/tls/server-cert.pem",
-  "tlskey": "/root/.docker/tls/server-key.pem",
-  "hosts": ["unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"]
-}
+# Install server certificates where the Docker daemon can read them
+sudo install -m 0750 -d /etc/docker/tls
+sudo cp ca.pem server-cert.pem server-key.pem /etc/docker/tls/
+sudo chmod 0400 /etc/docker/tls/server-key.pem
+sudo chmod 0444 /etc/docker/tls/ca.pem /etc/docker/tls/server-cert.pem
+
+# Add a systemd override for the Docker daemon listener
+sudo install -m 0755 -d /etc/systemd/system/docker.service.d
+sudo tee /etc/systemd/system/docker.service.d/override.conf <<'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/bin/dockerd -H fd:// -H tcp://0.0.0.0:2376 --tlsverify --tlscacert=/etc/docker/tls/ca.pem --tlscert=/etc/docker/tls/server-cert.pem --tlskey=/etc/docker/tls/server-key.pem
 EOF
 
-sudo systemctl restart docker
+sudo systemctl daemon-reload
+sudo systemctl restart docker.service
 ```
 
 Connect from your local machine.
 
 ```bash
+# Copy ca.pem, cert.pem, and key.pem to your local machine first
+
 # Connect with TLS from your local machine
 docker --tlsverify --tlscacert=ca.pem --tlscert=cert.pem --tlskey=key.pem -H tcp://your-server-ip:2376 ps
 ```
