@@ -16,7 +16,7 @@ Calico offers several advantages for Windows Kubernetes deployments:
 
 **Network policies** enable you to control traffic between pods at the IP and port level, providing microsegmentation for Windows workloads. This is critical for compliance and security.
 
-**BGP routing** eliminates overlay network overhead by using standard routing protocols. For Windows containers, which have higher networking overhead than Linux, native routing improves performance.
+**BGP routing** eliminates overlay network overhead by using standard routing protocols when you choose Calico's BGP mode. For Windows containers, which have higher networking overhead than Linux, native routing can improve performance; if you use Calico VXLAN for Windows, BGP must be disabled.
 
 **Integration with existing infrastructure** allows Calico to peer with physical network devices, making hybrid cloud deployments smoother.
 
@@ -28,7 +28,7 @@ Calico on Windows consists of several components:
 
 The **Felix agent** runs on each Windows node and programs routing rules and network policies. It uses the Windows Host Networking Service (HNS) to configure container networking.
 
-The **BIRD BGP client** (optional) exchanges routing information with other nodes and network devices. For Windows, this typically runs in a BGP mode or uses VXLAN for simplified deployments.
+The **BGP routing components** are optional and exchange routing information with other nodes and network devices when you choose BGP mode. On Windows, Calico uses the Windows RemoteAccess routing service for BGP; VXLAN is the simpler overlay option.
 
 The **CNI plugin** integrates with kubelet to create and configure pod network interfaces when pods start.
 
@@ -38,10 +38,10 @@ The **confd** daemon generates configuration files based on data from the Kubern
 
 Before installing Calico on Windows nodes:
 
-- Kubernetes cluster version 1.23 or later
+- Kubernetes cluster version 1.22 or later for operator-based HostProcess installation
 - Windows Server 2019 or 2022 nodes (LTSC versions recommended)
-- ContainerD runtime installed on Windows nodes
-- At least one Linux control plane node with Calico already running
+- containerd 1.6.0 or later installed on Windows nodes
+- At least one Linux worker node with Calico already running, because Calico control components do not run on Windows nodes
 - Network connectivity between all nodes on required ports
 - PowerShell 5.1 or higher
 
@@ -69,7 +69,7 @@ spec:
   cni:
     type: Calico
   calicoNetwork:
-    bgp: Enabled
+    bgp: Disabled
     ipPools:
     - blockSize: 26
       cidr: 10.48.0.0/16
@@ -89,20 +89,13 @@ For Windows support, ensure you enable the appropriate settings:
 
 ```bash
 # Enable Windows support in Calico
-kubectl patch installation default --type=merge -p '{"spec":{"calicoNetwork":{"windowsDataplane":"HNS"}}}'
+kubectl patch installation default --type=merge -p '{"spec":{"serviceCIDRs":["10.96.0.0/12"],"calicoNetwork":{"windowsDataplane":"HNS"}}}'
 
 # Apply Windows-specific configuration
-cat <<EOF | kubectl apply -f -
-apiVersion: operator.tigera.io/v1
-kind: Installation
-metadata:
-  name: default
-spec:
-  kubernetesProvider: ""
-  windowsNodes:
-    cni: Calico
-    kubeletVolumePluginPath: None
-EOF
+kubectl patch installation default --type=merge -p '{"spec":{"windowsNodes":{"cniBinDir":"c:\\opt\\cni\\bin","cniConfigDir":"c:\\etc\\cni\\net.d","cniLogDir":"c:\\CalicoWindows\\logs"}}}'
+
+# Calico IPAM must use strict affinity with Windows nodes
+kubectl patch ipamconfigurations default --type merge --patch='{"spec":{"strictAffinity":true}}'
 ```
 
 ## Installing Calico on Windows Nodes
@@ -130,48 +123,34 @@ Set-Location C:\CalicoWindows\CalicoWindows
 Configure the installation parameters:
 
 ```powershell
-# Create configuration file
-$CalicoConfig = @{
-    KubeVersion = "1.28.0"
-    ServiceCidr = "10.96.0.0/12"
-    DNSServerIPs = "10.96.0.10"
-    Datastore = "kubernetes"
-    EtcdEndpoints = ""
-    EtcdTlsSecretName = ""
-    EtcdKey = ""
-    EtcdCert = ""
-    EtcdCaCert = ""
-    KubeConfigPath = "C:\k\config"
-    VXLAN = "Always"
-    Backend = "vxlan"
-}
+# Edit the bundled configuration file
+notepad C:\CalicoWindows\CalicoWindows\config.ps1
 
-# Save configuration
-$CalicoConfig | ConvertTo-Json | Out-File -FilePath "config.ps1" -Encoding ASCII
+# Set the key values for a VXLAN deployment
+$env:CALICO_NETWORKING_BACKEND = "vxlan"
+$env:CALICO_DATASTORE_TYPE = "kubernetes"
+$env:KUBECONFIG = "C:\k\config"
+$env:K8S_SERVICE_CIDR = "10.96.0.0/12"
+$env:DNS_NAME_SERVERS = "10.96.0.10"
+$env:VXLAN_VNI = "4096"
+$env:NODENAME = $(hostname).ToLower()
+$env:CALICO_K8S_NODE_REF = $env:NODENAME
 ```
 
 Run the Calico installation script:
 
 ```powershell
-# Import the installation module
-Import-Module .\calico\calico.psm1
-
 # Install Calico
-.\install-calico.ps1 `
-  -KubeVersion "1.28.0" `
-  -ServiceCidr "10.96.0.0/12" `
-  -DNSServerIPs "10.96.0.10" `
-  -KubeConfigPath "C:\k\config"
+.\install-calico.ps1
 
 # The script will:
 # 1. Download and install CNI plugins
 # 2. Create Calico directories
-# 3. Configure HNS networks
-# 4. Register Calico services
-# 5. Start the Felix and CNI services
+# 3. Install the Calico node and Felix services
+# 4. Install confd when you use the windows-bgp backend
 ```
 
-If you prefer manual installation, follow these steps:
+If you prefer to inspect the generated manual CNI configuration, it should follow the bundled `cni.conf.template` format:
 
 ```powershell
 # Create CNI configuration
@@ -195,10 +174,15 @@ $CNIConfig = @"
       "svc.cluster.local"
     ]
   },
-  "nodename_file": "C:/CalicoWindows/nodename",
+  "nodename_file": "C:/CalicoWindows/CalicoWindows/nodename",
   "datastore_type": "kubernetes",
   "etcd_endpoints": "",
-  "log_file_path": "C:/CalicoWindows/logs/cni.log",
+  "etcd_key_file": "",
+  "etcd_cert_file": "",
+  "etcd_ca_cert_file": "",
+  "kubernetes": {
+    "kubeconfig": "C:/k/config"
+  },
   "ipam": {
     "type": "calico-ipam",
     "subnet": "usePodCidr"
@@ -209,7 +193,6 @@ $CNIConfig = @"
       "Value": {
         "Type": "OutBoundNAT",
         "ExceptionList": [
-          "10.48.0.0/16",
           "10.96.0.0/12"
         ]
       }
@@ -234,19 +217,19 @@ Configure and start Calico services:
 
 ```powershell
 # Install Calico services
-C:\CalicoWindows\kubernetes\install-kube-services.ps1
+C:\CalicoWindows\CalicoWindows\install-calico.ps1
 
 # Start Calico Felix
 Start-Service -Name CalicoFelix
 
-# Start Calico CNI
-Start-Service -Name CalicoCNI
+# Start Calico node
+Start-Service -Name CalicoNode
 
 # Verify services are running
 Get-Service | Where-Object {$_.Name -like "Calico*"}
 
 # Check service logs
-Get-Content C:\CalicoWindows\logs\felix.log -Tail 50
+Get-Content C:\CalicoWindows\CalicoWindows\logs\felix.log -Tail 50
 ```
 
 ## Configuring Network Policies for Windows Pods
@@ -276,7 +259,7 @@ spec:
           role: frontend
     ports:
     - protocol: TCP
-      port: 8080
+      port: 80
   # Allow traffic from specific namespaces
   - from:
     - namespaceSelector:
@@ -290,7 +273,7 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
       port: 53
@@ -384,10 +367,10 @@ kubectl apply -f windows-test-deployment.yaml
 WINDOWS_IP=$(kubectl get pod -l app=windows-app -o jsonpath='{.items[0].status.podIP}')
 
 # Test from allowed pod (should succeed)
-kubectl exec frontend -- curl -m 5 http://$WINDOWS_IP:8080
+kubectl exec frontend -- curl -m 5 http://$WINDOWS_IP:80
 
 # Test from unauthorized pod (should fail)
-kubectl exec unauthorized -- curl -m 5 http://$WINDOWS_IP:8080
+kubectl exec unauthorized -- curl -m 5 http://$WINDOWS_IP:80
 ```
 
 ## Using Calico Global Network Policies
@@ -402,7 +385,7 @@ metadata:
   name: deny-windows-egress-by-default
 spec:
   # Apply to all Windows pods
-  selector: kubernetes.io/os == "windows"
+  selector: os == "windows"
   types:
   - Egress
   egress:
@@ -449,13 +432,13 @@ Monitor Calico on Windows nodes:
 
 ```powershell
 # Check Calico service status
-Get-Service CalicoFelix, CalicoCNI
+Get-Service CalicoFelix, CalicoNode
 
 # View Felix logs
-Get-Content C:\CalicoWindows\logs\felix.log -Tail 100 -Wait
+Get-Content C:\CalicoWindows\CalicoWindows\logs\felix.log -Tail 100 -Wait
 
 # View CNI logs
-Get-Content C:\CalicoWindows\logs\cni.log -Tail 50
+Get-Content C:\CalicoWindows\CalicoWindows\logs\cni.log -Tail 50
 
 # Check HNS networks
 Get-HnsNetwork | Where-Object Name -like "*Calico*"
@@ -469,15 +452,15 @@ Common troubleshooting commands:
 ```powershell
 # Restart Calico services
 Restart-Service CalicoFelix
-Restart-Service CalicoCNI
+Restart-Service CalicoNode
 
 # Clear HNS state (use with caution)
 Get-HnsNetwork | Where-Object Name -like "*Calico*" | Remove-HnsNetwork
 Get-HnsEndpoint | Remove-HnsEndpoint
 
 # Reinstall Calico
-C:\CalicoWindows\kubernetes\uninstall-calico.ps1
-C:\CalicoWindows\kubernetes\install-calico.ps1
+C:\CalicoWindows\CalicoWindows\uninstall-calico.ps1
+C:\CalicoWindows\CalicoWindows\install-calico.ps1
 ```
 
 Check policy enforcement on specific pods:
@@ -496,20 +479,18 @@ calicoctl get workloadendpoint -n default -o yaml | grep -A 50 $POD_NAME
 Optimize Calico performance on Windows:
 
 ```powershell
-# Increase Felix processing capacity
-# Edit C:\CalicoWindows\config\felix.env
+# Enable metrics and set Felix VXLAN values
+# Append these environment overrides before restarting the service
 $FelixConfig = @"
-FELIX_LOGSEVERITYSCREEN=info
-FELIX_DATASTORETYPE=kubernetes
-FELIX_KUBECONFIG=C:\k\config
-FELIX_VXLANVNI=4096
-FELIX_PROMETHEUSMETRICSENABLED=true
-FELIX_PROMETHEUSMETRICSPORT=9091
-FELIX_USAGEREPORTINGENABLED=false
-FELIX_WINDOWSMANAGECALICOHNS=true
+`$env:FELIX_LOGSEVERITYSCREEN = "info"
+`$env:FELIX_VXLANVNI = "4096"
+`$env:FELIX_PROMETHEUSMETRICSENABLED = "true"
+`$env:FELIX_PROMETHEUSMETRICSPORT = "9091"
+`$env:FELIX_USAGEREPORTINGENABLED = "false"
+`$env:FELIX_WINDOWSMANAGECALICOHNS = "true"
 "@
 
-$FelixConfig | Out-File -FilePath "C:\CalicoWindows\config\felix.env" -Encoding ASCII
+$FelixConfig | Add-Content -Path "C:\CalicoWindows\CalicoWindows\config.ps1" -Encoding ASCII
 
 # Restart Felix
 Restart-Service CalicoFelix
