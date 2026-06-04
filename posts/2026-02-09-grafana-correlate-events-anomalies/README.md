@@ -17,13 +17,13 @@ This guide shows you how to build a Grafana dashboard that overlays Kubernetes e
 To correlate events with metrics, you need two data sources working together:
 
 1. Prometheus (or compatible TSDB) for metrics
-2. Kubernetes events exposed as metrics via kube-state-metrics or as annotations
+2. Kubernetes object state changes exposed by kube-state-metrics, plus Kubernetes events added as Grafana annotations if you already export them separately
 
 The key insight is that Kubernetes events have timestamps, just like metrics. By normalizing both onto the same time axis, you can visualize correlations.
 
-## Setting Up kube-state-metrics for Event Exposure
+## Setting Up kube-state-metrics for State Change Exposure
 
-First, ensure kube-state-metrics exposes event information. Deploy or upgrade kube-state-metrics with event monitoring enabled:
+First, ensure kube-state-metrics exposes the object-state metrics you need for event-like signals such as pod restarts, OOM terminations, deployment rollouts, node pressure, and service changes:
 
 ```yaml
 apiVersion: apps/v1
@@ -44,10 +44,9 @@ spec:
       serviceAccountName: kube-state-metrics
       containers:
       - name: kube-state-metrics
-        image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.10.1
+        image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.19.0
         args:
-        - --resources=events  # Enable event metrics
-        - --metric-labels-allowlist=events=[*]
+        - --resources=pods,deployments,nodes,services
         ports:
         - containerPort: 8080
           name: http-metrics
@@ -67,7 +66,13 @@ metadata:
 rules:
 - apiGroups: [""]
   resources:
-  - events
+  - pods
+  - nodes
+  - services
+  verbs: ["list", "watch"]
+- apiGroups: ["apps"]
+  resources:
+  - deployments
   verbs: ["list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -84,33 +89,36 @@ subjects:
   namespace: monitoring
 ```
 
-This configuration enables kube-state-metrics to track Kubernetes events and expose them as Prometheus metrics.
+This configuration enables kube-state-metrics to watch the Kubernetes resources used by the queries below and expose their state as Prometheus metrics.
 
 ## Creating Event Annotation Queries
 
-Grafana annotations overlay events on time-series graphs. Create annotation queries that pull Kubernetes events from Prometheus:
+Grafana annotations overlay events on time-series graphs. Create annotation queries that pull state changes from Prometheus:
 
 ```json
 {
   "annotations": {
     "list": [
       {
-        "datasource": "Prometheus",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
         "enable": true,
-        "expr": "changes(kube_event_unique_events_total{reason!=\"\"}[1m]) > 0",
+        "expr": "changes(kube_pod_container_status_restarts_total{namespace=\"$namespace\", pod=~\"$pod\"}[5m]) > 0",
         "iconColor": "rgba(255, 96, 96, 1)",
-        "name": "Kubernetes Events",
+        "name": "Pod Restarts",
         "step": "60s",
-        "tagKeys": "reason,type,involved_object_kind,involved_object_name",
-        "textFormat": "{{reason}}: {{involved_object_kind}}/{{involved_object_name}}",
-        "titleFormat": "K8s Event"
+        "tagKeys": "namespace,pod,container",
+        "textFormat": "Container {{container}} restarted in {{namespace}}/{{pod}}",
+        "titleFormat": "Pod restart"
       }
     ]
   }
 }
 ```
 
-This annotation shows event markers on your graphs. When a pod crashes or a deployment scales, you'll see a marker at that exact timestamp.
+This annotation shows restart markers on your graphs. When a pod crashes, you'll see a marker on the same time axis as your metrics.
 
 ## Building the Correlation Dashboard
 
@@ -157,8 +165,8 @@ changes(kube_pod_container_status_restarts_total{namespace="$namespace", pod="$p
 # Annotation for OOMKilled events
 kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
 
-# Annotation for failed scheduling events
-kube_event_unique_events_total{reason="FailedScheduling"}
+# Annotation for pending pods, which often points to scheduling issues
+kube_pod_status_phase{phase="Pending"} == 1
 
 # Annotation for deployment rollouts
 changes(kube_deployment_status_observed_generation{namespace="$namespace"}[1m]) > 0
@@ -186,14 +194,16 @@ Create panels that explicitly highlight correlations using PromQL calculations:
   container_memory_working_set_bytes >
   avg_over_time(container_memory_working_set_bytes[1h] offset 1h) * 1.5
 ) and on(pod, namespace) (
-  kube_event_count{type="Warning"} > 0
+  changes(kube_pod_container_status_restarts_total[5m]) > 0
+  or
+  kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
 )
 
 # Network errors correlated with service changes
 (
   rate(node_network_receive_errs_total[5m]) > 0
 ) and on() (
-  changes(kube_service_spec_external_ips[5m]) > 0
+  changes(kube_service_spec_external_ip[5m]) > 0
 )
 ```
 
@@ -209,8 +219,16 @@ Create a dedicated event timeline panel that shows event density over time:
   "title": "Event Timeline",
   "targets": [
     {
-      "expr": "sum(rate(kube_event_unique_events_total[5m])) by (reason)",
-      "legendFormat": "{{reason}}"
+      "expr": "sum(increase(kube_pod_container_status_restarts_total[5m]))",
+      "legendFormat": "pod restarts"
+    },
+    {
+      "expr": "sum(changes(kube_deployment_metadata_generation[5m]))",
+      "legendFormat": "deployment changes"
+    },
+    {
+      "expr": "sum(kube_node_status_condition{condition=~\"MemoryPressure|DiskPressure\", status=\"true\"})",
+      "legendFormat": "node pressure"
     }
   ],
   "fieldConfig": {
@@ -228,7 +246,7 @@ Create a dedicated event timeline panel that shows event density over time:
       {
         "matcher": {
           "id": "byName",
-          "options": "BackOff"
+          "options": "pod restarts"
         },
         "properties": [
           {
@@ -256,7 +274,7 @@ Add a table panel that shows recent events alongside current metric states:
   "title": "Recent Events and Current Metrics",
   "targets": [
     {
-      "expr": "topk(10, kube_event_unique_events_total)",
+      "expr": "topk(10, increase(kube_pod_container_status_restarts_total[1h]))",
       "format": "table",
       "instant": true
     },
@@ -276,8 +294,8 @@ Add a table panel that shows recent events alongside current metric states:
       "options": {
         "excludeByName": {},
         "indexByName": {
-          "reason": 0,
-          "involved_object_name": 1,
+          "namespace": 0,
+          "pod": 1,
           "Value": 2
         }
       }
@@ -291,19 +309,19 @@ Add a table panel that shows recent events alongside current metric states:
 Not all events are equally important. Filter events based on severity and relevance:
 
 ```promql
-# Only show warning and error events
-kube_event_unique_events_total{type=~"Warning|Error"}
+# Only show pods with restarts in the last 10 minutes
+increase(kube_pod_container_status_restarts_total[10m]) > 0
 
-# Filter out noisy events
-kube_event_unique_events_total{reason!~"Pulling|Pulled|Created|Started"}
+# Focus on OOMKilled terminations
+kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
 
-# Show only events for specific resources
-kube_event_unique_events_total{involved_object_kind=~"Pod|Deployment|StatefulSet"}
+# Show only selected resource state changes
+changes(kube_deployment_metadata_generation{namespace="$namespace"}[15m]) > 0
 
 # Time-windowed event filtering
-kube_event_unique_events_total[5m]
+increase(kube_pod_container_status_restarts_total[5m]) > 0
   unless
-kube_event_unique_events_total[5m] offset 10m
+increase(kube_pod_container_status_restarts_total[5m] offset 10m) > 0
 ```
 
 ## Creating Anomaly Detection Overlays
@@ -322,9 +340,9 @@ Combine statistical anomaly detection with event correlation:
 )
 
 # Overlay with events happening in same time window
-* on(pod, namespace) group_left(reason)
+* on(pod, namespace) group_left()
 (
-  kube_event_unique_events_total > 0
+  changes(kube_pod_container_status_restarts_total[5m]) > 0
 )
 ```
 
@@ -349,7 +367,7 @@ spec:
         (
           rate(container_cpu_usage_seconds_total[5m]) > 0.9
         ) and on(pod, namespace) (
-          changes(kube_event_unique_events_total{type="Warning"}[5m]) > 0
+          changes(kube_pod_container_status_restarts_total[5m]) > 0
         )
       for: 5m
       annotations:
@@ -365,7 +383,7 @@ Track how deployments affect metrics:
 # CPU change during deployment
 rate(container_cpu_usage_seconds_total[5m])
   and on()
-changes(kube_deployment_status_updated_replicas[5m]) > 0
+changes(kube_deployment_status_replicas_updated[5m]) > 0
 
 # Memory usage before and after deployment
 (
@@ -399,7 +417,7 @@ Set up variables that let users filter the correlation view:
       {
         "name": "event_reason",
         "type": "query",
-        "query": "label_values(kube_event_unique_events_total, reason)",
+        "query": "label_values(kube_pod_container_status_last_terminated_reason, reason)",
         "multi": true,
         "includeAll": true
       }
