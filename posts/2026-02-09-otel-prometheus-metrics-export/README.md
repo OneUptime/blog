@@ -14,6 +14,8 @@ OpenTelemetry metrics integrate seamlessly with Prometheus through multiple expo
 
 Configure the collector to push metrics to Prometheus via remote write.
 
+Prometheus must be started with `--web.enable-remote-write-receiver` to accept writes at `/api/v1/write`. Use this path for low-volume use cases, or point the exporter at a remote-write-compatible backend such as Cortex, Mimir, or Thanos.
+
 ```yaml
 # collector-prometheus-remote-write.yaml
 
@@ -28,7 +30,7 @@ processors:
     timeout: 10s
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: http://prometheus:9090/api/v1/write
     tls:
       insecure: true
@@ -42,7 +44,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Prometheus Exporter for Scraping
@@ -113,7 +115,7 @@ request_counter = meter.create_counter("http_requests_total")
 request_duration = meter.create_histogram("http_request_duration_seconds")
 
 # Record metrics
-request_counter.add(1, {"method": "GET", "endpoint": "/api/users"})
+request_counter.add(1, {"method": "GET", "endpoint": "/api/users", "status": "200"})
 request_duration.record(0.145, {"method": "GET", "endpoint": "/api/users"})
 ```
 
@@ -123,21 +125,21 @@ Query OpenTelemetry metrics in Prometheus using standard PromQL.
 
 ```promql
 # Request rate
-rate(http_requests_total[5m])
+rate(otel_http_requests_total[5m])
 
 # Request duration p95
-histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(otel_http_request_duration_seconds_bucket[5m])))
 
 # Error rate
-rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])
+sum(rate(otel_http_requests_total{status=~"5.."}[5m])) / sum(rate(otel_http_requests_total[5m]))
 
 # Aggregate by service
-sum by (service_name) (rate(http_requests_total[5m]))
+sum by (service_name) (rate(otel_http_requests_total[5m]))
 ```
 
 ## Best Practices
 
-First, use remote write for push-based metrics when collectors handle high cardinality.
+First, use remote write for push-based metrics when sending to remote-write-compatible backends, and avoid using the Prometheus remote write receiver as a high-volume replacement for scraping.
 
 Second, use Prometheus exporter for existing scrape-based infrastructure.
 
