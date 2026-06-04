@@ -10,7 +10,7 @@ Description: Deploy NetBox in Docker for IP address management, data center docu
 
 NetBox is the leading open-source tool for documenting network infrastructure. Originally built by the network engineering team at DigitalOcean, it serves as a single source of truth for IP address management (IPAM), data center infrastructure management (DCIM), circuit tracking, and device inventory. If you have ever struggled with spreadsheets full of IP addresses or outdated network diagrams, NetBox replaces all of that with a structured, searchable, API-driven platform.
 
-Running NetBox in Docker is the recommended deployment method. The official project maintains a Docker Compose setup that bundles all required components. This guide walks through the deployment, initial configuration, data population, and integration with automation tools.
+Running NetBox in Docker is a common deployment method. The community-maintained NetBox Docker project provides a Docker Compose setup that bundles all required components. This guide walks through the deployment, initial configuration, data population, and integration with automation tools.
 
 ## What NetBox Tracks
 
@@ -46,6 +46,9 @@ cp docker-compose.override.yml.example docker-compose.override.yml
 
 # Generate a secret key for Django
 python3 -c "import secrets; print(secrets.token_urlsafe(50))"
+
+# Pull the container images before starting the stack
+docker compose pull
 ```
 
 Here is a standalone Docker Compose configuration if you prefer not to clone the repository.
@@ -53,11 +56,10 @@ Here is a standalone Docker Compose configuration if you prefer not to clone the
 ```yaml
 # docker-compose.yml - Complete NetBox stack
 # Includes the web app, background worker, PostgreSQL, and Redis
-version: "3.8"
 
 services:
   netbox:
-    image: netboxcommunity/netbox:latest
+    image: netboxcommunity/netbox:v4.6-5.0.1
     container_name: netbox
     restart: unless-stopped
     ports:
@@ -87,7 +89,7 @@ services:
 
   # Background worker processes async tasks like webhooks
   netbox-worker:
-    image: netboxcommunity/netbox:latest
+    image: netboxcommunity/netbox:v4.6-5.0.1
     container_name: netbox-worker
     restart: unless-stopped
     command: /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py rqworker
@@ -101,7 +103,7 @@ services:
 
   # Housekeeping job cleans up old sessions and change logs
   netbox-housekeeping:
-    image: netboxcommunity/netbox:latest
+    image: netboxcommunity/netbox:v4.6-5.0.1
     container_name: netbox-housekeeping
     restart: unless-stopped
     command: /opt/netbox/housekeeping.sh
@@ -177,11 +179,11 @@ NetBox has a comprehensive REST API. Use it to populate your infrastructure data
 ```bash
 # Set up API variables
 NETBOX_URL="http://localhost:8000/api"
-TOKEN="0123456789abcdef0123456789abcdef01234567"
+TOKEN="nbt_examplekey.exampleplaintext"
 
 # Create a site
 curl -s -X POST "${NETBOX_URL}/dcim/sites/" \
-  -H "Authorization: Token ${TOKEN}" \
+  -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Primary Datacenter",
@@ -195,7 +197,7 @@ curl -s -X POST "${NETBOX_URL}/dcim/sites/" \
 
 # Create a rack
 curl -s -X POST "${NETBOX_URL}/dcim/racks/" \
-  -H "Authorization: Token ${TOKEN}" \
+  -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Rack A01",
@@ -207,18 +209,19 @@ curl -s -X POST "${NETBOX_URL}/dcim/racks/" \
 
 # Create an IP prefix
 curl -s -X POST "${NETBOX_URL}/ipam/prefixes/" \
-  -H "Authorization: Token ${TOKEN}" \
+  -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "prefix": "10.0.0.0/24",
-    "site": 1,
+    "scope_type": "dcim.site",
+    "scope_id": 1,
     "status": "active",
     "description": "Server management network"
   }' | python3 -m json.tool
 
 # Assign an IP address
 curl -s -X POST "${NETBOX_URL}/ipam/ip-addresses/" \
-  -H "Authorization: Token ${TOKEN}" \
+  -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "address": "10.0.0.1/24",
@@ -239,7 +242,7 @@ For large-scale data imports, use the pynetbox Python library.
 import pynetbox
 
 # Connect to the NetBox API
-nb = pynetbox.api("http://localhost:8000", token="0123456789abcdef0123456789abcdef01234567")
+nb = pynetbox.api("http://localhost:8000", token="nbt_examplekey.exampleplaintext")
 
 # Create device roles
 roles = ["Router", "Switch", "Firewall", "Server", "Access Point"]
@@ -298,21 +301,30 @@ for vlan_data in vlans:
 NetBox can trigger webhooks when objects change, enabling automation workflows.
 
 ```bash
-# Create a webhook that fires when IP addresses change
-curl -s -X POST "${NETBOX_URL}/extras/webhooks/" \
-  -H "Authorization: Token ${TOKEN}" \
+# Create a webhook receiver
+WEBHOOK_ID=$(curl -s -X POST "${NETBOX_URL}/extras/webhooks/" \
+  -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "IP Address Changes",
     "payload_url": "https://automation.example.com/netbox-webhook",
-    "content_types": ["ipam.ipaddress"],
-    "type_create": true,
-    "type_update": true,
-    "type_delete": true,
     "http_method": "POST",
-    "http_content_type": "application/json",
-    "enabled": true
-  }'
+    "http_content_type": "application/json"
+  }' | python3 -c "import json, sys; print(json.load(sys.stdin)[\"id\"])")
+
+# Create an event rule that triggers the webhook when IP addresses change
+curl -s -X POST "${NETBOX_URL}/extras/event-rules/" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"IP Address Change Events\",
+    \"object_types\": [\"ipam.ipaddress\"],
+    \"event_types\": [\"object_created\", \"object_updated\", \"object_deleted\"],
+    \"action_type\": \"webhook\",
+    \"action_object_type\": \"extras.webhook\",
+    \"action_object_id\": ${WEBHOOK_ID},
+    \"enabled\": true
+  }"
 ```
 
 ## Backup and Restore
@@ -336,9 +348,11 @@ gunzip < netbox-db-20260208.sql.gz | docker exec -i netbox-postgres psql -U netb
 Integrate NetBox with your corporate directory for single sign-on.
 
 ```python
-# Add to the NetBox configuration (extra.py or ldap_config.py)
+# Add to the NetBox configuration (configuration.py and ldap_config.py)
 import ldap
 from django_auth_ldap.config import LDAPSearch, GroupOfNamesType
+
+REMOTE_AUTH_BACKEND = "netbox.authentication.LDAPBackend"
 
 AUTH_LDAP_SERVER_URI = "ldap://ldap.example.com"
 AUTH_LDAP_BIND_DN = "cn=netbox,ou=services,dc=example,dc=com"
