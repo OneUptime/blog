@@ -12,7 +12,7 @@ Sampling reduces the volume of traces sent to your observability backend while m
 
 ## Understanding Sampling
 
-Sampling makes sampling decisions at trace creation time, determining whether to record and export a trace. Sampled traces include all spans, while unsampled traces are dropped completely. The sampling decision propagates to downstream services to keep trace consistency.
+Sampling makes sampling decisions at span creation time, usually when a trace starts. With parent-based sampling, the root span's decision is propagated to downstream services so child spans follow the same sampled flag and the trace stays consistent.
 
 Head-based sampling makes decisions at the start of a trace based on available information like trace ID or service name. This approach is efficient but may miss interesting traces like errors that occur later in request processing.
 
@@ -91,7 +91,7 @@ Parent-based sampling respects the sampling decision made by parent spans. This 
 # parent_based_sampling.py
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased, ALWAYS_ON
+from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased, ALWAYS_ON, ALWAYS_OFF
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
@@ -104,7 +104,7 @@ root_sampler = TraceIdRatioBased(0.1)  # Sample 10% of root traces
 sampler = ParentBased(
     root=root_sampler,
     remote_parent_sampled=ALWAYS_ON,     # Always sample if remote parent was sampled
-    remote_parent_not_sampled=ALWAYS_ON,  # Never sample if remote parent was not sampled
+    remote_parent_not_sampled=ALWAYS_OFF,  # Never sample if remote parent was not sampled
 )
 
 # Configure tracer provider
@@ -189,9 +189,9 @@ Implement rate-limited sampling to cap the maximum number of traces per second.
 ```python
 # rate_limited_sampling.py
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider, ReadableSpan
-from opentelemetry.sdk.trace.sampling import Sampler, Decision, SamplingResult
-from opentelemetry.trace import Link, SpanKind
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.sampling import Sampler, Decision, SamplingResult, ParentBased
+from opentelemetry.trace import SpanKind
 from opentelemetry.context import Context
 import time
 import threading
@@ -238,8 +238,8 @@ class RateLimitingSampler(Sampler):
     def get_description(self) -> str:
         return f"RateLimitingSampler({self.traces_per_second} traces/sec)"
 
-# Use rate-limiting sampler
-sampler = RateLimitingSampler(traces_per_second=100)
+# Use rate-limiting sampler for root spans and follow parent decisions for child spans
+sampler = ParentBased(root=RateLimitingSampler(traces_per_second=100))
 tracer_provider = TracerProvider(sampler=sampler)
 trace.set_tracer_provider(tracer_provider)
 ```
@@ -258,8 +258,8 @@ from opentelemetry.sdk.trace.sampling import (
 from opentelemetry.trace import SpanKind
 from opentelemetry.context import Context
 
-class CompositeS ampler(Sampler):
-    """Sample based on multiple conditions"""
+class CompositeSampler(Sampler):
+    """Sample based on multiple conditions known when the span starts"""
 
     def __init__(self, default_rate: float = 0.1):
         self.default_rate = default_rate
@@ -275,18 +275,18 @@ class CompositeS ampler(Sampler):
         links: list = None,
         trace_state: dict = None,
     ) -> SamplingResult:
-        # Always sample errors
-        if attributes and attributes.get("error", False):
+        # Always sample requests marked as high priority at span creation time
+        if attributes and attributes.get("sampling.priority", 0) > 0:
             return SamplingResult(
                 decision=Decision.RECORD_AND_SAMPLE,
-                attributes={"sampling.rule": "error"},
+                attributes={"sampling.rule": "priority"},
             )
 
-        # Always sample slow operations
-        if attributes and attributes.get("duration_ms", 0) > 1000:
+        # Always sample operations expected to be expensive
+        if attributes and attributes.get("expected_duration_ms", 0) > 1000:
             return SamplingResult(
                 decision=Decision.RECORD_AND_SAMPLE,
-                attributes={"sampling.rule": "slow"},
+                attributes={"sampling.rule": "expected_expensive"},
             )
 
         # Always sample specific endpoints
@@ -313,6 +313,9 @@ class CompositeS ampler(Sampler):
 
     def get_description(self) -> str:
         return f"CompositeSampler(default_rate={self.default_rate})"
+
+# Respect parent decisions after the root span has been sampled
+sampler = ParentBased(root=CompositeSampler(default_rate=0.1))
 ```
 
 ## Adjusting Sampling Rates
@@ -322,6 +325,7 @@ Adjust sampling rates dynamically based on traffic patterns and costs.
 ```python
 # dynamic_sampling.py
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
+from datetime import datetime
 import os
 
 class DynamicSamplingConfig:
@@ -343,7 +347,7 @@ class DynamicSamplingConfig:
 
         # Production: vary by time of day
         elif env == "production":
-            # Sample more during business hours
+            # Sample less during business hours
             if 9 <= hour <= 17:
                 return 0.05  # 5% during high traffic
             else:
@@ -399,7 +403,7 @@ First, start with parent-based sampling with a reasonable probability root sampl
 
 Second, use higher sampling rates in non-production environments. Development and staging should sample 50-100% of traces for better debugging.
 
-Third, consider implementing always-sample rules for errors and slow requests. These traces provide the most value for troubleshooting.
+Third, consider tail sampling when you need to always sample errors and slow requests. Head samplers can only use information available when the span starts.
 
 Fourth, monitor your sampling effectiveness. Track the ratio of sampled to dropped traces and adjust rates based on traffic patterns and costs.
 
