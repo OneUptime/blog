@@ -41,6 +41,12 @@ controllerReplicas: 3
 # Spread pods across zones
 enablePodAntiAffinity: true
 
+# Create PodDisruptionBudgets for control plane workloads
+enablePodDisruptionBudget: true
+controller:
+  podDisruptionBudget:
+    maxUnavailable: 1
+
 # Resource limits for production
 controllerResources:
   cpu:
@@ -53,46 +59,43 @@ controllerResources:
 # Identity controller HA
 identity:
   issuer:
-    scheme: kubernetes.io/tls
-  replicas: 3
-  resources:
-    cpu:
-      request: 100m
-      limit: 200m
-    memory:
-      request: 128Mi
-      limit: 256Mi
+    scheme: linkerd.io/tls
+identityResources:
+  cpu:
+    request: 100m
+    limit: 200m
+  memory:
+    request: 128Mi
+    limit: 256Mi
 
 # Destination controller HA
-destination:
-  replicas: 3
-  resources:
-    cpu:
-      request: 200m
-      limit: 500m
-    memory:
-      request: 256Mi
-      limit: 512Mi
+destinationResources:
+  cpu:
+    request: 200m
+    limit: 500m
+  memory:
+    request: 256Mi
+    limit: 512Mi
 
 # Proxy injector HA
-proxyInjector:
-  replicas: 3
-  resources:
-    cpu:
-      request: 100m
-      limit: 200m
-    memory:
-      request: 128Mi
-      limit: 256Mi
+proxyInjectorResources:
+  cpu:
+    request: 100m
+    limit: 200m
+  memory:
+    request: 128Mi
+    limit: 256Mi
 
 # Enable high availability for webhooks
-webhookFailurePolicy: Ignore
+webhookFailurePolicy: Fail
+highAvailability: true
 ```
 
 Install Linkerd with HA configuration:
 
 ```bash
-linkerd install --values linkerd-ha-values.yaml | kubectl apply -f -
+linkerd install --crds | kubectl apply -f -
+linkerd install --ha --values linkerd-ha-values.yaml | kubectl apply -f -
 ```
 
 Verify installation:
@@ -109,26 +112,12 @@ You should see three replicas of each component spread across nodes.
 Ensure control plane pods spread across zones and nodes:
 
 ```yaml
-# linkerd-ha-affinity.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: linkerd-destination
-  namespace: linkerd
+# Affinity fragment for the linkerd-destination Deployment
 spec:
-  replicas: 3
   template:
     spec:
       affinity:
         podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: linkerd.io/control-plane-component
-                operator: In
-                values:
-                - destination
-            topologyKey: topology.kubernetes.io/zone
           preferredDuringSchedulingIgnoredDuringExecution:
           - weight: 100
             podAffinityTerm:
@@ -138,10 +127,18 @@ spec:
                   operator: In
                   values:
                   - destination
-              topologyKey: kubernetes.io/hostname
+              topologyKey: topology.kubernetes.io/zone
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: linkerd.io/control-plane-component
+                operator: In
+                values:
+                - destination
+            topologyKey: kubernetes.io/hostname
 ```
 
-Apply similar configuration to identity and proxy-injector deployments. The required rule ensures pods never run in the same zone. The preferred rule tries to avoid the same node.
+Apply similar configuration to identity and proxy-injector deployments if you are not using `--ha` or `enablePodAntiAffinity: true`. The required rule ensures pods never run on the same node. The preferred rule tries to spread pods across zones.
 
 ## Setting Appropriate Resource Requests and Limits
 
@@ -149,7 +146,7 @@ Size control plane components based on cluster scale:
 
 ```yaml
 # For clusters with 50-100 services
-controllerResources:
+destinationResources:
   cpu:
     request: 200m
     limit: 500m
@@ -158,7 +155,7 @@ controllerResources:
     limit: 512Mi
 
 # For clusters with 100-500 services
-controllerResources:
+destinationResources:
   cpu:
     request: 500m
     limit: 1000m
@@ -167,7 +164,7 @@ controllerResources:
     limit: 1Gi
 
 # For clusters with 500+ services
-controllerResources:
+destinationResources:
   cpu:
     request: 1000m
     limit: 2000m
@@ -184,7 +181,7 @@ kubectl top pods -n linkerd
 
 ## Configuring PodDisruptionBudgets
 
-Prevent cluster operations from taking down all control plane replicas:
+Linkerd can create PodDisruptionBudgets when `enablePodDisruptionBudget: true` is set. If you manage them separately, prevent cluster operations from taking down all control plane replicas:
 
 ```yaml
 # pdb-linkerd.yaml
@@ -234,10 +231,11 @@ Set up monitoring for control plane availability:
 
 ```bash
 # Check control plane status
-linkerd check --proxy
+linkerd check
 
-# View control plane metrics
-kubectl port-forward -n linkerd svc/linkerd-prometheus 9090:9090
+# View metrics from the Linkerd Viz Prometheus instance
+linkerd viz install --ha | kubectl apply -f -
+kubectl port-forward -n linkerd-viz svc/prometheus 9090:9090
 ```
 
 Key metrics to monitor:
@@ -246,14 +244,11 @@ Key metrics to monitor:
 # Control plane pod availability
 count(up{namespace="linkerd", job=~"linkerd-.*"}) by (job)
 
-# Certificate issuance rate
-rate(identity_cert_issued_total[5m])
+# Proxy certificate refreshes
+rate(identity_cert_refresh_count[5m])
 
-# Service discovery updates
-rate(destination_updates_total[5m])
-
-# Webhook latency
-histogram_quantile(0.95, rate(webhook_http_request_duration_seconds_bucket[5m]))
+# Proxy certificate expiry
+min(identity_cert_expiration_timestamp_seconds - time())
 ```
 
 ## Implementing Control Plane Redundancy
@@ -262,14 +257,16 @@ For critical deployments, run control plane in multiple clusters. Use multi-clus
 
 ```bash
 # Install Linkerd in backup cluster
-linkerd install --cluster-domain=backup.local | kubectl apply -f -
+linkerd install --crds | kubectl apply -f -
+linkerd install --ha --cluster-domain=backup.local | kubectl apply -f -
 
 # Link primary and backup clusters
+linkerd multicluster install | kubectl apply -f -
 linkerd multicluster link --cluster-name backup > backup-link.yaml
 kubectl apply -f backup-link.yaml
 ```
 
-If the primary control plane fails, services continue using cached configuration while you failover to the backup cluster.
+If a control plane fails, services in that cluster continue using cached configuration while you repair or fail over workloads to another cluster. Linkerd multicluster mirrors services between clusters, but it does not make one cluster's control plane a live standby for another cluster's control plane.
 
 ## Configuring Certificate Expiry Monitoring
 
@@ -282,7 +279,7 @@ groups:
   rules:
   - alert: LinkerdCertificateExpiringSoon
     expr: |
-      (linkerd_identity_issuer_cert_expiry_timestamp_seconds - time()) < 604800
+      min(identity_cert_expiration_timestamp_seconds - time()) < 604800
     for: 1h
     labels:
       severity: warning
@@ -291,7 +288,7 @@ groups:
 
   - alert: LinkerdCertificateExpiringSoonCritical
     expr: |
-      (linkerd_identity_issuer_cert_expiry_timestamp_seconds - time()) < 172800
+      min(identity_cert_expiration_timestamp_seconds - time()) < 172800
     labels:
       severity: critical
     annotations:
@@ -313,7 +310,8 @@ Backup critical control plane resources:
 kubectl get secret linkerd-identity-issuer -n linkerd -o yaml > linkerd-identity-backup.yaml
 
 # Backup control plane configuration
-kubectl get configmap linkerd-config -n linkerd -o yaml > linkerd-config-backup.yaml
+kubectl get configmap linkerd-identity-trust-roots -n linkerd -o yaml > linkerd-trust-roots-backup.yaml
+kubectl get secret linkerd-config-overrides -n linkerd -o yaml > linkerd-config-overrides-backup.yaml
 
 # Backup CRDs and policies
 kubectl get authorizationpolicies -A -o yaml > linkerd-policies-backup.yaml
@@ -337,18 +335,18 @@ kubectl exec -it deploy/myapp -- curl http://backend:8080
 kubectl rollout restart deployment/myapp
 ```
 
-Existing proxies cache routing information and continue working. New deployments may have issues if the control plane is down for extended periods.
+Existing proxies cache routing information and continue working. New deployments may fail to inject proxies or obtain identity certificates while the control plane is unavailable.
 
 ## Upgrading Control Plane with Zero Downtime
 
 Upgrade control plane using rolling updates:
 
 ```bash
-# Download new version
-linkerd upgrade --version stable-2.14.0 > linkerd-upgrade.yaml
+# Generate the upgrade manifest, preserving HA settings
+linkerd upgrade --ha > linkerd-upgrade.yaml
 
 # Review changes
-diff <(linkerd install --values linkerd-ha-values.yaml) linkerd-upgrade.yaml
+diff <(linkerd install --ha --values linkerd-ha-values.yaml) linkerd-upgrade.yaml
 
 # Apply upgrade
 kubectl apply -f linkerd-upgrade.yaml
