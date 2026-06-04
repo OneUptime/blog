@@ -36,7 +36,7 @@ The bootstrap command analyzes your environment and installs instrumentation pac
 
 ## Flask Application Example
 
-Flask applications work seamlessly with OpenTelemetry auto-instrumentation. The instrumentation automatically creates spans for HTTP requests, database queries, and template rendering.
+Flask applications work seamlessly with OpenTelemetry auto-instrumentation. The instrumentation automatically creates spans for HTTP requests, and supported database and HTTP client libraries create their own spans when their instrumentation packages are installed.
 
 ```python
 # app.py - No instrumentation code needed
@@ -92,7 +92,7 @@ The instrumentation wrapper starts your application with telemetry collection en
 
 ## Django Application Configuration
 
-Django applications require slightly different setup. The auto-instrumentation works with Django views, middleware, database queries, and template rendering.
+Django applications require slightly different setup. The auto-instrumentation works with Django views and middleware, while supported database and HTTP client libraries create their own spans when their instrumentation packages are installed.
 
 ```python
 # views.py - Standard Django view
@@ -100,6 +100,7 @@ from django.http import JsonResponse
 from django.views import View
 from .models import Product
 import requests
+import json
 
 class ProductView(View):
     def get(self, request, product_id):
@@ -147,7 +148,7 @@ The instrumentation handles Django's request-response cycle, middleware, and ORM
 
 ## FastAPI Integration
 
-FastAPI applications get comprehensive auto-instrumentation including async endpoint support. The instrumentation creates spans for routes, dependencies, and background tasks.
+FastAPI applications get comprehensive auto-instrumentation including async endpoint support. The instrumentation creates spans for routes and background tasks.
 
 ```python
 # main.py - FastAPI application
@@ -217,8 +218,7 @@ Popular Python database libraries get instrumented automatically. This includes 
 ```python
 # database.py - SQLAlchemy example
 from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
 
@@ -259,9 +259,16 @@ Celery tasks get instrumented automatically when using the Celery instrumentatio
 ```python
 # tasks.py - Celery tasks
 from celery import Celery
+from celery.signals import worker_process_init
+from opentelemetry.instrumentation.celery import CeleryInstrumentor
 import requests
 
 app = Celery('tasks', broker='redis://localhost:6379/0')
+
+@worker_process_init.connect(weak=False)
+def init_celery_tracing(*args, **kwargs):
+    # Initialize Celery instrumentation after each worker process starts
+    CeleryInstrumentor().instrument()
 
 @app.task
 def process_payment(order_id, amount):
@@ -293,7 +300,7 @@ def charge_credit_card(order_id, amount):
     return response.json()
 ```
 
-Run Celery workers with auto-instrumentation to enable distributed tracing.
+Run Celery workers with auto-instrumentation to enable distributed tracing. For prefork workers, initialize Celery instrumentation after each worker process starts, as shown above.
 
 ```bash
 # Run Celery worker with instrumentation
@@ -313,8 +320,6 @@ Configure auto-instrumentation behavior using environment variables. This approa
 ```bash
 # Complete configuration example
 export OTEL_SERVICE_NAME=python-app
-export OTEL_SERVICE_VERSION=1.0.0
-export OTEL_DEPLOYMENT_ENVIRONMENT=production
 
 # Exporter configuration
 export OTEL_TRACES_EXPORTER=otlp
@@ -328,13 +333,13 @@ export OTEL_TRACES_SAMPLER=parentbased_traceidratio
 export OTEL_TRACES_SAMPLER_ARG=0.1
 
 # Resource attributes
-export OTEL_RESOURCE_ATTRIBUTES=environment=prod,team=backend
+export OTEL_RESOURCE_ATTRIBUTES=service.version=1.0.0,deployment.environment.name=production,team=backend
 
 # Run application
 opentelemetry-instrument python app.py
 ```
 
-These environment variables control every aspect of telemetry collection and export.
+These environment variables control common telemetry collection, resource, and export settings.
 
 ## Docker Deployment
 
@@ -378,7 +383,7 @@ services:
       - OTEL_TRACES_EXPORTER=otlp
       - OTEL_METRICS_EXPORTER=otlp
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-      - OTEL_RESOURCE_ATTRIBUTES=environment=dev
+      - OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=development
     ports:
       - "5000:5000"
     depends_on:
@@ -418,10 +423,8 @@ After deploying with auto-instrumentation, verify that telemetry data flows corr
 export OTEL_LOG_LEVEL=debug
 opentelemetry-instrument python app.py
 
-# Expected log output shows instrumentation initialization:
-# Instrumentation: flask, Version: 1.0.0
-# Instrumentation: requests, Version: 1.0.0
-# Instrumentation: sqlalchemy, Version: 1.0.0
+# Look for log messages indicating that the expected instrumentation
+# packages were loaded and that exporters were configured successfully.
 ```
 
 Debug logging helps troubleshoot configuration issues and verify which instrumentations loaded successfully.
