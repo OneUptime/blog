@@ -12,7 +12,7 @@ Helm can automatically create namespaces during installation, but thoughtful con
 
 ## Understanding Helm Namespace Creation
 
-The `helm install` and `helm upgrade` commands accept a `--create-namespace` flag that creates the target namespace if it doesn't exist. However, this creates a bare namespace without labels, quotas, or policies. Better practice embeds namespace creation in your chart with proper configuration.
+The `helm install` command accepts a `--create-namespace` flag that creates the target namespace if it doesn't exist. The `helm upgrade` command also accepts this flag, but it only creates the namespace when `--install` is set. However, this creates a bare namespace without labels, quotas, or policies. Better practice embeds namespace creation in your chart with proper configuration.
 
 Helm templates can include Namespace resources that get applied during installation. This approach gives you full control over namespace configuration.
 
@@ -152,18 +152,6 @@ namespaceCreation:
       configmaps: "20"
       secrets: "20"
 
-    # Optional: Scope quotas to specific priority classes
-    scopes:
-      - BestEffort
-      - NotBestEffort
-
-    scopeSelector:
-      matchExpressions:
-        - operator: In
-          scopeName: PriorityClass
-          values:
-            - high
-            - medium
 ```
 
 ## Adding Limit Ranges
@@ -317,7 +305,7 @@ namespaceCreation:
           - from:
             - namespaceSelector:
                 matchLabels:
-                  name: ingress-nginx
+                  kubernetes.io/metadata.name: ingress-nginx
             ports:
             - protocol: TCP
               port: 8080
@@ -332,13 +320,18 @@ namespaceCreation:
           - to:
             - namespaceSelector:
                 matchLabels:
-                  name: kube-system
+                  kubernetes.io/metadata.name: kube-system
             ports:
             - protocol: UDP
               port: 53
           # Allow external HTTPS
           - to:
-            - podSelector: {}
+            - ipBlock:
+                cidr: 0.0.0.0/0
+                except:
+                  - 10.0.0.0/8
+                  - 172.16.0.0/12
+                  - 192.168.0.0/16
             ports:
             - protocol: TCP
               port: 443
@@ -523,7 +516,6 @@ Deploy the chart with automatic namespace creation.
 # Install with namespace creation
 helm install myapp ./mychart \
   --namespace myapp-prod \
-  --create-namespace \
   --values values-production.yaml
 
 # Verify namespace was created with labels
