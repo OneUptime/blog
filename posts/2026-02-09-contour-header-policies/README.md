@@ -226,7 +226,7 @@ spec:
       exposeHeaders:
       - X-Request-ID
       - X-RateLimit-Remaining
-      maxAge: 86400
+      maxAge: 24h
   routes:
   - services:
     - name: api-backend
@@ -255,7 +255,7 @@ spec:
       port: 80
     requestHeadersPolicy:
       set:
-      # Add trace ID if not present
+      # Propagate trace ID if present
       - name: X-B3-TraceId
         value: "%REQ(X-B3-TRACEID)%"
       - name: X-B3-SpanId
@@ -265,9 +265,9 @@ spec:
         value: "%START_TIME%"
     responseHeadersPolicy:
       set:
-      # Add response time
+      # Add upstream response time
       - name: X-Response-Time
-        value: "%DURATION%"
+        value: "%RESPONSE_DURATION%"
       # Add backend server
       - name: X-Upstream-Server
         value: "%UPSTREAM_REMOTE_ADDRESS%"
