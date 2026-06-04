@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, JWT, Authentication
 
-Description: Learn how to configure Envoy's JWT authentication filter to validate JSON Web Tokens and implement OAuth2/OIDC authentication at the edge.
+Description: Learn how to configure Envoy's JWT authentication filter to validate JSON Web Tokens issued by OAuth2/OIDC identity providers at the edge.
 
 ---
 
@@ -156,7 +156,7 @@ providers:
 
 ## Claim-Based Routing
 
-Extract claims and add them as headers:
+Copy scalar claims to headers so they can be used by later filters or route matching:
 
 ```yaml
 providers:
@@ -169,8 +169,10 @@ providers:
         uri: https://example.com/.well-known/jwks.json
         cluster: jwks_cluster
         timeout: 5s
-    forward_payload_header: "x-jwt-payload"
-    payload_in_metadata: "jwt_payload"
+    claim_to_headers:
+    - header_name: "x-user-tier"
+      claim_name: "tier"
+    clear_route_cache: true
     from_headers:
     - name: Authorization
       value_prefix: "Bearer "
@@ -183,10 +185,11 @@ routes:
 - match:
     prefix: "/api"
     headers:
-    - name: "x-jwt-payload"
-      present_match: true
+    - name: "x-user-tier"
+      string_match:
+        exact: "premium"
   route:
-    cluster: api_service
+    cluster: premium_api_service
 ```
 
 ## Optional JWT Authentication
@@ -211,9 +214,9 @@ rules:
 
 Public endpoints accept requests with or without JWTs, private endpoints require JWTs.
 
-## Custom Claim Validation
+## Custom Claim Forwarding
 
-Validate specific JWT claims:
+Copy specific scalar JWT claims to request headers:
 
 ```yaml
 providers:
@@ -229,8 +232,8 @@ providers:
     claim_to_headers:
     - header_name: "x-user-id"
       claim_name: "sub"
-    - header_name: "x-user-roles"
-      claim_name: "roles"
+    - header_name: "x-user-role"
+      claim_name: "role"
     from_headers:
     - name: Authorization
       value_prefix: "Bearer "
@@ -258,15 +261,15 @@ Cache JWKS for 2 hours to reduce external requests.
 Track JWT validation metrics:
 
 ```promql
-# JWT validation attempts
+# Passed JWT authentication requests
 
-envoy_http_jwt_authn_allowed
+envoy_http_ingress_http_jwt_authn_allowed
 
 # JWT validation failures
-envoy_http_jwt_authn_denied
+envoy_http_ingress_http_jwt_authn_denied
 
 # JWKS fetch success
-envoy_cluster_upstream_rq_completed{cluster="jwks_cluster"}
+envoy_http_ingress_http_jwt_authn_jwks_fetch_success
 ```
 
 ## Best Practices
@@ -277,7 +280,7 @@ envoy_cluster_upstream_rq_completed{cluster="jwks_cluster"}
 4. Monitor JWT validation failures
 5. Extract and forward relevant claims as headers
 6. Implement proper error responses for invalid tokens
-7. Consider token expiration in cache duration
+7. Consider key rotation when choosing JWKS cache duration
 
 ## Conclusion
 
