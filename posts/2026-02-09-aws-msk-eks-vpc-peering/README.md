@@ -8,7 +8,7 @@ Description: Learn how to set up AWS MSK and EKS clusters with VPC peering for s
 
 ---
 
-Integrating AWS Managed Streaming for Apache Kafka (MSK) with Amazon Elastic Kubernetes Service (EKS) requires careful network configuration to enable secure, low-latency communication between your Kafka brokers and Kubernetes workloads. VPC peering provides a private network path between your MSK cluster and EKS cluster, avoiding public internet exposure and reducing data transfer costs.
+Integrating AWS Managed Streaming for Apache Kafka (MSK) with Amazon Elastic Kubernetes Service (EKS) requires careful network configuration to enable secure, low-latency communication between your Kafka brokers and Kubernetes workloads. VPC peering provides a private network path between your MSK cluster and EKS cluster, avoiding public internet exposure and reducing data transfer costs in many architectures.
 
 This guide walks through deploying AWS MSK alongside EKS using VPC peering for production-ready Kafka integration.
 
@@ -50,9 +50,23 @@ aws ec2 create-vpc \
   --cidr-block 10.1.0.0/16 \
   --tag-specifications 'ResourceType=vpc,Tags=[{Key=Name,Value=msk-vpc}]' \
   --region us-east-1
+
+# Enable DNS attributes on both VPCs for hostname resolution
+aws ec2 modify-vpc-attribute \
+  --vpc-id vpc-eks123 \
+  --enable-dns-support '{"Value":true}'
+aws ec2 modify-vpc-attribute \
+  --vpc-id vpc-eks123 \
+  --enable-dns-hostnames '{"Value":true}'
+aws ec2 modify-vpc-attribute \
+  --vpc-id vpc-msk456 \
+  --enable-dns-support '{"Value":true}'
+aws ec2 modify-vpc-attribute \
+  --vpc-id vpc-msk456 \
+  --enable-dns-hostnames '{"Value":true}'
 ```
 
-Create subnets in at least three availability zones for high availability:
+Create subnets in at least three availability zones for high availability. When using an existing VPC with eksctl, ensure the private subnets already have the required route tables, NAT gateways or VPC endpoints, and EKS subnet tags because eksctl will not create those networking resources for you:
 
 ```bash
 # EKS VPC subnets
@@ -123,6 +137,7 @@ eksctl create nodegroup \
   --nodes 3 \
   --nodes-min 3 \
   --nodes-max 6 \
+  --node-private-networking \
   --ssh-access \
   --ssh-public-key my-key
 ```
@@ -278,14 +293,14 @@ ssl.truststore.password=changeit
 
 ## Monitoring and Troubleshooting
 
-Monitor VPC peering metrics:
+Check VPC peering status:
 
 ```bash
 # Check peering connection status
 aws ec2 describe-vpc-peering-connections \
   --vpc-peering-connection-ids pcx-12345678
 
-# Verify route propagation
+# Verify route table entries
 aws ec2 describe-route-tables --filters "Name=vpc-id,Values=vpc-eks123"
 ```
 
