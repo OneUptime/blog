@@ -105,10 +105,12 @@ Create a conversion script for bulk migration:
 #!/usr/bin/env python3
 # convert-routes-to-ingress.py
 import yaml
-import sys
 
 def convert_route_to_ingress(route):
     """Convert OpenShift Route to Kubernetes Ingress"""
+    target_port = route['spec']['port']['targetPort']
+    service_port = {'number': target_port} if isinstance(target_port, int) else {'name': str(target_port)}
+
     ingress = {
         'apiVersion': 'networking.k8s.io/v1',
         'kind': 'Ingress',
@@ -143,9 +145,7 @@ def convert_route_to_ingress(route):
                 'backend': {
                     'service': {
                         'name': route['spec']['to']['name'],
-                        'port': {
-                            'number': int(route['spec']['port']['targetPort'])
-                        }
+                        'port': service_port
                     }
                 }
             }]
@@ -157,13 +157,16 @@ def convert_route_to_ingress(route):
 
 def main():
     with open('openshift-routes.yaml', 'r') as f:
-        routes_doc = yaml.safe_load_all(f)
-
+        routes_docs = yaml.safe_load_all(f)
         ingresses = []
-        for doc in routes_doc:
-            if doc and doc.get('kind') == 'Route':
-                ingress = convert_route_to_ingress(doc)
-                ingresses.append(ingress)
+        for doc in routes_docs:
+            if not doc:
+                continue
+            routes = doc.get('items', []) if doc.get('kind') == 'List' else [doc]
+            for route in routes:
+                if route.get('kind') == 'Route':
+                    ingress = convert_route_to_ingress(route)
+                    ingresses.append(ingress)
 
     with open('kubernetes-ingresses.yaml', 'w') as f:
         yaml.dump_all(ingresses, f, default_flow_style=False)
@@ -275,20 +278,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v5
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@v4
 
     - name: Login to Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: registry.example.com
         username: ${{ secrets.REGISTRY_USERNAME }}
         password: ${{ secrets.REGISTRY_PASSWORD }}
 
     - name: Build and push
-      uses: docker/build-push-action@v4
+      uses: docker/build-push-action@v7
       with:
         context: .
         push: true
@@ -331,7 +334,7 @@ fsGroup:
     max: 2000
 ```
 
-In vanilla Kubernetes, enforce similar constraints using Pod Security Standards:
+In vanilla Kubernetes, enforce comparable baseline constraints using Pod Security Standards. Custom UID and GID ranges from SCCs require explicit pod security contexts or an admission policy engine:
 
 ```yaml
 # Namespace with Pod Security Standards
@@ -354,7 +357,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       securityContext:
         runAsNonRoot: true
@@ -384,19 +393,24 @@ oc get imagestreams --all-namespaces
 # Export images to external registry
 for namespace in $(oc get projects -o jsonpath='{.items[*].metadata.name}'); do
   for imagestream in $(oc get imagestreams -n $namespace -o jsonpath='{.items[*].metadata.name}'); do
-    # Get image reference
-    image=$(oc get imagestream $imagestream -n $namespace -o jsonpath='{.status.dockerImageRepository}')
+    # Get image repository and tags
+    repository=$(oc get imagestream $imagestream -n $namespace -o jsonpath='{.status.dockerImageRepository}')
 
-    # Pull from OpenShift
-    docker pull $image
+    for tag in $(oc get imagestream $imagestream -n $namespace -o jsonpath='{.status.tags[*].tag}'); do
+      source_image="$repository:$tag"
+      destination_image="registry.example.com/$namespace/$imagestream:$tag"
 
-    # Tag for external registry
-    docker tag $image registry.example.com/$namespace/$imagestream:latest
+      # Pull from OpenShift
+      docker pull $source_image
 
-    # Push to external registry
-    docker push registry.example.com/$namespace/$imagestream:latest
+      # Tag for external registry
+      docker tag $source_image $destination_image
 
-    echo "Migrated $image to registry.example.com/$namespace/$imagestream:latest"
+      # Push to external registry
+      docker push $destination_image
+
+      echo "Migrated $source_image to $destination_image"
+    done
   done
 done
 ```
@@ -479,8 +493,8 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: production
-    - podSelector:
+          kubernetes.io/metadata.name: production
+      podSelector:
         matchLabels:
           app: frontend
     ports:
@@ -490,7 +504,7 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: production
+          kubernetes.io/metadata.name: production
     ports:
     - protocol: TCP
       port: 5432  # PostgreSQL
