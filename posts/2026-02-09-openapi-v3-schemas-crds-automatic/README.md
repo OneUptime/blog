@@ -45,6 +45,9 @@ type ApplicationSpec struct {
     // +optional
     Port *int32 `json:"port,omitempty"`
 }
+
+type ApplicationStatus struct {
+}
 ```
 
 Run `make manifests` to generate the CRD with OpenAPI schema:
@@ -329,7 +332,7 @@ type StorageSpec struct {
 
 ## Preserving Unknown Fields
 
-By default, CRDs reject unknown fields. To preserve them:
+By default, CRDs prune unknown fields. To preserve them:
 
 ```go
 // +kubebuilder:pruning:PreserveUnknownFields
@@ -412,6 +415,7 @@ spec:
   image: nginx:latest
   replicas: 200  # Max is 100
   environment: production
+  version: v1.0.0
 EOF
 
 # Should fail with validation error
@@ -419,10 +423,10 @@ EOF
 
 ## Documentation Generation
 
-Generate documentation from schemas:
+Generate schema manifests for documentation tools to consume:
 
 ```bash
-# Generate API reference documentation
+# Generate CRD schemas for documentation tooling
 controller-gen crd:crdVersions=v1 \
   paths=./api/... \
   output:crd:dir=./docs/api
