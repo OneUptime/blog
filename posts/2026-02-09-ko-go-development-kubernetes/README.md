@@ -10,13 +10,13 @@ Description: Learn how to use ko to streamline Go application development and de
 
 Building and deploying Go applications to Kubernetes typically requires creating Dockerfiles, building images, pushing to registries, and updating manifests. This multi-step process slows down development and adds complexity. ko is a tool specifically designed for Go applications that eliminates these steps by building container images directly from Go source code and deploying them to Kubernetes in a single command.
 
-ko provides fast, distroless container images, eliminates the need for Dockerfiles, integrates seamlessly with kubectl, and supports efficient caching. In this guide, you'll learn how to use ko to accelerate Go development on Kubernetes.
+ko provides fast, minimal container images, eliminates the need for Dockerfiles, integrates seamlessly with kubectl, and supports efficient caching. In this guide, you'll learn how to use ko to accelerate Go development on Kubernetes.
 
 ## Understanding ko Architecture
 
-ko works by analyzing your Go import paths, building binaries with optimized settings, packaging them into minimal distroless base images, pushing to container registries, and resolving image references in Kubernetes manifests. All of this happens automatically without requiring Dockerfiles or manual image management.
+ko works by analyzing your Go import paths, building binaries with optimized settings, packaging them into minimal base images, pushing to container registries, and resolving image references in Kubernetes manifests. All of this happens automatically without requiring Dockerfiles or manual image management.
 
-The tool uses Google's distroless base images by default, which contain only your application and its runtime dependencies, resulting in tiny images with minimal attack surface.
+The tool uses `cgr.dev/chainguard/static` as its default base image, which provides the bare necessities to run your Go binary and keeps images small with a minimal attack surface.
 
 ## Installing and Configuring ko
 
@@ -52,7 +52,6 @@ package main
 
 import (
     "encoding/json"
-    "fmt"
     "log"
     "net/http"
     "os"
@@ -203,13 +202,13 @@ Deploy with ko:
 ko apply -f config/
 
 # Deploy to specific namespace
-ko apply -n production -f config/
+ko apply -f config/ -- --namespace=production
 
 # Deploy with kubectl-like options
-ko apply -f config/ --wait --timeout=5m
+ko apply -f config/ -- --wait --timeout=5m
 
 # Dry run (show what would be deployed)
-ko apply -f config/ --dry-run
+ko apply -f config/ -- --dry-run=client
 
 # Resolve images without deploying
 ko resolve -f config/
@@ -221,10 +220,10 @@ Create a ko configuration file:
 
 ```yaml
 # .ko.yaml
-defaultBaseImage: gcr.io/distroless/static-debian11
+defaultBaseImage: gcr.io/distroless/static-debian12
 baseImageOverrides:
-  github.com/myorg/myapp/cmd/api: gcr.io/distroless/base-debian11
-  github.com/myorg/myapp/cmd/worker: gcr.io/distroless/static-debian11
+  github.com/myorg/myapp/cmd/api: gcr.io/distroless/base-debian12
+  github.com/myorg/myapp/cmd/worker: gcr.io/distroless/static-debian12
 
 builds:
   - id: api
@@ -263,14 +262,14 @@ ko build \
   ./cmd/api
 
 # Disable SBOM generation for faster builds
-export COSIGN_EXPERIMENTAL=0
+ko build --sbom=none ./cmd/api
 
 # Use local builds during development
 ko build --local ./cmd/api
 
-# Cache builds with BuildKit
-export KO_DOCKER_REPO=ko.local
-ko build --push=false ./cmd/api
+# Use ko's local build cache
+export KOCACHE=/tmp/ko-cache
+ko build ./cmd/api
 ```
 
 Create a Makefile for common tasks:
@@ -289,11 +288,11 @@ build:
 
 deploy:
 	@echo "Deploying to Kubernetes..."
-	ko apply -f config/ -n $(NAMESPACE)
+	ko apply -f config/ -- --namespace=$(NAMESPACE)
 
 dev:
 	@echo "Starting development mode..."
-	ko apply -f config/ --watch -n $(NAMESPACE)
+	ko apply -f config/ -- --namespace=$(NAMESPACE)
 
 clean:
 	@echo "Cleaning up..."
@@ -336,20 +335,26 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.23'
 
-      - uses: google-github-actions/auth@v1
+      - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - uses: google-github-actions/setup-gcloud@v1
+      - uses: google-github-actions/setup-gcloud@v2
 
       - name: Configure Docker for GCR
         run: gcloud auth configure-docker
+
+      - name: Configure Kubernetes credentials
+        run: |
+          gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER }} \
+            --zone ${{ secrets.GKE_ZONE }} \
+            --project ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Install ko
         run: |
@@ -382,7 +387,7 @@ build:
   stage: build
   before_script:
     - go install github.com/google/ko@latest
-    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - ko login $CI_REGISTRY -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
   script:
     - ko build ./cmd/api --bare
   only:
@@ -392,7 +397,9 @@ deploy:
   stage: deploy
   image: google/cloud-sdk:alpine
   before_script:
+    - apk add --no-cache go
     - go install github.com/google/ko@latest
+    - export PATH=$PATH:$(go env GOPATH)/bin
     - kubectl config use-context $KUBE_CONTEXT
   script:
     - ko apply -f config/
@@ -407,7 +414,7 @@ Integrate ko with Helm charts:
 ```yaml
 # charts/api/values.yaml
 image:
-  # ko will replace this
+  # Overridden with the ko build output when deploying with Helm
   repository: ko://github.com/myorg/myapp/cmd/api
   pullPolicy: IfNotPresent
   tag: ""
@@ -430,15 +437,15 @@ resources:
 Deploy with ko and Helm:
 
 ```bash
-# Resolve ko references and pass to Helm
-ko resolve -f charts/api/values.yaml | \
-  helm install api-service charts/api -f -
-
-# Or use ko to build and Helm to deploy
+# Build with ko and pass the image reference to Helm
 IMAGE=$(ko build ./cmd/api)
 helm install api-service charts/api \
-  --set image.repository=$(echo $IMAGE | cut -d: -f1) \
-  --set image.tag=$(echo $IMAGE | cut -d: -f2)
+  --set-string image.repository="${IMAGE}"
+
+# Or upgrade an existing release with the new image
+IMAGE=$(ko build ./cmd/api)
+helm upgrade api-service charts/api \
+  --set-string image.repository="${IMAGE}"
 ```
 
 ## Multi-Service Applications
@@ -470,7 +477,13 @@ kind: Deployment
 metadata:
   name: api
 spec:
+  selector:
+    matchLabels:
+      app: api
   template:
+    metadata:
+      labels:
+        app: api
     spec:
       containers:
       - name: api
@@ -482,7 +495,13 @@ kind: Deployment
 metadata:
   name: worker
 spec:
+  selector:
+    matchLabels:
+      app: worker
   template:
+    metadata:
+      labels:
+        app: worker
     spec:
       containers:
       - name: worker
@@ -525,6 +544,7 @@ set -e
 
 export KO_DOCKER_REPO=kind.local
 CLUSTER_NAME="dev-cluster"
+export KIND_CLUSTER_NAME="$CLUSTER_NAME"
 
 # Create kind cluster if it doesn't exist
 if ! kind get clusters | grep -q "$CLUSTER_NAME"; then
@@ -532,12 +552,8 @@ if ! kind get clusters | grep -q "$CLUSTER_NAME"; then
     kind create cluster --name "$CLUSTER_NAME"
 fi
 
-# Build and load image to kind
-echo "Building and loading image..."
-ko build --local ./cmd/api
-
-# Deploy to kind cluster
-echo "Deploying to kind..."
+# Build, load image, and deploy to kind cluster
+echo "Building and deploying to kind..."
 ko apply -f config/
 
 # Wait for deployment
