@@ -27,7 +27,7 @@ Check for pods stuck in Terminating state across your cluster.
 ```bash
 # Find terminating pods
 
-kubectl get pods --all-namespaces --field-selector=status.phase=Running | \
+kubectl get pods --all-namespaces | \
   grep Terminating
 
 # Get more details with custom columns
@@ -52,7 +52,6 @@ kubectl get pod stuck-pod-abc123 -n default -o yaml | grep -A 5 finalizers
 
 # Output:
 # finalizers:
-# - kubernetes.io/pvc-protection
 # - example.com/custom-cleanup
 ```
 
@@ -133,23 +132,19 @@ kubectl get pod stuck-pod-abc123 -n default -w
 
 ## Handling Pods with PVC Protection Finalizer
 
-The `kubernetes.io/pvc-protection` finalizer prevents deletion of PVCs while pods are using them. Pods referencing protected PVCs can get stuck if the PVC is deleted first.
+The `kubernetes.io/pvc-protection` finalizer prevents deletion of PVCs while pods are using them. A deleted PVC stays in Terminating until no pod object references it.
 
 ```bash
 # Check if PVC exists
-PVC_NAME=$(kubectl get pod stuck-pod-abc123 -n default -o jsonpath='{.spec.volumes[0].persistentVolumeClaim.claimName}')
+PVC_NAME=$(kubectl get pod stuck-pod-abc123 -n default -o json | \
+  jq -r '.spec.volumes[]?.persistentVolumeClaim.claimName // empty' | head -n 1)
 kubectl get pvc $PVC_NAME -n default
 
 # If PVC is also stuck in terminating
 kubectl get pvc $PVC_NAME -n default -o yaml | grep -A 5 finalizers
-
-# Remove PVC protection finalizer from pod
-kubectl patch pod stuck-pod-abc123 -n default \
-  --type json \
-  -p='[{"op":"remove","path":"/metadata/finalizers"}]'
 ```
 
-If the PVC itself is stuck, remove its finalizer after ensuring no pods reference it.
+Remove the pod or update it so it no longer references the PVC. If the PVC itself remains stuck after that, remove its finalizer only after ensuring no pods reference it.
 
 ```bash
 # Verify no pods use the PVC
@@ -209,7 +204,7 @@ func (r *MyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Re
             defer cancel()
 
             if err := r.cleanupExternalResources(ctx, instance); err != nil {
-                // Log error but remove finalizer anyway after max retries
+                // Leave the finalizer in place and retry cleanup later
                 return ctrl.Result{RequeueAfter: 5 * time.Second}, err
             }
 
@@ -279,7 +274,7 @@ data:
 
       - alert: CustomResourceStuckDeleting
         expr: |
-          kube_customresource_status_deletion_timestamp > 0
+          myresource_deletion_timestamp > 0
         for: 10m
         labels:
           severity: warning
@@ -345,7 +340,7 @@ spec:
 
 ## Force Deleting Pods as Last Resort
 
-When removing finalizers doesn't work or isn't safe, force delete the pod. This bypasses finalizers and immediately removes the pod from etcd.
+When a pod is stuck because the kubelet cannot finish graceful termination, force delete the pod. This bypasses graceful pod termination, but finalizers still need to be removed before Kubernetes can complete deletion.
 
 ```bash
 # Force delete with grace period 0
