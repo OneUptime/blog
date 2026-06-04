@@ -10,7 +10,7 @@ Description: Configure Loki and Promtail to aggregate logs from multiple Kuberne
 
 Managing multiple Kubernetes clusters is common in modern infrastructure, whether for multi-region deployments, environment separation, or high availability. However, scattered logs across clusters make troubleshooting difficult and create blind spots in observability. Centralized log aggregation solves this by collecting logs from all clusters into a single Loki instance, enabling unified queries and correlation across your entire infrastructure.
 
-This guide shows you how to architect and deploy a cross-cluster log aggregation system using Loki and Promtail.
+This guide shows you how to architect and deploy a cross-cluster log aggregation system using Loki and Promtail. Promtail reached end-of-life on March 2, 2026, so use this pattern for existing Promtail deployments and plan new deployments around Grafana Alloy or another supported Loki client.
 
 ## Architecture Overview
 
@@ -57,7 +57,6 @@ data:
         final_sleep: 0s
       chunk_idle_period: 5m
       chunk_retain_period: 30s
-      max_transfer_retries: 0
 
     memberlist:
       join_members:
@@ -88,21 +87,19 @@ data:
       reject_old_samples_max_age: 168h
       ingestion_rate_mb: 100
       ingestion_burst_size_mb: 200
+      retention_period: 720h
+      max_query_lookback: 720h
       max_label_name_length: 1024
       max_label_value_length: 2048
       max_label_names_per_series: 30
 
-    chunk_store_config:
-      max_look_back_period: 720h  # 30 days
-
-    table_manager:
-      retention_deletes_enabled: true
-      retention_period: 720h
-
     compactor:
       working_directory: /loki/compactor
-      shared_store: s3
       compaction_interval: 10m
+      retention_enabled: true
+      retention_delete_delay: 2h
+      retention_delete_worker_count: 150
+      delete_request_store: s3
 
     # Accept logs from remote clusters
     frontend:
@@ -125,6 +122,20 @@ spec:
   - name: grpc
     port: 9095
     targetPort: 9095
+  selector:
+    app: loki
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-gossip-ring
+  namespace: logging
+spec:
+  clusterIP: None
+  ports:
+  - name: gossip
+    port: 7946
+    targetPort: 7946
   selector:
     app: loki
 ---
@@ -212,8 +223,8 @@ data:
           max_period: 5m
           max_retries: 10
         timeout: 30s
-        batch_wait: 1s
-        batch_size: 1048576  # 1MB
+        batchwait: 1s
+        batchsize: 1048576  # 1MB
 
     scrape_configs:
       - job_name: kubernetes-pods
@@ -255,6 +266,46 @@ data:
           - source_labels: [__meta_kubernetes_pod_label_app]
             regex: ^$
             action: drop
+
+          # Read container logs from the node filesystem
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_name, __meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
+            separator: /
+            regex: (.+)/(.+)/(.+)/(.+)
+            target_label: __path__
+            replacement: /var/log/pods/$1_$2_$3/$4/*.log
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: promtail
+  namespace: logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: promtail
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: promtail
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promtail
+subjects:
+- kind: ServiceAccount
+  name: promtail
+  namespace: logging
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -447,7 +498,7 @@ pipeline_stages:
       template: '{{ if gt (len .workload) 50 }}{{ .workload | trunc 50 }}{{ else }}{{ .workload }}{{ end }}'
 
   - labels:
-      workload_short: workload
+      workload: workload_short
 
   - labeldrop:
       - workload_short
@@ -462,7 +513,10 @@ Route logs from different clusters to different storage tiers:
 auth_enabled: true
 
 limits_config:
-  per_tenant_override_config: /etc/loki/overrides.yaml
+  retention_period: 720h
+
+runtime_config:
+  file: /etc/loki/overrides.yaml
 
 # overrides.yaml
 overrides:
@@ -506,9 +560,9 @@ data:
           # Alert on cluster not sending logs
           - alert: ClusterNotReportingLogs
             expr: |
-              absent_over_time(
-                count by (cluster) ({job="kubernetes-pods"})[10m]
-              )
+              sum by (cluster) (
+                count_over_time({job="kubernetes-pods"}[10m])
+              ) == 0
             for: 10m
             labels:
               severity: critical
@@ -539,7 +593,7 @@ data:
 Reduce cross-cluster network costs with compression:
 
 ```yaml
-# Enable compression in Promtail
+# Tune batching in Promtail. Promtail sends Loki push payloads as compressed protobuf by default.
 clients:
   - url: https://loki.central.example.com/loki/api/v1/push
     backoff_config:
@@ -547,11 +601,8 @@ clients:
       max_period: 5m
       max_retries: 10
     # Larger batches reduce requests
-    batch_wait: 5s
-    batch_size: 2097152  # 2MB
-    # Enable gzip compression
-    headers:
-      Content-Encoding: gzip
+    batchwait: 5s
+    batchsize: 2097152  # 2MB
 ```
 
 Use local filtering to reduce log volume:
@@ -574,7 +625,7 @@ pipeline_stages:
 Implement backup and disaster recovery:
 
 ```yaml
-# Backup Loki index to S3
+# Backup the Loki object store to a separate S3 bucket
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -593,14 +644,8 @@ spec:
             - /bin/sh
             - -c
             - |
-              aws s3 sync /loki/index s3://loki-backups/index-$(date +%Y%m%d)/
-          volumeMounts:
-          - name: loki-storage
-            mountPath: /loki
-          volumes:
-          - name: loki-storage
-            persistentVolumeClaim:
-              claimName: loki-storage
+              aws s3 sync s3://loki-multi-cluster s3://loki-backups/loki-multi-cluster-$(date +%Y%m%d)/
+          restartPolicy: OnFailure
 ```
 
 ## Conclusion
