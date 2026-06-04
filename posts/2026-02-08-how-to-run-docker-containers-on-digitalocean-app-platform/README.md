@@ -12,11 +12,12 @@ DigitalOcean App Platform is a Platform-as-a-Service that builds and runs your a
 
 ## Deployment Options
 
-App Platform supports three ways to deploy Docker containers:
+App Platform supports several ways to deploy Docker containers:
 
 1. **From a Dockerfile in your repo** - App Platform builds the image for you
 2. **From DigitalOcean Container Registry (DOCR)** - Pre-built images
 3. **From Docker Hub** - Public or private images
+4. **From GitHub Container Registry (GHCR)** - Public or private images
 
 ## Deploying from a Dockerfile
 
@@ -52,8 +53,6 @@ services:
     http_port: 8080
     instance_count: 1
     instance_size_slug: basic-xxs
-    routes:
-      - path: /
     envs:
       - key: NODE_ENV
         value: production
@@ -61,12 +60,18 @@ services:
         value: ${db.DATABASE_URL}
         type: SECRET
 
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /
+      component:
+        name: web
+
 databases:
   - name: db
     engine: PG
     version: "16"
-    size: db-s-dev-database
-    num_nodes: 1
 ```
 
 Deploy the app:
@@ -103,15 +108,23 @@ services:
       registry: my-registry
       repository: myapp
       tag: latest
+      deploy_on_push:
+        enabled: true
     http_port: 8080
     instance_count: 2
-    instance_size_slug: basic-xs
-    routes:
-      - path: /
+    instance_size_slug: apps-s-1vcpu-1gb
     health_check:
       http_path: /health
       initial_delay_seconds: 10
       period_seconds: 30
+
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /
+      component:
+        name: web
 ```
 
 Push a new image tag to DOCR and trigger a deployment:
@@ -121,8 +134,8 @@ Push a new image tag to DOCR and trigger a deployment:
 docker build -t registry.digitalocean.com/my-registry/myapp:v2.0.0 .
 docker push registry.digitalocean.com/my-registry/myapp:v2.0.0
 
-# Update the app to use the new tag
-doctl apps create-deployment YOUR_APP_ID
+# After updating .do/app.yaml to use the new tag, update and redeploy the app
+doctl apps update YOUR_APP_ID --spec .do/app.yaml --update-sources
 ```
 
 ## Deploying from Docker Hub
@@ -143,11 +156,17 @@ services:
     http_port: 3000
     instance_count: 1
     instance_size_slug: basic-xxs
-    routes:
-      - path: /
+
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /
+      component:
+        name: web
 ```
 
-For private Docker Hub images, add credentials in the App Platform settings.
+For private Docker Hub images, add `registry_credentials` in the image spec or add credentials in the App Platform settings.
 
 ## Multi-Service Applications
 
@@ -168,9 +187,7 @@ services:
     dockerfile_path: Dockerfile
     http_port: 3000
     instance_count: 2
-    instance_size_slug: basic-xs
-    routes:
-      - path: /
+    instance_size_slug: apps-s-1vcpu-1gb
     envs:
       - key: API_URL
         value: ${api.PUBLIC_URL}
@@ -184,16 +201,27 @@ services:
     dockerfile_path: Dockerfile
     http_port: 8080
     instance_count: 2
-    instance_size_slug: basic-xs
-    routes:
-      - path: /api
+    instance_size_slug: apps-s-1vcpu-1gb
     envs:
       - key: DATABASE_URL
         value: ${db.DATABASE_URL}
         type: SECRET
-      - key: REDIS_URL
-        value: ${redis.REDIS_URL}
+      - key: CACHE_URL
+        value: ${cache.DATABASE_URL}
         type: SECRET
+
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /api
+      component:
+        name: api
+    - match:
+        path:
+          prefix: /
+      component:
+        name: frontend
 
 # Background worker (no HTTP route)
 workers:
@@ -203,13 +231,13 @@ workers:
       branch: main
     dockerfile_path: Dockerfile.worker
     instance_count: 1
-    instance_size_slug: basic-xs
+    instance_size_slug: apps-s-1vcpu-1gb
     envs:
       - key: DATABASE_URL
         value: ${db.DATABASE_URL}
         type: SECRET
-      - key: REDIS_URL
-        value: ${redis.REDIS_URL}
+      - key: CACHE_URL
+        value: ${cache.DATABASE_URL}
         type: SECRET
 
 # Scheduled job
@@ -220,7 +248,10 @@ jobs:
       branch: main
     dockerfile_path: Dockerfile.cleanup
     instance_size_slug: basic-xxs
-    kind: PRE_DEPLOY
+    kind: SCHEDULED
+    schedule:
+      cron: "0 2 * * *"
+      time_zone: UTC
     envs:
       - key: DATABASE_URL
         value: ${db.DATABASE_URL}
@@ -230,14 +261,12 @@ databases:
   - name: db
     engine: PG
     version: "16"
-    size: db-s-dev-database
-    num_nodes: 1
 
-  - name: redis
-    engine: REDIS
-    version: "7"
-    size: db-s-dev-database
-    num_nodes: 1
+  - name: cache
+    engine: VALKEY
+    version: "8"
+    production: true
+    cluster_name: cache-cluster
 ```
 
 ## Environment Variables and Secrets
@@ -248,8 +277,8 @@ Manage configuration through environment variables:
 # Set an environment variable
 doctl apps update YOUR_APP_ID --spec .do/app.yaml
 
-# Or use the CLI to manage individual variables
-doctl apps config set YOUR_APP_ID --key API_KEY --value "your-secret-key" --type SECRET
+# Validate an app spec before applying it
+doctl apps spec validate .do/app.yaml
 ```
 
 In the app spec, use `type: SECRET` for sensitive values:
@@ -298,8 +327,13 @@ App Platform provides free SSL certificates for custom domains:
 services:
   - name: web
     # ... other config ...
-    routes:
-      - path: /
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /
+      component:
+        name: web
 domains:
   - domain: myapp.example.com
     type: PRIMARY
@@ -318,13 +352,14 @@ Scale vertically by changing instance sizes or horizontally by adding instances:
 doctl apps update YOUR_APP_ID --spec .do/app.yaml
 ```
 
-Available instance sizes range from `basic-xxs` (512 MB RAM, shared CPU) to `professional-xl` (8 GB RAM, 4 dedicated CPUs).
+Available instance sizes range from `basic-xxs` (512 MiB RAM, shared CPU) to `professional-xl` (16 GiB RAM, 4 dedicated CPUs).
 
-Auto-scaling is available on Professional plans:
+CPU-based auto-scaling requires a dedicated CPU instance size:
 
 ```yaml
 services:
   - name: web
+    instance_size_slug: apps-d-1vcpu-0.5gb
     instance_count: 2
     autoscaling:
       min_instance_count: 2
@@ -359,10 +394,14 @@ If a deployment goes wrong, roll back to a previous version:
 doctl apps list-deployments YOUR_APP_ID
 
 # Roll back to a specific deployment
-doctl apps create-deployment YOUR_APP_ID --wait
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
+  -d '{ "deployment_id": "YOUR_DEPLOYMENT_ID" }' \
+  "https://api.digitalocean.com/v2/apps/YOUR_APP_ID/rollback"
 ```
 
-From the web console, you can click "Rollback" on any previous deployment to restore it instantly.
+From the web console, you can click "Rollback" on one of the ten most recent successful deployments to restore it.
 
 ## Cost Optimization Tips
 
