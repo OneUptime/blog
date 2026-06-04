@@ -45,8 +45,6 @@ Here is a complete Docker Compose file that sets up PostgreSQL and PostgREST tog
 
 ```yaml
 # docker-compose.yml - PostgREST with PostgreSQL
-version: "3.8"
-
 services:
   # PostgreSQL database - the single source of truth
   db:
@@ -96,7 +94,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      API_URL: http://localhost:3000/
+      SWAGGER_JSON_URL: http://localhost:3000/
     networks:
       - postgrest-network
 
@@ -132,8 +130,8 @@ CREATE TABLE api.todos (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Allow anonymous users to read and create todos
-GRANT SELECT, INSERT ON api.todos TO web_anon;
+-- Allow anonymous users to read, create, update, and delete todos
+GRANT SELECT, INSERT, UPDATE, DELETE ON api.todos TO web_anon;
 GRANT USAGE, SELECT ON SEQUENCE api.todos_id_seq TO web_anon;
 
 -- Create a 'products' table for a more realistic example
@@ -290,19 +288,19 @@ curl http://localhost:3000/products \
 
 ## Row-Level Security
 
-PostgreSQL's row-level security lets you control which rows each user can access.
+PostgreSQL's row-level security lets you control which rows each user can access. These example policies allow access for the listed roles; replace `TRUE` with ownership checks in production.
 
 ```sql
 -- Enable row-level security on the todos table
 ALTER TABLE api.todos ENABLE ROW LEVEL SECURITY;
 
--- Allow anonymous users to only see their own todos
+-- Allow anonymous users to see todos
 CREATE POLICY todos_anonymous ON api.todos
     FOR SELECT
     TO web_anon
     USING (TRUE);
 
--- Authenticated users can manage only their own data
+-- Authenticated users can manage todos
 CREATE POLICY todos_user ON api.todos
     FOR ALL
     TO authenticated_user
