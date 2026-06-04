@@ -21,8 +21,6 @@ Start Redis with Docker Compose:
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
-
 services:
   redis:
     image: redis:7-alpine
@@ -187,8 +185,6 @@ if __name__ == "__main__":
 The full Docker Compose setup with publisher and multiple subscribers:
 
 ```yaml
-version: "3.8"
-
 services:
   redis:
     image: redis:7-alpine
@@ -230,15 +226,13 @@ NATS is a lightweight, high-performance messaging system designed for cloud-nati
 Docker Compose configuration for NATS with monitoring:
 
 ```yaml
-version: "3.8"
-
 services:
   nats:
     image: nats:2.10-alpine
     ports:
       - "4222:4222"   # Client connections
       - "8222:8222"   # HTTP monitoring
-    command: "--jetstream --http_port 8222"
+    command: "--jetstream --store_dir /data --http_port 8222"
     volumes:
       - nats-data:/data
     healthcheck:
@@ -275,6 +269,9 @@ async function main() {
       console.log(`NATS not ready, retrying... (${i + 1}/10)`);
       await new Promise((r) => setTimeout(r, 2000));
     }
+  }
+  if (!nc) {
+    throw new Error("Could not connect to NATS");
   }
 
   let counter = 0;
@@ -322,6 +319,9 @@ async function main() {
       console.log(`NATS not ready, retrying... (${i + 1}/10)`);
       await new Promise((r) => setTimeout(r, 2000));
     }
+  }
+  if (!nc) {
+    throw new Error("Could not connect to NATS");
   }
 
   // Subscribe to ALL sensor readings using wildcard
@@ -414,7 +414,7 @@ def publish_to_stream():
             "amount": str(round(random.uniform(10.0, 500.0), 2)),
         }
 
-        # XADD adds to a stream - messages persist until explicitly deleted
+        # XADD adds to a stream - messages persist until trimmed or deleted
         message_id = client.xadd("orders_stream", event, maxlen=10000)
         print(f"Published to stream: {message_id} - order #{order_id}")
 
@@ -478,8 +478,6 @@ if __name__ == "__main__":
 Docker Compose for the Redis Streams setup:
 
 ```yaml
-version: "3.8"
-
 services:
   redis:
     image: redis:7-alpine
@@ -521,7 +519,7 @@ volumes:
 | Feature | Redis Pub/Sub | Redis Streams | NATS | RabbitMQ |
 |---------|---------------|---------------|------|----------|
 | Message persistence | No | Yes | Yes (JetStream) | Yes |
-| Consumer groups | No | Yes | Yes | Yes |
+| Consumer groups | No | Yes | Yes | Competing consumers |
 | Speed | Very fast | Fast | Very fast | Fast |
 | Setup complexity | Minimal | Low | Low | Medium |
 | Memory usage | Minimal | Moderate | Low | Moderate |
