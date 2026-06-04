@@ -12,7 +12,7 @@ Docker networking looks simple from the outside. You run a container with `-p 80
 
 ## Docker's Default Bridge Network
 
-When Docker installs, it creates a Linux bridge called `docker0`. This bridge acts as a virtual switch that connects all containers on the default bridge network.
+When Docker Engine starts on Linux, it creates a default bridge network backed by a Linux bridge called `docker0`. This bridge acts as a virtual switch that connects all containers on the default bridge network.
 
 ```bash
 # View the docker0 bridge interface
@@ -40,7 +40,7 @@ docker run -d --name net-demo nginx:latest
 ip link show type veth
 
 # Show the bridge and its connected interfaces
-bridge link show docker0
+bridge link show dev docker0
 ```
 
 Let's trace the connection from container to host:
@@ -66,7 +66,7 @@ graph LR
         V2["veth5678@if7"]
         B --- V1
         B --- V2
-        H["eth0 (host)"]
+        H["host routing/NAT via eth0"]
     end
     subgraph "Container 1 Namespace"
         C1["eth0 (172.17.0.2)"]
@@ -142,8 +142,8 @@ sudo iptables -L DOCKER -n -v
 The key iptables chains Docker uses:
 
 - **DOCKER (nat table)**: DNAT rules that redirect incoming traffic to container IPs
-- **DOCKER (filter table)**: Rules that allow or deny container communication
-- **DOCKER-ISOLATION-STAGE-1/2**: Rules that prevent traffic between different Docker networks
+- **DOCKER-USER, DOCKER-FORWARD, DOCKER, DOCKER-BRIDGE, DOCKER-INTERNAL (filter table)**: Rules that process forwarded container traffic and published-port access
+- **DOCKER-CT (filter table)**: Per-bridge connection tracking rules
 
 ```bash
 # Start a container with port mapping and observe the iptables rules
@@ -260,11 +260,11 @@ cat /proc/sys/net/ipv4/ip_forward
 
 # Check if Docker's iptables rules are in place
 sudo iptables -t nat -L DOCKER -n
-sudo iptables -L DOCKER-ISOLATION-STAGE-1 -n
+sudo iptables -L DOCKER-FORWARD -n
 
 # Test connectivity from inside a container
 docker exec net-demo ping -c 1 8.8.8.8
-docker exec net-demo nslookup google.com
+docker exec net-demo getent hosts google.com
 
 # Check for port conflicts on the host
 ss -tlnp | grep :8080
