@@ -153,6 +153,16 @@ class FeatureFlags {
     return true;
   }
 
+  getConfig(flagName, context = {}, defaultValue = null) {
+    const flag = this.flags[flagName];
+
+    if (!flag || !flag.enabled) {
+      return defaultValue;
+    }
+
+    return this.isEnabled(flagName, context) ? flag.value : defaultValue;
+  }
+
   hashUserId(userId) {
     let hash = 0;
     for (let i = 0; i < userId.length; i++) {
@@ -232,14 +242,15 @@ spec:
 Application code with LaunchDarkly:
 
 ```javascript
-const LaunchDarkly = require('launchdarkly-node-server-sdk');
+const LaunchDarkly = require('@launchdarkly/node-server-sdk');
 
 const ldClient = LaunchDarkly.init(process.env.LAUNCHDARKLY_SDK_KEY);
 
 async function checkFeatureFlag(flagKey, user) {
-  await ldClient.waitForInitialization();
+  await ldClient.waitForInitialization({ timeout: 10 });
 
   const userContext = {
+    kind: 'user',
     key: user.id,
     email: user.email,
     custom: {
@@ -276,7 +287,7 @@ kubectl apply -f deployment.yaml
 kubectl patch configmap feature-flags -p '
 {
   "data": {
-    "flags.json": "{\"new-checkout-flow\":{\"enabled\":true,\"rollout\":{\"percentage\":0,\"userGroups\":[\"internal\"]}}}"
+    "flags.json": "{\"new-checkout-flow\":{\"enabled\":true,\"rollout\":{\"percentage\":100,\"userGroups\":[\"internal\"]}}}"
   }
 }'
 
@@ -293,7 +304,7 @@ kubectl patch configmap feature-flags -p '
 # Day 6: Increase to 100%
 ```
 
-With ConfigMap updates, you need to restart pods for changes to take effect (unless watching for changes).
+With ConfigMap volume updates, Kubernetes refreshes the mounted files eventually, but your application still needs to reload the file to use the new values. ConfigMaps consumed as environment variables require a pod restart, and ConfigMaps mounted with `subPath` do not receive automatic updates.
 
 ## Sidecar Pattern for Flag Synchronization
 
@@ -423,10 +434,10 @@ function isEnabled(flagName, context = {}) {
 Query in Prometheus:
 
 ```promql
-# Percentage of users seeing each flag
-rate(feature_flag_evaluations_total{enabled="true"}[5m])
+# Percentage of evaluations seeing each flag
+sum by (flag_name) (rate(feature_flag_evaluations_total{enabled="true"}[5m]))
   /
-rate(feature_flag_evaluations_total[5m])
+sum by (flag_name) (rate(feature_flag_evaluations_total[5m]))
 ```
 
 ## Combining with Deployment Strategies
@@ -535,7 +546,7 @@ data:
 ```javascript
 const checkoutConfig = flags.getConfig('checkout-configuration', {
   userId: user.id
-});
+}, {});
 
 // Returns: { paymentMethods: ['card', 'paypal'], theme: 'modern' }
 ```
