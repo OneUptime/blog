@@ -66,10 +66,10 @@ Use kubectl config view to merge and save:
 export KUBECONFIG=~/.kube/config:~/.kube/config-gke:~/.kube/config-eks
 
 # View merged configuration
-kubectl config view --flatten
+kubectl config view --flatten --raw
 
 # Save merged config to new file
-kubectl config view --flatten > ~/.kube/config-merged
+kubectl config view --flatten --raw > ~/.kube/config-merged
 
 # Replace original config with merged version
 mv ~/.kube/config ~/.kube/config.backup
@@ -79,7 +79,7 @@ mv ~/.kube/config-merged ~/.kube/config
 kubectl config get-contexts
 ```
 
-The `--flatten` flag embeds all certificates and credentials.
+The `--flatten` flag embeds file-based certificate data, and `--raw` preserves sensitive fields in the saved config.
 
 ## Manual Merge Script
 
@@ -99,7 +99,7 @@ CONFIGS=$(find ~/.kube -name 'config*' -type f | tr '\n' ':')
 CONFIGS=${CONFIGS%:}
 
 # Merge and save
-KUBECONFIG=$CONFIGS kubectl config view --flatten > ~/.kube/config-new
+KUBECONFIG=$CONFIGS kubectl config view --flatten --raw > ~/.kube/config-new
 
 # Replace config
 mv ~/.kube/config-new ~/.kube/config
@@ -119,7 +119,7 @@ Merge selected configs only:
 export KUBECONFIG=~/.kube/config:~/.kube/gke-prod:~/.kube/eks-staging
 
 # Create merged config
-kubectl config view --flatten > ~/.kube/merged-prod-staging
+kubectl config view --flatten --raw > ~/.kube/merged-prod-staging
 
 # Use merged config
 export KUBECONFIG=~/.kube/merged-prod-staging
@@ -136,7 +136,7 @@ Duplicate context names cause conflicts:
 # If both files have context named "default"
 export KUBECONFIG=file1:file2
 kubectl config get-contexts
-# Only one "default" context appears (last one wins)
+# Only one "default" context appears (first one wins)
 
 # Rename contexts before merging
 kubectl config rename-context default gke-default --kubeconfig=~/.kube/config-gke
@@ -144,7 +144,7 @@ kubectl config rename-context default eks-default --kubeconfig=~/.kube/config-ek
 
 # Now merge
 export KUBECONFIG=~/.kube/config-gke:~/.kube/config-eks
-kubectl config view --flatten > ~/.kube/config
+kubectl config view --flatten --raw > ~/.kube/config
 ```
 
 Rename conflicting contexts to preserve all configurations.
@@ -158,7 +158,7 @@ Merged configs should maintain the active context:
 kubectl config current-context
 
 # Perform merge
-KUBECONFIG=~/.kube/config:~/.kube/config-2 kubectl config view --flatten > ~/.kube/merged
+KUBECONFIG=~/.kube/config:~/.kube/config-2 kubectl config view --flatten --raw > ~/.kube/merged
 
 # Set current context in merged config
 kubectl config use-context production --kubeconfig=~/.kube/merged
@@ -181,7 +181,7 @@ gcloud container clusters get-credentials new-cluster
 # If it created a separate file:
 
 export KUBECONFIG=~/.kube/config:~/.kube/new-cluster-config
-kubectl config view --flatten > ~/.kube/config-temp
+kubectl config view --flatten --raw > ~/.kube/config-temp
 mv ~/.kube/config-temp ~/.kube/config
 ```
 
@@ -203,7 +203,7 @@ CLUSTER=$(kubectl config view -o jsonpath="{.contexts[?(@.name==\"$CONTEXT\")].c
 USER=$(kubectl config view -o jsonpath="{.contexts[?(@.name==\"$CONTEXT\")].context.user}")
 
 # Extract to new config
-kubectl config view --minify --context=$CONTEXT --flatten > $OUTPUT_FILE
+kubectl config view --minify --context="$CONTEXT" --flatten --raw > "$OUTPUT_FILE"
 
 echo "Extracted $CONTEXT to $OUTPUT_FILE"
 ```
@@ -222,7 +222,7 @@ kubectl config view
 # client-key: /path/to/client.key
 
 # After flatten - certificates are embedded
-kubectl config view --flatten
+kubectl config view --flatten --raw
 # certificate-authority-data: LS0tLS1CRUdJTi...
 # client-certificate-data: LS0tLS1CRUdJTi...
 # client-key-data: LS0tLS1CRUdJTi...
@@ -242,11 +242,11 @@ gcloud container clusters get-credentials prod-cluster
 aws eks update-kubeconfig --name staging-cluster --kubeconfig ~/.kube/config-eks
 
 # AKS can append or create new file
-az aks get-credentials --name dev-cluster --file ~/.kube/config-aks
+az aks get-credentials --resource-group myResourceGroup --name dev-cluster --file ~/.kube/config-aks
 
 # Merge all
 export KUBECONFIG=~/.kube/config:~/.kube/config-eks:~/.kube/config-aks
-kubectl config view --flatten > ~/.kube/config-all
+kubectl config view --flatten --raw > ~/.kube/config-all
 mv ~/.kube/config-all ~/.kube/config
 ```
 
@@ -283,14 +283,16 @@ When clusters or users share names:
 cat ~/.kube/config-1 | grep "name:" | sort
 cat ~/.kube/config-2 | grep "name:" | sort
 
-# If conflicts exist, rename in source files
+# If context conflicts exist, rename them in source files
 kubectl config rename-context conflicting-name unique-name-1 --kubeconfig=~/.kube/config-1
-kubectl config rename-cluster conflicting-cluster unique-cluster-1 --kubeconfig=~/.kube/config-1
-kubectl config rename-user conflicting-user unique-user-1 --kubeconfig=~/.kube/config-1
+
+# If cluster or user names conflict, edit the source kubeconfig YAML so
+# clusters[].name and contexts[].context.cluster use a unique cluster name,
+# and users[].name and contexts[].context.user use a unique user name.
 
 # Then merge
 export KUBECONFIG=~/.kube/config-1:~/.kube/config-2
-kubectl config view --flatten > ~/.kube/config
+kubectl config view --flatten --raw > ~/.kube/config
 ```
 
 Resolving conflicts before merging prevents data loss.
@@ -309,7 +311,7 @@ kubectl config view --kubeconfig=~/.kube/config-dev | grep namespace
 
 # Merge preserves namespace settings
 export KUBECONFIG=~/.kube/config-prod:~/.kube/config-dev
-kubectl config view --flatten > ~/.kube/config
+kubectl config view --flatten --raw > ~/.kube/config
 
 # Verify namespaces preserved
 kubectl config get-contexts
@@ -328,8 +330,8 @@ Build standardized configs for teams:
 # Collect configs from team members
 TEAM_CONFIGS=""
 for member in alice bob charlie; do
-    if [ -f ~/team-configs/$member-config ]; then
-        TEAM_CONFIGS="$TEAM_CONFIGS:~/team-configs/$member-config"
+    if [ -f "$HOME/team-configs/$member-config" ]; then
+        TEAM_CONFIGS="$TEAM_CONFIGS:$HOME/team-configs/$member-config"
     fi
 done
 
@@ -337,7 +339,7 @@ done
 TEAM_CONFIGS=${TEAM_CONFIGS#:}
 
 # Merge team configs
-KUBECONFIG=$TEAM_CONFIGS kubectl config view --flatten > ~/team-configs/shared-config
+KUBECONFIG=$TEAM_CONFIGS kubectl config view --flatten --raw > ~/team-configs/shared-config
 
 # Distribute to team
 # (upload to shared storage, git repo, etc.)
@@ -361,11 +363,13 @@ PROD_CONTEXTS=$(kubectl config get-contexts -o name | grep prod)
 
 for ctx in $PROD_CONTEXTS; do
     # Export to temp file
-    kubectl config view --minify --context=$ctx --flatten > /tmp/ctx-$ctx
+    CTX_FILE=$(mktemp)
+    kubectl config view --minify --context="$ctx" --flatten --raw > "$CTX_FILE"
 
     # Merge into prod-only config
-    KUBECONFIG=~/.kube/config-prod-only:/tmp/ctx-$ctx kubectl config view --flatten > /tmp/merged
+    KUBECONFIG=~/.kube/config-prod-only:"$CTX_FILE" kubectl config view --flatten --raw > /tmp/merged
     mv /tmp/merged ~/.kube/config-prod-only
+    rm "$CTX_FILE"
 done
 
 echo "Production-only config created: ~/.kube/config-prod-only"
@@ -389,7 +393,7 @@ cp ~/.kube/config-eks ./config-eks
 cp ~/.kube/config-aks ./config-aks
 
 # Create merged version
-KUBECONFIG=config-gke:config-eks:config-aks kubectl config view --flatten > config-merged
+KUBECONFIG=config-gke:config-eks:config-aks kubectl config view --flatten --raw > config-merged
 
 # Commit
 git add .
@@ -418,10 +422,10 @@ cp ~/.kube/config ~/.kube/config.backup.$(date +%Y%m%d-%H%M%S)
 
 # Find all config files
 CONFIGS=$(find ~/.kube -name 'config-*' -type f | tr '\n' ':')
-CONFIGS="~/.kube/config:${CONFIGS%:}"
+CONFIGS="$HOME/.kube/config:${CONFIGS%:}"
 
 # Merge
-KUBECONFIG=$CONFIGS kubectl config view --flatten > ~/.kube/config-new
+KUBECONFIG=$CONFIGS kubectl config view --flatten --raw > ~/.kube/config-new
 
 # Replace if merge succeeded
 if [ $? -eq 0 ]; then
@@ -464,7 +468,7 @@ When merges fail or produce unexpected results:
 # Check for invalid YAML in source configs
 for config in ~/.kube/config-*; do
     echo "Validating $config"
-    kubectl config view --kubeconfig=$config --flatten > /dev/null
+    kubectl config view --kubeconfig=$config --flatten --raw > /dev/null
     if [ $? -ne 0 ]; then
         echo "ERROR: $config is invalid"
     fi
