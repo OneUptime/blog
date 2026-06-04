@@ -140,7 +140,6 @@ Initialize the primary and create replication user:
 kubectl exec -it postgres-primary-0 -n database -- \
   psql -U postgres -c "
     CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'replicatorPassword';
-    SELECT pg_create_physical_replication_slot('replica_1_slot');
   "
 ```
 
@@ -161,11 +160,6 @@ data:
     shared_buffers = 256MB
     hot_standby = on
     hot_standby_feedback = on
-    primary_conninfo = 'host=postgres-primary-0.postgres-primary.database.svc.cluster.local port=5432 user=replicator password=replicatorPassword'
-    primary_slot_name = 'replica_1_slot'
-
-  standby.signal: |
-    # This file enables standby mode
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -191,20 +185,25 @@ spec:
         env:
         - name: PGPASSWORD
           value: replicatorPassword
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         command:
         - sh
         - -c
         - |
-          if [ -d /var/lib/postgresql/data/pgdata ]; then
+          if [ -s /var/lib/postgresql/data/pgdata/PG_VERSION ]; then
             echo "Data directory exists, skipping clone"
           else
             echo "Cloning from primary..."
-            pg_basebackup -h postgres-primary-0.postgres-primary.database.svc.cluster.local \
+            pg_basebackup -d "host=postgres-primary.database.svc.cluster.local port=5432 user=replicator password=replicatorPassword" \
               -D /var/lib/postgresql/data/pgdata \
-              -U replicator \
               -X stream \
+              -R \
+              -C \
+              -S "${POD_NAME}_slot" \
               -P
-            touch /var/lib/postgresql/data/pgdata/standby.signal
           fi
         volumeMounts:
         - name: data
@@ -290,8 +289,8 @@ metadata:
 data:
   pgbouncer.ini: |
     [databases]
-    myapp = host=postgres-primary-0.postgres-primary.database.svc.cluster.local port=5432 dbname=myapp
-    myapp-ro = host=postgres-replica.database.svc.cluster.local port=5432 dbname=myapp
+    myapp = host=postgres-write.database.svc.cluster.local port=5432 dbname=myapp
+    myapp-ro = host=postgres-read.database.svc.cluster.local port=5432 dbname=myapp
 
     [pgbouncer]
     listen_addr = 0.0.0.0
@@ -317,6 +316,7 @@ data:
     log_connections = 1
     log_disconnections = 1
     log_pooler_errors = 1
+    admin_users = postgres
 
   userlist.txt: |
     "postgres" "md5<md5-hash-of-password>"
@@ -374,7 +374,7 @@ spec:
 Generate MD5 hash for userlist:
 
 ```bash
-echo -n "securePassword123postgres" | md5sum
+echo -n "securePassword123postgres" | md5sum | awk '{print "md5"$1}'
 # Add the hash to userlist.txt
 ```
 
@@ -419,7 +419,7 @@ import psycopg2
 
 # Write operations
 write_conn = psycopg2.connect(
-    host="postgres-write.database.svc.cluster.local",
+    host="pgbouncer.database.svc.cluster.local",
     database="myapp",
     user="postgres",
     password="securePassword123"
@@ -427,8 +427,8 @@ write_conn = psycopg2.connect(
 
 # Read operations
 read_conn = psycopg2.connect(
-    host="postgres-read.database.svc.cluster.local",
-    database="myapp",
+    host="pgbouncer.database.svc.cluster.local",
+    database="myapp-ro",
     user="postgres",
     password="securePassword123"
 )
@@ -500,8 +500,11 @@ For manual failover, promote a replica to primary:
 kubectl exec postgres-replica-0 -n database -- \
   pg_ctl promote -D /var/lib/postgresql/data/pgdata
 
-# Update primary service to point to new primary
+# Update primary and write services to point to new primary
 kubectl patch svc postgres-primary -n database \
+  -p '{"spec":{"selector":{"statefulset.kubernetes.io/pod-name":"postgres-replica-0"}}}'
+
+kubectl patch svc postgres-write -n database \
   -p '{"spec":{"selector":{"statefulset.kubernetes.io/pod-name":"postgres-replica-0"}}}'
 ```
 
