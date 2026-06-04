@@ -8,9 +8,9 @@ Description: Implement Horizontal Pod Autoscaler with rate-based metrics like re
 
 ---
 
-Rate-based metrics measure how much work your application processes over time. Unlike static metrics like CPU utilization or memory usage, rate metrics directly represent throughput: requests per second, messages processed per minute, or transactions per hour. Scaling on rate metrics ensures you maintain consistent processing capacity regardless of how resource-intensive each request happens to be.
+Rate-based metrics measure how much work your application processes over time. Unlike static metrics like CPU utilization or memory usage, rate metrics directly represent throughput: requests per second, messages processed per minute, or transactions per hour. Scaling on rate metrics helps you maintain consistent processing capacity when your per-request cost is reasonably well understood.
 
-A request that returns cached data uses minimal CPU, while a request that performs complex calculations might max out a core. If you scale only on CPU, you'll have different capacity at different times. Scaling on request rate ensures consistent throughput regardless of the work involved in each request, providing more predictable performance for users.
+A request that returns cached data uses minimal CPU, while a request that performs complex calculations might max out a core. If you scale only on CPU, you'll have different capacity at different times. Scaling on request rate keeps a consistent throughput target, and combining it with resource or latency metrics helps account for changes in request cost.
 
 ## Understanding Rate Metrics
 
@@ -70,7 +70,7 @@ func main() {
 }
 ```
 
-Deploy with Prometheus scraping enabled.
+Deploy with Prometheus scraping enabled. Make sure your Prometheus Kubernetes scrape configuration or relabeling attaches `namespace` and `pod` labels to the scraped series, because the adapter rules below use those labels to map metrics back to Kubernetes Pods.
 
 ```yaml
 apiVersion: apps/v1
@@ -225,6 +225,7 @@ metadata:
   name: transaction-rate-hpa
 spec:
   scaleTargetRef:
+    apiVersion: apps/v1
     kind: Deployment
     name: transaction-processor
   minReplicas: 10
@@ -243,6 +244,22 @@ spec:
 
 Scale on both throughput and performance.
 
+Expose the p95 latency metric through the adapter before referencing it in the HPA.
+
+```yaml
+# Prometheus adapter rule for p95 request latency
+rules:
+- seriesQuery: 'http_request_duration_seconds_bucket{namespace!="",pod!="",le!=""}'
+  resources:
+    overrides:
+      namespace: {resource: "namespace"}
+      pod: {resource: "pod"}
+  name:
+    matches: "^http_request_duration_seconds_bucket$"
+    as: "http_request_duration_p95_seconds"
+  metricsQuery: 'histogram_quantile(0.95, sum(rate(<<.Series>>{<<.LabelMatchers>>}[5m])) by (<<.GroupBy>>, le))'
+```
+
 ```yaml
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -250,6 +267,7 @@ metadata:
   name: rate-and-latency-hpa
 spec:
   scaleTargetRef:
+    apiVersion: apps/v1
     kind: Deployment
     name: api-service
   minReplicas: 10
@@ -321,6 +339,7 @@ metadata:
   name: message-processor-hpa
 spec:
   scaleTargetRef:
+    apiVersion: apps/v1
     kind: Deployment
     name: message-worker
   minReplicas: 5
@@ -400,4 +419,4 @@ curl http://localhost:8080/metrics | grep http_requests_total
 
 ## Conclusion
 
-Rate-based metrics provide application-aware autoscaling that directly reflects your workload's throughput capacity. By scaling on actual requests per second or transactions per minute rather than resource utilization, you maintain consistent performance regardless of the computational cost of individual requests. Combined with latency metrics and appropriate scaling behaviors, rate-based HPA creates responsive autoscaling that keeps user-facing performance stable across varying traffic patterns.
+Rate-based metrics provide application-aware autoscaling that directly reflects your workload's throughput demand. By scaling on actual requests per second or transactions per minute rather than resource utilization alone, you maintain a consistent throughput target. Combined with latency metrics, resource metrics, and appropriate scaling behaviors, rate-based HPA creates responsive autoscaling that keeps user-facing performance stable across varying traffic patterns.
