@@ -61,56 +61,55 @@ kubectl describe resourcequota team-quota -n data-science
 Use Prometheus to track namespace resource usage over time:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
 metadata:
   name: prometheus-namespace-rules
   namespace: monitoring
-data:
-  namespace-resources.rules: |
-    groups:
-    - name: namespace-resources
-      interval: 30s
-      rules:
-      # CPU requests by namespace
-      - record: namespace:cpu_requests:sum
-        expr: |
-          sum(kube_pod_container_resource_requests{resource="cpu"}) by (namespace)
+spec:
+  groups:
+  - name: namespace-resources
+    interval: 30s
+    rules:
+    # CPU requests by namespace
+    - record: namespace:cpu_requests:sum
+      expr: |
+        sum(kube_pod_container_resource_requests{resource="cpu"}) by (namespace)
 
-      # Memory requests by namespace
-      - record: namespace:memory_requests:sum
-        expr: |
-          sum(kube_pod_container_resource_requests{resource="memory"}) by (namespace)
+    # Memory requests by namespace
+    - record: namespace:memory_requests:sum
+      expr: |
+        sum(kube_pod_container_resource_requests{resource="memory"}) by (namespace)
 
-      # Actual CPU usage by namespace
-      - record: namespace:cpu_usage:sum
-        expr: |
-          sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (namespace)
+    # Actual CPU usage by namespace
+    - record: namespace:cpu_usage:sum
+      expr: |
+        sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (namespace)
 
-      # Actual memory usage by namespace
-      - record: namespace:memory_usage:sum
-        expr: |
-          sum(container_memory_working_set_bytes{container!=""}) by (namespace)
+    # Actual memory usage by namespace
+    - record: namespace:memory_usage:sum
+      expr: |
+        sum(container_memory_working_set_bytes{container!=""}) by (namespace)
 
-      # Storage usage by namespace
-      - record: namespace:storage_usage:sum
-        expr: |
-          sum(kubelet_volume_stats_used_bytes) by (namespace)
+    # Storage usage by namespace
+    - record: namespace:storage_usage:sum
+      expr: |
+        sum(kubelet_volume_stats_used_bytes) by (namespace)
 
-      # Pod count by namespace
-      - record: namespace:pod_count:sum
-        expr: |
-          count(kube_pod_info) by (namespace)
+    # Pod count by namespace
+    - record: namespace:pod_count:sum
+      expr: |
+        count(kube_pod_info) by (namespace)
 
-      # CPU efficiency (usage vs requests)
-      - record: namespace:cpu_efficiency:ratio
-        expr: |
-          namespace:cpu_usage:sum / namespace:cpu_requests:sum
+    # CPU efficiency (usage vs requests)
+    - record: namespace:cpu_efficiency:ratio
+      expr: |
+        namespace:cpu_usage:sum / namespace:cpu_requests:sum
 
-      # Memory efficiency (usage vs requests)
-      - record: namespace:memory_efficiency:ratio
-        expr: |
-          namespace:memory_usage:sum / namespace:memory_requests:sum
+    # Memory efficiency (usage vs requests)
+    - record: namespace:memory_efficiency:ratio
+      expr: |
+        namespace:memory_usage:sum / namespace:memory_requests:sum
 ```
 
 These recording rules pre-compute namespace metrics for fast querying.
@@ -130,7 +129,7 @@ Create a Grafana dashboard for namespace resource visibility:
           "expr": "topk(10, namespace:cpu_requests:sum)",
           "legendFormat": "{{ namespace }}"
         }],
-        "type": "graph"
+        "type": "timeseries"
       },
       {
         "title": "Memory Usage by Namespace",
@@ -138,7 +137,7 @@ Create a Grafana dashboard for namespace resource visibility:
           "expr": "topk(10, namespace:memory_usage:sum / 1024 / 1024 / 1024)",
           "legendFormat": "{{ namespace }}"
         }],
-        "type": "graph"
+        "type": "timeseries"
       },
       {
         "title": "Resource Efficiency",
@@ -152,7 +151,7 @@ Create a Grafana dashboard for namespace resource visibility:
             "legendFormat": "Memory - {{ namespace }}"
           }
         ],
-        "type": "graph"
+        "type": "timeseries"
       },
       {
         "title": "Storage Consumption",
@@ -160,7 +159,7 @@ Create a Grafana dashboard for namespace resource visibility:
           "expr": "namespace:storage_usage:sum / 1024 / 1024 / 1024",
           "legendFormat": "{{ namespace }}"
         }],
-        "type": "bar"
+        "type": "barchart"
       }
     ]
   }
@@ -379,35 +378,34 @@ spec:
 Beyond CPU and memory, track network and storage I/O:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
 metadata:
   name: prometheus-io-rules
   namespace: monitoring
-data:
-  io-tracking.rules: |
-    groups:
-    - name: namespace-io
-      rules:
-      # Network receive bytes by namespace
-      - record: namespace:network_receive_bytes:rate
-        expr: |
-          sum(rate(container_network_receive_bytes_total[5m])) by (namespace)
+spec:
+  groups:
+  - name: namespace-io
+    rules:
+    # Network receive bytes by namespace
+    - record: namespace:network_receive_bytes:rate
+      expr: |
+        sum(rate(container_network_receive_bytes_total[5m])) by (namespace)
 
-      # Network transmit bytes by namespace
-      - record: namespace:network_transmit_bytes:rate
-        expr: |
-          sum(rate(container_network_transmit_bytes_total[5m])) by (namespace)
+    # Network transmit bytes by namespace
+    - record: namespace:network_transmit_bytes:rate
+      expr: |
+        sum(rate(container_network_transmit_bytes_total[5m])) by (namespace)
 
-      # Disk read bytes by namespace
-      - record: namespace:disk_read_bytes:rate
-        expr: |
-          sum(rate(container_fs_reads_bytes_total[5m])) by (namespace)
+    # Disk read bytes by namespace
+    - record: namespace:disk_read_bytes:rate
+      expr: |
+        sum(rate(container_fs_reads_bytes_total[5m])) by (namespace)
 
-      # Disk write bytes by namespace
-      - record: namespace:disk_write_bytes:rate
-        expr: |
-          sum(rate(container_fs_writes_bytes_total[5m])) by (namespace)
+    # Disk write bytes by namespace
+    - record: namespace:disk_write_bytes:rate
+      expr: |
+        sum(rate(container_fs_writes_bytes_total[5m])) by (namespace)
 ```
 
 ## Implementing Resource Labels for Detailed Tracking
@@ -427,6 +425,9 @@ metadata:
     environment: production
     project: user-portal
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
     metadata:
       labels:
@@ -441,17 +442,31 @@ spec:
         image: web-app:latest
 ```
 
+If your kube-state-metrics deployment restricts exported labels, allowlist these pod labels so they appear on `kube_pod_labels`.
+
 Query costs by label dimensions:
 
 ```promql
 # CPU usage by team
-sum(rate(container_cpu_usage_seconds_total[5m])) by (label_team)
+sum(
+  rate(container_cpu_usage_seconds_total{container!="", pod!=""}[5m])
+  * on (namespace, pod) group_left(label_team)
+    kube_pod_labels
+) by (label_team)
 
 # Memory usage by cost center
-sum(container_memory_working_set_bytes) by (label_cost_center)
+sum(
+  container_memory_working_set_bytes{container!="", pod!=""}
+  * on (namespace, pod) group_left(label_cost_center)
+    kube_pod_labels
+) by (label_cost_center)
 
 # Resource requests by project
-sum(kube_pod_container_resource_requests) by (label_project, resource)
+sum(
+  kube_pod_container_resource_requests
+  * on (namespace, pod) group_left(label_project)
+    kube_pod_labels
+) by (label_project, resource)
 ```
 
 ## Exporting Data for BI Tools
@@ -463,6 +478,8 @@ Export namespace resource data to external analytics platforms:
 import pandas as pd
 import requests
 from datetime import datetime
+
+PROMETHEUS_URL = "http://prometheus.monitoring.svc:9090"
 
 def export_namespace_data():
     """Export namespace resource data to CSV for BI tools"""
