@@ -78,6 +78,10 @@ spec:
         automated:
           prune: true
           selfHeal: true
+        managedNamespaceMetadata:
+          labels:
+            preview: "true"
+            pr-number: "{{number}}"
         syncOptions:
         - CreateNamespace=true
 ```
@@ -104,8 +108,7 @@ spec:
   generators:
   - pullRequest:
       gitlab:
-        project: myorg/myapp
-        api: https://gitlab.com
+        project: "12341234"
         tokenRef:
           secretName: gitlab-token
           key: token
@@ -127,6 +130,10 @@ spec:
       syncPolicy:
         automated:
           prune: true
+        managedNamespaceMetadata:
+          labels:
+            preview: "true"
+            pr-number: "{{number}}"
         syncOptions:
         - CreateNamespace=true
 ```
@@ -156,13 +163,15 @@ Preview overlay:
 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
 - ../../base
 namePrefix: preview-
-commonLabels:
-  environment: preview
-patchesStrategicMerge:
-- resources.yaml
+labels:
+- pairs:
+    environment: preview
+  includeSelectors: true
+patches:
+- path: resources.yaml
 ---
 # kubernetes/overlays/preview/resources.yaml
 apiVersion: apps/v1
@@ -201,7 +210,7 @@ spec:
 Configure Ingress with PR-specific hostnames:
 
 ```yaml
-# In your Helm values or Kustomize patch
+# In your Helm template values or an ApplicationSet source.kustomize patch
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -226,32 +235,36 @@ spec:
               number: 80
 ```
 
-Configure external-dns to create DNS records:
+Configure external-dns to create DNS records with the official Helm chart:
 
 ```yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: external-dns
-  namespace: kube-system
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: external-dns
-  namespace: kube-system
-spec:
-  template:
-    spec:
-      serviceAccountName: external-dns
-      containers:
-      - name: external-dns
-        image: registry.k8s.io/external-dns/external-dns:v0.14.0
-        args:
-        - --source=ingress
-        - --domain-filter=preview.example.com
-        - --provider=cloudflare
-        - --txt-owner-id=preview-env
+# values.yaml
+provider:
+  name: cloudflare
+sources:
+- ingress
+domainFilters:
+- preview.example.com
+registry: txt
+txtOwnerId: preview-env
+env:
+- name: CF_API_TOKEN
+  valueFrom:
+    secretKeyRef:
+      name: cloudflare-api-key
+      key: apiKey
+```
+
+```bash
+kubectl create namespace external-dns
+kubectl create secret generic cloudflare-api-key \
+  --from-literal=apiKey=YOUR_API_TOKEN \
+  -n external-dns
+
+helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
+helm upgrade --install external-dns external-dns/external-dns \
+  --namespace external-dns \
+  --values values.yaml
 ```
 
 ## Implementing Resource Quotas for Preview Namespaces
@@ -289,15 +302,17 @@ on:
 jobs:
   comment:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
     - name: Wait for ArgoCD
       run: sleep 60
 
     - name: Comment PR
-      uses: actions/github-script@v6
+      uses: actions/github-script@v9
       with:
         script: |
-          github.rest.issues.createComment({
+          await github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
             repo: context.repo.repo,
@@ -351,7 +366,7 @@ Or use shared development databases with PR-specific schemas.
 
 ## Setting TTL for Preview Environments
 
-Auto-delete old preview environments:
+Use TTL cleanup as a safety net for orphaned preview resources. If a pull request still matches the ApplicationSet generator, deleting the generated Application alone is not enough because the ApplicationSet controller can recreate it on the next reconciliation:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -373,17 +388,20 @@ spec:
       name: 'preview-pr-{{number}}'
       finalizers:
       - resources-finalizer.argocd.argoproj.io
-      annotations:
-        janitor/ttl: "72h"  # Delete after 3 days
     spec:
+      syncPolicy:
+        managedNamespaceMetadata:
+          annotations:
+            janitor/ttl: "72h"  # Safety net for orphaned preview namespaces
+        syncOptions:
+        - CreateNamespace=true
       # ... rest of spec
 ```
 
 Deploy kube-janitor to enforce TTL:
 
 ```bash
-helm repo add kube-janitor https://hjacobs.github.io/kube-janitor/
-helm install kube-janitor kube-janitor/kube-janitor
+kubectl apply -k https://codeberg.org/hjacobs/kube-janitor.git//deploy?ref=main
 ```
 
 ## Monitoring Preview Environments
