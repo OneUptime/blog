@@ -12,7 +12,7 @@ The Kubernetes Gateway API represents the next generation of ingress and service
 
 ## Understanding Gateway API CRDs
 
-Gateway API introduces several new resource types through CRDs: GatewayClass, Gateway, HTTPRoute, TLSRoute, TCPRoute, and UDPRoute. These resources provide a more expressive and extensible API for routing traffic into and within your cluster.
+Gateway API introduces several new resource types through CRDs: GatewayClass, Gateway, HTTPRoute, GRPCRoute, TLSRoute, TCPRoute, UDPRoute, ReferenceGrant, and policy resources such as BackendTLSPolicy. These resources provide a more expressive and extensible API for routing traffic into and within your cluster.
 
 Unlike the built-in Ingress resource, Gateway API CRDs must be installed separately. This allows the API to evolve independently from Kubernetes releases.
 
@@ -21,9 +21,9 @@ Unlike the built-in Ingress resource, Gateway API CRDs must be installed separat
 The simplest installation uses the standard channel, which includes stable and generally available resources.
 
 ```bash
-# Install the latest stable Gateway API CRDs
+# Install Gateway API v1.0.0 standard CRDs
 
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
 
 # Verify installation
 kubectl get crd | grep gateway
@@ -37,13 +37,13 @@ For access to experimental features and preview resources, use the experimental 
 
 ```bash
 # Install experimental Gateway API CRDs
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/experimental-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/experimental-install.yaml
 
 # Verify all CRDs including experimental ones
 kubectl get crd | grep gateway.networking.k8s.io
 ```
 
-The experimental channel includes everything from standard plus additional resources like TCPRoute, UDPRoute, and TLSRoute.
+The experimental channel includes everything from standard plus additional resources like GRPCRoute, TCPRoute, UDPRoute, TLSRoute, and BackendTLSPolicy in v1.0.0.
 
 ## Installing Specific CRD Versions
 
@@ -52,10 +52,10 @@ Pin to specific versions for production stability.
 ```bash
 # Install a specific version
 VERSION=v1.0.0
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/${VERSION}/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/${VERSION}/standard-install.yaml
 
 # Check installed version
-kubectl get crd gateways.gateway.networking.k8s.io -o jsonpath='{.spec.versions[*].name}'
+kubectl get crd gateways.gateway.networking.k8s.io -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}'
 ```
 
 Always test new versions in non-production environments before upgrading production clusters.
@@ -85,7 +85,7 @@ All CRDs should show "Established" status with "True" value.
 
 ## Installing Using Helm
 
-For GitOps workflows, install CRDs through Helm charts.
+For GitOps workflows, install CRDs through Helm charts. In Helm 3, CRD files belong in the chart's `crds/` directory and must be plain YAML, not templated manifests.
 
 ```yaml
 # gateway-api-crds-chart/Chart.yaml
@@ -94,22 +94,14 @@ name: gateway-api-crds
 version: 1.0.0
 description: Gateway API CRDs
 
-# gateway-api-crds-chart/values.yaml
-channel: standard  # or experimental
-version: v1.0.0
-
-# gateway-api-crds-chart/templates/crds.yaml
-{{- if eq .Values.channel "standard" }}
-apiVersion: v1
-kind: List
-items:
-  - apiVersion: apiextensions.k8s.io/v1
-    kind: CustomResourceDefinition
-    metadata:
-      name: gatewayclasses.gateway.networking.k8s.io
-    spec:
-      # CRD spec here
-{{- end }}
+# gateway-api-crds-chart/crds/gateway.networking.k8s.io_gatewayclasses.yaml
+# Copy the complete CRD YAML from the official Gateway API release bundle.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: gatewayclasses.gateway.networking.k8s.io
+spec:
+  # Complete CRD spec from the release bundle
 ```
 
 Install via Helm:
@@ -133,14 +125,14 @@ wget https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/sta
 diff <(kubectl get crd gateways.gateway.networking.k8s.io -o yaml) <(grep -A 1000 "kind: CustomResourceDefinition" standard-install.yaml | head -n 500)
 
 # Apply upgrade
-kubectl apply -f standard-install.yaml
+kubectl apply --server-side -f standard-install.yaml
 
 # Verify existing resources still work
 kubectl get gateways -A
 kubectl get httproutes -A
 ```
 
-CRD upgrades typically preserve existing resources through conversion webhooks.
+CRD upgrades preserve existing resources as long as the stored versions remain served and compatible. Review the Gateway API release notes before changing storage versions or removing served versions.
 
 ## Installing With ArgoCD
 
@@ -190,7 +182,7 @@ kubectl get gateways -A -o yaml > gateways-backup.yaml
 kubectl delete crd gateways.gateway.networking.k8s.io
 
 # Reinstall correct version
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
 
 # Restore resources
 kubectl apply -f gateways-backup.yaml
@@ -282,14 +274,13 @@ Verify that your cluster version supports Gateway API.
 
 ```bash
 # Check Kubernetes version
-kubectl version --short
+kubectl version -o yaml
 
-# Gateway API v1.0 requires Kubernetes 1.23+
+# Gateway API v1.0 CRDs require apiextensions.k8s.io/v1
+# Kubernetes 1.25+ is recommended for CEL validation in the CRDs
+# Kubernetes 1.23 and 1.24 should also install the v1.0.0 webhook-install.yaml
 # Verify CustomResourceDefinition v1 is available
 kubectl api-resources | grep customresourcedefinitions
-
-# Check if conversion webhooks are supported
-kubectl get apiservice | grep apiextensions
 ```
 
 ## Monitoring CRD Health
